@@ -14,6 +14,7 @@ import {
 
 const roots: string[] = [];
 const chromeId = "abcdefghijklmnopabcdefghijklmnop";
+const posixIt = process.platform === "win32" ? it.skip : it;
 
 function requireRegistryKey(
   manifest: BrowserBridgeRegistrationPlan["manifests"][number],
@@ -30,7 +31,7 @@ describe("browser bridge registration lifecycle", () => {
       fs.rmSync(root, { force: true, recursive: true });
   });
 
-  it("plans exact macOS and Linux per-user manifest locations", () => {
+  posixIt("plans exact macOS and Linux per-user manifest locations", () => {
     const mac = createBrowserBridgeRegistrationPlan({
       platform: "darwin",
       homeDir: "/Users/eliza",
@@ -56,51 +57,57 @@ describe("browser bridge registration lifecycle", () => {
     ]);
   });
 
-  it("resolves the dedicated packaged host instead of the desktop executable", () => {
-    expect(
-      resolveBrowserBridgeNativeHostExecutable(
-        "/Applications/Eliza.app/Contents/Resources/bun/native",
-        "darwin",
-        (candidate) =>
-          candidate ===
-          "/Applications/Eliza.app/Contents/Resources/bun/browser-bridge-native-host",
-      ),
-    ).toBe(
-      "/Applications/Eliza.app/Contents/Resources/bun/browser-bridge-native-host",
-    );
-    expect(() =>
-      resolveBrowserBridgeNativeHostExecutable(
-        "/tmp/native",
-        "linux",
-        () => false,
-      ),
-    ).toThrow("executable is missing");
-  });
-
-  it("writes private manifests atomically and removes only exact planned files", () => {
-    const root = fs.mkdtempSync(
-      path.join(os.tmpdir(), "browser-registration-"),
-    );
-    roots.push(root);
-    const plan = createBrowserBridgeRegistrationPlan({
-      platform: "linux",
-      homeDir: root,
-      executablePath: "/opt/eliza/eliza-browser-bridge-host",
-      chromeExtensionIds: [chromeId],
-      firefoxExtensionIds: ["bridge@elizaos.ai"],
-    });
-    installBrowserBridgeRegistration(plan);
-    for (const manifest of plan.manifests) {
-      expect(fs.readFileSync(manifest.manifestPath, "utf8")).toBe(
-        manifest.contents,
+  posixIt(
+    "resolves the dedicated packaged host instead of the desktop executable",
+    () => {
+      expect(
+        resolveBrowserBridgeNativeHostExecutable(
+          "/Applications/Eliza.app/Contents/Resources/bun/native",
+          "darwin",
+          (candidate) =>
+            candidate ===
+            "/Applications/Eliza.app/Contents/Resources/bun/browser-bridge-native-host",
+        ),
+      ).toBe(
+        "/Applications/Eliza.app/Contents/Resources/bun/browser-bridge-native-host",
       );
-      expect(fs.statSync(manifest.manifestPath).mode & 0o777).toBe(0o600);
-    }
-    uninstallBrowserBridgeRegistration(plan);
-    expect(
-      plan.manifests.every((entry) => !fs.existsSync(entry.manifestPath)),
-    ).toBe(true);
-  });
+      expect(() =>
+        resolveBrowserBridgeNativeHostExecutable(
+          "/tmp/native",
+          "linux",
+          () => false,
+        ),
+      ).toThrow("executable is missing");
+    },
+  );
+
+  posixIt(
+    "writes private manifests atomically and removes only exact planned files",
+    () => {
+      const root = fs.mkdtempSync(
+        path.join(os.tmpdir(), "browser-registration-"),
+      );
+      roots.push(root);
+      const plan = createBrowserBridgeRegistrationPlan({
+        platform: "linux",
+        homeDir: root,
+        executablePath: "/opt/eliza/eliza-browser-bridge-host",
+        chromeExtensionIds: [chromeId],
+        firefoxExtensionIds: ["bridge@elizaos.ai"],
+      });
+      installBrowserBridgeRegistration(plan);
+      for (const manifest of plan.manifests) {
+        expect(fs.readFileSync(manifest.manifestPath, "utf8")).toBe(
+          manifest.contents,
+        );
+        expect(fs.statSync(manifest.manifestPath).mode & 0o777).toBe(0o600);
+      }
+      uninstallBrowserBridgeRegistration(plan);
+      expect(
+        plan.manifests.every((entry) => !fs.existsSync(entry.manifestPath)),
+      ).toBe(true);
+    },
+  );
 
   it("plans and applies exact HKCU keys through the injected Windows executor", () => {
     const root = fs.mkdtempSync(
@@ -185,10 +192,12 @@ describe("browser bridge registration lifecycle", () => {
       expect(fs.readFileSync(manifest.manifestPath)).toEqual(
         previousFiles.get(manifest.manifestPath),
       );
-      expect(fs.statSync(manifest.manifestPath).mode & 0o777).toBe(0o640);
-      expect(
-        fs.statSync(path.dirname(manifest.manifestPath)).mode & 0o777,
-      ).toBe(previousDirectoryModes.get(path.dirname(manifest.manifestPath)));
+      if (process.platform !== "win32") {
+        expect(fs.statSync(manifest.manifestPath).mode & 0o777).toBe(0o640);
+        expect(
+          fs.statSync(path.dirname(manifest.manifestPath)).mode & 0o777,
+        ).toBe(previousDirectoryModes.get(path.dirname(manifest.manifestPath)));
+      }
       expect(registryValues.get(requireRegistryKey(manifest))).toBe(
         `C:\\previous\\${manifest.browser}.json`,
       );

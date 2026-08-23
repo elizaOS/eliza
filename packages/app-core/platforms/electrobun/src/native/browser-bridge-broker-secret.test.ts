@@ -13,6 +13,7 @@ import {
 } from "./browser-bridge-broker-secret";
 
 const roots: string[] = [];
+const posixIt = process.platform === "win32" ? it.skip : it;
 
 describe("browser bridge broker secret", () => {
   afterEach(() => {
@@ -20,7 +21,7 @@ describe("browser bridge broker secret", () => {
       fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it("creates and reuses exactly 32 private bytes", () => {
+  posixIt("creates and reuses exactly 32 private bytes", () => {
     const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "browser-secret-"));
     roots.push(stateDir);
     const env = { ELIZA_STATE_DIR: stateDir };
@@ -35,7 +36,7 @@ describe("browser bridge broker secret", () => {
     expect(fs.statSync(secretPath).mode & 0o777).toBe(0o600);
   });
 
-  it("rejects permissive or malformed secret files", () => {
+  posixIt("rejects permissive or malformed secret files", () => {
     const stateDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "browser-secret-bad-"),
     );
@@ -50,76 +51,87 @@ describe("browser bridge broker secret", () => {
     expect(() => loadBrowserBridgeBrokerSecret(env)).toThrow("mode-0600");
   });
 
-  it("rejects symlinked, permissive, or wrong-owner secret directories", () => {
-    const stateDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "browser-secret-dir-"),
-    );
-    const target = fs.mkdtempSync(
-      path.join(os.tmpdir(), "browser-secret-target-"),
-    );
-    roots.push(stateDir, target);
-    const env = { ELIZA_STATE_DIR: stateDir };
-    const directory = path.dirname(resolveBrowserBridgeBrokerSecretPath(env));
-    fs.symlinkSync(target, directory);
-    expect(() => loadOrCreateBrowserBridgeBrokerSecret(env)).toThrow("symlink");
-    fs.unlinkSync(directory);
-    fs.mkdirSync(directory, { mode: 0o755 });
-    expect(() => loadOrCreateBrowserBridgeBrokerSecret(env)).toThrow(
-      "real mode-0700 directory",
-    );
-    fs.chmodSync(directory, 0o700);
-    const currentUid = process.getuid?.() ?? 501;
-    expect(() =>
-      loadOrCreateBrowserBridgeBrokerSecret(
-        env,
-        () => Buffer.alloc(32, 1),
-        currentUid + 1,
-      ),
-    ).toThrow("not owned by the current user");
-  });
+  posixIt(
+    "rejects symlinked, permissive, or wrong-owner secret directories",
+    () => {
+      const stateDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "browser-secret-dir-"),
+      );
+      const target = fs.mkdtempSync(
+        path.join(os.tmpdir(), "browser-secret-target-"),
+      );
+      roots.push(stateDir, target);
+      const env = { ELIZA_STATE_DIR: stateDir };
+      const directory = path.dirname(resolveBrowserBridgeBrokerSecretPath(env));
+      fs.symlinkSync(target, directory);
+      expect(() => loadOrCreateBrowserBridgeBrokerSecret(env)).toThrow(
+        "symlink",
+      );
+      fs.unlinkSync(directory);
+      fs.mkdirSync(directory, { mode: 0o755 });
+      expect(() => loadOrCreateBrowserBridgeBrokerSecret(env)).toThrow(
+        "real mode-0700 directory",
+      );
+      fs.chmodSync(directory, 0o700);
+      const currentUid = process.getuid?.() ?? 501;
+      expect(() =>
+        loadOrCreateBrowserBridgeBrokerSecret(
+          env,
+          () => Buffer.alloc(32, 1),
+          currentUid + 1,
+        ),
+      ).toThrow("not owned by the current user");
+    },
+  );
 
-  it("rejects symlink traversal above the private secret directory", () => {
-    const realStateDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "browser-secret-real-"),
-    );
-    const linkRoot = fs.mkdtempSync(
-      path.join(os.tmpdir(), "browser-secret-link-"),
-    );
-    roots.push(realStateDir, linkRoot);
-    const stateLink = path.join(linkRoot, "state");
-    fs.symlinkSync(realStateDir, stateLink);
-    expect(() =>
-      loadOrCreateBrowserBridgeBrokerSecret(
-        { ELIZA_STATE_DIR: stateLink },
-        () => Buffer.alloc(32, 1),
-      ),
-    ).toThrow("traverses a symlink");
-  });
+  posixIt(
+    "rejects symlink traversal above the private secret directory",
+    () => {
+      const realStateDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "browser-secret-real-"),
+      );
+      const linkRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "browser-secret-link-"),
+      );
+      roots.push(realStateDir, linkRoot);
+      const stateLink = path.join(linkRoot, "state");
+      fs.symlinkSync(realStateDir, stateLink);
+      expect(() =>
+        loadOrCreateBrowserBridgeBrokerSecret(
+          { ELIZA_STATE_DIR: stateLink },
+          () => Buffer.alloc(32, 1),
+        ),
+      ).toThrow("traverses a symlink");
+    },
+  );
 
-  it("rejects a secret replaced between validation and descriptor open", () => {
-    const stateDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "browser-secret-race-"),
-    );
-    roots.push(stateDir);
-    const env = { ELIZA_STATE_DIR: stateDir };
-    loadOrCreateBrowserBridgeBrokerSecret(env, () => Buffer.alloc(32, 1));
-    const secretPath = resolveBrowserBridgeBrokerSecretPath(env);
-    const originalPath = `${secretPath}.original`;
-    const open = fs.openSync.bind(fs);
-    let replaced = false;
-    const openSpy = vi.spyOn(fs, "openSync").mockImplementation((...args) => {
-      if (args[0] === secretPath && !replaced) {
-        replaced = true;
-        fs.renameSync(secretPath, originalPath);
-        fs.writeFileSync(secretPath, Buffer.alloc(32, 2), { mode: 0o600 });
-      }
-      return open(...args);
-    });
-    expect(() => loadBrowserBridgeBrokerSecret(env)).toThrow(
-      "changed while opening",
-    );
-    openSpy.mockRestore();
-  });
+  posixIt(
+    "rejects a secret replaced between validation and descriptor open",
+    () => {
+      const stateDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "browser-secret-race-"),
+      );
+      roots.push(stateDir);
+      const env = { ELIZA_STATE_DIR: stateDir };
+      loadOrCreateBrowserBridgeBrokerSecret(env, () => Buffer.alloc(32, 1));
+      const secretPath = resolveBrowserBridgeBrokerSecretPath(env);
+      const originalPath = `${secretPath}.original`;
+      const open = fs.openSync.bind(fs);
+      let replaced = false;
+      const openSpy = vi.spyOn(fs, "openSync").mockImplementation((...args) => {
+        if (args[0] === secretPath && !replaced) {
+          replaced = true;
+          fs.renameSync(secretPath, originalPath);
+          fs.writeFileSync(secretPath, Buffer.alloc(32, 2), { mode: 0o600 });
+        }
+        return open(...args);
+      });
+      expect(() => loadBrowserBridgeBrokerSecret(env)).toThrow(
+        "changed while opening",
+      );
+      openSpy.mockRestore();
+    },
+  );
 
   it("routes Windows secrets through the DPAPI helper without POSIX mode checks", () => {
     const expected = Buffer.alloc(32, 17);

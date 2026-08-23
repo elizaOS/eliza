@@ -23,6 +23,7 @@ import {
 } from "./browser-bridge-native-protocol";
 
 const roots: string[] = [];
+const posixIt = process.platform === "win32" ? it.skip : it;
 
 function fakeWindowsHelper(options: { exitOnKill: boolean }): {
   child: ChildProcessWithoutNullStreams;
@@ -60,82 +61,90 @@ describe("browser bridge broker IPC", () => {
       fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it("round-trips one authenticated bounded frame over a mode-0600 Unix socket", async () => {
-    const stateDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "browser-broker-ipc-"),
-    );
-    roots.push(stateDir);
-    const descriptor = createUnixBrokerTransportDescriptor(
-      { ELIZA_STATE_DIR: stateDir },
-      process.getuid?.() ?? 501,
-    );
-    const secret = Buffer.alloc(32, 14);
-    const nowMs = 1_800_000_000_000;
-    const extensionId = "abcdefghijklmnopabcdefghijklmnop";
-    const profileId = "123e4567-e89b-42d3-a456-426614174001";
-    const broker = new BrowserBridgeEnrollmentBroker({
-      apiBase: "http://127.0.0.1:31337",
-      ownerSession: async () => ({
-        sessionId: "owner-session",
-        csrfToken: "owner-csrf",
-        expiresAt: Date.now() + 60_000,
-      }),
-      brokerSecret: secret,
-      callerAllowlist: {
-        chromeExtensionIds: [extensionId],
-        firefoxExtensionIds: [],
-        safariExtensionIds: [],
-      },
-      now: () => nowMs,
-      fetchImpl: async () =>
-        new Response(
-          JSON.stringify({
-            companion: {
-              id: "companion-1",
-              browser: "chrome",
-              profileId,
-              profileLabel: "Personal",
-              label: "Chrome Personal",
-            },
-            pairingToken: "pairing-secret",
-            pairingTokenExpiresAt: null,
-          }),
-          { status: 201 },
-        ),
-    });
-    const server = await startBrowserBridgeBrokerServer({ descriptor, broker });
-    try {
-      expect(fs.statSync(descriptor.socketPath).mode & 0o777).toBe(0o600);
-      const envelope = signBrokerEnvelope(
-        {
-          protocol: BROWSER_BRIDGE_BROKER_PROTOCOL,
-          timestampMs: nowMs,
-          caller: { browser: "chrome", id: extensionId },
-          request: {
-            v: 1,
-            type: "browser_bridge.enroll",
-            requestId: "123e4567-e89b-42d3-a456-426614174000",
-            nonce: Buffer.alloc(32, 2).toString("base64url"),
-            browser: "chrome",
-            extensionId,
-            extensionVersion: "1.2.3",
-            profileId,
-          },
-        },
-        secret,
+  posixIt(
+    "round-trips one authenticated bounded frame over a mode-0600 Unix socket",
+    async () => {
+      const stateDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "browser-broker-ipc-"),
       );
-      const response = await new NodeBrowserBridgeBrokerTransport(
-        descriptor,
-      ).request(Buffer.from(JSON.stringify(envelope), "utf8"));
-      expect(JSON.parse(Buffer.from(response).toString("utf8"))).toMatchObject({
-        type: "browser_bridge.enroll_result",
-        config: { companionId: "companion-1" },
+      roots.push(stateDir);
+      const descriptor = createUnixBrokerTransportDescriptor(
+        { ELIZA_STATE_DIR: stateDir },
+        process.getuid?.() ?? 501,
+      );
+      const secret = Buffer.alloc(32, 14);
+      const nowMs = 1_800_000_000_000;
+      const extensionId = "abcdefghijklmnopabcdefghijklmnop";
+      const profileId = "123e4567-e89b-42d3-a456-426614174001";
+      const broker = new BrowserBridgeEnrollmentBroker({
+        apiBase: "http://127.0.0.1:31337",
+        ownerSession: async () => ({
+          sessionId: "owner-session",
+          csrfToken: "owner-csrf",
+          expiresAt: Date.now() + 60_000,
+        }),
+        brokerSecret: secret,
+        callerAllowlist: {
+          chromeExtensionIds: [extensionId],
+          firefoxExtensionIds: [],
+          safariExtensionIds: [],
+        },
+        now: () => nowMs,
+        fetchImpl: async () =>
+          new Response(
+            JSON.stringify({
+              companion: {
+                id: "companion-1",
+                browser: "chrome",
+                profileId,
+                profileLabel: "Personal",
+                label: "Chrome Personal",
+              },
+              pairingToken: "pairing-secret",
+              pairingTokenExpiresAt: null,
+            }),
+            { status: 201 },
+          ),
       });
-    } finally {
-      await server.close();
-    }
-    expect(fs.existsSync(descriptor.socketPath)).toBe(false);
-  });
+      const server = await startBrowserBridgeBrokerServer({
+        descriptor,
+        broker,
+      });
+      try {
+        expect(fs.statSync(descriptor.socketPath).mode & 0o777).toBe(0o600);
+        const envelope = signBrokerEnvelope(
+          {
+            protocol: BROWSER_BRIDGE_BROKER_PROTOCOL,
+            timestampMs: nowMs,
+            caller: { browser: "chrome", id: extensionId },
+            request: {
+              v: 1,
+              type: "browser_bridge.enroll",
+              requestId: "123e4567-e89b-42d3-a456-426614174000",
+              nonce: Buffer.alloc(32, 2).toString("base64url"),
+              browser: "chrome",
+              extensionId,
+              extensionVersion: "1.2.3",
+              profileId,
+            },
+          },
+          secret,
+        );
+        const response = await new NodeBrowserBridgeBrokerTransport(
+          descriptor,
+        ).request(Buffer.from(JSON.stringify(envelope), "utf8"));
+        expect(
+          JSON.parse(Buffer.from(response).toString("utf8")),
+        ).toMatchObject({
+          type: "browser_bridge.enroll_result",
+          config: { companionId: "companion-1" },
+        });
+      } finally {
+        await server.close();
+      }
+      expect(fs.existsSync(descriptor.socketPath)).toBe(false);
+    },
+  );
 
   it("creates Windows pipes with an at-creation DACL and remote-client rejection", async () => {
     const descriptor = createWindowsBrokerTransportDescriptor(
