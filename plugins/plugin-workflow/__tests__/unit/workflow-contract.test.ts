@@ -2,7 +2,10 @@
 import { describe, expect, test } from 'bun:test';
 import { compareWorkflowSearchCandidates } from '../../src/services/workflow-service.js';
 import { validateSmithersSource } from '../../src/services/smithers-runtime';
-import type { WorkflowDefinition } from '../../src/types/index';
+import type {
+  WorkflowDefinition,
+  WorkflowDefinitionResponse,
+} from '../../src/types/index';
 
 function workflow(): WorkflowDefinition {
   return {
@@ -36,27 +39,23 @@ describe('workflow contract', () => {
     expect('connections' in definition).toBe(false);
   });
 
-  test('sorts searched workflow candidates safely when score contains NaN', () => {
+  test('orders search candidates by score and breaks ties on workflow id', () => {
+    const candidate = (id: string, score: number) => ({
+      workflow: { id } as unknown as WorkflowDefinitionResponse,
+      score,
+    });
     const candidates = [
-      { workflow: { id: 'wf-nan' } as unknown as import('../../src/types/index.js').WorkflowDefinitionResponse, score: NaN },
-      { workflow: { id: 'wf-valid' } as unknown as import('../../src/types/index.js').WorkflowDefinitionResponse, score: 5 },
+      candidate('z-wf', 5),
+      candidate('a-wf', 5),
+      candidate('m-wf', 9),
     ];
 
     candidates.sort(compareWorkflowSearchCandidates);
 
-    expect(candidates[0]?.workflow.id).toBe('wf-valid');
-    expect(candidates[1]?.workflow.id).toBe('wf-nan');
-  });
-
-  test('tie-breaks candidates with equal scores by workflow id', () => {
-    const candidates = [
-      { workflow: { id: 'z-wf' } as unknown as import('../../src/types/index.js').WorkflowDefinitionResponse, score: 5 },
-      { workflow: { id: 'a-wf' } as unknown as import('../../src/types/index.js').WorkflowDefinitionResponse, score: 5 },
-    ];
-
-    candidates.sort(compareWorkflowSearchCandidates);
-
-    expect(candidates[0]?.workflow.id).toBe('a-wf');
-    expect(candidates[1]?.workflow.id).toBe('z-wf');
+    expect(candidates.map(({ workflow }) => workflow.id)).toEqual([
+      'm-wf',
+      'a-wf',
+      'z-wf',
+    ]);
   });
 });
