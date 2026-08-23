@@ -4,6 +4,7 @@
  */
 import type { MembershipScope, UUID } from "@elizaos/core";
 import { count, eq } from "drizzle-orm";
+import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connectorAccountsTable } from "../../schema/connectorAccounts";
 import { entityTable } from "../../schema/entity";
@@ -177,29 +178,98 @@ describe("SqlMembershipService real authority", () => {
     });
   });
 
-  it("accepts an explicitly complete empty roster but rejects incomplete/paginated input without changing facts", async () => {
+  it("property-checks complete-snapshot replacement across roster subsets", async () => {
+    let run = 0;
+    const roster = fc.uniqueArray(fc.constantFrom(principalId, secondPrincipalId), {
+      maxLength: 2,
+    });
+    await fc.assert(
+      fc.asyncProperty(roster, roster, async (first, second) => {
+        run += 1;
+        const propertyScope = { ...scope, externalRoomId: `property-room-${run}` };
+        await service.registerPublisher({
+          ...propertyScope,
+          ...publisher,
+          expectedGeneration: 0,
+          idempotencyKey: `property-register-${run}`,
+          observedAt: observedAt(),
+        });
+        await service.applyCompleteSnapshot({
+          ...propertyScope,
+          ...publisher,
+          completeness: "complete",
+          members: first.map(member),
+          expectedGeneration: 1,
+          sourceVersion: 0,
+          previousSourceCursor: null,
+          sourceCursor: `property-${run}-0`,
+          validUntil: validUntil(),
+          idempotencyKey: `property-snapshot-${run}-0`,
+          observedAt: observedAt(),
+        });
+        await service.applyCompleteSnapshot({
+          ...propertyScope,
+          ...publisher,
+          completeness: "complete",
+          members: second.map(member),
+          expectedGeneration: 2,
+          sourceVersion: 1,
+          previousSourceCursor: `property-${run}-0`,
+          sourceCursor: `property-${run}-1`,
+          validUntil: validUntil(),
+          idempotencyKey: `property-snapshot-${run}-1`,
+          observedAt: observedAt(),
+        });
+        for (const principal of [principalId, secondPrincipalId]) {
+          const fact = await service.getMembership(propertyScope, principal);
+          if (second.includes(principal)) expect(fact?.state).toBe("active");
+          else if (first.includes(principal)) expect(fact?.state).toBe("revoked");
+          else expect(fact).toBeNull();
+        }
+      }),
+      { numRuns: 12, seed: 23_101 }
+    );
+  });
+
+  it("accepts an explicitly complete empty roster but makes incomplete/paginated input stale without changing facts", async () => {
     await register();
     await snapshot();
+    const incomplete = await service.reportIncompleteSnapshot({
+      ...scope,
+      ...publisher,
+      completeness: "incomplete",
+      reason: "pagination_failed",
+      expectedGeneration: 2,
+      idempotencyKey: "partial",
+      observedAt: observedAt(),
+    });
+    expect(incomplete).toMatchObject({
+      operation: "health",
+      committedGeneration: 3,
+      health: { health: "stale", reason: "pagination_failed", sourceCursor: "snapshot-0" },
+    });
     await expect(
-      service.applyCompleteSnapshot({
+      service.reportIncompleteSnapshot({
         ...scope,
         ...publisher,
-        completeness: "partial",
-        members: [],
+        completeness: "incomplete",
+        reason: "pagination_failed",
         expectedGeneration: 2,
-        sourceVersion: 1,
-        previousSourceCursor: "snapshot-0",
-        sourceCursor: "page-1",
-        validUntil: validUntil(),
         idempotencyKey: "partial",
         observedAt: observedAt(),
-      } as never)
-    ).rejects.toMatchObject({ code: "MEMBERSHIP_SNAPSHOT_INCOMPLETE" });
+      })
+    ).resolves.toEqual({ ...incomplete, idempotentReplay: true });
     await expect(service.authorize(scope, principalId)).resolves.toMatchObject({
-      decision: "allowed",
-      generation: 2,
+      decision: "denied",
+      reason: "authority_stale",
+      generation: 3,
     });
-    const empty = await snapshot([], 2, 1, "snapshot-0", "empty-complete");
+    expect(await service.getMembership(scope, principalId)).toMatchObject({
+      state: "active",
+      generation: 2,
+      sourceCursor: "snapshot-0",
+    });
+    const empty = await snapshot([], 3, 1, "snapshot-0", "empty-complete");
     expect(empty).toMatchObject({
       operation: "snapshot",
       memberships: [],
@@ -231,6 +301,41 @@ describe("SqlMembershipService real authority", () => {
       reason: "authority_expired",
     });
     await restarted.stop();
+  });
+
+  it("rejects validity windows that are expired or unbounded relative to observation time", async () => {
+    await register();
+    await expect(
+      service.applyCompleteSnapshot({
+        ...scope,
+        ...publisher,
+        completeness: "complete",
+        members: [member(principalId)],
+        expectedGeneration: 1,
+        sourceVersion: 0,
+        previousSourceCursor: null,
+        sourceCursor: "expired",
+        observedAt: new Date(nowMs - 60_000).toISOString(),
+        validUntil: new Date(nowMs).toISOString(),
+        idempotencyKey: "expired",
+      })
+    ).rejects.toMatchObject({ code: "MEMBERSHIP_COMMAND_INVALID" });
+    await expect(
+      service.applyCompleteSnapshot({
+        ...scope,
+        ...publisher,
+        completeness: "complete",
+        members: [member(principalId)],
+        expectedGeneration: 1,
+        sourceVersion: 0,
+        previousSourceCursor: null,
+        sourceCursor: "old-observation",
+        observedAt: new Date(nowMs - 2 * 24 * 60 * 60 * 1_000).toISOString(),
+        validUntil: new Date(nowMs + 60_000).toISOString(),
+        idempotencyKey: "old-observation",
+      })
+    ).rejects.toMatchObject({ code: "MEMBERSHIP_COMMAND_INVALID" });
+    expect(await db.select().from(membershipAuthorityTable)).toHaveLength(0);
   });
 
   it("binds evidence to publisher instance, generation, mode, and exact cursor continuity", async () => {
@@ -407,6 +512,29 @@ describe("SqlMembershipService real authority", () => {
     expect(await db.select().from(membershipAuthorityTable)).toHaveLength(0);
   });
 
+  it("rejects an overlong persisted evidence window at the database boundary", async () => {
+    await register();
+    await expect(
+      db.insert(membershipAuthorityTable).values({
+        ...scope,
+        canonicalPrincipalId: principalId,
+        state: "active",
+        reason: "joined",
+        roles: ["member"],
+        permissionSnapshot: {},
+        publisherInstanceId: publisher.publisherInstanceId,
+        publisherGeneration: publisher.publisherGeneration,
+        evidenceMode: publisher.evidenceMode,
+        generation: 1,
+        sourceVersion: 0,
+        sourceCursor: "forged-long-window",
+        observedAt: new Date(nowMs),
+        validUntil: new Date(nowMs + 24 * 60 * 60 * 1_000 + 1),
+      })
+    ).rejects.toThrow();
+    expect(await db.select().from(membershipAuthorityTable)).toHaveLength(0);
+  });
+
   it("supports bounded point-query proof without claiming connector or document integration", async () => {
     const pointPublisher = {
       publisherInstanceId: "point-query",
@@ -439,5 +567,79 @@ describe("SqlMembershipService real authority", () => {
       reason: "no_membership",
     });
     await expect(service.getMembership(scope, secondPrincipalId)).resolves.toBeNull();
+  });
+
+  it("does not let a new point-query publisher inherit an old publisher's active fact", async () => {
+    const firstPublisher = {
+      publisherInstanceId: "point-query-a",
+      publisherGeneration: 0,
+      evidenceMode: "point_query" as const,
+    };
+    await register(0, "point-register-a", firstPublisher);
+    await service.applyMembership({
+      ...scope,
+      ...firstPublisher,
+      canonicalPrincipalId: principalId,
+      state: "active",
+      reason: "reconciled_present",
+      roles: ["member"],
+      permissionSnapshot: { canRead: true },
+      runtime: { worldId: null, roomId: null, entityId: principalId },
+      expectedGeneration: 1,
+      sourceVersion: 0,
+      previousSourceCursor: null,
+      sourceCursor: "point-a-0",
+      validUntil: validUntil(),
+      idempotencyKey: "point-a-proof",
+      observedAt: observedAt(),
+    });
+    const replacementPublisher = {
+      publisherInstanceId: "point-query-b",
+      publisherGeneration: 1,
+      evidenceMode: "point_query" as const,
+    };
+    await register(2, "point-register-b", replacementPublisher);
+    await service.applyMembership({
+      ...scope,
+      ...replacementPublisher,
+      canonicalPrincipalId: secondPrincipalId,
+      state: "active",
+      reason: "reconciled_present",
+      roles: ["member"],
+      permissionSnapshot: { canRead: true },
+      runtime: { worldId: null, roomId: null, entityId: secondPrincipalId },
+      expectedGeneration: 3,
+      sourceVersion: 0,
+      previousSourceCursor: null,
+      sourceCursor: "point-b-0",
+      validUntil: validUntil(),
+      idempotencyKey: "point-b-proof",
+      observedAt: observedAt(),
+    });
+    await expect(service.authorize(scope, principalId)).resolves.toMatchObject({
+      decision: "denied",
+      reason: "membership_evidence_mismatch",
+      generation: 4,
+    });
+    await expect(service.authorize(scope, secondPrincipalId)).resolves.toMatchObject({
+      decision: "allowed",
+      generation: 4,
+    });
+  });
+
+  it("fails closed before reading or writing a different runtime tenant", async () => {
+    const foreignScope = { ...scope, agentId: crypto.randomUUID() as UUID };
+    await expect(service.authorize(foreignScope, principalId)).rejects.toMatchObject({
+      code: "MEMBERSHIP_TENANT_MISMATCH",
+    });
+    await expect(
+      service.registerPublisher({
+        ...foreignScope,
+        ...publisher,
+        expectedGeneration: 0,
+        idempotencyKey: "foreign-tenant",
+        observedAt: observedAt(),
+      })
+    ).rejects.toMatchObject({ code: "MEMBERSHIP_TENANT_MISMATCH" });
   });
 });
