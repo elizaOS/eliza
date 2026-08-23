@@ -5,10 +5,16 @@
 
 import { describe, expect, it } from "vitest";
 
-function sortPendingPrompts(entries: { firedAt: string }[]): { firedAt: string }[] {
+function sortPendingPrompts(
+  entries: { firedAt: string }[],
+): { firedAt: string }[] {
   return [...entries].sort((a, b) => {
-    const aTime = Number.isFinite(Date.parse(a.firedAt)) ? Date.parse(a.firedAt) : 0;
-    const bTime = Number.isFinite(Date.parse(b.firedAt)) ? Date.parse(b.firedAt) : 0;
+    const aTime = Number.isFinite(Date.parse(a.firedAt))
+      ? Date.parse(a.firedAt)
+      : 0;
+    const bTime = Number.isFinite(Date.parse(b.firedAt))
+      ? Date.parse(b.firedAt)
+      : 0;
     return bTime - aTime;
   });
 }
@@ -38,7 +44,10 @@ describe("pending-prompts store safe sort", () => {
   });
 
   it("handles all invalid without throwing", () => {
-    const sorted = sortPendingPrompts([{ firedAt: "bad" }, { firedAt: "also-bad" }]);
+    const sorted = sortPendingPrompts([
+      { firedAt: "bad" },
+      { firedAt: "also-bad" },
+    ]);
     expect(sorted).toHaveLength(2);
   });
 });
