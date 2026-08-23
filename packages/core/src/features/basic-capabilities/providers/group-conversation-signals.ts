@@ -93,6 +93,31 @@ function isDialogueMessage(memory: Memory): boolean {
 }
 
 /**
+ * Chronological (oldest-first) comparator for the dialogue window. Ascending
+ * order is load-bearing: `loadDialogueWindow` keeps the newest turns with
+ * `.slice(-GROUP_SIGNAL_WINDOW)`, appends the live inbound turn at the tail,
+ * and `computeGroupConversationMetrics` reads the tail as the most recent
+ * turns (ping-pong run, turns-since-last-human).
+ *
+ * A non-finite `createdAt` reaching this comparator from an adapter row would
+ * make the raw subtraction return NaN, which `Array.prototype.sort` treats as
+ * "leave as is" and which corrupts the ordering of every pair it touches — not
+ * just the bad row. Non-finite stamps therefore collapse to 0 (sorted as the
+ * oldest possible turn) and ties break on `id` so the window is deterministic.
+ */
+function compareByCreatedAtAscending(a: Memory, b: Memory): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
+function createdAtSortKey(memory: Memory): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
  * Load the bounded dialogue window for signal computation. Prefers the
  * RECENT_MESSAGES provider's already-composed array (turn recompose); falls
  * back to the coalesced room messages-scan on the first compose of a turn.
@@ -124,12 +149,7 @@ export async function loadDialogueWindow(
 	}
 	const window = source
 		.filter(isDialogueMessage)
-		.sort((a, b) => {
-		const aSafe = Number.isFinite(a.createdAt ?? 0) ? (a.createdAt ?? 0) : 0;
-		const bSafe = Number.isFinite(b.createdAt ?? 0) ? (b.createdAt ?? 0) : 0;
-		if (bSafe !== aSafe) return bSafe - aSafe;
-		return String(a.id ?? "").localeCompare(String(b.id ?? ""));
-	})
+		.sort(compareByCreatedAtAscending)
 		.slice(-GROUP_SIGNAL_WINDOW);
 	const hasInbound =
 		message.id !== undefined && window.some((entry) => entry.id === message.id);
