@@ -235,38 +235,43 @@ describe("connector JSON projection", () => {
 		// a string longer than the byte ceiling is already over budget and must be
 		// rejected before an encode forces a proportional allocation and full scan.
 		const utf8Encode = TextEncoder.prototype.encode;
-		let encodeCalls = 0;
+		let encodedLengths: number[] = [];
 		TextEncoder.prototype.encode = function encode(
 			this: TextEncoder,
 			input?: string,
 		) {
-			encodeCalls += 1;
+			encodedLengths.push((input ?? "").length);
 			return utf8Encode.call(this, input as string);
 		} as typeof utf8Encode;
+		// Short siblings (object keys, short values) are still encoded for their
+		// exact byte width; the invariant under test is narrower: nothing longer
+		// than the ceiling is ever handed to the encoder.
+		const overCeiling = () =>
+			encodedLengths.filter((n) => n > MAX_CONNECTOR_JSON_STRING_BYTES);
 
 		try {
 			const overLength = "a".repeat(MAX_CONNECTOR_JSON_STRING_BYTES + 1);
 
-			encodeCalls = 0;
+			encodedLengths = [];
 			expect(() => cloneConnectorJsonObject({ value: overLength })).toThrowError(
 				expect.objectContaining({ code: CONNECTOR_JSON_UNBOUNDED }),
 			);
-			expect(encodeCalls).toBe(0);
+			expect(overCeiling()).toEqual([]);
 
-			encodeCalls = 0;
+			encodedLengths = [];
 			expect(() =>
 				cloneConnectorJsonObject({ [overLength]: "value" }),
 			).toThrowError(
 				expect.objectContaining({ code: CONNECTOR_JSON_UNBOUNDED }),
 			);
-			expect(encodeCalls).toBe(0);
+			expect(overCeiling()).toEqual([]);
 
 			// Audit mode keeps its sentinel behavior, still without encoding.
-			encodeCalls = 0;
+			encodedLengths = [];
 			expect(
 				redactConnectorJsonAudit({ value: overLength }, () => false),
 			).toEqual({ value: CONNECTOR_JSON_BOUNDED });
-			expect(encodeCalls).toBe(0);
+			expect(overCeiling()).toEqual([]);
 		} finally {
 			TextEncoder.prototype.encode = utf8Encode;
 		}
