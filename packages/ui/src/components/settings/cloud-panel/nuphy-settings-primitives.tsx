@@ -247,7 +247,7 @@ export function NuphySelectRow({
               value={value}
               onValueChange={onValueChange}
               disabled={disabled}
-              triggerClassName="h-9 w-auto min-w-32 rounded-full px-3 text-sm"
+              triggerClassName="h-9 w-auto min-w-32 rounded-sm px-3 text-sm"
               aria-label={resolvedLabel}
             >
               {options.map((option) => (

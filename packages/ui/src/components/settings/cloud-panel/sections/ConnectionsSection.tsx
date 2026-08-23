@@ -366,7 +366,7 @@ function ConnectModal({
                 value={selectedAgentId}
                 onValueChange={setSelectedAgentId}
                 disabled={busy || agentChoices === null}
-                triggerClassName="h-9 rounded-full px-3 text-sm"
+                triggerClassName="h-9 rounded-sm px-3 text-sm"
               >
                 {(agentChoices ?? []).map((choice) => (
                   <FormSelectItem key={choice.id} value={choice.id}>
@@ -552,7 +552,7 @@ function DisconnectDialog({
               value={selectedId}
               onValueChange={setSelectedId}
               disabled={busy || choices === null}
-              triggerClassName="h-9 rounded-full px-3 text-sm"
+              triggerClassName="h-9 rounded-sm px-3 text-sm"
             >
               {(choices ?? []).map((choice) => (
                 <FormSelectItem key={choice.id} value={choice.id}>
