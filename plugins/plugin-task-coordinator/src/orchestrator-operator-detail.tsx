@@ -408,7 +408,17 @@ function EventList({
       timestamp: event.timestamp,
       record: event,
     })),
-  ].sort((a, b) => a.timestamp - b.timestamp);
+  ].sort((a, b) => {
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    return aTime - bTime || a.id.localeCompare(b.id);
+  });
   return (
     <div className="space-y-1.5">
       {timeline.map((item) => {
