@@ -1,9 +1,10 @@
+/** Verifies deterministic API-token extraction and constant-time token comparison helpers. */
 import { describe, expect, it } from "vitest";
 import {
   extractHeaderValue,
   getProvidedApiToken,
   tokenMatches,
-} from "./tokens.ts";
+} from "../tokens.ts";
 
 describe("tokenMatches", () => {
   it("matches equal tokens", () => {
