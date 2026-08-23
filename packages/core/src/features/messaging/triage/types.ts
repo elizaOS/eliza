@@ -166,6 +166,10 @@ export interface ReadMessageRequest {
 	messageId?: string;
 	reference?: string;
 	worldId?: string;
+	/** Verified requester carried by the MESSAGE boundary, never model-authored continuation state. */
+	requesterEntityId?: string;
+	/** Current authorized room carried by the MESSAGE boundary. */
+	requesterRoomId?: string;
 	offset?: number;
 	limit?: number;
 	unit?: ReadRangeUnit;
@@ -187,6 +191,13 @@ export interface ReadMessageResult {
 	text: string;
 	readView: ReadView;
 	control?: ReadMessageControl;
+	/** Measured source work for bounded-read regression and operations telemetry. */
+	sourceWork?: {
+		headReads: number;
+		segmentRows: number;
+		providerRevisionReads: number;
+		providerBodyFetches: number;
+	};
 }
 
 export type ManageOperationKind =

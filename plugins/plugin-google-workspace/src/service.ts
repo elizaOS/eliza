@@ -174,6 +174,12 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     return this.gmailClient.getGmailMessageDetail(params);
   }
 
+  getGmailMessageRevision(
+    params: GoogleAccountRef & { messageId: string }
+  ): Promise<string | null> {
+    return this.gmailClient.getGmailMessageRevision(params);
+  }
+
   listGmailUnrespondedThreads(
     params: GoogleAccountRef & {
       selfEmail?: string | null;

@@ -807,6 +807,7 @@ export interface IGoogleGmailService extends Service {
   getGmailMessageDetail(
     params: GoogleAccountRef & { messageId: string; selfEmail?: string | null }
   ): Promise<GoogleGmailMessageDetail | null>;
+  getGmailMessageRevision(params: GoogleAccountRef & { messageId: string }): Promise<string | null>;
   listGmailUnrespondedThreads(
     params: GoogleAccountRef & {
       selfEmail?: string | null;
