@@ -253,27 +253,36 @@ export const channelRecapAction: Action = {
 			dialogue,
 		);
 		const transcript = formatMessages({ messages: dialogue, entities });
-		// A single message larger than the bound has no smaller range to
-		// suggest, and slicing it is the violation this action exists to avoid,
-		// so it is served complete; rejection applies only when a smaller
-		// deliverable range genuinely exists.
-		if (
-			dialogue.length > 1 &&
-			transcript.length > CHANNEL_RECAP_DELIVERABLE_CHARS
-		) {
-			// Proportional suggestion: the caller asked for a range whose rendered
-			// size exceeds what one model call can carry, so name a count that
-			// fits rather than returning any part of it.
-			const deliverableCount = Math.max(
-				1,
-				Math.floor(
-					(dialogue.length * CHANNEL_RECAP_DELIVERABLE_CHARS) /
-						transcript.length,
-				),
-			);
+		if (transcript.length > CHANNEL_RECAP_DELIVERABLE_CHARS) {
+			// Find the largest newest-message range that actually fits by rendering
+			// and measuring each binary-search candidate through the same formatter
+			// and bound. A proportional estimate is unsafe when message sizes are
+			// uneven: one giant newest message can make even count=1 undeliverable.
+			let low = 1;
+			let high = dialogue.length - 1;
+			let deliverableCount: number | undefined;
+			while (low <= high) {
+				const candidateCount = Math.floor((low + high) / 2);
+				const candidateTranscript = formatMessages({
+					messages: dialogue.slice(0, candidateCount),
+					entities,
+				});
+				if (candidateTranscript.length <= CHANNEL_RECAP_DELIVERABLE_CHARS) {
+					deliverableCount = candidateCount;
+					low = candidateCount + 1;
+				} else {
+					high = candidateCount - 1;
+				}
+			}
+			const nextOffset =
+				offset + (deliverableCount === undefined ? 1 : deliverableCount);
+			const guidance =
+				deliverableCount === undefined
+					? `no complete newest message fits the bound; skip that oversized message and retry with offset=${nextOffset}`
+					: `request at most ${deliverableCount} message(s), or page older history with offset=${nextOffset}`;
 			return {
 				success: false,
-				text: `CHANNEL_RECAP range renders ${transcript.length} characters, over the ${CHANNEL_RECAP_DELIVERABLE_CHARS}-character deliverable bound for one call; request at most ${deliverableCount} message(s), or page older history with offset=${offset + deliverableCount}.`,
+				text: `CHANNEL_RECAP range renders ${transcript.length} characters, over the ${CHANNEL_RECAP_DELIVERABLE_CHARS}-character deliverable bound for one call; ${guidance}.`,
 				values: { success: false },
 				data: {
 					actionName: "CHANNEL_RECAP",
@@ -281,8 +290,8 @@ export const channelRecapAction: Action = {
 					roomId,
 					renderedChars: transcript.length,
 					deliverableChars: CHANNEL_RECAP_DELIVERABLE_CHARS,
-					deliverableCount,
-					nextOffset: offset + deliverableCount,
+					deliverableCount: deliverableCount ?? null,
+					nextOffset,
 				},
 			};
 		}
