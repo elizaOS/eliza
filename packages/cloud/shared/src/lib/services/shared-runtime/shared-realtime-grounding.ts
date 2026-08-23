@@ -26,11 +26,17 @@ const CORRECTION =
   /\b(?:wrong|incorrect|not right|made that up|hallucinat(?:e|ed|ion)|check again|try again|prove it|where did (?:that|you) (?:come|get) from)\b|^\s*\?+\s*$/i;
 const PRIVATE_STATE =
   /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts)\b/i;
-const MARKETS =
-  /\b(?:price|quote|exchange rate|market cap|market price|stock|share price|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond yield|commodity|gold price|oil price)\b/i;
-const WEATHER = /\b(?:weather|forecast|temperature|rain|snow|wind|air quality|uv index)\b/i;
+const NON_FACTUAL_REQUEST =
+  /\b(?:joke|poem|story|riddle|pun|metaphor|translate|rewrite|proofread|brainstorm|roleplay)\b/i;
+const MARKET_SUBJECT =
+  /\b(?:market|stock|shares?|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond|commodity|gold|oil|nasdaq|dow|s&p)\b/i;
+const MARKET_VALUE = /\b(?:price|quote|exchange rate|market cap|market price|share price|yield)\b/i;
+const WEATHER_CONTEXT = /\b(?:weather|forecast|rain|snow|wind|air quality|uv index)\b/i;
 const NEWS = /\b(?:news|headline|breaking|announcement|announced|release today|current events)\b/i;
-const SPORTS = /\b(?:score|standings|fixture|match result|game result|playoffs|season record)\b/i;
+const SPORTS_VALUE =
+  /\b(?:score|standings|fixture|match result|game result|playoffs|season record)\b/i;
+const SPORTS_CONTEXT =
+  /\b(?:game|match|team|league|tournament|season|nba|nfl|nhl|mlb|wnba|epl|soccer|football|basketball|baseball|hockey|lakers)\b/i;
 const PUBLIC_MUTABLE_FACT =
   /\b(?:president|prime minister|governor|mayor|senator|representative|ceo|chief executive|officeholder|software version|release version|public outage|public traffic)\b/i;
 const SOURCE_MARKER = /\[\[SOURCE_URL:(https?:\/\/[^\]\s]+)\]\]/giu;
@@ -82,21 +88,15 @@ const CLAIM_STOP_WORDS = new Set([
 ]);
 
 function classifyPublicStandalone(text: string): SharedRealtimeDomain | undefined {
-  if (PRIVATE_STATE.test(text)) return undefined;
-  if (WEATHER.test(text)) return "weather";
-  if (
-    MARKETS.test(text) &&
-    (FRESHNESS.test(text) || /\b(?:price|quote|exchange rate)\b/i.test(text))
-  ) {
+  if (PRIVATE_STATE.test(text) || NON_FACTUAL_REQUEST.test(text)) return undefined;
+  if (WEATHER_CONTEXT.test(text)) return "weather";
+  if (MARKET_SUBJECT.test(text) && (FRESHNESS.test(text) || MARKET_VALUE.test(text))) {
     return "markets";
   }
   if (NEWS.test(text) && (FRESHNESS.test(text) || /\b(?:news|headline|breaking)\b/i.test(text))) {
     return "news";
   }
-  if (
-    SPORTS.test(text) &&
-    (FRESHNESS.test(text) || /\b(?:score|standings|fixture)\b/i.test(text))
-  ) {
+  if (SPORTS_VALUE.test(text) && (FRESHNESS.test(text) || SPORTS_CONTEXT.test(text))) {
     return "sports";
   }
   if (PUBLIC_MUTABLE_FACT.test(text) && FRESHNESS.test(text)) return "mutable_fact";
@@ -167,8 +167,15 @@ export function requireTraceableRealtimeSearch(
 ): ActionResult {
   const data = result.data && typeof result.data === "object" ? result.data : {};
   const sources = sourceEvidence(data.sources);
+  const receiptObservedAt = data.observedAt;
   if (
     result.success === true &&
+    data.actionName === "WEB_SEARCH" &&
+    normalizedRealtimeQuery(data.query) === normalizedRealtimeQuery(query) &&
+    (data.provider === "parallel" || data.provider === "exa") &&
+    typeof receiptObservedAt === "number" &&
+    Number.isSafeInteger(receiptObservedAt) &&
+    Math.abs(receiptObservedAt - observedAt) <= 5 * 60 * 1000 &&
     data.truncated === false &&
     data.evidenceOverflowed !== true &&
     sources
@@ -223,13 +230,41 @@ function replyUrls(value: string): string[] {
     .filter((url): url is string => Boolean(url));
 }
 
-function claimWords(value: string): string[] {
-  return (
-    value
-      .toLowerCase()
-      .match(/[\p{L}\p{N}]+/gu)
-      ?.filter((word) => !/^\p{N}+$/u.test(word) && !CLAIM_STOP_WORDS.has(word)) ?? []
-  );
+type ClaimToken = { kind: "number"; value: number } | { kind: "word"; value: string };
+
+function claimTokens(value: string): ClaimToken[] {
+  return [...value.toLowerCase().matchAll(/-?\d[\d,]*(?:\.\d+)?|[\p{L}]+/gu)].flatMap(([token]) => {
+    if (/^-?\d/u.test(token)) {
+      const number = Number(token.replaceAll(",", ""));
+      return Number.isFinite(number) ? [{ kind: "number" as const, value: number }] : [];
+    }
+    return CLAIM_STOP_WORDS.has(token) ? [] : [{ kind: "word" as const, value: token }];
+  });
+}
+
+function tokensSupportedInOrder(
+  claim: readonly ClaimToken[],
+  evidence: readonly ClaimToken[],
+): boolean {
+  let cursor = 0;
+  for (const expected of claim) {
+    let found = false;
+    while (cursor < evidence.length) {
+      const candidate = evidence[cursor];
+      cursor += 1;
+      if (
+        expected.kind === candidate.kind &&
+        (expected.kind === "word"
+          ? expected.value === candidate.value
+          : numericSupported(expected.value, [candidate.value]))
+      ) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  return true;
 }
 
 function evidenceClauses(value: string): string[] {
@@ -288,11 +323,10 @@ function claimSupported(claim: string, source: SourceEvidence): boolean {
   for (const match of normalized.matchAll(ATTRIBUTION)) {
     if (!source.text.toLowerCase().includes(match[1].trim().toLowerCase())) return false;
   }
-  const words = claimWords(normalized);
+  const tokens = claimTokens(normalized);
   return evidenceClauses(source.text).some((clause) => {
     if (NEGATION.test(normalized) !== NEGATION.test(clause)) return false;
-    const evidence = new Set(claimWords(clause));
-    return words.length === 0 || words.every((word) => evidence.has(word));
+    return tokens.length === 0 || tokensSupportedInOrder(tokens, claimTokens(clause));
   });
 }
 

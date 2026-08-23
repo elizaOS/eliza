@@ -59,6 +59,17 @@ describe("Shared realtime request classification", () => {
   });
 
   for (const message of [
+    "what temperature should I bake bread at?",
+    "that's a steep price for a laptop, right?",
+    "tell me a joke about bitcoin price",
+    "score this essay",
+  ]) {
+    test(`does not leak an ambiguous ordinary request to public search: ${message}`, () => {
+      expect(resolveSharedRealtimeRequirement(message, [])).toBeUndefined();
+    });
+  }
+
+  for (const message of [
     "check my todos",
     "can you check that for me",
     "confirm the meeting",
@@ -135,6 +146,34 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
           "BTC price",
           observedAt,
         ),
+      ).toMatchObject({ success: false });
+    }
+  });
+
+  test("binds a successful receipt to the exact action, query, provider, and observation", () => {
+    const base = {
+      success: true,
+      text: "Bitcoin is 77,357.93 USD",
+      data: {
+        actionName: "WEB_SEARCH",
+        query: "BTC price",
+        provider: "parallel",
+        observedAt,
+        truncated: false,
+        sources: [{ url: "https://coin.example/bitcoin", text: "Bitcoin is 77,357.93 USD" }],
+      },
+    };
+    expect(requireTraceableRealtimeSearch(base, " btc  PRICE ", observedAt)).toMatchObject({
+      success: true,
+    });
+    for (const data of [
+      { ...base.data, actionName: "OTHER_ACTION" },
+      { ...base.data, query: "ETH price" },
+      { ...base.data, provider: "forged" },
+      { ...base.data, observedAt: observedAt - 5 * 60 * 1000 - 1 },
+    ]) {
+      expect(
+        requireTraceableRealtimeSearch({ ...base, data }, "BTC price", observedAt),
       ).toMatchObject({ success: false });
     }
   });
@@ -264,6 +303,39 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
       if (result.kind !== "web_search") throw new Error("fixture grounding must be available");
       expect(validateSharedRealtimeReply(`${claim}. ${marker}`, result)).toBe(false);
     }
+  });
+
+  test("rejects subject-object and numeric-order reversals", () => {
+    const marker = "[[SOURCE_URL:https://example.com/result]]";
+    const withEvidence = (text: string): SharedRuntimePublicGrounding => ({
+      ...grounding,
+      sourceUrls: ["https://example.com/result"],
+      sources: [{ url: "https://example.com/result", text }],
+    });
+    expect(
+      validateSharedRealtimeReply(
+        `Alice replaced Bob. ${marker}`,
+        withEvidence("Alice replaced Bob."),
+      ),
+    ).toBe(true);
+    expect(
+      validateSharedRealtimeReply(
+        `Alice replaced Bob. ${marker}`,
+        withEvidence("Bob replaced Alice."),
+      ),
+    ).toBe(false);
+    expect(
+      validateSharedRealtimeReply(
+        `BTC rose from 100 to 200 USD. ${marker}`,
+        withEvidence("BTC rose from 100 to 200 USD."),
+      ),
+    ).toBe(true);
+    expect(
+      validateSharedRealtimeReply(
+        `BTC rose from 100 to 200 USD. ${marker}`,
+        withEvidence("BTC rose from 200 to 100 USD."),
+      ),
+    ).toBe(false);
   });
 
   test("does not borrow unrelated negation from another evidence clause", () => {
