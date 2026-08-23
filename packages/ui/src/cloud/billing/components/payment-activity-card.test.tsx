@@ -8,7 +8,13 @@
 
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaymentActivityCard } from "./payment-activity-card";
@@ -17,6 +23,13 @@ const apiMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../lib/api-client", () => ({
   api: (...args: unknown[]) => apiMock(...args),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
 }));
 
 vi.mock("../../shell/CloudI18nProvider", () => ({
@@ -124,6 +137,73 @@ describe("PaymentActivityCard fetch states", () => {
       "unavailable",
     );
     expect(screen.getByText(/server creation/i)).toBeTruthy();
+  });
+
+  it("shows reversal detail on an unavailable row that still carries reversal authority", async () => {
+    // Settled-without-receipt projects unavailable, but the reversal ledger
+    // rows still exist: the refund total, policy effect, and support state
+    // must remain visible instead of being hidden by the state enum.
+    apiMock.mockResolvedValue({
+      states: [
+        stateRow({
+          id: "checkout_order:ambrev",
+          paymentState: "unavailable",
+          eventTimeKind: "server_creation",
+          cumulativeRefundedUsd: 12,
+          cumulativeClawbackCredits: 12,
+          policyEffect: {
+            status: "unavailable",
+            reason: "refund_entitlement_policy_pending_22930",
+          },
+          supportState: "contact_support",
+        }),
+      ],
+    });
+    render(<PaymentActivityCard />);
+    await screen.findAllByTestId("payment-state-row");
+    expect(screen.getByTestId("payment-state-text").textContent).toBe(
+      "unavailable",
+    );
+    expect(screen.getByTestId("payment-reversal-detail")).toBeTruthy();
+    expect(screen.getByTestId("refunded-amount").textContent).toBe("$12");
+    expect(screen.getByTestId("clawback-amount").textContent).toBe(
+      "12.00 credits",
+    );
+    expect(screen.getByTestId("payment-policy-effect").textContent).toMatch(
+      /Policy effect unavailable/i,
+    );
+  });
+
+  it("copies the receipt and authority references for support escalation", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    // jsdom's navigator.clipboard is a getter-only accessor; defineProperty
+    // is the established override path.
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    apiMock.mockResolvedValue({
+      states: [
+        stateRow({
+          id: "payment_request:pr9",
+          surface: "payment_request",
+          authorityId: "authority-uuid-9",
+          receiptId: "receipt-uuid-9",
+        }),
+      ],
+    });
+    render(<PaymentActivityCard />);
+    await screen.findAllByTestId("payment-state-row");
+
+    // fireEvent: userEvent's pointer simulation swallows clicks on these
+    // inline buttons (probe-proven: fireEvent reaches writeText, userEvent
+    // does not).
+    fireEvent.click(screen.getByTestId("payment-receipt-link"));
+    fireEvent.click(screen.getByTestId("payment-authority-link"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+
+    expect(writeText).toHaveBeenNthCalledWith(1, "receipt-uuid-9");
+    expect(writeText).toHaveBeenNthCalledWith(2, "authority-uuid-9");
   });
 });
 
