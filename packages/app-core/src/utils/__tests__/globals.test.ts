@@ -6,7 +6,7 @@ import {
   setVerbose,
   setYes,
   shouldLogVerbose,
-} from "./globals.ts";
+} from "../globals.ts";
 
 describe("globals verbose/yes state", () => {
   beforeEach(() => {
