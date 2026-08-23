@@ -10,8 +10,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service, ServiceType } from "@elizaos/core";
 import { getDocumentProxy } from "unpdf";
-import { parsePdfSpecDate } from "./pdf-date.ts";
-
 import type {
   PdfConversionResult,
   PdfDocumentInfo,
@@ -19,6 +17,7 @@ import type {
   PdfMetadata,
   PdfPageInfo,
 } from "../types";
+import { parsePdfSpecDate } from "./pdf-date.ts";
 
 type PdfTextItem = { str: string };
 
