@@ -1,8 +1,10 @@
-/** Proves the default deletion adapters never infer remote spool absence from local database state. */
+/** Proves deletion adapters require authoritative remote backup and spool absence evidence. */
 
 import { describe, expect, mock, test } from "bun:test";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import {
+  type AccountDeletionBackupAuthority,
+  type AccountDeletionBackupDatabase,
   type AccountDeletionSpoolAuthority,
   createAccountDeletionProviderAdapters,
 } from "./account-deletion-provider-adapters";
@@ -28,6 +30,109 @@ function spoolAuthority(input: {
     purgeOrganizationSpools: input.purge ?? mock(async () => undefined),
   };
 }
+
+function backupAuthority(input: {
+  inspect: AccountDeletionBackupAuthority["inspectOrganizationBackups"];
+  purge?: AccountDeletionBackupAuthority["purgeOrganizationBackups"];
+}): AccountDeletionBackupAuthority {
+  return {
+    inspectOrganizationBackups: input.inspect,
+    purgeOrganizationBackups: input.purge ?? mock(async () => undefined),
+  };
+}
+
+function backupDatabase(
+  input: {
+    rowsRemain?: AccountDeletionBackupDatabase["rowsRemain"];
+    deleteGraph?: AccountDeletionBackupDatabase["deleteGraph"];
+  } = {},
+): AccountDeletionBackupDatabase {
+  return {
+    rowsRemain: input.rowsRemain ?? mock(async () => false),
+    deleteGraph: input.deleteGraph ?? mock(async () => undefined),
+  };
+}
+
+describe("account deletion remote backup adapter", () => {
+  test("fails closed without canonical authority even when no catalogue row is known", async () => {
+    const adapter = createAccountDeletionProviderAdapters().secondary_backups;
+
+    await expect(adapter.inspect(context)).resolves.toEqual({
+      state: "action_required",
+      errorCode: "BACKUP_STORAGE_AUTHORITY_UNAVAILABLE",
+    });
+    await expect(adapter.execute(context, "delete-backups-once")).rejects.toThrow(
+      "Backup storage authority is not configured",
+    );
+  });
+
+  test("does not infer absence when the authority observes remote backup objects", async () => {
+    const inspect = mock(async () => "present" as const);
+    const purge = mock(async () => undefined);
+    const adapter = createAccountDeletionProviderAdapters({
+      backupAuthority: backupAuthority({ inspect, purge }),
+    }).secondary_backups;
+
+    await expect(adapter.inspect(context)).resolves.toEqual({ state: "needs_execution" });
+    expect(inspect).toHaveBeenCalledWith({ organizationId: ORGANIZATION_ID });
+    expect(purge).not.toHaveBeenCalled();
+  });
+
+  test("completes only after authoritative absence and local catalogue cleanup", async () => {
+    const inspect = mock(async () => "absent" as const);
+    const rowsRemain = mock(async () => true);
+    const deleteGraph = mock(async () => undefined);
+    const adapter = createAccountDeletionProviderAdapters({
+      backupAuthority: backupAuthority({ inspect }),
+      backupDatabase: backupDatabase({ rowsRemain, deleteGraph }),
+    }).secondary_backups;
+
+    await expect(adapter.inspect(context)).resolves.toEqual({
+      state: "complete",
+      receiptDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(inspect).toHaveBeenCalledWith({ organizationId: ORGANIZATION_ID });
+    expect(rowsRemain).toHaveBeenCalledWith(ORGANIZATION_ID);
+    expect(deleteGraph).toHaveBeenCalledWith(ORGANIZATION_ID);
+  });
+
+  test("passes the saga idempotency key through the remote purge boundary", async () => {
+    const purge = mock(async () => undefined);
+    const adapter = createAccountDeletionProviderAdapters({
+      backupAuthority: backupAuthority({ inspect: mock(async () => "present" as const), purge }),
+    }).secondary_backups;
+
+    await adapter.execute(context, "account-deletion:request:secondary-backups");
+
+    expect(purge).toHaveBeenCalledWith({
+      organizationId: ORGANIZATION_ID,
+      idempotencyKey: "account-deletion:request:secondary-backups",
+    });
+  });
+
+  test("reconciles a lost purge response by inspection without a second mutation", async () => {
+    let state: "present" | "absent" = "present";
+    const inspect = mock(async () => state);
+    const purge = mock(async () => {
+      state = "absent";
+      throw new Error("response lost after remote backup purge");
+    });
+    const adapter = createAccountDeletionProviderAdapters({
+      backupAuthority: backupAuthority({ inspect, purge }),
+      backupDatabase: backupDatabase(),
+    }).secondary_backups;
+
+    await expect(adapter.inspect(context)).resolves.toEqual({ state: "needs_execution" });
+    await expect(
+      adapter.execute(context, "account-deletion:request:secondary-backups"),
+    ).rejects.toThrow("response lost");
+    await expect(adapter.inspect(context)).resolves.toEqual({
+      state: "complete",
+      receiptDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(purge).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("account deletion remote spool adapter", () => {
   test("fails closed when no canonical spool authority is configured", async () => {

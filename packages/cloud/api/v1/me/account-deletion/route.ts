@@ -89,7 +89,7 @@ app.post("/", async (c) => {
       );
     }
     logger.error("[AccountDeletionRoute] Failed to schedule deletion", {
-      error: error instanceof Error ? error.message : String(error),
+      errorCode: error instanceof Error ? error.name : "unknown",
     });
     return failureResponse(c, error);
   }

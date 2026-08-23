@@ -38,10 +38,6 @@ import {
 import { orgStorageReadOperations } from "../../db/schemas/org-storage-reads";
 import { organizations } from "../../db/schemas/organizations";
 import { userVoices } from "../../db/schemas/user-voices";
-import {
-  type AgentBackupObjectStoreRegistry,
-  type AgentBackupStorageAuthority,
-} from "../storage/agent-backup-object-store";
 import type { RuntimeR2Bucket, RuntimeR2ObjectMetadata } from "../storage/r2-runtime-binding";
 import { getStripe } from "../stripe";
 import type {
@@ -121,8 +117,22 @@ function isMissingStripeResource(error: unknown): boolean {
 }
 
 export interface AccountDeletionProviderAdapterDependencies {
-  backupRegistry?: AgentBackupObjectStoreRegistry;
+  backupAuthority?: AccountDeletionBackupAuthority;
+  backupDatabase?: AccountDeletionBackupDatabase;
   spoolAuthority?: AccountDeletionSpoolAuthority;
+}
+
+export interface AccountDeletionBackupAuthority {
+  inspectOrganizationBackups(input: { organizationId: string }): Promise<"absent" | "present">;
+  purgeOrganizationBackups(input: {
+    organizationId: string;
+    idempotencyKey: string;
+  }): Promise<void>;
+}
+
+export interface AccountDeletionBackupDatabase {
+  rowsRemain(organizationId: string): Promise<boolean>;
+  deleteGraph(organizationId: string): Promise<void>;
 }
 
 export interface AccountDeletionSpoolAuthority {
@@ -196,62 +206,10 @@ async function backupRowsRemain(organizationId: string): Promise<boolean> {
   return backup !== undefined;
 }
 
-function storedAuthority(
-  object: typeof agentBackupObjects.$inferSelect,
-): AgentBackupStorageAuthority {
-  return {
-    provider: object.provider,
-    transport: object.transport,
-    endpointAlias: object.endpoint_alias,
-    endpointIdentityFingerprint: object.endpoint_identity_fingerprint,
-    bucket: object.bucket,
-    region: object.region,
-  };
-}
-
-async function inspectBackupObjects(
-  context: AccountDeletionProviderContext,
-  registry: AgentBackupObjectStoreRegistry,
-): Promise<"absent" | "present"> {
-  const objects = await dbWrite
-    .select()
-    .from(agentBackupObjects)
-    .where(eq(agentBackupObjects.organization_id, context.organizationId));
-  if (objects.length === 0) {
-    if (await backupRowsRemain(context.organizationId)) {
-      await deleteBackupDatabaseGraph(context.organizationId);
-    }
-    return "absent";
-  }
-  let present = false;
-  for (const object of objects) {
-    const store = registry.forStoredObject(storedAuthority(object));
-    const observed = await store.head(object.object_key);
-    if (observed.status === "present") present = true;
-  }
-  if (!present) {
-    await deleteBackupDatabaseGraph(context.organizationId);
-    return "absent";
-  }
-  return "present";
-}
-
-async function executeBackupObjectDeletion(
-  context: AccountDeletionProviderContext,
-  registry: AgentBackupObjectStoreRegistry,
-): Promise<void> {
-  const objects = await dbWrite
-    .select()
-    .from(agentBackupObjects)
-    .where(eq(agentBackupObjects.organization_id, context.organizationId));
-  for (const object of objects) {
-    const store = registry.forStoredObject(storedAuthority(object));
-    const observed = await store.head(object.object_key);
-    if (observed.status === "present") {
-      await store.delete({ key: object.object_key, locator: observed.locator });
-    }
-  }
-}
+const defaultBackupDatabase: AccountDeletionBackupDatabase = {
+  rowsRemain: backupRowsRemain,
+  deleteGraph: deleteBackupDatabaseGraph,
+};
 
 async function clearVaultKeyGraph(organizationId: string): Promise<void> {
   await dbWrite.transaction(async (tx) => {
@@ -419,24 +377,33 @@ export function createAccountDeletionProviderAdapters(
     },
     secondary_backups: {
       async inspect(context) {
-        if (!(await backupRowsRemain(context.organizationId))) {
-          return complete(context, "secondary_backups");
-        }
-        if (!dependencies.backupRegistry) {
+        if (!dependencies.backupAuthority) {
           return {
             state: "action_required",
             errorCode: "BACKUP_STORAGE_AUTHORITY_UNAVAILABLE",
           };
         }
-        return (await inspectBackupObjects(context, dependencies.backupRegistry)) === "absent"
-          ? complete(context, "secondary_backups")
-          : { state: "needs_execution" };
+        if (
+          (await dependencies.backupAuthority.inspectOrganizationBackups({
+            organizationId: context.organizationId,
+          })) === "present"
+        ) {
+          return { state: "needs_execution" };
+        }
+        const backupDatabase = dependencies.backupDatabase ?? defaultBackupDatabase;
+        if (await backupDatabase.rowsRemain(context.organizationId)) {
+          await backupDatabase.deleteGraph(context.organizationId);
+        }
+        return complete(context, "secondary_backups");
       },
-      async execute(context) {
-        if (!dependencies.backupRegistry) {
+      async execute(context, idempotencyKey) {
+        if (!dependencies.backupAuthority) {
           throw new Error("Backup storage authority is not configured");
         }
-        await executeBackupObjectDeletion(context, dependencies.backupRegistry);
+        await dependencies.backupAuthority.purgeOrganizationBackups({
+          organizationId: context.organizationId,
+          idempotencyKey,
+        });
       },
     },
     spools: {

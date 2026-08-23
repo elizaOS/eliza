@@ -17,7 +17,7 @@ app.post("/", async (c) => {
   } catch (error) {
     // error-policy:J1 The cron transport boundary logs and translates worker failure.
     logger.error("[AccountDeletionCron] Processing failed", {
-      error: error instanceof Error ? error.message : String(error),
+      errorCode: error instanceof Error ? error.name : "unknown",
     });
     return failureResponse(c, error);
   }
