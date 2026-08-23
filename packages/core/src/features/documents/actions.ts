@@ -131,7 +131,6 @@ const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
 		descriptionCompressed: "search document fragments by query",
 		required: ["query"],
 		optional: [
-			"limit",
 			"searchMode",
 			"scope",
 			"scopedToEntityId",
@@ -714,7 +713,7 @@ async function handleSearch(
 	const retrievalScope = `Searched all ${matches.length} authorized fragment(s).`;
 	const text = `${
 		projected.length === 0
-			? `No document fragments matching ${describeQuery(query)} were returned from that window.`
+			? `No document fragments matching ${describeQuery(query)} were returned from the complete authorized corpus.`
 			: `Found ${projected.length} document fragment(s) for ${describeQuery(query)}:\n\n${projected
 					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
 					.join("\n\n")}`
@@ -1536,7 +1535,7 @@ export const documentAction: Action = {
 		{
 			name: "limit",
 			description:
-				"Maximum number of results or listed documents (1-100). Use 0 when this field is not applicable to the selected action.",
+				"Explicit page size for list/read only (1-100). Search always returns every authorized match and ignores this field.",
 			required: false,
 			schema: { type: "number", minimum: 0, maximum: 100 },
 		},

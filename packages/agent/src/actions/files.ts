@@ -24,6 +24,8 @@ interface FilesParams {
   fileName?: string;
   query?: string;
   confirm?: boolean;
+  /** @deprecated Accepted for compatibility; complete reads ignore it. */
+  limit?: number;
 }
 
 function fail(text: string, error: string): ActionResult {
@@ -225,6 +227,13 @@ export const filesAction: Action = {
         "Optional filter for op:list (matches filename or mime type substring)",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "limit",
+      description:
+        "Deprecated compatibility input. Complete file listings are never capped.",
+      required: false,
+      schema: { type: "number" as const },
     },
     {
       name: "confirm",

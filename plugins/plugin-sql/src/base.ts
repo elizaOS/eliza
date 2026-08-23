@@ -2468,6 +2468,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.worldId) conditions.push(eq(parent.worldId, params.worldId));
       if (params.entityId) conditions.push(eq(parent.entityId, params.entityId));
       if (params.documentId) conditions.push(eq(parent.id, params.documentId));
+      if (params.snapshotEnd !== undefined) {
+        conditions.push(lte(fragment.createdAt, new Date(params.snapshotEnd)));
+      }
 
       const parentJoin = sql`${parent.id}::text = ${fragment.metadata}->>'documentId'`;
       if (!params.embedding) {

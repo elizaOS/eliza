@@ -137,14 +137,18 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 			requesterEntityId: UUID;
 			limit: number;
 			offset?: number;
+			snapshotEnd?: number;
 		}) => {
 			const visible = fragments.filter((fragment) => {
 				const metadata = fragment.metadata as
 					| Record<string, unknown>
 					| undefined;
 				return (
-					metadata?.scope !== "user-private" ||
-					metadata.scopedToEntityId === params.requesterEntityId
+					(params.snapshotEnd === undefined ||
+						(typeof fragment.createdAt === "number" &&
+							fragment.createdAt <= params.snapshotEnd)) &&
+					(metadata?.scope !== "user-private" ||
+						metadata.scopedToEntityId === params.requesterEntityId)
 				);
 			});
 			const offset = params.offset ?? 0;
@@ -300,7 +304,38 @@ describe("DocumentService.searchDocuments", () => {
 			expect(new Set(results.map((result) => result.id)).size).toBe(
 				fragments.length,
 			);
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(6);
+		});
+
+		it("ignores newer appends outside the complete traversal snapshot", async () => {
+			const fragments = Array.from({ length: 20 }, (_, index) =>
+				makeFragment(`frag-${index}`, `complete corpus match ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			const query = rt.adapter.queryDocumentFragments.getMockImplementation();
+			let call = 0;
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				const rows = await query?.(params);
+				if (++call === 1) {
+					const appended = makeFragment(
+						"frag-inserted",
+						"new complete corpus match",
+					);
+					appended.createdAt = (params.snapshotEnd ?? Date.now()) + 1;
+					fragments.push(appended);
+				}
+				return rows ?? [];
+			});
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("complete corpus match"),
+				undefined,
+				"keyword",
+			);
+
+			expect(results).toHaveLength(20);
+			expect(results.map((result) => result.id)).not.toContain("frag-inserted");
 		});
 
 		it("rejects a non-advancing fragment adapter instead of ranking a prefix", async () => {
@@ -320,7 +355,7 @@ describe("DocumentService.searchDocuments", () => {
 					"keyword",
 				),
 			).rejects.toMatchObject({
-				code: "DOCUMENT_FRAGMENT_TRAVERSAL_NON_ADVANCING",
+				code: "DOCUMENT_SEARCH_PAGINATION_STALLED",
 			});
 		});
 

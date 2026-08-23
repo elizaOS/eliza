@@ -81,6 +81,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/core/src/features/documents/service.ts": [
 		/limit:\s*(?:20|40|1_000)[,\n]/,
+		/queryDocumentFragments\([\s\S]{0,360}limit:\s*(?:20|40|1_000)/,
 	],
 	"packages/agent/src/actions/files.ts": [
 		/clampLimit/,
@@ -93,9 +94,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/agent/src/actions/memories.ts": [
 		/clampLimit/,
 		/scanWindowSaturated/,
-	],
-	"packages/core/src/features/documents/service.ts": [
-		/queryDocumentFragments\([\s\S]{0,360}limit:\s*(?:20|40|1_000)/,
 	],
 	"packages/core/src/features/documents/actions.ts": [
 		/filteredMatches\.slice\(/,

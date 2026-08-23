@@ -47,6 +47,8 @@ interface MemoryParams {
   query?: string;
   memoryId?: string;
   confirm?: boolean;
+  /** @deprecated Accepted for compatibility; complete reads ignore it. */
+  limit?: number;
 }
 
 interface MemoryListItem {
@@ -248,6 +250,7 @@ async function scanCompleteMemoryTable(
   runtime: IAgentRuntime,
   tableName: MemoryType,
   roomId: UUID | undefined,
+  snapshotEnd: number,
 ): Promise<Memory[]> {
   const memories: Memory[] = [];
   const seen = new Set<string>();
@@ -260,6 +263,7 @@ async function scanCompleteMemoryTable(
       roomId,
       tableName,
       limit: COMPLETE_MEMORY_PAGE_SIZE,
+      end: snapshotEnd,
       ...(cursor ? { cursor } : {}),
       orderBy: "createdAt",
       orderDirection: "desc",
@@ -327,16 +331,19 @@ async function readStableCompleteMemoryTable(
   tableName: MemoryType,
   roomId: UUID | undefined,
 ): Promise<Memory[]> {
-  const countParams = {
-    agentId: runtime.agentId as UUID,
-    ...(roomId ? { roomId } : {}),
+  const snapshotEnd = Date.now();
+  const first = await scanCompleteMemoryTable(
+    runtime,
     tableName,
-  };
-  const before = await runtime.countMemories(countParams);
-  const first = await scanCompleteMemoryTable(runtime, tableName, roomId);
-  const between = await runtime.countMemories(countParams);
-  const second = await scanCompleteMemoryTable(runtime, tableName, roomId);
-  const after = await runtime.countMemories(countParams);
+    roomId,
+    snapshotEnd,
+  );
+  const second = await scanCompleteMemoryTable(
+    runtime,
+    tableName,
+    roomId,
+    snapshotEnd,
+  );
   let firstFingerprints: string[];
   let secondFingerprints: string[];
   try {
@@ -350,21 +357,14 @@ async function readStableCompleteMemoryTable(
     });
   }
   if (
-    !Number.isSafeInteger(before) ||
-    before < 0 ||
-    before !== between ||
-    before !== after ||
-    first.length !== before ||
-    second.length !== before ||
+    first.length !== second.length ||
     firstFingerprints.some(
       (fingerprint, index) => fingerprint !== secondFingerprints[index],
     )
   ) {
     throw traversalError("MEMORY_TRAVERSAL_INVENTORY_CHANGED", {
       tableName,
-      before,
-      between,
-      after,
+      snapshotEnd,
       firstLength: first.length,
       secondLength: second.length,
     });
@@ -881,6 +881,13 @@ export const memoryAction: Action = {
         "search/delete: case-insensitive text match against memory content. delete: resolves the memory to remove when memoryId is unknown; scoped to the requesting user's own memories.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "limit",
+      description:
+        "Deprecated compatibility input. Complete search results are never capped.",
+      required: false,
+      schema: { type: "number" as const },
     },
     {
       name: "memoryId",

@@ -1998,8 +1998,11 @@ export class DocumentService extends Service {
 	private async queryCompleteDocumentFragments(
 		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
 	): Promise<Memory[]> {
-		const first = await this.scanDocumentFragments(params);
-		const verified = await this.scanDocumentFragments(params);
+		// Exclude ordinary concurrent appends from both verification passes while
+		// still detecting updates, deletes, and backdated inserts in the snapshot.
+		const snapshotParams = { ...params, snapshotEnd: Date.now() };
+		const first = await this.scanDocumentFragments(snapshotParams);
+		const verified = await this.scanDocumentFragments(snapshotParams);
 		if (JSON.stringify(first) !== JSON.stringify(verified)) {
 			throw new ElizaError(
 				"Document fragment source changed during traversal",
@@ -2099,7 +2102,7 @@ export class DocumentService extends Service {
 	}
 
 	/**
-	 * Hybrid search: vector top-K re-ranked with BM25, combined as
+	 * Hybrid search: complete vector and keyword candidate sets re-ranked with BM25, combined as
 	 *   score = 0.6 * normalised_vector + 0.4 * normalised_bm25
 	 */
 	private async _hybridSearch(
@@ -2192,55 +2195,6 @@ export class DocumentService extends Service {
 				};
 			})
 			.sort((a, b) => b.similarity - a.similarity) as StoredDocument[];
-	}
-
-	/**
-	 * Traverse the authorized fragment query in storage-sized pages. `limit` is
-	 * deliberately internal: every matching fragment is reassembled before any
-	 * search mode ranks it, and a repeated row or non-advancing adapter rejects
-	 * instead of returning a complete-looking prefix.
-	 */
-	private async queryAllDocumentFragments(
-		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
-	): Promise<Memory[]> {
-		const pageSize = 1_000;
-		const fragments: Memory[] = [];
-		const seen = new Set<string>();
-		let offset = 0;
-		while (true) {
-			const page = await this.runtime.adapter.queryDocumentFragments({
-				...params,
-				limit: pageSize,
-				offset,
-			});
-			if (page.length > pageSize) {
-				throw new ElizaError("Document fragment page exceeded its request", {
-					code: "DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_INVALID",
-					context: { offset, pageLength: page.length, pageSize },
-				});
-			}
-			if (page.length === 0) break;
-			for (const fragment of page) {
-				// Malformed legacy fragments without an identity are not searchable and
-				// were already excluded by every search mode. They still advance the
-				// storage offset, so retaining that compatibility cannot stall paging.
-				if (!fragment.id) continue;
-				if (seen.has(fragment.id)) {
-					throw new ElizaError(
-						"Document fragment traversal repeated an identity",
-						{
-							code: "DOCUMENT_FRAGMENT_TRAVERSAL_NON_ADVANCING",
-							context: { offset, fragmentId: fragment.id },
-						},
-					);
-				}
-				seen.add(fragment.id);
-				fragments.push(fragment);
-			}
-			if (page.length < pageSize) break;
-			offset += page.length;
-		}
-		return fragments;
 	}
 
 	async enrichConversationMemoryWithRAG(
