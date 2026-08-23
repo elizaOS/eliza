@@ -118,10 +118,16 @@ export interface Assertions {
   keyFactsReferenced: {
     pass: boolean;
     matched: string[];
+    factfulExpectedPoints: number;
     minRequired: number;
     available: number;
   };
-  zeroForbiddenClaims: {
+  distinctExpectedReplies: {
+    pass: boolean;
+    replies: number;
+    distinct: number;
+  };
+  noDetectedUnsupportedFirstPersonClaims: {
     pass: boolean;
     hits: string[];
     allowedCategories: string[];
@@ -182,6 +188,20 @@ function tokenSet(s: string): Set<string> {
   return new Set(normText(s).split(" ").filter(Boolean));
 }
 
+/** Remove common credential forms before capture text reaches logs/artifacts. */
+export function redactCredentials(text: string): string {
+  return text
+    .replace(
+      /\b(bearer|basic)\s+[a-z0-9._~+/=-]+/gi,
+      (_match, scheme: string) => `${scheme} [REDACTED]`,
+    )
+    .replace(
+      /([?&](?:api[_-]?key|token|secret|signature|password)=)[^&#\s]+/gi,
+      "$1[REDACTED]",
+    )
+    .replace(/\b(?:sk|key|token|secret)[-_][a-z0-9_-]{12,}\b/gi, "[REDACTED]");
+}
+
 /**
  * Returns the human message this output near-copies, or null. An echo is an
  * exact normalized match, containment of a >=4-token human line, or a
@@ -213,9 +233,20 @@ export function echoOfHuman(
 
 // ── Scoring (pure) ─────────────────────────────────────────────────────────
 
-function matchFacts(roomId: RoomSpec["id"], text: string): string[] {
+function matchFacts(
+  roomId: RoomSpec["id"],
+  text: string,
+  expectedText?: string,
+): string[] {
   return FACT_PATTERNS[roomId]
-    .filter((f) => f.re.test(text))
+    .filter((fact) => {
+      const matches = (candidate: string) =>
+        fact.re.test(candidate) &&
+        (fact.required ?? []).every((required) => required.test(candidate));
+      return (
+        matches(text) && (expectedText === undefined || matches(expectedText))
+      );
+    })
     .map((f) => f.label);
 }
 
@@ -228,13 +259,14 @@ export function scoreElizaOutput(
   allowedCategories: ReadonlySet<string>,
   humanTextsSent: readonly string[],
   text: string,
+  expectedText?: string,
 ): StepRecord {
   const echo = echoOfHuman(text, humanTextsSent);
   return {
     eliza: true,
     text,
     ...(echo ? { echoOf: echo } : {}),
-    matchedFacts: echo ? [] : matchFacts(roomId, text),
+    matchedFacts: echo ? [] : matchFacts(roomId, text, expectedText),
     forbiddenHits: forbiddenHits(allowedCategories, text),
   };
 }
@@ -265,6 +297,8 @@ export function computeAssertions(input: AssertionInputs): Assertions {
   const allForbidden: string[] = [...input.ackForbidden];
   const echoes: string[] = [];
   const nonEchoOutputs: string[] = [];
+  const factfulExpectedPoints = new Set<number>();
+  const expectedReplies: string[] = [];
   for (const s of input.steps) {
     if (!s.eliza || s.silent || s.matchedFacts === undefined) continue; // humans, acks, DM
     if (s.echoOf) {
@@ -272,6 +306,10 @@ export function computeAssertions(input: AssertionInputs): Assertions {
     } else {
       nonEchoOutputs.push(s.text);
       for (const f of s.matchedFacts) allFacts.add(f);
+      if (s.expected && s.position !== undefined) {
+        expectedReplies.push(normText(s.text));
+        if (s.matchedFacts.length > 0) factfulExpectedPoints.add(s.position);
+      }
     }
     allForbidden.push(...(s.forbiddenHits ?? []));
   }
@@ -300,12 +338,20 @@ export function computeAssertions(input: AssertionInputs): Assertions {
       samples: echoes.slice(0, 3),
     },
     keyFactsReferenced: {
-      pass: allFacts.size >= thresholds.factsMin,
+      pass:
+        allFacts.size >= thresholds.factsMin &&
+        factfulExpectedPoints.size >= thresholds.factsMin,
       matched: [...allFacts],
+      factfulExpectedPoints: factfulExpectedPoints.size,
       minRequired: thresholds.factsMin,
       available: FACT_PATTERNS[room.id].length,
     },
-    zeroForbiddenClaims: {
+    distinctExpectedReplies: {
+      pass: new Set(expectedReplies).size === expectedReplies.length,
+      replies: expectedReplies.length,
+      distinct: new Set(expectedReplies).size,
+    },
+    noDetectedUnsupportedFirstPersonClaims: {
       pass: allForbidden.length === 0,
       hits: allForbidden,
       allowedCategories: [...input.allowedCategories],
@@ -544,11 +590,17 @@ function createHttpIo(env: NodeJS.ProcessEnv): RunIo {
         );
       }
       if (!res.ok) {
-        // error-policy:J7 diagnostics must not kill the loop: the rejection
-        // body is only quoted into the failure; an unreadable body still fails
-        // on the status.
-        const text = await res.text().catch(() => "");
-        fail(`webhook POST rejected: ${res.status} ${text.slice(0, 300)}`);
+        let text: string;
+        try {
+          text = await res.text();
+        } catch (error) {
+          // error-policy:J1 boundary translation: preserve an unreadable error
+          // body as the cause while still reporting the authoritative status.
+          fail(`webhook POST rejected: ${res.status} (unreadable body)`, error);
+        }
+        fail(
+          `webhook POST rejected: ${res.status} ${redactCredentials(text).slice(0, 300)}`,
+        );
       }
     },
 
@@ -624,7 +676,7 @@ function normalizeCaptureEntry(
   if (!chat) {
     return { entry: null, untagged: true }; // without chat attribution DM/group scoring is unsound
   }
-  return { entry: { text, chat }, untagged: false };
+  return { entry: { text: redactCredentials(text), chat }, untagged: false };
 }
 
 export function normalizeCapturePayload(
@@ -753,8 +805,17 @@ export async function runRoom(
 
   const steps: StepRecord[] = [];
   const humanTextsSent: string[] = [];
-  const scoreEliza = (text: string): StepRecord =>
-    scoreElizaOutput(room.id, allowedCategories, humanTextsSent, text);
+  const expectedTextAt = new Map(
+    room.elizaSteps.map((step) => [step.position, step.text]),
+  );
+  const scoreEliza = (text: string, position?: number): StepRecord =>
+    scoreElizaOutput(
+      room.id,
+      allowedCategories,
+      humanTextsSent,
+      text,
+      position === undefined ? undefined : expectedTextAt.get(position),
+    );
 
   let seq = 0;
   const send = async (
@@ -883,7 +944,7 @@ export async function runRoom(
       if (replies.length > 0) {
         respondedPoints += 1;
         for (const t of replies) {
-          steps.push({ ...scoreEliza(t), position: pos, expected: true });
+          steps.push({ ...scoreEliza(t, pos), position: pos, expected: true });
         }
       } else {
         steps.push({
@@ -943,8 +1004,9 @@ export function renderMarkdown(result: RunResult): string {
     `- Pre-link probe sends: ${a.silentUntilLinked.preLinkSends} (must be 0)`,
     `- Unsolicited sends (silent windows + trailing): ${a.restraintAtUnscriptedPoints.unsolicitedSends} (max ${a.restraintAtUnscriptedPoints.maxAllowed})`,
     `- Echoed-human outputs: ${a.noEchoedHumanText.echoes} (must be 0)`,
-    `- Distinct key facts referenced (non-echo replies): ${a.keyFactsReferenced.matched.length} (min ${a.keyFactsReferenced.minRequired}): ${a.keyFactsReferenced.matched.join("; ") || "none"}`,
-    `- Forbidden-claim hits (incl. acks): ${a.zeroForbiddenClaims.hits.length ? a.zeroForbiddenClaims.hits.join(", ") : "none"}`,
+    `- Correctly related key facts at expected beats: ${a.keyFactsReferenced.matched.length} across ${a.keyFactsReferenced.factfulExpectedPoints} beats (min ${a.keyFactsReferenced.minRequired} each): ${a.keyFactsReferenced.matched.join("; ") || "none"}`,
+    `- Repeated expected replies: ${a.distinctExpectedReplies.replies - a.distinctExpectedReplies.distinct}`,
+    `- Detected unsupported first-person claim hits (incl. acks): ${a.noDetectedUnsupportedFirstPersonClaims.hits.length ? a.noDetectedUnsupportedFirstPersonClaims.hits.join(", ") : "none"}`,
     "",
     "## Transcript",
     "",
@@ -1009,6 +1071,7 @@ function printableSpec(spec: RoomsSpec): Record<string, unknown> {
       factPatterns: FACT_PATTERNS[room.id].map((f) => ({
         label: f.label,
         pattern: f.re.source,
+        required: (f.required ?? []).map((required) => required.source),
       })),
     })),
   };

@@ -1,15 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  registerHostExternalImporter: vi.fn(
-    (_specifier?: string, _importer?: () => Promise<unknown>) => undefined,
-  ),
+  registerHostExternalImporter: vi.fn(),
 }));
 
 vi.mock("@elizaos/ui/app-shell-registry", () => ({
   registerHostExternalImporter: (
     specifier: string,
-    importer: () => Promise<unknown>,
+    importer: () => Promise<Record<string, unknown>>,
   ) => mocks.registerHostExternalImporter(specifier, importer),
 }));
 

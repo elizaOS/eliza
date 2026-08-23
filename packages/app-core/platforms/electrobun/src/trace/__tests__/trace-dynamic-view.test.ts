@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  existsSync: vi.fn((_path?: unknown) => false),
+  existsSync: vi.fn(),
   join: vi.fn((...p: string[]) => p.join("/")),
-  dirname: vi.fn((_path?: unknown) => "/views"),
-  fileURLToPath: vi.fn((_url?: unknown) => "/views/trace-dynamic-view.ts"),
+  dirname: vi.fn((_path: string) => "/views"),
+  fileURLToPath: vi.fn((_url: string | URL) => "/views/trace-dynamic-view.ts"),
   pathToFileURL: vi.fn((p: string) => ({ href: `file://${p}` })),
 }));
 
@@ -12,7 +12,7 @@ vi.mock("node:fs", () => ({
   existsSync: (path: unknown) => mocks.existsSync(path),
 }));
 vi.mock("node:path", () => ({
-  join: (...paths: string[]) => mocks.join(...paths),
+  join: (...parts: string[]) => mocks.join(...parts),
   dirname: (path: string) => mocks.dirname(path),
 }));
 vi.mock("node:url", () => ({

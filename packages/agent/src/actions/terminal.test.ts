@@ -40,9 +40,9 @@ function message(): Memory {
 }
 
 function options(
-  parameters: ActionParameters = { command: "echo hello" },
+  parameters: unknown = { command: "echo hello" },
 ): HandlerOptions {
-  return { parameters };
+  return { parameters: parameters as ActionParameters };
 }
 
 function terminalResponse(
@@ -190,7 +190,7 @@ describe("terminalAction command resolution", () => {
 
   it("fails closed when no command can be resolved", async () => {
     const fetchSpy = stubFetch();
-    const invalidParameters: ActionParameters[] = [
+    for (const parameters of [
       {},
       { command: "" },
       { command: "   " },
@@ -203,8 +203,7 @@ describe("terminalAction command resolution", () => {
       { arguments: "null" },
       { arguments: '{"command":"   "}' },
       { arguments: "<![CDATA[   ]]>" },
-    ];
-    for (const parameters of invalidParameters) {
+    ]) {
       const result = await terminalAction.handler(
         runtime(),
         message(),

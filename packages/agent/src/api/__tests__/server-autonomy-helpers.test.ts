@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 const routeAutonomyTextToUser = vi.fn(
-  async (_state: unknown, _text: string, _source?: string) => undefined,
+  async (_state: unknown, _text: string, _source: string) => undefined,
 );
 vi.mock("../server-helpers-swarm.ts", () => ({
-  routeAutonomyTextToUser: (state: unknown, text: string, source?: string) =>
+  routeAutonomyTextToUser: (state: unknown, text: string, source: string) =>
     routeAutonomyTextToUser(state, text, source),
 }));
 

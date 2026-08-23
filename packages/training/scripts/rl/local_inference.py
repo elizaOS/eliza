@@ -5,7 +5,10 @@ import inspect
 import re
 from dataclasses import dataclass
 
-from lib.generation_integrity import require_complete_generated_tokens
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    require_complete_generated_tokens,
+)
 from typing import TYPE_CHECKING, Any, Literal
 
 BackendName = Literal["mlx", "cuda", "cpu"]
@@ -130,19 +133,17 @@ class LocalTextGenerator:
         self.model: Any | None = None
         self.tokenizer: Any | None = None
         self.device: str = "cpu"
-        self._generate = None
         self._sampler = None
         self._load()
 
     def _load(self) -> None:
         if self.backend == "mlx":
-            from mlx_lm import generate, load  # type: ignore
+            from mlx_lm import load  # type: ignore
 
             self.model, self.tokenizer = load(
                 self.model_ref,
                 adapter_path=self.adapter_path,
             )
-            self._generate = generate
             try:
                 from mlx_lm.sample_utils import make_sampler  # type: ignore
 
@@ -191,7 +192,6 @@ class LocalTextGenerator:
     ) -> str | GenerationResult:
         if self.backend == "mlx":
             assert self.tokenizer is not None
-            assert self._generate is not None
             rendered = format_messages_as_text(
                 self.tokenizer,
                 messages,
@@ -201,16 +201,42 @@ class LocalTextGenerator:
             kwargs: dict[str, Any] = {
                 "prompt": rendered,
                 "max_tokens": max_new_tokens,
-                "verbose": False,
             }
             if self._sampler is not None:
                 kwargs["sampler"] = self._sampler
-            raw_generated = str(self._generate(self.model, self.tokenizer, **kwargs)).strip()
+            # stream_generate exposes the authoritative terminal reason; the
+            # convenience generate() returns only text, which cannot prove
+            # whether generation hit EOS or the token budget (#25157).
+            # Note: stream_generate has no `verbose` parameter — generate()
+            # consumed it before forwarding, so it must be dropped here.
+            from mlx_lm.generate import stream_generate  # type: ignore
+
+            generated_ids: list[int] = []
+            finish_reason: str | None = None
+            for response in stream_generate(
+                self.model,
+                self.tokenizer,
+                **kwargs,
+            ):
+                # Upstream contract (mlx_lm/generate.py @ d78bf58e): every
+                # generated token is yielded once as an intermediate response
+                # with finish_reason=None; the FINAL response REPEATS the last
+                # token and carries the authoritative finish_reason
+                # ("stop" | "length"). Append only intermediates to avoid
+                # double-counting the repeated final token.
+                if response.finish_reason is None:
+                    generated_ids.append(response.token)
+                else:
+                    finish_reason = response.finish_reason
             require_complete_generated_tokens(
-                self.tokenizer.encode(raw_generated),
+                generated_ids,
                 max_new_tokens=max_new_tokens,
                 source="local_inference.mlx",
+                terminal_token_ids=self._eos_token_ids(),
             )
+            if finish_reason == "length":
+                raise IncompleteGenerationError("local_inference.mlx", "length")
+            raw_generated = self.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
             generated = clean_generated_text(raw_generated)
             restored = restore_assistant_prefix(generated, assistant_prefix)
             if return_details:
@@ -277,12 +303,31 @@ class LocalTextGenerator:
             )
         return restored
 
+    def _eos_token_ids(self) -> set[int]:
+        """Collect every EOS/eos-variant token id the tokenizer exposes."""
+
+        ids: set[int] = set()
+        for attr in ("eos_token_id",):
+            value = getattr(self.tokenizer, attr, None)
+            if isinstance(value, int):
+                ids.add(value)
+        generation_config = getattr(self.model, "generation_config", None)
+        eos_list = getattr(generation_config, "eos_token_id", None) if generation_config else None
+        if eos_list is None:
+            return ids
+        if isinstance(eos_list, int):
+            ids.add(eos_list)
+        else:
+            for value in eos_list:
+                if isinstance(value, int):
+                    ids.add(value)
+        return ids
+
     def close(self) -> None:
         model = self.model
         tokenizer = self.tokenizer
         self.model = None
         self.tokenizer = None
-        self._generate = None
         self._sampler = None
         del model
         del tokenizer

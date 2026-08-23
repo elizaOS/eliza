@@ -149,7 +149,9 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         shellPresent: true,
         pillLabel: "Open Eliza",
         pillText: "",
-        pillHeight: 32,
+        // The resting button spans the full 44px native window (#21876 hit
+        // bounds) while painting nothing itself; only the mark paints.
+        pillHeight: 44,
         pillBackground: "rgba(0, 0, 0, 0)",
         markWidth: 48,
         markHeight: 10,

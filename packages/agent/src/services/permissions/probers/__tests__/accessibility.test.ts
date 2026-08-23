@@ -5,11 +5,11 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const platform = vi.hoisted(() => ({ isDarwin: true }));
+const mockPlatform = vi.hoisted(() => ({ isDarwin: true }));
 
 vi.mock("../_bridge.js", () => ({
   get IS_DARWIN() {
-    return platform.isDarwin;
+    return mockPlatform.isDarwin;
   },
   buildState: (
     id: string,
@@ -18,15 +18,12 @@ vi.mock("../_bridge.js", () => ({
   ) => ({
     id,
     status,
-    canRequest: false,
-    lastChecked: 0,
-    platform: "macos",
     ...extra,
   }),
   getNativeDylib: vi.fn(),
   platformUnsupportedState: (id: string) => ({
     id,
-    status: "unsupported",
+    status: "not-applicable",
   }),
   queryTccStatus: vi.fn(),
   resolveBundleId: vi.fn(() => "com.example.app"),
@@ -40,15 +37,15 @@ const mockQueryTcc = vi.mocked(queryTccStatus);
 
 describe("accessibilityProber.check", () => {
   beforeEach(() => {
-    platform.isDarwin = true;
+    mockPlatform.isDarwin = true;
     mockGetDylib.mockReset();
     mockQueryTcc.mockReset();
   });
 
   it("returns unsupported on non-Darwin platforms", async () => {
-    platform.isDarwin = false;
+    mockPlatform.isDarwin = false;
     const state = await accessibilityProber.check();
-    expect(state.status).toBe("unsupported");
+    expect(state.status).toBe("not-applicable");
   });
 
   it("returns granted when the native check is true", async () => {
@@ -91,15 +88,15 @@ describe("accessibilityProber.check", () => {
 
 describe("accessibilityProber.request", () => {
   beforeEach(() => {
-    platform.isDarwin = true;
+    mockPlatform.isDarwin = true;
     mockGetDylib.mockReset();
     mockQueryTcc.mockReset();
   });
 
   it("returns unsupported on non-Darwin", async () => {
-    platform.isDarwin = false;
+    mockPlatform.isDarwin = false;
     const state = await accessibilityProber.request({ reason: "test" });
-    expect(state.status).toBe("unsupported");
+    expect(state.status).toBe("not-applicable");
   });
 
   it("invokes the native request and returns the re-checked state with lastRequested", async () => {

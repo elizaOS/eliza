@@ -119,6 +119,9 @@ test("deploy-time convergence runs before success and fails the migration gate c
       if (text.includes("pg_advisory_unlock")) {
         return { rows: [{ unlocked: true }] as T[] };
       }
+      if (text.includes("AS has_user_relations")) {
+        return { rows: [{ has_user_relations: false }] as T[] };
+      }
       return { rows: [] };
     },
     end: async () => {},

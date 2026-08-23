@@ -10,7 +10,7 @@ describe("openai provider error surrogate-safe", () => {
     expect(toWellFormedUnicode("a\uD800b")).toBe("a\uFFFDb");
   });
   it("does not split astral at 300", () => {
-    const atBoundary = "x".repeat(299) + "🦊";
+    const atBoundary = `${"x".repeat(299)}🦊`;
     expect(truncateWellFormed(toWellFormedUnicode(atBoundary), 300)).toBe("x".repeat(299));
   });
   it("caps at 300", () => {

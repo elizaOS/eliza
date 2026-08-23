@@ -14,9 +14,9 @@
  * and double-quoted or backticked text are masked out first, so a todo
  * receipt or a quoted human line never counts.
  *
- * Accepted blind spots, traded for precision: elided-subject reports
- * ("Booked.", "Reminder set for 9am"), third-person self-reference ("Eliza
- * can book") and an unlisted action verb ("I snagged a table") open no span.
+ * Accepted blind spots, traded for precision: third-person self-reference
+ * ("Eliza can book"), elided verbs outside the explicit completion list and
+ * unlisted action verbs ("I snagged a table") open no span.
  */
 
 /**
@@ -84,6 +84,7 @@ const ACTION_VERBS: readonly string[] = [
   "found",
   "grab",
   "grabbed",
+  "got",
   "handle",
   "handled",
   "keep",
@@ -208,14 +209,17 @@ const ADVERBS = "just|already|also|actually|even|now|then|quickly";
 const FIRST_PERSON_MARKER = new RegExp(
   [
     `\\bi\\s+(?:${MODALS})${NOT_NEGATED}\\b`,
-    "\\bi'(?:ll|d)\\b",
-    "\\bi(?:'m|\\s+am)\\b(?!\\s+(?:not|unable|never)\\b)",
+    "\\bi'(?:ll|d)\\b(?!\\s+(?:not|never)\\b)",
+    `\\bi(?:'m|\\s+am)\\s+(?!not\\b|never\\b|unable\\b)(?:able\\s+to|going\\s+to|(?:${ACTION_VERBS.join("|")})ing)\\b`,
     "\\bi(?:\\s+have|'ve)\\s+been\\s+able\\b",
-    "\\blet\\s+me\\b(?!\\s+know\\b)",
+    "\\blet\\s+me\\b(?!\\s+(?:know|not|never)\\b)",
     "\\b(?:want|need|like|allow|prefer|tell|ask|trust|wish)\\s+me\\s+to\\b",
     `\\b(?:${MODALS}|do\\s+you\\s+want)\\s+i\\b`,
     "\\b(?:happy|glad)\\s+to\\b",
     `\\bi(?:\\s+have|\\s+had|'ve)?(?:\\s+(?:${ADVERBS}|went\\s+ahead\\s+and))*\\s+(?:${ACTION_VERBS.join("|")})\\b`,
+    `\\bwe(?:'ve|\\s+have)\\s+(?:${ACTION_VERBS.join("|")})\\b`,
+    "(?:^|[.!?]\\s+)(?:done\\s*[—:-]?\\s*)?(?:booked|reserved|confirmed|scheduled|sent|emailed|ordered|purchased)\\b",
+    "(?:^|[.!?]\\s+)your\\s+(?:reservation|booking|order|appointment)\\s+(?:is\\s+)?(?:booked|reserved|confirmed|scheduled)\\b",
   ].join("|"),
   "gi",
 );
@@ -228,7 +232,7 @@ const FIRST_PERSON_MARKER = new RegExp(
  */
 const SWITCH_LEADS =
   "and|but|or|so|then|if|when|whenever|unless|once|after|before|until|while|whether|that|which|what|whatever|where|who|whoever|because|since|as|though|although|" +
-  "think|thought|guess|bet|hope|assume|suggest|suggested|recommend|recommended|say|said|expect|know|knew|see|saw|hear|heard|notice|noticed|mean|wish|figure|imagine|sure|glad|let";
+  "think|thought|guess|bet|hope|assume|suggest|suggested|recommend|recommended|say|said|expect|know|knew|see|saw|hear|heard|notice|noticed|mean|wish|figure|imagine|sure|glad|let|how";
 const SWITCH_LEAD = `(?:[,;:(]|\\b(?:${SWITCH_LEADS})\\b)\\s*`;
 const OTHER_SUBJECTS =
   "you(?:'ll|'d|'re|'ve)?|they(?:'ll|'d|'re|'ve)?|he(?:'s|'ll|'d)?|she(?:'s|'ll|'d)?|we(?:'ll|'d|'re|'ve)?|it(?:'s|'ll|'d)?|someone|somebody|anyone|anybody|everyone|everybody|nobody|no one|people";
@@ -236,6 +240,8 @@ const PRONOUN_SWITCH = new RegExp(
   `${SWITCH_LEAD}(?:${OTHER_SUBJECTS})\\b`,
   "i",
 );
+const SECOND_PERSON_ACTOR_SWITCH =
+  /\byou(?:'ll|'d)?\s+(?:can|could|will|would|should|must|need\s+to|have\s+to|had\s+to)\b/i;
 /** A capitalized name after a lead; case-sensitive so ordinary words stay. */
 const NAME_SWITCH = new RegExp(`${SWITCH_LEAD}[A-Z][a-z]+\\b`);
 
@@ -245,7 +251,7 @@ const SENTENCE_BREAK = /\n+|(?<=[.!?])\s+/;
 
 function firstSwitchIndex(rest: string): number {
   let end = rest.length;
-  for (const re of [PRONOUN_SWITCH, NAME_SWITCH]) {
+  for (const re of [PRONOUN_SWITCH, SECOND_PERSON_ACTOR_SWITCH, NAME_SWITCH]) {
     const i = rest.search(re);
     if (i >= 0 && i < end) end = i;
   }

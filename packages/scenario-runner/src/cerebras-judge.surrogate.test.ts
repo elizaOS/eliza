@@ -2,8 +2,8 @@
  * Verifies surrogate-safe truncation for Cerebras judge error bodies.
  */
 
-import { describe, expect, it } from "vitest";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 describe("cerebras-judge surrogate-safe truncation", () => {
   it("replaces lone high surrogate with replacement character", () => {
