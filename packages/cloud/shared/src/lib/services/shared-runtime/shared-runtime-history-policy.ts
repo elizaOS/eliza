@@ -43,6 +43,17 @@ const DEICTIC_GROUNDING_FOLLOW_UP =
   /\b(?:it|that|this|those|these|they|them|result|results|source|sources|find|found|finding|findings|corrected|correction)\b/i;
 export type SharedRuntimeHistoryMessageLike = SharedRuntimeHistoryMessage;
 
+const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
+
+function containsUnsafePublicHttpUrl(value: string): boolean {
+  HTTP_URL.lastIndex = 0;
+  for (const match of value.matchAll(HTTP_URL)) {
+    const urls = publicSourceUrls([match[0].replace(/[),.;]+$/u, "")]);
+    if (!urls?.[0]) return true;
+  }
+  return false;
+}
+
 function publicSourceUrls(value: unknown): string[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) return undefined;
@@ -78,7 +89,7 @@ function publicSources(value: unknown): Array<{ url: string; text: string }> | u
     if (typeof record.url !== "string" || typeof record.text !== "string") return undefined;
     const urls = publicSourceUrls([record.url]);
     const text = record.text.trim();
-    if (!urls?.[0] || !text) return undefined;
+    if (!urls?.[0] || !text || containsUnsafePublicHttpUrl(text)) return undefined;
     sources.push({ url: urls[0], text });
   }
   return sources;

@@ -59,12 +59,40 @@ describe("Shared realtime request classification", () => {
   });
 
   for (const message of [
+    "what temperature should I bake bread at?",
+    "that's a steep price for a laptop, right?",
+    "the weather was nice yesterday",
+    "tell me a joke about bitcoin price",
+    "what is the score of this test?",
+    "can you draft an announcement today?",
+    "the weather is nice, isn't it?",
+  ]) {
+    test(`does not export ordinary conversation as a public search: ${message}`, () => {
+      expect(resolveSharedRealtimeRequirement(message, [])).toBeUndefined();
+    });
+  }
+
+  test("still recognizes explicit current public requests after conservative classification", () => {
+    expect(resolveSharedRealtimeRequirement("what's the weather like in Austin?", [])?.domain).toBe(
+      "weather",
+    );
+    expect(resolveSharedRealtimeRequirement("check the latest BTC price", [])?.domain).toBe(
+      "markets",
+    );
+    expect(resolveSharedRealtimeRequirement("show me current NBA standings", [])?.domain).toBe(
+      "sports",
+    );
+  });
+
+  for (const message of [
     "check my todos",
     "can you check that for me",
     "confirm the meeting",
     "send me the link",
     "what's on my schedule today",
     "what is the status of my order",
+    "what is the BTC price? contact alice@example.com",
+    "check the current BTC price with this password",
   ]) {
     test(`never sends private state to public search: ${message}`, () => {
       expect(resolveSharedRealtimeRequirement(message, [])).toBeUndefined();
@@ -133,6 +161,33 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
             },
           },
           "BTC price",
+          observedAt,
+        ),
+      ).toMatchObject({ success: false });
+    }
+  });
+
+  test("rejects source evidence that embeds a loopback or credential-bearing URL", () => {
+    for (const unsafeUrl of ["http://127.0.0.1/admin", "https://user:pass@example.com/private"]) {
+      expect(
+        requireTraceableRealtimeSearch(
+          {
+            success: true,
+            text: "bounded result",
+            data: {
+              actionName: "WEB_SEARCH",
+              query: "service status",
+              provider: "parallel",
+              truncated: false,
+              sources: [
+                {
+                  url: "https://status.example.com/current",
+                  text: `See ${unsafeUrl} for status.`,
+                },
+              ],
+            },
+          },
+          "service status",
           observedAt,
         ),
       ).toMatchObject({ success: false });
@@ -288,6 +343,56 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
       validateSharedRealtimeReply(
         "Alice Example is not the current CEO of Example Corp. [[SOURCE_URL:https://company.example/leadership]]",
         mixedGrounding,
+      ),
+    ).toBe(false);
+  });
+
+  test("rejects subject-object and per-entity value swaps within one source", () => {
+    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    const relationGrounding: SharedRuntimePublicGrounding = {
+      ...grounding,
+      sourceUrls: ["https://facts.example/current"],
+      sources: [
+        {
+          url: "https://facts.example/current",
+          text: "Alice defeated Bob. BTC is 100 USD and ETH is 200 USD.",
+        },
+      ],
+    };
+    if (relationGrounding.kind !== "web_search") {
+      throw new Error("fixture grounding must be available");
+    }
+    expect(
+      validateSharedRealtimeReply(
+        "Bob defeated Alice. [[SOURCE_URL:https://facts.example/current]]",
+        relationGrounding,
+      ),
+    ).toBe(false);
+    expect(
+      validateSharedRealtimeReply(
+        "BTC is 200 USD and ETH is 100 USD. [[SOURCE_URL:https://facts.example/current]]",
+        relationGrounding,
+      ),
+    ).toBe(false);
+  });
+
+  test("rejects unsafe URLs in delivered claim prose instead of filtering them out", () => {
+    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    const source: SharedRuntimePublicGrounding = {
+      ...grounding,
+      sourceUrls: ["https://status.example.com/current"],
+      sources: [
+        {
+          url: "https://status.example.com/current",
+          text: "See the local admin page for status.",
+        },
+      ],
+    };
+    if (source.kind !== "web_search") throw new Error("fixture grounding must be available");
+    expect(
+      validateSharedRealtimeReply(
+        "See http://127.0.0.1/admin for status. [[SOURCE_URL:https://status.example.com/current]]",
+        source,
       ),
     ).toBe(false);
   });
