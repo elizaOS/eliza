@@ -1665,7 +1665,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     // same hardened remote-connect handler that the OS deep-link route uses,
     // after React has had a chance to install its CONNECT_EVENT listener.
     await new Promise((resolve) => window.setTimeout(resolve, 750));
-    connectFirstRunRemoteDeepLink(request.apiBase);
+    await connectFirstRunRemoteDeepLink(request.apiBase);
 
     // Prove the post-connect surface, decoupled from the onboarding DOM — no
     // remote-address field to fill, resilient to the in-chat redesign.
@@ -1996,28 +1996,30 @@ const APP_LINK_HOSTS = ["eliza.app"];
 // remote and lands on home. Routed through the same hardened CONNECT_EVENT path
 // as `<scheme>://connect?url=` (trust-policy gated, token never accepted from a
 // deep link) but with `completeFirstRun` so it also finishes onboarding.
-function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
+export async function connectFirstRunRemoteDeepLink(
+  rawApiBase: string,
+): Promise<boolean> {
   let validatedUrl: URL;
   try {
     validatedUrl = new URL(rawApiBase);
   } catch {
     // error-policy:J3 untrusted deep-link input — rejected loudly
     console.error(`${APP_LOG_PREFIX} Invalid first-run remote URL format`);
-    return;
+    return true;
   }
   if (validatedUrl.protocol !== "https:" && validatedUrl.protocol !== "http:") {
     console.error(
       `${APP_LOG_PREFIX} Invalid first-run remote URL protocol:`,
       validatedUrl.protocol,
     );
-    return;
+    return true;
   }
   if (!isTrustedDeepLinkApiBaseUrl(validatedUrl)) {
     console.warn(
       `${APP_LOG_PREFIX} Rejected untrusted first-run remote host:`,
       validatedUrl.hostname,
     );
-    return;
+    return true;
   }
   // SECURITY: never accept a bearer token from an OS-delivered deep link (see
   // the `connect` case below). A pairing-disabled remote that needs a token is
@@ -2040,15 +2042,12 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
     apiBase: connection.apiBase,
     ...(connection.token ? { accessToken: connection.token } : {}),
   });
-  // error-policy:J6 best-effort persist — the connect below still lands;
-  // only re-selection after restart is lost, and the failure is logged
-  void setStorageValue("elizaos:active-server", activeServer).catch((error) => {
-    console.warn(
-      `${APP_LOG_PREFIX} Failed to persist first-run remote active server:`,
-      error,
-    );
-  });
+  // The protected active-server record is part of successful remote adoption,
+  // not best-effort telemetry. Native deep-link acknowledgement and first-run
+  // completion must remain pending until the secure-store write is durable.
+  await setStorageValue("elizaos:active-server", activeServer);
   dispatchConnect();
+  return true;
 }
 
 async function recordIosAuthCallbackSmoke(
@@ -2180,11 +2179,10 @@ async function handleAuthCallbackDeepLink(
 }
 
 /**
- * Returns `void` for every branch except the top-level-surface navigation
- * intent, which returns the `dispatchNavigateViewRequest` promise so a caller
- * that needs to know the intent actually LANDED (not merely enqueued) — today
- * `mobile-lifecycle.ts`, gating its Android deep-link-buffer acknowledgement —
- * can await it instead of acking on dispatch alone.
+ * Returns `void` for synchronous routes and a promise for routes whose durable
+ * application must finish before the native lifecycle acknowledges delivery.
+ * Top-level navigation waits for the shell to claim the intent; first-run
+ * remote adoption waits for protected active-server persistence before CONNECT.
  */
 function handleDeepLink(url: string): undefined | Promise<boolean> {
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
@@ -2192,8 +2190,7 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
     APP_URL_SCHEME,
   );
   if (firstRunRemote) {
-    connectFirstRunRemoteDeepLink(firstRunRemote.apiBase);
-    return;
+    return connectFirstRunRemoteDeepLink(firstRunRemote.apiBase);
   }
   if (routeFirstRunDeepLink(url, APP_URL_SCHEME)) {
     return;
@@ -2229,7 +2226,7 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
       parsed.searchParams.get("url")?.trim() ||
       parsed.searchParams.get("host")?.trim();
     if (rawApiBase) {
-      connectFirstRunRemoteDeepLink(rawApiBase);
+      return connectFirstRunRemoteDeepLink(rawApiBase);
     }
     return;
   }

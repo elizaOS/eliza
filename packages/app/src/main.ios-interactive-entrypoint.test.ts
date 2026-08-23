@@ -22,7 +22,9 @@ const iosBoot = vi.hoisted(() => ({
   runEmbedHandshake: vi.fn(async () => undefined),
   registerServiceWorker: vi.fn(),
   lifecycleDependencies: undefined as
-    | { handleDeepLink: (url: string) => void }
+    | {
+        handleDeepLink: (url: string) => undefined | Promise<boolean>;
+      }
     | undefined,
   initializeDeepLinks: vi.fn(),
   initializeAppLifecycle: vi.fn(),
@@ -82,7 +84,9 @@ vi.mock("@elizaos/capacitor-agent", () => ({
 }));
 vi.mock("./mobile-lifecycle", () => ({
   createMobileLifecycle: vi.fn(
-    (dependencies: { handleDeepLink: (url: string) => void }) => {
+    (dependencies: {
+      handleDeepLink: (url: string) => undefined | Promise<boolean>;
+    }) => {
       iosBoot.lifecycleDependencies = dependencies;
       return {
         initializeDeepLinks: iosBoot.initializeDeepLinks,
@@ -198,7 +202,10 @@ describe("renderer interactive iOS composition", () => {
           }),
         );
       }
-      handleDeepLink?.(url);
+      const handled = handleDeepLink?.(url);
+      if (url.startsWith("elizaos://first-run/runtime/remote")) {
+        await handled;
+      }
     }
 
     await vi.waitFor(() =>
@@ -234,5 +241,49 @@ describe("renderer interactive iOS composition", () => {
         files: [{ name: "note.txt", path: "/tmp/note.txt" }],
       }),
     ]);
+  });
+
+  it("does not announce a durable remote connection when protected persistence rejects", async () => {
+    const { connectFirstRunRemoteDeepLink } = await import("./main");
+    const connectRequest = vi.fn();
+    const removeConnectListener = listenForConnectRequests(connectRequest);
+    iosBoot.setStorageValue.mockRejectedValueOnce(
+      new Error("secure-store unavailable"),
+    );
+
+    try {
+      await expect(
+        connectFirstRunRemoteDeepLink("http://127.0.0.1:31338"),
+      ).rejects.toThrow("secure-store unavailable");
+      expect(connectRequest).not.toHaveBeenCalled();
+    } finally {
+      removeConnectListener();
+    }
+  });
+
+  it("consumes a recognized invalid remote link without persisting or connecting", async () => {
+    const { connectFirstRunRemoteDeepLink } = await import("./main");
+    const connectRequest = vi.fn();
+    const removeConnectListener = listenForConnectRequests(connectRequest);
+    const persistedCallsBefore = iosBoot.setStorageValue.mock.calls.length;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await expect(
+        connectFirstRunRemoteDeepLink("ftp://untrusted.example/agent"),
+      ).resolves.toBe(true);
+      await expect(
+        connectFirstRunRemoteDeepLink("https://untrusted.example/agent"),
+      ).resolves.toBe(true);
+      expect(iosBoot.setStorageValue).toHaveBeenCalledTimes(
+        persistedCallsBefore,
+      );
+      expect(connectRequest).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+      warn.mockRestore();
+      removeConnectListener();
+    }
   });
 });
