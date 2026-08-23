@@ -1,9 +1,8 @@
-/** Storybook stories for the Release Center sections (status, notes, build/runtime, session, WebGPU), under a stub AppContext supplying `t`. */
+/** Storybook stories for the Release Center sections (status, notes, build/runtime, session, WebGPU), under the shared MockAppProvider. */
 
 import type { Meta, StoryObj } from "@storybook/react";
 import { useRef } from "react";
-import type { AppContextValue } from "../../state/internal";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import {
   BuildRuntimeSection,
   ReleaseNotesSection,
@@ -21,28 +20,12 @@ import type {
   WgpuTagElement,
 } from "./types";
 
-const mockApp = {
-  t: (
-    _key: string,
-    options?: { defaultValue?: string } & Record<string, unknown>,
-  ) => {
-    let out = options?.defaultValue ?? _key;
-    if (options) {
-      for (const [k, v] of Object.entries(options)) {
-        if (k === "defaultValue") continue;
-        out = out.replace(`{{${k}}}`, String(v));
-      }
-    }
-    return out;
-  },
-} as AppContextValue;
-
 const withAppContext = (Story: () => JSX.Element) => (
-  <AppContext.Provider value={mockApp}>
+  <MockAppProvider>
     <div className="max-w-3xl space-y-4 p-4">
       <Story />
     </div>
-  </AppContext.Provider>
+  </MockAppProvider>
 );
 
 const updateStatus: AppReleaseStatus = {
