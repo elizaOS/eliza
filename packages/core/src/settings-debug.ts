@@ -10,6 +10,14 @@ import { isTruthyEnvValue } from "./env-utils.js";
 const SENSITIVE_KEY_RE =
 	/(?:^|\.|_)(?:secret|password|token|apikey|api_key|privatekey|private_key|mnemonic|credential|authorization|bearer|cookie|sessionkey|session_id)(?:\.|_|$)|^apikey$|_api_key$|_key$/i;
 
+/**
+ * camelCase sensitive keys (`accessToken`, `userPassword`, `openaiApiKey`, …).
+ * Case-sensitive on purpose: `[a-z][A-Z]` marks the camel boundary so plain
+ * words like `tokenize` / `maxTokens` are not treated as secrets.
+ */
+const CAMEL_SENSITIVE_KEY_RE =
+	/[a-z](?:Token|Secret|Password|ApiKey|PrivateKey|Mnemonic|Credential|Authorization|Bearer|Cookie|SessionKey|SessionId|Id|Key)$/;
+
 const MAX_DEPTH = 14;
 const MAX_ARRAY = 40;
 export const MAX_STRING = 120;
@@ -91,9 +99,10 @@ function sanitizeDebugObject(
 ): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const [key, item] of Object.entries(value)) {
-		out[key] = SENSITIVE_KEY_RE.test(key)
-			? sanitizeSensitiveDebugValue(item)
-			: sanitizeForSettingsDebug(item, depth + 1, seen);
+		out[key] =
+			SENSITIVE_KEY_RE.test(key) || CAMEL_SENSITIVE_KEY_RE.test(key)
+				? sanitizeSensitiveDebugValue(item)
+				: sanitizeForSettingsDebug(item, depth + 1, seen);
 	}
 	return out;
 }
