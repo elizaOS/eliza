@@ -5,8 +5,11 @@ import type {
   InteractionOutcomeStatus,
   InteractionSessionState,
 } from "@elizaos/core";
+import { INTERACTION_CONTRACT_VERSION } from "@elizaos/core";
 
-export const COMPUTER_USE_INTERACTION_CONTRACT_VERSION = 2 as const;
+/** Compatibility alias; core remains the single contract-version authority. */
+export const COMPUTER_USE_INTERACTION_CONTRACT_VERSION =
+  INTERACTION_CONTRACT_VERSION;
 
 export type ComputerUseSessionTargetKind =
   | "host"

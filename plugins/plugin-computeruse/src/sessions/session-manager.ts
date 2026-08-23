@@ -6,6 +6,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { authorizeCompatibilitySessionAction } from "./canonical-compat.js";
 import type {
   ComputerUseObservationProvenance,
   ComputerUseSessionAction,
@@ -487,6 +488,20 @@ export class ComputerUseSessionManager {
       );
     }
     const observation = this.assertObservationBinding(session, action);
+    try {
+      await authorizeCompatibilitySessionAction(
+        cloneSnapshot(session),
+        action,
+        this.now(),
+      );
+    } catch {
+      // error-policy:J3 the compatibility DTO must satisfy the canonical core
+      // interaction contract before any adapter or approval boundary sees it.
+      throw new ComputerUseSessionError(
+        "INVALID_SESSION_INPUT",
+        "Action does not satisfy the canonical interaction contract",
+      );
+    }
     const fingerprint = this.actionFingerprint(action);
     if (
       observation &&
