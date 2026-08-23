@@ -34,12 +34,23 @@ function parseAcceptLanguage(value: string | string[] | undefined): string[] {
       ) {
         return null;
       }
-      const q = rawQ === undefined ? 1 : Number(rawQ);
-      if (q === 0) return null;
+      const q =
+        rawQ === undefined
+          ? 1
+          : typeof Number(rawQ) === "number" && Number.isFinite(Number(rawQ))
+            ? Number(rawQ)
+            : 0;
+      if (q <= 0) return null;
       return { index, q, tag };
     })
     .filter((candidate): candidate is LanguageCandidate => candidate != null)
-    .sort((left, right) => right.q - left.q || left.index - right.index)
+    .sort((left, right) => {
+      const rightQ =
+        typeof right.q === "number" && Number.isFinite(right.q) ? right.q : 0;
+      const leftQ =
+        typeof left.q === "number" && Number.isFinite(left.q) ? left.q : 0;
+      return rightQ - leftQ || left.index - right.index;
+    })
     .map((candidate) => candidate.tag);
 }
 

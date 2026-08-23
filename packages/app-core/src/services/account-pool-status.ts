@@ -405,7 +405,11 @@ function calculateBurn(
   if (candidates.length === 0) {
     return { ratePctPerHour: null, sampleHours: null };
   }
-  candidates.sort((a, b) => a.ts - b.ts);
+  candidates.sort((a, b) => {
+    const aTs = typeof a.ts === "number" && Number.isFinite(a.ts) ? a.ts : 0;
+    const bTs = typeof b.ts === "number" && Number.isFinite(b.ts) ? b.ts : 0;
+    return aTs - bTs;
+  });
   const oldest = candidates[0];
   const hours = (now - oldest.ts) / 3_600_000;
   if (!oldest || hours <= 0) {
@@ -472,12 +476,30 @@ function applyUrgency(
   };
   status.perAccount.sort((a, b) => {
     if (rank[a.state] !== rank[b.state]) return rank[a.state] - rank[b.state];
-    return (b.fableUsedPct ?? -1) - (a.fableUsedPct ?? -1);
+    const bUsed =
+      typeof b.fableUsedPct === "number" && Number.isFinite(b.fableUsedPct)
+        ? b.fableUsedPct
+        : -1;
+    const aUsed =
+      typeof a.fableUsedPct === "number" && Number.isFinite(a.fableUsedPct)
+        ? a.fableUsedPct
+        : -1;
+    return bUsed - aUsed;
   });
   const next = status.perAccount
     .filter((account) => account.weeklyResetAt !== null)
     .filter((account) => (account.weeklyResetAt ?? 0) > now)
-    .sort((a, b) => (a.weeklyResetAt ?? 0) - (b.weeklyResetAt ?? 0))[0];
+    .sort((a, b) => {
+      const aReset =
+        typeof a.weeklyResetAt === "number" && Number.isFinite(a.weeklyResetAt)
+          ? a.weeklyResetAt
+          : 0;
+      const bReset =
+        typeof b.weeklyResetAt === "number" && Number.isFinite(b.weeklyResetAt)
+          ? b.weeklyResetAt
+          : 0;
+      return aReset - bReset;
+    })[0];
   const poolMs =
     totalRate > 0 ? (status.fable.leftPct / totalRate) * 3_600_000 : null;
   status.urgency = {

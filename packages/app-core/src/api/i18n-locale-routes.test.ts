@@ -80,6 +80,14 @@ describe("resolveSuggestedUiLanguage", () => {
     expect(resolveSuggestedUiLanguage({ acceptLanguage: "fr-CA" })).toBe("en");
     expect(resolveSuggestedUiLanguage({})).toBe("en");
   });
+
+  it("handles malformed or NaN q-values safely without throwing or corrupting order", () => {
+    expect(
+      resolveSuggestedUiLanguage({
+        acceptLanguage: "es;q=0.9,ja;q=NaN,en;q=0.8",
+      }),
+    ).toBe("es");
+  });
 });
 
 describe("GET /api/i18n/locale", () => {

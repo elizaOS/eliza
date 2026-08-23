@@ -119,7 +119,11 @@ export interface PerfSnapshot {
 export function getPerfSnapshot(): PerfSnapshot {
   const routes: RouteTimingEntry[] = [];
   for (const [route, stat] of routeStats) {
-    const sorted = [...stat.samples].sort((a, b) => a - b);
+    const sorted = [...stat.samples].sort((a, b) => {
+      const aVal = typeof a === "number" && Number.isFinite(a) ? a : 0;
+      const bVal = typeof b === "number" && Number.isFinite(b) ? b : 0;
+      return aVal - bVal;
+    });
     routes.push({
       route,
       count: stat.count,
@@ -129,7 +133,13 @@ export function getPerfSnapshot(): PerfSnapshot {
       avgMs: round(stat.count > 0 ? stat.totalMs / stat.count : 0),
     });
   }
-  routes.sort((a, b) => b.count - a.count);
+  routes.sort((a, b) => {
+    const bCount =
+      typeof b.count === "number" && Number.isFinite(b.count) ? b.count : 0;
+    const aCount =
+      typeof a.count === "number" && Number.isFinite(a.count) ? a.count : 0;
+    return bCount - aCount || a.route.localeCompare(b.route);
+  });
 
   const caches: CacheCounterEntry[] = [];
   for (const [cache, counters] of cacheStats) {
