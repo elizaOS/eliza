@@ -37,6 +37,8 @@ from typing import Iterable, TypedDict
 
 import httpx
 
+from .generation_integrity import require_complete_generation
+
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "openai/gpt-oss-120b"
 
@@ -186,14 +188,17 @@ async def synth_one(
             continue
         data = r.json()
         try:
-            content = data["choices"][0]["message"].get("content", "").strip()
+            choice = require_complete_generation(
+                data["choices"][0], source="groq_thoughts.synth_one"
+            )
+            content = choice["message"].get("content", "").strip()
         except (KeyError, IndexError):
             return last_content
         if not content:
             # gpt-oss occasionally puts the answer in `reasoning` when
             # max_tokens was hit.
             try:
-                rs = (data["choices"][0]["message"].get("reasoning") or "").strip()
+                rs = (choice["message"].get("reasoning") or "").strip()
                 if rs:
                     last = rs.rsplit(".", 2)
                     content = (last[-2] + ".").strip() if len(last) >= 2 else rs

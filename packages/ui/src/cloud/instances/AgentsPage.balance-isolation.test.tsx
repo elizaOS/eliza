@@ -44,6 +44,12 @@ vi.mock("./components/eliza-agents-table", () => ({
   ),
 }));
 vi.mock("./lib/data/eliza-agents", () => ({
+  usePersonalElizaIdentity: () => ({
+    data: { id: "personal:test", displayName: "Eliza", runtime: "dedicated" },
+    error: null,
+    isError: false,
+    isLoading: false,
+  }),
   useAgents: () => ({
     data: [
       {

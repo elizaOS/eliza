@@ -45,6 +45,7 @@ import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
 import { isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
 import {
@@ -128,6 +129,7 @@ export function isTerminalDedicatedCloudAgentErrorState(args: {
   status: number | undefined;
   code?: string;
   message: string | null | undefined;
+  data?: unknown;
   clientBaseUrl: string;
 }): boolean {
   return classifyTerminalDedicatedCloudAgentErrorState(args);
@@ -286,6 +288,12 @@ async function sharedCloudAgentIsMissingFromRunningSet(
 ): Promise<boolean> {
   const agentId = sharedCloudAgentIdFromBase(base);
   if (!agentId) return false;
+  // The signed-in account's personal Eliza is rowless by design: it is served
+  // by `/api/v1/eliza/personal` and never appears in the sandbox running-set.
+  // Its shared adapter still legitimately 404s app-shell endpoints, so treating
+  // absence from `/agents` as deletion clears a healthy saved session on every
+  // reload and bounces the user back through first-run.
+  if (isPersonalSharedElizaId(agentId)) return false;
   if (!getCloudAuthToken(client)) return false;
 
   const priorBaseUrl = client.getBaseUrl();
@@ -1067,6 +1075,7 @@ export async function runPollingBackend(
           status: ae?.status,
           code: ae?.code,
           message: terminalMessage,
+          data: ae?.data,
           clientBaseUrl: client.getBaseUrl(),
         })
       ) {

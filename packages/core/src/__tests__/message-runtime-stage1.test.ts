@@ -3522,6 +3522,28 @@ describe("runV5MessageRuntimeStage1", () => {
 						values: { shouldNotRender: "value leak" },
 						data: {
 							secret: "secret leak",
+							recentInteractionsDisclosure:
+								"owner_private_destination" as const,
+							recentInteractions: [
+								{
+									id: "00000000-0000-0000-0000-00000000aaac" as UUID,
+									entityId: "00000000-0000-0000-0000-00000000ffff" as UUID,
+									roomId: "00000000-0000-0000-0000-000000002222" as UUID,
+									createdAt: 3,
+									content: {
+										text: "ORCHID-742 is in locker 19",
+										attachments: [
+											{
+												id: "receipt",
+												url: "https://private.example/receipt.png",
+												filename: "receipt.png",
+												mimeType: "image/png",
+												description: "Dinner at 6:30 PM",
+											},
+										],
+									},
+								},
+							],
 							recentMessages: [
 								{
 									id: "00000000-0000-0000-0000-00000000aaaa" as UUID,
@@ -3613,6 +3635,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent).not.toContain("# Conversation Messages");
 		expect(userContent).not.toContain("full recent provider text");
 		expect(userContent).toContain("prior_message:user:");
+		expect(userContent).toContain("verified_cross_room_message:user:");
+		expect(userContent).toContain("ORCHID-742 is in locker 19");
+		expect(userContent).toContain("Dinner at 6:30 PM");
+		expect(userContent).not.toContain("https://private.example/receipt.png");
 		expect(userContent).toContain("current_turn_boundary:");
 		expect(userContent).toContain("message:user:");
 		expect(userContent).toContain(longUserText);

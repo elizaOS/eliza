@@ -286,7 +286,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/draft\.body\.(?:slice|substring)\(/,
 	],
 	"plugins/plugin-x/src/discovery.ts": [
-		/maxTokens:\s*100/,
+		/\bmaxTokens\s*:/,
 		/(?:replyText|quoteText|response)\.(?:slice|substring)\(/,
 	],
 	"plugins/plugin-anthropic/models/image.ts": [/firstLine\.slice\(/],
@@ -574,5 +574,14 @@ describe("prompt integrity policy", () => {
 			const source = readFileSync(sourcePath, "utf8");
 			expect(source, sourcePath).not.toMatch(/truncation\s*=\s*True/);
 		}
+	});
+
+	it("keeps X discovery drafts on the provider-maximum output contract", () => {
+		const source = readFileSync(
+			resolve(repositoryRoot, "plugins/plugin-x/src/discovery.ts"),
+			"utf8",
+		);
+		expect(source.match(/omitMaxTokens:\s*true/g)).toHaveLength(2);
+		expect(source).toMatch(/X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED/);
 	});
 });

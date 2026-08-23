@@ -25,6 +25,13 @@ type InternalWebhookDelivery =
       phoneNumber: string;
       text: string;
       idempotencyKey: string;
+    }
+  | {
+      platform: "blooio";
+      project: string;
+      chatId: string;
+      text: string;
+      idempotencyKey: string;
     };
 
 const DELIVERY_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
@@ -106,6 +113,21 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
       platform: "blooio",
       project: input.project,
       phoneNumber: input.phoneNumber,
+      text: input.text.trim(),
+      idempotencyKey: input.idempotencyKey,
+    };
+  }
+  // A `chat_*` id addresses a provider-owned Blooio group thread; the adapter
+  // sends it through `/v4/chats/{id}/messages` with no `to`/`from` pair.
+  if (
+    input.platform === "blooio" &&
+    typeof input.chatId === "string" &&
+    /^chat_[A-Za-z0-9_-]{1,120}$/i.test(input.chatId)
+  ) {
+    return {
+      platform: "blooio",
+      project: input.project,
+      chatId: input.chatId,
       text: input.text.trim(),
       idempotencyKey: input.idempotencyKey,
     };
@@ -213,18 +235,17 @@ export async function deliverInternalMessage(
       delivery.platform,
       delivery.project,
     );
+    const recipientId =
+      "chatId" in delivery ? delivery.chatId : delivery.phoneNumber;
     const event: ChatEvent = {
       platform: delivery.platform,
       messageId: delivery.idempotencyKey,
-      chatId:
-        delivery.platform === "telegram"
-          ? delivery.chatId
-          : delivery.phoneNumber,
-      chatType: "private",
-      senderId:
-        delivery.platform === "telegram"
-          ? delivery.chatId
-          : delivery.phoneNumber,
+      chatId: recipientId,
+      chatType:
+        delivery.platform === "blooio" && "chatId" in delivery
+          ? "group"
+          : "private",
+      senderId: recipientId,
       text: delivery.text,
       rawPayload: { source: "shared-reminder" },
     };

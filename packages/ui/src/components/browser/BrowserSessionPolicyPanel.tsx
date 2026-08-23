@@ -14,10 +14,13 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
   UpdateBrowserBridgeSettingsRequest,
 } from "../../api/browser-contracts";
 import type {
+  BrowserBridgeCompanionResetResponse,
+  BrowserBridgeCompanionsResponse,
   BrowserBridgeSession,
   BrowserBridgeSessionResponse,
   BrowserBridgeSessionsResponse,
@@ -45,6 +48,10 @@ export interface BrowserSessionPolicyApi {
     id: string,
     confirmed: boolean,
   ): Promise<BrowserBridgeSessionResponse>;
+  listBrowserBridgeCompanions(): Promise<BrowserBridgeCompanionsResponse>;
+  resetBrowserBridgeCompanionRevocation(
+    id: string,
+  ): Promise<BrowserBridgeCompanionResetResponse>;
 }
 
 export interface BrowserSessionPolicyPanelProps {
@@ -76,6 +83,13 @@ const STATUS_LABELS: Record<BrowserBridgeSession["status"], string> = {
   failed: "Failed",
 };
 
+const BROWSER_LABELS: Record<BrowserBridgeCompanionStatus["browser"], string> =
+  {
+    chrome: "Chrome",
+    firefox: "Firefox",
+    safari: "Safari",
+  };
+
 function policyBadgeClass(allowed: boolean, mode: BrowserDomainPolicyMode) {
   if (mode === "blocked") {
     return "border-danger/50 bg-danger/15 text-danger";
@@ -95,9 +109,15 @@ export function BrowserSessionPolicyPanel({
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<BrowserBridgeSession[]>([]);
+  const [companions, setCompanions] = useState<BrowserBridgeCompanionStatus[]>(
+    [],
+  );
   const [settings, setSettings] = useState<BrowserBridgeSettings | null>(null);
   const [nowIso, setNowIso] = useState<string | null>(null);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  const [pendingCompanionId, setPendingCompanionId] = useState<string | null>(
+    null,
+  );
   const [pendingDomain, setPendingDomain] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const mountedRef = useRef(true);
@@ -121,13 +141,16 @@ export function BrowserSessionPolicyPanel({
     setPhase("loading");
     setLoadError(null);
     try {
-      const [sessionsResponse, settingsResponse] = await Promise.all([
-        api.listBrowserBridgeSessions(),
-        api.getBrowserBridgeSettings(),
-      ]);
+      const [sessionsResponse, settingsResponse, companionsResponse] =
+        await Promise.all([
+          api.listBrowserBridgeSessions(),
+          api.getBrowserBridgeSettings(),
+          api.listBrowserBridgeCompanions(),
+        ]);
       if (!mountedRef.current) return;
       setSessions(sessionsResponse.sessions);
       setSettings(settingsResponse.settings);
+      setCompanions(companionsResponse.companions);
       setPhase("ready");
     } catch (error) {
       // error-policy:J4 user-facing degrade — the fetch failure becomes the
@@ -203,12 +226,48 @@ export function BrowserSessionPolicyPanel({
     [api, settings],
   );
 
+  const resetCompanion = useCallback(
+    async (id: string) => {
+      setPendingCompanionId(id);
+      setActionError(null);
+      try {
+        const { companion } =
+          await api.resetBrowserBridgeCompanionRevocation(id);
+        if (!mountedRef.current) return;
+        setCompanions((current) =>
+          current.map((existing) =>
+            existing.browser === companion.browser
+              ? {
+                  ...existing,
+                  connectionState: "disconnected",
+                  pairingTokenExpiresAt: null,
+                  pairingTokenRevokedAt: null,
+                }
+              : existing,
+          ),
+        );
+      } catch (error) {
+        // error-policy:J4 An owner reset failure stays visible and leaves the
+        // durable revocation state unchanged.
+        if (!mountedRef.current) return;
+        setActionError(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (mountedRef.current) setPendingCompanionId(null);
+      }
+    },
+    [api],
+  );
+
   const visibleSessions = useMemo(() => {
     if (!nowIso) return sessions;
     return sessions.filter(
       (session) => !isBrowserSessionExpired(session, nowIso),
     );
   }, [sessions, nowIso]);
+  const revokedCompanions = useMemo(
+    () => companions.filter((companion) => companion.pairingTokenRevokedAt),
+    [companions],
+  );
 
   if (phase === "loading") {
     return (
@@ -239,7 +298,7 @@ export function BrowserSessionPolicyPanel({
     );
   }
 
-  if (visibleSessions.length === 0) {
+  if (visibleSessions.length === 0 && revokedCompanions.length === 0) {
     if (hideWhenEmpty) return null;
     return (
       <div
@@ -265,6 +324,29 @@ export function BrowserSessionPolicyPanel({
           {actionError}
         </div>
       ) : null}
+      {revokedCompanions.map((companion) => (
+        <div
+          key={companion.id}
+          data-testid={`browser-companion-${companion.id}-recovery`}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-danger/50 bg-danger/10 p-3"
+        >
+          <div className="min-w-0 text-sm">
+            <div className="font-medium">Browser access was revoked</div>
+            <div className="text-xs text-muted-foreground">
+              Reset {BROWSER_LABELS[companion.browser]} to allow automatic
+              reconnection.
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pendingCompanionId === companion.id}
+            onClick={() => void resetCompanion(companion.id)}
+          >
+            Reset {BROWSER_LABELS[companion.browser]}
+          </Button>
+        </div>
+      ))}
       {visibleSessions.map((session) => {
         const verdict = resolveBrowserDomainPolicy(
           session.domain,

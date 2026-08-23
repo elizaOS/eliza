@@ -17,12 +17,13 @@
  * (e.g. `@radix-ui/react-slot`) are pruned from the Docker runtime-dep closure.
  */
 import type { Plugin, ViewCapability } from "@elizaos/core";
+import { isHumanOnlyOrchestratorCapability } from "./orchestrator-capability-authority";
 import {
   orchestratorStatusCommandAction,
   registerOrchestratorCommands,
 } from "./orchestrator-command";
 
-const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
+const ORCHESTRATOR_CAPABILITY_DECLARATIONS: ViewCapability[] = [
   { id: "orchestrator-status", description: "Get orchestrator status" },
   {
     id: "orchestrator-list-tasks",
@@ -155,10 +156,6 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
         type: "string",
         description: "Who or what performed validation",
       },
-      humanOverride: {
-        type: "boolean",
-        description: "Whether a human explicitly overrode the result",
-      },
     },
   },
   {
@@ -203,6 +200,13 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   },
 ];
 
+const ORCHESTRATOR_CAPABILITIES = ORCHESTRATOR_CAPABILITY_DECLARATIONS.map(
+  (capability): ViewCapability =>
+    isHumanOnlyOrchestratorCapability(capability.id)
+      ? { ...capability, authority: "human" }
+      : capability,
+);
+
 const taskCoordinatorPlugin: Plugin = {
   name: "@elizaos/plugin-task-coordinator",
   description: "Coding agent task coordinator and session control surface.",
@@ -228,10 +232,6 @@ const taskCoordinatorPlugin: Plugin = {
       path: "/task-coordinator",
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
-      // First-party instrumented view (data-agent-id controls): grant the
-      // agent-surface capability so the view broker admits agent-driven
-      // fills/clicks (#13452 manifest gate).
-      surface: { capabilities: ["agent-surface"] },
       componentExport: "TaskCoordinatorView",
       relatedActions: ["TASKS"],
       capabilities: [
@@ -321,9 +321,12 @@ const taskCoordinatorPlugin: Plugin = {
       surface: { capabilities: ["agent-surface"] },
       componentExport: "CockpitRoute",
       // The cockpit drives the same orchestrator interact protocol (list /
-      // open-task / create-task / add-agent / stop-agent …) as /orchestrator,
-      // so it advertises the same capabilities — this is what lets app-control
-      // route session-control intents ("stop that agent") to the cockpit.
+      // open-task / create-task / send-message / stop-agent …) as
+      // /orchestrator, so it advertises the same capability descriptors,
+      // including their `authority`. app-control may route the agent-callable
+      // ones (status/list/open/create/send-message) to the cockpit; the
+      // human-only mutations such as stop-agent are listed so the shared
+      // dispatcher refuses them uniformly, never so the planner selects them.
       capabilities: ORCHESTRATOR_CAPABILITIES,
       tags: ["developer", "coding-agent", "cockpit"],
       visibleInManager: true,

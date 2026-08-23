@@ -147,6 +147,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
   };
 });
 
+import { splitCommandLine } from "../../src/services/acp-native-transport.js";
 import {
   AcpService,
   defaultCodexAcpCommand,
@@ -563,10 +564,51 @@ describe("AcpService", () => {
     }
   });
 
+  it("anchors a relative executable path containing spaces losslessly (#24683)", async () => {
+    // anchor -> split must round-trip byte-for-byte. quoteCommandPart()
+    // previously used JSON.stringify, which escapes backslashes, while
+    // splitCommandLine() only strips the surrounding quote pair — so a Windows
+    // path containing spaces re-parsed with doubled separators and the native
+    // transport spawned an executable that does not exist.
+    const dir = mkdtempSync(join(tmpdir(), "relative codex spaces-"));
+    const nested = join(dir, "my bin");
+    const executable = join(nested, "codex-acp");
+    try {
+      await fs.mkdir(nested, { recursive: true });
+      await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(executable, 0o755);
+      const relative = path.relative(process.cwd(), executable);
+      // Guard the fixture actually exercises the reported shape.
+      expect(relative).toContain(" ");
+
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_CODEX_ACP_COMMAND: `"${relative}" --stdio ""`,
+        }),
+      );
+      const inspect = service as unknown as {
+        nativeAgentCommand(agentType: string): string;
+        agentCommandAvailability(agentType: string): { available: boolean };
+      };
+
+      // Re-parsing the anchored command must recover the exact absolute path
+      // and the original argv tail — no doubled separators, no lost args.
+      const anchored = inspect.nativeAgentCommand("codex");
+      expect(splitCommandLine(anchored)).toEqual({
+        command: executable,
+        args: ["--stdio", ""],
+      });
+      expect(inspect.agentCommandAvailability("codex")).toEqual({
+        available: true,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("leaves the managed default Codex command unanchored (#24683)", async () => {
-    const service = new AcpService(
-      runtime({ ELIZA_ACP_TRANSPORT: "native" }),
-    );
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     const inspect = service as unknown as {
       nativeAgentCommand(agentType: string): string;
     };

@@ -686,6 +686,34 @@ describe("compute billing recovery", () => {
     expect(receipt?.hourly_rate).toBe("0.004167");
   });
 
+  test("settles across the bounded gap before an insert trigger's first rate segment", async () => {
+    const { org, user, sandbox, lastBilledAt } = await seed();
+    await dbWrite.delete(computeBillingRateSegments);
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "agent",
+      workload_id: sandbox.id,
+      lifecycle_revision: sandbox.lifecycle_revision,
+      billing_state: "running",
+      rate_per_hour: "0.010000",
+      effective_at: new Date(lastBilledAt.getTime() + 50),
+    });
+
+    const result = await agentBillingRepository.recordHourlyBilling({
+      ...(await claimBillingRun(new Date(lastBilledAt.getTime() + 60 * 60_000))),
+      sandboxId: sandbox.id,
+      organizationId: org.id,
+      userId: user.id,
+      agentName: "elapsed-agent",
+      hourlyRate: 999,
+      billingDescription: "segmented compute",
+      lowCreditWarningAmount: 1,
+      now: new Date(lastBilledAt.getTime() + 60 * 60_000),
+    });
+
+    expect(result).toMatchObject({ status: "billed", amount: 0.01 });
+  });
+
   test("a mismatched tenant cannot charge another tenant's workload", async () => {
     const { user, sandbox } = await seed();
     const [other] = await dbWrite

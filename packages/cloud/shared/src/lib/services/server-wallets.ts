@@ -8,7 +8,7 @@ import { type AgentServerWallet, agentServerWallets } from "../../db/schemas/age
 import { cache } from "../cache/client";
 import { logger } from "../utils/logger";
 import { createStewardClient } from "./steward-client";
-import { resolveStewardTenantCredentials } from "./steward-tenant-config";
+import { ensureStewardTenant } from "./steward-tenant-config";
 
 // ---------------------------------------------------------------------------
 // Error classes
@@ -218,9 +218,18 @@ async function provisionStewardWallet({
   clientAddress,
   chainType,
 }: ProvisionWalletParams) {
-  const steward = await createStewardClient({ organizationId });
+  // A direct signup may still have its idempotent tenant create running under
+  // waitUntil. Wallet creation is a durable tenant-scoped mutation, so it must
+  // establish readiness here instead of falling through to the environment
+  // tenant and permanently recording the wallet under the wrong scope.
+  const tenant = await ensureStewardTenant(organizationId);
+  const steward = await createStewardClient({
+    organizationId,
+    tenantId: tenant.tenantId,
+    apiKey: tenant.apiKey,
+  });
   const agentName = `cloud-${characterId || clientAddress}`;
-  const { tenantId } = await resolveStewardTenantCredentials({ organizationId });
+  const { tenantId } = tenant;
   const persistWalletRecord = async (agentId: string, walletAddress: string) =>
     (
       await db

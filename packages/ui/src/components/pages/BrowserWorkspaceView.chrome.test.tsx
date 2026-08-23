@@ -224,24 +224,15 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.queryByTestId("view-header")).toBeNull();
   });
 
-  it("collapses Browser Bridge administration without hiding session approvals", async () => {
+  it("omits Browser Bridge administration while preserving session approvals", async () => {
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     render(<BrowserWorkspaceView />);
 
     expect(await screen.findByText("No page open")).not.toBeNull();
-    const disclosure = screen.getByTestId(
-      "browser-bridge-controls",
-    ) as HTMLDetailsElement;
-    expect(disclosure.open).toBe(false);
+    expect(screen.queryByTestId("browser-bridge-controls")).toBeNull();
     expect(screen.queryByText("Install Agent Browser Bridge")).toBeNull();
     expect(
       await screen.findByTestId("browser-session-policy-error"),
-    ).not.toBeNull();
-
-    disclosure.open = true;
-    fireEvent(disclosure, new Event("toggle"));
-    expect(
-      await screen.findByText("Install Agent Browser Bridge"),
     ).not.toBeNull();
   });
 

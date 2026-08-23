@@ -34,7 +34,11 @@ export type BudgetedText =
   | {
       readonly ok: false;
       readonly bytes: number;
-      readonly reason: "byte-budget" | "fragmentation-budget" | "deadline";
+      readonly reason:
+        | "byte-budget"
+        | "fragmentation-budget"
+        | "deadline"
+        | "malformed-utf8";
     };
 
 export interface ReadBodyBudgetOptions {
@@ -311,7 +315,7 @@ export async function readBodyTextWithinBudget(
   }
 
   const reader = source.body.getReader();
-  const decoder = new TextDecoder("utf-8");
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const retained = new Uint8Array(maxBytes);
   let received = 0;
   let chunkCount = 0;
@@ -362,5 +366,11 @@ export async function readBodyTextWithinBudget(
     }
   }
 
-  return { ok: true, text: decoder.decode(retained.subarray(0, received)) };
+  try {
+    return { ok: true, text: decoder.decode(retained.subarray(0, received)) };
+  } catch {
+    // error-policy:J1 malformed UTF-8 is payload-integrity rejection, not replacement.
+    cancelBestEffort(source.body, "malformed-utf8", onCancelFailure);
+    return { ok: false, bytes: received, reason: "malformed-utf8" };
+  }
 }

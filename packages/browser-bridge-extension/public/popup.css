@@ -56,7 +56,7 @@ h1 {
 }
 
 button {
-  min-height: 40px;
+  min-height: 44px;
   width: 100%;
   margin-top: 12px;
   border: 1px solid transparent;
@@ -82,12 +82,6 @@ button.disconnect {
   color: CanvasText;
 }
 
-button.secondary {
-  border-color: color-mix(in srgb, CanvasText 20%, transparent);
-  background: Canvas;
-  color: CanvasText;
-}
-
 button:disabled {
   cursor: wait;
   opacity: 0.65;
@@ -105,68 +99,12 @@ summary:focus-visible {
 }
 
 .details summary {
-  min-height: 36px;
-  padding: 8px 4px;
+  min-height: 44px;
+  padding: 12px 4px;
   font-size: 12px;
   line-height: 20px;
   font-weight: 600;
   cursor: pointer;
-}
-
-.recovery {
-  margin-top: 10px;
-  border-top: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
-}
-
-.recovery label {
-  display: block;
-  margin-top: 8px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.recovery textarea {
-  display: block;
-  width: 100%;
-  margin-top: 6px;
-  border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
-  border-radius: 8px;
-  padding: 8px;
-  resize: vertical;
-  background: Canvas;
-  color: CanvasText;
-  font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
-}
-
-dl {
-  display: grid;
-  gap: 10px;
-  margin: 8px 0 0;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
-  border-radius: 10px;
-}
-
-dl div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
-  gap: 8px;
-}
-
-dt,
-dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-dt {
-  color: color-mix(in srgb, CanvasText 66%, transparent);
-}
-
-dd {
-  text-align: right;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -187,13 +125,7 @@ dd {
 
 @media (forced-colors: active) {
   .connection,
-  dl,
   button {
-    border-color: ButtonText;
-  }
-
-  .recovery,
-  .recovery textarea {
     border-color: ButtonText;
   }
 
@@ -213,11 +145,4 @@ dd {
     padding: 12px;
   }
 
-  dl div {
-    grid-template-columns: 1fr;
-  }
-
-  dd {
-    text-align: left;
-  }
 }

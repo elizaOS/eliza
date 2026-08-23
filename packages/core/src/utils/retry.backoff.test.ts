@@ -4,7 +4,7 @@
  * maxMs cap, and the jitter bounds.
  */
 import { describe, expect, it } from "vitest";
-import { type BackoffPolicy, computeBackoff } from "./retry";
+import { type BackoffPolicy, computeBackoff, sleepWithAbort } from "./retry";
 
 const noJitter: BackoffPolicy = {
 	initialMs: 100,
@@ -42,5 +42,29 @@ describe("computeBackoff", () => {
 			expect(v).toBeGreaterThanOrEqual(400);
 			expect(v).toBeLessThanOrEqual(600); // 400 * 1.5
 		}
+	});
+});
+
+describe("sleepWithAbort abort signal listener cleanup", () => {
+	it("rejects immediately if signal is already aborted", async () => {
+		const controller = new AbortController();
+		controller.abort();
+		await expect(sleepWithAbort(100, controller.signal)).rejects.toThrow(
+			"aborted",
+		);
+	});
+
+	it("cleans up listener when sleep times out normally", async () => {
+		const controller = new AbortController();
+		await sleepWithAbort(10, controller.signal);
+		// Signal should not trigger reject after resolution
+		controller.abort();
+	});
+
+	it("cleans up listener and rejects when aborted during sleep", async () => {
+		const controller = new AbortController();
+		const promise = sleepWithAbort(1000, controller.signal);
+		controller.abort();
+		await expect(promise).rejects.toThrow("aborted");
 	});
 });

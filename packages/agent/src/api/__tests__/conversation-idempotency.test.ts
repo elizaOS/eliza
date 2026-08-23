@@ -900,6 +900,59 @@ describe("conversation-route chat idempotency wiring", () => {
     },
   );
 
+  it("reconciles typed terminal metadata onto an already-persisted message-service row", async () => {
+    const { state, handleMessage, storedMemories, updateMemory } =
+      createHarness();
+    const persistedId = stringToUuid("typed-terminal-existing-assistant");
+    handleMessage.mockImplementationOnce(
+      async (runtime: AgentRuntime, message: Memory) => {
+        const persisted: Memory = {
+          id: persistedId,
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          roomId: message.roomId,
+          content: {
+            text: "Shell execution failed.",
+            failureKind: "coding_tool_failure",
+            transient: true,
+            inReplyTo: message.id,
+          },
+        };
+        await runtime.createMemory(persisted, "messages");
+        return {
+          didRespond: true,
+          responseContent: persisted.content,
+          responseMessages: [persisted],
+          persistedResponseMessageIds: [persistedId],
+          terminalFailure: {
+            kind: "coding_tool_failure",
+            message: "Shell execution failed.",
+            transient: true,
+            code: "SHELL_UNAVAILABLE",
+          },
+        };
+      },
+    );
+
+    await runRoute("POST", SEND_PATH, state, {
+      text: "fix the code",
+      clientMessageId: "typed-terminal-existing-row-1",
+    });
+
+    expect(updateMemory).toHaveBeenCalled();
+    expect(
+      storedMemories.find((memory) => memory.id === persistedId)?.content,
+    ).toMatchObject({
+      failureKind: "coding_tool_failure",
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        message: "Shell execution failed.",
+        transient: true,
+        code: "SHELL_UNAVAILABLE",
+      },
+    });
+  });
+
   it("SSE: a retry joins the active turn and replays its durable outcome", async () => {
     const { state, handleMessage } = createHarness();
     let releaseTurn: (() => void) | undefined;

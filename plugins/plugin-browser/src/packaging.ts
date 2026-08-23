@@ -443,14 +443,8 @@ export function buildBrowserBridgeReleaseManifestForVersion(
     firefox: {
       installKind: storeUrls.firefoxAddonsUrl
         ? "firefox_addons"
-        : "github_release",
-      installUrl:
-        storeUrls.firefoxAddonsUrl ??
-        buildGitHubReleaseAssetDownloadUrl(
-          repository,
-          release,
-          firefoxAssetName,
-        ),
+        : "firefox_unsigned_submission",
+      installUrl: storeUrls.firefoxAddonsUrl,
       storeListingUrl: storeUrls.firefoxAddonsUrl,
       asset: {
         fileName: firefoxAssetName,

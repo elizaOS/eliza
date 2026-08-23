@@ -21,6 +21,8 @@ import {
   ElizaError,
   type IAgentRuntime,
   logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { persistConnectorCredentialRefs } from "@elizaos/plugin-google-workspace/connector-credential-refs";
 import { NOTION_SERVICE_NAME } from "./types.js";
@@ -98,7 +100,10 @@ export async function exchangeNotionAuthorizationCode(
     const body = await response.text();
     throw new ElizaError(`Notion token exchange failed with ${response.status}.`, {
       code: "NOTION_OAUTH_TOKEN_EXCHANGE_FAILED",
-      context: { status: response.status, body: body.slice(0, 500) },
+      context: {
+        status: response.status,
+        body: truncateWellFormed(toWellFormedUnicode(body), 500),
+      },
       severity: "fatal",
     });
   }

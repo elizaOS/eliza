@@ -438,6 +438,31 @@ export function sharedRestAuthMe(
 }
 
 /**
+ * GET .../api/auth/status — legacy startup-coordinator probe. The newer
+ * top-level gate uses `/api/auth/me`, but `ElizaClient.getAuthStatus()` still
+ * asks for this compact shape before first-run hydration. The enclosing Cloud
+ * route has already authenticated the API key, so Shared is unambiguously an
+ * authenticated bearer session with no pairing flow of its own.
+ */
+export function sharedRestAuthStatus(): {
+  required: false;
+  authenticated: true;
+  pairingEnabled: false;
+  expiresAt: null;
+  localAccess: false;
+  passwordConfigured: false;
+} {
+  return {
+    required: false,
+    authenticated: true,
+    pairingEnabled: false,
+    expiresAt: null,
+    localAccess: false,
+    passwordConfigured: false,
+  };
+}
+
+/**
  * GET .../api/character — the character the app reads. Reuse the same cache-only
  * character resolver as the shared turn; a linked-character cache miss schedules
  * authoritative hydration under waitUntil and fails retryably instead of reading

@@ -45,6 +45,7 @@ sys.path.insert(0, str(PYTHON_ROOT))
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1179,6 +1180,11 @@ def _run_grpo_local(
                     sampler=sampler,
                     verbose=False,
                 )
+                require_complete_generated_tokens(
+                    tokenizer.encode(raw),
+                    max_new_tokens=config.grpo_max_tokens,
+                    source="run_rlvr_pipeline.mlx",
+                )
             else:
                 inputs = tokenize_with_explicit_limit(
                     tokenizer,
@@ -1194,8 +1200,15 @@ def _run_grpo_local(
                         temperature=0.7,
                         top_p=0.9,
                     )
+                generated_ids = outputs[0][inputs["input_ids"].shape[1] :]
+                require_complete_generated_tokens(
+                    generated_ids,
+                    max_new_tokens=config.grpo_max_tokens,
+                    source="run_rlvr_pipeline.transformers",
+                    terminal_token_ids=tokenizer.eos_token_id,
+                )
                 raw = tokenizer.decode(
-                    outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
+                    generated_ids, skip_special_tokens=True
                 )
 
             decision = normalize_decision(

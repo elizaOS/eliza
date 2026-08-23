@@ -22,17 +22,22 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
   createMessageMemory,
   drainPostDeliveryTasks,
   ElizaError,
+  invalidateRelatedEntityIds,
   logger,
   MemoryType,
+  PrincipalService,
   postDeliveryTaskQuarantineReason,
+  revalidateOwnerExclusiveDisclosure,
   stringToUuid,
 } from "@elizaos/core";
 import type { DeterministicModelDiagnostics } from "@elizaos/core/testing";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
+import { computeIdentityRequestDigest } from "@elizaos/plugin-sql";
 import {
   type CapturedAction,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
@@ -372,13 +377,61 @@ function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
 
 type ScenarioRoomDefinition = {
   id: string;
+  logicalWorldId: string;
+  logicalEntityId: string;
+  accountId: string;
   roomId: UUID;
+  canonicalEntityId: UUID;
   userId: UUID;
   worldId: UUID;
   source: string;
   channelType: ChannelType;
   userName: string;
 };
+
+async function attestScenarioTurnAudience(
+  runtime: AgentRuntime,
+  message: Memory,
+  room: ScenarioRoomDefinition,
+): Promise<void> {
+  // Lightweight executor unit harnesses intentionally omit persistence APIs.
+  if (typeof runtime.getRoom !== "function") return;
+  // Reassert the authored connector topology at ingress. The generic scenario
+  // harness can materialize the active room with its own `test` source before
+  // a turn; a real connector supplies this metadata on every delivery. Without
+  // this upsert, later world discovery observes the harness transport instead
+  // of the Discord/Telegram/X identity the scenario is exercising.
+  await restoreScenarioConnectorTopology(runtime, room);
+  await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+  if (room.channelType !== ChannelType.DM) return;
+  const decision = await revalidateOwnerExclusiveDisclosure(runtime, message);
+  if (!decision.allowed) {
+    throw new ElizaError("Scenario connector DM failed audience attestation", {
+      code: "SCENARIO_CONNECTOR_AUDIENCE_INVALID",
+      context: {
+        roomId: room.roomId,
+        accountId: room.accountId,
+        reason: decision.reason,
+      },
+    });
+  }
+}
+
+async function restoreScenarioConnectorTopology(
+  runtime: AgentRuntime,
+  room: ScenarioRoomDefinition,
+): Promise<void> {
+  await runtime.ensureConnection({
+    entityId: room.userId,
+    roomId: room.roomId,
+    worldId: room.worldId,
+    worldName: room.logicalWorldId,
+    userName: room.userName,
+    source: room.source,
+    channelId: room.roomId,
+    type: room.channelType,
+  });
+}
 
 // Mirrors the subset of the real (display-dependent) ComputerUseService that
 // scenario providers/actions read through `getService("computeruse")`: the
@@ -735,7 +788,7 @@ function normalizeChannelType(value: unknown): ChannelType {
 function resolveScenarioRooms(
   scenario: ScenarioDefinition,
 ): ScenarioRoomDefinition[] {
-  const worldId = stringToUuid(`scenario-runner-world:${scenario.id}`);
+  const defaultWorldId = stringToUuid(`scenario-runner-world:${scenario.id}`);
   const maybeRooms = (scenario as { rooms?: unknown }).rooms;
   const rooms = Array.isArray(maybeRooms) ? maybeRooms : [];
   const resolved = rooms
@@ -752,6 +805,16 @@ function resolveScenarioRooms(
         typeof raw.account === "string" && raw.account.trim().length > 0
           ? raw.account.trim()
           : `scenario-user:${scenario.id}:${id}`;
+      const logicalEntityId =
+        typeof raw.entity === "string" && raw.entity.trim().length > 0
+          ? raw.entity.trim()
+          : account;
+      const explicitEntity =
+        typeof raw.entity === "string" && raw.entity.trim().length > 0;
+      const logicalWorldId =
+        typeof raw.world === "string" && raw.world.trim().length > 0
+          ? raw.world.trim()
+          : "default";
       const userName =
         typeof raw.title === "string" && raw.title.trim().length > 0
           ? raw.title.trim()
@@ -759,9 +822,18 @@ function resolveScenarioRooms(
 
       return {
         id,
+        logicalWorldId,
+        logicalEntityId,
+        accountId: account,
         roomId: stringToUuid(`scenario-room:${scenario.id}:${id}`),
-        userId: stringToUuid(`scenario-account:${account}`),
-        worldId,
+        userId: stringToUuid(`scenario-account:${scenario.id}:${account}`),
+        canonicalEntityId: explicitEntity
+          ? stringToUuid(`scenario-entity:${scenario.id}:${logicalEntityId}`)
+          : stringToUuid(`scenario-account:${scenario.id}:${account}`),
+        worldId:
+          logicalWorldId === "default"
+            ? defaultWorldId
+            : stringToUuid(`scenario-world:${scenario.id}:${logicalWorldId}`),
         source:
           typeof raw.source === "string" && raw.source.trim().length > 0
             ? raw.source.trim()
@@ -779,9 +851,13 @@ function resolveScenarioRooms(
   return [
     {
       id: "main",
+      logicalWorldId: "default",
+      logicalEntityId: `${scenario.id}:main`,
+      accountId: `${scenario.id}:main`,
       roomId: stringToUuid(`scenario-room:${scenario.id}:main`),
       userId: stringToUuid(`scenario-account:${scenario.id}:main`),
-      worldId,
+      canonicalEntityId: stringToUuid(`scenario-account:${scenario.id}:main`),
+      worldId: defaultWorldId,
       source: "scenario-runner",
       channelType: ChannelType.DM,
       userName: "ScenarioUser",
@@ -801,7 +877,156 @@ function resolveTurnRoom(
   if (!requestedRoom) {
     return defaultRoom;
   }
-  return rooms.find((room) => room.id === requestedRoom) ?? defaultRoom;
+  const resolved = rooms.find((room) => room.id === requestedRoom);
+  if (!resolved) {
+    throw new ElizaError("Scenario turn references an unknown room", {
+      code: "SCENARIO_TURN_ROOM_NOT_FOUND",
+      context: {
+        turn: turn.name,
+        requestedRoom,
+        availableRooms: rooms.map((room) => room.id),
+      },
+    });
+  }
+  return resolved;
+}
+
+/**
+ * Materialize authored connector accounts as distinct principals, then link
+ * accounts sharing `rooms[].entity` through both the relationship graph and
+ * the canonical SQL principal authority. Scenario assertions therefore cover
+ * the same reversible identity redirects used by production data access.
+ */
+async function establishScenarioIdentityTopology(
+  runtime: AgentRuntime,
+  scenarioId: string,
+  rooms: readonly ScenarioRoomDefinition[],
+): Promise<void> {
+  const byCanonical = new Map<UUID, ScenarioRoomDefinition[]>();
+  for (const room of rooms) {
+    const group = byCanonical.get(room.canonicalEntityId) ?? [];
+    group.push(room);
+    byCanonical.set(room.canonicalEntityId, group);
+  }
+
+  for (const [canonicalEntityId, group] of byCanonical) {
+    const sourcePrincipalIds = Array.from(
+      new Set(group.map((room) => room.userId)),
+    ).filter((entityId) => entityId !== canonicalEntityId);
+    if (sourcePrincipalIds.length === 0) continue;
+
+    if (!(await runtime.getEntityById(canonicalEntityId))) {
+      const created = await runtime.createEntity({
+        id: canonicalEntityId,
+        agentId: runtime.agentId,
+        names: [group[0]?.logicalEntityId ?? "Scenario owner"],
+        metadata: { scenarioId, canonicalIdentity: true },
+      });
+      if (!created) {
+        throw new ElizaError("Failed to create scenario canonical identity", {
+          code: "SCENARIO_CANONICAL_IDENTITY_CREATE_FAILED",
+          context: { scenarioId, canonicalEntityId },
+        });
+      }
+    }
+
+    const existingRelationships = await runtime.getRelationships({
+      entityIds: [canonicalEntityId, ...sourcePrincipalIds],
+      tags: ["identity_link"],
+    });
+    for (const sourcePrincipalId of sourcePrincipalIds) {
+      const exists = existingRelationships.some((relationship) => {
+        const samePair =
+          (relationship.sourceEntityId === canonicalEntityId &&
+            relationship.targetEntityId === sourcePrincipalId) ||
+          (relationship.sourceEntityId === sourcePrincipalId &&
+            relationship.targetEntityId === canonicalEntityId);
+        return (
+          samePair &&
+          relationship.tags?.includes("identity_link") &&
+          (relationship.metadata as { status?: unknown } | undefined)
+            ?.status === "confirmed"
+        );
+      });
+      if (!exists) {
+        const created = await runtime.createRelationship({
+          sourceEntityId: canonicalEntityId,
+          targetEntityId: sourcePrincipalId,
+          tags: ["identity_link"],
+          metadata: {
+            status: "confirmed",
+            source: "scenario-runner",
+            scenarioId,
+          },
+        });
+        if (!created) {
+          throw new ElizaError("Failed to create scenario identity link", {
+            code: "SCENARIO_IDENTITY_LINK_CREATE_FAILED",
+            context: {
+              scenarioId,
+              canonicalEntityId,
+              sourcePrincipalId,
+            },
+          });
+        }
+      }
+    }
+
+    const authority = runtime.getService<PrincipalService>(
+      PrincipalService.serviceType,
+    );
+    if (!authority) continue;
+
+    const unresolved: UUID[] = [];
+    let generation = 0;
+    for (const sourcePrincipalId of sourcePrincipalIds) {
+      const resolution = await authority.resolveCanonicalPrincipal(
+        runtime.agentId,
+        sourcePrincipalId,
+      );
+      generation = resolution.generation;
+      if (resolution.canonicalPrincipalId !== canonicalEntityId) {
+        unresolved.push(sourcePrincipalId);
+      }
+    }
+    if (unresolved.length === 0) continue;
+
+    const proposalKey = `scenario:${scenarioId}:identity:${canonicalEntityId}`;
+    const proposalValue = {
+      agentId: runtime.agentId,
+      canonicalPrincipalId: canonicalEntityId,
+      sourcePrincipalIds: unresolved.sort(),
+      actorPrincipalId: canonicalEntityId,
+      reason: "verified connector accounts authored as one scenario entity",
+      idempotencyKey: proposalKey,
+    };
+    const plan = await authority.proposeMerge({
+      ...proposalValue,
+      requestDigest: computeIdentityRequestDigest(
+        "propose-merge",
+        proposalValue,
+      ),
+    });
+    const confirmation = await authority.confirmMerge({
+      agentId: runtime.agentId,
+      planId: plan.id,
+      expectedGeneration: generation,
+      actorPrincipalId: canonicalEntityId,
+    });
+    const commitValue = {
+      agentId: runtime.agentId,
+      planId: plan.id,
+      confirmationId: confirmation.id,
+      expectedGeneration: generation,
+      actorPrincipalId: canonicalEntityId,
+      idempotencyKey: `${proposalKey}:commit`,
+    };
+    await authority.commitMerge({
+      ...commitValue,
+      requestDigest: computeIdentityRequestDigest("commit-merge", commitValue),
+    });
+    invalidateRelatedEntityIds(runtime);
+  }
 }
 
 function getDefaultScenarioRoom(
@@ -1650,6 +1875,11 @@ async function executeMessageTurn(
     scenarioId,
     ...(runId ? { batchId: runId } : {}),
   };
+  // Connector simulations have already authenticated the authored account.
+  // Mint the same process-local audience proof a real connector ingress does;
+  // otherwise the generic API sanitizer correctly treats the turn as external
+  // and every owner-private provider/action fails closed for the wrong reason.
+  await attestScenarioTurnAudience(runtime, message, room);
 
   const messageService = (
     runtime as {
@@ -1705,6 +1935,10 @@ async function executeMessageTurn(
 
   // Let completed events settle.
   await new Promise((r) => setTimeout(r, 500));
+  // MessageService's generic harness ingress can upsert the active room with
+  // its transport source. Restore the authored connector metadata just as the
+  // next real connector delivery would before later discovery assertions.
+  await restoreScenarioConnectorTopology(runtime, room);
 
   return { responseText, durationMs: Date.now() - startedAt, syntheticFailure };
 }
@@ -1771,6 +2005,7 @@ async function executeActionTurn(
     turn.options !== null && typeof turn.options === "object"
       ? (turn.options as Record<string, unknown>)
       : {};
+  await attestScenarioTurnAudience(runtime, message, room);
   const startedAt = Date.now();
   let responseText = "";
   const callback = async (content: { text?: string }): Promise<Memory[]> => {
@@ -2552,7 +2787,23 @@ export async function runScenario(
   // plain-text memory seeds write durable facts attributed to this room +
   // entity so the core FACTS provider can surface them during turns.
   ctx.primaryRoomId = primaryRoom.roomId;
-  ctx.primaryUserId = primaryRoom.userId;
+  ctx.primaryUserId = primaryRoom.canonicalEntityId;
+  ctx.roomIds = Object.fromEntries(rooms.map((room) => [room.id, room.roomId]));
+  ctx.worldIds = Object.fromEntries(
+    rooms.map((room) => [room.logicalWorldId, room.worldId]),
+  );
+  ctx.entityIds = Object.fromEntries(
+    rooms.map((room) => [room.logicalEntityId, room.canonicalEntityId]),
+  );
+  ctx.accountEntityIds = Object.fromEntries(
+    rooms.map((room) => [room.accountId, room.userId]),
+  );
+  ctx.roomWorldIds = Object.fromEntries(
+    rooms.map((room) => [room.id, room.worldId]),
+  );
+  ctx.roomEntityIds = Object.fromEntries(
+    rooms.map((room) => [room.id, room.userId]),
+  );
   const variables: ScenarioVariableState = {
     baseNow: new Date(startedAt),
     capturesByName: new Map<string, unknown>(),
@@ -2571,7 +2822,23 @@ export async function runScenario(
     );
     await resetSharedSchedulingState(runtime);
 
-    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
+    runtime.setSetting(
+      "ELIZA_ADMIN_ENTITY_ID",
+      primaryRoom.canonicalEntityId,
+      false,
+    );
+    runtime.setSetting(
+      "ELIZA_OWNER_CONTACTS_JSON",
+      JSON.stringify(
+        Object.fromEntries(
+          rooms.map((room) => [
+            room.accountId,
+            { entityId: room.userId, source: room.source },
+          ]),
+        ),
+      ),
+      false,
+    );
     (
       runtime as {
         getService: AgentRuntime["getService"];
@@ -2598,6 +2865,7 @@ export async function runScenario(
         type: room.channelType,
       });
     }
+    await establishScenarioIdentityTopology(runtime, scenario.id, rooms);
 
     const seedResult = await runCustomSeeds(scenario, runtime, ctx, logicalNow);
     logicalNow = seedResult.now;

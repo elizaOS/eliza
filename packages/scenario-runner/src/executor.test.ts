@@ -14,6 +14,7 @@ import type {
 } from "@elizaos/core";
 import {
   pendingPostDeliveryTaskCount,
+  stringToUuid,
   trackPostDeliveryTask,
 } from "@elizaos/core";
 import {
@@ -21,6 +22,7 @@ import {
   type DeterministicModelFixtureRegistry,
 } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
+import type { ScenarioContext } from "../schema/index.d.ts";
 import { runScenario } from "./executor";
 
 function createRuntime(
@@ -33,6 +35,10 @@ function createRuntime(
     plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
+    getEntityById: vi.fn(async () => null),
+    createEntity: vi.fn(async () => true),
+    getRelationships: vi.fn(async () => []),
+    createRelationship: vi.fn(async () => true),
     getService: vi.fn(() => null),
     reportError: vi.fn(),
     setSetting: vi.fn(),
@@ -45,6 +51,189 @@ function createRuntime(
     ...overrides,
   } as unknown as AgentRuntime;
 }
+
+describe("scenario executor multi-world topology", () => {
+  it("resolves two worlds and two accounts to one explicit canonical entity", async () => {
+    const connections: Array<Parameters<AgentRuntime["ensureConnection"]>[0]> =
+      [];
+    const ensureConnection = vi.fn(
+      async (connection: Parameters<AgentRuntime["ensureConnection"]>[0]) => {
+        connections.push(connection);
+      },
+    );
+    const runtime = createRuntime([], { ensureConnection });
+    let seedContext: ScenarioContext | undefined;
+
+    const report = await runScenario(
+      {
+        id: "multi-world-linked-owner",
+        title: "Multi-world linked owner",
+        domain: "executor",
+        rooms: [
+          {
+            id: "discord-home",
+            world: "discord-guild-42",
+            account: "discord:owner-123",
+            entity: "owner",
+            source: "discord",
+            title: "Owner on Discord",
+          },
+          {
+            id: "telegram-home",
+            world: "telegram-space-99",
+            account: "telegram:owner-456",
+            entity: "owner",
+            source: "telegram",
+            title: "Owner on Telegram",
+          },
+        ],
+        seed: [
+          {
+            type: "custom",
+            name: "capture resolved topology",
+            apply(ctx) {
+              seedContext = ctx;
+            },
+          },
+        ],
+        turns: [],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(ensureConnection).toHaveBeenCalledTimes(2);
+    const discordConnection = connections[0];
+    const telegramConnection = connections[1];
+    const expectedEntityId = stringToUuid(
+      "scenario-entity:multi-world-linked-owner:owner",
+    );
+    const discordAccountEntityId = stringToUuid(
+      "scenario-account:multi-world-linked-owner:discord:owner-123",
+    );
+    const telegramAccountEntityId = stringToUuid(
+      "scenario-account:multi-world-linked-owner:telegram:owner-456",
+    );
+    expect(discordConnection?.entityId).toBe(discordAccountEntityId);
+    expect(telegramConnection?.entityId).toBe(telegramAccountEntityId);
+    expect(discordConnection?.entityId).not.toBe(telegramConnection?.entityId);
+    expect(discordConnection?.worldId).toBe(
+      stringToUuid("scenario-world:multi-world-linked-owner:discord-guild-42"),
+    );
+    expect(telegramConnection?.worldId).toBe(
+      stringToUuid("scenario-world:multi-world-linked-owner:telegram-space-99"),
+    );
+    expect(discordConnection?.worldId).not.toBe(telegramConnection?.worldId);
+
+    expect(seedContext?.roomIds).toEqual({
+      "discord-home": stringToUuid(
+        "scenario-room:multi-world-linked-owner:discord-home",
+      ),
+      "telegram-home": stringToUuid(
+        "scenario-room:multi-world-linked-owner:telegram-home",
+      ),
+    });
+    expect(seedContext?.worldIds).toEqual({
+      "discord-guild-42": discordConnection?.worldId,
+      "telegram-space-99": telegramConnection?.worldId,
+    });
+    expect(seedContext?.entityIds).toEqual({ owner: expectedEntityId });
+    expect(seedContext?.accountEntityIds).toEqual({
+      "discord:owner-123": discordAccountEntityId,
+      "telegram:owner-456": telegramAccountEntityId,
+    });
+    expect(seedContext?.roomEntityIds).toEqual({
+      "discord-home": discordAccountEntityId,
+      "telegram-home": telegramAccountEntityId,
+    });
+    expect(seedContext?.roomWorldIds).toEqual({
+      "discord-home": discordConnection?.worldId,
+      "telegram-home": telegramConnection?.worldId,
+    });
+  });
+
+  it("fails when the confirmed identity-link graph cannot be persisted", async () => {
+    const runtime = createRuntime([], {
+      createRelationship: vi.fn(async () => false),
+    });
+
+    const report = await runScenario(
+      {
+        id: "identity-link-write-failure",
+        title: "Identity link write failure",
+        domain: "executor",
+        rooms: [
+          {
+            id: "owner-dm",
+            account: "discord:owner-123",
+            entity: "owner",
+            source: "discord",
+          },
+        ],
+        turns: [],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toBe("Failed to create scenario identity link");
+  });
+
+  it("fails instead of running an explicitly targeted turn in the default room", async () => {
+    const handler = vi.fn(async () => ({ success: true, text: "ran" }));
+    const runtime = createRuntime([
+      {
+        name: "ROOM_PROBE",
+        description: "Records whether a mistargeted scenario action ran.",
+        validate: async () => true,
+        handler,
+      },
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "unknown-turn-room",
+        title: "Unknown turn room",
+        domain: "executor",
+        rooms: [
+          {
+            id: "owner-dm",
+            account: "discord:owner-123",
+            source: "discord",
+          },
+        ],
+        turns: [
+          {
+            kind: "action",
+            name: "mistyped destination",
+            room: "owner-dm-typo",
+            actionName: "ROOM_PROBE",
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toBe("Scenario turn references an unknown room");
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
 
 describe("scenario executor wait turns", () => {
   it("fails strict final validation when a caught model mismatch remains", async () => {

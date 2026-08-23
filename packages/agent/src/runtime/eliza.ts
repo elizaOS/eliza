@@ -1285,6 +1285,44 @@ export function ensureProvisionedCloudContainerConfig(
     changed = true;
   }
 
+  // A managed container normally routes inference through Eliza Cloud. The
+  // repository's explicitly opted-in local Docker acceptance lane is the one
+  // exception: it retains the managed Cloud credential/session and lifecycle,
+  // while a real direct provider owns the embedded runtime's text brain. Do
+  // this before the generic topology repair below, otherwise the provisioned
+  // marker rewrites the direct route back to cloud-proxy at every boot.
+  const directInferenceDisabledCloud = isExplicitFalseEnvValue(
+    readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_INFERENCE", env),
+  );
+  const directProvider = readEffectiveEnvValue(config, "CEREBRAS_API_KEY", env)
+    ? "cerebras"
+    : readEffectiveEnvValue(config, "OPENAI_API_KEY", env)
+      ? "openai"
+      : undefined;
+  if (directInferenceDisabledCloud && directProvider) {
+    const existingRouting = resolveServiceRoutingInConfig(
+      config as Record<string, unknown>,
+    );
+    const smallModel = readEffectiveEnvValue(config, "OPENAI_SMALL_MODEL", env);
+    const largeModel = readEffectiveEnvValue(config, "OPENAI_LARGE_MODEL", env);
+    config.deploymentTarget = {
+      runtime: "local",
+    };
+    config.serviceRouting = {
+      ...(existingRouting ?? {}),
+      llmText: {
+        backend: directProvider,
+        transport: "direct",
+        ...(smallModel ? { smallModel } : {}),
+        ...(largeModel ? { largeModel } : {}),
+      },
+    };
+    logger.info(
+      `[eliza][cloud-topology] provisioned=true directProvider=${directProvider} -> runtime=local inference=false`,
+    );
+    return true;
+  }
+
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
@@ -2290,7 +2328,11 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // Cloud inference is selected from the canonical first-run connection, not
   // just from raw cloud flags. This keeps linked cloud auth from re-enabling
   // Eliza Cloud after the user has switched to a local or remote provider.
-  const inferenceConfigured = topology.services.inference || isCloudContainer;
+  // ensureProvisionedCloudContainerConfig() repairs ordinary managed agents to
+  // a canonical Cloud route above. Reading that repaired topology is enough;
+  // the container marker alone must not overwrite the explicit local-Docker
+  // direct-provider lane back to Cloud between the two boot passes.
+  const inferenceConfigured = topology.services.inference;
   const shouldLoadCloudPlugin = topology.shouldLoadPlugin || isCloudContainer;
   const configuredCloudApiKey = trimCloudCredential(cloud?.apiKey);
   const effectiveCloudApiKey =
@@ -2301,8 +2343,12 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // have the actual credential that plugin-elizacloud will use before Cloud can
   // register the high-priority chat-brain handlers.
   const inferenceAvailable =
-    isCloudContainer ||
-    (topology.services.inference && Boolean(effectiveCloudApiKey));
+    (topology.services.inference &&
+      (isCloudContainer || Boolean(effectiveCloudApiKey))) ||
+    (isCloudContainer &&
+      !isExplicitFalseEnvValue(
+        readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_INFERENCE"),
+      ));
 
   const setCloudUsageEnv = (key: string, enabled: boolean): void => {
     if (enabled) {

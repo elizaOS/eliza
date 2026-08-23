@@ -1,7 +1,7 @@
 /**
  * Derives the compact popup status and its sole contextual action from the
- * background connection state. Diagnostics are intentionally non-secret and
- * remain separate from the default one-line status surface.
+ * background connection state. The model deliberately contains no connection
+ * diagnostics or credential-adjacent values.
  */
 import type { BackgroundState } from "./protocol";
 
@@ -14,20 +14,14 @@ export type PopupStatusKind =
   | "error";
 
 export type PopupContextualAction =
-  | "show_recovery"
-  | "sync"
-  | "grant_website_access";
+  | "grant_website_access"
+  | "grant_current_site"
+  | "recover";
 
 export interface PopupStatusModel {
   kind: PopupStatusKind;
   label: string;
   action: { kind: PopupContextualAction; label: string } | null;
-  diagnostics: {
-    app: string;
-    lastSync: string;
-    mode: string;
-    tabCount: string;
-  };
   showDisconnect: boolean;
 }
 
@@ -37,28 +31,44 @@ function isFutureIso(value: string | null | undefined): boolean {
   return Number.isFinite(parsed) && parsed > Date.now();
 }
 
-function formatClock(value: string | null): string {
-  if (!value) return "Not yet";
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed)
-    ? new Date(parsed).toLocaleTimeString()
-    : "Not available";
+function normalizeHttpOrigin(value: string): string | null {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.origin.toLowerCase();
+  } catch {
+    // error-policy:J3 Browser-owned tab and setting URLs are untrusted input.
+    return null;
+  }
+}
+
+/** Resolves the one exact browser permission the current policy can use. */
+export function requiredCurrentSiteOriginPattern(
+  state: BackgroundState,
+  activeTabUrl: string | null,
+): string | null {
+  const origin = activeTabUrl ? normalizeHttpOrigin(activeTabUrl) : null;
+  const settings = state.settings;
+  if (!origin || !settings) return null;
+  const settingAllowsCurrentSite =
+    settings.siteAccessMode === "current_site_only" ||
+    (settings.siteAccessMode === "granted_sites" &&
+      settings.grantedOrigins.some(
+        (candidate) => normalizeHttpOrigin(candidate) === origin,
+      ));
+  return settingAllowsCurrentSite ? `${origin}/*` : null;
 }
 
 export function derivePopupStatusModel(args: {
   state: BackgroundState;
-  discoveredApiBaseUrl: string | null;
   hasAllWebsiteAccess: boolean;
+  currentSitePermissionRequired: boolean;
 }): PopupStatusModel {
-  const { state, discoveredApiBaseUrl, hasAllWebsiteAccess } = args;
+  const { state, hasAllWebsiteAccess, currentSitePermissionRequired } = args;
   const settings = state.settings;
   const hasConfig = Boolean(state.config);
-  const diagnostics = {
-    app: state.config?.apiBaseUrl ?? discoveredApiBaseUrl ?? "Not found",
-    lastSync: formatClock(state.lastSyncAt),
-    mode: state.settingsSummary ?? "Not available",
-    tabCount: String(state.rememberedTabCount),
-  };
   const model = (
     kind: PopupStatusKind,
     label: string,
@@ -67,7 +77,6 @@ export function derivePopupStatusModel(args: {
     kind,
     label,
     action,
-    diagnostics,
     showDisconnect: hasConfig,
   });
 
@@ -76,31 +85,37 @@ export function derivePopupStatusModel(args: {
   }
 
   if (!hasConfig) {
-    if (discoveredApiBaseUrl) {
-      return model(
-        state.lastError ? "error" : "needs_settings",
-        state.lastError ? "Pairing needs attention" : "Eliza is ready to pair",
-        { kind: "show_recovery", label: "Pair this browser" },
-      );
+    if (state.connectionIssue === "owner_disconnected") {
+      return model("needs_settings", "Disconnected from Eliza", {
+        kind: "recover",
+        label: "Reconnect",
+      });
     }
-    return model("needs_app", "Open Eliza, then pair this browser", {
-      kind: "show_recovery",
-      label: "Pair this browser",
-    });
-  }
-
-  if (state.lastError) {
-    return model("error", "Connection needs attention", {
-      kind: "sync",
-      label: "Retry connection",
-    });
+    if (state.connectionIssue === "recovery_required") {
+      return model("error", "Reset in Eliza, then reconnect", {
+        kind: "recover",
+        label: "Reconnect",
+      });
+    }
+    const connectionLabel =
+      state.connectionIssue === "app_not_authenticated"
+        ? "Sign in to Eliza"
+        : state.connectionIssue === "app_not_running"
+          ? "Open Eliza to connect"
+          : null;
+    return model(
+      connectionLabel === null && state.lastError ? "error" : "needs_app",
+      connectionLabel ??
+        (state.lastError
+          ? "Connection needs attention"
+          : "Open Eliza to connect"),
+    );
   }
 
   if (!settings) {
-    return model("syncing", "Finishing connection to Eliza…", {
-      kind: "sync",
-      label: "Retry connection",
-    });
+    return state.lastError
+      ? model("error", "Connection needs attention")
+      : model("syncing", "Finishing connection to Eliza…");
   }
 
   if (isFutureIso(settings.pauseUntil)) {
@@ -120,6 +135,17 @@ export function derivePopupStatusModel(args: {
       kind: "grant_website_access",
       label: "Grant website access",
     });
+  }
+
+  if (currentSitePermissionRequired) {
+    return model("needs_permission", "Connected · Allow this site", {
+      kind: "grant_current_site",
+      label: "Allow this site",
+    });
+  }
+
+  if (state.lastError) {
+    return model("error", "Connection needs attention");
   }
 
   return model("connected", "Connected to Eliza");

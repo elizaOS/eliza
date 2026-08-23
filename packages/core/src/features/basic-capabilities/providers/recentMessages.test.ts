@@ -7,6 +7,30 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+
+const revalidateOwnerExclusiveDisclosure = vi.hoisted(() =>
+	vi.fn(async () => ({
+		allowed: true as const,
+		basis: "owner_private_destination" as const,
+	})),
+);
+
+vi.mock(
+	"../../../security/trusted-delivery-audience.ts",
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import("../../../security/trusted-delivery-audience.ts")
+			>();
+		return {
+			...actual,
+			revalidateOwnerExclusiveDisclosure,
+			markOwnerExclusiveDisclosureUsed: vi.fn(),
+			recordOwnerExclusiveSuppression: vi.fn(),
+		};
+	},
+);
+
 import {
 	ChannelType,
 	type IAgentRuntime,
@@ -62,6 +86,7 @@ function makeRuntime(
 		getEntityById: vi.fn(async () => null),
 		getMemories: vi.fn(async () => memories),
 		getRoomsForParticipants: vi.fn(async () => []),
+		getRoomsForParticipant: vi.fn(async () => []),
 		getMemoriesByRoomIds: vi.fn(async () => []),
 		getService: vi.fn(() => null),
 		...overrides,
@@ -522,7 +547,8 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).toContain("User: bitcoin price?");
 	});
 
-	it("skips the cross-room interactions fetch on the first compose of a turn", async () => {
+	it("renders authorized cross-room interactions on the first compose of a turn", async () => {
+		expect(recentMessagesProvider.alwaysInResponseState).toBe(true);
 		const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000a";
 		const memories = [
 			makeMemory("msg-1", USER_ID, "hello agent", "discord", 1000),
@@ -532,6 +558,7 @@ describe("recentMessagesProvider", () => {
 			{},
 			{
 				getRoomsForParticipants: vi.fn(async () => [OTHER_ROOM_ID]),
+				getRoomsForParticipant: vi.fn(async () => [OTHER_ROOM_ID]),
 				getMemoriesByRoomIds: vi.fn(async () => [
 					{
 						id: "cross-1",
@@ -552,17 +579,27 @@ describe("recentMessagesProvider", () => {
 			{ values: {}, data: {}, text: "" },
 		);
 
-		expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
-		expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
-		expect(result.values?.recentMessageInteractions).toBe("");
-		expect(result.data?.recentInteractions).toEqual([]);
-		// The in-room transcript is unaffected by the lean pass.
+		expect(runtime.getRoomsForParticipants).toHaveBeenCalledWith([USER_ID]);
+		expect(runtime.getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
+		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalled();
+		expect(result.values?.recentMessageInteractions).toContain(
+			"the blue key is under the mat",
+		);
+		expect(result.data?.recentInteractions).toHaveLength(1);
+		expect(result.data?.recentInteractionsDisclosure).toBe(
+			"owner_private_destination",
+		);
 		expect(result.text).toContain("User: hello agent");
-		expect(result.text).not.toContain("blue key");
+		expect(result.text).toContain(
+			"# Recent conversations across verified accounts",
+		);
+		expect(result.text).toContain("blue key");
 	});
 
 	it("fetches cross-room interactions on a turn recompose (cached state has this provider)", async () => {
 		const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000a";
+		const SOURCE_ONLY_ROOM_ID = "00000000-0000-0000-0000-00000000000b";
+		const TARGET_ONLY_ROOM_ID = "00000000-0000-0000-0000-00000000000c";
 		const memories = [
 			makeMemory("msg-1", USER_ID, "hello agent", "discord", 1000),
 		];
@@ -570,7 +607,16 @@ describe("recentMessagesProvider", () => {
 			memories,
 			{},
 			{
-				getRoomsForParticipants: vi.fn(async () => [ROOM_ID, OTHER_ROOM_ID]),
+				getRoomsForParticipants: vi.fn(async () => [
+					ROOM_ID,
+					OTHER_ROOM_ID,
+					SOURCE_ONLY_ROOM_ID,
+				]),
+				getRoomsForParticipant: vi.fn(async () => [
+					ROOM_ID,
+					OTHER_ROOM_ID,
+					TARGET_ONLY_ROOM_ID,
+				]),
 				getMemoriesByRoomIds: vi.fn(async () => [
 					{
 						id: "cross-1",
@@ -596,7 +642,8 @@ describe("recentMessagesProvider", () => {
 			},
 		);
 
-		expect(runtime.getRoomsForParticipants).toHaveBeenCalled();
+		expect(runtime.getRoomsForParticipants).toHaveBeenCalledWith([USER_ID]);
+		expect(runtime.getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
 		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
 			tableName: "messages",
 			roomIds: [OTHER_ROOM_ID],
@@ -605,6 +652,108 @@ describe("recentMessagesProvider", () => {
 		expect(result.values?.recentMessageInteractions).toContain(
 			"the blue key is under the mat",
 		);
+	});
+
+	it("fails closed before cross-room reads when the destination is not owner-private", async () => {
+		revalidateOwnerExclusiveDisclosure.mockResolvedValueOnce({
+			allowed: false,
+			reason: "participant_mismatch",
+			audience: undefined,
+		});
+		const runtime = makeRuntime(
+			[],
+			{},
+			{
+				getRoomsForParticipants: vi.fn(async () => [ROOM_ID]),
+				getMemoriesByRoomIds: vi.fn(async () => []),
+			},
+		);
+
+		const result = await recentMessagesProvider.get(
+			runtime,
+			makeMemory("current", USER_ID, "recall that", "discord", 2000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
+		expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
+		expect(result.data?.recentInteractions).toEqual([]);
+	});
+
+	it("does not duplicate cross-room history owned by an always-on dedicated provider", async () => {
+		const getRoomsForParticipants = vi.fn(async () => [ROOM_ID]);
+		const getRoomsForParticipant = vi.fn(async () => [ROOM_ID]);
+		const getMemoriesByRoomIds = vi.fn(async () => []);
+		const runtime = makeRuntime(
+			[],
+			{},
+			{
+				providers: [
+					{
+						name: "recent-conversations",
+						alwaysInResponseState: true,
+					},
+				],
+				getRoomsForParticipants,
+				getRoomsForParticipant,
+				getMemoriesByRoomIds,
+			},
+		);
+
+		const result = await recentMessagesProvider.get(
+			runtime,
+			makeMemory("current", USER_ID, "recall that", "discord", 2000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(getRoomsForParticipants).not.toHaveBeenCalled();
+		expect(getRoomsForParticipant).not.toHaveBeenCalled();
+		expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
+		expect(result.data?.recentInteractions).toEqual([]);
+	});
+
+	it("renders attachment-only cross-world context without capability URLs", async () => {
+		const otherRoomId = "00000000-0000-0000-0000-00000000000a";
+		const runtime = makeRuntime(
+			[],
+			{},
+			{
+				getRoomsForParticipants: vi.fn(async () => [otherRoomId]),
+				getRoomsForParticipant: vi.fn(async () => [otherRoomId]),
+				getMemoriesByRoomIds: vi.fn(async () => [
+					{
+						id: "cross-attachment",
+						agentId: AGENT_ID,
+						roomId: otherRoomId,
+						entityId: USER_ID,
+						createdAt: 500,
+						content: {
+							text: "",
+							attachments: [
+								{
+									id: "receipt",
+									url: "https://private.example/receipt.jpg",
+									filename: "receipt.jpg",
+									mimeType: "image/jpeg",
+									description: "Dinner is at 6:30 for four at Saffron House",
+								},
+							],
+						},
+					} as Memory,
+				]),
+			},
+		);
+
+		const result = await recentMessagesProvider.get(
+			runtime,
+			makeMemory("current", USER_ID, "what was on it?", "telegram", 2000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain(
+			"Dinner is at 6:30 for four at Saffron House",
+		);
+		expect(result.text).not.toContain("private.example");
 	});
 });
 

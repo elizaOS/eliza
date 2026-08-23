@@ -558,7 +558,7 @@ export async function handleBrowserBridgeRoutes(
   ) {
     ctx.error(
       res,
-      "Automatic browser pairing is disabled. Create an authenticated pairing in Eliza and import its pairing JSON in the extension.",
+      "This endpoint is retired. The extension enrolls automatically through the authenticated Eliza desktop app; after revocation, reset the browser in Eliza and reconnect.",
       410,
     );
     return true;
@@ -613,6 +613,29 @@ export async function handleBrowserBridgeRoutes(
       json(
         res,
         await service.revokeBrowserCompanion(
+          companionId,
+          ctx.state.adminEntityId,
+        ),
+      );
+    });
+  }
+
+  const browserCompanionResetRevocationMatch = pathname.match(
+    /^\/api\/browser-bridge\/companions\/([^/]+)\/reset-revocation$/,
+  );
+  if (method === "POST" && browserCompanionResetRevocationMatch) {
+    const companionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompanionResetRevocationMatch,
+      1,
+      res,
+      "browser companion id",
+    );
+    if (!companionId) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.resetBrowserCompanionRevocation(
           companionId,
           ctx.state.adminEntityId,
         ),

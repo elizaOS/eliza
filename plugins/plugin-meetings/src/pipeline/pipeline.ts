@@ -144,7 +144,7 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     backend?: AsrBackend,
   ) {
     this.backend = backend ?? new RuntimeModelAsrBackend(options.runtime);
-    this.idPrefix = options.sessionId.slice(0, 8);
+    this.idPrefix = options.sessionId;
     this.manager = new SpeakerStreamManager({
       sampleRate: MEETING_AUDIO_SAMPLE_RATE,
       now: () => Date.now() - this.sessionEpochMs,

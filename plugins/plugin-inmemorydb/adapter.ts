@@ -1417,7 +1417,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (params.type && l.type !== params.type) return false;
       return true;
     });
-    logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    logs.sort((a, b) => {
+      const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+        ? new Date(b.createdAt).getTime()
+        : 0;
+      const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+        ? new Date(a.createdAt).getTime()
+        : 0;
+      return bTime - aTime;
+    });
     const offset = params.offset ?? 0;
     if (offset > 0) logs = logs.slice(offset);
     if (params.limit !== undefined) logs = logs.slice(0, params.limit);
@@ -2079,7 +2087,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
       const direction = query.order === "newest" ? -1 : 1;
       requests.sort((a, b) => {
-        const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+          ? new Date(a.createdAt).getTime()
+          : 0;
+        const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+          ? new Date(b.createdAt).getTime()
+          : 0;
+        const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
         const aId = String(a.id);
         const bId = String(b.id);
@@ -2124,7 +2138,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
       const direction = query.order === "newest" ? -1 : 1;
       entries.sort((a, b) => {
-        const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+          ? new Date(a.createdAt).getTime()
+          : 0;
+        const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+          ? new Date(b.createdAt).getTime()
+          : 0;
+        const timeDifference = aTime - bTime;
         if (timeDifference !== 0) return timeDifference * direction;
         const aId = String(a.id);
         const bId = String(b.id);

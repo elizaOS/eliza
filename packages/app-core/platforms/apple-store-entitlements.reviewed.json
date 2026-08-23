@@ -58,6 +58,16 @@
         "aps-environment": {
           "value": "production",
           "justification": "MAS distribution uses the production APNs environment."
+        },
+        "com.apple.security.application-groups": {
+          "arrayStringPatterns": ["^group\\.ai\\.elizaos\\.browserbridge$"],
+          "justification": "Required for the Safari browser bridge extension to reach the desktop enrollment broker through its shared app-group container."
+        },
+        "keychain-access-groups": {
+          "arrayStringPatterns": [
+            "^\\$\\(AppIdentifierPrefix\\)ai\\.elizaos\\.browserbridge\\.shared$"
+          ],
+          "justification": "Required for the desktop broker and Safari extension to authenticate enrollment with one Team-prefixed Keychain item."
         }
       }
     },
@@ -74,6 +84,16 @@
         "com.apple.security.inherit": {
           "value": true,
           "justification": "Nested MAS binaries inherit the parent app sandbox scope."
+        },
+        "com.apple.security.application-groups": {
+          "arrayStringPatterns": ["^group\\.ai\\.elizaos\\.browserbridge$"],
+          "justification": "Required by the signed browser bridge Keychain helper packaged as a nested binary."
+        },
+        "keychain-access-groups": {
+          "arrayStringPatterns": [
+            "^\\$\\(AppIdentifierPrefix\\)ai\\.elizaos\\.browserbridge\\.shared$"
+          ],
+          "justification": "Required by the signed browser bridge Keychain helper to access the Safari-shared enrollment item."
         }
       }
     },
@@ -95,6 +115,16 @@
           "value": true,
           "reviewSensitive": true,
           "appReviewJustification": "Scoped to the bundled Bun helper only. The MAS parent app, child helpers, and nested frameworks must not receive broad unsigned executable memory or library-validation exceptions."
+        },
+        "com.apple.security.application-groups": {
+          "arrayStringPatterns": ["^group\\.ai\\.elizaos\\.browserbridge$"],
+          "justification": "Required for the Bun-hosted desktop broker to listen in the Safari app-group container."
+        },
+        "keychain-access-groups": {
+          "arrayStringPatterns": [
+            "^\\$\\(AppIdentifierPrefix\\)ai\\.elizaos\\.browserbridge\\.shared$"
+          ],
+          "justification": "Pins the Bun-hosted desktop broker to the same reviewed Safari enrollment access group."
         }
       }
     },

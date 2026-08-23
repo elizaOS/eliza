@@ -371,6 +371,7 @@ describe("cancelResource fail-closed before side effects", () => {
       organizationId: ORG,
       resourceId: "agent-100000",
       resourceType: "agent_sandbox",
+      authorizeInfrastructureMutation: async () => undefined,
     });
 
     expect(result.stoppedBilling).toBe(true);
@@ -390,6 +391,7 @@ describe("cancelResource fail-closed before side effects", () => {
         organizationId: ORG,
         resourceId: "container-1",
         resourceType: "container",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).rejects.toBeInstanceOf(CorruptActiveBillingNumberError);
 
@@ -405,6 +407,7 @@ describe("cancelResource fail-closed before side effects", () => {
         organizationId: ORG,
         resourceId: "agent-100000",
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).rejects.toBeInstanceOf(CorruptActiveBillingNumberError);
 
@@ -431,6 +434,7 @@ describe("cancelResource fail-closed before side effects", () => {
         organizationId: ORG,
         resourceId: "agent-100000",
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       });
       throw new Error("Expected deletion conflict");
     } catch (error) {
@@ -443,5 +447,23 @@ describe("cancelResource fail-closed before side effects", () => {
 
     expect(agentInfrastructureCalls).toBe(1);
     expect(dbWriteUpdateCalls).toBe(1);
+  });
+
+  test("authority loss after resource lookup prevents every infrastructure effect", async () => {
+    agentRows = [baseAgent()];
+
+    await expect(
+      activeBillingService.cancelResource({
+        organizationId: ORG,
+        resourceId: "agent-100000",
+        resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => {
+          throw new Error("authority changed");
+        },
+      }),
+    ).rejects.toThrow("authority changed");
+
+    expect(agentInfrastructureCalls).toBe(0);
+    expect(dbWriteUpdateCalls).toBe(0);
   });
 });

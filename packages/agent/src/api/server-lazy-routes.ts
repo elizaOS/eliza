@@ -474,20 +474,6 @@ export async function handleModelConfigRoutes(
   );
 }
 
-type MusicPlayerFallbackModule =
-  typeof import("./music-player-route-fallback.ts");
-export async function tryHandleMusicPlayerStatusFallbackLazy(
-  ...args: Parameters<
-    MusicPlayerFallbackModule["tryHandleMusicPlayerStatusFallback"]
-  >
-): Promise<boolean> {
-  const options = args[0] as { pathname?: string } | undefined;
-  if (options?.pathname !== "/music-player/status") return false;
-  return (
-    await import("./music-player-route-fallback.ts")
-  ).tryHandleMusicPlayerStatusFallback(...args);
-}
-
 type LifeOpsInboxFallbackModule =
   typeof import("./lifeops-inbox-fallback-routes.ts");
 export async function tryHandleLifeOpsInboxFallbackLazy(
