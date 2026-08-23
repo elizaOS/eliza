@@ -3948,8 +3948,7 @@ function buildV5PlannerActionSurface(params: {
 		const hasStrongRetrievalEvidence =
 			result.score >= 0.72 ||
 			result.matchedBy.includes("exact") ||
-			result.matchedBy.includes("regex") ||
-			result.matchedBy.includes("contextMatch");
+			result.matchedBy.includes("regex");
 		const belongsToSelectedSpecificContext = (
 			Array.isArray(result.parent.contexts) ? result.parent.contexts : []
 		).some((context) =>
@@ -3966,11 +3965,6 @@ function buildV5PlannerActionSurface(params: {
 	for (const parent of tieredSurface.tierAParents) {
 		if (!initialParentNames.has(parent.normalizedName)) continue;
 		initialActionNames.add(normalizeActionIdentifier(parent.name));
-		for (const childName of parent.childNames) {
-			if (authorizedActionIdentities.has(childName.trim())) {
-				initialActionNames.add(normalizeActionIdentifier(childName));
-			}
-		}
 	}
 	const normalizedCandidates = new Set(
 		candidateActions.map(normalizeActionIdentifier),

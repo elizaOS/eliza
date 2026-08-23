@@ -6,6 +6,10 @@ provider always requires an exact fixture or explicit resolver:
 
 - `deterministic-pr-smoke` covers the deterministic model reply plus
   VIEWS manager, pin, detached window, and mounted-view interact flows.
+- `deterministic-capability-discovery` inspects the real planner schema on each
+  iteration: the initial surface stays compact, `DISCOVER_CAPABILITIES` finds a
+  deferred child action, the next iteration exposes that action, and its
+  destructive sibling remains hidden while the requested handler executes.
 - `deterministic-app-control-actions` covers VIEWS list, search, show,
   broadcast, create/edit, direct edit, and confirmed delete plus APP list,
   launch, relaunch, `load_from_directory`, and create/edit.

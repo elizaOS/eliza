@@ -693,6 +693,58 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		).map((tool) => tool.name);
 		expect(firstTools).not.toContain("CALENDAR_READ");
 		expect(secondTools).toContain("CALENDAR_READ");
+
+		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
+			stages: Array<{
+				kind: string;
+				model?: {
+					modelType?: string;
+					tools?: Array<{ name?: string }>;
+					toolCalls?: Array<{ name?: string }>;
+				};
+				tool?: {
+					name?: string;
+					result?: {
+						data?: {
+							capabilityDiscovery?: {
+								activated?: {
+									actions?: string[];
+									contexts?: string[];
+								};
+							};
+						};
+					};
+				};
+			}>;
+		};
+		const plannerStages = trajectory.stages.filter(
+			(stage) =>
+				stage.kind === "planner" &&
+				stage.model?.modelType === ModelType.ACTION_PLANNER,
+		);
+		const recordedToolNames = (stage: (typeof plannerStages)[number]) =>
+			(stage.model?.tools ?? []).flatMap((tool) =>
+				typeof tool.name === "string" ? [tool.name] : [],
+			);
+		expect(recordedToolNames(plannerStages[0])).toContain(
+			"DISCOVER_CAPABILITIES",
+		);
+		expect(recordedToolNames(plannerStages[0])).not.toContain("CALENDAR_READ");
+		expect(
+			plannerStages[0]?.model?.toolCalls?.map((call) => call.name),
+		).toEqual(["DISCOVER_CAPABILITIES"]);
+		expect(recordedToolNames(plannerStages[1])).toContain("CALENDAR_READ");
+
+		const discoveryStage = trajectory.stages.find(
+			(stage) =>
+				stage.kind === "tool" && stage.tool?.name === "DISCOVER_CAPABILITIES",
+		);
+		expect(
+			discoveryStage?.tool?.result?.data?.capabilityDiscovery?.activated,
+		).toMatchObject({
+			actions: ["CALENDAR_READ"],
+			contexts: ["calendar"],
+		});
 	});
 
 	it("keeps a 200-action global catalog searchable without injecting its names or schemas", async () => {

@@ -1,9 +1,8 @@
 /**
  * Exercises the v5 tiered action surface through `runV5MessageRuntimeStage1`:
- * Stage-1 hints promoting a parent to Tier A, sub-actions surfaced as
- * first-class planner tools, hot-parent child capping, role-gated tool omission,
- * and Tier-B sub-planner execution. Deterministic: a canned-response stub
- * runtime, no live model.
+ * Stage-1 hints promoting relevant actions, deferred child schemas, explicit
+ * context expansion, role-gated tool omission, and parent sub-planner
+ * execution. Deterministic: a canned-response stub runtime, no live model.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetActionRolePolicyCacheForTests } from "../runtime/action-role-policy";
@@ -302,7 +301,7 @@ describe("v5 tiered action surface", () => {
 		_resetActionRolePolicyCacheForTests();
 	});
 
-	it("uses Stage 1 hints to promote a parent to Tier A and expose children", async () => {
+	it("uses Stage 1 hints to expose a parent and the specifically named child", async () => {
 		const playMusic = makeAction({
 			name: "PLAY_MUSIC",
 			description: "Start playing a track.",
@@ -346,7 +345,7 @@ describe("v5 tiered action surface", () => {
 		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("MUSIC");
 		expect(prompt).toContain("PLAY_MUSIC");
-		expect(prompt).toContain("PAUSE_MUSIC");
+		expect(prompt).not.toContain("PAUSE_MUSIC");
 		expect(prompt).not.toContain("SEND_EMAIL");
 	});
 
@@ -508,7 +507,7 @@ describe("v5 tiered action surface", () => {
 		expect(availableActionsSection(runtime)).toContain("TASKS_REPLY");
 	});
 
-	it("expands strong context matches into callable actions", async () => {
+	it("expands the selected context without expanding a sibling child context", async () => {
 		const createEvent = makeAction({
 			name: "CREATE_EVENT",
 			description: "Create a calendar event.",
@@ -543,7 +542,7 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("CALENDAR");
-		expect(prompt).toContain("CREATE_EVENT");
+		expect(prompt).not.toContain("CREATE_EVENT");
 		expect(prompt).toContain("CHAT_MESSAGE");
 	});
 
@@ -606,10 +605,10 @@ describe("v5 tiered action surface", () => {
 		expect(availableActionsSection(runtime)).toContain("MESSAGE");
 	});
 
-	it("exposes Tier-A sub-actions as first-class planner tools alongside the parent", async () => {
-		// This is the core guarantee: when MUSIC is in Tier A, its sub-actions
-		// PLAY_MUSIC and PAUSE_MUSIC are first-class entries in the planner's
-		// `tools` array (not just hidden behind a "dig into parent" round-trip).
+	it("keeps unnamed sibling schemas deferred beside a selected parent", async () => {
+		// The parent and explicitly named child are immediately callable. The
+		// sibling remains reachable through the parent or capability discovery
+		// without consuming planner context on this turn.
 		const playMusic = makeAction({
 			name: "PLAY_MUSIC",
 			description: "Start playing a track.",
@@ -659,7 +658,7 @@ describe("v5 tiered action surface", () => {
 		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
 		expect(toolNames).toContain("MUSIC");
 		expect(toolNames).toContain("PLAY_MUSIC");
-		expect(toolNames).toContain("PAUSE_MUSIC");
+		expect(toolNames).not.toContain("PAUSE_MUSIC");
 		// Universal terminals must still be appended.
 		expect(toolNames).toContain("REPLY");
 		expect(toolNames).toContain("IGNORE");
@@ -668,12 +667,11 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).not.toContain("SEND_EMAIL");
 	});
 
-	it("keeps every registered child of a hot parent callable (#24699)", async () => {
-		// One hot tier-A parent must not expose its whole namespace (observed
-		// live: all 24 MESSAGE_* children on a two-intent turn). The per-parent
-		// child narrow keeps the Stage-1 candidate plus the best query-token
-		// matches under the default cap of 8; everything else stays reachable
-		// only through the MESSAGE umbrella, whose handler routes any subaction.
+	it("keeps every registered child searchable without eagerly expanding the namespace", async () => {
+		// One hot parent must not expose its whole namespace (observed live: all
+		// 24 MESSAGE_* children on a two-intent turn). The parent and explicit
+		// Stage-1 candidate stay eager; every sibling remains available through
+		// the parent router or same-turn capability discovery.
 		const reviewQueue = makeAction({
 			name: "MESSAGE_REVIEW_QUEUE",
 			description: "Review channel messages awaiting a response.",
@@ -724,30 +722,17 @@ describe("v5 tiered action surface", () => {
 			plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
 		)?.tools;
 		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
-		// Fires when relevant: the umbrella and the turn-relevant children are
-		// first-class tools.
+		// The umbrella and explicit Stage-1 candidate are first-class tools.
 		expect(toolNames).toContain("MESSAGE");
 		expect(toolNames).toContain("MESSAGE_REVIEW_QUEUE");
-		expect(toolNames).toContain("MESSAGE_SEND_REPLY");
-		// No narrowing: every registered child stays callable. Relevance may
-		// reorder the surface, but a child the planner never sees is a
-		// capability the agent silently cannot use (#24699).
+		expect(toolNames).not.toContain("MESSAGE_SEND_REPLY");
 		const childTools = toolNames.filter((name) =>
 			String(name).startsWith("MESSAGE_"),
 		);
-		expect(childTools.sort()).toEqual(
-			[
-				"MESSAGE_REVIEW_QUEUE",
-				"MESSAGE_SEND_REPLY",
-				...bulkOps.map((action) => action.name),
-			].sort(),
-		);
-		// The rendered action section mirrors the tool surface, so a child that
-		// is callable must also be described — otherwise the planner can invoke
-		// something the prompt never told it about.
+		expect(childTools).toEqual(["MESSAGE_REVIEW_QUEUE"]);
 		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("MESSAGE_REVIEW_QUEUE");
-		expect(prompt).toContain("MESSAGE_OP_9");
+		expect(prompt).not.toContain("MESSAGE_OP_9");
 	});
 
 	it("keeps a denied inline child's metadata out of model context (#24699)", async () => {
@@ -901,7 +886,10 @@ describe("v5 tiered action surface", () => {
 		const runtime = makeRuntime({
 			actions: [parent, allowedChild, deniedChild],
 			responses: [
-				stage1Response({ contexts: ["general"] }),
+				stage1Response({
+					contexts: ["general"],
+					candidateActionNames: ["PRIVATECHILD"],
+				}),
 				plannerToolResponse("PRIVATECHILD"),
 				finishEvaluatorResponse("Allowed child completed."),
 			],
