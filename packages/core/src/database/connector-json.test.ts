@@ -279,58 +279,6 @@ describe("connector JSON projection", () => {
 		// short-circuited: the precise byte check decides, so a value sitting
 		// exactly on the byte boundary stays accepted while one byte past it is
 		// rejected.
-	it("reports truthful code-unit context on early rejection (#24888)", () => {
-		// The early path reports code-unit counts, NOT byte counts, with the
-		// minimum-bytes invariant and exactUtf8BytesAvailable:false. This is the
-		// case the previous implementation mislabeled as bytes.
-		const overLength = "a".repeat(MAX_CONNECTOR_JSON_STRING_BYTES + 1);
-		let captured: Record<string, unknown> | undefined;
-
-		try {
-			cloneConnectorJsonObject({ value: overLength });
-		} catch (err) {
-			captured = (err as { context?: Record<string, unknown> }).context;
-		}
-
-		expect(captured).toBeDefined();
-		expect(captured!.reason).toBe("leaf");
-		expect(captured!.stringCodeUnits).toBe(overLength.length);
-		expect(captured!.minimumUtf8Bytes).toBe(overLength.length);
-		expect(captured!.exactUtf8BytesAvailable).toBe(false);
-		// Must NOT claim a byte count that was never measured.
-		expect(captured!.stringBytes).toBeUndefined();
-	});
-
-	it("early rejection preserves the byte-understatement invariant for multibyte input (#24888)", () => {
-		// "é" is 1 code unit / 2 UTF-8 bytes, so the code-unit count can be
-		// materially less than the byte count. The early path must report the
-		// code-unit count honestly rather than overstating bytes.
-		const multibyte = "é".repeat(MAX_CONNECTOR_JSON_STRING_BYTES / 2 + 1);
-		expect(multibyte.length).toBeLessThanOrEqual(
-			MAX_CONNECTOR_JSON_STRING_BYTES,
-		);
-		// But the byte count exceeds the ceiling (each "é" is 2 bytes), so this
-		// input actually takes the encoded path — proving the early path is NOT
-		// reached for multibyte strings whose code-unit length fits.
-		// Construct a value that DOES exceed the code-unit ceiling but whose
-		// byte count is even larger than the code-unit count implies.
-		const overUnits = "é".repeat(MAX_CONNECTOR_JSON_STRING_BYTES + 1);
-		let captured: Record<string, unknown> | undefined;
-		try {
-			cloneConnectorJsonObject({ value: overUnits });
-		} catch (err) {
-			captured = (err as { context?: Record<string, unknown> }).context;
-		}
-		expect(captured).toBeDefined();
-		expect(captured!.stringCodeUnits).toBe(MAX_CONNECTOR_JSON_STRING_BYTES + 1);
-		expect(captured!.minimumUtf8Bytes).toBe(MAX_CONNECTOR_JSON_STRING_BYTES + 1);
-		// The real byte count would be 2*(MAX+1), which is strictly greater than
-		// the minimum reported — proving the invariant is a lower bound, not
-		// a measurement.
-		expect(captured!.exactUtf8BytesAvailable).toBe(false);
-		expect(captured!.stringBytes).toBeUndefined();
-	});
-
 		const exactAscii = "a".repeat(MAX_CONNECTOR_JSON_STRING_BYTES);
 		expect(cloneConnectorJsonObject({ value: exactAscii })).toEqual({
 			value: exactAscii,
@@ -355,5 +303,105 @@ describe("connector JSON projection", () => {
 		expect(() =>
 			cloneConnectorJsonObject({ value: overByBytesOnly }),
 		).toThrowError(expect.objectContaining({ code: CONNECTOR_JSON_UNBOUNDED }));
+	});
+
+	it("reports measured code units, not bytes, on early rejection (#24888)", () => {
+		// The early length rejection never encodes, so its context must report
+		// the code-unit count it measured, the lower bound that count proves, and
+		// an explicit signal that no exact byte count exists. A byte field on that
+		// path would claim a measurement that was deliberately skipped.
+		const utf8Encode = TextEncoder.prototype.encode;
+		let encodedInputs: string[] = [];
+		TextEncoder.prototype.encode = function encode(
+			this: TextEncoder,
+			input?: string,
+		) {
+			encodedInputs.push(input ?? "");
+			return utf8Encode.call(this, input as string);
+		} as typeof utf8Encode;
+
+		const captureRejection = (
+			run: () => unknown,
+		): { code: string; context: Record<string, unknown> } => {
+			try {
+				run();
+			} catch (error) {
+				return error as { code: string; context: Record<string, unknown> };
+			}
+			throw new Error("expected the projection to reject");
+		};
+		const earlyContext = (
+			field: "keyCodeUnits" | "stringCodeUnits",
+			codeUnits: number,
+		) => ({
+			reason: "leaf",
+			[field]: codeUnits,
+			minimumUtf8Bytes: codeUnits,
+			exactUtf8BytesAvailable: false,
+		});
+
+		try {
+			// ASCII, BMP multibyte, astral, and an unpaired surrogate all exceed
+			// the code-unit ceiling, so every one of them must be rejected with
+			// the same truthful context and without ever being encoded, even
+			// though their real byte counts differ (1, 2, 2, and 3 bytes per unit).
+			// Exact context equality also proves no keyBytes/stringBytes claim.
+			const samples = ["a", "é", "🦊", "\uD83E"].map((unit) =>
+				unit.repeat(MAX_CONNECTOR_JSON_STRING_BYTES / unit.length + 1),
+			);
+			for (const overLength of samples) {
+				const codeUnits = overLength.length;
+				expect(codeUnits).toBeGreaterThan(MAX_CONNECTOR_JSON_STRING_BYTES);
+
+				encodedInputs = [];
+				const asString = captureRejection(() =>
+					cloneConnectorJsonObject({ value: overLength }),
+				);
+				expect(asString.code).toBe(CONNECTOR_JSON_UNBOUNDED);
+				expect(asString.context).toEqual(
+					earlyContext("stringCodeUnits", codeUnits),
+				);
+				// Only the short "value" key reaches the encoder; the over-length
+				// string itself never does.
+				expect(encodedInputs).toEqual(["value"]);
+
+				encodedInputs = [];
+				const asKey = captureRejection(() =>
+					cloneConnectorJsonObject({ [overLength]: "value" }),
+				);
+				expect(asKey.code).toBe(CONNECTOR_JSON_UNBOUNDED);
+				expect(asKey.context).toEqual(earlyContext("keyCodeUnits", codeUnits));
+				expect(encodedInputs).toEqual([]);
+			}
+
+			// A multibyte value within the code-unit ceiling reaches the encoder,
+			// so its rejection reports the exact byte count it measured and none
+			// of the lower-bound fields.
+			const overByBytesOnly = "é".repeat(
+				MAX_CONNECTOR_JSON_STRING_BYTES / 2 + 1,
+			);
+			expect(overByBytesOnly.length).toBeLessThanOrEqual(
+				MAX_CONNECTOR_JSON_STRING_BYTES,
+			);
+			encodedInputs = [];
+			const encodedString = captureRejection(() =>
+				cloneConnectorJsonObject({ value: overByBytesOnly }),
+			);
+			expect(encodedInputs).toEqual(["value", overByBytesOnly]);
+			expect(encodedString.code).toBe(CONNECTOR_JSON_UNBOUNDED);
+			expect(encodedString.context).toEqual({
+				reason: "leaf",
+				stringBytes: MAX_CONNECTOR_JSON_STRING_BYTES + 2,
+			});
+			const encodedKey = captureRejection(() =>
+				cloneConnectorJsonObject({ [overByBytesOnly]: "value" }),
+			);
+			expect(encodedKey.context).toEqual({
+				reason: "leaf",
+				keyBytes: MAX_CONNECTOR_JSON_STRING_BYTES + 2,
+			});
+		} finally {
+			TextEncoder.prototype.encode = utf8Encode;
+		}
 	});
 });
