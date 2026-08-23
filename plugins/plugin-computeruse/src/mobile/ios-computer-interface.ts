@@ -32,7 +32,7 @@
  * cleanly so callers don't have to reach into the raw Capacitor bridge.
  */
 
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   ComputerInterface,
   CursorPosition,
@@ -186,7 +186,10 @@ export class IosComputerInterface implements ComputerInterface {
   }
 
   async typeText(args: { text: string }): Promise<void> {
-    this.refuseKeyboard("typeText", args.text.slice(0, 16));
+    this.refuseKeyboard(
+      "typeText",
+      truncateWellFormed(toWellFormedUnicode(args.text), 16),
+    );
   }
 
   async pressKey(args: { key: string }): Promise<void> {
