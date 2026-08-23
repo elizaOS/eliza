@@ -9,7 +9,7 @@ import {
   _resetMissingSendHandlerLogsForTests,
   hasRuntimeSendHandler,
   logMissingSendHandlerOnce,
-} from "./send-handler-availability.ts";
+} from "../send-handler-availability.ts";
 
 beforeEach(() => {
   _resetMissingSendHandlerLogsForTests();
