@@ -79,8 +79,10 @@ interface DatabaseError extends Error {
   position?: string;
 }
 
+type MigrationBackend = "pglite" | "postgres";
+
 interface MigrationClient {
-  backend: "pglite" | "postgres";
+  backend: MigrationBackend;
   query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[] }>;
   end(): Promise<void>;
 }
@@ -130,6 +132,20 @@ const USAGE_QUOTAS_RELEASE_BARRIER_TAGS = [
 type MigrationReleaseBarrierDecision =
   | { action: "continue" }
   | { action: "pause"; stopBeforeJournalIndex: number };
+
+/**
+ * Durable authority the release barrier decides from. Today that is only the
+ * database backend the operator selected through DATABASE_URL: `pglite://` is
+ * the local-only backend (e2e stacks, cloud:mock, developer data dirs) that
+ * never serves production traffic, so no Worker can be exposed to the
+ * drop/restore window there. PostgreSQL keeps failing closed at every ledger
+ * position before 0282, an empty ledger included, until the Phase B/operator
+ * contract of #23829 supplies an explicit bootstrap/release authority; ledger
+ * emptiness alone does not prove no Worker attaches during or after bootstrap.
+ */
+interface MigrationReleaseBarrierAuthority {
+  backend: MigrationBackend;
+}
 
 async function readJournal(): Promise<Journal> {
   return JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as Journal;
@@ -411,15 +427,25 @@ export function validateAppliedMigrationLedger(
 
 /**
  * Fences the two-step usage-quotas repair while the compatibility Worker is
- * being rolled out. Any validated ledger before 0282 may apply its safe prefix
- * but pauses before the drop so the deploy can continue without exposing the
- * old Worker to the missing table. Environments that already recorded 0282
+ * being rolled out (#23829 Phase A, #23859). What the barrier protects is a
+ * served deployment: a Worker already bound to this database must never run
+ * against the window between 0282 (drop) and 0282_01 (restore). On PostgreSQL
+ * any validated ledger before 0282, an empty one included, applies its safe
+ * prefix but pauses before the drop, so the deploy continues without exposing
+ * the Worker to the missing table. Environments that already recorded 0282
  * must proceed directly to the restoring 0282_01 migration. Any other suffix is
  * unsafe and fails closed before the first pending migration is applied.
+ *
+ * The bypass is scoped by `authority`, never inferred from the ledger: PGlite
+ * is the local-only backend with no served Worker, so it continues through
+ * the whole journal from any ledger position, fresh or resumed after a run
+ * that stopped before the drop, once the guarded pair's shape has been
+ * validated. An unstated authority is treated as PostgreSQL and fails closed.
  */
 export function evaluateMigrationReleaseBarrier(
   migrations: Migration[],
   lastAppliedJournalIndex: number,
+  authority: MigrationReleaseBarrierAuthority = { backend: "postgres" },
 ): MigrationReleaseBarrierDecision {
   const journalTags = migrations.map((migration) => migration.entry.tag);
   const barrierIndexes = USAGE_QUOTAS_RELEASE_BARRIER_TAGS.map((tag) =>
@@ -461,6 +487,12 @@ export function evaluateMigrationReleaseBarrier(
       `Migration release barrier expected adjacent journal entries (${expectedSuffix}); found (${actualSuffix || "empty"})`,
     );
   }
+
+  // The local-only backend is never a served deployment, so no ledger position
+  // is a barrier target there. Deciding from the ledger instead would strand a
+  // fresh environment whose first run stopped before 0282: every later run
+  // would see an applied prefix and pause forever.
+  if (authority.backend === "pglite") return { action: "continue" };
 
   if (lastAppliedJournalIndex < dropIndex) {
     return { action: "pause", stopBeforeJournalIndex: dropIndex };
@@ -689,6 +721,7 @@ export async function runMigrations(
       const releaseBarrier = evaluateMigrationReleaseBarrier(
         migrations,
         validatedLedger.lastAppliedJournalIndex,
+        { backend: client.backend },
       );
       const pending = migrations.slice(
         validatedLedger.lastAppliedJournalIndex + 1,

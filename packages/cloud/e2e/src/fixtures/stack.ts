@@ -2,6 +2,7 @@
  * Cloud E2E stack fixture.
  *
  * Boots the full mock-backed cloud stack:
+ *   0. cloud-shared migrations straight into the PGlite data dir (pglite://)
  *   1. PGlite TCP bridge (via packages/cloud/scripts/admin/dev/pglite-server.ts)
  *   2. Hetzner mock (in-process, free port)
  *   3. Control-plane mock (in-process, free port, points at Hetzner mock)
@@ -373,6 +374,25 @@ export async function startCloudStack(
 
   const procs: SpawnedProc[] = [];
 
+  // Migrate the data dir directly (sharedEnv carries DATABASE_URL=pglite://)
+  // before the TCP bridge opens it: PGlite is single-writer, and the migrator
+  // scopes its usage-quotas release-barrier bypass to the local-only pglite://
+  // backend. Through the bridge's postgresql:// URL the runner would fail
+  // closed before 0282 like any PostgreSQL target (#23829) and leave every
+  // stack without the later migrations. Same order as cloud:mock.
+  if (!opts.skipMigrate) {
+    await runLoggedStep(
+      "cloud-migrate",
+      BUN,
+      ["run", "--cwd", "packages/cloud/shared", "db:migrate"],
+      {
+        env: sharedEnv,
+        cwd: REPO_ROOT,
+        logFile: join(LOG_DIR, "cloud-migrate.log"),
+      },
+    );
+  }
+
   const pgliteEnv = {
     ...sharedEnv,
     PGLITE_HOST: "127.0.0.1",
@@ -411,19 +431,6 @@ export async function startCloudStack(
   const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
   process.env.DATABASE_URL = databaseUrl;
   process.env.TEST_DATABASE_URL = databaseUrl;
-
-  if (!opts.skipMigrate) {
-    await runLoggedStep(
-      "cloud-migrate",
-      BUN,
-      ["run", "--cwd", "packages/cloud/shared", "db:migrate"],
-      {
-        env: stackEnv,
-        cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "cloud-migrate.log"),
-      },
-    );
-  }
 
   // Start Stripe only after database bootstrap. Its origin is needed by the
   // dev wrapper, while the synthetic credentials stay out of sharedEnv so
