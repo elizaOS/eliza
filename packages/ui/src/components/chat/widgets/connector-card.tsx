@@ -270,9 +270,9 @@ export const ConnectorCardWidget = memo(function ConnectorCardWidget({
             enableResult.error?.trim() || enableResult.message?.trim();
           throw new Error(
             t("connectorcard.EnableRejectedAfterSave", {
-              defaultValue: detail
-                ? `The token was saved, but the connector could not be enabled: ${detail}`
-                : "The token was saved, but the connector could not be enabled. Try again.",
+              defaultValue:
+                "The token was saved, but the connector could not be enabled{{detail}}",
+              detail: detail ? `: ${detail}` : ". Try again.",
             }),
           );
         }
