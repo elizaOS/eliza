@@ -391,8 +391,29 @@ function findExecutableOnPath(name: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Serialize one command part so `splitCommandLine` recovers it byte-for-byte.
+ *
+ * That parser strips a surrounding quote pair WITHOUT unescaping the contents,
+ * so its exact inverse is "wrap in a quote pair" — not `JSON.stringify`, which
+ * escapes backslashes and made a Windows path containing spaces re-parse with
+ * doubled separators (an executable the native transport cannot spawn).
+ */
 function quoteCommandPart(value: string): string {
-  return /\s/u.test(value) ? JSON.stringify(value) : value;
+  if (!/[\s"']/u.test(value)) return value;
+  if (!value.includes('"')) return `"${value}"`;
+  // A value containing a double quote cannot live inside a double-quoted span
+  // under this grammar; single quotes round-trip identically.
+  if (!value.includes("'")) return `'${value}'`;
+  // Containing both quote kinds is unrepresentable here. Fail loudly rather
+  // than emit an argv the child would silently mis-parse.
+  throw new ElizaError(
+    "Command part contains both quote characters and cannot be represented",
+    {
+      code: "ACP_COMMAND_UNQUOTABLE",
+      context: { value },
+    },
+  );
 }
 
 /**
