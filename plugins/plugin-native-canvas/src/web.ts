@@ -822,9 +822,15 @@ export class CanvasWeb extends WebPlugin {
       const visibleLayers = Array.from(managed.layers.values())
         .filter((layer) => layer.visible)
         .sort((a, b) => {
-          const aZ = Number.isFinite(a.zIndex) ? a.zIndex : 0;
-          const bZ = Number.isFinite(b.zIndex) ? b.zIndex : 0;
-          return aZ - bZ || a.id.localeCompare(b.id);
+          const aZ =
+            typeof a.zIndex === "number" && !Number.isNaN(a.zIndex)
+              ? a.zIndex
+              : 0;
+          const bZ =
+            typeof b.zIndex === "number" && !Number.isNaN(b.zIndex)
+              ? b.zIndex
+              : 0;
+          return aZ - bZ;
         });
 
       for (const layer of visibleLayers) {
