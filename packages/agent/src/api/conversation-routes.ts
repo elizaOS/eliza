@@ -135,6 +135,10 @@ import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
+import {
+  compareConversationsByRecency,
+  compareMemoriesByCreatedAt,
+} from "./conversation-sort.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
 import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
@@ -2212,7 +2216,7 @@ export async function persistRecentAssistantActionCallbackHistory(
             : createdAt >= sinceMs - 2000)
         );
       })
-      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .sort(compareMemoriesByCreatedAt)
       .at(-1);
 
     if (!target || typeof target.id !== "string") {
@@ -2569,7 +2573,7 @@ async function ensureConversationGreetingStoredUnlocked(
     });
   }
 
-  memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  memories.sort(compareMemoriesByCreatedAt);
   const existingGreeting = memories.find((memory) => {
     const content = memory.content as Record<string, unknown> | undefined;
     return (
@@ -2753,10 +2757,7 @@ export async function handleConversationRoutes(
     const convos = Array.from(state.conversations.values())
       .filter((c) => !state.deletedConversationIds.has(c.id))
       .filter((c) => canWaifuAccessConversation(waifuAccess, c))
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
+      .sort(compareConversationsByRecency);
     json(res, { conversations: convos });
     return true;
   }
@@ -3126,7 +3127,7 @@ export async function handleConversationRoutes(
             });
       }
       // Sort by createdAt ascending
-      memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      memories.sort(compareMemoriesByCreatedAt);
       const agentId = runtime.agentId;
       // Per-viewer attachment disclosure (#14781): a boundary-role viewer
       // token (WaifuChat, artifact share-viewer) carries a principal; trunk

@@ -82,10 +82,11 @@ describe("mobile DNS fetch decode budget", () => {
       Readable.from([Buffer.from("not gzip")]),
       "gzip",
     );
-    await expect(async () => {
+    const drain = async () => {
       for await (const _chunk of decoded) {
         // Drain the production stream so decoder errors reach the consumer.
       }
-    }).toThrow();
+    };
+    await expect(drain()).rejects.toThrow(/incorrect header check/);
   });
 });

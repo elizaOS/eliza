@@ -3933,8 +3933,8 @@ async function handleListChannels(
 		const targets = await listRooms(context);
 		// Muted visibility: without the flag "which channels are you muted in"
 		// is unanswerable — the participant/world mute state is queryable
-		// nowhere else. Flags cover the FULL set so mutedCount stays correct
-		// even when the rendered listing below is capped.
+		// nowhere else. Flags cover the FULL set, matching the complete listing
+		// rendered below.
 		const mutedFlags = await resolveMutedTargetFlags(runtime, targets);
 		const mutedCount = mutedFlags.filter(Boolean).length;
 		return opSuccess(

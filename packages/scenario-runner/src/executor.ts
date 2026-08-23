@@ -34,6 +34,7 @@ import {
   postDeliveryTaskQuarantineReason,
   revalidateOwnerExclusiveDisclosure,
   stringToUuid,
+  validateUuid,
 } from "@elizaos/core";
 import type { DeterministicModelDiagnostics } from "@elizaos/core/testing";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
@@ -412,6 +413,22 @@ async function attestScenarioTurnAudience(
   await restoreScenarioConnectorTopology(runtime, room);
   await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
   if (room.channelType !== ChannelType.DM) return;
+  // Owner-exclusive disclosure is an invariant of the OWNER's DM only. A room
+  // authored as a different principal — a guest, a second account, the
+  // counterparty of an owner-only wall — is *supposed* to be denied
+  // (`owner_mismatch`); that denial is the behaviour under test, not a harness
+  // fault, and raising on it would make a non-owner DM unmodellable. The owner
+  // identity is read back from the same setting the roles system resolves
+  // against, so this can never disagree with who the runtime calls the owner.
+  const configuredOwnerEntityId = validateUuid(
+    runtime.getSetting("ELIZA_ADMIN_ENTITY_ID"),
+  );
+  if (
+    configuredOwnerEntityId !== null &&
+    room.canonicalEntityId !== configuredOwnerEntityId
+  ) {
+    return;
+  }
   const decision = await revalidateOwnerExclusiveDisclosure(runtime, message);
   if (!decision.allowed) {
     throw new ElizaError("Scenario connector DM failed audience attestation", {
@@ -2835,14 +2852,28 @@ export async function runScenario(
       primaryRoom.canonicalEntityId,
       false,
     );
+    // Owner contacts are the owner's *linked* connector accounts — the
+    // per-platform principals that resolve back to the same canonical entity as
+    // the primary room (#24842's linked-identity model). Publishing every room
+    // here instead would make every configured entity a canonical owner
+    // (roles.ts `getConfiguredOwnerEntityIds` unions the contacts with
+    // ELIZA_ADMIN_ENTITY_ID and grants OWNER to the whole set), so a scenario's
+    // deliberately non-owner room — a guest, a second account, any owner-only
+    // wall's counterparty — would silently resolve as OWNER and every
+    // owner-only refusal in the corpus would pass vacuously.
     runtime.setSetting(
       "ELIZA_OWNER_CONTACTS_JSON",
       JSON.stringify(
         Object.fromEntries(
-          rooms.map((room) => [
-            room.accountId,
-            { entityId: room.userId, source: room.source },
-          ]),
+          rooms
+            .filter(
+              (room) =>
+                room.canonicalEntityId === primaryRoom.canonicalEntityId,
+            )
+            .map((room) => [
+              room.accountId,
+              { entityId: room.userId, source: room.source },
+            ]),
         ),
       ),
       false,

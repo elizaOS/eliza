@@ -33,6 +33,12 @@
   --muted: rgba(29, 29, 31, 0.04);
   --muted-foreground: rgba(29, 29, 31, 0.5);
 
+  /* Lifted Eliza Cloud bodies use `text-muted` / `text-accent`, while NuPhy
+     intentionally uses the same base tokens as translucent fills. Keep
+     readable text aliases separate so bg-muted/bg-accent stay lightweight. */
+  --cloud-section-muted-fg: rgba(0, 0, 0, 0.58);
+  --cloud-section-accent-fg: #b83d00;
+
   --fill: rgba(29, 29, 31, 0.04);
   --fill-strong: rgba(29, 29, 31, 0.08);
   --accent: rgba(29, 29, 31, 0.04);
@@ -85,6 +91,9 @@
   --popover-foreground: rgba(255, 255, 255, 0.92);
   --muted: rgba(255, 255, 255, 0.05);
   --muted-foreground: rgba(255, 255, 255, 0.45);
+
+  --cloud-section-muted-fg: rgba(255, 255, 255, 0.56);
+  --cloud-section-accent-fg: #ff7d3a;
 
   --fill: rgba(255, 255, 255, 0.06);
   --fill-strong: rgba(255, 255, 255, 0.1);
@@ -169,6 +178,29 @@
 }
 .nuphy-scope .placeholder\:text-muted-foreground::placeholder {
   color: var(--muted-foreground);
+}
+
+/* Eliza Cloud section text bridge. The low-specificity :where() boundary lets
+   state variants such as hover:text-txt-strong continue to win, while these
+   exact color-only overrides never affect NuPhy fills, borders, or rings. */
+:where(.nuphy-scope [data-cloud-section-theme="eliza"])
+:is(.text-muted, .text-muted-foreground) {
+  color: var(--cloud-section-muted-fg);
+}
+:where(.nuphy-scope [data-cloud-section-theme="eliza"]) .text-accent {
+  color: var(--cloud-section-accent-fg);
+}
+:where(.nuphy-scope [data-cloud-section-theme="eliza"])
+  .placeholder\:text-muted::placeholder {
+  color: var(--cloud-section-muted-fg);
+}
+:where(.nuphy-scope [data-cloud-section-theme="eliza"])
+  .hover\:text-accent:hover {
+  color: var(--cloud-section-accent-fg);
+}
+:where(.nuphy-scope [data-cloud-section-theme="eliza"])
+  .disabled\:text-muted:disabled {
+  color: var(--cloud-section-muted-fg);
 }
 .nuphy-scope .focus-visible\:ring-ring:focus-visible {
   --tw-ring-color: var(--ring);

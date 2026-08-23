@@ -1,13 +1,18 @@
 /**
  * Proves the Stage-1 provider exclusions are EXECUTION exclusions, not just
  * render exclusions: `stage1ResponseStateProviderNames` subtracts the
- * stage-1-excluded providers from the compose include list (so ENTITIES
- * never runs for a turn that dies at Stage 1), while the planner pass still
- * composes them via composeState's cached-state merge. Also pins that
- * CURRENT_TIME is unconditionally composed — the system prompt promises a
- * time signal in every runtime context, so no message phrasing may drop it.
- * Uses a real in-memory AgentRuntime with call-counting providers; no
- * database or model.
+ * excluded providers from the compose include list, so an excluded provider
+ * never runs for the turn. Since #24134 ("preserve complete model context")
+ * the only Stage-1 exclusion is the ambient-turn one (RECENT_ERRORS on
+ * unaddressed group traffic) — the blanket ENTITIES/DOCUMENTS exclusion was
+ * removed because dropping composed context from a model-facing prompt is
+ * exactly what the repository's prompt-integrity rule forbids. The core
+ * response providers and every `alwaysInResponseState` plugin provider
+ * therefore compose at Stage 1 and are reused from the turn cache by the
+ * planner recompose. Also pins that CURRENT_TIME is unconditionally
+ * composed — the system prompt promises a time signal in every runtime
+ * context, so no message phrasing may drop it. Uses a real in-memory
+ * AgentRuntime with call-counting providers; no database or model.
  */
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
@@ -57,16 +62,19 @@ function countingProvider(name: string): {
 }
 
 describe("stage1ResponseStateProviderNames", () => {
-	it("subtracts the stage-1 exclusions from the compose include list", () => {
-		const runtime = { providers: [] } as unknown as IAgentRuntime;
+	it("keeps the core response providers complete on an unexcluded turn", () => {
+		const runtime = {
+			providers: [],
+			getSetting: () => undefined,
+		} as unknown as IAgentRuntime;
 		const names = stage1ResponseStateProviderNames(
 			runtime,
 			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"),
 		);
 
-		expect(names).not.toContain("ENTITIES");
-		expect(names).not.toContain("DOCUMENTS");
-		// Stage 1 still composes what it renders and routes on.
+		// #24134 removed the blanket ENTITIES/DOCUMENTS stage-1 exclusion: a
+		// cheaper prompt is not a licence to drop composed model context.
+		expect(names).toContain("ENTITIES");
 		expect(names).toContain("RECENT_MESSAGES");
 		expect(names).toContain("FACTS");
 		expect(names).toContain("ATTACHMENTS");
@@ -77,7 +85,10 @@ describe("stage1ResponseStateProviderNames", () => {
 		// messages that "looked like" time questions, so the apostrophe-free
 		// "whats todays date and time?" lost the time block and the model
 		// hallucinated a stale date. The signal must not depend on prose.
-		const runtime = { providers: [] } as unknown as IAgentRuntime;
+		const runtime = {
+			providers: [],
+			getSetting: () => undefined,
+		} as unknown as IAgentRuntime;
 		for (const text of [
 			"gm",
 			"whats todays date and time?",
@@ -89,12 +100,13 @@ describe("stage1ResponseStateProviderNames", () => {
 				makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2", text),
 			);
 			expect(names).toContain("CURRENT_TIME");
-			expect(names).not.toContain("ENTITIES");
+			expect(names).toContain("ENTITIES");
 		}
 	});
 
-	it("includes always-on plugin providers unless they are stage-1-excluded", () => {
+	it("includes every always-on plugin provider", () => {
 		const runtime = {
+			getSetting: () => undefined,
 			providers: [
 				{
 					name: "PLUGIN_CTX",
@@ -114,10 +126,12 @@ describe("stage1ResponseStateProviderNames", () => {
 		);
 
 		expect(names).toContain("PLUGIN_CTX");
-		expect(names).not.toContain("DOCUMENTS");
+		// DOCUMENTS opts in via `alwaysInResponseState`; honoring that opt-in is
+		// the whole contract, and #24134 removed the special case that dropped it.
+		expect(names).toContain("DOCUMENTS");
 	});
 
-	it("skips excluded providers at stage 1 and defers them to the planner recompose", async () => {
+	it("composes the core providers once and reuses them in the planner recompose", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "stage1-exec-test" } as Character,
 		});
@@ -132,30 +146,29 @@ describe("stage1ResponseStateProviderNames", () => {
 		const message = makeMessage("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 		const stage1Names = stage1ResponseStateProviderNames(runtime, message);
 
-		// Stage-1 compose: excluded providers never execute, so a turn that
-		// ends at Stage 1 (group noise → IGNORE) does none of their work and
-		// its prompt footprint drops accordingly. CURRENT_TIME is NOT excluded
-		// — it composes on every turn so the simple path can honor the system
-		// prompt's promise of a live time signal.
+		// Stage-1 compose: every core response provider executes exactly once
+		// and reaches the Stage-1 prompt. CURRENT_TIME in particular composes on
+		// every turn so the simple path can honor the system prompt's promise of
+		// a live time signal.
 		const stage1State = await runtime.composeState(
 			message,
 			stage1Names,
 			true,
 			false,
 		);
-		expect(entities.calls()).toBe(0);
+		expect(entities.calls()).toBe(1);
 		expect(currentTime.calls()).toBe(1);
 		expect(facts.calls()).toBe(1);
 		expect(recent.calls()).toBe(1);
-		expect(stage1State.text).not.toContain("ENTITIES#");
+		expect(stage1State.text).toContain("ENTITIES#1");
 		expect(stage1State.text).toContain("CURRENT_TIME#1");
 		expect(stage1State.text).toContain("FACTS#1");
 
 		// Planner recompose (mirrors selectV5PlannerStateProviderNames re-adding
-		// the core response providers, with RECENT_MESSAGES refreshed): the
-		// excluded providers are not in the turn cache, so they run now — once —
-		// and reach the planner prompt; the already-composed FACTS and
-		// CURRENT_TIME are reused from the turn cache.
+		// the core response providers, with RECENT_MESSAGES refreshed): every
+		// already-composed provider is served from the turn cache — only the
+		// explicitly refreshed RECENT_MESSAGES runs a second time — and the
+		// planner prompt still carries all of them.
 		const plannerState = await runtime.composeState(
 			message,
 			[...stage1Names, "ENTITIES", "CURRENT_TIME"],
@@ -189,6 +202,7 @@ describe("RECENT_ERRORS stage-1 exclusion on unaddressed group turns", () => {
 	function runtimeWithRecentErrors(): IAgentRuntime {
 		return {
 			character: { name: AGENT_NAME },
+			getSetting: () => undefined,
 			providers: [
 				{
 					name: "RECENT_ERRORS",

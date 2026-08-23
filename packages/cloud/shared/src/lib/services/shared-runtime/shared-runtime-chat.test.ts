@@ -1197,6 +1197,44 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("terminal done frame is not held open by a stalled long-term-memory mirror (#25689)", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    // The mirror never settles: a stalled Hyperdrive/embeddings-sidecar write.
+    // Under the old inline await the body below would never complete.
+    let releaseMirror: (() => void) | undefined;
+    recordTurnPair.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseMirror = resolve;
+        }),
+    );
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const response = await service.stream(agent, rpc, h);
+    const body = await response.text();
+    expect(body).toContain("event: chunk");
+    expect(body).toContain("event: done");
+    // The landed turn stays durable on the merged history boundary.
+    expect(h.history().at(-1)).toMatchObject({ role: "assistant", content: "hello back" });
+    releaseMirror?.();
+    await Promise.all(h.background);
+  });
+
+  test("a failed long-term-memory mirror is reported without failing the landed turn (#25689)", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    recordTurnPair.mockImplementationOnce(async () => {
+      throw new Error("hyperdrive write stalled");
+    });
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const response = await service.stream(agent, rpc, h);
+    const body = await response.text();
+    expect(body).toContain("event: done");
+    expect(h.history().at(-1)).toMatchObject({ role: "assistant", content: "hello back" });
+    // The deferred mirror task must settle cleanly (failure reported, not thrown).
+    await Promise.all(h.background);
+  });
+
   test("keeps a trusted transient prompt out of history and long-term memory", async () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const service = new SharedRuntimeChatService();

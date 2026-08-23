@@ -88,7 +88,7 @@ describe("TrajectoriesService", () => {
 		await service.stop();
 	});
 
-	it("persists LLM calls with bounded JSON-safe payloads", async () => {
+	it("persists LLM calls with complete JSON-safe payloads", async () => {
 		const trajectoryId = "00000000-0000-4000-8000-000000000010";
 		const stepId = "00000000-0000-4000-8000-000000000011";
 		const runtimeSecret = "SYNTH-CORE-DB-RUNTIME-SECRET-1111";
@@ -182,7 +182,6 @@ describe("TrajectoriesService", () => {
 		await service.flushWriteQueue(trajectoryId);
 
 		expect(updates).toHaveLength(1);
-		expect(updates[0].length).toBeLessThan(350_000);
 
 		const persisted = JSON.parse(row.steps_json);
 		const persistedJson = JSON.stringify(persisted);
@@ -190,7 +189,11 @@ describe("TrajectoriesService", () => {
 		expect(persistedJson).not.toContain(flagCanary);
 		expect(persistedJson).not.toContain(uriCanary);
 		const call = persisted[0].llmCalls[0];
-		expect(call.messages[0].content).toMatch(/\.{3}\[truncated\]$/);
+		// A recorded model call is training/evaluation input: CLAUDE.md forbids
+		// compacting or truncating it, so the 120k-character message body is
+		// persisted whole (only the secret canaries are redacted).
+		expect(call.messages[0].content).not.toContain("[truncated]");
+		expect(call.messages[0].content).toContain("m".repeat(120_000));
 		expect(call.tools.circular.self).toBe("[REDACTED]");
 		expect(call.tools.circular.fn).toBe("[Function toolHandler]");
 		expect(call.providerMetadata.self).toBe("[REDACTED]");
@@ -504,7 +507,7 @@ describe("TrajectoriesService", () => {
 		});
 	});
 
-	it("keeps the step envelope readable when payload exhausts the sanitization budget", async () => {
+	it("keeps the step envelope readable across repeated oversized planner captures", async () => {
 		const trajectoryId = "00000000-0000-4000-8000-000000000040";
 		const stepId = "00000000-0000-4000-8000-000000000041";
 		const row = makeTrajectoryRow(trajectoryId, stepId);
@@ -529,10 +532,11 @@ describe("TrajectoriesService", () => {
 			return { rows: [], columns: [] };
 		};
 
-		// Two planner-style calls whose tool schemas together cross the shared
-		// node budget at write time — the live incident shape (2026-08-10: the
-		// second call's tools broke out of the step object mid-walk and the
-		// dropped trailing keys made every subsequent read of the row throw).
+		// Two planner-style calls carrying large tool schemas — the live incident
+		// shape (2026-08-10: the second call's tools broke out of the step object
+		// mid-walk and the dropped trailing keys made every subsequent read of the
+		// row throw). Sanitization is now lossless, so both calls persist whole
+		// and the envelope's required keys are always written.
 		const bigTools = Array.from({ length: 200 }, (_, i) => ({
 			name: `tool${i}`,
 			description: "d",
@@ -572,7 +576,10 @@ describe("TrajectoriesService", () => {
 		expect(afterOverflow[0].reward).toBe(0);
 		expect(afterOverflow[0].done).toBe(false);
 		expect(Array.isArray(afterOverflow[0].providerAccesses)).toBe(true);
-		expect(afterOverflow[0].metadata.truncatedLlmCalls).toBe(1);
+		// No call is dropped, so no truncation counter is minted.
+		expect(afterOverflow[0].llmCalls).toHaveLength(2);
+		expect(afterOverflow[0].llmCalls[1].tools).toHaveLength(bigTools.length);
+		expect(afterOverflow[0].metadata?.truncatedLlmCalls).toBeUndefined();
 
 		// The row must still accept captures — pre-fix this write was lost to
 		// TRAJECTORY_ROW_INVALID and the trajectory could never terminalize.
@@ -580,10 +587,10 @@ describe("TrajectoriesService", () => {
 		await service.flushWriteQueue(trajectoryId);
 
 		const persisted = JSON.parse(row.steps_json);
-		expect(persisted[0].llmCalls).toHaveLength(2);
+		expect(persisted[0].llmCalls).toHaveLength(3);
 		expect(persisted[0].reward).toBe(0);
 		expect(persisted[0].done).toBe(false);
-		expect(persisted[0].metadata.truncatedLlmCalls).toBe(1);
+		expect(persisted[0].metadata?.truncatedLlmCalls).toBeUndefined();
 	});
 
 	it("reads legacy rows whose steps lost trailing keys to budget truncation", async () => {

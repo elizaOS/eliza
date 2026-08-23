@@ -110,6 +110,38 @@ describe("RaydiumService fetch timeout", () => {
     }
   });
 
+  it("orders equal-return arbitrage paths deterministically through findArbitragePaths", async () => {
+    // Every leg quotes identically, so all six paths carry the same
+    // expectedReturn. A bare `b.expectedReturn - a.expectedReturn` comparator
+    // returns 0 for every pair and leaves the discovery order; the shipped
+    // comparator breaks the tie on the joined path so the caller sees a stable
+    // ranking across runs.
+    const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const SOL = "So11111111111111111111111111111111111111112";
+    const USDT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+    const startingMint = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R";
+
+    const svc = new RaydiumService();
+    const prev = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      Response.json({ outAmount: "1500", priceImpactPct: "0" })) as unknown as typeof fetch;
+    try {
+      const paths = await svc.findArbitragePaths({ startingMint, amount: 1000 });
+
+      expect(paths.map((entry) => entry.expectedReturn)).toEqual([500, 500, 500, 500, 500, 500]);
+      expect(paths.map((entry) => [entry.path[1], entry.path[2]])).toEqual([
+        [USDC, USDT],
+        [USDC, SOL],
+        [USDT, USDC],
+        [USDT, SOL],
+        [SOL, USDC],
+        [SOL, USDT],
+      ]);
+    } finally {
+      globalThis.fetch = prev;
+    }
+  });
+
   it("surfaces a provider error from a completed upstream", async () => {
     const svc = new RaydiumService();
     const spy = vi.fn(async () => new Response("Service Unavailable", { status: 503 }));

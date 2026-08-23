@@ -15,6 +15,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../../lib/api-client";
+import {
+  authenticatedQueryKey,
+  useAuthenticatedQueryGate,
+} from "../../lib/auth-query";
 import type {
   CreatedInviteDto,
   InviteRole,
@@ -37,8 +41,10 @@ export const organizationQueryKeys = {
 
 /** Current user (with organization) used to scope the org surface + RBAC. */
 export function useOrganizationUser() {
+  const gate = useAuthenticatedQueryGate();
   return useQuery<UserWithOrganizationDto>({
-    queryKey: organizationQueryKeys.user,
+    queryKey: authenticatedQueryKey(organizationQueryKeys.user, gate),
+    enabled: gate.enabled,
     queryFn: async () => {
       const res = await api<Envelope<UserWithOrganizationDto>>("/api/v1/user");
       return res.data;
@@ -48,9 +54,10 @@ export function useOrganizationUser() {
 
 /** Organization members. Backend gates this to owner/admin (403 otherwise). */
 export function useOrganizationMembers(enabled: boolean) {
+  const gate = useAuthenticatedQueryGate(enabled);
   return useQuery<OrgMemberDto[]>({
-    queryKey: organizationQueryKeys.members,
-    enabled,
+    queryKey: authenticatedQueryKey(organizationQueryKeys.members, gate),
+    enabled: gate.enabled,
     queryFn: async () => {
       const res = await api<Envelope<OrgMemberDto[]>>(
         "/api/organizations/members",
@@ -62,9 +69,10 @@ export function useOrganizationMembers(enabled: boolean) {
 
 /** Pending + historical invites. Backend gates this to owner/admin. */
 export function useOrganizationInvites(enabled: boolean) {
+  const gate = useAuthenticatedQueryGate(enabled);
   return useQuery<OrgInviteDto[]>({
-    queryKey: organizationQueryKeys.invites,
-    enabled,
+    queryKey: authenticatedQueryKey(organizationQueryKeys.invites, gate),
+    enabled: gate.enabled,
     queryFn: async () => {
       const res = await api<Envelope<OrgInviteDto[]>>(
         "/api/organizations/invites",

@@ -2,9 +2,10 @@
  * Regression: provider error strings are external and may contain lone surrogates;
  * route must use truncateWellFormed(toWellFormedUnicode(...),500).
  */
-import { describe, expect, it } from "vitest";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 import { readFileSync } from "node:fs";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 function formatError(message: string): string {
   return truncateWellFormed(toWellFormedUnicode(message), 500);
@@ -31,11 +32,16 @@ describe("generate-video surrogate-safe", () => {
     expect(formatError(long).length).toBe(500);
   });
   it("route file imports and uses truncateWellFormed", () => {
-    const src = readFileSync(new URL("./route.ts", import.meta.url).pathname, "utf8");
+    const src = readFileSync(
+      new URL("./route.ts", import.meta.url).pathname,
+      "utf8",
+    );
     expect(src).toContain('from "@elizaos/core"');
     expect(src).toContain("truncateWellFormed");
     expect(src).toContain("toWellFormedUnicode");
     // ensure not inside generative-route-auth block
-    expect(src).not.toMatch(/import \{[^}]*toWellFormedUnicode[^}]*from "@\/api-app\/lib\/generative-route-auth"/s);
+    expect(src).not.toMatch(
+      /import \{[^}]*toWellFormedUnicode[^}]*from "@\/api-app\/lib\/generative-route-auth"/s,
+    );
   });
 });

@@ -122,6 +122,9 @@ function makeRuntime(opts: {
 		actions: opts.actions,
 		providers: [],
 		getRoom: vi.fn(async () => null),
+		// Stage 1's ambient-turn gate reads the structural response-bypass
+		// settings; an unconfigured runtime answers undefined for all of them.
+		getSetting: vi.fn(() => undefined),
 		reportError: vi.fn(),
 		responseHandlerFieldRegistry,
 		responseHandlerFieldEvaluators: [
