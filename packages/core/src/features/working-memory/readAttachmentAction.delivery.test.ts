@@ -40,7 +40,7 @@ const STORED_PAGE = [
 const SUMMARY =
 	"umbrelOS is a free self-hosted home-server OS with one-click apps like a Bitcoin node, Nextcloud, and Jellyfin.";
 
-type ModelCall = { prompt: string; maxTokens: number };
+type ModelCall = { prompt: string; maxTokens?: number };
 
 function makeAttachment(): Media {
 	return {
@@ -72,7 +72,7 @@ function makeRuntime(params: {
 		useModel: async (_type: unknown, options: unknown) => {
 			const { prompt, maxTokens } = options as {
 				prompt: string;
-				maxTokens: number;
+				maxTokens?: number;
 			};
 			params.calls.push({ prompt, maxTokens });
 			return params.modelResponse;
@@ -173,7 +173,7 @@ describe("ATTACHMENT read delivery selection", () => {
 		expect(calls[0]?.prompt).toContain(
 			"Reply with ONE short take of at most two sentences",
 		);
-		expect(calls[0]?.maxTokens).toBe(256);
+		expect(calls[0]?.maxTokens).toBeUndefined();
 		expect(result?.text).toContain(PAGE_MARKER);
 		expect(JSON.stringify(result?.data)).not.toContain(PAGE_MARKER);
 		expect(JSON.stringify(result?.promptData)).not.toContain(PAGE_MARKER);
@@ -189,7 +189,7 @@ describe("ATTACHMENT read delivery selection", () => {
 		expect(calls[0]?.prompt).not.toContain(
 			"Reply with ONE short take of at most two sentences",
 		);
-		expect(calls[0]?.maxTokens).toBeGreaterThan(256);
+		expect(calls[0]?.maxTokens).toBeUndefined();
 	});
 
 	it("a short non-ask remark next to the link still gets the one-take treatment", async () => {
@@ -202,7 +202,7 @@ describe("ATTACHMENT read delivery selection", () => {
 		expect(calls[0]?.prompt).toContain(
 			"Reply with ONE short take of at most two sentences",
 		);
-		expect(calls[0]?.maxTokens).toBe(256);
+		expect(calls[0]?.maxTokens).toBeUndefined();
 	});
 
 	it("an empty model response degrades to a short acknowledgement, never the raw page", async () => {

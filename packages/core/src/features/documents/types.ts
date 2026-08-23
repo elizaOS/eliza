@@ -105,9 +105,6 @@ export const ModelConfigSchema = z.object({
 	TEXT_EMBEDDING_MODEL: z.string(),
 	TEXT_MODEL: z.string().optional(),
 
-	MAX_INPUT_TOKENS: positiveSafeIntegerSetting(),
-	MAX_OUTPUT_TOKENS: positiveSafeIntegerSetting(4096),
-
 	EMBEDDING_DIMENSION: positiveSafeIntegerSetting(1536),
 
 	LOAD_DOCS_ON_STARTUP: z.boolean().default(false),
@@ -139,7 +136,6 @@ export interface ProviderRateLimits {
 export interface TextGenerationOptions {
 	provider?: "anthropic" | "openai" | "openrouter" | "google";
 	modelName?: string;
-	maxTokens?: number;
 	cacheDocument?: string;
 	cacheOptions?: {
 		type: "ephemeral";
@@ -286,8 +282,6 @@ export interface DocumentFragmentMemoryMetadata
 export interface DocumentsConfig {
 	CTX_DOCUMENTS_ENABLED: boolean;
 	LOAD_DOCS_ON_STARTUP: boolean;
-	MAX_INPUT_TOKENS?: string | number;
-	MAX_OUTPUT_TOKENS?: string | number;
 	EMBEDDING_PROVIDER?: string;
 	TEXT_PROVIDER?: string;
 	TEXT_EMBEDDING_MODEL?: string;

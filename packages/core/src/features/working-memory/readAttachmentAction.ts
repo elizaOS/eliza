@@ -55,10 +55,6 @@ import {
 import { maybeStoreTaskClipboardItem } from "./taskClipboardPersistence.ts";
 
 const ATTACHMENT_ACTIONS = ["read", "save_as_document"] as const;
-const MIN_ATTACHMENT_ANSWER_TOKENS = 1024;
-const MAX_ATTACHMENT_ANSWER_TOKENS = 4096;
-/** A bare link share wants a one-to-two sentence reaction, not a page digest. */
-const BARE_LINK_ANSWER_TOKENS = 256;
 type AttachmentAction = (typeof ATTACHMENT_ACTIONS)[number];
 type AttachmentRecord = Awaited<
 	ReturnType<typeof readAttachmentRecords>
@@ -229,14 +225,6 @@ function projectClipboardResult(
 		},
 		itemCount: result.snapshot.items.length,
 	};
-}
-
-function attachmentAnswerTokenBudget(content: string): number {
-	const estimatedTokens = Math.ceil(content.length / 4);
-	return Math.min(
-		Math.max(estimatedTokens, MIN_ATTACHMENT_ANSWER_TOKENS),
-		MAX_ATTACHMENT_ANSWER_TOKENS,
-	);
 }
 
 function isMediaAttachment(record: AttachmentRecord): boolean {
@@ -672,9 +660,6 @@ async function answerAttachmentRequest(params: {
 	const response = await params.runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
 		temperature: 0,
-		maxTokens: bareLinkShare
-			? BARE_LINK_ANSWER_TOKENS
-			: attachmentAnswerTokenBudget(params.content),
 	});
 	const text = String(response).trim();
 	// Never fall back to the raw stored content: an empty model response must

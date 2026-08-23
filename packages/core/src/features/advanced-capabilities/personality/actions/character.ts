@@ -1097,7 +1097,6 @@ Example:
 			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt: intentPrompt,
 				temperature: 0.2,
-				maxTokens: 150,
 			});
 			const raw = parseStructuredRecord(response);
 			if (!raw) {
@@ -1252,7 +1251,6 @@ style_post: array of post style items`;
 		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt: parsePrompt,
 			temperature: 0.2,
-			maxTokens: 500,
 		});
 		const raw = parseStructuredRecord(response);
 		if (!raw || normalizeBoolean(raw.apply) === false) return null;
@@ -1318,7 +1316,6 @@ acceptable_style_post: array of post style items`;
 		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt: safetyPrompt,
 			temperature: 0.2,
-			maxTokens: 800,
 		});
 		const raw = parseStructuredRecord(response);
 		if (!raw) {
@@ -1440,7 +1437,6 @@ Set action: none only if the request truly does not specify any interaction pref
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 			temperature: 0.2,
-			maxTokens: 200,
 		});
 		const raw = parseStructuredRecord(response);
 		if (!raw) return null;

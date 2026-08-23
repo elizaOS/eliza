@@ -4567,7 +4567,6 @@ Title:`;
 
   const title = await runtime.useModel(modelClass, {
     prompt,
-    maxTokens: 20,
     temperature: 0.7,
     signal: options?.signal,
   });

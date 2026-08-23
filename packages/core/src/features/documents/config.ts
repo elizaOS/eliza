@@ -147,9 +147,6 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			TEXT_EMBEDDING_MODEL: textEmbeddingModel,
 			TEXT_MODEL: getSetting("TEXT_MODEL"),
 
-			MAX_INPUT_TOKENS: getNumericSetting("MAX_INPUT_TOKENS", "4000"),
-			MAX_OUTPUT_TOKENS: getNumericSetting("MAX_OUTPUT_TOKENS", "4096"),
-
 			EMBEDDING_DIMENSION: embeddingDimension,
 
 			LOAD_DOCS_ON_STARTUP: parseBooleanEnv(getSetting("LOAD_DOCS_ON_STARTUP")),

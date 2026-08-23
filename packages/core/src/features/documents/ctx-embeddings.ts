@@ -3,36 +3,14 @@
  * "contextual retrieval" step that situates each chunk within its document
  * before embedding. Exposes content-type-aware system and user prompt builders
  * (default / code / pdf / math / technical), MIME-type→template selection,
- * token-target sizing, and the heuristics (`containsMathematicalContent`,
- * `isTechnicalDocumentation`) that choose a template. Consumed by
- * document-processor.ts when CTX_DOCUMENTS_ENABLED is set.
+ * complete-source preservation, and the heuristics
+ * (`containsMathematicalContent`, `isTechnicalDocumentation`) that choose a
+ * template. Consumed by document-processor.ts when CTX_DOCUMENTS_ENABLED is
+ * set.
  */
 export const DEFAULT_CHUNK_TOKEN_SIZE = 500;
 export const DEFAULT_CHUNK_OVERLAP_TOKENS = 100;
 export const DEFAULT_CHARS_PER_TOKEN = 3.5;
-
-export const CONTEXT_TARGETS = {
-	DEFAULT: {
-		MIN_TOKENS: 60,
-		MAX_TOKENS: 120,
-	},
-	PDF: {
-		MIN_TOKENS: 80,
-		MAX_TOKENS: 150,
-	},
-	MATH_PDF: {
-		MIN_TOKENS: 100,
-		MAX_TOKENS: 180,
-	},
-	CODE: {
-		MIN_TOKENS: 100,
-		MAX_TOKENS: 200,
-	},
-	TECHNICAL: {
-		MIN_TOKENS: 80,
-		MAX_TOKENS: 160,
-	},
-};
 
 type ContentType = "default" | "code" | "pdf" | "math" | "technical";
 
@@ -50,7 +28,7 @@ const SYSTEM_TYPE_NOTES: Record<ContentType, string> = {
 
 const BASE_RULES = [
 	"Keep chunk verbatim",
-	"{min_tokens}–{max_tokens} tokens total",
+	"Include every piece of surrounding context needed to understand the chunk",
 	"Single coherent paragraph",
 ];
 
@@ -191,33 +169,20 @@ export const TECHNICAL_PROMPT_TEMPLATE = buildEnrichmentPrompt({
 export function getContextualizationPrompt(
 	docContent: string,
 	chunkContent: string,
-	minTokens = CONTEXT_TARGETS.DEFAULT.MIN_TOKENS,
-	maxTokens = CONTEXT_TARGETS.DEFAULT.MAX_TOKENS,
 	promptTemplate = CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE,
 ): string {
 	if (!docContent || !chunkContent) {
 		return "Error: Document or chunk content missing.";
 	}
 
-	const chunkTokens = Math.ceil(chunkContent.length / DEFAULT_CHARS_PER_TOKEN);
-
-	if (chunkTokens > maxTokens * 0.7) {
-		maxTokens = Math.ceil(chunkTokens * 1.3);
-		minTokens = chunkTokens;
-	}
-
 	return promptTemplate
 		.replace("{doc_content}", docContent)
-		.replace("{chunk_content}", chunkContent)
-		.replace("{min_tokens}", minTokens.toString())
-		.replace("{max_tokens}", maxTokens.toString());
+		.replace("{chunk_content}", chunkContent);
 }
 
 export function getCachingContextualizationPrompt(
 	chunkContent: string,
 	contentType?: string,
-	minTokens = CONTEXT_TARGETS.DEFAULT.MIN_TOKENS,
-	maxTokens = CONTEXT_TARGETS.DEFAULT.MAX_TOKENS,
 ): { prompt: string; systemPrompt: string } {
 	if (!chunkContent) {
 		return {
@@ -226,12 +191,6 @@ export function getCachingContextualizationPrompt(
 		};
 	}
 
-	const chunkTokens = Math.ceil(chunkContent.length / DEFAULT_CHARS_PER_TOKEN);
-
-	if (chunkTokens > maxTokens * 0.7) {
-		maxTokens = Math.ceil(chunkTokens * 1.3);
-		minTokens = chunkTokens;
-	}
 	let promptTemplate = CACHED_CHUNK_PROMPT_TEMPLATE;
 	let systemPrompt = SYSTEM_PROMPTS.DEFAULT;
 
@@ -263,10 +222,10 @@ export function getCachingContextualizationPrompt(
 		}
 	}
 
-	const formattedPrompt = promptTemplate
-		.replace("{chunk_content}", chunkContent)
-		.replace("{min_tokens}", minTokens.toString())
-		.replace("{max_tokens}", maxTokens.toString());
+	const formattedPrompt = promptTemplate.replace(
+		"{chunk_content}",
+		chunkContent,
+	);
 
 	return {
 		prompt: formattedPrompt,
@@ -279,18 +238,11 @@ export function getPromptForMimeType(
 	docContent: string,
 	chunkContent: string,
 ): string {
-	let minTokens = CONTEXT_TARGETS.DEFAULT.MIN_TOKENS;
-	let maxTokens = CONTEXT_TARGETS.DEFAULT.MAX_TOKENS;
 	let promptTemplate = CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE;
 
 	if (mimeType.includes("pdf")) {
 		if (containsMathematicalContent(docContent)) {
-			minTokens = CONTEXT_TARGETS.MATH_PDF.MIN_TOKENS;
-			maxTokens = CONTEXT_TARGETS.MATH_PDF.MAX_TOKENS;
 			promptTemplate = MATH_PDF_PROMPT_TEMPLATE;
-		} else {
-			minTokens = CONTEXT_TARGETS.PDF.MIN_TOKENS;
-			maxTokens = CONTEXT_TARGETS.PDF.MAX_TOKENS;
 		}
 	} else if (
 		mimeType.includes("javascript") ||
@@ -300,67 +252,23 @@ export function getPromptForMimeType(
 		mimeType.includes("c++") ||
 		mimeType.includes("code")
 	) {
-		minTokens = CONTEXT_TARGETS.CODE.MIN_TOKENS;
-		maxTokens = CONTEXT_TARGETS.CODE.MAX_TOKENS;
 		promptTemplate = CODE_PROMPT_TEMPLATE;
 	} else if (
 		isTechnicalDocumentation(docContent) ||
 		mimeType.includes("markdown") ||
 		mimeType.includes("text/html")
 	) {
-		minTokens = CONTEXT_TARGETS.TECHNICAL.MIN_TOKENS;
-		maxTokens = CONTEXT_TARGETS.TECHNICAL.MAX_TOKENS;
 		promptTemplate = TECHNICAL_PROMPT_TEMPLATE;
 	}
 
-	return getContextualizationPrompt(
-		docContent,
-		chunkContent,
-		minTokens,
-		maxTokens,
-		promptTemplate,
-	);
+	return getContextualizationPrompt(docContent, chunkContent, promptTemplate);
 }
 
 export function getCachingPromptForMimeType(
 	mimeType: string,
 	chunkContent: string,
 ): { prompt: string; systemPrompt: string } {
-	let minTokens = CONTEXT_TARGETS.DEFAULT.MIN_TOKENS;
-	let maxTokens = CONTEXT_TARGETS.DEFAULT.MAX_TOKENS;
-	if (mimeType.includes("pdf")) {
-		if (containsMathematicalContent(chunkContent)) {
-			minTokens = CONTEXT_TARGETS.MATH_PDF.MIN_TOKENS;
-			maxTokens = CONTEXT_TARGETS.MATH_PDF.MAX_TOKENS;
-		} else {
-			minTokens = CONTEXT_TARGETS.PDF.MIN_TOKENS;
-			maxTokens = CONTEXT_TARGETS.PDF.MAX_TOKENS;
-		}
-	} else if (
-		mimeType.includes("javascript") ||
-		mimeType.includes("typescript") ||
-		mimeType.includes("python") ||
-		mimeType.includes("java") ||
-		mimeType.includes("c++") ||
-		mimeType.includes("code")
-	) {
-		minTokens = CONTEXT_TARGETS.CODE.MIN_TOKENS;
-		maxTokens = CONTEXT_TARGETS.CODE.MAX_TOKENS;
-	} else if (
-		isTechnicalDocumentation(chunkContent) ||
-		mimeType.includes("markdown") ||
-		mimeType.includes("text/html")
-	) {
-		minTokens = CONTEXT_TARGETS.TECHNICAL.MIN_TOKENS;
-		maxTokens = CONTEXT_TARGETS.TECHNICAL.MAX_TOKENS;
-	}
-
-	return getCachingContextualizationPrompt(
-		chunkContent,
-		mimeType,
-		minTokens,
-		maxTokens,
-	);
+	return getCachingContextualizationPrompt(chunkContent, mimeType);
 }
 
 function containsMathematicalContent(content: string): boolean {
@@ -463,5 +371,5 @@ export function getChunkWithContext(
 	if (!generatedContext || generatedContext.trim() === "") {
 		return chunkContent;
 	}
-	return generatedContext.trim();
+	return `${generatedContext.trim()}\n\n<source_chunk>\n${chunkContent}\n</source_chunk>`;
 }

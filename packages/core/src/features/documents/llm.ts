@@ -103,7 +103,6 @@ type LoggedTextGenerationOptions = {
 	modelName: string;
 	systemPrompt: string;
 	userPrompt: string;
-	maxTokens: number;
 	temperature: number;
 	purpose: string;
 	actionType: string;
@@ -138,7 +137,6 @@ async function generateLoggedText({
 	modelName,
 	systemPrompt,
 	userPrompt,
-	maxTokens,
 	temperature,
 	purpose,
 	actionType,
@@ -154,7 +152,6 @@ async function generateLoggedText({
 		userPrompt,
 		response: result.text,
 		temperature,
-		maxTokens,
 		purpose,
 		actionType,
 		latencyMs: Date.now() - startedAt,
@@ -372,7 +369,6 @@ export async function generateText(
 	const config = validateModelConfig(runtime);
 	const provider = overrideConfig?.provider || config.TEXT_PROVIDER;
 	const modelName = overrideConfig?.modelName || config.TEXT_MODEL;
-	const maxTokens = overrideConfig?.maxTokens || config.MAX_OUTPUT_TOKENS;
 	const autoCacheContextualRetrieval =
 		overrideConfig?.autoCacheContextualRetrieval !== false;
 
@@ -399,7 +395,6 @@ export async function generateText(
 							prompt,
 							system,
 							modelName,
-							maxTokens,
 						);
 					case "openai":
 						return generateOpenAIText(
@@ -408,7 +403,6 @@ export async function generateText(
 							prompt,
 							system,
 							modelName,
-							maxTokens,
 						);
 					case "openrouter":
 						return generateOpenRouterText(
@@ -417,7 +411,6 @@ export async function generateText(
 							prompt,
 							system,
 							modelName,
-							maxTokens,
 							overrideConfig?.cacheDocument,
 							overrideConfig?.cacheOptions,
 							autoCacheContextualRetrieval,
@@ -428,7 +421,6 @@ export async function generateText(
 							prompt,
 							system,
 							modelName,
-							maxTokens,
 							config,
 						);
 					default:
@@ -449,7 +441,6 @@ async function generateAnthropicText(
 	prompt: string,
 	system: string | undefined,
 	modelName: string,
-	maxTokens: number,
 ): Promise<TextGenerationResult> {
 	const { createAnthropic } = await importAiProvider<{
 		createAnthropic: CreateAnthropic;
@@ -468,7 +459,6 @@ async function generateAnthropicText(
 				modelName,
 				systemPrompt: system ?? "",
 				userPrompt: prompt,
-				maxTokens,
 				temperature: 0.3,
 				purpose: "documents",
 				actionType: "documents.anthropic.generate_text",
@@ -478,7 +468,6 @@ async function generateAnthropicText(
 						prompt: prompt,
 						system: system,
 						temperature: 0.3,
-						maxOutputTokens: maxTokens,
 					}),
 			});
 		} catch (error) {
@@ -514,7 +503,6 @@ async function generateOpenAIText(
 	prompt: string,
 	system: string | undefined,
 	modelName: string,
-	maxTokens: number,
 ): Promise<TextGenerationResult> {
 	const { createOpenAI } = await importAiProvider<{
 		createOpenAI: CreateOpenAI;
@@ -531,7 +519,6 @@ async function generateOpenAIText(
 		modelName,
 		systemPrompt: system ?? "",
 		userPrompt: prompt,
-		maxTokens,
 		temperature: 0.3,
 		purpose: "documents",
 		actionType: "documents.openai.generate_text",
@@ -541,7 +528,6 @@ async function generateOpenAIText(
 				prompt: prompt,
 				system: system,
 				temperature: 0.3,
-				maxOutputTokens: maxTokens,
 			}),
 	});
 
@@ -553,7 +539,6 @@ async function generateGoogleText(
 	prompt: string,
 	system: string | undefined,
 	modelName: string,
-	maxTokens: number,
 	config: ModelConfig,
 ): Promise<TextGenerationResult> {
 	const { google: googleProvider } = await importAiProvider<{
@@ -570,7 +555,6 @@ async function generateGoogleText(
 		modelName,
 		systemPrompt: system ?? "",
 		userPrompt: prompt,
-		maxTokens,
 		temperature: 0.3,
 		purpose: "documents",
 		actionType: "documents.google.generate_text",
@@ -580,7 +564,6 @@ async function generateGoogleText(
 				prompt: prompt,
 				system: system,
 				temperature: 0.3,
-				maxOutputTokens: maxTokens,
 			}),
 	});
 
@@ -593,7 +576,6 @@ async function generateOpenRouterText(
 	prompt: string,
 	system: string | undefined,
 	modelName: string,
-	maxTokens: number,
 	cacheDocument?: string,
 	_cacheOptions?: { type: "ephemeral" },
 	autoCacheContextualRetrieval = true,
@@ -637,7 +619,6 @@ async function generateOpenRouterText(
 				system,
 				modelInstance as AIModel,
 				modelName,
-				maxTokens,
 				documentForCaching,
 			);
 		} else if (isGeminiModel) {
@@ -647,7 +628,6 @@ async function generateOpenRouterText(
 				system,
 				modelInstance as AIModel,
 				modelName,
-				maxTokens,
 				documentForCaching,
 				isGemini25Model,
 			);
@@ -660,7 +640,6 @@ async function generateOpenRouterText(
 		system,
 		modelInstance as AIModel,
 		modelName,
-		maxTokens,
 	);
 }
 
@@ -670,7 +649,6 @@ async function generateClaudeWithCaching(
 	system: string | undefined,
 	modelInstance: AIModel,
 	modelName: string,
-	maxTokens: number,
 	documentForCaching: string,
 ): Promise<TextGenerationResult> {
 	const messages = [
@@ -729,7 +707,6 @@ async function generateClaudeWithCaching(
 		modelName,
 		systemPrompt: system ?? "",
 		userPrompt: serializeMessages(messages as ModelMessage[]),
-		maxTokens,
 		temperature: 0.3,
 		purpose: "documents",
 		actionType: "documents.openrouter.generate_text.claude_cached",
@@ -738,7 +715,6 @@ async function generateClaudeWithCaching(
 				model: modelInstance,
 				messages: messages as ModelMessage[],
 				temperature: 0.3,
-				maxOutputTokens: maxTokens,
 				providerOptions: {
 					openrouter: {
 						usage: {
@@ -763,7 +739,6 @@ async function generateGeminiWithCaching(
 	system: string | undefined,
 	modelInstance: AIModel,
 	modelName: string,
-	maxTokens: number,
 	documentForCaching: string,
 	_isGemini25Model: boolean,
 ): Promise<TextGenerationResult> {
@@ -775,7 +750,6 @@ async function generateGeminiWithCaching(
 		modelName,
 		systemPrompt: "",
 		userPrompt: geminiPrompt,
-		maxTokens,
 		temperature: 0.3,
 		purpose: "documents",
 		actionType: "documents.openrouter.generate_text.gemini_cached",
@@ -784,7 +758,6 @@ async function generateGeminiWithCaching(
 				model: modelInstance,
 				prompt: geminiPrompt,
 				temperature: 0.3,
-				maxOutputTokens: maxTokens,
 				providerOptions: {
 					openrouter: {
 						usage: {
@@ -809,14 +782,12 @@ async function generateStandardOpenRouterText(
 	system: string | undefined,
 	modelInstance: AIModel,
 	modelName: string,
-	maxTokens: number,
 ): Promise<TextGenerationResult> {
 	const result = await generateLoggedText({
 		runtime,
 		modelName,
 		systemPrompt: system ?? "",
 		userPrompt: prompt,
-		maxTokens,
 		temperature: 0.3,
 		purpose: "documents",
 		actionType: "documents.openrouter.generate_text",
@@ -826,7 +797,6 @@ async function generateStandardOpenRouterText(
 				prompt: prompt,
 				system: system,
 				temperature: 0.3,
-				maxOutputTokens: maxTokens,
 				providerOptions: {
 					openrouter: {
 						usage: {

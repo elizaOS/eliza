@@ -53,6 +53,27 @@ const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/core/src/features/advanced-planning/services/planning-service.ts": [
+		/maxTokens\s*:/,
+	],
+	"packages/core/src/features/advanced-capabilities/personality/actions/character.ts":
+		[/maxTokens\s*:/],
+	"packages/core/src/features/autonomy/service.ts": [/maxTokens\s*:/],
+	"packages/core/src/features/working-memory/readAttachmentAction.ts": [
+		/ATTACHMENT_ANSWER_TOKENS/,
+		/attachmentAnswerTokenBudget/,
+		/maxTokens\s*:/,
+	],
+	"packages/core/src/features/documents/llm.ts": [
+		/maxOutputTokens\s*:/,
+		/maxTokens\s*:/,
+	],
+	"packages/core/src/features/documents/ctx-embeddings.ts": [
+		/CONTEXT_TARGETS/,
+		/\{max_tokens\}/,
+		/\{min_tokens\}/,
+		/return\s+generatedContext\.trim\(\)/,
+	],
 	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
 	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
@@ -100,6 +121,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/services/message.ts": [
 		/slice\(0,\s*400\)[\s\S]{0,120}task_complete/,
 		/CODING_DIRECT_ACTIONS/,
+		/maxTokens:\s*260/,
 	],
 	"packages/core/src/services/relationships.ts": [
 		/MAX_INTERACTION_HISTORY/,
@@ -158,6 +180,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-coding-tools/src/actions/summaries.ts": [
 		/compactSummaryText/,
 		/truncateWellFormed/,
+	],
+	"plugins/plugin-app-manager/src/api/apps-routes.ts": [/maxTokens\s*:/],
+	"plugins/plugin-local-inference/src/pii/llm-recognizer.ts": [/maxTokens\s*:/],
+	"plugins/plugin-local-inference/src/provider.ts": [/maxTokens:\s*1024/],
+	"plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts": [
+		/maxTokens\s*:/,
 	],
 	"plugins/plugin-coding-tools/src/shell/services/shellService.ts": [
 		/maxHistoryPerConversation/,
@@ -326,10 +354,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/providers/facts.ts": [
 		/EVIDENCE_TEXT_CHAR_CAP/,
 	],
-	"packages/agent/src/api/chat-routes.ts": [
-		/\.slice\(-50\)/,
-		/maxTokens:\s*260/,
-	],
+	"packages/agent/src/api/chat-routes.ts": [/\.slice\(-50\)/, /maxTokens\s*:/],
 	"packages/agent/src/api/fallback-action-helpers.ts": [/maxTokens:\s*260/],
 	"packages/agent/src/api/interactions-routes.ts": [
 		/truncateWellFormed/,
@@ -337,6 +362,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/agent/src/api/character-routes.ts": [
 		/key:\s*["']system["'][\s\S]{0,220}maxLength/,
+		/maxTokens\s*:/,
 	],
 	"packages/agent/src/api/server-helpers-swarm.ts": [
 		/originalTask[^\n]*\.slice\(/,

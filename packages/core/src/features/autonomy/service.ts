@@ -1201,7 +1201,6 @@ export class AutonomyService extends Service {
 			model: this.resolveAutonomyModelSize(),
 			execOptions: {
 				temperature: 0.2,
-				maxTokens: 512,
 			},
 		});
 		this.runtime.logger.debug(

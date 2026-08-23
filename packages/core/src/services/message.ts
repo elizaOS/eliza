@@ -12429,7 +12429,6 @@ async function rewriteActionCallbackInCharacter(args: {
 	try {
 		const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
-			maxTokens: 260,
 			providerOptions: { eliza: { thinking: "off" } },
 		})) as string | GenerateTextResult;
 		const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
