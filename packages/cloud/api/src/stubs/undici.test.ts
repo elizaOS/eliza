@@ -155,10 +155,14 @@ function expectUnavailable(fn: () => unknown): void {
 }
 
 describe("undici Worker stub", () => {
-  test("named exports are the Web APIs, shared unavailable ctor, and dispatcher helpers in source order", () => {
-    expect(Object.keys(stub).filter((key) => key !== "default")).toEqual([
-      ...NAMED_EXPORT_KEYS,
-    ]);
+  test("named exports are exactly the Web APIs, shared unavailable ctor, and dispatcher helpers", () => {
+    // A module namespace object orders its own keys in code-unit order, not
+    // source order, so compare as sorted sets rather than pinning the order.
+    expect(
+      Object.keys(stub)
+        .filter((key) => key !== "default")
+        .sort(),
+    ).toEqual([...NAMED_EXPORT_KEYS].sort());
   });
 
   test("default export own keys are the subset listed on the default object, in source order", () => {
@@ -317,7 +321,9 @@ describe("undici Worker stub", () => {
     test("Blob and File hold the supplied bytes; File keeps the given name", async () => {
       const blob = new Blob(["hello"], { type: "text/plain" });
       expect(blob.size).toBe(5);
-      expect(blob.type).toBe("text/plain");
+      // bun's Blob appends a charset to the recorded type; assert the media
+      // type rather than the exact header value.
+      expect(blob.type.startsWith("text/plain")).toBe(true);
       expect(await blob.text()).toBe("hello");
 
       const file = new File(["hello"], "note.txt", { type: "text/plain" });
