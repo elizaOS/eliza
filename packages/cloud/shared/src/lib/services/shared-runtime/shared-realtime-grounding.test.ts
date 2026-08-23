@@ -63,11 +63,20 @@ describe("Shared realtime request classification", () => {
     "that's a steep price for a laptop, right?",
     "tell me a joke about bitcoin price",
     "score this essay",
+    "could you wind the clock?",
+    "bitcoin price volatility is an interesting topic",
   ]) {
     test(`does not leak an ambiguous ordinary request to public search: ${message}`, () => {
       expect(resolveSharedRealtimeRequirement(message, [])).toBeUndefined();
     });
   }
+
+  test("accepts explicit public lookup questions and terse domain-first lookups", () => {
+    expect(resolveSharedRealtimeRequirement("is it raining in Austin?", [])?.domain).toBe(
+      "weather",
+    );
+    expect(resolveSharedRealtimeRequirement("BTC price", [])?.domain).toBe("markets");
+  });
 
   for (const message of [
     "check my todos",
@@ -247,6 +256,7 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
     expect(delivered).not.toContain("Unsupported trailing prose");
     expect(delivered).toContain("ETH is 3,500 USD.");
     expect(delivered).toContain("https://coin.example/eth");
+    expect(delivered).toContain("left out part of the draft");
     expect(delivered).not.toContain("https://coin.example/btc");
   });
 

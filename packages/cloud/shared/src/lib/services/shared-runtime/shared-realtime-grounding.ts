@@ -28,10 +28,16 @@ const PRIVATE_STATE =
   /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts)\b/i;
 const NON_FACTUAL_REQUEST =
   /\b(?:joke|poem|story|riddle|pun|metaphor|translate|rewrite|proofread|brainstorm|roleplay)\b/i;
+const PUBLIC_LOOKUP_REQUEST =
+  /\b(?:what(?:'s| is| are)|how(?:'s| is| are)|where|when|show me|give me|tell me|check|find|look up)\b|\?\s*$/i;
 const MARKET_SUBJECT =
   /\b(?:market|stock|shares?|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond|commodity|gold|oil|nasdaq|dow|s&p)\b/i;
 const MARKET_VALUE = /\b(?:price|quote|exchange rate|market cap|market price|share price|yield)\b/i;
-const WEATHER_CONTEXT = /\b(?:weather|forecast|rain|snow|wind|air quality|uv index)\b/i;
+const MARKET_SHORTHAND =
+  /^\s*(?:market|stock|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|gold|oil)\s+(?:price|quote|rate|yield)\s*[?!.,]*\s*$/i;
+const WEATHER_CONTEXT = /\b(?:weather|forecast|air quality|uv index)\b/i;
+const WEATHER_CONDITION = /\b(?:raining|snowing|windy|rain forecast|snow forecast|wind speed)\b/i;
+const WEATHER_SHORTHAND = /^\s*(?:weather|forecast)\b/i;
 const NEWS = /\b(?:news|headline|breaking|announcement|announced|release today|current events)\b/i;
 const SPORTS_VALUE =
   /\b(?:score|standings|fixture|match result|game result|playoffs|season record)\b/i;
@@ -89,14 +95,27 @@ const CLAIM_STOP_WORDS = new Set([
 
 function classifyPublicStandalone(text: string): SharedRealtimeDomain | undefined {
   if (PRIVATE_STATE.test(text) || NON_FACTUAL_REQUEST.test(text)) return undefined;
-  if (WEATHER_CONTEXT.test(text)) return "weather";
-  if (MARKET_SUBJECT.test(text) && (FRESHNESS.test(text) || MARKET_VALUE.test(text))) {
+  const lookupRequest = PUBLIC_LOOKUP_REQUEST.test(text);
+  if (
+    (WEATHER_CONTEXT.test(text) || WEATHER_CONDITION.test(text)) &&
+    (FRESHNESS.test(text) || lookupRequest || WEATHER_SHORTHAND.test(text))
+  ) {
+    return "weather";
+  }
+  if (
+    MARKET_SUBJECT.test(text) &&
+    (FRESHNESS.test(text) ||
+      (MARKET_VALUE.test(text) && (lookupRequest || MARKET_SHORTHAND.test(text))))
+  ) {
     return "markets";
   }
-  if (NEWS.test(text) && (FRESHNESS.test(text) || /\b(?:news|headline|breaking)\b/i.test(text))) {
+  if (NEWS.test(text) && (FRESHNESS.test(text) || lookupRequest)) {
     return "news";
   }
-  if (SPORTS_VALUE.test(text) && (FRESHNESS.test(text) || SPORTS_CONTEXT.test(text))) {
+  if (
+    SPORTS_VALUE.test(text) &&
+    (FRESHNESS.test(text) || (SPORTS_CONTEXT.test(text) && lookupRequest))
+  ) {
     return "sports";
   }
   if (PUBLIC_MUTABLE_FACT.test(text) && FRESHNESS.test(text)) return "mutable_fact";
@@ -387,10 +406,11 @@ export function validateSharedRealtimeReply(reply: string, grounding: AvailableG
 function supportedRealtimeReply(
   reply: string,
   grounding: AvailableGrounding,
-): { reply: string; selectedUrls: string[] } | undefined {
+): { reply: string; selectedUrls: string[]; omittedUnsupported: boolean } | undefined {
   if (!hasTraceableRealtimeGrounding(grounding)) return undefined;
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
+  let omittedUnsupported = false;
   const segments: string[] = [];
   const selectedUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {
@@ -399,10 +419,15 @@ function supportedRealtimeReply(
     if (source && claimSupported(claim, source)) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
+    } else {
+      omittedUnsupported = true;
     }
     cursor = (marker.index ?? 0) + marker[0].length;
   }
-  return segments.length > 0 ? { reply: segments.join("\n"), selectedUrls } : undefined;
+  if (reply.slice(cursor).trim()) omittedUnsupported = true;
+  return segments.length > 0
+    ? { reply: segments.join("\n"), selectedUrls, omittedUnsupported }
+    : undefined;
 }
 
 /** Produces Telegram-safe attribution or an honest deterministic recovery. */
@@ -422,7 +447,10 @@ export function finalizeSharedRealtimeReply(
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
     return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}, checked ${new Date(grounding.observedAt).toISOString()})`;
   });
-  return `${supported.reply}\n\n${sources.join("\n")}`;
+  const omission = supported.omittedUnsupported
+    ? "\n\nI left out part of the draft because it was not supported by the live source."
+    : "";
+  return `${supported.reply}${omission}\n\n${sources.join("\n")}`;
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */
