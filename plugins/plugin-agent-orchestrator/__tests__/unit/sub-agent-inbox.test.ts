@@ -26,15 +26,15 @@ describe("SubAgentInbox", () => {
     expect(inbox.drain("s2")).toBe("b");
   });
 
-  it("drops the oldest entries past the cap", () => {
+  it("preserves all entries past the former cap", () => {
     const inbox = new SubAgentInbox(2);
     inbox.enqueue("s", "1");
     inbox.enqueue("s", "2");
     inbox.enqueue("s", "3");
-    expect(inbox.drain("s")).toBe("2\n3");
+    expect(inbox.drain("s")).toBe("1\n2\n3");
   });
 
-  it("surfaces overflow drops through the observer — never a silent drop", () => {
+  it("keeps the compatibility overflow observer silent for a lossless queue", () => {
     const inbox = new SubAgentInbox(2);
     const seen: Array<{ sessionId: string; now: number; total: number }> = [];
     inbox.setOverflowObserver((sessionId, now, total) =>
@@ -47,25 +47,20 @@ describe("SubAgentInbox", () => {
 
     inbox.enqueue("s", "3");
     inbox.enqueue("s", "4");
-    expect(seen).toEqual([
-      { sessionId: "s", now: 1, total: 1 },
-      { sessionId: "s", now: 1, total: 2 },
-    ]);
-    expect(inbox.droppedCount("s")).toBe(2);
-    // The surviving window is still the newest entries.
-    expect(inbox.drain("s")).toBe("3\n4");
-    // Session teardown resets the drop ledger with the queue.
+    expect(seen).toEqual([]);
+    expect(inbox.droppedCount("s")).toBe(0);
+    expect(inbox.drain("s")).toBe("1\n2\n3\n4");
     inbox.enqueue("s", "5");
     inbox.clear("s");
     expect(inbox.droppedCount("s")).toBe(0);
   });
 
-  it("counts overflow drops even with no observer attached", () => {
+  it("does not drop entries when no observer is attached", () => {
     const inbox = new SubAgentInbox(1);
     inbox.enqueue("s", "a");
     inbox.enqueue("s", "b");
-    expect(inbox.droppedCount("s")).toBe(1);
-    expect(inbox.drain("s")).toBe("b");
+    expect(inbox.droppedCount("s")).toBe(0);
+    expect(inbox.drain("s")).toBe("a\nb");
   });
 
   it("clears one session and all sessions", () => {
