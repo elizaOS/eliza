@@ -411,11 +411,25 @@ export function validateAppliedMigrationLedger(
 
 /**
  * Fences the two-step usage-quotas repair while the compatibility Worker is
- * being rolled out. Any validated ledger before 0282 may apply its safe prefix
- * but pauses before the drop so the deploy can continue without exposing the
- * old Worker to the missing table. Environments that already recorded 0282
- * must proceed directly to the restoring 0282_01 migration. Any other suffix is
- * unsafe and fails closed before the first pending migration is applied.
+ * being rolled out (#23829 Phase A, #23859). What the barrier protects is a
+ * LIVE deployment: a Worker already serving traffic against this database must
+ * never run against the window between 0282 (drop) and 0282_01 (restore). So a
+ * validated ledger that already carries applied migrations may apply its safe
+ * prefix but pauses before the drop, and the deploy continues without exposing
+ * the currently-served Worker to the missing table.
+ *
+ * An empty ledger (no applied migration, lastAppliedJournalIndex === -1) is
+ * outside that contract. No Worker has ever been served from a database with
+ * no migrations and no rows exist to expose, so pausing there protects nothing;
+ * it only strands every fresh environment (e2e stacks, cloud:mock, a new PGlite
+ * data dir) at 0281 with every later migration unapplied. A fresh ledger
+ * therefore continues through the whole journal: the drop runs immediately
+ * followed by the restore, whose adjacency is still validated above. Production
+ * and staging ledgers are never empty, so their semantics are unchanged.
+ *
+ * Environments that already recorded 0282 must proceed directly to the
+ * restoring 0282_01 migration. Any other suffix is unsafe and fails closed
+ * before the first pending migration is applied.
  */
 export function evaluateMigrationReleaseBarrier(
   migrations: Migration[],
@@ -461,6 +475,10 @@ export function evaluateMigrationReleaseBarrier(
       `Migration release barrier expected adjacent journal entries (${expectedSuffix}); found (${actualSuffix || "empty"})`,
     );
   }
+
+  // A fresh database has no served Worker to protect. Only ledgers that have
+  // already applied at least one migration are release-barrier targets.
+  if (lastAppliedJournalIndex === -1) return { action: "continue" };
 
   if (lastAppliedJournalIndex < dropIndex) {
     return { action: "pause", stopBeforeJournalIndex: dropIndex };
