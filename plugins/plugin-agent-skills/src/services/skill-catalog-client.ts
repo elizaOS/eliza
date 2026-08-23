@@ -181,9 +181,23 @@ export async function searchCatalogSkills(
     }
   }
 
-  scored.sort(
-    (a, b) => b.score - a.score || b.s.stats.downloads - a.s.stats.downloads,
-  );
+  scored.sort((a, b) => {
+    const bScore =
+      typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+    const aScore =
+      typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+    const bDl =
+      typeof b.s.stats.downloads === "number" &&
+      Number.isFinite(b.s.stats.downloads)
+        ? b.s.stats.downloads
+        : 0;
+    const aDl =
+      typeof a.s.stats.downloads === "number" &&
+      Number.isFinite(a.s.stats.downloads)
+        ? a.s.stats.downloads
+        : 0;
+    return bScore - aScore || bDl - aDl || a.s.slug.localeCompare(b.s.slug);
+  });
   const max = scored[0]?.score || 1;
 
   return scored.slice(0, resultLimit).map(({ s, score }) => ({

@@ -336,7 +336,7 @@ export class GoogleGmailClient {
       });
     }
 
-    return threads.sort((left, right) => right.daysWaiting - left.daysWaiting).slice(0, maxResults);
+    return threads.sort(compareUnrespondedThreads).slice(0, maxResults);
   }
 
   async modifyGmailMessages(
@@ -1196,7 +1196,18 @@ async function mapWithConcurrency<T, TResult>(
   return results;
 }
 
-function sortGmailMessages(messages: GoogleGmailMessageSummary[]): GoogleGmailMessageSummary[] {
+export function compareUnrespondedThreads(
+  a: GoogleGmailUnrespondedThread,
+  b: GoogleGmailUnrespondedThread,
+): number {
+  const rightWaiting =
+    typeof b.daysWaiting === "number" && Number.isFinite(b.daysWaiting) ? b.daysWaiting : 0;
+  const leftWaiting =
+    typeof a.daysWaiting === "number" && Number.isFinite(a.daysWaiting) ? a.daysWaiting : 0;
+  return rightWaiting - leftWaiting || a.threadId.localeCompare(b.threadId);
+}
+
+export function sortGmailMessages(messages: GoogleGmailMessageSummary[]): GoogleGmailMessageSummary[] {
   return [...messages].sort((left, right) => {
     if (left.isImportant !== right.isImportant) {
       return right.isImportant ? 1 : -1;
@@ -1207,7 +1218,15 @@ function sortGmailMessages(messages: GoogleGmailMessageSummary[]): GoogleGmailMe
     if (left.isUnread !== right.isUnread) {
       return right.isUnread ? 1 : -1;
     }
-    return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+    const rightTime =
+      typeof right.receivedAt === "string" && Number.isFinite(Date.parse(right.receivedAt))
+        ? Date.parse(right.receivedAt)
+        : 0;
+    const leftTime =
+      typeof left.receivedAt === "string" && Number.isFinite(Date.parse(left.receivedAt))
+        ? Date.parse(left.receivedAt)
+        : 0;
+    return rightTime - leftTime || left.externalId.localeCompare(right.externalId);
   });
 }
 

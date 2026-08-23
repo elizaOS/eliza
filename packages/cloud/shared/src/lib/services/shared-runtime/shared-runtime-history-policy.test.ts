@@ -10,6 +10,7 @@ import {
   insertSharedRuntimeGroundingMessages,
   MAX_PUBLIC_WEB_GROUNDING_AGE_MS,
   MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS,
+  compareSharedRuntimeHistoryMessages,
   mergeSharedRuntimeHistoryMessages,
   parseSharedPublicWebGrounding,
   type SharedRuntimeHistoryMessageLike,
@@ -1002,3 +1003,48 @@ describe("shared runtime long-term transcript context", () => {
     }
   });
 });
+
+describe("shared runtime history safe sort (NaN + tiebreak)", () => {
+  test("mergeSharedRuntimeHistoryMessages handles NaN createdAt as 0 and tiebreaks by id", () => {
+    const messages: SharedRuntimeHistoryMessageLike[] = [
+      { id: "m-nan", role: "user", content: "nan", createdAt: NaN } as any,
+      { id: "m-1", role: "user", content: "one", createdAt: 1000 } as any,
+      { id: "m-2", role: "user", content: "two", createdAt: 1000 } as any,
+    ];
+    const merged = mergeSharedRuntimeHistoryMessages([], messages, 10);
+    // NaN -> 0 should be first, then tiebreak by id for equal 1000
+    expect(merged.map((m) => m.id)).toEqual(["m-nan", "m-1", "m-2"]);
+  });
+
+  test("compareSharedRuntimeHistoryMessages tiebreaks by id", () => {
+    const a = { id: "b", createdAt: 100 } as any;
+    const b = { id: "a", createdAt: 100 } as any;
+    const arr = [a, b];
+    arr.sort(compareSharedRuntimeHistoryMessages);
+    expect(arr.map((x) => x.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("headscale safe sort", () => {
+  test("compareHeadscaleIds handles non-numeric id as 0 and tiebreaks", async () => {
+    const { compareHeadscaleIds } = await import("./../headscale-client");
+    const candidates = [
+      { id: "not-a-number", name: "a" },
+      { id: "10", name: "b" },
+      { id: "9", name: "c" },
+    ];
+    // 10 > 9 > 0, so order should be 10, 9, non-numeric (0)
+    const sorted = [...candidates].sort(compareHeadscaleIds);
+    expect(sorted.map((c) => c.id)).toEqual(["10", "9", "not-a-number"]);
+  });
+
+  test("compareHeadscaleIds tiebreaks equal numeric ids by string compare", async () => {
+    const { compareHeadscaleIds } = await import("./../headscale-client");
+    const arr = [{ id: "5" } as any, { id: "5.0" } as any];
+    arr.sort(compareHeadscaleIds);
+    // both numeric 5, tiebreak is b.id.localeCompare(a.id) descending; "5.0" > "5"
+    expect(arr[0].id).toBe("5.0");
+    expect(arr[1].id).toBe("5");
+  });
+});
+
