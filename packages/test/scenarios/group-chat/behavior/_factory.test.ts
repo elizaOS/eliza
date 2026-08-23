@@ -22,6 +22,8 @@ describe("group-chat behavior probe factories", () => {
     expect(JSON.stringify(probe.seed)).not.toContain(hiddenNorm);
     expect(JSON.stringify(probe.turns)).not.toContain(hiddenNorm);
     expect(JSON.stringify(probe.finalChecks)).toContain(hiddenNorm);
+    expect(probe.turns[0]?.text).toBe("your turn");
+    expect(probe.turns[0]?.content).toEqual({ senderName: "B" });
   });
 
   it("requires privacy exclusions and a utility-bearing response", () => {
@@ -43,6 +45,8 @@ describe("group-chat behavior probe factories", () => {
     expect(turn?.kind).toBe("message");
     if (!turn || turn.kind !== "message") return;
     expect(turn.responseExcludes).toEqual(["ALPHA-PRIVATE"]);
+    expect(turn.text).toBe("Explain and schedule it");
+    expect(turn.content).toEqual({ senderName: "Peer" });
     expect(turn.responseJudge?.rubric).toContain("Recommend Wednesday");
     expect(turn.assertResponse?.("   ", {} as never)).toContain(
       "preserve utility",

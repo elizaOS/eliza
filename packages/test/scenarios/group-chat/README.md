@@ -49,9 +49,12 @@ regeneration. Do not hand-edit generated files.
 
 Conversation history is seeded as `inbound-message` memories from distinct
 speaker entities (the same path real connector history takes), and the decision
-turn is delivered live through `messageService.handleMessage`. Each label pairs
-a mechanical guard with a judge rubric, mirroring the conversation-quality
-domain:
+turn is delivered live through `messageService.handleMessage`. The decision
+speaker is carried in `content.senderName`; it is never prefixed to message text
+as `[Speaker]`, because the production engagement gate interprets a bracketed
+participant name as an addressee and may correctly suppress a turn intended for
+that participant. Each label pairs a mechanical guard with a judge rubric,
+mirroring the conversation-quality domain:
 
 - **SILENT** — the runner has no first-class "produced no message" primitive,
   so silence is asserted as the deployment convention: no reply or at most a

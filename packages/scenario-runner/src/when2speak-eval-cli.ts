@@ -15,7 +15,7 @@ function option(name: string): string | undefined {
 const input = option("input");
 if (!input)
   throw new Error(
-    "usage: when2speak-eval --input=<jsonl> [--output=<json>] [--provider=<name>] [--limit=<n>]",
+    "usage: when2speak-eval --input=<jsonl> [--output=<json>] [--run-dir=<dir>] [--provider=<name>] [--limit=<n>]",
   );
 const limitText = option("limit");
 const limit = limitText === undefined ? undefined : Number(limitText);
@@ -23,6 +23,9 @@ if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0))
   throw new Error("--limit must be a positive integer");
 const output = path.resolve(
   option("output") ?? "../../reports/group-chat-timing/when2speak.json",
+);
+const trajectoryDir = path.resolve(
+  option("run-dir") ?? path.join(path.dirname(output), "trajectories"),
 );
 const providerText = option("provider");
 const liveProviders = new Set<LiveProviderName>([
@@ -42,6 +45,7 @@ if (
 const provider = providerText as LiveProviderName | undefined;
 const report = await runWhen2SpeakEval({
   input: path.resolve(input),
+  trajectoryDir,
   provider,
   limit,
 });

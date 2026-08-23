@@ -9,6 +9,7 @@ import {
   deterministicDiscordOffsets,
   parseDiscordChatml,
 } from "./discord-replay.ts";
+import { buildHeldoutScenario } from "./_factory.ts";
 import { parseIshikiRow, selectIshikiPoints } from "./ishiki-generate.ts";
 
 const chatml =
@@ -48,6 +49,26 @@ describe("Discord replay conversion", () => {
     expect(() => parseDiscordChatml(`${chatml}junk`)).toThrow(
       "complete multi-turn chain",
     );
+  });
+});
+
+describe("held-out timing scenario factory", () => {
+  test("models the decision speaker as metadata, not addressee text", () => {
+    const scenario = buildHeldoutScenario({
+      id: "test.heldout.sender",
+      title: "test",
+      label: "speak",
+      directlyAddressed: false,
+      targetSpeaker: "ScenarioAgent",
+      context: [{ speaker: "A", text: "context" }],
+      decisionTurn: { speaker: "B", text: "open question" },
+      sourceDomain: "ami",
+      sourceDecisionPointId: "fixture-1",
+      sourceRevision: "fixture",
+    });
+
+    expect(scenario.turns[0]?.text).toBe("open question");
+    expect(scenario.turns[0]?.content).toEqual({ senderName: "B" });
   });
 });
 

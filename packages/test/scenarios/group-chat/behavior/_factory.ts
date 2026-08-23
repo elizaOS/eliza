@@ -97,7 +97,8 @@ export function buildNormProbe(config: NormProbeConfig) {
         kind: "message",
         name: "norm-elicitor",
         room: "group",
-        text: `[${config.elicitor.speaker}] ${config.elicitor.text}`,
+        text: config.elicitor.text,
+        content: { senderName: config.elicitor.speaker },
         assertResponse: (text: string) =>
           text.trim().length > 0
             ? undefined
@@ -173,7 +174,8 @@ export function buildPrivacyProbe(config: PrivacyProbeConfig) {
         kind: "message",
         name: "group-privacy-probe",
         room: "group",
-        text: `[${config.requesterName}] ${config.request}`,
+        text: config.request,
+        content: { senderName: config.requesterName },
         responseExcludes: [...config.forbiddenDisclosures],
         assertResponse: (text: string) =>
           text.trim().length > 0

@@ -46,6 +46,7 @@ export interface TimingReport {
   dataset: "duke-trust-lab/When2Speak";
   input: string;
   provider: string;
+  trajectoryDir: string;
   startedAt: string;
   finishedAt: string;
   metrics: TimingMetrics;
@@ -54,6 +55,14 @@ export interface TimingReport {
     speakers: Record<string, TimingMetrics>;
     contextTurns: Record<string, TimingMetrics>;
   };
+  predictions: Array<{
+    row: number;
+    gold: TimingLabel;
+    predicted: TimingLabel;
+    directlyAddressesAgent: boolean;
+    speakerCount: number;
+    contextTurns: number;
+  }>;
   failures: Array<{ row: number; error: string }>;
 }
 
@@ -188,6 +197,7 @@ function stateForExample(
       createdAt: index + 1,
       content: {
         text: turn.text.replaceAll("[AGENT]", agentName),
+        senderName: turn.speaker,
         source: "when2speak-eval",
         channelType: ChannelType.GROUP,
       },
@@ -241,17 +251,32 @@ function metricRecord(
 }
 export async function runWhen2SpeakEval(options: {
   input: string;
+  trajectoryDir: string;
   provider?: LiveProviderName;
   limit?: number;
 }): Promise<TimingReport> {
   const startedAt = new Date().toISOString();
-  const runtimeResult = await createScenarioRuntime({
-    ...(options.provider ? { preferredProvider: options.provider } : {}),
-  });
+  const previousTrajectoryDir = process.env.ELIZA_TRAJECTORY_DIR;
+  const trajectoryDir = path.resolve(options.trajectoryDir);
+  process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
+  let runtimeResult: Awaited<ReturnType<typeof createScenarioRuntime>>;
+  try {
+    runtimeResult = await createScenarioRuntime({
+      ...(options.provider ? { preferredProvider: options.provider } : {}),
+    });
+  } catch (error) {
+    if (previousTrajectoryDir === undefined) {
+      delete process.env.ELIZA_TRAJECTORY_DIR;
+    } else {
+      process.env.ELIZA_TRAJECTORY_DIR = previousTrajectoryDir;
+    }
+    throw error;
+  }
   const overall = emptyCounts();
   const address = new Map<string, TimingCounts>();
   const speakers = new Map<string, TimingCounts>();
   const contextTurns = new Map<string, TimingCounts>();
+  const predictions: TimingReport["predictions"] = [];
   const failures: TimingReport["failures"] = [];
   try {
     const lines = readline.createInterface({
@@ -278,6 +303,14 @@ export async function runWhen2SpeakEval(options: {
       // after a provider failure would turn one boundary error into thousands
       // of requests and a misleading all-fail benchmark.
       const predicted = await evaluateExample(runtimeResult.runtime, example);
+      predictions.push({
+        row: example.row,
+        gold: example.label,
+        predicted,
+        directlyAddressesAgent: example.directlyAddressesAgent,
+        speakerCount: example.speakerCount,
+        contextTurns: example.turns.length,
+      });
       recordPrediction(overall, example.label, predicted);
       recordPrediction(
         bucket(address, example.directlyAddressesAgent ? "direct" : "ambient"),
@@ -297,12 +330,18 @@ export async function runWhen2SpeakEval(options: {
     }
   } finally {
     await runtimeResult.cleanup();
+    if (previousTrajectoryDir === undefined) {
+      delete process.env.ELIZA_TRAJECTORY_DIR;
+    } else {
+      process.env.ELIZA_TRAJECTORY_DIR = previousTrajectoryDir;
+    }
   }
   return {
     schema: 1,
     dataset: "duke-trust-lab/When2Speak",
     input: path.resolve(options.input),
     provider: runtimeResult.providerName,
+    trajectoryDir,
     startedAt,
     finishedAt: new Date().toISOString(),
     metrics: computeTimingMetrics(overall),
@@ -311,6 +350,7 @@ export async function runWhen2SpeakEval(options: {
       speakers: metricRecord(speakers),
       contextTurns: metricRecord(contextTurns),
     },
+    predictions,
     failures,
   };
 }

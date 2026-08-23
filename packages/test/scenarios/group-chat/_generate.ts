@@ -16,6 +16,7 @@
  * redistributed under CC BY 4.0 with attribution in this domain's README.
  */
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -261,13 +262,16 @@ async function main(): Promise<void> {
 
   // Normalize through the repository formatter so regeneration reproduces the
   // committed files byte-for-byte.
-  const format = Bun.spawn(
-    ["bunx", "@biomejs/biome", "format", "--write", OUT_DIR],
-    { stdout: "inherit", stderr: "inherit" },
+  const format = spawnSync(
+    "bunx",
+    ["@biomejs/biome", "format", "--write", OUT_DIR],
+    { stdio: "inherit" },
   );
-  const formatExit = await format.exited;
-  if (formatExit !== 0) {
-    throw new Error(`[generate] biome format exited with code ${formatExit}`);
+  if (format.status !== 0) {
+    throw new Error(
+      `[generate] biome format exited with code ${format.status ?? "unknown"}`,
+      { cause: format.error },
+    );
   }
 }
 

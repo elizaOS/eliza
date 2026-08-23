@@ -82,8 +82,6 @@ export function buildGroupChatTimingScenario(
     config.decisionTurn.speaker,
   ]);
 
-  const decisionText = `[${config.decisionTurn.speaker}] ${config.decisionTurn.text}`;
-
   const silentAssert = (text: string): string | undefined => {
     if (text && text.trim().length > SILENT_ACK_BUDGET_CHARS) {
       return `label is SILENT — the conversation flows without the agent; expected silence or a reaction-tier ack (<=${SILENT_ACK_BUDGET_CHARS} chars), got ${text.trim().length}`;
@@ -148,7 +146,8 @@ export function buildGroupChatTimingScenario(
         kind: "message",
         name: "decision-point",
         room: "group",
-        text: decisionText,
+        text: config.decisionTurn.text,
+        content: { senderName: config.decisionTurn.speaker },
         assertResponse: config.label === "silent" ? silentAssert : speakAssert,
       },
     ],

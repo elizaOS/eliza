@@ -33,8 +33,12 @@ bun run --cwd packages/scenario-runner eval:when2speak -- \
 The command writes `reports/group-chat-timing/when2speak.json`. It reports
 accuracy, SPEAK precision/recall/F1, false intervention rate, missed
 intervention rate, and slices by direct address, speaker count, and context
-length. It sends every accepted dialogue to Stage 1 in full. A malformed row is
-recorded as a failure and makes the command exit nonzero.
+length. Row-level gold and predicted decisions make every aggregate auditable
+without redistributing the source dialogue in the report. It sends every
+accepted dialogue to Stage 1 in full. A malformed row is recorded as a failure
+and makes the command exit nonzero. Complete Stage-1 trajectories are written
+beside the report under `reports/group-chat-timing/trajectories`; override that
+location with `--run-dir=<dir>`.
 
 ## Writing a scenario
 

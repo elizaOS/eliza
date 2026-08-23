@@ -25,7 +25,9 @@ three related families:
   privacy-plus-utility evaluation pattern. The probe text here is original.
 
 The complete LoSoNA transcript is preserved. The generator does not cap,
-window, summarize, or truncate model-facing context.
+window, summarize, or truncate model-facing context. Elicitor and requester
+identity is carried as `content.senderName`, not a bracketed prefix in message
+text; bracketed participant names are addressee syntax in the production gate.
 
 ## Regenerate and validate
 

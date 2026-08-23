@@ -27,6 +27,9 @@ Generation renames that participant and exact name references to
 `ScenarioAgent`; all turns and message bodies otherwise remain present. This
 lets a direct-address row reach the production agent-name detection path and
 keeps prior turns by the target seat identifiable in the seeded history.
+The live decision speaker is stored as `content.senderName`, outside message
+text, so sender identity cannot be mistaken for an addressee by the production
+engagement gate.
 
 Run it from the repository root:
 

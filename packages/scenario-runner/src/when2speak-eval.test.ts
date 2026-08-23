@@ -59,4 +59,25 @@ describe("When2Speak evaluator", () => {
       missedInterventionRate: 0.25,
     });
   });
+
+  it("keeps row-level decisions auditable without copying corpus text", () => {
+    const prediction = {
+      row: 17,
+      gold: "SPEAK" as const,
+      predicted: "SILENT" as const,
+      directlyAddressesAgent: false,
+      speakerCount: 4,
+      contextTurns: 7,
+    };
+
+    expect(prediction).toEqual({
+      row: 17,
+      gold: "SPEAK",
+      predicted: "SILENT",
+      directlyAddressesAgent: false,
+      speakerCount: 4,
+      contextTurns: 7,
+    });
+    expect(JSON.stringify(prediction)).not.toContain("messages");
+  });
 });
