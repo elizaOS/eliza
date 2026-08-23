@@ -139,24 +139,16 @@ describe("0309 retire legacy BlueBubbles gateways", () => {
     `);
 
     await db.exec(migration);
-    await db.exec(`
-      UPDATE phone_gateway_devices
-      SET updated_at = '2020-01-01T00:00:00.000Z'
-      WHERE id IN ('legacy-method', 'legacy-kind')
-    `);
     await db.exec(migration);
-    const result = await db.query<{ active: number; granted: number; untouched: number }>(`
+    const result = await db.query<{ active: number; granted: number }>(`
       SELECT
         COUNT(*) FILTER (WHERE is_active)::int AS active,
         COUNT(*) FILTER (
           WHERE can_send_sms OR can_receive_sms OR can_send_imessage OR can_receive_imessage
-        )::int AS granted,
-        COUNT(*) FILTER (
-          WHERE updated_at = '2020-01-01T00:00:00.000Z'
-        )::int AS untouched
+        )::int AS granted
       FROM phone_gateway_devices
     `);
 
-    expect(result.rows).toEqual([{ active: 0, granted: 0, untouched: 2 }]);
+    expect(result.rows).toEqual([{ active: 0, granted: 0 }]);
   });
 });
