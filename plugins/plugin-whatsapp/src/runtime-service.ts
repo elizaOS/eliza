@@ -1819,7 +1819,21 @@ export class WhatsAppConnectorService extends Service {
         }
         return true;
       })
-      .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
+      .sort((left, right) => {
+        const r =
+          typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+            ? right.createdAt
+            : Number.isFinite(Number(right.createdAt))
+              ? Number(right.createdAt)
+              : 0;
+        const l =
+          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+            ? left.createdAt
+            : Number.isFinite(Number(left.createdAt))
+              ? Number(left.createdAt)
+              : 0;
+        return r - l;
+      })
       .slice(0, limit);
   }
 
@@ -1920,7 +1934,17 @@ export class WhatsAppConnectorService extends Service {
     const normalizedAccountId = accountId ? this.resolveAccountId(accountId) : null;
     return Array.from(this.knownTargets.values())
       .filter((target) => !normalizedAccountId || target.accountId === normalizedAccountId)
-      .sort((left, right) => right.lastMessageAt - left.lastMessageAt);
+      .sort((left, right) => {
+        const r =
+          typeof right.lastMessageAt === "number" && Number.isFinite(right.lastMessageAt)
+            ? right.lastMessageAt
+            : 0;
+        const l =
+          typeof left.lastMessageAt === "number" && Number.isFinite(left.lastMessageAt)
+            ? left.lastMessageAt
+            : 0;
+        return r - l;
+      });
   }
 
   getKnownTarget(chatId: string, accountId?: string | null): KnownWhatsAppTarget | null {
