@@ -67,4 +67,28 @@ describe("physical iPhone remote pairing harness", () => {
       "ELIZA_TEST_CHAT_REPLY_MARKER must be 8-96 ASCII letters",
     );
   });
+
+  it("proves the paired remote session survives a same-container relaunch", () => {
+    const testStart = harnessUnderTest.indexOf(
+      "func testPairedRemoteChatPersistsAcrossRelaunch() throws",
+    );
+    const helperStart = harnessUnderTest.indexOf(
+      "private func requireHome(",
+      testStart,
+    );
+    const testBody = harnessUnderTest.slice(testStart, helperStart);
+
+    expect(testStart).toBeGreaterThanOrEqual(0);
+    expect(testBody).toContain('env["ELIZA_TEST_CHAT_BEFORE_RESTART_MARKER"]');
+    expect(testBody).toContain('env["ELIZA_TEST_CHAT_AFTER_RESTART_MARKER"]');
+    expect(testBody).toContain("app.terminate()");
+    expect(testBody).toContain("launchWithRetry(app)");
+    expect(testBody.match(/sendPairedChatTurn\(/g)).toHaveLength(2);
+    expect(
+      testBody.match(/connectRemoteAgentFromClipboardIfRequested\(/g),
+    ).toHaveLength(1);
+    expect(testBody).toContain(
+      "the remote session fell back to signed-out Cloud after relaunch",
+    );
+  });
 });

@@ -512,15 +512,90 @@ final class BootCaptureUITests: XCTestCase {
         let replyMarker = try validatedChatReplyMarker(
             env["ELIZA_TEST_CHAT_REPLY_MARKER"]
         )
-        let prompt = "Reply with exactly: \(replyMarker)"
 
         let app = XCUIApplication()
         launchWithRetry(app)
         try connectRemoteAgentFromClipboardIfRequested(app, env: env)
+        try requireHome(app, timeout: bootTimeout, screenshotName: "paired-chat-000-home", env: env)
+        try sendPairedChatTurn(
+            app,
+            marker: replyMarker,
+            replyTimeout: replyTimeout,
+            screenshotPrefix: "paired-chat",
+            env: env
+        )
+    }
 
-        let bootDeadline = Date().addingTimeInterval(bootTimeout)
+    /// Prove successful first-run remote adoption survives an ordinary process
+    /// restart in the same app container. A pre-restart turn establishes the
+    /// authenticated session; the second turn must work without replaying the
+    /// deep link or pairing flow.
+    func testPairedRemoteChatPersistsAcrossRelaunch() throws {
+        let env = ProcessInfo.processInfo.environment
+        let bootTimeout = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
+        let replyTimeout = Double(env["ELIZA_CHAT_REPLY_TIMEOUT_SECONDS"] ?? "") ?? 120
+        let beforeMarker = try validatedChatReplyMarker(
+            env["ELIZA_TEST_CHAT_BEFORE_RESTART_MARKER"],
+            defaultMarker: "IOS_REMOTE_BEFORE_RESTART_OK"
+        )
+        let afterMarker = try validatedChatReplyMarker(
+            env["ELIZA_TEST_CHAT_AFTER_RESTART_MARKER"],
+            defaultMarker: "IOS_REMOTE_AFTER_RESTART_OK"
+        )
+
+        let app = XCUIApplication()
+        launchWithRetry(app)
+        try connectRemoteAgentFromClipboardIfRequested(app, env: env)
+        try requireHome(
+            app,
+            timeout: bootTimeout,
+            screenshotName: "paired-relaunch-000-home",
+            env: env
+        )
+        try sendPairedChatTurn(
+            app,
+            marker: beforeMarker,
+            replyTimeout: replyTimeout,
+            screenshotPrefix: "paired-relaunch-before",
+            env: env
+        )
+
+        app.terminate()
+        XCTAssertTrue(
+            app.wait(for: .notRunning, timeout: 20),
+            "the app did not terminate before the persistence relaunch"
+        )
+        launchWithRetry(app)
+        try requireHome(
+            app,
+            timeout: bootTimeout,
+            screenshotName: "paired-relaunch-100-restored-home",
+            env: env
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any).matching(
+                NSPredicate(format: "label CONTAINS[c] 'Sign in to start chatting'")
+            ).firstMatch.exists,
+            "the remote session fell back to signed-out Cloud after relaunch"
+        )
+        try sendPairedChatTurn(
+            app,
+            marker: afterMarker,
+            replyTimeout: replyTimeout,
+            screenshotPrefix: "paired-relaunch-after",
+            env: env
+        )
+    }
+
+    private func requireHome(
+        _ app: XCUIApplication,
+        timeout: TimeInterval,
+        screenshotName: String,
+        env: [String: String]
+    ) throws {
+        let deadline = Date().addingTimeInterval(timeout)
         var reachedHome = false
-        while Date() < bootDeadline {
+        while Date() < deadline {
             if app.state == .notRunning { break }
             if let terminal = classifyBootState(of: app) {
                 reachedHome = terminal == .home
@@ -528,11 +603,19 @@ final class BootCaptureUITests: XCTestCase {
             }
             Thread.sleep(forTimeInterval: 1.0)
         }
-        attachScreenshot(named: "paired-chat-000-home")
+        attachScreenshot(named: screenshotName)
         guard reachedHome else {
             try skipOrFail("boot did not reach home — paired chat not attempted", env: env)
         }
+    }
 
+    private func sendPairedChatTurn(
+        _ app: XCUIApplication,
+        marker: String,
+        replyTimeout: TimeInterval,
+        screenshotPrefix: String,
+        env: [String: String]
+    ) throws {
         guard let composer = firstHittableComposer(app) else {
             attachAccessibilitySnapshot(of: app)
             try skipOrFail("no hittable composer for paired chat", env: env)
@@ -556,7 +639,7 @@ final class BootCaptureUITests: XCTestCase {
             "could not clear the composer before the paired chat request"
         )
 
-        composer.typeText(prompt)
+        composer.typeText("Reply with exactly: \(marker)")
         let sendButton = app.descendants(matching: .any).matching(
             NSPredicate(format: "label BEGINSWITH[c] 'send'")
         ).firstMatch
@@ -565,7 +648,7 @@ final class BootCaptureUITests: XCTestCase {
             try skipOrFail("no hittable send control for paired chat", env: env)
         }
         sendButton.tap()
-        attachScreenshot(named: "paired-chat-010-submitted")
+        attachScreenshot(named: "\(screenshotPrefix)-010-submitted")
 
         // Glass transcript rows intentionally expose the complete message as
         // one atomic accessibility element so VoiceOver hears the content
@@ -575,11 +658,14 @@ final class BootCaptureUITests: XCTestCase {
             NSPredicate(
                 format:
                     "label ENDSWITH[c] %@ AND NOT label BEGINSWITH[c] 'Your message:' AND NOT label CONTAINS[c] 'Reply with exactly:'",
-                replyMarker
+                marker
             )
         ).firstMatch
         let replyArrived = reply.waitForExistence(timeout: replyTimeout)
-        attachScreenshot(named: replyArrived ? "paired-chat-020-reply" : "paired-chat-020-timeout")
+        attachScreenshot(
+            named: replyArrived
+                ? "\(screenshotPrefix)-020-reply" : "\(screenshotPrefix)-020-timeout"
+        )
         attachAccessibilitySnapshot(of: app)
         XCTAssertNotEqual(app.state, .notRunning, "the app terminated during paired chat")
         XCTAssertTrue(
@@ -588,8 +674,10 @@ final class BootCaptureUITests: XCTestCase {
         )
     }
 
-    private func validatedChatReplyMarker(_ configured: String?) throws -> String {
-        let defaultMarker = "IOS_CEREBRAS_CHAT_202_OK"
+    private func validatedChatReplyMarker(
+        _ configured: String?,
+        defaultMarker: String = "IOS_CEREBRAS_CHAT_202_OK"
+    ) throws -> String {
         guard let configured else { return defaultMarker }
         guard !configured.isEmpty else { return defaultMarker }
 
