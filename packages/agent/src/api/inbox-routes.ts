@@ -41,6 +41,7 @@
 
 import type http from "node:http";
 import type {
+  AccessContext,
   AgentRuntime,
   ConnectorAccount,
   ConnectorAccountManager,
@@ -52,6 +53,7 @@ import type {
   World,
 } from "@elizaos/core";
 import {
+  buildAccessContext,
   createUniqueUuid,
   getConnectorAccountManager,
   requireConfirmedSendHandlerDelivery,
@@ -59,8 +61,10 @@ import {
   roleRank,
   setRoomMuteUntil,
   setWorldMuteState,
+  stringToUuid,
   toWellFormedUnicode,
   truncateWellFormed,
+  validateUuid,
 } from "@elizaos/core";
 import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord/service";
 import {
@@ -180,6 +184,68 @@ export interface InboxRouteCallerAuthorization {
   role: RoleGateRole;
   identityId?: string;
   principal?: string;
+}
+
+/**
+ * Build a tenant-scoped AccessContext for inbox cross-room reads.
+ *
+ * The inbox aggregator fans out across every agent room (up to
+ * MAX_ROOMS_SCANNED) and merges via getMemoriesByRoomIds. Without a
+ * scoped context that fan-out would leak another tenant's rooms when
+ * a hosted deployment serves multiple principals through one runtime.
+ * See database.ts no-filter invariant + held #24863 and the
+ * relevant-conversations.ts precedent (buildAccessContext -> accessContext
+ * -> getMemories/searchMemories).
+ *
+ * Host trunk (OWNER without identityId/principal) intentionally returns
+ * undefined to preserve single-tenant unfiltered reads. Callers with a
+ * resolvable identity/principal get a world-aware context via
+ * buildAccessContext(synthetic Memory). Falls back to requester-only on
+ * build failure rather than failing open.
+ */
+async function buildInboxAccessContext(
+  runtime: AgentRuntime,
+  callerAuthorization: InboxRouteCallerAuthorization | undefined,
+  roomId: UUID | null | undefined,
+  sourceHint: string | null | undefined,
+): Promise<AccessContext | undefined> {
+  const identityId = callerAuthorization?.identityId?.trim();
+  const principal = callerAuthorization?.principal?.trim();
+  let requesterEntityId: UUID | undefined;
+  if (identityId) {
+    const validated = validateUuid(identityId);
+    requesterEntityId = (validated ?? (identityId as UUID)) as UUID;
+  } else if (principal) {
+    const validated = validateUuid(principal);
+    requesterEntityId = (validated ??
+      stringToUuid(`inbox-principal:${principal}`)) as UUID;
+  } else {
+    return undefined;
+  }
+  try {
+    const syntheticMessage = {
+      entityId: requesterEntityId,
+      roomId: (roomId ?? undefined) as UUID | undefined,
+      content: sourceHint ? { source: sourceHint } : {},
+      createdAt: Date.now(),
+      agentId: runtime.agentId,
+    } as unknown as Memory;
+    const ctx = await buildAccessContext(runtime, syntheticMessage);
+    if (!ctx.worldId && !ctx.role) return undefined;
+    return ctx;
+  } catch (error) {
+    // error-policy:J4 — diagnostics must not kill the loop; fall back to
+    // requester-only rather than failing open or throwing from the route.
+    runtime.logger?.warn?.(
+      {
+        src: "inbox-routes",
+        requesterEntityId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[InboxRoutes] access-context resolution failed; falling back to requester-only",
+    );
+    return { requesterEntityId } as AccessContext;
+  }
 }
 
 /**
@@ -833,10 +899,15 @@ function connectorSourcesMatch(left: string, right: string): boolean {
 async function resolveTrustedRoomSource(
   runtime: AgentRuntime,
   room: Room,
+  accessContext?: AccessContext,
 ): Promise<string | null> {
   const storedSource = readRoomSource(room);
   if (storedSource) return storedSource;
-  const latestMemory = await loadLatestRoomMemory(runtime, room.id);
+  const latestMemory = await loadLatestRoomMemory(
+    runtime,
+    room.id as UUID,
+    accessContext,
+  );
   return latestMemory ? extractSource(latestMemory) : null;
 }
 
@@ -1803,6 +1874,7 @@ function applyInboxChatMemory(
 async function loadLatestRoomMemory(
   runtime: AgentRuntime,
   roomId: UUID,
+  accessContext?: AccessContext,
 ): Promise<Memory | null> {
   try {
     const memories = await runtime.getMemories({
@@ -1810,6 +1882,7 @@ async function loadLatestRoomMemory(
       roomId,
       limit: 10,
       unique: false,
+      ...(accessContext ? { accessContext } : {}),
     });
     if (!Array.isArray(memories) || memories.length === 0) {
       return null;
@@ -1828,6 +1901,7 @@ async function augmentRoomsFromRecentMemories(
   runtime: AgentRuntime,
   roomById: Map<UUID, Room>,
   sourceFilter: Set<string>,
+  accessContext?: AccessContext,
 ): Promise<void> {
   if (roomById.size >= MAX_ROOMS_SCANNED) {
     return;
@@ -1838,6 +1912,7 @@ async function augmentRoomsFromRecentMemories(
     limit: ORPHAN_ROOM_MEMORY_SCAN_LIMIT,
     tableName: "messages",
     unique: false,
+    ...(accessContext ? { accessContext } : {}),
   });
 
   for (const memory of recentMemories) {
@@ -1888,6 +1963,7 @@ async function loadInboxMessages(
   sourceFilter: Set<string>,
   roomId: UUID | null,
   roomSourceHint: string | null,
+  accessContext?: AccessContext,
 ): Promise<InboxMessage[]> {
   const roomById = await loadRelevantRooms(runtime, roomId);
   let memories: Memory[];
@@ -1897,6 +1973,7 @@ async function loadInboxMessages(
       roomId,
       limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
       unique: false,
+      ...(accessContext ? { accessContext } : {}),
     });
   } else {
     const roomIds = await collectAgentRoomIds(runtime);
@@ -1905,6 +1982,7 @@ async function loadInboxMessages(
       tableName: "messages",
       roomIds,
       limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
+      ...(accessContext ? { accessContext } : {}),
     });
   }
 
@@ -2307,6 +2385,7 @@ type DiscordRoomProfile = {
 async function loadInboxChats(
   runtime: AgentRuntime,
   sourceFilter: Set<string>,
+  accessContext?: AccessContext,
 ): Promise<InboxChat[]> {
   const worldsById = await collectAgentWorlds(runtime);
   const rooms =
@@ -2327,7 +2406,12 @@ async function loadInboxChats(
     if (room.id) roomById.set(room.id, room);
   }
 
-  await augmentRoomsFromRecentMemories(runtime, roomById, sourceFilter);
+  await augmentRoomsFromRecentMemories(
+    runtime,
+    roomById,
+    sourceFilter,
+    accessContext,
+  );
 
   const roomIds = Array.from(roomById.keys());
   if (roomIds.length === 0) return [];
@@ -2340,6 +2424,7 @@ async function loadInboxChats(
     tableName: "messages",
     roomIds,
     limit: 2000,
+    ...(accessContext ? { accessContext } : {}),
   });
 
   // Reduce: per room, keep the most recent source-tagged message.
@@ -2402,32 +2487,21 @@ async function loadInboxChats(
         const latestMemory = await loadLatestRoomMemory(
           runtime,
           roomIdKey as UUID,
+          accessContext,
         );
         return { latestMemory, room, roomIdKey };
       }),
   );
 
   for (const { latestMemory, room, roomIdKey } of backfilledRooms) {
-    if (latestMemory) {
-      const source =
-        extractSource(latestMemory) ?? readRoomSource(room) ?? undefined;
-      if (source && sourceFilter.has(source.toLowerCase())) {
-        applyInboxChatMemory(accumulator, latestMemory, room, source);
-      }
+    if (!latestMemory) {
       continue;
     }
-
-    const roomSource = readRoomSource(room);
-    if (!roomSource || !sourceFilter.has(roomSource.toLowerCase())) {
-      continue;
+    const source =
+      extractSource(latestMemory) ?? readRoomSource(room) ?? undefined;
+    if (source && sourceFilter.has(source.toLowerCase())) {
+      applyInboxChatMemory(accumulator, latestMemory, room, source);
     }
-    accumulator.set(roomIdKey, {
-      latestDiscordChannelId: readRoomChannelId(room),
-      source: roomSource,
-      lastMessageText: "",
-      lastMessageAt: readRoomCreatedAt(room) ?? 0,
-      messageCount: 0,
-    });
   }
 
   const chats: InboxChat[] = [];
@@ -2572,7 +2646,10 @@ async function loadInboxChats(
  * set of source tags present. Used by the UI to build the filter chip
  * list dynamically — no hardcoded connector names in the frontend.
  */
-async function loadInboxSources(runtime: AgentRuntime): Promise<string[]> {
+async function loadInboxSources(
+  runtime: AgentRuntime,
+  accessContext?: AccessContext,
+): Promise<string[]> {
   const roomIds = await collectAgentRoomIds(runtime);
   if (roomIds.length === 0) return [];
 
@@ -2582,6 +2659,7 @@ async function loadInboxSources(runtime: AgentRuntime): Promise<string[]> {
     tableName: "messages",
     roomIds,
     limit: 1000,
+    ...(accessContext ? { accessContext } : {}),
   });
 
   const seen = new Set<string>();
@@ -2641,12 +2719,19 @@ export async function handleInboxRoute(
     }
 
     try {
+      const accessContext = await buildInboxAccessContext(
+        runtime,
+        state.callerAuthorization,
+        roomId,
+        roomSourceHint,
+      );
       const messages = await loadInboxMessages(
         runtime,
         limit,
         sourceFilter,
         roomId,
         roomSourceHint,
+        accessContext,
       );
       helpers.json(res, { messages, count: messages.length });
     } catch (err) {
@@ -2718,7 +2803,16 @@ export async function handleInboxRoute(
       return true;
     }
 
-    const trustedRoomSource = await resolveTrustedRoomSource(runtime, room);
+    const trustedRoomSource = await resolveTrustedRoomSource(
+      runtime,
+      room,
+      await buildInboxAccessContext(
+        runtime,
+        state.callerAuthorization,
+        room.id as UUID,
+        source,
+      ),
+    );
     if (
       !trustedRoomSource ||
       !connectorSourcesMatch(source, trustedRoomSource)
@@ -2850,12 +2944,19 @@ export async function handleInboxRoute(
         ),
       );
 
+      const postAccessContext = await buildInboxAccessContext(
+        runtime,
+        state.callerAuthorization,
+        room.id as UUID,
+        source,
+      );
       const [message] = await loadInboxMessages(
         runtime,
         1,
         new Set([source]),
         room.id as UUID,
         source,
+        postAccessContext,
       );
 
       helpers.json(res, message ? { ok: true, message } : { ok: true });
@@ -2981,7 +3082,13 @@ export async function handleInboxRoute(
     const sourceFilter = explicitFilter ?? DEFAULT_INBOX_SOURCES;
 
     try {
-      const chats = await loadInboxChats(runtime, sourceFilter);
+      const accessContext = await buildInboxAccessContext(
+        runtime,
+        state.callerAuthorization,
+        null,
+        null,
+      );
+      const chats = await loadInboxChats(runtime, sourceFilter, accessContext);
       helpers.json(res, { chats, count: chats.length });
     } catch (err) {
       helpers.error(
@@ -3002,7 +3109,13 @@ export async function handleInboxRoute(
     }
 
     try {
-      const sources = await loadInboxSources(runtime);
+      const accessContext = await buildInboxAccessContext(
+        runtime,
+        state.callerAuthorization,
+        null,
+        null,
+      );
+      const sources = await loadInboxSources(runtime, accessContext);
       helpers.json(res, { sources });
     } catch (err) {
       helpers.error(

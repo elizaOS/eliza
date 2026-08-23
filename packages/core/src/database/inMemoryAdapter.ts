@@ -21,6 +21,7 @@ import {
 	validateTaskQueryPagination,
 } from "../database";
 import { ElizaError } from "../errors";
+import { filterByAccessContext } from "../access-control/filter.js";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -303,6 +304,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
 	readonly documentRangeReadCapability = 1 as const;
 	db: Record<string, never> = {};
+
+	private readonly adapterAgentId?: UUID;
+
+	constructor(agentId?: UUID) {
+		super();
+		this.adapterAgentId = agentId;
+	}
 
 	private ready = false;
 
@@ -1213,6 +1221,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
+		if (params.accessContext) {
+			const effectiveAgentId = (this.adapterAgentId ?? "00000000-0000-0000-0000-000000000000") as unknown as string;
+			all = filterByAccessContext(all as unknown as never[], params.accessContext, effectiveAgentId as unknown as string) as unknown as typeof all;
+		}
+
 		// Match plugin-sql ordering: newest first, then id desc as tiebreaker.
 		// Without this, `count: N` returns the N oldest instead of the N newest,
 		// which silently diverges from plugin-sql once a room exceeds N memories.
@@ -1289,6 +1302,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
+		if (params.accessContext) {
+			const effectiveAgentId = (this.adapterAgentId ?? "00000000-0000-0000-0000-000000000000") as unknown as string;
+			all = filterByAccessContext(all as unknown as never[], params.accessContext, effectiveAgentId as unknown as string) as unknown as typeof all;
+		}
+
 		// Match plugin-sql ordering: newest first so LIMIT/OFFSET window the
 		// freshest matches.
 		all = all.slice().sort((a, b) => {
@@ -1331,7 +1349,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				params.until,
 			),
 		);
-		const ranked = rankMessageSearch(windowed, params.query);
+		let filteredWindowed: typeof windowed = windowed;
+		if (params.accessContext) {
+			const effectiveAgentId = (this.adapterAgentId ?? "00000000-0000-0000-0000-000000000000") as unknown as string;
+			filteredWindowed = filterByAccessContext(windowed as unknown as never[], params.accessContext, effectiveAgentId as unknown as string) as unknown as typeof windowed;
+		}
+		const ranked = rankMessageSearch(filteredWindowed, params.query);
 		const offset = typeof params.offset === "number" ? params.offset : 0;
 		const limit = params.limit ?? 20;
 		return ranked
