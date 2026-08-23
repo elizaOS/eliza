@@ -6,6 +6,7 @@
 import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core/edge";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
+import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
 
 export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
 
@@ -23,7 +24,8 @@ const FRESHNESS =
 const CORRECTION =
   /\b(?:wrong|incorrect|not right|made that up|hallucinat(?:e|ed|ion)|check again|try again|prove it|where did (?:that|you) (?:come|get) from)\b|^\s*\?+\s*$/i;
 const PRIVATE_STATE =
-  /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts|password|passcode|secret|api[- ]?key|credential|ssn|social security|credit card|bank balance|phone number|home address|location)\b/i;
+  /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts|password|passcode|secret|api[- ]?key|credential|codename|internal project|ssn|social security|credit card|bank balance|phone number|home address|location)\b/i;
+const INVISIBLE_OR_CONTROL = /[\p{Cc}\p{Cf}]/u;
 const SENSITIVE_LITERAL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b\d{3}[- ]\d{2}[- ]\d{4}\b/i;
 const PHONE_LITERAL =
   /(?:^|[^\p{L}\p{N}])(?:(?:\+[1-9]\d{9,14})|(?:1?[2-9]\d{2}[2-9]\d{6})|(?:\+\d{1,3}[ .-]?)?(?:\(\d{2,4}\)|\d{2,4})[ .-]\d{3,4}[ .-]\d{3,4})(?:$|[^\p{L}\p{N}])/u;
@@ -31,6 +33,8 @@ const STREET_ADDRESS_LITERAL =
   /\b\d{1,6}\s+(?:[\p{L}\p{N}.'’-]+\s+){0,5}(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|way|parkway|pkwy|highway|hwy)\b/iu;
 const COORDINATE_LITERAL =
   /(?:[+-]?\d{1,2}\.\d{3,}\s*,\s*[+-]?\d{1,3}\.\d{3,})|(?:\d{1,2}\.\d{3,}\s*[NS]\s*,?\s*\d{1,3}\.\d{3,}\s*[EW])/iu;
+const NETWORK_TARGET_LITERAL =
+  /(?:https?:\/\/[^\s<>'"]+)|(?:\blocalhost\b)|(?:\b(?:\d{1,3}\.){3}\d{1,3}\b)|(?:\[[0-9a-f:]+\])|(?:\b[0-9a-f]{0,4}:[0-9a-f:]+\b)|(?:\b(?:[a-z0-9-]+\.)+[a-z]{2,63}\b)/iu;
 const MARKETS =
   /\b(?:price|quote|exchange rate|market cap|market price|stock|share price|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond yield|commodity|gold price|oil price)\b/i;
 const NEWS = /\b(?:news|headline|breaking|announcement|announced|release today|current events)\b/i;
@@ -47,6 +51,8 @@ const MARKET_METRIC =
   /\b(?:price|quote|exchange rate|market cap|market price|share price|bond yield|gold price|oil price|trading at|worth)\b/i;
 const MARKET_SUBJECT =
   /\b(?:stock|shares?|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond|commodity|gold|oil|currency|usd|eur|gbp|jpy|cad|aud)\b/i;
+const PUBLIC_MARKET_SUBJECT =
+  /\b(?:bitcoin|btc|ethereum|eth|gold|oil|usd|eur|gbp|jpy|cad|aud)\b/giu;
 const WEATHER_TOPIC = /\b(?:weather|forecast|air quality|uv index)\b/i;
 const WEATHER_CONDITION = /\b(?:temperature|rain|snow|wind)\b/i;
 const WEATHER_LOCATION = /\b(?:in|at|for|near|around)\s+[\p{L}\p{N}]/iu;
@@ -55,7 +61,8 @@ const SPORTS_CONTEXT =
 const NAMED_TEAM_SCORE = /\b\p{Lu}[\p{L}\p{N}.'’-]*(?:\s+\p{Lu}[\p{L}\p{N}.'’-]*){0,3}\s+score\b/u;
 const SOURCE_MARKER = /\[\[SOURCE_URL:(https?:\/\/[^\]\s]+)\]\]/giu;
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
-const CURRENCY = /\b(?:USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH)\b/giu;
+const CLAIM_UNIT =
+  /(?:[$€£¥%])|\b(?:USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\/h|m\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?)\b/giu;
 const ATTRIBUTION = /\b(?:according to|reported by)\s+([^,.;\n]{1,80})/giu;
 const NEGATION =
   /\b(?:no|not|never|neither|nor|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|hasn['’]t|haven['’]t|hadn['’]t|won['’]t|wouldn['’]t|didn['’]t|doesn['’]t|don['’]t)\b/iu;
@@ -102,8 +109,7 @@ const CLAIM_STOP_WORDS = new Set([
   "with",
 ]);
 
-function classifyPublicStandalone(text: string): SharedRealtimeDomain | undefined {
-  if (!isSharedPublicSearchSafe(text)) return undefined;
+function classifyPublicIntent(text: string): SharedRealtimeDomain | undefined {
   if (NON_FACTUAL_REQUEST.test(text) || (HISTORICAL_CONTEXT.test(text) && !FRESHNESS.test(text))) {
     return undefined;
   }
@@ -138,27 +144,133 @@ function classifyPublicStandalone(text: string): SharedRealtimeDomain | undefine
   return undefined;
 }
 
+function classifyPublicStandalone(text: string): SharedRealtimeDomain | undefined {
+  return isSharedPublicSearchSafe(text) ? classifyPublicIntent(text) : undefined;
+}
+
 /** Denies Shared public-network tools when the authenticated utterance is private or sensitive. */
 export function isSharedPublicSearchSafe(message: string): boolean {
+  if (INVISIBLE_OR_CONTROL.test(message)) return false;
+  const normalized = message.normalize("NFKC");
+  const networkLiteral = normalized.match(NETWORK_TARGET_LITERAL)?.[0];
+  if (networkLiteral) {
+    const hostname = networkLiteral
+      .replace(/^https?:\/\//iu, "")
+      .replace(/^\[/u, "")
+      .split(/[\]/?#]/u)[0]
+      .split(":")[0];
+    // Canonical helpers remain the authority for private/blocked network
+    // targets; public network literals are also denied because user-supplied
+    // targets must never become an SSRF-capable search-provider query.
+    if (isBlockedHostname(hostname) || isPrivateIpAddress(hostname)) return false;
+    return false;
+  }
   return (
-    !PRIVATE_STATE.test(message) &&
-    !SENSITIVE_LITERAL.test(message) &&
-    !PHONE_LITERAL.test(message) &&
-    !STREET_ADDRESS_LITERAL.test(message) &&
-    !COORDINATE_LITERAL.test(message)
+    !PRIVATE_STATE.test(normalized) &&
+    !SENSITIVE_LITERAL.test(normalized) &&
+    !PHONE_LITERAL.test(normalized) &&
+    !STREET_ADDRESS_LITERAL.test(normalized) &&
+    !COORDINATE_LITERAL.test(normalized)
+  );
+}
+
+function publicSubjectWords(value: string | undefined): string | undefined {
+  const words =
+    value
+      ?.trim()
+      .split(/\s+/u)
+      .filter(
+        (word) => !/^(?:now|today|tonight|currently|current|latest|please|public)$/iu.test(word),
+      ) ?? [];
+  if (words.length === 0 || words.length > 4) return undefined;
+  const subject = words.join(" ");
+  return /^[\p{L}\p{N}.'’&-]+(?:\s+[\p{L}\p{N}.'’&-]+){0,3}$/u.test(subject) ? subject : undefined;
+}
+
+function publicProviderQuery(domain: SharedRealtimeDomain, text: string): string | undefined {
+  if (domain === "markets") {
+    const recognized = [
+      ...new Set(text.match(PUBLIC_MARKET_SUBJECT)?.map((value) => value.toUpperCase()) ?? []),
+    ];
+    const adjacent = publicSubjectWords(
+      text.match(
+        /\b([\p{Lu}][\p{L}\p{N}.'’&-]*(?:\s+[\p{Lu}][\p{L}\p{N}.'’&-]*){0,3})\s+(?:stock|shares?|share price|stock price)\b/u,
+      )?.[1] ?? text.match(/\b(?:price|quote)\s+(?:of|for)\s+([^,;?!\n]{1,60})/iu)?.[1],
+    );
+    if (adjacent) return `${adjacent} stock price current`;
+    if (recognized.length === 0) return undefined;
+    const metric = text.match(MARKET_METRIC)?.[0]?.toLocaleLowerCase("en-US") ?? "price";
+    return `${recognized.join(" ")} ${metric} current`;
+  }
+  if (domain === "weather") {
+    const location = publicSubjectWords(
+      text.match(
+        /\b(?:weather|forecast|temperature|rain|snow|wind)\b[^,;\n]*?\b(?:in|at|for|near|around)\s+([^,;?!\n]{1,80})/iu,
+      )?.[1],
+    );
+    return location ? `current public weather in ${location}` : undefined;
+  }
+  if (domain === "news") {
+    const before = text.match(/\b(?:latest|current|breaking)\s+([^,;?!\n]{1,60}?)\s+news\b/iu)?.[1];
+    const after = text.match(/\b(?:news|headlines?)\s+(?:about|on|for)\s+([^,;?!\n]{1,60})/iu)?.[1];
+    const subject = publicSubjectWords(before ?? after);
+    return subject ? `latest public ${subject} news` : "latest public news";
+  }
+  if (domain === "sports") {
+    const league = text.match(/\b(?:NBA|WNBA|NFL|NHL|MLB|EPL|IPL)\b/iu)?.[0]?.toUpperCase();
+    const team = publicSubjectWords(
+      text.match(/\bcurrent public sports\s+([^,;?!\n]{1,60})/iu)?.[1] ??
+        text.match(
+          /\b([\p{Lu}][\p{L}\p{N}.'’&-]*(?:\s+[\p{Lu}][\p{L}\p{N}.'’&-]*){0,3})\s+(?:score|standings|fixture|record)\b/u,
+        )?.[1],
+    );
+    const subject = league ?? team;
+    return subject ? `current public sports ${subject}` : undefined;
+  }
+  const role = text.match(PUBLIC_MUTABLE_FACT)?.[0]?.toLocaleLowerCase("en-US");
+  const entity = publicSubjectWords(
+    text.match(
+      /\b(?:president|prime minister|governor|mayor|senator|representative|ceo|chief executive|officeholder|software version|release version)\b\s+(?:of|for)\s+([^,;?!\n]{1,80})/iu,
+    )?.[1],
+  );
+  return role && entity ? `current public ${role} of ${entity}` : undefined;
+}
+
+/** Detects mutable-public intent without granting provider-dispatch authority. */
+export function hasSharedRealtimeIntent(
+  message: string,
+  history: readonly SharedTurnMessage[],
+): boolean {
+  const normalized = message.normalize("NFKC").trim();
+  return Boolean(
+    classifyPublicIntent(normalized) || sharedSelectedGroundingMetadata(history, normalized),
   );
 }
 
 /** Identifies current public data solely from this authenticated raw utterance. */
 export function resolveSharedRealtimeRequirement(
   message: string,
-  _history: readonly SharedTurnMessage[],
+  history: readonly SharedTurnMessage[],
 ): SharedRealtimeRequirement | undefined {
-  const normalized = message.trim();
+  const normalized = message.normalize("NFKC").trim();
+  if (!isSharedPublicSearchSafe(normalized)) return undefined;
   const direct = classifyPublicStandalone(normalized);
   const correction = CORRECTION.test(normalized);
-  if (direct) return { domain: direct, query: normalized, correction };
-  return undefined;
+  if (direct) {
+    const query = publicProviderQuery(direct, normalized);
+    return query ? { domain: direct, query, correction } : undefined;
+  }
+  const selected = sharedSelectedGroundingMetadata(history, normalized);
+  const priorQuery = selected?.query.normalize("NFKC").trim();
+  const priorDomain = priorQuery ? classifyPublicStandalone(priorQuery) : undefined;
+  if (!selected || !priorDomain) return undefined;
+  const query = publicProviderQuery(priorDomain, priorQuery ?? "");
+  if (!query) return undefined;
+  return {
+    domain: priorDomain,
+    query,
+    correction: true,
+  };
 }
 
 function canonicalPublicUrl(value: unknown): string | undefined {
@@ -278,9 +390,80 @@ function replyUrls(value: string): string[] | undefined {
   return urls;
 }
 
+function canonicalClaimUnit(unit: string): string {
+  const normalized = unit.toLocaleLowerCase("en-US");
+  if (normalized === "$" || /^usd|dollars?$/u.test(normalized)) return "currency:usd";
+  if (normalized === "€" || /^eur|euros?$/u.test(normalized)) return "currency:eur";
+  if (normalized === "£" || /^gbp|pounds?$/u.test(normalized)) return "currency:gbp";
+  if (normalized === "¥" || /^jpy|yen$/u.test(normalized)) return "currency:jpy";
+  if (normalized === "cad" || normalized === "aud") return `currency:${normalized}`;
+  if (normalized === "btc" || normalized === "eth") return `asset:${normalized}`;
+  if (normalized === "%" || /^percent(?:age)?$/u.test(normalized)) return "ratio:percent";
+  if (/^celsius$/u.test(normalized)) return "temperature:celsius";
+  if (/^fahrenheit$/u.test(normalized)) return "temperature:fahrenheit";
+  if (/^kelvin$/u.test(normalized)) return "temperature:kelvin";
+  if (/^degrees?$/u.test(normalized)) return "temperature:degree-unspecified";
+  if (normalized === "mph") return "speed:mph";
+  if (normalized === "kph" || normalized === "km/h") return "speed:kph";
+  if (normalized === "m/s") return "speed:mps";
+  if (normalized === "mm") return "length:mm";
+  if (normalized === "cm") return "length:cm";
+  if (normalized === "km") return "length:km";
+  if (/^met(?:er|re)s?$/u.test(normalized)) return "length:m";
+  if (/^miles?$/u.test(normalized)) return "length:mile";
+  if (normalized === "ft" || normalized === "feet") return "length:ft";
+  if (/^inches?$/u.test(normalized)) return "length:inch";
+  return `unit:${normalized}`;
+}
+
+function claimUnits(value: string): string[] {
+  return value.match(CLAIM_UNIT)?.map(canonicalClaimUnit) ?? [];
+}
+
+type NumericUnitTuple = { value: number; unit: string };
+
+function numericUnitTuples(value: string): NumericUnitTuple[] {
+  const unit =
+    "[$€£¥%]|USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH|dollars?|euros?|pounds?|yen|percent(?:age)?|celsius|fahrenheit|kelvin|mph|kph|km\\/h|m\\/s|mm|cm|km|meters?|metres?|miles?|feet|ft|inches?|degrees?";
+  const pattern = new RegExp(
+    `(?:(${unit})\\s*)?(-?\\d[\\d,]*(?:\\.\\d+)?)(?:\\s*(${unit}))?`,
+    "giu",
+  );
+  const tuples: NumericUnitTuple[] = [];
+  for (const match of value.matchAll(pattern)) {
+    const rawUnit = match[1] ?? match[3];
+    const parsed = Number(match[2]?.replaceAll(",", ""));
+    if (rawUnit && Number.isFinite(parsed)) {
+      tuples.push({ value: parsed, unit: canonicalClaimUnit(rawUnit) });
+    }
+  }
+  return tuples;
+}
+
+function orderedNumericUnitsSupported(
+  claims: readonly NumericUnitTuple[],
+  evidence: readonly NumericUnitTuple[],
+): boolean {
+  let cursor = 0;
+  for (const claim of claims) {
+    let matched = false;
+    while (cursor < evidence.length) {
+      const candidate = evidence[cursor];
+      cursor += 1;
+      if (candidate.unit === claim.unit && numericSupported(claim.value, [candidate.value])) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return false;
+  }
+  return true;
+}
+
 function claimWords(value: string): string[] {
   return (
     value
+      .replace(CLAIM_UNIT, " ")
       .toLowerCase()
       .match(/[\p{L}\p{N}]+/gu)
       ?.filter((word) => !/^\p{N}+$/u.test(word) && !CLAIM_STOP_WORDS.has(word)) ?? []
@@ -370,7 +553,8 @@ function claimSupported(claim: string, source: SourceEvidence): boolean {
     if (url !== canonicalPublicUrl(source.url)) return false;
   }
   const claimNumbers = numericValues(normalized);
-  const claimCurrencies = normalized.toUpperCase().match(CURRENCY) ?? [];
+  const units = claimUnits(normalized);
+  const numericUnits = numericUnitTuples(normalized);
   const attributions = [...normalized.matchAll(ATTRIBUTION)].map((match) =>
     match[1].trim().toLowerCase(),
   );
@@ -378,8 +562,9 @@ function claimSupported(claim: string, source: SourceEvidence): boolean {
   return evidenceClauses(source.text).some((clause) => {
     if (NEGATION.test(normalized) !== NEGATION.test(clause)) return false;
     if (!orderedNumbersSupported(claimNumbers, numericValues(clause))) return false;
-    const evidenceCurrencies = new Set(clause.toUpperCase().match(CURRENCY) ?? []);
-    if (claimCurrencies.some((unit) => !evidenceCurrencies.has(unit))) return false;
+    if (!orderedNumericUnitsSupported(numericUnits, numericUnitTuples(clause))) return false;
+    const evidenceUnits = new Set(claimUnits(clause));
+    if (units.some((unit) => !evidenceUnits.has(unit))) return false;
     const lowerClause = clause.toLowerCase();
     if (attributions.some((attribution) => !lowerClause.includes(attribution))) return false;
     return orderedWordsSupported(words, claimWords(clause));

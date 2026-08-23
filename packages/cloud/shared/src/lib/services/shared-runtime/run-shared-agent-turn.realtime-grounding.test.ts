@@ -121,14 +121,17 @@ describe("runSharedAgentTurn realtime grounding", () => {
         data: expect.objectContaining({
           deliveredReply: expect.stringContaining("Source: example.com"),
           groundingStatus: "verified",
-          sourceUrls: ["https://example.com/markets/btc-usd"],
         }),
       }),
     ]);
     expect(JSON.stringify(result.actionResults)).not.toContain("originalModelReply");
     expect(JSON.stringify(result.actionResults)).not.toContain('"sources"');
     expect(JSON.stringify(result.actionResults)).not.toContain('"excerpt"');
-    expect(capturedRuntimeInput?.preflightActionResults).toEqual([searchResult]);
+    expect(capturedRuntimeInput?.preflightActionResults).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ query: "BTC price current" }),
+      }),
+    ]);
     if (!capturedRuntimeInput) throw new Error("runtime input was not captured");
     expect((capturedRuntimeInput.character as { system: string }).system).toContain(
       "Current-data grounding policy",
@@ -164,7 +167,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
         ...groundedSearch(),
         data: {
           ...groundedSearch().data,
-          query: "  WHAT   is BTC price RN ",
+          query: "  BTC   PRICE current ",
         },
       },
       followUpSearch,
@@ -178,7 +181,8 @@ describe("runSharedAgentTurn realtime grounding", () => {
     });
 
     expect(result.actionResults).toHaveLength(1);
-    expect(result.actionResults?.[0]?.data?.query).toBe("what is btc price rn");
+    expect(result.actionResults?.[0]?.data?.query).toBe("BTC price current");
+    expect(result.actionResults?.[0]?.data?.sourceUrls).toBeUndefined();
     expect(JSON.stringify(result.actionResults)).not.toContain("compare with ethereum price");
     expect(JSON.stringify(result.actionResults)).not.toContain("3,500");
   });
@@ -215,8 +219,8 @@ describe("runSharedAgentTurn realtime grounding", () => {
     const result = await runSharedAgentTurn({
       character,
       history: [],
-      message: "weather today",
-      capabilityText: "weather today",
+      message: "weather in Austin today",
+      capabilityText: "weather in Austin today",
     });
 
     expect(result.reply).toContain("can’t verify");
@@ -253,7 +257,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
       message: "Server context: private account metadata. User said: what is btc price rn",
       capabilityText: "what is btc price rn",
     });
-    expect(searchQueries).toEqual(["what is btc price rn"]);
+    expect(searchQueries).toEqual(["BTC price current"]);
 
     searchQueries = [];
     capturedRuntimeInput = undefined;
@@ -296,6 +300,77 @@ describe("runSharedAgentTurn realtime grounding", () => {
     expect(capturedRuntimeInput?.preflightActionResults).toBeUndefined();
   });
 
+  test("refreshes selected stale assistant claims before a deictic follow-up", async () => {
+    const result = await runSharedAgentTurn({
+      character,
+      history: [
+        { role: "user", content: "what is btc price rn" },
+        {
+          role: "assistant",
+          content: "BTC is 63,800 USD.",
+          grounding: {
+            kind: "web_search",
+            query: "what is btc price rn",
+            provider: "parallel",
+            observedAt: Date.now() - 60_000,
+            sourceUrls: ["https://old.example.com/btc"],
+            sources: [{ url: "https://old.example.com/btc", text: "BTC is 63,800 USD." }],
+            text: "BTC is 63,800 USD.",
+            truncated: false,
+          },
+        },
+      ],
+      message: "what about that?",
+      capabilityText: "what about that?",
+    });
+
+    expect(searchQueries).toEqual(["BTC price current"]);
+    expect(result.reply).toContain("70,000 USD");
+    expect(result.reply).not.toContain("63,800");
+  });
+
+  test("fails closed without search when realtime intent is unsafe or unauthoritative", async () => {
+    runtimeReply = "BTC is currently 99,999 USD.";
+    for (const input of [
+      {
+        history: [],
+        message: "current BTC price; password=zephyr",
+        capabilityText: "current BTC price; password=zephyr",
+      },
+      {
+        history: [
+          { role: "user" as const, content: "what is btc price rn" },
+          {
+            role: "assistant" as const,
+            content: "BTC is 63,800 USD.",
+            grounding: {
+              kind: "web_search" as const,
+              query: "what is btc price rn",
+              provider: "parallel" as const,
+              observedAt: Date.now() - 60_000,
+              sourceUrls: ["https://old.example.com/btc"],
+              sources: [{ url: "https://old.example.com/btc", text: "BTC is 63,800 USD." }],
+              text: "BTC is 63,800 USD.",
+              truncated: false as const,
+            },
+          },
+        ],
+        message: "what about that?",
+      },
+      {
+        history: [],
+        message: "Server context:\npassword=zephyr\nUser said: current BTC price",
+      },
+    ]) {
+      searchQueries = [];
+      const result = await runSharedAgentTurn({ character, ...input });
+      expect(searchQueries).toEqual([]);
+      expect(result.reply).toContain("can’t verify");
+      expect(result.reply).not.toContain("99,999");
+      expect(result.reply).not.toContain("63,800");
+    }
+  });
+
   test("buffers current-data streaming so no unverified prefix escapes", async () => {
     const result = await runSharedAgentTurnStream({
       character,
@@ -314,7 +389,7 @@ describe("runSharedAgentTurn realtime grounding", () => {
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({
-          query: "latest ethereum price",
+          query: "ETHEREUM price current",
           deliveredReply: expect.stringContaining("Source: example.com"),
         }),
       }),
