@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS,
   scheduleDevtoolsLayoutRefresh,
-} from "./devtools-layout.ts";
+} from "../devtools-layout.ts";
 
 function collectWindow(initial: {
   x: number;
@@ -38,7 +38,9 @@ describe("scheduleDevtoolsLayoutRefresh", () => {
       return 0;
     });
     expect(scheduled).toHaveLength(DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS.length);
-    scheduled.forEach((cb) => cb());
+    scheduled.forEach((cb) => {
+      cb();
+    });
     // 32ms 步会 nudge 高度 -1，其余恢复原帧
     expect(calls).toHaveLength(DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS.length);
     const nudge = calls[DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS.indexOf(32)];

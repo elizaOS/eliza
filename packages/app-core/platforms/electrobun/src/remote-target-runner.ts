@@ -29,6 +29,7 @@ import { logger } from "./logger";
 import type {
   RemoteTargetStateStore,
   RemoteTargetStoredCommand,
+  RemoteTargetStoredSession,
 } from "./remote-target-store";
 import type {
   RemoteTargetActivationResponse,
