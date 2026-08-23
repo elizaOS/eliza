@@ -8,6 +8,7 @@
 import {
   createUniqueUuid,
   ElizaError,
+  type GenerateTextResult,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -38,7 +39,52 @@ interface DiscoveryConfig {
   quoteThreshold: number;
 }
 
-function validateCompleteDraft(text: string): string {
+const COMPLETION_LIMIT_REASON =
+  /\b(?:length|max[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)\b/iu;
+
+function extractDraftText(result: string | GenerateTextResult): string {
+  if (typeof result === "string") return result;
+
+  const finishReason = result.finishReason?.trim() ?? "";
+  if (COMPLETION_LIMIT_REASON.test(finishReason)) {
+    throw new ElizaError(
+      `X draft generation stopped at the provider completion limit (${finishReason})`,
+      {
+        code: "X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED",
+        context: { finishReason },
+      },
+    );
+  }
+
+  if (typeof result.text === "string" && result.text.trim().length > 0) {
+    return result.text;
+  }
+  if (typeof result.content === "string" && result.content.trim().length > 0) {
+    return result.content;
+  }
+  if (Array.isArray(result.content)) {
+    const contentText = result.content
+      .filter(
+        (part) =>
+          part.type === undefined ||
+          part.type === "text" ||
+          part.type === "output_text",
+      )
+      .map((part) => part.text ?? part.content ?? "")
+      .join("");
+    if (contentText.trim().length > 0) return contentText;
+  }
+  if (typeof result.response === "string") return result.response;
+  return result.text;
+}
+
+function validateCompleteDraft(result: string | GenerateTextResult): string {
+  const text = extractDraftText(result).trim();
+  if (text.length === 0) {
+    throw new ElizaError("X draft generation returned no complete text", {
+      code: "X_DISCOVERY_DRAFT_EMPTY",
+    });
+  }
   const weightedLength = countTwitterWeightedLength(text);
   if (weightedLength > TWEET_MAX_LENGTH) {
     throw new ElizaError(
@@ -974,12 +1020,13 @@ Keep the reply:
 
 Reply:`;
 
-    const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
+    const response = (await this.runtime.useModel(ModelType.TEXT_SMALL, {
+      messages: [{ role: "user", content: prompt }],
+      omitMaxTokens: true,
       temperature: 0.8,
-    });
+    })) as string | GenerateTextResult;
 
-    return validateCompleteDraft(response.trim());
+    return validateCompleteDraft(response);
   }
 
   private async generateQuote(tweet: DiscoveryTweet): Promise<string> {
@@ -1011,12 +1058,13 @@ Create a quote tweet that:
 
 Quote tweet:`;
 
-    const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
+    const response = (await this.runtime.useModel(ModelType.TEXT_SMALL, {
+      messages: [{ role: "user", content: prompt }],
+      omitMaxTokens: true,
       temperature: 0.8,
-    });
+    })) as string | GenerateTextResult;
 
-    return validateCompleteDraft(response.trim());
+    return validateCompleteDraft(response);
   }
 
   private async saveEngagementMemory(
