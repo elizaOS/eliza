@@ -69,6 +69,7 @@ const syntheticRuntimePolicy = {
     "notification",
     "optimized_prompt",
     "pii-scrub",
+    "principal",
     "reminders_migration",
     "task",
   ],
