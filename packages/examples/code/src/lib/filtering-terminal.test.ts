@@ -6,8 +6,8 @@
  * each test stubs only the inner terminal's stdio methods at instance level
  * (never real stdin/stdout) and drives the real wrapper logic.
  */
-import { describe, expect, it } from "bun:test";
 import { ProcessTerminal } from "@elizaos/tui";
+import { describe, expect, it } from "vitest";
 import { FilteringTerminal } from "./filtering-terminal.js";
 
 type InnerAccess = { inner: ProcessTerminal };
