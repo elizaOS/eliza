@@ -26,6 +26,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
+import { resolveLatestElectrobunLinuxBuild } from "./lib/electrobun-linux-build-dir.mjs";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import { normalizeAbsoluteStagedSymlinks } from "./lib/linux-artifact-symlinks.mjs";
 import {
@@ -257,17 +258,11 @@ export async function withFlatpakStagingCleanup(tempRoot, operation) {
 }
 
 function latestLinuxBuildDir() {
-  const explicit = args.get("build-dir");
-  if (explicit) return path.resolve(repoRoot, explicit);
-
-  const candidates = readdirSync(buildRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && /linux/i.test(entry.name))
-    .map((entry) => path.join(buildRoot, entry.name))
-    .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs);
-  if (!candidates[0]) {
-    throw new Error(`No Linux Electrobun build found under ${buildRoot}`);
-  }
-  return candidates[0];
+  return resolveLatestElectrobunLinuxBuild({
+    buildRoot,
+    explicitBuildDir: args.get("build-dir"),
+    repoRoot,
+  });
 }
 
 export function requireLauncher(buildDir) {

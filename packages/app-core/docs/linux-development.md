@@ -45,14 +45,30 @@ blocks a supported Linux build or its required test harness.
 
 ## Evidence-backed Linux baseline
 
-The current native desktop evidence is **Linux x86_64 only**. The candidate was
+The current desktop evidence is **Linux x86_64 only**. The candidate was
 built and exercised on an x86_64 Debian forky/sid GNOME host; automated native
 pixels used Xvfb/X11, while owner-visible GNOME/Wayland inspection remains a
 separate physical gate. The pinned Electrobun native wrapper requires at least
 `GLIBC_2.38`. Direct packages also require compatible GTK 3, WebKitGTK 4.1,
 JavaScriptCoreGTK 4.1, Soup 3, Ayatana AppIndicator, and the other libraries
-reported by `ldd bin/libNativeWrapper.so`. Local Vulkan inference additionally
+reported by `ldd bin/libNativeWrapper.so`. The default renderer is CEF 147;
+WebKit remains an available fallback in the bundle. Local Vulkan inference additionally
 requires a working Vulkan loader/driver.
+
+Electrobun 1.18.1 is pinned with a fail-closed Linux x64 hotfix. The patch gives
+each named browser partition a direct SHA-256-derived CEF profile below the
+global CEF cache root, forwards `BrowserWindow.partition`, and drains live CEF
+browsers before shutdown so local storage is flushed. Repository install and
+desktop preflight verify the exact upstream input hashes and patched output;
+an unknown Electrobun build fails instead of receiving a fuzzy patch. The
+reviewable native source diff lives beside the generated `bsdiff` payload in
+`platforms/electrobun/native/linux/`.
+
+CEF's `chrome-sandbox` is shipped without setuid-root capability. Consequently
+the direct `.deb` and AppImage candidate do **not** claim Chromium renderer
+process sandboxing. The side-loadable Flatpak supplies an outer application
+sandbox, which is a separate boundary. Do not add `--no-sandbox` or
+`--disable-gpu-sandbox` to make a launch appear green.
 
 This is a compatibility floor, not a blanket distribution claim. A distro is
 release-supported only after a clean dependency-resolving install, packaged
@@ -73,7 +89,7 @@ physical-desktop evidence tiers.
 |---|---|---|
 | Browser application | Supported | Production Vite build plus browser smoke/e2e |
 | Local agent/API runtime | Supported | Source build, typecheck, runtime health, and real request flow |
-| Electrobun desktop, x86_64 | Candidate verified on the host and ABI baseline above | Packaged artifact, Xvfb launch, dependency/lifecycle test, then physical desktop evidence |
+| Electrobun desktop, x86_64 | CEF candidate verified on the host and ABI baseline above | Packaged artifact, real-process relaunch, Xvfb launch, dependency/lifecycle test, then physical desktop evidence |
 | Electrobun desktop, arm64 | Source-declared; unverified | Real arm64 artifact, ABI/dependency audit, packaged launch, and physical desktop evidence |
 | Browser and desktop voice capture/playback | Supported when devices and provider/runtime are configured | Real microphone, ASR, agent turn, TTS, and observed output evidence |
 | Local inference | Optional native capability | A package built with `--build-fused-lib` and a real model request |
@@ -108,6 +124,17 @@ library; request and verify that capability explicitly:
 ```bash
 bun run --cwd packages/app-core/platforms/electrobun build -- --build-fused-lib
 ```
+
+On Linux x64, installation and build preflight apply and verify the pinned CEF
+profile hotfix automatically. You can verify it without rebuilding:
+
+```bash
+node packages/scripts/patch-electrobun-linux-cef-profile.mjs --require
+```
+
+The patch currently has no verified arm64 input/output identity, so arm64 must
+remain fail-closed and unverified until its wrapper is built and exercised on
+real hardware.
 
 Run the local web/runtime stack with:
 
@@ -162,7 +189,9 @@ provider, local model, or output observation with a mocked success claim.
 
 If the doctor reports a different Bun or Node version, rerun the bootstrap; do
 not weaken the repository pin. If Electrobun fails to load a native library,
-run `ldd` on `bin/libNativeWrapper.so` inside the package and install the exact
-missing Debian package. If packaging stops for free space, remove only known
-generated build/cache outputs after inspecting their paths; never clean or
-reset a dirty checkout to make room.
+run `ldd` on `bin/libNativeWrapper.so` and `bin/libcef.so` inside the package
+and install the exact missing Debian package. If CEF state does not survive a
+real relaunch, inspect the app data directory's `CEF/Partition-*` profiles and
+verify the pinned patch before changing test timing. If packaging stops for
+free space, remove only known generated build/cache outputs after inspecting
+their paths; never clean or reset a dirty checkout to make room.
