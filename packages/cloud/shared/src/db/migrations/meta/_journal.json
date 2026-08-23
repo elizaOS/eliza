@@ -2064,7 +2064,14 @@
       "idx": 294,
       "version": "7",
       "when": 1794254400002,
-      "tag": "0311_remote_host_managed_network",
+      "tag": "0311_personal_shared_group_participants",
+      "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1794254400003,
+      "tag": "0312_remote_host_managed_network",
       "breakpoints": true
     }
   ]

@@ -15,21 +15,21 @@
  * same structure but the control differs.
  */
 
-import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import { Circle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
 import { cn } from "../../../../lib/utils";
 import { useAppSelector } from "../../../../state";
+import { Button } from "../../../ui/button";
 import { useDesktopPermissionsState } from "../../permission-controls.hooks";
 import type { PermissionDef } from "../../permission-types";
 import { hasCloudManagementCredential } from "../cloud-management-auth";
 import {
+  CloudRow,
   DestructiveSecondaryButton,
-  NuphyRow,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../cloud-settings-primitives";
 
 /* ── Shared status badge ────────────────────────────────────────── */
 
@@ -104,25 +104,25 @@ function DevicePermissionRow({
   onOpenSettings: () => void;
 }) {
   return (
-    <NuphyRow
+    <CloudRow
       label={def.name}
       description={def.description}
       control={
         <span className="flex items-center gap-3">
           <StatusBadge granted={granted} />
           {granted ? (
-            <NuphyButton variant="secondary" size="sm" onClick={onOpenSettings}>
+            <Button variant="outline" size="sm" onClick={onOpenSettings}>
               Open
-            </NuphyButton>
+            </Button>
           ) : (
-            <NuphyButton
-              variant="primary"
+            <Button
+              variant="default"
               size="sm"
               disabled={!canRequest}
               onClick={onRequest}
             >
               Request
-            </NuphyButton>
+            </Button>
           )}
         </span>
       }
@@ -137,7 +137,7 @@ function DevicePermissionsGroup() {
   if (loading) {
     return (
       <SettingsGroup title="Device permissions">
-        <NuphyRow label="Loading permissions…" />
+        <CloudRow label="Loading permissions…" />
       </SettingsGroup>
     );
   }
@@ -148,7 +148,7 @@ function DevicePermissionsGroup() {
         title="Device permissions"
         footer="This cloud-only build could not read the macOS permission service."
       >
-        <NuphyRow
+        <CloudRow
           label="Permission status unavailable"
           description="No permission was reported as denied or granted."
         />
@@ -254,7 +254,7 @@ function CloudPluginGrantsGroup() {
         title="Cloud plugin grants"
         footer="Connect to Eliza Cloud to manage plugin grants."
       >
-        <NuphyRow label="No cloud connection" />
+        <CloudRow label="No cloud connection" />
       </SettingsGroup>
     );
   }
@@ -265,19 +265,19 @@ function CloudPluginGrantsGroup() {
       footer="Server-side permissions granted to cloud plugins. Revoke a grant to withdraw access immediately."
     >
       {state.kind === "loading" ? (
-        <NuphyRow label="Loading plugin grants…" />
+        <CloudRow label="Loading plugin grants…" />
       ) : state.kind === "missing" ? (
-        <NuphyRow label="Plugin grant tracking is not available on this server." />
+        <CloudRow label="Plugin grant tracking is not available on this server." />
       ) : state.kind === "error" ? (
-        <NuphyRow
+        <CloudRow
           label="Plugin grants unavailable"
           description={state.message}
         />
       ) : state.grants.length === 0 ? (
-        <NuphyRow label="No plugins have been granted permissions." />
+        <CloudRow label="No plugins have been granted permissions." />
       ) : (
         state.grants.map((grant) => (
-          <NuphyRow
+          <CloudRow
             key={grant.grant_id}
             label={grant.plugin_name ?? grant.plugin_id}
             description={[grant.permission, grant.scope]

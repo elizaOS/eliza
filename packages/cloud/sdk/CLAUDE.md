@@ -4,7 +4,7 @@ TypeScript SDK for the Eliza Cloud API: auth, agent management, inference, billi
 
 ## Purpose / role
 
-Provides `ElizaCloudClient` — a typed fetch wrapper for every endpoint exposed by `api.eliza.app`. Used directly by `plugins/plugin-elizacloud` (for auth / agent lifecycle calls from inside an agent runtime) and `packages/ui` (for UI-layer Cloud API calls). The secondary export `./cloud-setup-session` ships a service interface and mock implementation for the guided-setup flow that runs when a new tenant provisions a Cloud container.
+Provides `ElizaCloudClient` — a typed fetch wrapper for every endpoint exposed by `api.eliza.app`. Used directly by `plugins/plugin-elizacloud` (for auth / agent lifecycle calls from inside an agent runtime) and `packages/ui` (for UI-layer Cloud API calls). Browser-safe API explorer, billing, pricing, avatar, and analytics contracts are published from dedicated subpath exports so public browser packages never depend on the private `@elizaos/cloud-shared` backend package. The `./cloud-setup-session` export ships a service interface and mock implementation for the guided-setup flow that runs when a new tenant provisions a Cloud container.
 
 ## Layout
 
@@ -16,6 +16,9 @@ packages/cloud/sdk/
     http.ts                   ElizaCloudHttpClient, CloudApiClient, CloudApiError, InsufficientCreditsError
     types.ts                  All request/response interfaces + ElizaCloudClientOptions
     types.cloud-api.ts        DTOs mirrored from the Cloud API (CurrentUserDto, AgentDetailDto, etc.)
+    account-billing-snapshot.ts  Browser-safe billing snapshot contract
+    api-explorer/             Endpoint discovery and OpenAPI helpers
+    browser-contracts/        Pure pricing, avatar, markup, and analytics helpers
     public-routes.ts          ELIZA_CLOUD_PUBLIC_ENDPOINTS map + ElizaCloudPublicRoutesClient
                               (generated — do not hand-edit; refresh with
                               node scripts/generate-public-routes.mjs)
@@ -94,6 +97,11 @@ import { MockCloudSetupSessionService, DEFAULT_SETUP_POLICY, isActionAllowed }
   from "@elizaos/cloud-sdk/cloud-setup-session";
 ```
 
+Other browser-safe sub-exports are `@elizaos/cloud-sdk/api-explorer`,
+`@elizaos/cloud-sdk/browser-contracts`, and
+`@elizaos/cloud-sdk/account-billing-snapshot`. Keep server-only persistence,
+authorization, and service code in the private `@elizaos/cloud-shared` package.
+
 ## Commands
 
 ```bash
@@ -166,6 +174,11 @@ Implement the five methods on the interface in `src/cloud-setup-session/service-
 - `cloud.routes` methods are generated and include both a typed JSON method and a `Raw` variant returning `Response`. Use `Raw` for streaming endpoints.
 - The `./cloud-setup-session` sub-export is a distinct entry point (`exports[./cloud-setup-session]`), not part of the root barrel. Import it separately.
 - `src/types.cloud-api.ts` contains DTOs mirrored from the Cloud API schema. These must stay in sync with the actual API — do not add computed fields to them.
+- Public browser packages must depend only on this SDK's browser-safe exports,
+  never on private `@elizaos/cloud-shared` runtime dependencies.
+- `AgentListItemDto` remains the backward-compatible permissive SDK shape;
+  validated current-response consumers may use `NormalizedAgentListItemDto`
+  and `NormalizedAgentDetailDto` for required current Cloud fields.
 
 ## Verification
 

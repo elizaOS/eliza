@@ -66,7 +66,7 @@ export function EarningsSimulator({
     <div className={cn("bg-neutral-900 rounded-sm p-4", className)}>
       {/* Header */}
       <h3 className="text-sm font-medium text-white flex items-center gap-2 mb-4">
-        <Calculator className="h-4 w-4 text-purple-400" />
+        <Calculator className="h-4 w-4 text-accent" />
         Earnings Calculator
       </h3>
 
@@ -143,11 +143,11 @@ export function EarningsSimulator({
 
         {/* Inference earnings */}
         <div className="flex items-center justify-between text-sm">
-          <span className="text-purple-400 flex items-center gap-1.5">
+          <span className="text-accent flex items-center gap-1.5">
             <Zap className="h-3 w-3" />
             Inference ({markupPercentage}%)
           </span>
-          <span className="font-mono text-purple-400">
+          <span className="font-mono text-accent">
             +${calculations.inferenceEarnings.toFixed(2)}
           </span>
         </div>

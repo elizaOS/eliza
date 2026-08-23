@@ -4,12 +4,14 @@
  */
 "use client";
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
-import { formatHourlyRate } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
 import type {
-  AgentListItemDto,
   AgentSandboxStatus,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
+  NormalizedAgentListItemDto,
+} from "@elizaos/cloud-sdk";
+import {
+  AGENT_PRICING,
+  formatHourlyRate,
+} from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -134,10 +136,10 @@ export function retireExpiredTombstones(
 }
 
 export function mergeAgentList(
-  prev: AgentListItemDto[],
-  apiAgents: AgentListItemDto[],
+  prev: NormalizedAgentListItemDto[],
+  apiAgents: NormalizedAgentListItemDto[],
   tombstoned: ReadonlySet<string>,
-): AgentListItemDto[] {
+): NormalizedAgentListItemDto[] {
   const apiById = new Map(apiAgents.map((a) => [a.id, a]));
   const updated = prev
     .filter((sb) => !tombstoned.has(sb.id))
@@ -159,12 +161,12 @@ export function mergeAgentList(
  * that should remove the local row, not resurrect it by clearing the tombstone
  * too early.
  */
-function isDockerBacked(agent: AgentListItemDto): boolean {
+function isDockerBacked(agent: NormalizedAgentListItemDto): boolean {
   return agent.executionTier === "custom" || Boolean(agent.dockerImage);
 }
 
 function getRuntimeKind(
-  agent: AgentListItemDto,
+  agent: NormalizedAgentListItemDto,
 ): "managed" | "shared" | "sandbox" | "notProvisioned" {
   if (isDockerBacked(agent)) return "managed";
   if (agent.executionTier === "shared") return "shared";
@@ -194,7 +196,7 @@ function getRuntimeKind(
  * them from drifting and computes `runtimeKind` a single time.
  */
 interface AgentRowViewModel {
-  agent: AgentListItemDto;
+  agent: NormalizedAgentListItemDto;
   isDocker: boolean;
   trackedJob: TrackedJob | undefined;
   isProvisioningActive: boolean;
@@ -213,7 +215,7 @@ interface AgentRowViewModel {
 }
 
 export function deriveAgentRow(
-  agent: AgentListItemDto,
+  agent: NormalizedAgentListItemDto,
   poller: Pick<ReturnType<typeof useJobPoller>, "getStatus" | "isActive">,
   actionInProgress: string | null,
 ): AgentRowViewModel {
@@ -243,7 +245,7 @@ export function deriveAgentRow(
 
 /** Shared is the user's persistent Eliza; Dedicated keeps its chosen name. */
 function getAgentDisplayName(
-  agent: AgentListItemDto,
+  agent: NormalizedAgentListItemDto,
   sharedAgentName: string,
   unnamedAgent: string,
 ) {
@@ -329,7 +331,11 @@ function StatusCell({
   );
 }
 
-export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
+export function ElizaAgentsTable({
+  agents,
+}: {
+  agents: NormalizedAgentListItemDto[];
+}) {
   const t = useT();
   const queryClient = useQueryClient();
   const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
@@ -342,7 +348,8 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
     new Set(),
   );
 
-  const [localAgents, setLocalAgents] = useState<AgentListItemDto[]>(agents);
+  const [localAgents, setLocalAgents] =
+    useState<NormalizedAgentListItemDto[]>(agents);
   const initialAgentIdsRef = useRef(
     [...agents.map((agent) => agent.id)].sort().join(","),
   );
@@ -357,7 +364,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
   // TOMBSTONE_GRACE_MS) instead of hiding a still-billed agent forever.
   const deletedIdsRef = useRef(new Map<string, number>());
   const withoutDeleted = useCallback(
-    (rows: AgentListItemDto[]) =>
+    (rows: NormalizedAgentListItemDto[]) =>
       rows.filter((agent) => !deletedIdsRef.current.has(agent.id)),
     [],
   );
@@ -430,27 +437,30 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
     }
   }, [agents, localAgents, reconcileTick, withoutDeleted]);
 
-  const mergeApiData = useCallback((apiAgents: AgentListItemDto[]) => {
-    // Retire tombstones by TIME ONLY — one clock for every retirement path.
-    // Retiring by *absence* here (drop the tombstone the moment this poll stops
-    // returning the agent) races the reconcile effect: on a real delete the fast
-    // poll drops the row first, this clears the tombstone, and then the effect's
-    // missing-add re-adds the agent from react-query's laggier list that still
-    // holds it — resurrecting a just-deleted row. Letting the tombstone live its
-    // full grace window means both eventually-consistent reads converge to
-    // "gone" before it expires, so nothing is left to re-add. Snapshot the set
-    // before the updater: StrictMode double-invokes updaters, and an in-updater
-    // mutation of the shared set would diverge between invocations.
-    retireExpiredTombstones(
-      deletedIdsRef.current,
-      Date.now(),
-      TOMBSTONE_GRACE_MS,
-    );
-    const tombstoned: ReadonlySet<string> = new Set(
-      deletedIdsRef.current.keys(),
-    );
-    setLocalAgents((prev) => mergeAgentList(prev, apiAgents, tombstoned));
-  }, []);
+  const mergeApiData = useCallback(
+    (apiAgents: NormalizedAgentListItemDto[]) => {
+      // Retire tombstones by TIME ONLY — one clock for every retirement path.
+      // Retiring by *absence* here (drop the tombstone the moment this poll stops
+      // returning the agent) races the reconcile effect: on a real delete the fast
+      // poll drops the row first, this clears the tombstone, and then the effect's
+      // missing-add re-adds the agent from react-query's laggier list that still
+      // holds it — resurrecting a just-deleted row. Letting the tombstone live its
+      // full grace window means both eventually-consistent reads converge to
+      // "gone" before it expires, so nothing is left to re-add. Snapshot the set
+      // before the updater: StrictMode double-invokes updaters, and an in-updater
+      // mutation of the shared set would diverge between invocations.
+      retireExpiredTombstones(
+        deletedIdsRef.current,
+        Date.now(),
+        TOMBSTONE_GRACE_MS,
+      );
+      const tombstoned: ReadonlySet<string> = new Set(
+        deletedIdsRef.current.keys(),
+      );
+      setLocalAgents((prev) => mergeAgentList(prev, apiAgents, tombstoned));
+    },
+    [],
+  );
 
   const refreshData = useCallback(async () => {
     try {
@@ -846,7 +856,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
           const restored = failed
             .map((id) => rowById.get(id))
             .filter(
-              (agent): agent is AgentListItemDto =>
+              (agent): agent is NormalizedAgentListItemDto =>
                 agent !== undefined && !present.has(agent.id),
             );
           return [...prev, ...restored];

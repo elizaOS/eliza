@@ -1,7 +1,7 @@
 /** Verifies agent detail rendering rejects malformed API timestamps and avoids duplicate dates. */
 // @vitest-environment jsdom
 
-import type { AgentDetailDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { NormalizedAgentDetailDto } from "@elizaos/cloud-sdk";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,11 +25,11 @@ vi.mock("../lib/use-document-title", () => ({
 }));
 
 const agentState: {
-  data: AgentDetailDto | undefined;
+  data: NormalizedAgentDetailDto | undefined;
   isLoading: boolean;
   error: Error | null;
 } = {
-  data: {} as AgentDetailDto,
+  data: {} as NormalizedAgentDetailDto,
   isLoading: false,
   error: null,
 };
@@ -49,7 +49,7 @@ import { PageHeaderProvider } from "../../cloud-ui/components/layout";
 import { ApiError } from "../lib/api-client";
 import AgentDetailPage from "./AgentDetailPage";
 
-const baseAgent: AgentDetailDto = {
+const baseAgent: NormalizedAgentDetailDto = {
   id: "test-agent-1",
   agentName: "Timestamp Test Agent",
   status: "running",
@@ -75,7 +75,7 @@ const baseAgent: AgentDetailDto = {
   adminDetails: null,
 };
 
-function renderPage(agent: AgentDetailDto | undefined) {
+function renderPage(agent: NormalizedAgentDetailDto | undefined) {
   agentState.data = agent;
   return render(
     <MemoryRouter initialEntries={["/dashboard/agents/test-agent-1"]}>

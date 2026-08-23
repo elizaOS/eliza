@@ -119,6 +119,28 @@ function _parseFrontmatter(content: string): HookFrontmatter {
 /**
  * HookService implementation
  */
+/**
+ * Hook priority as a usable number. `HookPriority` is a bare `number`, so a
+ * caller can supply a non-finite one — `register` previously guarded only
+ * absence via `?? DEFAULT_HOOK_PRIORITY`, and `setPriority` applied the value
+ * with no validation at all.
+ *
+ * `dispatchToHooks` runs hooks sequentially so each can modify the payload
+ * before the next sees it, which makes the order load-bearing. A non-finite
+ * priority makes the ordering subtraction return NaN, and `Array.prototype.sort`
+ * treats NaN as "leave as is", so the hook keeps its arrival position and
+ * preempts hooks that properly outrank it. Normalizing at both write points
+ * keeps every later reader — ordering, reporting, snapshots — on a finite
+ * value.
+ */
+function normalizeHookPriority(
+	priority: HookPriority | undefined,
+): HookPriority {
+	return typeof priority === "number" && Number.isFinite(priority)
+		? priority
+		: DEFAULT_HOOK_PRIORITY;
+}
+
 export class HookService extends Service implements IHookService {
 	static serviceType = ServiceType.HOOKS;
 	capabilityDescription = "Hook registration and execution";
@@ -251,7 +273,7 @@ export class HookService extends Service implements IHookService {
 			source: options.source ?? "runtime",
 			pluginId: options.pluginId,
 			events: eventArray,
-			priority: options.priority ?? DEFAULT_HOOK_PRIORITY,
+			priority: normalizeHookPriority(options.priority),
 			enabled: true,
 			always: options.always,
 			requires: options.requires,
@@ -390,7 +412,7 @@ export class HookService extends Service implements IHookService {
 	setPriority(hookId: string, priority: HookPriority): void {
 		const registration = this.registry.get(hookId);
 		if (registration) {
-			registration.metadata.priority = priority;
+			registration.metadata.priority = normalizeHookPriority(priority);
 			this.snapshotVersion++;
 		}
 	}

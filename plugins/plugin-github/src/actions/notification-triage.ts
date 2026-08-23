@@ -64,6 +64,26 @@ export interface TriagedNotification {
   score: number;
 }
 
+/**
+ * Orders triaged notifications highest-priority first.
+ *
+ * `scoreNotification` derives its result from repository timestamps supplied by
+ * the GitHub API, so a malformed `pushed_at` can yield a non-finite score. A
+ * comparator returning `NaN` makes `Array.prototype.sort` implementation-
+ * defined and the reported triage list unstable, so a non-finite score is
+ * treated as `0` and equal scores tie-break on notification id.
+ */
+export function compareTriagedNotifications(
+  a: TriagedNotification,
+  b: TriagedNotification,
+): number {
+  const aScore =
+    typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+  const bScore =
+    typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+  return bScore - aScore || a.id.localeCompare(b.id);
+}
+
 interface UnreadNotificationFetchResult {
   notifications: GitHubNotificationSummary[];
   totalUnreadIsLowerBound: boolean;
@@ -210,7 +230,7 @@ export const notificationTriageAction: Action = {
           }),
         };
       });
-      triaged.sort((a, b) => b.score - a.score);
+      triaged.sort(compareTriagedNotifications);
       const boundedTriaged = triaged.slice(0, NOTIFICATION_TRIAGE_LIMIT);
       await callback?.({
         text: formatTriageSummary(

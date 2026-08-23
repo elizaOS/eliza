@@ -63,6 +63,15 @@ export function weeklyResetAt(
  * instant come before those without; unknowns fall back to least-recently
  * used (proxy for least-recently-throttled) so the ordering is still stable.
  */
+/**
+ * Number.isFinite is not a type predicate, so it cannot narrow an optional
+ * numeric field. Coerce explicitly so the comparator stays total under strict
+ * null checks.
+ */
+function finiteOrZeroTimestamp(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 export function bySoonestReset(
   a: AccountWithCredentialFlag,
   b: AccountWithCredentialFlag,
@@ -70,12 +79,16 @@ export function bySoonestReset(
   const ar = accountResetAt(a);
   const br = accountResetAt(b);
   if (ar != null && br != null) {
-    if (ar !== br) return ar - br;
+    if (ar !== br) {
+      return (Number.isFinite(ar) ? ar : 0) - (Number.isFinite(br) ? br : 0);
+    }
   } else if (ar != null) {
     return -1;
   } else if (br != null) {
     return 1;
   }
   // Both unknown: least-recently-used first (held-in-reserve heuristic).
-  return (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0);
+  return (
+    finiteOrZeroTimestamp(a.lastUsedAt) - finiteOrZeroTimestamp(b.lastUsedAt)
+  );
 }

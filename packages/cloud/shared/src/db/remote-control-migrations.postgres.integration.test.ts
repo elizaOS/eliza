@@ -17,7 +17,7 @@ const migrations = [
   "0308_remove_conversation_token_default",
   "0309_retire_legacy_bluebubbles_gateways",
   "0310_personal_shared_inbound_media_admission",
-  "0311_remote_host_managed_network",
+  "0312_remote_host_managed_network",
 ] as const;
 
 realPostgresTest(

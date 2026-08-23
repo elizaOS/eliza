@@ -140,7 +140,12 @@ export async function runBotLoopGate(args: {
 				entry.content?.type !== "action_result" &&
 				!isInternalBridgeMessage(entry),
 		)
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+		.sort((a, b) => {
+			const aSafe = Number.isFinite(a.createdAt ?? 0) ? (a.createdAt ?? 0) : 0;
+			const bSafe = Number.isFinite(b.createdAt ?? 0) ? (b.createdAt ?? 0) : 0;
+			if (aSafe !== bSafe) return aSafe - bSafe;
+			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+		})
 		.slice(-GROUP_SIGNAL_WINDOW);
 	const metrics = computeGroupConversationMetrics(dialogue, runtime.agentId);
 	const maxAgentTurns = botLoopMaxAgentTurns(runtime);

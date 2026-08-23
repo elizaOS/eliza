@@ -7,9 +7,12 @@
  * true once it owns a request, false to let the caller keep dispatching.
  */
 import type http from "node:http";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { InferenceTurnSummary, Log } from "@elizaos/core";
-import { INFERENCE_TRACE_ID_PATTERN } from "@elizaos/core";
+import {
+  INFERENCE_TRACE_ID_PATTERN,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { parseCanonicalInteger } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
@@ -36,6 +39,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function formatScreenshotErrorDetail(text: string): string {
+  return truncateWellFormed(toWellFormedUnicode(text), 200);
 }
 
 function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
@@ -252,7 +259,7 @@ export async function handleDevCompatRoutes(
           {
             error: "upstream screenshot failed",
             status: r.status,
-            detail: truncateWellFormed(toWellFormedUnicode(text), 200),
+            detail: formatScreenshotErrorDetail(text),
           },
         );
         return true;

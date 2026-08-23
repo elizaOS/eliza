@@ -21,7 +21,7 @@ import {
   type RedemptionNetwork,
   type RedemptionQuoteResponse,
   type RedemptionStatusResponse,
-} from "@elizaos/cloud-shared/types/redemption-contract";
+} from "@elizaos/cloud-sdk/redemption-contract";
 import {
   AlertTriangle,
   AppWindow,

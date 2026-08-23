@@ -119,7 +119,7 @@ export function InviteMemberDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-popover border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
+      <DialogContent className="bg-bg border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
         {inviteLink ? (
           <>
             <DialogHeader>
@@ -240,7 +240,7 @@ export function InviteMemberDialog({
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
+                  <SelectContent className="bg-bg border-border">
                     <SelectItem value="member">
                       <div className="flex flex-col items-start">
                         <span className="font-mono font-medium text-txt-strong">

@@ -11,6 +11,17 @@
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { weeklyResetAt } from "./reset-time";
 
+export type { AccountWithCredentialFlag };
+
+/**
+ * Number.isFinite is not a type predicate, so it cannot narrow an optional
+ * numeric field. Coerce explicitly so comparators stay total under strict
+ * null checks.
+ */
+function finiteOrZero(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 export type AccountHealthTone = "success" | "warning" | "danger" | "muted";
 
 export interface AccountHealthDescriptor {
@@ -168,9 +179,9 @@ function compareByKey(
       return (au - bu) * factor;
     }
     case "lastUsed":
-      return ((a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0)) * factor;
+      return (finiteOrZero(a.lastUsedAt) - finiteOrZero(b.lastUsedAt)) * factor;
     case "priority":
-      return (a.priority - b.priority) * factor;
+      return (finiteOrZero(a.priority) - finiteOrZero(b.priority)) * factor;
     default:
       return 0;
   }
@@ -187,7 +198,12 @@ export function sortAccounts(
   return [...accounts].sort((a, b) => {
     const primary = compareByKey(a, b, sort);
     if (primary !== 0) return primary;
-    if (a.priority !== b.priority) return a.priority - b.priority;
+    if (a.priority !== b.priority) {
+      return (
+        (Number.isFinite(a.priority) ? a.priority : 0) -
+        (Number.isFinite(b.priority) ? b.priority : 0)
+      );
+    }
     return a.id.localeCompare(b.id);
   });
 }

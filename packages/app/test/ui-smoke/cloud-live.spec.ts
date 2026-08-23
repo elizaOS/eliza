@@ -39,10 +39,13 @@ import {
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import {
   assertOnboardingLivenessWithTiming,
+  chatComposer,
+  describeAnchoredLiveTurnState,
   findAnchoredLiveTurn,
   isLiveReply,
   readLivenessThreadLines,
 } from "../liveness-contract";
+import { writePrivacySafeLivenessDiagnostic } from "../privacy-safe-liveness-diagnostic-artifact.mjs";
 import { writeStagingCloudChatLatencyEvidence } from "../staging-cloud-chat-latency-evidence";
 import { openAppPath } from "./helpers";
 
@@ -742,7 +745,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       // to an allowlisted name plus counts/booleans only. Never emit the draft,
       // challenge, response text, request URL, or any account/runtime ID.
       const auditAfterLiveness = await primaryAudit.snapshot();
-      const [domSnapshotResult] = await Promise.allSettled([
+      const [domSnapshotResult, threadLinesResult] = await Promise.allSettled([
         page.evaluate((before) => {
           const userRows = Array.from(
             document.querySelectorAll(
@@ -787,6 +790,7 @@ test.describe("real cloud login + personal identity + chat", () => {
             }),
           };
         }, domBeforeLiveness),
+        readLivenessThreadLines(page),
       ]);
       const domSnapshot =
         domSnapshotResult?.status === "fulfilled"
@@ -799,26 +803,84 @@ test.describe("real cloud login + personal identity + chat", () => {
         )
           ? error.name
           : "UnknownError";
+      const anchoredState = describeAnchoredLiveTurnState(
+        threadLinesResult.status === "fulfilled" ? threadLinesResult.value : [],
+        { anchorToken: turnAnchorToken },
+      );
+      const diagnosticRecord = {
+        originalErrorName,
+        chatSendAttemptDelta: Math.max(
+          0,
+          auditAfterLiveness.chatSendAttemptCount -
+            auditBeforeLiveness.chatSendAttemptCount,
+        ),
+        logicalChatSendDelta: Math.max(
+          0,
+          auditAfterLiveness.logicalChatSendCount -
+            auditBeforeLiveness.logicalChatSendCount,
+        ),
+        unidentifiedChatSendDelta: Math.max(
+          0,
+          auditAfterLiveness.unidentifiedChatSendAttemptCount -
+            auditBeforeLiveness.unidentifiedChatSendAttemptCount,
+        ),
+        namedWarmingResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.namedWarmingResponseCount -
+            auditBeforeLiveness.namedWarmingResponseCount,
+        ),
+        successfulChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.successfulChatSendResponseCount -
+            auditBeforeLiveness.successfulChatSendResponseCount,
+        ),
+        clientErrorChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.clientErrorChatSendResponseCount -
+            auditBeforeLiveness.clientErrorChatSendResponseCount,
+        ),
+        serverErrorChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.serverErrorChatSendResponseCount -
+            auditBeforeLiveness.serverErrorChatSendResponseCount,
+        ),
+        otherChatResponseDelta: Math.max(
+          0,
+          auditAfterLiveness.otherChatSendResponseCount -
+            auditBeforeLiveness.otherChatSendResponseCount,
+        ),
+        retryObservationAvailable: retryObservation.ok,
+        retryChipEverObserved: retryObservation.ok
+          ? retryObservation.retryChipEverObserved
+          : "unavailable",
+        domSnapshotAvailable: domSnapshot !== null,
+        draftCleared: domSnapshot?.draftCleared ?? "unavailable",
+        newUserRowCount: domSnapshot?.newUserRowCount ?? "unavailable",
+        newAssistantRowCount:
+          domSnapshot?.newAssistantRowCount ?? "unavailable",
+        failureRowPresent: domSnapshot?.failureRowPresent ?? "unavailable",
+        retryRowPresent: domSnapshot?.retryRowPresent ?? "unavailable",
+        interruptedRowPresent:
+          domSnapshot?.interruptedRowPresent ?? "unavailable",
+        widgetOnlyReplyRowPresent:
+          domSnapshot?.widgetOnlyReplyRowPresent ?? "unavailable",
+        threadLinesAvailable: threadLinesResult.status === "fulfilled",
+        ...anchoredState,
+      };
+      const diagnosticPath = test
+        .info()
+        .outputPath("privacy-safe-liveness-history-network-diagnostics.json");
+      const diagnosticArtifactWritten =
+        await writePrivacySafeLivenessDiagnostic({
+          diagnosticPath,
+          diagnosticRecord,
+          annotations: test.info().annotations,
+        });
       const diagnostic = [
-        `originalErrorName=${originalErrorName}`,
-        `chatSendAttemptDelta=${Math.max(0, auditAfterLiveness.chatSendAttemptCount - auditBeforeLiveness.chatSendAttemptCount)}`,
-        `logicalChatSendDelta=${Math.max(0, auditAfterLiveness.logicalChatSendCount - auditBeforeLiveness.logicalChatSendCount)}`,
-        `unidentifiedChatSendDelta=${Math.max(0, auditAfterLiveness.unidentifiedChatSendAttemptCount - auditBeforeLiveness.unidentifiedChatSendAttemptCount)}`,
-        `namedWarmingResponseDelta=${Math.max(0, auditAfterLiveness.namedWarmingResponseCount - auditBeforeLiveness.namedWarmingResponseCount)}`,
-        `successfulChatResponseDelta=${Math.max(0, auditAfterLiveness.successfulChatSendResponseCount - auditBeforeLiveness.successfulChatSendResponseCount)}`,
-        `clientErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.clientErrorChatSendResponseCount - auditBeforeLiveness.clientErrorChatSendResponseCount)}`,
-        `serverErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.serverErrorChatSendResponseCount - auditBeforeLiveness.serverErrorChatSendResponseCount)}`,
-        `otherChatResponseDelta=${Math.max(0, auditAfterLiveness.otherChatSendResponseCount - auditBeforeLiveness.otherChatSendResponseCount)}`,
-        `retryObservationAvailable=${retryObservation.ok}`,
-        `retryChipEverObserved=${retryObservation.ok ? retryObservation.retryChipEverObserved : "unavailable"}`,
-        `domSnapshotAvailable=${domSnapshot !== null}`,
-        `draftCleared=${domSnapshot?.draftCleared ?? "unavailable"}`,
-        `newUserRowCount=${domSnapshot?.newUserRowCount ?? "unavailable"}`,
-        `newAssistantRowCount=${domSnapshot?.newAssistantRowCount ?? "unavailable"}`,
-        `failureRowPresent=${domSnapshot?.failureRowPresent ?? "unavailable"}`,
-        `retryRowPresent=${domSnapshot?.retryRowPresent ?? "unavailable"}`,
-        `interruptedRowPresent=${domSnapshot?.interruptedRowPresent ?? "unavailable"}`,
-        `widgetOnlyReplyRowPresent=${domSnapshot?.widgetOnlyReplyRowPresent ?? "unavailable"}`,
+        ...Object.entries(diagnosticRecord).map(
+          ([name, value]) => `${name}=${value}`,
+        ),
+        `diagnosticArtifactWritten=${diagnosticArtifactWritten}`,
       ].join("; ");
       throw new Error(
         `Cloud live liveness failed; privacy-safe diagnostic: ${diagnostic}`,

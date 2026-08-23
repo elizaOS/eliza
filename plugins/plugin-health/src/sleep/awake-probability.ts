@@ -151,9 +151,19 @@ export function computeAwakeProbability(args: {
     args.nowMs >= currentSleepStartMs
   ) {
     const strongestEvidence =
-      [...args.sleepCycle.evidence].sort(
-        (left, right) => right.confidence - left.confidence,
-      )[0]?.source ?? "activity_gap";
+      [...args.sleepCycle.evidence].sort((left, right) => {
+        const rightConf =
+          typeof right.confidence === "number" &&
+          Number.isFinite(right.confidence)
+            ? right.confidence
+            : 0;
+        const leftConf =
+          typeof left.confidence === "number" &&
+          Number.isFinite(left.confidence)
+            ? left.confidence
+            : 0;
+        return rightConf - leftConf || left.source.localeCompare(right.source);
+      })[0]?.source ?? "activity_gap";
     const sleepWeight = -2.8 * clamp(args.sleepCycle.sleepConfidence, 0.3, 1);
     contributors.push({
       source: strongestEvidence,

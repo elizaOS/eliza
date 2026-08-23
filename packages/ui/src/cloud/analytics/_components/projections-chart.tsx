@@ -5,7 +5,7 @@
 
 "use client";
 
-import type { ProjectionsDataDto } from "@elizaos/cloud-shared/types";
+import type { ProjectionsDataDto } from "@elizaos/cloud-sdk";
 import { formatUsd as formatCurrency } from "@elizaos/shared/utils/format";
 import { format } from "date-fns";
 import { Activity, AlertTriangle, Info, TrendingUp } from "lucide-react";

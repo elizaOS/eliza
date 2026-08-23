@@ -83,3 +83,56 @@ describe("ViewSearchIndex search limits", () => {
     expect(limited).toHaveLength(2);
   });
 });
+
+describe("ViewSearchIndex ranking determinism", () => {
+  afterEach(() => {
+    viewSearchIndex.clear();
+  });
+
+  it("ranks an unscoreable view last and breaks ties by view id", async () => {
+    // A corrupted stored embedding makes cosine similarity NaN, and two
+    // identical embeddings tie — both cases must still produce a total order.
+    const embeddings: Record<string, number[]> = {
+      "Z View": [1, 0],
+      "A View": [1, 0],
+      "Corrupt View": [Number.NaN, Number.NaN],
+    };
+    const rankingRuntime = createMockRuntime();
+    Object.defineProperty(rankingRuntime, "useModel", {
+      value: vi.fn(async (_type: unknown, params: { text: string }) => {
+        for (const [label, embedding] of Object.entries(embeddings)) {
+          if (params.text.startsWith(label)) return embedding;
+        }
+        return [1, 0];
+      }),
+    });
+
+    // Indexed worst-first so a comparator that returns NaN or 0 for these
+    // pairs leaves the array in exactly this (wrong) order.
+    for (const [index, label] of [
+      "Corrupt View",
+      "Z View",
+      "A View",
+    ].entries()) {
+      await viewSearchIndex.indexView(
+        {
+          id: label.split(" ")[0].toLowerCase(),
+          viewType: "gui",
+          pluginName: "@test/views-search",
+          label,
+          description: "",
+          tags: [],
+          hasHeroImage: false,
+          available: true,
+          loadedAt: index,
+          platform: "web",
+        },
+        rankingRuntime,
+      );
+    }
+
+    const ranked = await viewSearchIndex.search("query", rankingRuntime, 10);
+    expect(ranked.map((entry) => entry.viewId)).toEqual(["a", "z", "corrupt"]);
+    expect(Number.isNaN(ranked[2].score)).toBe(true);
+  });
+});

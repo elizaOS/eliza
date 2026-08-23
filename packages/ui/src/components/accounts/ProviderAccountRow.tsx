@@ -184,7 +184,12 @@ export function ProviderAccountRow({
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const accounts = provider?.accounts ?? [];
   const sorted = useMemo(
-    () => [...accounts].sort((a, b) => a.priority - b.priority),
+    () =>
+      [...accounts].sort(
+        (a, b) =>
+          (Number.isFinite(a.priority) ? a.priority : 0) -
+          (Number.isFinite(b.priority) ? b.priority : 0),
+      ),
     [accounts],
   );
   // A table earns its keep only for a genuinely multi-account pool; small

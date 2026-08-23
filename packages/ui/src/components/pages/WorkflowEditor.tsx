@@ -90,7 +90,7 @@ function terminal(status: WorkflowExecution["status"]): boolean {
 }
 
 function statusDot(status: WorkflowExecution["status"]): string {
-  if (status === "finished") return "bg-emerald-500";
+  if (status === "finished") return "bg-status-success";
   if (status === "failed" || status === "cancelled") return "bg-destructive";
   if (status.startsWith("waiting")) return "bg-amber-500";
   return "bg-primary";
@@ -200,7 +200,7 @@ function WorkflowWidget({
         {widget.component === "status" ? (
           <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">
             <span
-              className={`h-2.5 w-2.5 rounded-full ${value === false || value === "failed" || value === "error" ? "bg-destructive" : "bg-emerald-500"}`}
+              className={`h-2.5 w-2.5 rounded-full ${value === false || value === "failed" || value === "error" ? "bg-destructive" : "bg-status-success"}`}
             />
             <span className="font-medium">
               {typeof value === "string" || typeof value === "number"
@@ -536,7 +536,7 @@ export function WorkflowEditor({
             title={workflow.active ? "Enabled" : "Disabled"}
           >
             <span
-              className={`h-2.5 w-2.5 rounded-full ${workflow.active ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
+              className={`h-2.5 w-2.5 rounded-full ${workflow.active ? "bg-status-success" : "bg-muted-foreground/40"}`}
             />
           </button>
         ) : null}

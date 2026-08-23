@@ -253,7 +253,12 @@ export function AccountCommandTable({
   // up/down always targets the correct neighbour even when the user has
   // sorted the table by health or usage.
   const priorityOrder = useMemo(
-    () => [...accounts].sort((a, b) => a.priority - b.priority),
+    () =>
+      [...accounts].sort(
+        (a, b) =>
+          (Number.isFinite(a.priority) ? a.priority : 0) -
+          (Number.isFinite(b.priority) ? b.priority : 0),
+      ),
     [accounts],
   );
 

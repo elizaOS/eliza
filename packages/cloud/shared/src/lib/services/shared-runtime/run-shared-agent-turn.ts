@@ -50,6 +50,7 @@ import {
 import type { SharedMemoryStore } from "./shared-memory-store";
 import {
   finalizeSharedRealtimeReply,
+  hasSharedRealtimeIntent,
   requireTraceableRealtimeSearch,
   resolveSharedRealtimeRequirement,
   sharedRealtimePromptPolicy,
@@ -405,7 +406,6 @@ function sharedRealtimeTransportReceipt(
       query: grounding.query,
       provider: grounding.provider,
       observedAt: grounding.observedAt,
-      sourceUrls: grounding.sourceUrls ?? [],
       deliveredReply,
       groundingStatus: "verified",
     },
@@ -551,6 +551,12 @@ export async function runSharedAgentTurn(
     actionsEnabled && publicSearchText
       ? resolveSharedRealtimeRequirement(publicSearchText, input.history)
       : undefined;
+  const trustedRealtimeIntent =
+    actionsEnabled && publicSearchText
+      ? hasSharedRealtimeIntent(publicSearchText, input.history)
+      : false;
+  const untrustedRealtimeIntent =
+    actionsEnabled && !publicSearchText ? hasSharedRealtimeIntent(message, input.history) : false;
   let realtimeActionResults: ActionResult[] | undefined;
   let realtimeGrounding: SharedRuntimePublicGrounding | undefined;
   if (realtimeRequirement) {
@@ -669,6 +675,21 @@ export async function runSharedAgentTurn(
       ...(actionResults.length ? { actionResults } : {}),
       ...(realtimeGrounding ? { internalGrounding: realtimeGrounding } : {}),
     };
+  } else if (trustedRealtimeIntent || untrustedRealtimeIntent) {
+    const groundedReply = finalizeSharedRealtimeReply(turn.reply, undefined);
+    const history = [...turn.history];
+    const assistantIndex = history.findLastIndex((entry) => entry.role === "assistant");
+    if (assistantIndex >= 0) {
+      history[assistantIndex] = { ...history[assistantIndex], content: groundedReply };
+    } else {
+      history.push({
+        id: input.messageIds?.assistant,
+        role: "assistant",
+        content: groundedReply,
+        createdAt: Date.now(),
+      });
+    }
+    turn = { ...turn, reply: groundedReply, responded: true, history };
   }
   // The durable memory commit runs OUTSIDE the provider try/catch: its failure
   // is a storage fault on an already-landed reply and must not be re-labeled
@@ -717,8 +738,8 @@ export async function runSharedAgentTurnStream(
   // passed validation; streaming an unverified numeric claim cannot be undone.
   if (
     actionsEnabled &&
-    publicSearchText &&
-    resolveSharedRealtimeRequirement(publicSearchText, input.history)
+    ((publicSearchText && hasSharedRealtimeIntent(publicSearchText, input.history)) ||
+      (!publicSearchText && hasSharedRealtimeIntent(message, input.history)))
   ) {
     const turn = await runSharedAgentTurn(input);
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {

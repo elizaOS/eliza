@@ -215,7 +215,7 @@ beforeAll(async () => {
     "0306_secure_remote_command_relay",
     "0307_twilio_outbound_call_audit",
     "0308_remove_conversation_token_default",
-    "0311_remote_host_managed_network",
+    "0312_remote_host_managed_network",
   ]) {
     await applyMigration(migration);
   }

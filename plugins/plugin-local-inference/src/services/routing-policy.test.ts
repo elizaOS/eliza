@@ -365,4 +365,19 @@ describe("assessVoiceModality (#12253 voice-modality visibility)", () => {
 		expect(result.viable).toBe(false);
 		expect(result.reason).toBe("device-tier-unknown");
 	});
+
+	it("sorts eligible candidates safely when priority contains NaN", () => {
+		const candidates = [
+			registration("provider-nan", NaN),
+			registration("provider-valid", 100),
+		];
+		const pick = policyEngine.pickProvider({
+			modelType: "TEXT_LARGE",
+			policy: "manual",
+			preferredProvider: null,
+			candidates,
+			selfProvider: "eliza-router",
+		});
+		expect(pick?.provider).toBe("provider-valid");
+	});
 });
