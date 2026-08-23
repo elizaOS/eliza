@@ -19,6 +19,7 @@ import {
   listMediaFiles,
   mediaFileNameFromUrl,
   persistMediaBytes,
+  readStoredMediaBytes,
 } from "../api/media-store.ts";
 
 const DATA_URL_RE = /^data:([^;,]*)(;base64)?,([\s\S]*)$/;
@@ -80,6 +81,10 @@ export class LocalFileStorageService extends IFileStorageService {
   async exists(fileName: string): Promise<boolean> {
     if (!this.getUrl(fileName)) return false;
     return listMediaFiles().some((file) => file.fileName === fileName);
+  }
+
+  async read(fileName: string): Promise<Buffer | null> {
+    return readStoredMediaBytes(fileName);
   }
 
   async list(): Promise<StoredFileListItem[]> {

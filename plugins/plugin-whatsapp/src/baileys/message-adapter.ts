@@ -4,20 +4,23 @@
  * (chat id, type, content, reply target); `toBaileys` builds the outbound
  * Baileys payload from a WhatsAppMessage, validating media links before send.
  */
+import { Buffer } from "node:buffer";
+import { ElizaError } from "@elizaos/core";
 import type { proto } from "@whiskeysockets/baileys";
-import { assertValidWhatsAppMediaLink } from "../media";
 import type {
   NormalizedMessage,
   WhatsAppMediaMessage,
   WhatsAppMessage,
   WhatsAppTemplate,
 } from "../types";
+import { extractPersonalMediaMetadata } from "./media";
 
 export class MessageAdapter {
   toNormalized(msg: proto.IWebMessageInfo): NormalizedMessage {
     const chatId = msg.key?.remoteJid ?? "";
     const senderId = msg.key?.participant ?? chatId;
 
+    const personalMedia = extractPersonalMediaMetadata(msg);
     return {
       id: msg.key?.id ?? "",
       from: chatId,
@@ -27,6 +30,7 @@ export class MessageAdapter {
       chatId,
       senderId,
       replyToId: this.extractReplyToId(msg),
+      ...(personalMedia ? { personalMedia } : {}),
     };
   }
 
@@ -53,25 +57,32 @@ export class MessageAdapter {
     key: "image" | "video",
     media: WhatsAppMediaMessage
   ): Record<string, unknown> {
-    const link = assertValidWhatsAppMediaLink(media.link, key);
     return {
-      [key]: { url: link },
+      [key]: this.requiredCanonicalBytes(media, key),
       ...(media.caption ? { caption: media.caption } : {}),
     };
   }
 
   private mediaNoCaption(key: "audio", media: WhatsAppMediaMessage): Record<string, unknown> {
-    const link = assertValidWhatsAppMediaLink(media.link, key);
-    return { [key]: { url: link } };
+    return { [key]: this.requiredCanonicalBytes(media, key) };
   }
 
   private mediaWithFilename(media: WhatsAppMediaMessage): Record<string, unknown> {
-    const link = assertValidWhatsAppMediaLink(media.link, "document");
     return {
-      document: { url: link },
+      document: this.requiredCanonicalBytes(media, "document"),
       ...(media.filename ? { fileName: media.filename } : {}),
       ...(media.caption ? { caption: media.caption } : {}),
     };
+  }
+
+  private requiredCanonicalBytes(media: WhatsAppMediaMessage, kind: string): Buffer {
+    if (!media.bytes || media.bytes.byteLength === 0) {
+      throw new ElizaError("Personal WhatsApp media requires canonical local bytes", {
+        code: "WHATSAPP_PERSONAL_MEDIA_BYTES_REQUIRED",
+        context: { messageType: kind },
+      });
+    }
+    return Buffer.from(media.bytes);
   }
 
   private detectType(
