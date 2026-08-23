@@ -162,6 +162,15 @@ export class McpProxyBodyTooLargeError extends Error {
   }
 }
 
+export class McpProxyMalformedUtf8Error extends Error {
+  readonly bytes: number;
+  constructor(bytes: number) {
+    super(`MCP proxy body is not valid UTF-8 (${bytes} bytes)`);
+    this.name = "McpProxyMalformedUtf8Error";
+    this.bytes = bytes;
+  }
+}
+
 export async function parseJsonBody(
   request: Request,
   maxBytes: number = MAX_PROXY_REQUEST_BODY_BYTES,
@@ -182,6 +191,9 @@ export async function parseJsonBody(
       throw signal.reason instanceof Error
         ? signal.reason
         : new McpProxyHopDeadlineError(MCP_PROXY_HOP_TIMEOUT_MS);
+    }
+    if (budgeted.reason === "malformed-utf8") {
+      throw new McpProxyMalformedUtf8Error(budgeted.bytes);
     }
     throw new McpProxyBodyTooLargeError(budgeted.bytes, maxBytes);
   }
@@ -500,6 +512,16 @@ app.post("/", async (c) => {
         });
         return c.json({ error: "MCP request body is too large" }, 413);
       }
+      if (error instanceof McpProxyMalformedUtf8Error) {
+        logger.warn("[MCP Proxy] Request body is not valid UTF-8", {
+          mcpId,
+          bytes: error.bytes,
+        });
+        await refundPrecharge("request_body_malformed_utf8", {
+          bytes: error.bytes,
+        });
+        return c.json({ error: "MCP request body is not valid UTF-8" }, 400);
+      }
       logger.warn("[MCP Proxy] Invalid JSON request body", {
         mcpId,
         error: error instanceof Error ? error.message : String(error),
@@ -588,6 +610,17 @@ app.post("/", async (c) => {
       if (!budgeted.ok) {
         if (budgeted.reason === "deadline") {
           return await refundDeadline();
+        }
+        if (budgeted.reason === "malformed-utf8") {
+          logger.warn("[MCP Proxy] MCP response is not valid UTF-8", {
+            mcpId,
+            status: mcpResponse.status,
+            receivedBytes: budgeted.bytes,
+          });
+          await refundPrecharge("mcp_response_malformed_utf8", {
+            status: mcpResponse.status,
+          });
+          return c.json({ error: "MCP response is not valid UTF-8" }, 502);
         }
         logger.warn("[MCP Proxy] MCP response exceeded the proxy byte budget", {
           mcpId,
