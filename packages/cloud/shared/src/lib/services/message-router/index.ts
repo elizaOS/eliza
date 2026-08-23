@@ -133,6 +133,9 @@ function classifyProviderException(
   if (isElizaError(error) && error.code === "PROVIDER_REQUEST_REJECTED") {
     const providerStatus =
       typeof error.context?.status === "number" ? error.context.status : undefined;
+    if (providerStatus !== undefined && providerStatus >= 500) {
+      return deliveryUncertain(provider, "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN");
+    }
     const retryable = error.context?.retryable === true;
     return deliveryFailed(provider, "DELIVERY_PROVIDER_REJECTED", retryable, providerStatus);
   }
@@ -602,6 +605,9 @@ class MessageRouterService {
 
       if (!response.ok) {
         logger.error("[MessageRouter] Twilio API error", { status: response.status });
+        if (response.status >= 500) {
+          return deliveryUncertain("twilio", "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN");
+        }
         return deliveryFailed(
           "twilio",
           "DELIVERY_PROVIDER_REJECTED",
