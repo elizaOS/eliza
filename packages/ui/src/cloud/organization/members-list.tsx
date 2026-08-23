@@ -205,7 +205,7 @@ export function MembersList({
                           </div>
                         </SelectValue>
                       </SelectTrigger>
-                      <SelectContent className="bg-popover border-border">
+                      <SelectContent className="bg-bg border-border">
                         <SelectItem value="admin">
                           <div className="flex items-center gap-1.5">
                             <Shield className="h-4 w-4" />
@@ -243,12 +243,15 @@ export function MembersList({
                         <Button
                           variant="ghost"
                           type="button"
+                          aria-label={t("cloud.membersList.removeMember", {
+                            defaultValue: "Remove Member",
+                          })}
                           className="p-2 hover:bg-surface transition-colors border border-border"
                         >
                           <UserMinus className="h-4 w-4 text-danger" />
                         </Button>
                       </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-popover border border-brand-surface">
+                      <AlertDialogContent className="bg-bg border border-brand-surface">
                         <AlertDialogHeader>
                           <AlertDialogTitle className="text-txt-strong font-mono">
                             {t("cloud.membersList.removeMember", {
