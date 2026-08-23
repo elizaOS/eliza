@@ -1,8 +1,9 @@
 /**
  * Colocated unit coverage for the post-ready boot tail. Asserts resource-slot
- * ownership, contributor ordering, superseded-runtime skip, in-flight identity
- * changes, fire-and-forget voice warmup, and deferred-boot phase stamping.
- * Drives the real module with injected step stubs; no live runtime is started.
+ * ownership, contributor ordering, superseded-runtime skip, mid-tail abort
+ * after each liveness gate, fire-and-forget voice warmup, and deferred-boot
+ * phase stamping. Drives the real module with injected step stubs; no live
+ * runtime is started.
  */
 import {
   _resetDeferredBootStatusForTest,
@@ -44,6 +45,11 @@ const SYNC_THROW_STEPS = [
   "registerSubAgentCredentialBridgeAdapter",
   "startDeferredVoiceWarmup",
 ] as const satisfies ReadonlyArray<StepName>;
+
+const SKIPPED_MESSAGE =
+  "[eliza] post-ready boot tail skipped — runtime superseded";
+const ABORTED_MESSAGE =
+  "[eliza] post-ready boot tail aborted — runtime lost ownership mid-tail";
 
 function runtimeNamed(id: string): AgentRuntime {
   return { agentId: id } as AgentRuntime;
@@ -138,9 +144,7 @@ describe("runPostReadyBootTail", () => {
     ).resolves.toBeUndefined();
 
     expect(order).toEqual([]);
-    expect(info).toHaveBeenCalledExactlyOnceWith(
-      "[eliza] post-ready boot tail skipped — runtime superseded",
-    );
+    expect(info).toHaveBeenCalledExactlyOnceWith(SKIPPED_MESSAGE);
     expect(getDeferredBootStatus().phases["app-route-tail"]).toBe("pending");
     expect(resources).toEqual({
       tailRuntime: null,
@@ -160,9 +164,7 @@ describe("runPostReadyBootTail", () => {
     await runPostReadyBootTail(superseded, steps, resources);
 
     expect(order).toEqual([]);
-    expect(info).toHaveBeenCalledExactlyOnceWith(
-      "[eliza] post-ready boot tail skipped — runtime superseded",
-    );
+    expect(info).toHaveBeenCalledExactlyOnceWith(SKIPPED_MESSAGE);
     expect(getDeferredBootStatus().phases["app-route-tail"]).toBeUndefined();
     expect(resources.tailRuntime).toBe(live);
   });
@@ -244,25 +246,80 @@ describe("runPostReadyBootTail", () => {
     await expect(warmupFailure).rejects.toThrow("warmup failed");
   });
 
-  it("keeps running after the slot is swapped mid-await and still stamps complete", async () => {
-    const original = runtimeNamed("original");
-    const replacement = runtimeNamed("replacement");
+  it.each([...AWAITED_STEPS])(
+    "aborts later contributors when ownership is lost during %s",
+    async (name) => {
+      const original = runtimeNamed(`original-${name}`);
+      const replacement = runtimeNamed(`replacement-${name}`);
+      const resources = createRuntimeBootResources();
+      resources.tailRuntime = original;
+      const { steps, order } = makeSteps();
+      const info = vi.spyOn(logger, "info");
+      markDeferredBootPhase("app-route-tail", "pending");
+      steps[name] = async () => {
+        order.push(name);
+        resources.tailRuntime = replacement;
+      };
+
+      await expect(
+        runPostReadyBootTail(original, steps, resources),
+      ).resolves.toBeUndefined();
+
+      const failedAt = STEP_ORDER.indexOf(name);
+      expect(order).toEqual(STEP_ORDER.slice(0, failedAt + 1));
+      expect(info).toHaveBeenCalledExactlyOnceWith(ABORTED_MESSAGE);
+      expect(getDeferredBootStatus().phases["app-route-tail"]).toBe("pending");
+      expect(resources.tailRuntime).toBe(replacement);
+    },
+  );
+
+  it("still runs the sync credential steps when ownership drops during sensitive adapters", async () => {
+    const original = runtimeNamed("original-sensitive");
+    const replacement = runtimeNamed("replacement-sensitive");
     const resources = createRuntimeBootResources();
     resources.tailRuntime = original;
     const { steps, order } = makeSteps();
-    steps.registerAppRoutePlugins = async () => {
-      order.push("registerAppRoutePlugins");
+    const info = vi.spyOn(logger, "info");
+    markDeferredBootPhase("app-route-tail", "pending");
+    steps.registerCoreSensitiveRequestAdapters = () => {
+      order.push("registerCoreSensitiveRequestAdapters");
       resources.tailRuntime = replacement;
     };
 
     await runPostReadyBootTail(original, steps, resources);
 
-    // The liveness check is only at entry. A swap after that still finishes
-    // the remaining contributors and overwrites the phase — observed, not the
-    // comment's "cannot overwrite" claim.
+    // No gate between the two sync registrars and the credential-bridge
+    // await; the next check is after that await, so adapter + wiring still
+    // run, then the tail aborts before trigger/catalog/warmup.
+    expect(order).toEqual([
+      "registerAppRoutePlugins",
+      "registerRuntimeHooks",
+      "registerCoreSensitiveRequestAdapters",
+      "registerSubAgentCredentialBridgeAdapter",
+      "registerSubAgentCredentialBridge",
+    ]);
+    expect(info).toHaveBeenCalledExactlyOnceWith(ABORTED_MESSAGE);
+    expect(getDeferredBootStatus().phases["app-route-tail"]).toBe("pending");
+  });
+
+  it("stamps complete even if voice warmup clears the slot — there is no gate after it", async () => {
+    const original = runtimeNamed("original-warmup");
+    const replacement = runtimeNamed("replacement-warmup");
+    const resources = createRuntimeBootResources();
+    resources.tailRuntime = original;
+    const { steps, order } = makeSteps();
+    const info = vi.spyOn(logger, "info");
+    steps.startDeferredVoiceWarmup = () => {
+      order.push("startDeferredVoiceWarmup");
+      resources.tailRuntime = replacement;
+    };
+
+    await runPostReadyBootTail(original, steps, resources);
+
     expect(order).toEqual([...STEP_ORDER]);
-    expect(resources.tailRuntime).toBe(replacement);
+    expect(info).not.toHaveBeenCalled();
     expect(getDeferredBootStatus().phases["app-route-tail"]).toBe("complete");
+    expect(resources.tailRuntime).toBe(replacement);
   });
 
   it.each([...AWAITED_STEPS])(
