@@ -1,6 +1,7 @@
 /** Exercises discovery-cycle session binding, fail-closed read behavior, and the engagement dedup guard (#22710) with deterministic provider fakes. */
 import {
   createUniqueUuid,
+  type GenerateTextResult,
   type IAgentRuntime,
   type Memory,
   type UUID,
@@ -185,7 +186,7 @@ type EngagementRuntimeHandle = {
  * that #22710 broke.
  */
 function makeEngagementRuntime(
-  replyText = "a thoughtful reply",
+  replyText: string | GenerateTextResult = "a thoughtful reply",
 ): EngagementRuntimeHandle {
   const memories = new Map<string, Memory>();
   const runtime = {
@@ -204,7 +205,7 @@ function makeEngagementRuntime(
     updateWorld: vi.fn(async () => {}),
     ensureRoomExists: vi.fn(async () => {}),
     ensureConnection: vi.fn(async () => {}),
-    useModel: vi.fn(async () => replyText),
+    useModel: vi.fn(async () => replyText as never),
   } as unknown as IAgentRuntime;
   return { runtime, memories };
 }
@@ -343,12 +344,18 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
       "welcome to the timeline",
       "1750000000000000001",
     );
+    expect(useModel.mock.calls[0]?.[1]).toMatchObject({
+      omitMaxTokens: true,
+    });
     expect(useModel.mock.calls[0]?.[1]).not.toHaveProperty("maxTokens");
     expect(likeTweet).not.toHaveBeenCalled();
   });
 
   it("does not impose hidden model-output caps on reply or quote drafts", async () => {
-    const { runtime } = makeEngagementRuntime("complete draft");
+    const { runtime } = makeEngagementRuntime({
+      text: "complete draft",
+      finishReason: "stop",
+    });
     const useModel = runtime.useModel as ReturnType<typeof vi.fn>;
     const { client } = makeEngagementClient();
     const discovery = new TwitterDiscoveryClient(
@@ -366,8 +373,67 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
     );
 
     for (const [, request] of useModel.mock.calls) {
+      expect(request).toMatchObject({
+        messages: [
+          {
+            role: "user",
+            content: expect.stringMatching(/under 280 characters/i),
+          },
+        ],
+        omitMaxTokens: true,
+      });
+      expect(request).not.toHaveProperty("prompt");
       expect(request).not.toHaveProperty("maxTokens");
     }
+  });
+
+  it.each([
+    ["generateReply", "length"],
+    ["generateQuote", "MAX_TOKENS"],
+    ["generateReply", "output-limit"],
+  ] as const)(
+    "%s rejects provider completion-limit signal %s instead of accepting partial text",
+    async (method, finishReason) => {
+      const { runtime } = makeEngagementRuntime({
+        text: "This sounds complete but the provider says it was cut off",
+        finishReason,
+      });
+      const { client } = makeEngagementClient();
+      const discovery = new TwitterDiscoveryClient(
+        client,
+        runtime,
+        {} as TwitterClientState,
+      ) as unknown as DiscoveryHarness;
+
+      await expect(
+        discovery[method](scoredTweet("reply").tweet),
+      ).rejects.toMatchObject({
+        code: "X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED",
+        context: { finishReason },
+      });
+    },
+  );
+
+  it("does not call X or persist a receipt for a provider-truncated draft", async () => {
+    const { runtime, memories } = makeEngagementRuntime({
+      text: "partial draft",
+      finishReason: "length",
+    });
+    const { client, session, sendTweet } = makeEngagementClient();
+    const discovery = new TwitterDiscoveryClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    ) as unknown as DiscoveryHarness;
+
+    await expect(
+      discovery.processTweets([scoredTweet("reply")], session),
+    ).rejects.toMatchObject({
+      code: "X_DISCOVERY_EFFECT_FAILED",
+      cause: { code: "X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED" },
+    });
+    expect(sendTweet).not.toHaveBeenCalled();
+    expect(memories).toHaveProperty("size", 0);
   });
 
   it("rejects a complete overlength draft instead of clipping it", async () => {
