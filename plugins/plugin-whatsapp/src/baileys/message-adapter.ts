@@ -6,7 +6,7 @@
  */
 import { Buffer } from "node:buffer";
 import { ElizaError } from "@elizaos/core";
-import type { proto } from "@whiskeysockets/baileys";
+import { extractMessageContent, type proto } from "@whiskeysockets/baileys";
 import type {
   NormalizedMessage,
   WhatsAppMediaMessage,
@@ -19,17 +19,18 @@ export class MessageAdapter {
   toNormalized(msg: proto.IWebMessageInfo): NormalizedMessage {
     const chatId = msg.key?.remoteJid ?? "";
     const senderId = msg.key?.participant ?? chatId;
+    const content = extractMessageContent(msg.message);
 
-    const personalMedia = extractPersonalMediaMetadata(msg);
+    const personalMedia = content ? extractPersonalMediaMetadata(content) : undefined;
     return {
       id: msg.key?.id ?? "",
       from: chatId,
       timestamp: Number(msg.messageTimestamp ?? 0),
-      type: this.detectType(msg),
-      content: this.extractContent(msg),
+      type: this.detectType(content),
+      content: this.extractContent(content),
       chatId,
       senderId,
-      replyToId: this.extractReplyToId(msg),
+      replyToId: this.extractReplyToId(content),
       ...(personalMedia ? { personalMedia } : {}),
     };
   }
@@ -86,43 +87,43 @@ export class MessageAdapter {
   }
 
   private detectType(
-    msg: proto.IWebMessageInfo
+    content: proto.IMessage | undefined
   ): "text" | "image" | "audio" | "video" | "document" {
-    if (msg.message?.conversation || msg.message?.extendedTextMessage) {
+    if (content?.conversation || content?.extendedTextMessage) {
       return "text";
     }
-    if (msg.message?.imageMessage) {
+    if (content?.imageMessage) {
       return "image";
     }
-    if (msg.message?.audioMessage) {
+    if (content?.audioMessage) {
       return "audio";
     }
-    if (msg.message?.videoMessage) {
+    if (content?.videoMessage) {
       return "video";
     }
-    if (msg.message?.documentMessage) {
+    if (content?.documentMessage) {
       return "document";
     }
     return "text";
   }
 
-  private extractContent(msg: proto.IWebMessageInfo): string {
+  private extractContent(content: proto.IMessage | undefined): string {
     return (
-      msg.message?.conversation ??
-      msg.message?.extendedTextMessage?.text ??
-      msg.message?.imageMessage?.caption ??
-      msg.message?.videoMessage?.caption ??
-      msg.message?.documentMessage?.caption ??
+      content?.conversation ??
+      content?.extendedTextMessage?.text ??
+      content?.imageMessage?.caption ??
+      content?.videoMessage?.caption ??
+      content?.documentMessage?.caption ??
       ""
     );
   }
 
-  private extractReplyToId(msg: proto.IWebMessageInfo): string | undefined {
+  private extractReplyToId(content: proto.IMessage | undefined): string | undefined {
     const contextInfo =
-      msg.message?.extendedTextMessage?.contextInfo ??
-      msg.message?.imageMessage?.contextInfo ??
-      msg.message?.videoMessage?.contextInfo ??
-      msg.message?.documentMessage?.contextInfo;
+      content?.extendedTextMessage?.contextInfo ??
+      content?.imageMessage?.contextInfo ??
+      content?.videoMessage?.contextInfo ??
+      content?.documentMessage?.contextInfo;
 
     return typeof contextInfo?.stanzaId === "string" ? contextInfo.stanzaId : undefined;
   }

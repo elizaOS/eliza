@@ -79,6 +79,29 @@ describe("personal Baileys media ingress", () => {
     expect(options.pinnedFetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the metadata URL host for a direct-path CDN fallback", async () => {
+    const fixture = await encryptedFixture(PNG);
+    fixture.metadata.url = "https://media-cdg4-1.cdn.fbcdn.net/original.enc";
+    fixture.metadata.directPath = "/whatsapp/new.enc";
+    const options = {
+      ...guardedOptions(fixture.encrypted),
+      ssrfPolicy: { allowedHostnames: ["media-cdg4-1.cdn.fbcdn.net"] },
+    };
+
+    const result = await fetchVerifiedPersonalMedia(fixture.metadata, PNG.length, options);
+
+    expect(result.bytes).toEqual(PNG);
+    expect(options.lookupFn).toHaveBeenCalledWith("media-cdg4-1.cdn.fbcdn.net", { all: true });
+    expect(options.pinnedFetchImpl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: expect.objectContaining({
+          hostname: "media-cdg4-1.cdn.fbcdn.net",
+          pathname: "/whatsapp/new.enc",
+        }),
+      })
+    );
+  });
+
   it("blocks private resolution before provider transport I/O", async () => {
     const fixture = await encryptedFixture(PNG);
     const pinnedFetchImpl = vi.fn(async () => new Response(fixture.encrypted));
@@ -148,7 +171,10 @@ describe("personal Baileys media ingress", () => {
     const options = guardedOptions(fixture.encrypted);
     await expect(
       fetchVerifiedPersonalMedia(fixture.metadata, PNG.length - 1, options)
-    ).rejects.toThrow("exceeds the configured byte limit");
+    ).rejects.toMatchObject({
+      code: "WHATSAPP_PERSONAL_MEDIA_SIZE_DENIED",
+      severity: "ephemeral",
+    });
     expect(options.lookupFn).not.toHaveBeenCalled();
     expect(options.pinnedFetchImpl).not.toHaveBeenCalled();
   });

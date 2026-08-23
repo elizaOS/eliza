@@ -1201,28 +1201,22 @@ export class WhatsAppConnectorService extends Service {
 
     client.on("message", (message: NormalizedMessage) => {
       void this.handleNormalizedMessage(message, accountId).catch((error: unknown) => {
-        this.runtime.logger.error(
-          {
-            src: "plugin:whatsapp",
-            agentId: this.runtime.agentId,
-            accountId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to process inbound WhatsApp message"
-        );
+        // error-policy:J7 Per-message transport failures are reported without killing the client loop.
+        this.runtime.reportError("plugin:whatsapp:inbound-message", error, {
+          accountId,
+          chatId: message.chatId ?? message.from,
+          externalMessageId: message.id,
+          stage: message.personalMedia ? "media-fetch-store-decrypt" : "message-processing",
+        });
       });
     });
 
     client.on("error", (error: unknown) => {
-      this.runtime.logger.error(
-        {
-          src: "plugin:whatsapp",
-          agentId: this.runtime.agentId,
-          accountId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "WhatsApp client error"
-      );
+      // error-policy:J7 Baileys metadata and socket failures are diagnostic events, not loop exits.
+      this.runtime.reportError("plugin:whatsapp:client", error, {
+        accountId,
+        stage: client instanceof BaileysClient ? "baileys-metadata-or-socket" : "cloud-client",
+      });
     });
   }
 
