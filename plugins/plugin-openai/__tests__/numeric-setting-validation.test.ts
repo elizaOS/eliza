@@ -3,9 +3,8 @@
  * prefix-parsing or returning invalid quantities. getResearchTimeout wraps it
  * with no further validation, and its only call site (research.ts) hands the
  * result straight to `AbortSignal.timeout`, where zero immediately times out
- * and negative values throw a low-level engine error. Every other current caller
- * (getEmbeddingDimensions, getImageDescriptionMaxTokens) also requires a
- * strictly positive value, so the validation belongs in the shared helper.
+ * and negative values throw a low-level engine error. The embedding dimension
+ * caller also requires a strictly positive value, so validation belongs here.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";

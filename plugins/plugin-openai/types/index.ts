@@ -423,9 +423,6 @@ export interface OpenAIPluginConfig {
   /** Image description model */
   OPENAI_IMAGE_DESCRIPTION_MODEL?: string;
 
-  /** Max tokens for image description */
-  OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS?: string;
-
   /** TTS model */
   OPENAI_TTS_MODEL?: string;
 

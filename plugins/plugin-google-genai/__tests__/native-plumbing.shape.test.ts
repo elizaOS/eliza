@@ -124,6 +124,20 @@ describe("Google GenAI text native plumbing", () => {
     await expect(
       handleTextSmall(runtime() as never, { prompt: "hello" } as never),
     ).resolves.toBe('{"ok":true}');
+    expect(mocks.generateContent.mock.calls[0]?.[0]?.config).not.toHaveProperty(
+      "maxOutputTokens",
+    );
+  });
+
+  it("rejects a max-token finish instead of returning partial text", async () => {
+    mocks.generateContent.mockResolvedValueOnce({
+      text: "partial response",
+      candidates: [{ finishReason: "MAX_TOKENS" }],
+    });
+
+    await expect(
+      handleTextSmall(runtime() as never, { prompt: "complete this" } as never),
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
   });
 
   it("maps generic tools, toolChoice, response schema, and attachments into generateContent", async () => {

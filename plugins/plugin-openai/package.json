@@ -210,13 +210,6 @@
         "default": "gpt-5-mini",
         "sensitive": false
       },
-      "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
-        "type": "number",
-        "description": "Maximum number of tokens allowed in the image-description model response.",
-        "required": false,
-        "default": 8192,
-        "sensitive": false
-      },
       "OPENAI_TTS_MODEL": {
         "type": "string",
         "description": "Identifier of the model used for text-to-speech generation.",

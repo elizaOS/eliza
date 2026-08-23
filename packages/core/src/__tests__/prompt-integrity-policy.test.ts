@@ -231,6 +231,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-personal-assistant/scripts/verify-cerebras-wiring.ts": [
 		/maxTokens\s*:/,
 	],
+	"plugins/plugin-google-genai/models/text.ts": [
+		/params\.maxTokens\s*\?\?\s*8192/,
+	],
+	"plugins/plugin-google-genai/models/image.ts": [
+		/maxOutputTokens:\s*8192/,
+		/maxTokens:\s*8192/,
+	],
+	"plugins/plugin-openai/models/image.ts": [
+		/getImageDescriptionMaxTokens/,
+		/max_tokens:\s*maxTokens/,
+	],
 	"plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts": [
 		/maxTokens\s*:/,
 	],

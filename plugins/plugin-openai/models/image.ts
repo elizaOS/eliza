@@ -9,7 +9,7 @@ import type {
   ImageGenerationParams,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger, ModelType, recordLlmCall } from "@elizaos/core";
+import { ElizaError, logger, ModelType, recordLlmCall } from "@elizaos/core";
 import type {
   ImageDescriptionResult,
   ImageGenerationResult,
@@ -24,7 +24,6 @@ import {
   getBaseURL,
   getImageDescriptionAuthHeader,
   getImageDescriptionBaseURL,
-  getImageDescriptionMaxTokens,
   getImageDescriptionModel,
   getImageModel,
 } from "../utils/config";
@@ -169,11 +168,6 @@ export async function handleImageDescription(
   params: ImageDescriptionParams | string
 ): Promise<ImageDescriptionResult> {
   const modelName = getImageDescriptionModel(runtime);
-  const paramsWithMaxTokens = params as ImageDescriptionParams & { maxTokens?: number };
-  const maxTokens =
-    typeof params === "object" && typeof paramsWithMaxTokens.maxTokens === "number"
-      ? paramsWithMaxTokens.maxTokens
-      : getImageDescriptionMaxTokens(runtime);
   logger.debug(`[OpenAI] Using IMAGE_DESCRIPTION model: ${modelName}`);
 
   let imageUrl: string;
@@ -209,7 +203,6 @@ export async function handleImageDescription(
         ],
       },
     ],
-    max_tokens: maxTokens,
   };
 
   const details: RecordLlmCallDetails = {
@@ -217,7 +210,8 @@ export async function handleImageDescription(
     systemPrompt: "",
     userPrompt: promptText,
     temperature: 0,
-    maxTokens,
+    maxTokens: 0,
+    maxTokensOmitted: true,
     purpose: "external_llm",
     actionType: "openai.chat.completions.create",
   };
@@ -240,6 +234,15 @@ export async function handleImageDescription(
     }
 
     const responseData = (await response.json()) as OpenAIChatCompletionResponse;
+    if (responseData.choices[0]?.finish_reason === "length") {
+      throw new ElizaError(
+        "OpenAI reached its output boundary; refusing partial image description",
+        {
+          code: "MODEL_INCOMPLETE_OUTPUT",
+          context: { provider: "openai", finishReason: "length" },
+        }
+      );
+    }
     const responseContent = responseData.choices[0]?.message.content;
     if (!responseContent) {
       throw new Error("OpenAI API returned empty image description");

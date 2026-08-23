@@ -427,6 +427,19 @@ function normalizeGoogleFinishReason(
     ?.finishReason;
 }
 
+function assertCompleteGoogleGeneration(
+  finishReason: string | undefined,
+): void {
+  if (finishReason?.toUpperCase() !== "MAX_TOKENS") return;
+  throw new ElizaError(
+    "Google GenAI reached its output boundary; refusing to return partial model output",
+    {
+      code: "MODEL_INCOMPLETE_OUTPUT",
+      context: { provider: "google-genai", finishReason },
+    },
+  );
+}
+
 function firstNumber(...values: unknown[]): number | undefined {
   for (const value of values) {
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -577,6 +590,7 @@ async function generateContentWithTrajectory(
       prompt,
       modelName,
     );
+    assertCompleteGoogleGeneration(normalized.finishReason);
     details.response = normalized.text;
     details.toolCalls = normalized.toolCalls;
     details.finishReason = normalized.finishReason;
@@ -617,9 +631,7 @@ export async function handleTextSmall(
   params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const { stopSequences = [], temperature = 0.7, attachments } = params;
-  const maxTokens = params.omitMaxTokens
-    ? undefined
-    : (params.maxTokens ?? 8192);
+  const maxTokens = params.maxTokens;
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -641,7 +653,7 @@ export async function handleTextSmall(
       systemInstruction,
       temperature,
       maxTokens,
-      params.omitMaxTokens,
+      maxTokens === undefined,
       {
         model: modelName,
         contents:
@@ -679,9 +691,7 @@ export async function handleTextLarge(
   params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const { stopSequences = [], temperature = 0.7, attachments } = params;
-  const maxTokens = params.omitMaxTokens
-    ? undefined
-    : (params.maxTokens ?? 8192);
+  const maxTokens = params.maxTokens;
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -703,7 +713,7 @@ export async function handleTextLarge(
       systemInstruction,
       temperature,
       maxTokens,
-      params.omitMaxTokens,
+      maxTokens === undefined,
       {
         model: modelName,
         contents:
@@ -776,9 +786,7 @@ async function handleTextWithType(
   params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const { stopSequences = [], temperature = 0.7, attachments } = params;
-  const maxTokens = params.omitMaxTokens
-    ? undefined
-    : (params.maxTokens ?? 8192);
+  const maxTokens = params.maxTokens;
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -800,7 +808,7 @@ async function handleTextWithType(
       systemInstruction,
       temperature,
       maxTokens,
-      params.omitMaxTokens,
+      maxTokens === undefined,
       {
         model: modelName,
         contents:

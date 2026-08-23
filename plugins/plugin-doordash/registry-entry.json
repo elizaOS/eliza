@@ -7,7 +7,13 @@
   "source": "bundled",
   "tags": ["doordash", "food", "delivery", "ordering", "mcp"],
   "config": {
-    "features.doordash": false
+    "features.doordash": {
+      "type": "boolean",
+      "required": false,
+      "default": false,
+      "label": "Enable DoorDash",
+      "help": "Enable DoorDash through a configured MCP adapter."
+    }
   },
   "render": {
     "visible": true,
@@ -24,5 +30,5 @@
   },
   "dependsOn": ["mcp"],
   "kind": "plugin",
-  "subtype": "connector"
+  "subtype": "feature"
 }
