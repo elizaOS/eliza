@@ -35,6 +35,11 @@ describe("progressive content conformance", () => {
 			rowsRead: report.pages,
 			parentScans: 0,
 		});
+		expect(report.performance).toMatchObject({
+			readCallsPerPageMax: 1,
+			rowsPerPageMax: 1,
+			readAmplification: 1,
+		});
 	});
 
 	it("rejects an adapter that only claims cleanup", async () => {

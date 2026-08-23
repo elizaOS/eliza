@@ -150,7 +150,7 @@ describe("progressive content corpus", () => {
     }
   });
 
-  it("builds every family at 1 MiB plus a deterministic 10 MiB FILE case", async () => {
+  it("builds every family at deterministic 1 MiB and 10 MiB scales", async () => {
     const root = await makeRoot();
     const manifest = await generateProgressiveContentCorpus({
       outDir: root,
@@ -158,7 +158,7 @@ describe("progressive content corpus", () => {
       rootSeed: "scale-seed",
       generatorRevision: "test-revision",
     });
-    expect(manifest.objects).toHaveLength(7);
+    expect(manifest.objects).toHaveLength(12);
     expect(new Set(manifest.objects.map(({ family }) => family))).toEqual(
       new Set([
         "file",
@@ -169,17 +169,23 @@ describe("progressive content corpus", () => {
         "tool-output",
       ]),
     );
-    expect(
-      manifest.objects.every(({ byteLength }) => byteLength >= 1024 * 1024),
-    ).toBe(true);
-    expect(
-      manifest.objects.some(
-        ({ byteLength }) => byteLength === 10 * 1024 * 1024,
-      ),
-    ).toBe(true);
+    for (const family of [
+      "file",
+      "document",
+      "memory",
+      "email",
+      "attachment",
+      "tool-output",
+    ] as const) {
+      const sizes = manifest.objects
+        .filter((object) => object.family === family)
+        .map(({ byteLength }) => byteLength)
+        .sort((left, right) => left - right);
+      expect(sizes).toEqual([1024 * 1024, 10 * 1024 * 1024]);
+    }
     expect(
       manifest.objects.reduce((total, object) => total + object.byteLength, 0),
-    ).toBe(16 * 1024 * 1024);
+    ).toBe(66 * 1024 * 1024);
     await expect(verifyProgressiveContentCorpus(root)).resolves.toEqual(
       manifest,
     );
