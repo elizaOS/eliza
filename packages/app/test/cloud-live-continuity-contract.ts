@@ -61,7 +61,28 @@ export interface CloudLiveNetworkAuditSnapshot {
   serverErrorChatSendResponseCount: number;
   otherChatSendResponseCount: number;
   successfulPersonalIdentityGetCount: number;
+  historyGetRequestCount: number;
   successfulHistoryGetCount: number;
+  clientErrorHistoryGetResponseCount: number;
+  serverErrorHistoryGetResponseCount: number;
+  otherHistoryGetResponseCount: number;
+  failedHistoryGetRequestCount: number;
+  timedOutHistoryGetRequestCount: number;
+  pendingHistoryGetRequestCount: number;
+}
+
+export interface CloudLiveHistoryNetworkDiagnostics {
+  schemaVersion: 1;
+  phase: "post-reload" | "fresh-context";
+  proofTimeoutCount: 1;
+  historyGetRequestCount: number;
+  successfulHistoryGetResponseCount: number;
+  clientErrorHistoryGetResponseCount: number;
+  serverErrorHistoryGetResponseCount: number;
+  otherHistoryGetResponseCount: number;
+  failedHistoryGetRequestCount: number;
+  timedOutHistoryGetRequestCount: number;
+  pendingHistoryGetRequestCount: number;
 }
 
 export interface CloudLiveNamedWarmingModeInput {
@@ -173,6 +194,91 @@ function isHistoryGet(method: string, rawUrl: string): boolean {
     method.trim().toUpperCase() === "GET" &&
     /\/api\/conversations\/[^/]+\/messages$/.test(requestPath(rawUrl))
   );
+}
+
+function monotonicDelta(name: string, before: number, after: number): number {
+  if (!Number.isSafeInteger(before) || before < 0) {
+    fail(`${name} baseline must be a non-negative safe integer`);
+  }
+  if (!Number.isSafeInteger(after) || after < before) {
+    fail(`${name} current value must not precede its baseline`);
+  }
+  return after - before;
+}
+
+function requireNonNegativeSafeInteger(name: string, value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    fail(`${name} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
+/**
+ * Reduces one timed-out history proof to aggregate counts only. Request URLs,
+ * conversation identifiers, response bodies, headers, and failure text never
+ * enter the returned diagnostic.
+ */
+export function createCloudLiveHistoryNetworkDiagnostics(
+  phase: CloudLiveHistoryNetworkDiagnostics["phase"],
+  before: CloudLiveNetworkAuditSnapshot,
+  after: CloudLiveNetworkAuditSnapshot,
+): CloudLiveHistoryNetworkDiagnostics {
+  const historyGetRequestCount = monotonicDelta(
+    "historyGetRequestCount",
+    before.historyGetRequestCount,
+    after.historyGetRequestCount,
+  );
+  const successfulHistoryGetResponseCount = monotonicDelta(
+    "successfulHistoryGetCount",
+    before.successfulHistoryGetCount,
+    after.successfulHistoryGetCount,
+  );
+  const clientErrorHistoryGetResponseCount = monotonicDelta(
+    "clientErrorHistoryGetResponseCount",
+    before.clientErrorHistoryGetResponseCount,
+    after.clientErrorHistoryGetResponseCount,
+  );
+  const serverErrorHistoryGetResponseCount = monotonicDelta(
+    "serverErrorHistoryGetResponseCount",
+    before.serverErrorHistoryGetResponseCount,
+    after.serverErrorHistoryGetResponseCount,
+  );
+  const otherHistoryGetResponseCount = monotonicDelta(
+    "otherHistoryGetResponseCount",
+    before.otherHistoryGetResponseCount,
+    after.otherHistoryGetResponseCount,
+  );
+  const failedHistoryGetRequestCount = monotonicDelta(
+    "failedHistoryGetRequestCount",
+    before.failedHistoryGetRequestCount,
+    after.failedHistoryGetRequestCount,
+  );
+  const timedOutHistoryGetRequestCount = monotonicDelta(
+    "timedOutHistoryGetRequestCount",
+    before.timedOutHistoryGetRequestCount,
+    after.timedOutHistoryGetRequestCount,
+  );
+  requireNonNegativeSafeInteger(
+    "pendingHistoryGetRequestCount baseline",
+    before.pendingHistoryGetRequestCount,
+  );
+  const pendingHistoryGetRequestCount = requireNonNegativeSafeInteger(
+    "pendingHistoryGetRequestCount current value",
+    after.pendingHistoryGetRequestCount,
+  );
+  return {
+    schemaVersion: 1,
+    phase,
+    proofTimeoutCount: 1,
+    historyGetRequestCount,
+    successfulHistoryGetResponseCount,
+    clientErrorHistoryGetResponseCount,
+    serverErrorHistoryGetResponseCount,
+    otherHistoryGetResponseCount,
+    failedHistoryGetRequestCount,
+    timedOutHistoryGetRequestCount,
+    pendingHistoryGetRequestCount,
+  };
 }
 
 function chatSendScope(method: string, rawUrl: string): string {
@@ -433,6 +539,11 @@ export function createCloudLiveNetworkAudit(): {
     status: number,
     responseBody?: CloudLiveBoundedResponseBody,
   ): void;
+  observeRequestFailure(
+    method: string,
+    rawUrl: string,
+    errorText?: string,
+  ): void;
   snapshot(): Promise<CloudLiveNetworkAuditSnapshot>;
 } {
   let forbiddenAgentMutationCount = 0;
@@ -445,7 +556,13 @@ export function createCloudLiveNetworkAudit(): {
   let serverErrorChatSendResponseCount = 0;
   let otherChatSendResponseCount = 0;
   let successfulPersonalIdentityGetCount = 0;
+  let historyGetRequestCount = 0;
   let successfulHistoryGetCount = 0;
+  let clientErrorHistoryGetResponseCount = 0;
+  let serverErrorHistoryGetResponseCount = 0;
+  let otherHistoryGetResponseCount = 0;
+  let failedHistoryGetRequestCount = 0;
+  let timedOutHistoryGetRequestCount = 0;
   const pendingResponseHandlers = new Set<Promise<void>>();
 
   const trackResponseHandler = (handler: () => Promise<void>) => {
@@ -485,6 +602,7 @@ export function createCloudLiveNetworkAudit(): {
           logicalChatSendIds.add(`${scope}\u0000${clientMessageId}`);
         } else unidentifiedChatSendAttemptCount += 1;
       }
+      if (isHistoryGet(method, rawUrl)) historyGetRequestCount += 1;
     },
     observeResponse(method, rawUrl, status, responseBody) {
       const chatScope = chatSendScope(method, rawUrl);
@@ -506,8 +624,16 @@ export function createCloudLiveNetworkAudit(): {
           });
         }
       }
-      if (status >= 200 && status < 300 && isHistoryGet(method, rawUrl)) {
-        successfulHistoryGetCount += 1;
+      if (isHistoryGet(method, rawUrl)) {
+        if (status >= 200 && status < 300) {
+          successfulHistoryGetCount += 1;
+        } else if (status >= 400 && status < 500) {
+          clientErrorHistoryGetResponseCount += 1;
+        } else if (status >= 500 && status < 600) {
+          serverErrorHistoryGetResponseCount += 1;
+        } else {
+          otherHistoryGetResponseCount += 1;
+        }
       }
       if (
         status >= 200 &&
@@ -517,8 +643,21 @@ export function createCloudLiveNetworkAudit(): {
         successfulPersonalIdentityGetCount += 1;
       }
     },
+    observeRequestFailure(method, rawUrl, errorText = "") {
+      if (!isHistoryGet(method, rawUrl)) return;
+      failedHistoryGetRequestCount += 1;
+      if (/tim(?:e|ed)[ _-]?out/i.test(errorText)) {
+        timedOutHistoryGetRequestCount += 1;
+      }
+    },
     snapshot: async () => {
       await drainResponseHandlers();
+      const terminalHistoryGetCount =
+        successfulHistoryGetCount +
+        clientErrorHistoryGetResponseCount +
+        serverErrorHistoryGetResponseCount +
+        otherHistoryGetResponseCount +
+        failedHistoryGetRequestCount;
       return {
         forbiddenAgentMutationCount,
         chatSendAttemptCount,
@@ -530,7 +669,17 @@ export function createCloudLiveNetworkAudit(): {
         serverErrorChatSendResponseCount,
         otherChatSendResponseCount,
         successfulPersonalIdentityGetCount,
+        historyGetRequestCount,
         successfulHistoryGetCount,
+        clientErrorHistoryGetResponseCount,
+        serverErrorHistoryGetResponseCount,
+        otherHistoryGetResponseCount,
+        failedHistoryGetRequestCount,
+        timedOutHistoryGetRequestCount,
+        pendingHistoryGetRequestCount: Math.max(
+          0,
+          historyGetRequestCount - terminalHistoryGetCount,
+        ),
       };
     },
   };

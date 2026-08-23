@@ -5,6 +5,7 @@ import type {
   PlatformAdapter,
   WebhookConfig,
 } from "../src/adapters/types";
+import { PlatformDeliveryError } from "../src/adapters/types";
 import { logger } from "../src/logger";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
@@ -89,6 +90,10 @@ function createAdapter(event: ChatEvent): PlatformAdapter & {
         adapter.replies.push(text);
       },
     ),
+    sendReplyWithReceipt: mock(async (config, replyEvent, text) => {
+      await adapter.sendReply(config, replyEvent, text);
+      return { providerMessageIds: [`reply-${replyEvent.messageId}`] };
+    }),
     sendTypingIndicator: mock(async () => {
       adapter.typingCount += 1;
     }),
@@ -319,6 +324,87 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedRequests).toBe(1);
   });
 
+  test("does not record delivery when a provider returns an empty accepted receipt", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM-empty-receipt" });
+    const adapter = createAdapter(event);
+    const emptyReceipt = mock(async () => ({ providerMessageIds: [] }));
+    adapter.sendReplyWithReceipt = emptyReceipt;
+
+    globalThis.fetch = mock(async () =>
+      Response.json({ success: true, data: { reply: "receipt required" } }),
+    ) as typeof fetch;
+
+    expect(
+      (
+        await handleWebhook(
+          requestFor(event),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+
+    const dedupKey = `webhook:twilio:${event.messageId}`;
+    await waitFor(
+      () => redis.store.get(dedupKey) === "uncertain",
+      "empty receipt uncertainty",
+    );
+    expect(emptyReceipt).toHaveBeenCalledTimes(1);
+    expect(adapter.sendReply).not.toHaveBeenCalled();
+  });
+
+  test("reopens a typed failure known to occur before provider egress", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM-pre-egress" });
+    const adapter = createAdapter(event);
+    const preEgressFailure = mock(async () => {
+      throw new PlatformDeliveryError(
+        "credentials unavailable",
+        "failed",
+        "DELIVERY_CREDENTIALS_MISSING",
+        false,
+      );
+    });
+    adapter.sendReplyWithReceipt = preEgressFailure;
+    let sharedRequests = 0;
+    globalThis.fetch = mock(async () => {
+      sharedRequests += 1;
+      return Response.json({
+        success: true,
+        data: { reply: "try after repair" },
+      });
+    }) as typeof fetch;
+    const deps = {
+      redis,
+      cloudBaseUrl: "https://api.elizacloud.ai",
+      getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+    };
+    const dedupKey = `webhook:twilio:${event.messageId}`;
+
+    expect(
+      (await handleWebhook(requestFor(event), adapter, deps, "eliza-app"))
+        .status,
+    ).toBe(200);
+    await waitFor(() => !redis.store.has(dedupKey), "pre-egress claim release");
+    expect(
+      (await handleWebhook(requestFor(event), adapter, deps, "eliza-app"))
+        .status,
+    ).toBe(200);
+    await waitFor(
+      () => preEgressFailure.mock.calls.length === 2,
+      "safe replay",
+    );
+    expect(sharedRequests).toBe(2);
+  });
+
   test("routes an unresolved Blooio iMessage to the same phone Shared path", async () => {
     process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
     const redis = new MemoryRedis();
@@ -341,6 +427,10 @@ describe("gateway webhook handler e2e routing", () => {
       sendTypingIndicator: mock(async () => undefined),
       sendReply: mock(async (_config, _event, reply) => {
         replies.push(reply);
+      }),
+      sendReplyWithReceipt: mock(async (_config, _event, reply) => {
+        replies.push(reply);
+        return { providerMessageIds: ["blooio-reply-1"] };
       }),
     };
     let sharedBody: Record<string, unknown> | null = null;
@@ -931,6 +1021,10 @@ describe("gateway webhook handler e2e routing", () => {
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
       sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-1"] };
+      }),
     };
     class EgressContendedRedis extends MemoryRedis {
       override async set(
@@ -992,6 +1086,10 @@ describe("gateway webhook handler e2e routing", () => {
       verifyWebhook: mock(async () => true),
       extractEvent: mock(async () => event),
       sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-retry-1"] };
+      }),
     };
     const redis = new MemoryRedis();
     redis.store.set(
@@ -1054,6 +1152,10 @@ describe("gateway webhook handler e2e routing", () => {
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
       sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-personal-1"] };
+      }),
     };
     const redis = new MemoryRedis();
     const completionLog = spyOn(logger, "info").mockImplementation(
@@ -1167,13 +1269,18 @@ describe("gateway webhook handler e2e routing", () => {
       providerSentAtMs: Date.now() - 1_000,
       rawPayload: {},
     };
+    const sendReply = mock(async () => undefined);
     const adapter: PlatformAdapter = {
       platform: "telegram",
       getDedupeScope: () => "scope",
       verifyWebhook: mock(async () => true),
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
-      sendReply: mock(async () => undefined),
+      sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-trace-1"] };
+      }),
     };
     const redis = new MemoryRedis();
     const infoLog = spyOn(logger, "info").mockImplementation(() => undefined);
@@ -1295,6 +1402,10 @@ describe("gateway webhook handler e2e routing", () => {
       resolveVoiceNote,
       sendTypingIndicator: mock(async () => undefined),
       sendReply,
+      sendReplyWithReceipt: mock(async (config, replyEvent, text, hooks) => {
+        await sendReply(config, replyEvent, text, hooks);
+        return { providerMessageIds: ["provider-voice-1"] };
+      }),
     };
     const redis = new MemoryRedis();
     let sharedBody: Record<string, unknown> | null = null;

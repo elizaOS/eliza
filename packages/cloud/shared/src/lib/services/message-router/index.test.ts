@@ -327,7 +327,7 @@ describe("MessageRouterService contact recording", () => {
     expect(blooioApiRequest).toHaveBeenCalledTimes(1);
   });
 
-  test("preserves explicit provider rejection status and retryability", async () => {
+  test("treats a provider 5xx after dispatch as uncertain without retry", async () => {
     secretsGet.mockResolvedValue("blooio-api-key");
     blooioApiRequest.mockRejectedValue(
       new ElizaError("Blooio rejected the provider request", {
@@ -345,11 +345,37 @@ describe("MessageRouterService contact recording", () => {
     });
 
     expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
+      retryable: false,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves an explicit rate-limit rejection as safely retryable", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(
+      new ElizaError("Blooio rejected the provider request", {
+        code: "PROVIDER_REQUEST_REJECTED",
+        context: { provider: "blooio", status: 429, retryable: true },
+      }),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
       status: "failed",
       provider: "blooio",
       code: "DELIVERY_PROVIDER_REJECTED",
       retryable: true,
-      providerStatus: 503,
+      providerStatus: 429,
     });
     expect(blooioApiRequest).toHaveBeenCalledTimes(1);
   });

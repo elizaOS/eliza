@@ -7,7 +7,7 @@
  * stays in lock-step with the desktop emitter in `use-computer-agent.ts`.
  */
 
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   emitAndroidAction,
@@ -63,6 +63,56 @@ describe("emitAndroidAction", () => {
       spy.mockRestore();
     }
   });
+
+  it("preserves every well-formed action text field and leaves the input unchanged", () => {
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      const complete = `${"context ".repeat(400)}🧠 tail`;
+      const event = Object.freeze({
+        kind: "tap" as const,
+        success: false,
+        errorCode: complete,
+        errorMessage: complete,
+        ref: complete,
+        rationale: complete,
+      });
+      const payload = emitAndroidAction(event);
+      expect(payload).not.toBe(event);
+      expect(payload).toEqual(event);
+      expect(spy.mock.calls[0]?.[0]).toMatchObject(event);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each(["errorCode", "errorMessage", "ref", "rationale"] as const)(
+    "rejects malformed Unicode in action %s without logging",
+    (field) => {
+      for (const malformed of ["before\ud800after", "before\udc00after"]) {
+        const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+        try {
+          let thrown: unknown;
+          try {
+            emitAndroidAction({
+              kind: "tap",
+              success: false,
+              [field]: malformed,
+            });
+          } catch (error) {
+            thrown = error;
+          }
+          expect(thrown).toBeInstanceOf(ElizaError);
+          expect(thrown).toMatchObject({
+            code: "COMPUTERUSE_TRAJECTORY_MALFORMED_UNICODE",
+            context: { field },
+          });
+          expect(spy).not.toHaveBeenCalled();
+        } finally {
+          spy.mockRestore();
+        }
+      }
+    },
+  );
 
   it("does not emit fields that were not supplied", () => {
     const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
@@ -123,6 +173,33 @@ describe("emitAndroidAgentStep", () => {
     }
   });
 
+  it.each(["goal", "actionKind", "error", "errorCode", "rationale"] as const)(
+    "rejects malformed Unicode in agent-step %s without logging",
+    (field) => {
+      for (const malformed of ["before\ud800after", "before\udc00after"]) {
+        const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+        try {
+          const event = {
+            step: 1,
+            goal: "save",
+            actionKind: "click",
+            displayId: 0,
+            rois: 1,
+            success: false,
+            error: "bridge failed",
+            errorCode: "bridge_error",
+            rationale: "tap save",
+            [field]: malformed,
+          };
+          expect(() => emitAndroidAgentStep(event)).toThrowError(ElizaError);
+          expect(spy).not.toHaveBeenCalled();
+        } finally {
+          spy.mockRestore();
+        }
+      }
+    },
+  );
+
   it("shape matches the desktop emitter in use-computer-agent.ts (same evt key)", () => {
     const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
     try {
@@ -132,12 +209,14 @@ describe("emitAndroidAgentStep", () => {
         actionKind: "finish",
         displayId: 0,
         rois: 0,
-        success: true,
+        success: false,
+        error: "bridge failed",
+        errorCode: "bridge_error",
         rationale: "done",
       });
       const obj = spy.mock.calls[0]?.[0] as Record<string, unknown>;
       // The desktop emitter publishes: evt, step, goal, actionKind,
-      // displayId, rois, success, error?, rationale. We add platform.
+      // displayId, rois, success, error?, errorCode?, rationale. We add platform.
       const expectedKeys = [
         "evt",
         "platform",
@@ -148,6 +227,7 @@ describe("emitAndroidAgentStep", () => {
         "rois",
         "success",
         "error",
+        "errorCode",
         "rationale",
       ];
       for (const k of expectedKeys) {

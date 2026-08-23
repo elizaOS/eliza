@@ -2663,6 +2663,15 @@ jobs:
           echo "completed_ms=$completed_ms" >> "$GITHUB_OUTPUT"
           exit "$smoke_status"
 
+      - name: Upload privacy-safe deployed renderer failure diagnostics
+        if: ${{ failure() && steps.deployed-browser.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: deployed-renderer-failure-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: packages/app/test-results/**/privacy-safe-*-history-network-diagnostics.json
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Verify public deployment after browser auth
         if: ${{ always() && steps.deployed-browser.outcome != 'skipped' }}
         run: |
