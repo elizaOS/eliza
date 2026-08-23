@@ -18,7 +18,6 @@ import { registerDirectActionRoutingRule } from "../runtime/direct-action-routin
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { validateCharacter } from "../schemas/character";
 import {
 	GazetteerEntityRecognizer,
 	hardenIncomingUserMessage,
@@ -353,7 +352,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
-		expect(params.maxTokens).toBe(2048);
+		expect(params.maxTokens).toBeUndefined();
 		expect(params.signal).toBeInstanceOf(AbortSignal);
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
@@ -892,56 +891,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.reportError).not.toHaveBeenCalled();
 	});
 
-	// #16395: a per-agent maxReplyTokens setting caps Stage-1 with a real
-	// max_tokens, overriding the 2048 group default.
-	it("caps Stage-1 max_tokens at a per-agent maxReplyTokens setting", async () => {
-		const runtime = makeRuntime([
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "mh-1",
-						name: "HANDLE_RESPONSE",
-						arguments: {
-							shouldRespond: "RESPOND",
-							thought: "Direct answer.",
-							replyText: "Hi.",
-							contexts: ["simple"],
-							intents: [],
-							candidateActionNames: [],
-							facts: [],
-							relationships: [],
-							addressedTo: [],
-						},
-					},
-				],
-				finishReason: "tool_calls",
-			},
-		]);
-		// Round-trip through the character schema: maxReplyTokens must survive
-		// validation as a known top-level settings key (not be relocated into
-		// settings.extra, which would silently strip the budget).
-		const validated = validateCharacter({
-			name: runtime.character.name ?? "Test",
-			settings: { maxReplyTokens: 200 },
-		});
-		expect(validated.success).toBe(true);
-		if (!validated.success) return;
-		expect(validated.data.settings?.maxReplyTokens).toBe(200);
-		runtime.character.settings = validated.data.settings;
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
-		});
-
-		const params = useModelCalls(runtime)[0]?.[1] as { maxTokens?: number };
-		// Hard-capped at the per-agent budget, overriding the 2048 group default.
-		expect(params.maxTokens).toBe(200);
-	});
-
 	it("restores PII surrogates at the direct reply boundary only", async () => {
 		const { session, dana, acme } = await seededPiiSession();
 		const redactedReply = `I can email ${dana} at ${acme}.`;
@@ -1100,7 +1049,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect.objectContaining({
 				src: "service:message",
 				finishReason: "length",
-				maxTokens: 2048,
+				maxTokens: undefined,
 			}),
 			"[message] Stage 1 hit the completion-token limit",
 		);
