@@ -2,7 +2,7 @@
  * Unit coverage for session-bridge — Eliza session-key resolution from
  * elizaOS rooms (DM/group/channel/thread) and the provider wrapper.
  */
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock @elizaos/core primitives used by session-bridge
 vi.mock("@elizaos/core", () => {
@@ -29,11 +29,11 @@ vi.mock("@elizaos/core", () => {
   };
 });
 
-import {
-  resolveSessionKeyFromRoom,
-  createSessionKeyProvider,
-} from "./session-bridge.ts";
 import { ChannelType } from "@elizaos/core";
+import {
+  createSessionKeyProvider,
+  resolveSessionKeyFromRoom,
+} from "./session-bridge.ts";
 
 function makeRoom(overrides: Partial<Record<string, unknown>> = {}) {
   return {
