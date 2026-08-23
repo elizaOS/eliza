@@ -3328,10 +3328,7 @@ export class AgentRuntime implements IAgentRuntime {
 		} catch (guardError) {
 			// error-policy:J6 the guard is diagnostic; a scan failure must not brick
 			// startup. Report and continue.
-			this.reportError(
-				"AgentRuntime.assertResolvableWorldOwners",
-				guardError,
-			);
+			this.reportError("AgentRuntime.assertResolvableWorldOwners", guardError);
 		}
 
 		// Resolve init promise to allow services to start
