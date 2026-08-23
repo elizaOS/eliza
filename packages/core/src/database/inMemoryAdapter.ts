@@ -2622,6 +2622,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			}));
 	}
 
+	async deleteConnectorAccountCredentialRefs(params: {
+		accountId: string;
+	}): Promise<number> {
+		let deleted = 0;
+		for (const [key, credential] of this.connectorCredentialRefs) {
+			if (credential.accountId === params.accountId) {
+				this.connectorCredentialRefs.delete(key);
+				deleted += 1;
+			}
+		}
+		return deleted;
+	}
+
 	async appendConnectorAccountAuditEvent(
 		params: AppendConnectorAccountAuditEventParams,
 	): Promise<ConnectorAccountAuditEventRecord> {

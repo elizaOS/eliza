@@ -10,6 +10,7 @@ import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { lifeOpsGmailMessageFromGoogle } from "./google-plugin-delegates.js";
 import {
   createLifeOpsConnectorGrant,
+  createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "./repository.js";
 
@@ -221,5 +222,78 @@ describe("LifeOpsRepository Gmail account isolation", () => {
       "same-provider-message-id",
       "same-provider-message-id",
     ]);
+  });
+
+  it("commits a collected seed and cursor together or rolls both back", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const ownerGrant = grant("account-atomic");
+    const message = lifeOpsGmailMessageFromGoogle({
+      agentId: runtime.agentId,
+      grant: ownerGrant,
+      message: providerMessage(),
+      syncedAt: SYNCED_AT,
+    });
+    const state = createLifeOpsGmailSyncState({
+      agentId: runtime.agentId,
+      provider: "google",
+      side: "owner",
+      mailbox: "me",
+      grantId: ownerGrant.id,
+      maxResults: 1,
+      historyId: "history-1",
+      cursorStatus: "seeded",
+      fullResyncReason: null,
+      syncedAt: SYNCED_AT,
+    });
+
+    await expect(
+      repository.commitGmailSeed(
+        [message, { ...message, id: "invalid", grantId: "" }],
+        "owner",
+        state,
+      ),
+    ).rejects.toThrow(/grant/i);
+    await expect(
+      repository.listGmailMessages(
+        runtime.agentId,
+        "google",
+        { grantId: ownerGrant.id },
+        "owner",
+      ),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.getGmailSyncState(
+        runtime.agentId,
+        "google",
+        "me",
+        "owner",
+        ownerGrant.id,
+      ),
+    ).resolves.toBeNull();
+
+    await repository.commitGmailSeed([message], "owner", state);
+    await expect(
+      repository.listGmailMessages(
+        runtime.agentId,
+        "google",
+        { grantId: ownerGrant.id },
+        "owner",
+      ),
+    ).resolves.toHaveLength(1);
+    await expect(
+      repository.getGmailSyncState(
+        runtime.agentId,
+        "google",
+        "me",
+        "owner",
+        ownerGrant.id,
+      ),
+    ).resolves.toMatchObject({
+      historyId: "history-1",
+      cursorStatus: "seeded",
+    });
   });
 });

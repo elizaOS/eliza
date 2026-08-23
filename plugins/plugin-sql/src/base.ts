@@ -7346,6 +7346,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.getConnectorAccountStore().listCredentialRefs(params);
   }
 
+  async deleteConnectorAccountCredentialRefs(params: { accountId: string }): Promise<number> {
+    return this.getConnectorAccountStore().deleteCredentialRefs(params);
+  }
+
   async appendConnectorAccountAuditEvent(
     params: AppendConnectorAccountAuditEventParams
   ): Promise<ConnectorAccountAuditEventRecord> {

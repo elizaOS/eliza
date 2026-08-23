@@ -6258,6 +6258,16 @@ export class LifeOpsRepository {
     message: LifeOpsGmailMessageSummary,
     side: LifeOpsConnectorSide = message.side,
   ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      this.gmailMessageUpsertSql(message, side),
+    );
+  }
+
+  private gmailMessageUpsertSql(
+    message: LifeOpsGmailMessageSummary,
+    side: LifeOpsConnectorSide,
+  ): string {
     const grantId = requireScopedGmailGrantId(message.grantId);
     const connectorAccountId =
       message.connectorAccountId ??
@@ -6267,9 +6277,7 @@ export class LifeOpsRepository {
         identityEmail: message.accountEmail,
         grantId,
       });
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_gmail_messages (
+    return `INSERT INTO app_lifeops.life_gmail_messages (
         id, agent_id, provider, side, external_message_id,
         connector_account_id, grant_id, thread_id, subject, from_display,
         from_email, reply_to, to_json, cc_json, snippet, received_at,
@@ -6325,8 +6333,7 @@ export class LifeOpsRepository {
         html_link = excluded.html_link,
         metadata_json = excluded.metadata_json,
         synced_at = excluded.synced_at,
-        updated_at = excluded.updated_at`,
-    );
+        updated_at = excluded.updated_at`;
   }
 
   async pruneGmailMessages(
@@ -6706,10 +6713,12 @@ export class LifeOpsRepository {
   }
 
   async upsertGmailSyncState(state: LifeOpsGmailSyncState): Promise<void> {
+    await executeRawSql(this.runtime, this.gmailSyncStateUpsertSql(state));
+  }
+
+  private gmailSyncStateUpsertSql(state: LifeOpsGmailSyncState): string {
     const grantId = requireScopedGmailGrantId(state.grantId);
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_gmail_sync_states (
+    return `INSERT INTO app_lifeops.life_gmail_sync_states (
         id, agent_id, provider, side, mailbox, grant_id, max_results, history_id,
         cursor_status, full_resync_reason, synced_at, updated_at
       ) VALUES (
@@ -6733,8 +6742,26 @@ export class LifeOpsRepository {
         cursor_status = excluded.cursor_status,
         full_resync_reason = excluded.full_resync_reason,
         synced_at = excluded.synced_at,
-        updated_at = excluded.updated_at`,
-    );
+        updated_at = excluded.updated_at`;
+  }
+
+  /**
+   * Atomically promotes a fully collected Gmail seed and its matching History
+   * cursor. Provider pagination happens before this boundary, so a later-page
+   * failure cannot leave a partial seed, while a database failure rolls back
+   * both projection rows and cursor state together.
+   */
+  async commitGmailSeed(
+    messages: readonly LifeOpsGmailMessageSummary[],
+    side: LifeOpsConnectorSide,
+    state: LifeOpsGmailSyncState,
+  ): Promise<void> {
+    await withTransaction(this.runtime, async (tx) => {
+      for (const message of messages) {
+        await executeRawSqlTx(tx, this.gmailMessageUpsertSql(message, side));
+      }
+      await executeRawSqlTx(tx, this.gmailSyncStateUpsertSql(state));
+    });
   }
 
   async getGmailSyncState(

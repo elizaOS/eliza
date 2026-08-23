@@ -1724,6 +1724,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	listConnectorAccountCredentialRefs(
 		params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]>;
+	deleteConnectorAccountCredentialRefs(params: {
+		accountId: string;
+	}): Promise<number>;
 	/**
 	 * Append a connector account audit event. Implementations must redact
 	 * credential-like metadata values before persistence.

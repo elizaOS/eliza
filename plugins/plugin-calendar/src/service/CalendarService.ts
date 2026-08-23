@@ -4820,17 +4820,36 @@ export class CalendarService extends Service {
         "CALENDAR_SEED_INCOMPLETE",
       );
     }
-    const selected = new Set(
-      request.calendars.map((calendar) =>
-        JSON.stringify([
-          calendar.provider,
-          calendar.side,
-          calendar.grantId,
-          calendar.connectorAccountId,
-          calendar.calendarId,
-        ]),
-      ),
+    const sourceIdentity = (source: LifeOpsCalendarSourceKey): string =>
+      JSON.stringify([
+        source.provider,
+        source.side,
+        source.grantId,
+        source.connectorAccountId,
+        source.calendarId,
+      ]);
+    const requestedIdentities = request.calendars.map(sourceIdentity);
+    const selected = new Set(requestedIdentities);
+    if (selected.size !== requestedIdentities.length) {
+      throw new CalendarServiceError(
+        400,
+        "Calendar seed selection contains the same source more than once.",
+        "CALENDAR_SEED_SELECTION_DUPLICATE",
+      );
+    }
+    const authoritativeSources = new Set(
+      feed.sources.map((source) => sourceIdentity(source.key)),
     );
+    const unavailableSelections = requestedIdentities.filter(
+      (identity) => !authoritativeSources.has(identity),
+    );
+    if (unavailableSelections.length > 0) {
+      throw new CalendarServiceError(
+        409,
+        "Calendar seed selection contains a source that is not present in the authoritative feed. Refresh calendar selection and try again.",
+        "CALENDAR_SEED_SOURCE_UNAVAILABLE",
+      );
+    }
     const selectedEvents = feed.events.filter((event) =>
       selected.has(
         JSON.stringify([

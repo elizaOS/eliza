@@ -520,9 +520,9 @@ export class GmailDomain {
     const historyId = await getGmailHistoryId({ accountId });
 
     const seenPageTokens = new Set<string>();
+    const stagedMessages = new Map<string, LifeOpsGmailMessageSummary>();
     let pageToken: string | null = null;
     let pageCount = 0;
-    let messageCount = 0;
     do {
       if (pageCount >= GMAIL_SEED_MAX_PAGES) {
         fail(
@@ -540,16 +540,16 @@ export class GmailDomain {
       });
       pageCount += 1;
       for (const message of page.messages) {
-        await this.ctx.repository.upsertGmailMessage(
-          lifeOpsGmailMessageFromGoogle({
-            message,
-            grant,
-            agentId: this.ctx.agentId(),
-            syncedAt: seededAt,
-          }),
-          grant.side,
+        const projected = lifeOpsGmailMessageFromGoogle({
+          message,
+          grant,
+          agentId: this.ctx.agentId(),
+          syncedAt: seededAt,
+        });
+        stagedMessages.set(
+          `${accountId}\u0000${projected.externalId}`,
+          projected,
         );
-        messageCount += 1;
       }
       pageToken = page.nextPageToken;
       if (pageToken) {
@@ -564,7 +564,11 @@ export class GmailDomain {
       }
     } while (pageToken);
 
-    await this.ctx.repository.upsertGmailSyncState(
+    const messages = [...stagedMessages.values()];
+    const messageCount = messages.length;
+    await this.ctx.repository.commitGmailSeed(
+      messages,
+      grant.side,
       createLifeOpsGmailSyncState({
         agentId: this.ctx.agentId(),
         provider: "google",

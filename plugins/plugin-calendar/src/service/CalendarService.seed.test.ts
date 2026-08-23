@@ -61,7 +61,10 @@ describe("CalendarService.seedImportedCalendarData", () => {
       state: "complete",
       timeMin: "2026-08-15T00:00:00.000Z",
       timeMax: "2026-11-20T00:00:00.000Z",
-      sources: [],
+      sources: [
+        { key: googleSource, summary: "Google", error: null },
+        { key: appleSource, summary: "Apple", error: null },
+      ],
       events: [
         event({}),
         event({ externalId: "evt-1" }),
@@ -154,5 +157,53 @@ describe("CalendarService.seedImportedCalendarData", () => {
       }),
     ).rejects.toMatchObject({ status: 400 });
     expect(getCalendarFeed).not.toHaveBeenCalled();
+  });
+
+  it("rejects invented, stale, and wrong-side source identities", async () => {
+    const { seed } = seedWithFeed({
+      state: "complete",
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      sources: [{ key: googleSource, summary: "Google", error: null }],
+      events: [event({})],
+    });
+
+    for (const unavailable of [
+      { ...googleSource, calendarId: "invented" },
+      { ...googleSource, connectorAccountId: "stale-account" },
+      { ...googleSource, side: "agent" as const },
+    ]) {
+      await expect(
+        seed({
+          timeMin: "2026-08-15T00:00:00.000Z",
+          timeMax: "2026-11-20T00:00:00.000Z",
+          calendars: [unavailable],
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        code: "CALENDAR_SEED_SOURCE_UNAVAILABLE",
+      });
+    }
+  });
+
+  it("rejects duplicate source identities instead of inflating selection intent", async () => {
+    const { seed } = seedWithFeed({
+      state: "complete",
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      sources: [{ key: googleSource, summary: "Google", error: null }],
+      events: [event({})],
+    });
+
+    await expect(
+      seed({
+        timeMin: "2026-08-15T00:00:00.000Z",
+        timeMax: "2026-11-20T00:00:00.000Z",
+        calendars: [googleSource, googleSource],
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "CALENDAR_SEED_SELECTION_DUPLICATE",
+    });
   });
 });

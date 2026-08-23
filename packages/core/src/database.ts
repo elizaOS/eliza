@@ -770,6 +770,12 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		this.unsupportedConnectorAccountStorage();
 	}
 
+	deleteConnectorAccountCredentialRefs(_params: {
+		accountId: string;
+	}): Promise<number> {
+		this.unsupportedConnectorAccountStorage();
+	}
+
 	appendConnectorAccountAuditEvent(
 		_params: AppendConnectorAccountAuditEventParams,
 	): Promise<ConnectorAccountAuditEventRecord> {

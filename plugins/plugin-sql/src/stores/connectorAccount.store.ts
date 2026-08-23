@@ -529,6 +529,21 @@ export class ConnectorAccountStore implements Store {
     }, "ConnectorAccountStore.listCredentialRefs");
   }
 
+  async deleteCredentialRefs(params: { accountId: string }): Promise<number> {
+    return this.ctx.withRetry(async () => {
+      const deleted = await this.db
+        .delete(connectorAccountCredentialsTable)
+        .where(
+          and(
+            eq(connectorAccountCredentialsTable.agentId, this.ctx.agentId as UUID),
+            eq(connectorAccountCredentialsTable.accountId, params.accountId)
+          )
+        )
+        .returning();
+      return deleted.length;
+    }, "ConnectorAccountStore.deleteCredentialRefs");
+  }
+
   async appendAuditEvent(
     params: AppendConnectorAccountAuditEventParams
   ): Promise<ConnectorAccountAuditEventRecord> {

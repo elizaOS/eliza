@@ -14,6 +14,7 @@
  */
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
+  type ConnectorAccount,
   type ConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
@@ -67,6 +68,11 @@ export interface ConnectorCredentialPersistResult {
   refs: ConnectorCredentialRefMetadata[];
   vaultAvailable: boolean;
   storageAvailable: boolean;
+}
+
+export interface ConnectorCredentialPurgeResult {
+  credentialRefCount: number;
+  vaultEntryCount: number;
 }
 
 interface ConnectorCredentialInput {
@@ -167,6 +173,76 @@ export function credentialRefRecordsFromMetadata(
   ];
 }
 
+/**
+ * Removes every durable credential value and ref for one connector account.
+ * The account row is deliberately left intact so the provider can fail closed
+ * before the manager marks it deleted if protected cleanup is unavailable.
+ */
+export async function purgeConnectorCredentialRefs(params: {
+  runtime: IAgentRuntime;
+  manager: ConnectorAccountManager;
+  account: ConnectorAccount;
+}): Promise<ConnectorCredentialPurgeResult> {
+  const storage = params.manager.getStorage();
+  const adapter = (params.runtime as { adapter?: unknown }).adapter;
+  const candidates = [...new Set([storage, adapter].filter(Boolean))] as Array<{
+    listConnectorAccountCredentialRefs?: (input: {
+      accountId: string;
+    }) => Promise<ConnectorCredentialRefRecordLike[]>;
+    deleteConnectorAccountCredentialRefs?: (input: {
+      accountId: string;
+    }) => Promise<number | boolean | undefined>;
+  }>;
+  const records = [...credentialRefRecordsFromMetadata(params.account.metadata)];
+  for (const candidate of candidates) {
+    if (typeof candidate.listConnectorAccountCredentialRefs === "function") {
+      records.push(
+        ...(await candidate.listConnectorAccountCredentialRefs({
+          accountId: params.account.id,
+        }))
+      );
+    }
+  }
+  const refs = [
+    ...new Set(records.map((record) => nonEmptyString(record.vaultRef)).filter(Boolean)),
+  ] as string[];
+  const credentialRefCount = new Set(
+    records.map(
+      (record) => `${record.credentialType}\u0000${nonEmptyString(record.vaultRef) ?? ""}`
+    )
+  ).size;
+
+  const removers = resolveVaultRemovers(params.runtime);
+  if (refs.length > 0 && removers.length === 0) {
+    throw new Error("No durable connector credential store or vault remover is available.");
+  }
+  for (const vaultRef of refs) {
+    await removeWithFirstAvailableVault(removers, vaultRef);
+  }
+
+  const deleters = candidates.filter(
+    (candidate) => typeof candidate.deleteConnectorAccountCredentialRefs === "function"
+  );
+  if (records.length > 0 && deleters.length === 0) {
+    throw new Error("No durable connector credential ref deleter is available.");
+  }
+  for (const deleter of deleters) {
+    await deleter.deleteConnectorAccountCredentialRefs?.({ accountId: params.account.id });
+  }
+
+  for (const candidate of candidates) {
+    if (typeof candidate.listConnectorAccountCredentialRefs === "function") {
+      const remaining = await candidate.listConnectorAccountCredentialRefs({
+        accountId: params.account.id,
+      });
+      if (remaining.length > 0) {
+        throw new Error("Connector credential refs remained after protected cleanup.");
+      }
+    }
+  }
+  return { credentialRefCount, vaultEntryCount: refs.length };
+}
+
 function credentialRefsFromUnknown(value: unknown): ConnectorCredentialRefRecordLike[] {
   if (Array.isArray(value)) {
     return value.flatMap((entry) => {
@@ -262,6 +338,76 @@ function resolveVaultWriters(
   }
 
   return writers;
+}
+
+type VaultRemover = {
+  name: string;
+  remove: (vaultRef: string) => Promise<void>;
+  has?: (vaultRef: string) => Promise<boolean>;
+};
+
+function resolveVaultRemovers(runtime: IAgentRuntime): VaultRemover[] {
+  const removers: VaultRemover[] = [];
+  for (const serviceType of CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES) {
+    const service = getService(runtime, serviceType) as {
+      remove?: (vaultRef: string) => Promise<void> | void;
+      has?: (vaultRef: string) => Promise<boolean> | boolean;
+    } | null;
+    if (typeof service?.remove === "function") {
+      removers.push({
+        name: serviceType,
+        remove: async (vaultRef) => service.remove?.(vaultRef),
+        ...(typeof service.has === "function"
+          ? { has: async (vaultRef) => Boolean(await service.has?.(vaultRef)) }
+          : {}),
+      });
+    }
+  }
+  for (const serviceType of CONNECTOR_VAULT_SERVICE_TYPES) {
+    const service = getService(runtime, serviceType) as {
+      remove?: (vaultRef: string) => Promise<void> | void;
+      delete?: (vaultRef: string) => Promise<void> | void;
+      has?: (vaultRef: string) => Promise<boolean> | boolean;
+    } | null;
+    const remove = service?.remove ?? service?.delete;
+    if (typeof remove === "function") {
+      removers.push({
+        name: serviceType,
+        remove: async (vaultRef) => remove.call(service, vaultRef),
+        ...(typeof service?.has === "function"
+          ? { has: async (vaultRef) => Boolean(await service.has?.(vaultRef)) }
+          : {}),
+      });
+    }
+  }
+  return removers;
+}
+
+async function removeWithFirstAvailableVault(
+  removers: VaultRemover[],
+  vaultRef: string
+): Promise<void> {
+  const errors: string[] = [];
+  let confirmedAbsent = 0;
+  for (const remover of removers) {
+    try {
+      if (remover.has && !(await remover.has(vaultRef))) {
+        confirmedAbsent += 1;
+        continue;
+      }
+      await remover.remove(vaultRef);
+      if (remover.has && (await remover.has(vaultRef))) {
+        throw new Error("protected read-back still reports the entry present");
+      }
+      return;
+    } catch (error) {
+      errors.push(`${remover.name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (confirmedAbsent === removers.length) {
+    return;
+  }
+  throw new Error(`Failed to remove connector credential ref ${vaultRef}: ${errors.join("; ")}`);
 }
 
 function resolveCredentialRefWriters(

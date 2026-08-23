@@ -13187,6 +13187,12 @@ ${section_end}`;
 		return this.adapter.listConnectorAccountCredentialRefs(params);
 	}
 
+	async deleteConnectorAccountCredentialRefs(params: {
+		accountId: string;
+	}): Promise<number> {
+		return this.adapter.deleteConnectorAccountCredentialRefs(params);
+	}
+
 	async appendConnectorAccountAuditEvent(
 		params: AppendConnectorAccountAuditEventParams,
 	): Promise<ConnectorAccountAuditEventRecord> {

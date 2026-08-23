@@ -56,6 +56,22 @@ describe("Gmail search pages", () => {
     );
   });
 
+  it("preserves a non-empty opaque search continuation token byte-for-byte", async () => {
+    const opaqueToken = "  opaque search token  ";
+    const client = clientFor({
+      users: {
+        messages: {
+          list: vi.fn(async () => ({ data: { messages: [], nextPageToken: opaqueToken } })),
+          get: messageGet(),
+        },
+      },
+    });
+
+    await expect(
+      client.searchGmailMessagesPage({ accountId: "account", query: "newer_than:7d" })
+    ).resolves.toMatchObject({ nextPageToken: opaqueToken });
+  });
+
   it("reports the final page with a null token and no caller-side ceiling", async () => {
     const list = vi.fn(async () => ({
       data: { messages: [{ id: "m3" }], nextPageToken: "   " },
@@ -74,6 +90,23 @@ describe("Gmail search pages", () => {
 });
 
 describe("Gmail history sync", () => {
+  it("preserves a non-empty opaque history continuation token byte-for-byte", async () => {
+    const opaqueToken = "  opaque history token  ";
+    const client = clientFor({
+      users: {
+        history: {
+          list: vi.fn(async () => ({
+            data: { historyId: "105", history: [], nextPageToken: opaqueToken },
+          })),
+        },
+      },
+    });
+
+    await expect(
+      client.listGmailHistoryPage({ accountId: "account", startHistoryId: "100" })
+    ).resolves.toMatchObject({ nextPageToken: opaqueToken });
+  });
+
   it("maps a page with durable cursor and deletion/label provenance", async () => {
     const list = vi.fn(async () => ({
       data: {

@@ -53,6 +53,7 @@ function harness(args: {
   const deleteGmailMessages = vi.fn(async () => undefined);
   const deleteGmailMessagesByExternalId = vi.fn(async () => 1);
   const upsertGmailSyncState = vi.fn(async () => undefined);
+  const commitGmailSeed = vi.fn(async () => undefined);
   const google = {
     getGmailHistoryId: vi.fn(async () => args.historyId ?? "100"),
     listGmailHistoryPage:
@@ -112,6 +113,7 @@ function harness(args: {
     deleteGmailSpamReviewItemsForProvider: vi.fn(async () => undefined),
     deleteGmailSyncState: vi.fn(async () => undefined),
     upsertGmailSyncState,
+    commitGmailSeed,
   };
   const domain = new GmailDomain(
     {
@@ -309,9 +311,14 @@ describe("LifeOps Gmail range seed", () => {
       2,
       expect.objectContaining({ pageToken: "page-2" }),
     );
-    expect(repository.upsertGmailMessage).toHaveBeenCalledTimes(137);
+    expect(repository.upsertGmailMessage).not.toHaveBeenCalled();
     expect(google.getGmailHistoryId).toHaveBeenCalledBefore(searchPages);
-    expect(repository.upsertGmailSyncState).toHaveBeenCalledWith(
+    expect(repository.commitGmailSeed).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ externalId: "p1-0" }),
+        expect.objectContaining({ externalId: "p2-36" }),
+      ]),
+      "owner",
       expect.objectContaining({
         historyId: "300",
         cursorStatus: "seeded",
@@ -334,6 +341,8 @@ describe("LifeOps Gmail range seed", () => {
       code: "LIFEOPS_GMAIL_SEED_PAGINATION_REPEATED",
     });
     expect(searchPages).toHaveBeenCalledTimes(2);
+    expect(repository.commitGmailSeed).not.toHaveBeenCalled();
+    expect(repository.upsertGmailMessage).not.toHaveBeenCalled();
     expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
   });
 
@@ -352,7 +361,81 @@ describe("LifeOps Gmail range seed", () => {
       code: "LIFEOPS_GMAIL_SEED_INCOMPLETE",
     });
     expect(searchPages).toHaveBeenCalledTimes(500);
+    expect(repository.commitGmailSeed).not.toHaveBeenCalled();
     expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
+  });
+
+  it("does not promote early pages when a later provider page fails", async () => {
+    const searchPages = vi
+      .fn()
+      .mockResolvedValueOnce({
+        messages: [providerMessage("first-page")],
+        nextPageToken: "page-2",
+      })
+      .mockRejectedValueOnce(new Error("provider page failed"));
+    const { domain, repository } = harness({ searchPages });
+
+    await expect(
+      domain.seedGmailMessages(url, { grantId: grant.id, rangeDays: 30 }),
+    ).rejects.toThrow("provider page failed");
+    expect(repository.commitGmailSeed).not.toHaveBeenCalled();
+    expect(repository.upsertGmailMessage).not.toHaveBeenCalled();
+    expect(repository.upsertGmailSyncState).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates repeated provider message ids before one atomic promotion", async () => {
+    const searchPages = vi
+      .fn()
+      .mockResolvedValueOnce({
+        messages: [providerMessage("same"), providerMessage("unique")],
+        nextPageToken: "page-2",
+      })
+      .mockResolvedValueOnce({
+        messages: [providerMessage("same")],
+        nextPageToken: null,
+      });
+    const { domain, repository } = harness({ searchPages });
+
+    const receipt = await domain.seedGmailMessages(url, {
+      grantId: grant.id,
+      rangeDays: 7,
+    });
+    expect(receipt.messageCount).toBe(2);
+    expect(repository.commitGmailSeed).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ externalId: "same" }),
+        expect.objectContaining({ externalId: "unique" }),
+      ]),
+      "owner",
+      expect.objectContaining({ maxResults: 2 }),
+    );
+    expect(repository.commitGmailSeed.mock.calls[0]?.[0]).toHaveLength(2);
+  });
+
+  it("retries cleanly after a failed walk without replaying staged rows", async () => {
+    const searchPages = vi
+      .fn()
+      .mockResolvedValueOnce({
+        messages: [providerMessage("abandoned")],
+        nextPageToken: "page-2",
+      })
+      .mockRejectedValueOnce(new Error("transient failure"))
+      .mockResolvedValueOnce({
+        messages: [providerMessage("retry")],
+        nextPageToken: null,
+      });
+    const { domain, repository } = harness({ searchPages });
+
+    await expect(
+      domain.seedGmailMessages(url, { grantId: grant.id, rangeDays: 7 }),
+    ).rejects.toThrow("transient failure");
+    await expect(
+      domain.seedGmailMessages(url, { grantId: grant.id, rangeDays: 7 }),
+    ).resolves.toMatchObject({ messageCount: 1 });
+    expect(repository.commitGmailSeed).toHaveBeenCalledTimes(1);
+    expect(repository.commitGmailSeed.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({ externalId: "retry" }),
+    ]);
   });
 
   it("rejects a range outside the owner-selectable 7/30/90-day windows", async () => {

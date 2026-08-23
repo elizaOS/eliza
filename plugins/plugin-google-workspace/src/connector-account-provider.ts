@@ -30,7 +30,11 @@ import {
   logger,
 } from "@elizaos/core";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
-import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
+import {
+  persistConnectorCredentialRefs,
+  purgeConnectorCredentialRefs,
+} from "./connector-credential-refs.js";
+import { DefaultGoogleCredentialResolver } from "./credential-resolver.js";
 import { createGmailMessageConnector } from "./gmail-message-connector.js";
 import { resolveGoogleConnectorOAuthCallbackUrl } from "./google-oauth-callback.js";
 import {
@@ -395,6 +399,72 @@ async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleIdentity>
   return fetchGoogleUserInfoWithFetch(accessToken);
 }
 
+export async function revokeGoogleTokenWithFetch(
+  token: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  timeoutMs: number = GOOGLE_OAUTH_FETCH_TIMEOUT_MS,
+  callerSignal?: AbortSignal
+): Promise<void> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(GOOGLE_OAUTH_PROVIDER_METADATA.revokeEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token }).toString(),
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+  });
+  if (!response.ok) {
+    throw new ElizaError(`Google token revocation failed with ${response.status}.`, {
+      code: "GOOGLE_OAUTH_REVOCATION_UNCONFIRMED",
+      context: { status: response.status },
+      severity: "fatal",
+    });
+  }
+}
+
+function metadataWithoutGoogleCredentials(
+  metadata: ConnectorAccount["metadata"]
+): ConnectorAccount["metadata"] {
+  const record = metadata ?? {};
+  const {
+    credentialRefs: _credentialRefs,
+    oauthCredentialRefs: _oauthCredentialRefs,
+    oauth: _oauth,
+    hasRefreshToken: _hasRefreshToken,
+    expiresAt: _expiresAt,
+    oauthCredentialVersion: _oauthCredentialVersion,
+    tokenType: _tokenType,
+    googleRevocationConfirmed: _googleRevocationConfirmed,
+    googleRevocationConfirmedAt: _googleRevocationConfirmedAt,
+    ...safeMetadata
+  } = record;
+  return safeMetadata;
+}
+
+async function recordGoogleDisconnectAudit(
+  runtime: IAgentRuntime,
+  accountId: string,
+  metadata: Record<string, unknown>
+): Promise<void> {
+  const adapter = (runtime as { adapter?: unknown }).adapter as
+    | {
+        appendConnectorAccountAuditEvent?: (params: {
+          accountId: string;
+          provider: string;
+          eventType: string;
+          outcome: "success";
+          metadata: Record<string, unknown>;
+        }) => Promise<unknown>;
+      }
+    | undefined;
+  await adapter?.appendConnectorAccountAuditEvent?.({
+    accountId,
+    provider: GOOGLE_SERVICE_NAME,
+    eventType: "oauth.revoked_and_credentials_purged",
+    outcome: "success",
+    metadata,
+  });
+}
+
 export async function exchangeAuthorizationCodeWithFetch(
   args: {
     clientId: string;
@@ -496,13 +566,81 @@ export function createGoogleConnectorAccountProvider(
       return { ...patch, provider: GOOGLE_SERVICE_NAME };
     },
 
-    deleteAccount: async (accountId: string, _manager: ConnectorAccountManager): Promise<void> => {
+    deleteAccount: async (accountId: string, manager: ConnectorAccountManager): Promise<void> => {
+      const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+      if (!account) {
+        throw new ElizaError("Google connector account was not found for revocation.", {
+          code: "GOOGLE_CONNECTOR_ACCOUNT_NOT_FOUND",
+          context: { accountId },
+          severity: "fatal",
+        });
+      }
+      const accountMetadata = isRecord(account.metadata) ? account.metadata : {};
+      const providerRevocationAlreadyConfirmed = accountMetadata.googleRevocationConfirmed === true;
+      if (!providerRevocationAlreadyConfirmed) {
+        const resolver = new DefaultGoogleCredentialResolver({
+          runtime,
+          accountManager: manager,
+          storage: manager.getStorage(),
+        });
+        const authClient = await resolver.getAuthClient({
+          provider: GOOGLE_SERVICE_NAME,
+          accountId,
+          scopes: [],
+          capabilities: [],
+          reason: "connector account revocation",
+        });
+        const credentials = (
+          authClient as {
+            credentials?: { access_token?: string | null; refresh_token?: string | null };
+          }
+        ).credentials;
+        const token =
+          nonEmptyString(credentials?.refresh_token) ?? nonEmptyString(credentials?.access_token);
+        if (!token) {
+          throw new ElizaError("Google connector token was unavailable for revocation.", {
+            code: "GOOGLE_OAUTH_REVOCATION_TOKEN_UNAVAILABLE",
+            context: { accountId },
+            severity: "fatal",
+          });
+        }
+        await revokeGoogleTokenWithFetch(token);
+        await manager.upsertAccount(
+          GOOGLE_SERVICE_NAME,
+          {
+            ...account,
+            status: "revoked",
+            metadata: {
+              ...accountMetadata,
+              googleRevocationConfirmed: true,
+              googleRevocationConfirmedAt: Date.now(),
+            },
+          },
+          account.id
+        );
+      }
+
       const calendarService = runtime.getService("calendar");
-      if (isGoogleCalendarWatchRevocationService(calendarService)) {
+      const calendarWatchesRevoked = isGoogleCalendarWatchRevocationService(calendarService);
+      if (calendarWatchesRevoked) {
         await calendarService.revokeGoogleCalendarWatchesByAccount(accountId);
       }
-      // Credential cleanup is the credential store's responsibility; the
-      // manager removes the account row after this resolves.
+      const purge = await purgeConnectorCredentialRefs({ runtime, manager, account });
+      await manager.upsertAccount(
+        GOOGLE_SERVICE_NAME,
+        {
+          ...account,
+          status: "revoked",
+          metadata: metadataWithoutGoogleCredentials(account.metadata),
+        },
+        account.id
+      );
+      await recordGoogleDisconnectAudit(runtime, accountId, {
+        providerRevocationConfirmed: true,
+        calendarWatchesRevoked,
+        credentialRefCount: purge.credentialRefCount,
+        vaultEntryCount: purge.vaultEntryCount,
+      });
     },
 
     startOAuth: async (
