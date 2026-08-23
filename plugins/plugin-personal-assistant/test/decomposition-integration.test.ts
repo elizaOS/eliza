@@ -123,9 +123,8 @@ describe("LifeOps decomposition — composed plugin surface", () => {
   it("no (view id + surface) is registered by two plugins (no shell shadowing)", () => {
     // The same id across future modalities is a legitimate variant pattern; a
     // real shadow is two *plugins* claiming the same id+surface, which the
-    // shell renders ambiguously. (PA no longer registers a view — the LifeOps
-    // overview was removed — so this asserts the per-domain plugin views stay
-    // unshadowed.)
+    // shell renders ambiguously. PA's focused connection manager has its own
+    // id and does not shadow the per-domain inbox or calendar views.
     const byKey = new Map<string, Set<string>>();
     for (const plugin of ALL) {
       for (const view of plugin.views ?? []) {

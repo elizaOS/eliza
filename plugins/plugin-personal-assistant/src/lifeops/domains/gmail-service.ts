@@ -20,17 +20,23 @@ import type {
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
+  LifeOpsGmailImportedDataPurgeReceipt,
   LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
+  LifeOpsGmailSeedRangeDays,
+  LifeOpsGmailSeedReceipt,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
+  LifeOpsGmailSyncHealth,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   ManageLifeOpsGmailMessagesRequest,
+  PurgeLifeOpsGmailImportedDataRequest,
+  SeedLifeOpsGmailRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -39,6 +45,7 @@ import type {
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import {
   accountIdForGrant,
+  googleAccountIdFromGrantId,
   googleSendEmailInput,
   lifeOpsGmailMessageFromGoogle,
   requireGoogleServiceMethod,
@@ -76,6 +83,14 @@ import {
 } from "../service-normalize-gmail.js";
 
 const GOOGLE_GMAIL_MAILBOX = "me";
+const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
+const DEFAULT_GMAIL_SEARCH_LIMIT = 25;
+const GMAIL_SEED_PAGE_SIZE = 100;
+// A seed walks provider pages until Gmail stops returning a token. This cap
+// only bounds runaway pagination; reaching it fails the seed explicitly rather
+// than issuing a receipt for a range that was not fully imported.
+const GMAIL_SEED_MAX_PAGES = 500;
+const GMAIL_SEED_RANGE_DAYS: readonly LifeOpsGmailSeedRangeDays[] = [7, 30, 90];
 
 /**
  * Dependencies the Gmail domain needs that are owned by the `google` domain
@@ -126,6 +141,37 @@ function externalMessageIdFromInput(messageId: string): string {
   return messageId.startsWith("gmail:")
     ? messageId.slice("gmail:".length)
     : messageId;
+}
+
+function gmailHeader(
+  message: LifeOpsGmailMessageSummary,
+  name: string,
+): string | null {
+  const target = name.toLowerCase();
+  const richHeader =
+    target === "message-id"
+      ? message.metadata.messageIdHeader
+      : target === "references"
+        ? message.metadata.referencesHeader
+        : null;
+  if (typeof richHeader === "string" && richHeader.trim()) {
+    return richHeader.trim();
+  }
+  const headers = message.metadata.headers;
+  if (!headers || typeof headers !== "object" || Array.isArray(headers))
+    return null;
+  for (const [key, value] of Object.entries(
+    headers as Record<string, unknown>,
+  )) {
+    if (
+      key.toLowerCase() === target &&
+      typeof value === "string" &&
+      value.trim()
+    ) {
+      return value.trim();
+    }
+  }
+  return null;
 }
 
 /** Canonical source id emitted by GoogleGmailAdapter into BRIEF's MessageRef. */
@@ -269,15 +315,161 @@ export class GmailDomain {
       args.side,
       args.grantId,
     );
+    const accountId = accountIdForGrant(grant);
     const searchMessages = requireGoogleServiceMethod(
       this.ctx.runtime,
-      "searchMessages",
+      "searchGmailMessages",
+    );
+    const getGmailMessage = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "getGmailMessage",
+    );
+    const getGmailHistoryId = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "getGmailHistoryId",
+    );
+    const listGmailHistoryPage = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "listGmailHistoryPage",
     );
     const syncedAt = (args.now ?? new Date()).toISOString();
+    const previousState = await this.ctx.repository.getGmailSyncState(
+      this.ctx.agentId(),
+      "google",
+      GOOGLE_GMAIL_MAILBOX,
+      grant.side,
+      grant.id,
+    );
+    let historyId = previousState?.historyId ?? null;
+    if (previousState?.fullResyncReason && !historyId) {
+      fail(
+        409,
+        "Gmail history requires a new complete 7, 30, or 90 day seed before the imported projection can be synchronized.",
+        "LIFEOPS_GMAIL_RESYNC_REQUIRED",
+      );
+    }
+    const cursorStatus: "seeded" | "incremental" | "resynced" = historyId
+      ? "incremental"
+      : "seeded";
+    const fullResyncReason: string | null = null;
+
+    if (historyId) {
+      const startHistoryId = historyId;
+      let nextHistoryId = historyId;
+      const actions = new Map<string, "upsert" | "delete">();
+      const seenPageTokens = new Set<string>();
+      let pageToken: string | undefined;
+      try {
+        do {
+          const page = await listGmailHistoryPage({
+            accountId,
+            startHistoryId,
+            pageToken,
+          });
+          for (const change of page.changes) {
+            for (const item of [
+              ...change.messagesAdded,
+              ...change.labelsAdded,
+              ...change.labelsRemoved,
+            ]) {
+              actions.set(item.messageId, "upsert");
+            }
+            for (const item of change.messagesDeleted) {
+              actions.set(item.messageId, "delete");
+            }
+          }
+          nextHistoryId = page.historyId;
+          pageToken = page.nextPageToken ?? undefined;
+          if (pageToken) {
+            if (seenPageTokens.has(pageToken)) {
+              throw new Error(
+                "Gmail history pagination repeated a page token.",
+              );
+            }
+            seenPageTokens.add(pageToken);
+          }
+        } while (pageToken);
+
+        historyId = nextHistoryId;
+
+        for (const [externalId, action] of actions) {
+          if (action === "delete") {
+            await this.ctx.repository.deleteGmailMessagesByExternalId(
+              this.ctx.agentId(),
+              "google",
+              [externalId],
+              grant.side,
+              grant.id,
+            );
+            continue;
+          }
+          const changed = await getGmailMessage({
+            accountId,
+            messageId: externalId,
+            selfEmail: grant.identityEmail,
+          });
+          if (!changed) {
+            await this.ctx.repository.deleteGmailMessagesByExternalId(
+              this.ctx.agentId(),
+              "google",
+              [externalId],
+              grant.side,
+              grant.id,
+            );
+            continue;
+          }
+          await this.ctx.repository.upsertGmailMessage(
+            lifeOpsGmailMessageFromGoogle({
+              message: changed,
+              grant,
+              agentId: this.ctx.agentId(),
+              syncedAt,
+            }),
+            grant.side,
+          );
+        }
+      } catch (error) {
+        // error-policy:J4 Only the typed expired-cursor signal becomes an
+        // explicit resync-required state. A bounded query cannot reconcile
+        // deletions from the complete imported projection, so it must not
+        // advance a replacement cursor or claim a healthy automatic resync.
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? (error as { code?: unknown }).code
+            : null;
+        if (code !== "GOOGLE_GMAIL_HISTORY_CURSOR_EXPIRED") {
+          throw error;
+        }
+        await this.ctx.repository.upsertGmailSyncState(
+          createLifeOpsGmailSyncState({
+            agentId: this.ctx.agentId(),
+            provider: "google",
+            side: grant.side,
+            mailbox: GOOGLE_GMAIL_MAILBOX,
+            grantId: grant.id,
+            maxResults: previousState?.maxResults ?? 0,
+            historyId: null,
+            cursorStatus: "resynced",
+            fullResyncReason: "history_cursor_expired",
+            syncedAt,
+          }),
+        );
+        fail(
+          409,
+          "Gmail history expired and the imported projection requires a new complete 7, 30, or 90 day seed before it can be reported as current.",
+          "LIFEOPS_GMAIL_RESYNC_REQUIRED",
+        );
+      }
+    }
+
+    if (!historyId) {
+      historyId = await getGmailHistoryId({ accountId });
+    }
     const googleMessages = await searchMessages({
-      accountId: accountIdForGrant(grant),
+      accountId,
       query: args.query,
-      limit: args.maxResults,
+      maxResults: args.maxResults,
+      selfEmail: grant.identityEmail,
     });
     const messages = googleMessages.map((message) =>
       lifeOpsGmailMessageFromGoogle({
@@ -297,11 +489,269 @@ export class GmailDomain {
         side: grant.side,
         mailbox: GOOGLE_GMAIL_MAILBOX,
         grantId: grant.id,
-        maxResults: messages.length,
+        maxResults: args.maxResults,
+        historyId,
+        cursorStatus,
+        fullResyncReason,
         syncedAt,
       }),
     );
     return { grant, query: args.query, messages, syncedAt };
+  }
+
+  /**
+   * Imports every message the provider reports for `newer_than:<rangeDays>d`
+   * into the local projection and resets the History cursor to the instant
+   * captured before the walk began. Unlike the bounded triage/search syncs,
+   * there is no result ceiling: either the whole range is imported and a
+   * receipt is issued, or the seed fails with a typed error and no receipt.
+   */
+  async seedGmailMessages(
+    requestUrl: URL,
+    request: SeedLifeOpsGmailRequest,
+    now = new Date(),
+  ): Promise<LifeOpsGmailSeedReceipt> {
+    const mode = normalizeOptionalConnectorMode(request.mode, "mode");
+    const side = normalizeOptionalConnectorSide(request.side, "side");
+    const grantId = requireNonEmptyString(request.grantId, "grantId");
+    const rangeDays = request.rangeDays;
+    if (!GMAIL_SEED_RANGE_DAYS.includes(rangeDays)) {
+      fail(
+        400,
+        `rangeDays must be one of ${GMAIL_SEED_RANGE_DAYS.join(", ")}.`,
+        "LIFEOPS_GMAIL_SEED_RANGE_INVALID",
+      );
+    }
+    const grant = await this.deps.requireGoogleGmailGrant(
+      requestUrl,
+      mode,
+      side,
+      grantId,
+    );
+    const accountId = accountIdForGrant(grant);
+    const getGmailHistoryId = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "getGmailHistoryId",
+    );
+    const searchGmailMessagesPage = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "searchGmailMessagesPage",
+    );
+    const query = `newer_than:${rangeDays}d`;
+    const seededAt = now.toISOString();
+    // Capture the cursor before listing so changes that land during the walk
+    // are replayed by the next incremental sync instead of being lost.
+    const historyId = await getGmailHistoryId({ accountId });
+
+    const seenPageTokens = new Set<string>();
+    let pageToken: string | null = null;
+    let pageCount = 0;
+    const messagesByExternalId = new Map<string, LifeOpsGmailMessageSummary>();
+    do {
+      if (pageCount >= GMAIL_SEED_MAX_PAGES) {
+        fail(
+          409,
+          `Gmail returned more than ${GMAIL_SEED_MAX_PAGES} pages for the last ${rangeDays} days; the seed was not completed and no receipt was issued. Choose a shorter range.`,
+          "LIFEOPS_GMAIL_SEED_INCOMPLETE",
+        );
+      }
+      const page = await searchGmailMessagesPage({
+        accountId,
+        query,
+        pageToken,
+        pageSize: GMAIL_SEED_PAGE_SIZE,
+        selfEmail: grant.identityEmail,
+      });
+      pageCount += 1;
+      for (const message of page.messages) {
+        const normalized = lifeOpsGmailMessageFromGoogle({
+          message,
+          grant,
+          agentId: this.ctx.agentId(),
+          syncedAt: seededAt,
+        });
+        if (messagesByExternalId.has(normalized.externalId)) {
+          fail(
+            502,
+            "Gmail returned the same message on more than one search page; the seed was aborted before publishing any projection.",
+            "LIFEOPS_GMAIL_SEED_DUPLICATE_MESSAGE",
+          );
+        }
+        messagesByExternalId.set(normalized.externalId, normalized);
+      }
+      pageToken = page.nextPageToken;
+      if (pageToken) {
+        if (seenPageTokens.has(pageToken)) {
+          fail(
+            502,
+            "Gmail search pagination repeated a page token; the seed was aborted before issuing a receipt.",
+            "LIFEOPS_GMAIL_SEED_PAGINATION_REPEATED",
+          );
+        }
+        seenPageTokens.add(pageToken);
+      }
+    } while (pageToken);
+
+    const messages = [...messagesByExternalId.values()];
+    const messageCount = messages.length;
+    await this.ctx.repository.publishGmailSeed(
+      messages,
+      createLifeOpsGmailSyncState({
+        agentId: this.ctx.agentId(),
+        provider: "google",
+        side: grant.side,
+        mailbox: GOOGLE_GMAIL_MAILBOX,
+        grantId: grant.id,
+        maxResults: messageCount,
+        historyId,
+        cursorStatus: "seeded",
+        fullResyncReason: null,
+        syncedAt: seededAt,
+      }),
+    );
+    await this.ctx.recordConnectorAudit(
+      grant.id,
+      "gmail range seeded through plugin-google-workspace",
+      { rangeDays, query, connectorAccountId: accountId },
+      { messageCount, pageCount, historyCursorPresent: Boolean(historyId) },
+    );
+    return {
+      provider: "google",
+      side: grant.side,
+      grantId: grant.id,
+      connectorAccountId: accountId,
+      rangeDays,
+      query,
+      messageCount,
+      pageCount,
+      historyCursorPresent: Boolean(historyId),
+      seededAt,
+    };
+  }
+
+  async getGmailSyncHealth(
+    requestUrl: URL,
+    request: {
+      side?: LifeOpsConnectorSide;
+      mode?: LifeOpsConnectorMode;
+      grantId: string;
+    },
+  ): Promise<LifeOpsGmailSyncHealth> {
+    const grant = await this.deps.requireGoogleGmailGrant(
+      requestUrl,
+      normalizeOptionalConnectorMode(request.mode, "mode"),
+      normalizeOptionalConnectorSide(request.side, "side"),
+      request.grantId,
+    );
+    const state = await this.ctx.repository.getGmailSyncState(
+      this.ctx.agentId(),
+      "google",
+      GOOGLE_GMAIL_MAILBOX,
+      grant.side,
+      grant.id,
+    );
+    const cachedMessageCount = await this.ctx.repository.countGmailMessages(
+      this.ctx.agentId(),
+      "google",
+      grant.side,
+      grant.id,
+    );
+    return {
+      provider: "google",
+      side: grant.side,
+      grantId: grant.id,
+      connectorAccountId: grant.connectorAccountId ?? accountIdForGrant(grant),
+      mailbox: GOOGLE_GMAIL_MAILBOX,
+      state:
+        state?.fullResyncReason && !state.historyId
+          ? "resync_required"
+          : state
+            ? "current"
+            : "never_synced",
+      cursorStatus: state?.cursorStatus ?? "never_synced",
+      historyCursorPresent: Boolean(state?.historyId),
+      fullResyncReason: state?.fullResyncReason ?? null,
+      cachedMessageCount,
+      syncedAt: state?.syncedAt ?? null,
+    };
+  }
+
+  async purgeGmailImportedData(
+    _requestUrl: URL,
+    request: PurgeLifeOpsGmailImportedDataRequest,
+    now = new Date(),
+  ): Promise<LifeOpsGmailImportedDataPurgeReceipt> {
+    if (request.confirmAction !== true) {
+      fail(
+        409,
+        "Removing imported Gmail data requires explicit confirmation immediately before deletion.",
+      );
+    }
+    const side =
+      normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+    const grantId = requireNonEmptyString(request.grantId, "grantId");
+    const connectorAccountId = requireNonEmptyString(
+      request.connectorAccountId,
+      "connectorAccountId",
+    );
+    if (googleAccountIdFromGrantId(grantId) !== connectorAccountId) {
+      fail(
+        409,
+        "The Gmail grant and connector account identities do not match; reconnect before purging imported data.",
+      );
+    }
+    const [deletedMessageCount, deletedSpamReviewCount, syncState] =
+      await Promise.all([
+        this.ctx.repository.countGmailMessages(
+          this.ctx.agentId(),
+          "google",
+          side,
+          grantId,
+        ),
+        this.ctx.repository.countGmailSpamReviewItems(
+          this.ctx.agentId(),
+          "google",
+          side,
+          grantId,
+        ),
+        this.ctx.repository.getGmailSyncState(
+          this.ctx.agentId(),
+          "google",
+          GOOGLE_GMAIL_MAILBOX,
+          side,
+          grantId,
+        ),
+      ]);
+    await this.ctx.repository.deleteGmailMessagesForProvider(
+      this.ctx.agentId(),
+      "google",
+      side,
+      grantId,
+    );
+    await this.ctx.repository.deleteGmailSpamReviewItemsForProvider(
+      this.ctx.agentId(),
+      "google",
+      side,
+      grantId,
+    );
+    await this.ctx.repository.deleteGmailSyncState(
+      this.ctx.agentId(),
+      "google",
+      GOOGLE_GMAIL_MAILBOX,
+      side,
+      grantId,
+    );
+    return {
+      provider: "google",
+      side,
+      grantId,
+      connectorAccountId,
+      deletedMessageCount,
+      deletedSpamReviewCount,
+      deletedSyncCursor: syncState !== null,
+      providerMutation: false,
+      purgedAt: now.toISOString(),
+    };
   }
 
   async getGmailTriage(
@@ -589,14 +1039,28 @@ export class GmailDomain {
     const labelIds =
       normalizeOptionalGmailLabelIdArray(request.labelIds, "labelIds") ?? [];
     const destructive = isDestructiveGmailOperation(operation);
+    const executionMode = request.executionMode ?? "execute";
+    const confirmAction =
+      normalizeOptionalBoolean(request.confirmAction, "confirmAction") ?? false;
     const confirmDestructive =
       normalizeOptionalBoolean(
         request.confirmDestructive,
         "confirmDestructive",
       ) ?? false;
 
-    if (destructive && !confirmDestructive) {
-      fail(409, `${operation} requires explicit destructive confirmation.`);
+    // Non-destructive execute calls (mark_read, archive, labels) keep working
+    // without confirmation so existing callers of /api/lifeops/gmail/manage
+    // are not broken; destructive operations accept either confirmation flag.
+    if (
+      executionMode === "execute" &&
+      destructive &&
+      !confirmAction &&
+      !confirmDestructive
+    ) {
+      fail(
+        409,
+        `${operation} requires explicit destructive confirmation immediately before execution.`,
+      );
     }
     if (
       (operation === "apply_label" || operation === "remove_label") &&
@@ -686,36 +1150,49 @@ export class GmailDomain {
       fail(404, "No Gmail messages matched the requested operation.");
     }
 
-    const executionMode = request.executionMode ?? "execute";
-    const status =
+    let status: NonNullable<LifeOpsGmailManageResult["status"]> =
       executionMode === "proposal"
         ? "proposed"
         : executionMode === "dry_run"
           ? "dry_run"
           : "executed";
+    let providerReceipt: LifeOpsGmailManageResult["providerReceipt"];
+    let affectedMessages = messages;
 
     if (executionMode === "execute") {
       const modifyGmailMessages = requireGoogleServiceMethod(
         this.ctx.runtime,
         "modifyGmailMessages",
       );
-      await modifyGmailMessages({
+      const receipt = await modifyGmailMessages({
         accountId: accountIdForGrant(grant),
         messageIds: messages.map((message) => message.externalId),
         operation,
         labelIds,
       });
+      providerReceipt = {
+        requestedMessageIds: receipt.requestedMessageIds,
+        succeededMessageIds: receipt.succeededMessageIds,
+        failures: receipt.failures,
+      };
+      const succeeded = new Set(receipt.succeededMessageIds);
+      affectedMessages = messages.filter((message) =>
+        succeeded.has(message.externalId),
+      );
+      if (receipt.failures.length > 0) {
+        status = affectedMessages.length > 0 ? "partial" : "failed";
+      }
 
       if (operation === "delete") {
         await this.ctx.repository.deleteGmailMessages(
           this.ctx.agentId(),
           "google",
-          messages.map((message) => message.id),
+          affectedMessages.map((message) => message.id),
           grant.side,
           grant.id,
         );
       } else {
-        for (const message of messages) {
+        for (const message of affectedMessages) {
           const labels = labelsAfterGmailManage(
             message.labels,
             operation,
@@ -745,14 +1222,15 @@ export class GmailDomain {
         executionMode,
       },
       {
-        affectedCount: messages.length,
+        affectedCount: affectedMessages.length,
+        failedCount: providerReceipt?.failures.length ?? 0,
         destructive,
         connectorAccountId: grant.connectorAccountId ?? null,
       },
     );
 
     if (executionMode === "execute" && operation === "mark_read") {
-      for (const message of messages) {
+      for (const message of affectedMessages) {
         await this.attributeBriefMessageOutcome({
           messageId: gmailBriefSourceId(message.externalId),
           eventType: "opened",
@@ -763,10 +1241,10 @@ export class GmailDomain {
     }
 
     return {
-      ok: true,
+      ok: status !== "failed",
       operation,
       messageIds: messages.map((message) => message.id),
-      affectedCount: messages.length,
+      affectedCount: affectedMessages.length,
       labelIds,
       destructive,
       grantId: grant.id,
@@ -782,9 +1260,9 @@ export class GmailDomain {
             chunkId: request.chunk.chunkId,
             chunkIndex: request.chunk.chunkIndex,
             chunkCount: request.chunk.chunkCount,
-            processedCount: messages.length,
-            remainingCount: 0,
-            nextCursor: null,
+            processedCount: affectedMessages.length,
+            remainingCount: messages.length - affectedMessages.length,
+            nextCursor: providerReceipt?.failures[0]?.messageId ?? null,
           }
         : undefined,
       audit: request.audit
@@ -795,6 +1273,7 @@ export class GmailDomain {
             recordedAt: new Date().toISOString(),
           }
         : undefined,
+      providerReceipt,
       undo: request.undo
         ? {
             status: "not_available",
@@ -857,11 +1336,46 @@ export class GmailDomain {
       grantId: request.grantId,
       messageId: request.messageId,
     });
-    return draftForMessage(read.message, {
+    const draft = draftForMessage(read.message, {
       tone,
       intent,
       includeQuotedOriginal,
     });
+    if (request.persistToProvider !== true) {
+      return { ...draft, persistence: "local_preview" };
+    }
+    const grant = await this.deps.requireGoogleGmailGrant(
+      requestUrl,
+      request.mode,
+      request.side,
+      request.grantId,
+    );
+    if (!grant.capabilities.includes("google.gmail.compose")) {
+      fail(
+        403,
+        "Gmail draft access has not been granted. Reconnect Google with Draft Gmail enabled.",
+      );
+    }
+    const createGmailDraft = requireGoogleServiceMethod(
+      this.ctx.runtime,
+      "createGmailDraft",
+    );
+    const receipt = await createGmailDraft({
+      accountId: accountIdForGrant(grant),
+      to: draft.to,
+      cc: draft.cc,
+      subject: draft.subject,
+      bodyText: draft.bodyText,
+      threadId: read.message.threadId,
+      inReplyTo: gmailHeader(read.message, "Message-Id"),
+      references: gmailHeader(read.message, "References"),
+    });
+    return {
+      ...draft,
+      providerDraftId: receipt.draftId,
+      providerDraftMessageId: receipt.messageId,
+      persistence: "gmail_draft",
+    };
   }
 
   async createGmailBatchReplyDrafts(

@@ -139,7 +139,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             sourceId: "newsletter-1",
             itemClass: "inbox:newsletter-digest",
             eventType: "ignored",
-            eventAt: `2026-07-0${day}T12:00:00.000Z`,
+            eventAt: new Date(
+              Date.now() - day * 24 * 60 * 60 * 1_000,
+            ).toISOString(),
             weight: -1,
             metadata: { scenario: "ignore-pattern" },
           });
