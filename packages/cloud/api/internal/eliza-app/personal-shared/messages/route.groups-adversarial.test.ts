@@ -233,6 +233,7 @@ const canonicalGroupBinding = {
   conversation_id: "group:00000000-0000-5000-8000-000000000030",
   state: "active",
   response_policy: "mention_only",
+  authority_version: 3,
   created_by_platform_user_id: "123456789",
 };
 
@@ -343,6 +344,7 @@ describe("adversarial Personal Shared group routing", () => {
       bindingId: blooioGroupBinding.id,
       providerMessageId: "provider-eliza-reply-0",
     });
+    expect(blooioGroupBinding.authority_version).toBe(3);
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: blooioGroupBinding.personal_agent_id }),
       blooioGroupBinding.conversation_id,
