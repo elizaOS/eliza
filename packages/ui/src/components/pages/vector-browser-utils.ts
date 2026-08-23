@@ -217,14 +217,53 @@ function dot(a: number[], b: Float64Array | number[]): number {
   return s;
 }
 
+/**
+ * Small deterministic PRNG (mulberry32). Power iteration needs a spread-out
+ * starting vector — a uniform one can sit exactly orthogonal to the dominant
+ * eigenvector on symmetric input and converge badly — but it must not need an
+ * UNPREDICTABLE one.
+ */
+function seededRandom(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const POWER_ITERATION_SEED = 0x5eed;
+
+/**
+ * Pin the eigenvector's arbitrary sign. Power iteration converges to either
+ * `+v` or `-v` depending on where it started, so without this the whole plot
+ * can mirror between two runs over identical data. Canonicalizing on the
+ * largest-magnitude component is the usual convention.
+ */
+function canonicalizeSign(v: Float64Array): void {
+  let maxIndex = 0;
+  for (let i = 1; i < v.length; i++) {
+    if (Math.abs(v[i]) > Math.abs(v[maxIndex])) maxIndex = i;
+  }
+  if (v[maxIndex] < 0) {
+    for (let i = 0; i < v.length; i++) v[i] = -v[i];
+  }
+}
+
 function powerIteration(
   data: number[][],
   dims: number,
   iters = 30,
 ): Float64Array {
   const v = new Float64Array(dims);
-  // Random init
-  for (let d = 0; d < dims; d++) v[d] = Math.random() - 0.5;
+  // Deterministic init: the vector browser re-projects on every render, and a
+  // Math.random() seed made the same memories land somewhere different each
+  // time — nodes jumped and the plot could mirror. Seeded by `dims` so the
+  // starting vector still varies with the embedding width.
+  const random = seededRandom(POWER_ITERATION_SEED + dims);
+  for (let d = 0; d < dims; d++) v[d] = random() - 0.5;
   normalize(v);
 
   for (let iter = 0; iter < iters; iter++) {
@@ -236,6 +275,7 @@ function powerIteration(
     normalize(w);
     for (let d = 0; d < dims; d++) v[d] = w[d];
   }
+  canonicalizeSign(v);
   return v;
 }
 
