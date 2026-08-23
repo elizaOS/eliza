@@ -2478,8 +2478,12 @@ function appendPriorDialogueEvents(
 			return text.length > 0;
 		})
 		.sort((a, b) => {
-			const aTime = Number.isFinite(a.createdAt as unknown as number) ? (a.createdAt as unknown as number) : 0;
-			const bTime = Number.isFinite(b.createdAt as unknown as number) ? (b.createdAt as unknown as number) : 0;
+			const aTime = Number.isFinite(a.createdAt as unknown as number)
+				? (a.createdAt as unknown as number)
+				: 0;
+			const bTime = Number.isFinite(b.createdAt as unknown as number)
+				? (b.createdAt as unknown as number)
+				: 0;
 			return aTime - bTime;
 		});
 	// Bound how many of the agent's own turns render (newest win): the planner
@@ -2811,8 +2815,12 @@ function getRecentConversationSearchText(
 			return typeof memory.content?.text === "string";
 		})
 		.sort((a, b) => {
-			const aTime = Number.isFinite(a.createdAt as unknown as number) ? (a.createdAt as unknown as number) : 0;
-			const bTime = Number.isFinite(b.createdAt as unknown as number) ? (b.createdAt as unknown as number) : 0;
+			const aTime = Number.isFinite(a.createdAt as unknown as number)
+				? (a.createdAt as unknown as number)
+				: 0;
+			const bTime = Number.isFinite(b.createdAt as unknown as number)
+				? (b.createdAt as unknown as number)
+				: 0;
 			return bTime - aTime;
 		})
 		.map((memory) => memory.content.text.trim())
