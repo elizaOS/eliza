@@ -13,13 +13,14 @@
  * to reconcile.
  */
 
-import { Button as NuphyButton, SelectPill } from "@extrastu/nuphy-ui";
 import { Loader2, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
 import { useCloudConnectorConnections } from "../../../../hooks/useCloudConnectorConnections";
 import { useAppSelector } from "../../../../state";
 import { openExternalUrl } from "../../../../utils/openExternalUrl";
+import { Button } from "../../../ui/button";
+import { FormSelect, FormSelectItem } from "../../../ui/form-select";
 import {
   buildMcpCreatePayload,
   CLOUD_CONNECTORS,
@@ -140,17 +141,17 @@ function ConnectorRow({
             Disconnect
           </DestructiveSecondaryButton>
         ) : state.error ? (
-          <NuphyButton variant="secondary" size="sm" disabled>
+          <Button variant="outline" size="sm" disabled>
             Unavailable
-          </NuphyButton>
+          </Button>
         ) : (
-          <NuphyButton
-            variant="secondary"
+          <Button
+            variant="outline"
             size="sm"
             onClick={() => onConnect(connector)}
           >
             Connect
-          </NuphyButton>
+          </Button>
         )
       }
     />
@@ -301,11 +302,11 @@ function ConnectModal({
             <span />
           )}
           <div className="flex gap-2">
-            <NuphyButton variant="ghost" size="sm" onClick={onClose}>
+            <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
-            </NuphyButton>
-            <NuphyButton
-              variant="primary"
+            </Button>
+            <Button
+              variant="default"
               size="sm"
               disabled={busy}
               onClick={() => void handleConnect()}
@@ -320,7 +321,7 @@ function ConnectModal({
               ) : (
                 "Connect"
               )}
-            </NuphyButton>
+            </Button>
           </div>
         </div>
       }
@@ -353,27 +354,26 @@ function ConnectModal({
               description="The agent this Discord bot responds as."
               htmlFor="connect-agent"
             >
-              <SelectPill
-                label="Agent"
-                options={[
-                  {
-                    value: "",
-                    label:
-                      agentChoices === null
-                        ? "Loading agents…"
-                        : agentChoices.length === 0
-                          ? "No agents available"
-                          : "Choose an agent",
-                  },
-                  ...(agentChoices ?? []).map((choice) => ({
-                    value: choice.id,
-                    label: choice.name,
-                  })),
-                ]}
+              <FormSelect
+                aria-label="Agent"
+                placeholder={
+                  agentChoices === null
+                    ? "Loading agents…"
+                    : agentChoices.length === 0
+                      ? "No agents available"
+                      : "Choose an agent"
+                }
                 value={selectedAgentId}
                 onValueChange={setSelectedAgentId}
                 disabled={busy || agentChoices === null}
-              />
+                triggerClassName="h-9 rounded-sm px-3 text-sm"
+              >
+                {(agentChoices ?? []).map((choice) => (
+                  <FormSelectItem key={choice.id} value={choice.id}>
+                    {choice.name}
+                  </FormSelectItem>
+                ))}
+              </FormSelect>
             </NuphyFormField>
           )}
         </div>
@@ -491,15 +491,10 @@ function DisconnectDialog({
             <span />
           )}
           <div className="flex gap-2">
-            <NuphyButton
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={onClose}
-            >
+            <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
               Cancel
-            </NuphyButton>
-            <NuphyButton
+            </Button>
+            <Button
               variant="destructive"
               size="sm"
               disabled={
@@ -529,7 +524,7 @@ function DisconnectDialog({
             >
               {" "}
               {busy ? "Disconnecting…" : "Disconnect"}{" "}
-            </NuphyButton>
+            </Button>
           </div>
         </div>
       }
@@ -545,29 +540,26 @@ function DisconnectDialog({
             description="Exactly this connection will be disconnected."
             htmlFor="disconnect-connection"
           >
-            <SelectPill
-              label="Connection"
-              options={[
-                {
-                  value: "",
-                  label:
-                    choices === null
-                      ? "Loading connections…"
-                      : choices.length === 0
-                        ? "No connections found"
-                        : "Choose a connection",
-                },
-                ...(choices ?? []).map((choice) => ({
-                  value: choice.id,
-                  label: choice.active
-                    ? choice.label
-                    : `${choice.label} (inactive)`,
-                })),
-              ]}
+            <FormSelect
+              aria-label="Connection"
+              placeholder={
+                choices === null
+                  ? "Loading connections…"
+                  : choices.length === 0
+                    ? "No connections found"
+                    : "Choose a connection"
+              }
               value={selectedId}
               onValueChange={setSelectedId}
               disabled={busy || choices === null}
-            />
+              triggerClassName="h-9 rounded-sm px-3 text-sm"
+            >
+              {(choices ?? []).map((choice) => (
+                <FormSelectItem key={choice.id} value={choice.id}>
+                  {choice.active ? choice.label : `${choice.label} (inactive)`}
+                </FormSelectItem>
+              ))}
+            </FormSelect>
           </NuphyFormField>
         )}
       </div>
@@ -646,11 +638,11 @@ function McpAddModal({
             <span />
           )}
           <div className="flex gap-2">
-            <NuphyButton variant="ghost" size="sm" onClick={onClose}>
+            <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
-            </NuphyButton>
-            <NuphyButton
-              variant="primary"
+            </Button>
+            <Button
+              variant="default"
               size="sm"
               disabled={busy}
               onClick={() => void handleAdd()}
@@ -663,7 +655,7 @@ function McpAddModal({
               ) : (
                 "Add server"
               )}
-            </NuphyButton>
+            </Button>
           </div>
         </div>
       }
@@ -752,15 +744,10 @@ function McpRemoveDialog({
             <span />
           )}
           <div className="flex gap-2">
-            <NuphyButton
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={onClose}
-            >
+            <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
               Cancel
-            </NuphyButton>
-            <NuphyButton
+            </Button>
+            <Button
               variant="destructive"
               size="sm"
               disabled={busy}
@@ -785,7 +772,7 @@ function McpRemoveDialog({
             >
               {" "}
               {busy ? "Removing…" : "Remove"}{" "}
-            </NuphyButton>
+            </Button>
           </div>
         </div>
       }
@@ -1021,14 +1008,14 @@ export function ConnectionsSection() {
           label="Add MCP Server"
           description="Configure a new MCP server for this agent."
           control={
-            <NuphyButton
-              variant="secondary"
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => setMcpAddOpen(true)}
             >
               <Plus aria-hidden />
               Add
-            </NuphyButton>
+            </Button>
           }
         />
         {mcpError ? (
@@ -1036,8 +1023,8 @@ export function ConnectionsSection() {
             label="MCP servers unavailable"
             description={mcpError}
             control={
-              <NuphyButton
-                variant="secondary"
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => {
                   void refetchMcps().catch(() => {
@@ -1046,7 +1033,7 @@ export function ConnectionsSection() {
                 }}
               >
                 Retry
-              </NuphyButton>
+              </Button>
             }
           />
         ) : mcpLoading ? (

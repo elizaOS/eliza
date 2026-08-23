@@ -10,7 +10,6 @@
  * `ChatHotkeySettingsGroup.syncChatOverlayShortcut`.
  */
 
-import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import { AlertTriangle, Keyboard, Mouse, RotateCcw } from "lucide-react";
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../../../bridge";
@@ -21,6 +20,7 @@ import {
   getPushToTalkAccelerator,
   setPushToTalkAccelerator,
 } from "../../../../state/push-to-talk-hotkey";
+import { Button } from "../../../ui/button";
 import {
   NuphyRow,
   NuphySelectRow,
@@ -367,15 +367,15 @@ export function ShortcutsSection() {
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
-                      "min-w-[3.5rem] rounded-sm border border-hairline bg-surface px-2 py-1 text-center font-mono text-xs tabular-nums text-foreground",
+                      "min-w-[3.5rem] rounded-sm border border-border bg-surface px-2 py-1 text-center font-mono text-xs tabular-nums text-foreground",
                       isRecording && "border-accent/60 text-muted-foreground",
                     )}
                   >
                     {isRecording ? "…" : formatCombo(shortcut.combo)}
                   </span>
-                  <NuphyButton
+                  <Button
                     type="button"
-                    variant={isRecording ? "primary" : "secondary"}
+                    variant={isRecording ? "default" : "outline"}
                     size="sm"
                     aria-label={`Record ${shortcut.label} shortcut`}
                     disabled={shortcutMutationPending}
@@ -385,8 +385,8 @@ export function ShortcutsSection() {
                     }}
                   >
                     <Keyboard className="h-4 w-4" aria-hidden />
-                  </NuphyButton>
-                  <NuphyButton
+                  </Button>
+                  <Button
                     type="button"
                     variant="ghost"
                     size="sm"
@@ -398,7 +398,7 @@ export function ShortcutsSection() {
                     onClick={() => resetCombo(shortcut.id)}
                   >
                     <RotateCcw className="h-4 w-4" aria-hidden />
-                  </NuphyButton>
+                  </Button>
                 </div>
                 {isPending && conflictForThis ? (
                   <div
@@ -412,9 +412,9 @@ export function ShortcutsSection() {
                     <span className="flex-1">
                       This combo is used by “{conflictForThis.label}”. Override?
                     </span>
-                    <NuphyButton
+                    <Button
                       type="button"
-                      variant="primary"
+                      variant="default"
                       size="sm"
                       onClick={() =>
                         void overrideConflict(
@@ -426,15 +426,15 @@ export function ShortcutsSection() {
                       disabled={shortcutMutationPending}
                     >
                       Override
-                    </NuphyButton>
-                    <NuphyButton
+                    </Button>
+                    <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => setPending(null)}
                     >
                       Cancel
-                    </NuphyButton>
+                    </Button>
                   </div>
                 ) : null}
               </div>

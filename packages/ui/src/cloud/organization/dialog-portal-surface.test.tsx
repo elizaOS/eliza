@@ -24,10 +24,12 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = () => undefined;
 });
 
-function renderInsideNuphyScope(ui: ReactElement): void {
-  const scope = document.createElement("div");
-  scope.className = "nuphy-scope";
-  document.body.append(scope);
+function renderInsideSettingsShell(ui: ReactElement): void {
+  // Stand-in for the cloud settings panel container: portalled dialog and
+  // listbox surfaces must escape it and land on the global document body.
+  const shell = document.createElement("div");
+  shell.dataset.settingsShell = "true";
+  document.body.append(shell);
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -36,7 +38,7 @@ function renderInsideNuphyScope(ui: ReactElement): void {
   });
 
   render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>, {
-    container: scope,
+    container: shell,
   });
 }
 
@@ -71,18 +73,18 @@ describe.each([
     ),
   },
 ])("$name dialog portal surface", ({ renderDialog, selectName }) => {
-  it("uses a globally defined opaque surface outside .nuphy-scope", () => {
+  it("uses a globally defined opaque surface outside the settings shell", () => {
     document.documentElement.classList.remove("dark");
-    renderInsideNuphyScope(renderDialog());
+    renderInsideSettingsShell(renderDialog());
 
     const dialog = screen.getByRole("dialog");
-    expect(dialog.closest(".nuphy-scope")).toBeNull();
+    expect(dialog.closest("[data-settings-shell]")).toBeNull();
     expect(dialog.classList.contains("bg-bg")).toBe(true);
     expect(dialog.classList.contains("bg-popover")).toBe(false);
   });
 
   it("keeps its portalled select menu on the same global surface", () => {
-    renderInsideNuphyScope(renderDialog());
+    renderInsideSettingsShell(renderDialog());
 
     fireEvent.pointerDown(screen.getByRole("combobox", { name: selectName }), {
       button: 0,
@@ -91,21 +93,21 @@ describe.each([
       pointerType: "mouse",
     });
     const listbox = screen.getByRole("listbox");
-    expect(listbox.closest(".nuphy-scope")).toBeNull();
+    expect(listbox.closest("[data-settings-shell]")).toBeNull();
     expect(listbox.classList.contains("bg-bg")).toBe(true);
     expect(listbox.classList.contains("bg-popover")).toBe(false);
   });
 });
 
 function expectGlobalOpaquePortal(element: HTMLElement): void {
-  expect(element.closest(".nuphy-scope")).toBeNull();
+  expect(element.closest("[data-settings-shell]")).toBeNull();
   expect(element.classList.contains("bg-bg")).toBe(true);
   expect(element.classList.contains("bg-popover")).toBe(false);
 }
 
 describe("Organization row action portal surfaces", () => {
   it("keeps the member role menu and removal dialog globally opaque", () => {
-    renderInsideNuphyScope(
+    renderInsideSettingsShell(
       <MembersList
         members={[
           {
@@ -144,7 +146,7 @@ describe("Organization row action portal surfaces", () => {
   });
 
   it("keeps the revoke-invite dialog globally opaque", () => {
-    renderInsideNuphyScope(
+    renderInsideSettingsShell(
       <PendingInvitesList
         invites={[
           {
@@ -175,7 +177,7 @@ describe("Organization row action portal surfaces", () => {
   });
 
   it("keeps the credential-removal dialog globally opaque", () => {
-    renderInsideNuphyScope(
+    renderInsideSettingsShell(
       <CredentialsList
         credentials={[
           {

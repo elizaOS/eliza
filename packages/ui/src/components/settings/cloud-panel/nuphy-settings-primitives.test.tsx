@@ -1,24 +1,13 @@
 /**
  * Verifies the deterministic DOM contract used to draw Cloud Settings row
- * separators without relying on NuPhy's generated Tailwind divide utilities.
+ * separators, the native drag strip, and modal focus management, all against
+ * the canonical in-package primitives (no external component dependency).
  * @vitest-environment jsdom
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ReactNode, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@extrastu/nuphy-ui", () => ({
-  Button: ({ children }: { children?: ReactNode }) => (
-    <button type="button">{children}</button>
-  ),
-  Input: () => <input />,
-  IosToggle: () => <button type="button">Toggle</button>,
-  Segmented: () => <div />,
-  SelectPill: () => <div />,
-  SettingRow: ({ title }: { title: string }) => <div>{title}</div>,
-  Slider: () => <input type="range" />,
-}));
+import { useState } from "react";
+import { describe, expect, it } from "vitest";
 
 import { CloudSettingsDragStrip } from "./CloudSettingsPanel";
 import { NuphyModal, SettingsGroup } from "./nuphy-settings-primitives";
@@ -33,9 +22,10 @@ describe("SettingsGroup", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Shortcuts" })).toBeTruthy();
-    const rows = container.querySelector(".nuphy-settings-group-rows");
+    const rows = container.querySelector(
+      '[class*=":not([hidden])+:not([hidden])"]',
+    );
     expect(rows).toBeTruthy();
-    expect(rows?.classList.contains("divide-y")).toBe(false);
     expect(rows?.children).toHaveLength(2);
   });
 });
@@ -46,7 +36,7 @@ describe("CloudSettingsDragStrip", () => {
 
     const strip = container.querySelector('[data-window-titlebar="true"]');
     expect(strip).toBeTruthy();
-    expect(strip?.classList.contains("nuphy-window-drag-strip")).toBe(true);
+    expect(strip?.classList.contains("settings-window-drag-strip")).toBe(true);
     expect(strip?.getAttribute("aria-hidden")).toBe("true");
   });
 });
