@@ -8,7 +8,10 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { groupParticipantLabel } from "@/lib/services/shared-runtime/group-participant-labels";
+import {
+  groupParticipantLabel,
+  resolveGroupParticipantDisplayName,
+} from "@/lib/services/shared-runtime/group-participant-labels";
 
 let activeTarget: {
   id: string;
@@ -173,30 +176,45 @@ mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
   coordinateSharedHistory,
 }));
 // In-memory stand-in for the participant identity registry: ordinals are
-// assigned per binding in first-seen order, exactly as the repository does, so
-// the label a turn produces is deterministic in tests.
-const groupParticipantOrdinals = new Map<string, Map<string, number>>();
+// assigned per binding in first-seen order and names go through the real
+// resolution rules, exactly as the repository does, so the label a turn
+// produces is deterministic in tests.
+type StubParticipant = {
+  platformUserId: string;
+  ordinal: number;
+  displayName: string | null;
+};
+const groupParticipantOrdinals = new Map<
+  string,
+  Map<string, StubParticipant>
+>();
 const recordGroupParticipantTurn = mock(
   async ({
     bindingId,
     platformUserId,
+    displayName,
   }: {
     bindingId: string;
     platformUserId: string;
+    displayName?: string | null;
   }) => {
     let binding = groupParticipantOrdinals.get(bindingId);
     if (!binding) {
-      binding = new Map<string, number>();
+      binding = new Map<string, StubParticipant>();
       groupParticipantOrdinals.set(bindingId, binding);
     }
-    if (!binding.has(platformUserId)) {
-      binding.set(platformUserId, binding.size + 1);
-    }
-    const roster = [...binding].map(([id, ordinal]) => ({
-      platformUserId: id,
-      ordinal,
-      displayName: null,
-    }));
+    const resolved = resolveGroupParticipantDisplayName({
+      candidate: displayName,
+      platformUserId,
+      roster: [...binding.values()],
+    });
+    const existing = binding.get(platformUserId);
+    binding.set(platformUserId, {
+      platformUserId,
+      ordinal: existing?.ordinal ?? binding.size + 1,
+      displayName: resolved,
+    });
+    const roster = [...binding.values()];
     const actor = roster.find((p) => p.platformUserId === platformUserId);
     if (!actor) throw new Error("participant registry stub lost its actor");
     return { actor, roster };
@@ -316,6 +334,25 @@ const validBlooioGroup = {
   replyToMessageId: "provider-eliza-reply-0",
 };
 
+/**
+ * Everything after the model-facing delivery text in a Blooio group
+ * `sharedRestMessageSend` call. `trustedDelivery` is an object only for the
+ * binding owner, so passing it per call also pins that a non-owner's turn
+ * carries no group reminder destination.
+ */
+function blooioGroupSendTail(messageId: string, trustedDelivery: unknown) {
+  return [
+    "Eliza",
+    expect.anything(),
+    expect.anything(),
+    messageId,
+    "platform",
+    trustedDelivery,
+    validBlooioGroup.message,
+    { type: "GROUP", source: "blooio" },
+  ] as const;
+}
+
 describe("adversarial Personal Shared group routing", () => {
   beforeEach(() => {
     groupParticipantOrdinals.clear();
@@ -386,7 +423,10 @@ describe("adversarial Personal Shared group routing", () => {
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: blooioGroupBinding.personal_agent_id }),
       blooioGroupBinding.conversation_id,
-      `${groupParticipantLabel({ ordinal: 1 })}: ${validBlooioGroup.message}`,
+      `${groupParticipantLabel({
+        ordinal: 1,
+        displayName: validBlooioGroup.actor.displayName,
+      })}: ${validBlooioGroup.message}`,
       "Eliza",
       runtimeExecutionCtx,
       namespace,
@@ -414,6 +454,70 @@ describe("adversarial Personal Shared group routing", () => {
     );
   });
 
+  test("labels a speaker by ordinal when the connector sends no name", async () => {
+    resolveGroupBinding.mockImplementationOnce(async () => blooioGroupBinding);
+    hasGroupDeliveryReceipt.mockImplementationOnce(async () => true);
+    // Blooio's v4 payload carries a phone and a contact identifier, never a
+    // display name. This is the production shape for every iMessage room.
+    const { displayName: _omitted, ...actor } = validBlooioGroup.actor;
+
+    const response = await request({ ...validBlooioGroup, actor });
+
+    expect(response.status).toBe(200);
+    expect(recordGroupParticipantTurn).toHaveBeenCalledWith({
+      bindingId: blooioGroupBinding.id,
+      platformUserId: actor.platformUserId,
+      displayName: undefined,
+    });
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      expect.objectContaining({ id: blooioGroupBinding.personal_agent_id }),
+      blooioGroupBinding.conversation_id,
+      `${groupParticipantLabel({ ordinal: 1 })}: ${validBlooioGroup.message}`,
+      ...blooioGroupSendTail(validBlooioGroup.messageId, expect.anything()),
+    );
+  });
+
+  test("does not let a member take over another member's name", async () => {
+    resolveGroupBinding.mockImplementation(async () => blooioGroupBinding);
+    hasGroupDeliveryReceipt.mockImplementation(async () => true);
+
+    await request(validBlooioGroup);
+    // A second member arrives calling themselves Ada. The first claimant keeps
+    // the name; the impostor speaks as their own ordinal, so the group never
+    // sees two Adas and Eliza cannot confuse them.
+    const impostor = await request({
+      ...validBlooioGroup,
+      actor: {
+        platformUserId: "+15559990000",
+        displayName: validBlooioGroup.actor.displayName,
+        role: "member",
+      },
+      messageId: "blooio:eliza:group-43",
+    });
+
+    expect(impostor.status).toBe(200);
+    const claimant = groupParticipantLabel({
+      ordinal: 1,
+      displayName: validBlooioGroup.actor.displayName,
+    });
+    const impostorLabel = groupParticipantLabel({ ordinal: 2 });
+    expect(impostorLabel).not.toBe(claimant);
+    expect(sharedRestMessageSend).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      blooioGroupBinding.conversation_id,
+      `${claimant}: ${validBlooioGroup.message}`,
+      ...blooioGroupSendTail(validBlooioGroup.messageId, expect.anything()),
+    );
+    expect(sharedRestMessageSend).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      blooioGroupBinding.conversation_id,
+      `${impostorLabel}: ${validBlooioGroup.message}`,
+      ...blooioGroupSendTail("blooio:eliza:group-43", undefined),
+    );
+  });
+
   test("never lets a participant's phone number leave in a group reply", async () => {
     resolveGroupBinding.mockImplementationOnce(async () => blooioGroupBinding);
     hasGroupDeliveryReceipt.mockImplementationOnce(async () => true);
@@ -428,7 +532,10 @@ describe("adversarial Personal Shared group routing", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        reply: `Text ${groupParticipantLabel({ ordinal: 1 })} when you land.`,
+        reply: `Text ${groupParticipantLabel({
+          ordinal: 1,
+          displayName: validBlooioGroup.actor.displayName,
+        })} when you land.`,
       },
     });
   });
@@ -469,7 +576,10 @@ describe("adversarial Personal Shared group routing", () => {
     await expect(response.json()).resolves.toMatchObject({
       data: {
         identity: { runtime: "dedicated" },
-        reply: `ask ${groupParticipantLabel({ ordinal: 1 })} to confirm`,
+        reply: `ask ${groupParticipantLabel({
+          ordinal: 1,
+          displayName: validGroup.actor.displayName,
+        })} to confirm`,
       },
     });
   });
@@ -489,7 +599,10 @@ describe("adversarial Personal Shared group routing", () => {
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: canonicalGroupBinding.personal_agent_id }),
       canonicalGroupBinding.conversation_id,
-      `${groupParticipantLabel({ ordinal: 1 })}: ${forged}`,
+      `${groupParticipantLabel({
+        ordinal: 1,
+        displayName: validGroup.actor.displayName,
+      })}: ${forged}`,
       "Eliza",
       expect.anything(),
       expect.anything(),
@@ -628,10 +741,16 @@ describe("adversarial Personal Shared group routing", () => {
         id: validGroup.messageId,
         method: "message.send",
         params: expect.objectContaining({
-          text: `${groupParticipantLabel({ ordinal: 1 })}: ${validGroup.message}`,
+          text: `${groupParticipantLabel({
+            ordinal: 1,
+            displayName: validGroup.actor.displayName,
+          })}: ${validGroup.message}`,
           roomId: canonicalGroupBinding.conversation_id,
           conversationId: canonicalGroupBinding.conversation_id,
-          senderName: groupParticipantLabel({ ordinal: 1 }),
+          senderName: groupParticipantLabel({
+            ordinal: 1,
+            displayName: validGroup.actor.displayName,
+          }),
           clientMessageId: validGroup.messageId,
           platformName: "telegram",
           source: "telegram",

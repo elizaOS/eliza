@@ -93,7 +93,8 @@ describe("0311 Personal Shared group participants", () => {
     const db = await database();
     await expect(insertParticipant(db, { display_name: "" })).rejects.toThrow();
     await expect(insertParticipant(db, { display_name: "n".repeat(129) })).rejects.toThrow();
-    // Null is the shipped state: no writer populates the name slot yet.
+    // Null is the shipped state for a connector that sends no name, and
+    // the fallback whenever a supplied name is rejected.
     await insertParticipant(db, { display_name: null });
     const { rows } = await db.query<{ display_name: string | null; ordinal: number }>(
       "SELECT display_name, ordinal FROM personal_shared_group_participants",

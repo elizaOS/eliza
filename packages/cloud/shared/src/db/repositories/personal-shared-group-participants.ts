@@ -2,13 +2,15 @@
  * Per-binding participant identity authority for Personal Shared group chats.
  *
  * One call per group turn registers the speaker and returns the binding's full
- * roster: the speaker's ordinal builds the model-facing label, and the roster
- * lets the outbound guard redact any participant's raw connector handle before
- * a reply leaves for the provider. Both come from one transaction, so the
- * roster always contains the speaker that transaction just registered.
+ * roster: the speaker's resolved name or ordinal builds the model-facing
+ * label, and the roster lets the outbound guard redact any participant's raw
+ * connector handle before a reply leaves for the provider. Both come from one
+ * transaction, so the roster always contains the speaker that transaction just
+ * registered, and the name rules see the roster they are deciding against.
  */
 import { ElizaError } from "@elizaos/core";
 import { asc, eq, sql } from "drizzle-orm";
+import { resolveGroupParticipantDisplayName } from "../../lib/services/shared-runtime/group-participant-labels";
 import type { Database } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
@@ -26,7 +28,11 @@ export interface GroupParticipantIdentity {
   platformUserId: string;
   /** 1-based, stable within the binding. */
   ordinal: number;
-  /** Reserved name slot; no writer populates it yet, so this is always null today. */
+  /**
+   * The name the connector supplied, once it survived the resolution rules.
+   * Null on a connector that sends no names, and null whenever a supplied name
+   * was rejected, so the label falls back to the ordinal.
+   */
   displayName: string | null;
 }
 
@@ -84,12 +90,19 @@ export class PersonalSharedGroupParticipantsRepository {
    *    giving two people the same name.
    *
    * A speaker who is already registered takes the `ON CONFLICT` branch, which
-   * only refreshes `last_seen_at` and returns the ordinal that was assigned the
-   * first time — labels stay stable across a binding's whole history.
+   * refreshes their name and `last_seen_at` and returns the ordinal that was
+   * assigned the first time, so an ordinal is stable across a binding's whole
+   * history even when the name behind it changes.
    */
   async recordTurn(input: {
     bindingId: string;
     platformUserId: string;
+    /**
+     * Raw, untrusted name from this turn's connector payload. Resolution and
+     * rejection happen here, under the lock, because the rules depend on the
+     * binding's roster; callers must not pre-filter it.
+     */
+    displayName?: string | null;
   }): Promise<GroupParticipantTurn> {
     if (!input.bindingId || !input.platformUserId) {
       throw new TypeError("Group participant registration identity is incomplete");
@@ -103,14 +116,37 @@ export class PersonalSharedGroupParticipantsRepository {
           )`,
         );
         const participants = personalSharedGroupParticipants;
+        // The names already claimed in this binding. Read inside the same
+        // locked transaction as the write below, so the collision decision
+        // cannot be raced by another speaker registering the same name.
+        const claimedNames = await tx
+          .select({
+            platform_user_id: participants.platform_user_id,
+            display_name: participants.display_name,
+          })
+          .from(participants)
+          .where(eq(participants.binding_id, input.bindingId));
+        const displayName = resolveGroupParticipantDisplayName({
+          candidate: input.displayName,
+          platformUserId: input.platformUserId,
+          roster: claimedNames.map((row) => ({
+            platformUserId: row.platform_user_id,
+            displayName: row.display_name,
+          })),
+        });
+        // The turn's payload is authoritative: a member who renames themselves
+        // is renamed here, and one whose name stops being usable reverts to
+        // their ordinal rather than keeping a stale label.
         const [claimed] = await sqlRows<ParticipantRow>(
           tx,
-          sql`INSERT INTO ${participants} (binding_id, platform_user_id, ordinal, last_seen_at)
+          sql`INSERT INTO ${participants}
+              (binding_id, platform_user_id, ordinal, display_name, last_seen_at)
             SELECT ${input.bindingId}::uuid, ${input.platformUserId},
-              COALESCE(MAX(${participants.ordinal}), 0) + 1, now()
+              COALESCE(MAX(${participants.ordinal}), 0) + 1, ${displayName}::text, now()
             FROM ${participants}
             WHERE ${participants.binding_id} = ${input.bindingId}::uuid
             ON CONFLICT (binding_id, platform_user_id) DO UPDATE SET
+              display_name = EXCLUDED.display_name,
               last_seen_at = now()
             RETURNING platform_user_id, ordinal, display_name`,
         );

@@ -2,7 +2,10 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { OnboardingChatInput } from "@/lib/services/eliza-app/onboarding-chat";
-import { groupParticipantLabel } from "@/lib/services/shared-runtime/group-participant-labels";
+import {
+  groupParticipantLabel,
+  resolveGroupParticipantDisplayName,
+} from "@/lib/services/shared-runtime/group-participant-labels";
 import { logger } from "@/lib/utils/logger";
 import { markPreverifiedPersonalSharedRequest } from "../preverified-auth";
 
@@ -186,30 +189,45 @@ mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
   coordinateSharedHistory,
 }));
 // In-memory stand-in for the participant identity registry: ordinals are
-// assigned per binding in first-seen order, exactly as the repository does, so
-// the label a turn produces is deterministic in tests.
-const groupParticipantOrdinals = new Map<string, Map<string, number>>();
+// assigned per binding in first-seen order and names go through the real
+// resolution rules, exactly as the repository does, so the label a turn
+// produces is deterministic in tests.
+type StubParticipant = {
+  platformUserId: string;
+  ordinal: number;
+  displayName: string | null;
+};
+const groupParticipantOrdinals = new Map<
+  string,
+  Map<string, StubParticipant>
+>();
 const recordGroupParticipantTurn = mock(
   async ({
     bindingId,
     platformUserId,
+    displayName,
   }: {
     bindingId: string;
     platformUserId: string;
+    displayName?: string | null;
   }) => {
     let binding = groupParticipantOrdinals.get(bindingId);
     if (!binding) {
-      binding = new Map<string, number>();
+      binding = new Map<string, StubParticipant>();
       groupParticipantOrdinals.set(bindingId, binding);
     }
-    if (!binding.has(platformUserId)) {
-      binding.set(platformUserId, binding.size + 1);
-    }
-    const roster = [...binding].map(([id, ordinal]) => ({
-      platformUserId: id,
-      ordinal,
-      displayName: null,
-    }));
+    const resolved = resolveGroupParticipantDisplayName({
+      candidate: displayName,
+      platformUserId,
+      roster: [...binding.values()],
+    });
+    const existing = binding.get(platformUserId);
+    binding.set(platformUserId, {
+      platformUserId,
+      ordinal: existing?.ordinal ?? binding.size + 1,
+      displayName: resolved,
+    });
+    const roster = [...binding.values()];
     const actor = roster.find((p) => p.platformUserId === platformUserId);
     if (!actor) throw new Error("participant registry stub lost its actor");
     return { actor, roster };
@@ -1138,7 +1156,10 @@ describe("personal Shared messaging deliveries", () => {
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: canonicalGroupBinding.personal_agent_id }),
       canonicalGroupBinding.conversation_id,
-      `${groupParticipantLabel({ ordinal: 1 })}: ${validGroup.message}`,
+      `${groupParticipantLabel({
+        ordinal: 1,
+        displayName: validGroup.actor.displayName,
+      })}: ${validGroup.message}`,
       "Eliza",
       runtimeExecutionCtx,
       namespace,

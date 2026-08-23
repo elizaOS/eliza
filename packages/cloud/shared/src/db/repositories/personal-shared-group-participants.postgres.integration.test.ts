@@ -2,11 +2,12 @@
  * Proves group participant ordinal assignment on real PostgreSQL sessions.
  *
  * `MAX(ordinal) + 1` is only safe if no two assignments for one binding can
- * read the same maximum. PGlite serializes transactions and therefore cannot
- * establish that interleaving at all; only real concurrent backends can show
- * that the per-binding advisory lock actually queues them. The burst test
- * would hand out duplicate ordinals (or fail on the unique index) if the lock
- * were removed.
+ * read the same maximum, and "first claimant keeps the name" is only safe if
+ * no two claimants can read the same set of taken names. PGlite serializes
+ * transactions and therefore cannot establish either interleaving; only real
+ * concurrent backends can show that the per-binding advisory lock actually
+ * queues them. Without the lock the burst test hands out duplicate ordinals
+ * (or fails on the unique index) and the name race admits two holders.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -58,9 +59,9 @@ async function createIsolatedDatabase(baseDsn: string): Promise<string> {
   return url.toString();
 }
 
-function recordTurn(platformUserId: string, bindingId = BINDING_ID) {
+function recordTurn(platformUserId: string, bindingId = BINDING_ID, displayName?: string | null) {
   if (!repository) throw new Error("real PostgreSQL repository is unavailable");
-  return repository.recordTurn({ bindingId, platformUserId });
+  return repository.recordTurn({ bindingId, platformUserId, displayName });
 }
 
 async function withClient<T>(run: (client: Client) => Promise<T>): Promise<T> {
@@ -197,6 +198,32 @@ describe.skipIf(!postgres)("group participant ordinals on real PostgreSQL", () =
     for (const row of stored.rows) {
       expect(row.ordinals).toEqual([1, 2, 3, 4, 5, 6]);
     }
+  });
+
+  test("a concurrent name race leaves exactly one holder", async () => {
+    // Both members claim `Nubs` at once. The lock that serializes ordinal
+    // assignment also serializes the read of already-taken names, so the loser
+    // sees the winner's claim and falls back to their ordinal instead of both
+    // rendering as the same person.
+    const turns = await Promise.all([
+      recordTurn("+15550001111", BINDING_ID, "Nubs"),
+      recordTurn("+15550002222", BINDING_ID, "Nubs"),
+      recordTurn("+15550003333", BINDING_ID, "Nubs"),
+    ]);
+    const named = turns.filter(({ actor }) => actor.displayName === "Nubs");
+    expect(named).toHaveLength(1);
+    const stored = await withClient((client) =>
+      client.query<{ display_name: string | null; count: string }>(
+        `SELECT display_name, count(*)::text AS count
+         FROM personal_shared_group_participants
+         WHERE binding_id = $1 GROUP BY display_name ORDER BY display_name NULLS LAST`,
+        [BINDING_ID],
+      ),
+    );
+    expect(stored.rows).toEqual([
+      { display_name: "Nubs", count: "1" },
+      { display_name: null, count: "2" },
+    ]);
   });
 
   test("a binding's advisory lock does not block a different binding", async () => {

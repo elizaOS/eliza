@@ -19,10 +19,17 @@
 -- personal_shared_group_bindings.created_by_platform_user_id, so this is the
 -- same class of data behind the same tenant boundary, not a new exposure.
 --
--- `display_name` is the slot a future name source fills (the owner's
--- contacts, the entity graph, or a connector that does send names). NOTHING
--- POPULATES IT YET: this migration ships the column only, and every label
--- stays `Participant <ordinal>` until a name source lands.
+-- `display_name` holds the name the connector supplied for this participant,
+-- when it supplied one and it survived the resolution rules in
+-- lib/services/shared-runtime/group-participant-labels.ts: it must not forge
+-- prompt structure, impersonate a generated label or the owner destination
+-- label, carry any participant's connector handle, or duplicate a name another
+-- participant of this binding already holds. Every rejection falls back to the
+-- ordinal, which is why the column is nullable and why the label is
+-- `display_name ?? 'Participant ' || ordinal`. Blooio sends no names, so those
+-- rooms are all ordinals; Telegram and Discord do, so those keep real names.
+-- A future name source (the owner's contacts, the entity graph) writes the
+-- same column under the same rules.
 
 CREATE TABLE IF NOT EXISTS personal_shared_group_participants (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -41,7 +48,7 @@ COMMENT ON TABLE personal_shared_group_participants IS
 COMMENT ON COLUMN personal_shared_group_participants.ordinal IS
   '1-based, assigned in first-seen order within a binding. Stable for the life of the binding: a participant keeps the same ordinal across turns, so history stays readable.';
 COMMENT ON COLUMN personal_shared_group_participants.display_name IS
-  'Reserved name slot. No writer populates this yet; until one does the label is Participant <ordinal>.';
+  'Connector-supplied name that passed the resolution rules, or NULL when none was supplied or it was rejected. Never trust it raw: it is attacker-controlled on every connector that sends one.';
 
 -- The registration key: one row per (binding, connector handle). Also the
 -- conflict target the repository claims against.

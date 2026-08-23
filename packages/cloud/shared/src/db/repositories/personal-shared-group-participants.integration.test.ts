@@ -1,8 +1,9 @@
 /**
  * Exercises the group participant identity registry against isolated PGlite
  * with the real 0311 migration: first-seen ordinal assignment, a stable
- * ordinal across a participant's whole history, per-binding isolation, and the
- * roster every group turn hands to the outbound handle guard.
+ * ordinal across a participant's whole history, connector-supplied names and
+ * the rules that reject them, per-binding isolation, and the roster every
+ * group turn hands to the outbound handle guard.
  *
  * PGlite serializes transactions, so the true interleaving of two first-time
  * speakers is proven in the sibling `.postgres.integration.test.ts`.
@@ -28,8 +29,8 @@ let getPgliteClientForTests: typeof import("../client").getPgliteClientForTests;
 let repository: typeof import("./personal-shared-group-participants").personalSharedGroupParticipantsRepository;
 let groupParticipantLabel: typeof import("../../lib/services/shared-runtime/group-participant-labels").groupParticipantLabel;
 
-function recordTurn(platformUserId: string, bindingId = BINDING) {
-  return repository.recordTurn({ bindingId, platformUserId });
+function recordTurn(platformUserId: string, bindingId = BINDING, displayName?: string | null) {
+  return repository.recordTurn({ bindingId, platformUserId, displayName });
 }
 
 async function storedRows(bindingId = BINDING) {
@@ -170,11 +171,63 @@ describe("personalSharedGroupParticipantsRepository", () => {
     expect(await storedRows()).toHaveLength(1);
   });
 
-  test("ships the name slot unpopulated, so every label is the ordinal form", async () => {
+  test("labels by ordinal when the connector sends no name", async () => {
+    // Blooio never sends one, so this is the shipped path for every iMessage
+    // room and what tonight's live evaluation measured.
     const { actor } = await recordTurn(ADA);
     expect(actor.displayName).toBeNull();
     expect(groupParticipantLabel(actor)).toBe("Participant 1");
     expect((await storedRows())[0]?.display_name).toBeNull();
+  });
+
+  test("stores and labels by a name the connector supplies", async () => {
+    const { actor } = await recordTurn(ADA, BINDING, "Ada");
+    expect(actor).toEqual({ platformUserId: ADA, ordinal: 1, displayName: "Ada" });
+    expect(groupParticipantLabel(actor)).toBe("Ada");
+    expect((await storedRows())[0]?.display_name).toBe("Ada");
+  });
+
+  test("follows a member who renames themselves", async () => {
+    await recordTurn(ADA, BINDING, "Ada");
+    const renamed = await recordTurn(ADA, BINDING, "Ada L");
+    expect(renamed.actor).toEqual({ platformUserId: ADA, ordinal: 1, displayName: "Ada L" });
+    // The ordinal is untouched by a rename, so history stays readable.
+    expect((await storedRows())[0]?.ordinal).toBe(1);
+    expect((await storedRows())[0]?.display_name).toBe("Ada L");
+  });
+
+  test("reverts to the ordinal when a name stops being usable", async () => {
+    await recordTurn(ADA, BINDING, "Ada");
+    // A rejected or withdrawn name must not leave a stale label behind.
+    const forged = await recordTurn(ADA, BINDING, "Participant 7");
+    expect(forged.actor.displayName).toBeNull();
+    expect(groupParticipantLabel(forged.actor)).toBe("Participant 1");
+    expect((await storedRows())[0]?.display_name).toBeNull();
+
+    await recordTurn(ADA, BINDING, "Ada");
+    expect((await storedRows())[0]?.display_name).toBe("Ada");
+    const withdrawn = await recordTurn(ADA, BINDING, undefined);
+    expect(withdrawn.actor.displayName).toBeNull();
+    expect((await storedRows())[0]?.display_name).toBeNull();
+  });
+
+  test("never lets two participants of one binding render identically", async () => {
+    await recordTurn(ADA, BINDING, "Nubs");
+    // First claimant keeps the name; an impersonator becomes their own ordinal
+    // rather than a second copy of someone who is already in the room.
+    const impostor = await recordTurn(BRIT, BINDING, "Nubs");
+    expect(impostor.actor.displayName).toBeNull();
+    expect(impostor.roster.map(groupParticipantLabel)).toEqual(["Nubs", "Participant 2"]);
+    expect(new Set(impostor.roster.map(groupParticipantLabel)).size).toBe(2);
+    // The name is free again in a different binding.
+    expect((await recordTurn(BRIT, OTHER_BINDING, "Nubs")).actor.displayName).toBe("Nubs");
+  });
+
+  test("refuses a name that would put a participant handle in the prompt", async () => {
+    await recordTurn(ADA, BINDING, "Ada");
+    const smuggler = await recordTurn(BRIT, BINDING, `reach me on ${ADA}`);
+    expect(smuggler.actor.displayName).toBeNull();
+    expect(groupParticipantLabel(smuggler.actor)).toBe("Participant 2");
   });
 
   test("fails closed on an identity the route could not have resolved", async () => {

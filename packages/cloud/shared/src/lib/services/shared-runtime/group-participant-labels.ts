@@ -1,8 +1,9 @@
 /**
  * Single source of group-chat speaker identity for the Shared runtime: the
- * model-facing label, the outbound guard that keeps raw connector handles out
- * of a reply, and the one prompt rule that tells the model what the label is
- * not.
+ * model-facing label, the rules that decide whether a connector-supplied name
+ * may become that label, the outbound guard that keeps raw connector handles
+ * out of a reply, and the one prompt rule that tells the model what an unnamed
+ * label is not.
  *
  * The label is deliberately ordinary language. It is prefixed onto the text
  * the model reads and it is the model's only handle on "who said this", so a
@@ -62,8 +63,9 @@ const HANDLE_BOUNDARY = "[0-9A-Za-z]";
 
 export interface GroupParticipantLabelInput {
   /**
-   * Reserved name slot from the participant registry. No writer populates it
-   * yet, so today every group label is the ordinal form.
+   * The participant's resolved name, when a connector supplied one that
+   * survived {@link resolveGroupParticipantDisplayName}. Null on a connector
+   * that sends no names (Blooio), which is why the ordinal fallback exists.
    */
   displayName?: string | null;
   /** 1-based, stable within a binding. */
@@ -109,6 +111,29 @@ function handleVariants(platformUserId: string): string[] {
 }
 
 /**
+ * The single handle matcher. Boundary-guarded on both sides so a handle inside
+ * a longer token is not a match. Always freshly constructed, so the `g` flag's
+ * `lastIndex` can never leak between calls.
+ */
+function handleMatcher(variant: string): RegExp {
+  return new RegExp(`(?<!${HANDLE_BOUNDARY})${escapeRegExp(variant)}(?!${HANDLE_BOUNDARY})`, "g");
+}
+
+/**
+ * True when `text` carries any of these participants' raw connector handles.
+ * Shares {@link handleMatcher} with the outbound guard so there is exactly one
+ * definition of what counts as a handle occurrence.
+ */
+export function containsGroupParticipantHandle(
+  text: string,
+  participants: readonly { platformUserId: string }[],
+): boolean {
+  return participants.some((participant) =>
+    handleVariants(participant.platformUserId).some((variant) => handleMatcher(variant).test(text)),
+  );
+}
+
+/**
  * Replaces any participant's raw connector handle in outbound group text with
  * that participant's label.
  *
@@ -134,10 +159,104 @@ export function redactGroupParticipantHandles(
     .sort((a, b) => b.variant.length - a.variant.length);
   let guarded = text;
   for (const { variant, label } of replacements) {
-    guarded = guarded.replace(
-      new RegExp(`(?<!${HANDLE_BOUNDARY})${escapeRegExp(variant)}(?!${HANDLE_BOUNDARY})`, "g"),
-      label,
-    );
+    guarded = guarded.replace(handleMatcher(variant), label);
   }
   return guarded;
+}
+
+/**
+ * Label the trusted-delivery destination falls back to when the group owner
+ * has no display name. Exported so the route and the name rules below agree on
+ * the exact reserved string instead of each spelling it out.
+ */
+export const GROUP_OWNER_FALLBACK_LABEL = "the group owner";
+
+/** Matches the column's `length(display_name) <= 128` check. */
+const MAX_DISPLAY_NAME_LENGTH = 128;
+
+/**
+ * Characters a display name may never carry into the prompt: C0/C1 controls
+ * (newlines and tabs among them), line and paragraph separators, and the bidi
+ * controls that make a string render as something other than what it is.
+ *
+ * Deliberately not all of `\p{Cf}`: the zero-width joiner is load-bearing in
+ * emoji sequences and harmless here, so stripping it would mangle ordinary
+ * names to no security benefit.
+ */
+const UNSAFE_DISPLAY_NAME_CHARS = /[\p{Cc}\p{Zl}\p{Zp}\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+
+/**
+ * The delivery message the model reads is `${label}: ${message}` on one line.
+ * A name carrying a colon could therefore forge a second speaker turn inside
+ * this speaker's own, so a name that contains one is not usable as a name.
+ */
+const DISPLAY_NAME_STRUCTURE_CHARS = /:/;
+
+/**
+ * Reduces a connector-supplied name to something safe to render, or null when
+ * no safe form exists. Null is never a failure: the caller falls back to the
+ * participant's ordinal, which is always available and always unique.
+ */
+function sanitizeDisplayName(candidate: string | null | undefined): string | null {
+  if (typeof candidate !== "string") return null;
+  const name = candidate.replace(UNSAFE_DISPLAY_NAME_CHARS, " ").replace(/\s+/gu, " ").trim();
+  if (!name) return null;
+  if (name.length > MAX_DISPLAY_NAME_LENGTH) return null;
+  if (DISPLAY_NAME_STRUCTURE_CHARS.test(name)) return null;
+  return name;
+}
+
+export interface GroupParticipantNameCandidate {
+  /** The name this turn's connector supplied for the speaker, if any. */
+  candidate: string | null | undefined;
+  /** The speaker's raw connector handle. */
+  platformUserId: string;
+  /** Participants already registered against the binding, the speaker included. */
+  roster: readonly { platformUserId: string; displayName: string | null }[];
+}
+
+/**
+ * Decides whether a connector-supplied name may become this participant's
+ * label, returning null to fall back to the ordinal.
+ *
+ * A display name is attacker-controlled on every connector that sends one, so
+ * it is rejected outright when it could:
+ *  - forge prompt structure (control characters, newlines, a colon), or render
+ *    deceptively (bidi overrides), or exceed the column's length;
+ *  - impersonate a generated label (`Participant 4`) or the owner destination
+ *    label, which would let a member answer as someone else;
+ *  - smuggle a participant's phone number or platform id into the prompt,
+ *    which would undo the whole point of the registry;
+ *  - collide with a name another participant of this binding already holds.
+ *
+ * The collision rule is first claimant keeps the name. It is deterministic,
+ * keeps a label stable once assigned, and is also the impersonation defence: a
+ * member who renames themselves to an existing member's name does not become a
+ * second copy of that person, they become their own ordinal. The residual is
+ * that a name is claimed by whoever speaks first; authority is never keyed on
+ * a label, only on the binding's stored handles, so this stays cosmetic.
+ */
+export function resolveGroupParticipantDisplayName(
+  input: GroupParticipantNameCandidate,
+): string | null {
+  const name = sanitizeDisplayName(input.candidate);
+  if (!name) return null;
+  if (isGroupParticipantLabel(name)) return null;
+  if (name.toLowerCase() === GROUP_OWNER_FALLBACK_LABEL) return null;
+  if (
+    containsGroupParticipantHandle(name, [
+      { platformUserId: input.platformUserId },
+      ...input.roster,
+    ])
+  ) {
+    return null;
+  }
+  const folded = name.toLowerCase();
+  const heldByAnother = input.roster.some(
+    (participant) =>
+      participant.platformUserId !== input.platformUserId &&
+      participant.displayName !== null &&
+      participant.displayName.toLowerCase() === folded,
+  );
+  return heldByAnother ? null : name;
 }

@@ -27,6 +27,7 @@ import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
 import {
+  GROUP_OWNER_FALLBACK_LABEL,
   groupParticipantLabel,
   redactGroupParticipantHandles,
 } from "@/lib/services/shared-runtime/group-participant-labels";
@@ -767,20 +768,23 @@ app.post("/", async (c) => {
           project: parsed.data.project,
           connectorAccountId: parsed.data.connectorAccountId,
           chatId: parsed.data.chatId,
-          ownerLabel: parsed.data.actor.displayName ?? "the group owner",
+          ownerLabel:
+            parsed.data.actor.displayName ?? GROUP_OWNER_FALLBACK_LABEL,
           authority: groupDeliveryAuthority,
         };
       }
-      // The speaker's identity is registry-derived, never connector-derived:
-      // the ordinal is stable for the life of the binding, is the same shape
-      // on a connector that sends no display name (Blooio sends none at all),
-      // is safe for the model to repeat into the group, and — because the
-      // whole roster is enumerable — is what `guardGroupReply` can redact
-      // back to. A connector-supplied display name is none of those things.
+      // The speaker's identity is registry-resolved, never taken from the
+      // payload as-is. A connector that sends a name (Telegram, Discord) gets
+      // that name once the registry has checked it cannot forge a label, an
+      // owner destination, a handle, or another member's identity; a connector
+      // that sends none (Blooio sends none at all) gets its stable ordinal.
+      // Either way the label is enumerable, which is what lets
+      // `guardGroupReply` redact a handle back to it.
       const participants =
         await personalSharedGroupParticipantsRepository.recordTurn({
           bindingId: binding.id,
           platformUserId: parsed.data.actor.platformUserId,
+          displayName: parsed.data.actor.displayName,
         });
       groupParticipantRoster = participants.roster;
       groupActorLabel = groupParticipantLabel(participants.actor);

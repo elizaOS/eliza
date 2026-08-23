@@ -154,7 +154,8 @@ export const personalSharedGroupDeliveryReceipts = pgTable(
 /**
  * Model-facing identity for the speakers of one bound provider group.
  *
- * The label the model reads is derived from `display_name ?? ordinal`; the raw
+ * The label the model reads is `display_name ?? ordinal`, where `display_name`
+ * is a connector-supplied name that survived the resolution rules; the raw
  * connector handle in `platform_user_id` is server-side only and must never be
  * rendered into a prompt or a reply. See 0311 for the full rationale.
  */
@@ -169,7 +170,7 @@ export const personalSharedGroupParticipants = pgTable(
     platform_user_id: text("platform_user_id").notNull(),
     /** 1-based, assigned in first-seen order within the binding, then stable. */
     ordinal: integer("ordinal").notNull(),
-    /** Reserved name slot; no writer populates this yet. */
+    /** Connector-supplied name that passed the resolution rules, else null. */
     display_name: text("display_name"),
     first_seen_at: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     last_seen_at: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
