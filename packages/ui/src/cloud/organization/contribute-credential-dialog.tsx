@@ -115,7 +115,7 @@ export function ContributeCredentialDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-popover border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
+      <DialogContent className="bg-bg border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
         {result ? (
           <>
             <DialogHeader>
@@ -208,7 +208,7 @@ export function ContributeCredentialDialog({
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
+                  <SelectContent className="bg-bg border-border">
                     {POOLED_PROVIDERS.map((id) => (
                       <SelectItem key={id} value={id}>
                         <span className="font-mono text-txt-strong">

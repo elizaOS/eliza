@@ -1,8 +1,31 @@
 /** Verifies the credential precedence used by native Cloud settings. */
-import { describe, expect, it } from "vitest";
-import { resolveCloudManagementToken } from "./cloud-management-auth";
+// @vitest-environment jsdom
+
+import {
+  STEWARD_SESSION_CHANGE_EVENT,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/shared")>()),
+  getElizaApiToken: () => null,
+}));
+
+vi.mock("../../../config/boot-config", () => ({
+  getBootConfig: () => ({}),
+}));
+
+import {
+  resolveCloudManagementToken,
+  useHasCloudManagementCredential,
+} from "./cloud-management-auth";
 
 describe("resolveCloudManagementToken", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => cleanup());
+
   it("prefers the independently scoped Steward session", () => {
     expect(
       resolveCloudManagementToken({
@@ -31,5 +54,28 @@ describe("resolveCloudManagementToken", () => {
         runtimeApiToken: "not-an-owner-key",
       }),
     ).toBe("");
+  });
+
+  it("reacts to same-document and cross-document Steward token removal", () => {
+    const { result } = renderHook(() => useHasCloudManagementCredential());
+    expect(result.current).toBe(false);
+
+    act(() => {
+      localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
+      window.dispatchEvent(new CustomEvent(STEWARD_SESSION_CHANGE_EVENT));
+    });
+    expect(result.current).toBe(true);
+
+    act(() => {
+      localStorage.removeItem(STEWARD_TOKEN_KEY);
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STEWARD_TOKEN_KEY,
+          oldValue: "steward-token",
+          newValue: null,
+        }),
+      );
+    });
+    expect(result.current).toBe(false);
   });
 });

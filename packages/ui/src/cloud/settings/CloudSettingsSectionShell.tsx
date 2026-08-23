@@ -15,8 +15,9 @@
  *
  *  - **Router:** only a fallback `MemoryRouter` when no router context exists
  *    ({@link useInRouterContext}). Bodies that call `useNavigate` (billing →
- *    invoice) navigate the memory history; nesting a router inside an existing
- *    one is avoided.
+ *    invoice) navigate the memory history; that fallback mounts the canonical
+ *    invoice-detail route registered by the billing domain. Nesting a router
+ *    inside an existing one is avoided.
  *  - **QueryClientProvider:** the shared cloud {@link queryClient}. Re-providing
  *    the same client under an existing provider is a harmless no-op.
  *  - **CloudI18nProvider:** so `useCloudT()` resolves.
@@ -24,26 +25,97 @@
  *    gates read. It lazy-loads the heavy `@stwd/*` runtime only when a token is
  *    present (see `StewardAuthProvider`), so signed-out users pay nothing.
  *  - **PageHeaderProvider:** surfaces that call `useSetPageHeader` (api-keys,
- *    account, …) need an ancestor; the Settings view renders its own header, so
- *    the cloud page header is captured here and discarded — the body still
- *    renders its content.
+ *    account, …) need an ancestor. The Settings view owns the title, while this
+ *    shell renders any contextual header actions published by the cloud body.
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { MemoryRouter, useInRouterContext } from "react-router-dom";
-import { PageHeaderProvider } from "../../cloud-ui/components/layout";
+import { type ComponentType, type ReactNode, Suspense } from "react";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useInRouterContext,
+} from "react-router-dom";
+import {
+  PageHeaderProvider,
+  usePageHeader,
+} from "../../cloud-ui/components/layout";
+import "../billing/routes";
 import { queryClient } from "../lib/query-client";
 import {
   CloudI18nProvider,
   resolveInitialCloudLang,
 } from "../shell/CloudI18nProvider";
+import { getCloudRoute } from "../shell/cloud-route-registry";
 import { StewardAuthProvider } from "../shell/StewardProvider";
+
+const BILLING_INVOICE_ROUTE_PATH = "cloud/invoices/:id";
+
+function SettingsSectionProviders({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <CloudI18nProvider initialLang={resolveInitialCloudLang()}>
+        <StewardAuthProvider>
+          <PageHeaderProvider>{children}</PageHeaderProvider>
+        </StewardAuthProvider>
+      </CloudI18nProvider>
+    </QueryClientProvider>
+  );
+}
+
+function SettingsMemoryRoutes({ children }: { children: ReactNode }) {
+  const invoiceRoute = getCloudRoute(BILLING_INVOICE_ROUTE_PATH);
+  if (!invoiceRoute) {
+    throw new Error(
+      `Canonical Cloud route "${BILLING_INVOICE_ROUTE_PATH}" is not registered`,
+    );
+  }
+  const InvoiceDetailRoute = invoiceRoute.element as ComponentType;
+
+  return (
+    <Routes>
+      <Route
+        path={`/${invoiceRoute.path}`}
+        element={
+          <Suspense
+            fallback={
+              <div
+                aria-label="Loading invoice"
+                aria-live="polite"
+                role="status"
+              />
+            }
+          >
+            <InvoiceDetailRoute />
+          </Suspense>
+        }
+      />
+      <Route path="*" element={children} />
+    </Routes>
+  );
+}
 
 function MaybeRouter({ children }: { children: ReactNode }) {
   const inRouter = useInRouterContext();
-  if (inRouter) return <>{children}</>;
-  return <MemoryRouter>{children}</MemoryRouter>;
+  if (inRouter) {
+    return <SettingsSectionProviders>{children}</SettingsSectionProviders>;
+  }
+  return (
+    <MemoryRouter>
+      <SettingsSectionProviders>
+        <SettingsMemoryRoutes>{children}</SettingsMemoryRoutes>
+      </SettingsSectionProviders>
+    </MemoryRouter>
+  );
+}
+
+function SettingsSectionHeaderActions() {
+  const { pageInfo } = usePageHeader();
+
+  if (pageInfo?.actions == null) return null;
+
+  return <div className="mb-4 flex justify-end">{pageInfo.actions}</div>;
 }
 
 /**
@@ -57,13 +129,8 @@ export function CloudSettingsSectionShell({
 }): React.JSX.Element {
   return (
     <MaybeRouter>
-      <QueryClientProvider client={queryClient}>
-        <CloudI18nProvider initialLang={resolveInitialCloudLang()}>
-          <StewardAuthProvider>
-            <PageHeaderProvider>{children}</PageHeaderProvider>
-          </StewardAuthProvider>
-        </CloudI18nProvider>
-      </QueryClientProvider>
+      <SettingsSectionHeaderActions />
+      {children}
     </MaybeRouter>
   );
 }
