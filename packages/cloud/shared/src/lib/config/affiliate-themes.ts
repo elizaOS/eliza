@@ -209,11 +209,11 @@ export const AFFILIATE_THEMES: Record<string, AffiliateTheme> = {
  * Falls back to default theme if affiliate ID is not found.
  */
 export function getAffiliateTheme(affiliateId: string | undefined | null): AffiliateTheme {
-  if (!affiliateId) {
+  if (!affiliateId || !hasAffiliateTheme(affiliateId)) {
     return AFFILIATE_THEMES["default"];
   }
 
-  return AFFILIATE_THEMES[affiliateId] || AFFILIATE_THEMES["default"];
+  return AFFILIATE_THEMES[affiliateId];
 }
 
 /**
@@ -227,7 +227,10 @@ export function getAffiliateIds(): string[] {
  * Check if an affiliate theme exists
  */
 export function hasAffiliateTheme(affiliateId: string): boolean {
-  return affiliateId in AFFILIATE_THEMES;
+  // Own-key check, not `in`: the registry is a plain object reached from an
+  // untrusted URL parameter, and `in` also resolves inherited Object.prototype
+  // members ("toString", "constructor", ...) as if they were themes.
+  return Object.hasOwn(AFFILIATE_THEMES, affiliateId);
 }
 
 /**
