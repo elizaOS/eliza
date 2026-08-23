@@ -13,6 +13,7 @@
  * `codex-json-value.ts`.
  */
 import {
+  createPreparedModelRequestGuard,
   ElizaError,
   logger,
   toWellFormedUnicode,
@@ -180,12 +181,19 @@ export class CodexBackend {
     // turn → empty result → no reply. Never send them to the codex backend.
     if (isJsonResponse(params.responseFormat)) body.text = { format: { type: "json_object" } };
 
+    const serializedBody = JSON.stringify(body);
+    const preparedRequest = createPreparedModelRequestGuard({
+      provider: "codex-cli",
+      model: body.model,
+      serializeRequest: () => serializedBody,
+    });
+
     let auth = await this.loadAuth(this.authPath);
-    let res = await this.postResponses(auth, body, params.abortSignal);
+    let res = await this.postResponses(auth, serializedBody, preparedRequest, params.abortSignal);
     if (res.status === 401) {
       logger.warn("[codex-cli] 401 from /responses, refreshing OAuth and retrying once");
       auth = await this.refreshAuth(auth, this.authPath);
-      res = await this.postResponses(auth, body, params.abortSignal);
+      res = await this.postResponses(auth, serializedBody, preparedRequest, params.abortSignal);
     }
     if (!res.ok) {
       const errText = await safeReadText(res);
@@ -195,7 +203,12 @@ export class CodexBackend {
     return consumeResponseStream(res.body, params.abortSignal, params.onTextDelta);
   }
 
-  private async postResponses(auth: CodexAuth, body: CodexResponseBody, signal?: AbortSignal): Promise<Response> {
+  private async postResponses(
+    auth: CodexAuth,
+    serializedBody: string,
+    preparedRequest: ReturnType<typeof createPreparedModelRequestGuard>,
+    signal?: AbortSignal
+  ): Promise<Response> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${auth.tokens.access_token}`,
       "Content-Type": "application/json",
@@ -205,10 +218,11 @@ export class CodexBackend {
       Accept: "text/event-stream",
     };
     if (auth.tokens.account_id) headers["chatgpt-account-id"] = auth.tokens.account_id;
+    preparedRequest.assertBeforeAttempt();
     return this.fetchImpl(`${this.baseUrl}/responses`, {
       method: "POST",
       headers,
-      body: JSON.stringify(body),
+      body: serializedBody,
       signal,
     });
   }
