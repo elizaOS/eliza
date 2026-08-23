@@ -356,14 +356,16 @@ export function compareSpendingCategoryByTotal(
   b: { totalUsd?: unknown; category: string },
 ): number {
   const bTotal =
-    typeof (b as any).totalUsd === "number" && Number.isFinite((b as any).totalUsd)
-      ? (b as any).totalUsd
+    typeof b.totalUsd === "number" && Number.isFinite(b.totalUsd)
+      ? b.totalUsd
       : 0;
   const aTotal =
-    typeof (a as any).totalUsd === "number" && Number.isFinite((a as any).totalUsd)
-      ? (a as any).totalUsd
+    typeof a.totalUsd === "number" && Number.isFinite(a.totalUsd)
+      ? a.totalUsd
       : 0;
-  return bTotal - aTotal || String((a as any).category).localeCompare(String((b as any).category));
+  return (
+    bTotal - aTotal || String(a.category).localeCompare(String(b.category))
+  );
 }
 
 export function compareSpendingMerchantByTotal(
@@ -371,16 +373,16 @@ export function compareSpendingMerchantByTotal(
   b: { totalUsd?: unknown; merchantNormalized: string },
 ): number {
   const bTotal =
-    typeof (b as any).totalUsd === "number" && Number.isFinite((b as any).totalUsd)
-      ? (b as any).totalUsd
+    typeof b.totalUsd === "number" && Number.isFinite(b.totalUsd)
+      ? b.totalUsd
       : 0;
   const aTotal =
-    typeof (a as any).totalUsd === "number" && Number.isFinite((a as any).totalUsd)
-      ? (a as any).totalUsd
+    typeof a.totalUsd === "number" && Number.isFinite(a.totalUsd)
+      ? a.totalUsd
       : 0;
   return (
     bTotal - aTotal ||
-    String((a as any).merchantNormalized).localeCompare(String((b as any).merchantNormalized))
+    String(a.merchantNormalized).localeCompare(String(b.merchantNormalized))
   );
 }
 

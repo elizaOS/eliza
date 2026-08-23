@@ -156,14 +156,23 @@ describe("detectRecurringCharges", () => {
   });
 
   it("sorts recurring charges safely when annualizedCostUsd contains NaN via real comparator", async () => {
-    const { compareRecurringChargesByAnnualizedCost } = await import("./payment-recurrence.ts");
-    const { compareSubscriptionsByAnnualizedCost } = await import("./finance-capabilities.ts");
-    const { compareSpendingCategoryByTotal, compareSpendingMerchantByTotal } = await import("./finances-service.ts");
-    const { normalizeSubscriptions } = await import("./finance-capabilities.ts");
+    const { compareRecurringChargesByAnnualizedCost } = await import(
+      "./payment-recurrence.ts"
+    );
+    const { compareSubscriptionsByAnnualizedCost } = await import(
+      "./finance-capabilities.ts"
+    );
+    const { compareSpendingCategoryByTotal, compareSpendingMerchantByTotal } =
+      await import("./finances-service.ts");
+    const { normalizeSubscriptions } = await import(
+      "./finance-capabilities.ts"
+    );
     const charges = [
-      { merchantNormalized: "netflix", annualizedCostUsd: NaN },
+      { merchantNormalized: "netflix", annualizedCostUsd: Number.NaN },
       { merchantNormalized: "spotify", annualizedCostUsd: 120 },
-    ] as any;
+    ] as unknown as Parameters<
+      typeof compareRecurringChargesByAnnualizedCost
+    >[0][];
     charges.sort(compareRecurringChargesByAnnualizedCost);
     expect(charges[0]?.merchantNormalized).toBe("spotify");
     expect(charges[1]?.merchantNormalized).toBe("netflix");
@@ -171,36 +180,60 @@ describe("detectRecurringCharges", () => {
     const tied = [
       { merchantNormalized: "b", annualizedCostUsd: 100 },
       { merchantNormalized: "a", annualizedCostUsd: 100 },
-    ] as any;
+    ] as unknown as Parameters<
+      typeof compareRecurringChargesByAnnualizedCost
+    >[0][];
     tied.sort(compareRecurringChargesByAnnualizedCost);
-    expect(tied.map((c: any) => c.merchantNormalized)).toEqual(["a", "b"]);
+    expect(tied.map((c) => c.merchantNormalized)).toEqual(["a", "b"]);
 
     const subs = normalizeSubscriptions([
-      { merchantNormalized: "netflix", merchantDisplay: "Netflix", annualizedCostUsd: NaN, cadence: "monthly", category: "entertainment", confidence: 0.9, sourceIds: ["s1"], occurrences: 3, avgAmountUsd: 15 } as any,
-      { merchantNormalized: "spotify", merchantDisplay: "Spotify", annualizedCostUsd: 120, cadence: "monthly", category: "entertainment", confidence: 0.9, sourceIds: ["s1"], occurrences: 3, avgAmountUsd: 10 } as any,
-    ] as any);
+      {
+        merchantNormalized: "netflix",
+        merchantDisplay: "Netflix",
+        annualizedCostUsd: Number.NaN,
+        cadence: "monthly",
+        category: "entertainment",
+        confidence: 0.9,
+        sourceIds: ["s1"],
+        occurrences: 3,
+        avgAmountUsd: 15,
+      },
+      {
+        merchantNormalized: "spotify",
+        merchantDisplay: "Spotify",
+        annualizedCostUsd: 120,
+        cadence: "monthly",
+        category: "entertainment",
+        confidence: 0.9,
+        sourceIds: ["s1"],
+        occurrences: 3,
+        avgAmountUsd: 10,
+      },
+    ] as unknown as Parameters<typeof normalizeSubscriptions>[0]);
     expect(subs[0]?.merchantNormalized).toBe("spotify");
     expect(subs[1]?.merchantNormalized).toBe("netflix");
 
     const subsTied = [
       { merchantNormalized: "b", annualizedCostUsd: 50 },
       { merchantNormalized: "a", annualizedCostUsd: 50 },
-    ] as any;
+    ] as unknown as Parameters<
+      typeof compareSubscriptionsByAnnualizedCost
+    >[0][];
     subsTied.sort(compareSubscriptionsByAnnualizedCost);
-    expect(subsTied.map((s: any) => s.merchantNormalized)).toEqual(["a", "b"]);
+    expect(subsTied.map((s) => s.merchantNormalized)).toEqual(["a", "b"]);
 
     const cats = [
       { category: "b", totalUsd: 10 },
-      { category: "a", totalUsd: NaN },
+      { category: "a", totalUsd: Number.NaN },
       { category: "c", totalUsd: 20 },
-    ] as any;
+    ] as unknown as Parameters<typeof compareSpendingCategoryByTotal>[0][];
     cats.sort(compareSpendingCategoryByTotal);
-    expect(cats.map((c: any) => c.category)).toEqual(["c", "b", "a"]);
+    expect(cats.map((c) => c.category)).toEqual(["c", "b", "a"]);
 
     const merchants = [
-      { merchantNormalized: "b", totalUsd: NaN },
+      { merchantNormalized: "b", totalUsd: Number.NaN },
       { merchantNormalized: "a", totalUsd: 5 },
-    ] as any;
+    ] as unknown as Parameters<typeof compareSpendingMerchantByTotal>[0][];
     merchants.sort(compareSpendingMerchantByTotal);
     expect(merchants[0]?.merchantNormalized).toBe("a");
   });
@@ -208,15 +241,79 @@ describe("detectRecurringCharges", () => {
   it("detectRecurringCharges orders via real function with stubbed amounts", () => {
     const base = new Date("2026-01-01T00:00:00Z").toISOString();
     const charges = detectRecurringCharges([
-      { id: "1", agentId: "a", sourceId: "s", postedAt: base, amountUsd: -10, merchantNormalized: "b-test", merchantDisplay: "B", description: "b", category: "test" } as any,
-      { id: "2", agentId: "a", sourceId: "s", postedAt: new Date("2026-02-01T00:00:00Z").toISOString(), amountUsd: -10, merchantNormalized: "b-test", merchantDisplay: "B", description: "b", category: "test" } as any,
-      { id: "3", agentId: "a", sourceId: "s", postedAt: new Date("2026-03-01T00:00:00Z").toISOString(), amountUsd: -10, merchantNormalized: "b-test", merchantDisplay: "B", description: "b", category: "test" } as any,
-      { id: "4", agentId: "a", sourceId: "s", postedAt: base, amountUsd: -10, merchantNormalized: "a-test", merchantDisplay: "A", description: "a", category: "test" } as any,
-      { id: "5", agentId: "a", sourceId: "s", postedAt: new Date("2026-02-01T00:00:00Z").toISOString(), amountUsd: -10, merchantNormalized: "a-test", merchantDisplay: "A", description: "a", category: "test" } as any,
-      { id: "6", agentId: "a", sourceId: "s", postedAt: new Date("2026-03-01T00:00:00Z").toISOString(), amountUsd: -10, merchantNormalized: "a-test", merchantDisplay: "A", description: "a", category: "test" } as any,
+      {
+        id: "1",
+        agentId: "a",
+        sourceId: "s",
+        postedAt: base,
+        amountUsd: -10,
+        merchantNormalized: "b-test",
+        merchantDisplay: "B",
+        description: "b",
+        category: "test",
+      } as unknown as LifeOpsPaymentTransaction,
+      {
+        id: "2",
+        agentId: "a",
+        sourceId: "s",
+        postedAt: new Date("2026-02-01T00:00:00Z").toISOString(),
+        amountUsd: -10,
+        merchantNormalized: "b-test",
+        merchantDisplay: "B",
+        description: "b",
+        category: "test",
+      } as unknown as LifeOpsPaymentTransaction,
+      {
+        id: "3",
+        agentId: "a",
+        sourceId: "s",
+        postedAt: new Date("2026-03-01T00:00:00Z").toISOString(),
+        amountUsd: -10,
+        merchantNormalized: "b-test",
+        merchantDisplay: "B",
+        description: "b",
+        category: "test",
+      } as unknown as LifeOpsPaymentTransaction,
+      {
+        id: "4",
+        agentId: "a",
+        sourceId: "s",
+        postedAt: base,
+        amountUsd: -10,
+        merchantNormalized: "a-test",
+        merchantDisplay: "A",
+        description: "a",
+        category: "test",
+      } as unknown as LifeOpsPaymentTransaction,
+      {
+        id: "5",
+        agentId: "a",
+        sourceId: "s",
+        postedAt: new Date("2026-02-01T00:00:00Z").toISOString(),
+        amountUsd: -10,
+        merchantNormalized: "a-test",
+        merchantDisplay: "A",
+        description: "a",
+        category: "test",
+      } as unknown as LifeOpsPaymentTransaction,
+      {
+        id: "6",
+        agentId: "a",
+        sourceId: "s",
+        postedAt: new Date("2026-03-01T00:00:00Z").toISOString(),
+        amountUsd: -10,
+        merchantNormalized: "a-test",
+        merchantDisplay: "A",
+        description: "a",
+        category: "test",
+      } as unknown as LifeOpsPaymentTransaction,
     ]);
     if (charges.length >= 2) {
-      expect(charges[0].merchantNormalized.localeCompare(charges[1].merchantNormalized) <= 0).toBe(true);
+      expect(
+        charges[0].merchantNormalized.localeCompare(
+          charges[1].merchantNormalized,
+        ) <= 0,
+      ).toBe(true);
     }
   });
 });

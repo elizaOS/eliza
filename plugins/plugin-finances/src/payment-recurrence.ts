@@ -194,17 +194,18 @@ export function compareRecurringChargesByAnnualizedCost(
   b: { annualizedCostUsd?: unknown; merchantNormalized: string },
 ): number {
   const bCost =
-    typeof (b as any).annualizedCostUsd === "number" &&
-    Number.isFinite((b as any).annualizedCostUsd)
-      ? (b as any).annualizedCostUsd
+    typeof b.annualizedCostUsd === "number" &&
+    Number.isFinite(b.annualizedCostUsd)
+      ? b.annualizedCostUsd
       : 0;
   const aCost =
-    typeof (a as any).annualizedCostUsd === "number" &&
-    Number.isFinite((a as any).annualizedCostUsd)
-      ? (a as any).annualizedCostUsd
+    typeof a.annualizedCostUsd === "number" &&
+    Number.isFinite(a.annualizedCostUsd)
+      ? a.annualizedCostUsd
       : 0;
   return (
-    bCost - aCost || String((a as any).merchantNormalized).localeCompare(String((b as any).merchantNormalized))
+    bCost - aCost ||
+    String(a.merchantNormalized).localeCompare(String(b.merchantNormalized))
   );
 }
 
