@@ -580,13 +580,21 @@ function normalizeAndroidLocalDirectUserText(text: string): string {
 }
 
 function compareCreatedAtAscending(
-  left: { createdAt?: number },
-  right: { createdAt?: number },
+  left: { createdAt?: number; id?: string },
+  right: { createdAt?: number; id?: string },
 ): number {
-  if (left.createdAt === right.createdAt) return 0;
-  if (left.createdAt === undefined) return -1;
-  if (right.createdAt === undefined) return 1;
-  return left.createdAt - right.createdAt;
+  if (left.createdAt === right.createdAt) {
+    return (left.id ?? "").localeCompare(right.id ?? "");
+  }
+  const leftVal =
+    typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+      ? left.createdAt
+      : -1;
+  const rightVal =
+    typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+      ? right.createdAt
+      : -1;
+  return leftVal - rightVal || (left.id ?? "").localeCompare(right.id ?? "");
 }
 
 async function buildAndroidLocalDirectChatPrompt(args: {
@@ -2890,7 +2898,20 @@ export async function getRecentVisibleAssistantMemorySince(
           createdAt >= sinceMs - slackMs
         );
       })
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
+      .sort((a, b) => {
+        const bCreated =
+          typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+            ? b.createdAt
+            : 0;
+        const aCreated =
+          typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+            ? a.createdAt
+            : 0;
+        return (
+          bCreated - aCreated ||
+          (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
+        );
+      })[0];
 
     const text = (
       persistedAssistantTurn?.content as { text?: string } | undefined
