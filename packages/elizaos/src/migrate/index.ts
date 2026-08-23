@@ -48,7 +48,7 @@ export interface MigratePlan {
     hasSecretsDir: boolean;
     /** Cross-tier duplicate memories dropped during tiering. */
     duplicatesDropped: number;
-    /** Memory bodies clipped at maxChunkLen (content truncated). */
+    /** Compatibility counter; zero because oversized bodies split losslessly. */
     clipped: number;
     /** sqlite memory stores detected in the source home. */
     sqliteStores: number;

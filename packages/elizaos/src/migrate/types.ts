@@ -33,7 +33,17 @@ export interface MigratedMemory {
   roomId: UUID;
   createdAt: number;
   content: { text: string };
-  metadata: { type: "custom"; source: string; tier: string };
+  metadata: {
+    type: "custom";
+    source: string;
+    tier: string;
+    /** Shared identifier for losslessly ordered chunks of one source body. */
+    chunkGroupId?: UUID;
+    /** Zero-based position within a losslessly chunked source body. */
+    chunkIndex?: number;
+    /** Total chunks required to reconstruct the complete source body. */
+    chunkCount?: number;
+  };
   unique: boolean;
 }
 

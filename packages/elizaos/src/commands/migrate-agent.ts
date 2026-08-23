@@ -68,7 +68,7 @@ function printPlan(plan: MigratePlan, slug: string): void {
       `  SELF:          ${c.SELF}`,
       `  older marker:  ${c.MARKER}`,
       `  dedup dropped: ${plan.summary.duplicatesDropped}`,
-      `  clipped:       ${plan.summary.clipped} (truncated at maxChunkLen)`,
+      `  content lost:  ${plan.summary.clipped} (oversized bodies split losslessly)`,
       "",
       `daily logs seen: ${plan.summary.dailyLogsTotal}`,
       `named memory:    ${plan.summary.namedMemoryTotal}`,

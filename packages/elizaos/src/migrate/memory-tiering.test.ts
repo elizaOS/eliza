@@ -1,7 +1,7 @@
 /**
  * Coverage for the recency-tiered OpenClaw memory seeder: firewall posture,
  * the CURRENT/LONGTERM/SELF/MARKER tiers, window and minimum-length filters,
- * max-length clipping, and tier-priority cross-tier dedup. Drives the real
+ * lossless max-length chunking, and tier-priority cross-tier dedup. Drives the real
  * `tierMemories` over hand-built sources — no mocks, no filesystem.
  */
 
@@ -388,17 +388,44 @@ describe("tierMemories", () => {
     expect(result.counts.CURRENT).toBe(1);
   });
 
-  it("clips oversized bodies at maxChunkLen and reports the loss", () => {
-    const awareness = "x".repeat(200);
-    const clippedResult = tierMemories(
+  it("splits oversized bodies losslessly with an ordered reassembly contract", () => {
+    const awareness = `${"x".repeat(49)}😀${"y".repeat(151)}`;
+    const chunkedResult = tierMemories(
       { ...emptySource(), awareness },
       opts({ maxChunkLen: 50 }),
     );
-    expect(clippedResult.clipped).toBe(1);
-    expect(clippedResult.memories[0].content.text).toBe(
-      `[CURRENT] ${awareness.slice(0, 50)}`,
+    expect(chunkedResult.clipped).toBe(0);
+    expect(chunkedResult.memories).toHaveLength(5);
+    expect(chunkedResult.counts.CURRENT).toBe(5);
+
+    const groupIds = new Set(
+      chunkedResult.memories.map((memory) => memory.metadata.chunkGroupId),
     );
-    expect(clippedResult.memories[0].content.text).toHaveLength(60);
+    expect(groupIds.size).toBe(1);
+    expect(groupIds.has(undefined)).toBe(false);
+    expect(
+      chunkedResult.memories.map((memory) => memory.metadata.chunkIndex),
+    ).toEqual([0, 1, 2, 3, 4]);
+    expect(
+      chunkedResult.memories.every(
+        (memory) => memory.metadata.chunkCount === 5,
+      ),
+    ).toBe(true);
+
+    const reassembled = [...chunkedResult.memories]
+      .sort(
+        (a, b) => (a.metadata.chunkIndex ?? 0) - (b.metadata.chunkIndex ?? 0),
+      )
+      .map((memory) => memory.content.text.replace(/^\[CURRENT\] /, ""))
+      .join("");
+    expect(reassembled).toBe(awareness);
+    expect(
+      chunkedResult.memories.every(
+        (memory) =>
+          Array.from(memory.content.text.replace(/^\[CURRENT\] /, "")).length <=
+          50,
+      ),
+    ).toBe(true);
 
     const intact = tierMemories(
       { ...emptySource(), awareness },
@@ -406,6 +433,17 @@ describe("tierMemories", () => {
     );
     expect(intact.clipped).toBe(0);
     expect(intact.memories[0].content.text).toBe(`[CURRENT] ${awareness}`);
+  });
+
+  it("rejects invalid maxChunkLen values before returning partial memories", () => {
+    for (const maxChunkLen of [0, -1, 1.5]) {
+      expect(() =>
+        tierMemories(
+          { ...emptySource(), awareness: "complete source text" },
+          opts({ maxChunkLen }),
+        ),
+      ).toThrow(/maxChunkLen must be a positive integer/);
+    }
   });
 
   it("assigns unique ids across a full multi-tier run", () => {
