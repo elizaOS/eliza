@@ -62,7 +62,7 @@ Updated: 2026-08-23 (America/Los_Angeles)
 
 ## Doing
 
-- Seal this current-base ledger, create a local annotated candidate tag, push the new branch without force, and open a draft PR linked to #23098. No deployment or hosted provider operation is part of publication.
+- Draft PR #25738 is published at `https://github.com/elizaOS/eliza/pull/25738` from the clean current-base branch. It remains draft pending inline visual artifacts, serialized disposable hosted proof, and the reviewer matrix. No deployment or hosted provider operation was part of publication.
 
 ## Next / exact external gates
 
@@ -81,7 +81,8 @@ Updated: 2026-08-23 (America/Los_Angeles)
 
 ## Draft PR review package
 
-- Proposed title: `feat(cloud): complete authoritative account deletion lifecycle`.
+- Draft PR: #25738, `feat(cloud): complete authoritative account deletion lifecycle`.
+- Initial publication head: `010b1a5cb57f794a3263a06a24d7798fa225111e`; the final ledger-only follow-up is the branch tip and PR evidence marker authority.
 - Link as `Addresses #23098`; do not claim closure until disposable hosted final-absence evidence is attached.
 - Reviewer matrix: Cloud/API/database, Security, SRE/release, Steward, billing/Stripe, compute/container, storage/R2/backup/spool, GitHub/repository, connector OAuth, voice, domains, Vault/key authority, and Android contract owners.
 - Required hosted evidence: exact source and database identity, migration/rollback receipts, redacted provider phase receipts, public/in-app request recordings, export/cancel/reconciliation evidence, and verified final absence. Evidence is attached to the issue/PR, not committed to the repository.
