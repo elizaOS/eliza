@@ -174,7 +174,12 @@ export async function runBotNoiseTriage(
 		});
 		historyLines = recent
 			.filter((memory) => memory.id !== message.id)
-			.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+			.sort((a, b) => {
+			const aSafe = Number.isFinite(a.createdAt ?? 0) ? (a.createdAt ?? 0) : 0;
+			const bSafe = Number.isFinite(b.createdAt ?? 0) ? (b.createdAt ?? 0) : 0;
+			if (bSafe !== aSafe) return bSafe - aSafe;
+			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+		})
 			.map((memory) => historyLine(runtime, memory))
 			.filter((line): line is string => line !== null);
 	} catch (error) {
