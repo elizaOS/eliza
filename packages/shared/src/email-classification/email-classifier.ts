@@ -323,7 +323,13 @@ export function classifyEmailByRules(
     { category: "bill", score: billScore },
     { category: "transactional", score: txScore },
   ];
-  candidates.sort((a, b) => b.score - a.score);
+  candidates.sort((a, b) => {
+    const bScore =
+      typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+    const aScore =
+      typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+    return bScore - aScore || a.category.localeCompare(b.category);
+  });
   const top = candidates[0];
   if (!top || top.score === 0) {
     return null;

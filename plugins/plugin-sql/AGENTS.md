@@ -14,6 +14,7 @@ The exported `plugin` object (`src/index.ts` / `src/index.node.ts` / `src/index.
 |------|------|-------------|
 | Service | `AdvancedMemoryStorageService` (`serviceType = "memoryStorage"`) | Implements `MemoryStorageProvider`; persists long-term memories and session summaries to dedicated SQL tables via the runtime memory API |
 | Service | `SqlPrincipalService` (`serviceType = "principal"`) | Canonical generation-fenced identity authority for claims, person-link attestations, reversible redirects, merge/split journals, and owner-binding reads |
+| Service | `SqlMembershipService` (`serviceType = "membership"`) | Canonical publisher-generation and cursor-fenced connector-room authority with atomic complete snapshots, bounded freshness, exact idempotency, and fail-closed authorization |
 | Route | `POST /api/identity/person-links/attest` | Private OWNER/ADMIN ingress; requires an authenticated `AccessContext`, derives actor authority from it, and records immutable same-person evidence without merging principals |
 | Route | `GET /api/identity/person-links/verify` | Private exact-generation verification; also requires OWNER/ADMIN `AccessContext` |
 | Schema | `schema` (all tables) | Passed as `plugin.schema` so `DatabaseMigrationService` can auto-migrate at startup |
@@ -59,6 +60,7 @@ plugins/plugin-sql/
     services/
       advanced-memory-storage.ts  AdvancedMemoryStorageService implementation
       sql-principal.ts  Canonical identity authority implementation
+      sql-membership.ts  Canonical connector-room membership authority implementation
     stores/
       agent.store.ts / memory.store.ts / room.store.ts / ...  Query logic split by domain
     runtime-migrator/

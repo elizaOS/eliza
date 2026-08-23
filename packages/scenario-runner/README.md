@@ -49,6 +49,19 @@ export default {
 } satisfies ScenarioDefinition;
 ```
 
+### Plugin requirements
+
+Declare npm plugin import specifiers in `requires.plugins`; the runner passes
+each value to the runtime module resolver and registers the exported plugin
+before startup. This supports scoped or unscoped packages and package subpath
+exports without guessing from the spelling. Relative, absolute, `file:`, and
+`workspace:` specifiers fail preflight with a typed error because they are not
+portable runtime package requirements.
+
+If a scenario seed registers an in-file fixture plugin, declare its runtime
+plugin name in `requires.fixturePlugins` instead. Fixture names are verified
+after seeding and are never treated as module specifiers.
+
 ### Turn kinds
 
 | Kind | What it does |

@@ -12,8 +12,23 @@ let addCreditsImpl: (params: unknown) => Promise<unknown> = async (params) => {
   return { success: true };
 };
 
-const createdOrg = { id: "org-new-1", slug: "alice-abc123", credit_balance: "0.00" };
-const createdUser = { id: "user-new-1", organization_id: "org-new-1" };
+const createdOrg = {
+  id: "org-new-1",
+  name: "alice's Organization",
+  slug: "alice-abc123",
+  credit_balance: "0.00",
+};
+const createdUser = {
+  id: "user-new-1",
+  organization_id: "org-new-1",
+  steward_user_id: "steward-123",
+  email: "alice@example.com",
+  name: "alice",
+  wallet_address: null,
+  role: "owner",
+  email_verified: true,
+  wallet_verified: false,
+};
 const finalUserWithOrg = {
   id: "user-new-1",
   steward_user_id: "steward-123",
@@ -61,6 +76,8 @@ mock.module("./services/users", () => ({
     getByWalletAddressWithOrganization: async () => undefined,
     getStewardIdentityForWrite: async () => undefined,
     getByStewardIdForWrite: async () => finalUserWithOrg,
+    createFreshStewardSignupUser: async () => createdUser,
+    initializeFreshStewardIdentity: async () => undefined,
     create: async () => createdUser,
     update: async () => undefined,
     linkStewardId: async () => undefined,

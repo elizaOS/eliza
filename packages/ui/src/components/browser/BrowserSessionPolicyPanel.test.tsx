@@ -7,9 +7,16 @@
  * receipt redaction, and the action-error banner on a failed write.
  */
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import type {
+  BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
   UpdateBrowserBridgeSettingsRequest,
 } from "../../api/browser-contracts";
@@ -20,6 +27,8 @@ import { BrowserSessionPolicyPanel } from "./BrowserSessionPolicyPanel";
 const TEST_NOW_MS = Date.now();
 const minutesBeforeTest = (minutes: number) =>
   new Date(TEST_NOW_MS - minutes * 60_000).toISOString();
+
+afterEach(cleanup);
 
 const NOW_SETTINGS: BrowserBridgeSettings = {
   enabled: true,
@@ -63,6 +72,37 @@ function makeSession(
   };
 }
 
+function makeCompanion(
+  overrides: Partial<BrowserBridgeCompanionStatus> = {},
+): BrowserBridgeCompanionStatus {
+  return {
+    id: "c-1",
+    agentId: "agent-1",
+    browser: "chrome",
+    profileId: "default",
+    profileLabel: "Default",
+    label: "Chrome",
+    extensionVersion: "1.2.3",
+    connectionState: "disconnected",
+    permissions: {
+      tabs: true,
+      scripting: true,
+      activeTab: true,
+      allOrigins: false,
+      grantedOrigins: [],
+      incognitoEnabled: false,
+    },
+    lastSeenAt: null,
+    pairedAt: minutesBeforeTest(10),
+    pairingTokenExpiresAt: null,
+    pairingTokenRevokedAt: minutesBeforeTest(1),
+    metadata: {},
+    createdAt: minutesBeforeTest(10),
+    updatedAt: minutesBeforeTest(1),
+    ...overrides,
+  };
+}
+
 /**
  * In-memory transport that mirrors the bridge route semantics: confirm flips
  * an awaiting session to queued (true) or cancelled (false); settings writes
@@ -71,12 +111,15 @@ function makeSession(
 function makeFakeApi(
   sessions: BrowserBridgeSession[],
   settings: BrowserBridgeSettings = NOW_SETTINGS,
+  companions: BrowserBridgeCompanionStatus[] = [],
 ) {
   const state = {
     sessions: sessions.map((s) => ({ ...s })),
     settings: { ...settings },
     settingsWrites: [] as UpdateBrowserBridgeSettingsRequest[],
     confirmCalls: [] as Array<{ id: string; confirmed: boolean }>,
+    companions: companions.map((companion) => ({ ...companion })),
+    resetCalls: [] as string[],
   };
   const api: BrowserSessionPolicyApi = {
     async listBrowserBridgeSessions() {
@@ -104,6 +147,26 @@ function makeFakeApi(
       existing.awaitingConfirmationForActionId = null;
       return { session: { ...existing } };
     },
+    async listBrowserBridgeCompanions() {
+      return {
+        companions: state.companions.map((companion) => ({ ...companion })),
+      };
+    },
+    async resetBrowserBridgeCompanionRevocation(id) {
+      state.resetCalls.push(id);
+      const existing = state.companions.find(
+        (companion) => companion.id === id,
+      );
+      if (!existing) throw new Error(`Browser companion not found: ${id}`);
+      for (const companion of state.companions) {
+        if (companion.browser === existing.browser) {
+          companion.pairingTokenRevokedAt = null;
+          companion.pairingTokenExpiresAt = null;
+          companion.connectionState = "disconnected";
+        }
+      }
+      return { companion: { ...existing }, resetAt: minutesBeforeTest(0) };
+    },
   };
   return { api, state };
 }
@@ -127,6 +190,20 @@ describe("BrowserSessionPolicyPanel", () => {
       expect(screen.queryByTestId("browser-session-policy-loading")).toBeNull(),
     );
     expect(container.innerHTML).toBe("");
+  });
+
+  it("shows only the required owner reset when a companion is revoked", async () => {
+    const { api, state } = makeFakeApi([], NOW_SETTINGS, [makeCompanion()]);
+    render(<BrowserSessionPolicyPanel api={api} hideWhenEmpty />);
+    await waitFor(() =>
+      expect(screen.getByTestId("browser-companion-c-1-recovery")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("browser-session-policy-empty")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Reset Chrome" }));
+    await waitFor(() =>
+      expect(screen.queryByTestId("browser-companion-c-1-recovery")).toBeNull(),
+    );
+    expect(state.resetCalls).toEqual(["c-1"]);
   });
 
   it("shows a distinct error state with retry when loading fails", async () => {

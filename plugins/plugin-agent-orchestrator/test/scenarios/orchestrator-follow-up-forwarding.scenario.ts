@@ -190,7 +190,7 @@ export default scenario({
   tags: ["orchestrator", "forwarding", "follow-up", "pr", "deterministic"],
   isolation: "shared-runtime",
   requires: {
-    plugins: [PLUGIN_NAME],
+    fixturePlugins: [PLUGIN_NAME],
   },
   seed: [
     {

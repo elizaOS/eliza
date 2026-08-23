@@ -288,21 +288,20 @@ describe("orchestrator-validate-task", () => {
     ).rejects.toThrow(/passed \(boolean\) is required/);
   });
 
-  it("forwards the verdict with humanOverride only when strictly true", async () => {
+  it("never accepts caller-controlled human override authority", async () => {
     await runOrchestratorCapability("orchestrator-validate-task", {
       taskId: "t6",
       passed: false,
       summary: " no ",
       evidence: " log ",
       verifier: " ci ",
-      humanOverride: "yes",
+      humanOverride: true,
     });
     expect(m.validateOrchestratorTask).toHaveBeenCalledWith("t6", {
       passed: false,
       summary: "no",
       evidence: "log",
       verifier: "ci",
-      humanOverride: false,
     });
   });
 });

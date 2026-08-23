@@ -76,6 +76,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/fragments\.slice\(/,
 		/resolved\.slice\(/,
 		/toWellFormedUnicode\(contextPack\)/,
+		/options\.limit\s*\?\?/,
+		/count:\s*options\.limit/,
+	],
+	"packages/core/src/features/documents/service.ts": [
+		/limit:\s*(?:20|40|1_000)[,\n]/,
 	],
 	"packages/core/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
@@ -124,6 +129,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/actions/post.ts": [
 		/truncateWellFormed/,
 		/text\s*=\s*text\.slice\(/,
+	],
+	"packages/core/src/features/autonomy/action.ts": [
+		/targetRoomId\.slice\(0,\s*8\)/,
+		/targetRoomId\.(?:slice|substring)\(/,
 	],
 	"packages/prompts/specs/actions/core.json": [/"c0a8012e"/],
 	"packages/core/src/generated/action-docs.ts": [/"c0a8012e"/],

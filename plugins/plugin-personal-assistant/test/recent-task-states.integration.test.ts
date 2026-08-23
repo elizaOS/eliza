@@ -58,4 +58,28 @@ describe("recent task states integration", () => {
     expect(summary.summary).toMatch(/checkin: 1 done/);
     expect(summary.summary).not.toMatch(/reminder/);
   });
+
+  it("maintains strict total ordering when recordedAt contains invalid date strings", async () => {
+    const runtime = createMinimalRuntimeStub();
+    const { readScheduledTaskLog } = await import(
+      "../src/providers/recent-task-states.ts"
+    );
+    await appendScheduledTaskLogEntry(runtime, {
+      taskId: "task-invalid",
+      kind: "reminder",
+      outcome: "completed",
+      recordedAt: "invalid-date-string",
+    });
+    await appendScheduledTaskLogEntry(runtime, {
+      taskId: "task-valid",
+      kind: "reminder",
+      outcome: "completed",
+      recordedAt: "2026-08-01T00:00:00.000Z",
+    });
+
+    const log = await readScheduledTaskLog(runtime);
+    expect(log).toHaveLength(2);
+    expect(log[0]?.taskId).toBe("task-invalid"); // fallback 0 is earliest
+    expect(log[1]?.taskId).toBe("task-valid");
+  });
 });

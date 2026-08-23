@@ -22,6 +22,8 @@ const invalidatedSessionBatches: string[][] = [];
 const userDeleteCalls: string[] = [];
 const orgDeleteCalls: string[] = [];
 const lifecycleEvents: string[] = [];
+const repositoryReads: string[] = [];
+const deletedCacheKeys: string[] = [];
 
 let userApiKeys: Array<{ key_hash: string }> = [];
 let orgApiKeys: Array<{ key_hash: string }> = [];
@@ -123,16 +125,32 @@ mock.module("../../db/repositories", () => ({
   usersRepository: {
     findById: async (_id: string) =>
       useReadUserRecordOverride ? readUserRecordOverride : userRecord,
-    findByIdForWrite: async (_id: string) => userRecord,
-    findIdentityByUserIdForWrite: async () =>
-      userRecord?.steward_user_id
+    findByIdForWrite: async (_id: string) => {
+      repositoryReads.push("user-for-write");
+      return userRecord;
+    },
+    findIdentityByUserIdForWrite: async () => {
+      repositoryReads.push("identity-for-write");
+      return userRecord?.steward_user_id
         ? {
             steward_user_id: userRecord.steward_user_id,
             telegram_id: userRecord.telegram_id ?? null,
             discord_id: userRecord.discord_id ?? null,
             phone_number: userRecord.phone_number ?? null,
           }
-        : undefined,
+        : undefined;
+    },
+    create: async (data: Record<string, unknown>) => {
+      userRecord = {
+        id: "u-fresh",
+        email: null,
+        wallet_address: null,
+        is_active: true,
+        ...data,
+      };
+      lifecycleEvents.push("user-create:u-fresh");
+      return userRecord;
+    },
     upsertStewardIdentity: async (id: string, stewardUserId: string) => {
       lifecycleEvents.push(`identity-upsert:${id}:${stewardUserId}`);
       if (userRecord) userRecord.steward_user_id = stewardUserId;
@@ -175,7 +193,9 @@ mock.module("../cache/client", () => ({
   cache: {
     get: async () => null,
     set: async () => {},
-    del: async () => {},
+    del: async (key: string) => {
+      deletedCacheKeys.push(key);
+    },
   },
 }));
 
@@ -198,6 +218,8 @@ beforeEach(() => {
   listByOrganizationUsers = [];
   listByUserError = null;
   lifecycleEvents.length = 0;
+  repositoryReads.length = 0;
+  deletedCacheKeys.length = 0;
 });
 
 describe("UsersService — IAC invalidation on lifecycle", () => {
@@ -318,6 +340,115 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
 
     expect(userRecord.is_active).toBe(true);
     expect(lifecycleEvents).toEqual(["projection-fence-failed:phone:+15551234567"]);
+  });
+
+  test("fresh Steward signup initializes only its projection and active binding", async () => {
+    const { usersService } = await import("./users");
+    const user = await usersService.createFreshStewardSignupUser({
+      email: "fresh@example.com",
+      organization_id: "o1",
+      steward_user_id: "steward-new",
+    });
+
+    await usersService.initializeFreshStewardIdentity({
+      user,
+      stewardUserId: "steward-new",
+    });
+
+    expect(lifecycleEvents).toEqual([
+      "user-create:u-fresh",
+      "identity-upsert:u-fresh:steward-new",
+      "session-binding:o1:u-fresh:steward-new:true",
+    ]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
+  });
+
+  test("fresh Steward identity initialization rejects active-binding failure", async () => {
+    const { usersService } = await import("./users");
+    const user = await usersService.createFreshStewardSignupUser({
+      email: "fresh@example.com",
+      organization_id: "o1",
+      steward_user_id: "steward-new",
+    });
+    failNextBindingActivation = true;
+
+    await expect(
+      usersService.initializeFreshStewardIdentity({
+        user,
+        stewardUserId: "steward-new",
+      }),
+    ).rejects.toThrow("binding activation unavailable");
+
+    expect(lifecycleEvents).toEqual([
+      "user-create:u-fresh",
+      "identity-upsert:u-fresh:steward-new",
+      "session-binding:o1:u-fresh:steward-new:true",
+    ]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
+  });
+
+  test("fresh Steward identity initialization rejects a missing organization", async () => {
+    const { usersService } = await import("./users");
+
+    await expect(
+      usersService.initializeFreshStewardIdentity({
+        user: {
+          id: "u-fresh",
+          organization_id: null,
+          steward_user_id: "steward-new",
+        },
+        stewardUserId: "steward-new",
+      }),
+    ).rejects.toMatchObject({ code: "FRESH_STEWARD_IDENTITY_INPUT_INVALID" });
+
+    expect(lifecycleEvents).toEqual([]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
+  });
+
+  test("fresh Steward identity initialization rejects an empty canonical subject", async () => {
+    const { usersService } = await import("./users");
+
+    await expect(
+      usersService.initializeFreshStewardIdentity({
+        user: {
+          id: "u-fresh",
+          organization_id: "o1",
+          steward_user_id: "",
+        },
+        stewardUserId: "",
+      }),
+    ).rejects.toMatchObject({ code: "FRESH_STEWARD_IDENTITY_INPUT_INVALID" });
+
+    expect(lifecycleEvents).toEqual([]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
+  });
+
+  test("fresh Steward identity initialization rejects a canonical subject mismatch", async () => {
+    const { usersService } = await import("./users");
+
+    await expect(
+      usersService.initializeFreshStewardIdentity({
+        user: {
+          id: "u-fresh",
+          organization_id: "o1",
+          steward_user_id: "steward-canonical",
+        },
+        stewardUserId: "steward-other",
+      }),
+    ).rejects.toMatchObject({ code: "FRESH_STEWARD_IDENTITY_INPUT_INVALID" });
+
+    expect(lifecycleEvents).toEqual([]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
   });
 
   test("Steward identity upsert fences the prior session generation before relinking", async () => {

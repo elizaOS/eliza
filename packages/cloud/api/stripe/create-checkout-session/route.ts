@@ -42,7 +42,20 @@ const checkoutRequestSchema = z
       .optional(),
     hardwareSku: z.enum(HARDWARE_SKUS).optional(),
     hardwareColor: z.string().min(1).max(32).optional(),
+    expectedUserId: z.string().trim().min(1).max(128).optional(),
+    expectedOrganizationId: z.string().trim().min(1).max(128).optional(),
     returnUrl: z.enum(["settings", "billing"]).optional().default("settings"),
+  })
+  .superRefine((data, context) => {
+    const hasExpectedUser = data.expectedUserId !== undefined;
+    const hasExpectedOrganization = data.expectedOrganizationId !== undefined;
+    if (hasExpectedUser !== hasExpectedOrganization) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "expectedUserId and expectedOrganizationId must be provided together",
+      });
+    }
   })
   .refine((data) => data.creditPackId || data.amount || data.hardwareSku, {
     message: "Either creditPackId, amount, or hardwareSku must be provided",
@@ -53,6 +66,44 @@ const app = new Hono<AppEnv>();
 app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserWithOrg(c);
+    const body = await c.req.json();
+    const validationResult = checkoutRequestSchema.safeParse(body);
+    if (!validationResult.success) {
+      const flatErrors = validationResult.error.flatten();
+      const fieldErrors = Object.values(flatErrors.fieldErrors).flat();
+      const formErrors = flatErrors.formErrors;
+      const firstError = fieldErrors[0] || formErrors[0] || "Invalid request";
+      return c.json({ error: firstError }, 400);
+    }
+
+    const {
+      creditPackId,
+      amount,
+      expectedOrganizationId,
+      expectedUserId,
+      hardwareColor,
+      hardwareSku,
+      returnUrl,
+    } = validationResult.data;
+
+    // Credit checkout callers may pin the principal they rendered. Compare
+    // that precondition to the live authenticated principal before catalog,
+    // order, customer-authority, or Stripe work. Hardware callers omit it and
+    // retain their existing shared endpoint contract.
+    if (
+      !hardwareSku &&
+      expectedUserId !== undefined &&
+      (expectedUserId !== user.id ||
+        expectedOrganizationId !== user.organization_id)
+    ) {
+      return c.json(
+        {
+          code: "CHECKOUT_PRINCIPAL_CHANGED",
+          error: "Checkout identity changed; refresh before retrying",
+        },
+        409,
+      );
+    }
 
     const stripeCurrency = (c.env.STRIPE_CURRENCY || "usd")
       .trim()
@@ -73,19 +124,6 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       "https://eliza.ai",
       "https://www.eliza.ai",
     ].filter(Boolean) as string[];
-
-    const body = await c.req.json();
-    const validationResult = checkoutRequestSchema.safeParse(body);
-    if (!validationResult.success) {
-      const flatErrors = validationResult.error.flatten();
-      const fieldErrors = Object.values(flatErrors.fieldErrors).flat();
-      const formErrors = flatErrors.formErrors;
-      const firstError = fieldErrors[0] || formErrors[0] || "Invalid request";
-      return c.json({ error: firstError }, 400);
-    }
-
-    const { creditPackId, amount, hardwareColor, hardwareSku, returnUrl } =
-      validationResult.data;
     const clientRequestKey = c.req.header("idempotency-key")?.trim();
     if (!hardwareSku && !clientRequestKey) {
       return c.json(

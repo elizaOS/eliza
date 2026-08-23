@@ -41,11 +41,14 @@ export async function sleepWithAbort(
 
 		function onAbort() {
 			clearTimeout(timeoutId);
+			if (abortSignal) {
+				abortSignal.removeEventListener("abort", onAbort);
+			}
 			reject(new Error("aborted"));
 		}
 
 		if (abortSignal) {
-			abortSignal.addEventListener("abort", onAbort);
+			abortSignal.addEventListener("abort", onAbort, { once: true });
 		}
 	});
 }

@@ -2,6 +2,8 @@
  * Persists message-interaction sessions for one host with cross-process atomic
  * transitions. Multi-host deployments should implement the same store contract
  * with a transactional database row or outbox rather than sharing this file.
+ * An abandoned lifecycle marker fails closed until an operator stops every
+ * store user, verifies no owner remains, and removes the marker.
  */
 
 import { constants } from "node:fs";
@@ -38,14 +40,19 @@ interface LockOwner {
 }
 
 interface LockRaceHooks {
+  beforeLockPublish?: () => Promise<void>;
+  afterTransitionCheckBeforeLockPublish?: () => Promise<void>;
+  afterLockPublishBeforeCandidateCleanup?: () => Promise<void>;
+  beforeOwnerCandidateCleanup?: () => Promise<void>;
+  beforeStateDirectorySync?: () => Promise<void>;
+  afterStateDirectoryClose?: () => Promise<void>;
+  beforePublicationCandidateValidation?: () => Promise<void>;
   beforeStaleRetire?: () => Promise<void>;
   beforeReleaseRetire?: () => Promise<void>;
-}
-
-interface LockTransitionOwner {
-  pid: number;
-  processIdentity: string | null;
-  token: string;
+  beforeTransitionValidation?: () => Promise<void>;
+  beforeTransitionAbortCleanup?: () => Promise<void>;
+  beforeLockUnlink?: () => Promise<void>;
+  beforeTransitionMarkerCleanup?: () => Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -262,8 +269,8 @@ function newToken(): string {
 
 /**
  * A single-machine durable store. Atomic rename and directory fsync preserve a
- * complete prior or next revision across process/power loss; the lock directory
- * serializes independent host processes.
+ * complete prior or next revision across process/power loss; the lock owner
+ * inode and transition marker serialize independent host processes.
  */
 export class FileMessageInteractionSessionStore
   implements MessageInteractionSessionStore
@@ -454,12 +461,46 @@ export class FileMessageInteractionSessionStore
     return `${entry.dev}-${entry.ino}`;
   }
 
+  private transitionRecoveryContext(marker: string): Record<string, unknown> {
+    return {
+      markerPath: marker,
+      recovery:
+        "Stop all store users, verify no process owns the lock, remove markerPath, fsync its parent directory, then restart.",
+    };
+  }
+
+  private transitionCleanupError(
+    marker: string,
+    phase: "recovery" | "release",
+    cleanupError: unknown,
+    primaryError?: unknown,
+  ): ElizaError {
+    return new ElizaError("Interaction transition marker cleanup failed.", {
+      code:
+        phase === "recovery"
+          ? "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED"
+          : "INTERACTION_STORE_RELEASE_CLEANUP_FAILED",
+      cause: primaryError ?? cleanupError,
+      context: {
+        ...this.transitionRecoveryContext(marker),
+        ...(phase === "recovery"
+          ? { committed: false, retrySafeAfterRecovery: true }
+          : {}),
+        cleanupError:
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError),
+      },
+    });
+  }
+
   private async beginLockTransition(
     lockIdentity: string,
+    phase: "recovery" | "release",
   ): Promise<string | null> {
-    const marker = path.join(this.lockPath, ".transition");
+    const marker = `${this.lockPath}.transition`;
     const token = newToken();
-    const candidate = path.join(this.lockPath, `.transition-${token}.tmp`);
+    const candidate = `${marker}-${token}.tmp`;
     try {
       await this.writeAndSync(candidate, {
         pid: process.pid,
@@ -473,9 +514,6 @@ export class FileMessageInteractionSessionStore
         isErrno(error, "EEXIST") ||
         isErrno(error, "ENOTEMPTY")
       ) {
-        if (isErrno(error, "EEXIST")) {
-          await this.clearAbandonedTransition(lockIdentity);
-        }
         return null;
       }
       throw error;
@@ -488,101 +526,122 @@ export class FileMessageInteractionSessionStore
     }
     const current = await existsLstat(this.lockPath);
     if (
-      !current?.isDirectory() ||
+      !current?.isFile() ||
       current.isSymbolicLink() ||
       this.lockIdentity(current) !== lockIdentity
     ) {
       try {
+        await this.lockRaceHooks.beforeTransitionAbortCleanup?.();
         await fs.rm(marker, { force: true });
-      } catch {
-        // error-policy:J6 the mismatched generation cannot be retired by us.
+      } catch (cleanupError) {
+        // error-policy:J2 A marker targeting a replaced lock must remain a
+        // typed outage if its pathname cannot be cleared safely.
+        throw this.transitionCleanupError(marker, phase, cleanupError);
       }
       return null;
     }
     return marker;
   }
 
-  private async clearAbandonedTransition(lockIdentity: string): Promise<void> {
-    const current = await existsLstat(this.lockPath);
-    if (!current || this.lockIdentity(current) !== lockIdentity) return;
-    const marker = path.join(this.lockPath, ".transition");
-    let value: Partial<LockTransitionOwner>;
-    try {
-      const raw = await fs.readFile(marker, "utf8");
-      value = JSON.parse(raw) as Partial<LockTransitionOwner>;
-    } catch (error) {
-      if (isErrno(error, "ENOENT")) return;
-      // error-policy:J3 malformed transition ownership fails closed.
-      if (error instanceof SyntaxError) return;
-      throw error;
-    }
-    if (
-      !Number.isSafeInteger(value.pid) ||
-      (value.processIdentity !== null &&
-        typeof value.processIdentity !== "string") ||
-      typeof value.token !== "string"
-    ) {
-      return;
-    }
-    const live = this.processAlive(value.pid as number);
-    const identity = live
-      ? await this.readProcessIdentity(value.pid as number)
-      : null;
-    if (
-      live &&
-      (!value.processIdentity ||
-        !identity ||
-        value.processIdentity === identity)
-    ) {
-      return;
-    }
-    const rechecked = await existsLstat(this.lockPath);
-    if (rechecked && this.lockIdentity(rechecked) === lockIdentity) {
-      await fs.rm(marker, { force: true });
-    }
-  }
-
   /** The transition hardlink excludes release and all competing recoverers. */
   private async retireObservedLock(
     lockIdentity: string,
     validate: () => Promise<boolean>,
+    phase: "recovery" | "release",
+    ownerToken?: string,
   ): Promise<boolean> {
-    const marker = await this.beginLockTransition(lockIdentity);
+    const marker = await this.beginLockTransition(lockIdentity, phase);
     if (!marker) return false;
     let valid: boolean;
     try {
+      await this.lockRaceHooks.beforeTransitionValidation?.();
       valid = await validate();
-    } catch (error) {
-      await fs.rm(marker, { force: true });
-      throw error;
+    } catch (primaryError) {
+      try {
+        await this.lockRaceHooks.beforeTransitionAbortCleanup?.();
+        await fs.rm(marker, { force: true });
+      } catch (cleanupError) {
+        // error-policy:J2 Preserve the validation failure while exposing the
+        // fail-closed marker and its exact offline recovery procedure.
+        throw this.transitionCleanupError(
+          marker,
+          phase,
+          cleanupError,
+          primaryError,
+        );
+      }
+      throw primaryError;
     }
     if (!valid) {
-      await fs.rm(marker, { force: true });
+      try {
+        await this.lockRaceHooks.beforeTransitionAbortCleanup?.();
+        await fs.rm(marker, { force: true });
+      } catch (cleanupError) {
+        // error-policy:J2 A failed validation grants no detach authority; an
+        // uncleared marker is a typed outage rather than a raw teardown error.
+        throw this.transitionCleanupError(marker, phase, cleanupError);
+      }
       return false;
     }
-    const quarantine = `${this.lockPath}.retired-${process.pid}-${newToken()}`;
     try {
-      await fs.rename(this.lockPath, quarantine);
-    } catch (error) {
-      if (isErrno(error, "ENOENT")) return false;
-      throw error;
+      await this.lockRaceHooks.beforeLockUnlink?.();
+      await fs.rm(this.lockPath);
+    } catch (unlinkError) {
+      try {
+        await this.lockRaceHooks.beforeTransitionAbortCleanup?.();
+        await fs.rm(marker, { force: true });
+      } catch (cleanupError) {
+        // error-policy:J2 Preserve both failures and the exact offline
+        // authority needed to recover the still-published owner generation.
+        throw new ElizaError(
+          "Interaction lock unlink and transition cleanup both failed.",
+          {
+            code:
+              phase === "recovery"
+                ? "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED"
+                : "INTERACTION_STORE_RELEASE_CLEANUP_FAILED",
+            cause: unlinkError,
+            context: {
+              ...this.transitionRecoveryContext(marker),
+              lockPath: this.lockPath,
+              lockIdentity,
+              ...(ownerToken ? { ownerToken } : {}),
+              cleanupError:
+                cleanupError instanceof Error
+                  ? cleanupError.message
+                  : String(cleanupError),
+              recovery:
+                "Stop all store users, verify lockPath still has lockIdentity and ownerToken when reported, remove markerPath and lockPath, fsync their parent directory, then restart.",
+              ...(phase === "recovery"
+                ? { committed: false, retrySafeAfterRecovery: true }
+                : {}),
+            },
+          },
+        );
+      }
+      if (isErrno(unlinkError, "ENOENT")) return false;
+      throw unlinkError;
     }
     try {
-      await fs.rm(quarantine, { recursive: true });
-    } catch {
-      // error-policy:J6 the detached generation no longer blocks the store.
+      await this.lockRaceHooks.beforeTransitionMarkerCleanup?.();
+      await fs.rm(marker);
+    } catch (error) {
+      // error-policy:J2 The lock is already detached, so acquisition or release
+      // must surface the fail-closed marker instead of permitting a successor.
+      throw this.transitionCleanupError(marker, phase, error);
     }
     return true;
   }
 
   private async readLockOwner(): Promise<LockOwner | null> {
     try {
-      const ownerPath = path.join(this.lockPath, "owner.json");
+      const ownerPath = this.lockPath;
       const entry = await fs.lstat(ownerPath);
       if (
         !entry.isFile() ||
         entry.isSymbolicLink() ||
-        entry.nlink !== 1 ||
+        entry.nlink < 1 ||
+        entry.nlink > 2 ||
         (entry.mode & 0o077) !== 0 ||
         entry.size > 4_096
       ) {
@@ -603,12 +662,15 @@ export class FileMessageInteractionSessionStore
         constants.O_RDONLY | constants.O_NOFOLLOW,
       );
       let raw: string;
+      let openedNlink = 0;
       try {
         const opened = await handle.stat();
+        openedNlink = opened.nlink;
         if (
           opened.dev !== entry.dev ||
           opened.ino !== entry.ino ||
-          opened.nlink !== 1 ||
+          opened.nlink < 1 ||
+          opened.nlink > 2 ||
           opened.size > 4_096
         ) {
           // The prior owner may release and a contender may create a new lock
@@ -632,6 +694,70 @@ export class FileMessageInteractionSessionStore
         !Number.isSafeInteger(value.expiresAt)
       ) {
         return null;
+      }
+      if (entry.nlink === 2 || openedNlink === 2) {
+        await this.lockRaceHooks.beforePublicationCandidateValidation?.();
+        const expectedCandidate = `${path.basename(this.lockPath)}.owner-${String(value.pid)}-${value.token}.tmp`;
+        const names = await fs.readdir(this.directory);
+        if (!names.includes(expectedCandidate)) {
+          const completed = await existsLstat(this.lockPath);
+          if (
+            !completed ||
+            completed.dev !== entry.dev ||
+            completed.ino !== entry.ino
+          ) {
+            // The publisher finished its candidate cleanup, transaction, and
+            // release (and a successor may already have linked a new owner)
+            // inside the read window. The inode this reader opened grants no
+            // authority any more; the caller re-observes the current lock.
+            return null;
+          }
+          if (completed.nlink === 1) {
+            return {
+              ...(value as LockOwner),
+              processIdentity: value.processIdentity ?? null,
+            };
+          }
+          storeError(
+            "UNSAFE_INTERACTION_STORE_LOCK",
+            "Interaction store lock has an unexpected hardlink.",
+            {
+              linkCount: completed.nlink,
+              lockPath: this.lockPath,
+            },
+          );
+        }
+        let candidate: Awaited<ReturnType<typeof fs.lstat>>;
+        try {
+          candidate = await fs.lstat(
+            path.join(this.directory, expectedCandidate),
+          );
+        } catch (error) {
+          if (!isErrno(error, "ENOENT")) throw error;
+          const completed = await existsLstat(this.lockPath);
+          if (
+            completed &&
+            completed.dev === entry.dev &&
+            completed.ino === entry.ino &&
+            completed.nlink === 1
+          ) {
+            return {
+              ...(value as LockOwner),
+              processIdentity: value.processIdentity ?? null,
+            };
+          }
+          return null;
+        }
+        if (candidate.dev !== entry.dev || candidate.ino !== entry.ino) {
+          storeError(
+            "UNSAFE_INTERACTION_STORE_LOCK",
+            "Interaction store lock publication hardlink changed.",
+          );
+        }
+        return {
+          ...(value as LockOwner),
+          processIdentity: value.processIdentity ?? null,
+        };
       }
       return {
         ...(value as LockOwner),
@@ -690,23 +816,27 @@ export class FileMessageInteractionSessionStore
   private async recoverStaleLock(now: number): Promise<boolean> {
     const lockStat = await existsLstat(this.lockPath);
     if (!lockStat) return true;
-    if (!lockStat.isDirectory() || lockStat.isSymbolicLink()) {
+    if (!lockStat.isFile() || lockStat.isSymbolicLink()) {
       storeError(
         "UNSAFE_INTERACTION_STORE_LOCK",
-        "Interaction store lock is not a real directory.",
+        "Interaction store lock is not a regular file.",
       );
     }
     if (!(await this.lockIsStale(lockStat, now))) return false;
     const observedIdentity = this.lockIdentity(lockStat);
     await this.lockRaceHooks.beforeStaleRetire?.();
-    return this.retireObservedLock(observedIdentity, async () => {
-      const current = await existsLstat(this.lockPath);
-      return Boolean(
-        current &&
-          this.lockIdentity(current) === observedIdentity &&
-          (await this.lockIsStale(current, now, lockStat.mtimeMs)),
-      );
-    });
+    return this.retireObservedLock(
+      observedIdentity,
+      async () => {
+        const current = await existsLstat(this.lockPath);
+        return Boolean(
+          current &&
+            this.lockIdentity(current) === observedIdentity &&
+            (await this.lockIsStale(current, now, lockStat.mtimeMs)),
+        );
+      },
+      "recovery",
+    );
   }
 
   private async acquireLock(): Promise<LockOwner> {
@@ -714,43 +844,180 @@ export class FileMessageInteractionSessionStore
     const startedAt = performance.now();
     while (performance.now() - startedAt <= this.lockTimeoutMs) {
       const now = this.clock();
+      const token = newToken();
+      const candidate = `${this.lockPath}.owner-${process.pid}-${token}.tmp`;
+      let owner: LockOwner | null = null;
+      let published = false;
+      let transitionObserved = false;
+      let publicationError: unknown;
+      let candidateCleanupError: unknown;
       try {
-        await fs.mkdir(this.lockPath, { mode: 0o700 });
-      } catch (error) {
-        if (!isErrno(error, "EEXIST")) throw error;
-        await this.recoverStaleLock(now);
-        await delay(this.pollMs);
-        continue;
-      }
-
-      const created = await fs.lstat(this.lockPath);
-      const lockIdentity = this.lockIdentity(created);
-      try {
-        const owner: LockOwner = {
-          pid: process.pid,
-          processIdentity: await this.readProcessIdentity(process.pid),
-          lockIdentity,
-          token: newToken(),
-          createdAt: now,
-          expiresAt: now + this.staleLockMs,
-        };
-        const ownerTemp = path.join(
-          this.lockPath,
-          `.owner-${process.pid}-${owner.token}.tmp`,
+        const handle = await fs.open(
+          candidate,
+          constants.O_CREAT |
+            constants.O_EXCL |
+            constants.O_WRONLY |
+            constants.O_NOFOLLOW,
+          0o600,
         );
-        await this.writeAndSync(ownerTemp, owner);
-        // Publish only the complete, synced lease. Contenders may inspect the
-        // lock directory immediately after mkdir and must never mistake an
-        // empty or partially written owner file for hostile state.
-        await fs.rename(ownerTemp, path.join(this.lockPath, "owner.json"));
-        return owner;
+        try {
+          const created = await handle.stat();
+          owner = {
+            pid: process.pid,
+            processIdentity: await this.readProcessIdentity(process.pid),
+            lockIdentity: this.lockIdentity(created),
+            token,
+            createdAt: now,
+            expiresAt: now + this.staleLockMs,
+          };
+          await handle.writeFile(JSON.stringify(owner, null, 2), "utf8");
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        // link(2) publishes the already complete owner inode with no-replace
+        // semantics. A delayed creator never writes through the shared path.
+        await this.lockRaceHooks.beforeLockPublish?.();
+        if (await existsLstat(`${this.lockPath}.transition`)) {
+          // A transition is in flight; this candidate is discarded and a
+          // fresh one is written on the next attempt. Candidate cleanup still
+          // runs below so a cleanup failure cannot be swallowed by the retry.
+          transitionObserved = true;
+        } else {
+          await this.lockRaceHooks.afterTransitionCheckBeforeLockPublish?.();
+          await fs.link(candidate, this.lockPath);
+          published = true;
+          await this.lockRaceHooks.afterLockPublishBeforeCandidateCleanup?.();
+        }
       } catch (error) {
-        // A construction failure may race a hard-ceiling recovery of the
-        // unpublished owner. Retain its identity quarantine so delayed cleanup
-        // cannot detach a successor generation.
-        await this.retireObservedLock(lockIdentity, async () => true);
-        throw error;
+        // error-policy:J2 EEXIST is the designed contention signal and runs
+        // stale recovery; any other publication failure is rethrown after
+        // candidate cleanup so a cleanup failure is reported beside it.
+        if (!isErrno(error, "EEXIST")) {
+          publicationError = error;
+        } else {
+          await this.recoverStaleLock(now);
+          await delay(this.pollMs);
+        }
+      } finally {
+        try {
+          await this.lockRaceHooks.beforeOwnerCandidateCleanup?.();
+          await fs.rm(candidate, { force: true });
+        } catch (error) {
+          candidateCleanupError = error;
+        }
       }
+      if (published && owner) {
+        while (
+          (await existsLstat(`${this.lockPath}.transition`)) &&
+          performance.now() - startedAt <= this.lockTimeoutMs
+        ) {
+          await delay(this.pollMs);
+        }
+        if (await existsLstat(`${this.lockPath}.transition`)) {
+          const marker = `${this.lockPath}.transition`;
+          storeError(
+            "INTERACTION_STORE_RECOVERY_REQUIRED",
+            "Interaction store recovery requires all users to stop before the abandoned transition marker is removed.",
+            {
+              ...this.transitionRecoveryContext(marker),
+              lockPath: this.lockPath,
+              lockIdentity: owner.lockIdentity,
+              ownerToken: owner.token,
+              committed: false,
+              recovery:
+                "Stop all store users, verify lockPath still has lockIdentity and ownerToken, remove markerPath and lockPath, fsync their parent directory, then restart.",
+              retrySafeAfterRecovery: true,
+            },
+          );
+        }
+        const canonical = await existsLstat(this.lockPath);
+        const current = await this.readLockOwner();
+        if (
+          !canonical ||
+          this.lockIdentity(canonical) !== owner.lockIdentity ||
+          current?.token !== owner.token
+        ) {
+          storeError(
+            "INTERACTION_STORE_LOCK_LOST",
+            "Interaction store lock ownership changed during publication.",
+          );
+        }
+        if (candidateCleanupError) {
+          let releaseError: unknown;
+          try {
+            await this.releaseLock(owner);
+          } catch (error) {
+            releaseError = error;
+          }
+          throw new ElizaError(
+            "Interaction lock owner candidate cleanup failed before mutation.",
+            {
+              code: "INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED",
+              cause: candidateCleanupError,
+              context: {
+                candidatePath: candidate,
+                committed: false,
+                lockPath: this.lockPath,
+                markerPath: `${this.lockPath}.transition`,
+                published: true,
+                recoveryRequired: Boolean(releaseError),
+                retrySafeAfterRecovery: true,
+                retrySafeNow: !releaseError,
+                ...(releaseError instanceof ElizaError
+                  ? {
+                      releaseErrorCode: releaseError.code,
+                      releaseErrorContext: releaseError.context,
+                    }
+                  : releaseError
+                    ? { releaseError: String(releaseError) }
+                    : {}),
+              },
+            },
+          );
+        }
+        return owner;
+      }
+      if (candidateCleanupError) {
+        // The candidate never became the canonical owner, so nothing was
+        // mutated and no release is owed; the leftover candidate inode is the
+        // only residue and a retry publishes a fresh one.
+        throw new ElizaError(
+          "Interaction lock owner candidate cleanup failed before publication.",
+          {
+            code: "INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED",
+            cause: candidateCleanupError,
+            context: {
+              candidatePath: candidate,
+              committed: false,
+              lockPath: this.lockPath,
+              markerPath: `${this.lockPath}.transition`,
+              published: false,
+              recoveryRequired: false,
+              retrySafeAfterRecovery: true,
+              retrySafeNow: true,
+              ...(publicationError instanceof ElizaError
+                ? {
+                    publicationErrorCode: publicationError.code,
+                    publicationErrorContext: publicationError.context,
+                  }
+                : publicationError
+                  ? { publicationError: String(publicationError) }
+                  : {}),
+            },
+          },
+        );
+      }
+      if (publicationError) throw publicationError;
+      if (transitionObserved) await delay(this.pollMs);
+    }
+    if (await existsLstat(`${this.lockPath}.transition`)) {
+      const marker = `${this.lockPath}.transition`;
+      storeError(
+        "INTERACTION_STORE_RECOVERY_REQUIRED",
+        "Interaction store recovery requires all users to stop before the abandoned transition marker is removed.",
+        this.transitionRecoveryContext(marker),
+      );
     }
     return storeError(
       "INTERACTION_STORE_LOCK_TIMEOUT",
@@ -763,10 +1030,15 @@ export class FileMessageInteractionSessionStore
     const startedAt = performance.now();
     while (performance.now() - startedAt <= this.lockTimeoutMs) {
       if (
-        await this.retireObservedLock(owner.lockIdentity, async () => {
-          const current = await this.readLockOwner();
-          return Boolean(current && current.token === owner.token);
-        })
+        await this.retireObservedLock(
+          owner.lockIdentity,
+          async () => {
+            const current = await this.readLockOwner();
+            return Boolean(current && current.token === owner.token);
+          },
+          "release",
+          owner.token,
+        )
       ) {
         return;
       }
@@ -778,6 +1050,14 @@ export class FileMessageInteractionSessionStore
         break;
       }
       await delay(this.pollMs);
+    }
+    if (await existsLstat(`${this.lockPath}.transition`)) {
+      const marker = `${this.lockPath}.transition`;
+      storeError(
+        "INTERACTION_STORE_RECOVERY_REQUIRED",
+        "Interaction store recovery requires all users to stop before the abandoned transition marker is removed.",
+        this.transitionRecoveryContext(marker),
+      );
     }
     storeError(
       "INTERACTION_STORE_LOCK_LOST",
@@ -940,15 +1220,40 @@ export class FileMessageInteractionSessionStore
       );
     }
     const temp = `${this.filePath}.tmp-${process.pid}-${newToken()}`;
+    let renameCommitted = false;
+    let directorySynced = false;
     try {
       await this.writeAndSync(temp, document);
       await fs.rename(temp, this.filePath);
+      renameCommitted = true;
       const directoryHandle = await fs.open(this.directory, constants.O_RDONLY);
       try {
+        await this.lockRaceHooks.beforeStateDirectorySync?.();
         await directoryHandle.sync();
+        directorySynced = true;
       } finally {
         await directoryHandle.close();
+        await this.lockRaceHooks.afterStateDirectoryClose?.();
       }
+    } catch (error) {
+      if (renameCommitted) {
+        // error-policy:J2 The new row is visible after rename; failed directory
+        // durability/teardown makes retry unsafe and requires state inspection.
+        throw new ElizaError(
+          "Interaction store commit requires reconciliation after a post-rename failure.",
+          {
+            code: "INTERACTION_STORE_COMMIT_AMBIGUOUS",
+            cause: error,
+            context: {
+              committed: directorySynced ? true : "unknown",
+              filePath: this.filePath,
+              reconciliationRequired: true,
+              retrySafe: false,
+            },
+          },
+        );
+      }
+      throw error;
     } finally {
       try {
         await fs.rm(temp, { force: true });
@@ -989,16 +1294,57 @@ export class FileMessageInteractionSessionStore
           code: "INTERACTION_STORE_TRANSACTION_AND_RELEASE_FAILED",
           cause: operationError,
           context: {
+            ...(operationError instanceof ElizaError
+              ? {
+                  operationErrorCode: operationError.code,
+                  operationErrorContext: operationError.context,
+                }
+              : {}),
             releaseError:
               releaseError instanceof Error
                 ? releaseError.message
                 : String(releaseError),
+            ...(releaseError instanceof ElizaError
+              ? {
+                  releaseErrorCode: releaseError.code,
+                  releaseErrorContext: releaseError.context,
+                }
+              : {}),
           },
         },
       );
     }
     if (operationError) throw operationError;
-    if (releaseError) throw releaseError;
+    if (releaseError) {
+      // error-policy:J2 The state rename and directory fsync completed before
+      // every release path, so no release failure is safe for caller retry.
+      throw new ElizaError(
+        "Interaction transaction committed but lock release failed; do not retry the mutation.",
+        {
+          code:
+            releaseError instanceof ElizaError &&
+            releaseError.code === "INTERACTION_STORE_RELEASE_CLEANUP_FAILED"
+              ? "INTERACTION_STORE_COMMITTED_CLEANUP_FAILED"
+              : "INTERACTION_STORE_COMMITTED_RELEASE_FAILED",
+          cause: releaseError,
+          context: {
+            ...(releaseError instanceof ElizaError
+              ? {
+                  ...releaseError.context,
+                  releaseErrorCode: releaseError.code,
+                }
+              : {
+                  releaseError:
+                    releaseError instanceof Error
+                      ? releaseError.message
+                      : String(releaseError),
+                }),
+            committed: true,
+            retrySafeAfterRecovery: false,
+          },
+        },
+      );
+    }
     return result as T;
   }
 

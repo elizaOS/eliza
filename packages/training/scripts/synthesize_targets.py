@@ -42,6 +42,8 @@ from typing import Any
 
 import yaml
 
+from lib.generation_integrity import require_complete_generation
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -133,6 +135,7 @@ def call_anthropic(cfg: TeacherCfg, system: str, user: str) -> str:
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+    require_complete_generation(resp, source="synthesize_targets.anthropic")
     parts = []
     for b in resp.content:
         if hasattr(b, "text"):

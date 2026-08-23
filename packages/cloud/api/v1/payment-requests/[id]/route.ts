@@ -1,7 +1,7 @@
 /**
  * Payment requests — single resource.
  *
- * GET   /api/v1/payment-requests/:id            Authed creator view (full row).
+ * GET   /api/v1/payment-requests/:id            Authed creator view (allowlisted DTO).
  * GET   /api/v1/payment-requests/:id?public=1   Allowlisted checkout view (no auth required).
  */
 
@@ -12,7 +12,10 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { toPublicPaymentRequest } from "@/lib/services/payment-requests";
+import {
+  toPaymentRequestDto,
+  toPublicPaymentRequest,
+} from "@/lib/services/payment-requests";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -76,7 +79,10 @@ app.get("/", async (c) => {
       );
     }
 
-    return c.json({ success: true, paymentRequest: row });
+    return c.json({
+      success: true,
+      paymentRequest: toPaymentRequestDto(row),
+    });
   } catch (error) {
     // error-policy:J1 route boundary - translate failures into a structured HTTP response.
     logger.error("[PaymentRequests API] Failed to get payment request", {

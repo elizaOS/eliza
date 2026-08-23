@@ -8,6 +8,7 @@
  * first-run, setup, or normal Settings surfaces.
  */
 
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
@@ -159,13 +160,24 @@ function storedRowIsCanonical(
 
 async function writeElizaOwned(models: InstalledModel[]): Promise<void> {
 	await ensureRootDir();
-	const tmp = `${registryPath()}.tmp`;
+	// Unique staging name per write: a fixed `${path}.tmp` shared by concurrent
+	// writers lets one rename consume the other's temp file and throw ENOENT
+	// out of a mutation that reported success (issue #25123's staging race,
+	// mirrored from local-inference-routes.ts writeJsonFile).
+	const tmp = `${registryPath()}.${crypto.randomBytes(6).toString("hex")}.tmp`;
 	const payload: RegistryFile = {
 		version: 1,
 		models: models.map(serializeElizaOwnedModel),
 	};
-	await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
-	await fs.rename(tmp, registryPath());
+	try {
+		await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
+		await fs.rename(tmp, registryPath());
+	} catch (error) {
+		// error-policy:J6 temp cleanup is best-effort; unique names keep an
+		// orphan harmless to concurrent writers, and the write error is preserved.
+		await fs.rm(tmp, { force: true }).catch(() => undefined);
+		throw error;
+	}
 }
 
 function hydrateStoredElizaModel(

@@ -1,7 +1,8 @@
 /** Malformed scenario route path percent-encoding must not throw. */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
   ChannelType: {},
   createMessageMemory: vi.fn(),
   ElizaError: class ElizaError extends Error {},
@@ -32,6 +33,7 @@ vi.mock("./required-plugins.ts", () => ({
   assertProviderQualifiedPluginPackages: vi.fn(),
   loadScenarioRequiredPlugin: vi.fn(),
   pluginPackageIsRegistered: () => false,
+  resolveRequiredFixturePlugins: () => [],
   resolveRequiredPluginPackages: () => [],
 }));
 vi.mock("./required-services.ts", () => ({

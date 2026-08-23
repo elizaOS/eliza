@@ -19,9 +19,9 @@ export interface CloudAPIConfig {
 
 export interface BaileysConfig {
   authMethod?: "baileys";
+  accountId: string;
   authDir: string;
   printQRInTerminal?: boolean;
-  sessionPath?: string;
 }
 
 /**
@@ -51,6 +51,11 @@ export interface WhatsAppMessage {
     | WhatsAppReactionMessage
     | WhatsAppLocationMessage;
   replyToMessageId?: string;
+  /** Baileys-only context needed to reconstruct a native quoted message. */
+  replyToParticipant?: string;
+  replyToFromMe?: boolean;
+  replyToType?: "text" | "image" | "audio" | "video" | "document";
+  replyToText?: string;
 }
 
 export interface WhatsAppTemplate {
@@ -75,6 +80,8 @@ export interface WhatsAppTemplate {
  */
 export interface WhatsAppMediaMessage {
   link?: string;
+  /** Canonical bounded bytes required by the personal Baileys transport. */
+  bytes?: Uint8Array;
   id?: string;
   caption?: string;
   filename?: string;
@@ -346,6 +353,19 @@ export interface QRCodeData {
 
 export type ConnectionStatus = "connecting" | "open" | "close";
 
+/** Structurally authorized Baileys media metadata; contains no downloaded bytes. */
+export interface PersonalMediaMetadata {
+  kind: "image" | "audio" | "video" | "document";
+  mediaKey: Uint8Array;
+  directPath?: string;
+  url?: string;
+  fileSha256: Uint8Array;
+  fileEncSha256: Uint8Array;
+  fileLength: number;
+  mimeType: string;
+  fileName?: string;
+}
+
 export interface NormalizedMessage {
   id: string;
   from: string;
@@ -355,6 +375,7 @@ export interface NormalizedMessage {
   chatId?: string;
   senderId?: string;
   replyToId?: string;
+  personalMedia?: PersonalMediaMetadata;
 }
 
 /**

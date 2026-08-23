@@ -33,10 +33,15 @@ const storedUser = {
   organization: { id: "org-1", name: "org" },
 };
 const refreshedUser = { ...storedUser, email: "alice@example.com", name: "alice" };
+const getByStewardId = mock(async () => storedUser);
+const findPendingPhoneTelegramPersonalAccountConvergence = mock(async () => ({
+  status: "canonical_user" as const,
+  user: storedUser,
+}));
 
 mock.module("./services/users", () => ({
   usersService: {
-    getByStewardId: async () => storedUser,
+    getByStewardId,
     getByStewardIdForWrite: async () => refreshedUser,
     getByEmailWithOrganization: async () => undefined,
     getByWalletAddress: async () => undefined,
@@ -53,9 +58,7 @@ mock.module("./services/users", () => ({
 
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
-    findPendingPhoneTelegramPersonalAccountConvergence: async () => ({
-      status: "not_found" as const,
-    }),
+    findPendingPhoneTelegramPersonalAccountConvergence,
   },
 }));
 
@@ -93,17 +96,21 @@ describe("syncUserFromSteward — existing-user profile refresh (branch 1)", () 
   beforeEach(() => {
     updateCalls.length = 0;
     loggerErrorCalls.length = 0;
+    getByStewardId.mockClear();
+    findPendingPhoneTelegramPersonalAccountConvergence.mockClear();
     updateImpl = async (id, data) => {
       updateCalls.push({ id, data });
       return undefined;
     };
   });
 
-  test("happy path: refresh succeeds and the re-read row is returned", async () => {
+  test("uses the joined canonical inspection without repeating the Steward lookup", async () => {
     const { syncUserFromSteward } = await import("./steward-sync");
 
     const result = await syncUserFromSteward(baseParams);
 
+    expect(findPendingPhoneTelegramPersonalAccountConvergence).toHaveBeenCalledTimes(1);
+    expect(getByStewardId).not.toHaveBeenCalled();
     expect(updateCalls).toHaveLength(1);
     expect(result).toBe(refreshedUser as never);
     expect(loggerErrorCalls).toHaveLength(0);

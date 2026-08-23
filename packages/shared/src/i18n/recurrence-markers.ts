@@ -81,11 +81,26 @@ const NAME_LIKE_RECURRENCE_PATTERNS: readonly RegExp[] = [
 
 // Negative/one-shot directives participate in the same ordered intent stream
 // as positive cadence markers. The last explicit directive wins, while a
-// positive marker nested inside "not every ..." is ignored. "Only once a
-// week" remains recurring because the one-shot expression is followed by a
-// cadence unit.
+// positive marker nested inside "not every ..." is ignored. Cadence
+// adjectives ("not weekly") and plural weekday nouns ("not on Mondays")
+// negate the same way as determiner forms — a directly negated cadence word
+// is a one-shot statement, not a recurring one. "Only once a week" remains
+// recurring because the one-shot expression is followed by a cadence unit.
+const NEGATION_WORD = String.raw`\b(?:not|no|never|isn't|isn’t|aren't|aren’t|won't|won’t|doesn't|doesn’t|don't|don’t)\b`;
+const CADENCE_ADJECTIVE = String.raw`\b(?:daily|weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b`;
+const PLURAL_WEEKDAY = String.raw`\bmondays\b|\btuesdays\b|\bwednesdays\b|\bthursdays\b|\bfridays\b|\bsaturdays\b|\bsundays\b|\bweekdays\b|\bweekends\b`;
 const ONE_SHOT_DIRECTIVE_PATTERNS: readonly RegExp[] = [
-  /\b(?:not|no|never)\s+(?:a\s+)?(?:recurr(?:ing|ence)|repeat(?:ed|ing)?|every|each)\b(?:(?![,.;!?]|\b(?:but|rather|instead|actually|make\s+it)\b)[\s\S])*/i,
+  new RegExp(
+    `${NEGATION_WORD}\\s+(?:a\\s+)?(?:recurr(?:ing|ence)|repeat(?:ed|ing)?|every|each)\\b(?:(?![,.;!?]|\\b(?:but|rather|instead|actually|make\\s+it)\\b)[\\s\\S])*`,
+    "i",
+  ),
+  new RegExp(
+    // "not weekly" / "never daily on Mondays": a negated cadence adjective
+    // (optionally followed by more cadence words) is one authoritative
+    // one-shot span that swallows any positive markers it covers.
+    `${NEGATION_WORD}\\s+(?:on\\s+|a\\s+|an\\s+)?(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY})(?:\\s+(?:or|and)\\s+(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY}))*(?:(?![,.;!?]|\\b(?:but|rather|instead|actually|make\\s+it)\\b)[\\s\\S])*`,
+    "i",
+  ),
   /\b(?:do\s+not|don't)\s+repeat\b(?:(?![,.;!?]|\b(?:but|rather|instead|actually|make\s+it)\b)[\s\S])*/i,
   /\b(?:just|only)\s+(?:once|one\s+time)\b(?!\s+(?:a|per|each|every)\s+(?:day|week|month|year))/i,
   /\b(?:once|one\s+time)\s+only\b/i,

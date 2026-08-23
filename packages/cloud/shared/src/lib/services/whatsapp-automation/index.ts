@@ -19,6 +19,7 @@ import {
   WHATSAPP_PHONE_NUMBER_ID,
   WHATSAPP_VERIFY_TOKEN,
 } from "../../constants/secrets";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "../../utils/logger";
 import {
   sendWhatsAppMessage,
@@ -107,7 +108,7 @@ class WhatsAppAutomationService {
         }
         logger.warn("[WhatsAppAutomation] Token validation failed", {
           status: response.status,
-          error: errorText.slice(0, 200),
+          error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
         });
         return {
           valid: false,

@@ -602,7 +602,11 @@ export class MemoryService extends Service {
 				if (similarity < matchThreshold) continue;
 				if (scored.length < limit) {
 					scored.push({ memory, similarity });
-					scored.sort((a, b) => b.similarity - a.similarity);
+					scored.sort((a, b) => {
+						const aSim = Number.isFinite(a.similarity) ? a.similarity : 0;
+						const bSim = Number.isFinite(b.similarity) ? b.similarity : 0;
+						return bSim - aSim;
+					});
 					continue;
 				}
 				if (similarity <= scored[scored.length - 1]?.similarity) continue;

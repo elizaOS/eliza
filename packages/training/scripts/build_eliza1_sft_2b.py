@@ -275,19 +275,11 @@ def _convert_personality() -> list[dict[str, Any]]:
                     msgs = []
                     break
                 msgs.append({"role": role, "content": content})
-            # The `shut_up` rubric trajectories end with an empty/whitespace
-            # assistant turn ("silence on demand"). SFT cannot learn from an
-            # empty target (format_for_training drops empty-content turns), so
-            # we truncate to the last assistant turn that has real content —
-            # which keeps the trainable part (e.g. "Stop talking." → "Ok.").
-            # Rows with no non-empty assistant turn at all are dropped.
-            last_nonempty = -1
-            for idx, m in enumerate(msgs):
-                if m["role"] == "assistant" and m["content"].strip():
-                    last_nonempty = idx
-            if last_nonempty < 0:
+            # SFT cannot learn an empty terminal target. Reject the complete
+            # trajectory instead of turning an earlier assistant prefix into a
+            # different training row.
+            if not msgs or msgs[-1]["role"] != "assistant" or not msgs[-1]["content"].strip():
                 continue
-            msgs = msgs[: last_nonempty + 1]
             if not any(m["role"] == "user" for m in msgs):
                 continue
             rows.append(

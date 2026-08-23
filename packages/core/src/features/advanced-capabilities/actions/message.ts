@@ -18,7 +18,10 @@ import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
-import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
+import {
+	deterministicOwnerEntityId,
+	resolveCanonicalOwnerIdForMessage,
+} from "../../../roles.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
 import {
 	markOwnerExclusiveDisclosureUsed,
@@ -1828,7 +1831,7 @@ async function resolveAdminTarget(
 	if (!connector) return null;
 	const ownerId =
 		(await resolveCanonicalOwnerIdForMessage(runtime, message)) ??
-		stringToUuid(`${runtime.character.name ?? runtime.agentId}-admin-entity`);
+		deterministicOwnerEntityId(runtime.agentId);
 	const target = {
 		source: connector.source,
 		accountId: connector.accountId ?? accountId,
@@ -4803,7 +4806,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "source",
 		description:
-			"Connector source: discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
+			"Connector source: discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
 		required: false,
 		subactions: [
 			"send",

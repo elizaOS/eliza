@@ -621,7 +621,19 @@ export class SharedRuntimeConversation {
   ): Promise<void> {
     const bounded = Object.fromEntries(
       Object.entries(ledger)
-        .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
+        .sort(([leftKey, left], [rightKey, right]) => {
+          const r =
+            typeof right.updatedAt === "number" &&
+            Number.isFinite(right.updatedAt)
+              ? right.updatedAt
+              : 0;
+          const l =
+            typeof left.updatedAt === "number" &&
+            Number.isFinite(left.updatedAt)
+              ? left.updatedAt
+              : 0;
+          return r - l || leftKey.localeCompare(rightKey);
+        })
         .slice(0, MAX_MOBILE_PUSH_DELIVERY_LEDGER_ENTRIES),
     );
     await this.state.storage.put(MOBILE_PUSH_DELIVERY_LEDGER_KEY, bounded);

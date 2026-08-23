@@ -68,6 +68,10 @@ export async function loginToImageRegistry(ssh: DockerSSHClient, image: string):
   );
 }
 
+export type RegistryAccessCompletion =
+  | { readonly outcome: "exact" }
+  | { readonly outcome: "unresolved"; readonly cause: unknown };
+
 /**
  * Guarantee deterministic registry access on a node before pulling `image`.
  *
@@ -84,35 +88,49 @@ export async function loginToImageRegistry(ssh: DockerSSHClient, image: string):
  *     stale cred so the pull falls back to deterministic anonymous access.
  *
  * Never hard-fails: a logout/login hiccup must not block the pull that follows.
+ * The returned completion lets exact-success callers retain the ambiguity;
+ * legacy callers may continue to ignore the result as before.
  */
-export async function ensureRegistryAccess(ssh: DockerSSHClient, image: string): Promise<void> {
+export async function ensureRegistryAccess(
+  ssh: DockerSSHClient,
+  image: string,
+): Promise<RegistryAccessCompletion> {
   const registryHost = getImageRegistryHost(image);
-  if (!registryHost) return;
+  if (!registryHost) return { outcome: "exact" };
 
   if (containersEnv.registryToken() || containersEnv.registryTokenFile()) {
     // error-policy:J6 best-effort registry priming — a login hiccup must not
     // block the `docker pull` that follows (which is the real gate and will
     // fail loudly if the cred was actually required). Surfaced via warn.
-    await loginToImageRegistry(ssh, image).catch((error) => {
+    try {
+      await loginToImageRegistry(ssh, image);
+      return { outcome: "exact" };
+    } catch (error) {
+      // error-policy:J2 preserve legacy best-effort behavior while returning
+      // the exact ambiguity to callers that require proven completion.
       logger.warn(`[ensureRegistryAccess] docker login to ${registryHost} failed; continuing`, {
         error: error instanceof Error ? error.message : String(error),
       });
-    });
-    return;
+      return { outcome: "unresolved", cause: error };
+    }
   }
 
   // No token configured: proactively drop any stale stored credential so the
   // public-image pull uses anonymous access deterministically.
   // error-policy:J6 best-effort stale-cred clearing — a logout hiccup must not
   // block the anonymous pull that follows; the pull is the real gate.
-  await ssh
-    .exec(`docker logout ${shellQuote(registryHost)} >/dev/null 2>&1 || true`, 30_000)
-    .catch((error) => {
-      logger.warn(
-        `[ensureRegistryAccess] docker logout ${registryHost} failed; a stale cred may block the public pull`,
-        { error: error instanceof Error ? error.message : String(error) },
-      );
-    });
+  try {
+    await ssh.exec(`docker logout ${shellQuote(registryHost)} >/dev/null 2>&1`, 30_000);
+    return { outcome: "exact" };
+  } catch (error) {
+    // error-policy:J2 preserve legacy best-effort behavior while returning the
+    // exact ambiguity to callers that require proven completion.
+    logger.warn(
+      `[ensureRegistryAccess] docker logout ${registryHost} failed; a stale cred may block the public pull`,
+      { error: error instanceof Error ? error.message : String(error) },
+    );
+    return { outcome: "unresolved", cause: error };
+  }
 }
 
 /**

@@ -17,6 +17,7 @@
  * secret. PLAID_SECRET remains an active-environment compatibility alias.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { z } from "zod";
 
 const PLAID_DEFAULT_HOST = "https://sandbox.plaid.com";
@@ -135,7 +136,7 @@ function redactPlaidErrorMessage(
   config: PlaidConfig,
   body: Record<string, unknown>,
 ): string {
-  let sanitized = message.slice(0, 500);
+  let sanitized = truncateWellFormed(toWellFormedUnicode(message), 500);
   const secrets = [config.clientId, config.secret];
   for (const value of Object.values(body)) {
     if (typeof value === "string" && value.length > 0) {

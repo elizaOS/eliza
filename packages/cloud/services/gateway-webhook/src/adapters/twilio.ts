@@ -150,6 +150,8 @@ async function sendTwilioReply(
   try {
     receipt = await response.json();
   } catch (cause) {
+    // error-policy:J2 preserve the provider parse failure while adding a
+    // stable delivery classification for the gateway boundary.
     throw new PlatformDeliveryError(
       "Twilio accepted delivery without a valid receipt",
       "uncertain",

@@ -36,7 +36,13 @@ export function serializeSceneForPrompt(
   }
   const completeOcr: typeof scene.ocr = [];
   for (const [, arr] of ocrByDisplay) {
-    arr.sort((a, b) => b.conf - a.conf);
+    arr.sort((a, b) => {
+      const bConf =
+        typeof b.conf === "number" && Number.isFinite(b.conf) ? b.conf : 0;
+      const aConf =
+        typeof a.conf === "number" && Number.isFinite(a.conf) ? a.conf : 0;
+      return bConf - aConf || a.text.localeCompare(b.text);
+    });
     completeOcr.push(...arr);
   }
 

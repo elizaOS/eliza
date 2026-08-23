@@ -17,7 +17,7 @@
  * source table, not by the requested page size.
  */
 
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, not, sql } from "drizzle-orm";
 import { dbRead } from "../../../db/client";
 import { discordConnections } from "../../../db/schemas/discord-connections";
 import { phoneGatewayDevices } from "../../../db/schemas/phone-gateway-devices";
@@ -34,6 +34,11 @@ export * from "./service";
  * design, not as a quick unblock.
  */
 export const MAX_ROWS_PER_CONNECTED_CAPABILITY_SOURCE = 1000;
+
+const isRetiredBlueBubbles = sql<boolean>`(
+  lower(btrim(coalesce(${phoneGatewayDevices.send_method}, ''))) = 'bluebubbles-local-bridge'
+  or lower(btrim(coalesce(${phoneGatewayDevices.metadata} ->> 'gatewayKind', ''))) = 'bluebubbles'
+)`;
 
 function createDbSourceLoader(): ConnectedCapabilitySourceLoader {
   return {
@@ -82,6 +87,7 @@ function createDbSourceLoader(): ConnectedCapabilitySourceLoader {
         dbRead
           .select({
             id: phoneGatewayDevices.id,
+            isRetiredBlueBubbles,
             is_active: phoneGatewayDevices.is_active,
             can_send_sms: phoneGatewayDevices.can_send_sms,
             can_receive_sms: phoneGatewayDevices.can_receive_sms,
@@ -92,7 +98,9 @@ function createDbSourceLoader(): ConnectedCapabilitySourceLoader {
             last_seen_at: phoneGatewayDevices.last_seen_at,
           })
           .from(phoneGatewayDevices)
-          .where(eq(phoneGatewayDevices.organization_id, organizationId))
+          .where(
+            and(eq(phoneGatewayDevices.organization_id, organizationId), not(isRetiredBlueBubbles)),
+          )
           .orderBy(asc(phoneGatewayDevices.created_at), asc(phoneGatewayDevices.id))
           .limit(MAX_ROWS_PER_CONNECTED_CAPABILITY_SOURCE),
       ]);

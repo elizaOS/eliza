@@ -352,38 +352,6 @@ describe("handlePluginRoutes config persistence", () => {
     }
   });
 
-  it("lists plugins with the Signal tombstone present and no QR override wiring", async () => {
-    // Regression for the hard-cut Signal transport (9264e11): the retired
-    // @elizaos/plugin-signal package still exists as a tombstone, and the
-    // plugins list must build WITHOUT any applySignalQrOverride wiring —
-    // re-registering the module made GET /api/plugins throw on the missing
-    // export and 500 on every renderer poll.
-    const config = { env: {}, plugins: { entries: {} } };
-    const ctx = makeContext({}, config, {
-      method: "GET",
-      pathname: "/api/plugins",
-      url: new URL("http://localhost/api/plugins"),
-    });
-    ctx.state.plugins = [
-      makePlugin() as never,
-      { ...makePlugin(), id: "signal", name: "Signal" } as never,
-    ];
-    ctx.buildPluginEvmDiagnosticEntry = vi.fn(() => ({
-      ...makePlugin(),
-      id: "evm",
-      name: "EVM",
-      npmName: "@elizaos/plugin-evm",
-    })) as never;
-
-    await expect(handlePluginRoutes(ctx)).resolves.toBe(true);
-    expect(ctx.error).not.toHaveBeenCalled();
-    expect(ctx.json).toHaveBeenCalledWith(ctx.res, {
-      plugins: expect.arrayContaining([
-        expect.objectContaining({ id: "signal" }),
-      ]),
-    });
-  });
-
   it("uses runtime settings instead of a poisoned process env in the plugin catalog", async () => {
     process.env.DISCORD_API_TOKEN = "host-token-must-not-count";
     const config = {

@@ -431,7 +431,7 @@ export default scenario({
   ],
   isolation: "shared-runtime",
   requires: {
-    plugins: [CONCURRENCY_SCENARIO_PLUGIN_NAME],
+    fixturePlugins: [CONCURRENCY_SCENARIO_PLUGIN_NAME],
   },
   seed: [
     {

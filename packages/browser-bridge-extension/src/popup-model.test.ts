@@ -4,7 +4,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserBridgeSettings } from "./browser-bridge-contracts";
-import { derivePopupStatusModel } from "./popup-model";
+import {
+  derivePopupStatusModel,
+  requiredCurrentSiteOriginPattern,
+} from "./popup-model";
 import type { BackgroundState } from "./protocol";
 
 function baseState(overrides: Partial<BackgroundState> = {}): BackgroundState {
@@ -18,6 +21,7 @@ function baseState(overrides: Partial<BackgroundState> = {}): BackgroundState {
     activeSessionId: null,
     rememberedTabCount: 0,
     settingsSummary: null,
+    connectionIssue: null,
     ...overrides,
   };
 }
@@ -50,15 +54,12 @@ const enabledSettings: BrowserBridgeSettings = {
 
 function derive(
   state: BackgroundState,
-  options: {
-    discoveredApiBaseUrl?: string | null;
-    hasAllWebsiteAccess?: boolean;
-  } = {},
+  options: { hasAllWebsiteAccess?: boolean } = {},
 ) {
   return derivePopupStatusModel({
     state,
-    discoveredApiBaseUrl: options.discoveredApiBaseUrl ?? null,
     hasAllWebsiteAccess: options.hasAllWebsiteAccess ?? false,
+    currentSitePermissionRequired: false,
   });
 }
 
@@ -74,7 +75,6 @@ describe("derivePopupStatusModel", () => {
     const views = [
       derive(baseState({ syncing: true })),
       derive(baseState()),
-      derive(baseState(), { discoveredApiBaseUrl: "http://127.0.0.1:2138" }),
       derive(baseState({ config, lastError: "Pairing expired" })),
       derive(baseState({ config })),
       derive(baseState({ config, settings: enabledSettings })),
@@ -90,20 +90,71 @@ describe("derivePopupStatusModel", () => {
     }
   });
 
-  it("uses pairing recovery only when configuration is missing", () => {
+  it("leaves automatic connection states action-free", () => {
     expect(derive(baseState())).toMatchObject({
       kind: "needs_app",
-      action: { kind: "show_recovery", label: "Pair this browser" },
-    });
-    expect(
-      derive(baseState(), { discoveredApiBaseUrl: "http://127.0.0.1:2138" }),
-    ).toMatchObject({
-      kind: "needs_settings",
-      action: { kind: "show_recovery", label: "Pair this browser" },
+      action: null,
     });
     expect(
       derive(baseState({ config, settings: enabledSettings })).action,
     ).toBeNull();
+  });
+
+  it("keeps native app and authentication failures actionable without diagnostics", () => {
+    expect(
+      derive(
+        baseState({
+          connectionIssue: "app_not_running",
+          lastError: "startup: native host detail that must not render",
+        }),
+      ),
+    ).toMatchObject({
+      kind: "needs_app",
+      label: "Open Eliza to connect",
+      action: null,
+    });
+    expect(
+      derive(
+        baseState({
+          connectionIssue: "app_not_authenticated",
+          lastError: "startup: raw authentication detail",
+        }),
+      ),
+    ).toMatchObject({
+      kind: "needs_app",
+      label: "Sign in to Eliza",
+      action: null,
+    });
+  });
+
+  it("routes revoked or invalid credentials to recovery instead of an ineffective retry", () => {
+    expect(
+      derive(
+        baseState({
+          connectionIssue: "recovery_required",
+          lastError: "pairing token revoked: raw native detail",
+        }),
+      ),
+    ).toMatchObject({
+      kind: "error",
+      label: "Reset in Eliza, then reconnect",
+      action: { kind: "recover", label: "Reconnect" },
+    });
+  });
+
+  it("keeps an explicit disconnect reversible without resuming in the background", () => {
+    expect(
+      derive(
+        baseState({
+          connectionIssue: "owner_disconnected",
+          lastError: null,
+        }),
+      ),
+    ).toMatchObject({
+      kind: "needs_settings",
+      label: "Disconnected from Eliza",
+      action: { kind: "recover", label: "Reconnect" },
+    });
   });
 
   it("shows website access only when all-sites mode needs it", () => {
@@ -115,12 +166,81 @@ describe("derivePopupStatusModel", () => {
       kind: "needs_permission",
       action: { kind: "grant_website_access" },
     });
+    expect(
+      derive({
+        ...state,
+        lastError:
+          "website blocker sync failed: browser permission is required",
+      }),
+    ).toMatchObject({
+      kind: "needs_permission",
+      action: { kind: "grant_website_access" },
+    });
     expect(derive(state, { hasAllWebsiteAccess: true })).toMatchObject({
       kind: "connected",
       action: null,
     });
     expect(
       derive(baseState({ config, settings: enabledSettings })).action,
+    ).toBeNull();
+  });
+
+  it("offers one exact-site browser permission when the active site needs it", () => {
+    expect(
+      derivePopupStatusModel({
+        state: baseState({
+          config,
+          settings: {
+            ...enabledSettings,
+            siteAccessMode: "current_site_only",
+          },
+        }),
+        hasAllWebsiteAccess: false,
+        currentSitePermissionRequired: true,
+      }),
+    ).toMatchObject({
+      kind: "needs_permission",
+      label: "Connected · Allow this site",
+      action: { kind: "grant_current_site", label: "Allow this site" },
+    });
+  });
+
+  it("derives exact current-site grants and rejects unrelated or privileged URLs", () => {
+    const currentSiteState = baseState({
+      config,
+      settings: {
+        ...enabledSettings,
+        siteAccessMode: "current_site_only",
+      },
+    });
+    expect(
+      requiredCurrentSiteOriginPattern(
+        currentSiteState,
+        "https://Accounts.Example.com/login",
+      ),
+    ).toBe("https://accounts.example.com/*");
+    expect(
+      requiredCurrentSiteOriginPattern(currentSiteState, "chrome://settings"),
+    ).toBeNull();
+
+    const grantedSiteState = baseState({
+      config,
+      settings: {
+        ...enabledSettings,
+        grantedOrigins: ["https://allowed.example"],
+      },
+    });
+    expect(
+      requiredCurrentSiteOriginPattern(
+        grantedSiteState,
+        "https://allowed.example/account",
+      ),
+    ).toBe("https://allowed.example/*");
+    expect(
+      requiredCurrentSiteOriginPattern(
+        grantedSiteState,
+        "https://unlisted.example/",
+      ),
     ).toBeNull();
   });
 
@@ -139,7 +259,7 @@ describe("derivePopupStatusModel", () => {
       derive(baseState({ config, lastError: "Pairing expired" })),
     ).toMatchObject({
       kind: "error",
-      action: { kind: "sync", label: "Retry connection" },
+      action: null,
     });
     expect(
       derive(baseState({ config, settings: enabledSettings })),
@@ -150,7 +270,7 @@ describe("derivePopupStatusModel", () => {
     });
   });
 
-  it("never copies pairing credentials into diagnostics", () => {
+  it("never copies pairing credentials into the compact status model", () => {
     const view = derive(
       baseState({
         config,
@@ -160,12 +280,8 @@ describe("derivePopupStatusModel", () => {
         settingsSummary: "Active tabs",
       }),
     );
-    expect(view.diagnostics).toMatchObject({
-      app: "https://agent.example.com",
-      mode: "Active tabs",
-      tabCount: "3",
-    });
     expect(JSON.stringify(view)).not.toContain(config.pairingToken);
     expect(JSON.stringify(view)).not.toContain(config.companionId);
+    expect(JSON.stringify(view)).not.toContain(config.apiBaseUrl);
   });
 });

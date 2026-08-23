@@ -268,6 +268,20 @@ function PrivateCloudAppRoute({
 }: {
   appElement: ReactNode;
 }): React.JSX.Element {
+  return (
+    <StewardAuthProvider>
+      <CloudManagementSessionGate>
+        <PrivateCloudRegistrationRoute appElement={appElement} />
+      </CloudManagementSessionGate>
+    </StewardAuthProvider>
+  );
+}
+
+function PrivateCloudRegistrationRoute({
+  appElement,
+}: {
+  appElement: ReactNode;
+}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     subscribePrivateCloudRegistration,
     getPrivateCloudRegistrationSnapshot,
@@ -293,6 +307,29 @@ function PrivateCloudAppRoute({
     );
   }
   return <AppCatchAllRoute appElement={appElement} />;
+}
+
+/**
+ * Authenticate the unambiguous `/cloud/*` management namespace before the
+ * generic agent app can boot. This keeps localhost development on the same
+ * Steward session contract as canonical Cloud hosts while leaving self-hosted
+ * password auth scoped to ordinary agent-app routes.
+ */
+export function CloudManagementSessionGate({
+  children,
+}: {
+  children: ReactNode;
+}): React.JSX.Element {
+  const { ready, authenticated } = useSessionAuth();
+  const location = useLocation();
+  if (!ready) return <RouteChunkFallback />;
+  if (!authenticated) {
+    const returnTo = encodeURIComponent(
+      `${location.pathname}${location.search}${location.hash}`,
+    );
+    return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
+  }
+  return <>{children}</>;
 }
 
 /** Preserve any retired dashboard deep link not covered by a narrower map. */
@@ -365,7 +402,9 @@ function CloudRouteElement({
     if (isApexControlPlaneHost()) return <CanonicalCloudAppRedirect />;
     return (
       <StewardAuthProvider>
-        <AppCatchAllRoute appElement={appElement} />
+        <CloudManagementSessionGate>
+          <AppCatchAllRoute appElement={appElement} />
+        </CloudManagementSessionGate>
       </StewardAuthProvider>
     );
   }

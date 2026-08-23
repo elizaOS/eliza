@@ -201,7 +201,11 @@ export class AppAnalyticsService {
     requests: AppRequest[],
     requestedFunnelSteps?: string[],
   ): AppSessionAnalytics {
-    const ordered = requests
+    const validRequests = requests.filter(
+      (request) =>
+        request.created_at instanceof Date && Number.isFinite(request.created_at.getTime()),
+    );
+    const ordered = validRequests
       .slice()
       .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
     const sessions = new Map<
@@ -257,7 +261,11 @@ export class AppAnalyticsService {
           exitPath: last?.path ?? first?.path ?? "/",
         };
       })
-      .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+      .sort((a, b) => {
+        const aTime = Number.isFinite(Date.parse(a.startedAt)) ? Date.parse(a.startedAt) : 0;
+        const bTime = Number.isFinite(Date.parse(b.startedAt)) ? Date.parse(b.startedAt) : 0;
+        return bTime - aTime;
+      });
 
     const uniqueVisitors = new Set(sessionRows.map((s) => s.visitorId)).size;
     const totalPageViews = sessionRows.reduce((sum, s) => sum + s.pageViews, 0);

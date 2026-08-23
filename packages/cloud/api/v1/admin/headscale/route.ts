@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import { logger } from "@/lib/utils/logger";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 interface HeadscaleNode {
@@ -85,7 +86,7 @@ app.get("/", async (c) => {
       const errText = await nodesResponse.text().catch(() => "");
       logger.error("[Admin Headscale] API request failed", {
         status: nodesResponse.status,
-        body: errText.slice(0, 500),
+        body: truncateWellFormed(toWellFormedUnicode(errText), 500),
       });
       return c.json(
         {

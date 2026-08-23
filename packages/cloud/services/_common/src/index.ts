@@ -61,3 +61,4 @@ export {
   type TelegramDeliveryState,
   TelegramEgressAlreadyClaimedError,
 } from "./telegram-delivery";
+export { toWellFormedUnicode, truncateWellFormed } from "./text";

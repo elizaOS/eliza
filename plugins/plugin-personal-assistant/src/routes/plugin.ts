@@ -33,8 +33,7 @@ import type {
 import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-  resolveCanonicalOwnerId,
-  stringToUuid,
+  resolveOwnerEntityIdOrDefault,
 } from "@elizaos/core";
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
@@ -84,18 +83,11 @@ function requestBaseUrl(req: http.IncomingMessage): string {
 }
 
 function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
-  const ownerId = runtime ? resolveCanonicalOwnerId(runtime) : null;
-  if (typeof ownerId === "string" && ownerId.trim()) {
-    return ownerId as UUID;
+  if (!runtime) {
+    return null;
   }
-  if (
-    runtime &&
-    typeof runtime.agentId === "string" &&
-    runtime.agentId.trim()
-  ) {
-    return stringToUuid(`${runtime.agentId}-admin-entity`) as UUID;
-  }
-  return null;
+  // Same derivation as the chat write surface and LifeOps service scope.
+  return resolveOwnerEntityIdOrDefault(runtime);
 }
 
 function runtimeAuthDb(runtime: AgentRuntime): unknown {

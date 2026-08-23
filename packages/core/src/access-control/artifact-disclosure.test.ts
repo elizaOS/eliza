@@ -3,9 +3,10 @@
  * the OWNER/ADMIN-full / USER-grant-driven / fail-closed matrix and the
  * untrusted grant parser. Pure functions, no harness.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AccessContext, Memory, UUID } from "../types";
 import {
+	type ArtifactVariantReferences,
 	artifactDisclosureRecordFromMemory,
 	canAccessArtifact,
 	parseArtifactShareGrants,
@@ -55,13 +56,18 @@ describe("resolveArtifactDisclosure", () => {
 	});
 
 	it("OWNER and ADMIN rank → full regardless of scope or grants", () => {
-		for (const c of [
-			ctx({ role: "OWNER", isOwner: true }),
-			ctx({ role: "ADMIN" }),
-		]) {
-			expect(
-				resolveArtifactDisclosure({ scope: "owner-private" }, c, AGENT),
-			).toBe("full");
+		for (const scope of [
+			"owner-private",
+			"agent-private",
+			"user-private",
+			"private",
+		] as const) {
+			for (const c of [
+				ctx({ role: "OWNER", isOwner: true }),
+				ctx({ role: "ADMIN" }),
+			]) {
+				expect(resolveArtifactDisclosure({ scope }, c, AGENT)).toBe("full");
+			}
 		}
 	});
 
@@ -187,6 +193,33 @@ describe("resolveArtifactDisclosure", () => {
 			),
 		).toBe("none");
 	});
+
+	it.each([
+		"owner-private",
+		"agent-private",
+		"user-private",
+		"private",
+	] as const)(
+		"GUEST and unresolved authority are denied %s artifacts, including self-scoped records",
+		(scope) => {
+			for (const accessContext of [ctx({ role: "GUEST" }), ctx()]) {
+				expect(
+					resolveArtifactDisclosure(
+						{ scope, scopedEntityId: VIEWER },
+						accessContext,
+						AGENT,
+					),
+				).toBe("none");
+			}
+		},
+	);
+
+	it.each(["global", "shared", "room"] as const)(
+		"unresolved authority preserves explicitly open %s disclosure",
+		(scope) => {
+			expect(resolveArtifactDisclosure({ scope }, ctx(), AGENT)).toBe("full");
+		},
+	);
 });
 
 describe("canAccessArtifact", () => {
@@ -252,6 +285,20 @@ describe("selectArtifactVariant", () => {
 				redacted: "/api/media/redacted.txt",
 			}),
 		).toBeNull();
+	});
+
+	it("does not read full or redacted references after a denied decision", () => {
+		const readFullFromProvider = vi.fn(() => "/api/media/full.wav");
+		const readRedactedFromStorage = vi.fn(() => "/api/media/redacted.txt");
+		const references = {} as ArtifactVariantReferences<string>;
+		Object.defineProperties(references, {
+			full: { enumerable: true, get: readFullFromProvider },
+			redacted: { enumerable: true, get: readRedactedFromStorage },
+		});
+
+		expect(selectArtifactVariant("none", references)).toBeNull();
+		expect(readFullFromProvider).not.toHaveBeenCalled();
+		expect(readRedactedFromStorage).not.toHaveBeenCalled();
 	});
 });
 

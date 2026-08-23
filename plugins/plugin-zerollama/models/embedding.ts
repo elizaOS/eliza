@@ -10,7 +10,7 @@
  * no prefix is silently substituted for the requested embedding.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { type EmbeddingModel, embed } from "ai";
 import { createOllama } from "ollama-ai-provider-v2";
 
@@ -157,7 +157,10 @@ export async function handleTextEmbedding(
       typeof (error as { responseBody?: unknown }).responseBody === "string"
         ? {
             message: error.message,
-            responseBody: (error as { responseBody: string }).responseBody.slice(0, 400),
+            responseBody: truncateWellFormed(
+              toWellFormedUnicode((error as { responseBody: string }).responseBody),
+              400
+            ),
           }
         : error;
     logger.error({ error: detail }, "Error in TEXT_EMBEDDING model");

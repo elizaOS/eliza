@@ -353,4 +353,29 @@ describe("Matrix connector account roles (agent vs personal)", () => {
     expect(personal?.accessGate).toBe("owner_binding");
     expect(personal?.purpose).toContain("reading");
   });
+
+  it("sorts resolved targets safely when matching rooms", async () => {
+    const service = {
+      getJoinedRooms: vi.fn(async () => [
+        {
+          roomId: "!room1:hs.example",
+          name: "General",
+          canonicalAlias: "#general:hs.example",
+          joinedMemberCount: 10,
+        },
+        {
+          roomId: "!room2:hs.example",
+          name: "Random",
+          canonicalAlias: "#random:hs.example",
+          joinedMemberCount: 5,
+        },
+      ]),
+    } as unknown as MatrixService;
+
+    const { registration } = registerAndGetConnector(service);
+    const targets = await registration.resolveTargets("general");
+    expect(targets).toHaveLength(1);
+    expect(targets[0]?.target.channelId).toBe("!room1:hs.example");
+    expect(targets[0]?.score).toBeGreaterThan(0);
+  });
 });

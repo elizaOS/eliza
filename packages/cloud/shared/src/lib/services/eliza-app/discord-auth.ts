@@ -5,6 +5,7 @@
  * See: https://discord.com/developers/docs/topics/oauth2
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { discordFetch } from "../../utils/discord-api";
 import { logger } from "../../utils/logger";
 import { elizaAppConfig } from "./config";
@@ -93,13 +94,13 @@ class DiscordAuthService {
       if (tokenResponse.status === 400) {
         logger.warn("[DiscordAuth] Authorization code rejected by Discord", {
           status: tokenResponse.status,
-          error: errorText.slice(0, 200),
+          error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
         });
         return null;
       }
       logger.error("[DiscordAuth] Token exchange failed", {
         status: tokenResponse.status,
-        error: errorText.slice(0, 200),
+        error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
       });
       throw new Error(
         `[DiscordAuth] Discord token endpoint returned status ${tokenResponse.status}`,
@@ -125,7 +126,7 @@ class DiscordAuthService {
       const errorText = await userResponse.text();
       logger.error("[DiscordAuth] User profile fetch failed", {
         status: userResponse.status,
-        error: errorText.slice(0, 200),
+        error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
       });
       throw new Error(`[DiscordAuth] Discord user endpoint returned status ${userResponse.status}`);
     }

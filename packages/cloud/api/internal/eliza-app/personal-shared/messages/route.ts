@@ -1,6 +1,7 @@
 /** Runs a trusted messaging delivery through one rowless personal Shared turn. */
 
 import { ChannelType } from "@elizaos/core/edge";
+import type { SharedGroupReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -14,6 +15,9 @@ import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { elizaAppUserService } from "@/lib/services/eliza-app";
+import { isAllowedBlooioMediaUrl } from "@/lib/services/eliza-app/blooio-media-allowlist";
+import { MAX_INBOUND_MEDIA_IMAGES } from "@/lib/services/eliza-app/describe-inbound-media";
+import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-enrichment";
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
@@ -50,6 +54,7 @@ type DeliveryStage =
   | "worker_context"
   | "account_resolution"
   | "voice_transcription"
+  | "media_description"
   | "account_claim"
   | "dedicated_runtime"
   | "shared_runtime";
@@ -220,17 +225,26 @@ const sharedMessageSchema = z.union([
     messageId: z.string().trim().min(1).max(160),
     message: z.string().trim().min(1).max(4000),
   }),
-  z.object({
-    platform: z.enum(["twilio", "blooio"]),
-    project: projectSchema,
-    connectorAccountId: connectorAccountIdSchema,
-    phoneNumber: z
-      .string()
-      .trim()
-      .regex(/^\+[1-9]\d{6,14}$/),
-    messageId: z.string().trim().min(1).max(160),
-    message: z.string().trim().min(1).max(4000),
-  }),
+  z
+    .object({
+      platform: z.enum(["twilio", "blooio"]),
+      project: projectSchema,
+      connectorAccountId: connectorAccountIdSchema,
+      phoneNumber: z
+        .string()
+        .trim()
+        .regex(/^\+[1-9]\d{6,14}$/),
+      messageId: z.string().trim().min(1).max(160),
+      message: z.string().trim().min(1).max(4000),
+      mediaUrls: z
+        .array(z.string().url().refine(isAllowedBlooioMediaUrl))
+        .min(1)
+        .max(MAX_INBOUND_MEDIA_IMAGES)
+        .optional(),
+    })
+    .refine(
+      (input) => input.platform === "blooio" || input.mediaUrls === undefined,
+    ),
   z.object({
     platform: z.literal("blooio"),
     chatType: z.literal("group"),
@@ -524,14 +538,8 @@ app.post("/", async (c) => {
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
     let groupPersonalAgentId: string | undefined;
-    let groupDeliveryAuthority:
-      | {
-          bindingId: string;
-          ownerUserId: string;
-          personalAgentId: string;
-          version: number;
-        }
-      | undefined;
+    let groupDeliveryAuthority: GroupDeliveryAuthority | undefined;
+    let groupTrustedDelivery: SharedGroupReminderDelivery | undefined;
     let dedicated:
       | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
       | null
@@ -722,6 +730,23 @@ app.post("/", async (c) => {
       groupConversationId = binding.conversation_id;
       groupPersonalAgentId = binding.personal_agent_id;
       groupDeliveryAuthority = groupBindingDelivery(binding).authority;
+      // Only the owner who linked Eliza may schedule proactive sends into the
+      // group; other participants have no account or billing authority here.
+      // The stored destination pins the binding generation of this turn so a
+      // later rebind, revocation, or chat cutover fails the fire closed.
+      if (
+        parsed.data.actor.platformUserId === binding.created_by_platform_user_id
+      ) {
+        groupTrustedDelivery = {
+          platform: parsed.data.platform,
+          kind: "group",
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          chatId: parsed.data.chatId,
+          ownerLabel: parsed.data.actor.displayName ?? "the group owner",
+          authority: groupDeliveryAuthority,
+        };
+      }
       const actorDigest = (
         await sha256Hex(
           `${parsed.data.platform}\n${parsed.data.actor.platformUserId}`,
@@ -887,6 +912,37 @@ app.post("/", async (c) => {
           userId: account.userId,
         },
       );
+    }
+    // A dedicated runtime describes images itself through its own metered
+    // IMAGE_DESCRIPTION model, so pooled-key vision runs only for turns the
+    // shared runtime (text-only) will answer.
+    if (
+      parsed.data.platform === "blooio" &&
+      !isGroupMessage(parsed.data) &&
+      parsed.data.mediaUrls &&
+      !dedicated
+    ) {
+      stage = "media_description";
+      // Pooled-key spend is reachable by any inbound sender, so it sits behind
+      // the durable admission ledger: one idempotency claim per connector
+      // message id (a redelivery reuses the stored description instead of
+      // re-spending) and atomic per-sender/per-connector daily image
+      // ceilings. Every skip, including a missing admission decision, keeps
+      // the raw media-URL text the adapter synthesized; only an untyped bug
+      // fails the delivery.
+      const enrichment = await enrichInboundImageMedia({
+        env: c.env,
+        platform: "blooio",
+        project: parsed.data.project,
+        connectorAccountId: parsed.data.connectorAccountId,
+        sourceMessageId: parsed.data.messageId,
+        organizationId: account.organizationId,
+        userId: account.userId,
+        mediaUrls: parsed.data.mediaUrls,
+      });
+      if (enrichment.kind === "described") {
+        deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${enrichment.description}`;
+      }
     }
     if (deliveryMessage && groupActorLabel) {
       deliveryMessage = `${groupActorLabel}: ${deliveryMessage}`;
@@ -1168,7 +1224,7 @@ app.post("/", async (c) => {
           worker.namespace,
           parsed.data.messageId,
           "platform",
-          undefined,
+          groupTrustedDelivery,
           undefined,
           { type: ChannelType.GROUP, source: parsed.data.platform },
         )

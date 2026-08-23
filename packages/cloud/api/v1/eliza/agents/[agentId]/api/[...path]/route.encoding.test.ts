@@ -25,6 +25,7 @@ mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestAgentEvents: () => ({}),
   sharedRestAgentStart: () => ({}),
   sharedRestAuthMe: () => ({}),
+  sharedRestAuthStatus: () => ({}),
   sharedRestCharacter: () => ({}),
   sharedRestCommands: () => ({}),
   sharedRestConfig: () => ({}),

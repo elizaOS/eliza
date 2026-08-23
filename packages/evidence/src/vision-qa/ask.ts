@@ -13,6 +13,7 @@
  * (CLI / certify) turns those into an explicit skipped/failed record.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { EvidenceError } from "../errors.ts";
 import {
   type BackendResponse,
@@ -102,7 +103,10 @@ async function postJson(
       `vision-qa backend returned ${response.status} ${response.statusText}`,
       {
         code: "VISION_BACKEND_HTTP",
-        context: { status: response.status, detail: detail.slice(0, 500) },
+        context: {
+          status: response.status,
+          detail: truncateWellFormed(toWellFormedUnicode(detail), 500),
+        },
       },
     );
   }

@@ -389,28 +389,40 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
 
   private sortLongTermMemories(memories: LongTermMemoryRecord[]): LongTermMemoryRecord[] {
     return [...memories].sort((left, right) => {
-      const leftUpdated = left.updatedAt.getTime();
-      const rightUpdated = right.updatedAt.getTime();
+      const leftUpdated = Number.isFinite(left.updatedAt.getTime()) ? left.updatedAt.getTime() : 0;
+      const rightUpdated = Number.isFinite(right.updatedAt.getTime())
+        ? right.updatedAt.getTime()
+        : 0;
       if (rightUpdated !== leftUpdated) {
         return rightUpdated - leftUpdated;
       }
-      const leftConfidence = left.confidence ?? 0;
-      const rightConfidence = right.confidence ?? 0;
+      const leftConfidence = Number.isFinite(left.confidence) ? (left.confidence as number) : 0;
+      const rightConfidence = Number.isFinite(right.confidence) ? (right.confidence as number) : 0;
       if (rightConfidence !== leftConfidence) {
         return rightConfidence - leftConfidence;
       }
-      return right.createdAt.getTime() - left.createdAt.getTime();
+      const leftCreated = Number.isFinite(left.createdAt.getTime()) ? left.createdAt.getTime() : 0;
+      const rightCreated = Number.isFinite(right.createdAt.getTime())
+        ? right.createdAt.getTime()
+        : 0;
+      return rightCreated - leftCreated;
     });
   }
 
   private sortSessionSummaries(summaries: SessionSummaryRecord[]): SessionSummaryRecord[] {
     return [...summaries].sort((left, right) => {
-      const leftUpdated = left.updatedAt.getTime();
-      const rightUpdated = right.updatedAt.getTime();
+      const leftUpdated = Number.isFinite(left.updatedAt.getTime()) ? left.updatedAt.getTime() : 0;
+      const rightUpdated = Number.isFinite(right.updatedAt.getTime())
+        ? right.updatedAt.getTime()
+        : 0;
       if (rightUpdated !== leftUpdated) {
         return rightUpdated - leftUpdated;
       }
-      return right.createdAt.getTime() - left.createdAt.getTime();
+      const leftCreated = Number.isFinite(left.createdAt.getTime()) ? left.createdAt.getTime() : 0;
+      const rightCreated = Number.isFinite(right.createdAt.getTime())
+        ? right.createdAt.getTime()
+        : 0;
+      return rightCreated - leftCreated;
     });
   }
 

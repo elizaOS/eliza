@@ -136,7 +136,6 @@ const SETUP_GUIDE_ANCHORS = {
   twilio: "#twilio-sms--voice",
   matrix: "#matrix",
   msteams: "#microsoft-teams",
-  signal: "#signal",
   imessage: "#imessage-macos-only",
   blooio: "#blooio-sms-via-api",
   nostr: "#nostr",
