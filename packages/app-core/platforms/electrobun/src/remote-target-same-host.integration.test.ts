@@ -212,7 +212,9 @@ class DeterministicRelay implements RemoteTargetRelayTransport {
   }
 
   async activateManagedNetwork(): Promise<{ hostname: string }> {
-    throw new Error("unused");
+    throw new Error(
+      "Managed-network activation is outside this relay harness.",
+    );
   }
 
   async activate(input: {
