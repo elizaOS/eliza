@@ -3064,6 +3064,46 @@ interface AospFusedTextLoaderState {
   kvQuantRejected?: boolean;
 }
 
+export function resolveAospCompletionBudget(options: {
+  requestedMaxTokens?: number;
+  contextSize: number | null;
+  promptTokenCount: number;
+}): number {
+  const { contextSize, promptTokenCount, requestedMaxTokens } = options;
+  if (
+    !Number.isSafeInteger(contextSize) ||
+    contextSize == null ||
+    contextSize <= 0
+  ) {
+    throw new Error(
+      "[aosp-local-inference] a positive loaded context size is required before generation",
+    );
+  }
+  if (!Number.isSafeInteger(promptTokenCount) || promptTokenCount < 0) {
+    throw new Error(
+      "[aosp-local-inference] prompt token count must be a non-negative safe integer",
+    );
+  }
+  const available = contextSize - promptTokenCount;
+  if (available <= 0) {
+    throw new Error(
+      `[aosp-local-inference] complete prompt requires ${promptTokenCount} tokens but the loaded context supports ${contextSize}; refusing to truncate it`,
+    );
+  }
+  if (requestedMaxTokens === undefined) return available;
+  if (!Number.isSafeInteger(requestedMaxTokens) || requestedMaxTokens <= 0) {
+    throw new Error(
+      "[aosp-local-inference] requested maxTokens must be a positive safe integer",
+    );
+  }
+  if (requestedMaxTokens > available) {
+    throw new Error(
+      `[aosp-local-inference] requested ${requestedMaxTokens} output tokens but only ${available} fit after the complete prompt; refusing to clamp the request`,
+    );
+  }
+  return requestedMaxTokens;
+}
+
 /**
  * Tokenize `text` against the fused context via `eliza_inference_tokenize`,
  * copying the malloc'd `int*` buffer into a JS-owned `Int32Array` and freeing
@@ -3406,8 +3446,13 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         throw new Error("[aosp-local-inference] fused text generate aborted");
       }
       const promptTokens = tokenizeFused(active, args.prompt);
+      const maxTokens = resolveAospCompletionBudget({
+        requestedMaxTokens: args.maxTokens,
+        contextSize: active.contextSize,
+        promptTokenCount: promptTokens.length,
+      });
       const config: AospLlmStreamConfig = {
-        maxTokens: args.maxTokens ?? 512,
+        maxTokens,
         temperature: args.temperature ?? 0.7,
         topP: 0.9,
         topK: 40,
@@ -3429,6 +3474,11 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           ...(args.signal ? { signal: args.signal } : {}),
           ...(args.onTextChunk ? { onTextChunk: args.onTextChunk } : {}),
         });
+        if (result.finishReason === "length") {
+          throw new Error(
+            `[aosp-local-inference] generation reached the ${maxTokens}-token context boundary; refusing to return partial output`,
+          );
+        }
         return result.text;
       };
       try {

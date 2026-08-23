@@ -7,7 +7,11 @@
  * the two with a queue-backed async iterator.
  */
 
-import type { TextStreamResult, TokenUsage } from "@elizaos/core";
+import {
+	ElizaError,
+	type TextStreamResult,
+	type TokenUsage,
+} from "@elizaos/core";
 import type {
 	CapacitorLlamaCompletionParams,
 	CapacitorLlamaCompletionResult,
@@ -95,6 +99,32 @@ export interface StreamCapacitorPromptArgs {
 	postProcess?: (raw: string) => string;
 }
 
+function assertCompleteStreamingResult(
+	result: CapacitorLlamaCompletionResult,
+): void {
+	if (
+		!result.truncated &&
+		!result.stopped_limit &&
+		!result.context_full &&
+		!result.interrupted
+	) {
+		return;
+	}
+	throw new ElizaError(
+		"Local streaming generation ended before completion; refusing to return partial output",
+		{
+			code: "LOCAL_INFERENCE_INCOMPLETE_OUTPUT",
+			context: {
+				truncated: result.truncated,
+				stoppedLimit: result.stopped_limit,
+				contextFull: result.context_full,
+				interrupted: result.interrupted,
+				tokensPredicted: result.tokens_predicted,
+			},
+		},
+	);
+}
+
 export function streamCapacitorPrompt(
 	args: StreamCapacitorPromptArgs,
 ): TextStreamResult {
@@ -153,10 +183,9 @@ export function streamCapacitorPrompt(
 					args.onChunk?.(visibleChunk);
 					queue.push(visibleChunk);
 				}
+				assertCompleteStreamingResult(result);
 				if (result.stopped_eos) completionFinishReason = "stop";
 				else if (result.stopped_word) completionFinishReason = "stop";
-				else if (result.stopped_limit) completionFinishReason = "length";
-				else if (result.interrupted) completionFinishReason = "abort";
 				return result;
 			} catch (err) {
 				promptError = err;

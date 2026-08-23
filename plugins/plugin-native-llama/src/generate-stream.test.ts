@@ -121,6 +121,26 @@ describe("CapacitorLlamaAdapter.generateStream", () => {
     expect(collected[2].text).toBe("world");
   });
 
+  it("generate rejects text that reaches the decode boundary before EOS", async () => {
+    vi.resetModules();
+    const state = installMockPlugin();
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/tmp/model.gguf" });
+    const generation = adapter.generate({ prompt: "hi", maxTokens: 3 });
+
+    await pumpMicrotasks();
+    state.resolveCompletion?.({
+      text: "partial",
+      tokens_evaluated: 2,
+      tokens_predicted: 3,
+      timings: { predicted_ms: 50 },
+    });
+
+    await expect(generation).rejects.toThrow(/partial text/);
+  });
+
   it("ends with an error+done pair when the native call rejects", async () => {
     vi.resetModules();
     const state = installMockPlugin();

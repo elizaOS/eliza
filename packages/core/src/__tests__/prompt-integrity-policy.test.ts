@@ -185,7 +185,32 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-app-manager/src/api/apps-routes.ts": [/maxTokens\s*:/],
 	"plugins/plugin-local-inference/src/pii/llm-recognizer.ts": [/maxTokens\s*:/],
-	"plugins/plugin-local-inference/src/provider.ts": [/maxTokens:\s*1024/],
+	"plugins/plugin-local-inference/src/provider.ts": [
+		/maxTokens:\s*1024/,
+		/OMIT_MAX_TOKENS_LOCAL_BUDGET/,
+	],
+	"plugins/plugin-native-llama/src/capacitor-llama-adapter.ts": [
+		/Math\.min\(Math\.floor\(requested\),\s*MOBILE_MAX_TOKENS_CAP\)/,
+	],
+	"plugins/plugin-local-inference/src/adapters/capacitor-llama/index.ts": [
+		/OMIT_MAX_TOKENS_LOCAL_BUDGET/,
+		/n_predict:\s*params\.omitMaxTokens/,
+		/finishReason:\s*result\.stopped_eos\s*\?\s*"stop"\s*:\s*undefined/,
+	],
+	"plugins/plugin-local-inference/src/adapters/capacitor-llama/text-streaming.ts":
+		[
+			/else if \(result\.stopped_limit\) completionFinishReason = "length"/,
+			/else if \(result\.interrupted\) completionFinishReason = "abort"/,
+		],
+	"plugins/plugin-native-inference/src/aosp-llama-paths.ts": [
+		/resolveAospGenerateTokenBudget/,
+		/ELIZA_LLAMA_MAX_OUTPUT_TOKENS/,
+	],
+	"plugins/plugin-native-inference/src/aosp-local-inference-bootstrap.ts": [
+		/maxTokens:\s*args\.maxTokens\s*\?\?\s*512/,
+	],
+	"packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java":
+		[/RESPONSE_HANDLER_MAX_TOKENS/, /ELIZA_LLAMA_MAX_OUTPUT_TOKENS/],
 	"plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts": [
 		/maxTokens\s*:/,
 	],

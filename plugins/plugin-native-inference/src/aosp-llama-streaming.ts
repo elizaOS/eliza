@@ -465,6 +465,8 @@ export interface AospStreamingLlmResult {
   steps: number;
   drafted: number;
   accepted: number;
+  outputTokens: number;
+  finishReason: "stop" | "length";
 }
 
 const DEFAULT_MAX_TOKENS_PER_STEP = 32;
@@ -512,6 +514,7 @@ export async function streamGenerate(
   let steps = 0;
   let drafted = 0;
   let accepted = 0;
+  let outputTokens = 0;
   try {
     binding.llmStreamPrefill({ stream, tokens: args.promptTokens });
     while (true) {
@@ -527,6 +530,7 @@ export async function streamGenerate(
       steps += 1;
       drafted += step.drafterDrafted;
       accepted += step.drafterAccepted;
+      outputTokens += step.tokens.length;
       if (step.text.length > 0) {
         chunks.push(step.text);
         if (args.onTextChunk) {
@@ -542,7 +546,14 @@ export async function streamGenerate(
     binding.llmStreamClose(stream);
   }
 
-  return { text: chunks.join(""), steps, drafted, accepted };
+  return {
+    text: chunks.join(""),
+    steps,
+    drafted,
+    accepted,
+    outputTokens,
+    finishReason: outputTokens >= args.config.maxTokens ? "length" : "stop",
+  };
 }
 
 /**

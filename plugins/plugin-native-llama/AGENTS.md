@@ -90,7 +90,11 @@ Add a new variant to the `SamplerStage` union in `src/definitions.ts`. The nativ
 - **`llama-cpp-capacitor` is dynamically imported** inside `loadPlugin()` so the adapter can be bundled into desktop builds without import-resolution errors. The native plugin is feature-detected at call time; missing methods warn and skip the unsupported operation.
 - **`buun-llama-cpp` fork** exposes `setCacheType`, `setSpecType`, and `getNativeKernels` methods not present in stock builds. The adapter feature-detects all three; stock builds silently skip them.
 - **`generateStream`** is the canonical generation path. `generate()` is a wrapper that drains the stream into a single `GenerateResult`.
-- **Mobile token cap:** `resolveMobileMaxTokens` clamps `maxTokens` to 256 on mobile to avoid OOM. Adjust `MOBILE_MAX_TOKENS_CAP` in `capacitor-llama-adapter.ts` if the cap needs to change.
+- **Mobile decode boundary:** requests above the supported 256-token mobile
+  decode boundary reject before dispatch; they are never clamped. If native
+  generation reaches that boundary before EOS, `generate()` rejects rather
+  than returning partial text as complete. Streaming callers receive
+  `finishReason: "length"` and must surface that incomplete terminal state.
 - **Token tree codec:** `serializeTokenTree` / `deserializeTokenTree` must stay in sync with the native C++ sampler. The wire format is versioned (version 1); bump `VERSION` in `token-tree-codec.ts` and update the native side together.
 - **No elizaOS plugin manifest:** This package does not export an elizaOS `Plugin` object and is not loaded via the normal plugin auto-enable path. It is wired manually via `registerCapacitorLlamaLoader` in the Capacitor bootstrap.
 - **`@elizaos/ui` dep avoided by design.** `TokenTreeDescriptor` / `TokenSequence` are re-declared locally in `definitions.ts` so this package does not depend on `@elizaos/ui`.

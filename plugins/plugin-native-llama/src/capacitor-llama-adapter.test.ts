@@ -354,7 +354,29 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     }
   });
 
-  it("caps hostile generation token counts and derives stable cache slots", async () => {
+  it("rejects unsupported generation budgets instead of silently clamping them", async () => {
+    vi.resetModules();
+    const state = installMockPlugin();
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/tmp/llama.gguf" });
+    await expect(
+      adapter.generate({
+        prompt: "hi",
+        maxTokens: Number.POSITIVE_INFINITY,
+      }),
+    ).rejects.toThrow(/refusing to clamp/);
+    await expect(
+      adapter.generate({
+        prompt: "hi",
+        maxTokens: 257,
+      }),
+    ).rejects.toThrow(/refusing to clamp/);
+    expect(state.completionCalls).toHaveLength(0);
+  });
+
+  it("preserves supported budgets and derives stable cache slots", async () => {
     vi.resetModules();
     const state = installMockPlugin();
     const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
@@ -363,7 +385,7 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     await adapter.load({ modelPath: "/tmp/llama.gguf" });
     await adapter.generate({
       prompt: "hi",
-      maxTokens: Number.POSITIVE_INFINITY,
+      maxTokens: 64,
       cacheKey: "user:../../escape",
     });
 
@@ -377,7 +399,7 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     ).LlamaCpp.completion.mock.calls[0][0] as {
       params: Record<string, unknown>;
     };
-    expect(params.params.n_predict).toBe(256);
+    expect(params.params.n_predict).toBe(64);
     expect(params.params.cache_prompt).toBe(true);
     expect(typeof params.params.slot_id).toBe("number");
     expect(params.params.slot_id).toBeGreaterThanOrEqual(0);

@@ -12,8 +12,9 @@
  * The native plugin is dynamically imported and feature-detected — fork-only
  * methods (`setCacheType`, `setSpecType`, `getNativeKernels`) warn and skip on
  * stock builds. `generateStream` is the canonical generation path and
- * `generate` drains it into a single result; mobile `maxTokens` is clamped to
- * `MOBILE_MAX_TOKENS_CAP` to avoid OOM.
+ * `generate` drains it into a single result. Requests beyond the mobile
+ * decode boundary reject before dispatch, and a generation that reaches the
+ * boundary rejects instead of returning partial text as complete.
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
@@ -143,7 +144,6 @@ interface LlamaCppPluginLike {
 // the chat LLM and the embedding model never collide on the same native
 // context.
 let nextContextId = 1;
-const DEFAULT_MAX_TOKENS = 256;
 
 /**
  * Mobile-side parallel slot count. Mirrors `DEFAULT_CACHE_PARALLEL` in
@@ -162,7 +162,7 @@ function deriveCacheSlotId(key: string): number {
   }
   return Math.abs(hash | 0) % MOBILE_PARALLEL;
 }
-const MOBILE_MAX_TOKENS_CAP = 256;
+const MOBILE_SUPPORTED_MAX_TOKENS = 256;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -259,10 +259,19 @@ function detectPlatform(): "ios" | "android" | "web" {
 }
 
 function resolveMobileMaxTokens(requested?: number): number {
-  if (!Number.isFinite(requested) || requested == null || requested <= 0) {
-    return DEFAULT_MAX_TOKENS;
+  if (requested == null) {
+    return MOBILE_SUPPORTED_MAX_TOKENS;
   }
-  return Math.min(Math.floor(requested), MOBILE_MAX_TOKENS_CAP);
+  if (
+    !Number.isSafeInteger(requested) ||
+    requested <= 0 ||
+    requested > MOBILE_SUPPORTED_MAX_TOKENS
+  ) {
+    throw new RangeError(
+      `[capacitor-llama] maxTokens must be a positive integer no greater than the mobile decode boundary (${MOBILE_SUPPORTED_MAX_TOKENS}); refusing to clamp the request`,
+    );
+  }
+  return requested;
 }
 
 function numberFromUnknown(value: unknown): number | null {
@@ -897,6 +906,9 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     let outputTokens = 0;
     let durationMs = 0;
     let lastError: string | null = null;
+    let finishReason:
+      | Extract<GenerationEvent, { kind: "done" }>["finishReason"]
+      | undefined;
     // Wall-clock time-to-first-token: from the call start to the first decoded
     // token event. This is the on-device prefill wall-clock the resource
     // workbench differences into prefill vs decode throughput. Stays undefined
@@ -913,11 +925,15 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       } else if (event.kind === "error") {
         lastError = event.message;
       } else if (event.kind === "done") {
-        // The done payload's authoritative fields come from the
-        // closed-over scope below — set when the native call returns.
+        finishReason = event.finishReason;
       }
     }
     if (lastError) throw new Error(lastError);
+    if (finishReason === "length") {
+      throw new Error(
+        "[capacitor-llama] generation reached the mobile decode boundary before EOS; refusing to return partial text",
+      );
+    }
     // Re-read native counters from the cached completion result. We stored
     // them on `this.lastCompletionStats` inside the stream's lifecycle.
     const stats = this.lastCompletionStats;
