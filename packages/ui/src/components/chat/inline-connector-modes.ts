@@ -86,6 +86,23 @@ export function connectorWidgetModes(
  * account injection (account management is a settings surface, not a chat
  * card).
  */
+function toPriorityScore(value: number | undefined): number {
+  return Number.isFinite(value) ? (value as number) : 0;
+}
+
+function compareConnectorWidgetModePriority(
+  a: { defaultPriority?: number; id: string },
+  b: { defaultPriority?: number; id: string },
+): number {
+  const aScore = toPriorityScore(a.defaultPriority);
+  const bScore = toPriorityScore(b.defaultPriority);
+  if (aScore !== bScore) return aScore - bScore;
+  return a.id.localeCompare(b.id);
+}
+
+export const __testCompareConnectorWidgetModePriority =
+  compareConnectorWidgetModePriority;
+
 export function defaultConnectorWidgetModeId(
   pluginId: string,
   modes: readonly ConnectorWidgetMode[],
@@ -95,6 +112,6 @@ export function defaultConnectorWidgetModeId(
     .filter(
       (mode) => mode.defaultPriority !== undefined && offered.has(mode.id),
     )
-    .sort((a, b) => (a.defaultPriority ?? 0) - (b.defaultPriority ?? 0))[0];
+    .sort(compareConnectorWidgetModePriority)[0];
   return ranked?.id ?? modes[0]?.id ?? null;
 }
