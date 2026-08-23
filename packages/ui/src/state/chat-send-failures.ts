@@ -11,7 +11,11 @@ const VALIDATION_FAILURE_STATUSES: ReadonlySet<number> = new Set([
 ]);
 
 export function getSendValidationFailureMessage(err: unknown): string | null {
-  const status = (err as { status?: number }).status;
+  // Optional read: this classifies a rejection value, and a rejection can be
+  // `null`/`undefined` (`throw null`, `Promise.reject()`). A plain property
+  // read throws there, which would replace the user-facing notice with an
+  // unhandled error inside the send path's own failure handler.
+  const status = (err as { status?: number } | null | undefined)?.status;
   if (typeof status !== "number" || !VALIDATION_FAILURE_STATUSES.has(status)) {
     return null;
   }
@@ -21,8 +25,8 @@ export function getSendValidationFailureMessage(err: unknown): string | null {
 }
 
 export function buildSendFailureNotice(err: unknown): string {
-  const status = (err as { status?: number }).status;
-  const kind = (err as { kind?: string }).kind;
+  const status = (err as { status?: number } | null | undefined)?.status;
+  const kind = (err as { kind?: string } | null | undefined)?.kind;
   if (status === 401 || status === 403) {
     return "Your session expired — sign in again and resend your message.";
   }
