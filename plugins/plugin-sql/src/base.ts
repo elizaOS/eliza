@@ -407,6 +407,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { filterByAccessContext } from "@elizaos/core";
 
 const v4 = () => crypto.randomUUID();
 
@@ -2835,6 +2836,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         embedding: embedding ? Array.from(embedding) : undefined,
       });
 
+      const shouldFilter = Boolean(params.accessContext);
       if (includeEmbedding) {
         const baseQuery = tx
           .select({
@@ -2845,12 +2847,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
           .where(and(...conditions))
           .orderBy(...order);
+        if (shouldFilter && params.accessContext) {
+          const overLimit = effectiveLimit !== undefined ? effectiveLimit * 5 : 50;
+          const fetchLimit = overLimit + (offset ?? 0);
+          const rowsOver = await baseQuery.limit(fetchLimit);
+          const memories = rowsOver.map((row) => mapRow(row.memory as SelectedMemory, row.embedding));
+          const filtered = filterByAccessContext(memories as unknown as never[], params.accessContext, this.agentId) as typeof memories;
+          if (effectiveLimit === undefined && offset === undefined) return filtered;
+          const start = offset ?? 0;
+          const end = effectiveLimit !== undefined ? start + effectiveLimit : undefined;
+          return end !== undefined ? filtered.slice(start, end) : filtered.slice(start);
+        }
         const rows = await (async () => {
-          // Honor `effectiveLimit` (params.limit ?? params.count), matching the
-          // no-embedding branch below. Gating the LIMIT on `params.count` alone
-          // meant any caller passing only `limit` got NO limit clause and the
-          // whole table back (e.g. evaluator recent-message fetches returning
-          // thousands of rows instead of 10).
           if (effectiveLimit && offset !== undefined && offset > 0) {
             return baseQuery.limit(effectiveLimit).offset(offset);
           } else if (effectiveLimit) {
@@ -2872,6 +2880,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(memoryTable)
         .where(and(...conditions))
         .orderBy(...order);
+      if (shouldFilter && params.accessContext) {
+        const overLimit = effectiveLimit !== undefined ? effectiveLimit * 5 : 50;
+        const fetchLimit = overLimit + (offset ?? 0);
+        const rowsOver = await baseQuery.limit(fetchLimit);
+        const memories = rowsOver.map((row) => mapRow(row.memory as SelectedMemory, undefined));
+        const filtered = filterByAccessContext(memories as unknown as never[], params.accessContext, this.agentId) as typeof memories;
+        if (effectiveLimit === undefined && offset === undefined) return filtered;
+        const start = offset ?? 0;
+        const end = effectiveLimit !== undefined ? start + effectiveLimit : undefined;
+        return end !== undefined ? filtered.slice(start, end) : filtered.slice(start);
+      }
       const rows = await (async () => {
         if (effectiveLimit && offset !== undefined && offset > 0) {
           return baseQuery.limit(effectiveLimit).offset(offset);
@@ -2943,6 +2962,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .orderBy(desc(memoryTable.createdAt));
 
       const { limit, offset } = params;
+      const shouldFilter = Boolean(params.accessContext);
+      if (shouldFilter && params.accessContext) {
+        const overLimit = limit !== undefined ? limit * 5 : 50;
+        const fetchLimit = overLimit + (offset ?? 0);
+        const rowsOver = await baseQuery.limit(fetchLimit);
+        const memories = rowsOver.map((row) => ({
+          id: row.id as UUID,
+          createdAt: row.createdAt.getTime(),
+          content: typeof row.content === "string" ? JSON.parse(row.content) : row.content,
+          entityId: row.entityId as UUID,
+          agentId: row.agentId as UUID,
+          roomId: row.roomId as UUID,
+          worldId: (row.worldId ?? undefined) as UUID | undefined,
+          unique: row.unique,
+          metadata: row.metadata,
+        })) as Memory[];
+        const filtered = filterByAccessContext(memories as unknown as never[], params.accessContext, this.agentId) as Memory[];
+        if (limit === undefined && offset === undefined) return filtered;
+        const start = offset ?? 0;
+        const end = limit !== undefined ? start + limit : undefined;
+        return end !== undefined ? filtered.slice(start, end) : filtered.slice(start);
+      }
       const rows = await (async () => {
         if (limit !== undefined && offset !== undefined && offset > 0) {
           return baseQuery.limit(limit).offset(offset);

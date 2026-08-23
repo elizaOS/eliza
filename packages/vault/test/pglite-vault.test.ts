@@ -204,6 +204,108 @@ describe("PgliteVaultImpl", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("quarantine reason is truncated surrogate-safe and well-formed", async () => {
+    // Lone surrogate + astral at boundary: proves toWellFormed + truncateWellFormed
+    const dir = await mkdtemp(join(tmpdir(), "vault-pglite-quarantine-"));
+    const masterKey = generateMasterKey();
+    const dataDir = join(dir, ".vault-pglite");
+    const auditPath = join(dir, "audit", "vault.jsonl");
+    const writer = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(masterKey),
+      auditPath,
+    });
+    await writer.set("k", "secret-value", { sensitive: true });
+    await writer.close();
+
+    // Corrupt ciphertext to force quarantine path
+    const db = await PGlite.create(dataDir);
+    await db.query(`UPDATE vault_entries SET ciphertext = $1 WHERE key = $2`, [
+      "not-a-valid-ciphertext",
+      "k",
+    ]);
+    await db.close();
+
+    const reader = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(masterKey),
+      auditPath,
+    });
+
+    const loneSurrogate = String.fromCharCode(0xd800);
+    const astral = "🦊";
+    const asciiPrefix = "a".repeat(498);
+    const reason = `${asciiPrefix}${astral}${loneSurrogate} tail that should be sanitized and bounded`;
+    expect(reason.length).toBeGreaterThan(500);
+
+    const quarantined = await reader.quarantineUnreadable("k", reason, "test");
+    expect(quarantined).toBe(true);
+    expect(await reader.has("k")).toBe(false);
+
+    const verify = await PGlite.create(dataDir);
+    const rows = await verify.query<{ reason: string }>(
+      `SELECT reason FROM vault_quarantined_entries WHERE original_key = $1`,
+      ["k"],
+    );
+    expect(rows.rows).toHaveLength(1);
+    const stored = rows.rows[0]?.reason ?? "";
+    expect(stored.length).toBeLessThanOrEqual(500);
+    const maybeWellFormed = stored as unknown as {
+      isWellFormed?: () => boolean;
+    };
+    expect(
+      maybeWellFormed.isWellFormed
+        ? maybeWellFormed.isWellFormed()
+        : !/[\uD800-\uDFFF]/.test(stored),
+    ).toBe(true);
+    // Lone surrogate must be replaced by U+FFFD, astral must not be split
+    expect(stored).not.toContain(String.fromCharCode(0xd800));
+    expect(stored.includes("�") || stored.includes(astral)).toBe(true);
+    // Astral pair should be preserved intact if it fits, or backed off cleanly
+    if (stored.includes(astral)) {
+      expect(stored.includes(String.fromCharCode(0xd83e))).toBe(false);
+    }
+    await verify.close();
+    await reader.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("quarantine preserves ASCII reason verbatim and bounded", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vault-pglite-quarantine-ascii-"));
+    const masterKey = generateMasterKey();
+    const dataDir = join(dir, ".vault-pglite");
+    const writer = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(masterKey),
+      auditPath: join(dir, "audit", "vault.jsonl"),
+    });
+    await writer.set("plain", "value");
+    await writer.close();
+    const db = await PGlite.create(dataDir);
+    await db.query(`UPDATE vault_entries SET value = NULL WHERE key = $1`, [
+      "plain",
+    ]);
+    await db.close();
+    const reader = new PgliteVaultImpl({
+      dataDir,
+      masterKey: inMemoryMasterKey(masterKey),
+      auditPath: join(dir, "audit", "vault.jsonl"),
+    });
+    const asciiReason = "x".repeat(600);
+    await reader.quarantineUnreadable("plain", asciiReason, "test");
+    const verify = await PGlite.create(dataDir);
+    const rows = await verify.query<{ reason: string }>(
+      `SELECT reason FROM vault_quarantined_entries WHERE original_key = $1`,
+      ["plain"],
+    );
+    const stored = rows.rows[0]?.reason ?? "";
+    expect(stored.length).toBe(500);
+    expect(stored).toBe("x".repeat(500));
+    await verify.close();
+    await reader.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
   it("rejects corrupt persisted rows instead of returning null-ish values", async () => {
     const masterKey = generateMasterKey();
     const dir = await mkdtemp(join(tmpdir(), "vault-pglite-corrupt-"));
