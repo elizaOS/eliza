@@ -5,7 +5,7 @@ import {
   generateMasterPassword,
   resolveDataDir,
   sleep,
-} from "./helpers.ts";
+} from "../helpers.ts";
 
 describe("resolveDataDir", () => {
   it("expands leading tilde to the home directory", () => {
