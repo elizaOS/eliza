@@ -5161,6 +5161,43 @@ describe("runV5MessageRuntimeStage1", () => {
 
 		// Pure decision seam: the exact source precedence, ack suppression,
 		// failure-aware wording, and the async-handoff silence gate.
+		it("renders the unresolved-vocative identity notice only on ambient group turns", async () => {
+			// Review (#25283): the first cut emitted the notice on every turn,
+			// including DMs. Eligibility mirrors the suppression gate.
+			const runFor = async (content: Partial<Memory["content"]>) => {
+				const runtime = makeRuntime([
+					stage1Response({
+						thought: "Greeting.",
+						contexts: ["simple"],
+						replyText: "hey.",
+					}),
+				]);
+				// The classifier resolves against room participants; the minimal
+				// harness runtime needs the lookup or classification fails open.
+				(runtime as { getEntitiesForRoom?: unknown }).getEntitiesForRoom =
+					vi.fn(async () => []);
+				await runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage({ text: "hey eliza", ...content }),
+					state: makeState(),
+					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				});
+				const calls = useModelCalls(runtime);
+				return (
+					calls[0]?.[1] as { messages?: Array<{ content?: string }> }
+				).messages
+					?.map((m) => m.content ?? "")
+					.join("\n");
+			};
+
+			const ambient = await runFor({ channelType: ChannelType.GROUP });
+			expect(ambient).toContain("unresolved_vocative_notice");
+			expect(ambient).toContain('"eliza"');
+
+			const dm = await runFor({ channelType: ChannelType.DM });
+			expect(dm).not.toContain("unresolved_vocative_notice");
+		});
+
 		describe("resolveZeroDeliveryRecovery", () => {
 			it("never fabricates a failed-steps report on a toolless turn", () => {
 				// Effect honesty: with no action results at all, the fallback must

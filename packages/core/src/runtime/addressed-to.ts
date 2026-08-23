@@ -439,25 +439,24 @@ function vocativelyAddressesOtherParticipant(args: {
 }
 
 /**
- * Interjections and generic address words that occupy the vocative position
- * in ordinary chat ("ok cool", "hey bro") without naming anyone. A token on
- * this list never classifies as an unresolved vocative.
+ * Vocative-position token for the UNRESOLVED-name classifier: greeting+NAME
+ * only ("hey eliza", "gm sol"). This classifier has no participant
+ * resolution to discriminate names from ordinary words, so it keeps only the
+ * one shape with structural precision — review evidence on the first cut
+ * showed a bare-word alternative plus an enumerable stoplist classifying
+ * ordinary openings ("so,", "hmm.", "sorry,", "really?", "interesting.") as
+ * names, and a bare "NAME," shape has the same failure ("sorry, one sec").
+ * Comma and bare shapes remain valid only in the suppression matcher above,
+ * where resolution against real room participants is the discriminator.
  */
-const VOCATIVE_STOP_TOKENS = new Set([
-	"ok",
-	"okay",
-	"cool",
-	"thanks",
-	"thx",
-	"ty",
-	"lol",
-	"lmao",
-	"yes",
-	"no",
-	"yeah",
-	"yep",
-	"nah",
-	"sure",
+const VOCATIVE_TOKEN_RE =
+	/^\s*(?:hey|hi|yo|sup|hello|gm|gn)(?=$|[^\p{L}\p{N}])\s*[,–—-]?\s*@?([\p{L}\p{N}_.-]{2,32})(?=$|[^\p{L}\p{N}])/iu;
+
+/** Greeting words themselves never classify as the addressed name, and
+ * neither do generic second-person addressees ("hey bro", "gm everyone") — a
+ * small CLOSED grammatical class, unlike open-vocabulary stopword lists,
+ * which the review rejected as the sole guard for bare words. */
+const VOCATIVE_NON_NAME_WORDS = new Set([
 	"hey",
 	"hi",
 	"yo",
@@ -465,33 +464,22 @@ const VOCATIVE_STOP_TOKENS = new Set([
 	"hello",
 	"gm",
 	"gn",
-	"wtf",
-	"omg",
 	"bro",
 	"dude",
 	"man",
 	"guys",
 	"everyone",
+	"everybody",
 	"all",
 	"team",
 	"chat",
-	"u",
-	"you",
-	"pls",
-	"please",
-	"wait",
-	"stop",
-	"what",
-	"whats",
-	"why",
-	"how",
-	"who",
-	"when",
+	"folks",
+	"friend",
+	"buddy",
+	"mate",
+	"fam",
+	"yall",
 ]);
-
-/** Vocative-position token: "hey NAME …", "NAME, …", or a bare "NAME". */
-const VOCATIVE_TOKEN_RE =
-	/^\s*(?:(?:hey|hi|yo|sup|hello|gm|gn)(?=$|[^\p{L}\p{N}])\s*[,–—-]?\s*@?([\p{L}\p{N}_.-]{2,32})(?=$|[^\p{L}\p{N}])|@?([\p{L}\p{N}_.-]{2,32})\s*(?:[,!?.:;]|$))/iu;
 
 export type LeadingVocativeClass =
 	| { kind: "none" }
@@ -516,12 +504,15 @@ export async function classifyLeadingVocative(args: {
 	const { runtime, message } = args;
 	const text =
 		typeof message.content?.text === "string" ? message.content.text : "";
-	const match = VOCATIVE_TOKEN_RE.exec(text.slice(0, 80));
-	const raw = match?.[1] ?? match?.[2];
+	const match = VOCATIVE_TOKEN_RE.exec(text);
+	const raw = match?.[1];
 	if (!raw) return { kind: "none" };
-	const name = normalizeName(raw);
-	if (name.length < 2 || VOCATIVE_STOP_TOKENS.has(name))
+	// The character class admits dots/hyphens for platform handles; strip any
+	// trailing punctuation so "eliza." never yields "eliza." as the name.
+	const name = normalizeName(raw).replace(/[.,!?:;_-]+$/u, "");
+	if (name.length < 2 || VOCATIVE_NON_NAME_WORDS.has(name)) {
 		return { kind: "none" };
+	}
 
 	if (agentSelfNames(runtime).has(name)) return { kind: "self", name };
 

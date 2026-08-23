@@ -537,19 +537,53 @@ describe("classifyLeadingVocative (identity notice classifier)", () => {
 		).toEqual({ kind: "unresolved", name: "eliza" });
 	});
 
-	it('classifies a bare "eliza" as unresolved', async () => {
-		expect(
-			await classifyLeadingVocative({ runtime: rt(), message: msg("eliza") }),
-		).toEqual({ kind: "unresolved", name: "eliza" });
+	it("bare and comma-only openings never classify — greeting+NAME is the only shape", async () => {
+		// Review evidence: without participant resolution, bare/comma shapes
+		// classify ordinary words ("sorry, one sec"). Single-word and "X,"
+		// openings go to model judgment.
+		for (const text of ["eliza", "eliza, can you help", "sorry, one sec"]) {
+			expect(
+				(await classifyLeadingVocative({ runtime: rt(), message: msg(text) }))
+					.kind,
+			).toBe("none");
+		}
 	});
 
-	it("classifies the agent's own name token as self", async () => {
+	it("classifies the agent's own name token as self (greeting shape)", async () => {
 		expect(
 			await classifyLeadingVocative({
 				runtime: rt(),
-				message: msg("nubilio, you there?"),
+				message: msg("hey nubilio, you there?"),
 			}),
 		).toEqual({ kind: "self", name: "nubilio" });
+	});
+
+	it("reviewer false-positive corpus never classifies", async () => {
+		for (const text of [
+			"so, what now",
+			"hmm.",
+			"sorry,",
+			"well, maybe",
+			"actually, wait",
+			"really?",
+			"update?",
+			"nice.",
+			"interesting.",
+		]) {
+			expect(
+				(await classifyLeadingVocative({ runtime: rt(), message: msg(text) }))
+					.kind,
+			).toBe("none");
+		}
+	});
+
+	it("strips trailing punctuation from the captured token", async () => {
+		expect(
+			await classifyLeadingVocative({
+				runtime: rt(),
+				message: msg("hey eliza..."),
+			}),
+		).toEqual({ kind: "unresolved", name: "eliza" });
 	});
 
 	it("classifies a real participant as participant", async () => {
