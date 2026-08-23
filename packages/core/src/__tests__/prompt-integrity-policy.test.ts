@@ -246,6 +246,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/params\.maxTokens\s*\?\?\s*8192/,
 		/maxOutputTokens:\s*params\.maxTokens\s*\?\?\s*8192/,
 	],
+	"plugins/plugin-zai/models/text.ts": [
+		/defaultMaxTokens/,
+		/params\.maxTokens\s*\?\?\s*(?:4096|8192)/,
+	],
 	"plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts": [
 		/maxTokens\s*:/,
 	],

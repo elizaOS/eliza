@@ -99,6 +99,16 @@ describe("z.ai failure surfaces (real ai + @ai-sdk/openai-compatible, stubbed tr
     expect(emitEventOf(runtime)).not.toHaveBeenCalled();
   });
 
+  it("rejects a length-finished response instead of returning partial text", async () => {
+    const fetchMock = vi.fn(async () => chatCompletion("partial", "length"));
+    const runtime = createRuntime(fetchMock as unknown as typeof fetch);
+
+    await expect(handleTextSmall(runtime, { prompt: "hi" })).rejects.toMatchObject({
+      code: "MODEL_INCOMPLETE_OUTPUT",
+    });
+    expect(emitEventOf(runtime)).not.toHaveBeenCalled();
+  });
+
   it("keeps the success path intact: non-empty completion resolves and emits usage", async () => {
     const fetchMock = vi.fn(async () => chatCompletion("hello"));
     const runtime = createRuntime(fetchMock as unknown as typeof fetch);

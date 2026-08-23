@@ -1,9 +1,8 @@
 /**
  * Core text generation for the z.ai handlers. `resolveTextParams` maps
  * `GenerateTextParams` to the AI SDK call — selecting the per-size model, caching
- * per-size max-token caps (4096 for `air`/`flash`, 8192 otherwise), and folding
- * in the resolved thinking config. `generateTextWithModel` runs the call and
- * emits `MODEL_USED` with token usage.
+ * caller-requested output settings and the resolved thinking config.
+ * `generateTextWithModel` runs the call and emits `MODEL_USED` with token usage.
  *
  * Thinking mode is injected at the HTTP fetch layer via `createZaiRequestFetch`
  * rather than as an AI SDK parameter, because z.ai's OpenAI-compatible endpoint
@@ -47,7 +46,6 @@ function resolveRequestedModelName(params: GenerateTextParams, fallback: ModelNa
 
 function resolveTextParams(
   params: GenerateTextParams,
-  modelName: ModelName,
   thinking: ZaiThinkingConfig | null
 ): ResolvedTextParams {
   const prompt = params.prompt ?? "";
@@ -66,8 +64,7 @@ function resolveTextParams(
   const temperature = params.temperature ?? 0.7;
   const topP = topPExplicit ? (params.topP ?? 0.9) : undefined;
 
-  const defaultMaxTokens = modelName.includes("air") || modelName.includes("flash") ? 4096 : 8192;
-  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? defaultMaxTokens);
+  const maxTokens = params.maxTokens;
 
   const rawProviderOptions = rawParams.providerOptions;
   const providerOptions: ProviderOptions =
@@ -127,7 +124,7 @@ async function generateTextWithModel(
   }
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
   const thinking = getThinkingConfig(runtime, modelSize);
-  const resolved = resolveTextParams(params, modelName, thinking);
+  const resolved = resolveTextParams(params, thinking);
   const requestFetch = createZaiRequestFetch(thinking, (runtime.fetch ?? fetch) as ZaiFetch);
   const zai = createZaiClient(runtime, { fetch: requestFetch });
 
@@ -150,12 +147,29 @@ async function generateTextWithModel(
     presencePenalty: resolved.presencePenalty,
     experimental_telemetry: telemetryConfig,
     topP: resolved.topP,
-    ...(typeof resolved.maxTokens === "number" ? { maxTokens: resolved.maxTokens } : {}),
+    ...(typeof resolved.maxTokens === "number" ? { maxOutputTokens: resolved.maxTokens } : {}),
   };
 
   const { text, usage, finishReason } = await generateText(
     generateParams as Parameters<typeof generateText>[0]
   );
+
+  const normalizedFinishReason = finishReason?.trim().toLowerCase().replaceAll("-", "_");
+  if (
+    normalizedFinishReason === "length" ||
+    normalizedFinishReason === "max_tokens" ||
+    normalizedFinishReason === "max_output_tokens" ||
+    normalizedFinishReason === "max_completion_tokens" ||
+    normalizedFinishReason === "stop_length"
+  ) {
+    throw new ElizaError(
+      "z.ai reached its output boundary; refusing to return partial model output",
+      {
+        code: "MODEL_INCOMPLETE_OUTPUT",
+        context: { modelType, modelName, finishReason },
+      }
+    );
+  }
 
   // An empty completion is a provider failure (moderation, truncation,
   // upstream bug) — never a legitimate result for this prompt-only handler.

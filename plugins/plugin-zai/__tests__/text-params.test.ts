@@ -1,4 +1,4 @@
-/** Unit tests for text-param resolution (model selection, max-token caps, thinking body) driving mocked `ai.generateText` and the z.ai client — no live model. */
+/** Unit tests for text-param resolution (model selection, output-boundary omission, thinking body) driving mocked `ai.generateText` and the z.ai client — no live model. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateTextMock = vi.fn(async () => ({ text: "ok", usage: undefined }));
@@ -86,6 +86,26 @@ describe("z.ai text parameter resolution", () => {
         model: { modelName: "glm-workflow" },
       })
     );
+  });
+
+  it("omits an output boundary by default and forwards an explicit caller request", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const { handleTextSmall } = await import("../models/text");
+
+    await handleTextSmall(runtime as never, { prompt: "provider maximum" });
+    await handleTextSmall(runtime as never, { prompt: "explicit", maxTokens: 123 });
+
+    const defaultCall = generateTextMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const explicitCall = generateTextMock.mock.calls[1]?.[0] as Record<string, unknown>;
+    expect(defaultCall).not.toHaveProperty("maxOutputTokens");
+    expect(defaultCall).not.toHaveProperty("maxTokens");
+    expect(explicitCall.maxOutputTokens).toBe(123);
   });
 
   it("uses deprecated CoT budget settings to enable z.ai thinking mode", async () => {
