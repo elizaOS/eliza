@@ -1,3 +1,6 @@
+/**
+ * Exercises knowledge-graph SQL parsing and serialization helpers through deterministic unit coverage.
+ */
 import { describe, expect, it } from "vitest";
 import {
   parseJsonArray,

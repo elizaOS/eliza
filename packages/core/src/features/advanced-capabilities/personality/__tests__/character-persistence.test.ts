@@ -1,3 +1,6 @@
+/**
+ * Exercises character-persistence service detection and retrieval through deterministic unit tests.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
 	CHARACTER_PERSISTENCE_SERVICE,

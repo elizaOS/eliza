@@ -3,10 +3,9 @@
  * allow/denylists, value cap, method selectors, rate limits, and human
  * confirmation thresholds. Zero tests existed for this 232-line policy engine.
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createDefaultPolicy,
-  SigningPolicy,
   SigningPolicyEvaluator,
   type SigningRequest,
 } from "../signing-policy.ts";
@@ -123,11 +122,14 @@ describe("SigningPolicyEvaluator", () => {
     expect(d.allowed).toBe(true);
   });
 
-  it("skips selector check when data is too short", () => {
+  it("rejects calldata too short to contain a complete selector", () => {
     const policy = createDefaultPolicy();
     policy.allowedMethodSelectors = ["0x12345678"];
     const ev = new SigningPolicyEvaluator(policy);
-    expect(ev.evaluate(makeRequest({ data: "0x1234" })).allowed).toBe(true);
+    expect(ev.evaluate(makeRequest({ data: "0x1234" }))).toMatchObject({
+      allowed: false,
+      matchedRule: "method_selector_format",
+    });
   });
 
   it("enforces the hourly rate limit", () => {
