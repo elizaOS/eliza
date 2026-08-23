@@ -89,6 +89,7 @@ const NAME_LIKE_RECURRENCE_PATTERNS: readonly RegExp[] = [
 const NEGATION_WORD = String.raw`\b(?:not|no|never|isn't|isn’t|aren't|aren’t|won't|won’t|doesn't|doesn’t|don't|don’t)\b`;
 const CADENCE_ADJECTIVE = String.raw`\b(?:daily|weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b`;
 const PLURAL_WEEKDAY = String.raw`\bmondays\b|\btuesdays\b|\bwednesdays\b|\bthursdays\b|\bfridays\b|\bsaturdays\b|\bsundays\b|\bweekdays\b|\bweekends\b`;
+const NEGATED_CADENCE_BRIDGE = String.raw`(?:going\s+to\s+be|make\s+it|be|run)`;
 const ONE_SHOT_DIRECTIVE_PATTERNS: readonly RegExp[] = [
   new RegExp(
     `${NEGATION_WORD}\\s+(?:a\\s+)?(?:recurr(?:ing|ence)|repeat(?:ed|ing)?|every|each)\\b(?:(?![,.;!?]|\\b(?:but|rather|instead|actually|make\\s+it)\\b)[\\s\\S])*`,
@@ -98,7 +99,7 @@ const ONE_SHOT_DIRECTIVE_PATTERNS: readonly RegExp[] = [
     // "not weekly" / "never daily on Mondays": a negated cadence adjective
     // (optionally followed by more cadence words) is one authoritative
     // one-shot span that swallows any positive markers it covers.
-    `${NEGATION_WORD}\\s+(?:on\\s+|a\\s+|an\\s+)?(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY})(?:\\s+(?:or|and)\\s+(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY}))*(?:(?![,.;!?]|\\b(?:but|rather|instead|actually|make\\s+it)\\b)[\\s\\S])*`,
+    `${NEGATION_WORD}\\s+(?:${NEGATED_CADENCE_BRIDGE}\\s+)?(?:on\\s+|a\\s+|an\\s+)?(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY})(?:\\s+(?:or|and)\\s+(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY}))*(?:(?![,.;!?]|\\b(?:but|rather|instead|actually|make\\s+it)\\b)[\\s\\S])*`,
     "i",
   ),
   /\b(?:do\s+not|don't)\s+repeat\b(?:(?![,.;!?]|\b(?:but|rather|instead|actually|make\s+it)\b)[\s\S])*/i,

@@ -91,6 +91,31 @@ describe("textStatesExplicitRecurrence", () => {
     }
   });
 
+  it("handles negated cadence with intervening verbs without swallowing positive statements or questions", () => {
+    for (const text of [
+      "won't be daily",
+      "don't make it weekly",
+      "isn't going to be weekly",
+      "doesn't run daily",
+    ]) {
+      expect(textStatesExplicitRecurrence(text)).toBe(false);
+    }
+    for (const text of [
+      "will be daily",
+      "runs daily",
+      "is going to be weekly",
+      "isn't this a daily job?",
+    ]) {
+      expect(textStatesExplicitRecurrence(text)).toBe(true);
+    }
+    expect(
+      textStatesExplicitRecurrence("don't be daily, make it weekly instead"),
+    ).toBe(true);
+    expect(
+      textStatesExplicitRecurrence("weekly, actually don't make it daily"),
+    ).toBe(false);
+  });
+
   it("ignores role-labelled non-user text", () => {
     expect(
       textStatesExplicitRecurrence("assistant: should this be weekly?"),
