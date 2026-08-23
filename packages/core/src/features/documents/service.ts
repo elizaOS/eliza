@@ -410,6 +410,21 @@ function describeEmbeddingConfig(config: {
 	return `${config.EMBEDDING_PROVIDER || "auto"} embeddings with ${config.TEXT_EMBEDDING_MODEL} (${dimensionLabel})`;
 }
 
+function createdAtSortKey(memory: { createdAt?: number }): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtDesc(a: { createdAt?: number; id?: string }, b: { createdAt?: number; id?: string }): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (bSafe !== aSafe) return bSafe - aSafe;
+	return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+}
+
+export const __testCompareMemoryByCreatedAtDesc = compareMemoryByCreatedAtDesc;
+export const __testCreatedAtSortKey = createdAtSortKey;
+
 export class DocumentService extends Service {
 	reportError(
 		scope: string,
@@ -2310,7 +2325,7 @@ export class DocumentService extends Service {
 							memory.metadata.ragUsage
 						),
 				)
-				.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+				.sort(compareMemoryByCreatedAtDesc);
 
 			for (const pendingEntry of this.pendingRAGEnrichment) {
 				const matchingMemory = recentConversationMemories.find(
