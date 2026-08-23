@@ -53,7 +53,7 @@ describe("fetchRuntimeModeSnapshot", () => {
 
     await expect(fetchRuntimeModeSnapshot()).resolves.toBeNull();
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "http://localhost/api/runtime/mode",
+      `${window.location.origin}/api/runtime/mode`,
     );
   });
 
