@@ -60,7 +60,10 @@ export interface SignupWelcomeBonusMetadata {
 
 export type StewardSyncedUser = UserWithOrganization &
   SignupWelcomeBonusMetadata & {
-    /** True only when a Worker owns the new-account provisioning tail. */
+    /**
+     * True only after the required default API key is ready and a Worker owns
+     * the independently self-healing character + tenant provisioning tail.
+     */
     postCommitProvisioningDeferred?: true;
   };
 
@@ -260,7 +263,7 @@ export interface StewardSyncParams {
 }
 
 type DirectSignupProvisioningOperation = {
-  name: "default API key" | "default character" | "Steward tenant";
+  name: "default character" | "Steward tenant";
   run: () => Promise<unknown>;
 };
 
@@ -290,10 +293,15 @@ async function provisionDirectSignupResources(input: {
 }): Promise<void> {
   const { userId, organizationId, executionCtx } = input;
 
+  // A default API key is required account readiness, and no durable outbox or
+  // restart-safe reconciler owns it. Keep this strict and on the response path
+  // for Worker and non-Worker callers alike. The route can therefore prime its
+  // verified session cache only after required key readiness has succeeded.
+  await apiKeysService.provisionDefaultApiKey(userId, organizationId);
+
   if (!executionCtx) {
-    // Preserve the non-Worker contract: default-key failure remains strict, the
-    // character helper remains fail-open, and tenant failure remains fail-open.
-    await apiKeysService.provisionDefaultApiKey(userId, organizationId);
+    // Preserve the non-Worker contract: character and tenant provisioning keep
+    // their prior inline order, and tenant failure remains fail-open.
     await ensureDefaultCharacter(userId, organizationId);
     try {
       await ensureStewardTenant(organizationId);
@@ -306,10 +314,6 @@ async function provisionDirectSignupResources(input: {
   }
 
   const operations: DirectSignupProvisioningOperation[] = [
-    {
-      name: "default API key",
-      run: () => apiKeysService.provisionDefaultApiKey(userId, organizationId),
-    },
     {
       name: "default character",
       run: () => ensureDefaultCharacter(userId, organizationId),
@@ -1244,11 +1248,11 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       logger.error("[StewardSync] Discord signup log failed:", { error });
     });
 
-  // The committed user + organization + identity projection above are the
-  // cookie-authority boundary. Defaults and the Steward tenant are idempotent
-  // post-commit resources: Workers keep their concurrent tail alive through
-  // waitUntil, while tests and non-Worker callers retain the prior inline
-  // ordering and strict default-key failure semantics.
+  // Identity is committed above, but the default API key remains required
+  // readiness and is awaited strictly before this function can return. Only
+  // the default character and Steward tenant have proven deterministic repair
+  // paths, so Workers may keep those two concurrent operations alive through
+  // waitUntil. Tests and non-Worker callers retain the prior inline ordering.
   const newOrganizationId = userWithOrg.organization?.id;
   if (!newOrganizationId) {
     throw new Error(`New Steward user ${userWithOrg.id} is missing its organization`);

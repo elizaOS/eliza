@@ -1,3 +1,10 @@
+/**
+ * Owns the Redis projection of a verified Steward session token to its Cloud
+ * user. Callers must verify the token, commit identity, and finish all required
+ * synchronous account readiness before priming this authorization-bearing
+ * cache; this module never verifies tokens or provisions account resources.
+ */
+
 import { createHash } from "crypto";
 import { cache as redisCache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -5,7 +12,7 @@ import type { UserWithOrganization } from "../types";
 
 /** One-way address used for every Redis entry owned by a Steward session token. */
 export function hashSessionToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex").substring(0, 32);
+  return createHash("sha256").update(token).digest("hex");
 }
 
 /**

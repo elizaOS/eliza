@@ -1,3 +1,9 @@
+/**
+ * Verifies the canonical authorization-bearing Steward session projection.
+ * The cache address must use the complete one-way token digest, and priming
+ * must preserve the ordinary session-user TTL and projection shape.
+ */
+
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "crypto";
 import { CacheTTL } from "../cache/keys";
@@ -21,7 +27,7 @@ describe("verified Steward user-session cache", () => {
       id: "cloud-user-1",
       organization_id: "org-1",
     } as Parameters<typeof primeVerifiedUserSessionCache>[1];
-    const tokenHash = createHash("sha256").update(token).digest("hex").substring(0, 32);
+    const tokenHash = createHash("sha256").update(token).digest("hex");
 
     expect(hashSessionToken(token)).toBe(tokenHash);
     await primeVerifiedUserSessionCache(token, user);

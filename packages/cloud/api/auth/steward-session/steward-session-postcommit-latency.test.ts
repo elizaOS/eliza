@@ -2,9 +2,9 @@
  * Route contract for direct-signup post-commit provisioning.
  *
  * The session exchange must pass the Worker lifetime into the shared identity
- * authority and may mint cookies once that authority has committed identity;
- * its waitUntil-owned onboarding tail must not delay the response or the
- * deterministic Personal conversation surface.
+ * authority and may mint cookies/cache only after identity and the required
+ * default API key are ready. Its waitUntil-owned, independently self-healing
+ * onboarding tail must not delay the response or Personal conversations.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -243,9 +243,9 @@ describe("POST /api/auth/steward-session post-commit tail", () => {
     await expect(background[0]).resolves.toBeUndefined();
   });
 
-  test("identity failure remains fail-closed and plants no cookie", async () => {
+  test("required default API-key failure remains fail-closed and plants no cookie or cache", async () => {
     syncUserFromSteward.mockRejectedValueOnce(
-      new Error("identity commit failed"),
+      new Error("required default API-key provisioning failed"),
     );
     const background: Promise<unknown>[] = [];
     const app = new Hono();

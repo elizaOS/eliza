@@ -1,9 +1,10 @@
 /**
  * Deterministic coverage for direct-signup post-commit provisioning.
  *
- * Worker callers return after the canonical user, organization, and identity
- * read while waitUntil owns the idempotent API-key, character, and Steward
- * tenant tail. Non-Worker callers retain the strict inline API-key contract.
+ * Worker callers return only after the canonical user, organization, identity,
+ * and required default API key are ready. waitUntil owns only the independently
+ * self-healing default-character and Steward-tenant tail; non-Worker callers
+ * retain the strict inline ordering for every provisioning resource.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -182,25 +183,30 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
     loggerWarnings.length = 0;
   });
 
-  test("Worker response returns after identity commit while waitUntil owns one concurrent tail", async () => {
+  test("Worker waits for the required API key, then hands one concurrent safe tail to waitUntil", async () => {
     const background: Promise<unknown>[] = [];
 
-    const user = await syncUserFromSteward({
+    const syncPromise = syncUserFromSteward({
       ...baseParams,
       executionCtx: {
         waitUntil: (promise) => background.push(promise),
       },
     });
+    await waitFor(() => apiKeyProvisionStarted);
+
+    expect(finalIdentityReadCompleted).toBe(true);
+    expect(background).toHaveLength(0);
+    expect(characterProvisionStarted).toBe(false);
+    expect(tenantProvisionStarted).toBe(false);
+
+    apiKeyProvision.resolve();
+    const user = await syncPromise;
 
     expect(user.id).toBe("user-new-1");
     expect(user.postCommitProvisioningDeferred).toBe(true);
-    expect(finalIdentityReadCompleted).toBe(true);
     expect(background).toHaveLength(1);
-    await waitFor(
-      () => apiKeyProvisionStarted && characterProvisionStarted && tenantProvisionStarted,
-    );
+    await waitFor(() => characterProvisionStarted && tenantProvisionStarted);
 
-    apiKeyProvision.resolve();
     characterProvision.resolve({ id: "char-1" });
     tenantProvision.resolve({ tenantId: "elizacloud-org-new-1" });
     await expect(background[0]).resolves.toBeUndefined();
@@ -210,7 +216,6 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
         organizationId: "org-new-1",
         userId: "user-new-1",
         outcomes: [
-          { operation: "default API key", status: "fulfilled" },
           { operation: "default character", status: "fulfilled" },
           { operation: "Steward tenant", status: "fulfilled" },
         ],
@@ -218,25 +223,26 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
     });
   });
 
-  test("Worker tail isolates API-key, character, and tenant failures", async () => {
+  test("Worker tail contains only safe resources and isolates both failures", async () => {
     const background: Promise<unknown>[] = [];
 
-    await syncUserFromSteward({
+    const syncPromise = syncUserFromSteward({
       ...baseParams,
       executionCtx: {
         waitUntil: (promise) => background.push(promise),
       },
     });
-    await waitFor(
-      () => apiKeyProvisionStarted && characterProvisionStarted && tenantProvisionStarted,
-    );
+    await waitFor(() => apiKeyProvisionStarted);
+    apiKeyProvision.resolve();
+    const user = await syncPromise;
+    expect(user.postCommitProvisioningDeferred).toBe(true);
+    await waitFor(() => characterProvisionStarted && tenantProvisionStarted);
 
-    apiKeyProvision.reject(new Error("key unavailable"));
     characterProvision.reject(new Error("character unavailable"));
     tenantProvision.reject(new Error("tenant unavailable"));
 
     await expect(background[0]).resolves.toBeUndefined();
-    expect(loggerErrors.some(({ message }) => message.includes("default API key"))).toBe(true);
+    expect(loggerErrors.some(({ message }) => message.includes("default API key"))).toBe(false);
     expect(
       loggerErrors.some(
         ({ message, context }) =>
@@ -250,6 +256,24 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
           message.includes("Steward tenant") && message.includes("tenant unavailable"),
       ),
     ).toBe(true);
+  });
+
+  test("Worker required API-key rejection fails signup without a deferred-ready result or tail", async () => {
+    const background: Promise<unknown>[] = [];
+    const syncPromise = syncUserFromSteward({
+      ...baseParams,
+      executionCtx: {
+        waitUntil: (promise) => background.push(promise),
+      },
+    });
+    await waitFor(() => apiKeyProvisionStarted);
+
+    apiKeyProvision.reject(new Error("strict Worker default-key failure"));
+
+    await expect(syncPromise).rejects.toThrow("strict Worker default-key failure");
+    expect(background).toHaveLength(0);
+    expect(characterProvisionStarted).toBe(false);
+    expect(tenantProvisionStarted).toBe(false);
   });
 
   test("non-Worker fallback keeps default API-key failure strict and inline", async () => {

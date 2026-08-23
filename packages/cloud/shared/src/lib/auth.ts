@@ -182,11 +182,7 @@ export async function getCurrentUserFromRequest(
 
     if (!user || !user.is_active) return null;
 
-    await redisCache.set(cacheKey, user, CacheTTL.session.user);
-    logger.debug("[AUTH] Cached user session data");
-
     if (user.organization_id) {
-      void trackSessionActivity(user.id, user.organization_id, stewardToken);
       // Opportunistic self-heal for accounts that predate mint-at-provision
       // (or whose mint failed). Awaited on Workers: an un-awaited promise may
       // be cancelled as soon as the response is returned.
@@ -204,6 +200,16 @@ export async function getCurrentUserFromRequest(
       await ensureDefaultCharacter(user.id, user.organization_id);
     } else {
       logger.error("[AUTH] User missing organization_id:", user.id);
+    }
+
+    // Plant the authorization-bearing user projection only after required API
+    // key readiness succeeds. Otherwise a failed heal could leave a cache hit
+    // that bypasses the only repair path for the entire session TTL.
+    await redisCache.set(cacheKey, user, CacheTTL.session.user);
+    logger.debug("[AUTH] Cached user session data");
+
+    if (user.organization_id) {
+      void trackSessionActivity(user.id, user.organization_id, stewardToken);
     }
 
     return user;
