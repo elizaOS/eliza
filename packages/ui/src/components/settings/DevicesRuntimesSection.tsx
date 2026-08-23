@@ -176,7 +176,7 @@ function LinuxTargetPanel({
         {confirmingRevoke ? (
           <div
             role="alert"
-            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2"
+            className="mt-3 flex flex-wrap items-center gap-2 border-l-2 border-destructive/50 bg-destructive/5 p-2"
           >
             <span className="mr-auto text-xs text-txt-strong">
               Revoke this host in Cloud, stop its relay, and remove local host
@@ -213,7 +213,7 @@ function LinuxTargetPanel({
         {target.enrolled && onActivate ? (
           <div className="mt-4 grid gap-4 border-t border-border pt-4">
             {localPairing ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent/5 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-accent/50 bg-accent/5 p-3">
                 <div>
                   <p className="text-sm font-medium text-txt-strong">
                     Pair {localPairing.hostLabel} on this computer

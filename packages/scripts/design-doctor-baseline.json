@@ -11,7 +11,6 @@
   "no-inline-exhaustive-style": 1,
   "no-invisible-focus-control": 2,
   "no-layout-shifting-interaction-state": 2,
-  "no-nested-card-surface": 26,
   "no-pure-black-background": 47,
   "no-symmetric-text-button-padding": 2
 }

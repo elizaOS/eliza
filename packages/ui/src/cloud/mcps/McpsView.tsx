@@ -324,7 +324,7 @@ const BuiltinCard = memo(function BuiltinCard({
   };
 
   return (
-    <div className="rounded-sm border border-border bg-card p-4">
+    <div className="border-b border-border p-4 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="p-2 rounded-sm border border-border bg-bg-elevated shrink-0">

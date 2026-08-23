@@ -375,7 +375,7 @@ export function ApiRouteExplorerClient({
               <div className="py-5 border-b border-border">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Auth */}
-                  <div className="p-4 bg-bg border border-border rounded-sm">
+                  <div className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Lock
                         aria-hidden="true"
@@ -403,7 +403,7 @@ export function ApiRouteExplorerClient({
                   </div>
 
                   {/* Rate Limit */}
-                  <div className="p-4 bg-bg border border-border rounded-sm">
+                  <div className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Zap
                         aria-hidden="true"
@@ -420,7 +420,7 @@ export function ApiRouteExplorerClient({
                   </div>
 
                   {/* Category */}
-                  <div className="p-4 bg-bg border border-border rounded-sm">
+                  <div className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Tag
                         aria-hidden="true"
@@ -438,7 +438,7 @@ export function ApiRouteExplorerClient({
                   </div>
 
                   {/* Pricing */}
-                  <div className="p-4 bg-bg border border-border rounded-sm">
+                  <div className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <DollarSign
                         aria-hidden="true"

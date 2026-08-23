@@ -400,7 +400,7 @@ export function BrowserSessionPolicyPanel({
             {intercepted.length > 0 ? (
               <div
                 data-testid={`browser-session-${session.id}-intercepted`}
-                className="rounded-sm border border-accent/40 bg-accent/10 px-3 py-2 text-xs"
+                className="border-l-2 border-accent/60 bg-accent/10 px-3 py-2 text-xs"
               >
                 <span className="font-medium">Held for confirmation:</span>{" "}
                 {intercepted.map((action) => action.label).join(", ")}

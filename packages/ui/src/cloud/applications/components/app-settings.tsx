@@ -416,7 +416,7 @@ export function AppSettings({ app }: AppSettingsProps) {
         </h3>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-4 bg-surface rounded-sm border border-red-500/10">
+          <div className="flex items-center justify-between border-l-2 border-red-500/40 bg-red-500/5 p-4">
             <div className="min-w-0 flex-1 mr-3">
               <p className="text-sm font-medium text-txt">
                 {t("cloud.appSettings.regenerateApiKey", {
@@ -479,7 +479,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             </AlertDialog>
           </div>
 
-          <div className="flex items-center justify-between p-4 bg-surface rounded-sm border border-red-500/10">
+          <div className="flex items-center justify-between border-l-2 border-red-500/40 bg-red-500/5 p-4">
             <div className="min-w-0 flex-1 mr-3">
               <p className="text-sm font-medium text-txt">
                 {t("cloud.appSettings.deleteApp", {
