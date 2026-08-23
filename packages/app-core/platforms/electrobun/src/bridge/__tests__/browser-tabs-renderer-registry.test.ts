@@ -7,7 +7,7 @@ beforeAll(() => {
 import {
   getBrowserTabsRendererImpl,
   setBrowserTabsRendererImpl,
-} from "./browser-tabs-renderer-registry.ts";
+} from "../browser-tabs-renderer-registry.ts";
 
 const KEY = "__ELIZA_BROWSER_TABS_REGISTRY__";
 
