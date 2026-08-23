@@ -55,6 +55,10 @@ const READ_ONLY_COMMANDS = new Set([
   "list_apps",
   "get_app_state",
   "app_hover_target",
+  "get_current_window_id",
+  "get_application_windows",
+  "get_window_size",
+  "get_window_position",
 ]);
 
 export type ComputerUseSessionErrorCode =
