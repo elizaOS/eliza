@@ -235,25 +235,18 @@ function resolveEvaluatorBudget(
 	};
 }
 
-function evaluatorBudgetOptions(
-	contextWindowTokens: number,
-	minOutputReserveTokens = DEFAULT_EVALUATOR_MAX_TOKENS,
-): {
+function evaluatorBudgetOptions(contextWindowTokens: number): {
 	contextWindowTokens: number;
 	reserveTokens: number;
 } {
 	const desiredReserve = Math.max(
 		DEFAULT_INPUT_RESERVE_TOKENS,
 		Math.floor(contextWindowTokens * MODEL_WINDOW_RESERVE_FRACTION),
-		minOutputReserveTokens,
 	);
 	// Custom/local model windows can be smaller than the global 10k reserve.
-	// Keep enough room for input and the requested evaluator output instead of
+	// Keep enough room for both input and provider-owned evaluator output instead of
 	// turning such models into an unconditional one-token bottom-out.
-	const smallWindowCap = Math.max(
-		minOutputReserveTokens,
-		Math.floor(contextWindowTokens * 0.4),
-	);
+	const smallWindowCap = Math.floor(contextWindowTokens * 0.4);
 	return {
 		contextWindowTokens,
 		reserveTokens: Math.min(
@@ -415,15 +408,11 @@ export async function runEvaluator(
 			promptSegments?: PromptSegment[];
 			providerOptions?: Record<string, unknown>;
 		},
-		maxOutputTokens = DEFAULT_EVALUATOR_MAX_TOKENS,
 	): Promise<void> => {
 		const modelName = modelNameFromMetadata(params.runtime, attempt.metadata);
 		const resolvedBudget = buildModelInputBudget({ modelName });
 		const attemptWindow = resolvedBudget.contextWindowTokens;
-		const attemptBudgetOptions = evaluatorBudgetOptions(
-			attemptWindow,
-			maxOutputTokens,
-		);
+		const attemptBudgetOptions = evaluatorBudgetOptions(attemptWindow);
 		const attemptInput = renderEvaluatorModelInput({
 			context: params.context,
 			trajectory: params.trajectory,
@@ -460,34 +449,6 @@ export async function runEvaluator(
 			const callStartedAt = Date.now();
 			activeCallStartedAt = callStartedAt;
 			const callInput = renderedInput;
-			let callProviderOptions = providerOptions;
-			if (
-				maxTokens > DEFAULT_EVALUATOR_MAX_TOKENS &&
-				params.runtime.supportsModelAttemptPreparation !== true &&
-				budgetResolution.contextWindowTokens
-			) {
-				const retryBudget = buildModelInputBudget({
-					messages: callInput.messages,
-					promptSegments: callInput.promptSegments,
-					...evaluatorBudgetOptions(
-						budgetResolution.contextWindowTokens,
-						maxTokens,
-					),
-				});
-				const retryOptions = buildAttemptProviderOptions(
-					callInput,
-					retryBudget,
-					params.provider,
-				);
-				callProviderOptions = retryOptions.providerOptions;
-				preparedAttempt = {
-					input: callInput,
-					providerOptions: callProviderOptions,
-					prefixHashes: retryOptions.prefixHashes,
-					prefixHash: retryOptions.prefixHash,
-					provider: params.provider,
-				};
-			}
 			const callRaw = await runWithStreamingContext(
 				streamingContext
 					? {
@@ -500,7 +461,7 @@ export async function runEvaluator(
 						messages: callInput.messages,
 						responseSchema: evaluatorSchema,
 						promptSegments: callInput.promptSegments,
-						providerOptions: callProviderOptions,
+						providerOptions,
 						prepareModelAttempt: (
 							attempt: ModelAttemptContext,
 							attemptParams: {
