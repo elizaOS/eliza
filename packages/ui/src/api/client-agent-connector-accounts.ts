@@ -243,12 +243,18 @@ export function normalizeConnectorAccountActionResult(
   const account =
     record.account ?? (typeof record.id === "string" ? record : null);
   const flow = recordFromUnknown(record.flow);
+  const authUrl =
+    nonEmptyString(record.authUrl) ?? nonEmptyString(flow.authUrl) ?? undefined;
+  const flowError = nonEmptyString(flow.error) ?? undefined;
   return {
     ...(record as Partial<ConnectorAccountActionResult>),
     ok:
       typeof record.ok === "boolean"
         ? record.ok
-        : record.deleted === true || (!("error" in record) && account !== null),
+        : record.deleted === true ||
+          (!("error" in record) &&
+            flowError === undefined &&
+            (account !== null || authUrl !== undefined)),
     account: account
       ? normalizeConnectorAccountRecord(provider, connectorId, account)
       : undefined,
@@ -262,19 +268,14 @@ export function normalizeConnectorAccountActionResult(
         ? record.defaultAccountId
         : null,
     flow: Object.keys(flow).length > 0 ? flow : undefined,
-    authUrl:
-      typeof record.authUrl === "string"
-        ? record.authUrl
-        : typeof flow.authUrl === "string"
-          ? flow.authUrl
-          : undefined,
+    authUrl,
     status:
       typeof record.status === "string"
         ? normalizeStatus(record.status)
         : typeof flow.status === "string"
           ? normalizeStatus(flow.status)
           : undefined,
-    error: typeof record.error === "string" ? record.error : undefined,
+    error: nonEmptyString(record.error) ?? flowError,
   };
 }
 
