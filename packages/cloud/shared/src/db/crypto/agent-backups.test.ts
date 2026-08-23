@@ -186,7 +186,12 @@ describe("decryptAgentBackupStateData", () => {
     expect(await decryptAgentBackupStateData(BACKUP_ID, delta)).toBe(delta);
 
     const almost = asStored({ ...envelope(), algorithm: "plain" });
-    expect(await decryptAgentBackupStateData(BACKUP_ID, almost)).toBe(almost);
+    // The passthrough branch returns the stored value unchanged, so the typed
+    // identity matcher must widen to the stored union the way the runtime does
+    // (#26183); the plain return type alone cannot name the passed-through shape.
+    expect<AgentBackupStoredStateData>(
+      await decryptAgentBackupStateData(BACKUP_ID, almost),
+    ).toBe(almost);
   });
 
   test("round-trips full-state and delta payloads", async () => {
