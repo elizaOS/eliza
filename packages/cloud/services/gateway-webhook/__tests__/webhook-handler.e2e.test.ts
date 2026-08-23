@@ -405,6 +405,142 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedRequests).toBe(2);
   });
 
+  test("does not reopen a provider rejection after a direct agent turn", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    redis.store.set("agent:bound-agent:server", "server-1");
+    redis.store.set("server:server-1:url", "http://agent-server.local");
+    const event = createTwilioEvent({ messageId: "SM-post-agent-rejection" });
+    const adapter = createAdapter(event);
+    const rejectedEgress = mock(async () => {
+      throw new PlatformDeliveryError(
+        "provider rejected delivery",
+        "failed",
+        "DELIVERY_PROVIDER_REJECTED",
+        false,
+        400,
+      );
+    });
+    adapter.sendReplyWithReceipt = rejectedEgress;
+    let agentTurns = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.includes("/api/internal/webhook/config?")) {
+        return Response.json({
+          accountSid: "AC_test",
+          authToken: "twilio-secret",
+          phoneNumber: "+15550000000",
+        });
+      }
+      if (request.url.endsWith("/api/internal/identity/resolve")) {
+        return Response.json({
+          success: true,
+          userId: "user-1",
+          organizationId: "org-1",
+          agentId: "bound-agent",
+        });
+      }
+      if (request.url.endsWith("/agents/bound-agent/message")) {
+        agentTurns += 1;
+        return Response.json({ response: "agent reply" });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+    const deps = {
+      redis,
+      cloudBaseUrl: "https://api.elizacloud.ai",
+      getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+    };
+    const dedupKey = `webhook:twilio:${event.messageId}`;
+
+    expect(
+      (
+        await handleWebhook(
+          requestFor(event),
+          adapter,
+          deps,
+          "eliza-app",
+          "bound-agent",
+        )
+      ).status,
+    ).toBe(200);
+    await waitFor(
+      () => redis.store.get(dedupKey) === "uncertain",
+      "post-agent uncertainty",
+    );
+    expect(
+      (
+        await handleWebhook(
+          requestFor(event),
+          adapter,
+          deps,
+          "eliza-app",
+          "bound-agent",
+        )
+      ).status,
+    ).toBe(503);
+    expect(agentTurns).toBe(1);
+    expect(rejectedEgress).toHaveBeenCalledTimes(1);
+  });
+
+  test("reopens identity failure before agent and provider effects", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM-pre-agent-failure" });
+    const adapter = createAdapter(event);
+    let identityAttempts = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.includes("/api/internal/webhook/config?")) {
+        return Response.json({
+          accountSid: "AC_test",
+          authToken: "twilio-secret",
+          phoneNumber: "+15550000000",
+        });
+      }
+      if (request.url.endsWith("/api/internal/identity/resolve")) {
+        identityAttempts += 1;
+        throw new DOMException("identity edge unavailable", "NetworkError");
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+    const deps = {
+      redis,
+      cloudBaseUrl: "https://api.elizacloud.ai",
+      getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+    };
+    const dedupKey = `webhook:twilio:${event.messageId}`;
+
+    expect(
+      (
+        await handleWebhook(
+          requestFor(event),
+          adapter,
+          deps,
+          "eliza-app",
+          "agent-1",
+        )
+      ).status,
+    ).toBe(200);
+    await waitFor(() => identityAttempts === 1, "first identity attempt");
+    await waitFor(() => !redis.store.has(dedupKey), "reopened delivery claim");
+    expect(
+      (
+        await handleWebhook(
+          requestFor(event),
+          adapter,
+          deps,
+          "eliza-app",
+          "agent-1",
+        )
+      ).status,
+    ).toBe(200);
+    await waitFor(() => identityAttempts === 2, "retried identity attempt");
+    expect(adapter.sendReplyWithReceipt).not.toHaveBeenCalled();
+  });
+
   test("routes an unresolved Blooio iMessage to the same phone Shared path", async () => {
     process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
     const redis = new MemoryRedis();
@@ -696,6 +832,62 @@ describe("gateway webhook handler e2e routing", () => {
       expect(cloudRequests).toBe(1);
     },
   );
+
+  test("keeps a control-group 2xx without a provider receipt uncertain", async () => {
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+    const redis = new MemoryRedis();
+    const event: ChatEvent = {
+      platform: "blooio",
+      messageId: "blooio-control-empty-receipt",
+      chatId: "chat_group_123",
+      chatType: "group",
+      senderId: "+15551234567",
+      text: "Eliza control",
+      rawPayload: {},
+    };
+    const adapter: PlatformAdapter = {
+      platform: "blooio",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply: mock(async () => undefined),
+      sendReplyWithReceipt: mock(async () => ({ providerMessageIds: [] })),
+    };
+    globalThis.fetch = mock(async () =>
+      Response.json({
+        success: true,
+        data: {
+          code: "group_admin_required",
+          reply: "control reply",
+          groupDelivery: { kind: "control" },
+        },
+      }),
+    ) as typeof fetch;
+
+    expect(
+      (
+        await handleWebhook(
+          new Request("https://gateway.example/webhook/eliza-app/blooio", {
+            method: "POST",
+            body: "{}",
+          }),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+    await waitFor(
+      () =>
+        redis.store.get("webhook:blooio:blooio-control-empty-receipt") ===
+        "uncertain",
+      "control receipt uncertainty",
+    );
+  });
 
   test.each([
     "revoke",

@@ -14,6 +14,7 @@ import type {
   ChatEvent,
   Platform,
   PlatformAdapter,
+  PlatformDeliveryReceipt,
   WebhookConfig,
 } from "./adapters/types";
 import { PlatformDeliveryError } from "./adapters/types";
@@ -56,6 +57,23 @@ class PersonalSharedPreEgressError extends Error {
 
 class PersonalSharedRecoverablePostEgressError extends Error {
   override readonly name = "PersonalSharedRecoverablePostEgressError";
+}
+
+class ConnectorReplaySafePreAgentError extends Error {
+  override readonly name = "ConnectorReplaySafePreAgentError";
+
+  constructor(
+    stage: "identity_resolution" | "agent_route_resolution",
+    cause: unknown,
+  ) {
+    super(`connector ${stage} failed before agent or provider effects`, {
+      cause,
+    });
+  }
+}
+
+class OnboardingPreEgressError extends Error {
+  override readonly name = "OnboardingPreEgressError";
 }
 
 interface HandlerDeps {
@@ -126,7 +144,7 @@ async function sendReplyWithRequiredReceipt(
   event: ChatEvent,
   text: string,
   deliveryHooks?: TelegramDeliveryHooks,
-): Promise<void> {
+): Promise<PlatformDeliveryReceipt> {
   if (!adapter.sendReplyWithReceipt) {
     throw new PlatformDeliveryError(
       `${adapter.platform} adapter does not expose provider receipts`,
@@ -141,9 +159,11 @@ async function sendReplyWithRequiredReceipt(
     text,
     deliveryHooks,
   );
-  const providerMessageIds = receipt.providerMessageIds
-    .map((id) => id.trim())
-    .filter(Boolean);
+  const providerMessageIds = Array.isArray(receipt?.providerMessageIds)
+    ? receipt.providerMessageIds
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter(Boolean)
+    : [];
   if (providerMessageIds.length === 0) {
     throw new PlatformDeliveryError(
       `${adapter.platform} accepted delivery without a message receipt`,
@@ -152,6 +172,7 @@ async function sendReplyWithRequiredReceipt(
       false,
     );
   }
+  return { providerMessageIds };
 }
 
 async function reconcileLegacyTelegramDelivery(
@@ -614,13 +635,13 @@ export async function handleWebhook(
       if (
         err instanceof PersonalSharedPreEgressError ||
         err instanceof PersonalSharedRecoverablePostEgressError ||
-        (err instanceof PlatformDeliveryError &&
-          err.deliveryStatus === "failed")
+        err instanceof ConnectorReplaySafePreAgentError ||
+        err instanceof OnboardingPreEgressError
       ) {
         try {
-          // The Shared endpoint is idempotent. Blooio also keys provider
-          // egress by the inbound message id, so a lost receipt response can
-          // safely reopen the webhook without sending a second text.
+          // These typed failures either precede all agent/provider effects or
+          // use an idempotent Cloud flow and an authoritative no-send result.
+          // Untyped and post-agent failures remain ambiguous and never reopen.
           await redis.del(dedupKey);
         } catch (cleanupError) {
           // error-policy:J7 The original delivery failure is already observed;
@@ -726,15 +747,28 @@ async function processMessage(
       ? () => undefined
       : beginTypingFeedback(adapter, config, event);
     try {
-      const timing = await sendPersonalSharedReply(
-        adapter,
-        config,
-        event,
-        deps,
-        project,
-        trace.traceId,
-        deliveryHooks,
-      );
+      let timing: PersonalSharedDeliveryTiming;
+      try {
+        timing = await sendPersonalSharedReply(
+          adapter,
+          config,
+          event,
+          deps,
+          project,
+          trace.traceId,
+          deliveryHooks,
+        );
+      } catch (error) {
+        if (
+          error instanceof PlatformDeliveryError &&
+          error.deliveryStatus === "failed"
+        ) {
+          throw new PersonalSharedPreEgressError(error.message, {
+            cause: error,
+          });
+        }
+        throw error;
+      }
       logger.info("Personal Eliza connector message completed", {
         project,
         platform: adapter.platform,
@@ -756,15 +790,20 @@ async function processMessage(
     return;
   }
 
-  const identity = await resolveIdentity(
-    redis,
-    cloudBaseUrl,
-    authHeader,
-    adapter.platform,
-    event.senderId,
-    event.senderName,
-    reauth,
-  );
+  let identity: Awaited<ReturnType<typeof resolveIdentity>>;
+  try {
+    identity = await resolveIdentity(
+      redis,
+      cloudBaseUrl,
+      authHeader,
+      adapter.platform,
+      event.senderId,
+      event.senderName,
+      reauth,
+    );
+  } catch (error) {
+    throw new ConnectorReplaySafePreAgentError("identity_resolution", error);
+  }
   const identityMs = Date.now() - stageStartedAt;
   stageStartedAt = Date.now();
 
@@ -811,9 +850,16 @@ async function processMessage(
   // its owner "you're live" while the message goes nowhere, then copy the
   // transcript into the agent's memory a second time.
   const agentId = explicitAgentId ?? identity.agentId;
-  const server = agentId
-    ? await resolveAgentServer(redis, agentId)
-    : ({ kind: "unregistered" } as const);
+  let server:
+    | Awaited<ReturnType<typeof resolveAgentServer>>
+    | { kind: "unregistered" };
+  try {
+    server = agentId
+      ? await resolveAgentServer(redis, agentId)
+      : ({ kind: "unregistered" } as const);
+  } catch (error) {
+    throw new ConnectorReplaySafePreAgentError("agent_route_resolution", error);
+  }
   const routingMs = Date.now() - stageStartedAt;
 
   if (!agentId || server.kind !== "ready") {
@@ -1279,7 +1325,13 @@ async function sendPersonalSharedReply(
       );
     }
     if (groupDelivery.kind === "control") {
-      await sendReplyWithReceipt(config, event, reply, deliveryHooks);
+      await sendReplyWithRequiredReceipt(
+        adapter,
+        config,
+        event,
+        reply,
+        deliveryHooks,
+      );
       return {
         cloudMs,
         cloudAttempts: attemptResult.attempts,
@@ -1433,7 +1485,8 @@ async function sendPersonalSharedReply(
         cloudServerTiming,
       };
     }
-    const receipt = await sendReplyWithReceipt(
+    const receipt = await sendReplyWithRequiredReceipt(
+      adapter,
       config,
       event,
       reply,
@@ -1587,13 +1640,23 @@ async function sendOnboardingReply(
   if (typeof reply !== "string" || reply.trim().length === 0) {
     throw new Error("onboarding chat returned no reply");
   }
-  await sendReplyWithRequiredReceipt(
-    adapter,
-    config,
-    event,
-    reply,
-    deliveryHooks,
-  );
+  try {
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      reply,
+      deliveryHooks,
+    );
+  } catch (error) {
+    if (
+      error instanceof PlatformDeliveryError &&
+      error.deliveryStatus === "failed"
+    ) {
+      throw new OnboardingPreEgressError(error.message, { cause: error });
+    }
+    throw error;
+  }
 }
 
 function ackResponse(platform: Platform): Response {
