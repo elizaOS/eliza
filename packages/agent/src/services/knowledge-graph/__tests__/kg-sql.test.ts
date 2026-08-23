@@ -46,7 +46,9 @@ describe("parseJsonValue", () => {
   it("parses strings and passes objects through", () => {
     expect(parseJsonValue('{"a":1}', null)).toEqual({ a: 1 });
     expect(parseJsonValue({ a: 1 }, null)).toEqual({ a: 1 });
-    expect(parseJsonValue(null, { fallback: true })).toEqual({ fallback: true });
+    expect(parseJsonValue(null, { fallback: true })).toEqual({
+      fallback: true,
+    });
   });
 
   it("throws on invalid JSON and wrong types", () => {
