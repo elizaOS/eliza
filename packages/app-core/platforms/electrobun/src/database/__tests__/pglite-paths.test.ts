@@ -5,7 +5,7 @@ import {
   isMemoryPgliteDataDir,
   resolveDefaultPgliteDataDir,
   resolvePgliteDataDirPath,
-} from "./pglite-paths.ts";
+} from "../pglite-paths.ts";
 
 describe("isMemoryPgliteDataDir", () => {
   it("detects the memory sentinel with trimming", () => {
