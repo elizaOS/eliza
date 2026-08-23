@@ -201,7 +201,10 @@ function parsePdfSpecDate(value: string): Date | undefined {
     minuteUtc -= offsetMinute;
   }
 
-  const date = new Date(Date.UTC(year, monthIndex, day, hourUtc, minuteUtc, second));
+  const d = new Date(0);
+  d.setUTCFullYear(year, monthIndex, day);
+  d.setUTCHours(hourUtc, minuteUtc, second, 0);
+  const date = d;
   return Number.isFinite(date.getTime()) ? date : undefined;
 }
 
