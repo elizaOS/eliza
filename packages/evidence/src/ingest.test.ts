@@ -101,7 +101,14 @@ function buildFixtureRepo(): string {
   // Canonical scenario-runner package commands write repo-level reports.
   write(repo, "reports/scenarios/live/native.jsonl", "{}\n");
   // Progressive content access corpus, benchmark, and access-ledger output.
+  write(repo, "reports/content-context/result.json", "{}");
+  write(repo, "reports/content-context/corpus-manifest.json", "{}");
+  write(repo, "reports/content-context/native-realization-ledger.json", "{}");
+  write(repo, "reports/content-context/conformance.json", "{}");
+  write(repo, "reports/content-context/mutant-kills.json", "{}");
+  write(repo, "reports/content-context/source-work.json", "{}");
   write(repo, "reports/content-context/benchmark.json", "{}");
+  write(repo, "reports/content-context/cleanup.json", "{}");
   write(repo, "reports/content-context/page-ledger.jsonl", "{}\n");
   // Noise that must never be ingested.
   write(repo, "e2e-recordings/node_modules/pkg/index.js", "js");
@@ -407,7 +414,7 @@ describe("ingestAllSilos", () => {
       "content-context": {
         silo: "content-context",
         status: "ingested",
-        artifactCount: 2,
+        artifactCount: 9,
       },
     });
   });
@@ -446,6 +453,21 @@ describe("ingestAllSilos", () => {
       source: "content-context",
       lane: "content-context",
     });
+    for (const name of [
+      "result.json",
+      "corpus-manifest.json",
+      "native-realization-ledger.json",
+      "conformance.json",
+      "mutant-kills.json",
+      "source-work.json",
+      "cleanup.json",
+    ]) {
+      expect(byPath[`lanes/content-context/${name}`]).toMatchObject({
+        kind: "report",
+        source: "content-context",
+        lane: "content-context",
+      });
+    }
     expect(
       byPath["trajectories/content-context/page-ledger.jsonl"],
     ).toMatchObject({
