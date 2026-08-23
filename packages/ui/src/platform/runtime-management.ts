@@ -4,13 +4,16 @@ import type {
   RuntimeManagementRequest,
   RuntimeManagementResult,
 } from "@elizaos/shared/contracts";
+import { client } from "../api";
 import {
   createDefaultRemoteControlCloudClient,
   getDefaultRemoteControlCloudConnection,
 } from "../api/remote-control-cloud-default";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
+  type AgentProfileRegistry,
   addAgentProfile,
+  clearPersistedActiveServer,
   loadAgentProfileRegistry,
   removeAgentProfile,
   switchRuntimeNonDestructive,
@@ -55,9 +58,44 @@ const SSH_DEPENDENCIES: SshRuntimeLifecycleDependencies = {
   storeCredential: storeRuntimeCredential,
   deleteCredentialRecord: deleteRuntimeCredentialRecord,
   addProfile: addAgentProfile,
-  removeProfile: removeAgentProfile,
+  removeProfile: removeProfileWithoutStaleSelection,
   loadRegistry: loadAgentProfileRegistry,
 };
+
+export function removeProfileWithoutStaleSelection(
+  profileId: string,
+  dependencies: {
+    loadRegistry: () => AgentProfileRegistry;
+    switchRuntime: (profileId: string) => { ok: boolean };
+    clearRuntimeSelection: () => void;
+    removeProfile: (profileId: string) => void;
+  } = {
+    loadRegistry: loadAgentProfileRegistry,
+    switchRuntime: switchRuntimeNonDestructive,
+    clearRuntimeSelection: () => {
+      clearPersistedActiveServer();
+      client.setToken(null);
+      client.setBaseUrl(null);
+    },
+    removeProfile: removeAgentProfile,
+  },
+): void {
+  const registry = dependencies.loadRegistry();
+  if (registry.activeProfileId === profileId) {
+    const fallback =
+      registry.profiles.find(
+        (profile) => profile.id !== profileId && profile.kind === "local",
+      ) ?? registry.profiles.find((profile) => profile.id !== profileId);
+    if (!fallback) {
+      dependencies.clearRuntimeSelection();
+    } else if (!dependencies.switchRuntime(fallback.id).ok) {
+      throw new Error(
+        "The runtime could not be removed because the fallback runtime was not saved. Try again.",
+      );
+    }
+  }
+  dependencies.removeProfile(profileId);
+}
 
 function requiredString(value: string | undefined, field: string): string {
   const normalized = value?.trim() ?? "";
@@ -83,13 +121,6 @@ function requireCompleteCleanup(results: SshRuntimeCleanupResult[]): void {
       "SSH cleanup is incomplete. Retry cleanup before continuing.",
     );
   }
-}
-
-function localDesktopPlatform(): "macos" | "windows" | "linux" {
-  const platform = navigator.platform.toLowerCase();
-  if (platform.includes("win")) return "windows";
-  if (platform.includes("linux")) return "linux";
-  return "macos";
 }
 
 function publicRuntimeList(): Record<string, unknown>[] {
@@ -127,7 +158,7 @@ async function removeRuntime(profileId: string): Promise<void> {
     await removeSshRuntime(profile, SSH_DEPENDENCIES);
     return;
   }
-  removeAgentProfile(profile.id);
+  removeProfileWithoutStaleSelection(profile.id);
 }
 
 async function revokeRuntime(targetId: string): Promise<void> {
@@ -143,7 +174,7 @@ async function revokeRuntime(targetId: string): Promise<void> {
       controllerDeviceId: profile.remoteRelay.controllerDeviceId,
       sessionId: profile.remoteRelay.sessionId,
     });
-    removeAgentProfile(profile.id);
+    removeProfileWithoutStaleSelection(profile.id);
     return;
   }
 
@@ -171,17 +202,6 @@ async function execute(
     const data: Record<string, unknown> = { runtimes: publicRuntimeList() };
     if (isElectrobunRuntime()) data.host = await getRemoteTargetStatus();
     return data;
-  }
-
-  if (request.op === "select") {
-    const runtimeId = requiredString(request.runtimeId, "runtimeId");
-    const result = switchRuntimeNonDestructive(runtimeId);
-    if (!result.ok) {
-      throw new Error(
-        "That runtime could not be selected. Check its connection and try again.",
-      );
-    }
-    return { runtimeId };
   }
 
   if (request.op === "pair") {
@@ -226,7 +246,7 @@ async function execute(
       remoteApiPort: profile.ssh.remoteApiPort,
       expectedFingerprint: profile.ssh.hostFingerprint,
       identityFile: profile.ssh.identityFile,
-      credentialRef: profile.credentialRef,
+      credentialRef: profile.credentialRef ?? profile.id,
     });
     return {};
   }
@@ -295,18 +315,11 @@ async function execute(
     const cloud = createDefaultRemoteControlCloudClient();
     const directory = await cloud.listHosts();
     const connection = getDefaultRemoteControlCloudConnection();
-    const platform = localDesktopPlatform();
     const enrollment = await enrollRemoteTarget({
       apiBaseUrl: connection.baseUrl,
       ownerId: directory.ownerId,
       ownerAccessToken: connection.authToken,
-      displayName:
-        platform === "macos"
-          ? "My Mac"
-          : platform === "windows"
-            ? "My Windows PC"
-            : "My Linux computer",
-      platform,
+      displayName: "My Linux computer",
     });
     return { hostId: enrollment.hostId };
   }
@@ -368,6 +381,7 @@ export async function executeRuntimeManagementCommand(
 
 export const runtimeManagementInternals = {
   publicRuntimeList,
+  removeProfileWithoutStaleSelection,
   requiredPort,
   requiredString,
 };

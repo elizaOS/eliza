@@ -2,7 +2,6 @@
 
 import type { RemoteControllerPublicIdentity } from "@elizaos/shared/contracts/remote-control";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client } from "../../api";
 import type {
   RemoteHostDirectory,
   RemoteHostSummary,
@@ -13,45 +12,30 @@ import {
   RemoteCloudRequestError,
   RemoteControlAuthenticationRequiredError,
 } from "../../api/remote-control-cloud-client";
-import {
-  createDefaultRemoteControlCloudClient,
-  getDefaultRemoteControlCloudConnection,
-} from "../../api/remote-control-cloud-default";
+import { createDefaultRemoteControlCloudClient } from "../../api/remote-control-cloud-default";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { getOrCreateRemoteControllerIdentity } from "../../platform/remote-controller";
 import {
-  clearRemoteControllerSessionState,
-  getOrCreateRemoteControllerIdentity,
-} from "../../platform/remote-controller";
-import {
-  activateRemoteTarget,
-  enrollRemoteTarget,
-  finalizeRemoteTargetHostRevoke,
   getRemoteTargetIdentity,
   getRemoteTargetStatus,
-  startRemoteTarget,
-  stopRemoteTarget,
 } from "../../platform/remote-target";
 import { subscribeRemoteTargetPairingIntents } from "../../platform/remote-target-pairing-intent";
+import { deleteRuntimeCredentialRecord } from "../../platform/runtime-credential-store";
 import {
-  deleteRuntimeCredentialRecord,
-  storeRuntimeCredential,
-} from "../../platform/runtime-credential-store";
-import { executeRuntimeManagementCommand } from "../../platform/runtime-management";
+  executeRuntimeManagementCommand,
+  removeProfileWithoutStaleSelection as removeProfileCanonically,
+} from "../../platform/runtime-management";
 import {
   getSshRuntimeStatus,
-  inspectSshHost,
   type SshHostInspection,
   type SshRuntimeStatus,
   startSshRuntime,
-  stopSshRuntime,
 } from "../../platform/ssh-runtime";
 import {
   type AgentProfile,
   type AgentProfileRegistry,
   addAgentProfile,
-  clearPersistedActiveServer,
   loadAgentProfileRegistry,
-  removeAgentProfile,
   switchRuntimeNonDestructive,
 } from "../../state";
 import {
@@ -385,32 +369,6 @@ function buildRuntimeTargets(
   return [...profiles, ...hosts];
 }
 
-function removeProfileWithoutStaleSelection(
-  profileId: string,
-  dependencies: {
-    loadRegistry: () => AgentProfileRegistry;
-    switchRuntime: (profileId: string) => { ok: boolean };
-    clearRuntimeSelection: () => void;
-    removeProfile: (profileId: string) => void;
-  },
-): void {
-  const registry = dependencies.loadRegistry();
-  if (registry.activeProfileId === profileId) {
-    const fallback =
-      registry.profiles.find(
-        (profile) => profile.id !== profileId && profile.kind === "local",
-      ) ?? registry.profiles.find((profile) => profile.id !== profileId);
-    if (!fallback) {
-      dependencies.clearRuntimeSelection();
-    } else if (!dependencies.switchRuntime(fallback.id).ok) {
-      throw new Error(
-        "The revoked runtime could not be removed because the fallback runtime was not saved. Try again.",
-      );
-    }
-  }
-  dependencies.removeProfile(profileId);
-}
-
 async function revokeRelayAuthorityWithCleanup(
   authority: RelayRevocationAuthority,
   dependencies: {
@@ -621,19 +579,6 @@ export function DevicesRuntimesContainer({
     );
   }, [controller, directory, registry, sessions, sshStatuses]);
 
-  const removeProfileAfterCleanup = useCallback((profileId: string) => {
-    removeProfileWithoutStaleSelection(profileId, {
-      loadRegistry: loadAgentProfileRegistry,
-      switchRuntime: switchRuntimeNonDestructive,
-      clearRuntimeSelection: () => {
-        clearPersistedActiveServer();
-        client.setToken(null);
-        client.setBaseUrl(null);
-      },
-      removeProfile: removeAgentProfile,
-    });
-  }, []);
-
   const pairingView: DevicePairingView | null = useMemo(() => {
     if (!pairing) return null;
     const host = directory?.hosts.find((item) => item.id === pairing.hostId);
@@ -649,16 +594,19 @@ export function DevicesRuntimesContainer({
 
   const onSelect = (id: string) =>
     run(async () => {
-      const outcome = await executeRuntimeManagementCommand({
-        op: "select",
-        runtimeId: id,
-      });
-      if (!outcome.ok) throw new Error(outcome.error);
+      const result = switchRuntimeNonDestructive(id);
+      if (!result.ok)
+        throw new Error(
+          "That runtime could not be selected. Check its connection and try again.",
+        );
     });
 
   const onPair = (targetId: string) =>
     run(async () => {
-      const outcome = await executeRuntimeManagementCommand({ op: "pair", targetId });
+      const outcome = await executeRuntimeManagementCommand({
+        op: "pair",
+        targetId,
+      });
       if (!outcome.ok) throw new Error(outcome.error);
       setPairing({
         hostId: String(outcome.data?.hostId ?? ""),
@@ -668,7 +616,10 @@ export function DevicesRuntimesContainer({
 
   const onRevoke = (targetId: string) =>
     run(async () => {
-      const outcome = await executeRuntimeManagementCommand({ op: "revoke", targetId });
+      const outcome = await executeRuntimeManagementCommand({
+        op: "revoke",
+        targetId,
+      });
       if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
@@ -719,7 +670,9 @@ export function DevicesRuntimesContainer({
 
   const onEnrollLinuxTarget = () =>
     run(async () => {
-      const outcome = await executeRuntimeManagementCommand({ op: "enroll_host" });
+      const outcome = await executeRuntimeManagementCommand({
+        op: "enroll_host",
+      });
       if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
@@ -760,7 +713,9 @@ export function DevicesRuntimesContainer({
 
   const onRevokeLinuxTarget = () =>
     run(async () => {
-      const outcome = await executeRuntimeManagementCommand({ op: "revoke_host" });
+      const outcome = await executeRuntimeManagementCommand({
+        op: "revoke_host",
+      });
       if (!outcome.ok) throw new Error(outcome.error);
       const hostId = String(outcome.data?.hostId ?? linuxTarget?.hostId ?? "");
       setPairing((current) => (current?.hostId === hostId ? null : current));
@@ -797,7 +752,7 @@ export const devicesRuntimesInternals = {
   buildRuntimeTargets,
   hostTarget,
   profileTarget,
-  removeProfileWithoutStaleSelection,
+  removeProfileWithoutStaleSelection: removeProfileCanonically,
   removeRuntimeWithAuthority,
   resolveRelayRevocationAuthority,
   revokeRelayAuthorityWithCleanup,
