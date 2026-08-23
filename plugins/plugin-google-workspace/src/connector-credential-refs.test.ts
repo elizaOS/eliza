@@ -20,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
   CONNECTOR_VAULT_SERVICE_TYPES,
+  normalizeVaultSegment,
   persistConnectorCredentialRefs,
 } from "./connector-credential-refs.js";
 import { DefaultGoogleCredentialResolver } from "./credential-resolver.js";
@@ -387,5 +388,12 @@ describe("manager-path durability across restart (real core manager + adapter)",
     ).credentials;
     expect(credentials?.access_token).toBe("test-access-token");
     expect(credentials?.refresh_token).toBe("test-refresh-token");
+  });
+
+  it("normalizes vault segments with unicode surrogate safety", () => {
+    const raw = "segment_with_emoji_😀_and_long_name_".repeat(3);
+    const normalized = normalizeVaultSegment(raw);
+    expect(normalized.length).toBeLessThanOrEqual(64);
+    expect(normalized.endsWith("_")).toBe(false);
   });
 });
