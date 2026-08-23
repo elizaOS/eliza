@@ -12,6 +12,37 @@ import {
   searchCatalogSkills,
 } from "./skill-catalog-client";
 
+function makeSkill(
+  slug: string,
+  stats: Partial<{
+    comments: number;
+    downloads: number;
+    installsAllTime: number;
+    installsCurrent: number;
+    stars: number;
+    versions: number;
+  }> = {},
+) {
+  return {
+    slug,
+    displayName: slug,
+    summary: null,
+    tags: {},
+    stats: {
+      comments: 0,
+      downloads: 0,
+      installsAllTime: 0,
+      installsCurrent: 0,
+      stars: 0,
+      versions: 1,
+      ...stats,
+    },
+    createdAt: 0,
+    updatedAt: 0,
+    latestVersion: null,
+  };
+}
+
 describe("searchCatalogSkills", () => {
   let catalogDir: string;
   let previousCatalogPath: string | undefined;
@@ -50,6 +81,13 @@ describe("searchCatalogSkills", () => {
     await refreshCatalog();
   });
 
+  async function writeCatalog(data: unknown[]): Promise<void> {
+    const catalogPath = process.env.ELIZA_SKILLS_CATALOG;
+    if (!catalogPath) throw new Error("catalog path not configured");
+    await fs.writeFile(catalogPath, JSON.stringify({ data }));
+    await refreshCatalog();
+  }
+
   afterEach(async () => {
     _resetCatalogCache();
     if (previousCatalogPath === undefined) {
@@ -81,29 +119,27 @@ describe("searchCatalogSkills", () => {
     await expect(getTrendingSkills(1)).resolves.toHaveLength(1);
   });
 
-  it("sorts catalog skills safely when search scores contain NaN", () => {
-    const scored = [
-      { s: { slug: "skill-nan", stats: { downloads: 10 } }, score: NaN },
-      { s: { slug: "skill-valid", stats: { downloads: 10 } }, score: 5 },
-    ];
-    scored.sort((a, b) => {
-      const bScore =
-        typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
-      const aScore =
-        typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
-      const bDl =
-        typeof b.s.stats.downloads === "number" &&
-        Number.isFinite(b.s.stats.downloads)
-          ? b.s.stats.downloads
-          : 0;
-      const aDl =
-        typeof a.s.stats.downloads === "number" &&
-        Number.isFinite(a.s.stats.downloads)
-          ? a.s.stats.downloads
-          : 0;
-      return bScore - aScore || bDl - aDl || a.s.slug.localeCompare(b.s.slug);
-    });
-    expect(scored[0]?.s.slug).toBe("skill-valid");
-    expect(scored[1]?.s.slug).toBe("skill-nan");
+  it("breaks score/download ties by slug instead of leaving catalog order", async () => {
+    await writeCatalog([
+      makeSkill("zeta-tool", { downloads: 7 }),
+      makeSkill("alpha-tool", { downloads: 7 }),
+    ]);
+
+    const results = await searchCatalogSkills("tool", 10);
+
+    expect(results.map((r) => r.slug)).toEqual(["alpha-tool", "zeta-tool"]);
+  });
+
+  it("orders non-numeric download counts below real ones without NaN comparisons", async () => {
+    await writeCatalog([
+      makeSkill("broken-tool", {
+        downloads: "many" as unknown as number,
+      }),
+      makeSkill("good-tool", { downloads: 7 }),
+    ]);
+
+    const results = await searchCatalogSkills("tool", 10);
+
+    expect(results.map((r) => r.slug)).toEqual(["good-tool", "broken-tool"]);
   });
 });
