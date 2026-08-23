@@ -102,6 +102,16 @@ interface BackgroundShellSession {
   killTimer?: NodeJS.Timeout;
 }
 
+export class BackgroundShellStartError extends Error {
+  constructor(
+    message: string,
+    readonly handle: string,
+  ) {
+    super(message);
+    this.name = "BackgroundShellStartError";
+  }
+}
+
 interface FragmentRedactionState {
   fragments: SecretFragment[];
   ranges: SecretTaintRange[];
@@ -172,14 +182,45 @@ export class BackgroundShellService extends Service {
       workspaceObservation: args.workspaceObservation,
       workspaceDeltaReceipt: args.workspaceObservation
         ? indeterminateWorkspaceDeltaReceipt(
-            args.workspaceObservation.root,
+            args.workspaceObservation,
             "BACKGROUND_RECEIPT_PENDING",
+            handle,
           )
         : undefined,
     };
+    this.sessions.set(handle, session);
+    started.process.on("close", (code, signal) => {
+      if (session.killTimer) clearTimeout(session.killTimer);
+      if (session.status === "running") {
+        session.status = "exited";
+      }
+      session.exitCode = code;
+      session.signal = signal;
+      session.endedAt = Date.now();
+      void this.finalizeWorkspaceDelta(session);
+    });
+    started.process.on("error", (error) => {
+      session.status = "error";
+      session.exitCode = -1;
+      session.signal = null;
+      session.endedAt = Date.now();
+      void this.finalizeWorkspaceDelta(session);
+      appendSessionOutput(
+        this.runtime,
+        session,
+        "stderr",
+        error.message,
+        this.bufferChars,
+      );
+    });
     if (!started.process.stdout || !started.process.stderr) {
       signalHostProcessGroup(started.process, "SIGKILL");
-      throw new Error("background shell process did not expose output streams");
+      session.status = "error";
+      session.exitCode = -1;
+      throw new BackgroundShellStartError(
+        "background shell process did not expose output streams",
+        handle,
+      );
     }
     // Decode before ring/redaction processing so chunk boundaries cannot
     // replace valid partial code points with U+FFFD.
@@ -213,31 +254,6 @@ export class BackgroundShellService extends Service {
         this.bufferChars,
       );
     });
-    started.process.on("close", (code, signal) => {
-      if (session.killTimer) clearTimeout(session.killTimer);
-      if (session.status === "running") {
-        session.status = "exited";
-      }
-      session.exitCode = code;
-      session.signal = signal;
-      session.endedAt = Date.now();
-      void this.finalizeWorkspaceDelta(session);
-    });
-    started.process.on("error", (error) => {
-      session.status = "error";
-      session.exitCode = -1;
-      session.signal = null;
-      session.endedAt = Date.now();
-      void this.finalizeWorkspaceDelta(session);
-      appendSessionOutput(
-        this.runtime,
-        session,
-        "stderr",
-        error.message,
-        this.bufferChars,
-      );
-    });
-    this.sessions.set(handle, session);
     return snapshot(this.runtime, session);
   }
 
@@ -248,13 +264,12 @@ export class BackgroundShellService extends Service {
     stderrOffset?: number;
   }): Promise<BackgroundShellPollResult> {
     const session = this.requireSession(args.conversationId, args.handle);
+    if (session.endedAt !== null) await this.finalizeWorkspaceDelta(session);
     if (session.outputLimitExceeded) {
       throw new Error(
         `background shell output exceeded the ${this.bufferChars}-character complete-capture safety limit; no partial output is available`,
       );
     }
-    if (session.status !== "running")
-      await this.finalizeWorkspaceDelta(session);
     refreshSessionRedaction(this.runtime, session);
     return {
       ...snapshot(this.runtime, session),
@@ -279,6 +294,15 @@ export class BackgroundShellService extends Service {
     return [...this.sessions.values()]
       .filter((session) => session.conversationId === conversationId)
       .map((session) => snapshot(this.runtime, session));
+  }
+
+  async inspect(args: {
+    conversationId: string;
+    handle: string;
+  }): Promise<BackgroundShellSessionSnapshot> {
+    const session = this.requireSession(args.conversationId, args.handle);
+    if (session.endedAt !== null) await this.finalizeWorkspaceDelta(session);
+    return snapshot(this.runtime, session);
   }
 
   write(args: {
@@ -321,7 +345,7 @@ export class BackgroundShellService extends Service {
   private async killSession(
     session: BackgroundShellSession,
   ): Promise<BackgroundShellSessionSnapshot> {
-    if (session.status !== "running") {
+    if (session.endedAt !== null) {
       await this.finalizeWorkspaceDelta(session);
       return snapshot(this.runtime, session);
     }
@@ -368,6 +392,7 @@ export class BackgroundShellService extends Service {
     if (!session.workspaceDeltaPromise) {
       session.workspaceDeltaPromise = finishLocalWorkspaceDeltaObservation(
         session.workspaceObservation,
+        session.handle,
       ).then((receipt) => {
         session.workspaceDeltaReceipt = receipt;
         session.workspaceObservation = undefined;

@@ -8,6 +8,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
+import { arch, hostname, platform } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -17,9 +18,19 @@ import {
 } from "@elizaos/core";
 
 const execFileAsync = promisify(execFile);
-export const WORKSPACE_DELTA_OBSERVATION_TIMEOUT_MS = 30_000;
+// Observation is diagnostic and fail-closed; it must not consume the command's
+// own timeout or turn a prompt shell timeout into multi-second tail latency.
+export const WORKSPACE_DELTA_OBSERVATION_TIMEOUT_MS = 900;
 export const WORKSPACE_DELTA_FILE_BYTE_BUDGET = 64 * 1024 * 1024;
 export const WORKSPACE_DELTA_GIT_OUTPUT_BUDGET = 8 * 1024 * 1024;
+const LOCAL_EXECUTION_DOMAIN_ID = createHash("sha256")
+  .update("eliza-workspace-execution-domain-v1\0")
+  .update(hostname())
+  .update("\0")
+  .update(platform())
+  .update("\0")
+  .update(arch())
+  .digest("hex");
 
 interface GitWorkspaceSnapshot {
   root: string;
@@ -39,6 +50,16 @@ export interface LocalWorkspaceDeltaDependencies {
   maxFileBytes?: number;
   maxGitOutputBytes?: number;
   now?: () => number;
+  executionDomainId?: string;
+  fs?: Partial<WorkspaceDeltaFs>;
+}
+
+interface WorkspaceDeltaFs {
+  realpath(value: string): Promise<string>;
+  lstat(value: string): Promise<Awaited<ReturnType<typeof fs.lstat>>>;
+  readlink(value: string): Promise<string>;
+  readdir(value: string): Promise<string[]>;
+  createReadStream(value: string): ReturnType<typeof createReadStream>;
 }
 
 interface ObservationLimits {
@@ -46,6 +67,8 @@ interface ObservationLimits {
   maxFileBytes: number;
   maxGitOutputBytes: number;
   now: () => number;
+  executionDomainId: string;
+  fs: WorkspaceDeltaFs;
 }
 
 interface SnapshotBudget {
@@ -53,10 +76,13 @@ interface SnapshotBudget {
   remainingFileBytes: number;
   remainingGitOutputBytes: number;
   now: () => number;
+  fs: WorkspaceDeltaFs;
 }
 
 export interface LocalWorkspaceDeltaObservation {
   root: string;
+  rootId: string;
+  executionDomainId: string;
   before?: GitWorkspaceSnapshot;
   baselineFailure?: WorkspaceDeltaIndeterminateReasonCode;
   probeFailure?: true;
@@ -100,6 +126,7 @@ function positiveLimit(value: number | undefined, fallback: number): number {
 function resolveLimits(
   dependencies: LocalWorkspaceDeltaDependencies,
 ): ObservationLimits {
+  const fsDependencies = dependencies.fs ?? {};
   return {
     maxObservationMs: positiveLimit(
       dependencies.maxObservationMs,
@@ -114,6 +141,15 @@ function resolveLimits(
       WORKSPACE_DELTA_GIT_OUTPUT_BUDGET,
     ),
     now: dependencies.now ?? Date.now,
+    executionDomainId:
+      dependencies.executionDomainId ?? LOCAL_EXECUTION_DOMAIN_ID,
+    fs: {
+      realpath: fsDependencies.realpath ?? fs.realpath,
+      lstat: fsDependencies.lstat ?? fs.lstat,
+      readlink: fsDependencies.readlink ?? fs.readlink,
+      readdir: fsDependencies.readdir ?? fs.readdir,
+      createReadStream: fsDependencies.createReadStream ?? createReadStream,
+    },
   };
 }
 
@@ -123,12 +159,14 @@ function newBudget(value: ObservationLimits): SnapshotBudget {
     remainingFileBytes: value.maxFileBytes,
     remainingGitOutputBytes: value.maxGitOutputBytes,
     now: value.now,
+    fs: value.fs,
   };
 }
 
 function remainingLimits(
   value: ObservationLimits,
   phaseStartedAt: number,
+  budget: SnapshotBudget,
 ): ObservationLimits {
   return {
     ...value,
@@ -136,6 +174,8 @@ function remainingLimits(
       1,
       value.maxObservationMs - Math.max(0, value.now() - phaseStartedAt),
     ),
+    maxFileBytes: budget.remainingFileBytes,
+    maxGitOutputBytes: budget.remainingGitOutputBytes,
   };
 }
 
@@ -145,6 +185,63 @@ function assertTime(budget: SnapshotBudget): void {
   }
 }
 
+async function withinDeadline<T>(
+  operation: Promise<T>,
+  budget: SnapshotBudget,
+  abort?: () => void,
+): Promise<T> {
+  // error-policy:J5 The promise may already be running when a synthetic/test
+  // clock exhausts the budget here; the race observes its authoritative
+  // rejection, while this handler suppresses only a later duplicate rejection.
+  void operation.catch(() => undefined);
+  assertTime(budget);
+  const remainingMs = budget.deadline - budget.now();
+  if (remainingMs <= 0) {
+    abort?.();
+    throw new ObservationBudgetError("OBSERVATION_TIME_BUDGET_EXCEEDED");
+  }
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          abort?.();
+          reject(
+            new ObservationBudgetError("OBSERVATION_TIME_BUDGET_EXCEEDED"),
+          );
+        }, remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function workspaceRootId(executionDomainId: string, root: string): string {
+  return createHash("sha256")
+    .update("eliza-workspace-root-v1\0")
+    .update(executionDomainId)
+    .update("\0")
+    .update(root)
+    .digest("hex");
+}
+
+export function unattestedRemoteWorkspaceScope(root: string): {
+  root: string;
+  rootId: string;
+  executionDomainId: string;
+} {
+  const executionDomainId = createHash("sha256")
+    .update("eliza-unattested-remote-execution-domain-v1")
+    .digest("hex");
+  return {
+    root,
+    rootId: workspaceRootId(executionDomainId, root),
+    executionDomainId,
+  };
+}
+
 async function budgetedGit(
   runGit: GitRunner,
   cwd: string,
@@ -152,13 +249,19 @@ async function budgetedGit(
   budget: SnapshotBudget,
 ): Promise<string> {
   assertTime(budget);
+  if (budget.remainingGitOutputBytes <= 0) {
+    throw new ObservationBudgetError("OBSERVATION_OUTPUT_BUDGET_EXCEEDED");
+  }
   const remainingMs = Math.max(1, budget.deadline - budget.now());
   let output: string;
   try {
-    output = await runGit(cwd, args, {
-      timeoutMs: remainingMs,
-      maxOutputBytes: Math.max(1, budget.remainingGitOutputBytes),
-    });
+    output = await withinDeadline(
+      runGit(cwd, args, {
+        timeoutMs: remainingMs,
+        maxOutputBytes: Math.max(1, budget.remainingGitOutputBytes),
+      }),
+      budget,
+    );
   } catch (error) {
     const failure = error as NodeJS.ErrnoException & {
       killed?: boolean;
@@ -221,16 +324,22 @@ async function hashFileBounded(
   hash: ReturnType<typeof createHash>,
   budget: SnapshotBudget,
 ): Promise<void> {
-  const stream = createReadStream(absolute, { highWaterMark: 64 * 1024 });
+  const stream = budget.fs.createReadStream(absolute);
+  const iterator = stream[Symbol.asyncIterator]();
   try {
-    for await (const chunk of stream) {
+    while (true) {
+      const next = await withinDeadline(iterator.next(), budget, () =>
+        stream.destroy(),
+      );
+      if (next.done) break;
+      const chunk = next.value as Buffer;
       assertTime(budget);
-      const bytes = (chunk as Buffer).byteLength;
+      const bytes = chunk.byteLength;
       if (bytes > budget.remainingFileBytes) {
         throw new ObservationBudgetError("OBSERVATION_BYTE_BUDGET_EXCEEDED");
       }
       budget.remainingFileBytes -= bytes;
-      hash.update(chunk as Buffer);
+      hash.update(chunk);
     }
   } finally {
     stream.destroy();
@@ -245,14 +354,29 @@ async function pathFingerprint(
   const absolute = absoluteInsideRoot(root, relative);
   assertTime(budget);
   try {
-    const stat = await fs.lstat(absolute);
+    const stat = await withinDeadline(budget.fs.lstat(absolute), budget);
     const hash = createHash("sha256");
     hash.update(
       `${stat.mode}:${stat.isFile() ? "file" : stat.isSymbolicLink() ? "symlink" : stat.isDirectory() ? "directory" : "other"}\0`,
     );
     if (stat.isFile()) await hashFileBounded(absolute, hash, budget);
-    else if (stat.isSymbolicLink()) hash.update(await fs.readlink(absolute));
-    else hash.update(`${stat.size}:${stat.mtimeMs}`);
+    else if (stat.isSymbolicLink()) {
+      hash.update(await withinDeadline(budget.fs.readlink(absolute), budget));
+    } else if (stat.isDirectory()) {
+      const entries = (
+        await withinDeadline(budget.fs.readdir(absolute), budget)
+      ).sort((a, b) => a.localeCompare(b));
+      for (const entry of entries) {
+        const child = path.posix.join(
+          relative.split(path.sep).join("/"),
+          entry,
+        );
+        hash.update("\0entry\0");
+        hash.update(entry);
+        hash.update("\0");
+        hash.update(await pathFingerprint(root, child, budget));
+      }
+    } else hash.update(`${stat.size}:${stat.mtimeMs}`);
     assertTime(budget);
     return hash.digest("hex");
   } catch (error) {
@@ -266,40 +390,66 @@ async function headIdentity(
   runGit: GitRunner,
   budget: SnapshotBudget,
 ): Promise<string> {
-  try {
-    const head = await budgetedGit(
-      runGit,
-      root,
-      ["rev-parse", "--verify", "HEAD"],
-      budget,
+  const gitExit = (error: unknown) => {
+    const value = error as NodeJS.ErrnoException & {
+      stderr?: string;
+      stdout?: string;
+    };
+    return {
+      code:
+        typeof value.code === "number"
+          ? value.code
+          : typeof value.code === "string" && /^\d+$/.test(value.code)
+            ? Number(value.code)
+            : undefined,
+      stderr: typeof value.stderr === "string" ? value.stderr.trim() : "",
+      stdout: typeof value.stdout === "string" ? value.stdout.trim() : "",
+    };
+  };
+  const expectedMissingHead = (error: unknown) => {
+    const failure = gitExit(error);
+    return (
+      failure.code === 128 &&
+      /^(?:fatal: )?Needed a single revision$/.test(failure.stderr) &&
+      failure.stdout.length === 0
     );
-    let headRef = "detached";
-    try {
-      headRef = (
-        await budgetedGit(
-          runGit,
-          root,
-          ["symbolic-ref", "--quiet", "HEAD"],
-          budget,
-        )
-      ).trim();
-    } catch (error) {
-      if (error instanceof ObservationBudgetError) throw error;
+  };
+  const expectedDetachedHead = (error: unknown) => {
+    const failure = gitExit(error);
+    return (
+      failure.code === 1 &&
+      failure.stderr.length === 0 &&
+      failure.stdout.length === 0
+    );
+  };
+  const headCap = Math.ceil(budget.remainingGitOutputBytes / 2);
+  const refCap = budget.remainingGitOutputBytes - headCap;
+  const headBudget = { ...budget, remainingGitOutputBytes: headCap };
+  const refBudget = { ...budget, remainingGitOutputBytes: refCap };
+  const [headResult, refResult] = await Promise.allSettled([
+    budgetedGit(runGit, root, ["rev-parse", "--verify", "HEAD"], headBudget),
+    budgetedGit(runGit, root, ["symbolic-ref", "--quiet", "HEAD"], refBudget),
+  ]);
+  budget.remainingGitOutputBytes -=
+    headCap -
+    headBudget.remainingGitOutputBytes +
+    (refCap - refBudget.remainingGitOutputBytes);
+  if (headResult.status === "fulfilled") {
+    if (refResult.status === "fulfilled") {
+      return `commit:${headResult.value.trim()}:ref:${refResult.value.trim()}`;
     }
-    return `commit:${head.trim()}:ref:${headRef}`;
-  } catch (error) {
-    if (error instanceof ObservationBudgetError) throw error;
-    const headRef = (
-      await budgetedGit(
-        runGit,
-        root,
-        ["symbolic-ref", "--quiet", "HEAD"],
-        budget,
-      )
-    ).trim();
-    if (!headRef) throw error;
-    return `unborn:${headRef}`;
+    if (refResult.reason instanceof ObservationBudgetError)
+      throw refResult.reason;
+    if (!expectedDetachedHead(refResult.reason)) throw refResult.reason;
+    return `commit:${headResult.value.trim()}:ref:detached`;
   }
+  if (headResult.reason instanceof ObservationBudgetError)
+    throw headResult.reason;
+  if (!expectedMissingHead(headResult.reason)) throw headResult.reason;
+  if (refResult.status === "rejected") throw refResult.reason;
+  const headRef = refResult.value.trim();
+  if (!headRef) throw headResult.reason;
+  return `unborn:${headRef}`;
 }
 
 async function captureAtRoot(
@@ -308,33 +458,63 @@ async function captureAtRoot(
   budget: SnapshotBudget,
   seenRoots = new Set<string>(),
 ): Promise<GitWorkspaceSnapshot> {
-  const canonicalRoot = await fs.realpath(root);
+  const canonicalRoot = await withinDeadline(budget.fs.realpath(root), budget);
   if (seenRoots.has(canonicalRoot)) {
     throw new Error("Recursive Git worktree topology detected.");
   }
   seenRoots.add(canonicalRoot);
   try {
-    const [head, index, trackedChanges, untracked] = await Promise.all([
-      headIdentity(canonicalRoot, runGit, budget),
+    // Reserve disjoint output allowances before parallel dispatch. Their sum
+    // never exceeds the aggregate budget, while independent Git reads avoid
+    // adding four process latencies to every foreground shell command.
+    const totalGitBudget = budget.remainingGitOutputBytes;
+    const headCap = Math.min(8 * 1024, totalGitBudget);
+    const afterHead = totalGitBudget - headCap;
+    const indexCap = Math.floor(afterHead / 2);
+    const trackedCap = Math.floor((afterHead - indexCap) / 2);
+    const untrackedCap = afterHead - indexCap - trackedCap;
+    const childBudget = (remainingGitOutputBytes: number): SnapshotBudget => ({
+      ...budget,
+      remainingGitOutputBytes,
+    });
+    const headBudget = childBudget(headCap);
+    const indexBudget = childBudget(indexCap);
+    const trackedBudget = childBudget(trackedCap);
+    const untrackedBudget = childBudget(untrackedCap);
+    const probeResults = await Promise.allSettled([
+      headIdentity(canonicalRoot, runGit, headBudget),
       budgetedGit(
         runGit,
         canonicalRoot,
         ["ls-files", "--stage", "-v", "-z"],
-        budget,
+        indexBudget,
       ),
       budgetedGit(
         runGit,
         canonicalRoot,
         ["diff-files", "--name-only", "-z", "--ignore-submodules=none", "--"],
-        budget,
+        trackedBudget,
       ),
       budgetedGit(
         runGit,
         canonicalRoot,
         ["ls-files", "--others", "--exclude-standard", "-z", "--"],
-        budget,
+        untrackedBudget,
       ),
     ]);
+    const rejectedProbe = probeResults.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (rejectedProbe) throw rejectedProbe.reason;
+    const [head, index, trackedChanges, untracked] = probeResults.map(
+      (result) => (result as PromiseFulfilledResult<string>).value,
+    );
+    budget.remainingGitOutputBytes -=
+      headCap -
+      headBudget.remainingGitOutputBytes +
+      (indexCap - indexBudget.remainingGitOutputBytes) +
+      (trackedCap - trackedBudget.remainingGitOutputBytes) +
+      (untrackedCap - untrackedBudget.remainingGitOutputBytes);
     const hash = createHash("sha256");
     hash.update("head\0");
     hash.update(head);
@@ -366,7 +546,7 @@ async function captureAtRoot(
       hash.update("\0");
       const absolute = absoluteInsideRoot(canonicalRoot, relative);
       try {
-        const stat = await fs.lstat(absolute);
+        const stat = await withinDeadline(budget.fs.lstat(absolute), budget);
         if (!stat.isDirectory()) {
           hash.update(await pathFingerprint(canonicalRoot, relative, budget));
           continue;
@@ -392,11 +572,14 @@ async function findGitMarkerRoot(
   cwd: string,
   budget: SnapshotBudget,
 ): Promise<string | undefined> {
-  let current = await fs.realpath(cwd);
+  let current = await withinDeadline(budget.fs.realpath(cwd), budget);
   while (true) {
     assertTime(budget);
     try {
-      const marker = await fs.lstat(path.join(current, ".git"));
+      const marker = await withinDeadline(
+        budget.fs.lstat(path.join(current, ".git")),
+        budget,
+      );
       if (marker.isDirectory() || marker.isFile()) return current;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -434,54 +617,83 @@ export async function beginLocalWorkspaceDeltaObservation(
       markerRoot = await findGitMarkerRoot(cwd, budget);
     } catch (fallbackError) {
       if (fallbackError instanceof ObservationBudgetError) {
-        const realRoot = await fs.realpath(cwd).catch(() => cwd);
+        const realRoot = cwd;
         return {
           root: realRoot,
+          rootId: workspaceRootId(
+            observationLimits.executionDomainId,
+            realRoot,
+          ),
+          executionDomainId: observationLimits.executionDomainId,
           baselineFailure: fallbackError.reasonCode,
           runGit,
-          limits: remainingLimits(observationLimits, phaseStartedAt),
+          limits: remainingLimits(observationLimits, phaseStartedAt, budget),
         };
       }
       return undefined;
     }
     if (error instanceof ObservationBudgetError) {
+      const failedRoot = markerRoot ?? cwd;
       return {
-        root: markerRoot ?? (await fs.realpath(cwd).catch(() => cwd)),
+        root: failedRoot,
+        rootId: workspaceRootId(
+          observationLimits.executionDomainId,
+          failedRoot,
+        ),
+        executionDomainId: observationLimits.executionDomainId,
         baselineFailure: error.reasonCode,
         runGit,
-        limits: remainingLimits(observationLimits, phaseStartedAt),
+        limits: remainingLimits(observationLimits, phaseStartedAt, budget),
       };
     }
     if (markerRoot) {
       return {
         root: markerRoot,
+        rootId: workspaceRootId(
+          observationLimits.executionDomainId,
+          markerRoot,
+        ),
+        executionDomainId: observationLimits.executionDomainId,
         probeFailure: true,
         runGit,
-        limits: remainingLimits(observationLimits, phaseStartedAt),
+        limits: remainingLimits(observationLimits, phaseStartedAt, budget),
       };
     }
     return undefined;
   }
   if (!root) return undefined;
   try {
+    const canonicalRoot = await withinDeadline(
+      observationLimits.fs.realpath(root),
+      budget,
+    );
     return {
-      root: await fs.realpath(root),
-      before: await captureAtRoot(root, runGit, budget),
+      root: canonicalRoot,
+      rootId: workspaceRootId(
+        observationLimits.executionDomainId,
+        canonicalRoot,
+      ),
+      executionDomainId: observationLimits.executionDomainId,
+      before: await captureAtRoot(canonicalRoot, runGit, budget),
       runGit,
-      limits: remainingLimits(observationLimits, phaseStartedAt),
+      limits: remainingLimits(observationLimits, phaseStartedAt, budget),
     };
   } catch (error) {
+    const failedRoot = root;
     return {
-      root: await fs.realpath(root).catch(() => root),
+      root: failedRoot,
+      rootId: workspaceRootId(observationLimits.executionDomainId, failedRoot),
+      executionDomainId: observationLimits.executionDomainId,
       baselineFailure: failureReason(error, "BASELINE_SNAPSHOT_FAILED"),
       runGit,
-      limits: remainingLimits(observationLimits, phaseStartedAt),
+      limits: remainingLimits(observationLimits, phaseStartedAt, budget),
     };
   }
 }
 
 export async function finishLocalWorkspaceDeltaObservation(
   observation: LocalWorkspaceDeltaObservation | undefined,
+  backgroundHandle?: string,
 ): Promise<WorkspaceDeltaReceipt | undefined> {
   if (!observation) return undefined;
   const base = {
@@ -490,8 +702,18 @@ export async function finishLocalWorkspaceDeltaObservation(
     scope: {
       kind: "git_worktree" as const,
       root: observation.root,
+      rootId: observation.rootId,
+      executionDomainId: observation.executionDomainId,
       coverage: "tracked_and_untracked_nonignored" as const,
     },
+    ...(backgroundHandle
+      ? {
+          operation: {
+            kind: "background_shell" as const,
+            handle: backgroundHandle,
+          },
+        }
+      : {}),
     observedAt: new Date().toISOString(),
   };
   if (observation.probeFailure) {
@@ -534,17 +756,30 @@ export async function finishLocalWorkspaceDeltaObservation(
 }
 
 export function indeterminateWorkspaceDeltaReceipt(
-  root: string,
+  scope: {
+    root: string;
+    rootId: string;
+    executionDomainId: string;
+  },
   reasonCode: WorkspaceDeltaIndeterminateReasonCode,
+  backgroundHandle?: string,
 ): WorkspaceDeltaReceipt {
   return {
     version: 1,
     kind: "workspace_delta",
     scope: {
       kind: "git_worktree",
-      root,
+      ...scope,
       coverage: "tracked_and_untracked_nonignored",
     },
+    ...(backgroundHandle
+      ? {
+          operation: {
+            kind: "background_shell" as const,
+            handle: backgroundHandle,
+          },
+        }
+      : {}),
     outcome: "indeterminate",
     observedAt: new Date().toISOString(),
     reasonCode,

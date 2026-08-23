@@ -9,6 +9,8 @@ import {
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
+const ROOT_ID = "c".repeat(64);
+const DOMAIN_ID = "d".repeat(64);
 
 function observed(outcome: "changed" | "unchanged") {
 	return {
@@ -17,6 +19,8 @@ function observed(outcome: "changed" | "unchanged") {
 		scope: {
 			kind: "git_worktree",
 			root: "/workspace",
+			rootId: ROOT_ID,
+			executionDomainId: DOMAIN_ID,
 			coverage: "tracked_and_untracked_nonignored",
 		},
 		outcome,
@@ -56,12 +60,40 @@ describe("WorkspaceDeltaReceipt", () => {
 		);
 	});
 
+	it("preserves display roots separately from canonical opaque identities", () => {
+		const receipt = normalizeWorkspaceDeltaReceipt({
+			...observed("unchanged"),
+			scope: {
+				...observed("unchanged").scope,
+				root: "[redacted]",
+			},
+		});
+		expect(receipt.scope).toEqual({
+			kind: "git_worktree",
+			root: "[redacted]",
+			rootId: ROOT_ID,
+			executionDomainId: DOMAIN_ID,
+			coverage: "tracked_and_untracked_nonignored",
+		});
+	});
+
 	it.each([
 		{ ...observed("changed"), version: 2 },
 		{ ...observed("changed"), outcome: "maybe" },
 		{ ...observed("changed"), beforeFingerprint: "short" },
 		{ ...observed("changed"), observedAt: "not-a-time" },
 		{ ...observed("changed"), observedAt: "2026-08-22" },
+		{
+			...observed("changed"),
+			scope: { ...observed("changed").scope, rootId: "short" },
+		},
+		{
+			...observed("changed"),
+			scope: {
+				...observed("changed").scope,
+				executionDomainId: undefined,
+			},
+		},
 		{ ...observed("changed"), afterFingerprint: HASH_A },
 		{ ...observed("unchanged"), afterFingerprint: HASH_B },
 		{ ...observed("changed"), extra: true },
@@ -73,6 +105,15 @@ describe("WorkspaceDeltaReceipt", () => {
 			...observed("changed"),
 			outcome: "indeterminate",
 			afterFingerprint: undefined,
+			reasonCode: "BACKGROUND_RECEIPT_PENDING",
+		},
+		{
+			...observed("changed"),
+			operation: {
+				kind: "background_shell",
+				handle: "bg-1",
+				extra: true,
+			},
 		},
 		{
 			...observed("changed"),

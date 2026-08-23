@@ -57,6 +57,11 @@ export interface ShellResult {
   signal: NodeJS.Signals | null;
   /** True only when complete capture was refused; stdout/stderr are empty. */
   outputLimitExceeded?: boolean;
+  workspaceExecution?: {
+    root: string;
+    rootId: string;
+    executionDomainId: string;
+  };
 }
 
 const COMPLETE_SHELL_CAPTURE_LIMIT_CHARS = 1_000_000;
@@ -665,6 +670,9 @@ async function runThroughCapabilityRouter(
       durationMs: Date.now() - start,
       timedOut: result.timedOut,
       sandbox: "capability-router",
+      ...(result.workspaceExecution
+        ? { workspaceExecution: result.workspaceExecution }
+        : {}),
     };
   } catch (error) {
     // error-policy:J4 only the expected "no PTY capability" shape
