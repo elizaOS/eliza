@@ -27,6 +27,10 @@ import { MemoryType } from "../../../types/memory.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import type { MemoryService } from "../services/memory-service.ts";
+import {
+	latestSessionSummaryContentEnvelope,
+	mergeSessionSummaryMetadata,
+} from "../session-summary-content-manifest.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
 function createdAtSortKey(memory: Memory): number {
@@ -380,6 +384,14 @@ ${formatMessages(runtime, recentMessages)}`;
 						: new Date();
 				const newOffset =
 					prepared.lastOffset + prepared.summarizationMessages.length;
+				const summaryMetadata = mergeSessionSummaryMetadata(
+					prepared.existingSummary?.metadata,
+					output.keyPoints,
+					latestSessionSummaryContentEnvelope(
+						prepared.existingSummary?.metadata,
+						prepared.summarizationMessages,
+					),
+				);
 
 				if (prepared.existingSummary) {
 					await prepared.memoryService.updateSessionSummary(
@@ -393,7 +405,7 @@ ${formatMessages(runtime, recentMessages)}`;
 							lastMessageOffset: newOffset,
 							endTime,
 							topics: output.topics,
-							metadata: { keyPoints: output.keyPoints },
+							metadata: summaryMetadata,
 						},
 					);
 				} else {
@@ -410,7 +422,7 @@ ${formatMessages(runtime, recentMessages)}`;
 						startTime,
 						endTime,
 						topics: output.topics,
-						metadata: { keyPoints: output.keyPoints },
+						metadata: summaryMetadata,
 					});
 				}
 

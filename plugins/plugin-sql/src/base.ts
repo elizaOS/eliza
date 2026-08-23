@@ -14,6 +14,8 @@ import {
   type AgentRunSummary,
   type AgentRunSummaryResult,
   type AppendConnectorAccountAuditEventParams,
+  type AtomicMemoryPublicationParams,
+  type AtomicMemoryPublicationResult,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -467,6 +469,8 @@ type AgentRow = typeof agentTable.$inferSelect;
 type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
 type AgentKnowledge = NonNullable<Agent["knowledge"]>;
 type MemoryRow = typeof memoryTable.$inferSelect;
+
+class AtomicMemoryPublicationConflict extends Error {}
 
 function memoryFromRow(row: MemoryRow, embedding?: number[], similarity?: number): Memory {
   return {
@@ -6755,6 +6759,105 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   // ── Memory batch methods ──────────────────────────────────────────────
+
+  async compareAndSwapMemoryPublication(
+    params: AtomicMemoryPublicationParams
+  ): Promise<AtomicMemoryPublicationResult> {
+    const headId = params.head.memory.id;
+    if (!headId) throw new TypeError("atomic memory publication head requires an id");
+    try {
+      return await this.withDatabase(async () =>
+        this.db.transaction(async (tx) => {
+          const currentRows = await tx
+            .select()
+            .from(memoryTable)
+            .where(eq(memoryTable.id, headId))
+            .limit(1);
+          const current = currentRows[0];
+          const currentRevision = (current?.metadata as Record<string, unknown> | undefined)
+            ?.revision;
+          if (
+            (params.expectedRevision === null && current) ||
+            (params.expectedRevision !== null && currentRevision !== params.expectedRevision)
+          ) {
+            throw new AtomicMemoryPublicationConflict();
+          }
+
+          for (const dependency of params.dependencies) {
+            const dependencyId = dependency.memory.id;
+            if (!dependencyId) {
+              throw new TypeError("atomic memory dependency requires an id");
+            }
+            await this.insertMemoryInTransaction(
+              tx,
+              { ...dependency.memory, unique: true },
+              dependency.tableName,
+              dependencyId
+            );
+            const storedRows = await tx
+              .select()
+              .from(memoryTable)
+              .where(eq(memoryTable.id, dependencyId))
+              .limit(1);
+            const stored = storedRows[0];
+            if (
+              !stored ||
+              stored.type !== dependency.tableName ||
+              stored.agentId !== (dependency.memory.agentId ?? this.agentId) ||
+              stored.roomId !== dependency.memory.roomId ||
+              memoryFromRow(stored).content.text !== dependency.memory.content.text
+            ) {
+              throw new ElizaError("Immutable memory dependency id has different content", {
+                code: "CONTENT_CONTINUITY_IMMUTABLE_COLLISION",
+                context: { memoryId: dependencyId },
+              });
+            }
+          }
+
+          const contentText = JSON.stringify(params.head.memory.content);
+          const metadataText = JSON.stringify(params.head.memory.metadata ?? {});
+          let published: MemoryRow[];
+          if (params.expectedRevision === null) {
+            published = await tx
+              .insert(memoryTable)
+              .values({
+                id: headId,
+                type: params.head.tableName,
+                content: sql`${contentText}::jsonb`,
+                metadata: sql`${metadataText}::jsonb`,
+                entityId: params.head.memory.entityId,
+                roomId: params.head.memory.roomId,
+                worldId: params.head.memory.worldId,
+                agentId: params.head.memory.agentId ?? this.agentId,
+                unique: true,
+                createdAt: new Date(),
+              })
+              .onConflictDoNothing()
+              .returning();
+          } else {
+            published = await tx
+              .update(memoryTable)
+              .set({
+                content: sql`${contentText}::jsonb`,
+                metadata: sql`${metadataText}::jsonb`,
+              })
+              .where(
+                and(
+                  eq(memoryTable.id, headId),
+                  sql`${memoryTable.metadata}->>'revision' = ${params.expectedRevision}`
+                )
+              )
+              .returning();
+          }
+          if (published.length !== 1) throw new AtomicMemoryPublicationConflict();
+          return { status: "published" as const, head: memoryFromRow(published[0]) };
+        })
+      );
+    } catch (error) {
+      if (error instanceof AtomicMemoryPublicationConflict) return { status: "conflict" };
+      throw error;
+    }
+  }
 
   async createMemories(
     memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>

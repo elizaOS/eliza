@@ -40,6 +40,27 @@ export interface MessageSearchHit {
 	trigramSimilarity: number;
 }
 
+/** One immutable row that must exist before an atomic head becomes visible. */
+export interface AtomicMemoryDependency {
+	memory: Memory;
+	tableName: string;
+}
+
+/**
+ * Atomically inserts immutable dependencies and publishes a mutable head with
+ * compare-and-swap semantics. `expectedRevision: null` means the head must not
+ * exist; otherwise the stored head metadata must carry that exact revision.
+ */
+export interface AtomicMemoryPublicationParams {
+	head: AtomicMemoryDependency;
+	dependencies: AtomicMemoryDependency[];
+	expectedRevision: string | null;
+}
+
+export type AtomicMemoryPublicationResult =
+	| { status: "published"; head: Memory }
+	| { status: "conflict" };
+
 /**
  * Stable newest-first cursor for document-list pagination. New cursors carry
  * the first page's upper ordering bound so later pages exclude ordinary
@@ -1345,6 +1366,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]>;
+
+	/** Optional first-party atomic dependency publication capability. */
+	compareAndSwapMemoryPublication?(
+		params: AtomicMemoryPublicationParams,
+	): Promise<AtomicMemoryPublicationResult>;
 	/**
 	 * Batch update memories
 	 *
