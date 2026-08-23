@@ -9,22 +9,31 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuditEvent } from "./audit/types.js";
 
-const harness = vi.hoisted(() => {
-  const authEvents = { name: "auth_events" as const };
-  const values = vi.fn(async (_row: Record<string, unknown>) => undefined);
-  const insert = vi.fn((_table: unknown) => ({ values }));
-  return { authEvents, values, insert };
+// bun's vitest compat layer (the runner this package's unit lane uses) has no
+// vi.hoisted, so build the collaborators inside the factories and reach them
+// through the mocked module afterwards.
+vi.mock("@/db/client", () => {
+	const values = vi.fn(async (_row: Record<string, unknown>) => undefined);
+	const insert = vi.fn((_table: unknown) => ({ values }));
+	return { dbWrite: { insert }, __values: values, __insert: insert };
 });
 
-vi.mock("@/db/client", () => ({
-  dbWrite: {
-    insert: harness.insert,
-  },
+vi.mock("@/db/schemas/auth-events", () => ({
+	authEvents: { name: "auth_events" as const },
 }));
 
-vi.mock("@/db/schemas/auth-events", () => ({
-  authEvents: harness.authEvents,
-}));
+const dbClientModule = (await import("@/db/client")) as unknown as {
+	__values: ReturnType<typeof vi.fn>;
+	__insert: ReturnType<typeof vi.fn>;
+};
+const authEventsModule = (await import("@/db/schemas/auth-events")) as unknown as {
+	authEvents: { name: "auth_events" };
+};
+const harness = {
+	values: dbClientModule.__values,
+	insert: dbClientModule.__insert,
+	authEvents: authEventsModule.authEvents,
+};
 
 const { AuditEventsSink, auditEventsSink } = await import("./audit-events");
 
