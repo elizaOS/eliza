@@ -53,6 +53,40 @@ describe("AgentRuntime final model-input budget", () => {
 		},
 	);
 
+	it("keeps a rejected complete request behind its owner-authorized opaque reference", async () => {
+		const runtime = makeRuntime();
+		const handler = vi.fn(async () => "must not run");
+		runtime.registerModel(ModelType.TEXT_SMALL, handler, "tiny", 10, {
+			contextWindowTokens: 20_000,
+		});
+		const sentinel = `HEAD${"private-canary".repeat(1_500)}TAIL`;
+		let rejection: unknown;
+		try {
+			await runtime.useModel(ModelType.TEXT_SMALL, { prompt: sentinel });
+		} catch (error) {
+			rejection = error;
+		}
+		const context = (rejection as { context?: Record<string, unknown> }).context;
+		const receipt = context?.rejectedRequest as
+			| { reference?: string; stored?: boolean }
+			| undefined;
+		expect(receipt).toMatchObject({ stored: true });
+		expect(JSON.stringify(context)).not.toContain("private-canary");
+		expect(
+			runtime.readRejectedModelInput({
+				reference: receipt?.reference as string,
+				requesterAgentId: String(runtime.agentId),
+			}),
+		).toContain(sentinel);
+		expect(() =>
+			runtime.readRejectedModelInput({
+				reference: receipt?.reference as string,
+				requesterAgentId: "different-agent",
+			}),
+		).toThrow(expect.objectContaining({ code: "REJECTED_MODEL_INPUT_FORBIDDEN" }));
+		expect(handler).not.toHaveBeenCalled();
+	});
+
 	it("checks content added by pre-model hooks", async () => {
 		const runtime = makeRuntime();
 		const handler = vi.fn(async () => "must not run");

@@ -85,7 +85,7 @@ export function buildContentProjectionBudget(_args: {
 	});
 }
 
-function serializedText(value: unknown): string {
+export function serializeCompleteModelInput(value: unknown): string {
 	if (typeof value === "string") {
 		return value;
 	}
@@ -106,7 +106,7 @@ function textMeasure(
 	value: unknown,
 	mode: "heuristic" | "utf8-upper-bound",
 ): number {
-	const text = serializedText(value);
+	const text = serializeCompleteModelInput(value);
 	return mode === "utf8-upper-bound"
 		? new TextEncoder().encode(text).byteLength
 		: text.length;

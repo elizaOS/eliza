@@ -94,8 +94,13 @@ import { stringifyForModel } from "./runtime/json-output";
 import {
 	buildModelInputBudget,
 	DEFAULT_INPUT_RESERVE_TOKENS,
+	serializeCompleteModelInput,
 	withModelInputBudgetProviderOptions,
 } from "./runtime/model-input-budget";
+import {
+	rejectedModelInputStore,
+	type RejectedModelInputReceipt,
+} from "./runtime/rejected-model-input-store";
 import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
@@ -6628,6 +6633,15 @@ export class AgentRuntime implements IAgentRuntime {
 		});
 	}
 
+	/** Resolve a private rejected request for an authorized diagnostic caller. */
+	readRejectedModelInput(input: {
+		reference: string;
+		requesterAgentId: string;
+		requesterConversationId?: string;
+	}): string {
+		return rejectedModelInputStore.read(input);
+	}
+
 	/** Clone caller-owned request data before runtime transforms. Arrays and
 	 * plain records become handler-owned; opaque transport collaborators retain
 	 * identity because cloning them would change platform semantics. */
@@ -7531,6 +7545,16 @@ export class AgentRuntime implements IAgentRuntime {
 							paramsRecord.model.trim()
 								? paramsRecord.model.trim()
 								: this.resolveRegistrationModelName(resolvedModel.metadata);
+						inputBudgetRejected = true;
+						modelParamsRef = modelParams;
+						const trajectoryContext = getTrajectoryContext();
+						const protectedRequest = rejectedModelInputStore.put({
+							ownerAgentId: String(this.agentId),
+							...(trajectoryContext?.roomId
+								? { ownerConversationId: String(trajectoryContext.roomId) }
+								: {}),
+							serializedRequest: serializeCompleteModelInput(modelParams),
+						});
 						const error = new ElizaError(
 							"Complete model input exceeds the resolved provider context budget",
 							{
@@ -7550,11 +7574,10 @@ export class AgentRuntime implements IAgentRuntime {
 										: resolvedModel.metadata?.contextWindowTokens !== undefined
 											? "registration-metadata"
 											: "runtime-default",
+									rejectedRequest: protectedRequest,
 								},
 							},
 						);
-						inputBudgetRejected = true;
-						modelParamsRef = modelParams;
 						await this.recordFailedModelTrajectory({
 							modelType: String(modelType),
 							resolvedModelKey: String(resolvedModelKey),
@@ -7563,6 +7586,7 @@ export class AgentRuntime implements IAgentRuntime {
 							promptContent,
 							error,
 							elapsedTime: Date.now() - preprocessingStartedAt,
+							protectedRequest,
 						});
 						throw error;
 					}
@@ -8364,6 +8388,7 @@ export class AgentRuntime implements IAgentRuntime {
 		promptContent: string | null | undefined;
 		error: unknown;
 		elapsedTime: number;
+		protectedRequest?: RejectedModelInputReceipt;
 	}): Promise<void> {
 		if (this.initResolver) return;
 		// A failed attempt is NOT provider-recorded: the provider never returned
@@ -8386,15 +8411,18 @@ export class AgentRuntime implements IAgentRuntime {
 			const maxTokensRaw = isPlainObject(args.modelParams)
 				? (args.modelParams as { maxTokens?: number }).maxTokens
 				: undefined;
-			const systemPrompt =
-				resolveEffectiveSystemPrompt({
-					params: args.modelParams,
-					fallback: this.buildRuntimeSystemPrompt(),
-				}) ?? "";
-			const userPrompt =
-				this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
-				args.promptContent ??
-				"";
+			const protectedFailure = args.protectedRequest !== undefined;
+			const systemPrompt = protectedFailure
+				? ""
+				: (resolveEffectiveSystemPrompt({
+						params: args.modelParams,
+						fallback: this.buildRuntimeSystemPrompt(),
+					}) ?? "");
+			const userPrompt = protectedFailure
+				? ""
+				: (this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
+					args.promptContent ??
+					"");
 			const errorMessage =
 				args.error instanceof Error
 					? args.error.message
@@ -8432,21 +8460,30 @@ export class AgentRuntime implements IAgentRuntime {
 				provider: args.provider,
 				systemPrompt,
 				userPrompt,
-				prompt:
-					typeof paramsRecord.prompt === "string"
+				prompt: protectedFailure
+					? ""
+					: typeof paramsRecord.prompt === "string"
 						? paramsRecord.prompt
 						: userPrompt,
-				// The failed request's messages ARE the evidence: without them a
-				// provider rejection (schema, shape, encoding) cannot be replayed or
-				// diagnosed from the trajectory. Same privacy surface as the
-				// successful-call record, which already persists messages.
-				messages: Array.isArray(paramsRecord.messages)
+				// Provider-dispatched failures retain their ordinary diagnostic input.
+				// A zero-dispatch budget rejection is different: the complete request
+				// stays only behind its private owner-bound reference and the trajectory
+				// carries content-free integrity/size metadata.
+				messages: !protectedFailure && Array.isArray(paramsRecord.messages)
 					? (paramsRecord.messages as unknown[])
 					: undefined,
-				tools: paramsRecord.tools,
-				toolChoice: paramsRecord.toolChoice,
-				responseSchema: paramsRecord.responseSchema,
-				providerOptions: paramsRecord.providerOptions,
+				tools: protectedFailure ? undefined : paramsRecord.tools,
+				toolChoice: protectedFailure ? undefined : paramsRecord.toolChoice,
+				responseSchema: protectedFailure
+					? undefined
+					: paramsRecord.responseSchema,
+				providerOptions: protectedFailure
+					? {
+							eliza: {
+								rejectedModelInput: args.protectedRequest,
+							},
+						}
+					: paramsRecord.providerOptions,
 				response: `[model call failed] ${sanitizedMessage}`,
 				finishReason: "error",
 				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
