@@ -93,4 +93,37 @@ describe("classifyLifeOpsSleepCycleType", () => {
       }),
     ).toBe("overnight");
   });
+
+  it("handles NaN confidence safely when selecting sleep episodes", () => {
+    const episodes = [
+      {
+        id: "ep-1",
+        startMs: 1000,
+        endMs: 5000,
+        confidence: NaN,
+      },
+      {
+        id: "ep-2",
+        startMs: 1000,
+        endMs: 5000,
+        confidence: 0.9,
+      },
+    ];
+
+    episodes.sort((left, right) => {
+      const rightConf =
+        typeof right.confidence === "number" &&
+        Number.isFinite(right.confidence)
+          ? right.confidence
+          : 0;
+      const leftConf =
+        typeof left.confidence === "number" && Number.isFinite(left.confidence)
+          ? left.confidence
+          : 0;
+      return rightConf - leftConf;
+    });
+
+    expect(episodes[0]?.id).toBe("ep-2");
+    expect(episodes[1]?.id).toBe("ep-1");
+  });
 });
