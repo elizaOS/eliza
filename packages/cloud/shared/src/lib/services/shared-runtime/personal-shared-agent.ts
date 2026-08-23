@@ -85,6 +85,22 @@ export function personalDedicatedAgentApiBase(
   return baseDomain === undefined ? null : localBridgeApiBase(target.bridge_url);
 }
 
+/** Resolve the browser-facing base; local Docker stays behind the Cloud proxy. */
+export function personalDedicatedClientApiBase(
+  target: Pick<AgentSandbox, "id" | "headscale_ip" | "bridge_url">,
+  baseDomain: string | undefined,
+  cloudApiOrigin: string,
+): string | null {
+  const runtimeBase = personalDedicatedAgentApiBase(target, baseDomain);
+  if (!runtimeBase) return null;
+  if (baseDomain !== "https://") return runtimeBase;
+  const origin = new URL(cloudApiOrigin).origin;
+  // ElizaClient appends `/api/...` to its configured base. Point it at the
+  // agent-scoped proxy root, not the proxy's `/api` child, or requests become
+  // `/api/api/...` and never reach the runtime.
+  return `${origin}/api/v1/eliza/agents/${encodeURIComponent(target.id)}`;
+}
+
 /** Build the rowless runtime projection for the authenticated account. */
 export function personalSharedAgent(identity: PersonalSharedAccountIdentity): SharedRuntimeAgent {
   const character = getDefaultElizaCharacterData();

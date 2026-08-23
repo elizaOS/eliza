@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaAgentActions } from "./agent-actions";
+import { ElizaConnectButton } from "./eliza-connect-button";
 
 const apiWithStatus = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => ({
@@ -93,6 +94,10 @@ function renderActions() {
             />
           }
         />
+        <Route
+          path="/cloud/agents/:agentId"
+          element={<p>Dedicated agent destination</p>}
+        />
         <Route path="/cloud/billing" element={<p>Billing destination</p>} />
       </Routes>
     </MemoryRouter>,
@@ -149,17 +154,29 @@ describe("Dedicated activation quote", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: "Open Web UI" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Suspend Agent" })).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Deactivate Agent" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Delete Agent" })).toBeTruthy();
+    for (const name of [
+      "Open Web UI",
+      "Suspend Agent",
+      "Deactivate Agent",
+      "Delete Agent",
+    ]) {
+      const control = screen.getByRole("button", { name });
+      expect(control).toBeTruthy();
+      expect(control.className).toContain("min-h-touch");
+    }
     expect(screen.queryByText("Agent Actions")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save Snapshot" })).toBeNull();
     expect(document.body.textContent).not.toMatch(
       /backup|snapshot|container|runtime|compute/i,
     );
+  });
+
+  it("keeps the detail-header Web UI launch touch-sized", () => {
+    render(<ElizaConnectButton agentId="dedicated-agent" />);
+
+    expect(
+      screen.getByRole("button", { name: "Open Web UI" }).className,
+    ).toContain("min-h-touch");
   });
 
   it("keeps shared agents persistent while offering explicit Dedicated activation", () => {

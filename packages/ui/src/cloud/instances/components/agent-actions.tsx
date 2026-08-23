@@ -533,6 +533,7 @@ export function ElizaAgentActions({
               <BrandButton
                 variant="primary"
                 size="sm"
+                className="min-h-touch"
                 onClick={() => void openWebUIWithPairing(agentId)}
               >
                 <ExternalLink className="h-4 w-4" />
@@ -546,6 +547,7 @@ export function ElizaAgentActions({
               <BrandButton
                 variant="primary"
                 size="sm"
+                className="min-h-touch"
                 onClick={() => void reviewDedicatedQuote()}
                 disabled={!!loading || isBusy}
                 data-testid="agent-upgrade-tier-button"
@@ -573,6 +575,7 @@ export function ElizaAgentActions({
               <BrandButton
                 variant="primary"
                 size="sm"
+                className="min-h-touch"
                 onClick={() => doAction("resume")}
                 disabled={!!loading || isBusy}
               >
@@ -591,6 +594,7 @@ export function ElizaAgentActions({
               <BrandButton
                 variant="primary"
                 size="sm"
+                className="min-h-touch"
                 onClick={() => doAction("wake")}
                 disabled={!!loading || isBusy}
                 title={t("cloud.containers.agentActions.reactivateHint", {
@@ -613,6 +617,7 @@ export function ElizaAgentActions({
               <BrandButton
                 variant="outline"
                 size="sm"
+                className="min-h-touch"
                 onClick={() => doAction("suspend", "PATCH")}
                 disabled={!!loading || isBusy}
               >
@@ -633,6 +638,7 @@ export function ElizaAgentActions({
               <BrandButton
                 variant="outline"
                 size="sm"
+                className="min-h-touch"
                 onClick={() => setShowDeactivateConfirm(true)}
                 disabled={!!loading || isBusy}
                 title={t("cloud.containers.agentActions.deactivateHint", {
@@ -657,7 +663,7 @@ export function ElizaAgentActions({
                 size="sm"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={!!loading || isBusy}
-                className="text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+                className="min-h-touch text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
               >
                 <Trash2 className="h-4 w-4" />
                 {t("cloud.containers.agentActions.delete", {
@@ -679,7 +685,7 @@ export function ElizaAgentActions({
                   size="sm"
                   onClick={() => doAction("delete", "DELETE")}
                   disabled={!!loading}
-                  className="text-red-400 border-red-500/50 hover:bg-red-500/20"
+                  className="min-h-touch text-red-400 border-red-500/50 hover:bg-red-500/20"
                 >
                   {loading === "delete" ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -692,7 +698,7 @@ export function ElizaAgentActions({
                   variant="outline"
                   size="sm"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="text-white/60"
+                  className="min-h-touch text-white/60"
                 >
                   {t("cloud.containers.agentActions.cancel", {
                     defaultValue: "Cancel",
@@ -770,6 +776,29 @@ export function ElizaAgentActions({
                 {trackedJob.jobId.slice(0, 8)} • {trackedJob.status}
               </p>
             )}
+          </div>
+        )}
+
+        {trackedJob?.status === "failed" && (
+          <div
+            role="alert"
+            className="rounded-md border border-red-500/30 bg-red-500/10 p-3"
+          >
+            <p
+              className="text-sm text-red-200"
+              style={{ fontFamily: "var(--font-roboto-mono)" }}
+            >
+              {trackedJob.error ??
+                t("cloud.containers.agentActions.jobFailed", {
+                  defaultValue: "Agent job failed",
+                })}
+            </p>
+            <p className="mt-1 text-xs text-white/60">
+              {t("cloud.containers.agentActions.failureRecovery", {
+                defaultValue:
+                  "Your agent was left in its previous state. Review the message, then retry the action when ready.",
+              })}
+            </p>
           </div>
         )}
       </div>
