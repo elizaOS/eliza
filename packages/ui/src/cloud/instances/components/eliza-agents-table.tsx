@@ -1079,7 +1079,10 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                       <TableCell>
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium text-txt-strong">
+                            <a
+                              href={`/cloud/agents/${sb.id}`}
+                              className="font-medium text-txt-strong transition-colors hover:text-accent"
+                            >
                               {getAgentDisplayName(
                                 sb,
                                 t("cloud.elizaAgentsTable.sharedAgentName", {
@@ -1089,7 +1092,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   defaultValue: "Unnamed Agent",
                                 }),
                               )}
-                            </span>
+                            </a>
                             <AgentCostBadge
                               status={displayStatus}
                               executionTier={sb.executionTier}
@@ -1325,7 +1328,10 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <span className="block truncate font-medium text-txt-strong">
+                      <a
+                        href={`/cloud/agents/${sb.id}`}
+                        className="block truncate font-medium text-txt-strong transition-colors hover:text-accent"
+                      >
                         {getAgentDisplayName(
                           sb,
                           t("cloud.elizaAgentsTable.sharedAgentName", {
@@ -1335,7 +1341,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             defaultValue: "Unnamed Agent",
                           }),
                         )}
-                      </span>
+                      </a>
                       <AgentCostBadge
                         status={displayStatus}
                         executionTier={sb.executionTier}

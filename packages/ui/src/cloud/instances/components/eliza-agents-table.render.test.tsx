@@ -197,8 +197,15 @@ describe("ElizaAgentsTable per-row view model", () => {
         name: "Open Web UI",
       }),
     ).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Dedicated Eliza" })).toBeNull();
-    expect(screen.getAllByText("Dedicated Eliza")).toHaveLength(2);
+    const detailLinks = screen.getAllByRole("link", {
+      name: "Dedicated Eliza",
+    });
+    expect(detailLinks).toHaveLength(2);
+    expect(
+      detailLinks.every((link) =>
+        link.getAttribute("href")?.startsWith("/cloud/agents/"),
+      ),
+    ).toBe(true);
     expect(screen.queryByRole("link", { name: "Open Eliza app" })).toBeNull();
     expect(
       within(dedicatedRow as HTMLElement).getByRole("button", {
