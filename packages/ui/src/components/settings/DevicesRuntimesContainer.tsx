@@ -12,44 +12,30 @@ import {
   RemoteCloudRequestError,
   RemoteControlAuthenticationRequiredError,
 } from "../../api/remote-control-cloud-client";
-import {
-  createDefaultRemoteControlCloudClient,
-  getDefaultRemoteControlCloudConnection,
-} from "../../api/remote-control-cloud-default";
+import { createDefaultRemoteControlCloudClient } from "../../api/remote-control-cloud-default";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { isStoreBuild } from "../../build-variant";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
+import { getOrCreateRemoteControllerIdentity } from "../../platform/remote-controller";
 import {
-  clearRemoteControllerSessionState,
-  getOrCreateRemoteControllerIdentity,
-} from "../../platform/remote-controller";
-import {
-  activateRemoteTarget,
-  enrollRemoteTarget,
-  finalizeRemoteTargetHostRevoke,
   getRemoteTargetIdentity,
   getRemoteTargetStatus,
-  startRemoteTarget,
-  stopRemoteTarget,
 } from "../../platform/remote-target";
 import {
   deleteRuntimeCredentialRecord,
   storeRuntimeCredential,
 } from "../../platform/runtime-credential-store";
+import { executeRuntimeManagementCommand } from "../../platform/runtime-management";
 import {
   getSshRuntimeStatus,
-  inspectSshHost,
   type SshHostInspection,
   startSshRuntime,
   stopSshRuntime,
 } from "../../platform/ssh-runtime";
 import {
-  removeSshRuntime,
   resumePendingSshRuntimeCleanups,
-  retrySshRuntimeCleanup,
   type SshRuntimeCleanupResult,
   type SshRuntimeLifecycleDependencies,
-  setupSshRuntime,
 } from "../../platform/ssh-runtime-lifecycle";
 import {
   type AgentProfile,
@@ -58,7 +44,6 @@ import {
   removeAgentProfile,
   switchRuntimeNonDestructive,
 } from "../../state";
-import { isTrustedRestoreApiBaseUrl } from "../../state/runtime-url-trust";
 import {
   type DesktopRemoteTargetView,
   type DevicePairingView,
@@ -543,21 +528,15 @@ export function DevicesRuntimesContainer({
 
   const onAddDirectRuntime = (input: DirectRuntimeInput) =>
     run(async () => {
-      if (!isTrustedRestoreApiBaseUrl(input.apiBase)) {
-        throw new Error(
-          "That address is not trusted. Use a private, local, or Tailscale runtime URL.",
-        );
-      }
-      const profile = addAgentProfile(
-        {
-          kind: "remote",
-          label: input.label,
-          apiBase: input.apiBase,
-          accessToken: input.accessToken,
-        },
-        { activate: false },
-      );
-      const result = switchRuntimeNonDestructive(profile.id);
+      const outcome = await executeRuntimeManagementCommand({
+        op: "add_direct",
+        label: input.label,
+        apiBase: input.apiBase,
+        accessToken: input.accessToken,
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
+      const runtimeId = String(outcome.data?.runtimeId ?? "");
+      const result = switchRuntimeNonDestructive(runtimeId);
       if (!result.ok) {
         throw new Error(
           "The private runtime was saved but could not be selected. Check its address and retry.",
@@ -567,114 +546,67 @@ export function DevicesRuntimesContainer({
 
   const onPair = (targetId: string) =>
     run(async () => {
-      const hostId = targetId.replace(/^host:/, "");
-      const host = directory?.hosts.find((item) => item.id === hostId);
-      if (!host || !directory)
-        throw new Error("Refresh devices before pairing.");
-      const currentController =
-        controller ??
-        (await getOrCreateRemoteControllerIdentity({
-          ownerId: directory.ownerId,
-        }));
-      const receipt =
-        await createDefaultRemoteControlCloudClient().createPairing({
-          hostId,
-          controller: currentController,
-        });
-      setPairing({ hostId, receipt });
+      const outcome = await executeRuntimeManagementCommand({
+        op: "pair",
+        targetId,
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
+      const hostId = String(outcome.data?.hostId ?? "");
+      setPairing({
+        hostId,
+        receipt: outcome.data?.receipt as RemotePairingReceipt,
+      });
     });
 
   const onRevoke = (targetId: string) =>
     run(async () => {
-      const hostId = targetId.replace(/^host:/, "");
-      const profile = registry.profiles.find((item) => item.id === targetId);
-      const sessionId =
-        profile?.remoteRelay?.sessionId ??
-        (sessions.get(hostId) ?? []).find(
-          (item) =>
-            item.status === "active" &&
-            item.controllerDeviceId === controller?.deviceId &&
-            item.controllerKeyId === controller.keyId,
-        )?.id;
-      if (!sessionId) throw new Error("No active pairing was found.");
-      await createDefaultRemoteControlCloudClient().revokeSession(sessionId);
-      if (profile?.remoteRelay) {
-        await clearRemoteControllerSessionState({
-          ownerId: profile.remoteRelay.ownerId,
-          controllerDeviceId: profile.remoteRelay.controllerDeviceId,
-          sessionId,
-        });
-        removeAgentProfile(profile.id);
-      }
+      const outcome = await executeRuntimeManagementCommand({
+        op: "revoke",
+        targetId,
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
 
   const onRemove = (id: string) =>
     run(async () => {
-      const profile = registry.profiles.find((item) => item.id === id);
-      if (!profile) return;
-      const cloud = createDefaultRemoteControlCloudClient();
-      await removeRuntimeWithAuthority(profile, {
-        revokeSession: (sessionId) => cloud.revokeSession(sessionId),
-        clearSession: clearRemoteControllerSessionState,
-        removeSsh: (sshProfile) =>
-          removeSshRuntime(sshProfile, SSH_RUNTIME_LIFECYCLE_DEPENDENCIES),
-        removeProfile: removeAgentProfile,
+      const outcome = await executeRuntimeManagementCommand({
+        op: "remove",
+        runtimeId: id,
       });
+      if (!outcome.ok) throw new Error(outcome.error);
     });
 
   const onRetry = (id: string) =>
     run(async () => {
-      const profile = registry.profiles.find((item) => item.id === id);
-      if (profile?.connectionMode === "ssh" && profile.ssh) {
-        if (
-          await retrySshRuntimeCleanup(
-            profile.id,
-            SSH_RUNTIME_LIFECYCLE_DEPENDENCIES,
-          )
-        ) {
-          await refresh();
-          return;
-        }
-        await startSshRuntime({
-          runtimeId: profile.id,
-          target: profile.ssh.target,
-          sshPort: profile.ssh.sshPort,
-          remoteApiPort: profile.ssh.remoteApiPort,
-          expectedFingerprint: profile.ssh.hostFingerprint,
-          identityFile: profile.ssh.identityFile,
-          credentialRef: profile.credentialRef,
-        });
-      }
+      const outcome = await executeRuntimeManagementCommand({
+        op: "retry",
+        runtimeId: id,
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
 
   const onInspectSsh = (input: { target: string; sshPort: number }) =>
     run(async () => {
-      const inspection = await inspectSshHost({
+      const outcome = await executeRuntimeManagementCommand({
+        op: "inspect_ssh",
         runtimeId: pendingSshId.current,
         ...input,
       });
-      setSshInspection(inspection);
+      if (!outcome.ok) throw new Error(outcome.error);
+      setSshInspection(outcome.data?.inspection as SshHostInspection);
     });
 
   const onConnectSsh = (input: SshConnectInput) =>
     run(async () => {
       const runtimeId = pendingSshId.current;
-      await setupSshRuntime(
-        {
-          runtimeId,
-          label: input.label,
-          target: input.target,
-          sshPort: input.sshPort,
-          remoteApiPort: input.remoteApiPort,
-          expectedFingerprint: input.expectedFingerprint,
-          identityFile: input.identityFile,
-          credentialRef: runtimeId,
-          accessToken: input.accessToken,
-        },
-        SSH_RUNTIME_LIFECYCLE_DEPENDENCIES,
-      );
+      const outcome = await executeRuntimeManagementCommand({
+        op: "connect_ssh",
+        runtimeId,
+        ...input,
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
       pendingSshId.current = crypto.randomUUID();
       setSshInspection(null);
       await refresh();
@@ -682,22 +614,10 @@ export function DevicesRuntimesContainer({
 
   const onEnrollDesktopTarget = () =>
     run(async () => {
-      const cloud = createDefaultRemoteControlCloudClient();
-      const currentDirectory = directory ?? (await cloud.listHosts());
-      const connection = getDefaultRemoteControlCloudConnection();
-      const platform = localDesktopPlatform();
-      await enrollRemoteTarget({
-        apiBaseUrl: connection.baseUrl,
-        ownerId: currentDirectory.ownerId,
-        ownerAccessToken: connection.authToken,
-        displayName:
-          platform === "macos"
-            ? "My Mac"
-            : platform === "windows"
-              ? "My Windows PC"
-              : "My Linux computer",
-        platform,
+      const outcome = await executeRuntimeManagementCommand({
+        op: "enroll_host",
       });
+      if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
 
@@ -706,29 +626,33 @@ export function DevicesRuntimesContainer({
     code: string;
   }) =>
     run(async () => {
-      await activateRemoteTarget(input);
-      await startRemoteTarget();
+      const outcome = await executeRuntimeManagementCommand({
+        op: "approve_pairing",
+        ...input,
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
       setPairing(null);
       await refresh();
     });
 
   const onSetDesktopTargetRunning = (running: boolean) =>
     run(async () => {
-      if (running) await startRemoteTarget();
-      else await stopRemoteTarget();
+      const outcome = await executeRuntimeManagementCommand({
+        op: running ? "start_host" : "stop_host",
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
 
   const onRevokeDesktopTarget = () =>
     run(async () => {
-      const hostId = desktopTarget?.hostId;
-      if (!hostId)
-        throw new Error("This computer's host identity is unavailable.");
-      const cloud = createDefaultRemoteControlCloudClient();
-      await revokeDesktopHostCloudFirst(hostId, {
-        revokeHost: (id) => cloud.revokeHost(id),
-        finalizeLocal: finalizeRemoteTargetHostRevoke,
+      const outcome = await executeRuntimeManagementCommand({
+        op: "revoke_host",
       });
+      if (!outcome.ok) throw new Error(outcome.error);
+      const hostId = String(
+        outcome.data?.hostId ?? desktopTarget?.hostId ?? "",
+      );
       setPairing((current) => (current?.hostId === hostId ? null : current));
       await refresh();
     });

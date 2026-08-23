@@ -7,6 +7,11 @@
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
+  isRuntimeManagementOperation,
+  type RuntimeManagementRequest,
+  type RuntimeManagementResult,
+} from "@elizaos/shared";
+import {
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/shared/events";
@@ -608,6 +613,91 @@ export function bindReadyPhase(
     },
   );
 
+  // Owner-approved Devices & Runtimes operations use an explicit first-shell
+  // claim before execution. This prevents two connected renderer tabs from
+  // applying the same pairing/revoke/SSH mutation after one agent request.
+  const unbindManageRuntime = client.onWsEvent(
+    "shell:manage-runtime",
+    (data: Record<string, unknown>) => {
+      const requestId =
+        typeof data.requestId === "string" ? data.requestId : null;
+      const rawRequest =
+        data.request !== null &&
+        typeof data.request === "object" &&
+        !Array.isArray(data.request)
+          ? (data.request as Record<string, unknown>)
+          : null;
+      if (
+        !requestId ||
+        !rawRequest ||
+        !isRuntimeManagementOperation(rawRequest.op)
+      ) {
+        return;
+      }
+      const request = rawRequest as unknown as RuntimeManagementRequest;
+      const originBase =
+        typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+
+      void (async () => {
+        const claimResponse = await fetch(
+          `${originBase}/api/runtime/manage/claim`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ requestId }),
+          },
+        );
+        const claim = (await claimResponse.json().catch(() => null)) as {
+          claimed?: boolean;
+          claimToken?: string;
+        } | null;
+        if (!claimResponse.ok || claim?.claimed !== true || !claim.claimToken) {
+          return;
+        }
+
+        let result: RuntimeManagementResult;
+        try {
+          const { executeRuntimeManagementCommand } = await import(
+            "../platform/runtime-management"
+          );
+          result = await executeRuntimeManagementCommand(request);
+        } catch (cause) {
+          result = {
+            ok: false,
+            op: request.op,
+            error:
+              cause instanceof Error && cause.message.trim()
+                ? cause.message
+                : "The runtime operation failed before it could start.",
+          };
+        }
+        await fetch(`${originBase}/api/runtime/manage/result`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId,
+            claimToken: claim.claimToken,
+            ok: result.ok,
+            data: result.data,
+            error: result.error,
+          }),
+        });
+        depsRef.current?.setActionNotice(
+          result.ok
+            ? "Devices & Runtimes updated."
+            : (result.error ?? "The runtime operation failed."),
+          result.ok ? "success" : "error",
+        );
+      })().catch((cause) => {
+        logger.warn(
+          `[startup-phase-hydrate] runtime management bridge failed: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+        );
+      });
+    },
+  );
+
   const unbindViewEvent = client.onWsEvent(
     "view:event",
     (data: Record<string, unknown>) => {
@@ -943,6 +1033,7 @@ export function bindReadyPhase(
     unbindShellNavigateView();
     unbindModelSwitch();
     unbindSwitchAgent();
+    unbindManageRuntime();
     unbindViewEvent();
     unbindViewInteract();
     unbindDeviceControl();
