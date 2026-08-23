@@ -2,7 +2,7 @@
  * Unit coverage for resolveTerminalRunLimits — env-driven concurrency and
  * duration guardrails with clamping to defaults and hard caps.
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIG_ENV = { ...process.env };
 
