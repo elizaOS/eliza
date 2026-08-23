@@ -16,15 +16,18 @@ name: Device E2E
 # Reachability: repository policy forbids direct pull-request triggers
 # (audit:workflow-triggers), so canonical ci.yml calls this workflow behind the
 # `ci:device` label gate — the emulator/simulator legs are heavy and a PR runs
-# them only when explicitly opted in. A least-privilege notifier opens a stable
-# issue on failure and closes it after recovery so status stays visible outside
-# run history.
+# them only when explicitly opted in. A weekly schedule protects the hosted
+# Android subset between PR opt-ins. The iOS job is deliberately excluded from
+# schedules, and a least-privilege notifier opens a stable issue on failure and
+# closes it after recovery so status stays visible outside run history.
 # Labels are read from the run's event
 # payload, so apply `ci:device` before the head push (or re-open) that should
 # carry the proof. workflow_dispatch remains the on-demand route for arbitrary
 # refs.
 
 on:
+  schedule:
+    - cron: "17 9 * * 1"
   workflow_call:
   workflow_dispatch:
     inputs:
@@ -41,7 +44,7 @@ on:
           - windows
 
 concurrency:
-  group: device-e2e-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref }}
+  group: device-e2e-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && format('{0}-{1}', github.event_name, github.run_id) || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -57,8 +60,6 @@ jobs:
     name: Android emulator bundle
     if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-24.04
-    # The host-backed emulator target omits the unused embedded-agent build;
-    # this cap covers the real renderer build, APK install, and device probes.
     timeout-minutes: 90
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
@@ -133,7 +134,7 @@ jobs:
     # The unattended cadence restores Android coverage only. Keep the existing
     # iOS producer available to labeled PR callers and explicit dispatches
     # without adding an unrelated weekly macOS runner allocation.
-    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios'
+    if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios')
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -150,9 +151,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          # The direct iOS build links the MTP/native inference bridge, whose
-          # build contract requires the pinned upstreams/llama.cpp checkout.
-          submodules: recursive
+          submodules: false
 
       - name: Initialize iOS artifact root
         run: |
