@@ -406,6 +406,7 @@ import {
   type SQLWrapper,
   sql,
 } from "drizzle-orm";
+import { filterByAccessContext } from "@elizaos/core";
 import { alias } from "drizzle-orm/pg-core";
 
 const v4 = () => crypto.randomUUID();
@@ -2845,7 +2846,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
           .where(and(...conditions))
           .orderBy(...order);
+        const shouldFilter = Boolean(params.accessContext);
         const rows = await (async () => {
+          if (shouldFilter) {
+            return baseQuery;
+          }
           // Honor `effectiveLimit` (params.limit ?? params.count), matching the
           // no-embedding branch below. Gating the LIMIT on `params.count` alone
           // meant any caller passing only `limit` got NO limit clause and the
@@ -2861,7 +2866,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             return baseQuery;
           }
         })();
-        return rows.map((row) => mapRow(row.memory as SelectedMemory, row.embedding));
+        const memories = rows.map((row) => mapRow(row.memory as SelectedMemory, row.embedding));
+        if (shouldFilter && params.accessContext) {
+          const filtered = filterByAccessContext(memories as any, params.accessContext, this.agentId) as Memory[];
+          if (effectiveLimit === undefined && offset === undefined) return filtered;
+          const start = offset ?? 0;
+          const end = effectiveLimit !== undefined ? start + effectiveLimit : undefined;
+          return end !== undefined ? filtered.slice(start, end) : filtered.slice(start);
+        }
+        return memories;
       }
 
       // includeEmbedding === false: skip the embeddingTable join + column. The
@@ -2872,7 +2885,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(memoryTable)
         .where(and(...conditions))
         .orderBy(...order);
-      const rows = await (async () => {
+      const rows2 = await (async () => {
+        if (shouldFilter) {
+          return baseQuery;
+        }
         if (effectiveLimit && offset !== undefined && offset > 0) {
           return baseQuery.limit(effectiveLimit).offset(offset);
         } else if (effectiveLimit) {
@@ -2883,7 +2899,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           return baseQuery;
         }
       })();
-      return rows.map((row) => mapRow(row.memory as SelectedMemory, undefined));
+      const memories2 = rows2.map((row) => mapRow(row.memory as SelectedMemory, undefined));
+      if (shouldFilter && params.accessContext) {
+        const filtered = filterByAccessContext(memories2 as any, params.accessContext, this.agentId) as Memory[];
+        if (effectiveLimit === undefined && offset === undefined) return filtered;
+        const start = offset ?? 0;
+        const end = effectiveLimit !== undefined ? start + effectiveLimit : undefined;
+        return end !== undefined ? filtered.slice(start, end) : filtered.slice(start);
+      }
+      return memories2;
     });
   }
 
@@ -2943,7 +2967,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .orderBy(desc(memoryTable.createdAt));
 
       const { limit, offset } = params;
+      const shouldFilter = Boolean(params.accessContext);
       const rows = await (async () => {
+        if (shouldFilter) {
+          return baseQuery;
+        }
         if (limit !== undefined && offset !== undefined && offset > 0) {
           return baseQuery.limit(limit).offset(offset);
         } else if (limit !== undefined) {
@@ -2954,7 +2982,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return baseQuery;
       })();
 
-      return rows.map((row) => ({
+      const memories = rows.map((row) => ({
         id: row.id as UUID,
         createdAt: row.createdAt.getTime(),
         content: typeof row.content === "string" ? JSON.parse(row.content) : row.content,
@@ -2965,6 +2993,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         unique: row.unique,
         metadata: row.metadata,
       })) as Memory[];
+      if (shouldFilter && params.accessContext) {
+        const filtered = filterByAccessContext(memories as any, params.accessContext, this.agentId) as Memory[];
+        const start = offset ?? 0;
+        const end = limit !== undefined ? start + limit : undefined;
+        return end !== undefined ? filtered.slice(start, end) : filtered.slice(start);
+      }
+      return memories;
     });
   }
 
