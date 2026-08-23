@@ -722,20 +722,43 @@ function normalizeNativeToolsForCall(
   // wrappers, and dynamic metadata are preserved. Raw object-style definitions
   // are still sanitized before the SDK observes them.
   if (!Array.isArray(tools)) {
+    if (typeof tools !== "object" || tools === null) {
+      throw new ElizaError("[OpenAI] Native tools must be an array or ToolSet object.", {
+        code: "OPENAI_INVALID_TOOL_SET",
+        severity: "ephemeral",
+      });
+    }
     const toolSet = tools as ToolSet;
     const descriptors = Object.getOwnPropertyDescriptors(toolSet);
     let changed = false;
     const sanitized = Object.create(Object.getPrototypeOf(toolSet)) as ToolSet;
+    const toolNameMap = new Map<string, string>();
+    const originalNameByRegisteredName = new Map<string, string>();
     for (const key of Reflect.ownKeys(descriptors)) {
       const descriptor = descriptors[key as keyof typeof descriptors];
       if (!descriptor) continue;
-      const sanitizedKey = typeof key === "string" ? toWellFormedUnicode(key) : key;
-      if (Object.hasOwn(sanitized, sanitizedKey)) {
-        throw new ElizaError("[OpenAI] Native tool names collide after Unicode normalization.", {
+      if (typeof key !== "string" || !descriptor.enumerable) {
+        Object.defineProperty(sanitized, key, descriptor);
+        continue;
+      }
+      const wellFormedName = toWellFormedUnicode(key);
+      // A caller-keyed AI SDK ToolSet is already the registration authority;
+      // preserve its provider-visible key apart from mandatory Unicode repair.
+      // Provider character normalization applies only to raw array definitions.
+      const registeredName = wellFormedName;
+      const collidingOriginalName = originalNameByRegisteredName.get(registeredName);
+      if (collidingOriginalName !== undefined && collidingOriginalName !== key) {
+        throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
           code: "OPENAI_TOOL_NAME_COLLISION",
+          context: {
+            registeredName,
+            toolNames: [collidingOriginalName, key],
+          },
           severity: "ephemeral",
         });
       }
+      originalNameByRegisteredName.set(registeredName, key);
+      toolNameMap.set(key, registeredName);
       let nextDescriptor = descriptor;
       if ("value" in descriptor) {
         const tool = descriptor.value;
@@ -753,12 +776,13 @@ function normalizeNativeToolsForCall(
           }
         }
       }
-      if (sanitizedKey !== key) changed = true;
-      Object.defineProperty(sanitized, sanitizedKey, nextDescriptor);
+      if (registeredName !== key) changed = true;
+      Object.defineProperty(sanitized, registeredName, nextDescriptor);
     }
     return {
       tools: changed ? sanitized : toolSet,
       recordArgTransformsByTool,
+      toolNameMap,
     };
   }
 
@@ -883,7 +907,7 @@ function normalizeNativeToolsForCall(
       // so the assembled ToolSet must never be deep-walked afterwards (every
       // child RESPONSE_HANDLER call died on it, live 2026-08-21).
       ...(description ? { description: deepToWellFormedUnicode(description) } : {}),
-      inputSchema: jsonSchema(deepToWellFormedUnicode(inputSchema) as JSONSchema7),
+      inputSchema: jsonSchema(inputSchema as JSONSchema7),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined
