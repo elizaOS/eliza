@@ -211,6 +211,10 @@ class DeterministicRelay implements RemoteTargetRelayTransport {
     };
   }
 
+  async activateManagedNetwork(): Promise<{ hostname: string }> {
+    throw new Error("unused");
+  }
+
   async activate(input: {
     enrollment: Parameters<
       RemoteTargetRelayTransport["activate"]

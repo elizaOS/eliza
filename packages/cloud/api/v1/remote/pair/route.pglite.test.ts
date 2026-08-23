@@ -129,7 +129,8 @@ beforeAll(async () => {
   for (const migration of [
     "0068_add_remote_sessions",
     "0275_remote_sessions_first_class_expiry",
-    "0300_secure_remote_hosts",
+    "0305_secure_remote_hosts",
+    "0311_remote_session_two_phase_activation",
   ]) {
     const source = await Bun.file(
       new URL(
