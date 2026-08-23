@@ -462,6 +462,7 @@ describe("billing cancellation durable receipt authority", () => {
       expectedLifecycleRevision: 3,
       idempotencyKey: "cancel-request-agent-0001",
     });
+    const originalAgentJobId = agent.receipt.jobId;
 
     await dbWrite
       .update(containerComputeStopIntents)
@@ -494,6 +495,10 @@ describe("billing cancellation durable receipt authority", () => {
         infrastructureStatus: "provider_confirmed",
       });
     }
+    expect(agentReplay.receipt).toMatchObject({
+      jobId: originalAgentJobId,
+      pollEndpoint: `/api/v1/jobs/${originalAgentJobId}`,
+    });
   });
 
   test("invalid keys fail before authorization or durable writes", async () => {

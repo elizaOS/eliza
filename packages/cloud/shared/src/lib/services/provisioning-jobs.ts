@@ -2424,101 +2424,109 @@ export class ProvisioningJobService {
                 : [sql`${jobs.data}->>'lifecycleRevision' = ${String(expectedLifecycleRevision)}`]),
             ]
           : [],
-      resolveReplay:
-        params.authorization === "user_request"
-          ? async (tx, sandbox) => {
-              const targetRevision = expectedLifecycleRevision ?? sandbox.lifecycle_revision;
-              const [exactIntent] = await tx
-                .select()
-                .from(agentComputeStopIntents)
-                .where(
-                  and(
-                    eq(agentComputeStopIntents.organization_id, params.organizationId),
-                    eq(agentComputeStopIntents.agent_id, params.agentId),
-                    eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
-                    eq(agentComputeStopIntents.authorization, "user_request"),
-                  ),
-                )
-                .for("update")
-                .limit(1);
-              if (exactIntent) {
-                if (!exactIntent.job_id) {
-                  throw new Error("Agent user stop intent is not bound to a job");
-                }
-                const [exactJob] = await tx
-                  .select()
-                  .from(jobs)
-                  .where(
-                    and(
-                      eq(jobs.id, exactIntent.job_id),
-                      eq(jobs.type, JOB_TYPES.AGENT_SUSPEND),
-                      eq(jobs.organization_id, params.organizationId),
-                      eq(jobs.agent_id, params.agentId),
-                    ),
-                  )
-                  .for("update")
-                  .limit(1);
-                if (!exactJob) {
-                  throw new Error("Agent user stop intent references a missing job");
-                }
-                return exactJob;
-              }
-
-              // Exact durable replay deliberately precedes this gate, because
-              // the accepted stop may itself have advanced the generation.
-              // A first-time request must validate the currently locked row
-              // before it can promote any older billing authority.
-              validateTarget(sandbox);
-
-              // An unconditional user stop monotonically strengthens a queued
-              // billing stop. Reuse the same operation instead of leaving an
-              // independent billing job that can be superseded by a top-up.
-              const [billingIntent] = await tx
-                .select()
-                .from(agentComputeStopIntents)
-                .where(
-                  and(
-                    eq(agentComputeStopIntents.organization_id, params.organizationId),
-                    eq(agentComputeStopIntents.agent_id, params.agentId),
-                    eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
-                    eq(agentComputeStopIntents.authorization, "billing_request"),
+      resolveReplay: async (tx, sandbox) => {
+        const targetRevision = expectedLifecycleRevision ?? sandbox.lifecycle_revision;
+        const [exactIntent] = await tx
+          .select()
+          .from(agentComputeStopIntents)
+          .where(
+            and(
+              eq(agentComputeStopIntents.organization_id, params.organizationId),
+              eq(agentComputeStopIntents.agent_id, params.agentId),
+              eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
+              eq(agentComputeStopIntents.authorization, "user_request"),
+              ...(params.authorization === "billing_request"
+                ? [
                     inArray(agentComputeStopIntents.status, [
                       "pending",
                       "dispatching",
                       "retry",
                       "terminal_attention",
                     ]),
-                  ),
-                )
-                .for("update")
-                .limit(1);
-              if (!billingIntent?.job_id) return undefined;
-              const [billingJob] = await tx
-                .select()
-                .from(jobs)
-                .where(
-                  and(
-                    eq(jobs.id, billingIntent.job_id),
-                    eq(jobs.type, JOB_TYPES.AGENT_SUSPEND),
-                    eq(jobs.organization_id, params.organizationId),
-                    eq(jobs.agent_id, params.agentId),
-                    sql`${jobs.status} IN ('pending', 'in_progress')`,
-                  ),
-                )
-                .for("update")
-                .limit(1);
-              if (!billingJob) return undefined;
-              const now = new Date();
-              await tx
-                .update(agentComputeStopIntents)
-                .set({ authorization: "user_request", updated_at: now })
-                .where(eq(agentComputeStopIntents.id, billingIntent.id));
-              // Do not rewrite the claimed job envelope. An executor may
-              // already hold its hydrated snapshot and settlement CAS; the
-              // locked intent is the monotonic authority boundary.
-              return billingJob;
-            }
-          : undefined,
+                  ]
+                : []),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (exactIntent) {
+          if (!exactIntent.job_id) {
+            throw new Error("Agent user stop intent is not bound to a job");
+          }
+          const [exactJob] = await tx
+            .select()
+            .from(jobs)
+            .where(
+              and(
+                eq(jobs.id, exactIntent.job_id),
+                eq(jobs.type, JOB_TYPES.AGENT_SUSPEND),
+                eq(jobs.organization_id, params.organizationId),
+                eq(jobs.agent_id, params.agentId),
+              ),
+            )
+            .for("update")
+            .limit(1);
+          if (!exactJob) {
+            throw new Error("Agent user stop intent references a missing job");
+          }
+          return exactJob;
+        }
+        if (params.authorization === "billing_request") return undefined;
+
+        // Exact durable replay deliberately precedes this gate, because
+        // the accepted stop may itself have advanced the generation.
+        // A first-time request must validate the currently locked row
+        // before it can promote any older billing authority.
+        validateTarget(sandbox);
+
+        // An unconditional user stop monotonically strengthens a queued
+        // billing stop. Reuse the same operation instead of leaving an
+        // independent billing job that can be superseded by a top-up.
+        const [billingIntent] = await tx
+          .select()
+          .from(agentComputeStopIntents)
+          .where(
+            and(
+              eq(agentComputeStopIntents.organization_id, params.organizationId),
+              eq(agentComputeStopIntents.agent_id, params.agentId),
+              eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
+              eq(agentComputeStopIntents.authorization, "billing_request"),
+              inArray(agentComputeStopIntents.status, [
+                "pending",
+                "dispatching",
+                "retry",
+                "terminal_attention",
+              ]),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!billingIntent?.job_id) return undefined;
+        const [billingJob] = await tx
+          .select()
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.id, billingIntent.job_id),
+              eq(jobs.type, JOB_TYPES.AGENT_SUSPEND),
+              eq(jobs.organization_id, params.organizationId),
+              eq(jobs.agent_id, params.agentId),
+              sql`${jobs.status} IN ('pending', 'in_progress')`,
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!billingJob) return undefined;
+        const now = new Date();
+        await tx
+          .update(agentComputeStopIntents)
+          .set({ authorization: "user_request", updated_at: now })
+          .where(eq(agentComputeStopIntents.id, billingIntent.id));
+        // Do not rewrite the claimed job envelope. An executor may
+        // already hold its hydrated snapshot and settlement CAS; the
+        // locked intent is the monotonic authority boundary.
+        return billingJob;
+      },
       validateSandbox: validateTarget,
       beforeInsert: async (tx, sandbox) => {
         const targetRevision = expectedLifecycleRevision ?? sandbox.lifecycle_revision;

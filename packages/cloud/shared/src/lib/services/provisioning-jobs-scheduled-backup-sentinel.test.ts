@@ -609,6 +609,56 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     });
   });
 
+  test("a terminal manual suspend keeps its job authority over a billing enqueue", async () => {
+    const { agentId, orgId, userId, lifecycleRevision } = await seedAgent({
+      executionTier: "dedicated-always",
+    });
+    const manual = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "user_request",
+      expectedLifecycleRevision: lifecycleRevision,
+    });
+    await dbWrite
+      .update(jobs)
+      .set({ status: "failed", error: "provider retries exhausted" })
+      .where(eq(jobs.id, manual.job.id));
+    await dbWrite
+      .update(agentComputeStopIntents)
+      .set({
+        status: "terminal_attention",
+        attempts: 3,
+        last_error: "provider retries exhausted",
+      })
+      .where(eq(agentComputeStopIntents.job_id, manual.job.id));
+
+    const billing = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "billing_request",
+      expectedLifecycleRevision: lifecycleRevision,
+    });
+
+    expect(billing.created).toBe(false);
+    expect(billing.job).toMatchObject({
+      id: manual.job.id,
+      status: "failed",
+    });
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_SUSPEND)).toHaveLength(1);
+    const [intent] = await dbWrite
+      .select()
+      .from(agentComputeStopIntents)
+      .where(eq(agentComputeStopIntents.agent_id, agentId));
+    expect(intent).toMatchObject({
+      authorization: "user_request",
+      status: "terminal_attention",
+      attempts: 3,
+      job_id: manual.job.id,
+    });
+  });
+
   test("an exact user replay wins over a now-stale current lifecycle revision", async () => {
     const { agentId, orgId, userId, lifecycleRevision } = await seedAgent({
       executionTier: "dedicated-always",
