@@ -20,7 +20,7 @@ import {
   DEFAULT_DESKTOP_MUSIC_GUILD_ID,
   getMusicPlayerManager,
   MusicPlayerManager,
-} from "./music-player.ts";
+} from "../music-player.ts";
 
 describe("MusicPlayerManager", () => {
   beforeEach(() => {
