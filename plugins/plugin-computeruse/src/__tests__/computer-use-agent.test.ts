@@ -26,6 +26,7 @@ import {
   runComputerUseAgentLoop,
 } from "../actions/use-computer-agent.js";
 import { Brain } from "../actor/brain.js";
+import { makeComputerInterface } from "../actor/computer-interface.js";
 import type { DisplayCapture } from "../platform/capture.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
@@ -487,6 +488,101 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
       spy.mockRestore();
     }
   });
+
+  it("preserves complete long and astral desktop dispatch errors", async () => {
+    const complete = `${"desktop driver failure ".repeat(300)}🧠 tail`;
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "S",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: {
+            kind: "click",
+            ref: "t0-1",
+            rationale: "click save",
+          },
+        }),
+    });
+    const computerInterface = makeComputerInterface({
+      listDisplays: () => [display()],
+      driver: {
+        click: async () => {
+          throw new Error(complete);
+        },
+      },
+    });
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      const report = await runComputerUseAgentLoop(
+        null,
+        { goal: "save" },
+        fakeService(),
+        { brain, captureAll, computerInterface },
+      );
+      const stepLog = spy.mock.calls
+        .map(([entry]) => entry as Record<string, unknown>)
+        .find((entry) => entry.evt === "computeruse.agent.step");
+      expect(report.error).toBe(complete);
+      expect(stepLog).toMatchObject({
+        success: false,
+        error: complete,
+        errorCode: "driver_error",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each(["before\ud800after", "before\udc00after"])(
+    "rejects malformed desktop dispatch error %s before trajectory logging",
+    async (malformed) => {
+      const brain = new Brain(null, {
+        invokeModel: async () =>
+          JSON.stringify({
+            scene_summary: "S",
+            target_display_id: 0,
+            roi: [],
+            proposed_action: {
+              kind: "click",
+              ref: "t0-1",
+              rationale: "click save",
+            },
+          }),
+      });
+      const computerInterface = makeComputerInterface({
+        listDisplays: () => [display()],
+        driver: {
+          click: async () => {
+            throw new Error(malformed);
+          },
+        },
+      });
+      const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+      try {
+        await expect(
+          runComputerUseAgentLoop(null, { goal: "save" }, fakeService(), {
+            brain,
+            captureAll,
+            computerInterface,
+          }),
+        ).rejects.toMatchObject({
+          name: "ElizaError",
+          code: "COMPUTERUSE_TRAJECTORY_MALFORMED_UNICODE",
+          context: { field: "error" },
+        } satisfies Partial<ElizaError>);
+        expect(
+          spy.mock.calls.some(
+            ([entry]) =>
+              (entry as Record<string, unknown>).evt ===
+              "computeruse.agent.step",
+          ),
+        ).toBe(false);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
 
   it("aborts on scene refresh error", async () => {
     const brain = new Brain(null, {
