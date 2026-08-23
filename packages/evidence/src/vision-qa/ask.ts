@@ -14,6 +14,7 @@
  */
 
 import { EvidenceError } from "../errors.ts";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type BackendResponse,
   parseAnswers,
@@ -102,7 +103,7 @@ async function postJson(
       `vision-qa backend returned ${response.status} ${response.statusText}`,
       {
         code: "VISION_BACKEND_HTTP",
-        context: { status: response.status, detail: detail.slice(0, 500) },
+        context: { status: response.status, detail: truncateWellFormed(toWellFormedUnicode(detail), 500) },
       },
     );
   }
