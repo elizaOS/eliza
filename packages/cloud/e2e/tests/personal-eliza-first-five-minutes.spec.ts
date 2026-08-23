@@ -11,20 +11,16 @@
  * exactly one model turn.
  *
  * Harness notes:
- * - Env passthrough: the Worker only sees env keys sync-api-dev-vars knows
- *   (.env.example keys, real values in cloud/shared/.env[.local], and the
- *   provider-key allowlist). OPENROUTER_BASE_URL is not in .env.example, so
- *   this spec requires an `OPENROUTER_BASE_URL=` line in cloud/shared/.env or
- *   .env.local (any value; the spec's override wins). The worker fixture fails
- *   fast with that instruction instead of letting the Worker dial the real
- *   OpenRouter host with the scripted key.
+ * - Env passthrough: sync-api-dev-vars explicitly recognizes
+ *   OPENROUTER_BASE_URL as a provider override, so the fixture can route the
+ *   Worker to its ephemeral loopback server without mutating developer env
+ *   files or permitting a real OpenRouter request.
  * - Request shape: every Telegram delivery carries the connector account id the
  *   gateway sends (required by the route since #24322), and the Steward claim
  *   carries the explicit Telegram claim confirmation marker (#21925).
  */
 
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
 import {
   createServer,
   type IncomingMessage,
@@ -32,15 +28,12 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
-import { resolve } from "node:path";
 import { mintStewardTokenFromClaims } from "@elizaos/cloud-shared/lib/auth/steward-client";
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 // The coverage classifier requires a direct Playwright marker for changed specs.
 import type {} from "@playwright/test";
 import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { test as base, expect } from "../src/helpers/test-fixtures";
-
-const CLOUD_SHARED_DIR = resolve(import.meta.dirname, "../../shared");
 
 const STEWARD_JWT_SECRET = "personal-eliza-first-five-local-secret-32-bytes";
 const STEWARD_USER_ID = "steward-personal-eliza-first-five";
@@ -263,29 +256,6 @@ function close(server: Server): Promise<void> {
   });
 }
 
-/**
- * sync-api-dev-vars forwards a process-env override into the Worker's
- * `.dev.vars` only for keys it already knows. Fail before the stack boots when
- * OPENROUTER_BASE_URL cannot reach the Worker, naming the fix.
- */
-function assertScriptedModelRouteIsForwardable(): void {
-  const known = [".env.example", ".env", ".env.local"].some((name) => {
-    const file = resolve(CLOUD_SHARED_DIR, name);
-    return (
-      existsSync(file) &&
-      /^\s*OPENROUTER_BASE_URL\s*=\s*\S/m.test(readFileSync(file, "utf8"))
-    );
-  });
-  if (!known) {
-    throw new Error(
-      "personal-eliza-first-five-minutes needs the Worker to honour OPENROUTER_BASE_URL, " +
-        "which sync-api-dev-vars only forwards for keys present in cloud/shared/.env[.local]. " +
-        "Add a line `OPENROUTER_BASE_URL=http://127.0.0.1:1/v1` to packages/cloud/shared/.env.local " +
-        "(any value; this spec overrides it with the scripted model URL).",
-    );
-  }
-}
-
 const test = base.extend<
   Record<never, never>,
   { scriptedModel: ScriptedModel }
@@ -296,7 +266,6 @@ const test = base.extend<
   scriptedModel: [
     // biome-ignore lint/correctness/noEmptyPattern: Playwright derives fixture dependencies from this destructuring pattern; the model has none.
     async ({}, use) => {
-      assertScriptedModelRouteIsForwardable();
       const prompts: string[] = [];
       const model = createScriptedModelServer(prompts);
       const origin = await listen(model.server);
