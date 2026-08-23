@@ -17,6 +17,7 @@ import {
 import type {
   CapturedAction,
   ScenarioContext,
+  ScenarioModelFixture,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -30,6 +31,7 @@ import {
 const SCENARIO_ID = "deterministic-progressive-content-actions";
 let fixtureRoot = "";
 let filePath = "";
+let previousEvaluators: IAgentRuntime["evaluators"] | null = null;
 
 const FILE_CANARY = "FILE-LATE-CANARY-7f32";
 const DOCUMENT_CANARY = "DOCUMENT-LATE-CANARY-8a41";
@@ -220,6 +222,74 @@ const restrictedMemoryRead = {
 const MESSAGE_ROUTING = {
   metadata: { __responseContext: { primaryContext: "messaging" } },
 };
+const AUTONOMOUS_FILE_PROMPT =
+  "Inspect the seeded large file through its bounded production reader.";
+
+function currentTurnInputPattern(input: string): string {
+  const escaped = input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `${escaped}(?![\\s\\S]*message:user:\\n)`;
+}
+
+const progressiveModelFixtures: ScenarioModelFixture[] = [
+  {
+    name: "progressive-file-stage1",
+    match: {
+      modelType: "RESPONSE_HANDLER",
+      input: { pattern: currentTurnInputPattern(AUTONOMOUS_FILE_PROMPT) },
+      toolNames: ["HANDLE_RESPONSE"],
+    },
+    response: {
+      json: {
+        contexts: ["code"],
+        intents: ["inspect the seeded large file"],
+        replyText: "I will inspect the file through the bounded reader.",
+        threadOps: [],
+        candidateActionNames: ["FILE"],
+      },
+    },
+  },
+  {
+    name: "progressive-file-planner",
+    match: {
+      modelType: "ACTION_PLANNER",
+      input: { pattern: currentTurnInputPattern(AUTONOMOUS_FILE_PROMPT) },
+    },
+    response: {
+      text: "",
+      finishReason: "tool-calls",
+      toolCalls: [
+        {
+          id: "progressive-file-read",
+          name: "FILE",
+          arguments: {
+            action: "read",
+            file_path: "late-evidence.txt",
+            unit: "byte",
+            offset: 0,
+            limit: 4096,
+          },
+        },
+      ],
+    },
+  },
+  {
+    name: "progressive-file-final",
+    match: {
+      modelType: "RESPONSE_HANDLER",
+      input: { pattern: currentTurnInputPattern(AUTONOMOUS_FILE_PROMPT) },
+      toolNames: [],
+    },
+    response: {
+      json: {
+        success: true,
+        decision: "FINISH",
+        thought: "The production FILE read returned a recoverable page.",
+        messageToUser:
+          "I inspected the first bounded page and retained its continuation metadata.",
+      },
+    },
+  },
+];
 
 function captureContinuation(
   action: CapturedAction,
@@ -255,6 +325,8 @@ async function publishSegmentedMessage(
 
 async function setupSources(ctx: ScenarioContext): Promise<string | undefined> {
   const runtime = ctx.runtime as ScenarioRuntime;
+  previousEvaluators = runtime.evaluators;
+  runtime.evaluators = [];
   if (!ctx.primaryRoomId || !ctx.primaryUserId) {
     return "scenario primary room/user unavailable";
   }
@@ -403,6 +475,7 @@ function finalLedger(ctx: ScenarioContext): string | undefined {
     "FILE",
     "FILE",
     "FILE",
+    "FILE",
     "DOCUMENT",
     "DOCUMENT",
     "ATTACHMENT",
@@ -423,9 +496,8 @@ export default scenario({
   id: "deterministic-progressive-content-actions",
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason:
-      "Direct action turns exercise production progressive-read handlers.",
+    mode: "fixtures",
+    fixtures: progressiveModelFixtures,
   },
   title: "Deterministic progressive content action contracts",
   domain: "scenario-runner",
@@ -464,6 +536,22 @@ export default scenario({
     },
   ],
   turns: [
+    {
+      kind: "message",
+      name: "planner selects the bounded FILE reader",
+      text: AUTONOMOUS_FILE_PROMPT,
+      responseIncludesAny: ["first bounded page", "continuation metadata"],
+      assertTurn: (execution) => {
+        const action = actionFor(execution, "FILE");
+        if (typeof action === "string") return action;
+        return exactPageFailure(action, "x".repeat(4096), {
+          unit: "byte",
+          start: 0,
+          end: 4096,
+          total: Buffer.byteLength(FILE_SOURCE),
+        });
+      },
+    },
     {
       kind: "action",
       name: "FILE first page",
@@ -733,7 +821,11 @@ export default scenario({
     {
       type: "custom",
       name: "remove progressive-content workspace",
-      apply: async () => {
+      apply: async (ctx) => {
+        if (previousEvaluators !== null) {
+          ctx.runtime.evaluators = previousEvaluators;
+          previousEvaluators = null;
+        }
         if (fixtureRoot) {
           await fs.rm(fixtureRoot, { force: true, recursive: true });
         }

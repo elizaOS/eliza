@@ -115,6 +115,43 @@ function jsonLines(
   });
 }
 
+function passingScenarioNativeRow(entry: Record<string, unknown>): boolean {
+  const attestation =
+    entry.privacyAttestation && typeof entry.privacyAttestation === "object"
+      ? (entry.privacyAttestation as Record<string, unknown>)
+      : null;
+  return (
+    entry.format === "eliza_native_v1" &&
+    entry.scenarioStatus === "passed" &&
+    attestation?.passed === true
+  );
+}
+
+function scenarioNativeToolCall(entry: Record<string, unknown>): boolean {
+  if (!passingScenarioNativeRow(entry)) return false;
+  const response = record(entry.response, "scenario native response");
+  return Array.isArray(response.toolCalls) && response.toolCalls.length > 0;
+}
+
+function scenarioNativeFinal(entry: Record<string, unknown>): boolean {
+  if (!passingScenarioNativeRow(entry) || entry.stepType !== "evaluator") {
+    return false;
+  }
+  const response = record(entry.response, "scenario native response");
+  if (typeof response.text !== "string") return false;
+  try {
+    const output = record(JSON.parse(response.text), "scenario native final");
+    return (
+      output.success === true &&
+      output.decision === "FINISH" &&
+      typeof output.messageToUser === "string" &&
+      output.messageToUser.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
 function semanticFailures(
   result: ContentContextResult,
   bytes: ContentContextArtifactBytes,
@@ -424,8 +461,8 @@ function semanticFailures(
     "scenario native export",
   );
   if (
-    !nativeScenario.some((entry) => entry.type === "tool_call") ||
-    !nativeScenario.some((entry) => entry.type === "final")
+    !nativeScenario.some(scenarioNativeToolCall) ||
+    !nativeScenario.some(scenarioNativeFinal)
   )
     failures.push("scenario native export lacks tool and final events");
 
