@@ -621,6 +621,28 @@ function ensureAppDirs() {
   }
 }
 
+function patchElectrobunLinuxCefProfile({ requireNative = false } = {}) {
+  if (process.platform !== "linux") return;
+  run(
+    "node",
+    [
+      path.join(
+        ROOT,
+        "packages",
+        "scripts",
+        "patch-electrobun-linux-cef-profile.mjs",
+      ),
+      ...(requireNative ? ["--require"] : []),
+    ],
+    {
+      cwd: ROOT,
+      label: requireNative
+        ? "Requiring materialized Electrobun Linux CEF profile hotfix"
+        : "Verifying available Electrobun Linux CEF profile hotfix inputs",
+    },
+  );
+}
+
 function logPreflightDiagnostic(fields) {
   console.log(`[desktop-preflight] ${JSON.stringify(fields)}`);
 }
@@ -639,24 +661,10 @@ function failPreflight(message, fields = {}, detailLines = []) {
 
 function runDesktopPreflight() {
   ensureAppDirs();
-  if (process.platform === "linux") {
-    run(
-      "node",
-      [
-        path.join(
-          ROOT,
-          "packages",
-          "scripts",
-          "patch-electrobun-linux-cef-profile.mjs",
-        ),
-        "--require",
-      ],
-      {
-        cwd: ROOT,
-        label: "Verifying Electrobun Linux CEF profile hotfix",
-      },
-    );
-  }
+  // Electrobun downloads its platform-native wrapper lazily during the first
+  // package pass. Patch the BrowserWindow source now, but allow a genuinely
+  // absent native directory until packageDesktopBuild has materialized it.
+  patchElectrobunLinuxCefProfile();
   const moduleName = "electrobun/view";
   const preflightCwd = ELECTROBUN_DIR;
 
@@ -1740,10 +1748,19 @@ function packageDesktopBuild() {
       : "Packaging Electrobun app",
   });
 
+  // The first Electrobun package pass may have downloaded the Linux native
+  // wrapper. Require and apply the pinned CEF profile patch now, then repackage
+  // once so the emitted artifact cannot retain the unpatched wrapper.
+  const repackageForLinuxCefProfile = process.platform === "linux";
+  if (repackageForLinuxCefProfile) {
+    patchElectrobunLinuxCefProfile({ requireNative: true });
+  }
+
   // The Electrobun CLI downloads its platform core lazily. If that happened
   // during the first build, harden the new copy and package once more so the
   // artifact cannot retain the dependency's wildcard RPC listener.
-  if (hardenInstalledElectrobunRpc() > 0) {
+  const repackageForRpcHardening = hardenInstalledElectrobunRpc() > 0;
+  if (repackageForLinuxCefProfile || repackageForRpcHardening) {
     console.log(
       "[desktop-build] Repackaging after hardening the downloaded Electrobun core.",
     );
