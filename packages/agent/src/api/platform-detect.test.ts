@@ -3,7 +3,10 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { detectClientPlatform, isDynamicLoadingAllowed } from "./platform-detect.js";
+import {
+  detectClientPlatform,
+  isDynamicLoadingAllowed,
+} from "./platform-detect.js";
 
 function req(headers: Record<string, string>): never {
   return { headers } as never;
@@ -11,8 +14,12 @@ function req(headers: Record<string, string>): never {
 
 describe("detectClientPlatform", () => {
   it("detects via x-eliza-platform header", () => {
-    expect(detectClientPlatform(req({ "x-eliza-platform": "ios" }))).toBe("ios");
-    expect(detectClientPlatform(req({ "x-eliza-platform": "android" }))).toBe("android");
+    expect(detectClientPlatform(req({ "x-eliza-platform": "ios" }))).toBe(
+      "ios",
+    );
+    expect(detectClientPlatform(req({ "x-eliza-platform": "android" }))).toBe(
+      "android",
+    );
   });
 
   it("detects via Capacitor user-agent", () => {
@@ -32,12 +39,16 @@ describe("detectClientPlatform", () => {
 
   it("defaults to web", () => {
     expect(detectClientPlatform(req({}))).toBe("web");
-    expect(detectClientPlatform(req({ "user-agent": "Mozilla/5.0" }))).toBe("web");
+    expect(detectClientPlatform(req({ "user-agent": "Mozilla/5.0" }))).toBe(
+      "web",
+    );
   });
 
   it("prefers header over ua", () => {
     expect(
-      detectClientPlatform(req({ "x-eliza-platform": "ios", "user-agent": "Electrobun" })),
+      detectClientPlatform(
+        req({ "x-eliza-platform": "ios", "user-agent": "Electrobun" }),
+      ),
     ).toBe("ios");
   });
 });

@@ -41,15 +41,19 @@ describe("registry-host", () => {
 
   it("allows providing a custom UiRegistryHost implementation", () => {
     const customStore = { custom: true };
+    const getStoreSpy = vi.fn();
     const customHost: UiRegistryHost = {
-      getStore: vi.fn(<T>(_key: string, _create: () => T) => customStore as T),
+      getStore<T>(key: string, create: () => T): T {
+        getStoreSpy(key, create);
+        return customStore as T;
+      },
     };
 
     provideUiRegistryHost(customHost);
 
     const store = getUiRegistryStore("any-key", () => ({ default: true }));
 
-    expect(customHost.getStore).toHaveBeenCalledTimes(1);
+    expect(getStoreSpy).toHaveBeenCalledTimes(1);
     expect(store).toBe(customStore);
   });
 

@@ -18,7 +18,10 @@ const WALLET_ADDRESS = "0x1111111111111111111111111111111111111111";
 const REGISTRY_ADDRESS = "0x2222222222222222222222222222222222222222";
 const DEFAULT_CAPABILITIES_HASH = ethers.id("eliza-agent");
 
-function transaction(hash: string, logs: Array<ethers.LogParams> = []) {
+function transaction(
+  hash: string,
+  logs: Array<Pick<ethers.LogParams, "data" | "topics">> = [],
+) {
   return {
     hash,
     wait: vi.fn().mockResolvedValue({ hash, logs }),
@@ -38,7 +41,10 @@ function makeHarness() {
     updateAgentProfile: vi.fn(),
     updateTokenURI: vi.fn(),
   };
-  const getContract = vi.fn(() => contract as unknown as ethers.Contract);
+  const getContract = vi.fn(
+    (_address: string, _abi: ethers.InterfaceAbi) =>
+      contract as unknown as ethers.Contract,
+  );
   const txService = {
     address: WALLET_ADDRESS,
     getChainId: vi.fn().mockResolvedValue(8453),
