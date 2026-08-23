@@ -1,9 +1,10 @@
-# This reusable workflow preserves deterministic macOS and Windows runtime proof
-# inside the single Develop Full authority.
+# This read-only workflow preserves deterministic macOS and Windows runtime
+# proof inside Develop Full and supports explicit exact-ref evidence runs.
 name: Platform Smoke
 
 on:
   workflow_call:
+  workflow_dispatch: {}
 
 permissions:
   contents: read
