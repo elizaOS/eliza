@@ -80,12 +80,48 @@ describe("AndroidCloudClient", () => {
       status: "authenticated",
       token: "steward-token",
     });
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    await client.persistLogin("steward-token");
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("steward-token");
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
       "https://api.eliza.app/api/auth/cli-session",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("clears a credential when cancellation overtakes durable persistence", async () => {
+    let storedToken: string | null = null;
+    let releaseWrite: () => void = () => {};
+    const writeWait = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const credentialStore = {
+      read: vi.fn(async () => storedToken),
+      write: vi.fn(async (token: string) => {
+        storedToken = token;
+        await writeWait;
+      }),
+      clear: vi.fn(async () => {
+        storedToken = null;
+      }),
+    };
+    const client = new AndroidCloudClient({ credentialStore });
+    const controller = new AbortController();
+
+    const persistence = client.persistLogin(
+      "canceled-token",
+      controller.signal,
+    );
+    await vi.waitFor(() =>
+      expect(credentialStore.write).toHaveBeenCalledOnce(),
+    );
+    controller.abort();
+    releaseWrite();
+
+    await expect(persistence).rejects.toMatchObject({ name: "AbortError" });
+    expect(credentialStore.clear).toHaveBeenCalledOnce();
+    expect(storedToken).toBeNull();
   });
 
   it("restores identity and resolves its managed runtime before chat", async () => {

@@ -59,6 +59,22 @@ export interface AccountDeletionAcceptedDto {
   recoveryCredential: string;
 }
 
+export type AccountDeletionAvailabilityDto =
+  | { state: "available"; request: null }
+  | { state: "existing_request"; request: AccountDeletionRequestDto }
+  | {
+      state: "transfer_required";
+      request: null;
+      code: "TRANSFER_REQUIRED";
+      message: string;
+    }
+  | {
+      state: "lifecycle_unavailable";
+      request: null;
+      code: "LIFECYCLE_RESERVATION_REQUIRED";
+      message: string;
+    };
+
 const STATUSES = new Set<AccountDeletionStatus>([
   "reserved",
   "recovery",
@@ -237,6 +253,54 @@ export function parseAccountDeletionEnvelope(
   return value.request === null
     ? null
     : parseAccountDeletionRequest(value.request);
+}
+
+/**
+ * Normalizes both the current fail-closed admission response and the reserved
+ * lifecycle owner's identifier-minimal `{ request }` response.
+ */
+export function parseAccountDeletionAvailability(
+  value: unknown,
+): AccountDeletionAvailabilityDto {
+  if (!isRecord(value) || !("request" in value)) {
+    throw new Error("Account deletion availability response was malformed");
+  }
+  if (value.request !== null) {
+    return {
+      state: "existing_request",
+      request: parseAccountDeletionRequest(value.request),
+    };
+  }
+  if (value.state === undefined || value.state === "available") {
+    return { state: "available", request: null };
+  }
+  if (
+    value.state === "transfer_required" &&
+    value.code === "TRANSFER_REQUIRED" &&
+    typeof value.message === "string" &&
+    value.message.trim()
+  ) {
+    return {
+      state: value.state,
+      request: null,
+      code: value.code,
+      message: value.message,
+    };
+  }
+  if (
+    value.state === "lifecycle_unavailable" &&
+    value.code === "LIFECYCLE_RESERVATION_REQUIRED" &&
+    typeof value.message === "string" &&
+    value.message.trim()
+  ) {
+    return {
+      state: value.state,
+      request: null,
+      code: value.code,
+      message: value.message,
+    };
+  }
+  throw new Error("Account deletion availability response was malformed");
 }
 
 function parseCapability(value: unknown, field: string): string {

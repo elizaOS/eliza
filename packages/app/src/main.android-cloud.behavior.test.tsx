@@ -30,6 +30,10 @@ const playEntry = vi.hoisted(() => ({
     saved: true,
     contentDigest: "a".repeat(64),
   })),
+  voiceListeners: new Map<string, (value: unknown) => void>(),
+  voiceListenerRemovers: new Map<string, ReturnType<typeof vi.fn>>(),
+  voiceStart: vi.fn(async () => ({ started: true })),
+  voiceStop: vi.fn(async () => undefined),
 }));
 
 vi.mock("react-dom/client", () => ({ createRoot: playEntry.createRoot }));
@@ -53,13 +57,29 @@ vi.mock("@capacitor/core", () => ({
         }
       : name === "ElizaPlayExport"
         ? { saveExport: playEntry.saveExport }
-        : {
-            addListener: vi.fn(async () => ({ remove: vi.fn() })),
-            requestPermission: vi.fn(async () => ({ granted: true })),
-            speak: vi.fn(async () => undefined),
-            startDictation: vi.fn(async () => ({ started: true })),
-            stopDictation: vi.fn(async () => undefined),
-          },
+        : name === "ElizaPlayVoice"
+          ? {
+              addListener: vi.fn(
+                async (
+                  eventName: string,
+                  listener: (value: unknown) => void,
+                ) => {
+                  playEntry.voiceListeners.set(eventName, listener);
+                  const remove = vi.fn(async () => {
+                    if (playEntry.voiceListeners.get(eventName) === listener) {
+                      playEntry.voiceListeners.delete(eventName);
+                    }
+                  });
+                  playEntry.voiceListenerRemovers.set(eventName, remove);
+                  return { remove };
+                },
+              ),
+              requestPermission: vi.fn(async () => ({ granted: true })),
+              speak: vi.fn(async () => undefined),
+              startDictation: playEntry.voiceStart,
+              stopDictation: playEntry.voiceStop,
+            }
+          : { openAppSettings: vi.fn(async () => undefined) },
 }));
 vi.mock("@capacitor/preferences", () => ({
   Preferences: {
@@ -153,9 +173,12 @@ beforeAll(async () => {
   await vi.waitFor(() => expect(playEntry.createRoot).toHaveBeenCalledOnce());
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  await entry.androidCloudVoice.stop();
   vi.clearAllMocks();
   playEntry.appListeners.clear();
+  playEntry.voiceListeners.clear();
+  playEntry.voiceListenerRemovers.clear();
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
@@ -166,9 +189,51 @@ beforeEach(() => {
     saved: true,
     contentDigest: "a".repeat(64),
   });
+  playEntry.voiceStart.mockResolvedValue({ started: true });
+  playEntry.voiceStop.mockResolvedValue(undefined);
 });
 
 describe("Android Cloud renderer behavior", () => {
+  it("surfaces native recognition errors and removes both listeners", async () => {
+    const onError = vi.fn();
+    await entry.androidCloudVoice.requestAndStart(vi.fn(), onError);
+
+    playEntry.voiceListeners.get("error")?.({ code: 7 });
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "No speech was recognized. Try again.",
+      }),
+    );
+    await vi.waitFor(() => expect(playEntry.voiceListeners.size).toBe(0));
+    expect(
+      playEntry.voiceListenerRemovers.get("transcript"),
+    ).toHaveBeenCalledOnce();
+    expect(playEntry.voiceListenerRemovers.get("error")).toHaveBeenCalledOnce();
+  });
+
+  it("parses fail-closed lifecycle availability without opening deletion", async () => {
+    playEntry.secureGet.mockResolvedValue({ value: "steward-token" });
+    playEntry.httpRequest.mockResolvedValue({
+      status: 200,
+      data: {
+        state: "lifecycle_unavailable",
+        request: null,
+        code: "LIFECYCLE_RESERVATION_REQUIRED",
+        message: "Lifecycle reservation required",
+      },
+    });
+
+    await expect(
+      entry.androidCloudAccountLifecycle.getAvailability?.(),
+    ).resolves.toEqual({
+      state: "lifecycle_unavailable",
+      request: null,
+      code: "LIFECYCLE_RESERVATION_REQUIRED",
+      message: "Lifecycle reservation required",
+    });
+  });
+
   it("migrates a legacy bearer into the secure plugin before deleting plaintext", async () => {
     const order: string[] = [];
     playEntry.preferenceGet.mockImplementation(async ({ key }) => ({

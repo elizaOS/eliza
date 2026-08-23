@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseAccountDeletionAccepted,
+  parseAccountDeletionAvailability,
   parseAccountDeletionEnvelope,
   parseAccountDeletionRequest,
 } from "./account-deletion-contract";
@@ -32,6 +33,39 @@ function lifecycleRequest(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Android account-deletion lifecycle contract", () => {
+  it("normalizes current fail-closed and reserved lifecycle availability", () => {
+    expect(parseAccountDeletionAvailability({ request: null })).toEqual({
+      state: "available",
+      request: null,
+    });
+    expect(
+      parseAccountDeletionAvailability({
+        state: "lifecycle_unavailable",
+        request: null,
+        code: "LIFECYCLE_RESERVATION_REQUIRED",
+        message: "Lifecycle reservation required",
+      }),
+    ).toEqual({
+      state: "lifecycle_unavailable",
+      request: null,
+      code: "LIFECYCLE_RESERVATION_REQUIRED",
+      message: "Lifecycle reservation required",
+    });
+    expect(
+      parseAccountDeletionAvailability({
+        state: "transfer_required",
+        request: null,
+        code: "TRANSFER_REQUIRED",
+        message: "Transfer shared resources",
+      }),
+    ).toEqual({
+      state: "transfer_required",
+      request: null,
+      code: "TRANSFER_REQUIRED",
+      message: "Transfer shared resources",
+    });
+  });
+
   it("parses the exact identifier-minimal DTO from owner checkpoint e6f002fd2e", () => {
     expect(
       parseAccountDeletionEnvelope({ request: lifecycleRequest() }),

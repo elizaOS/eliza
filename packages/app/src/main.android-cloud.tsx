@@ -22,6 +22,7 @@ import {
 import {
   type AccountDeletionRequestDto,
   parseAccountDeletionAccepted,
+  parseAccountDeletionAvailability,
   parseAccountDeletionEnvelope,
   parseAccountDeletionRequest,
 } from "@elizaos/ui/android-cloud/account-deletion-contract";
@@ -280,6 +281,12 @@ async function cancelWithRecoveryCredential(
 
 export const androidCloudAccountLifecycle: AndroidCloudAccountLifecycleAdapter =
   {
+    async getAvailability() {
+      const response = await lifecycleRequest("/api/v1/me/account-deletion", {
+        authenticated: true,
+      });
+      return parseAccountDeletionAvailability(response.body);
+    },
     async getStatus() {
       const token = await androidCloudClient.readToken();
       if (token) {
@@ -570,7 +577,11 @@ async function initializeAndroidCloudPlatform(): Promise<void> {
     .catch((error) => logOptionalPluginFailure("Network", error));
 }
 
-let activeTranscriptListener: { remove: () => Promise<void> } | null = null;
+interface PlayVoiceListener {
+  remove(): Promise<void>;
+}
+
+let activeVoiceListeners: PlayVoiceListener[] = [];
 
 interface PlayVoicePlugin {
   requestPermission(): Promise<{ granted: boolean }>;
@@ -582,7 +593,11 @@ interface PlayVoicePlugin {
   addListener(
     eventName: "transcript",
     listener: (event: { text: string; isFinal: boolean }) => void,
-  ): Promise<{ remove: () => Promise<void> }>;
+  ): Promise<PlayVoiceListener>;
+  addListener(
+    eventName: "error",
+    listener: (event: { code: number }) => void,
+  ): Promise<PlayVoiceListener>;
 }
 
 const PlayVoice = registerPlugin<PlayVoicePlugin>("ElizaPlayVoice");
@@ -593,10 +608,41 @@ interface PlaySettingsPlugin {
 
 const PlaySettings = registerPlugin<PlaySettingsPlugin>("ElizaPlaySettings");
 
-const androidCloudVoice: AndroidCloudVoiceAdapter = {
-  async requestAndStart(onFinalTranscript) {
-    await activeTranscriptListener?.remove();
-    activeTranscriptListener = null;
+function playVoiceError(code: number): Error {
+  const message =
+    code === 1
+      ? "Voice recognition timed out. Check your connection and try again."
+      : code === 2
+        ? "Voice recognition lost its network connection. Try again."
+        : code === 3
+          ? "The microphone audio could not be recorded. Try again."
+          : code === 6
+            ? "No speech was heard. Try speaking again."
+            : code === 7
+              ? "No speech was recognized. Try again."
+              : code === 8
+                ? "Voice recognition is busy. Wait a moment and try again."
+                : code === 9
+                  ? "Microphone permission is required for voice dictation."
+                  : code === 10
+                    ? "Voice recognition received too many requests. Wait and try again."
+                    : code === 12 || code === 13
+                      ? "Voice recognition does not support this language on this device."
+                      : "Voice recognition failed. Try again.";
+  return new Error(message);
+}
+
+function stopVoiceAfterNativeEvent(): void {
+  void androidCloudVoice.stop().catch((error) => {
+    // error-policy:J6 native-event teardown is best effort after the UI has
+    // already consumed the final transcript or recognition failure.
+    logOptionalPluginFailure("ElizaPlayVoice teardown", error);
+  });
+}
+
+export const androidCloudVoice: AndroidCloudVoiceAdapter = {
+  async requestAndStart(onFinalTranscript, onError) {
+    await androidCloudVoice.stop();
     const permissions = await PlayVoice.requestPermission();
     if (!permissions.granted) {
       throw new Error("Microphone permission is required for voice dictation.");
@@ -607,28 +653,38 @@ const androidCloudVoice: AndroidCloudVoiceAdapter = {
         if (!event.isFinal) return;
         const transcript = event.text.trim();
         if (transcript) onFinalTranscript(transcript);
-        void androidCloudVoice.stop();
+        stopVoiceAfterNativeEvent();
       },
     );
-    activeTranscriptListener = transcriptListener;
-    const result = await PlayVoice.startDictation({
-      language: navigator.language || "en-US",
-    });
-    if (!result.started) {
-      await transcriptListener.remove();
-      if (activeTranscriptListener === transcriptListener) {
-        activeTranscriptListener = null;
+    let errorListener: PlayVoiceListener | null = null;
+    try {
+      errorListener = await PlayVoice.addListener("error", (event) => {
+        onError(playVoiceError(event.code));
+        stopVoiceAfterNativeEvent();
+      });
+      activeVoiceListeners = [transcriptListener, errorListener];
+      const result = await PlayVoice.startDictation({
+        language: navigator.language || "en-US",
+      });
+      if (!result.started) {
+        throw new Error(result.error || "Voice dictation could not start.");
       }
-      throw new Error(result.error || "Voice dictation could not start.");
+    } catch (error) {
+      const listeners = [transcriptListener, errorListener].filter(
+        (listener): listener is PlayVoiceListener => listener !== null,
+      );
+      activeVoiceListeners = [];
+      await Promise.allSettled(listeners.map((listener) => listener.remove()));
+      throw error;
     }
   },
   async stop() {
-    const listener = activeTranscriptListener;
-    activeTranscriptListener = null;
+    const listeners = activeVoiceListeners;
+    activeVoiceListeners = [];
     try {
       await PlayVoice.stopDictation();
     } finally {
-      await listener?.remove();
+      await Promise.allSettled(listeners.map((listener) => listener.remove()));
     }
   },
   async speak(text) {

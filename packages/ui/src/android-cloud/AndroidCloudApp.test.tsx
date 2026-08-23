@@ -97,6 +97,37 @@ describe("AndroidCloudApp", () => {
 
   afterEach(() => cleanup());
 
+  it("ends dictation and surfaces an asynchronous native voice failure", async () => {
+    const client = createClient();
+    const voice = createVoice();
+    let publishError: ((error: Error) => void) | undefined;
+    vi.mocked(voice.requestAndStart).mockImplementation(
+      async (_onTranscript, onError) => {
+        publishError = onError;
+      },
+    );
+    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
+    render(<AndroidCloudApp client={client} voice={voice} />);
+    await screen.findByText("Ada");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Stop dictation" }),
+      ).toBeTruthy(),
+    );
+    act(() =>
+      publishError?.(new Error("No speech was recognized. Try again.")),
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Start dictation" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "No speech was recognized. Try again.",
+    );
+  });
+
   it("renders a retryable signed-out state when no stored session exists", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(null);
@@ -150,6 +181,57 @@ describe("AndroidCloudApp", () => {
     expect(openExternal).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does not persist a poll result that resolves after sign-in cancellation", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl:
+        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    });
+    let resolvePoll!: (value: {
+      status: "authenticated";
+      token: string;
+    }) => void;
+    const poll = new Promise<{
+      status: "authenticated";
+      token: string;
+    }>((resolve) => {
+      resolvePoll = resolve;
+    });
+    vi.spyOn(client, "pollLogin").mockReturnValue(poll);
+    const persistLogin = vi.spyOn(client, "persistLogin");
+    const originalSetTimeout = window.setTimeout.bind(window);
+    vi.spyOn(window, "setTimeout").mockImplementation(
+      (handler, timeout, ...args): ReturnType<typeof setTimeout> =>
+        originalSetTimeout(
+          handler,
+          timeout === 1_500 ? 0 : timeout,
+          ...args,
+        ) as unknown as ReturnType<typeof setTimeout>,
+    );
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={vi.fn(async () => undefined)}
+        closeExternal={vi.fn(async () => undefined)}
+        voice={createVoice()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(client.pollLogin).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    await act(async () => {
+      resolvePoll({ status: "authenticated", token: "stale-token" });
+      await poll;
+      await Promise.resolve();
+    });
+
+    expect(persistLogin).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
   });
 
   it("accepts a native share/deep-link compose event without auto-sending", async () => {

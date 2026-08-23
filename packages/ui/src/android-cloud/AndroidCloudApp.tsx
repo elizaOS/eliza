@@ -36,7 +36,10 @@ export interface AndroidCloudAppProps {
 }
 
 export interface AndroidCloudVoiceAdapter {
-  requestAndStart(onFinalTranscript: (text: string) => void): Promise<void>;
+  requestAndStart(
+    onFinalTranscript: (text: string) => void,
+    onError: (error: Error) => void,
+  ): Promise<void>;
   stop(): Promise<void>;
   speak(text: string): Promise<void>;
 }
@@ -192,8 +195,21 @@ export function AndroidCloudApp({
           attempt.sessionId,
           controller.signal,
         );
+        if (
+          controller.signal.aborted ||
+          loginAttemptRef.current !== attemptNumber
+        )
+          return;
         if (result.status === "pending") continue;
         if (result.status === "expired") throw new Error(result.error);
+        await client.persistLogin(result.token, controller.signal);
+        if (
+          controller.signal.aborted ||
+          loginAttemptRef.current !== attemptNumber
+        ) {
+          await client.discardLogin(result.token);
+          return;
+        }
         await closeExternal?.();
         await restore();
         return;
@@ -342,15 +358,28 @@ export function AndroidCloudApp({
       return;
     }
     try {
-      await voice.requestAndStart((value) => {
-        const transcript = value.trim();
-        if (transcript) {
-          setDraft((current) => `${current}${current ? " " : ""}${transcript}`);
-        }
-        setListening(false);
-      });
-      setError(null);
-      setListening(true);
+      let nativeAttemptFinished = false;
+      await voice.requestAndStart(
+        (value) => {
+          nativeAttemptFinished = true;
+          const transcript = value.trim();
+          if (transcript) {
+            setDraft(
+              (current) => `${current}${current ? " " : ""}${transcript}`,
+            );
+          }
+          setListening(false);
+        },
+        (nativeError) => {
+          nativeAttemptFinished = true;
+          setListening(false);
+          setError(errorMessage(nativeError));
+        },
+      );
+      if (!nativeAttemptFinished) {
+        setError(null);
+        setListening(true);
+      }
     } catch (dictationError) {
       // error-policy:J4 denied or failed dictation is visible at the input.
       setListening(false);

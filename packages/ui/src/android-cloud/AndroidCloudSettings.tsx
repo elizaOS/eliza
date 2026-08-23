@@ -1,10 +1,14 @@
 /** Play-safe account, permission, and deletion settings for Android Cloud. */
 
 import { useCallback, useEffect, useState } from "react";
-import type { AccountDeletionRequestDto } from "./account-deletion-contract";
+import type {
+  AccountDeletionAvailabilityDto,
+  AccountDeletionRequestDto,
+} from "./account-deletion-contract";
 
 export interface AndroidCloudAccountLifecycleAdapter {
   getStatus(): Promise<AccountDeletionRequestDto | null>;
+  getAvailability?(): Promise<AccountDeletionAvailabilityDto>;
   requestDeletion(): Promise<AccountDeletionRequestDto>;
   cancelDeletion(): Promise<AccountDeletionRequestDto>;
   downloadExport(): Promise<boolean>;
@@ -282,6 +286,12 @@ export function AndroidCloudSettings({
   openAppSettings,
 }: AndroidCloudSettingsProps): React.JSX.Element {
   const [request, setRequest] = useState(initialRequest);
+  const [availability, setAvailability] =
+    useState<AccountDeletionAvailabilityDto | null>(
+      initialRequest
+        ? { state: "existing_request", request: initialRequest }
+        : null,
+    );
   const [loading, setLoading] = useState(Boolean(lifecycle && !initialRequest));
   const [requestOpen, setRequestOpen] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -295,7 +305,18 @@ export function AndroidCloudSettings({
     setLoading(true);
     setError(null);
     try {
-      setRequest(await lifecycle.getStatus());
+      const nextAvailability = lifecycle.getAvailability
+        ? await lifecycle.getAvailability()
+        : await lifecycle
+            .getStatus()
+            .then(
+              (nextRequest): AccountDeletionAvailabilityDto =>
+                nextRequest
+                  ? { state: "existing_request", request: nextRequest }
+                  : { state: "available", request: null },
+            );
+      setAvailability(nextAvailability);
+      setRequest(nextAvailability.request);
     } catch (cause) {
       // error-policy:J4 Status failures render explicitly; the server remains
       // authoritative if the user later retries an account action.
@@ -415,6 +436,25 @@ export function AndroidCloudSettings({
                   {error}
                 </p>
               ) : null}
+              {availability?.state === "lifecycle_unavailable" ? (
+                <p
+                  className="rounded-xl border border-status-warning/40 p-3 text-sm text-status-warning"
+                  role="status"
+                >
+                  Account deletion is temporarily unavailable. Your account,
+                  access, and data are unchanged. Use the web request page for
+                  current support options.
+                </p>
+              ) : null}
+              {availability?.state === "transfer_required" ? (
+                <p
+                  className="rounded-xl border border-status-warning/40 p-3 text-sm text-status-warning"
+                  role="status"
+                >
+                  Transfer or revoke shared organization resources before
+                  deleting this account.
+                </p>
+              ) : null}
               <div className="grid gap-2">
                 <button
                   type="button"
@@ -428,7 +468,9 @@ export function AndroidCloudSettings({
                 <button
                   type="button"
                   className="rounded-xl border border-status-danger/50 px-4 py-3 font-semibold text-status-danger"
-                  disabled={!lifecycle || loading}
+                  disabled={
+                    !lifecycle || loading || availability?.state !== "available"
+                  }
                   onClick={() => {
                     setError(null);
                     setAdmissionCode(null);

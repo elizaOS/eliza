@@ -283,7 +283,6 @@ export class AndroidCloudClient {
         stringField(data.accessToken) ??
         stringField(data.access_token);
       if (!token) throw new Error("Sign-in completed without a session token.");
-      await this.credentialStore.write(token);
       return { status: "authenticated", token };
     }
     if (status === "expired" || status === "error") {
@@ -293,6 +292,33 @@ export class AndroidCloudClient {
       };
     }
     return { status: "pending" };
+  }
+
+  /** Persists a revealed login only while its UI attempt still owns authority. */
+  async persistLogin(token: string, signal?: AbortSignal): Promise<void> {
+    if (!token.trim())
+      throw new Error("Sign-in completed without a session token.");
+    signal?.throwIfAborted();
+    await this.credentialStore.write(token);
+    if (!signal?.aborted) return;
+    try {
+      if ((await this.credentialStore.read())?.trim() === token) {
+        await this.credentialStore.clear();
+      }
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [new DOMException("Sign-in was canceled.", "AbortError"), cleanupError],
+        "Canceled sign-in credential cleanup failed.",
+      );
+    }
+    signal.throwIfAborted();
+  }
+
+  /** Removes only the credential revealed by the canceled attempt. */
+  async discardLogin(token: string): Promise<void> {
+    if ((await this.credentialStore.read())?.trim() === token) {
+      await this.credentialStore.clear();
+    }
   }
 
   async sendChat(

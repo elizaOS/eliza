@@ -65,6 +65,38 @@ function lifecycle(
 afterEach(cleanup);
 
 describe("AndroidCloudSettings", () => {
+  it("fails closed before confirmation when lifecycle admission is unavailable", async () => {
+    const adapter = lifecycle({
+      getAvailability: vi.fn(async () => ({
+        state: "lifecycle_unavailable" as const,
+        request: null,
+        code: "LIFECYCLE_RESERVATION_REQUIRED" as const,
+        message: "Lifecycle reservation required",
+      })),
+    });
+    render(
+      <AndroidCloudSettings
+        lifecycle={adapter}
+        onBack={vi.fn()}
+        onDeletionReserved={vi.fn()}
+        onSignOut={vi.fn()}
+        openExternal={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/Account deletion is temporarily unavailable/),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Delete account & data",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("exposes standard Android permission settings and the public deletion page", async () => {
     const openAppSettings = vi.fn();
     const openExternal = vi.fn();
@@ -114,9 +146,13 @@ describe("AndroidCloudSettings", () => {
       />,
     );
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Delete account & data" }),
+    const deleteButton = await screen.findByRole("button", {
+      name: "Delete account & data",
+    });
+    await waitFor(() =>
+      expect((deleteButton as HTMLButtonElement).disabled).toBe(false),
     );
+    fireEvent.click(deleteButton);
     const confirm = screen.getByRole("button", {
       name: "Delete account",
     }) as HTMLButtonElement;
@@ -163,9 +199,13 @@ describe("AndroidCloudSettings", () => {
       />,
     );
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Delete account & data" }),
+    const deleteButton = await screen.findByRole("button", {
+      name: "Delete account & data",
+    });
+    await waitFor(() =>
+      expect((deleteButton as HTMLButtonElement).disabled).toBe(false),
     );
+    fireEvent.click(deleteButton);
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
       target: { value: "DELETE" },
