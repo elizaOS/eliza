@@ -58,6 +58,32 @@ export interface ComputerUseVirtualCursor {
   updatedAt: string;
 }
 
+export interface ComputerUseTargetOverlay {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  elementIndex?: number;
+  appId?: string;
+  updatedAt: string;
+  /** Planning/hover overlays never move the one macOS system pointer. */
+  physicalPointerMoved: boolean;
+}
+
+export interface ComputerUseActionReceipt {
+  receiptId: string;
+  appId: string;
+  kind: string;
+  beforeStateId: string;
+  afterStateId: string;
+  executionMode: string;
+  completedAt: string;
+  changed: boolean;
+  physicalPointerMoved: boolean;
+  clipboardRestored?: boolean;
+  element_index?: number;
+}
+
 export interface ComputerUseSessionSnapshot {
   contractVersion: typeof COMPUTER_USE_INTERACTION_CONTRACT_VERSION;
   id: string;
@@ -75,12 +101,14 @@ export interface ComputerUseSessionSnapshot {
   closedAt?: string;
   leaseExpiresAt?: string;
   cursor?: ComputerUseVirtualCursor;
+  targetOverlay?: ComputerUseTargetOverlay;
   activeActionId?: string;
   lastActionId?: string;
   lastCommand?: string;
   lastError?: string;
   lastObservation?: ComputerUseObservationProvenance;
   lastOutcome?: ComputerUseSessionOutcome;
+  lastReceipt?: ComputerUseActionReceipt;
 }
 
 export interface CreateComputerUseSessionInput {
@@ -111,6 +139,8 @@ export interface ComputerUseSessionActionResult {
   permissionType?: string;
   cursorPosition?: { x: number; y: number };
   displayId?: number;
+  data?: unknown;
+  verificationObservation?: ComputerUseObservationProvenance;
 }
 
 export interface ComputerUseSessionFrame {

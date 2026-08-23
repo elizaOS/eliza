@@ -41,6 +41,16 @@ export interface SessionSnapshot {
   updatedAt: string;
   leaseExpiresAt?: string;
   cursor?: { x: number; y: number; displayId?: number; updatedAt: string };
+  targetOverlay?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    elementIndex?: number;
+    appId?: string;
+    updatedAt: string;
+    physicalPointerMoved: boolean;
+  };
   lastCommand?: string;
   lastError?: string;
   lastObservation?: ObservationProvenance;
@@ -50,6 +60,16 @@ export interface SessionSnapshot {
     completedAt: string;
     observationId?: string;
     errorCode?: string;
+  };
+  lastReceipt?: {
+    receiptId: string;
+    appId: string;
+    kind: string;
+    executionMode: string;
+    changed: boolean;
+    physicalPointerMoved: boolean;
+    clipboardRestored?: boolean;
+    element_index?: number;
   };
 }
 
@@ -86,6 +106,11 @@ export interface ComputerUseReadiness {
   capture: { available: boolean; tool: string };
   input: { available: boolean; tool: string };
   browser: { available: boolean; tool: string };
+  accessibility?: {
+    available: boolean;
+    adapter: string;
+    permission: string;
+  };
   vision: { available: boolean; modelType: string };
   approvalMode: string;
 }
@@ -248,6 +273,45 @@ function CursorOverlay({
   );
 }
 
+function AgentTargetOverlay({
+  frame,
+  session,
+}: {
+  frame: SessionFrame;
+  session: SessionSnapshot;
+}) {
+  const target = session.targetOverlay;
+  if (!target || !frame.width || !frame.height) return null;
+  const left = Math.max(0, Math.min(100, (target.x / frame.width) * 100));
+  const top = Math.max(0, Math.min(100, (target.y / frame.height) * 100));
+  const width = Math.max(
+    0.75,
+    Math.min(100 - left, (target.width / frame.width) * 100),
+  );
+  const height = Math.max(
+    0.75,
+    Math.min(100 - top, (target.height / frame.height) * 100),
+  );
+  return (
+    <span
+      aria-label={`Agent target${target.elementIndex ? ` element ${target.elementIndex}` : ""}; ${target.physicalPointerMoved ? "system pointer used" : "system pointer unchanged"}`}
+      className="pointer-events-none absolute border-2 border-orange-400 bg-orange-500/10 shadow-[0_0_0_1px_rgba(0,0,0,0.5)]"
+      role="img"
+      style={{
+        height: `${height}%`,
+        left: `${left}%`,
+        top: `${top}%`,
+        width: `${width}%`,
+      }}
+    >
+      <span className="absolute -top-5 left-0 rounded bg-orange-500 px-1.5 py-0.5 text-[9px] font-medium text-white">
+        Agent target ·{" "}
+        {target.physicalPointerMoved ? "pointer used" : "pointer unchanged"}
+      </span>
+    </span>
+  );
+}
+
 function SessionPreview({
   compact = false,
   frame,
@@ -269,6 +333,7 @@ function SessionPreview({
           src={frameDataUrl(frame)}
         />
         <CursorOverlay frame={frame} session={session} />
+        <AgentTargetOverlay frame={frame} session={session} />
       </div>
     );
   }
@@ -487,9 +552,9 @@ export function ComputerUseSessionsView({
           <h1 className="text-base font-semibold">Computer sessions</h1>
           {!shortLandscape ? (
             <p className="text-xs text-muted-foreground">
-              One physical host cursor; independent targets use virtual cursors.
-              Frames update live. Select a session to focus it, then close
-              isolated targets when finished.
+              macOS has one true system pointer. Orange target boxes are an
+              agent-only overlay and do not move it; guarded coordinate actions
+              may use the physical pointer only after policy approval.
             </p>
           ) : null}
         </div>
@@ -520,6 +585,18 @@ export function ComputerUseSessionsView({
               available={readiness.vision.available}
               label="Vision"
             />
+            {readiness.accessibility ? (
+              <>
+                <ReadinessPill
+                  available={readiness.accessibility.available}
+                  label="AX helper"
+                />
+                <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-foreground">
+                  Accessibility permission:{" "}
+                  {readiness.accessibility.permission.replaceAll("_", " ")}
+                </span>
+              </>
+            ) : null}
             <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-foreground">
               Approval: {readiness.approvalMode.replaceAll("_", " ")}
             </span>
@@ -640,6 +717,17 @@ export function ComputerUseSessionsView({
                     ? ` · Cursor ${Math.round(selected.cursor.x)}, ${Math.round(selected.cursor.y)}`
                     : " · Cursor pending"}
                 </p>
+                {selected.lastReceipt ? (
+                  <p className="truncate">
+                    {selected.lastReceipt.executionMode.replaceAll("_", " ")}
+                    {selected.lastReceipt.clipboardRestored
+                      ? " · clipboard restored"
+                      : ""}
+                    {selected.lastReceipt.physicalPointerMoved
+                      ? " · physical pointer used"
+                      : " · physical pointer unchanged"}
+                  </p>
+                ) : null}
                 {frames[selected.id]?.provenance ? (
                   <p
                     className="truncate"
@@ -769,6 +857,20 @@ export function ComputerUseSessionsView({
                           {session.lastOutcome.errorCode
                             ? ` · ${session.lastOutcome.errorCode}`
                             : ""}
+                        </span>
+                      ) : null}
+                      {session.lastReceipt ? (
+                        <span className="col-span-2 truncate">
+                          {session.lastReceipt.executionMode.replaceAll(
+                            "_",
+                            " ",
+                          )}
+                          {session.lastReceipt.clipboardRestored
+                            ? " · clipboard restored"
+                            : ""}
+                          {session.lastReceipt.physicalPointerMoved
+                            ? " · physical pointer used"
+                            : " · physical pointer unchanged"}
                         </span>
                       ) : null}
                     </div>
