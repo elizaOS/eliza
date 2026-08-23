@@ -1,8 +1,8 @@
 // Covers the Code example help overlay: frame geometry, fill-to-height,
 // section ordering, narrow-width padding clamps, and deterministic re-render.
-import { describe, expect, test } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@elizaos/tui";
+import { describe, expect, test } from "vitest";
 import { VirtualTerminal } from "../testing/virtual-terminal.test.js";
 import { HelpOverlay } from "./HelpOverlay.js";
 
