@@ -267,7 +267,14 @@ function buildFormattingFallbackEntity(memory: Memory): Entity | null {
 	} as Entity;
 }
 
-async function ensureFormattingEntities(
+/**
+ * Backfill formatting entities for message senders missing from the room's
+ * entity list: re-resolve each missing sender by id (they may have left the
+ * room but still have an entity row), then fall back to a synthetic entity
+ * built from the message's stamped `entityName` metadata. Exported so the
+ * CHANNEL_RECAP action names historical senders identically to this provider.
+ */
+export async function ensureFormattingEntities(
 	runtime: IAgentRuntime,
 	entities: Entity[],
 	messages: Memory[],

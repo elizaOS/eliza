@@ -8,6 +8,11 @@
 import type { Entity, UUID } from "../types/index";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
+import {
+	distinctiveNameTokens,
+	escapeRegex,
+	normalizeName,
+} from "../utils/agent-name-match";
 
 /**
  * Post-parse persistence for the messageHandler's `extract.addressedTo`
@@ -123,104 +128,165 @@ interface ResolveTargetsArgs {
 }
 
 /**
+ * Normalized set of the agent's own names: character name, username, and
+ * each distinctive (>= 4 char) token of a multi-word name, so
+ * "remilio nubilio" also answers to "nubilio" (live 2026-08-22).
+ */
+function agentSelfNames(runtime: IAgentRuntime): Set<string> {
+	const self = new Set<string>();
+	for (const name of [runtime.character?.name, runtime.character?.username]) {
+		if (!name) continue;
+		for (const token of distinctiveNameTokens(name)) {
+			self.add(normalizeName(token));
+		}
+	}
+	return self;
+}
+
+/**
  * True only when a turn is verifiably directed at a resolvable OTHER room
- * participant. Three invariants bound the answer, because a positive here
- * converts the turn into deliberate silence:
+ * participant. Two independent evidence sources are OR-composed — a
+ * text-corroborated Stage-1 tag, or a structural leading vocative — so a
+ * hallucinated tag never blocks the vocative evidence and an empty tag list
+ * never blocks the tag path. Three invariants bound the answer, because a
+ * positive here converts the turn into deliberate silence:
  *
- *  - addressed to US (by name, id, or platform alias) never gates;
+ *  - addressed to US (by name, name token, id, or platform alias) never
+ *    gates, and short-circuits both evidence sources — the turn is ours;
  *  - a tag that resolves to the message's own AUTHOR never gates (a message
  *    cannot be addressed to its own speaker — that is a Stage-1 extraction
  *    error);
  *  - corroboration: the gate may only silence on evidence it can verify
  *    itself — the message text must actually address the tagged participant
- *    by one of their names. An uncorroborated model tag never gates.
+ *    by one of their names ("Hey Eliza …" corroborates a tag of Eliza). An
+ *    uncorroborated model tag never gates on its own; it falls through to
+ *    the vocative check.
  *
- * Fails SAFE (returns false) whenever it cannot positively confirm all of the
- * above: empty `addressedTo`, unresolvable bare names, DMs and undirected
- * asks all return false and the agent keeps acting on requests meant for it.
+ * Fails SAFE (returns false) whenever it cannot positively confirm the
+ * above: unresolvable bare names, DMs and undirected asks all return false
+ * and the agent keeps acting on requests meant for it. The room's entity
+ * list is fetched ONCE and shared by tag resolution, corroboration, and the
+ * vocative fallback.
  */
 export async function messageAddressedToOtherParticipant(
 	args: ApplyAddressedToArgs,
 ): Promise<boolean> {
 	const { runtime, message, addressedTo } = args;
-	if (!addressedTo || addressedTo.length === 0) {
-		return false;
-	}
-
-	const normalize = (value: string) =>
-		value.trim().toLowerCase().replace(/^@/, "");
-	const self = new Set<string>();
-	const selfId = runtime.agentId;
-	if (selfId) self.add(selfId.toLowerCase());
-	const selfName = runtime.character?.name;
-	if (selfName) self.add(normalize(selfName));
-	const selfUsername = runtime.character?.username;
-	if (selfUsername) self.add(normalize(selfUsername));
-
-	const cleaned = addressedTo
-		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-		.filter((entry) => entry.length > 0);
-	if (cleaned.length === 0) {
-		return false;
-	}
-
-	// Addressed to us by literal name/id → handle normally, never suppress.
-	if (cleaned.some((entry) => self.has(normalize(entry)))) {
-		return false;
-	}
-
-	// Resolve names→ids against the room. This also maps the agent's OWN entity
-	// aliases (platform handles like @samantha_ai_bot that connectors store on
-	// the agent's entity) to selfId, so a turn addressed to us by an alias is NOT
-	// mistaken for an other-participant address.
-	const targets = await resolveAddressedTargets({
-		runtime,
-		message,
-		addressedTo,
-	});
-	if (selfId && targets.some((id) => id === selfId)) {
-		return false;
-	}
-
-	// A message cannot be addressed to its own author: a tag that resolves to
-	// the SPEAKER is a Stage-1 extraction error, never an other-participant
-	// address (live 2026-08-22: "hello?" / "did u see what i said?" were tagged
-	// with the asker's own name and silently suppressed).
-	const speakerId = message.entityId;
-	const others = speakerId ? targets.filter((id) => id !== speakerId) : targets;
-	if (others.length === 0) {
-		return false;
-	}
-
-	// Corroboration invariant: a deterministic gate may only SILENCE a turn on
-	// evidence it can verify itself. The Stage-1 tag picks WHO, but suppression
-	// additionally requires the message text to actually address that
-	// participant by one of their names ("Hey Eliza …" corroborates a tag of
-	// Eliza). An uncorroborated tag — the model hallucinating an addressee the
-	// text never names (live 2026-08-22: "nubilio whats the setting …" tagged
-	// as addressed to shaw) — must never convert a turn into silence.
-	const participants = await runtime.getEntitiesForRoom(message.roomId);
 	const text =
 		typeof message.content?.text === "string" ? message.content.text : "";
-	const othersSet = new Set(others);
-	const corroborated = participants.some((participant) => {
-		if (!participant.id || !othersSet.has(participant.id)) return false;
-		return (participant.names ?? []).some((name) => {
-			const candidate = normalize(name ?? "");
-			if (candidate.length < 2) return false;
-			return new RegExp(
-				`(^|[^\\p{L}\\p{N}])@?${candidate.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?=$|[^\\p{L}\\p{N}])`,
-				"iu",
-			).test(text);
+	const cleaned = (addressedTo ?? [])
+		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+		.filter((entry) => entry.length > 0);
+	if (cleaned.length === 0 && !text.trim()) {
+		return false;
+	}
+
+	const self = agentSelfNames(runtime);
+	const selfId = runtime.agentId;
+
+	// Addressed to us by literal name/name-token/id → handle normally, never
+	// suppress (and never consult the vocative fallback: the turn is ours).
+	if (
+		cleaned.some((entry) => {
+			const normalized = normalizeName(entry);
+			return (
+				self.has(normalized) ||
+				(selfId ? normalized === selfId.toLowerCase() : false)
+			);
+		})
+	) {
+		return false;
+	}
+
+	// ONE room fetch serves tag resolution, corroboration, and the vocative
+	// fallback below.
+	const participants = await runtime.getEntitiesForRoom(message.roomId);
+
+	if (cleaned.length > 0) {
+		// Resolve names→ids against the room. This also maps the agent's OWN
+		// entity aliases (platform handles like @samantha_ai_bot that connectors
+		// store on the agent's entity) to selfId, so a turn addressed to us by an
+		// alias is NOT mistaken for an other-participant address.
+		const targets = resolveAddressedTargetsFromParticipants({
+			runtime,
+			addressedTo: cleaned,
+			participants,
 		});
+		if (selfId && targets.some((id) => id === selfId)) {
+			return false;
+		}
+
+		// A message cannot be addressed to its own author: a tag that resolves to
+		// the SPEAKER is a Stage-1 extraction error, never an other-participant
+		// address (live 2026-08-22: "hello?" / "did u see what i said?" were
+		// tagged with the asker's own name and silently suppressed).
+		const speakerId = message.entityId;
+		const others = speakerId
+			? targets.filter((id) => id !== speakerId)
+			: targets;
+
+		// Corroboration invariant: a deterministic gate may only SILENCE a turn
+		// on evidence it can verify itself. The Stage-1 tag picks WHO, but
+		// suppression additionally requires the message text to actually address
+		// that participant by one of their names ("Hey Eliza …" corroborates a
+		// tag of Eliza). An uncorroborated tag — the model hallucinating an
+		// addressee the text never names (live 2026-08-22: "nubilio whats the
+		// setting …" tagged as addressed to shaw) — must never convert a turn
+		// into silence.
+		const othersSet = new Set(others);
+		const corroborated = participants.some((participant) => {
+			if (!participant.id || !othersSet.has(participant.id)) return false;
+			return entityNames(participant).some((name) => {
+				const candidate = normalizeName(name);
+				if (candidate.length < 2) return false;
+				return new RegExp(
+					`(^|[^\\p{L}\\p{N}])@?${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
+					"iu",
+				).test(text);
+			});
+		});
+		if (corroborated) {
+			return true;
+		}
+	}
+
+	// OR-composition: the tag path found nothing it could verify (empty,
+	// unresolvable, author-only, or uncorroborated tags), but the text itself
+	// may still open by addressing another participant — a hallucinated tag
+	// must not block that independent evidence.
+	return vocativelyAddressesOtherParticipant({
+		runtime,
+		message,
+		participants,
+		self,
 	});
-	return corroborated;
 }
 
 export async function resolveAddressedTargets(
 	args: ResolveTargetsArgs,
 ): Promise<UUID[]> {
 	const { runtime, message, addressedTo } = args;
+	// Bare names need the room's entity list; pure-UUID tags resolve without it.
+	const needsRoomEntities = addressedTo.some((entry) => {
+		const cleaned = typeof entry === "string" ? entry.trim() : "";
+		return cleaned.length > 0 && !UUID_PATTERN.test(cleaned);
+	});
+	const participants = needsRoomEntities
+		? await runtime.getEntitiesForRoom(message.roomId)
+		: [];
+	return resolveAddressedTargetsFromParticipants({
+		runtime,
+		addressedTo,
+		participants,
+	});
+}
+
+function resolveAddressedTargetsFromParticipants(args: {
+	runtime: IAgentRuntime;
+	addressedTo: readonly string[];
+	participants: readonly Entity[];
+}): UUID[] {
+	const { runtime, addressedTo, participants } = args;
 	const cleaned = Array.from(
 		new Set(
 			addressedTo
@@ -244,23 +310,20 @@ export async function resolveAddressedTargets(
 	}
 
 	if (names.length > 0) {
-		const participants = await runtime.getEntitiesForRoom(message.roomId);
-		const normalize = (value: string) => value.trim().toLowerCase();
 		const byName = new Map<string, UUID>();
 		const agentName = runtime.character.name;
 		if (agentName) {
-			byName.set(normalize(agentName), runtime.agentId);
+			byName.set(normalizeName(agentName), runtime.agentId);
 		}
 		for (const entity of participants) {
 			const id = entity.id as UUID | undefined;
 			if (!id) continue;
 			for (const name of entityNames(entity)) {
-				byName.set(normalize(name), id);
+				byName.set(normalizeName(name), id);
 			}
 		}
 		for (const name of names) {
-			const stripped = name.replace(/^@/, "");
-			const hit = byName.get(normalize(stripped));
+			const hit = byName.get(normalizeName(name));
 			if (hit) {
 				uuids.add(hit);
 			}
@@ -291,6 +354,24 @@ function dedupeTags(tags: readonly string[]): string[] {
 }
 
 /**
+ * Optional greeting word before a leading vocative. The boundary lookahead
+ * is required so a greeting only counts when it ends the word — without it
+ * the alternation could consume a prefix of an ordinary word and match a
+ * short participant name against the remainder ("gmsol" parsing as
+ * "gm"+"sol", "hiro" as "hi"+"ro"), converting normal chatter into silence.
+ */
+const VOCATIVE_GREETING_PREFIX =
+	"(?:(?:hey|hi|yo|sup|hello|gm|gn|ok|okay)(?=$|[^\\p{L}\\p{N}]))?";
+
+/** Anchored leading-vocative matcher for one normalized participant name. */
+function leadingVocative(name: string): RegExp {
+	return new RegExp(
+		`^\\s*${VOCATIVE_GREETING_PREFIX}\\s*[,–—-]?\\s*@?${escapeRegex(name)}(?=$|[^\\p{L}\\p{N}])`,
+		"iu",
+	);
+}
+
+/**
  * Structural vocative detection: true when the message TEXT opens by
  * addressing another room participant by name — "hey eliza", "eliza, can you
  * …", "gm sol" — and that participant is not us. This needs no Stage-1 tag:
@@ -311,45 +392,47 @@ export async function messageVocativelyAddressesOtherParticipant(args: {
 		typeof message.content?.text === "string" ? message.content.text : "";
 	if (!text.trim()) return false;
 
-	const normalize = (value: string) =>
-		value.trim().toLowerCase().replace(/^@/, "");
-	const self = new Set<string>();
-	if (runtime.agentId) self.add(runtime.agentId.toLowerCase());
-	for (const name of [runtime.character?.name, runtime.character?.username]) {
-		const candidate = name?.trim();
-		if (!candidate) continue;
-		self.add(normalize(candidate));
-		for (const token of candidate.split(/\s+/u)) {
-			if (token.length >= 4) self.add(normalize(token));
-		}
+	const participants = await runtime.getEntitiesForRoom(message.roomId);
+	return vocativelyAddressesOtherParticipant({
+		runtime,
+		message,
+		participants,
+		self: agentSelfNames(runtime),
+	});
+}
+
+/**
+ * Core of the structural vocative check, operating on a pre-fetched room
+ * entity list so the combined addressing gate pays a single room lookup.
+ * `self` holds the agent's normalized names (see agentSelfNames).
+ */
+function vocativelyAddressesOtherParticipant(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	participants: readonly Entity[];
+	self: ReadonlySet<string>;
+}): boolean {
+	const { runtime, message, participants, self } = args;
+	const text =
+		typeof message.content?.text === "string" ? message.content.text : "";
+	if (!text.trim()) return false;
+
+	const lead = text.slice(0, 80);
+	// A leading vocative of OUR name keeps the turn ours ("nubilio, ask
+	// eliza …" opens with us, not them). Loop-invariant: computed once.
+	for (const own of self) {
+		if (leadingVocative(own).test(lead)) return false;
 	}
 
-	const participants = await runtime.getEntitiesForRoom(message.roomId);
 	const speakerId = message.entityId;
 	for (const participant of participants) {
 		if (!participant.id) continue;
 		if (participant.id === runtime.agentId) continue;
 		if (speakerId && participant.id === speakerId) continue;
-		for (const rawName of participant.names ?? []) {
-			const name = normalize(rawName ?? "");
+		for (const rawName of entityNames(participant)) {
+			const name = normalizeName(rawName);
 			if (name.length < 2 || self.has(name)) continue;
-			const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-			const vocative = new RegExp(
-				`^\\s*(?:hey|hi|yo|sup|hello|gm|gn|ok|okay)?\\s*[,–—-]?\\s*@?${escaped}(?=$|[^\\p{L}\\p{N}])`,
-				"iu",
-			);
-			if (vocative.test(text)) {
-				// A leading vocative of OUR name keeps
-				// the turn ours ("nubilio, ask eliza …" opens with us, not them).
-				const oursFirst = [...self].some((own) => {
-					const ownEscaped = own.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-					return new RegExp(
-						`^\\s*(?:hey|hi|yo|sup|hello|gm|gn|ok|okay)?\\s*[,–—-]?\\s*@?${ownEscaped}(?=$|[^\\p{L}\\p{N}])`,
-						"iu",
-					).test(text);
-				});
-				if (!oursFirst) return true;
-			}
+			if (leadingVocative(name).test(lead)) return true;
 		}
 	}
 	return false;

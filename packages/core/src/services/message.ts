@@ -84,7 +84,6 @@ import { tierActionResults } from "../runtime/action-tiering";
 import {
 	applyAddressedTo,
 	messageAddressedToOtherParticipant,
-	messageVocativelyAddressesOtherParticipant,
 } from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
 import {
@@ -322,6 +321,7 @@ import {
 	formatActionResultsForPrompt,
 	trimActionResultForPromptState,
 } from "../utils/action-results";
+import { textContainsAgentName } from "../utils/agent-name-match";
 import {
 	AVAILABLE_CONTEXTS_STATE_KEY,
 	attachAvailableContexts,
@@ -466,63 +466,6 @@ function canonicalPlannerControlActionName(actionName: string): string | null {
 
 function isReplyActionIdentifier(actionName: string): boolean {
 	return canonicalPlannerControlActionName(actionName) === "REPLY";
-}
-
-function escapeRegex(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-const NON_DISTINCTIVE_AGENT_NAME_TOKENS = new Set([
-	"agent",
-	"assistant",
-	"bot",
-	"chatbot",
-	"demo",
-	"helper",
-	"system",
-	"test",
-]);
-
-/** Returns whether text names the agent through a complete configured alias or
- * a distinctive token from a multi-word alias. */
-export function textContainsAgentName(
-	text: string | undefined,
-	names: Array<string | null | undefined>,
-): boolean {
-	if (!text) {
-		return false;
-	}
-
-	// A multi-word agent name is addressed by any of its distinctive tokens:
-	// "remilio nubilio" answers to "nubilio …" (live 2026-08-22: the full-phrase
-	// match classified "nubilio whats the setting …" as ambient, arming the
-	// engagement gate on a message that literally opens with the agent's name).
-	// Short fragments and generic role/test words stay excluded because length
-	// alone does not make "agent", "assistant", or "test" an identity signal.
-	// The complete configured name/username remains authoritative even when one
-	// of its component words is generic.
-	const candidates = new Set<string>();
-	for (const name of names) {
-		const candidate = name?.trim();
-		if (!candidate) continue;
-		candidates.add(candidate);
-		for (const token of candidate.split(/\s+/u)) {
-			if (
-				token.length >= 4 &&
-				!NON_DISTINCTIVE_AGENT_NAME_TOKENS.has(token.toLowerCase())
-			) {
-				candidates.add(token);
-			}
-		}
-	}
-
-	return [...candidates].some((candidate) => {
-		const pattern = new RegExp(
-			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
-			"iu",
-		);
-		return pattern.test(text);
-	});
 }
 
 function textContainsUserTag(text: string | undefined): boolean {
@@ -8686,9 +8629,10 @@ export async function runV5MessageRuntimeStage1(args: {
 		// agent is overhearing — it must not reply, enter the planner, or
 		// fabricate a tool task. Uniform, NOT bot-specific: it fires the same
 		// for human and bot addressees (bot-ness is surfaced to the model as
-		// transcript context, not handled here). Undirected banter
-		// (addressedTo: []) never gates, so chatty agents still interject per
-		// their character. Eligibility is bounded by the canonical `ambientTurn`
+		// transcript context, not handled here). Undirected banter — no
+		// corroborated tag AND no leading vocative — never gates, so chatty
+		// agents still interject per their character. Eligibility is bounded by
+		// the canonical `ambientTurn`
 		// classifier: only positively identified unaddressed text-group traffic
 		// can be suppressed. Direct/API/self turns, client chat, autonomous and
 		// sub-agent traffic, explicit mentions/replies/names, and unknown channel
@@ -8699,28 +8643,21 @@ export async function runV5MessageRuntimeStage1(args: {
 		// transient failure must NOT convert a normal turn into silence — it
 		// just means "don't suppress", matching the conservative contract and
 		// the fire-and-forget addressee handling above.
-		// Candidate suppression first (corroborated Stage-1 tag, or — when the
-		// tag is empty — the structural vocative check: a message that OPENS by
-		// addressing another participant by name, "hey eliza", is evidence the
-		// gate verifies itself, closing the fail-open interjection path, live
-		// 2026-08-22). The personality reply_gate override is consulted LAST and
-		// only on a positive, so turns with no gating signal never pay the
-		// personality-store lookup.
+		// Candidate suppression first: the gate OR-composes its two independent
+		// evidence sources — a text-corroborated Stage-1 tag, or the structural
+		// vocative check (a message that OPENS by addressing another participant
+		// by name, "hey eliza", is evidence the gate verifies itself, closing
+		// the fail-open interjection path, live 2026-08-22) — over a single room
+		// lookup. The personality reply_gate override is consulted LAST and only
+		// on a positive.
 		const suppressionCandidate = ambientTurn
-			? await (addressedTo.length > 0
-					? messageAddressedToOtherParticipant({
-							runtime: args.runtime,
-							message: args.message,
-							addressedTo,
-						})
-					: messageVocativelyAddressesOtherParticipant({
-							runtime: args.runtime,
-							message: args.message,
-						})
-				).catch((error) => {
-					// error-policy:J7 addressee-resolution diagnostics must not kill
-					// the message loop or suppress a response, but the required runtime
-					// error stream still owns the failure.
+			? await messageAddressedToOtherParticipant({
+					runtime: args.runtime,
+					message: args.message,
+					addressedTo,
+				}).catch((error) => {
+					// error-policy:J4 an unresolved addressee must not suppress a
+					// response, but the failed room lookup remains observable.
 					args.runtime.reportError("MessageService.resolveAddressees", error, {
 						roomId: args.message.roomId,
 					});
