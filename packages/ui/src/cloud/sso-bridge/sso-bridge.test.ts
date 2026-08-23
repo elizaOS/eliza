@@ -72,11 +72,15 @@ function liveToken(): string {
   return jwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) + 3600 });
 }
 
+function setCookie(pair: string): void {
+  // biome-ignore lint/suspicious/noDocumentCookie: jsdom lacks the Cookie Store API and this suite exercises synchronous cookie reads.
+  document.cookie = pair;
+}
+
 function clearCookies(): void {
   for (const part of document.cookie.split(";")) {
     const name = part.split("=")[0]?.trim();
-    if (name)
-      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    if (name) setCookie(`${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`);
   }
 }
 
