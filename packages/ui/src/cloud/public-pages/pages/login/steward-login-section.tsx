@@ -140,6 +140,7 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
   import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   (typeof process !== "undefined" &&
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
+const LOCAL_DEDICATED_TEST_API_KEY = `eliza_${"d".repeat(64)}`;
 
 type AuthStep =
   | "idle"
@@ -195,6 +196,7 @@ function stripLegacyTokenParamsFromAddressBar(): boolean {
 }
 
 type Provider =
+  | "local"
   | "passkey"
   | "email"
   | "sms"
@@ -1094,6 +1096,48 @@ export default function StewardLoginSection() {
     setStep("success");
   }
 
+  async function handleLocalDedicatedSignIn() {
+    setLoading("local");
+    setError(null);
+    try {
+      const localSessionUrl = new URL(
+        "/api/test/auth/session",
+        import.meta.env.VITE_API_URL || window.location.origin,
+      );
+      const response = await fetch(localSessionUrl, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Authorization: `Bearer ${LOCAL_DEDICATED_TEST_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const result = (await response.json().catch(() => null)) as {
+        error?: string;
+        token?: string;
+      } | null;
+      if (!response.ok || !result?.token) {
+        throw new Error(
+          result?.error ?? "Could not start the local Cloud test session.",
+        );
+      }
+      document.cookie = "eliza-test-auth=1; Path=/; SameSite=Lax; Max-Age=3600";
+      await persistStewardToken(LOCAL_DEDICATED_TEST_API_KEY);
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+      setRedirectTo(resolveLoginReturnTo(searchParams));
+      setStep("success");
+    } catch (localSignInError) {
+      setError(
+        getErrorMessage(
+          localSignInError,
+          "Could not start the local Cloud test session.",
+        ),
+      );
+    } finally {
+      setLoading(null);
+    }
+  }
+
   function isBrowserOwnedWebAuthnFailure(e: unknown, msg: string): boolean {
     return (
       (typeof DOMException !== "undefined" && e instanceof DOMException) ||
@@ -1959,6 +2003,26 @@ export default function StewardLoginSection() {
           <AlertCircle />
           <AlertDescription>{callbackError}</AlertDescription>
         </Alert>
+      )}
+
+      {PLAYWRIGHT_TEST_AUTH_ENABLED && (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            onClick={handleLocalDedicatedSignIn}
+            disabled={isLoading}
+            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80"
+          >
+            {loading === "local" ? <Spinner /> : null}
+            {loading === "local"
+              ? "Starting local session…"
+              : "Continue with local test account"}
+          </Button>
+          <p className="text-center text-xs leading-relaxed text-muted">
+            Development only. Uses the real local Cloud account, balance, and
+            permissions paths.
+          </p>
+        </div>
       )}
 
       {providers.sms && (

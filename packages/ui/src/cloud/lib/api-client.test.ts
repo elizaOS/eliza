@@ -64,6 +64,11 @@ function setElectrobun(active: boolean): void {
   }
 }
 
+function setCookie(pair: string): void {
+  // biome-ignore lint/suspicious/noDocumentCookie: jsdom must seed the synchronous cookie reader used by the production Cloud client.
+  document.cookie = pair;
+}
+
 async function expectCrossOriginThrow(
   promise: Promise<unknown>,
 ): Promise<void> {
@@ -85,11 +90,13 @@ describe("cloud api-client transport bridge", () => {
     capacitorMocks.request.mockReset();
     desktopTransportMocks.request.mockReset();
     window.localStorage.setItem(STEWARD_TOKEN_KEY, STEWARD_TOKEN);
+    setCookie("eliza_csrf=cloud-dashboard-csrf; path=/");
   });
 
   afterEach(() => {
     setElectrobun(false);
     window.localStorage.clear();
+    setCookie("eliza_csrf=; Max-Age=0; path=/");
     vi.restoreAllMocks();
   });
 
@@ -135,6 +142,9 @@ describe("cloud api-client transport bridge", () => {
       expect(
         new Headers((calledInit as RequestInit).headers).get("Authorization"),
       ).toBe(`Bearer ${STEWARD_TOKEN}`);
+      expect(
+        new Headers((calledInit as RequestInit).headers).get("x-eliza-csrf"),
+      ).toBeNull();
     });
   });
 
@@ -213,6 +223,8 @@ describe("cloud api-client transport bridge", () => {
           }),
         }),
       );
+      const nativeRequest = capacitorMocks.request.mock.calls[0]?.[0];
+      expect(nativeRequest?.headers?.["x-eliza-csrf"]).toBeUndefined();
     });
 
     it("STILL throws CROSS_ORIGIN_API_URL for a NON-allowlisted cross-origin host", async () => {
@@ -444,6 +456,9 @@ describe("cloud api-client transport bridge", () => {
       expect(calledUrl).toBe("/api/v1/eliza/agents/agent-1/provision");
       // Bearer rides ALONGSIDE the session cookie, so API-key sessions work too.
       expect((calledInit as RequestInit).credentials).toBe("include");
+      expect(
+        new Headers((calledInit as RequestInit).headers).get("x-eliza-csrf"),
+      ).toBe("cloud-dashboard-csrf");
       expect(
         new Headers((calledInit as RequestInit).headers).get("Authorization"),
       ).toBe(`Bearer ${STEWARD_TOKEN}`);

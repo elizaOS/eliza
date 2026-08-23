@@ -114,7 +114,6 @@ export default function AgentsPage() {
                     agentId={personalQuery.data.id}
                     executionTier="shared"
                     status="running"
-                    webUiUrl={null}
                   />
                 </div>
               </section>

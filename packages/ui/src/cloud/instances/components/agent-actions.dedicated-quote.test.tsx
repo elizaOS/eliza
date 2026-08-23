@@ -11,6 +11,8 @@ import { ElizaAgentActions } from "./agent-actions";
 import { ElizaConnectButton } from "./eliza-connect-button";
 
 const apiWithStatus = vi.hoisted(() => vi.fn());
+const runSharedToDedicatedUpgradeHandoff = vi.hoisted(() => vi.fn());
+const silentlyRepointToDedicated = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => ({
   error: vi.fn(),
   info: vi.fn(),
@@ -47,7 +49,11 @@ vi.mock("../lib/open-web-ui", () => ({
 }));
 
 vi.mock("../../handoff/start-tier-upgrade", () => ({
-  runSharedToDedicatedUpgradeHandoff: vi.fn(),
+  runSharedToDedicatedUpgradeHandoff,
+}));
+
+vi.mock("../../handoff/silent-repoint", () => ({
+  silentlyRepointToDedicated,
 }));
 
 vi.mock("../../../api", () => ({
@@ -90,7 +96,6 @@ function renderActions() {
               agentId={PERSONAL_ID}
               executionTier="shared"
               status="running"
-              webUiUrl={null}
             />
           }
         />
@@ -107,6 +112,8 @@ function renderActions() {
 describe("Dedicated activation quote", () => {
   beforeEach(() => {
     apiWithStatus.mockReset();
+    runSharedToDedicatedUpgradeHandoff.mockReset();
+    silentlyRepointToDedicated.mockReset();
   });
 
   afterEach(() => {
@@ -149,7 +156,6 @@ describe("Dedicated activation quote", () => {
           agentId="dedicated-agent"
           executionTier="dedicated-always"
           status="running"
-          webUiUrl="https://agent.example"
         />
       </MemoryRouter>,
     );
@@ -220,6 +226,45 @@ describe("Dedicated activation quote", () => {
     );
     expect(toast.error).toHaveBeenCalledWith(
       "Add credits before activating Dedicated.",
+    );
+  });
+
+  it("repoints the live chat transport before showing the Dedicated page", async () => {
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000099";
+    const dedicatedApiBase = `http://127.0.0.1:18787/api/v1/eliza/agents/${dedicatedAgentId}/api`;
+    apiWithStatus
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { success: true, data: QUOTE },
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { success: true, data: { dedicatedAgentId } },
+      });
+    runSharedToDedicatedUpgradeHandoff.mockImplementationOnce(
+      async (params) => {
+        await params.onSwitch(dedicatedApiBase);
+        return {
+          status: "switched-empty",
+          imported: 0,
+          sourceCleanup: "preserved-rowless",
+        };
+      },
+    );
+    renderActions();
+
+    await userEvent.click(screen.getByTestId("agent-upgrade-tier-button"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Activate Dedicated" }),
+    );
+
+    await waitFor(() =>
+      expect(silentlyRepointToDedicated).toHaveBeenCalledWith({
+        containerBase: dedicatedApiBase,
+        authToken: "cloud-token",
+        dedicatedAgentId,
+        personalElizaId: PERSONAL_ID,
+      }),
     );
   });
 
