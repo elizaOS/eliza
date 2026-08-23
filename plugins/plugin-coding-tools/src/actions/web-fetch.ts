@@ -142,13 +142,18 @@ function extractBody(
     type.includes("json") ||
     (!type && (trimmed.startsWith("{") || trimmed.startsWith("[")))
   ) {
-    const parsed = JSON.parse(body) as unknown;
-    const selected = extract ? resolveJsonPath(parsed, extract) : parsed;
-    // A fuzzy or unresolved extract path must not hard-fail the fetch: fall back
-    // to the full JSON so the model can still read it and pick out what it needs,
-    // rather than surfacing an io_error for a best-effort path hint.
-    const jsonValue = extract && selected === undefined ? parsed : selected;
-    return { value: JSON.stringify(jsonValue), kind: "json" };
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      const selected = extract ? resolveJsonPath(parsed, extract) : parsed;
+      // A fuzzy or unresolved extract path must not hard-fail the fetch: fall back
+      // to the full JSON so the model can still read it and pick out what it needs,
+      // rather than surfacing an io_error for a best-effort path hint.
+      const jsonValue = extract && selected === undefined ? parsed : selected;
+      return { value: JSON.stringify(jsonValue), kind: "json" };
+    } catch {
+      // error-policy:J4 Malformed JSON falls back to raw text extraction rather than failing
+      return { value: body.trim(), kind: "text" };
+    }
   }
   return { value: body.trim(), kind: "text" };
 }
