@@ -41,9 +41,14 @@ export interface ShellOutputArtifact {
   contentRevision: string;
   stdout: ShellStreamMetrics;
   stderr: ShellStreamMetrics;
+  source: {
+    stdout: ShellStreamMetrics;
+    stderr: ShellStreamMetrics;
+    loss: false;
+  };
 }
 
-interface PersistShellOutputArtifactOptions {
+export interface PersistShellOutputArtifactOptions {
   /** @deprecated Excluded from the private artifact manifest. */
   command?: string;
   /** @deprecated Excluded from the private artifact manifest. */
@@ -57,6 +62,8 @@ interface PersistShellOutputArtifactOptions {
   modelCharacters: number;
   ownerAgentId: string;
   ownerConversationId: string;
+  sourceStdout?: ShellStreamMetrics;
+  sourceStderr?: ShellStreamMetrics;
 }
 
 export type ShellOutputArtifactStream = "stdout" | "stderr";
@@ -122,6 +129,11 @@ interface UnsignedShellOutputManifestV2 {
     signal: NodeJS.Signals | null;
   };
   projection: { modelCharacterLimit: number; modelCharacters: number };
+  source: {
+    stdout: ShellStreamMetrics;
+    stderr: ShellStreamMetrics;
+    loss: false;
+  };
 }
 
 interface PersistedShellOutputManifestV2 extends UnsignedShellOutputManifestV2 {
@@ -545,6 +557,11 @@ export async function persistShellOutputArtifact(
         modelCharacterLimit: options.modelCharacterLimit,
         modelCharacters: options.modelCharacters,
       },
+      source: {
+        stdout: options.sourceStdout ?? stdout,
+        stderr: options.sourceStderr ?? stderr,
+        loss: false,
+      },
     };
     const manifest: PersistedShellOutputManifestV2 = {
       ...unsigned,
@@ -568,6 +585,7 @@ export async function persistShellOutputArtifact(
       contentRevision,
       stdout,
       stderr,
+      source: manifest.source,
     };
   } catch (error) {
     // error-policy:J6 the unpublished opaque handle was never returned.

@@ -5,7 +5,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   persistShellOutputArtifact,
   readShellOutputArtifactPage,
@@ -28,6 +28,7 @@ describe("private shell-output artifacts", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = previousStateDir;
     if (previousTtl === undefined) delete process.env.SHELL_JOB_TTL_MS;
@@ -129,6 +130,26 @@ describe("private shell-output artifacts", () => {
     });
     expect(denied).toMatchObject({ ok: false, reason: "unavailable" });
     expect(JSON.stringify(denied)).not.toContain("restart-safe");
+  });
+
+  it("expires reads and garbage-collects expired immutable artifacts", async () => {
+    const clock = vi.spyOn(Date, "now");
+    const createdAt = 2_000_000_000_000;
+    clock.mockReturnValue(createdAt);
+    const expiredArtifact = await publish("expires-completely\n");
+    clock.mockReturnValue(createdAt + 60_001);
+    const expired = await readShellOutputArtifactPage({
+      handle: expiredArtifact.handle,
+      stream: "stdout",
+      requesterAgentId: OWNER_AGENT,
+      requesterConversationId: OWNER_CONVERSATION,
+    });
+    expect(expired).toMatchObject({ ok: false, reason: "expired" });
+
+    await publish("triggers-gc\n");
+    await expect(
+      fs.stat(artifactDirectory(expiredArtifact.handle)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("fails closed for manifest, segment, symlink, and hard-link tampering", async () => {
