@@ -148,8 +148,12 @@ function liveMarkers(
       return Number.isFinite(firedMs) && firedMs >= cutoffMs;
     })
     .sort((a, b) => {
-      const aTime = Number.isFinite(Date.parse(a.firedAt)) ? Date.parse(a.firedAt) : 0;
-      const bTime = Number.isFinite(Date.parse(b.firedAt)) ? Date.parse(b.firedAt) : 0;
+      const aTime = Number.isFinite(Date.parse(a.firedAt))
+        ? Date.parse(a.firedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.firedAt))
+        ? Date.parse(b.firedAt)
+        : 0;
       return aTime - bTime;
     });
 }
