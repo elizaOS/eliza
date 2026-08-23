@@ -172,9 +172,12 @@ const readSystemDaemonPreferences: ReadDaemonPreferences = (executable) =>
           // error-policy:J2 preferences failure is wrapped because logout
           // must never target a profile whose control server is unknown.
           reject(
-            new Error("Managed Tailscale control server could not be verified.", {
-              cause: error,
-            }),
+            new Error(
+              "Managed Tailscale control server could not be verified.",
+              {
+                cause: error,
+              },
+            ),
           );
           return;
         }
@@ -325,8 +328,7 @@ export class TailscaleCliManagedNetworkJoiner
     private readonly now: () => number = Date.now,
     private readonly inspectDaemon: InspectDaemon = inspectVacantSystemDaemon,
     private readonly readDaemonStatus: ReadDaemonStatus = readSystemDaemonStatus,
-    private readonly readDaemonPreferences: ReadDaemonPreferences =
-      readSystemDaemonPreferences,
+    private readonly readDaemonPreferences: ReadDaemonPreferences = readSystemDaemonPreferences,
   ) {}
 
   private async run(
