@@ -188,9 +188,21 @@ function semanticFailures(
     failures.push("native realization does not cover every corpus object");
 
   const conformance = json(bytes["conformance.json"], "conformance");
-  for (const report of array(conformance.reports, "conformance reports").map(
-    (value) => record(value, "conformance report"),
-  )) {
+  const conformanceReports = array(
+    conformance.reports,
+    "conformance reports",
+  ).map((value) => record(value, "conformance report"));
+  const conformanceObjectIds = new Set(
+    conformanceReports.map(({ objectId }) => objectId),
+  );
+  if (
+    conformanceReports.length !== objects.length ||
+    objects.some(({ id }) => !conformanceObjectIds.has(id))
+  )
+    failures.push(
+      "conformance does not cover every native object exactly once",
+    );
+  for (const report of conformanceReports) {
     if (
       report.status !== "passed" ||
       report.restartVerified !== true ||
@@ -224,6 +236,8 @@ function semanticFailures(
   );
   if (
     mutants.status !== "passed" ||
+    typeof mutants.required !== "number" ||
+    mutants.required < 9 ||
     mutants.killRate !== 1 ||
     mutants.required !== mutants.executed ||
     mutants.required !== mutants.killed ||
@@ -296,8 +310,10 @@ function semanticFailures(
     );
 
   const pageLedger = jsonLines(bytes["page-ledger.jsonl"], "page ledger");
+  const pageObjectIds = new Set(pageLedger.map(({ objectId }) => objectId));
   if (
     pageLedger.length < objects.length ||
+    objects.some(({ id }) => !pageObjectIds.has(id)) ||
     pageLedger.some((entry) => {
       const range = record(entry.range, "page ledger range");
       return (
@@ -316,8 +332,10 @@ function semanticFailures(
     failures.push("page ledger lacks exact bounded native reads");
 
   const promptTokens = json(bytes["prompt-tokens.json"], "prompt tokens");
+  const promptTokenCases = array(promptTokens.cases, "prompt token cases");
   if (
-    array(promptTokens.cases, "prompt token cases").some((value) => {
+    promptTokenCases.length === 0 ||
+    promptTokenCases.some((value) => {
       const entry = record(value, "prompt token case");
       return (
         entry.finalSerialized !== true ||
@@ -335,6 +353,8 @@ function semanticFailures(
   const faults = json(bytes["faults.json"], "fault report");
   if (
     faults.status !== "passed" ||
+    typeof faults.required !== "number" ||
+    faults.required === 0 ||
     faults.required !== faults.executed ||
     array(faults.results, "fault results").some(
       (value) => record(value, "fault result").status !== "passed",
@@ -343,13 +363,23 @@ function semanticFailures(
     failures.push("fault matrix is incomplete or failed");
 
   const stress = json(bytes["stress.json"], "stress report");
+  const stressReports = array(stress.reports, "stress reports").map((value) =>
+    record(value, "stress report"),
+  );
+  const stressObjectIds = new Set(
+    stressReports.map(({ objectId }) => objectId),
+  );
   if (
     stress.status !== "passed" ||
-    [1, 8, 32, 64].some(
-      (level) =>
-        !array(stress.cases, "stress cases").some(
-          (value) => record(value, "stress case").concurrency === level,
-        ),
+    stressReports.length !== objects.length ||
+    objects.some(({ id }) => !stressObjectIds.has(id)) ||
+    stressReports.some((report) =>
+      [1, 8, 32, 64].some(
+        (level) =>
+          !array(report.cases, "stress cases").some(
+            (value) => record(value, "stress case").concurrency === level,
+          ),
+      ),
     )
   )
     failures.push("stress evidence lacks required concurrency levels");
@@ -400,12 +430,18 @@ function semanticFailures(
     failures.push("scenario native export lacks tool and final events");
 
   const trajectories = jsonLines(bytes["trajectories.jsonl"], "trajectories");
+  const repetitions = new Set(trajectories.map(({ repetition }) => repetition));
   if (
     trajectories.length < 5 ||
+    repetitions.size < 5 ||
     trajectories.some(
       (entry) =>
         entry.status !== "passed" ||
         entry.providerQualified !== true ||
+        typeof entry.provider !== "string" ||
+        !entry.provider ||
+        typeof entry.model !== "string" ||
+        !entry.model ||
         entry.answerLeakageDetected === true,
     )
   )
