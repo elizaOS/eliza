@@ -1,5 +1,7 @@
+/** Exercises workflow ownership-tag naming against custom and generated entity names. */
+
+import { describe, expect, it } from 'bun:test';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { describe, expect, it, vi } from 'vitest';
 import { getUserTagName } from '../../src/utils/context';
 
 describe('getUserTagName', () => {
@@ -9,7 +11,7 @@ describe('getUserTagName', () => {
   it('formats userTag with real name when entity has custom name', async () => {
     const runtime = {
       agentId,
-      getEntityById: vi.fn().mockResolvedValue({
+      getEntityById: async () => ({
         id: userId,
         names: ['Alice'],
       }),
@@ -19,10 +21,23 @@ describe('getUserTagName', () => {
     expect(tag).toBe('Alice_12345678_agent_87654321222233334444555566667777');
   });
 
-  it('formats userTag as user_shortId when entity has default User + UUID name', async () => {
+  it('formats userTag as user_shortId for the core-generated User + UUID name', async () => {
     const runtime = {
       agentId,
-      getEntityById: vi.fn().mockResolvedValue({
+      getEntityById: async () => ({
+        id: userId,
+        names: [`User${userId}`],
+      }),
+    } as unknown as IAgentRuntime;
+
+    const tag = await getUserTagName(runtime, userId);
+    expect(tag).toBe('user_12345678_agent_87654321222233334444555566667777');
+  });
+
+  it('also recognizes a spaced generated User + UUID name', async () => {
+    const runtime = {
+      agentId,
+      getEntityById: async () => ({
         id: userId,
         names: [`User ${userId}`],
       }),
@@ -35,7 +50,7 @@ describe('getUserTagName', () => {
   it('does not false-negative on real names that contain short hex prefix', async () => {
     const runtime = {
       agentId,
-      getEntityById: vi.fn().mockResolvedValue({
+      getEntityById: async () => ({
         id: userId,
         names: ['User12345678Special'],
       }),
