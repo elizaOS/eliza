@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assertKey, optsCaller } from "../internal-utils.js";
+import {
+  assertKey,
+  optsCaller,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "../internal-utils.js";
 
 describe("assertKey", () => {
   it("accepts valid keys", () => {
@@ -27,8 +32,6 @@ describe("optsCaller", () => {
     expect(optsCaller({} as never)).toEqual({});
   });
 });
-
-import { toWellFormedUnicode, truncateWellFormed } from "../internal-utils.js";
 
 describe("well-formed truncation", () => {
   it("normalizes lone surrogate to U+FFFD", () => {
