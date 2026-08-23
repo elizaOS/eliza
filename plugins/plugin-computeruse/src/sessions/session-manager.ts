@@ -5,8 +5,9 @@
  * text, credentials, screenshots, or other high-volume payloads.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
+  ComputerUseObservationProvenance,
   ComputerUseSessionAction,
   ComputerUseSessionActionResult,
   ComputerUseSessionEvent,
@@ -19,6 +20,7 @@ import type {
   ComputerUseVirtualCursor,
   CreateComputerUseSessionInput,
 } from "./types.js";
+import { COMPUTER_USE_INTERACTION_CONTRACT_VERSION } from "./types.js";
 
 const DEFAULT_HOST_LEASE_TTL_MS = 60_000;
 const MIN_HOST_LEASE_TTL_MS = 5_000;
@@ -31,17 +33,37 @@ const MAX_RECENT_ACTION_IDS = 128;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9._:-]+$/;
 const ACTION_FAILURE_SUMMARY = "Computer-use action failed";
 const FRAME_FAILURE_SUMMARY = "Computer-use frame capture failed";
+const DEFAULT_OWNER_ID = "local-owner";
+const READ_ONLY_COMMANDS = new Set([
+  "screenshot",
+  "browser_screenshot",
+  "browser_dom",
+  "browser_get_dom",
+  "browser_clickables",
+  "browser_get_clickables",
+  "browser_state",
+  "browser_info",
+  "browser_get_context",
+  "browser_list_tabs",
+  "get_cursor_position",
+  "detect_elements",
+  "ocr",
+  "list_windows",
+]);
 
 export type ComputerUseSessionErrorCode =
   | "INVALID_SESSION_INPUT"
   | "SESSION_NOT_FOUND"
   | "SESSION_CLOSED"
   | "SESSION_BUSY"
+  | "SESSION_PAUSED"
   | "HOST_LEASE_CONFLICT"
   | "TARGET_LEASE_CONFLICT"
   | "HOST_LEASE_EXPIRED"
   | "STALE_SESSION_SEQUENCE"
-  | "DUPLICATE_ACTION_ID";
+  | "STALE_OBSERVATION"
+  | "DUPLICATE_ACTION_ID"
+  | "REPEATED_ACTION_GUARD";
 
 export class ComputerUseSessionError extends Error {
   constructor(
@@ -56,6 +78,11 @@ export class ComputerUseSessionError extends Error {
 interface MutableSession extends ComputerUseSessionSnapshot {
   recentActionIds: string[];
   recentActionIdSet: Set<string>;
+  observationSequence: number;
+  consumedObservationIds: Set<string>;
+  lastActionFingerprint?: string;
+  lastActionObservationSha256?: string;
+  activeAbortController?: AbortController;
 }
 
 interface ComputerUseSessionManagerOptions {
@@ -178,12 +205,23 @@ function cloneSnapshot(session: MutableSession): ComputerUseSessionSnapshot {
   const {
     recentActionIds: _ids,
     recentActionIdSet: _idSet,
+    observationSequence: _observationSequence,
+    consumedObservationIds: _consumedObservationIds,
+    lastActionFingerprint: _lastActionFingerprint,
+    lastActionObservationSha256: _lastActionObservationSha256,
+    activeAbortController: _activeAbortController,
     ...snapshot
   } = session;
   return {
     ...snapshot,
     target: { ...snapshot.target },
     cursor: cloneCursor(snapshot.cursor),
+    ...(snapshot.lastObservation
+      ? { lastObservation: { ...snapshot.lastObservation } }
+      : {}),
+    ...(snapshot.lastOutcome
+      ? { lastOutcome: { ...snapshot.lastOutcome } }
+      : {}),
   };
 }
 
@@ -283,7 +321,13 @@ export class ComputerUseSessionManager {
       );
     }
     const session: MutableSession = {
+      contractVersion: COMPUTER_USE_INTERACTION_CONTRACT_VERSION,
       id,
+      ownerId: requireIdentifier(input.ownerId ?? DEFAULT_OWNER_ID, "ownerId"),
+      adapterId: `computeruse.${target.kind}`,
+      canonicalState: "ready",
+      isolationMode: this.isolationMode(target),
+      generation: 1,
       label,
       target,
       status: "idle",
@@ -295,6 +339,8 @@ export class ComputerUseSessionManager {
         : {}),
       recentActionIds: [],
       recentActionIdSet: new Set(),
+      observationSequence: 0,
+      consumedObservationIds: new Set(),
     };
     this.sessions.set(id, session);
     this.targetOwners.set(targetKey, id);
@@ -318,7 +364,7 @@ export class ComputerUseSessionManager {
 
   close(id: string): ComputerUseSessionSnapshot {
     const session = this.requireOpenSession(id);
-    if (session.status === "running") {
+    if (session.status === "running" || session.status === "stopping") {
       throw new ComputerUseSessionError(
         "SESSION_BUSY",
         `Session ${id} has an action in flight`,
@@ -326,13 +372,62 @@ export class ComputerUseSessionManager {
     }
     const now = this.now();
     session.status = "closed";
+    session.canonicalState = "stopped";
+    session.generation += 1;
     session.updatedAt = timestamp(now);
     session.closedAt = timestamp(now);
     delete session.leaseExpiresAt;
-    if (this.hostSessionId === id) this.hostSessionId = null;
-    this.targetOwners.delete(this.targetKey(session.target));
+    this.releaseSessionOwnership(session);
     this.emit("session.closed", session);
     return cloneSnapshot(session);
+  }
+
+  pause(id: string): ComputerUseSessionSnapshot {
+    const session = this.requireOpenSession(id);
+    if (session.status === "running" || session.status === "stopping") {
+      throw new ComputerUseSessionError(
+        "SESSION_BUSY",
+        `Session ${id} cannot pause while an action is in flight`,
+      );
+    }
+    session.status = "paused";
+    session.canonicalState = "paused";
+    session.generation += 1;
+    session.updatedAt = timestamp(this.now());
+    this.emit("session.paused", session);
+    return cloneSnapshot(session);
+  }
+
+  resume(id: string): ComputerUseSessionSnapshot {
+    const session = this.requireOpenSession(id);
+    if (session.status !== "paused") {
+      throw new ComputerUseSessionError(
+        "INVALID_SESSION_INPUT",
+        `Session ${id} is not paused`,
+      );
+    }
+    session.status = "idle";
+    session.canonicalState = "ready";
+    session.generation += 1;
+    session.updatedAt = timestamp(this.now());
+    this.emit("session.resumed", session);
+    return cloneSnapshot(session);
+  }
+
+  stop(id: string): ComputerUseSessionSnapshot {
+    const session = this.requireOpenSession(id);
+    if (session.status === "running") {
+      session.status = "stopping";
+      session.canonicalState = "stopping";
+      session.generation += 1;
+      session.updatedAt = timestamp(this.now());
+      session.activeAbortController?.abort(
+        new Error("Computer-use session stopped by its owner"),
+      );
+      this.emit("session.stopping", session);
+      return cloneSnapshot(session);
+    }
+    return this.close(id);
   }
 
   renewHostLease(id: string, leaseTtlMs?: number): ComputerUseSessionSnapshot {
@@ -367,7 +462,13 @@ export class ComputerUseSessionManager {
     const session = this.requireOpenSession(id);
     this.assertAction(action);
     this.assertHostLeaseActive(session);
-    if (session.status === "running") {
+    if (session.status === "paused") {
+      throw new ComputerUseSessionError(
+        "SESSION_PAUSED",
+        `Session ${id} is paused`,
+      );
+    }
+    if (session.status === "running" || session.status === "stopping") {
       throw new ComputerUseSessionError(
         "SESSION_BUSY",
         `Session ${id} has an action in flight`,
@@ -385,41 +486,140 @@ export class ComputerUseSessionManager {
         `Action id was already accepted: ${action.actionId}`,
       );
     }
+    const observation = this.assertObservationBinding(session, action);
+    const fingerprint = this.actionFingerprint(action);
+    if (
+      observation &&
+      session.lastActionFingerprint === fingerprint &&
+      session.lastActionObservationSha256 === observation.sha256
+    ) {
+      session.lastOutcome = {
+        actionId: action.actionId,
+        status: "BLOCKED_BY_POLICY",
+        completedAt: timestamp(this.now()),
+        observationId: observation.observationId,
+        errorCode: "REPEATED_ACTION_GUARD",
+      };
+      this.emit(
+        "action.blocked",
+        session,
+        action,
+        "Repeated action on an unchanged observation was blocked",
+        "BLOCKED_BY_POLICY",
+      );
+      throw new ComputerUseSessionError(
+        "REPEATED_ACTION_GUARD",
+        "Repeated action on an unchanged observation was blocked",
+      );
+    }
 
     this.recordActionId(session, action.actionId);
+    if (observation)
+      session.consumedObservationIds.add(observation.observationId);
     session.sequence += 1;
     session.status = "running";
+    session.canonicalState = "running";
     session.activeActionId = action.actionId;
     session.lastActionId = action.actionId;
     session.lastCommand = action.command;
     delete session.lastError;
     session.updatedAt = timestamp(this.now());
-    this.emit("action.started", session, action);
+    const abortController = new AbortController();
+    session.activeAbortController = abortController;
+    this.emit(
+      "action.started",
+      session,
+      action,
+      undefined,
+      undefined,
+      observation?.observationId,
+    );
 
     try {
-      const result = await this.executor({ ...session.target }, action);
+      const result = await this.executor(
+        { ...session.target },
+        action,
+        abortController.signal,
+      );
       const occurredAt = timestamp(this.now());
+      const stopRequested = abortController.signal.aborted;
       const cursor = cursorFromAction(action, result, occurredAt);
       if (cursor) session.cursor = cursor;
-      session.status = "idle";
+      session.status = stopRequested ? "closed" : "idle";
+      session.canonicalState = stopRequested ? "stopped" : "ready";
+      if (stopRequested) this.releaseSessionOwnership(session);
       delete session.activeActionId;
+      delete session.activeAbortController;
       session.updatedAt = occurredAt;
-      if (result.success) {
-        this.emit("action.completed", session, action);
+      const outcomeStatus = stopRequested
+        ? "UNCERTAIN_EFFECT"
+        : (result.outcomeStatus ??
+          (result.permissionDenied ? "BLOCKED_BY_POLICY" : undefined) ??
+          (result.success ? "SUCCEEDED" : "FAILED_NO_EFFECT"));
+      const resultErrorCode =
+        result.errorCode ??
+        (result.permissionDenied
+          ? `${(result.permissionType ?? "computer_use").toUpperCase()}_PERMISSION_DENIED`
+          : undefined);
+      session.lastOutcome = {
+        actionId: action.actionId,
+        status: outcomeStatus,
+        completedAt: occurredAt,
+        ...(observation ? { observationId: observation.observationId } : {}),
+        ...(resultErrorCode ? { errorCode: resultErrorCode } : {}),
+      };
+      if (observation) {
+        session.lastActionFingerprint = fingerprint;
+        session.lastActionObservationSha256 = observation.sha256;
+      }
+      if (result.success && !stopRequested) {
+        this.emit(
+          "action.completed",
+          session,
+          action,
+          undefined,
+          outcomeStatus,
+          observation?.observationId,
+        );
       } else {
         session.lastError = ACTION_FAILURE_SUMMARY;
-        this.emit("action.failed", session, action, session.lastError);
+        this.emit(
+          "action.failed",
+          session,
+          action,
+          session.lastError,
+          outcomeStatus,
+          observation?.observationId,
+        );
       }
       this.expireHostLease(this.now());
       return { session: cloneSnapshot(session), result };
     } catch (error) {
       // error-policy:J1 action boundary — the manager records and rethrows the
       // typed/adapter failure so the route or planner can translate it once.
-      session.status = "idle";
+      const stopRequested = abortController.signal.aborted;
+      session.status = stopRequested ? "closed" : "idle";
+      session.canonicalState = stopRequested ? "stopped" : "ready";
+      if (stopRequested) this.releaseSessionOwnership(session);
       delete session.activeActionId;
+      delete session.activeAbortController;
       session.lastError = ACTION_FAILURE_SUMMARY;
       session.updatedAt = timestamp(this.now());
-      this.emit("action.failed", session, action, session.lastError);
+      session.lastOutcome = {
+        actionId: action.actionId,
+        status: "FAILED_NO_EFFECT",
+        completedAt: session.updatedAt,
+        ...(observation ? { observationId: observation.observationId } : {}),
+        errorCode: stopRequested ? "CANCELLED" : "ADAPTER_FAILURE",
+      };
+      this.emit(
+        "action.failed",
+        session,
+        action,
+        session.lastError,
+        "FAILED_NO_EFFECT",
+        observation?.observationId,
+      );
       this.expireHostLease(this.now());
       throw error;
     }
@@ -428,7 +628,7 @@ export class ComputerUseSessionManager {
   async captureFrame(id: string): Promise<ComputerUseSessionFrame> {
     const session = this.requireOpenSession(id);
     this.assertHostLeaseActive(session);
-    if (session.status === "running") {
+    if (session.status === "running" || session.status === "stopping") {
       throw new ComputerUseSessionError(
         "SESSION_BUSY",
         `Session ${id} has an action in flight`,
@@ -441,17 +641,58 @@ export class ComputerUseSessionManager {
       );
     }
     session.status = "running";
+    session.canonicalState = "running";
     session.updatedAt = timestamp(this.now());
+    const abortController = new AbortController();
+    session.activeAbortController = abortController;
     try {
-      const frame = await this.frameProvider({ ...session.target });
-      session.status = "idle";
-      session.updatedAt = timestamp(this.now());
+      const frame = await this.frameProvider(
+        { ...session.target },
+        abortController.signal,
+      );
+      const data = this.requireFrameData(frame.data);
+      const observedAt = timestamp(this.now());
+      const provenance: ComputerUseObservationProvenance = {
+        observationId: `${session.id}:observation:${session.observationSequence + 1}`,
+        sequence: ++session.observationSequence,
+        observedAt,
+        sha256: createHash("sha256").update(data).digest("hex"),
+        mimeType: frame.mimeType,
+        ...(frame.width !== undefined ? { width: frame.width } : {}),
+        ...(frame.height !== undefined ? { height: frame.height } : {}),
+        source: session.target.kind,
+      };
+      const stopRequested = abortController.signal.aborted;
+      session.status = stopRequested ? "closed" : "idle";
+      session.canonicalState = stopRequested ? "stopped" : "ready";
+      if (stopRequested) this.releaseSessionOwnership(session);
+      delete session.activeAbortController;
+      session.updatedAt = observedAt;
+      session.lastObservation = provenance;
+      this.emit(
+        "observation.captured",
+        session,
+        undefined,
+        undefined,
+        undefined,
+        provenance.observationId,
+      );
       this.expireHostLease(this.now());
-      return { ...frame, capturedAt: session.updatedAt };
+      if (stopRequested) {
+        throw new ComputerUseSessionError(
+          "SESSION_CLOSED",
+          `Session ${id} stopped while capturing an observation`,
+        );
+      }
+      return { ...frame, capturedAt: observedAt, provenance };
     } catch (error) {
       // error-policy:J1 observation boundary records the failure without
       // retaining frame bytes and rethrows for route translation.
-      session.status = "idle";
+      const stopRequested = abortController.signal.aborted;
+      session.status = stopRequested ? "closed" : "idle";
+      session.canonicalState = stopRequested ? "stopped" : "ready";
+      if (stopRequested) this.releaseSessionOwnership(session);
+      delete session.activeAbortController;
       session.lastError = FRAME_FAILURE_SUMMARY;
       session.updatedAt = timestamp(this.now());
       this.expireHostLease(this.now());
@@ -519,6 +760,67 @@ export class ComputerUseSessionManager {
     }
   }
 
+  private assertObservationBinding(
+    session: MutableSession,
+    action: ComputerUseSessionAction,
+  ): ComputerUseObservationProvenance | undefined {
+    if (READ_ONLY_COMMANDS.has(action.command)) return undefined;
+    const observation = session.lastObservation;
+    if (
+      !observation ||
+      action.observationId !== observation.observationId ||
+      action.observationSequence !== observation.sequence ||
+      session.consumedObservationIds.has(observation.observationId)
+    ) {
+      throw new ComputerUseSessionError(
+        "STALE_OBSERVATION",
+        "Consequential computer-use actions require the latest unconsumed observation",
+      );
+    }
+    return observation;
+  }
+
+  private requireFrameData(value: string): Buffer {
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+      throw new ComputerUseSessionError(
+        "INVALID_SESSION_INPUT",
+        "Frame data must be canonical base64",
+      );
+    }
+    const data = Buffer.from(value, "base64");
+    if (data.length === 0 || data.toString("base64") !== value) {
+      throw new ComputerUseSessionError(
+        "INVALID_SESSION_INPUT",
+        "Frame data must decode to non-empty canonical base64",
+      );
+    }
+    return data;
+  }
+
+  private actionFingerprint(action: ComputerUseSessionAction): string {
+    return createHash("sha256")
+      .update(action.command)
+      .update("\0")
+      .update(this.canonicalJson(action.parameters ?? {}))
+      .digest("hex");
+  }
+
+  private canonicalJson(value: unknown): string {
+    if (Array.isArray(value)) {
+      return `[${value.map((entry) => this.canonicalJson(entry)).join(",")}]`;
+    }
+    if (value !== null && typeof value === "object") {
+      return `{${Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(
+          ([key, entry]) =>
+            `${JSON.stringify(key)}:${this.canonicalJson(entry)}`,
+        )
+        .join(",")}}`;
+    }
+    return JSON.stringify(value) ?? "null";
+  }
+
   private assertHostLeaseActive(session: MutableSession): void {
     if (session.target.kind !== "host") return;
     const now = this.now();
@@ -549,12 +851,15 @@ export class ComputerUseSessionManager {
       !session ||
       session.status === "closed" ||
       session.status === "running" ||
+      session.status === "stopping" ||
       !session.leaseExpiresAt ||
       Date.parse(session.leaseExpiresAt) > now
     ) {
       return;
     }
     session.status = "closed";
+    session.canonicalState = "stopped";
+    session.generation += 1;
     session.updatedAt = timestamp(now);
     session.closedAt = timestamp(now);
     session.lastError = "Physical host input lease expired";
@@ -570,6 +875,8 @@ export class ComputerUseSessionManager {
     session: MutableSession,
     action?: ComputerUseSessionAction,
     error?: string,
+    outcomeStatus?: ComputerUseSessionEvent["outcomeStatus"],
+    observationId?: string,
   ): void {
     const event: ComputerUseSessionEvent = {
       eventId: this.nextEventId++,
@@ -579,6 +886,8 @@ export class ComputerUseSessionManager {
       occurredAt: timestamp(this.now()),
       ...(action ? { actionId: action.actionId, command: action.command } : {}),
       ...(error ? { error } : {}),
+      ...(outcomeStatus ? { outcomeStatus } : {}),
+      ...(observationId ? { observationId } : {}),
       snapshot: cloneSnapshot(session),
     };
     this.events.push(event);
@@ -592,5 +901,26 @@ export class ComputerUseSessionManager {
     return target.kind === "host"
       ? "host"
       : `${target.kind}:${target.targetId ?? ""}`;
+  }
+
+  private releaseSessionOwnership(session: MutableSession): void {
+    if (this.hostSessionId === session.id) this.hostSessionId = null;
+    this.targetOwners.delete(this.targetKey(session.target));
+    delete session.leaseExpiresAt;
+  }
+
+  private isolationMode(
+    target: ComputerUseSessionTarget,
+  ): ComputerUseSessionSnapshot["isolationMode"] {
+    switch (target.kind) {
+      case "host":
+        return "shared_desktop";
+      case "browser":
+        return "managed_browser";
+      case "sandbox":
+        return "virtual_machine";
+      case "remote_guest":
+        return "remote_session";
+    }
   }
 }

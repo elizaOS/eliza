@@ -9,7 +9,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { resolveAliasedEnvValue } from "@elizaos/core";
+import { ModelType, resolveAliasedEnvValue } from "@elizaos/core";
 import { ComputerUseSessionError } from "../sessions/session-manager.js";
 import type {
   ComputerUseSessionAction,
@@ -17,12 +17,14 @@ import type {
   ComputerUseSessionSnapshot,
   CreateComputerUseSessionInput,
 } from "../sessions/types.js";
+import type { PlatformCapabilities } from "../types.js";
 import { isTrustedComputerUseLocalRequest } from "./computer-use-compat-local-trust.js";
 import { decodePathComponent } from "./route-utils.js";
 
 type CompatRuntimeState = {
   current: {
     getService?: (name: string) => unknown;
+    getModel?: (modelType: string) => unknown;
   } | null;
 };
 
@@ -216,6 +218,9 @@ type ComputerUseSessionServiceLike = {
   listSessions(): ComputerUseSessionSnapshot[];
   getSession(id: string): ComputerUseSessionSnapshot | null;
   closeSession(id: string): ComputerUseSessionSnapshot;
+  pauseSession(id: string): ComputerUseSessionSnapshot;
+  resumeSession(id: string): ComputerUseSessionSnapshot;
+  stopSession(id: string): ComputerUseSessionSnapshot;
   renewSessionLease(
     id: string,
     leaseTtlMs?: number,
@@ -229,6 +234,8 @@ type ComputerUseSessionServiceLike = {
   subscribeSessions(
     listener: (event: ComputerUseSessionEvent) => void,
   ): () => void;
+  getCapabilities(): PlatformCapabilities;
+  getApprovalSnapshot(): ComputerUseApprovalSnapshot;
 };
 
 const VALID_APPROVAL_MODES: ComputerUseApprovalMode[] = [
@@ -288,15 +295,39 @@ function getComputerUseSessionService(
     typeof candidate.listSessions !== "function" ||
     typeof candidate.getSession !== "function" ||
     typeof candidate.closeSession !== "function" ||
+    typeof candidate.pauseSession !== "function" ||
+    typeof candidate.resumeSession !== "function" ||
+    typeof candidate.stopSession !== "function" ||
     typeof candidate.renewSessionLease !== "function" ||
     typeof candidate.executeSessionAction !== "function" ||
     typeof candidate.captureSessionFrame !== "function" ||
     typeof candidate.getSessionEvents !== "function" ||
-    typeof candidate.subscribeSessions !== "function"
+    typeof candidate.subscribeSessions !== "function" ||
+    typeof candidate.getCapabilities !== "function" ||
+    typeof candidate.getApprovalSnapshot !== "function"
   ) {
     return null;
   }
   return candidate as ComputerUseSessionServiceLike;
+}
+
+function computerUseReadiness(
+  state: CompatRuntimeState,
+  service: ComputerUseSessionServiceLike,
+): Record<string, unknown> {
+  const capabilities = service.getCapabilities();
+  return {
+    capture: capabilities.screenshot,
+    input: capabilities.computerUse,
+    browser: capabilities.browser,
+    vision: {
+      available: Boolean(
+        state.current?.getModel?.(ModelType.IMAGE_DESCRIPTION),
+      ),
+      modelType: ModelType.IMAGE_DESCRIPTION,
+    },
+    approvalMode: service.getApprovalSnapshot().mode,
+  };
 }
 
 function sessionErrorStatus(error: ComputerUseSessionError): number {
@@ -307,11 +338,14 @@ function sessionErrorStatus(error: ComputerUseSessionError): number {
       return 404;
     case "SESSION_CLOSED":
     case "SESSION_BUSY":
+    case "SESSION_PAUSED":
     case "HOST_LEASE_CONFLICT":
     case "TARGET_LEASE_CONFLICT":
     case "HOST_LEASE_EXPIRED":
     case "STALE_SESSION_SEQUENCE":
+    case "STALE_OBSERVATION":
     case "DUPLICATE_ACTION_ID":
+    case "REPEATED_ACTION_GUARD":
       return 409;
   }
 }
@@ -445,7 +479,11 @@ export async function handleComputerUseCompatRoutes(
       return true;
     }
     if (method === "GET") {
-      sendJsonResponse(res, 200, { sessions: service.listSessions() });
+      sendJsonResponse(res, 200, {
+        sessions: service.listSessions(),
+        events: service.getSessionEvents(),
+        readiness: computerUseReadiness(state, service),
+      });
       return true;
     }
     if (method === "POST") {
@@ -453,12 +491,13 @@ export async function handleComputerUseCompatRoutes(
       if (!body) return true;
       if (
         (body.label !== undefined && typeof body.label !== "string") ||
+        (body.ownerId !== undefined && typeof body.ownerId !== "string") ||
         (body.leaseTtlMs !== undefined && typeof body.leaseTtlMs !== "number")
       ) {
         sendJsonErrorResponse(
           res,
           400,
-          "label must be a string and leaseTtlMs must be a number",
+          "ownerId and label must be strings and leaseTtlMs must be a number",
         );
         return true;
       }
@@ -487,6 +526,9 @@ export async function handleComputerUseCompatRoutes(
       }
       try {
         const session = service.createSession({
+          ...(typeof body.ownerId === "string"
+            ? { ownerId: body.ownerId }
+            : {}),
           ...(typeof body.label === "string" ? { label: body.label } : {}),
           ...(body.leaseTtlMs !== undefined
             ? { leaseTtlMs: body.leaseTtlMs }
@@ -539,6 +581,10 @@ export async function handleComputerUseCompatRoutes(
       typeof body.actionId !== "string" ||
       typeof body.command !== "string" ||
       expectedSequence === null ||
+      (body.observationId !== undefined &&
+        typeof body.observationId !== "string") ||
+      (body.observationSequence !== undefined &&
+        nonNegativeInteger(body.observationSequence) === null) ||
       (body.parameters !== undefined &&
         (!body.parameters ||
           typeof body.parameters !== "object" ||
@@ -547,7 +593,7 @@ export async function handleComputerUseCompatRoutes(
       sendJsonErrorResponse(
         res,
         400,
-        "actionId, command, non-negative expectedSequence, and object parameters are required",
+        "actionId, command, non-negative expectedSequence, optional observation binding, and object parameters are required",
       );
       return true;
     }
@@ -558,6 +604,15 @@ export async function handleComputerUseCompatRoutes(
         expectedSequence,
         ...(body.parameters
           ? { parameters: body.parameters as Record<string, unknown> }
+          : {}),
+        ...(typeof body.observationId === "string"
+          ? { observationId: body.observationId }
+          : {}),
+        ...(body.observationSequence !== undefined
+          ? {
+              observationSequence:
+                nonNegativeInteger(body.observationSequence) ?? undefined,
+            }
           : {}),
       });
       sendJsonResponse(
@@ -570,6 +625,46 @@ export async function handleComputerUseCompatRoutes(
           : 200,
         outcome,
       );
+    } catch (error) {
+      // error-policy:J1 HTTP boundary translates typed session errors.
+      sendSessionError(res, error);
+    }
+    return true;
+  }
+
+  const sessionControlMatch =
+    /^\/api\/computer-use\/sessions\/([^/]+)\/(pause|resume|stop)$/.exec(
+      url.pathname,
+    );
+  if (method === "POST" && sessionControlMatch) {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    const service = getComputerUseSessionService(state);
+    if (!service) {
+      sendJsonErrorResponse(
+        res,
+        404,
+        "Computer use session service not available",
+      );
+      return true;
+    }
+    const sessionId = decodePathComponent(sessionControlMatch[1] ?? "");
+    if (sessionId === null) {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "Invalid session id: malformed URL encoding",
+      );
+      return true;
+    }
+    try {
+      const operation = sessionControlMatch[2];
+      const session =
+        operation === "pause"
+          ? service.pauseSession(sessionId)
+          : operation === "resume"
+            ? service.resumeSession(sessionId)
+            : service.stopSession(sessionId);
+      sendJsonResponse(res, 200, { session });
     } catch (error) {
       // error-policy:J1 HTTP boundary translates typed session errors.
       sendSessionError(res, error);
