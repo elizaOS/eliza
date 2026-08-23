@@ -94,7 +94,6 @@ import type {
 import { MemoryType } from "../types";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
-import { createHash } from "../utils/crypto-compat";
 import { isPlainObject } from "../utils/type-guards";
 import {
 	cloneConnectorJsonObject,
@@ -976,10 +975,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult> {
-		const documents = Array.from(this.memoriesByRoom.entries())
-			.filter(([key]) => key.startsWith("documents:"))
-			.flatMap(([, memories]) => memories);
-		return queryDocumentsInMemory(documents, params);
+		return queryDocumentsInMemory(
+			Array.from(this.memoriesById.values()),
+			params,
+		);
 	}
 
 	async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
@@ -1090,15 +1089,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				typeof documentId === "string"
 					? this.memoriesById.get(documentId)
 					: undefined;
-			const source = parent?.content.text;
-			return typeof source === "string"
+			const sourceFingerprint = (
+				parent?.metadata as Record<string, unknown> | undefined
+			)?.sourceFingerprint;
+			return typeof sourceFingerprint === "string"
 				? {
 						...fragment,
 						metadata: {
 							...(fragment.metadata ?? {}),
-							sourceFingerprint: `md5:${createHash("md5")
-								.update(source)
-								.digest("hex")}`,
+							sourceFingerprint,
 						} as Memory["metadata"],
 					}
 				: fragment;
@@ -1295,6 +1294,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				: Array.from(this.memoriesByRoom.entries())
 						.filter(([key]) => key.startsWith(`${tableName}:`))
 						.flatMap(([, memories]) => memories);
+		if (tableName === "document_fragments") {
+			all = all.filter(
+				(memory) =>
+					(memory.metadata as Record<string, unknown> | undefined)
+						?.fragmentRole !== "source-segment",
+			);
+		}
 
 		if (params.worldId) {
 			all = all.filter((memory) => memory.worldId === params.worldId);
