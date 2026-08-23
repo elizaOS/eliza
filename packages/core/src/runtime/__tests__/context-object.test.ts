@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendContextEvent, createContextObject } from "./context-object.ts";
+import { appendContextEvent, createContextObject } from "../context-object.ts";
 
 describe("createContextObject", () => {
 	it("seeds a v5 context with defaults", () => {

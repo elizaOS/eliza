@@ -3,7 +3,7 @@ import {
 	getTunnelService,
 	type ITunnelService,
 	tunnelSlotIsFree,
-} from "./tunnel-service.ts";
+} from "../tunnel-service.ts";
 
 function runtimeWith(getService: (type: symbol) => unknown) {
 	return { getService } as never;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTruthyEnvValue } from "./env-utils.ts";
+import { isTruthyEnvValue } from "../env-utils.ts";
 
 describe("isTruthyEnvValue", () => {
 	it("accepts truthy vocabularies", () => {
