@@ -1,3 +1,6 @@
+/**
+ * Exercises Steward sidecar helper contracts against real implementations without external services.
+ */
 import { describe, expect, it } from "vitest";
 import {
   fingerprintRandomToken,
@@ -5,7 +8,7 @@ import {
   generateMasterPassword,
   resolveDataDir,
   sleep,
-} from "./helpers.ts";
+} from "../helpers.ts";
 
 describe("resolveDataDir", () => {
   it("expands leading tilde to the home directory", () => {

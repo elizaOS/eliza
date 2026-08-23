@@ -29,14 +29,14 @@ vi.mock("@elizaos/core", () => ({
   logger: { debug() {}, warn() {}, info() {}, error() {} },
 }));
 vi.mock("@elizaos/shared", () => ({ formatError: (e: unknown) => String(e) }));
-vi.mock("./runtime-action-ownership.ts", () => ({
+vi.mock("../runtime-action-ownership.ts", () => ({
   applyHostActionOwnership: (_runtime: unknown, plugin: unknown) => plugin,
 }));
 
 import {
   initializeBlockingCoreRuntimeForBoot,
   preregisterCorePluginsInDependencyWaves,
-} from "./runtime/blocking-core-boot.ts";
+} from "../blocking-core-boot.ts";
 
 function makeRuntime(registeredPlugins: Array<{ name: string }> = []) {
   const registerOrder: string[] = [];

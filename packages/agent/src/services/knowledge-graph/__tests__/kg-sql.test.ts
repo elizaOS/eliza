@@ -1,3 +1,6 @@
+/**
+ * Exercises knowledge-graph SQL parsing and serialization helpers through deterministic unit coverage.
+ */
 import { describe, expect, it } from "vitest";
 import {
   parseJsonArray,
@@ -11,7 +14,7 @@ import {
   toBoolean,
   toNumber,
   toText,
-} from "./sql.ts";
+} from "../sql.ts";
 
 describe("toText", () => {
   it("coerces values with fallback", () => {
