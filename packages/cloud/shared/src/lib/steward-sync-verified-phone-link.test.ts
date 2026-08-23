@@ -79,6 +79,14 @@ mock.module("../db/repositories/users", () => ({
 
 mock.module("./services/users", () => ({
   usersService: {
+    createFreshStewardSignupUser: async () => {
+      record("create");
+      if (createConflict) {
+        throw Object.assign(new Error("duplicate account"), { code: "23505" });
+      }
+      throw new Error("unexpected new account creation");
+    },
+    initializeFreshStewardIdentity: async () => undefined,
     create: async () => {
       record("create");
       if (createConflict) {
