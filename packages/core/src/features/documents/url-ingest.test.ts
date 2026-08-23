@@ -126,12 +126,13 @@ describe("url-ingest", () => {
 
 	it("reports unsuccessful HTTP responses with status details", async () => {
 		__setDocumentUrlFetchImplForTests(
-			async () => new Response("missing", { status: 404, statusText: "Not Found" }),
+			async () =>
+				new Response("missing", { status: 404, statusText: "Not Found" }),
 		);
 
-		await expect(fetchDocumentFromUrl("https://8.8.8.8/missing")).rejects.toThrow(
-			"Failed to fetch URL: 404 Not Found",
-		);
+		await expect(
+			fetchDocumentFromUrl("https://8.8.8.8/missing"),
+		).rejects.toThrow("Failed to fetch URL: 404 Not Found");
 	});
 
 	it.each([
@@ -146,7 +147,9 @@ describe("url-ingest", () => {
 				}),
 		);
 
-		await expect(fetchDocumentFromUrl(url)).resolves.toMatchObject({ filename });
+		await expect(fetchDocumentFromUrl(url)).resolves.toMatchObject({
+			filename,
+		});
 	});
 
 	it("removes raw-text HTML elements and decodes basic entities", async () => {
@@ -177,7 +180,9 @@ describe("url-ingest", () => {
 				}),
 		);
 
-		await expect(fetchDocumentFromUrl("https://8.8.8.8/file.bin")).resolves.toMatchObject({
+		await expect(
+			fetchDocumentFromUrl("https://8.8.8.8/file.bin"),
+		).resolves.toMatchObject({
 			content: "AAEC/w==",
 			contentType: "binary",
 			mimeType,
@@ -206,14 +211,16 @@ describe("url-ingest", () => {
 				}),
 		);
 
-		await expect(fetchDocumentFromUrl("https://8.8.8.8/large.txt")).rejects.toThrow(
+		await expect(
+			fetchDocumentFromUrl("https://8.8.8.8/large.txt"),
+		).rejects.toThrow(
 			`URL content exceeds maximum size of ${maximumBytes} bytes`,
 		);
 	});
 
 	it("rejects YouTube URLs without an eleven-character video id", async () => {
-		await expect(fetchDocumentFromUrl("https://youtu.be/short")).rejects.toThrow(
-			"Invalid YouTube URL: could not extract video ID",
-		);
+		await expect(
+			fetchDocumentFromUrl("https://youtu.be/short"),
+		).rejects.toThrow("Invalid YouTube URL: could not extract video ID");
 	});
 });
