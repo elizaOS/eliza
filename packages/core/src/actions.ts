@@ -79,6 +79,7 @@ export {
 	type SubactionHandlerMap,
 	type SubactionParameters,
 } from "./actions/subaction-dispatch";
+export { CORE_PLANNER_TERMINALS } from "./actions/to-tool";
 export {
 	testSchemaPattern,
 	type ValidateToolArgsResult,

@@ -8,6 +8,9 @@
     "test:headed": "bun --conditions=eliza-source playwright test --headed",
     "test:ui": "bun --conditions=eliza-source playwright test --ui",
     "test:mock-llm": "bun test src/fixtures/mock-llm.test.ts",
+    "stability:keyless": "bun --conditions=eliza-source scripts/run-stability-lane.ts --mode deterministic-mock",
+    "stability:real": "bun --conditions=eliza-source scripts/run-stability-lane.ts --mode real-llm",
+    "test:stability": "bun --conditions=eliza-source test src/stability/cloud-stability-runner.test.ts src/stability/stability-network-guard.test.ts src/stability/stack-partial-cleanup.test.ts src/stability/stability-scenario-child.test.ts src/stability/authority-controller-cleanup.test.ts",
     "domains:ledger": "bun scripts/domain-purchase-ledger.ts",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
@@ -17,6 +20,11 @@
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/cloud-test-mocks": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
+    "@elizaos/plugin-reminders": "workspace:*",
+    "@elizaos/plugin-scheduling": "workspace:*",
+    "@elizaos/scenario-runner": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*"
   },
   "devDependencies": {

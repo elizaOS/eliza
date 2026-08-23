@@ -45,6 +45,7 @@ export {
   type SchedulingRouteContext,
 } from "./routes/scheduled-tasks.ts";
 export * from "./scheduled-task/index.ts";
+export { runStandaloneSchedulingTick } from "./scheduled-task/standalone-tick.ts";
 export {
   SHARED_CUTOVER_GATEWAY_CHANNEL,
   SHARED_REMINDER_MAX_TEXT_LENGTH,
