@@ -36,17 +36,13 @@ describe("validateJwtLifetime", () => {
   });
 
   it("validates nbf", () => {
-    expect(validateJwtLifetime({ iat: 900, exp: 1500, nbf: 1000 }, POLICY).valid).toBe(
-      true,
-    );
-    expect(validateJwtLifetime({ iat: 900, exp: 1500, nbf: 1600 }, POLICY).valid).toBe(
-      false,
-    );
+    expect(validateJwtLifetime({ iat: 900, exp: 1500, nbf: 1000 }, POLICY).valid).toBe(true);
+    expect(validateJwtLifetime({ iat: 900, exp: 1500, nbf: 1600 }, POLICY).valid).toBe(false);
   });
 
   it("rejects non-integer nbf", () => {
-    expect(
-      validateJwtLifetime({ iat: 900, exp: 1500, nbf: 1.5 } as never, POLICY).valid,
-    ).toBe(false);
+    expect(validateJwtLifetime({ iat: 900, exp: 1500, nbf: 1.5 } as never, POLICY).valid).toBe(
+      false,
+    );
   });
 });

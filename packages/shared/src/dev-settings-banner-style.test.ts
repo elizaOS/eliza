@@ -37,7 +37,10 @@ describe("colorizeDevSettingsBanner", () => {
     delete process.env.NO_COLOR;
     process.env.FORCE_COLOR = "1";
     const origIsTTY = process.stdout.isTTY;
-    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: true,
+      configurable: true,
+    });
     try {
       const out = colorizeDevSettingsBanner("\u256Dhello");
       expect(out).toContain("\u256D");
@@ -46,7 +49,10 @@ describe("colorizeDevSettingsBanner", () => {
       else delete process.env.NO_COLOR;
       if (prevForce !== undefined) process.env.FORCE_COLOR = prevForce;
       else delete process.env.FORCE_COLOR;
-      Object.defineProperty(process.stdout, "isTTY", { value: origIsTTY, configurable: true });
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: origIsTTY,
+        configurable: true,
+      });
     }
   });
 
@@ -80,7 +86,10 @@ describe("colorizeDevSettingsStartupBanner", () => {
     delete process.env.NO_COLOR;
     process.env.FORCE_COLOR = "1";
     const origIsTTY = process.stdout.isTTY;
-    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    Object.defineProperty(process.stdout, "isTTY", {
+      value: true,
+      configurable: true,
+    });
     try {
       const out = colorizeDevSettingsStartupBanner("FIGLET\n\u256Dbox");
       expect(out).toContain("FIGLET");
@@ -90,7 +99,10 @@ describe("colorizeDevSettingsStartupBanner", () => {
       else delete process.env.NO_COLOR;
       if (prevForce !== undefined) process.env.FORCE_COLOR = prevForce;
       else delete process.env.FORCE_COLOR;
-      Object.defineProperty(process.stdout, "isTTY", { value: origIsTTY, configurable: true });
+      Object.defineProperty(process.stdout, "isTTY", {
+        value: origIsTTY,
+        configurable: true,
+      });
     }
   });
 });
