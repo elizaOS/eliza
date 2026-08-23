@@ -823,7 +823,9 @@ describe("remote target durable runner", () => {
     );
     const claim = claimFor(harness);
     harness.relay.claims.push(claim);
-    expect(await interrupted.pollOnce()).toBe("offline");
+    await expect(interrupted.pollOnce()).rejects.toThrow(
+      "desktop-process-exited",
+    );
     expect(executions).toBe(1);
 
     const restarted = new RemoteTargetDesktopService(
@@ -873,16 +875,19 @@ describe("remote target durable runner", () => {
   it("never rehydrates a host removed after authoritative cloud revocation", async () => {
     const harness = await createHarness();
     await createRunner(harness, () => undefined);
+    harness.relay.revocations.push({
+      hostId: HOST_ID,
+      status: "revoked",
+      alreadyRevoked: true,
+      cleanup: { sessions: 0, commands: 0, more: false },
+    });
     const priorProcess = new RemoteTargetDesktopService(
       harness.vault,
       harness.state,
       harness.relay,
       () => NOW,
     );
-    await priorProcess.finalizeHostRevoke({
-      hostId: HOST_ID,
-      cloudRevoked: true,
-    });
+    await priorProcess.finalizeHostRevoke({ hostId: HOST_ID });
     const restarted = new RemoteTargetDesktopService(
       harness.vault,
       harness.state,
@@ -907,6 +912,12 @@ describe("remote target durable runner", () => {
   it("serializes host finalization behind an in-flight startup resume", async () => {
     const harness = await createHarness();
     await createRunner(harness, () => undefined);
+    harness.relay.revocations.push({
+      hostId: HOST_ID,
+      status: "revoked",
+      alreadyRevoked: true,
+      cleanup: { sessions: 0, commands: 0, more: false },
+    });
     const deferredState = new DeferredReadStateStore(harness.state);
     const deferredRead = deferredState.deferNextRead();
     const service = new RemoteTargetDesktopService(
@@ -924,7 +935,7 @@ describe("remote target durable runner", () => {
     await deferredRead.started;
     let finalized = false;
     const finalizing = service
-      .finalizeHostRevoke({ hostId: HOST_ID, cloudRevoked: true })
+      .finalizeHostRevoke({ hostId: HOST_ID })
       .then((result) => {
         finalized = true;
         return result;

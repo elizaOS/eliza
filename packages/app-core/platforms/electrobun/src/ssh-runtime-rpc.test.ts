@@ -127,13 +127,13 @@ describe("SSH runtime RPC", () => {
     expect(() =>
       sshRuntimeInternals.parseStartParams({
         runtimeId: "vps",
-        credentialRef: "different-runtime",
         target: "eliza@host.example",
         sshPort: 22,
         remoteApiPort: 31337,
+        credentialRef: "other-runtime",
         expectedFingerprint: `SHA256:${"A".repeat(43)}`,
       }),
-    ).toThrow("selected runtime");
+    ).toThrow("must match the runtime id");
   });
 
   it("allowlists agent routes and strips authorization headers", () => {
