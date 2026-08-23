@@ -47,6 +47,7 @@ const FAILURE_NAME_HEADER = "X-Eliza-Failure-Name";
 const GROUP_CLAIM_TTL_MS = 10 * 60_000;
 const GROUP_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH = 240;
+const GENERATED_MEDIA_ONLY_MESSAGE = /^\[media: https?:\/\/[^\r\n]+\]$/u;
 
 type DeliveryStage =
   | "authentication"
@@ -889,7 +890,12 @@ app.post("/", async (c) => {
     // Public-data capability checks may inspect only authenticated user content,
     // never the actor labels, media descriptions, or other server context that
     // this route appends to the model-facing delivery message below.
-    let capabilityText = parsed.data.message;
+    let capabilityText =
+      (parsed.data.platform === "blooio" ||
+        parsed.data.platform === "twilio") &&
+      GENERATED_MEDIA_ONLY_MESSAGE.test(parsed.data.message)
+        ? undefined
+        : parsed.data.message;
     if (
       parsed.data.platform === "telegram" &&
       !isGroupMessage(parsed.data) &&

@@ -705,7 +705,7 @@ describe("personal Shared messaging deliveries", () => {
     try {
       const response = await request({
         ...valid,
-        message: undefined,
+        message: "please verify it",
         voiceNote: {
           bytesBase64: bytes.toString("base64"),
           mimeType: "audio/ogg",
@@ -719,7 +719,7 @@ describe("personal Shared messaging deliveries", () => {
       expect(sharedRestMessageSend).toHaveBeenCalledWith(
         expect.anything(),
         expect.stringMatching(/^personal:/),
-        "remember the red bicycle",
+        "please verify it\n\n[Voice note transcript]\nremember the red bicycle",
         "Eliza",
         runtimeExecutionCtx,
         namespace,
@@ -730,7 +730,7 @@ describe("personal Shared messaging deliveries", () => {
           project: "eliza-app",
           chatId: "123456789",
         },
-        "remember the red bicycle",
+        "please verify it\nremember the red bicycle",
       );
       await expect(response.json()).resolves.toMatchObject({
         data: { reply: "hello from Eliza" },
