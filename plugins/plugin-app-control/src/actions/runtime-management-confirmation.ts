@@ -41,18 +41,13 @@ export function isUnambiguousRuntimeConfirmation(
 		.replace(/[^a-z0-9]+/g, " ")
 		.trim()
 		.replace(/\s+/g, " ");
-	if (
-		/^(?:yes|yes please|yep|confirm|confirmed|proceed|go ahead|do it)$/.test(
-			normalized,
-		)
-	) {
-		return true;
-	}
 	return CONFIRMATION_SUBJECTS[op].some(
 		(subject) =>
 			normalized === `confirm ${subject}` ||
 			normalized === `confirm the ${subject}` ||
 			normalized === `yes confirm ${subject}` ||
-			normalized === `yes confirm the ${subject}`,
+			normalized === `yes confirm the ${subject}` ||
+			normalized === `proceed with ${subject}` ||
+			normalized === `proceed with the ${subject}`,
 	);
 }
