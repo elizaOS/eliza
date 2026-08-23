@@ -10,8 +10,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service, ServiceType } from "@elizaos/core";
 import { getDocumentProxy } from "unpdf";
-import { parsePdfSpecDate } from "./pdf-date.ts";
-
 import type {
   PdfConversionResult,
   PdfDocumentInfo,
@@ -19,6 +17,7 @@ import type {
   PdfMetadata,
   PdfPageInfo,
 } from "../types";
+import { parsePdfSpecDate } from "./pdf-date.js";
 
 type PdfTextItem = { str: string };
 
@@ -145,7 +144,7 @@ function normalizeExtractionOptions(
  * `info.CreationDate`/`info.ModDate`, not an ISO-8601 string. The groups mirror
  * `PDFDateString.toDateObject` in pdf.js so real-world documents round-trip.
  */
-export { parsePdfSpecDate } from "./pdf-date.ts";
+export { parsePdfSpecDate } from "./pdf-date.js";
 
 function parseMetadataDate(value: unknown): Date | undefined {
   if (value instanceof Date) {
