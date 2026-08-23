@@ -1480,6 +1480,17 @@ function decisionSortScore(decision: CurationDecision): number {
   return ACTION_WEIGHT[decision.action] * 10 + decision.confidence;
 }
 
+export function compareCurationDecisions(
+  a: CurationDecision,
+  b: CurationDecision,
+): number {
+  const bScore = decisionSortScore(b);
+  const aScore = decisionSortScore(a);
+  const bVal = Number.isFinite(bScore) ? bScore : 0;
+  const aVal = Number.isFinite(aScore) ? aScore : 0;
+  return bVal - aVal || a.candidateId.localeCompare(b.candidateId);
+}
+
 function makeDecision(
   analysis: CandidateAnalysis,
   group: CandidateGroup,
@@ -1583,9 +1594,7 @@ export function curateEmailCandidates(
     const analysis = initialAnalysis(group.primary, input, policy);
     return makeDecision(analysis, group, input, policy);
   });
-  const ranked = [...decisions].sort(
-    (a, b) => decisionSortScore(b) - decisionSortScore(a),
-  );
+  const ranked = [...decisions].sort(compareCurationDecisions);
   const rankedWithIndexes = ranked.map((decision, index) => ({
     ...decision,
     rank: index + 1,

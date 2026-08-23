@@ -41,6 +41,10 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+export function formatScreenshotErrorDetail(text: string): string {
+  return truncateWellFormed(toWellFormedUnicode(text), 200);
+}
+
 function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
   const body = asRecord(log.body);
   const metadata = asRecord(body?.metadata);
@@ -255,7 +259,7 @@ export async function handleDevCompatRoutes(
           {
             error: "upstream screenshot failed",
             status: r.status,
-            detail: truncateWellFormed(toWellFormedUnicode(text), 200),
+            detail: formatScreenshotErrorDetail(text),
           },
         );
         return true;

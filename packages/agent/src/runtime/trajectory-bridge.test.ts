@@ -884,19 +884,30 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     });
 
     execute.mockClear();
-    standalone.logLlmCall({
-      stepId: childStepId,
-      model: "late-standalone",
-      response: "must be rejected",
-      purpose: "action",
-      actionType: "runtime.useModel",
-    });
-    standalone.logProviderAccess({
-      stepId: childStepId,
-      providerName: "late-standalone-provider",
-      purpose: "context",
-      data: {},
-    });
+    // Sub-2s rejects are the designed delivery/terminalization race and are
+    // quieted to debug logging; only an aged capture is the real leak signal
+    // this assertion is about, so the two rejects land 10s after close.
+    const realNow = Date.now.bind(Date);
+    const agedNow = vi
+      .spyOn(Date, "now")
+      .mockImplementation(() => realNow() + 10_000);
+    try {
+      standalone.logLlmCall({
+        stepId: childStepId,
+        model: "late-standalone",
+        response: "must be rejected",
+        purpose: "action",
+        actionType: "runtime.useModel",
+      });
+      standalone.logProviderAccess({
+        stepId: childStepId,
+        providerName: "late-standalone-provider",
+        purpose: "context",
+        data: {},
+      });
+    } finally {
+      agedNow.mockRestore();
+    }
     await standalone.flushWriteQueue();
     expect(execute).not.toHaveBeenCalled();
     // Both captures are rejected, but only the first reports: repeats for the

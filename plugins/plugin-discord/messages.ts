@@ -26,6 +26,8 @@ import {
 	type Service,
 	ServiceType,
 	stringToUuid,
+	toWellFormedUnicode,
+	truncateWellFormed,
 	TurnAbortedError,
 	type UUID,
 } from "@elizaos/core";
@@ -196,6 +198,23 @@ export function numericFactSignatureTokens(text: string): Set<string> | null {
 	const set = new Set(tokens);
 	const hasNumber = [...set].some((token) => /[0-9]/.test(token));
 	return hasNumber && set.size > 0 ? set : null;
+}
+
+/** Maximum UTF-16 code units of message text carried in a suppression log. */
+const DUPLICATE_TEXT_PREVIEW_LIMIT = 200;
+
+/**
+ * Collapses external message text into a bounded log preview. Discord text is
+ * untrusted and may already carry lone surrogates, and a plain slice can split
+ * an astral pair, so the value is repaired and truncated on code-point
+ * boundaries before it reaches the logger. This is a preview only; the complete
+ * text is never replaced by it.
+ */
+export function buildDuplicateTextPreview(text: string): string {
+	return truncateWellFormed(
+		toWellFormedUnicode(text.replace(/\s+/g, " ").trim()),
+		DUPLICATE_TEXT_PREVIEW_LIMIT,
+	);
 }
 
 export function isSubsetOrEqual(a: Set<string>, b: Set<string>): boolean {
@@ -2523,10 +2542,7 @@ export class MessageManager {
 									reason: repeatsPriorFact
 										? "fact-signature"
 										: "identical-text",
-									textPreview: textContent
-										.replace(/\s+/g, " ")
-										.trim()
-										.slice(0, 200),
+									textPreview: buildDuplicateTextPreview(textContent),
 								},
 								"Suppressing duplicate callback reply",
 							);
@@ -2565,10 +2581,7 @@ export class MessageManager {
 								agentId: this.runtime.agentId,
 								channelId: channel.id,
 								messageId: message.id,
-								textPreview: textContent
-									.replace(/\s+/g, " ")
-									.trim()
-									.slice(0, 200),
+								textPreview: buildDuplicateTextPreview(textContent),
 							},
 							"Suppressing duplicate Discord outbound delivery",
 						);

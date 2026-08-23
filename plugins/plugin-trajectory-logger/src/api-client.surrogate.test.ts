@@ -7,17 +7,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchTrajectoryList, TrajectoryHttpError } from "./api-client.js";
 
 function isWellFormed(value: string): boolean {
-  const maybe = value as unknown as { isWellFormed?: () => boolean };
-  if (typeof maybe.isWellFormed === "function") return maybe.isWellFormed();
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index);
+  const native = value as unknown as { isWellFormed?: () => boolean };
+  if (typeof native.isWellFormed === "function") return native.isWellFormed();
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
     if (code >= 0xd800 && code <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
+      const next = value.charCodeAt(i + 1);
       if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
-      index++;
-    } else if (code >= 0xdc00 && code <= 0xdfff) {
-      return false;
-    }
+      i++;
+    } else if (code >= 0xdc00 && code <= 0xdfff) return false;
   }
   return true;
 }

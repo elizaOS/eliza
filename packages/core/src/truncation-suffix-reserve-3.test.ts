@@ -44,24 +44,26 @@ describe("truncation suffix reserve batch3 (ship 11) — 7 sites", () => {
 		expect(fixedTrunc(s, MAX, suffix).length).toBe(400);
 	});
 
-	it("TR-4 message subAgentCompletionRelayBody 1500+1: caps at 1500", () => {
+	it("TR-4 message subAgentCompletionRelayBody delivers the complete relay body", () => {
 		const MAX = 1500;
 		const suffix = "…";
 		const s = "a".repeat(1510);
-		// math proof
+		// The reserve arithmetic itself still holds wherever a real hard limit
+		// forces a suffix-bearing cap.
 		expect(oldTrunc(s, MAX, suffix).length).toBe(1501);
 		expect(fixedTrunc(s, MAX, suffix).length).toBe(1500);
-		// real function proof: subAgentCompletionRelayBody trims header then caps body at 1500
+		// subAgentCompletionRelayBody is NOT such a site: the relay body it returns
+		// becomes the delivered reply text on a degraded planner turn, so the
+		// prompt-integrity rule in CLAUDE.md ("never use a character/token cap,
+		// prefix or suffix slice … to make model-facing content fit") forbids
+		// capping it. It trims the header and returns the body complete.
 		const header = "[sub-agent:task_complete]";
 		const body = "a".repeat(2000);
 		const input = `${header} ${body}`;
 		const out = subAgentCompletionRelayBody(input);
-		expect(out).toBeDefined();
-		expect(out?.length).toBeLessThanOrEqual(1500);
-		expect(out?.length).toBe(1500); // 1499 'a' + '…'
-		// sabotage: old would be 1501
-		const oldBody = `${body.slice(0, MAX).trimEnd()}…`;
-		expect(oldBody.length).toBe(1501);
+		expect(out).toBe(body);
+		expect(out?.length).toBe(2000);
+		expect(out?.endsWith(suffix)).toBe(false);
 	});
 
 	it("TR-5 media fetch readErrorBodySnippet 200+1: old 201 vs fixed 200", () => {
