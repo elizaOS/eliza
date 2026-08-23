@@ -3,7 +3,7 @@ import {
   formatTaskCompletionStatus,
   getTaskCompletionCacheKey,
   TaskCompletionAssessment,
-} from "./task-completion.ts";
+} from "../task-completion.ts";
 
 const assessment: TaskCompletionAssessment = {
   assessed: true,
