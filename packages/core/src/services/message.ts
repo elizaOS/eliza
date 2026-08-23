@@ -349,6 +349,7 @@ import { toWellFormedUnicode } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
+import { runBotLoopGate } from "./message/bot-loop-gate";
 import { runBotNoiseTriage } from "./message/bot-noise-triage";
 import {
 	type DirectCurrentRequestCandidateInference,
@@ -13536,6 +13537,37 @@ export class DefaultMessageService implements IMessageService {
 				"Unaddressed bot/webhook message ignored by small-model triage (skipped Stage 1)",
 			);
 			runTerminalOwner.request("bot_noise_triage");
+			return {
+				didRespond: false,
+				responseContent: null,
+				responseMessages: [],
+				state: { values: {}, data: {}, text: "" } as State,
+				mode: "none",
+			};
+		}
+
+		// Deterministic bot-to-bot loop gate — the model-size-independent floor
+		// beneath the soft ANXIETY / BOT_AWARENESS providers and the #25405
+		// shouldRespond restraint rules. Small models (gemma-class) do not
+		// reliably follow those prompt signals, so the hard stop lives here in
+		// code: a bot-authored group turn arriving after the agent has already
+		// produced N consecutive turns with no intervening human message ends
+		// deterministically with IGNORE before any model call. Every
+		// unverifiable input (untagged sender, unknown channel, read failure)
+		// fails OPEN — the gate only ever biases toward silence, never speech.
+		const botLoopGate = await runBotLoopGate({ runtime, message });
+		if (botLoopGate.ignored) {
+			runtime.logger.info(
+				{
+					src: "service:message",
+					agentId: runtime.agentId,
+					roomId: message.roomId,
+					entityId: message.entityId,
+					agentTurnsSinceLastHuman: botLoopGate.agentTurnsSinceLastHuman,
+				},
+				"Bot-to-bot exchange with no intervening human turn — deterministic IGNORE (bot-loop gate)",
+			);
+			runTerminalOwner.request("bot_loop_gate");
 			return {
 				didRespond: false,
 				responseContent: null,

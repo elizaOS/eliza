@@ -258,6 +258,7 @@ export type RunEventStatus =
 	| "muted"
 	| "personality_gate"
 	| "bot_noise_triage"
+	| "bot_loop_gate"
 	| "replaced"
 	| "noMessageId";
 
