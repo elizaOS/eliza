@@ -237,6 +237,26 @@ describe("remote target native boundaries", () => {
     const transport = new HttpRemoteTargetRelayTransport(
       async (input, init) => {
         requests.push(new Request(input, init));
+        if (init?.method === "DELETE") {
+          return jsonResponse({
+            success: true,
+            data: {
+              sessionId: "22222222-2222-4222-8222-222222222222",
+              status: "revoked",
+              alreadyCompensated: false,
+            },
+          });
+        }
+        if (init?.method === "PUT") {
+          return jsonResponse({
+            success: true,
+            data: {
+              sessionId: "22222222-2222-4222-8222-222222222222",
+              status: "active",
+              alreadyCommitted: false,
+            },
+          });
+        }
         return jsonResponse({
           success: true,
           data: {
@@ -254,7 +274,7 @@ describe("remote target native boundaries", () => {
             targetRuntimeId: enrollment.identity.runtimeId,
             targetKeyId: enrollment.identity.keyId,
             grantExpiresAt: new Date(2_000_000_300_000).toISOString(),
-            status: "active",
+            status: "activating",
           },
         });
       },
@@ -264,7 +284,7 @@ describe("remote target native boundaries", () => {
       transport.activate({ enrollment, code: "123456" }),
     ).resolves.toMatchObject({
       sessionId: "22222222-2222-4222-8222-222222222222",
-      status: "active",
+      status: "activating",
     });
     expect(requests[0]?.url).toBe(
       "https://api.example.test/api/v1/remote/sessions/activate",
@@ -276,6 +296,31 @@ describe("remote target native boundaries", () => {
       `Bearer ${enrollment.hostToken}`,
     );
     expect(await requests[0]?.json()).toEqual({ code: "123456" });
+    await expect(
+      transport.compensateActivation({
+        enrollment,
+        sessionId: "22222222-2222-4222-8222-222222222222",
+      }),
+    ).resolves.toEqual({
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      status: "revoked",
+      alreadyCompensated: false,
+    });
+    expect(requests[1]?.method).toBe("DELETE");
+    expect(requests[1]?.url).toBe(
+      "https://api.example.test/api/v1/remote/sessions/22222222-2222-4222-8222-222222222222/activate",
+    );
+    await expect(
+      transport.commitActivation({
+        enrollment,
+        sessionId: "22222222-2222-4222-8222-222222222222",
+      }),
+    ).resolves.toEqual({
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      status: "active",
+      alreadyCommitted: false,
+    });
+    expect(requests[2]?.method).toBe("PUT");
   });
 
   it("rejects insecure API URLs and private/public secure-store tampering", async () => {

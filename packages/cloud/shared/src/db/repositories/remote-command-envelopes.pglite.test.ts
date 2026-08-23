@@ -1,7 +1,8 @@
 /**
  * Exercises the production remote host/session/command repositories against
  * real PGlite transactions, including one-use pairing, replay fencing,
- * pre-start lease recovery, post-start ambiguity, and revocation cleanup.
+ * activation compensation, pre-start lease recovery, post-start ambiguity,
+ * and revocation cleanup.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
@@ -174,7 +175,11 @@ async function enrollAndPair(activate = true): Promise<void> {
         code,
         pairingSecret,
       }),
-    ).toMatchObject({ kind: "activated", session: { status: "active" } });
+    ).toMatchObject({ kind: "activated", session: { status: "activating" } });
+    expect(await sessions.commitHostActivation({ sessionId, hostId, hostToken })).toMatchObject({
+      kind: "committed",
+      session: { status: "active" },
+    });
   }
 }
 
@@ -208,6 +213,7 @@ beforeAll(async () => {
     "0275_remote_sessions_first_class_expiry",
     "0305_secure_remote_hosts",
     "0306_secure_remote_command_relay",
+    "0311_remote_session_two_phase_activation",
   ]) {
     await applyMigration(migration);
   }
@@ -326,7 +332,7 @@ describe("secure remote relay repositories", () => {
       }),
     ).toMatchObject({
       kind: "activated",
-      session: { id: sessionId, status: "active" },
+      session: { id: sessionId, status: "activating" },
     });
     expect(
       await sessions.activatePendingHostByCode({
@@ -336,6 +342,116 @@ describe("secure remote relay repositories", () => {
         pairingSecret,
       }),
     ).toEqual({ kind: "invalid_pairing" });
+  });
+
+  it("commits an exact staged activation idempotently without admitting pre-commit commands", async () => {
+    await enrollAndPair(false);
+    await sessions.activatePendingHost({
+      sessionId,
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret,
+    });
+    expect((await commands.claimNext({ sessionId, hostId, hostToken })).kind).toBe("not_found");
+    await expect(
+      sessions.commitHostActivation({
+        sessionId,
+        hostId,
+        hostToken: `rhost_v1_${"Z".repeat(43)}`,
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
+    await expect(
+      sessions.commitHostActivation({ sessionId, hostId, hostToken }),
+    ).resolves.toMatchObject({
+      kind: "committed",
+      session: { id: sessionId, status: "active" },
+      alreadyCommitted: false,
+    });
+    await expect(
+      sessions.commitHostActivation({ sessionId, hostId, hostToken }),
+    ).resolves.toMatchObject({ kind: "committed", alreadyCommitted: true });
+  });
+
+  it("serializes staged commit against host finalization", async () => {
+    await enrollAndPair(false);
+    await sessions.activatePendingHost({
+      sessionId,
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret,
+    });
+    const [commit, finalization] = await Promise.all([
+      sessions.commitHostActivation({ sessionId, hostId, hostToken }),
+      hosts.revokeAuthenticated(hostId, hostToken),
+    ]);
+    expect(finalization).toMatchObject({ host: { status: "revoked" } });
+    expect(["committed", "conflict"]).toContain(commit.kind);
+    const [stored] = await database.select().from(remoteSessions);
+    expect(["denied", "revoked"]).toContain(stored?.status);
+  });
+
+  it("compensates an exact activation idempotently under host finalization", async () => {
+    await enrollAndPair(false);
+    await sessions.activatePendingHost({
+      sessionId,
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret,
+    });
+    await expect(
+      sessions.compensateHostActivation({
+        sessionId,
+        hostId,
+        hostToken: `rhost_v1_${"Z".repeat(43)}`,
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
+    const first = await sessions.compensateHostActivation({
+      sessionId,
+      hostId,
+      hostToken,
+    });
+    expect(first).toMatchObject({
+      kind: "compensated",
+      session: { id: sessionId, status: "denied" },
+      alreadyCompensated: false,
+    });
+    await expect(
+      sessions.compensateHostActivation({ sessionId, hostId, hostToken }),
+    ).resolves.toMatchObject({
+      kind: "compensated",
+      session: { id: sessionId, status: "denied" },
+      alreadyCompensated: true,
+    });
+  });
+
+  it("serializes activation compensation with host finalization", async () => {
+    await enrollAndPair(false);
+    await sessions.activatePendingHost({
+      sessionId,
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret,
+    });
+    const [compensation, finalization] = await Promise.all([
+      sessions.compensateHostActivation({ sessionId, hostId, hostToken }),
+      hosts.revokeAuthenticated(hostId, hostToken),
+    ]);
+    expect(compensation).toMatchObject({
+      kind: "compensated",
+      session: { id: sessionId, status: "denied" },
+    });
+    expect(finalization).toMatchObject({
+      host: { id: hostId, status: "revoked" },
+    });
+    const [stored] = await database
+      .select()
+      .from(remoteSessions)
+      .where(eq(remoteSessions.id, sessionId));
+    expect(["denied", "revoked"]).toContain(stored?.status);
   });
 
   it("serializes sequence, nonce, and idempotency under the session lock", async () => {

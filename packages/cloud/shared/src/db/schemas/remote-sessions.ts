@@ -28,6 +28,7 @@ import { users } from "./users";
 
 export const REMOTE_SESSION_STATUSES = [
   "pending",
+  "activating",
   "active",
   "denied",
   "revoked",
