@@ -9,7 +9,11 @@ import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime, Memory, ReadView, UUID } from "@elizaos/core";
-import { getDefaultTriageService, stringToUuid } from "@elizaos/core";
+import {
+  buildMessageContentProjection,
+  getDefaultTriageService,
+  stringToUuid,
+} from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -232,6 +236,23 @@ function captureContinuation(
   return undefined;
 }
 
+async function publishSegmentedMessage(
+  runtime: IAgentRuntime,
+  memory: Memory & { id: UUID },
+): Promise<string | undefined> {
+  const publish = runtime.adapter.publishMessageContentSegments;
+  if (!publish) return "message-content segment storage is unavailable";
+  const projection = buildMessageContentProjection(memory);
+  const result = await publish.call(runtime.adapter, {
+    mode: "create",
+    parent: { ...memory, content: projection.content },
+    segments: projection.segments,
+  });
+  return result.status === "created"
+    ? undefined
+    : `segmented message publication returned ${result.status}`;
+}
+
 async function setupSources(ctx: ScenarioContext): Promise<string | undefined> {
   const runtime = ctx.runtime as ScenarioRuntime;
   if (!ctx.primaryRoomId || !ctx.primaryUserId) {
@@ -325,43 +346,39 @@ async function setupSources(ctx: ScenarioContext): Promise<string | undefined> {
   documentFirst.documentId = documentId;
   documentLate.documentId = documentId;
 
-  await runtime.createMemory(
-    {
-      id: ATTACHMENT_MEMORY_ID,
-      agentId: runtime.agentId,
-      entityId: ctx.primaryUserId as UUID,
-      roomId: ctx.primaryRoomId as UUID,
-      content: {
-        text: "Attachment fixture envelope without its planted answer.",
-        source: "client_chat",
-        attachments: [
-          {
-            id: "progressive-attachment",
-            url: "https://example.invalid/progressive-attachment.txt",
-            title: "progressive-attachment.txt",
-            contentType: "document",
-            mimeType: "text/plain",
-            text: ATTACHMENT_SOURCE,
-          },
-        ],
-      },
-      metadata: { type: "message", scope: "global" },
-      createdAt: Date.now() - 1,
-    } as Memory,
-    "messages",
-  );
-  await runtime.createMemory(
-    {
-      id: MESSAGE_MEMORY_ID,
-      agentId: runtime.agentId,
-      entityId: ctx.primaryUserId as UUID,
-      roomId: ctx.primaryRoomId as UUID,
-      content: { text: MEMORY_SOURCE, source: "client_chat" },
-      metadata: { type: "message", scope: "room" },
-      createdAt: Date.now(),
-    } as Memory,
-    "messages",
-  );
+  const attachmentPublicationFailure = await publishSegmentedMessage(runtime, {
+    id: ATTACHMENT_MEMORY_ID,
+    agentId: runtime.agentId,
+    entityId: ctx.primaryUserId as UUID,
+    roomId: ctx.primaryRoomId as UUID,
+    content: {
+      text: "Attachment fixture envelope without its planted answer.",
+      source: "client_chat",
+      attachments: [
+        {
+          id: "progressive-attachment",
+          url: "https://example.invalid/progressive-attachment.txt",
+          title: "progressive-attachment.txt",
+          contentType: "document",
+          mimeType: "text/plain",
+          text: ATTACHMENT_SOURCE,
+        },
+      ],
+    },
+    metadata: { type: "message", scope: "global" },
+    createdAt: Date.now() - 1,
+  } as Memory & { id: UUID });
+  if (attachmentPublicationFailure) return attachmentPublicationFailure;
+  const messagePublicationFailure = await publishSegmentedMessage(runtime, {
+    id: MESSAGE_MEMORY_ID,
+    agentId: runtime.agentId,
+    entityId: ctx.primaryUserId as UUID,
+    roomId: ctx.primaryRoomId as UUID,
+    content: { text: MEMORY_SOURCE, source: "client_chat" },
+    metadata: { type: "message", scope: "room" },
+    createdAt: Date.now(),
+  } as Memory & { id: UUID });
+  if (messagePublicationFailure) return messagePublicationFailure;
   await runtime.createMemory(
     {
       id: RESTRICTED_MEMORY_ID,
@@ -655,9 +672,9 @@ export default scenario({
         }
         const data = resultData(action);
         if (typeof data === "string") return data;
-        return data.error === "MESSAGE_MEMORY_ACCESS_DENIED"
+        return data.error === "MESSAGE_MEMORY_NOT_FOUND"
           ? undefined
-          : `expected MESSAGE_MEMORY_ACCESS_DENIED, saw ${JSON.stringify(data.error)}`;
+          : `expected non-enumerating MESSAGE_MEMORY_NOT_FOUND, saw ${JSON.stringify(data.error)}`;
       },
     },
     {
