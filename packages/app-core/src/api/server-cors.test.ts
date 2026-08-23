@@ -22,6 +22,7 @@ import {
   getAllowedRemoteOrigins,
   invalidateCorsAllowedPorts,
   isAllowedOrigin,
+  LOCAL_API_CORS_ALLOWED_HEADERS,
 } from "./server-cors";
 
 describe("server CORS origin allowlist", () => {
@@ -33,6 +34,13 @@ describe("server CORS origin allowlist", () => {
     ELIZA_GATEWAY_PORT: process.env.ELIZA_GATEWAY_PORT,
     ELIZA_HOME_PORT: process.env.ELIZA_HOME_PORT,
   };
+
+  it("allows the renderer chat stream's correlation and retry headers", () => {
+    const allowed = LOCAL_API_CORS_ALLOWED_HEADERS.toLowerCase();
+
+    expect(allowed).toContain("x-elizaos-turn-correlation");
+    expect(allowed).toContain("x-elizaos-turn-attempt");
+  });
 
   afterEach(() => {
     for (const [key, value] of Object.entries(originalEnv)) {
