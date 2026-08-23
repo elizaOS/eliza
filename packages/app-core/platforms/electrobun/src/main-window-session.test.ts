@@ -64,7 +64,7 @@ describe("main window session", () => {
     ).toBeNull();
   });
 
-  it("hosts Linux CEF in a BrowserView that receives its persistent partition", () => {
+  it("uses the patched single partitioned BrowserWindow for Linux CEF", () => {
     expect(
       shouldUseIsolatedMainView({
         platform: "linux",
@@ -72,7 +72,7 @@ describe("main window session", () => {
         forceMainWindowCef: false,
         buildInfo: linuxCefBuild,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("uses an isolated shell plus partitioned BrowserView for Windows", () => {

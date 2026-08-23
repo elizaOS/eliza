@@ -50,7 +50,7 @@ export async function readReturningInstallStateForPackagedTests(
     // active-server is protected on desktop and intentionally removed from
     // raw localStorage after migration. Exercise the authoritative OS-backed
     // storage channel instead of mistaking plaintext absence for data loss.
-    activeServer: await getStorageValue("elizaos:active-server"),
+    activeServer: (await getStorageValue("elizaos:active-server")) ?? null,
   };
 }
 
