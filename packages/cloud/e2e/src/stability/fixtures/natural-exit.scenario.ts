@@ -10,7 +10,8 @@ export default scenario({
   isolation: "per-scenario",
   modelFixtures: {
     mode: "model-free",
-    reason: "No turn requires inference; this fixture verifies process cleanup.",
+    reason:
+      "No turn requires inference; this fixture verifies process cleanup.",
   },
   rooms: [],
   turns: [],

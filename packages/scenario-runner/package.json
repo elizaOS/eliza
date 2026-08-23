@@ -85,7 +85,6 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-app-control": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",

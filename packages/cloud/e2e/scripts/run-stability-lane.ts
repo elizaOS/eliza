@@ -273,7 +273,8 @@ const authority = await startAuthority(namespace, controlToken);
 const removeAuthoritySignalCleanup = installAuthoritySignalCleanup(
   authority.child,
 );
-const authorityTestReadyPath = process.env.ELIZA_STABILITY_AUTHORITY_TEST_READY_PATH;
+const authorityTestReadyPath =
+  process.env.ELIZA_STABILITY_AUTHORITY_TEST_READY_PATH;
 if (authorityTestReadyPath) {
   await writeFile(
     path.resolve(authorityTestReadyPath),
@@ -288,6 +289,8 @@ const client = new SyntheticControlClient({
 });
 
 let report: Awaited<ReturnType<typeof runCloudStabilityLane>> | undefined;
+let runError: unknown;
+let authorityTeardownError: Error | undefined;
 try {
   const manifest = parseCloudStabilityManifest({
     schemaVersion: 1,
@@ -426,6 +429,8 @@ try {
     { type: "teardown", reason: "Cloud stability aggregate complete" },
     { expectedGeneration: queried.generation, leaseId: lease.leaseId },
   );
+} catch (error) {
+  runError = error;
 } finally {
   await stopAuthority(authority.child);
   removeAuthoritySignalCleanup();
@@ -455,9 +460,20 @@ try {
     { encoding: "utf8", mode: 0o600 },
   );
   if (!pidAbsent || !portClosed) {
-    throw new Error("synthetic authority survived controller teardown");
+    authorityTeardownError = new Error(
+      "synthetic authority survived controller teardown",
+    );
   }
 }
+
+if (runError && authorityTeardownError) {
+  throw new AggregateError(
+    [runError, authorityTeardownError],
+    "Cloud stability lane and authority teardown both failed",
+  );
+}
+if (runError) throw runError;
+if (authorityTeardownError) throw authorityTeardownError;
 
 if (!report)
   throw new Error("Cloud stability lane produced no aggregate report");

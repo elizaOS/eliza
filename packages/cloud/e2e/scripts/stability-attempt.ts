@@ -477,10 +477,7 @@ const ambientServiceLogEvidence = [cliStdout, cliStderr].filter((value) =>
 ).length;
 const redact = (value: string): string =>
   explicitSecrets
-    .reduce(
-      (result, secret) => result.split(secret).join("[REDACTED]"),
-      value,
-    )
+    .reduce((result, secret) => result.split(secret).join("[REDACTED]"), value)
     .replace(
       /(?:\/Users\/[^/\s]+)?\/Library\/Messages\/chat\.db/gu,
       "[REDACTED_HOST_MESSAGES_DB]",
