@@ -5,12 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-type CloudSecretsModule = {
-  _resetCloudSecretsForTesting: () => void;
-  clearCloudSecrets: () => void;
-  getCloudSecret: (key: string) => string | undefined;
-  scrubCloudSecretsFromEnv: () => void;
-};
+type CloudSecretsModule = typeof import("./cloud-secrets.ts");
 
 const API_KEY = "ELIZAOS_CLOUD_API_KEY";
 const ENABLED = "ELIZAOS_CLOUD_ENABLED";
