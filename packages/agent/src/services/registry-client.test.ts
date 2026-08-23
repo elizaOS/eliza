@@ -523,6 +523,15 @@ describe("getPluginInfo", () => {
     expect(await getPluginInfo("obsidan")).toEqual(obsidian);
     expect(await getPluginInfo("@elizaos/plugin-obsidan")).toEqual(obsidian);
   });
+
+  it("never resolves an explicit scope to a different publisher", async () => {
+    const attacker = plugin({ name: "@attacker/plugin-x" });
+    fetchImpl = async () => new Map([[attacker.name, attacker]]);
+    const { getPluginInfo } = await loadModule();
+
+    expect(await getPluginInfo("@elizaos/plugin-x")).toBeNull();
+    expect(await getPluginInfo("plugin-x")).toEqual(attacker);
+  });
 });
 
 describe("searchPlugins", () => {

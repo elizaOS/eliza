@@ -31,6 +31,7 @@ import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
 import { createSerialise, requestRestart } from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { getPluginInfo, type RegistryPluginInfo } from "./registry-client.js";
+import { normalizePluginLookupAlias } from "./registry-client-queries.js";
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -169,6 +170,52 @@ export interface UninstallResult {
   pluginName: string;
   requiresRestart: boolean;
   error?: string;
+}
+
+function explicitNpmScope(name: string): string | null {
+  const match = /^(@[a-zA-Z0-9][\w.-]*)\/[a-zA-Z0-9][\w.-]*$/.exec(name.trim());
+  return match?.[1] ?? null;
+}
+
+function assertExplicitRequestMatchesPackage(
+  requestedName: string,
+  resolvedPackageName: string,
+): void {
+  const normalizedRequest = normalizePluginLookupAlias(requestedName);
+  const requestedScope = explicitNpmScope(normalizedRequest);
+  if (!requestedScope) return;
+
+  const resolvedScope = explicitNpmScope(resolvedPackageName);
+  if (resolvedScope !== requestedScope) {
+    throw new ElizaError(
+      `Requested package scope "${requestedScope}" does not match registry package scope "${resolvedScope ?? "unscoped"}"`,
+      {
+        code: "PLUGIN_INSTALL_SCOPE_MISMATCH",
+        context: {
+          requestedName: requestedName.trim(),
+          requestedScope,
+          resolvedPackageName,
+          resolvedScope,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+
+  if (resolvedPackageName !== normalizedRequest) {
+    throw new ElizaError(
+      `Requested package "${normalizedRequest}" does not match registry package "${resolvedPackageName}"`,
+      {
+        code: "PLUGIN_INSTALL_PACKAGE_MISMATCH",
+        context: {
+          requestedName: requestedName.trim(),
+          normalizedRequest,
+          resolvedPackageName,
+        },
+        severity: "fatal",
+      },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -456,6 +503,7 @@ async function _installPlugin(
   let plan: PluginInstallPlan;
   try {
     plan = resolvePluginInstallPlan(info, requestedVersionOrOptions);
+    assertExplicitRequestMatchesPackage(pluginName, plan.packageName);
   } catch (err) {
     // error-policy:J1 installPlugin translates validation failures into its
     // established structured result boundary.

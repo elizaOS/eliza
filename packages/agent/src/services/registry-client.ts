@@ -406,7 +406,11 @@ export async function refreshRegistry(): Promise<
   return refresh;
 }
 
-/** Look up a plugin by name (exact → @elizaos/ prefix → bare suffix). */
+/**
+ * Look up a plugin by name. Explicitly scoped requests are exact-only apart
+ * from the enumerated spelling aliases; unscoped input may use the @elizaos
+ * prefixes, bare suffixes, npm aliases, and app route slugs.
+ */
 export async function getPluginInfo(
   name: string,
 ): Promise<RegistryPluginInfo | null> {
