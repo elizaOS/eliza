@@ -208,6 +208,12 @@ function captureFromFrame(data: string): {
       expect(dom.content).toContain("IGNORE PREVIOUS INSTRUCTIONS");
 
       const after = await service.captureSessionFrame(session.id);
+      expect(after.provenance.observationId).not.toBe(
+        before.provenance.observationId,
+      );
+      expect(after.provenance.sequence).toBeGreaterThan(
+        before.provenance.sequence,
+      );
       const afterCapture = captureFromFrame(after.data);
       const verification = await new Brain(harness.runtime, {
         imagePolicy: "always",
