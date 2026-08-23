@@ -322,7 +322,7 @@ describe("ComputerUseSessionManager", () => {
     expect(JSON.stringify(manager.getEvents())).not.toContain("cG5n");
   });
 
-  it("lets read-only window inspectors run without consuming an observation", async () => {
+  it("lets read-only AX snapshots and window inspectors start without an observation", async () => {
     const executed: string[] = [];
     const manager = new ComputerUseSessionManager({
       idFactory: () => "session-one",
@@ -333,6 +333,7 @@ describe("ComputerUseSessionManager", () => {
     });
     const session = manager.create({ target: { kind: "host" } });
     const commands = [
+      "accessibility_snapshot",
       "get_current_window_id",
       "get_application_windows",
       "get_window_size",
