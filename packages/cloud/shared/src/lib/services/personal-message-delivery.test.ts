@@ -62,6 +62,7 @@ describe("deliverPersonalTextMessage", () => {
       reply: "Shared reply",
     });
     expect(sharedRestMessageSend).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend.mock.calls[0]?.[9]).toBe("hello");
     expect(sharedRestMessageSend.mock.calls[0]?.[10]).toEqual({
       type: ChannelType.DM,
       source: "x",

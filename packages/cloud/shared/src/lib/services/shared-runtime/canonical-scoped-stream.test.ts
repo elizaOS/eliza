@@ -78,6 +78,7 @@ describe("handleCanonicalScopedAgentStream", () => {
       executionCtx: EXECUTION_CTX,
       agentKind: undefined,
       trustedMessageRole: undefined,
+      trustedUserUtterance: "hello",
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       traceId: "trace-canonical-stream",
       trustedHistoryCutoffAt: undefined,
