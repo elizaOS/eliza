@@ -1007,6 +1007,16 @@ export class SubAgentRouter extends Service {
     if (event === "message") {
       await this.maybeDispatchParentAgent(sessionId, data);
     }
+    if (event === "parent_agent_failure") {
+      // This is authoritative for the parent-broker operation, not terminal
+      // for the child task. Keep the full structured receipt in logs while the
+      // AcpService event trail records the nonterminal event itself.
+      this.log("warn", "parent-agent failure receipt recorded", {
+        sessionId,
+        receipt: data,
+      });
+      return;
+    }
     // Bound the per-session tracking collections. Each accrues one entry per
     // session (buffered parent-agent output, dispatch count, verify-retry
     // handoff marker) and only stop() cleared them, so a long-lived orchestrator
@@ -2693,7 +2703,7 @@ Do not report done until every referenced URL in the final page resolves without
           : undefined,
       count: nextCount,
     });
-    await dispatchParentAgentDirective({
+    const dispatch = await dispatchParentAgentDirective({
       runtime: this.runtime,
       acp,
       sessionId,
@@ -2701,6 +2711,12 @@ Do not report done until every referenced URL in the final page resolves without
       args: directive.args,
       log: this.runtime.logger,
     });
+    if (!dispatch.brokerSuccess && !dispatch.terminalFailure) {
+      this.log("warn", "parent-agent broker operation failed", {
+        sessionId,
+        delivered: dispatch.delivered,
+      });
+    }
   }
 
   private log(

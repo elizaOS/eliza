@@ -123,6 +123,7 @@ export type SessionEventName =
   | "plan"
   | "reconnected"
   | "account_switched"
+  | "parent_agent_failure"
   | string;
 
 /**
