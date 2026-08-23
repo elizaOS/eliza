@@ -52,6 +52,10 @@ import {
 	type ToolDefinition,
 } from "../types/model";
 import {
+	readWorkspaceDeltaReceipt,
+	type WorkspaceDeltaOutcome,
+} from "../types/workspace-delta";
+import {
 	isModelProviderError,
 	modelProviderErrorDetail,
 } from "../utils/model-errors";
@@ -3725,6 +3729,7 @@ function codingMutationRequiresVerification(
 	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
 	for (let index = 0; index < steps.length; index++) {
 		const step = steps[index];
+		const workspaceDelta = workspaceDeltaOutcome(step);
 		const name = step?.toolCall?.name.toUpperCase();
 		const fileMutation =
 			name === "FILE" &&
@@ -3749,8 +3754,10 @@ function codingMutationRequiresVerification(
 					.toLowerCase(),
 			);
 		if (
-			(name === "WRITE" || name === "EDIT" || fileMutation) &&
-			step.result?.success === true
+			workspaceDelta === "changed" ||
+			workspaceDelta === "indeterminate" ||
+			((name === "WRITE" || name === "EDIT" || fileMutation) &&
+				step.result?.success === true)
 		) {
 			latestMutationIndex = index;
 		}
@@ -3761,6 +3768,18 @@ function codingMutationRequiresVerification(
 		.slice(latestMutationIndex + 1)
 		.some((step) => isSuccessfulCodingVerificationStep(step));
 	return !verified;
+}
+
+function workspaceDeltaOutcome(
+	step: PlannerStep,
+): WorkspaceDeltaOutcome | undefined {
+	try {
+		return readWorkspaceDeltaReceipt(step.result?.data)?.outcome;
+	} catch {
+		// A malformed receipt is not allowed to suppress the completion gate. Its
+		// mutation outcome is unknown, which is conservatively indeterminate.
+		return "indeterminate";
+	}
 }
 
 /**
@@ -3777,6 +3796,10 @@ function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
 		step.toolCall?.name.toUpperCase() !== "SHELL" ||
 		step.result?.success !== true
 	) {
+		return false;
+	}
+	const workspaceDelta = workspaceDeltaOutcome(step);
+	if (workspaceDelta === "changed" || workspaceDelta === "indeterminate") {
 		return false;
 	}
 	if (
