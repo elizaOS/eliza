@@ -625,8 +625,17 @@ export function findLinkedMailForCalendarEvent(
       return messageTokens.some((token) => subjectTokens.has(token));
     })
     .sort((left, right) => {
-      const receivedDelta =
-        Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+      const rightTime =
+        typeof right.receivedAt === "string" &&
+        Number.isFinite(Date.parse(right.receivedAt))
+          ? Date.parse(right.receivedAt)
+          : 0;
+      const leftTime =
+        typeof left.receivedAt === "string" &&
+        Number.isFinite(Date.parse(left.receivedAt))
+          ? Date.parse(left.receivedAt)
+          : 0;
+      const receivedDelta = rightTime - leftTime;
       if (receivedDelta !== 0) {
         return receivedDelta;
       }
