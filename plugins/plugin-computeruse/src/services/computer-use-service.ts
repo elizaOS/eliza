@@ -229,13 +229,19 @@ const HOST_SESSION_COMMANDS = new Set([
   "kill_app",
   "set_value",
   "list_windows",
+  "focus_window",
   "switch_to_window",
   "arrange_windows",
   "move_window",
+  "set_window_bounds",
   "minimize_window",
   "maximize_window",
   "restore_window",
   "close_window",
+  "get_current_window_id",
+  "get_application_windows",
+  "get_window_size",
+  "get_window_position",
   ...BROWSER_SESSION_COMMANDS,
 ]);
 
@@ -478,13 +484,19 @@ export class ComputerUseService extends Service {
           action: this.mapBrowserCommandToAction(command),
         });
       case "list_windows":
+      case "focus_window":
       case "switch_to_window":
       case "arrange_windows":
       case "move_window":
+      case "set_window_bounds":
       case "minimize_window":
       case "maximize_window":
       case "restore_window":
       case "close_window":
+      case "get_current_window_id":
+      case "get_application_windows":
+      case "get_window_size":
+      case "get_window_position":
         return this.executeWindowAction({
           ...commandParameters<WindowActionParams>(parameters),
           action: this.mapWindowCommandToAction(command),
@@ -2151,12 +2163,16 @@ export class ComputerUseService extends Service {
     switch (command) {
       case "list_windows":
         return "list";
+      case "focus_window":
+        return "focus";
       case "switch_to_window":
         return "switch";
       case "arrange_windows":
         return "arrange";
       case "move_window":
         return "move";
+      case "set_window_bounds":
+        return "set_bounds";
       case "minimize_window":
         return "minimize";
       case "maximize_window":
@@ -2165,6 +2181,11 @@ export class ComputerUseService extends Service {
         return "restore";
       case "close_window":
         return "close";
+      case "get_current_window_id":
+      case "get_application_windows":
+      case "get_window_size":
+      case "get_window_position":
+        return command;
       default:
         return "list";
     }

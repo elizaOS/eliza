@@ -246,7 +246,7 @@ const VALID_APPROVAL_MODES: ComputerUseApprovalMode[] = [
 ];
 
 const EMPTY_APPROVAL_SNAPSHOT: ComputerUseApprovalSnapshot = {
-  mode: "full_control",
+  mode: "smart_approve",
   pendingCount: 0,
   pendingApprovals: [],
 };

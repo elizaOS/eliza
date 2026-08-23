@@ -31,6 +31,7 @@ import {
   runComputerUseAgentLoop,
 } from "../actions/use-computer-agent.js";
 import { Brain } from "../actor/brain.js";
+import { makeComputerInterface } from "../actor/computer-interface.js";
 import type { DisplayCapture } from "../platform/capture.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";

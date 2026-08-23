@@ -210,7 +210,7 @@ export function AppPermissionsSection() {
 
       {listStatus.state !== "loading" && grantableRows.length === 0 && (
         <p className="py-6 text-center text-xs text-muted">
-          No apps declare permissions yet.
+          No installed apps request filesystem or network access.
         </p>
       )}
 
