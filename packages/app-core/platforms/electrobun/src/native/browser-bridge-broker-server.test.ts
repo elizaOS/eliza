@@ -168,6 +168,7 @@ describe("browser bridge broker IPC", () => {
     expect(helper).toContain('sid.Value.StartsWith("S-1-5-5-"');
     expect(helper).toContain('"D:P(A;;GA;;;SY)(A;;GA;;;"');
     expect(helper).toContain("new NamedPipeServerStream(");
+    expect(helper).toContain("return ,$buffer");
     const executableProbe = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
@@ -179,6 +180,8 @@ describe("browser bridge broker IPC", () => {
     expect(executableProbe).toContain("Invoke-SecurePipeRoundTrip");
     expect(executableProbe).toContain("StandardOutput.BaseStream");
     expect(executableProbe).toContain("StandardInput.BaseStream");
+    expect(executableProbe).toContain("return ,$buffer");
+    expect(executableProbe).toContain("StandardError.ReadToEnd()");
   });
 
   it("reaps a Windows helper whose startup readiness times out", async () => {
