@@ -192,7 +192,19 @@ function newestReusableSession(
 ): OrchestratorTaskSession | undefined {
   return sessions
     .filter((session) => !TERMINAL_REUSE_SESSION_STATUSES.has(session.status))
-    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+    .sort((a, b) => {
+      const bTime =
+        typeof b.lastActivityAt === "number" &&
+        Number.isFinite(b.lastActivityAt)
+          ? b.lastActivityAt
+          : 0;
+      const aTime =
+        typeof a.lastActivityAt === "number" &&
+        Number.isFinite(a.lastActivityAt)
+          ? a.lastActivityAt
+          : 0;
+      return bTime - aTime || a.id.localeCompare(b.id);
+    })[0];
 }
 
 /**

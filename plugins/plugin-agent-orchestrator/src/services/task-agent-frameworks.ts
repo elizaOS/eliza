@@ -1295,7 +1295,16 @@ function buildPreferredReason(
   configuredSubscriptionProvider: string | undefined,
 ): string {
   const dominantSignals = Object.entries(profile.signals)
-    .sort((left, right) => right[1] - left[1])
+    .sort((left, right) => {
+      const l =
+        typeof left[1] === "number" && Number.isFinite(left[1]) ? left[1] : 0;
+      const r =
+        typeof right[1] === "number" && Number.isFinite(right[1])
+          ? right[1]
+          : 0;
+      if (r !== l) return r - l;
+      return String(left[0]).localeCompare(String(right[0]));
+    })
     .slice(0, 2)
     .map(([key]) => key);
   if (

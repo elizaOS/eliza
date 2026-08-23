@@ -427,7 +427,19 @@ export class InMemoryTaskStore {
     const matches = [...this.docs.values()]
       .filter((doc) => matchesFilter(doc.task, filter, buildSearchText(doc)))
       .map((doc) => doc.task)
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+      .sort((a, b) => {
+        const bTime =
+          typeof b.lastActivityAt === "number" &&
+          Number.isFinite(b.lastActivityAt)
+            ? b.lastActivityAt
+            : 0;
+        const aTime =
+          typeof a.lastActivityAt === "number" &&
+          Number.isFinite(a.lastActivityAt)
+            ? a.lastActivityAt
+            : 0;
+        return bTime - aTime || a.id.localeCompare(b.id);
+      });
     const limited =
       filter.limit && filter.limit > 0
         ? matches.slice(0, filter.limit)

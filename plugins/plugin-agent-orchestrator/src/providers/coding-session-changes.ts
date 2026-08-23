@@ -94,7 +94,19 @@ export const codingSessionChangesProvider: Provider = {
           e.changeSet.changedFiles.length > 0 &&
           now - e.changeSet.capturedAt <= RECENCY_WINDOW_MS,
       )
-      .sort((a, b) => b.changeSet.capturedAt - a.changeSet.capturedAt)[0];
+      .sort((a, b) => {
+        const bTime =
+          typeof b.changeSet.capturedAt === "number" &&
+          Number.isFinite(b.changeSet.capturedAt)
+            ? b.changeSet.capturedAt
+            : 0;
+        const aTime =
+          typeof a.changeSet.capturedAt === "number" &&
+          Number.isFinite(a.changeSet.capturedAt)
+            ? a.changeSet.capturedAt
+            : 0;
+        return bTime - aTime || a.session.id.localeCompare(b.session.id);
+      })[0];
     if (!top) return { text: "", values: {}, data: {} };
 
     // Staleness guard. The change set above is the most recent one PERSISTED,
