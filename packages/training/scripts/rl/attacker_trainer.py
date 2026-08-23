@@ -31,6 +31,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from lib.generation_integrity import require_complete_generation
+
 logger = logging.getLogger(__name__)
 
 
@@ -223,7 +225,10 @@ async def _call_model(
                 logger.warning(f"Model call failed ({resp.status}): {text[:200]}")
                 return ""
             data = await resp.json()
-            return data["choices"][0]["message"]["content"]
+            choice = require_complete_generation(
+                data["choices"][0], source="attacker_trainer.call_model"
+            )
+            return choice["message"]["content"]
 
 
 def _detect_outcome(defender_response: str) -> tuple[bool, bool, bool]:

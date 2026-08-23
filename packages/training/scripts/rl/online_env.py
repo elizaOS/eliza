@@ -33,6 +33,7 @@ import copy
 import logging
 import os
 
+import aiohttp
 import wandb
 from atroposlib.envs.base import (
     APIServerConfig,
@@ -42,6 +43,11 @@ from atroposlib.envs.base import (
     ScoredDataGroup,
 )
 from pydantic import Field
+
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    require_complete_generation,
+)
 
 from .kl_controller import KLConfig, create_kl_controller
 from .multi_turn import GAEConfig, MultiTurnEpisodeManager
@@ -728,8 +734,6 @@ class FeedOnlineEnv(BaseEnv):
 
         # Generate completions using direct HTTP API (OpenAI-compatible)
         # This mirrors feed_env's approach for maximum vLLM compatibility
-        import aiohttp
-
         from .tokenization_utils import tokenize_for_trainer
 
         # Get vLLM URL from server config (first config is the inference server)
@@ -764,9 +768,23 @@ class FeedOnlineEnv(BaseEnv):
             logger.error(f"Error calling vLLM: {type(e).__name__}: {e}")
             return None, []
 
-        # Build nodes manually by tokenizing each completion
-        nodes = []
+        complete_choices = []
         for choice in result["choices"]:
+            try:
+                complete_choices.append(
+                    require_complete_generation(choice, source="online_env.vllm")
+                )
+            except IncompleteGenerationError as exc:
+                logger.warning("Rejected rollout generation: %s", exc.rejection.as_dict())
+        logger.info(
+            "Rollout generation admission: attempted=%s accepted=%s",
+            len(result["choices"]),
+            len(complete_choices),
+        )
+
+        # Build nodes manually by tokenizing each complete completion
+        nodes = []
+        for choice in complete_choices:
             response_content = choice["message"]["content"] or ""
             finish_reason = choice.get("finish_reason", "stop")
 
@@ -972,7 +990,10 @@ class FeedOnlineEnv(BaseEnv):
                 )
 
             if chat_completion.choices:
-                response = chat_completion.choices[0].message.content or ""
+                choice = require_complete_generation(
+                    chat_completion.choices[0], source="online_env.evaluation"
+                )
+                response = choice.message.content or ""
                 score, metrics = score_trading_response(response, scenario, archetype)
 
                 eval_scores.append(score)
