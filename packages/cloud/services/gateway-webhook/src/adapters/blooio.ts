@@ -6,7 +6,12 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
-import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
+import {
+  type ChatEvent,
+  type PlatformAdapter,
+  PlatformDeliveryError,
+  type WebhookConfig,
+} from "./types";
 
 export const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
 const BLOOIO_RESPONSE_MAX_BYTES = 64 * 1024;
@@ -36,22 +41,32 @@ export function blooioFetch(
   );
 }
 
-export class BlooioApiResponseError extends Error {
+export class BlooioApiResponseError extends PlatformDeliveryError {
   constructor(
     readonly status: number,
     message: string,
   ) {
-    super(message);
+    super(
+      message,
+      status >= 500 ? "uncertain" : "failed",
+      "DELIVERY_PROVIDER_REJECTED",
+      status === 429,
+      status,
+    );
     this.name = "BlooioApiResponseError";
   }
 }
 
-export class BlooioConfigurationError extends Error {
-  readonly code = "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING";
+export class BlooioConfigurationError extends PlatformDeliveryError {
   readonly context: Readonly<{ setting: string; chatId: string }>;
 
   constructor(chatId: string) {
-    super("Missing fromNumber for Blooio legacy group reply");
+    super(
+      "Missing fromNumber for Blooio legacy group reply",
+      "failed",
+      "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING",
+      false,
+    );
     this.name = "BlooioConfigurationError";
     this.context = {
       setting: "fromNumber",
@@ -205,7 +220,14 @@ async function sendBlooioMessage(
   event: ChatEvent,
   text: string,
 ): Promise<string[]> {
-  if (!config.apiKey) throw new Error("Missing apiKey for Blooio reply");
+  if (!config.apiKey) {
+    throw new PlatformDeliveryError(
+      "Missing apiKey for Blooio reply",
+      "failed",
+      "DELIVERY_CREDENTIALS_MISSING",
+      false,
+    );
+  }
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${config.apiKey}`,
@@ -255,11 +277,16 @@ async function sendBlooioMessage(
   if (!response.ok) {
     throw new BlooioApiResponseError(
       response.status,
-      `Blooio send error (${response.status}): ${responseText}`,
+      `Blooio rejected delivery (${response.status})`,
     );
   }
   if (!responseText) {
-    throw new Error("Blooio accepted delivery without a provider receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a provider receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   let result: unknown;
   try {
@@ -267,10 +294,20 @@ async function sendBlooioMessage(
   } catch {
     // error-policy:J3 accepted provider responses must still expose a durable
     // message receipt before the scheduler records the occurrence as fired.
-    throw new Error("Blooio accepted delivery without a valid JSON receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a valid JSON receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   if (!result || typeof result !== "object") {
-    throw new Error("Blooio accepted delivery without a provider receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a provider receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   const record = result as Record<string, unknown>;
   const id =
@@ -280,7 +317,12 @@ async function sendBlooioMessage(
         ? record.message_id
         : undefined;
   if (!id?.trim()) {
-    throw new Error("Blooio accepted delivery without a provider receipt");
+    throw new PlatformDeliveryError(
+      "Blooio accepted delivery without a provider receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
   }
   return [id.trim()];
 }

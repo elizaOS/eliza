@@ -14,7 +14,8 @@ const migrations = [
   "0305_secure_remote_hosts",
   "0306_secure_remote_command_relay",
   "0307_twilio_outbound_call_audit",
-  "0308_remote_host_managed_network",
+  "0308_remove_conversation_token_default",
+  "0309_remote_host_managed_network",
 ] as const;
 
 realPostgresTest(
@@ -36,6 +37,11 @@ realPostgresTest(
           organization_id uuid NOT NULL,
           user_id uuid NOT NULL,
           deleted_at timestamptz
+        );
+        CREATE TABLE conversations (
+          id uuid PRIMARY KEY,
+          settings jsonb NOT NULL DEFAULT
+            '{"temperature":0.7,"maxTokens":2000,"topP":1,"frequencyPenalty":0,"presencePenalty":0,"systemPrompt":"You are a helpful AI assistant."}'::jsonb
         );
       `);
 

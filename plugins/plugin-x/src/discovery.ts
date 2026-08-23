@@ -16,7 +16,9 @@ import {
 import type { ClientBase, TwitterAccountSession } from "./base";
 import type { Client, Tweet } from "./client/index";
 import { SearchMode } from "./client/index";
+import { TWEET_MAX_LENGTH } from "./constants";
 import { getRandomInterval } from "./environment";
+import { countTwitterWeightedLength } from "./tweet-length";
 import type { TwitterClientState } from "./types";
 import { createMemorySafe, ensureTwitterContext } from "./utils/memory";
 import { getSetting } from "./utils/settings";
@@ -34,6 +36,20 @@ interface DiscoveryConfig {
   likeThreshold: number;
   replyThreshold: number;
   quoteThreshold: number;
+}
+
+function validateCompleteDraft(text: string): string {
+  const weightedLength = countTwitterWeightedLength(text);
+  if (weightedLength > TWEET_MAX_LENGTH) {
+    throw new ElizaError(
+      `Generated X draft exceeds ${TWEET_MAX_LENGTH} weighted characters; received ${weightedLength}`,
+      {
+        code: "X_DISCOVERY_DRAFT_LENGTH_EXCEEDED",
+        context: { weightedLength, maxWeightedLength: TWEET_MAX_LENGTH },
+      },
+    );
+  }
+  return text;
 }
 
 interface ScoredTweet {
@@ -960,11 +976,10 @@ Reply:`;
 
     const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
-      maxTokens: 100,
       temperature: 0.8,
     });
 
-    return response.trim();
+    return validateCompleteDraft(response.trim());
   }
 
   private async generateQuote(tweet: DiscoveryTweet): Promise<string> {
@@ -998,11 +1013,10 @@ Quote tweet:`;
 
     const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
-      maxTokens: 100,
       temperature: 0.8,
     });
 
-    return response.trim();
+    return validateCompleteDraft(response.trim());
   }
 
   private async saveEngagementMemory(

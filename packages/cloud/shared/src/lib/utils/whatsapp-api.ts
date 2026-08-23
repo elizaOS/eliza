@@ -5,9 +5,11 @@
  * Handles webhook signature verification, message sending, and payload parsing.
  */
 
+import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import { z } from "zod";
 import { logger } from "./logger";
+import { ownedBoundedFetch } from "./owned-bounded-fetch";
 
 export const WHATSAPP_API_BASE = "https://graph.facebook.com/v21.0";
 const WHATSAPP_REQUEST_TIMEOUT_MS = 10_000;
@@ -231,20 +233,30 @@ export async function sendWhatsAppMessage(
     text: { body: text },
   };
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+  const response = await ownedBoundedFetch(
+    url,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(WHATSAPP_REQUEST_TIMEOUT_MS),
-  });
+    { timeoutMs: WHATSAPP_REQUEST_TIMEOUT_MS },
+  );
 
   const responseText = await response.text();
 
   if (!response.ok) {
-    throw new Error(`WhatsApp API error (${response.status}): ${responseText}`);
+    throw new ElizaError("WhatsApp rejected the provider request", {
+      code: "PROVIDER_REQUEST_REJECTED",
+      context: {
+        provider: "whatsapp",
+        status: response.status,
+        retryable: response.status === 429 || response.status >= 500,
+      },
+    });
   }
 
   try {
@@ -252,11 +264,17 @@ export async function sendWhatsAppMessage(
     return WhatsAppSendMessageResponseSchema.parse(parsed);
   } catch (parseError) {
     if (parseError instanceof z.ZodError) {
-      throw new Error(
-        `Unexpected WhatsApp API response shape: ${parseError.message} (raw: ${responseText.slice(0, 200)})`,
-      );
+      throw new ElizaError("WhatsApp accepted the request without a valid receipt", {
+        code: "PROVIDER_RECEIPT_INVALID",
+        context: { provider: "whatsapp" },
+        cause: parseError,
+      });
     }
-    throw new Error(`Invalid JSON response from WhatsApp: ${responseText}`);
+    throw new ElizaError("WhatsApp accepted the request without a valid receipt", {
+      code: "PROVIDER_RECEIPT_INVALID",
+      context: { provider: "whatsapp" },
+      cause: parseError,
+    });
   }
 }
 

@@ -40,13 +40,31 @@ const removedPromptCapCloneTests = [
 	"packages/core/src/services/trajectory-json.surrogate.test.ts",
 ];
 
+const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
+	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
+		/assertComputerUseTrajectoryText\("errorMessage",\s*payload\.errorMessage\)/,
+		/buildComputerUseAgentStepTrajectoryPayload\(event\)/,
+	],
+	"plugins/plugin-computeruse/src/actions/use-computer-agent.ts": [
+		/assertComputerUseTrajectoryText\("goal",\s*goal\)/,
+		/assertComputerUseTrajectoryText\([\s\S]{0,80}"rationale"/,
+		/buildComputerUseAgentStepTrajectoryPayload\(\{/,
+	],
+};
+
 const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
 	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
+	"packages/cloud/shared/src/db/schemas/conversations.ts": [
+		/maxTokens:\s*2000/,
+	],
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
+		/DEFAULT_EVALUATOR_MAX_TOKENS/,
+		/maxTokens\s*:/,
+		/retryMaxTokens/,
 	],
 	"packages/core/src/runtime/message-handler.ts": [
 		/normalizeStringHints/,
@@ -63,6 +81,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,
 		/projectStepForFinalSynthesis/,
+		/DEFAULT_(?:CODING_)?PLANNER_MAX_TOKENS/,
+		/maxTokens:\s*\d+/,
 	],
 	"packages/core/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,
@@ -137,6 +157,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
 		/MAX_ERROR_MSG/,
 		/errorMessage\s*=\s*[^;]*\.slice\(/,
+	],
+	"plugins/plugin-computeruse/src/trajectory-text.ts": [
+		/\.slice\(/,
+		/\.substring\(/,
+		/toWellFormedUnicode/,
+		/truncateWellFormed/,
+		/max(?:Chars|Tokens|Items)/i,
 	],
 	"plugins/plugin-cli-inference/src/prompt-flatten.ts": [
 		/MAX_TOOL_PAYLOAD_(?:DEPTH|NODES|CHARS)/,
@@ -258,6 +285,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-x/src/lifeops-message-adapter.ts": [
 		/draft\.body\.(?:slice|substring)\(/,
 	],
+	"plugins/plugin-x/src/discovery.ts": [
+		/maxTokens:\s*100/,
+		/(?:replyText|quoteText|response)\.(?:slice|substring)\(/,
+	],
 	"plugins/plugin-anthropic/models/image.ts": [/firstLine\.slice\(/],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
@@ -269,6 +300,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-elizacloud/src/cloud/bridge-client.ts": [
 		/(?:text|errorText)\.slice\(/,
+	],
+	"plugins/plugin-elizacloud/src/models/text.ts": [
+		/max_tokens\s*=\s*params\.maxTokens\s*\?\?/,
+		/max_output_tokens\s*=\s*params\.maxTokens\s*\?\?/,
+		/(?:max_tokens|max_output_tokens)\s*[:=]\s*8192/,
+	],
+	"plugins/plugin-elizacloud/src/models/image.ts": [
+		/IMAGE_DESCRIPTION_MAX_TOKENS[^\n]*["']8192["']/,
+		/max_tokens\s*:\s*maxTokens/,
 	],
 	"packages/core/src/runtime/limits.ts": [
 		/compactionEnabled/,
@@ -336,6 +376,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/html\.slice\(0,\s*5000\)/,
 		/result\.length\s*>=\s*50/,
 		/textContent\.trim\(\)\.slice\(/,
+	],
+	"plugins/plugin-computeruse/src/actor/brain.ts": [
+		/BRAIN_MAX_ROIS/,
+		/Cap ROIs to/,
+		/roi\s*=\s*[^;]*\.slice\(0,/,
+	],
+	"plugins/plugin-computeruse/src/actor/cascade.ts": [
+		/BRAIN_MAX_ROIS/,
+		/brainOut\.roi\.slice\(0,/,
 	],
 	"packages/browser-bridge-extension/src/page-extract.ts": [
 		/normalizeText\([^\n]+,\s*\d/,
@@ -494,6 +543,22 @@ describe("prompt integrity policy", () => {
 			);
 			for (const pattern of forbiddenPatterns) {
 				expect(source, `${relativePath} must not match ${pattern}`).not.toMatch(
+					pattern,
+				);
+			}
+		}
+	});
+
+	it("keeps both computer-use emitters behind the shared rejection boundary", () => {
+		for (const [relativePath, requiredPatterns] of Object.entries(
+			computerUseTrajectoryBoundaryCalls,
+		)) {
+			const source = readFileSync(
+				resolve(repositoryRoot, relativePath),
+				"utf8",
+			);
+			for (const pattern of requiredPatterns) {
+				expect(source, `${relativePath} must match ${pattern}`).toMatch(
 					pattern,
 				);
 			}

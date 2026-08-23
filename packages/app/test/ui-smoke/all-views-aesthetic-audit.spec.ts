@@ -9,15 +9,11 @@ import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   type AestheticMetricBudget,
-  type AestheticVerdictDebt,
   computeVerdict,
   evaluateAestheticMetricBudget,
-  evaluateMinimalismRatchet,
   evaluateStrictGate,
   findRemoteBundleDeclaration,
-  minimalismBaselineKey,
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
-  parseMinimalismBaseline,
   parseNavigationTabPaths,
   resolveAuditStrictFlags,
 } from "./aesthetic-audit-rules";
@@ -52,9 +48,8 @@ import { VIEW_ROUTES } from "./view-routes";
 // `needs-work` verdicts only landed in report.json and never failed a run, so a
 // regressed view shipped green. It is now a GATE, DEFAULT-ON on BOTH axes: it
 // fails on any `broken` verdict (a real crash / blank render / console error /
-// empty view) AND on any `needs-work` verdict (design debt: blue /
-// orange→black-hover / off-token radius) outside the shrinking debt allowlist
-// below. `resolveAuditStrictFlags` reads the env: each axis stays on unless its
+// empty view) AND on any `needs-work` verdict (blue / orange→black-hover /
+// off-token radius). `resolveAuditStrictFlags` reads the env: each axis stays on unless its
 // var is explicitly `"0"`, so a bare `audit:app` enforces the same posture the
 // `app-aesthetic-audit.yml` CI lane already forces (both vars `"1"`) — a NEW
 // regression fails by default instead of only when someone opts in. Opt OUT with
@@ -65,34 +60,6 @@ const { strict: AUDIT_STRICT, needsWorkStrict: AUDIT_STRICT_NEEDS_WORK } =
 // scrollWidth/innerWidth rounding can differ by ~1px on a healthy layout. A real
 // un-contained overflow (WS5) blows past this comfortably.
 const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
-// Key: `${slug}-${viewport}`. Value: the worst verdict currently tolerated for
-// that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention). The
-// CI lane runs the gate default-on against an empty allowlist and passes, so the
-// current baseline carries no parked `broken`/`needs-work` view; keep it empty
-// and add a slug-viewport key ONLY for genuinely-accepted debt, shrinking it
-// over time.
-const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {
-  "builtin-background-desktop-landscape": "needs-work",
-  "builtin-background-ipad-portrait": "needs-work",
-  "builtin-background-mobile-landscape": "needs-work",
-  "builtin-background-mobile-portrait": "needs-work",
-};
-
-// "Her"-minimal ratchet baseline (#9950) — the committed per-view record of the
-// existing divider-density debt (same idiom as
-// packages/scripts/ui-determinism-baseline.json). A breaching view NOT in this
-// file, or a baselined view that regressed past its recorded metrics +
-// tolerance, is a BLOCKING `needs-work` and fails the run in afterAll —
-// unconditionally, not just under ELIZA_AUDIT_APP_STRICT (same posture as the
-// system-view metric budget throw below). Refresh deliberately from a run's
-// report.json: `bun run --cwd packages/app audit:app:minimalism:update`.
-const MINIMALISM_BASELINE_PATH = fileURLToPath(
-  new URL("./aesthetic-minimalism-baseline.json", import.meta.url),
-);
-const MINIMALISM_BASELINE = parseMinimalismBaseline(
-  readFileSync(MINIMALISM_BASELINE_PATH, "utf8"),
-);
-
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
  * cloud-frontend's `audit:cloud`. It walks EVERY view (built-in tabs + plugin
@@ -105,9 +72,8 @@ const MINIMALISM_BASELINE = parseMinimalismBaseline(
  *
  * It records findings for every view (no first-failure abort, so the 5-loop
  * grind can drive each to `good`), then gates in afterAll: an uncaught page
- * error fails the walk immediately; the system-view metric budgets and the
- * Her-minimal ratchet baseline (#9950) fail the run unconditionally; `broken`
- * verdicts fail under ELIZA_AUDIT_APP_STRICT=1. Output dir:
+ * error fails the walk immediately; system-view metric budgets fail the run
+ * unconditionally; `broken` verdicts fail under ELIZA_AUDIT_APP_STRICT=1. Output dir:
  * `aesthetic-audit-output/` (override with ELIZA_AUDIT_APP_DIR).
  *
  * Built-in views come from `@elizaos/ui` TAB_PATHS; plugin views from
@@ -177,7 +143,7 @@ function viewportBudgets(
 // #9950 Her-minimal objective gate for the 9 ALL_TAB_GROUPS representatives:
 // Chat, Phone, Springboard, Character, Wallet, Browser, Stream, Automations,
 // Settings. These are intentionally per-view budgets, with conservative seed
-// values from the current rendered tree; they should ratchet downward as the
+// values from the current rendered tree; they should guard downward as the
 // visual pass removes redundant borders/dividers and cramped text.
 const SYSTEM_VIEW_METRIC_BUDGETS: Record<
   SystemViewSlug,
@@ -291,12 +257,10 @@ interface ViewFinding {
   viewportArea: number;
   /** The density probe crashed — surfaced as a finding, NOT scored as a
    * zero-density "perfectly minimal" pass (a crashed probe used to silently
-   * satisfy the budget/ratchet). Non-empty means the metrics below are unknown. */
+   * satisfy the budget/guard). Non-empty means the metrics below are unknown. */
   densityProbeFailures: string[];
   minimalismBudget: AestheticMetricBudget | null;
   minimalismBudgetViolations: string[];
-  /** Blocking Her-minimal ratchet violations vs the committed baseline (#9950). */
-  minimalismRatchetViolations: string[];
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
   verdict: "good" | "needs-work" | "needs-eyeball" | "broken";
@@ -757,7 +721,7 @@ async function collectAestheticDensityMetrics(
           }
           // The floating chat shell is mounted over every GUI view and has its
           // own overlay presence/clearance checks below. Keep transient overlay
-          // copy out of per-view text-density ratchets so a global boot banner
+          // copy out of per-view text-density guards so a global boot banner
           // does not make unrelated plugin views look more cramped.
           if (
             parent.closest("[data-chat-overlay], [data-testid='chat-overlay']")
@@ -1349,7 +1313,6 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **text density:** ${roundMetric(finding.textDensity)} chars / 10K px`,
     `- **whitespace ratio:** ${roundMetric(finding.whitespaceRatio)}`,
     `- **minimalism budget:** ${finding.minimalismBudget ? (finding.minimalismBudgetViolations.length ? finding.minimalismBudgetViolations.join("; ") : "pass") : "n/a"}`,
-    `- **minimalism ratchet (#9950):** ${finding.minimalismRatchetViolations.length ? finding.minimalismRatchetViolations.join("; ") : "pass"}`,
     `- **screenshot quality issues:** ${finding.qualityIssues.length ? finding.qualityIssues.join("; ") : "none"}`,
     "",
     "## Notes",
@@ -1918,7 +1881,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             )
           : [];
         // A crashed density probe must NOT read as zero-density "perfectly
-        // minimal" — that silently satisfied both the budget and the ratchet.
+        // minimal" — that silently satisfied both the budget and the guard.
         // Record the failure (surfaced like hoverFailures) and skip scoring the
         // placeholder zeros so the probe crash can never manufacture a pass.
         const densityProbeFailures: string[] = [];
@@ -1970,22 +1933,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           quality,
           qualityIssues,
         };
-        // Her-minimal ratchet (#9950): blocks a NEW density breach (no baseline
-        // entry) or a baselined breach that regressed past tolerance. Only when
-        // the probe produced real metrics — a crashed probe's zero-density
-        // placeholder must not manufacture a ratchet pass.
-        const minimalismRatchetViolations = densityProbeOk
-          ? evaluateMinimalismRatchet(
-              base,
-              MINIMALISM_BASELINE.views[
-                minimalismBaselineKey(view.slug, vp.name)
-              ],
-            )
-          : [];
         const finding: ViewFinding = {
           ...base,
-          minimalismRatchetViolations,
-          verdict: computeVerdict({ ...base, minimalismRatchetViolations }),
+          verdict: computeVerdict(base),
         };
         findings.push(finding);
 
@@ -2035,7 +1985,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           `<td>${roundMetric(f.textDensity)}</td>` +
           `<td>${roundMetric(f.whitespaceRatio)}</td>` +
           `<td>${f.minimalismBudgetViolations.length ? f.minimalismBudgetViolations.join("<br>") : "✓"}</td>` +
-          `<td>${f.minimalismRatchetViolations.length ? f.minimalismRatchetViolations.join("<br>") : "✓"}</td></tr>`,
+          `</tr>`,
       )
       .join("\n");
     await writeFile(
@@ -2045,7 +1995,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `<th>verdict</th><th>console</th><th>blue</th><th>radius</th><th>hover</th>` +
         `<th>overlay</th><th>overlay clearance</th><th>border/divider density</th>` +
         `<th>text density</th><th>whitespace ratio</th><th>minimalism budget</th>` +
-        `<th>minimalism ratchet</th></tr>` +
+        `</tr>` +
         `${rows}</table>`,
       "utf8",
     );
@@ -2059,13 +2009,10 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     const minimalismBudgetFailures = findings.filter(
       (f) => f.minimalismBudgetViolations.length > 0,
     );
-    const gate = evaluateStrictGate(findings, AESTHETIC_VERDICT_DEBT, {
+    const gate = evaluateStrictGate(findings, {
       strict: AUDIT_STRICT,
       needsWorkStrict: AUDIT_STRICT_NEEDS_WORK,
     });
-    const minimalismRatchetFailures = findings.filter(
-      (f) => f.minimalismRatchetViolations.length > 0,
-    );
     const hoverProbeFailures = findings.filter(
       (f) => f.hoverFailures.length > 0,
     );
@@ -2078,7 +2025,6 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `needs-eyeball=${findings.filter((f) => f.verdict === "needs-eyeball").length} ` +
         `good=${findings.filter((f) => f.verdict === "good").length} ` +
         `minimalism-budget-failures=${minimalismBudgetFailures.length} ` +
-        `minimalism-ratchet-failures=${minimalismRatchetFailures.length} ` +
         `hover-probe-failures=${hoverProbeFailures.length} ` +
         `density-probe-failures=${densityProbeFailures.length} ` +
         `(strict=${AUDIT_STRICT}, needs-work-strict=${AUDIT_STRICT_NEEDS_WORK}, ` +
@@ -2109,28 +2055,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `[aesthetic-audit] Minimalism metric budget failed for ` +
           `${minimalismBudgetFailures.length} system view(s):\n${detail}\n` +
           `Update the UI to reduce divider/text density or increase whitespace; ` +
-          `only adjust SYSTEM_VIEW_METRIC_BUDGETS when intentionally ratcheting ` +
-          `from a fresh clean baseline.`,
-      );
-    }
-    // Her-minimal ratchet gate (#9950) — unconditional, like the system-view
-    // budget above: a NEW divider-density breach, or a baselined breach that
-    // regressed past its recorded metrics + tolerance, fails the run.
-    if (minimalismRatchetFailures.length > 0) {
-      const detail = minimalismRatchetFailures
-        .map(
-          (f) =>
-            `  ${f.slug} @ ${f.viewport}: ${f.minimalismRatchetViolations.join("; ")}`,
-        )
-        .join("\n");
-      throw new Error(
-        `[aesthetic-audit] Her-minimal ratchet failed for ` +
-          `${minimalismRatchetFailures.length} view(s):\n${detail}\n` +
-          `Remove redundant borders/dividers (or de-cramp the layout) so the ` +
-          `view drops back under its baseline. Only after an intentional, ` +
-          `reviewed design change, refresh the committed baseline from this ` +
-          `run's report.json:\n` +
-          `  bun run --cwd packages/app audit:app:minimalism:update`,
+          `only adjust SYSTEM_VIEW_METRIC_BUDGETS after an intentional reviewed design change.`,
       );
     }
     if (gate.failed) {

@@ -345,6 +345,43 @@ describe("conversation failureKind round-trip", () => {
     expect(assistant?.failureKind).toBe("insufficient_credits");
   });
 
+  it("GET /messages re-emits the complete typed terminal failure", async () => {
+    const state = createState([
+      userMemory(),
+      assistantMemory({
+        text: "Shell execution failed.",
+        failureKind: "coding_tool_failure",
+        terminalFailure: {
+          kind: "coding_tool_failure",
+          message: "Shell execution failed.",
+          transient: true,
+          code: "SHELL_UNAVAILABLE",
+        },
+      }),
+    ]);
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payload = captured.payload as {
+      messages: Array<{
+        role: string;
+        terminalFailure?: Record<string, unknown>;
+      }>;
+    };
+    const assistant = payload.messages.find((m) => m.role === "assistant");
+    expect(assistant?.terminalFailure).toEqual({
+      kind: "coding_tool_failure",
+      message: "Shell execution failed.",
+      transient: true,
+      code: "SHELL_UNAVAILABLE",
+    });
+  });
+
   it.each([
     "handler_error",
     "missing_capability",

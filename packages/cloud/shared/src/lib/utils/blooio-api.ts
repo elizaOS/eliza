@@ -4,6 +4,7 @@
  * Shared constants and helpers for Blooio iMessage/SMS API interactions.
  */
 
+import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import { z } from "zod";
 import { ownedBoundedFetch } from "./owned-bounded-fetch";
@@ -173,7 +174,14 @@ export async function blooioApiRequest<T>(
   const responseText = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Blooio API error (${response.status}): ${responseText}`);
+    throw new ElizaError("Blooio rejected the provider request", {
+      code: "PROVIDER_REQUEST_REJECTED",
+      context: {
+        provider: "blooio",
+        status: response.status,
+        retryable: response.status === 429 || response.status >= 500,
+      },
+    });
   }
 
   if (!responseText) {
@@ -182,8 +190,12 @@ export async function blooioApiRequest<T>(
 
   try {
     return JSON.parse(responseText) as T;
-  } catch {
-    throw new Error(`Invalid JSON response from Blooio: ${responseText}`);
+  } catch (cause) {
+    throw new ElizaError("Blooio accepted the request without a valid receipt", {
+      code: "PROVIDER_RECEIPT_INVALID",
+      context: { provider: "blooio" },
+      cause,
+    });
   }
 }
 

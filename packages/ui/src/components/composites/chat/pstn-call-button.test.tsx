@@ -46,6 +46,7 @@ describe("PstnCallButton", () => {
       })
       .mockResolvedValueOnce({
         success: true,
+        callId: "11111111-1111-4111-8111-111111111111",
         callSid: "CA11111111111111111111111111111111",
         status: "queued",
         to: "***0100",
@@ -116,12 +117,14 @@ describe("PstnCallButton", () => {
       })
       .mockResolvedValueOnce({
         success: true,
+        callId: "22222222-2222-4222-8222-222222222222",
         callSid: "CA22222222222222222222222222222222",
         status: "queued",
         to: "***0100",
       })
       .mockResolvedValueOnce({
         success: true,
+        callId: "22222222-2222-4222-8222-222222222222",
         callSid: "CA22222222222222222222222222222222",
         status: "hangup-requested",
         to: "***0100",
@@ -168,6 +171,36 @@ describe("PstnCallButton", () => {
     ).toBe(true);
   });
 
+  it("blocks another call while provider acceptance is being reconciled", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callId: "77777777-7777-4777-8777-777777777777",
+        callSid: null,
+        status: "submission-unknown",
+        to: "***0100",
+        auditPending: true,
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    expect(
+      await screen.findByText(/call acceptance is being reconciled/i),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Call again" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hang up" })).toBeNull();
+  });
+
   it("clears a previously loaded number when a profile refresh fails", async () => {
     mocks.api
       .mockResolvedValueOnce({
@@ -206,12 +239,14 @@ describe("PstnCallButton", () => {
       })
       .mockResolvedValueOnce({
         success: true,
+        callId: "33333333-3333-4333-8333-333333333333",
         callSid: "CA33333333333333333333333333333333",
         status: "queued",
         to: "***0100",
       })
       .mockResolvedValueOnce({
         success: true,
+        callId: "33333333-3333-4333-8333-333333333333",
         callSid: "CA33333333333333333333333333333333",
         status: "completed",
         to: "***0100",
@@ -221,6 +256,7 @@ describe("PstnCallButton", () => {
       })
       .mockResolvedValueOnce({
         success: true,
+        callId: "44444444-4444-4444-8444-444444444444",
         callSid: "CA44444444444444444444444444444444",
         status: "queued",
         to: "***0100",
@@ -257,6 +293,7 @@ describe("PstnCallButton", () => {
       })
       .mockResolvedValueOnce({
         success: true,
+        callId: "55555555-5555-4555-8555-555555555555",
         callSid: "CA55555555555555555555555555555555",
         status: "queued",
         to: "***0100",
@@ -264,6 +301,7 @@ describe("PstnCallButton", () => {
       .mockRejectedValueOnce(new Error("Status service unavailable"))
       .mockResolvedValueOnce({
         success: true,
+        callId: "55555555-5555-4555-8555-555555555555",
         callSid: "CA55555555555555555555555555555555",
         status: "hangup-requested",
         to: "***0100",
@@ -305,6 +343,7 @@ describe("PstnCallButton", () => {
       .mockRejectedValueOnce(new Error("Provider temporarily unavailable"))
       .mockResolvedValueOnce({
         success: true,
+        callId: "66666666-6666-4666-8666-666666666666",
         callSid: "CA66666666666666666666666666666666",
         status: "queued",
         to: "***0100",

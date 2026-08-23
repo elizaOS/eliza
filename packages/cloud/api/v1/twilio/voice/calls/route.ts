@@ -4,7 +4,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { dbWrite } from "@/db/helpers";
@@ -182,23 +182,17 @@ app.post("/", async (c) => {
         ),
       )
       .limit(1);
-    if (existingCall?.callSid) {
-      return c.json({
-        success: true,
-        callId: existingCall.id,
-        callSid: existingCall.callSid,
-        status: existingCall.status,
-        to: maskPhoneNumber(existingCall.to),
-        replayed: true,
-      });
-    }
     if (existingCall) {
       return c.json(
         {
-          error: "This call request is already being reconciled",
-          code: "duplicate_call_pending",
+          success: true,
+          callId: existingCall.id,
+          callSid: existingCall.callSid,
+          status: existingCall.status,
+          to: maskPhoneNumber(existingCall.to),
+          replayed: true,
         },
-        409,
+        existingCall.callSid ? 200 : 202,
       );
     }
 
@@ -266,9 +260,9 @@ app.post("/", async (c) => {
       form,
     );
   } catch (error) {
-    // error-policy:J1 provider failure becomes a boundary response. Retain the
-    // claim because Twilio may have accepted the call before the response was
-    // lost; replaying the same request could create a duplicate paid call.
+    // error-policy:J4 a missing or unusable provider response cannot prove
+    // rejection. Retain the claim and expose the durable call id so signed
+    // callbacks can reconcile an accepted call without authorizing a retry.
     logger.error("[twilio-voice-outbound] failed to queue call", {
       userId: auth.id,
       organizationId: auth.organization_id,
@@ -277,15 +271,21 @@ app.post("/", async (c) => {
     await dbWrite
       .update(twilioOutboundCalls)
       .set({
-        call_status: "provider-error",
+        call_status: "submission-unknown",
         provider_error_code: "provider_unavailable",
-        terminal_at: new Date(),
         updated_at: new Date(),
       })
       .where(eq(twilioOutboundCalls.id, callId));
     return c.json(
-      { error: "Unable to start the call", code: "provider_unavailable" },
-      502,
+      {
+        success: true,
+        callId,
+        callSid: null,
+        status: "submission-unknown",
+        to: maskPhoneNumber(requestedPhoneNumber),
+        auditPending: true,
+      },
+      202,
     );
   }
 
@@ -295,7 +295,10 @@ app.post("/", async (c) => {
       .update(twilioOutboundCalls)
       .set({
         call_sid: call.sid,
-        call_status: call.status,
+        call_status: sql`CASE
+          WHEN ${twilioOutboundCalls.last_status_sequence} < 0 THEN ${call.status}
+          ELSE ${twilioOutboundCalls.call_status}
+        END`,
         updated_at: new Date(),
       })
       .where(eq(twilioOutboundCalls.id, callId));

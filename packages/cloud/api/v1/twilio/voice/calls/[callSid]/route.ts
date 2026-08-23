@@ -18,6 +18,7 @@ import { isTerminalTwilioCallStatus } from "../../lib/twilio-call-status";
 
 const app = new Hono<AppEnv>();
 const CallSid = z.string().regex(/^CA[a-fA-F0-9]{32}$/);
+const CallId = z.string().uuid();
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 
 interface PublicTwilioEnv {
@@ -35,14 +36,21 @@ app.use("*", rateLimit({ ...RateLimitPresets.CRITICAL, failClosed: true }));
 
 async function ownedCall(c: Parameters<typeof requireUserOrApiKeyWithOrg>[0]) {
   const auth = await requireUserOrApiKeyWithOrg(c);
-  const parsedSid = CallSid.safeParse(c.req.param("callSid"));
-  if (!parsedSid.success) return { auth, call: null };
+  const reference = c.req.param("callSid");
+  const parsedSid = CallSid.safeParse(reference);
+  const parsedId = CallId.safeParse(reference);
+  const referenceCondition = parsedSid.success
+    ? eq(twilioOutboundCalls.call_sid, parsedSid.data)
+    : parsedId.success
+      ? eq(twilioOutboundCalls.id, parsedId.data)
+      : undefined;
+  if (!referenceCondition) return { auth, call: null };
   const [call] = await dbWrite
     .select()
     .from(twilioOutboundCalls)
     .where(
       and(
-        eq(twilioOutboundCalls.call_sid, parsedSid.data),
+        referenceCondition,
         eq(twilioOutboundCalls.user_id, auth.id),
         eq(twilioOutboundCalls.organization_id, auth.organization_id),
       ),
@@ -57,6 +65,7 @@ app.get("/", async (c) => {
     return c.json({ error: "Call not found", code: "call_not_found" }, 404);
   return c.json({
     success: true,
+    callId: call.id,
     callSid: call.call_sid,
     status: call.call_status,
     to: maskPhoneNumber(call.to_number),
@@ -68,12 +77,22 @@ app.get("/", async (c) => {
 
 app.delete("/", async (c) => {
   const { auth, call } = await ownedCall(c);
+  if (call?.call_status === "submission-unknown" && !call.call_sid) {
+    return c.json(
+      {
+        error: "Call acceptance is still being reconciled",
+        code: "call_submission_unknown",
+      },
+      409,
+    );
+  }
   if (!call?.call_sid) {
     return c.json({ error: "Call not found", code: "call_not_found" }, 404);
   }
   if (isTerminalTwilioCallStatus(call.call_status)) {
     return c.json({
       success: true,
+      callId: call.id,
       callSid: call.call_sid,
       status: call.call_status,
       alreadyTerminal: true,
@@ -124,6 +143,7 @@ app.delete("/", async (c) => {
   if (!claim) {
     return c.json({
       success: true,
+      callId: call.id,
       callSid: call.call_sid,
       status: call.call_status,
       replayed: true,
@@ -167,6 +187,7 @@ app.delete("/", async (c) => {
     .where(eq(twilioOutboundCalls.id, call.id));
   return c.json({
     success: true,
+    callId: call.id,
     callSid: call.call_sid,
     status: "hangup-requested",
   });

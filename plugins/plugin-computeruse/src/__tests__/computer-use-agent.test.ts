@@ -17,8 +17,8 @@
  * default).
  */
 
-import type { Content } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { type Content, type ElizaError, logger } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   type ComputerUseAgentReport,
   type ComputerUseAgentStepProgress,
@@ -132,6 +132,106 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
       actionKind: "finish",
       success: true,
     });
+  });
+
+  it("emits complete desktop step text through the shared structured contract", async () => {
+    const complete = `${"desktop trajectory ".repeat(300)}🧠 tail`;
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "done",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: { kind: "finish", rationale: complete },
+        }),
+    });
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      await runComputerUseAgentLoop(null, { goal: complete }, fakeService(), {
+        brain,
+        captureAll,
+      });
+      const stepLog = spy.mock.calls
+        .map(([entry]) => entry as Record<string, unknown>)
+        .find((entry) => entry.evt === "computeruse.agent.step");
+      expect(stepLog).toMatchObject({
+        goal: complete,
+        rationale: complete,
+        success: true,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("rejects malformed desktop goals before work or structured logging", async () => {
+    let brainCalls = 0;
+    const brain = new Brain(null, {
+      invokeModel: async () => {
+        brainCalls += 1;
+        return "{}";
+      },
+    });
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      await expect(
+        runComputerUseAgentLoop(
+          null,
+          { goal: "save\ud800document" },
+          fakeService(),
+          { brain, captureAll },
+        ),
+      ).rejects.toMatchObject({
+        name: "ElizaError",
+        code: "COMPUTERUSE_TRAJECTORY_MALFORMED_UNICODE",
+        context: { field: "goal" },
+      } satisfies Partial<ElizaError>);
+      expect(brainCalls).toBe(0);
+      expect(
+        spy.mock.calls.some(
+          ([entry]) =>
+            (entry as Record<string, unknown>).evt === "computeruse.agent.step",
+        ),
+      ).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("rejects malformed desktop rationales before dispatch or structured logging", async () => {
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "done",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: {
+            kind: "finish",
+            rationale: "finish\udc00now",
+          },
+        }),
+    });
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      await expect(
+        runComputerUseAgentLoop(null, { goal: "save" }, fakeService(), {
+          brain,
+          captureAll,
+        }),
+      ).rejects.toMatchObject({
+        name: "ElizaError",
+        code: "COMPUTERUSE_TRAJECTORY_MALFORMED_UNICODE",
+        context: { field: "rationale" },
+      } satisfies Partial<ElizaError>);
+      expect(
+        spy.mock.calls.some(
+          ([entry]) =>
+            (entry as Record<string, unknown>).evt === "computeruse.agent.step",
+        ),
+      ).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("aborts on the wall-clock budget before any step (#9170 M11)", async () => {
@@ -362,16 +462,30 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
           proposed_action: { kind: "click", rationale: "click out-of-bounds" },
         }),
     });
-    const report = await runComputerUseAgentLoop(
-      null,
-      { goal: "g" },
-      fakeService(),
-      { brain, captureAll },
-    );
-    expect(report.reason).toBe("error");
-    expect(report.steps.length).toBe(1);
-    expect(report.steps[0]?.result.success).toBe(false);
-    expect(report.error).toMatch(/outside display/);
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      const report = await runComputerUseAgentLoop(
+        null,
+        { goal: "g" },
+        fakeService(),
+        { brain, captureAll },
+      );
+      expect(report.reason).toBe("error");
+      expect(report.steps.length).toBe(1);
+      expect(report.steps[0]?.result.success).toBe(false);
+      expect(report.error).toMatch(/outside display/);
+
+      const stepLog = spy.mock.calls
+        .map(([entry]) => entry as Record<string, unknown>)
+        .find((entry) => entry.evt === "computeruse.agent.step");
+      expect(stepLog).toMatchObject({
+        success: false,
+        error: report.error,
+        errorCode: "out_of_bounds",
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("aborts on scene refresh error", async () => {

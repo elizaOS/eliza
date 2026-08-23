@@ -7,6 +7,7 @@
 
 import type {
   ChatFailureKind,
+  ChatTerminalFailure,
   ChatTurnStatus,
   ConversationSecretRequest,
   MessageAttachment,
@@ -124,6 +125,8 @@ export interface ChatMessageData {
    * render failure gates in their body renderer instead.
    */
   failureKind?: ChatFailureKind;
+  /** Authoritative typed failure details, including transient retry policy. */
+  terminalFailure?: ChatTerminalFailure;
   /** Media attached to this turn — read by body renderers and the in-flight
    * (empty assistant) detection; the row itself renders no attachment chrome. */
   attachments?: MessageAttachment[];

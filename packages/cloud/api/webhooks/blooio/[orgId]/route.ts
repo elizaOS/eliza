@@ -310,11 +310,15 @@ async function handleIncomingMessage(
       agentUserId: routed.userId,
     });
 
-    if (sent) {
+    if (sent.status === "delivered") {
       logger.info("[BlooioWebhook] Agent response sent", { orgId });
     } else {
-      logger.error("[BlooioWebhook] Failed to send agent response", {
+      logger.error("[BlooioWebhook] Agent response delivery did not complete", {
         orgId,
+        deliveryStatus: sent.status,
+        deliveryCode: sent.code,
+        retryable: sent.retryable,
+        providerStatus: sent.providerStatus,
       });
     }
   }

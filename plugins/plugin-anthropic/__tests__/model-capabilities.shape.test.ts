@@ -60,9 +60,65 @@ async function expectGenerateRejectedBeforeDispatch(
   expect(generateText).not.toHaveBeenCalled();
 }
 
+async function captureCliMaxTokens(
+  settings: Record<string, string>,
+  params: Record<string, unknown>
+): Promise<number | undefined> {
+  const generateViaCli = vi.fn(async () => ({ text: "ok", usage: null }));
+  const streamViaCli = vi.fn(() => ({ textStream: {} }));
+  vi.doMock("ai", () => ({ generateText: vi.fn(), streamText: vi.fn() }));
+  vi.doMock("../providers/anthropic", () => ({
+    createAnthropicClientWithTopPSupport: vi.fn(),
+  }));
+  vi.doMock("../utils/claude-cli", () => ({ generateViaCli, streamViaCli }));
+
+  const { handleTextSmall } = await import("../models/text");
+  await handleTextSmall(
+    createRuntime({
+      ANTHROPIC_AUTH_MODE: "claude-cli",
+      ANTHROPIC_SMALL_MODEL: "claude-unknown-test-9",
+      ...settings,
+    }),
+    { prompt: "hello", ...params } as never
+  );
+
+  const dispatch = params.stream ? streamViaCli : generateViaCli;
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  return dispatch.mock.calls[0][4] as number | undefined;
+}
+
+async function expectCliRejectedBeforeDispatch(
+  settings: Record<string, string>,
+  params: Record<string, unknown>,
+  expectedCode: string
+): Promise<void> {
+  const generateViaCli = vi.fn();
+  const streamViaCli = vi.fn();
+  vi.doMock("ai", () => ({ generateText: vi.fn(), streamText: vi.fn() }));
+  vi.doMock("../providers/anthropic", () => ({
+    createAnthropicClientWithTopPSupport: vi.fn(),
+  }));
+  vi.doMock("../utils/claude-cli", () => ({ generateViaCli, streamViaCli }));
+
+  const { handleTextSmall } = await import("../models/text");
+  await expect(
+    handleTextSmall(
+      createRuntime({
+        ANTHROPIC_AUTH_MODE: "claude-cli",
+        ANTHROPIC_SMALL_MODEL: "claude-unknown-test-9",
+        ...settings,
+      }),
+      { prompt: "hello", ...params } as never
+    )
+  ).rejects.toMatchObject({ code: expectedCode });
+  expect(generateViaCli).not.toHaveBeenCalled();
+  expect(streamViaCli).not.toHaveBeenCalled();
+}
+
 afterEach(() => {
   vi.doUnmock("ai");
   vi.doUnmock("../providers/anthropic");
+  vi.doUnmock("../utils/claude-cli");
   vi.clearAllMocks();
   vi.resetModules();
 });
@@ -111,13 +167,13 @@ describe("Anthropic model capability configuration", () => {
     );
   }, 60_000);
 
-  it("keeps the opus-4 substring treatment for claude-opus-4-8 without any env config", async () => {
+  it("keeps the opus-4 temperature lock while using the 128k Opus 4.8 output limit", async () => {
     const call = await captureGenerateParams(
       { ANTHROPIC_SMALL_MODEL: "claude-opus-4-8" },
-      { temperature: 0.3, maxTokens: 32_000 }
+      { temperature: 0.3, maxTokens: 100_000 }
     );
     expect(call.temperature).toBe(1);
-    expect(call.maxOutputTokens).toBe(32_000);
+    expect(call.maxOutputTokens).toBe(100_000);
   }, 60_000);
 
   it("locks temperature for claude-sonnet-5 when the operator lists it", async () => {
@@ -146,6 +202,46 @@ describe("Anthropic model capability configuration", () => {
     );
     expect(unknown.temperature).toBe(0.3);
     expect(unknown.maxOutputTokens).toBe(64_000);
+
+    for (const modelName of ["claude-opus-4-8", "claude-sonnet-5"]) {
+      vi.resetModules();
+      const currentModel = await captureGenerateParams({ ANTHROPIC_SMALL_MODEL: modelName }, {});
+      expect(currentModel.maxOutputTokens).toBe(128_000);
+    }
+  }, 60_000);
+
+  it("preserves 100k requests for both default model capabilities", async () => {
+    for (const modelName of ["claude-opus-4-8", "claude-sonnet-5"]) {
+      const call = await captureGenerateParams(
+        { ANTHROPIC_SMALL_MODEL: modelName },
+        { maxTokens: 100_000 }
+      );
+      expect(call.maxOutputTokens).toBe(100_000);
+      vi.resetModules();
+    }
+  }, 60_000);
+
+  it("uses the full resolved model limit at both CLI dispatch boundaries", async () => {
+    expect(await captureCliMaxTokens({}, {})).toBe(64_000);
+
+    vi.resetModules();
+    expect(
+      await captureCliMaxTokens(
+        { ANTHROPIC_MAX_OUTPUT_TOKENS: "16000" },
+        { stream: true, omitMaxTokens: true, maxTokens: 0 }
+      )
+    ).toBe(16_000);
+  }, 60_000);
+
+  it("rejects invalid buffered and unsupported streaming CLI budgets before dispatch", async () => {
+    await expectCliRejectedBeforeDispatch({}, { maxTokens: 0 }, "ANTHROPIC_OUTPUT_BUDGET_INVALID");
+
+    vi.resetModules();
+    await expectCliRejectedBeforeDispatch(
+      { ANTHROPIC_MAX_OUTPUT_TOKENS: "16000" },
+      { stream: true, maxTokens: 16_001 },
+      "ANTHROPIC_OUTPUT_BUDGET_UNSUPPORTED"
+    );
   }, 60_000);
 
   it("preserves an accepted explicit maxTokens value exactly", async () => {

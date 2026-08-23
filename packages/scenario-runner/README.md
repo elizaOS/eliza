@@ -196,12 +196,10 @@ task was killed.
 
 The rollout is staged: undeclared scenarios temporarily retain the legacy
 resolver and reports mark them `legacy-fallback`; declared attempts report
-`strict-fixtures` or `model-free`. The migration ratchet currently records 49
-strict or explicitly model-free and 71 legacy `pr-deterministic` scenario
-sources across the repository. The declared rows contain only direct action/API work or
-wait/seed/final checks and are validated again by the real executor before each
-attempt. The legacy count may only decrease, and the epic is complete only when
-it reaches zero.
+`strict-fixtures` or `model-free`. Declared rows contain only direct action/API
+work or wait/seed/final checks and are validated again by the real executor
+before each attempt. Migration is complete when no scenario reports
+`legacy-fallback`.
 
 Reusable Stage-1/planner fixtures are exported by `@elizaos/core/testing` for
 single tools, multiple tools, clarifications, terminal replies, evaluators,

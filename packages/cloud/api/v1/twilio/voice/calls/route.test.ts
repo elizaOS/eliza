@@ -243,14 +243,45 @@ describe("POST Twilio outbound voice call", () => {
     expect(queueCall).not.toHaveBeenCalled();
   });
 
-  test("persists a fail-closed terminal provider error", async () => {
+  test("returns a durable poll target while an exact replay is unresolved", async () => {
+    returning.mockResolvedValue([]);
+    selectLimit.mockResolvedValue([
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        callSid: null,
+        status: "submission-unknown",
+        to: "+14155550100",
+      },
+    ]);
+
+    const response = await callRequest(
+      { to: "+14155550100" },
+      "00000000-0000-4000-8000-000000000004",
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      callId: "33333333-3333-4333-8333-333333333333",
+      callSid: null,
+      status: "submission-unknown",
+      replayed: true,
+    });
+    expect(queueCall).not.toHaveBeenCalled();
+  });
+
+  test("retains an ambiguous provider submission for signed reconciliation", async () => {
     queueCall.mockRejectedValueOnce(new Error("Twilio unavailable"));
 
     const response = await callRequest({ to: "+14155550100" });
 
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({
-      code: "provider_unavailable",
+      success: true,
+      callId: expect.any(String),
+      callSid: null,
+      status: "submission-unknown",
+      auditPending: true,
     });
     expect(outboundInserts).toHaveLength(1);
     expect(updateWhere).toHaveBeenCalledTimes(1);
