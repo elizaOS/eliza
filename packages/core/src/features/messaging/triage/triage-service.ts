@@ -13,6 +13,7 @@
 import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime } from "../../../types/index.ts";
+import { draftConsentDigest } from "./actions/send-consent.ts";
 import { filterInMemory } from "./adapters/base.ts";
 import { getDeferredMessageScheduler } from "./deferred-send-scheduler.ts";
 import {
@@ -66,6 +67,8 @@ export interface MessageSearchResult {
 export class TriageService {
 	private adapters = new Map<MessageSource, MessageAdapter>();
 	private sendsInFlight = new Map<string, Promise<DraftRecord>>();
+	/** Consent digest each in-flight send was armed with, for digest-bound joins. */
+	private sendsInFlightDigests = new Map<string, string>();
 	private persistedSendsInFlight = new Map<string, Promise<DraftRecord>>();
 	private schedulesInFlight = new Map<
 		string,
@@ -478,6 +481,7 @@ export class TriageService {
 	async sendDraft(
 		runtime: IAgentRuntime,
 		draftId: string,
+		consentDigest?: string,
 	): Promise<DraftRecord> {
 		const record = this.store.getDraft(draftId);
 		if (!record) {
@@ -487,18 +491,58 @@ export class TriageService {
 				severity: "ephemeral",
 			});
 		}
+		// Snapshot binding (#25284 RP review): when the caller consented a
+		// specific draft snapshot, the bytes that actually go out must match
+		// it. The user confirmed a preview; a draft mutated between the
+		// consent gate and the provider call (TOCTOU) must fail closed here —
+		// never deliver content the user never saw — and surface as a fresh
+		// preview ask at the action boundary.
+		if (
+			consentDigest !== undefined &&
+			draftConsentDigest(record) !== consentDigest
+		) {
+			throw new ElizaError(
+				`The draft changed after it was confirmed; re-preview before sending (draftId=${draftId}).`,
+				{
+					code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+					context: { draftId },
+					severity: "ephemeral",
+				},
+			);
+		}
 		if (record.sent) return record;
 		const sendKey = `${String(runtime.agentId)}:${record.source}:${draftId}`;
 		const pending = this.sendsInFlight.get(sendKey);
-		if (pending) return pending;
+		const pendingDigest = this.sendsInFlightDigests.get(sendKey);
+		if (pending) {
+			// Digest-bound join (#25284 r3): a caller that consented a
+			// specific snapshot must never piggyback on an in-flight send
+			// armed with a different (or absent) binding — join only when
+			// the digests match.
+			if (pendingDigest !== consentDigest) {
+				throw new ElizaError(
+					`A different send of this draft is already in flight; re-preview before sending (draftId=${draftId}).`,
+					{
+						code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+						context: { draftId },
+						severity: "ephemeral",
+					},
+				);
+			}
+			return pending;
+		}
 
-		const send = this.sendDraftOnce(runtime, record);
+		const send = this.sendDraftOnce(runtime, record, consentDigest);
 		this.sendsInFlight.set(sendKey, send);
+		if (consentDigest !== undefined) {
+			this.sendsInFlightDigests.set(sendKey, consentDigest);
+		}
 		try {
 			return await send;
 		} finally {
 			if (this.sendsInFlight.get(sendKey) === send) {
 				this.sendsInFlight.delete(sendKey);
+				this.sendsInFlightDigests.delete(sendKey);
 			}
 		}
 	}
@@ -506,6 +550,7 @@ export class TriageService {
 	private async sendDraftOnce(
 		runtime: IAgentRuntime,
 		record: DraftRecord,
+		consentDigest: string | undefined,
 	): Promise<DraftRecord> {
 		const adapter = this.adapters.get(record.source);
 		if (!adapter?.isAvailable(runtime)) {
@@ -517,6 +562,26 @@ export class TriageService {
 					severity: "ephemeral",
 				},
 			);
+		}
+		// Revalidate on the freshest store state immediately before the
+		// adapter call (#25284 r2): isAvailable and in-flight setup can await,
+		// and every await is another mutation window. The adapter contract is
+		// that sendDraft delivers the create-time snapshot for the id it is
+		// handed (adapters keep their own write-once cache); this check pins
+		// the service-side record to the consented digest at the last instant
+		// we still control.
+		if (consentDigest !== undefined) {
+			const latest = this.store.getDraft(record.draftId);
+			if (!latest || draftConsentDigest(latest) !== consentDigest) {
+				throw new ElizaError(
+					`The draft changed after it was confirmed; re-preview before sending (draftId=${record.draftId}).`,
+					{
+						code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+						context: { draftId: record.draftId },
+						severity: "ephemeral",
+					},
+				);
+			}
 		}
 		const { externalId } = await adapter.sendDraft(runtime, record.draftId);
 		if (typeof externalId !== "string" || externalId.trim().length === 0) {

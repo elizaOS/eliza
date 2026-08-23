@@ -85,6 +85,11 @@ import { manageMessageAction } from "../../messaging/triage/actions/manageMessag
 import { respondToMessageAction } from "../../messaging/triage/actions/respondToMessage.ts";
 import { scheduleDraftSendAction } from "../../messaging/triage/actions/scheduleDraftSend.ts";
 import { searchMessagesAction as searchInboxMessagesAction } from "../../messaging/triage/actions/searchMessages.ts";
+import {
+	PRINCIPAL_RANK_ADMIN,
+	PRINCIPAL_RANK_USER,
+	resolveMessagePrincipalRole,
+} from "../../messaging/triage/actions/send-consent.ts";
 import { sendDraftAction } from "../../messaging/triage/actions/sendDraft.ts";
 import { triageMessagesAction } from "../../messaging/triage/actions/triageMessages.ts";
 import { getDefaultTriageService } from "../../messaging/triage/triage-service.ts";
@@ -148,6 +153,30 @@ const MESSAGE_DESCRIPTION =
 	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Use manage_server for structural server administration on a connector that supports it (create/edit/delete channels, categories, and roles, permission overwrites, member roles, invites, moderation, guild templates) — gated by connector configuration. Public feed publishing uses POST.";
 const MESSAGE_COMPRESSED =
 	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections list_worlds list_rooms join leave react edit delete pin get_user manage_server triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server world inbox draft connections platforms reachable";
+
+/**
+ * Ops an ordinary USER principal may execute (#25284). The umbrella's exposure
+ * gate is USER so owned/delegated delivery paths are reachable by ordinary
+ * users; every op NOT in this set keeps its historical ADMIN floor, enforced
+ * per-op inside the handler regardless of how the action was reached. The
+ * admitted set is exactly the outbound compose/deliver surface: `send`
+ * (direct compose-and-deliver, whose unvetted-recipient path already requires
+ * user confirmation), the draft-compose ops, and `send_draft`, which carries
+ * its own turn-bound consent gate in the leaf. Read/triage topology and every
+ * destructive or scheduling op stays ADMIN.
+ */
+const MESSAGE_USER_OPS: ReadonlySet<MessageOperation> = new Set([
+	"send",
+	"draft_reply",
+	"draft_followup",
+	"respond",
+	"send_draft",
+]);
+
+/** True iff op belongs to the USER-admissible set above (#25284). */
+function messageOpAdmitsUser(op: MessageOperation): boolean {
+	return MESSAGE_USER_OPS.has(op);
+}
 
 // ---------------------------------------------------------------------------
 // Param coercion / op normalization
@@ -5808,13 +5837,6 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		schema: { type: "string" },
 	},
 	{
-		name: "confirmed",
-		description: "Explicit send confirmation for op=send_draft.",
-		required: false,
-		subactions: ["send_draft"],
-		schema: { type: "boolean" },
-	},
-	{
 		name: "sendAt",
 		description: "Scheduled send time for op=schedule_draft_send.",
 		required: false,
@@ -6226,7 +6248,12 @@ export const messageAction: Action = {
 	routingHint:
 		"send/read/search/triage messages on a connector or channel, discover authorized worlds/rooms, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST",
 	contexts: MESSAGE_CONTEXTS,
-	roleGate: { minRole: "ADMIN" },
+	// USER floor per #25284 so ordinary users can deliver their own confirmed
+	// drafts (owned/delegated delivery). Every operation that is NOT a
+	// user-admissible send path re-enforces the historical ADMIN floor inside
+	// the handler (USER_OP_FLOORS below), so lowering exposure cannot widen
+	// any other op.
+	roleGate: { minRole: "USER" },
 	parameters: MESSAGE_PARAMETERS,
 	examples: (spec?.examples ?? []) as ActionExample[][],
 	validate: async (runtime, message, state, options) => {
@@ -6246,6 +6273,45 @@ export const messageAction: Action = {
 		refreshDescriptions(messageAction, runtime);
 		const params = paramsFromOptions(options);
 		const op = inferOp(params);
+		// Per-op floor (#25284): exposure is USER so owned/delegated send paths
+		// are reachable by ordinary users, but every op that is not a
+		// user-admissible send path keeps its historical ADMIN floor here, at
+		// execution, regardless of how the action was reached — and the
+		// user-admissible ops still require at least USER, so GUEST and
+		// unresolvable principals are denied on every op.
+		const admission = await resolveMessagePrincipalRole(runtime, message);
+		if (admission.rank < PRINCIPAL_RANK_ADMIN && !messageOpAdmitsUser(op)) {
+			logger.warn(
+				`[MESSAGE] op=${op} denied: caller role ${admission.role} below ADMIN`,
+			);
+			return {
+				success: false,
+				text: `That messaging operation requires admin access; the current caller is ${admission.role}.`,
+				error: "MESSAGE_OP_ROLE_DENIED",
+				data: {
+					actionName: "MESSAGE",
+					operation: op,
+					error: "MESSAGE_OP_ROLE_DENIED",
+					callerRole: admission.role,
+				},
+			};
+		}
+		if (admission.rank < PRINCIPAL_RANK_USER) {
+			logger.warn(
+				`[MESSAGE] op=${op} denied: caller role ${admission.role} below USER`,
+			);
+			return {
+				success: false,
+				text: `Messaging requires at least user access; the current caller is ${admission.role}.`,
+				error: "MESSAGE_OP_ROLE_DENIED",
+				data: {
+					actionName: "MESSAGE",
+					operation: op,
+					error: "MESSAGE_OP_ROLE_DENIED",
+					callerRole: admission.role,
+				},
+			};
+		}
 		switch (op) {
 			case "send":
 				return handleSend(runtime, message, state, params);
