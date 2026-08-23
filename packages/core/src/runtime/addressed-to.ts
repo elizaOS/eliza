@@ -5,6 +5,8 @@
  * agent is merely overhearing and should not act on it). All name/id resolution
  * runs against the room's entity list, without an LLM call.
  */
+
+import { unwrapUserMessageText } from "../security/incoming-message-security.ts";
 import type { Entity, UUID } from "../types/index";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
@@ -388,8 +390,7 @@ export async function messageVocativelyAddressesOtherParticipant(args: {
 	message: Memory;
 }): Promise<boolean> {
 	const { runtime, message } = args;
-	const text =
-		typeof message.content?.text === "string" ? message.content.text : "";
+	const text = unwrapUserMessageText(message);
 	if (!text.trim()) return false;
 
 	const participants = await runtime.getEntitiesForRoom(message.roomId);
@@ -413,11 +414,17 @@ function vocativelyAddressesOtherParticipant(args: {
 	self: ReadonlySet<string>;
 }): boolean {
 	const { runtime, message, participants, self } = args;
-	const text =
-		typeof message.content?.text === "string" ? message.content.text : "";
+	// Enveloped (external/bot-authored) messages carry a security wrapper as
+	// content.text; the ^-anchored vocative shapes must read the retained
+	// user payload, not the envelope (live 2026-08-23: every webhook-authored
+	// "hey eliza" fell through because the text began "SECURITY NOTICE:").
+	// Strict unwrap on purpose — a positive here silences the turn and the
+	// classifier variant echoes the name into a prompt instruction, so armor
+	// debris must collapse to "" and fail open.
+	const text = unwrapUserMessageText(message);
 	if (!text.trim()) return false;
 
-	const lead = text.slice(0, 80);
+	const lead = text;
 	// A leading vocative of OUR name keeps the turn ours ("nubilio, ask
 	// eliza …" opens with us, not them). Loop-invariant: computed once.
 	for (const own of self) {
@@ -502,8 +509,8 @@ export async function classifyLeadingVocative(args: {
 	message: Memory;
 }): Promise<LeadingVocativeClass> {
 	const { runtime, message } = args;
-	const text =
-		typeof message.content?.text === "string" ? message.content.text : "";
+	// Same unwrap contract as the suppression matcher above.
+	const text = unwrapUserMessageText(message);
 	const match = VOCATIVE_TOKEN_RE.exec(text);
 	const raw = match?.[1];
 	if (!raw) return { kind: "none" };
