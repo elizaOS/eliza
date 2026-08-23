@@ -20,7 +20,6 @@ import {
   logger,
   ModelType,
   toWellFormedUnicode,
-  truncateWellFormed,
   validateUuid,
 } from "@elizaos/core";
 
@@ -236,6 +235,7 @@ interface CandidateScan {
   perTable: number;
   tables: readonly MemoryType[];
   saturatedTables: MemoryType[];
+  complete: boolean;
 }
 
 const RECALL_TERMINAL_SETTING = "ELIZA_RECALL_SHORT_CIRCUIT";
@@ -264,6 +264,8 @@ async function collectCandidates(
     roomId?: UUID;
     query?: string;
     limit: number;
+    /** Destructive resolution must inspect the complete scoped table. */
+    complete?: boolean;
   },
 ): Promise<CandidateScan> {
   const tables: readonly MemoryType[] =
@@ -273,6 +275,35 @@ async function collectCandidates(
   const saturatedTables: MemoryType[] = [];
 
   for (const tableName of tables) {
+    if (scope.complete) {
+      let cursor: { createdAt: number; id: UUID } | undefined;
+      for (;;) {
+        const page = await runtime.getMemories({
+          agentId: runtime.agentId as UUID,
+          roomId: scope.roomId,
+          tableName,
+          limit: 200,
+          cursor,
+          includeEmbedding: false,
+        });
+        for (const memory of page) collected.push({ memory, type: tableName });
+        if (page.length < 200) break;
+        const last = page.at(-1);
+        if (!last?.id || !Number.isFinite(last.createdAt)) {
+          throw new Error(
+            `Cannot complete ${tableName} scan: page cursor is missing`,
+          );
+        }
+        const next = { createdAt: last.createdAt as number, id: last.id };
+        if (cursor?.createdAt === next.createdAt && cursor.id === next.id) {
+          throw new Error(
+            `Cannot complete ${tableName} scan: cursor did not advance`,
+          );
+        }
+        cursor = next;
+      }
+      continue;
+    }
     // One row past the window, so "older rows exist" is observed rather than
     // assumed from a page that happened to fill.
     const page = await runtime.getMemories({
@@ -313,7 +344,13 @@ async function collectCandidates(
   filtered.sort(
     (a, b) => (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0),
   );
-  return { matches: filtered, perTable, tables, saturatedTables };
+  return {
+    matches: filtered,
+    perTable,
+    tables,
+    saturatedTables,
+    complete: scope.complete === true,
+  };
 }
 
 /** Names every narrowing that was applied, so an empty result can say why. */
@@ -339,6 +376,9 @@ function describeSearchScope(scope: {
  * with "I have nothing stored about her".
  */
 function describeScanWindow(scan: CandidateScan): string {
+  if (scan.complete) {
+    return `Scanned every stored row in the scoped tables (${scan.tables.join(", ")}) before filtering.`;
+  }
   const base = `Scanned only the ${scan.perTable} most recent row(s) of each table (${scan.tables.join(", ")}) before filtering.`;
   if (scan.saturatedTables.length === 0) {
     // "overflowed", not "filled": a table holding exactly `perTable` rows fills
@@ -390,21 +430,15 @@ async function doSearch(
     .map((c) => toListItem(c.memory, c.type));
   // The text projection carries enough of each hit for model reasoning; the
   // complete records remain machine data for state and trajectory consumers.
-  const lines = items
-    .slice(0, 25)
-    .map(
-      (m) =>
-        `- [${m.type}] ${m.id}: ${truncateWellFormed(toWellFormedUnicode(m.text), 300)}`,
-    );
+  const lines = items.map(
+    (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,
+  );
   const userFacingText = items.length
     ? [
         `I found ${items.length} matching memory record(s):`,
-        ...items
-          .slice(0, 25)
-          .map(
-            (item) =>
-              `- [${item.type}] ${truncateWellFormed(toWellFormedUnicode(item.text), 300)}`,
-          ),
+        ...items.map(
+          (item) => `- [${item.type}] ${toWellFormedUnicode(item.text)}`,
+        ),
       ].join("\n")
     : undefined;
 
@@ -603,10 +637,12 @@ async function doDeleteByQuery(
 
   let scan = await collectCandidates(runtime, {
     type,
+    tables: type ? undefined : FORGET_WIDENING_TABLES,
     entityId: scopeEntityId,
     roomId: roomParam.id,
     query,
     limit,
+    complete: true,
   });
   let matched = strongMatches(scan);
   let widenedNote = "";
@@ -621,13 +657,18 @@ async function doDeleteByQuery(
   // caller explicitly targets them. The strong match bar, confirm gate, and
   // distinct-text ambiguity guard below still bound what can be deleted, and
   // the widening is disclosed in the result.
-  if (matched.length === 0 && type) {
+  if (
+    matched.length === 0 &&
+    type !== undefined &&
+    FORGET_WIDENING_TABLES.includes(type)
+  ) {
     scan = await collectCandidates(runtime, {
       tables: FORGET_WIDENING_TABLES,
       entityId: scopeEntityId,
       roomId: roomParam.id,
       query,
       limit,
+      complete: true,
     });
     matched = strongMatches(scan);
     if (matched.length > 0) {
@@ -652,12 +693,8 @@ async function doDeleteByQuery(
   const distinctTexts = new Set(matched.map(normalize));
   if (distinctTexts.size > 1) {
     const lines = matched
-      .slice(0, 10)
       .map((c) => toListItem(c.memory, c.type))
-      .map(
-        (m) =>
-          `- [${m.type}] ${m.id}: ${truncateWellFormed(toWellFormedUnicode(m.text), 120)}`,
-      );
+      .map((m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`);
     return {
       success: false,
       text: [
@@ -668,20 +705,31 @@ async function doDeleteByQuery(
     };
   }
 
-  const deleted: MemoryListItem[] = [];
-  for (const c of matched) {
-    const id = c.memory.id;
-    if (!id) continue;
-    await runtime.deleteMemory(id);
-    deleted.push(toListItem(c.memory, c.type));
+  const deletable = matched.filter(
+    (
+      candidate,
+    ): candidate is MemoryCandidate & { memory: Memory & { id: UUID } } =>
+      candidate.memory.id !== undefined,
+  );
+  const deleted = deletable.map((candidate) =>
+    toListItem(candidate.memory, candidate.type),
+  );
+  const ids = deletable.map((candidate) => candidate.memory.id);
+  if (ids.length > 1) {
+    if (!runtime.deleteMemories) {
+      return fail(
+        "Refusing a multi-record forget because this runtime cannot delete the whole set atomically.",
+        "MEMORY_ATOMIC_DELETE_UNAVAILABLE",
+      );
+    }
+    await runtime.deleteMemories(ids);
+  } else if (ids[0]) {
+    await runtime.deleteMemory(ids[0]);
   }
 
   return {
     success: true,
-    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${truncateWellFormed(
-      toWellFormedUnicode(deleted[0]?.text ?? ""),
-      120,
-    )}${widenedNote}`,
+    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}${widenedNote}`,
     values: { deletedCount: deleted.length },
     data: {
       actionName: "MEMORY",

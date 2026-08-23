@@ -3931,7 +3931,7 @@ async function createV5MessageContextObject(args: {
 			type: "instruction",
 			source: "message-service",
 			stable: false,
-			content: `unresolved_vocative_notice: The final message:user opens by addressing "${args.unresolvedVocativeName}" — that is not your name and matches no participant of this room. Never answer as though you were "${args.unresolvedVocativeName}" or adopt that identity. If the sender plausibly means you (a nickname or a slip for your actual name), answer as yourself and briefly note your name. Otherwise the message is not addressed to you: end the turn with the IGNORE tool.`,
+			content: `unresolved_vocative_notice: The final message:user opens with "${args.unresolvedVocativeName}", which is not your name and matches no known participant of this room. Never answer as though you were "${args.unresolvedVocativeName}" or adopt that identity. It may be a nickname, a typo, or ordinary conversational wording; if you answer, answer only as yourself and briefly clarify your actual name when useful.`,
 		});
 	}
 

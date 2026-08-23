@@ -13,7 +13,6 @@ import { filterByContextGate } from "../../runtime/context-gates.ts";
 import type { IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import { searchMessagesAction } from "../messaging/triage/actions/searchMessages.ts";
 import {
-	CHANNEL_RECAP_DEFAULT_COUNT,
 	CHANNEL_RECAP_MAX_FETCH,
 	channelRecapAction,
 } from "./actions/channel-recap.ts";
@@ -255,6 +254,31 @@ describe("CHANNEL_RECAP transcript completeness and order", () => {
 		expect(result.text).not.toContain("bridge relay");
 		expect(result.values?.messageCount).toBe(1);
 	});
+
+	it("filters machinery before satisfying the requested dialogue count", async () => {
+		const machinery = Array.from({ length: 60 }, (_, index) =>
+			makeMessage(ROOM_A, 10_000 + index, `tool-${index}`, {
+				content: { type: "action_result", text: `tool-${index}` },
+			} as Partial<Memory>),
+		);
+		const { runtime } = makeRuntime({
+			[ROOM_A]: [
+				makeMessage(ROOM_A, 1_000, "older dialogue one"),
+				makeMessage(ROOM_A, 2_000, "older dialogue two"),
+				...machinery,
+			],
+		});
+		const result = await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM_A),
+			undefined,
+			{ parameters: { count: 2 } },
+		);
+		expect(result.success).toBe(true);
+		expect(result.values?.messageCount).toBe(2);
+		expect(result.text).toContain("older dialogue one");
+		expect(result.text).toContain("older dialogue two");
+	});
 });
 
 describe("CHANNEL_RECAP count contract", () => {
@@ -271,7 +295,7 @@ describe("CHANNEL_RECAP count contract", () => {
 			undefined,
 		);
 		expect(getMemories).toHaveBeenCalledWith(
-			expect.objectContaining({ count: CHANNEL_RECAP_DEFAULT_COUNT }),
+			expect.objectContaining({ count: CHANNEL_RECAP_MAX_FETCH }),
 		);
 	});
 
@@ -281,17 +305,17 @@ describe("CHANNEL_RECAP count contract", () => {
 			parameters: { count: 100 },
 		});
 		expect(getMemories).toHaveBeenLastCalledWith(
-			expect.objectContaining({ count: 100 }),
+			expect.objectContaining({ count: CHANNEL_RECAP_MAX_FETCH }),
 		);
 		await channelRecapAction.handler(runtime, incoming(ROOM_A), undefined, {
 			parameters: { count: "25" },
 		});
 		expect(getMemories).toHaveBeenLastCalledWith(
-			expect.objectContaining({ count: 25 }),
+			expect.objectContaining({ count: CHANNEL_RECAP_MAX_FETCH }),
 		);
 	});
 
-	it("reads the storage bound and states it explicitly instead of silently clamping", async () => {
+	it("rejects requests above the storage bound without a partial transcript", async () => {
 		const { runtime, getMemories } = makeRuntime({ [ROOM_A]: many });
 		const result = await channelRecapAction.handler(
 			runtime,
@@ -299,18 +323,13 @@ describe("CHANNEL_RECAP count contract", () => {
 			undefined,
 			{ parameters: { count: 100_000 } },
 		);
-		expect(getMemories).toHaveBeenLastCalledWith(
-			expect.objectContaining({ count: CHANNEL_RECAP_MAX_FETCH }),
-		);
+		expect(getMemories).not.toHaveBeenCalled();
+		expect(result.success).toBe(false);
 		expect(result.text).toContain(String(CHANNEL_RECAP_MAX_FETCH));
 		expect(result.text).toContain("storage read bound");
-		const scope = (
-			result.data as {
-				scope: { requestedCount: number; storageReadBound: number };
-			}
-		).scope;
-		expect(scope.requestedCount).toBe(100_000);
-		expect(scope.storageReadBound).toBe(CHANNEL_RECAP_MAX_FETCH);
+		expect((result.data as { error: string }).error).toBe(
+			"CHANNEL_RECAP_COUNT_TOO_LARGE",
+		);
 	});
 
 	it("falls back to the default for non-positive or malformed counts", async () => {
@@ -320,8 +339,71 @@ describe("CHANNEL_RECAP count contract", () => {
 				parameters: { count: bad },
 			});
 			expect(getMemories).toHaveBeenLastCalledWith(
-				expect.objectContaining({ count: CHANNEL_RECAP_DEFAULT_COUNT }),
+				expect.objectContaining({ count: CHANNEL_RECAP_MAX_FETCH }),
 			);
 		}
+	});
+});
+
+describe("CHANNEL_RECAP complete transcript and offset paging", () => {
+	const ROOM = "00000000-0000-4000-8000-00000000f1f1" as UUID;
+
+	it("serves the entire requested range even when it is large", async () => {
+		const rows = Array.from({ length: 20 }, (_, i) =>
+			makeMessage(ROOM, 1_000 + i, `M${i}-${"x".repeat(9_000)}`),
+		);
+		const { runtime } = makeRuntime({ [ROOM]: rows });
+		const result = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 20 } },
+		)) as ActionResult;
+		expect(result.success).toBe(true);
+		const scope = (result.data as { scope: Record<string, unknown> }).scope;
+		expect(scope.renderedCount).toBe(20);
+		for (let i = 0; i < 20; i++) {
+			expect(result.text).toContain(`M${i}-${"x".repeat(9_000)}`);
+		}
+	});
+
+	it("offset pages into older history and reports the exact range", async () => {
+		const rows = Array.from({ length: 12 }, (_, i) =>
+			makeMessage(ROOM, 1_000 + i, `msg-${i}`),
+		);
+		const { runtime } = makeRuntime({ [ROOM]: rows });
+		const result = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 4, offset: 4 } },
+		)) as ActionResult;
+		expect(result.success).toBe(true);
+		// newest-first rows: offset 4 skips msg-11..msg-8; serves msg-7..msg-4.
+		for (const i of [7, 6, 5, 4]) expect(result.text).toContain(`msg-${i}`);
+		for (const i of [11, 10, 9, 8, 3]) {
+			expect(result.text).not.toContain(`msg-${i}\n`);
+		}
+		expect(result.text).toContain("messages 5–8 back");
+	});
+
+	it("serves every requested message complete without a text-fit slice", async () => {
+		const giant = "G".repeat(65_000);
+		const rows = [
+			makeMessage(ROOM, 1_000, "older small"),
+			makeMessage(ROOM, 2_000, giant),
+		];
+		const { runtime } = makeRuntime({ [ROOM]: rows });
+		const result = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 2 } },
+		)) as ActionResult;
+		expect(result.success).toBe(true);
+		expect(result.text).toContain(giant);
+		const scope = (result.data as { scope: Record<string, unknown> }).scope;
+		expect(scope.renderedCount).toBe(2);
+		expect(result.text).toContain("older small");
 	});
 });
