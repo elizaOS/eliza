@@ -4350,9 +4350,8 @@ async function handleListRooms(
 		}))
 		.sort(
 			(left, right) =>
-				(left.name ?? left.roomId).localeCompare(
-					right.name ?? right.roomId,
-				) || left.roomId.localeCompare(right.roomId),
+				(left.name ?? left.roomId).localeCompare(right.name ?? right.roomId) ||
+				left.roomId.localeCompare(right.roomId),
 		);
 	const page = explicitPage(matches, params);
 	const lines = page.items.map(
