@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const store: { entries: unknown[] } = { entries: [] };
-vi.mock("./ambient-context", () => ({
+vi.mock("../ambient-context", () => ({
 	getAmbientSingleton: (_key: symbol, factory: () => unknown) => {
 		if (!store.entries.length && factory) factory();
 		return store;
@@ -11,7 +11,7 @@ vi.mock("./ambient-context", () => ({
 import {
 	getRegisteredCuratedApps,
 	registerCuratedApp,
-} from "./app-registry.ts";
+} from "../app-registry.ts";
 
 describe("app-registry", () => {
 	it("registers and returns curated apps", () => {
