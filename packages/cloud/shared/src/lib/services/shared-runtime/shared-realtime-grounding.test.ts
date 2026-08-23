@@ -117,9 +117,88 @@ describe("Shared realtime request classification", () => {
       resolveSharedRealtimeRequirement("wrong — what is the current BTC price?", history),
     ).toMatchObject({
       domain: "markets",
-      query: "wrong — what is the current BTC price?",
+      query: "BTC price current",
       correction: true,
     });
+  });
+
+  for (const literal of [
+    "weather at 192.168.1.1",
+    "weather at 8.8.8.8",
+    "weather at [::1]",
+    "weather at localhost",
+    "version for http://localhost/admin",
+    "latest news from example.com",
+    "latest news from https://example.com/current",
+  ]) {
+    test(`never exports a network target: ${literal}`, () => {
+      expect(resolveSharedRealtimeRequirement(literal, [])).toBeUndefined();
+    });
+  }
+
+  for (const literal of [
+    "current BTC price; project codename zephyr",
+    "current BTC price with ｐａｓｓｗｏｒｄ zephyr",
+    "current BTC price with pass\u200Bword zephyr",
+  ]) {
+    test(`never exports appended or disguised private text: ${literal}`, () => {
+      expect(resolveSharedRealtimeRequirement(literal, [])).toBeUndefined();
+    });
+  }
+
+  test("constructs a narrow market query instead of exporting unrelated utterance text", () => {
+    expect(resolveSharedRealtimeRequirement("please check the current BTC price", [])).toEqual({
+      domain: "markets",
+      query: "BTC price current",
+      correction: false,
+    });
+  });
+
+  test("constructs bounded stock queries without exporting appended clauses", () => {
+    expect(resolveSharedRealtimeRequirement("current AAPL stock price", [])?.query).toBe(
+      "AAPL stock price current",
+    );
+    expect(resolveSharedRealtimeRequirement("Apple share price now", [])?.query).toBe(
+      "Apple stock price current",
+    );
+  });
+
+  test("refuses an unscoped weather lookup rather than searching arbitrary global weather", () => {
+    expect(resolveSharedRealtimeRequirement("what's the weather?", [])).toBeUndefined();
+  });
+
+  test("fresh-searches every follow-up for which history policy selects mutable grounding", () => {
+    const history = [
+      { role: "user" as const, content: "what is btc price rn" },
+      {
+        role: "assistant" as const,
+        content: "BTC was 63,800 USD.",
+        grounding,
+      },
+    ];
+    for (const message of ["what about that now?", "what about that?", "BTC outlook?"]) {
+      expect(resolveSharedRealtimeRequirement(message, history)).toMatchObject({
+        domain: "markets",
+        query: "BTC price current",
+        correction: true,
+      });
+    }
+  });
+
+  test("keeps weather, news, and mutable canonical queries restart-safe", () => {
+    for (const [query, followUp] of [
+      ["current public weather in San Francisco", "what about that now?"],
+      ["latest public election news", "what about that?"],
+      ["current public ceo of Example Corp", "is that still current?"],
+    ] as const) {
+      const prior: SharedRuntimePublicGrounding = { ...grounding, query };
+      expect(
+        resolveSharedRealtimeRequirement(followUp, [
+          { role: "user", content: query },
+          { role: "assistant", content: "Old mutable claim.", grounding: prior },
+        ])?.query,
+      ).toBe(query);
+    }
   });
 
   for (const literal of [
@@ -278,6 +357,31 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
       ),
     ).toBe(false);
     expect(validateSharedRealtimeReply("?", grounding)).toBe(false);
+  });
+
+  test("binds currency, percent, temperature, speed, and length units to evidence", () => {
+    const marker = "[[SOURCE_URL:https://coin.example/bitcoin]]";
+    const withEvidence = (text: string): SharedRuntimePublicGrounding => ({
+      ...grounding,
+      sources: [{ url: "https://coin.example/bitcoin", text }],
+    });
+    for (const [claim, evidence] of [
+      ["Asset is $77", "Asset is 77 euros"],
+      ["Asset is 77 USD", "Asset is €77"],
+      ["Growth is 5%", "Growth is $5"],
+      ["Temperature is 20 celsius", "Temperature is 20 fahrenheit"],
+      ["Wind is 10 mph", "Wind is 10 km/h"],
+      ["Length is 5 inches", "Length is 5 cm"],
+      ["Wind is 5 mph and distance is 10 km", "Wind is 5 km and distance is 10 mph"],
+    ] as const) {
+      const result = withEvidence(evidence);
+      if (result.kind !== "web_search") throw new Error("fixture grounding must be available");
+      expect(validateSharedRealtimeReply(`${claim}. ${marker}`, result)).toBe(false);
+    }
+    const equivalent = withEvidence("Asset is 77 dollars and growth is 5 percent.");
+    if (equivalent.kind !== "web_search") throw new Error("fixture grounding must be available");
+    expect(validateSharedRealtimeReply(`Asset is $77. ${marker}`, equivalent)).toBe(true);
+    expect(validateSharedRealtimeReply(`Growth is 5%. ${marker}`, equivalent)).toBe(true);
   });
 
   test("rejects cross-result value-to-URL misattribution", () => {
