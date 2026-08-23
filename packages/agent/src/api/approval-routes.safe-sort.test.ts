@@ -13,7 +13,28 @@ function safeSort(items: { createdAt: number; id: string }[]) {
 }
 
 describe("approval-routes safe-sort", () => {
-  it("sorts descending", () => { expect(safeSort([{createdAt:1,id:"a"},{createdAt:2,id:"b"}])[0].id).toBe("b"); });
-  it("NaN fallback", () => { expect(safeSort([{createdAt:NaN,id:"a"},{createdAt:1,id:"b"}])[0].id).toBe("b"); });
-  it("tiebreak", () => { expect(safeSort([{createdAt:1,id:"b"},{createdAt:1,id:"a"}])[0].id).toBe("a"); });
+  it("sorts descending", () => {
+    expect(
+      safeSort([
+        { createdAt: 1, id: "a" },
+        { createdAt: 2, id: "b" },
+      ])[0].id,
+    ).toBe("b");
+  });
+  it("NaN fallback", () => {
+    expect(
+      safeSort([
+        { createdAt: NaN, id: "a" },
+        { createdAt: 1, id: "b" },
+      ])[0].id,
+    ).toBe("b");
+  });
+  it("tiebreak", () => {
+    expect(
+      safeSort([
+        { createdAt: 1, id: "b" },
+        { createdAt: 1, id: "a" },
+      ])[0].id,
+    ).toBe("a");
+  });
 });
