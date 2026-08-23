@@ -92,6 +92,19 @@ interface PluginMatch {
 	score: number;
 }
 
+function toPluginScore(value: number): number {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function comparePluginMatch(a: PluginMatch, b: PluginMatch): number {
+  const aScore = toPluginScore(a.score);
+  const bScore = toPluginScore(b.score);
+  if (bScore !== aScore) return bScore - aScore;
+  return a.plugin.name.localeCompare(b.plugin.name);
+}
+
+export const __testComparePluginMatch = comparePluginMatch;
+
 interface TaskAgentStatus {
 	sessionId: string;
 	agentType: string;
@@ -391,7 +404,7 @@ function rankMatches(
 		}
 		if (score > 0) ranked.push({ plugin, score });
 	}
-	return ranked.sort((a, b) => b.score - a.score).slice(0, 5);
+	return ranked.sort(comparePluginMatch).slice(0, 5);
 }
 
 function renderChoiceBlock(
