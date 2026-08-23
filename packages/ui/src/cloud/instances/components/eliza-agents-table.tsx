@@ -207,6 +207,7 @@ interface AgentRowViewModel {
   canSleep: boolean;
   /** Reactivate (wake): offered exactly for the sleeping (deactivated) state. */
   canWake: boolean;
+  /** The authenticated pairing endpoint owns final Web UI reachability. */
   hasStandaloneWebUi: boolean;
   runtimeKind: ReturnType<typeof getRuntimeKind>;
 }
@@ -235,9 +236,7 @@ export function deriveAgentRow(
       displayStatus === "running" && agent.executionTier !== "shared" && !busy,
     canWake: displayStatus === "sleeping" && !busy,
     hasStandaloneWebUi:
-      displayStatus === "running" &&
-      agent.executionTier !== "shared" &&
-      Boolean(agent.webUiUrl),
+      displayStatus === "running" && agent.executionTier !== "shared",
     runtimeKind: getRuntimeKind(agent),
   };
 }
@@ -963,31 +962,18 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
             }),
           }}
         />
-        {/* Search and primary navigation for the visible agent set. */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-            <Input
-              placeholder={t("cloud.elizaAgentsTable.searchAgents", {
-                defaultValue: "Search agents…",
-              })}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 border-border bg-card text-txt placeholder:text-muted"
-            />
-          </div>
-          <Button asChild size="sm" className="h-9">
-            <a
-              href={ELIZA_APP_AGENT_CREATE_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink className="h-4 w-4" />
-              {t("cloud.elizaAgentsTable.openElizaApp", {
-                defaultValue: "Open Eliza app",
-              })}
-            </a>
-          </Button>
+        {/* Search the authoritative agent set. Each runnable row owns its one
+            launch affordance: Open Web UI. */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input
+            placeholder={t("cloud.elizaAgentsTable.searchAgents", {
+              defaultValue: "Search agents…",
+            })}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 border-border bg-card pl-9 text-txt placeholder:text-muted"
+          />
         </div>
 
         {searchQuery && (
@@ -1106,10 +1092,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                       <TableCell>
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <a
-                              href={`/cloud/agents/${sb.id}`}
-                              className="font-medium text-txt-strong hover:text-accent transition-colors"
-                            >
+                            <span className="font-medium text-txt-strong">
                               {getAgentDisplayName(
                                 sb,
                                 t("cloud.elizaAgentsTable.sharedAgentName", {
@@ -1119,7 +1102,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   defaultValue: "Unnamed Agent",
                                 }),
                               )}
-                            </a>
+                            </span>
                             <AgentCostBadge
                               status={displayStatus}
                               executionTier={sb.executionTier}
@@ -1146,48 +1129,17 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             className="inline-flex items-center gap-1 text-xs text-muted-strong hover:text-txt-strong transition-colors bg-transparent border-0 p-0"
                           >
                             <ExternalLink className="h-3 w-3" />
-                            {t("cloud.elizaAgentsTable.open", {
-                              defaultValue: "Open",
+                            {t("cloud.elizaAgentsTable.openWebUi", {
+                              defaultValue: "Open Web UI",
                             })}
                           </Button>
                         ) : (
-                          <span className="text-xs text-muted">
-                            {displayStatus === "running" &&
-                            sb.executionTier !== "shared"
-                              ? t("cloud.elizaAgentsTable.unavailable", {
-                                  defaultValue: "Unavailable",
-                                })
-                              : "—"}
-                          </span>
+                          <span className="text-xs text-muted">—</span>
                         )}
                       </TableCell>
 
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-0.5">
-                          {hasStandaloneWebUi && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  type="button"
-                                  aria-label={t(
-                                    "cloud.elizaAgentsTable.openWebUi",
-                                    { defaultValue: "Open Web UI" },
-                                  )}
-                                  onClick={() => openWebUIWithPairing(sb.id)}
-                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors"
-                                >
-                                  <ExternalLink className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-card border-border">
-                                {t("cloud.elizaAgentsTable.openWebUi", {
-                                  defaultValue: "Open Web UI",
-                                })}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-
                           {canStart && (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -1355,10 +1307,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <a
-                        href={`/cloud/agents/${sb.id}`}
-                        className="font-medium text-txt-strong hover:text-accent transition-colors block truncate"
-                      >
+                      <span className="block truncate font-medium text-txt-strong">
                         {getAgentDisplayName(
                           sb,
                           t("cloud.elizaAgentsTable.sharedAgentName", {
@@ -1368,7 +1317,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             defaultValue: "Unnamed Agent",
                           }),
                         )}
-                      </a>
+                      </span>
                       <AgentCostBadge
                         status={displayStatus}
                         executionTier={sb.executionTier}
@@ -1397,8 +1346,8 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                           className="flex min-h-touch items-center justify-center gap-1.5 px-3 py-2 text-xs text-accent rounded-md hover:bg-bg-hover transition-colors"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
-                          {t("cloud.elizaAgentsTable.webUi", {
-                            defaultValue: "Web UI",
+                          {t("cloud.elizaAgentsTable.openWebUi", {
+                            defaultValue: "Open Web UI",
                           })}
                         </Button>
                       )}
