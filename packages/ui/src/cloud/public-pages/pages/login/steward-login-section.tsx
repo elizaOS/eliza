@@ -140,7 +140,26 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
   import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   (typeof process !== "undefined" &&
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
-const LOCAL_DEDICATED_TEST_API_KEY = `eliza_${"d".repeat(64)}`;
+/**
+ * Optional local-stack API key for the "Continue with local test account"
+ * shortcut. It is never bundled by default: the operator who arms
+ * `PLAYWRIGHT_TEST_AUTH` on the local Cloud Worker exports the key that the
+ * e2e preload (or their own seed) minted, and `/api/test/auth/session` trades
+ * it for a test session cookie. The button stays hidden when the key is absent.
+ */
+function readLocalDedicatedTestApiKey(): string | null {
+  const fromVite = import.meta.env.VITE_LOCAL_DEDICATED_TEST_API_KEY;
+  if (typeof fromVite === "string" && fromVite.trim()) return fromVite.trim();
+  const fromNext =
+    typeof process !== "undefined"
+      ? process.env?.NEXT_PUBLIC_LOCAL_DEDICATED_TEST_API_KEY
+      : undefined;
+  if (typeof fromNext === "string" && fromNext.trim()) return fromNext.trim();
+  return null;
+}
+const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
+const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
+  PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
 
 type AuthStep =
   | "idle"
@@ -163,6 +182,29 @@ async function persistStewardToken(token: string): Promise<void> {
     throw new Error(
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
     );
+  }
+}
+
+/**
+ * Parse the `/api/test/auth/session` reply. Malformed bodies become an explicit
+ * empty result so the caller reports the HTTP failure instead of a fake token.
+ */
+function parseLocalTestSessionResponse(raw: string): {
+  error?: string;
+  token?: string;
+} {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const record = parsed as Record<string, unknown>;
+    return {
+      ...(typeof record.error === "string" ? { error: record.error } : {}),
+      ...(typeof record.token === "string" ? { token: record.token } : {}),
+    };
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — a non-JSON body yields an
+    // explicit empty result; the caller surfaces the HTTP status as the error.
+    return {};
   }
 }
 
@@ -1097,6 +1139,7 @@ export default function StewardLoginSection() {
   }
 
   async function handleLocalDedicatedSignIn() {
+    if (!LOCAL_DEDICATED_TEST_API_KEY) return;
     setLoading("local");
     setError(null);
     try {
@@ -1112,15 +1155,16 @@ export default function StewardLoginSection() {
           "Content-Type": "application/json",
         },
       });
-      const result = (await response.json().catch(() => null)) as {
-        error?: string;
-        token?: string;
-      } | null;
-      if (!response.ok || !result?.token) {
+      const result = parseLocalTestSessionResponse(await response.text());
+      if (!response.ok || !result.token) {
         throw new Error(
-          result?.error ?? "Could not start the local Cloud test session.",
+          result.error ?? "Could not start the local Cloud test session.",
         );
       }
+      // `useSessionAuth` recognises the Playwright marker cookie as the
+      // test-session signal; the API only sets the httpOnly session cookie,
+      // so this dev-only path must plant the readable marker itself.
+      // biome-ignore lint/suspicious/noDocumentCookie: the marker must be readable synchronously by the session hook; the Cookie Store API is async and not universally available.
       document.cookie = "eliza-test-auth=1; Path=/; SameSite=Lax; Max-Age=3600";
       await persistStewardToken(LOCAL_DEDICATED_TEST_API_KEY);
       window.dispatchEvent(new CustomEvent("steward-token-sync"));
@@ -2005,7 +2049,7 @@ export default function StewardLoginSection() {
         </Alert>
       )}
 
-      {PLAYWRIGHT_TEST_AUTH_ENABLED && (
+      {LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED && (
         <div className="space-y-2">
           <Button
             type="button"
