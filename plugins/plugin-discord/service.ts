@@ -2071,10 +2071,12 @@ export class DiscordService extends Service implements IDiscordService {
 									agentId: runtime.agentId,
 									channelId: targetChannel.id,
 									accountId,
-									textPreview: textContent
-										.replace(/\s+/g, " ")
-										.trim()
-										.slice(0, 200),
+									textPreview: truncateWellFormed(
+										toWellFormedUnicode(
+											textContent.replace(/\s+/g, " ").trim(),
+										),
+										200,
+									),
 								},
 								"Suppressing duplicate Discord connector delivery",
 							);
