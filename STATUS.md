@@ -54,6 +54,7 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Real PGlite Gmail account isolation and atomic seed/cursor proof: 1 file, 4 tests passed.
 - Typechecks passed for Core, SQL, Google Workspace, Calendar, and Personal Assistant after the final `develop` merge.
 - Biome passed on all 18 review-fix files; `git diff --check` passed.
+- Repository guide parity passed for all 161 tracked CLAUDE.md/AGENTS.md pairs. Root `bun run verify` was attempted and stopped before code checks at `check:biome-version` because this recovery worktree's sparse checkout omits `packages/auth/package.json`; this is a checkout-materialization gate, not a LifeOps diagnostic.
 - The focused tests use deterministic fixtures or local PGlite only. They are not represented as real-provider acceptance.
 
 ## Done
