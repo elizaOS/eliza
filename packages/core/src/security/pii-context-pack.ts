@@ -39,9 +39,10 @@
  * to this chunk, never the whole secret artifact and never a real alias.
  */
 
+import { buildAccessContext } from "../access-context.js";
 import { ElizaError } from "../errors.js";
 import type { PiiScrubRequestPayload } from "../types/events.js";
-import type { Memory, UUID } from "../types/index.js";
+import type { AccessContext, Memory, UUID } from "../types/index.js";
 import type {
 	PiiPseudonymAssignment,
 	TextEmbeddingParams,
@@ -425,6 +426,15 @@ export interface RuntimeContextSourceOptions {
 	 * reach into `@elizaos/agent`, so this is injected.
 	 */
 	readonly resolveEntity?: PiiContextSources["resolveEntity"];
+	/**
+	 * Tenant-scoped access context for memory/message searches. When supplied
+	 * it is threaded into `searchMemories` and `searchMessages` so the DB
+	 * adapter filters to what the requester may see. When omitted and a
+	 * `message` is supplied it is derived via `buildAccessContext`.
+	 */
+	readonly accessContext?: AccessContext;
+	/** Message to derive `accessContext` from when `accessContext` is not supplied. */
+	readonly message?: Memory;
 }
 
 /** Structural view of the documents service (`DocumentService`). */
@@ -487,11 +497,17 @@ export function sourcesFromRuntime(
 				ModelType.TEXT_EMBEDDING,
 				params,
 			);
+			const accessContext =
+				options.accessContext ??
+				(options.message
+					? await buildAccessContext(runtime, options.message)
+					: undefined);
 			const memories = await runtime.searchMemories({
 				embedding,
 				query,
 				tableName: "messages",
 				count: limit,
+				...(accessContext ? { accessContext } : {}),
 			});
 			return memories
 				.filter((memory) => typeof memory.content.text === "string")
@@ -509,10 +525,16 @@ export function sourcesFromRuntime(
 	const roomIds = options.roomIds;
 	if (roomIds && roomIds.length > 0) {
 		sources.searchMessages = async (query) => {
+			const accessContext =
+				options.accessContext ??
+				(options.message
+					? await buildAccessContext(runtime, options.message)
+					: undefined);
 			const hits = await runtime.adapter.searchMessages({
 				roomIds: [...roomIds],
 				query,
 				limit,
+				...(accessContext ? { accessContext } : {}),
 			});
 			return hits
 				.filter((hit) => typeof hit.memory.content.text === "string")
