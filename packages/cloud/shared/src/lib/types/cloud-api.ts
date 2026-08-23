@@ -1,4 +1,4 @@
-// Defines cloud shared cloud api behavior for backend service consumers.
+/** Defines cloud transport DTOs shared by backend producers and API consumers. */
 export type IsoDateString = string;
 export type DateLike = Date | IsoDateString;
 
@@ -102,6 +102,39 @@ export interface InvoiceDto {
   updated_at: DateLike;
   due_date: DateLike | null;
   paid_at: DateLike | null;
+}
+
+/** Payment rails represented by the unified payment-request transport. */
+export type PaymentRequestProviderDto = "stripe" | "oxapay" | "x402" | "wallet_native";
+
+/** Persisted payment-request lifecycle states exposed to creators. */
+export type PaymentRequestStatusDto =
+  | "pending"
+  | "delivered"
+  | "settled"
+  | "failed"
+  | "expired"
+  | "canceled";
+
+/**
+ * Creator-facing payment-request projection. Provider payloads, callback
+ * credentials, payer identities, settlement proof, and arbitrary metadata
+ * never cross this transport boundary.
+ */
+export interface PaymentRequestDto {
+  id: string;
+  agentId: string | null;
+  appId: string | null;
+  provider: PaymentRequestProviderDto;
+  amountCents: number;
+  currency: string;
+  reason: string | null;
+  status: PaymentRequestStatusDto;
+  hostedUrl: string | null;
+  settledAt: IsoDateString | null;
+  expiresAt: IsoDateString;
+  createdAt: IsoDateString;
+  updatedAt: IsoDateString;
 }
 
 export type AppDeploymentStatus = "draft" | "building" | "deploying" | "deployed" | "failed";
