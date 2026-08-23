@@ -18,6 +18,7 @@
     "format:check": "bunx @biomejs/biome format package.json src test"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*"
   },
