@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	detectClientPlatform,
 	isDynamicLoadingAllowed,
-} from "./platform-detect.ts";
+} from "../platform-detect.ts";
 
 function req(headers: Record<string, string | undefined>) {
 	return { headers } as never;
