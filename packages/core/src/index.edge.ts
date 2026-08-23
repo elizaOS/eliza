@@ -65,6 +65,7 @@ export * from "./providers/skill-eligibility";
 export * from "./roles";
 export * from "./runtime";
 export * from "./runtime/rlm";
+export * from "./runtime/prepared-model-request";
 export * from "./runtime/system-prompt";
 export * from "./schemas/character";
 export * from "./schemas/index";

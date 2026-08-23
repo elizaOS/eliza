@@ -237,6 +237,30 @@ afterEach(() => {
 });
 
 describe("OpenAI native text plumbing", () => {
+  it("rejects an oversized provider-prepared body before generateText dispatch", async () => {
+    const { handleTextSmall } = await import("../models/text");
+    await expect(
+      handleTextSmall(createRuntime(), {
+        prompt: "provider-final-wire-canary".repeat(64),
+        providerOptions: {
+          eliza: {
+            modelInputBudget: {
+              contextWindowTokens: 9_000,
+            },
+          },
+        },
+      } as never)
+    ).rejects.toMatchObject({
+      code: "MODEL_INPUT_OVER_BUDGET",
+      context: expect.objectContaining({
+        provider: "openai-compatible",
+        model: "gpt-test-small",
+      }),
+    });
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+    expect(aiMocks.streamText).not.toHaveBeenCalled();
+  });
+
   it("publishes concrete GPT-5.6 defaults for pre-handler admission", async () => {
     const { openaiPlugin } = await import("../index");
     expect(openaiPlugin.modelMetadata?.[ModelType.TEXT_SMALL]).toMatchObject({
