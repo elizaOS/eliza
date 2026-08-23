@@ -128,4 +128,30 @@ describe("formatTriageSummary", () => {
       "Triaged 25 of at least 1000 unread notification(s)",
     );
   });
+
+  it("handles NaN scores safely when sorting triaged notifications", () => {
+    const triaged = [
+      {
+        score: NaN,
+        notification: { id: "n-1" },
+      },
+      {
+        score: 100,
+        notification: { id: "n-2" },
+      },
+    ];
+
+    triaged.sort((a, b) => {
+      const bScore =
+        typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+      const aScore =
+        typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+      return (
+        bScore - aScore || a.notification.id.localeCompare(b.notification.id)
+      );
+    });
+
+    expect(triaged[0]?.notification.id).toBe("n-2");
+    expect(triaged[1]?.notification.id).toBe("n-1");
+  });
 });
