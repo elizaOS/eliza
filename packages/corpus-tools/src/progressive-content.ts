@@ -27,7 +27,7 @@ import {
 } from "./progressive-content-formats.ts";
 
 export const PROGRESSIVE_CONTENT_SCHEMA_VERSION =
-  "elizaos.progressive-content.v3";
+  "elizaos.progressive-content.v2";
 export const PROGRESSIVE_CONTENT_ANCHOR_TIME = "2026-01-01T00:00:00.000Z";
 
 export type ProgressiveContentFamily =
@@ -116,11 +116,11 @@ const PROFILE_SHAPES: Readonly<
   scale: {
     counts: {
       file: 2,
-      document: 1,
-      memory: 1,
-      email: 1,
-      attachment: 1,
-      "tool-output": 1,
+      document: 2,
+      memory: 2,
+      email: 2,
+      attachment: 2,
+      "tool-output": 2,
     },
     baseBytes: {
       file: 1024 * 1024,
@@ -1026,7 +1026,7 @@ function objectByteLength(
 ) {
   const base = shape.baseBytes[family];
   if (profile === "scale") {
-    return family === "file" && index === 1 ? 10 * 1024 * 1024 : base;
+    return index === 1 ? 10 * 1024 * 1024 : base;
   }
   const boundaryCases =
     profile === "micro"

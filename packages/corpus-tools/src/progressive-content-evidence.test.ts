@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  buildContentContextResult,
   CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
   CONTENT_CONTEXT_RESULT_SCHEMA_VERSION,
   type ContentContextRequiredArtifact,
@@ -12,27 +13,43 @@ import {
 const manifestSha = "b".repeat(64);
 
 function evidence() {
+  const objects = [
+    "file",
+    "document",
+    "memory",
+    "email",
+    "attachment",
+    "tool-output",
+  ].flatMap((family) =>
+    [1024 * 1024, 10 * 1024 * 1024].map((byteLength) => ({
+      id: `${family}-${byteLength}`,
+      family,
+      byteLength,
+      sourceSha256: "c".repeat(64),
+      revision: `revision-${family}-${byteLength}`,
+      authorizationScope: `scope-${family}`,
+    })),
+  );
   const values: Record<ContentContextRequiredArtifact, unknown> = {
     "corpus-manifest.json": {
       manifestSha256: manifestSha,
-      objects: [
-        { family: "file", byteLength: 10 * 1024 * 1024 },
-        { family: "document", byteLength: 1024 * 1024 },
-        { family: "memory", byteLength: 1024 * 1024 },
-        { family: "email", byteLength: 1024 * 1024 },
-        { family: "attachment", byteLength: 1024 * 1024 },
-        { family: "tool-output", byteLength: 1024 * 1024 },
-      ],
+      objects,
     },
     "native-realization-ledger.json": {
       corpusManifestSha256: manifestSha,
-      entries: [
-        {
-          status: "verified",
-          sourceBytes: 1024,
-          sourceWork: { bytesRead: 1024, maxReadBytes: 1024 },
+      entries: objects.map((object) => ({
+        status: "verified",
+        objectId: object.id,
+        family: object.family,
+        sourceSha256: object.sourceSha256,
+        sourceBytes: object.byteLength,
+        revision: object.revision,
+        authorizationScope: object.authorizationScope,
+        sourceWork: {
+          bytesRead: object.byteLength,
+          maxReadBytes: 64 * 1024,
         },
-      ],
+      })),
     },
     "conformance.json": {
       reports: [
@@ -47,11 +64,13 @@ function evidence() {
             maxPageLatencyMs: 2,
             rssGrowthBytes: 1024,
             readAmplification: 1,
+            readCallsPerPageMax: 1,
             rowsPerPageMax: 1,
             ceilings: {
               maxPageLatencyMs: 100,
               maxRssGrowthBytes: 1024 * 1024,
               maxReadAmplification: 2,
+              maxReadCallsPerPage: 2,
               maxRowsPerPage: 8,
             },
           },
@@ -143,6 +162,18 @@ function replaceArtifact(
 }
 
 describe("content-context result", () => {
+  it("builds a producer result from the exact validated artifact bytes", () => {
+    const { result, bytes } = evidence();
+    expect(
+      buildContentContextResult({
+        commit: result.commit,
+        corpusManifestSha256: result.corpusManifestSha256,
+        generatorRevision: result.generatorRevision,
+        artifactBytes: bytes,
+      }),
+    ).toEqual(result);
+  });
+
   it("accepts cryptographically bound semantic proof", () => {
     const { result, bytes } = evidence();
     expect(validateContentContextResult(result, bytes)).toEqual(result);
@@ -182,5 +213,39 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(/semantic/u);
+  });
+
+  it("rejects aggregate scale coverage that omits one family's 10 MiB case", () => {
+    const original = evidence();
+    const manifest = JSON.parse(
+      new TextDecoder().decode(original.bytes["corpus-manifest.json"]),
+    ) as { objects: Array<{ family: string; byteLength: number }> };
+    manifest.objects = manifest.objects.filter(
+      (object) =>
+        object.family !== "attachment" ||
+        object.byteLength !== 10 * 1024 * 1024,
+    );
+    const changed = replaceArtifact(original, "corpus-manifest.json", manifest);
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/attachment missing 10485760 byte scale/u);
+  });
+
+  it("rejects a realization ledger that is not identity-bound to every object", () => {
+    const original = evidence();
+    const ledger = JSON.parse(
+      new TextDecoder().decode(
+        original.bytes["native-realization-ledger.json"],
+      ),
+    ) as { entries: unknown[] };
+    ledger.entries.pop();
+    const changed = replaceArtifact(
+      original,
+      "native-realization-ledger.json",
+      ledger,
+    );
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/does not cover every corpus object/u);
   });
 });
