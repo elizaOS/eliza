@@ -1,6 +1,8 @@
 /**
- * Coverage for the pglite error-compat shim: error code constants, constructor
- * metadata, factory helper, and cause-chain scanning in getPgliteErrorCode.
+ * Behavioral coverage for the agent-local PGlite error-compat shim: canonical
+ * codes, PgliteInitError metadata, the factory helper, and getPgliteErrorCode
+ * cause-chain walking, including duck-typed objects, cycles, ordering, and
+ * non-canonical codes.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -52,6 +54,40 @@ describe("PgliteInitError", () => {
     expect(err.code).toBe(PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED);
     expect(err.dataDir).toBeUndefined();
   });
+
+  it("is an Error subclass and leaves dataDir unset when options are omitted", () => {
+    const err = new PgliteInitError(
+      PGLITE_ERROR_CODES.ACTIVE_LOCK,
+      "dir in use",
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(PgliteInitError);
+    expect(err.dataDir).toBeUndefined();
+    expect(err.cause).toBeUndefined();
+  });
+
+  it("accepts cause and dataDir together", () => {
+    const cause = new Error("sqlite lock");
+    const err = new PgliteInitError(
+      PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED,
+      "reset required",
+      { cause, dataDir: "/var/eliza/pglite" },
+    );
+    expect(err.cause).toBe(cause);
+    expect(err.dataDir).toBe("/var/eliza/pglite");
+  });
+
+  it("forwards cause and dataDir through the factory helper", () => {
+    const cause = new Error("io");
+    const err = createPgliteInitError(
+      PGLITE_ERROR_CODES.CORRUPT_DATA,
+      "bad image",
+      { cause, dataDir: "/tmp/x" },
+    );
+    expect(err).toBeInstanceOf(PgliteInitError);
+    expect(err.cause).toBe(cause);
+    expect(err.dataDir).toBe("/tmp/x");
+  });
 });
 
 describe("getPgliteErrorCode", () => {
@@ -89,5 +125,93 @@ describe("getPgliteErrorCode", () => {
       cause: Object.assign(new Error("inner"), { code: "ECONNREFUSED" }),
     });
     expect(getPgliteErrorCode(err)).toBeNull();
+  });
+
+  it("reads every canonical code from a duck-typed non-Error object", () => {
+    expect(getPgliteErrorCode({ code: PGLITE_ERROR_CODES.ACTIVE_LOCK })).toBe(
+      PGLITE_ERROR_CODES.ACTIVE_LOCK,
+    );
+    expect(getPgliteErrorCode({ code: PGLITE_ERROR_CODES.CORRUPT_DATA })).toBe(
+      PGLITE_ERROR_CODES.CORRUPT_DATA,
+    );
+    expect(
+      getPgliteErrorCode({ code: PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED }),
+    ).toBe(PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED);
+  });
+
+  it("walks a non-Error object's cause to a matching code", () => {
+    const wrapped = {
+      cause: { code: PGLITE_ERROR_CODES.CORRUPT_DATA },
+    };
+    expect(getPgliteErrorCode(wrapped)).toBe(PGLITE_ERROR_CODES.CORRUPT_DATA);
+  });
+
+  it("continues past a non-canonical string code to a nested match", () => {
+    const inner = createPgliteInitError(
+      PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED,
+      "reset",
+    );
+    const outer = Object.assign(new Error("wrapper"), {
+      code: "ECONNREFUSED",
+      cause: inner,
+    });
+    expect(getPgliteErrorCode(outer)).toBe(
+      PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED,
+    );
+  });
+
+  it("skips a non-string code property and walks cause", () => {
+    const inner = createPgliteInitError(PGLITE_ERROR_CODES.ACTIVE_LOCK, "lock");
+    expect(getPgliteErrorCode({ code: 404, cause: inner })).toBe(
+      PGLITE_ERROR_CODES.ACTIVE_LOCK,
+    );
+  });
+
+  it("returns the first matching code when both outer and inner match", () => {
+    const inner = createPgliteInitError(
+      PGLITE_ERROR_CODES.CORRUPT_DATA,
+      "inner",
+    );
+    const outer = createPgliteInitError(
+      PGLITE_ERROR_CODES.ACTIVE_LOCK,
+      "outer",
+      { cause: inner },
+    );
+    expect(getPgliteErrorCode(outer)).toBe(PGLITE_ERROR_CODES.ACTIVE_LOCK);
+  });
+
+  it("walks a deep Error cause chain", () => {
+    const root = createPgliteInitError(PGLITE_ERROR_CODES.CORRUPT_DATA, "root");
+    const mid = new Error("mid", { cause: root });
+    const outer = new Error("outer", { cause: mid });
+    expect(getPgliteErrorCode(outer)).toBe(PGLITE_ERROR_CODES.CORRUPT_DATA);
+  });
+
+  it("reads a duck-typed code from an Error cause", () => {
+    const wrapper = new Error("wrap", {
+      cause: { code: PGLITE_ERROR_CODES.ACTIVE_LOCK },
+    });
+    expect(getPgliteErrorCode(wrapper)).toBe(PGLITE_ERROR_CODES.ACTIVE_LOCK);
+  });
+
+  it("returns null for empty objects, arrays, and objects with an undefined cause", () => {
+    expect(getPgliteErrorCode({})).toBeNull();
+    expect(getPgliteErrorCode([])).toBeNull();
+    expect(getPgliteErrorCode({ cause: undefined })).toBeNull();
+    expect(getPgliteErrorCode({ code: "ECONNREFUSED" })).toBeNull();
+  });
+
+  it("returns null for primitives that are not objects", () => {
+    expect(getPgliteErrorCode(0)).toBeNull();
+    expect(getPgliteErrorCode(1)).toBeNull();
+    expect(getPgliteErrorCode(true)).toBeNull();
+    expect(getPgliteErrorCode(false)).toBeNull();
+    expect(getPgliteErrorCode("")).toBeNull();
+  });
+
+  it("does not loop forever on a circular non-Error cause", () => {
+    const loop: { cause?: unknown } = {};
+    loop.cause = loop;
+    expect(getPgliteErrorCode(loop)).toBeNull();
   });
 });
