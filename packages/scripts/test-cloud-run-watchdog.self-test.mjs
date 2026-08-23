@@ -130,11 +130,15 @@ try {
     Number.isInteger(parentPid),
     "supervised command must report its PID live",
   );
-  assert.match(
-    stdout,
-    /PARENT_TERM_EXIT/,
-    "parent must handle TERM and exit before forced group teardown",
-  );
+  if (process.platform !== "win32") {
+    // Windows taskkill removes the console process tree without delivering
+    // Node's POSIX SIGTERM event; tree disappearance below is the authority.
+    assert.match(
+      stdout,
+      /PARENT_TERM_EXIT/,
+      "parent must handle TERM and exit before forced group teardown",
+    );
+  }
 
   const descendantDeadline = Date.now() + 1500;
   while (
