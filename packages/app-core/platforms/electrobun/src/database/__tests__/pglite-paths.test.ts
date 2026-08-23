@@ -1,3 +1,6 @@
+/**
+ * Verifies Electrobun PGlite path resolution and reset-target safety with deterministic filesystem-independent inputs.
+ */
 import { describe, expect, it } from "vitest";
 import {
   assertSafePgliteResetTarget,
@@ -5,7 +8,7 @@ import {
   isMemoryPgliteDataDir,
   resolveDefaultPgliteDataDir,
   resolvePgliteDataDirPath,
-} from "./pglite-paths.ts";
+} from "../pglite-paths.ts";
 
 describe("isMemoryPgliteDataDir", () => {
   it("detects the memory sentinel with trimming", () => {

@@ -1,9 +1,12 @@
+/**
+ * Exercises character-persistence service detection and retrieval through deterministic unit tests.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
 	CHARACTER_PERSISTENCE_SERVICE,
 	getCharacterPersistenceService,
 	isCharacterPersistenceService,
-} from "./character-persistence.ts";
+} from "../character-persistence.ts";
 
 describe("isCharacterPersistenceService", () => {
 	it("accepts objects with a persistCharacter function", () => {

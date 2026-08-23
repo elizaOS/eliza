@@ -1,8 +1,11 @@
+/**
+ * Verifies cloud-status authentication and API-key reason classification through deterministic pure-function tests.
+ */
 import { describe, expect, it } from "vitest";
 import {
   isCloudStatusAuthenticated,
   isCloudStatusReasonApiKeyOnly,
-} from "./cloud-status.ts";
+} from "../cloud-status.ts";
 
 describe("isCloudStatusReasonApiKeyOnly", () => {
   it("classifies api-key-only reasons", () => {
