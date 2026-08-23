@@ -528,3 +528,60 @@ test("affiliate surcharge uses one exact debit, persisted receipt, and refund au
   expect(failure.status).toBe(502);
   expect(refundCredits.mock.calls[0]?.[0].amount).toBe(0.065);
 });
+
+test("malformed UTF-8 request body returns 400, refunds exact receipt, and skips upstream (#24768)", async () => {
+  const malformed = new Uint8Array([
+    0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xc3, 0x28, 0x22, 0x7d,
+  ]);
+  const res = await app.request("/test-mcp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: malformed as unknown as string,
+  });
+  expect(res.status).toBe(400);
+  expect(await res.json()).toEqual({
+    error: "MCP request body is not valid UTF-8",
+  });
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({
+        reason: "request_body_malformed_utf8",
+      }),
+    }),
+  );
+  expect(safeFetch).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
+
+test("malformed UTF-8 upstream response returns 502, refunds exact receipt, and skips usage (#24768)", async () => {
+  const malformed = new Uint8Array([
+    0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xc3, 0x28, 0x22, 0x7d,
+  ]);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(malformed);
+      controller.close();
+    },
+  });
+  safeFetch.mockResolvedValue(
+    new Response(stream as unknown as BodyInit, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  const res = await post();
+  expect(res.status).toBe(502);
+  expect(await res.json()).toEqual({
+    error: "MCP response is not valid UTF-8",
+  });
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({
+        reason: "mcp_response_malformed_utf8",
+      }),
+    }),
+  );
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
