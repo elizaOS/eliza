@@ -6,6 +6,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appModeNavigation } from "../app-mode/app-mode";
+import { markSsoLoggedOut } from "../sso-bridge/sso-bridge";
 
 const { authenticatedRef, runJoinFlowMock } = vi.hoisted(() => ({
   authenticatedRef: { current: false },
@@ -81,7 +82,8 @@ describe("JoinPage managed-app SSO handoff", () => {
     expect(screen.queryByTestId("navigate")).toBeNull();
   });
 
-  it("falls back to the local login when no bridge session marker exists", async () => {
+  it("falls back to the local login after an explicit logout", async () => {
+    markSsoLoggedOut();
     render(<JoinPage />);
 
     expect((await screen.findByTestId("navigate")).textContent).toBe(
