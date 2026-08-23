@@ -137,11 +137,13 @@ const originalGoogleApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	aiGenerateTextMock.mockResolvedValue(generated);
+	// Fixtures carry only the fields this module reads from the AI SDK results;
+	// the SDK result types demand far more surface than the adapter touches.
+	aiGenerateTextMock.mockResolvedValue(generated as never);
 	aiEmbedMock.mockResolvedValue({
 		embedding: [0.25, 0.75],
 		usage: { tokens: 2 },
-	});
+	} as never);
 });
 
 afterEach(() => {
@@ -236,7 +238,7 @@ describe("generateTextEmbeddingsBatch", () => {
 	test("preserves input order while reporting individual failures", async () => {
 		const { runtime, useModel, reportError } = localEmbeddingRuntime();
 		useModel.mockImplementation(
-			async (_modelType: ModelType, input: { text: string }) => {
+			async (_modelType: unknown, input: { text: string }) => {
 				if (input.text === "second") {
 					throw new Error("embedding unavailable");
 				}
@@ -348,16 +350,13 @@ describe("generateText", () => {
 	});
 
 	test("dispatches Google generation and forwards its configured key", async () => {
-		const { runtime } = textRuntime("google", "gemini-test");
-		vi.mocked(runtime.getSetting).mockImplementation((key: string) => {
-			if (key === "GOOGLE_API_KEY") return "google-key";
-			return {
-				EMBEDDING_PROVIDER: "local",
-				TEXT_EMBEDDING_MODEL: "local-embedding",
-				TEXT_PROVIDER: "google",
-				TEXT_MODEL: "gemini-test",
-				MAX_OUTPUT_TOKENS: 321,
-			}[key];
+		const { runtime } = makeRuntime({
+			EMBEDDING_PROVIDER: "local",
+			TEXT_EMBEDDING_MODEL: "local-embedding",
+			TEXT_PROVIDER: "google",
+			TEXT_MODEL: "gemini-test",
+			MAX_OUTPUT_TOKENS: 321,
+			GOOGLE_API_KEY: "google-key",
 		});
 
 		await expect(generateText(runtime, "prompt", "system")).resolves.toEqual(
@@ -373,7 +372,7 @@ describe("generateText", () => {
 			.mockRejectedValueOnce(
 				Object.assign(new Error("rate limit"), { status: 429 }),
 			)
-			.mockResolvedValueOnce(generated);
+			.mockResolvedValueOnce(generated as never);
 
 		await expect(generateText(runtime, "prompt")).resolves.toEqual(generated);
 		expect(createAnthropic).toHaveBeenCalled();
