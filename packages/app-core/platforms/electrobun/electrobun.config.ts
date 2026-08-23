@@ -330,6 +330,23 @@ function readJsonFile(filePath: string): Record<string, unknown> {
   }
 }
 
+export function resolveDesktopAppVersion(
+  env: Record<string, string | undefined> = process.env,
+  manifest: Record<string, unknown> = readJsonFile(
+    path.join(electrobunDir, "package.json"),
+  ),
+): string {
+  const override = env.ELIZA_APP_VERSION?.trim();
+  if (override) return override;
+  const packageVersion = manifest.version;
+  if (typeof packageVersion === "string" && packageVersion.trim()) {
+    return packageVersion.trim();
+  }
+  throw new Error(
+    "Electrobun desktop app version is missing from ELIZA_APP_VERSION and package.json.",
+  );
+}
+
 type EntitlementValue = boolean | string | string[];
 
 /**
@@ -558,8 +575,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
   const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
   const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
   const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
-  const appVersion =
-    (process.env.ELIZA_APP_VERSION ?? "").trim() || "2.0.0-beta.0";
+  const appVersion = resolveDesktopAppVersion();
   const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
   const runtimeDistDir =
     (process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
