@@ -39,23 +39,45 @@ const ATTRIBUTION = /\b(?:according to|reported by)\s+([^,.;\n]{1,80})/giu;
 const NEGATION =
   /\b(?:no|not|never|neither|nor|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|hasn['’]t|haven['’]t|hadn['’]t|won['’]t|wouldn['’]t|didn['’]t|doesn['’]t|don['’]t)\b/iu;
 const CLAIM_STOP_WORDS = new Set([
+  "a",
   "about",
   "according",
+  "an",
   "and",
   "are",
+  "as",
+  "at",
+  "be",
+  "been",
+  "being",
   "but",
+  "by",
   "checked",
   "currently",
+  "for",
   "from",
+  "had",
+  "has",
+  "have",
+  "in",
   "into",
+  "is",
+  "it",
+  "its",
   "latest",
+  "of",
+  "on",
+  "or",
   "reported",
   "source",
   "that",
   "the",
   "this",
+  "to",
   "today",
   "was",
+  "were",
+  "will",
   "with",
 ]);
 
@@ -206,7 +228,7 @@ function claimWords(value: string): string[] {
     value
       .toLowerCase()
       .match(/[\p{L}\p{N}]+/gu)
-      ?.filter((word) => word.length > 3 && !CLAIM_STOP_WORDS.has(word)) ?? []
+      ?.filter((word) => !/^\p{N}+$/u.test(word) && !CLAIM_STOP_WORDS.has(word)) ?? []
   );
 }
 
