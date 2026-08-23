@@ -34,6 +34,7 @@ import {
   PREFLIGHT_STEPS,
   parseBatchTimeoutArg,
   parsePositiveDuration,
+  readProcessIdentity,
   runBatches,
   runCommandWithWatchdog,
   runPreflightStep,
@@ -555,6 +556,25 @@ describe("watchdog configuration", () => {
       command: "taskkill",
       args: ["/PID", "321", "/T", "/F"],
     });
+  });
+
+  it("reads Windows process identity without the delayed CIM registration path", () => {
+    let invocation;
+    const identity = readProcessIdentity(321, {
+      platform: "win32",
+      spawnSyncFn: (command, args, options) => {
+        invocation = { command, args, options };
+        return { status: 0, stdout: "638915472000000000" };
+      },
+    });
+
+    expect(identity).toBe("win-creation:638915472000000000");
+    expect(invocation.command).toBe("powershell.exe");
+    expect(invocation.args.join(" ")).toContain(
+      "[System.Diagnostics.Process]::GetProcessById(321)",
+    );
+    expect(invocation.args.join(" ")).not.toContain("Get-CimInstance");
+    expect(invocation.options.timeout).toBe(3000);
   });
 
   it("signals the POSIX process group with TERM then KILL", async () => {

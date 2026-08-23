@@ -289,9 +289,8 @@ function readPosixProcessGroup(pid, spawnSyncFn) {
 
 function readWindowsProcessIdentity(pid, spawnSyncFn) {
   const command = [
-    `$process = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"`,
-    "if ($null -eq $process) { exit 3 }",
-    "[Console]::Write($process.CreationDate.ToUniversalTime().Ticks)",
+    `try { $process = [System.Diagnostics.Process]::GetProcessById(${pid}) } catch { exit 3 }`,
+    "[Console]::Write($process.StartTime.ToUniversalTime().Ticks)",
   ].join("; ");
   let result;
   try {
@@ -301,7 +300,7 @@ function readWindowsProcessIdentity(pid, spawnSyncFn) {
       {
         encoding: "utf8",
         windowsHide: true,
-        timeout: 1000,
+        timeout: 3000,
         maxBuffer: 4096,
       },
     );
