@@ -49,7 +49,11 @@ function nativeState(): NativeMockState {
   return global.__smithersSubscriptionNativeMock;
 }
 
-vi.mock("../../src/services/acp-native-transport.js", () => {
+vi.mock("../../src/services/acp-native-transport.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/acp-native-transport.js")
+    >();
   const state = nativeState();
   state.NativeAcpClient = class MockNativeAcpClient
     implements MockNativeClient
@@ -97,7 +101,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
       this.opts.timeoutMs = timeoutMs;
     }
   };
-  return { NativeAcpClient: state.NativeAcpClient };
+  return { ...actual, NativeAcpClient: state.NativeAcpClient };
 });
 
 import { AcpService } from "../../src/services/acp-service.js";

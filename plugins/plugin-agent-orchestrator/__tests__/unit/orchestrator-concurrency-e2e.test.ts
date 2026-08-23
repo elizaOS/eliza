@@ -72,7 +72,11 @@ function getNativeMockState(): NativeMockState {
 // its lifecycle methods resolves synchronously, so `spawnSession` returns a real
 // "ready" session without a live agent. The admission code the session flows
 // through afterwards is entirely real.
-vi.mock("../../src/services/acp-native-transport.js", () => {
+vi.mock("../../src/services/acp-native-transport.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/acp-native-transport.js")
+    >();
   const state = getNativeMockState();
   const NativeAcpClient = class MockNativeAcpClient
     implements MockNativeClient
@@ -109,7 +113,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
       this.eventHandler?.(event, sessionId);
     }
   };
-  return { NativeAcpClient };
+  return { ...actual, NativeAcpClient };
 });
 
 // git is unavailable in the harness, so baseline/diff capture degrades to

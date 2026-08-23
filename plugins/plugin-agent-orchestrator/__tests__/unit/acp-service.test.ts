@@ -84,7 +84,11 @@ function getNativeMockState(): NativeMockState {
 
 const nativeClientMock = getNativeMockState();
 
-vi.mock("../../src/services/acp-native-transport.js", () => {
+vi.mock("../../src/services/acp-native-transport.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/acp-native-transport.js")
+    >();
   const state = getNativeMockState();
   state.NativeAcpClient = class MockNativeAcpClient
     implements MockNativeClient
@@ -135,16 +139,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
       this.eventHandler?.(event, sessionId);
     }
   };
-  return {
-    NativeAcpClient: state.NativeAcpClient,
-    splitCommandLine(input: string) {
-      const parts = input.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
-      const [command = "", ...args] = parts.map((part) =>
-        part.replace(/^(['"])(.*)\1$/u, "$2"),
-      );
-      return { command, args };
-    },
-  };
+  return { ...actual, NativeAcpClient: state.NativeAcpClient };
 });
 
 import {

@@ -66,7 +66,11 @@ function getNativeMockState(): NativeMockState {
 }
 
 // Stub only the subprocess leaf so each spawn deterministically reaches "ready".
-vi.mock("../../src/services/acp-native-transport.js", () => {
+vi.mock("../../src/services/acp-native-transport.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/acp-native-transport.js")
+    >();
   const state = getNativeMockState();
   state.NativeAcpClient = class MockNativeAcpClient
     implements MockNativeClient
@@ -101,7 +105,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
       this.eventHandler?.(event, sessionId);
     }
   };
-  return { NativeAcpClient: state.NativeAcpClient };
+  return { ...actual, NativeAcpClient: state.NativeAcpClient };
 });
 
 // git is unavailable in the test; make workspace-diff's promisified execFile

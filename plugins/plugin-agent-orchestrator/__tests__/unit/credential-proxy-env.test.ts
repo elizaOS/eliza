@@ -68,7 +68,11 @@ function getNativeMockState(): NativeMockState {
 
 const nativeClientMock = getNativeMockState();
 
-vi.mock("../../src/services/acp-native-transport.js", () => {
+vi.mock("../../src/services/acp-native-transport.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/acp-native-transport.js")
+    >();
   const state = getNativeMockState();
   state.NativeAcpClient = class MockNativeAcpClient
     implements MockNativeClient
@@ -97,7 +101,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
       this.opts.timeoutMs = timeoutMs;
     }
   };
-  return { NativeAcpClient: state.NativeAcpClient };
+  return { ...actual, NativeAcpClient: state.NativeAcpClient };
 });
 
 // Baseline git capture uses execFile; make it a no-op so spawns don't hang.
