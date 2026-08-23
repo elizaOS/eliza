@@ -123,27 +123,27 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 	documentId: UUID;
 }
 
-/** Exact unit used by an authorized document read. */
-export type DocumentRangeUnit = "line" | "fragment";
+/** Exact unit used by an authorized bounded document read. */
+export type DocumentRangeUnit = "line" | "fragment" | "byte";
 
 /**
- * Authorized document read. Offsets and caller-requested limits count exact
- * retained line or paragraph-like fragment units, never JavaScript string code
- * units. Omitting `limit` returns the complete remainder of the source.
+ * Authorized bounded document read. Offsets and limits count exact retained
+ * line or paragraph-like fragment units, never JavaScript string code units.
  */
 export interface DocumentRangeReadParams extends DocumentRequesterContext {
 	documentId: UUID;
 	unit: DocumentRangeUnit;
 	offset: number;
-	limit?: number;
+	limit: number;
 }
 
 /**
- * Source projection returned by a native adapter. The source
+ * Bounded source projection returned by a native adapter. The source
  * fingerprint is an adapter-internal change detector and must be wrapped in an
  * opaque public revision before it leaves DocumentService.
  */
 export interface DocumentRangeReadResult {
+	unit: DocumentRangeUnit;
 	text: string;
 	start: number;
 	end: number;
@@ -151,6 +151,10 @@ export interface DocumentRangeReadResult {
 	documentRevision: number;
 	revisionAttemptId?: string;
 	sourceFingerprint: string;
+	examinedSourceSegments: number;
+	sourceQueryCount: number;
+	returnedSourceSegments: number;
+	returnedSourceBytes: number;
 }
 
 /**
@@ -1184,8 +1188,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * authorization, counts, or pagination guarantees.
 	 */
 	readonly documentListQueryCapability: 4;
-	/** Native source projection with optional caller-requested pagination. */
-	readonly documentRangeReadCapability?: 1;
+	/** Native bounded source projection; absent adapters must fail explicitly. */
+	readonly documentRangeReadCapability?: 1 | 2;
 	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
