@@ -23,3 +23,31 @@ export function findElectrobunBrowserWindowEntrypoints(
     )
     .filter((candidate) => pathExists(candidate));
 }
+
+/**
+ * Distinguishes an expected `--ignore-scripts` install from a partially
+ * materialized native distribution. The former may be deferred during the
+ * repository's general postinstall; the latter remains a fail-closed error.
+ */
+export function classifyElectrobunLinuxNativeArtifacts(
+  packageRoot,
+  pathExists = existsSync,
+) {
+  const distDir = path.join(packageRoot, "dist-linux-x64");
+  const targetPath = path.join(distDir, "libNativeWrapper_cef.so");
+  const bspatchPath = path.join(distDir, "bspatch");
+  const targetExists = pathExists(targetPath);
+  const bspatchExists = pathExists(bspatchPath);
+
+  return {
+    bspatchPath,
+    distDir,
+    state:
+      targetExists && bspatchExists
+        ? "complete"
+        : targetExists || bspatchExists
+          ? "incomplete"
+          : "absent",
+    targetPath,
+  };
+}
