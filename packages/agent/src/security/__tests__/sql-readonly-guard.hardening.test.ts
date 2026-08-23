@@ -10,19 +10,23 @@ describe("checkReadOnly hardening", () => {
   it("rejects mutation keyword hidden after a -- line comment continuation", () => {
     // `--` comment strips to end of line; keyword on the next line must still
     // be caught (not hidden by the previous line's comment).
-    expect(checkReadOnly("SELECT 1 -- benign\nDELETE FROM memories")).toMatchObject({
+    expect(
+      checkReadOnly("SELECT 1 -- benign\nDELETE FROM memories"),
+    ).toMatchObject({
       ok: false,
       reason: expect.stringContaining("DELETE"),
     });
   });
 
-  it("rejects unicode-escaped identifiers (U&\"...\") that can hide dangerous functions", () => {
-    expect(checkReadOnly("SELECT U&\"\\0070g_read_file\"('/etc/passwd')")).toMatchObject({
+  it('rejects unicode-escaped identifiers (U&"...") that can hide dangerous functions', () => {
+    expect(
+      checkReadOnly("SELECT U&\"\\0070g_read_file\"('/etc/passwd')"),
+    ).toMatchObject({
       ok: false,
       reason: expect.stringContaining("Unicode-escaped identifiers"),
     });
     // lowercase u& form too
-    expect(checkReadOnly("SELECT u&\"\\0070g_sleep\"(10)")).toMatchObject({
+    expect(checkReadOnly('SELECT u&"\\0070g_sleep"(10)')).toMatchObject({
       ok: false,
       reason: expect.stringContaining("Unicode-escaped identifiers"),
     });
