@@ -1,6 +1,7 @@
 /**
  * Surrogate-safe truncation for Discord fetch error.
  */
+
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 

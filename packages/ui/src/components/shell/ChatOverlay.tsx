@@ -6189,11 +6189,16 @@ export function ChatOverlay({
                         className="scrollbar-hide relative min-h-0 w-full flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
                       >
                         {/* Empty-thread loading: a fresh/cleared chat awaiting its
-                      greeting, or a swipe past the prefetch window. Centered
-                      spinner so the open sheet reads as "loading," never as a
-                      broken empty box. Cache-hit swipes paint instantly, so this
-                      only shows on a genuine network wait. */}
-                        {visibleMessages.length === 0 && conversationLoading ? (
+                      greeting, a swipe past the prefetch window, or a sheet
+                      opened before boot-time history hydration finished (a
+                      programmatic open can land while the server transcript is
+                      still in flight). Centered spinner so the open sheet reads
+                      as "loading," never as a broken empty box. Cache-hit
+                      swipes paint instantly, so this only shows on a genuine
+                      wait; first-run owns its own empty state. */}
+                        {visibleMessages.length === 0 &&
+                        !firstRunOpen &&
+                        (conversationLoading || booting) ? (
                           <div
                             data-testid="chat-thread-loading"
                             className="pointer-events-none absolute inset-0 grid place-items-center"
