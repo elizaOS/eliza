@@ -211,8 +211,15 @@ export function requireTraceableRealtimeSearch(
 ): ActionResult {
   const data = result.data && typeof result.data === "object" ? result.data : {};
   const sources = sourceEvidence(data.sources);
+  const receiptObservedAt = data.observedAt;
   if (
     result.success === true &&
+    data.actionName === "WEB_SEARCH" &&
+    normalizedRealtimeQuery(data.query) === normalizedRealtimeQuery(query) &&
+    (data.provider === "parallel" || data.provider === "exa") &&
+    typeof receiptObservedAt === "number" &&
+    Number.isSafeInteger(receiptObservedAt) &&
+    Math.abs(receiptObservedAt - observedAt) <= 5 * 60 * 1000 &&
     data.truncated === false &&
     data.evidenceOverflowed !== true &&
     sources
