@@ -1,7 +1,7 @@
 /**
  * Verifies runParentAgentBroker.
- * Deterministic unit test with a stubbed runtime; no live model. Includes hung
- * Cloud-command HTTP fail-closed.
+ * Deterministic unit test with a stubbed runtime; no live model. Includes typed
+ * parent terminal failures and hung Cloud-command HTTP fail-closed behavior.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -122,6 +122,75 @@ describe("runParentAgentBroker", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
     expect(result.text).toContain("Calendar says tomorrow at 2pm works.");
+  });
+
+  it("returns callback-delivered null-content terminal failures as typed failures", async () => {
+    const terminalFailure = {
+      kind: "coding_tool_failure",
+      code: "SHELL_UNAVAILABLE",
+      transient: true,
+      message: "Shell execution failed.",
+    };
+    const handleMessage = vi.fn(async (_runtime, _memory, callback) => {
+      await callback({ text: "Done." });
+      return {
+        didRespond: true,
+        responseContent: null,
+        responseMessages: [],
+        terminalFailure,
+      };
+    });
+    const runtime = createRuntime({
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      messageService: { handleMessage },
+    } as Partial<IAgentRuntime>);
+
+    const result = await runParentAgentBroker({
+      runtime,
+      sessionId: "session-1",
+      args: { request: "Run the required coding task." },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      text: "Parent Eliza agent failed:\n\nShell execution failed.",
+      terminalFailure,
+    });
+    expect(result.text).not.toContain("Done.");
+  });
+
+  it("does not let result or callback prose override a terminal failure", async () => {
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      transient: false,
+      message: "Coding changes were not verified.",
+    };
+    const handleMessage = vi.fn(async (_runtime, _memory, callback) => {
+      await callback({ text: "Callback says everything passed." });
+      return {
+        didRespond: true,
+        responseContent: { text: "Result says everything passed." },
+        responseMessages: [],
+        terminalFailure,
+      };
+    });
+    const runtime = createRuntime({
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      messageService: { handleMessage },
+    } as Partial<IAgentRuntime>);
+
+    const result = await runParentAgentBroker({
+      runtime,
+      sessionId: "session-1",
+      args: { request: "Edit and verify the parser." },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      terminalFailure,
+    });
+    expect(result.text).toContain("Coding changes were not verified.");
+    expect(result.text).not.toContain("everything passed");
   });
 
   it("lists deterministic Eliza Cloud commands", async () => {
