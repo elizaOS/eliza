@@ -31,7 +31,7 @@ const iosBoot = vi.hoisted(() => ({
   initializeKeyboard: vi.fn(async () => undefined),
   initializeNetworkListener: vi.fn(async () => undefined),
   preferenceSet: vi.fn(async () => undefined),
-  setStorageValue: vi.fn(async () => undefined),
+  setStorageValue: vi.fn(async (_key: string, _value: string) => undefined),
 }));
 
 iosBoot.createRoot.mockReturnValue({ render: iosBoot.render });
@@ -228,6 +228,30 @@ describe("renderer interactive iOS composition", () => {
       "elizaos:active-server",
       expect.stringContaining('"accessToken":"paired-token"'),
     );
+    expect(iosBoot.setStorageValue).toHaveBeenCalledWith(
+      "eliza:first-run-complete",
+      "1",
+    );
+    const activeServerWrite =
+      iosBoot.setStorageValue.mock.invocationCallOrder[
+        iosBoot.setStorageValue.mock.calls.findIndex(
+          ([key]) => key === "elizaos:active-server",
+        )
+      ];
+    const completionWrite =
+      iosBoot.setStorageValue.mock.invocationCallOrder[
+        iosBoot.setStorageValue.mock.calls.findIndex(
+          ([key]) => key === "eliza:first-run-complete",
+        )
+      ];
+    const connectDispatch =
+      connectRequest.mock.invocationCallOrder[
+        connectRequest.mock.calls.findIndex(
+          ([detail]) => detail.completeFirstRun === true,
+        )
+      ];
+    expect(activeServerWrite).toBeLessThan(completionWrite ?? 0);
+    expect(completionWrite).toBeLessThan(connectDispatch ?? 0);
     removeConnectListener();
     window.removeEventListener(
       OPEN_NOTIFICATION_CENTER_EVENT,
@@ -255,6 +279,33 @@ describe("renderer interactive iOS composition", () => {
       await expect(
         connectFirstRunRemoteDeepLink("http://127.0.0.1:31338"),
       ).rejects.toThrow("secure-store unavailable");
+      expect(connectRequest).not.toHaveBeenCalled();
+    } finally {
+      removeConnectListener();
+    }
+  });
+
+  it("does not announce completion when the native first-run mirror rejects", async () => {
+    const { connectFirstRunRemoteDeepLink } = await import("./main");
+    const connectRequest = vi.fn();
+    const removeConnectListener = listenForConnectRequests(connectRequest);
+    iosBoot.setStorageValue
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("preferences unavailable"));
+
+    try {
+      await expect(
+        connectFirstRunRemoteDeepLink("http://127.0.0.1:31338"),
+      ).rejects.toThrow("preferences unavailable");
+      expect(iosBoot.setStorageValue).toHaveBeenNthCalledWith(
+        iosBoot.setStorageValue.mock.calls.length - 1,
+        "elizaos:active-server",
+        expect.any(String),
+      );
+      expect(iosBoot.setStorageValue).toHaveBeenLastCalledWith(
+        "eliza:first-run-complete",
+        "1",
+      );
       expect(connectRequest).not.toHaveBeenCalled();
     } finally {
       removeConnectListener();

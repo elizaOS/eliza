@@ -2042,10 +2042,13 @@ export async function connectFirstRunRemoteDeepLink(
     apiBase: connection.apiBase,
     ...(connection.token ? { accessToken: connection.token } : {}),
   });
-  // The protected active-server record is part of successful remote adoption,
-  // not best-effort telemetry. Native deep-link acknowledgement and first-run
-  // completion must remain pending until the secure-store write is durable.
+  // The protected active-server record and native first-run completion mirror
+  // are both part of successful remote adoption, not best-effort telemetry.
+  // Await both before CONNECT_EVENT can move the UI home: an immediate process
+  // termination after the first reply must restore this same remote instead of
+  // replaying the runtime chooser.
   await setStorageValue("elizaos:active-server", activeServer);
+  await setStorageValue("eliza:first-run-complete", "1");
   dispatchConnect();
   return true;
 }
