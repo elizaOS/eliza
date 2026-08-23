@@ -2231,6 +2231,21 @@ function looksLikePendingAssistantTurn(text: string): boolean {
  * the current speaker — shared-room requests from other participants are never
  * selected or concatenated onto the current turn.
  */
+function createdAtSortKey(entry: { createdAt?: number }): number {
+	const value = entry.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareContinuationByCreatedAtAsc(a: { createdAt?: number; id?: string }, b: { createdAt?: number; id?: string }): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
+export const __testCompareContinuationByCreatedAtAsc = compareContinuationByCreatedAtAsc;
+export const __testCreatedAtSortKey = createdAtSortKey;
+
 export function resolveExplicitContinuationRequestText(
 	currentText: string,
 	recentMessages: ReadonlyArray<ContinuationDialogueEntry>,
@@ -2247,7 +2262,7 @@ export function resolveExplicitContinuationRequestText(
 			if (currentMessageId && entry.id === currentMessageId) return false;
 			return continuationEntryText(entry).length > 0;
 		})
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+		.sort(compareContinuationByCreatedAtAsc);
 
 	if (kind === "approval") {
 		// Approval must answer the immediately preceding visible assistant turn.
