@@ -23,6 +23,8 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
+import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
+import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import {
   nativeActivityTrackerBundleBinary,
   nativeActivityTrackerSourceBinary,
@@ -30,8 +32,6 @@ import {
   shouldPackageNativeActivityTracker,
   verifyNativeActivityTrackerBinary,
 } from "./lib/native-activity-tracker-packaging.mjs";
-import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
-import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
 import { workspaceRuntimePackageLooksBuilt } from "./lib/workspace-runtime-package.mjs";
@@ -221,6 +221,7 @@ const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
 const PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-native-activity-tracker",
 );
+const PLUGIN_OPENAI_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-openai");
 const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
@@ -960,6 +961,10 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-openai",
+    PLUGIN_OPENAI_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-sql",
