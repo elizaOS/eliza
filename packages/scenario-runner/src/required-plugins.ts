@@ -152,14 +152,26 @@ function pluginNameAliases(packageName: string): Set<string> {
   ]);
 }
 
+/**
+ * Whether one registered plugin is the one a scenario declared as
+ * `packageName`. A plugin's internal `name` routinely differs from its package
+ * specifier, so this alias comparison is the only correct identity test and
+ * every caller must share it.
+ */
+export function pluginMatchesScenarioPackage(
+  plugin: Pick<Plugin, "name">,
+  packageName: string,
+): boolean {
+  if (typeof plugin.name !== "string") return false;
+  return pluginNameAliases(packageName).has(plugin.name.trim());
+}
+
 export function pluginPackageIsRegistered(
   runtime: Pick<AgentRuntime, "plugins">,
   packageName: string,
 ): boolean {
-  const aliases = pluginNameAliases(packageName);
-  return runtime.plugins.some(
-    (plugin) =>
-      typeof plugin.name === "string" && aliases.has(plugin.name.trim()),
+  return runtime.plugins.some((plugin) =>
+    pluginMatchesScenarioPackage(plugin, packageName),
   );
 }
 

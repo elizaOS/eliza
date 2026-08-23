@@ -814,6 +814,12 @@ export async function runCli(
         abortSignal: runAbortController.signal,
         executionProfile,
         runDir: effectiveRunDir,
+        // Every scenario in this batch shares one runtime carrying the union of
+        // their declared plugins. Hand that union to the executor so it can hide
+        // a peer's actions and keep this scenario's tool surface identical to a
+        // solo run.
+        batchPluginPackages: requiredPlugins,
+        scenarioDeclaredActionNames: runtimeResult.scenarioDeclaredActionNames,
       });
       const report =
         executionProfile === "provider-qualified"
