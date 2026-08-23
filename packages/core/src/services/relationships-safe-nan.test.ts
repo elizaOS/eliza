@@ -89,21 +89,21 @@ describe("RelationshipsService.analyzeRelationship interaction history sort", ()
 				entityId: A,
 				roomId: ROOM,
 				createdAt: 500,
-				content: { text: "z" },
+				content: { text: "Zulu topic" },
 			},
 			{
 				id: "msg-a" as UUID,
 				entityId: B,
 				roomId: ROOM,
 				createdAt: 500,
-				content: { text: "a" },
+				content: { text: "Alpha topic" },
 			},
 			{
 				id: "msg-m" as UUID,
 				entityId: A,
 				roomId: ROOM,
 				createdAt: 500,
-				content: { text: "m" },
+				content: { text: "Mike topic" },
 			},
 		];
 
@@ -136,5 +136,9 @@ describe("RelationshipsService.analyzeRelationship interaction history sort", ()
 		expect(analytics).not.toBeNull();
 		expect(analytics?.interactionCount).toBe(3);
 		expect(analytics?.lastInteractionAt).toBe(new Date(500).toISOString());
+		// topicsDiscussed preserves the sorted interaction order, so it is the
+		// observable proof that equal timestamps are broken by message id
+		// ("msg-a" < "msg-m" < "msg-z") rather than left in insertion order.
+		expect(analytics?.topicsDiscussed).toEqual(["Alpha", "Mike", "Zulu"]);
 	});
 });
