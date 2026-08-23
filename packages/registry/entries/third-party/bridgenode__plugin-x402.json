@@ -1,0 +1,9 @@
+{
+  "package": "@bridgenode/plugin-x402",
+  "repository": "github:bridgenode-ai/elizaos-plugin-x402",
+  "kind": "plugin",
+  "description": "Pay-per-request LLM inference via x402 on Solana USDC — no API keys, no accounts, gas sponsored",
+  "homepage": "https://github.com/bridgenode-ai/elizaos-plugin-x402",
+  "version": "0.1.0",
+  "tags": ["x402", "solana", "usdc", "llm", "inference", "payment"]
+}
