@@ -22,7 +22,11 @@ type Capability = ReturnType<
 >;
 
 function makeCapability(overrides: Partial<Capability> = {}): Capability {
-	return {
+	// Declared as Capability so the base is checked in full, then merged and
+	// re-asserted: spreading Partial<Capability> widens every field it mentions to
+	// `T | undefined`, which TS rejects against the required shape (TS2322).
+	// vitest does not typecheck, so a green suite does not catch this.
+	const base: Capability = {
 		walletSource: "local",
 		hasWallet: true,
 		hasEvm: true,
@@ -34,8 +38,12 @@ function makeCapability(overrides: Partial<Capability> = {}): Capability {
 		executionReady: true,
 		executionBlockedReason: null,
 		automationMode: "full",
-		...overrides,
+		walletNetwork: "mainnet",
+		solanaAddress: null,
+		evmSigningCapability: "local",
+		evmSigningReason: "local signer available",
 	};
+	return { ...base, ...overrides } as Capability;
 }
 
 function makeConfig(overrides: Partial<ElizaConfig> = {}): ElizaConfig {
