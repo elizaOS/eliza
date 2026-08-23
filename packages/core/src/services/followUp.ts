@@ -11,6 +11,7 @@ import { logger } from "../logger";
 import type { Memory } from "../types/memory";
 import { MemoryType } from "../types/memory";
 import type { JsonValue, UUID } from "../types/primitives";
+import type { AccessContext } from "../types/access-context";
 import type { IAgentRuntime } from "../types/runtime";
 import type { ServiceTypeName } from "../types/service";
 import { Service } from "../types/service";
@@ -350,8 +351,12 @@ export class FollowUpService extends Service {
 		// Get all contacts
 		const contacts = await this.relationshipsService.searchContacts({});
 
+		const agentAccessContext: AccessContext = {
+			requesterEntityId: this.runtime.agentId,
+		};
 		const insights = await this.relationshipsService.getRelationshipInsights(
 			this.runtime.agentId,
+			agentAccessContext,
 		);
 		const needsAttentionById = new Map(
 			insights.needsAttention.map((item) => [item.entity.id, item]),
@@ -374,6 +379,7 @@ export class FollowUpService extends Service {
 					const analytics = await this.relationshipsService.analyzeRelationship(
 						this.runtime.agentId,
 						contact.entityId,
+						agentAccessContext,
 					);
 
 					if (!analytics) {
