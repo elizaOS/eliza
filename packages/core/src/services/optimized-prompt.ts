@@ -936,6 +936,15 @@ export class OptimizedPromptService extends Service {
  * pattern, hidden claim files, temp files, missing MACs, and corrupt MACs are
  * ignored.
  */
+export function compareVersionAsc(a: number, b: number): number {
+	const aFinite = Number.isFinite(a);
+	const bFinite = Number.isFinite(b);
+	if (aFinite && bFinite) return a - b;
+	if (aFinite) return -1;
+	if (bFinite) return 1;
+	return 0;
+}
+
 async function listCompleteVersionNumbers(dir: string): Promise<number[]> {
 	if (!existsSync(dir)) return [];
 	const versions: number[] = [];
@@ -953,7 +962,7 @@ async function listCompleteVersionNumbers(dir: string): Promise<number[]> {
 			// error-policy:J3 an absent or unverifiable artifact version is simply not available to the scan
 		}
 	}
-	versions.sort((a, b) => a - b);
+	versions.sort(compareVersionAsc);
 	return versions;
 }
 
@@ -974,7 +983,7 @@ function listClaimedVersionNumbers(dir: string): number[] {
 		const n = Number.parseInt(match[1] ?? "", 10);
 		if (Number.isFinite(n)) versions.add(n);
 	}
-	return [...versions].sort((a, b) => a - b);
+	return [...versions].sort(compareVersionAsc);
 }
 
 /**
@@ -1029,7 +1038,7 @@ async function repointVersionLinks(
 	dir: string,
 	versions: number[],
 ): Promise<void> {
-	const sorted = [...versions].sort((a, b) => a - b);
+	const sorted = [...versions].sort(compareVersionAsc);
 	const current = sorted.at(-1);
 	const previous = sorted.at(-2);
 	const previous2 = sorted.at(-3);
@@ -1061,7 +1070,7 @@ async function pruneOldVersions(
 	dir: string,
 	versions: number[],
 ): Promise<void> {
-	const sorted = [...versions].sort((a, b) => a - b);
+	const sorted = [...versions].sort(compareVersionAsc);
 	if (sorted.length <= OPTIMIZED_PROMPT_RETAIN_VERSIONS) return;
 	const obsolete = sorted.slice(
 		0,
