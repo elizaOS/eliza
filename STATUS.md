@@ -5,6 +5,7 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 ## Post-interruption exact-source acceptance — 2026-08-22
 
 - Preserved published candidate and tags: `cf3091982536896dcb7bb3fa5b22e9e66eb0d66d`, `lifeops-current-base-hosted-green-20260822`, and `lifeops-current-base-hosted-retry-20260822`.
+- Source/test recovery checkpoint: `fc7c07c0c17c651404325c5bb541045b7f85ad67`, authored by `nubs <nubs@nubs.site>` and tagged locally as `lifeops-live-recovery-20260822`.
 - Fresh read-only base audit: `origin/develop` is `cbb400ddbcc21117505275557dd4f8505b2ccd1a`; exact path overlap with the LifeOps patch is 0, so no source-churning reconciliation was needed. The lane still has a zero-file diff for `packages/app-core/platforms/electrobun/native/macos/window-effects.mm`.
 - Draft PR `#24809` remains open, draft, and merge-clean at the preserved published head. No push, PR mutation, merge, signing, or deployment occurred in this continuation.
 - Restarted exact-source UI `http://127.0.0.1:43231/lifeops/connections` and API `127.0.0.1:43232` with the same mode-0600 isolated state and an explicitly selected existing EventKit dylib whose source hash matches this candidate. Protected ports `50001`, `5174`, `31337`, `31340`, and `31342` remained untouched.
