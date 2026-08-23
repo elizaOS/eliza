@@ -5,7 +5,10 @@
 
 import { describe, expect, it } from "vitest";
 
-function liveMarkers(markers: { firedAt: string }[], now: Date): { firedAt: string }[] {
+function liveMarkers(
+  markers: { firedAt: string }[],
+  now: Date,
+): { firedAt: string }[] {
   const MARKER_RETENTION_HOURS = 24;
   const cutoffMs = now.getTime() - MARKER_RETENTION_HOURS * 3_600_000;
   return markers
@@ -14,8 +17,12 @@ function liveMarkers(markers: { firedAt: string }[], now: Date): { firedAt: stri
       return Number.isFinite(firedMs) && firedMs >= cutoffMs;
     })
     .sort((a, b) => {
-      const aTime = Number.isFinite(Date.parse(a.firedAt)) ? Date.parse(a.firedAt) : 0;
-      const bTime = Number.isFinite(Date.parse(b.firedAt)) ? Date.parse(b.firedAt) : 0;
+      const aTime = Number.isFinite(Date.parse(a.firedAt))
+        ? Date.parse(a.firedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.firedAt))
+        ? Date.parse(b.firedAt)
+        : 0;
       return aTime - bTime;
     });
 }
@@ -41,7 +48,10 @@ describe("anticipation store safe sort", () => {
       { firedAt: "2026-08-22T11:00:00.000Z" },
     ];
     const result = liveMarkers(markers, now);
-    expect(result.map((m) => m.firedAt)).toEqual(["2026-08-22T09:00:00.000Z", "2026-08-22T11:00:00.000Z"]);
+    expect(result.map((m) => m.firedAt)).toEqual([
+      "2026-08-22T09:00:00.000Z",
+      "2026-08-22T11:00:00.000Z",
+    ]);
   });
 
   it("handles empty without throwing", () => {

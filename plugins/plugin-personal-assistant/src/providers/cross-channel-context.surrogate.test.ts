@@ -21,7 +21,7 @@ function isWellFormed(s: string): boolean {
 
 describe("cross-channel-context surrogate handling", () => {
   it("180 backs off at surrogate (179+fox->179)", () => {
-    const input = "a".repeat(179) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(179)}🦊${"b".repeat(50)}`;
     const out = truncate180(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out.length).toBeLessThanOrEqual(180);
@@ -29,10 +29,10 @@ describe("cross-channel-context surrogate handling", () => {
   });
 
   it("180 preserves fitting emoji (178+fox intact)", () => {
-    const input = "a".repeat(178) + "🦊";
+    const input = `${"a".repeat(178)}🦊`;
     const out = truncate180(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe("a".repeat(178) + "🦊");
+    expect(out).toBe(`${"a".repeat(178)}🦊`);
   });
 
   it("trims and normalizes whitespace before truncation", () => {
@@ -42,8 +42,7 @@ describe("cross-channel-context surrogate handling", () => {
   });
 
   it("sanitizes lone high surrogate", () => {
-    const lone =
-      `text ${String.fromCharCode(0xd800)} content ` + "a".repeat(500);
+    const lone = `text ${String.fromCharCode(0xd800)} content ${"a".repeat(500)}`;
     const out = truncate180(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);

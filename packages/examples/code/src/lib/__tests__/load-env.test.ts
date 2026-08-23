@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("node:fs", () => ({ existsSync: mocks.existsSync }));
 vi.mock("dotenv", () => ({ config: mocks.config }));
 
-import { loadEnv } from "./load-env.ts";
+import { loadEnv } from "../load-env.ts";
 
 describe("loadEnv", () => {
   beforeEach(() => {

@@ -74,7 +74,11 @@ async function doList(
   if (!storage) {
     return fail("File storage is not available.", "FILES_NO_SERVICE");
   }
-  const all = (await storage.list()).sort((a, b) => b.createdAt - a.createdAt);
+  const all = (await storage.list()).sort((a, b) => {
+    const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+    const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+    return bTime - aTime;
+  });
   const filtered = params.query
     ? all.filter((file) => matchesQuery(file, params.query ?? ""))
     : all;

@@ -479,6 +479,13 @@ async function proveAnchoredTurnHistory(
       )
       .toBe(true);
     successfulHistoryResponseObserved = true;
+    // Completed-user chat deliberately cold-boots at the compact composer; the
+    // transcript is unmounted until the composer receives an explicit open
+    // gesture. Reproduce that real customer action after the server history
+    // response instead of treating the intentionally hidden DOM as lost data.
+    // Activating it also exercises the pending-expand-on-reveal path when
+    // hydration is still committing the restored messages.
+    await chatComposer(page).click();
     await expect
       .poll(
         async () => {
