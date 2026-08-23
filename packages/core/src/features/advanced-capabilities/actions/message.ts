@@ -3362,7 +3362,7 @@ async function handleReadChannel(
 					limit,
 				);
 				memories = memories
-					.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+					.sort(compareMemoryByCreatedAtDesc)
 					.slice(0, limit);
 			}
 			return opSuccess(
@@ -3422,7 +3422,7 @@ async function handleReadChannel(
 				count: result.value.memories.length,
 			});
 		}
-		memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+		memories.sort(compareMemoryByCreatedAtDesc);
 		const limited = memories.slice(0, limit);
 		return opSuccess(
 			"read_channel",
@@ -5530,6 +5530,21 @@ function refreshDescriptions(action: Action, runtime: IAgentRuntime): void {
 		baseCompressed: MESSAGE_COMPRESSED,
 	});
 }
+
+function createdAtSortKey(memory: { createdAt?: number }): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtDesc(a: { createdAt?: number; id?: string }, b: { createdAt?: number; id?: string }): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (bSafe !== aSafe) return bSafe - aSafe;
+	return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+}
+
+export const __testCompareMemoryByCreatedAtDesc = compareMemoryByCreatedAtDesc;
+export const __testCreatedAtSortKey = createdAtSortKey;
 
 export const messageAction: Action = {
 	name: "MESSAGE",
