@@ -8,7 +8,10 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { runCommandWithWatchdog } from "./test-cloud-run.mjs";
+import {
+  readProcessIdentity,
+  runCommandWithWatchdog,
+} from "./test-cloud-run.mjs";
 
 const descendantSource = `
 process.on("SIGTERM", () => {});
@@ -81,6 +84,95 @@ function bestEffortKillTree(pid, { processGroup = false } = {}) {
 }
 
 try {
+  if (process.platform === "win32") {
+    const inaccessibleProcessQuery = [
+      "$candidate = Get-Process | Where-Object { try { $null = $_.StartTime; $false } catch { $true } } | Select-Object -First 1",
+      "if ($null -eq $candidate) { exit 4 }",
+      "[Console]::Write($candidate.Id)",
+    ].join("; ");
+    const inaccessibleProcessResult = spawnSync(
+      "powershell.exe",
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        inaccessibleProcessQuery,
+      ],
+      {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 5000,
+        maxBuffer: 4096,
+      },
+    );
+    assert.equal(
+      inaccessibleProcessResult.error,
+      undefined,
+      "Windows runner must execute the inaccessible-process probe",
+    );
+    assert.equal(
+      inaccessibleProcessResult.status,
+      0,
+      "Windows runner must expose a live process whose StartTime is unreadable",
+    );
+    const inaccessibleProcessPid = Number(
+      inaccessibleProcessResult.stdout?.trim(),
+    );
+    assert.ok(
+      Number.isInteger(inaccessibleProcessPid) && inaccessibleProcessPid > 0,
+      "inaccessible-process probe must return a positive PID",
+    );
+
+    const existenceQuery = [
+      `$process = Get-Process -Id ${inaccessibleProcessPid} -ErrorAction SilentlyContinue`,
+      "if ($null -eq $process) { exit 3 }",
+      "[Console]::Write($process.Id)",
+    ].join("; ");
+    const assertProcessExists = () => {
+      const result = spawnSync(
+        "powershell.exe",
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          existenceQuery,
+        ],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 2500,
+          maxBuffer: 4096,
+        },
+      );
+      assert.equal(result.error, undefined);
+      assert.equal(
+        result.status,
+        0,
+        "inaccessible process must remain live across identity lookup",
+      );
+      assert.equal(Number(result.stdout?.trim()), inaccessibleProcessPid);
+    };
+    assertProcessExists();
+    const identityStartedAt = Date.now();
+    const inaccessibleIdentity = readProcessIdentity(inaccessibleProcessPid);
+    const identityElapsedMs = Date.now() - identityStartedAt;
+    assertProcessExists();
+    assert.equal(
+      inaccessibleIdentity,
+      undefined,
+      "unreadable Windows StartTime must fail identity capture closed",
+    );
+    assert.ok(
+      identityElapsedMs < 5000,
+      `unreadable Windows identity lookup took too long (${identityElapsedMs} ms)`,
+    );
+    console.log(
+      `[test-cloud-run-watchdog] inaccessible StartTime scenario passed (${identityElapsedMs} ms, pid=${inaccessibleProcessPid})`,
+    );
+  }
+
   const startedAt = Date.now();
   const result = await runCommandWithWatchdog(
     process.execPath,
