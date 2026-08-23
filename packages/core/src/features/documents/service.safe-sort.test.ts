@@ -1,41 +1,34 @@
 /**
- * Regression for documents service similarity and createdAt sort handling.
+ * Regression for documents service similarity and createdAt sort — imports production comparators.
  */
 import { describe, expect, it } from "vitest";
-
-type Doc = { id: string; similarity: number; createdAt?: number };
-
-function compareDocBySimilarity(a: Doc, b: Doc): number {
-  const bS = typeof b.similarity === "number" && Number.isFinite(b.similarity) ? b.similarity : 0;
-  const aS = typeof a.similarity === "number" && Number.isFinite(a.similarity) ? a.similarity : 0;
-  if (bS !== aS) return bS - aS;
-  return String(a.id).localeCompare(String(b.id));
-}
-function compareDocByCreatedAt(a: Doc, b: Doc): number {
-  const bT = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
-  const aT = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
-  if (bT !== aT) return bT - aT;
-  return String(a.id).localeCompare(String(b.id));
-}
+import {
+  __testCompareDocumentByCreatedAt,
+  __testCompareDocumentBySimilarity,
+} from "./comparators.ts";
 
 describe("documents service safe-sort", () => {
-  it("treats NaN similarity as 0", () => {
-    const docs: Doc[] = [
+  it("treats NaN/Infinity similarity as 0 (sorted after finite)", () => {
+    const docs = [
       { id: "b", similarity: Number.NaN },
       { id: "a", similarity: 0.9 },
       { id: "c", similarity: Number.POSITIVE_INFINITY },
     ];
-    expect([...docs].sort(compareDocBySimilarity).map(d => d.id)).toEqual(["a", "b", "c"]);
+    expect([...docs].sort(__testCompareDocumentBySimilarity).map((d) => d.id)).toEqual(["a", "b", "c"]);
   });
   it("treats NaN createdAt as 0", () => {
-    const docs: Doc[] = [
-      { id: "b", createdAt: Number.NaN, similarity: 1 },
-      { id: "a", createdAt: 100, similarity: 1 },
+    const docs = [
+      { id: "b", createdAt: Number.NaN },
+      { id: "a", createdAt: 100 },
+      { id: "c", createdAt: Number.POSITIVE_INFINITY },
     ];
-    expect([...docs].sort(compareDocByCreatedAt).map(d => d.id)).toEqual(["a", "b"]);
+    expect([...docs].sort(__testCompareDocumentByCreatedAt).map((d) => d.id)).toEqual(["a", "b", "c"]);
   });
-  it("old comparator would return NaN", () => {
-    expect(Number.isNaN(Number.NaN - 0.9)).toBe(true);
-    expect(Number.isNaN(Number.NaN - 100)).toBe(true);
+  it("breaks ties by id", () => {
+    const docs = [
+      { id: "b", similarity: 0.5 },
+      { id: "a", similarity: 0.5 },
+    ];
+    expect([...docs].sort(__testCompareDocumentBySimilarity).map((d) => d.id)).toEqual(["a", "b"]);
   });
 });

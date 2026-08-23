@@ -53,6 +53,10 @@ import {
 import { splitChunks, validateUuid } from "../../utils";
 import { Semaphore } from "../../utils/prompt-batcher/shared";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
+import {
+	compareDocumentByCreatedAt,
+	compareDocumentBySimilarity,
+} from "./comparators.ts";
 import { validateModelConfig } from "./config";
 import { addDocumentFromFilePath, loadDocumentsFromPath } from "./docs-loader";
 import {
@@ -83,6 +87,13 @@ import {
 	normalizeDocumentContentType,
 	stripDocumentFilenameExtension,
 } from "./utils.ts";
+
+export {
+	__testCompareDocumentByCreatedAt,
+	__testCompareDocumentBySimilarity,
+	compareDocumentByCreatedAt,
+	compareDocumentBySimilarity,
+} from "./comparators.ts";
 
 /**
  * Controls how document search combines vector and keyword scores.
@@ -2095,18 +2106,7 @@ export class DocumentService extends Service {
 				worldId: fragment.worldId,
 			}))
 			.filter((item) => item.similarity > 0)
-			.sort((a, b) => {
-				const bS =
-					typeof b.similarity === "number" && Number.isFinite(b.similarity)
-						? b.similarity
-						: 0;
-				const aS =
-					typeof a.similarity === "number" && Number.isFinite(a.similarity)
-						? a.similarity
-						: 0;
-				if (bS !== aS) return bS - aS;
-				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
-			}) as StoredDocument[];
+			.sort(compareDocumentBySimilarity) as StoredDocument[];
 	}
 
 	/**
@@ -2321,18 +2321,7 @@ export class DocumentService extends Service {
 							memory.metadata.ragUsage
 						),
 				)
-				.sort((a, b) => {
-					const bT =
-						typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
-							? b.createdAt
-							: 0;
-					const aT =
-						typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
-							? a.createdAt
-							: 0;
-					if (bT !== aT) return bT - aT;
-					return String(a.id ?? "").localeCompare(String(b.id ?? ""));
-				});
+				.sort(compareDocumentByCreatedAt);
 
 			for (const pendingEntry of this.pendingRAGEnrichment) {
 				const matchingMemory = recentConversationMemories.find(
