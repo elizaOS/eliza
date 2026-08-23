@@ -465,6 +465,7 @@ export class PaymentHistoryService {
           .select({
             paymentRequestId: paymentRequestReceipts.payment_request_id,
             id: paymentRequestReceipts.id,
+            provider: paymentRequestReceipts.provider,
             amountCents: paymentRequestReceipts.amount_cents,
             currency: paymentRequestReceipts.currency,
             settledAt: paymentRequestReceipts.settled_at,
@@ -485,8 +486,11 @@ export class PaymentHistoryService {
       const reversalKey = request.provider === "stripe" ? request.settlementTxRef : null;
       const reversal = reversalKey ? reversals.get(reversalKey) : undefined;
       const reversed = Boolean(reversal?.lastReversalSource);
-      // Settled requests project purchase facts from the immutable receipt.
+      // Settled requests project purchase facts from the immutable receipt:
+      // amount, currency, settlement time, and provider all prefer the
+      // receipt (#22427 authority) over the mutable request row.
       const amountCents = receipt ? Number(receipt.amountCents) : Number(request.amountCents);
+      const settlementAt = receipt ? receipt.settledAt : request.settledAt;
       const paymentState = derivePaymentRequestState(
         request.status,
         receipt !== null,
@@ -495,12 +499,12 @@ export class PaymentHistoryService {
       );
       const eventTime = reversal?.lastReversalSource
         ? new Date(reversal.lastReversalAt).toISOString()
-        : request.settledAt
-          ? request.settledAt.toISOString()
+        : settlementAt
+          ? settlementAt.toISOString()
           : request.createdAt.toISOString();
       const eventTimeKind: PaymentStateRow["eventTimeKind"] = reversal?.lastReversalSource
         ? "reversal_ledger_observation"
-        : request.settledAt
+        : settlementAt
           ? "provider_settlement"
           : "server_creation";
       rows.push({
@@ -508,7 +512,7 @@ export class PaymentHistoryService {
         surface: "payment_request",
         authorityId: request.id,
         receiptId: receipt?.id ?? null,
-        provider: request.provider,
+        provider: receipt ? receipt.provider : request.provider,
         amountCents,
         currency: receipt
           ? normalizeUppercaseCurrency(receipt.currency)

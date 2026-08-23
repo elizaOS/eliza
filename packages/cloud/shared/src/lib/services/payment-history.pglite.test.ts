@@ -142,6 +142,8 @@ async function insertReceipt(params: {
   paymentRequestId: string;
   providerTxRef: string;
   amountCents: number;
+  currency?: string;
+  settledAt?: Date;
 }): Promise<PaymentRequestReceipt> {
   const [row] = await dbWrite
     .insert(paymentRequestReceipts)
@@ -150,11 +152,12 @@ async function insertReceipt(params: {
       payment_request_id: params.paymentRequestId,
       receipt_type: "provider_payment_receipt",
       provider: "stripe",
+      ...(params.currency ? { currency: params.currency } : {}),
       provider_tx_ref: params.providerTxRef,
       provider_event_id: `evt_${params.paymentRequestId}`,
       amount_cents: BigInt(params.amountCents),
-      currency: "USD",
-      settled_at: new Date(),
+      currency: params.currency ?? "USD",
+      settled_at: params.settledAt ?? new Date(),
       payload_digest: "a".repeat(64),
       settlement_proof: {
         stripe_event_id: `evt_${params.paymentRequestId}`,
@@ -312,6 +315,37 @@ describe("listPaymentStates — base states", () => {
     expect(row.eventTimeKind).toBe("provider_settlement");
     expect(row.policyEffect).toBeNull();
     expect(row.supportState).toBe("none");
+  });
+
+  test("settled purchase facts project from the receipt, not the mutable request row", async () => {
+    // The receipt is the immutable #22427 authority: when request and
+    // receipt disagree on amount, currency, or settlement time, the
+    // receipt wins for a settled purchase.
+    const requestSettledAt = new Date("2026-08-23T12:00:00.000Z");
+    const receiptSettledAt = new Date("2026-08-23T11:30:00.000Z");
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 2500,
+      status: "settled",
+      settlementTxRef: "pi_receipt_authority",
+      settledAt: requestSettledAt,
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_receipt_authority",
+      amountCents: 1900,
+      currency: "EUR",
+      settledAt: receiptSettledAt,
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    expect(rows.length).toBe(1);
+    const row = rows[0];
+    expect(row.amountCents).toBe(1900);
+    expect(row.currency).toBe("EUR");
+    expect(row.eventTime).toBe(receiptSettledAt.toISOString());
+    expect(row.eventTimeKind).toBe("provider_settlement");
   });
 
   test("pending and failed and expired payment requests project distinct states", async () => {

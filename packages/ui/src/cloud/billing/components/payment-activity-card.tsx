@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
@@ -132,6 +133,22 @@ function formatAmount(amount: number, currency: string): string {
 /** Credit-unit amounts are labeled as credits, never formatted as USD. */
 function formatCredits(credits: number): string {
   return `${credits.toFixed(2)} credits`;
+}
+
+/**
+ * Copies a provider-neutral receipt or authority id to the clipboard. No
+ * receipt/order detail route exists in the cloud console (only
+ * `cloud/invoices/:id` for Stripe subscription invoices — a different
+ * object), so the actionable link for support/escalation is a copyable
+ * stable identifier, never a dead span.
+ */
+async function copyReference(text: string, label: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success(`${label} copied to clipboard`);
+  } catch {
+    toast.error(`${label} could not be copied`);
+  }
 }
 
 export function PaymentActivityCard() {
@@ -254,11 +271,17 @@ export function PaymentActivityCard() {
             {phase.rows.map((row) => {
               const { Icon: StateIcon, className: stateClassName } =
                 getPaymentStatePresentation(row.paymentState);
+              // Reversal detail visibility comes from the authoritative
+              // reversal data, not the visible state enum: an unavailable row
+              // (e.g. settled-without-receipt) can still carry refund/dispute
+              // totals, a policy effect, and a support escalation state that
+              // must not be hidden because the state projection is unknown.
               const reversed =
-                row.paymentState === "partially_refunded" ||
-                row.paymentState === "refunded" ||
-                row.paymentState === "dispute_withdrawn" ||
-                row.paymentState === "dispute_reinstated";
+                row.policyEffect?.status === "unavailable" ||
+                row.cumulativeRefundedUsd > 0 ||
+                row.cumulativeDisputedUsd > 0 ||
+                row.cumulativeClawbackCredits > 0 ||
+                row.reinstatedCredits > 0;
               return (
                 <li
                   key={row.id}
@@ -315,9 +338,19 @@ export function PaymentActivityCard() {
                             })}
                     </span>
                     {row.receiptId ? (
-                      <span
+                      <button
+                        type="button"
                         data-testid="payment-receipt-link"
                         title={row.receiptId}
+                        className="underline decoration-dotted underline-offset-2 hover:text-txt-strong cursor-pointer"
+                        onClick={() => {
+                          void copyReference(
+                            row.receiptId as string,
+                            t("cloud.billingTab.paymentActivityReceipt", {
+                              defaultValue: "receipt",
+                            }),
+                          );
+                        }}
                       >
                         {t("cloud.billingTab.paymentActivityReceipt", {
                           defaultValue: "receipt",
@@ -326,9 +359,25 @@ export function PaymentActivityCard() {
                         <span className="text-txt-strong">
                           {row.receiptId.slice(0, 8)}
                         </span>
-                      </span>
+                      </button>
                     ) : null}
-                    <span data-testid="payment-authority-link">
+                    <button
+                      type="button"
+                      data-testid="payment-authority-link"
+                      className="underline decoration-dotted underline-offset-2 hover:text-txt-strong cursor-pointer"
+                      onClick={() => {
+                        void copyReference(
+                          row.authorityId,
+                          row.surface === "checkout_order"
+                            ? t("cloud.billingTab.paymentActivityOrder", {
+                                defaultValue: "checkout order",
+                              })
+                            : t("cloud.billingTab.paymentActivityRequest", {
+                                defaultValue: "payment request",
+                              }),
+                        );
+                      }}
+                    >
                       {row.surface === "checkout_order"
                         ? t("cloud.billingTab.paymentActivityOrder", {
                             defaultValue: "checkout order",
@@ -340,7 +389,7 @@ export function PaymentActivityCard() {
                       <span className="text-txt-strong">
                         {row.authorityId.slice(0, 8)}
                       </span>
-                    </span>
+                    </button>
                   </div>
 
                   {reversed ? (
