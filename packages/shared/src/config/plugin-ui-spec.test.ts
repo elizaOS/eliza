@@ -7,7 +7,12 @@ import {
   buildPluginConfigUiSpec,
   buildPluginListUiSpec,
   type PluginForUiSpec,
+  type PluginUiSpec,
 } from "./plugin-ui-spec.js";
+
+function getProps(spec: PluginUiSpec, id: string): Record<string, unknown> {
+  return (spec.elements[id]?.props as Record<string, unknown>) ?? {};
+}
 
 describe("buildPluginConfigUiSpec", () => {
   it("builds a basic UI spec for a disabled plugin without parameters", () => {
@@ -25,22 +30,22 @@ describe("buildPluginConfigUiSpec", () => {
     expect(spec.root).toBe("root");
     expect(spec.state).toEqual({ pluginId: "plugin-test" });
 
-    expect(spec.elements.title.props).toEqual({
+    expect(getProps(spec, "title")).toEqual({
       level: 3,
       text: "Configure Test Plugin",
     });
-    expect(spec.elements.desc.props).toEqual({
+    expect(getProps(spec, "desc")).toEqual({
       text: "A test plugin description",
       className: "text-xs text-muted",
     });
-    expect(spec.elements.status.props).toEqual({
+    expect(getProps(spec, "status")).toEqual({
       text: "Disabled",
       variant: "outline",
     });
 
     // Enabled button should be present when enabled is false
     expect(spec.elements.enableBtn).toBeDefined();
-    expect(spec.elements.actions.props.children).toEqual([
+    expect(getProps(spec, "actions").children).toEqual([
       "saveBtn",
       "enableBtn",
     ]);
@@ -58,12 +63,12 @@ describe("buildPluginConfigUiSpec", () => {
     };
 
     const readySpec = buildPluginConfigUiSpec(readyPlugin);
-    expect(readySpec.elements.status.props).toEqual({
+    expect(getProps(readySpec, "status")).toEqual({
       text: "Ready",
       variant: "default",
     });
     // Enable button should not be included when enabled is true
-    expect(readySpec.elements.actions.props.children).toEqual(["saveBtn"]);
+    expect(getProps(readySpec, "actions").children).toEqual(["saveBtn"]);
 
     const unconfiguredPlugin: PluginForUiSpec = {
       id: "unconfigured-plugin",
@@ -73,7 +78,7 @@ describe("buildPluginConfigUiSpec", () => {
     };
 
     const unconfiguredSpec = buildPluginConfigUiSpec(unconfiguredPlugin);
-    expect(unconfiguredSpec.elements.status.props).toEqual({
+    expect(getProps(unconfiguredSpec, "status")).toEqual({
       text: "Needs Configuration",
       variant: "secondary",
     });
@@ -110,21 +115,25 @@ describe("buildPluginConfigUiSpec", () => {
     });
 
     const tokenField = spec.elements.field_AUTH_TOKEN;
-    expect(tokenField.props.type).toBe("password");
-    expect(tokenField.props.placeholder).toBe("••••••• (already set)");
-    expect(tokenField.props.label).toBe("Secret Token");
+    const tokenProps = getProps(spec, "field_AUTH_TOKEN");
+    expect(tokenProps.type).toBe("password");
+    expect(tokenProps.placeholder).toBe("••••••• (already set)");
+    expect(tokenProps.label).toBe("Secret Token");
     expect(tokenField.validation).toEqual({
       checks: [{ rule: "required", message: "AUTH_TOKEN is required" }],
     });
 
     const hint = spec.elements.hint_AUTH_TOKEN;
     expect(hint).toBeDefined();
-    expect(hint.props.text).toBe("Your secret access token");
+    expect(getProps(spec, "hint_AUTH_TOKEN").text).toBe(
+      "Your secret access token",
+    );
 
     const urlField = spec.elements.field_BASE_URL;
-    expect(urlField.props.type).toBe("text");
-    expect(urlField.props.placeholder).toBe("Optional");
-    expect(urlField.props.label).toBe("API Base URL");
+    const urlProps = getProps(spec, "field_BASE_URL");
+    expect(urlProps.type).toBe("text");
+    expect(urlProps.placeholder).toBe("Optional");
+    expect(urlProps.label).toBe("API Base URL");
     expect(urlField.validation).toBeUndefined();
   });
 
@@ -139,10 +148,7 @@ describe("buildPluginConfigUiSpec", () => {
 
     const spec = buildPluginConfigUiSpec(connector);
     expect(spec.elements.testBtn).toBeDefined();
-    expect(spec.elements.actions.props.children).toEqual([
-      "saveBtn",
-      "testBtn",
-    ]);
+    expect(getProps(spec, "actions").children).toEqual(["saveBtn", "testBtn"]);
   });
 });
 
@@ -168,23 +174,23 @@ describe("buildPluginListUiSpec", () => {
 
     expect(spec.version).toBe(1);
     expect(spec.root).toBe("root");
-    expect(spec.elements.heading.props).toEqual({
+    expect(getProps(spec, "heading")).toEqual({
       level: 3,
       text: "Available Extensions",
     });
 
     expect(spec.elements.card_0).toBeDefined();
-    expect(spec.elements.name_0.props.text).toBe("Plugin Alpha");
-    expect(spec.elements.desc_0.props.text).toBe("First plugin");
-    expect(spec.elements.badge_0.props).toEqual({
+    expect(getProps(spec, "name_0").text).toBe("Plugin Alpha");
+    expect(getProps(spec, "desc_0").text).toBe("First plugin");
+    expect(getProps(spec, "badge_0")).toEqual({
       text: "Enabled",
       variant: "default",
     });
 
     expect(spec.elements.card_1).toBeDefined();
-    expect(spec.elements.name_1.props.text).toBe("Plugin Beta");
-    expect(spec.elements.desc_1.props.text).toBe("No description");
-    expect(spec.elements.badge_1.props).toEqual({
+    expect(getProps(spec, "name_1").text).toBe("Plugin Beta");
+    expect(getProps(spec, "desc_1").text).toBe("No description");
+    expect(getProps(spec, "badge_1")).toEqual({
       text: "Available",
       variant: "outline",
     });
@@ -192,6 +198,6 @@ describe("buildPluginListUiSpec", () => {
 
   it("handles empty plugin list", () => {
     const spec = buildPluginListUiSpec([], "Empty List");
-    expect(spec.elements.list.props.children).toEqual([]);
+    expect(getProps(spec, "list").children).toEqual([]);
   });
 });
