@@ -3263,6 +3263,28 @@ type V5PlannerActionSurface = {
 	summary: V5PlannerActionSurfaceSummary;
 };
 
+/**
+ * Keep model-facing action-surface metadata proportional to the eager surface.
+ * The complete authorized catalog stays in the discovery session; rendering its
+ * names here would duplicate the catalog into every planner prompt representation.
+ */
+function plannerFacingActionSurfaceSummary(
+	summary: V5PlannerActionSurfaceSummary,
+): JsonValue {
+	const initialNames = new Set(
+		summary.initialActionNames.map(normalizeActionIdentifier),
+	);
+	return {
+		mode: summary.mode,
+		catalogParentCount: summary.catalogParentCount,
+		exposedActionCount: summary.exposedActionCount,
+		initialActionCount: summary.initialActionCount,
+		tierAParents: summary.tierAParents.filter((name) =>
+			initialNames.has(normalizeActionIdentifier(name)),
+		),
+	};
+}
+
 async function collectV5PlannerCandidateActions(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -4352,7 +4374,11 @@ async function createV5MessageContextObject(args: {
 			messageId: args.message.id,
 			selectedContexts: [...(args.selectedContexts ?? [])],
 			...(args.actionSurface
-				? { actionSurface: args.actionSurface.summary as JsonValue }
+				? {
+						actionSurface: plannerFacingActionSurfaceSummary(
+							args.actionSurface.summary,
+						),
+					}
 				: {}),
 		},
 		staticPrefix: {
@@ -9854,7 +9880,9 @@ export async function runV5MessageRuntimeStage1(args: {
 										})),
 								}
 							: {}),
-						actionSurface: actionSurface.summary,
+						actionSurface: plannerFacingActionSurfaceSummary(
+							actionSurface.summary,
+						),
 					} as JsonValue,
 					thought: messageHandler.thought,
 				},

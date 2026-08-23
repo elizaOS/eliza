@@ -597,7 +597,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(toolNames).not.toContain("OWNER_SECRET_EXPORT");
 	});
 
-	it("keeps a 200-action catalog searchable without injecting 200 schemas", async () => {
+	it("keeps a 200-action global catalog searchable without injecting its names or schemas", async () => {
 		const web = makeMockAction({
 			name: "WEB_SEARCH",
 			contexts: ["web"],
@@ -606,7 +606,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const deferred = Array.from({ length: 199 }, (_, index) =>
 			makeMockAction({
 				name: `DOMAIN_OPERATION_${index}`,
-				contexts: [`domain-${index}`],
+				contexts: [],
 				handler: async () => ({ success: true, text: String(index) }),
 			}),
 		);
@@ -651,15 +651,18 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const plannerCall = getCalls(runtime).find(
 			(call) => call.modelType === ModelType.ACTION_PLANNER,
 		);
-		const toolNames = (
-			(plannerCall?.params as { tools?: Array<{ name: string }> })?.tools ?? []
-		).map((tool) => tool.name);
+		const plannerParams = plannerCall?.params as {
+			tools?: Array<{ name: string }>;
+		};
+		const plannerTools = plannerParams?.tools ?? [];
+		const toolNames = plannerTools.map((tool) => tool.name);
 		expect(toolNames).toContain("WEB_SEARCH");
 		expect(toolNames).toContain("DISCOVER_CAPABILITIES");
 		expect(toolNames.some((name) => name.startsWith("DOMAIN_OPERATION_"))).toBe(
 			false,
 		);
 		expect(toolNames.length).toBeLessThan(10);
+		expect(JSON.stringify(plannerParams)).not.toContain("DOMAIN_OPERATION_");
 	});
 
 	it("propagates a coding-loop failure instead of rescuing partial tool work", async () => {
