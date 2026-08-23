@@ -145,7 +145,7 @@ vi.mock("../state/cloud-login-launch", async (importOriginal) => {
 import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
 import { DEFAULT_BRANDING } from "../config/branding-base";
 import { BrandingContext } from "../config/branding-react.hooks";
-import { APP_RESUME_EVENT } from "../events";
+import { APP_RESUME_EVENT, CHAT_PREFILL_EVENT } from "../events";
 import { __setAppValueForTests } from "../state/app-store";
 import {
   ConversationMessagesCtx,
@@ -622,6 +622,40 @@ describe("useFirstRunConductor", () => {
       ),
     ).toBe(false);
     second.unmount();
+  });
+
+  it("restores the newest valid backup even when another backup has an invalid timestamp", async () => {
+    mocks.client.listLocalAgentBackups.mockResolvedValue([
+      {
+        fileName: "z-invalid.tar",
+        path: "/backups/z-invalid.tar",
+        createdAt: "not-a-date",
+        agentId: "agent-invalid",
+        stateSha256: "sha-invalid",
+        sizeBytes: 10,
+      },
+      {
+        fileName: "a-valid.tar",
+        path: "/backups/a-valid.tar",
+        createdAt: "1960-01-01T00:00:00.000Z",
+        agentId: "agent-valid",
+        stateSha256: "sha-valid",
+        sizeBytes: 20,
+      },
+    ]);
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+
+    await waitForTurn(turn, "first-run:backup-restore");
+    expect(tryHandleFirstRunAction("__first_run__:backup-restore:latest")).toBe(
+      true,
+    );
+    await waitFor(() => {
+      expect(mocks.client.restoreLocalAgentBackup).toHaveBeenCalledWith(
+        "a-valid.tar",
+      );
+    });
+    unmount();
   });
 
   it("REMOTE pick seeds the inline URL+token connect form (no provider step, no immediate finish)", async () => {
@@ -1766,8 +1800,8 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // sign-in ask on screen for the signIn nudge to point at).
     expect(transcript.current).toEqual([]);
     expect(tryHandleFirstRunText("hello?")).toBe(true);
-    const reply = await waitForTurn(turn, "first-run:reply:1");
-    expect(reply.text).toContain("Hang tight");
+    const reply = await waitForTurn(turn, "first-run:reply:wait:1");
+    expect(reply.text).toContain("setting up your agent");
 
     // The effect-cleanup cancelled flag: a refresh settling after unmount
     // must not seed the greeting into a dead transcript (or resume anything).
@@ -1917,8 +1951,8 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(tryHandleFirstRunText("hello?")).toBe(true);
     const userTurn = await waitForTurn(turn, "first-run:user:1");
     expect(userTurn.text).toBe("hello?");
-    const reply = await waitForTurn(turn, "first-run:reply:1");
-    expect(reply.text).toContain("sign in to Eliza Cloud");
+    const reply = await waitForTurn(turn, "first-run:reply:choice:1");
+    expect(reply.text).toContain("Sign in above");
     unmount();
   });
 
@@ -2061,7 +2095,7 @@ describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", 
     const reply = transcript.current.find(
       (m) => m.role === "assistant" && m.id.startsWith("first-run:reply:"),
     );
-    expect(reply?.text).toContain("pick one of the options above");
+    expect(reply?.text).toContain("Cloud is easiest");
     // The hard rule: no first-run POST happened just from typing.
     expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     unmount();
@@ -2087,11 +2121,52 @@ describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", 
           (m) =>
             m.role === "assistant" &&
             m.id.startsWith("first-run:reply:") &&
-            m.text.includes("Almost there"),
+            m.text.includes("Your agent's ready"),
         ),
       ).toBe(true);
     });
     unmount();
+  });
+
+  it("restores every complete typed request to the real composer after setup", async () => {
+    seedAppStore();
+    const prefill = vi.fn();
+    window.addEventListener(CHAT_PREFILL_EVENT, prefill);
+    const { turn, unmount } = renderConductor();
+    try {
+      await waitForTurn(turn, "first-run:greeting");
+      expect(
+        tryHandleFirstRunText("Research quiet hotels near the venue."),
+      ).toBe(true);
+      expect(tryHandleFirstRunText("Keep the budget under $300 exactly.")).toBe(
+        true,
+      );
+
+      expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+      await waitForTurn(turn, "first-run:provider");
+      expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+        true,
+      );
+      await waitForTurn(turn, "first-run:tutorial");
+      expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+
+      await waitFor(() =>
+        expect(prefill).toHaveBeenCalledWith(
+          expect.objectContaining({
+            detail: {
+              text: [
+                "Research quiet hotels near the venue.",
+                "Keep the budget under $300 exactly.",
+              ].join("\n\n"),
+              select: true,
+            },
+          }),
+        ),
+      );
+    } finally {
+      window.removeEventListener(CHAT_PREFILL_EVENT, prefill);
+      unmount();
+    }
   });
 
   it("consumes blank text as a no-op (no empty turn, no reply)", async () => {

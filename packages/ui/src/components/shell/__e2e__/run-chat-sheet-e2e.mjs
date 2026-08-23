@@ -4248,14 +4248,13 @@ try {
         .includes("sign in"),
       "ONBOARDING: composer placeholder points to sign-in (#15039; honest copy per #15206)",
     );
-    // Sign-in-first onboarding (#15339 supersedes the #12178 unlocked design):
-    // the composer is locked until the user signs in, matching the sign-in
-    // placeholder above and ChatOverlay.firstrun.test.tsx.
+    // The composer accepts text for the local conductor; it never sends that
+    // pre-auth text to the agent. Attachments and voice remain gated.
     assert(
-      (await p
+      !(await p
         .getByTestId("chat-composer-textarea")
         .isDisabled()),
-      "ONBOARDING: composer textarea is locked sign-in-first (#15339)",
+      "ONBOARDING: composer textarea accepts conductor-only text (#12178)",
     );
     await snap(p, "state-onboarding-half");
 

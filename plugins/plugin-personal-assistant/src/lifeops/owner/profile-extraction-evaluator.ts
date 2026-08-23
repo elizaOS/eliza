@@ -73,7 +73,7 @@ const FACT_PATTERNS = [
   {
     key: "location",
     pattern:
-      /\b(?:i live in|i'm in|i am in|my location is)\s+([^,.!?]{2,80})/iu,
+      /\b(?:i live in|i'm located in|i am located in|i'm based in|i am based in|my location is)\s+([^,.!?]{2,80})/iu,
   },
   {
     key: "timezone",
@@ -101,7 +101,10 @@ function messageText(value: unknown): string {
 function collectFactHints(text: string, facts: OwnerFactsPatch): void {
   for (const entry of FACT_PATTERNS) {
     const match = entry.pattern.exec(text);
-    const value = cleanName(match?.[1]);
+    const value =
+      entry.key === "timezone"
+        ? match?.[1]?.trim().replace(/[,.!?]+$/u, "") || null
+        : cleanName(match?.[1]);
     if (value) {
       facts[entry.key] = value;
     }

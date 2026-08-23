@@ -148,6 +148,13 @@ describe("default Eliza persona safety", () => {
     expect(definition?.style.chat).toContain(
       '"tell me more" is about the last thing discussed, answer it instead of asking which thing',
     );
+    expect(definition?.style.chat).toContain(
+      "default to one or two short sentences, if one sentence fully solves it stop there",
+    );
+    expect(definition?.style.chat).toContain(
+      "anticipate one likely next move when it is useful, but do not end every reply with a question or offer",
+    );
+    expect(definition?.variants.en.catchphrase).toBe("I've got you.");
   });
 
   it("carries the warm identity into every language variant's resolved system", () => {

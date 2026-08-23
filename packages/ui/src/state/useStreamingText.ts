@@ -26,6 +26,7 @@
  * stay as direct `setConversationMessages` calls.
  */
 
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 import type { Dispatch, SetStateAction } from "react";
 import type {
   AccountConnectRequest,
@@ -80,6 +81,8 @@ export type StreamingTextModification =
        * completed turn so the renderer can swap in the AccountConnectBlock.
        */
       accountConnect?: AccountConnectRequest;
+      /** Validated personal-workspace setup receipt for this completed turn. */
+      capabilityHandoff?: CapabilityHandoffRequest;
       /** Optional agent reasoning/thought to stamp on the completed turn. */
       reasoning?: string;
       /** The server intentionally did not persist this assistant turn. */
@@ -173,6 +176,8 @@ function computeNextMessage(
       const sameTerminalFailure =
         message.terminalFailure === mod.terminalFailure;
       const sameAccountConnect = message.accountConnect === mod.accountConnect;
+      const sameCapabilityHandoff =
+        message.capabilityHandoff === mod.capabilityHandoff;
       const sameReasoning =
         mod.reasoning === undefined || message.reasoning === mod.reasoning;
       const sameAssistantEphemeral =
@@ -185,6 +190,7 @@ function computeNextMessage(
         sameFailure &&
         sameTerminalFailure &&
         sameAccountConnect &&
+        sameCapabilityHandoff &&
         sameReasoning &&
         sameAssistantEphemeral &&
         sameId &&
@@ -216,6 +222,11 @@ function computeNextMessage(
         next.accountConnect = mod.accountConnect;
       } else if (message.accountConnect !== undefined) {
         delete next.accountConnect;
+      }
+      if (mod.capabilityHandoff) {
+        next.capabilityHandoff = mod.capabilityHandoff;
+      } else if (message.capabilityHandoff !== undefined) {
+        delete next.capabilityHandoff;
       }
       if (mod.reasoning) {
         next.reasoning = mod.reasoning;
