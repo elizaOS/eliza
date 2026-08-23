@@ -5,6 +5,7 @@ import {
   isCanonicalPersonalSharedAgent,
   isPersonalSharedAgentId,
   personalDedicatedAgentApiBase,
+  personalDedicatedClientApiBase,
   personalSharedAgent,
   personalSharedAgentId,
 } from "./personal-shared-agent";
@@ -69,6 +70,12 @@ describe("personalSharedAgent", () => {
       `https://${target.id}.cloud.eliza.app`,
     );
     expect(personalDedicatedAgentApiBase(target, "https://")).toBe(target.bridge_url);
+    expect(
+      personalDedicatedClientApiBase(target, "https://", "http://127.0.0.1:8787/request"),
+    ).toBe(`http://127.0.0.1:8787/api/v1/eliza/agents/${target.id}`);
+    expect(personalDedicatedClientApiBase(target, "cloud.eliza.app", "https://api.eliza.app")).toBe(
+      `https://${target.id}.cloud.eliza.app`,
+    );
     expect(
       personalDedicatedAgentApiBase(
         { ...target, bridge_url: "https://attacker.example/agent" },
