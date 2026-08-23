@@ -158,6 +158,17 @@ const STATELESS_INDICATORS = [
   "splash page",
 ] as const;
 
+/**
+ * Word-boundary matchers for the stateless list. Built once, and anchored the
+ * same way the stateful keywords are: a bare `includes` would let "demographic"
+ * match "demo" and "embedded" match "embed", and because the stateless check is
+ * an early exit that outranks every later signal, one such collision silently
+ * classifies a tracker or CRM as needing no database.
+ */
+const STATELESS_PATTERNS = STATELESS_INDICATORS.map(
+  (indicator) => new RegExp(`\\b${indicator}\\b`, "i"),
+);
+
 export interface DetectionResult {
   /** Whether database is likely required */
   requiresDatabase: boolean;
@@ -189,8 +200,8 @@ export function analyzePrompt(prompt: string): DetectionResult {
   const matchedPhrases: string[] = [];
 
   // Check for stateless indicators first (early exit)
-  for (const indicator of STATELESS_INDICATORS) {
-    if (lower.includes(indicator)) {
+  for (const pattern of STATELESS_PATTERNS) {
+    if (pattern.test(lower)) {
       return {
         requiresDatabase: false,
         confidence: 0.9,
