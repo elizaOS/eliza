@@ -257,6 +257,33 @@ describe("native enrollment", () => {
     await expect(Promise.all([first, second])).resolves.toHaveLength(2);
   });
 
+  it("fences an in-flight enrollment without clearing disconnect suppression", async () => {
+    let resolveResponse: ((value: unknown) => void) | null = null;
+    let request: NativeEnrollmentRequest | null = null;
+    const test = harness(
+      async (nextRequest) =>
+        await new Promise((resolve) => {
+          request = nextRequest;
+          resolveResponse = resolve;
+        }),
+    );
+    const enrollment = test.coordinator.enroll({
+      browser: "chrome",
+      profileId: PROFILE_ID,
+    });
+    await vi.waitFor(() => expect(request).not.toBeNull());
+
+    const cancellation = test.coordinator.cancel();
+    resolveResponse?.(resultFor(request as NativeEnrollmentRequest));
+
+    await expect(enrollment).rejects.toMatchObject({
+      code: "native_enrollment_cancelled",
+      retryable: false,
+    });
+    await expect(cancellation).resolves.toBeUndefined();
+    expect(test.state()).toEqual(EMPTY_NATIVE_ENROLLMENT_STATE);
+  });
+
   it("times out, persists bounded backoff, and blocks an early retry", async () => {
     vi.useFakeTimers();
     const test = harness(async () => await new Promise(() => undefined), 100);

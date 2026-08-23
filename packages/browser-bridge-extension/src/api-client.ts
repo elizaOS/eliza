@@ -276,6 +276,27 @@ export class BrowserBridgeRelayClient {
     );
   }
 
+  async revoke(): Promise<void> {
+    await withBrowserBridgeRequestTimeout(
+      "Browser companion revocation",
+      async (signal) => {
+        const response = await fetch(
+          joinUrl(
+            this.config.apiBaseUrl,
+            "/api/browser-bridge/companions/revoke",
+          ),
+          {
+            method: "POST",
+            headers: this.headers(),
+            body: JSON.stringify({}),
+            signal,
+          },
+        );
+        if (!response.ok) await throwApiError(response);
+      },
+    );
+  }
+
   async sync(
     request: CompanionSyncRequest,
   ): Promise<BrowserBridgeCompanionSyncResponse> {

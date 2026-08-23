@@ -19,6 +19,10 @@ import type {
 import { CoalescingSyncRunner } from "../src/coalescing-sync-runner";
 import { sendWithContentScriptRecovery } from "../src/content-script-messaging";
 import {
+  disconnectFailureMessage,
+  performDurableDisconnect,
+} from "../src/durable-disconnect";
+import {
   BROWSER_BRIDGE_NATIVE_HOST,
   isNativeEnrollmentRevocation,
   NativeEnrollmentCoordinator,
@@ -26,6 +30,10 @@ import {
   type NativeEnrollmentRequest,
   shouldProbeRevokedEnrollment,
 } from "../src/native-enrollment";
+import {
+  OperationCancelledError,
+  OperationGeneration,
+} from "../src/operation-generation";
 import type {
   BackgroundState,
   CompanionConfig,
@@ -110,6 +118,7 @@ let backgroundState: BackgroundState = {
 let rememberedTabs: RememberedTab[] = [];
 let syncDebounceScheduled = false;
 let activeSessionId: string | null = null;
+const operationGeneration = new OperationGeneration();
 
 const nativeEnrollment = new NativeEnrollmentCoordinator({
   getExtensionId,
@@ -175,9 +184,7 @@ async function setState(next: Partial<BackgroundState>): Promise<void> {
 }
 
 async function readConfig(): Promise<CompanionConfig | null> {
-  const config = await loadCompanionConfig();
-  backgroundState.config = config;
-  return config;
+  return await loadCompanionConfig();
 }
 
 async function describePermissionState(): Promise<{
@@ -337,28 +344,38 @@ async function buildPreflightRequest(
 async function preflightAndSync(
   client: BrowserBridgeRelayClient,
   config: CompanionConfig,
+  generation: number,
 ) {
-  const preflight = await client.preflight(await buildPreflightRequest(config));
+  operationGeneration.assertCurrent(generation);
+  const preflightRequest = await buildPreflightRequest(config);
+  operationGeneration.assertCurrent(generation);
+  const preflight = await client.preflight(preflightRequest);
+  operationGeneration.assertCurrent(generation);
   backgroundState.settings = preflight.settings;
-  return await client.sync(
-    await buildSyncRequest(
-      config,
-      preflight.settings,
-      preflight.settingsVersion,
-    ),
+  const syncRequest = await buildSyncRequest(
+    config,
+    preflight.settings,
+    preflight.settingsVersion,
   );
+  operationGeneration.assertCurrent(generation);
+  const response = await client.sync(syncRequest);
+  operationGeneration.assertCurrent(generation);
+  return response;
 }
 
 async function runContentAction(
   tabId: number,
   expectedUrl: string,
   action: DomActionRequest,
+  generation: number,
 ): Promise<Record<string, unknown>> {
+  operationGeneration.assertCurrent(generation);
   const response = await sendContentScriptMessage(tabId, {
     type: "browser-bridge:execute-dom-action",
     expectedUrl,
     action,
   });
+  operationGeneration.assertCurrent(generation);
   if (response.ok === false) {
     throw new Error(response.error);
   }
@@ -373,8 +390,11 @@ async function executeAction(
   currentTabId: number | null,
   expectedActionIndex: number,
   attemptId: string,
+  generation: number,
 ): Promise<{ currentTabId: number | null; result: Record<string, unknown> }> {
-  const freshSync = await preflightAndSync(client, config);
+  operationGeneration.assertCurrent(generation);
+  const freshSync = await preflightAndSync(client, config, generation);
+  operationGeneration.assertCurrent(generation);
   backgroundState.settings = freshSync.settings;
   if (
     freshSync.session?.id !== session.id ||
@@ -390,11 +410,15 @@ async function executeAction(
       "The browser session action changed before action execution.",
     );
   }
-  const leasedSession = await client.beginSessionAction(session.id, {
-    currentActionIndex: expectedActionIndex,
-    actionId: freshAction.id,
-    attemptId,
-  });
+  const leasedSession = await operationGeneration.runCurrent(
+    generation,
+    async () =>
+      await client.beginSessionAction(session.id, {
+        currentActionIndex: expectedActionIndex,
+        actionId: freshAction.id,
+        attemptId,
+      }),
+  );
   const executableAction = leasedSession.actions[expectedActionIndex];
   if (
     leasedSession.currentActionIndex !== expectedActionIndex ||
@@ -404,9 +428,12 @@ async function executeAction(
     throw new Error("The browser action lease does not match its checkpoint.");
   }
   const openTabs = await queryTabs({});
+  operationGeneration.assertCurrent(generation);
   const openWindows = await getAllWindows();
+  operationGeneration.assertCurrent(generation);
   const focusedTab =
     (await queryTabs({ active: true, lastFocusedWindow: true }))[0] ?? null;
+  operationGeneration.assertCurrent(generation);
   const target = resolveBrowserActionTarget({
     actionKind: executableAction.kind,
     actionTabId: executableAction.tabId,
@@ -432,6 +459,8 @@ async function executeAction(
       `${executableAction.kind} requires an authorized target URL`,
     );
   }
+  const grantedOrigins = await getGrantedOrigins();
+  operationGeneration.assertCurrent(generation);
   const authorizationError = browserActionAuthorizationError({
     settings: freshSync.settings,
     target: {
@@ -439,7 +468,7 @@ async function executeAction(
       incognito: target.incognito,
       focusedActive: target.focusedActive,
     },
-    grantedOrigins: await getGrantedOrigins(),
+    grantedOrigins,
     currentFocusedUrl: focusedTab?.url ?? null,
   });
   if (authorizationError) {
@@ -450,11 +479,13 @@ async function executeAction(
       if (!executableAction.url) {
         throw new Error("open requires url");
       }
+      operationGeneration.assertCurrent(generation);
       const tab = await createTab({
         url: executableAction.url,
         active: true,
         ...(target.windowId === null ? {} : { windowId: target.windowId }),
       });
+      operationGeneration.assertCurrent(generation);
       return {
         currentTabId: typeof tab.id === "number" ? tab.id : null,
         result: {
@@ -470,11 +501,13 @@ async function executeAction(
       }
       const tabId = resolvedTabId;
       if (tabId === null) {
+        operationGeneration.assertCurrent(generation);
         const tab = await createTab({
           url: executableAction.url,
           active: true,
           ...(target.windowId === null ? {} : { windowId: target.windowId }),
         });
+        operationGeneration.assertCurrent(generation);
         return {
           currentTabId: typeof tab.id === "number" ? tab.id : null,
           result: {
@@ -484,12 +517,16 @@ async function executeAction(
           },
         };
       }
+      operationGeneration.assertCurrent(generation);
       const tab = await updateTab(tabId, {
         url: executableAction.url,
         active: true,
       });
+      operationGeneration.assertCurrent(generation);
       if (typeof tab.windowId === "number") {
+        operationGeneration.assertCurrent(generation);
         await focusWindow(tab.windowId);
+        operationGeneration.assertCurrent(generation);
       }
       return {
         currentTabId: tabId,
@@ -504,9 +541,13 @@ async function executeAction(
       if (tabId === null) {
         throw new Error("focus_tab requires a target tab");
       }
+      operationGeneration.assertCurrent(generation);
       const tab = await updateTab(tabId, { active: true });
+      operationGeneration.assertCurrent(generation);
       if (typeof tab.windowId === "number") {
+        operationGeneration.assertCurrent(generation);
         await focusWindow(tab.windowId);
+        operationGeneration.assertCurrent(generation);
       }
       return {
         currentTabId: tabId,
@@ -520,7 +561,9 @@ async function executeAction(
       if (tabId === null) {
         throw new Error("reload requires a target tab");
       }
+      operationGeneration.assertCurrent(generation);
       await reloadTab(tabId);
+      operationGeneration.assertCurrent(generation);
       return {
         currentTabId: tabId,
         result: {
@@ -535,9 +578,12 @@ async function executeAction(
       }
       return {
         currentTabId: tabId,
-        result: await runContentAction(tabId, targetUrl, {
-          kind: "history_back",
-        }),
+        result: await runContentAction(
+          tabId,
+          targetUrl,
+          { kind: "history_back" },
+          generation,
+        ),
       };
     }
     case "forward": {
@@ -547,9 +593,12 @@ async function executeAction(
       }
       return {
         currentTabId: tabId,
-        result: await runContentAction(tabId, targetUrl, {
-          kind: "history_forward",
-        }),
+        result: await runContentAction(
+          tabId,
+          targetUrl,
+          { kind: "history_forward" },
+          generation,
+        ),
       };
     }
     case "click":
@@ -561,11 +610,16 @@ async function executeAction(
       }
       return {
         currentTabId: tabId,
-        result: await runContentAction(tabId, targetUrl, {
-          kind: executableAction.kind,
-          selector: executableAction.selector ?? null,
-          text: executableAction.text ?? null,
-        }),
+        result: await runContentAction(
+          tabId,
+          targetUrl,
+          {
+            kind: executableAction.kind,
+            selector: executableAction.selector ?? null,
+            text: executableAction.text ?? null,
+          },
+          generation,
+        ),
       };
     }
     case "read_page":
@@ -575,10 +629,12 @@ async function executeAction(
       if (tabId === null) {
         throw new Error(`${executableAction.kind} requires a target tab`);
       }
+      operationGeneration.assertCurrent(generation);
       const response = await sendContentScriptMessage(tabId, {
         type: "browser-bridge:capture-page",
         expectedUrl: targetUrl,
       });
+      operationGeneration.assertCurrent(generation);
       if (response.ok === false || !response.page) {
         throw new Error(
           "error" in response ? response.error : "page capture failed",
@@ -608,7 +664,9 @@ async function executeAction(
 async function executeSession(
   client: BrowserBridgeRelayClient,
   session: LifeOpsBrowserSession,
+  generation: number,
 ): Promise<void> {
+  operationGeneration.assertCurrent(generation);
   if (activeSessionId === session.id) {
     return;
   }
@@ -648,8 +706,10 @@ async function executeSession(
       index < session.actions.length;
       index += 1
     ) {
+      operationGeneration.assertCurrent(generation);
       const action = session.actions[index];
       const config = await readConfig();
+      operationGeneration.assertCurrent(generation);
       if (!config) {
         throw new Error("Browser companion configuration is unavailable.");
       }
@@ -667,7 +727,9 @@ async function executeSession(
         currentTabId,
         index,
         attemptId,
+        generation,
       );
+      operationGeneration.assertCurrent(generation);
       currentTabId = outcome.currentTabId;
       actionResults[action.id] = outcome.result;
       await client.updateSessionProgress(session.id, {
@@ -682,10 +744,12 @@ async function executeSession(
           lastActionKind: action.kind,
         },
       });
+      operationGeneration.assertCurrent(generation);
       completionActionId = action.id;
       completionAttemptId = attemptId;
       activeAttempt = null;
     }
+    operationGeneration.assertCurrent(generation);
     await client.completeSession(session.id, {
       status: "done",
       currentActionIndex: session.actions.length,
@@ -695,10 +759,14 @@ async function executeSession(
         actionResults,
       },
     });
+    operationGeneration.assertCurrent(generation);
     await setState({
       lastSessionStatus: `completed ${session.title}`,
     });
   } catch (error) {
+    if (error instanceof OperationCancelledError) {
+      return;
+    }
     let conflict =
       (error instanceof RelayApiError && error.status === 409) ||
       activeAttempt === null;
@@ -731,8 +799,12 @@ async function executeSession(
       lastSessionStatus: `${conflict ? "conflicted" : "failed"} ${session.title}`,
     });
   } finally {
-    activeSessionId = null;
-    await saveState();
+    if (activeSessionId === session.id) {
+      activeSessionId = null;
+    }
+    if (operationGeneration.isCurrent(generation)) {
+      await saveState();
+    }
   }
 }
 
@@ -837,13 +909,18 @@ function isCompanionTokenExpired(config: CompanionConfig): boolean {
 
 async function enrollNativeCompanion(options: {
   bypassBackoff?: boolean;
+  generation: number;
 }): Promise<CompanionConfig> {
+  operationGeneration.assertCurrent(options.generation);
   const profileId = await getOrCreateExtensionProfileId();
+  operationGeneration.assertCurrent(options.generation);
   const config = await nativeEnrollment.enroll(
     { browser: __BROWSER_BRIDGE_KIND__, profileId },
     { bypassBackoff: options.bypassBackoff },
   );
+  operationGeneration.assertCurrent(options.generation);
   const persisted = await persistCompanionConfig(config);
+  operationGeneration.assertCurrent(options.generation);
   if (!persisted) {
     throw new NativeEnrollmentError(
       "The native enrollment host returned an invalid companion config.",
@@ -857,18 +934,27 @@ async function enrollNativeCompanion(options: {
 
 async function ensureCompanionConfig(options: {
   bypassNativeBackoff?: boolean;
+  generation: number;
 }): Promise<CompanionConfig> {
+  operationGeneration.assertCurrent(options.generation);
   const existing = await readConfig();
+  operationGeneration.assertCurrent(options.generation);
   if (existing && !isCompanionTokenExpired(existing)) return existing;
   if (existing) await clearCompanionConfig();
   return await enrollNativeCompanion({
     bypassBackoff: options.bypassNativeBackoff === true,
+    generation: options.generation,
   });
 }
 
-async function performCompanionSync(config: CompanionConfig): Promise<void> {
+async function performCompanionSync(
+  config: CompanionConfig,
+  generation: number,
+): Promise<void> {
+  operationGeneration.assertCurrent(generation);
   const client = new BrowserBridgeRelayClient(config);
-  const response = await preflightAndSync(client, config);
+  const response = await preflightAndSync(client, config, generation);
+  operationGeneration.assertCurrent(generation);
   await setState({
     syncing: false,
     lastSyncAt: new Date().toISOString(),
@@ -879,11 +965,14 @@ async function performCompanionSync(config: CompanionConfig): Promise<void> {
     rememberedTabCount: response.tabs.length,
   });
   if (response.session) {
-    await executeSession(client, response.session);
+    await executeSession(client, response.session, generation);
   }
+  operationGeneration.assertCurrent(generation);
   try {
     await syncBlockingRules(config.apiBaseUrl);
+    operationGeneration.assertCurrent(generation);
   } catch (error) {
+    if (error instanceof OperationCancelledError) throw error;
     // error-policy:J4 Blocking-policy failure is shown in extension state
     // without fabricating successful rule synchronization.
     await setState({
@@ -895,18 +984,21 @@ async function performCompanionSync(config: CompanionConfig): Promise<void> {
 interface SyncRunRequest {
   reason: string;
   bypassNativeBackoff: boolean;
+  generation: number;
 }
 
 async function runSyncAttempt({
   reason,
   bypassNativeBackoff,
+  generation,
 }: SyncRunRequest): Promise<BackgroundState> {
-  await setState({
-    syncing: true,
-    lastError: null,
-  });
-
   try {
+    operationGeneration.assertCurrent(generation);
+    await setState({
+      syncing: true,
+      lastError: null,
+    });
+    operationGeneration.assertCurrent(generation);
     const probeOwnerReset = shouldProbeRevokedEnrollment(
       reason,
       backgroundState.connectionIssue,
@@ -917,13 +1009,20 @@ async function runSyncAttempt({
       // rejects enrollment until its durable owner-controlled tombstone is
       // actually reset.
       await resetNativeEnrollmentState();
+      operationGeneration.assertCurrent(generation);
     }
     const config = await ensureCompanionConfig({
       bypassNativeBackoff: bypassNativeBackoff || probeOwnerReset,
+      generation,
     });
+    operationGeneration.assertCurrent(generation);
     await setState({ config });
-    await performCompanionSync(config);
+    operationGeneration.assertCurrent(generation);
+    await performCompanionSync(config, generation);
   } catch (error) {
+    if (error instanceof OperationCancelledError) {
+      return backgroundState;
+    }
     // error-policy:J1 The sync-loop boundary translates failures into durable
     // extension state and revokes invalid local pairing state.
     const isPairingInvalid = isCompanionAuthError(error);
@@ -939,9 +1038,12 @@ async function runSyncAttempt({
       try {
         const renewed = await enrollNativeCompanion({
           bypassBackoff: true,
+          generation,
         });
+        operationGeneration.assertCurrent(generation);
         await setState({ config: renewed });
-        await performCompanionSync(renewed);
+        operationGeneration.assertCurrent(generation);
+        await performCompanionSync(renewed, generation);
         return backgroundState;
       } catch (renewalError) {
         finalError = renewalError;
@@ -951,6 +1053,9 @@ async function runSyncAttempt({
       await suppressNativeEnrollment(
         isRevoked ? "companion_revoked" : "credential_invalid",
       );
+    }
+    if (finalError instanceof OperationCancelledError) {
+      return backgroundState;
     }
     const finalPairingError = isCompanionAuthError(finalError)
       ? finalError
@@ -992,6 +1097,7 @@ const syncRunner = new CoalescingSyncRunner<SyncRunRequest, BackgroundState>(
     reason: current === null ? next.reason : "queued",
     bypassNativeBackoff:
       (current?.bypassNativeBackoff ?? false) || next.bypassNativeBackoff,
+    generation: next.generation,
   }),
   runSyncAttempt,
 );
@@ -1000,9 +1106,17 @@ async function syncNow(
   reason: string,
   options: { bypassNativeBackoff?: boolean } = {},
 ): Promise<BackgroundState> {
+  if (operationGeneration.isBlocked) return backgroundState;
+  if (
+    backgroundState.connectionIssue === "owner_disconnected" &&
+    reason !== "owner-reconnect"
+  ) {
+    return backgroundState;
+  }
   return await syncRunner.request({
     reason,
     bypassNativeBackoff: options.bypassNativeBackoff === true,
+    generation: operationGeneration.capture(),
   });
 }
 
@@ -1058,21 +1172,48 @@ async function handlePopupMessage(
         return { ok: true, state: backgroundState };
       }
       case "browser-bridge:clear-config": {
-        await clearCompanionConfig();
-        await suppressNativeEnrollment("owner_disconnected");
-        rememberedTabs = [];
+        if (operationGeneration.isBlocked) {
+          throw new Error("Browser bridge disconnect is already in progress.");
+        }
+        operationGeneration.cancelAndBlock();
         activeSessionId = null;
-        await setState({
-          config: null,
-          settings: null,
-          lastError: null,
-          lastSessionStatus: null,
-          lastSyncAt: null,
-          rememberedTabCount: 0,
-          settingsSummary: null,
-          connectionIssue: "owner_disconnected",
-        });
-        return { ok: true, state: backgroundState };
+        try {
+          const config = await readConfig();
+          await performDurableDisconnect({
+            cancelSync: async () => await syncRunner.cancelPending(),
+            cancelEnrollment: async () => await nativeEnrollment.cancel(),
+            revoke: config
+              ? async () => await new BrowserBridgeRelayClient(config).revoke()
+              : null,
+            clearConfig: clearCompanionConfig,
+            suppressEnrollment: async () =>
+              await suppressNativeEnrollment("owner_disconnected"),
+          });
+          rememberedTabs = [];
+          await setState({
+            config: null,
+            settings: null,
+            lastError: null,
+            lastSessionStatus: null,
+            lastSyncAt: null,
+            rememberedTabCount: 0,
+            settingsSummary: null,
+            connectionIssue: "owner_disconnected",
+          });
+          return { ok: true, state: backgroundState };
+        } catch (error) {
+          // error-policy:J1 Disconnect is a user-facing boundary. It must not
+          // report success or erase the only usable credential when durable
+          // server revocation could not be confirmed.
+          const message = disconnectFailureMessage(error);
+          await setState({
+            syncing: false,
+            lastError: message,
+          });
+          throw new Error(message);
+        } finally {
+          operationGeneration.resume();
+        }
       }
       case "browser-bridge:sync-now": {
         return {

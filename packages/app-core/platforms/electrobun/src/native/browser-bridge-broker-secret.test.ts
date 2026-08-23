@@ -8,6 +8,7 @@ import {
   loadBrowserBridgeBrokerSecret,
   loadOrCreateBrowserBridgeBrokerSecret,
   resolveBrowserBridgeBrokerSecretPath,
+  resolveWindowsBrowserBridgeSecretHelper,
   windowsBrowserBridgeSecretInvocation,
 } from "./browser-bridge-broker-secret";
 
@@ -173,6 +174,17 @@ describe("browser bridge broker secret", () => {
         "relative.ps1",
       ),
     ).toThrow("helper path is invalid");
+  });
+
+  it("resolves the helper beside a Bun-compiled native host executable", () => {
+    expect(
+      resolveWindowsBrowserBridgeSecretHelper(
+        "/$bunfs/root/native",
+        (candidate) =>
+          candidate === "C:\\Eliza\\Resources\\app\\browser-bridge-secret.ps1",
+        "C:\\Eliza\\Resources\\app\\browser-bridge-native-host.exe",
+      ),
+    ).toBe("C:\\Eliza\\Resources\\app\\browser-bridge-secret.ps1");
   });
 
   it("rejects failed or malformed Windows DPAPI helper output", () => {

@@ -489,6 +489,7 @@ export class NativeEnrollmentCoordinator {
   private readonly randomUUID: () => string;
   private readonly randomBytes: (length: number) => Uint8Array;
   private readonly timeoutMs: number;
+  private generation = 0;
 
   constructor(private readonly dependencies: NativeEnrollmentDependencies) {
     this.now = dependencies.now ?? Date.now;
@@ -514,7 +515,8 @@ export class NativeEnrollmentCoordinator {
       }
       return await this.inFlight.promise;
     }
-    const promise = this.runEnrollment(bindings, options);
+    const generation = this.generation;
+    const promise = this.runEnrollment(bindings, options, generation);
     this.inFlight = { key, promise };
     try {
       return await promise;
@@ -523,11 +525,41 @@ export class NativeEnrollmentCoordinator {
     }
   }
 
+  /**
+   * Fences an enrollment already awaiting the native host. The returned
+   * promise settles only after that attempt can no longer write retry state.
+   */
+  async cancel(): Promise<void> {
+    this.generation += 1;
+    const active = this.inFlight?.promise ?? null;
+    this.inFlight = null;
+    if (active) {
+      try {
+        await active;
+      } catch {
+        // error-policy:J5 The enroll caller remains the primary observer of
+        // the same in-flight native protocol rejection.
+      }
+    }
+  }
+
+  private assertCurrent(generation: number): void {
+    if (generation !== this.generation) {
+      throw new NativeEnrollmentError(
+        "Native enrollment was cancelled.",
+        "native_enrollment_cancelled",
+        false,
+      );
+    }
+  }
+
   private async runEnrollment(
     bindings: EnrollmentBindings,
     options: { bypassBackoff?: boolean },
+    generation: number,
   ): Promise<BrowserBridgeCompanionConfig> {
     const state = await this.dependencies.loadState();
+    this.assertCurrent(generation);
     if (state.suppressedReason) {
       throw new NativeEnrollmentError(
         "Automatic browser enrollment is disabled after an explicit disconnect or revocation.",
@@ -575,12 +607,15 @@ export class NativeEnrollmentCoordinator {
         this.dependencies.send(request),
         timeout,
       ]);
+      this.assertCurrent(generation);
       const response = validateNativeEnrollmentResponse(
         rawResponse,
         request,
         this.now(),
       );
+      this.assertCurrent(generation);
       await this.dependencies.saveState({ ...EMPTY_NATIVE_ENROLLMENT_STATE });
+      this.assertCurrent(generation);
       return response.config;
     } catch (error) {
       // error-policy:J1 Enrollment is the native-protocol boundary. It records
@@ -593,6 +628,9 @@ export class NativeEnrollmentCoordinator {
               "native_host_unavailable",
               true,
             );
+      if (normalized.code === "native_enrollment_cancelled") {
+        throw normalized;
+      }
       const failures = Math.min(state.consecutiveFailures + 1, 32);
       await this.dependencies.saveState({
         consecutiveFailures: failures,
