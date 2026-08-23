@@ -414,7 +414,11 @@ function stripLeadingModelProtocolObjects(value: string): string {
 			break;
 		}
 		const suffix = remaining.slice(objectText.length).trimStart();
-		if (!suffix) return "";
+		// This helper removes protocol *prefixes* from an otherwise usable reply.
+		// A complete JSON object with no trailing prose is not a prefix: preserve it
+		// for the typed user-visible-output boundary, which can distinguish an
+		// uppercase tool-control envelope from legitimate user-requested JSON.
+		if (!suffix) return remaining;
 		remaining = suffix.startsWith("text:")
 			? suffix.slice("text:".length).trimStart()
 			: suffix;

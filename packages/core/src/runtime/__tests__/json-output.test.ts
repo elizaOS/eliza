@@ -113,6 +113,16 @@ describe("extractJsonObjects", () => {
 });
 
 describe("stripJsonStructuralJunkReply — leaked pseudo-tool markup", () => {
+	it("preserves a whole JSON object for the typed egress boundary", () => {
+		const toolEnvelope =
+			'{"action":"BROWSER","parameters":{"url":"https://example.com"}}';
+		const domainJson =
+			'{"action":"proceed","parameters":{"step":1},"status":"done"}';
+
+		expect(stripJsonStructuralJunkReply(toolEnvelope)).toBe(toolEnvelope);
+		expect(stripJsonStructuralJunkReply(domainJson)).toBe(domainJson);
+	});
+
 	it("strips a paired invented pseudo-tool tag block (cerebras <BROWSE_PAGE>)", () => {
 		expect(
 			stripJsonStructuralJunkReply(

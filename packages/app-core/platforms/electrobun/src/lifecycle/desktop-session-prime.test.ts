@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PACKAGED_WINDOWS_BOOTSTRAP_PARTITION } from "../main-window-session";
 import {
   CSRF_COOKIE_NAME,
+  installDesktopSessionCookies,
   persistSession,
   SESSION_COOKIE_NAME,
 } from "../native/auth-bridge";
@@ -99,6 +100,7 @@ vi.mock("../native/auth-bridge", async (importOriginal) => {
 
 import { logger } from "../logger";
 import {
+  _resetDesktopSessionPrimeForTests,
   markDesktopSessionStale,
   primeDesktopSessionAuth,
 } from "./desktop-session-prime";
@@ -144,6 +146,8 @@ function cookieNames(cookies: StoredCookie[]): string[] {
 
 describe("desktop-session-prime", () => {
   beforeEach(() => {
+    vi.useRealTimers();
+    _resetDesktopSessionPrimeForTests();
     for (const key of ENV_KEYS) {
       originalEnv.set(key, process.env[key]);
       delete process.env[key];
@@ -188,6 +192,8 @@ describe("desktop-session-prime", () => {
   });
 
   afterEach(() => {
+    _resetDesktopSessionPrimeForTests();
+    vi.useRealTimers();
     for (const key of ENV_KEYS) {
       const value = originalEnv.get(key);
       if (value === undefined) {
@@ -224,18 +230,52 @@ describe("desktop-session-prime", () => {
     expect(electrobunState.defaultCookies).toHaveLength(4);
   });
 
+  it("coalesces overlapping status emissions into one proof exchange", async () => {
+    const session = {
+      sessionId: "session",
+      csrfToken: "csrf",
+      expiresAt: Date.now() + 60_000,
+    };
+    let resolveSession!: (value: typeof session) => void;
+    authBridgeState.loadOrCreateDesktopSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSession = resolve;
+        }),
+    );
+
+    const first = primeDesktopSessionAuth(LOOPBACK_API, RENDERER_ORIGIN);
+    const second = primeDesktopSessionAuth(LOOPBACK_API, RENDERER_ORIGIN);
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
+    resolveSession(session);
+    await Promise.all([first, second]);
+    expect(electrobunState.defaultCookies).toHaveLength(4);
+  });
+
+  it("backs off a not-ready runtime instead of spinning", async () => {
+    vi.useFakeTimers();
+    authBridgeState.loadOrCreateDesktopSession.mockResolvedValue(null);
+
+    await primeDesktopSessionAuth(LOOPBACK_API, RENDERER_ORIGIN);
+    await primeDesktopSessionAuth(LOOPBACK_API, RENDERER_ORIGIN);
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
+  });
+
   it("leaves the jar empty and stays unprimed when the bridge produces no session", async () => {
     process.env.ELIZA_STATE_DIR = createStateDir();
 
     await primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN);
     await primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN);
 
-    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledWith({
       apiBase: "https://agent.example.com",
     });
     expect(logger.info).toHaveBeenCalledWith(
-      "[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
+      "[Main] Desktop auth bridge is not ready; retrying with bounded backoff.",
     );
     expect(electrobunState.defaultCookies).toEqual([]);
     expect(electrobunState.fromPartition).not.toHaveBeenCalled();
@@ -252,7 +292,7 @@ describe("desktop-session-prime", () => {
     expect(logger.warn).toHaveBeenCalledWith(
       "[Main] Desktop auth bridge failed: disk exploded",
     );
-    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
     expect(electrobunState.defaultCookies).toEqual([]);
   });
 
@@ -368,11 +408,15 @@ describe("desktop-session-prime", () => {
   });
 
   it("marks https origins secure and http origins not secure", async () => {
-    seedPersistedSession();
+    const session = seedPersistedSession();
 
-    await primeDesktopSessionAuth(
-      "https://127.0.0.1:8443",
-      "http://127.0.0.1:5173",
+    installDesktopSessionCookies(
+      electrobunState.defaultSession.cookies,
+      session,
+      {
+        apiOrigin: "https://127.0.0.1:8443",
+        rendererOrigin: "http://127.0.0.1:5173",
+      },
     );
 
     const sessionCookies = electrobunState.defaultCookies.filter(
@@ -392,20 +436,21 @@ describe("desktop-session-prime", () => {
     );
   });
 
-  it("logs <no targets> for unparsable origins and still marks the process primed", async () => {
-    seedPersistedSession();
+  it("returns no cookie targets for unparsable origins", () => {
+    const session = seedPersistedSession();
 
-    await primeDesktopSessionAuth("not a url", "");
-    await primeDesktopSessionAuth("not a url", "");
-
-    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
-    expect(electrobunState.defaultCookies).toEqual([]);
-    expect(logger.info).toHaveBeenCalledWith(
-      "[Main] Desktop loopback session primed on <no targets>",
+    const touched = installDesktopSessionCookies(
+      electrobunState.defaultSession.cookies,
+      session,
+      { apiOrigin: "not a url", rendererOrigin: "" },
     );
+
+    expect(touched).toEqual([]);
+    expect(electrobunState.defaultCookies).toEqual([]);
   });
 
   it("warns and stays unprimed when the cookie jar throws", async () => {
+    vi.useFakeTimers();
     seedPersistedSession();
     electrobunState.defaultSet.mockImplementation(() => {
       throw new Error("jar locked");
@@ -416,16 +461,13 @@ describe("desktop-session-prime", () => {
       electrobunState.defaultCookies.push({ ...cookie });
       return true;
     });
-    await primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+    await vi.advanceTimersByTimeAsync(500);
 
     expect(logger.warn).toHaveBeenCalledWith(
       "[Main] Desktop auth cookie install failed: jar locked",
     );
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
-    expect(cookieNames(electrobunState.defaultCookies)).toEqual([
-      SESSION_COOKIE_NAME,
-      CSRF_COOKIE_NAME,
-    ]);
+    expect(electrobunState.defaultCookies).toEqual([]);
   });
 
   it("stringifies a non-Error cookie-install throw", async () => {
@@ -454,7 +496,7 @@ describe("desktop-session-prime", () => {
     expect(logger.warn).toHaveBeenCalledWith(
       "[Main] Desktop auth cookie install failed: no such partition",
     );
-    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
     expect(electrobunState.defaultCookies).toEqual([]);
   });
 });
