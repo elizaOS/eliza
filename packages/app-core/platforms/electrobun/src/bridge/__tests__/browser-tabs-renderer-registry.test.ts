@@ -7,7 +7,7 @@ beforeAll(() => {
 import {
   getBrowserTabsRendererImpl,
   setBrowserTabsRendererImpl,
-} from "./browser-tabs-renderer-registry.ts";
+} from "../browser-tabs-renderer-registry.ts";
 
 const KEY = "__ELIZA_BROWSER_TABS_REGISTRY__";
 
@@ -18,8 +18,7 @@ const fakeImpl = {
 
 describe("browser-tabs-renderer-registry", () => {
   afterEach(() => {
-    // @ts-expect-error window 类型收窄
-    delete window[KEY];
+    Reflect.deleteProperty(window, KEY);
   });
 
   it("returns a not-attached fallback before any impl is set", () => {
