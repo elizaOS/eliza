@@ -19,10 +19,23 @@ import {
 type SessionKind = "host" | "browser" | "sandbox" | "remote_guest";
 
 export interface SessionSnapshot {
+  contractVersion: 2;
   id: string;
+  ownerId: string;
+  adapterId: string;
+  canonicalState:
+    | "ready"
+    | "running"
+    | "paused"
+    | "awaiting_confirmation"
+    | "stopping"
+    | "stopped"
+    | "failed";
+  isolationMode: string;
+  generation: number;
   label: string;
   target: { kind: SessionKind; targetId?: string; viewerUrl?: string };
-  status: "idle" | "running" | "closed";
+  status: "idle" | "running" | "paused" | "stopping" | "closed";
   sequence: number;
   createdAt: string;
   updatedAt: string;
@@ -30,6 +43,25 @@ export interface SessionSnapshot {
   cursor?: { x: number; y: number; displayId?: number; updatedAt: string };
   lastCommand?: string;
   lastError?: string;
+  lastObservation?: ObservationProvenance;
+  lastOutcome?: {
+    actionId: string;
+    status: string;
+    completedAt: string;
+    observationId?: string;
+    errorCode?: string;
+  };
+}
+
+export interface ObservationProvenance {
+  observationId: string;
+  sequence: number;
+  observedAt: string;
+  sha256: string;
+  mimeType: "image/png" | "image/jpeg";
+  source: SessionKind;
+  width?: number;
+  height?: number;
 }
 
 export interface SessionFrame {
@@ -38,20 +70,47 @@ export interface SessionFrame {
   capturedAt: string;
   width?: number;
   height?: number;
+  provenance: ObservationProvenance;
+}
+
+export interface SessionEvent {
+  eventId: number;
+  type: string;
+  sessionId: string;
+  occurredAt: string;
+  command?: string;
+  outcomeStatus?: string;
+}
+
+export interface ComputerUseReadiness {
+  capture: { available: boolean; tool: string };
+  input: { available: boolean; tool: string };
+  browser: { available: boolean; tool: string };
+  vision: { available: boolean; modelType: string };
+  approvalMode: string;
+}
+
+export interface ComputerUseSessionsSnapshot {
+  sessions: SessionSnapshot[];
+  events: SessionEvent[];
+  readiness: ComputerUseReadiness;
 }
 
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; sessions: SessionSnapshot[] };
+  | { kind: "ready"; snapshot: ComputerUseSessionsSnapshot };
 
 const SNAPSHOT_POLL_MS = 1_500;
 const FRAME_POLL_MS = 2_000;
 
 export interface ComputerUseSessionsViewApi {
   closeSession(sessionId: string, signal?: AbortSignal): Promise<void>;
+  pauseSession(sessionId: string, signal?: AbortSignal): Promise<void>;
+  resumeSession(sessionId: string, signal?: AbortSignal): Promise<void>;
+  stopSession(sessionId: string, signal?: AbortSignal): Promise<void>;
   getFrame(sessionId: string, signal?: AbortSignal): Promise<SessionFrame>;
-  listSessions(signal?: AbortSignal): Promise<SessionSnapshot[]>;
+  listSessions(signal?: AbortSignal): Promise<ComputerUseSessionsSnapshot>;
 }
 
 export interface ComputerUseSessionsViewProps {
@@ -68,6 +127,24 @@ const defaultApi: ComputerUseSessionsViewApi = {
       { method: "DELETE", signal },
     );
   },
+  async pauseSession(sessionId, signal) {
+    await client.fetch(
+      `/api/computer-use/sessions/${encodeURIComponent(sessionId)}/pause`,
+      { method: "POST", signal },
+    );
+  },
+  async resumeSession(sessionId, signal) {
+    await client.fetch(
+      `/api/computer-use/sessions/${encodeURIComponent(sessionId)}/resume`,
+      { method: "POST", signal },
+    );
+  },
+  async stopSession(sessionId, signal) {
+    await client.fetch(
+      `/api/computer-use/sessions/${encodeURIComponent(sessionId)}/stop`,
+      { method: "POST", signal },
+    );
+  },
   async getFrame(sessionId, signal) {
     const response = await client.fetch<{ frame: SessionFrame }>(
       `/api/computer-use/sessions/${encodeURIComponent(sessionId)}/frame`,
@@ -77,14 +154,17 @@ const defaultApi: ComputerUseSessionsViewApi = {
     return response.frame;
   },
   async listSessions(signal) {
-    const response = await client.fetch<{ sessions: SessionSnapshot[] }>(
+    const response = await client.fetch<ComputerUseSessionsSnapshot>(
       "/api/computer-use/sessions",
       { signal },
     );
     if (!Array.isArray(response.sessions)) {
       throw new Error("Computer sessions returned an invalid response");
     }
-    return response.sessions;
+    if (!response.readiness || !Array.isArray(response.events)) {
+      throw new Error("Computer sessions returned incomplete readiness data");
+    }
+    return response;
   },
 };
 
@@ -111,8 +191,31 @@ function kindLabel(kind: SessionKind): string {
 
 function statusTone(status: SessionSnapshot["status"]): string {
   if (status === "running") return "bg-orange-500 text-white";
+  if (status === "stopping") return "bg-orange-700 text-white";
+  if (status === "paused")
+    return "bg-amber-500/20 text-amber-800 dark:text-amber-200";
   if (status === "closed") return "bg-muted text-muted-foreground";
   return "bg-orange-500/15 text-orange-700 dark:text-orange-300";
+}
+
+function ReadinessPill({
+  available,
+  label,
+}: {
+  available: boolean;
+  label: string;
+}) {
+  return (
+    <span
+      className={`rounded-full px-2 py-1 text-[11px] ${
+        available
+          ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
+          : "bg-destructive/10 text-destructive"
+      }`}
+    >
+      {label}: {available ? "ready" : "unavailable"}
+    </span>
+  );
 }
 
 function frameDataUrl(frame: SessionFrame): string {
@@ -146,17 +249,19 @@ function CursorOverlay({
 }
 
 function SessionPreview({
+  compact = false,
   frame,
   session,
 }: {
+  compact?: boolean;
   frame?: SessionFrame;
   session: SessionSnapshot;
 }) {
   if (frame) {
     return (
       <div
-        className="relative overflow-hidden rounded-xl bg-neutral-950"
-        style={{ aspectRatio: "2.4 / 1" }}
+        className={`relative overflow-hidden rounded-xl bg-neutral-950 ${compact ? "h-20" : ""}`}
+        style={compact ? undefined : { aspectRatio: "2.4 / 1" }}
       >
         <img
           alt={`${session.label} latest frame`}
@@ -170,18 +275,18 @@ function SessionPreview({
   if (session.target.viewerUrl) {
     return (
       <iframe
-        className="w-full rounded-xl border-0 bg-neutral-950"
+        className={`w-full rounded-xl border-0 bg-neutral-950 ${compact ? "h-20" : ""}`}
         sandbox="allow-scripts"
         src={session.target.viewerUrl}
-        style={{ aspectRatio: "2.4 / 1" }}
+        style={compact ? undefined : { aspectRatio: "2.4 / 1" }}
         title={`${session.label} viewer`}
       />
     );
   }
   return (
     <div
-      className="flex items-center justify-center rounded-xl bg-neutral-950 px-6 text-center text-xs text-neutral-400"
-      style={{ aspectRatio: "2.4 / 1" }}
+      className={`flex items-center justify-center rounded-xl bg-neutral-950 px-6 text-center text-xs text-neutral-400 ${compact ? "h-20" : ""}`}
+      style={compact ? undefined : { aspectRatio: "2.4 / 1" }}
     >
       Waiting for a frame provider on this target.
     </div>
@@ -222,10 +327,10 @@ export function ComputerUseSessionsView({
       activeSnapshotRequest.current = controller;
       if (!background) setState({ kind: "loading" });
       try {
-        const sessions = await api.listSessions(controller.signal);
+        const snapshot = await api.listSessions(controller.signal);
         if (!controller.signal.aborted) {
-          sessionsRef.current = sessions;
-          setState({ kind: "ready", sessions });
+          sessionsRef.current = snapshot.sessions;
+          setState({ kind: "ready", snapshot });
         }
       } catch (error) {
         // error-policy:J4 foreground failures render explicitly; background
@@ -242,7 +347,9 @@ export function ComputerUseSessionsView({
     [api],
   );
 
-  const sessions = state.kind === "ready" ? state.sessions : [];
+  const sessions = state.kind === "ready" ? state.snapshot.sessions : [];
+  const readiness = state.kind === "ready" ? state.snapshot.readiness : null;
+  const events = state.kind === "ready" ? state.snapshot.events : [];
   const frameSessionKey = sessions
     .map((session) => `${session.id}:${session.status}`)
     .join("|");
@@ -354,14 +461,19 @@ export function ComputerUseSessionsView({
     }
   }, [openFloatingWindow]);
 
-  const closeSession = useCallback(
-    async (sessionId: string) => {
+  const controlSession = useCallback(
+    async (
+      session: SessionSnapshot,
+      operation: "pause" | "resume" | "stop",
+    ) => {
       setActionError(null);
       try {
-        await api.closeSession(sessionId);
+        if (operation === "pause") await api.pauseSession(session.id);
+        else if (operation === "resume") await api.resumeSession(session.id);
+        else await api.stopSession(session.id);
         await loadSessions(true);
       } catch (error) {
-        // error-policy:J4 a failed close remains visible and retryable.
+        // error-policy:J4 session controls remain visibly retryable.
         setActionError(errorMessage(error));
       }
     },
@@ -389,6 +501,30 @@ export function ComputerUseSessionsView({
         >
           Open floating
         </button>
+        {readiness ? (
+          <fieldset className="flex w-full flex-wrap gap-2">
+            <legend className="sr-only">Computer use readiness</legend>
+            <ReadinessPill
+              available={readiness.capture.available}
+              label="Capture"
+            />
+            <ReadinessPill
+              available={readiness.input.available}
+              label="Input"
+            />
+            <ReadinessPill
+              available={readiness.browser.available}
+              label="Browser"
+            />
+            <ReadinessPill
+              available={readiness.vision.available}
+              label="Vision"
+            />
+            <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-foreground">
+              Approval: {readiness.approvalMode.replaceAll("_", " ")}
+            </span>
+          </fieldset>
+        ) : null}
       </header>
 
       {actionError ? (
@@ -439,7 +575,95 @@ export function ComputerUseSessionsView({
               ))}
             </nav>
           ) : null}
-          {!shortLandscape ? (
+          {shortLandscape && selected ? (
+            <article
+              className="grid min-h-0 gap-3 overflow-y-auto px-3 pt-1 pb-[var(--eliza-chat-clearance,5.25rem)]"
+              style={{
+                gridTemplateColumns: "minmax(12rem, 0.9fr) minmax(0, 1.1fr)",
+              }}
+            >
+              <SessionPreview
+                compact
+                frame={frames[selected.id]}
+                session={selected}
+              />
+              <div className="min-w-0 text-xs text-muted-foreground">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h2 className="truncate text-sm font-semibold text-foreground">
+                      {selected.label}
+                    </h2>
+                    <p className="truncate">
+                      {kindLabel(selected.target.kind)}
+                      {selected.target.targetId
+                        ? ` · ${selected.target.targetId}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-1 text-[11px] ${statusTone(selected.status)}`}
+                    >
+                      {selected.status}
+                    </span>
+                    {selected.status === "paused" ? (
+                      <button
+                        className="min-h-11 px-1 text-xs hover:text-orange-500"
+                        onClick={() => void controlSession(selected, "resume")}
+                        type="button"
+                      >
+                        Resume
+                      </button>
+                    ) : selected.status === "idle" ? (
+                      <button
+                        className="min-h-11 px-1 text-xs hover:text-orange-500"
+                        onClick={() => void controlSession(selected, "pause")}
+                        type="button"
+                      >
+                        Pause
+                      </button>
+                    ) : null}
+                    <button
+                      className="min-h-11 px-1 text-xs text-destructive hover:text-orange-600 disabled:opacity-50"
+                      data-agent-id={`computer-session-stop-${selected.id}`}
+                      disabled={selected.status === "stopping"}
+                      onClick={() => void controlSession(selected, "stop")}
+                      type="button"
+                    >
+                      Stop
+                    </button>
+                  </div>
+                </div>
+                <p className="truncate">
+                  Sequence {selected.sequence}
+                  {selected.cursor
+                    ? ` · Cursor ${Math.round(selected.cursor.x)}, ${Math.round(selected.cursor.y)}`
+                    : " · Cursor pending"}
+                </p>
+                {frames[selected.id]?.provenance ? (
+                  <p
+                    className="truncate"
+                    title={frames[selected.id]?.provenance.sha256}
+                  >
+                    Observation {frames[selected.id]?.provenance.sequence} ·{" "}
+                    {frames[selected.id]?.provenance.source} ·{" "}
+                    {frames[selected.id]?.provenance.sha256.slice(0, 10)}
+                  </p>
+                ) : null}
+                <p className="truncate">
+                  {selected.lastOutcome
+                    ? `Outcome: ${selected.lastOutcome.status}${
+                        selected.lastOutcome.errorCode
+                          ? ` · ${selected.lastOutcome.errorCode}`
+                          : ""
+                      }`
+                    : selected.lastCommand
+                      ? `Last: ${selected.lastCommand}`
+                      : "Waiting for first action"}
+                </p>
+              </div>
+            </article>
+          ) : (
             <div className="grid min-h-0 flex-1 content-start items-start gap-3 overflow-y-auto ps-3 pt-2 pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)] md:grid-cols-2 xl:grid-cols-3">
               {sessions.map((session) =>
                 (compactViewport || shortLandscape) &&
@@ -477,13 +701,35 @@ export function ComputerUseSessionsView({
                         >
                           {session.status}
                         </span>
+                        {session.status === "paused" ? (
+                          <button
+                            className="min-h-11 px-1 text-xs text-muted-foreground hover:text-orange-500"
+                            onClick={() =>
+                              void controlSession(session, "resume")
+                            }
+                            type="button"
+                          >
+                            Resume
+                          </button>
+                        ) : session.status === "idle" ? (
+                          <button
+                            className="min-h-11 px-1 text-xs text-muted-foreground hover:text-orange-500"
+                            onClick={() =>
+                              void controlSession(session, "pause")
+                            }
+                            type="button"
+                          >
+                            Pause
+                          </button>
+                        ) : null}
                         <button
-                          className="min-h-11 px-1 text-xs text-muted-foreground hover:text-orange-500"
-                          data-agent-id={`computer-session-close-${session.id}`}
-                          onClick={() => void closeSession(session.id)}
+                          className="min-h-11 px-1 text-xs text-destructive hover:text-orange-600 disabled:opacity-50"
+                          data-agent-id={`computer-session-stop-${session.id}`}
+                          disabled={session.status === "stopping"}
+                          onClick={() => void controlSession(session, "stop")}
                           type="button"
                         >
-                          Close
+                          Stop
                         </button>
                       </div>
                     </div>
@@ -507,12 +753,49 @@ export function ComputerUseSessionsView({
                             ? `Last: ${session.lastCommand}`
                             : "Waiting for first action"}
                       </span>
+                      {frames[session.id]?.provenance ? (
+                        <span
+                          className="col-span-2 truncate"
+                          title={frames[session.id]?.provenance.sha256}
+                        >
+                          Observation {frames[session.id]?.provenance.sequence}{" "}
+                          · {frames[session.id]?.provenance.source} ·{" "}
+                          {frames[session.id]?.provenance.sha256.slice(0, 10)}
+                        </span>
+                      ) : null}
+                      {session.lastOutcome ? (
+                        <span className="col-span-2 truncate">
+                          Outcome: {session.lastOutcome.status}
+                          {session.lastOutcome.errorCode
+                            ? ` · ${session.lastOutcome.errorCode}`
+                            : ""}
+                        </span>
+                      ) : null}
                     </div>
+                    {selected?.id === session.id ? (
+                      <ol
+                        className="space-y-1 border-t border-border/60 pt-2 text-[11px] text-muted-foreground"
+                        aria-label={`${session.label} action history`}
+                      >
+                        {events
+                          .filter((event) => event.sessionId === session.id)
+                          .slice(-4)
+                          .map((event) => (
+                            <li key={event.eventId} className="truncate">
+                              {event.type}
+                              {event.command ? ` · ${event.command}` : ""}
+                              {event.outcomeStatus
+                                ? ` · ${event.outcomeStatus}`
+                                : ""}
+                            </li>
+                          ))}
+                      </ol>
+                    ) : null}
                   </article>
                 ),
               )}
             </div>
-          ) : null}
+          )}
         </div>
       )}
     </section>
