@@ -452,8 +452,76 @@ describe("billing cancellation durable receipt authority", () => {
     expect(replay.disposition).toBe("same_key_replay");
     expect(replay.receipt).toEqual(first.receipt);
     expect(first.receipt.resourceId).toBe(RESOURCE);
+    expect(first.receipt.pollEndpoint).toBe(
+      `/api/v1/billing/resources/${RESOURCE}/cancel?receiptId=${first.receipt.receiptId}`,
+    );
     expect(enqueueCount).toBe(1);
     expect(await authorityCounts()).toEqual({ commands: 1, keys: 1, jobs: 1 });
+  });
+
+  test("authoritative receipt reads reproject the durable stop intent", async () => {
+    const service = createService();
+    const accepted = await request(service);
+
+    const initial = await service.readReceipt({
+      organizationId: ORG_A,
+      resourceId: RESOURCE.toUpperCase(),
+      receiptId: accepted.receipt.receiptId.toUpperCase(),
+    });
+    expect(initial).toEqual(accepted.receipt);
+
+    await dbWrite
+      .update(containerComputeStopIntents)
+      .set({ status: "provider_confirmed", provider_confirmed_at: new Date() })
+      .where(eq(containerComputeStopIntents.job_id, accepted.receipt.jobId));
+    await dbWrite
+      .update(jobs)
+      .set({ status: "in_progress" })
+      .where(eq(jobs.id, accepted.receipt.jobId));
+
+    await expect(
+      service.readReceipt({
+        organizationId: ORG_A,
+        resourceId: RESOURCE,
+        receiptId: accepted.receipt.receiptId,
+      }),
+    ).resolves.toMatchObject({
+      receiptId: accepted.receipt.receiptId,
+      status: "provider_confirmed",
+      billingStopped: true,
+      infrastructureStatus: "provider_confirmed",
+    });
+  });
+
+  test("unknown, cross-tenant, and wrong-resource receipt reads do not leak existence", async () => {
+    const service = createService();
+    const accepted = await request(service);
+    const misses = [
+      {
+        organizationId: ORG_A,
+        resourceId: RESOURCE,
+        receiptId: "00000000-0000-4000-8000-000000000099",
+      },
+      {
+        organizationId: ORG_B,
+        resourceId: RESOURCE,
+        receiptId: accepted.receipt.receiptId,
+      },
+      {
+        organizationId: ORG_A,
+        resourceId: OTHER_RESOURCE,
+        receiptId: accepted.receipt.receiptId,
+      },
+    ];
+
+    for (const miss of misses) {
+      await expect(service.readReceipt(miss)).rejects.toMatchObject({
+        status: 404,
+        code: "resource_not_found",
+        message: "Billing cancellation receipt not found",
+        details: undefined,
+      });
+    }
   });
 
   test("one key cannot be rebound to a different request digest", async () => {

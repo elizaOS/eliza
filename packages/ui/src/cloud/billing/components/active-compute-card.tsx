@@ -1,4 +1,4 @@
-/** Read-only active compute costs from the canonical billing snapshot v2. */
+/** Active compute costs and server-projected controls from billing snapshot v2. */
 
 "use client";
 
@@ -8,11 +8,24 @@ import {
   AlertCircle,
   Box,
   Calculator,
+  CheckCircle2,
   Clock3,
+  Loader2,
   RefreshCw,
   ServerCog,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Card } from "../../../components/ui/card";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -22,7 +35,14 @@ import type {
   BillingSnapshotResource,
   BillingSnapshotV2View,
 } from "../data/billing-snapshot";
+import {
+  type ActiveComputeCancellationViewState,
+  billingCancellationIdentityKey,
+} from "../lib/billing-resource-cancellation-view";
 import { formatExactUsd } from "../lib/format-exact-usd";
+
+export type { ActiveComputeCancellationViewState } from "../lib/billing-resource-cancellation-view";
+export { billingCancellationIdentityKey } from "../lib/billing-resource-cancellation-view";
 
 export type BillingSnapshotViewState =
   | { kind: "loading" }
@@ -39,6 +59,13 @@ export type BillingSnapshotViewState =
 interface ActiveComputeCardProps {
   state: BillingSnapshotViewState;
   onRetry: () => void;
+  /** Exact authenticated authority; rotates resource-local dialog state. */
+  cancellationAuthorityKey?: string;
+  cancellationStates?: Readonly<
+    Record<string, ActiveComputeCancellationViewState>
+  >;
+  onRequestCancellation?: (resource: BillingSnapshotResource) => void;
+  onCheckCancellationReceipt?: (resource: BillingSnapshotResource) => void;
 }
 
 type Translator = ReturnType<typeof useCloudT>;
@@ -107,10 +134,26 @@ function billingCursorLabel(value: string | null, emptyLabel: string): string {
 function ResourceCard({
   resource,
   t,
+  cancellationAuthorityKey,
+  cancellationState,
+  onRequestCancellation,
+  onCheckCancellationReceipt,
 }: {
   resource: BillingSnapshotResource;
   t: Translator;
+  cancellationAuthorityKey: string;
+  cancellationState: ActiveComputeCancellationViewState | undefined;
+  onRequestCancellation?: (resource: BillingSnapshotResource) => void;
+  onCheckCancellationReceipt?: (resource: BillingSnapshotResource) => void;
 }) {
+  const cancellationStatusRef = useRef<HTMLDivElement>(null);
+  const cancellationBlockerRef = useRef<HTMLDivElement>(null);
+  const cancellationTriggerRef = useRef<HTMLButtonElement>(null);
+  const submittedFromDialogRef = useRef(false);
+  const cancellationDialogWasOpenRef = useRef(false);
+  const openedCancellationSignatureRef = useRef<string | null>(null);
+  const pendingDialogFocusRef = useRef(false);
+  const [cancellationDialogOpen, setCancellationDialogOpen] = useState(false);
   const ResourceIcon = resource.resourceType === "container" ? Box : ServerCog;
   const typeLabel =
     resource.resourceType === "container"
@@ -118,6 +161,128 @@ function ResourceCard({
       : t("cloud.billing.compute.agentSandbox", {
           defaultValue: "Agent sandbox",
         });
+  const control = resource.cancellationControl;
+  const isAgent = resource.resourceType === "agent_sandbox";
+  const actionLabel = isAgent
+    ? t("cloud.billing.compute.cancel.suspend", {
+        defaultValue: "Suspend billing",
+      })
+    : t("cloud.billing.compute.cancel.stop", { defaultValue: "Stop" });
+  const canOfferCancellation =
+    cancellationState === undefined ||
+    cancellationState.kind === "ambiguous" ||
+    cancellationState.kind === "rejected";
+  const isRetry =
+    cancellationState?.kind === "ambiguous" ||
+    cancellationState?.kind === "rejected";
+  const canSubmit =
+    control.eligible &&
+    onRequestCancellation !== undefined &&
+    canOfferCancellation;
+  const cancellationAuthoritySignature = `${cancellationAuthorityKey}:${billingCancellationIdentityKey(resource)}:${control.endpoint}`;
+  const authorityStillMatches =
+    !cancellationDialogOpen ||
+    openedCancellationSignatureRef.current === cancellationAuthoritySignature;
+  const canRenderCancellationDialog =
+    control.eligible && canOfferCancellation && authorityStillMatches;
+  const isPending =
+    cancellationState?.kind === "submitting" ||
+    cancellationState?.kind === "accepted";
+
+  useEffect(() => {
+    if (cancellationDialogWasOpenRef.current && !canRenderCancellationDialog) {
+      submittedFromDialogRef.current = false;
+      pendingDialogFocusRef.current = true;
+      setCancellationDialogOpen(false);
+    }
+    cancellationDialogWasOpenRef.current =
+      cancellationDialogOpen && canRenderCancellationDialog;
+  }, [canRenderCancellationDialog, cancellationDialogOpen]);
+
+  const receiptId =
+    cancellationState && "receiptId" in cancellationState
+      ? cancellationState.receiptId
+      : undefined;
+  const cancellationMessage = (() => {
+    switch (cancellationState?.kind) {
+      case "submitting":
+        return t("cloud.billing.compute.cancel.submittingDetail", {
+          defaultValue:
+            "Submitting the durable request. Billing is still active.",
+        });
+      case "accepted":
+        return t("cloud.billing.compute.cancel.acceptedDetail", {
+          defaultValue:
+            "Request accepted. Billing remains active until provider confirmation.",
+        });
+      case "provider_confirmed":
+        return t("cloud.billing.compute.cancel.confirmedDetail", {
+          defaultValue:
+            "Provider confirmed the stop. Billing stop is now authoritative.",
+        });
+      case "conflict":
+        return t("cloud.billing.compute.cancel.conflictDetail", {
+          defaultValue:
+            "The resource changed before this request completed. Refresh and review its current state.",
+        });
+      case "terminal_attention":
+        return t("cloud.billing.compute.cancel.attentionDetail", {
+          defaultValue:
+            "The stop needs operator attention. Billing has not been confirmed stopped.",
+        });
+      case "ambiguous":
+        return t("cloud.billing.compute.cancel.ambiguousDetail", {
+          defaultValue:
+            "The response was lost or unavailable. Retry safely with the same request identity.",
+        });
+      case "receipt_unavailable":
+        return t("cloud.billing.compute.cancel.receiptUnavailableDetail", {
+          defaultValue:
+            "The request was accepted, but its latest receipt could not be read. Billing is still active until confirmation.",
+        });
+      case "rejected":
+        return t("cloud.billing.compute.cancel.rejectedDetail", {
+          defaultValue:
+            "The request was rejected. Refresh the billing snapshot before trying again.",
+        });
+      default:
+        return null;
+    }
+  })();
+  const cancellationIsAlert =
+    cancellationState?.kind === "conflict" ||
+    cancellationState?.kind === "terminal_attention" ||
+    cancellationState?.kind === "ambiguous" ||
+    cancellationState?.kind === "receipt_unavailable" ||
+    cancellationState?.kind === "rejected";
+  const cancellationBlockerMessage = control.blockers.includes(
+    "billing_account_ineligible",
+  )
+    ? t("cloud.billing.compute.cancel.accountIneligible", {
+        defaultValue:
+          "This account or organization is not eligible to manage billing for this resource.",
+      })
+    : control.blockers.includes("interactive_session_required")
+      ? t("cloud.billing.compute.cancel.interactiveRequired", {
+          defaultValue:
+            "Sign in with an interactive account session to manage billing for this resource.",
+        })
+      : t("cloud.billing.compute.cancel.managerRequired", {
+          defaultValue:
+            "Only organization owners and admins can manage billing for this resource.",
+        });
+
+  useEffect(() => {
+    if (cancellationDialogOpen || !pendingDialogFocusRef.current) return;
+    pendingDialogFocusRef.current = false;
+    if (cancellationMessage) {
+      cancellationStatusRef.current?.focus();
+    } else if (!control.eligible) {
+      cancellationBlockerRef.current?.focus();
+    } else {
+      cancellationTriggerRef.current?.focus();
+    }
+  }, [cancellationDialogOpen, cancellationMessage, control.eligible]);
 
   return (
     <Card asChild variant="brandSurface" padding="comfortable">
@@ -161,96 +326,266 @@ function ResourceCard({
 
         <Card asChild variant="billingTopDivider">
           <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="min-w-0">
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-                {t("cloud.billing.compute.rate", { defaultValue: "Rate" })}
-              </dt>
-              <dd className="mt-1 break-words text-sm text-txt-strong [overflow-wrap:anywhere]">
-                {exactAmount(
-                  resource.ratePerHour,
-                  t("cloud.billing.compute.perHour", {
-                    defaultValue: "/ hour",
-                  }),
-                  t,
-                )}
-              </dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-                {t("cloud.billing.compute.estimatedRecurring", {
-                  defaultValue: "Estimated recurring",
-                })}
-              </dt>
-              <dd className="mt-1 break-words text-sm text-txt-strong [overflow-wrap:anywhere]">
-                {exactAmount(
-                  resource.estimatedRecurringComputeCostPerDay,
-                  t("cloud.billing.compute.perDay", { defaultValue: "/ day" }),
-                  t,
-                )}
-              </dd>
-            </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.rate", { defaultValue: "Rate" })}
+          </dt>
+          <dd className="mt-1 break-words text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {exactAmount(
+              resource.ratePerHour,
+              t("cloud.billing.compute.perHour", { defaultValue: "/ hour" }),
+              t,
+            )}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.estimatedRecurring", {
+              defaultValue: "Estimated recurring",
+            })}
+          </dt>
+          <dd className="mt-1 break-words text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {exactAmount(
+              resource.estimatedRecurringComputeCostPerDay,
+              t("cloud.billing.compute.perDay", { defaultValue: "/ day" }),
+              t,
+            )}
+          </dd>
+        </div>
           </dl>
         </Card>
 
         <Card asChild variant="billingTopDivider">
           <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div className="min-w-0">
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-                {t("cloud.billing.compute.billingPeriod", {
-                  defaultValue: "Billing period",
-                })}
-              </dt>
-              <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
-                {billingIntervalLabel(resource.billingInterval, t)}
-              </dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-                {t("cloud.billing.compute.lastBilled", {
-                  defaultValue: "Last billed",
-                })}
-              </dt>
-              <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
-                {billingCursorLabel(
-                  resource.lastBilledAt,
-                  t("cloud.billing.compute.notReported", {
-                    defaultValue: "Not reported",
-                  }),
-                )}
-              </dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-                {t("cloud.billing.compute.nextBilling", {
-                  defaultValue: "Next billing",
-                })}
-              </dt>
-              <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
-                {billingCursorLabel(
-                  resource.nextBillingAt,
-                  t("cloud.billing.compute.notScheduled", {
-                    defaultValue: "Not scheduled",
-                  }),
-                )}
-              </dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-                {t("cloud.billing.compute.estimatedNextBilling", {
-                  defaultValue: "Estimated next billing",
-                })}
-              </dt>
-              <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
-                {billingCursorLabel(
-                  resource.estimatedNextBillingAt,
-                  t("cloud.billing.compute.notEstimated", {
-                    defaultValue: "Not estimated",
-                  }),
-                )}
-              </dd>
-            </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.billingPeriod", {
+              defaultValue: "Billing period",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingIntervalLabel(resource.billingInterval, t)}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.lastBilled", {
+              defaultValue: "Last billed",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingCursorLabel(
+              resource.lastBilledAt,
+              t("cloud.billing.compute.notReported", {
+                defaultValue: "Not reported",
+              }),
+            )}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.nextBilling", {
+              defaultValue: "Next billing",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingCursorLabel(
+              resource.nextBillingAt,
+              t("cloud.billing.compute.notScheduled", {
+                defaultValue: "Not scheduled",
+              }),
+            )}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.estimatedNextBilling", {
+              defaultValue: "Estimated next billing",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingCursorLabel(
+              resource.estimatedNextBillingAt,
+              t("cloud.billing.compute.notEstimated", {
+                defaultValue: "Not estimated",
+              }),
+            )}
+          </dd>
+        </div>
           </dl>
         </Card>
+
+        {onRequestCancellation ? (
+          <Card asChild variant="billingTopDivider">
+            <div className="mt-4 space-y-3">
+          {!control.eligible ? (
+            <div
+              ref={cancellationBlockerRef}
+              tabIndex={-1}
+              role="status"
+              className="border border-border bg-bg-accent p-3 text-sm text-muted-strong outline-none"
+            >
+              {cancellationBlockerMessage}
+            </div>
+          ) : null}
+
+          <div
+            ref={cancellationStatusRef}
+            tabIndex={-1}
+            role={
+              cancellationMessage
+                ? cancellationIsAlert
+                  ? "alert"
+                  : "status"
+                : undefined
+            }
+            aria-live={
+              cancellationMessage
+                ? cancellationIsAlert
+                  ? "assertive"
+                  : "polite"
+                : undefined
+            }
+            className={
+              cancellationMessage
+                ? `border p-3 text-sm outline-none ${
+                    cancellationState?.kind === "provider_confirmed"
+                      ? "border-status-success/40 bg-status-success-bg text-status-success"
+                      : cancellationIsAlert
+                        ? "border-warn/40 bg-warn/10 text-txt"
+                        : "border-brand-surface bg-bg-accent text-muted-strong"
+                  }`
+                : "outline-none"
+            }
+          >
+            {cancellationMessage ? (
+              <div className="flex items-start gap-2">
+                {isPending ? (
+                  <Loader2
+                    className="mt-0.5 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                ) : cancellationState?.kind === "provider_confirmed" ? (
+                  <CheckCircle2
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <AlertCircle
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    aria-hidden="true"
+                  />
+                )}
+                <div className="min-w-0">
+                  <p>{cancellationMessage}</p>
+                  {receiptId ? (
+                    <p className="mt-2 break-all font-mono text-xs">
+                      {t("cloud.billing.compute.cancel.receipt", {
+                        receiptId,
+                        defaultValue: "Receipt: {{receiptId}}",
+                      })}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {control.eligible &&
+          cancellationState?.kind === "receipt_unavailable" ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="keyboard-focus-surface min-h-11 min-w-11 font-mono"
+              onClick={() => onCheckCancellationReceipt?.(resource)}
+              disabled={!onCheckCancellationReceipt}
+            >
+              <RefreshCw aria-hidden="true" />
+              {t("cloud.billing.compute.cancel.checkStatus", {
+                defaultValue: "Check status",
+              })}
+            </Button>
+          ) : null}
+
+          {canRenderCancellationDialog ? (
+            <AlertDialog
+              open={cancellationDialogOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  openedCancellationSignatureRef.current =
+                    cancellationAuthoritySignature;
+                  cancellationDialogWasOpenRef.current = true;
+                }
+                setCancellationDialogOpen(open);
+              }}
+            >
+              <AlertDialogTrigger asChild>
+                <Button
+                  ref={cancellationTriggerRef}
+                  type="button"
+                  variant="outline"
+                  className="keyboard-focus-surface min-h-11 min-w-11 border-danger/60 font-mono text-danger hover:bg-destructive-subtle"
+                  disabled={!canSubmit}
+                >
+                  {isRetry
+                    ? t("cloud.billing.compute.cancel.retryRequest", {
+                        defaultValue: "Retry request",
+                      })
+                    : actionLabel}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent
+                onCloseAutoFocus={(event) => {
+                  if (!submittedFromDialogRef.current) return;
+                  submittedFromDialogRef.current = false;
+                  event.preventDefault();
+                  cancellationStatusRef.current?.focus();
+                }}
+              >
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {isAgent
+                      ? t("cloud.billing.compute.cancel.confirmSuspendTitle", {
+                          defaultValue: "Suspend billing for this agent?",
+                        })
+                      : t("cloud.billing.compute.cancel.confirmStopTitle", {
+                          defaultValue: "Stop this container?",
+                        })}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("cloud.billing.compute.cancel.confirmDetail", {
+                      resourceName: resource.name,
+                      defaultValue:
+                        "This sends a durable stop request for {{resourceName}}. Billing continues until the provider confirms the stop.",
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="keyboard-focus-surface min-h-11">
+                    {t("cloud.billing.compute.cancel.keepRunning", {
+                      defaultValue: "Keep running",
+                    })}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    className="keyboard-focus-surface min-h-11 bg-destructive text-destructive-fg hover:bg-destructive/85"
+                    onClick={() => {
+                      submittedFromDialogRef.current = true;
+                      onRequestCancellation(resource);
+                    }}
+                  >
+                    {isRetry
+                      ? t("cloud.billing.compute.cancel.confirmRetry", {
+                          defaultValue: "Retry safely",
+                        })
+                      : actionLabel}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : null}
+            </div>
+          </Card>
+        ) : null}
       </li>
     </Card>
   );
@@ -315,6 +650,10 @@ function LoadingCard({ t }: { t: Translator }) {
 export function ActiveComputeCardView({
   state,
   onRetry,
+  cancellationAuthorityKey = "",
+  cancellationStates = {},
+  onRequestCancellation,
+  onCheckCancellationReceipt,
 }: ActiveComputeCardProps) {
   const t = useCloudT();
 
@@ -471,11 +810,9 @@ export function ActiveComputeCardView({
         </div>
 
         {state.refreshFailed || state.refreshPaused ? (
-          <Card
-            variant="warningNotice"
-            padding="default"
+          <div
             role="alert"
-            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3 border border-warn/40 bg-warn/10 p-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <Clock3
@@ -507,7 +844,7 @@ export function ActiveComputeCardView({
                 t={t}
               />
             ) : null}
-          </Card>
+          </div>
         ) : (
           <p className="text-xs font-mono text-muted">
             {t("cloud.billing.compute.observedAt", {
@@ -519,7 +856,7 @@ export function ActiveComputeCardView({
 
         {resourcesObservation.status === "available" ? (
           resourcesObservation.value.length === 0 ? (
-            <Card variant="brandSurface" className="px-4 py-8 text-center">
+            <div className="border border-brand-surface bg-surface px-4 py-8 text-center">
               <p className="font-mono text-sm text-txt-strong">
                 {t("cloud.billing.compute.empty", {
                   defaultValue: "No active billable compute",
@@ -531,7 +868,7 @@ export function ActiveComputeCardView({
                     "No containers or agent sandboxes are currently reported as billable.",
                 })}
               </p>
-            </Card>
+            </div>
           ) : (
             <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {resourcesObservation.value.map((resource) => (
@@ -539,15 +876,18 @@ export function ActiveComputeCardView({
                   key={`${resource.resourceType}:${resource.resourceId}`}
                   resource={resource}
                   t={t}
+                  cancellationAuthorityKey={cancellationAuthorityKey}
+                  cancellationState={
+                    cancellationStates[billingCancellationIdentityKey(resource)]
+                  }
+                  onRequestCancellation={onRequestCancellation}
+                  onCheckCancellationReceipt={onCheckCancellationReceipt}
                 />
               ))}
             </ul>
           )
         ) : (
-          <Card
-            variant="brandSurface"
-            className="flex flex-col items-start gap-4 p-4 sm:flex-row sm:justify-between"
-          >
+          <div className="flex flex-col items-start gap-4 border border-brand-surface bg-surface p-4 sm:flex-row sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <AlertCircle
                 className="mt-0.5 size-4 shrink-0 text-warn"
@@ -572,15 +912,11 @@ export function ActiveComputeCardView({
                 t={t}
               />
             ) : null}
-          </Card>
+          </div>
         )}
 
         {resourcesObservation.status === "available" && hasPartialCost ? (
-          <Card
-            variant="warningNotice"
-            padding="default"
-            className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
-          >
+          <div className="flex flex-col items-start gap-3 border border-warn/40 bg-warn/10 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <AlertCircle
                 className="mt-0.5 size-4 shrink-0 text-warn"
@@ -600,7 +936,7 @@ export function ActiveComputeCardView({
                 t={t}
               />
             ) : null}
-          </Card>
+          </div>
         ) : null}
       </div>
     </BrandCard>

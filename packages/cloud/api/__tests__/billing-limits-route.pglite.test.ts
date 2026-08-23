@@ -46,8 +46,10 @@ const USER_BAD_BALANCE = "dddddddd-4444-4444-8444-444444444444";
 const USER_NO_ORG = "eeeeeeee-5555-4555-8555-555555555555";
 const USER_CONTAINER_BOUNDARY = "ffffffff-6666-4666-8666-666666666666";
 const USER_STORAGE_BOUNDARY = "abababab-7777-4777-8777-777777777777";
+const USER_ANONYMOUS_OWNER = "acacacac-8888-4888-8888-888888888888";
 const STEWARD_B = `steward-${USER_B}`;
 const STEWARD_NO_ORG = `steward-${USER_NO_ORG}`;
+const STEWARD_ANONYMOUS_OWNER = `steward-${USER_ANONYMOUS_OWNER}`;
 const KEY_A = "eliza_billing_limits_route_org_a";
 const KEY_STALE_B = "eliza_billing_limits_route_stale_org_b";
 const KEY_CORRUPT = "eliza_billing_limits_route_corrupt";
@@ -231,6 +233,14 @@ beforeAll(async () => {
       organization_id: ORG_STORAGE_BOUNDARY,
       role: "member",
       steward_user_id: `steward-${USER_STORAGE_BOUNDARY}`,
+    },
+    {
+      id: USER_ANONYMOUS_OWNER,
+      email: "billing-limits-anonymous-owner@test.test",
+      organization_id: ORG_A,
+      role: "owner",
+      steward_user_id: STEWARD_ANONYMOUS_OWNER,
+      is_anonymous: true,
     },
   ]);
 
@@ -609,6 +619,26 @@ describe("GET /api/v1/billing/limits with PGlite", () => {
     });
   });
 
+  test("keeps an anonymous owner session cancellation-ineligible", async () => {
+    const data = await readySnapshot(
+      await getLimits({
+        cookie: await sessionCookie(STEWARD_ANONYMOUS_OWNER),
+      }),
+    );
+
+    expect(data.v2.activeCompute.resources.status).toBe("available");
+    if (data.v2.activeCompute.resources.status !== "available") {
+      throw new Error("active compute resources unexpectedly unavailable");
+    }
+    const runningContainer = data.v2.activeCompute.resources.value.find(
+      (resource) => resource.resourceId === CONTAINER_A_RUNNING,
+    );
+    expect(runningContainer?.cancellationControl).toMatchObject({
+      eligible: false,
+      blockers: ["billing_account_ineligible"],
+    });
+  });
+
   test("reports canonical counted rows, overrides, split sandbox caps, and exact bytes", async () => {
     const data = await readySnapshot(await getLimits({ key: KEY_A }));
 
@@ -760,6 +790,15 @@ describe("GET /api/v1/billing/limits with PGlite", () => {
     );
     expect(runningContainer).toMatchObject({
       resourceType: "container",
+      cancellationControl: {
+        displayAction: "stop",
+        method: "POST",
+        mode: "stop",
+        endpoint: `/api/v1/billing/resources/${CONTAINER_A_RUNNING}/cancel?resourceType=container`,
+        expectedLifecycleRevision: 0,
+        eligible: false,
+        blockers: ["interactive_session_required"],
+      },
       rateSegment: {
         status: "available",
         source: "compute_billing_rate_segments",
