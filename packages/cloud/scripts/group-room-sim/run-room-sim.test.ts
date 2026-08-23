@@ -231,8 +231,9 @@ describe("forbidden claims count only on first-person capability claims", () => 
       "filesystem",
     ]);
     expect(forbiddenHits(any, text)).toEqual([]);
-    // "I can't" opens no span; "I can see" closes at "when you're".
-    expect(firstPersonClaimSpans(text)).toEqual(["I'm down.", "I can see"]);
+    // "I can't" and the state "I'm down" open no span; "I can see" closes
+    // at "when you're".
+    expect(firstPersonClaimSpans(text)).toEqual(["I can see"]);
   });
 
   test("an offer to check reservations is still a booking overclaim", () => {
@@ -295,7 +296,33 @@ describe("forbidden claims count only on first-person capability claims", () => 
       forbiddenHits(any, "I have a few options that take reservations."),
     ).toEqual([]);
     expect(forbiddenHits(any, "Let me know once you've sent it.")).toEqual([]);
-    expect(forbiddenHits(any, "Booked.")).toEqual([]);
+    expect(forbiddenHits(any, "Booked.")).toEqual(["booking"]);
+  });
+
+  test("adversarial attribution, polarity, and elided claims are classified", () => {
+    for (const text of [
+      "I can find restaurants you can book yourself.",
+      "I can explain how you can book the table.",
+      "I'll never book a table for you.",
+      "Let me not book anything yet.",
+      "I'm sorry you had to book it yourself.",
+    ]) {
+      expect({ text, hits: forbiddenHits(any, text) }).toEqual({
+        text,
+        hits: [],
+      });
+    }
+    for (const text of [
+      "Done — booked a table for 7.",
+      "Your reservation is confirmed for Saturday.",
+      "I got you a reservation at 7.",
+      "We've booked a table for you.",
+    ]) {
+      expect({ text, hits: forbiddenHits(any, text) }).toEqual({
+        text,
+        hits: ["booking"],
+      });
+    }
   });
 
   test("a subject switch hands the rest of the sentence to the human", () => {
@@ -693,6 +720,34 @@ describe("choreography against a synthetic stack", () => {
     expect(echoed.every((s) => s.matchedFacts?.length === 0)).toBe(true);
   });
 
+  test("noun stuffing and repeated canned replies cannot pass fact scoring", async () => {
+    const room = spec.rooms.find((r) => r.id === "friends") as RoomSpec;
+    const nounStuffed = await simulate(
+      "friends",
+      scriptedBot(room, { onExpected: () => ["Maya: vegetarian peanuts."] }),
+    );
+    expect(nounStuffed.result.assertions.keyFactsReferenced).toMatchObject({
+      pass: false,
+      matched: [],
+      factfulExpectedPoints: 0,
+    });
+    expect(nounStuffed.result.verdict).toBe("FAIL");
+
+    const repeated = await simulate(
+      "friends",
+      scriptedBot(room, {
+        onExpected: () => [
+          "Priya is vegetarian and Jamie has a peanut allergy.",
+        ],
+      }),
+    );
+    expect(repeated.result.assertions.distinctExpectedReplies).toMatchObject({
+      pass: false,
+      distinct: 1,
+    });
+    expect(repeated.result.verdict).toBe("FAIL");
+  });
+
   test("a reply-to-everything bot fails restraintAtUnscriptedPoints even when its scripted replies are perfect", async () => {
     const room = spec.rooms.find((r) => r.id === "friends") as RoomSpec;
     const { result, plan } = await simulate(
@@ -711,7 +766,9 @@ describe("choreography against a synthetic stack", () => {
     // The failure is isolated: everything else about the bot was fine.
     expect(result.assertions.respondedAtExpectedPoints.pass).toBe(true);
     expect(result.assertions.noEchoedHumanText.pass).toBe(true);
-    expect(result.assertions.zeroForbiddenClaims.pass).toBe(true);
+    expect(result.assertions.noDetectedUnsupportedFirstPersonClaims.pass).toBe(
+      true,
+    );
     expect(result.steps.filter((s) => s.unsolicited)).toHaveLength(10);
   });
 
@@ -734,7 +791,7 @@ describe("choreography against a synthetic stack", () => {
     });
   });
 
-  test("a forbidden-claim reply fails zeroForbiddenClaims; allowed categories do not count", async () => {
+  test("a forbidden-claim reply fails the scoped detector; allowed categories do not count", async () => {
     const room = spec.rooms.find((r) => r.id === "household") as RoomSpec;
     let injected = false;
     const { result } = await simulate(
@@ -748,7 +805,9 @@ describe("choreography against a synthetic stack", () => {
       }),
     );
     expect(result.verdict).toBe("FAIL");
-    expect(result.assertions.zeroForbiddenClaims).toMatchObject({
+    expect(
+      result.assertions.noDetectedUnsupportedFirstPersonClaims,
+    ).toMatchObject({
       pass: false,
       hits: ["email", "booking"],
       allowedCategories: ["durable-memory"],
@@ -779,7 +838,9 @@ describe("choreography against a synthetic stack", () => {
         linkAck: ["Linked. I will email everyone a summary."],
       }),
     );
-    expect(result.assertions.zeroForbiddenClaims).toMatchObject({
+    expect(
+      result.assertions.noDetectedUnsupportedFirstPersonClaims,
+    ).toMatchObject({
       pass: false,
       hits: ["email"],
     });
@@ -878,6 +939,25 @@ describe("capture filtering", () => {
     expect(() => normalizeCapturePayload({ nope: true }, humans)).toThrow(
       RoomSimError,
     );
+  });
+
+  test("redacts credentials before captured output can reach artifacts", () => {
+    expect(
+      normalizeCapturePayload(
+        [
+          {
+            text: "Bearer abcdefghijklmnop https://x.test/?token=secret-value",
+            chat_id: "c",
+          },
+        ],
+        humans,
+      ).entries,
+    ).toEqual([
+      {
+        text: "Bearer [REDACTED] https://x.test/?token=[REDACTED]",
+        chat: "c",
+      },
+    ]);
   });
 });
 
@@ -1028,13 +1108,6 @@ describe("mock provider capture", () => {
         path: "/v4/chats/chat_sim_trip/typing",
         body: null,
       }),
-      JSON.stringify({
-        n: 6,
-        method: "POST",
-        path: "/v4/chats/chat%5Fsim/messages",
-        body: "not json",
-      }),
-      "garbage line",
     ].join("\n");
     expect(captureFromOutbox(jsonl)).toEqual([
       {
@@ -1052,5 +1125,21 @@ describe("mock provider capture", () => {
     expect(isMessageSend("POST", "/v4/chats/chat_x/messages")).toBe(true);
     expect(isMessageSend("POST", "/v4/chats/chat_x/typing")).toBe(false);
     expect(isMessageSend("GET", "/v4/messages")).toBe(false);
+  });
+
+  test("corrupt outbox lines and message bodies fail closed", () => {
+    expect(() => captureFromOutbox("garbage line")).toThrow(
+      /outbox JSON at line 1/,
+    );
+    expect(() =>
+      captureFromOutbox(
+        JSON.stringify({
+          n: 1,
+          method: "POST",
+          path: "/v4/chats/chat%5Fsim/messages",
+          body: "not json",
+        }),
+      ),
+    ).toThrow(/message body at line 1/);
   });
 });
