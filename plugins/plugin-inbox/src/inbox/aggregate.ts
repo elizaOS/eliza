@@ -166,7 +166,9 @@ export function toInboxMessage(
     channel === "gmail"
       ? (message.gmailMessageId ?? message.id)
       : (message.entityId ?? message.roomId ?? message.id);
-  const receivedAt = new Date(message.timestamp).toISOString();
+  const receivedAt = Number.isFinite(message.timestamp)
+    ? new Date(message.timestamp).toISOString()
+    : new Date(0).toISOString();
   const subject =
     channel === "gmail"
       ? message.channelName.startsWith("Email from ")
@@ -315,7 +317,15 @@ function buildThreadGroups(
 
   const groups: LifeOpsInboxThreadGroup[] = [];
   for (const [key, members] of buckets) {
-    members.sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
+    members.sort((a, b) => {
+      const aTime = Number.isFinite(Date.parse(a.receivedAt))
+        ? Date.parse(a.receivedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.receivedAt))
+        ? Date.parse(b.receivedAt)
+        : 0;
+      return bTime - aTime;
+    });
     const latestMessage = members[0];
     if (!latestMessage) continue;
     const totalCount = members.length;
@@ -402,20 +412,29 @@ function buildThreadGroups(
 
   if (sortByPriority) {
     groups.sort((a, b) => {
-      const aScore = a.maxPriorityScore ?? -1;
-      const bScore = b.maxPriorityScore ?? -1;
+      const aRaw = a.maxPriorityScore ?? -1;
+      const bRaw = b.maxPriorityScore ?? -1;
+      const aScore = Number.isFinite(aRaw) ? aRaw : -1;
+      const bScore = Number.isFinite(bRaw) ? bRaw : -1;
       if (aScore !== bScore) return bScore - aScore;
-      return (
-        Date.parse(b.latestMessage.receivedAt) -
-        Date.parse(a.latestMessage.receivedAt)
-      );
+      const aTime = Number.isFinite(Date.parse(a.latestMessage.receivedAt))
+        ? Date.parse(a.latestMessage.receivedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.latestMessage.receivedAt))
+        ? Date.parse(b.latestMessage.receivedAt)
+        : 0;
+      return bTime - aTime;
     });
   } else {
-    groups.sort(
-      (a, b) =>
-        Date.parse(b.latestMessage.receivedAt) -
-        Date.parse(a.latestMessage.receivedAt),
-    );
+    groups.sort((a, b) => {
+      const aTime = Number.isFinite(Date.parse(a.latestMessage.receivedAt))
+        ? Date.parse(a.latestMessage.receivedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.latestMessage.receivedAt))
+        ? Date.parse(b.latestMessage.receivedAt)
+        : 0;
+      return bTime - aTime;
+    });
   }
   return groups;
 }
@@ -500,7 +519,15 @@ export function buildInboxFromMessages(
     }
   }
 
-  collected.sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
+  collected.sort((a, b) => {
+    const aTime = Number.isFinite(Date.parse(a.receivedAt))
+      ? Date.parse(a.receivedAt)
+      : 0;
+    const bTime = Number.isFinite(Date.parse(b.receivedAt))
+      ? Date.parse(b.receivedAt)
+      : 0;
+    return bTime - aTime;
+  });
 
   const trimmed =
     collected.length > options.limit
