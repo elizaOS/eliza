@@ -101,7 +101,6 @@ describe("google provider completion with a rejecting durable credential writer 
     manager.registerProvider(createGoogleConnectorAccountProvider(runtime));
     const flow = await manager.startOAuth("google", {
       scopes: ["gmail.read"],
-      accountId: "writer-reject-account",
     });
     const fetchStub = stubTokenExchangeSuccess(
       String((flow.metadata as Record<string, unknown>).oidcNonce)
