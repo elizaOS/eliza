@@ -110,20 +110,15 @@ export function parseSharedPublicWebGrounding(
     typeof candidate.observedAt !== "number" ||
     !Number.isSafeInteger(candidate.observedAt) ||
     candidate.observedAt < 0 ||
+    candidate.observedAt > Date.now() + 60_000 ||
     candidate.truncated !== false
   ) {
     return undefined;
   }
   const query = candidate.query.trim();
   const text = candidate.text.trim();
-  const sourceUrls = publicSourceUrls(candidate.sourceUrls);
   const sources = publicSources(candidate.sources);
-  if (
-    !query ||
-    !text ||
-    (candidate.sourceUrls !== undefined && !sourceUrls) ||
-    (candidate.sources !== undefined && !sources)
-  ) {
+  if (!query || !text || !sources || sources.length === 0) {
     return undefined;
   }
   return {
@@ -132,8 +127,8 @@ export function parseSharedPublicWebGrounding(
     provider: candidate.provider,
     text,
     observedAt: candidate.observedAt,
-    ...(sourceUrls ? { sourceUrls } : {}),
-    ...(sources ? { sources } : {}),
+    sourceUrls: sources.map((source) => source.url),
+    sources,
     truncated: false,
   };
 }
@@ -184,27 +179,35 @@ export function sharedPublicWebGrounding(
     const data = record.data as Record<string, unknown>;
     if (data.actionName !== "WEB_SEARCH") continue;
     const observedAt = Date.now();
-    const parsed =
-      record.success === true && data.truncated !== true
-        ? parseSharedPublicWebGrounding({
-            kind: "web_search",
-            query: data.query,
-            provider: data.provider,
-            text: record.text,
-            observedAt:
-              typeof data.observedAt === "number" && Number.isSafeInteger(data.observedAt)
-                ? data.observedAt
-                : observedAt,
-            sourceUrls: data.sourceUrls,
-            sources: data.sources,
-            truncated: false,
-          })
-        : parseSharedPublicWebGrounding({
-            kind: "web_search_unavailable",
-            query: data.query,
-            observedAt,
-          });
-    if (!parsed) {
+    const attemptedAvailable = record.success === true && data.truncated === false;
+    let parsed = attemptedAvailable
+      ? parseSharedPublicWebGrounding({
+          kind: "web_search",
+          query: data.query,
+          provider: data.provider,
+          text: record.text,
+          observedAt:
+            typeof data.observedAt === "number" && Number.isSafeInteger(data.observedAt)
+              ? data.observedAt
+              : observedAt,
+          sourceUrls: data.sourceUrls,
+          sources: data.sources,
+          truncated: false,
+        })
+      : parseSharedPublicWebGrounding({
+          kind: "web_search_unavailable",
+          query: data.query,
+          observedAt,
+        });
+    const invalidAvailableReceipt = attemptedAvailable && !parsed;
+    if (!parsed && record.success === true) {
+      parsed = parseSharedPublicWebGrounding({
+        kind: "web_search_unavailable",
+        query: data.query,
+        observedAt,
+      });
+    }
+    if (invalidAvailableReceipt || !parsed) {
       // error-policy:J7 A WEB_SEARCH result this turn just produced is our own
       // contract, not untrusted input: an unparseable envelope means the action
       // shape drifted. Report it instead of silently dropping the grounding,
