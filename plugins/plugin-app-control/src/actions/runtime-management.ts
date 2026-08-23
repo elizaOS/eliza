@@ -21,6 +21,10 @@ import {
 	readStringOption,
 	userRequestMessageText,
 } from "../params.js";
+import {
+	type ConfirmedRuntimeOperation,
+	isUnambiguousRuntimeConfirmation,
+} from "./runtime-management-confirmation.js";
 import { readViewInteractionClientId } from "./view-delivery.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
@@ -39,6 +43,12 @@ const CONFIRMATION_REQUIRED: ReadonlySet<RuntimeManagementRequest["op"]> =
 			(op) => op !== "list" && op !== "inspect_ssh",
 		),
 	);
+
+function requiresConfirmation(
+	op: RuntimeManagementRequest["op"],
+): op is ConfirmedRuntimeOperation {
+	return CONFIRMATION_REQUIRED.has(op);
+}
 
 const SECRET_OPTION_NAMES = new Set([
 	"accesstoken",
@@ -101,13 +111,6 @@ export function parseRuntimeManagementRequest(
 		sessionId: readStringOption(options, "sessionId") ?? undefined,
 		code: readStringOption(options, "code") ?? undefined,
 	};
-}
-
-function userExplicitlyConfirmed(message: Memory): boolean {
-	const text = userRequestMessageText(message).trim();
-	return /(?:^|\b)(?:confirm(?:ed)?|yes|yep|proceed|do it|go ahead)(?:\b|$)/i.test(
-		text,
-	);
 }
 
 async function defaultManageRuntime(
@@ -332,8 +335,12 @@ export function createRuntimeManagementAction(
 			}
 			const normalized = normalizeActionOptions(options) ?? {};
 			if (
-				CONFIRMATION_REQUIRED.has(request.op) &&
-				(!isConfirmed(normalized) || !userExplicitlyConfirmed(message))
+				requiresConfirmation(request.op) &&
+				(!isConfirmed(normalized) ||
+					!isUnambiguousRuntimeConfirmation(
+						userRequestMessageText(message),
+						request.op,
+					))
 			) {
 				const reply = `Please confirm before I run the ${request.op} Devices & Runtimes operation.`;
 				await callback?.({ text: reply });
