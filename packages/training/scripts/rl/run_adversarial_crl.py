@@ -19,20 +19,29 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
 import json
 import logging
 import os
 import random
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 import torch
 
+SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from lib.generation_integrity import (
+    require_complete_generated_tokens,
+    require_complete_generation,
+)
+
 # Import only the specific modules we need, bypassing the heavy __init__.py
-import sys
-import importlib.util
 
 def _import_module(name: str, filepath: str):
     spec = importlib.util.spec_from_file_location(name, filepath)
@@ -135,7 +144,10 @@ async def call_defender(
                 await asyncio.sleep(wait)
                 continue
             resp.raise_for_status()
-            msg = resp.json().get("choices", [{}])[0].get("message", {})
+            choice = require_complete_generation(
+                resp.json().get("choices", [{}])[0], source="adversarial_crl.defender"
+            )
+            msg = choice.get("message", {})
             return {"content": msg.get("content", "") or "", "tool_calls": msg.get("tool_calls", [])}
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
@@ -244,6 +256,12 @@ async def run_episode(
 
         prompt_len = enc["input_ids"].shape[1]
         response_ids = gen_out[0, prompt_len:]
+        require_complete_generated_tokens(
+            response_ids,
+            max_new_tokens=agent.config.max_new_tokens,
+            source="adversarial_crl.attacker",
+            terminal_token_ids=agent.tokenizer.eos_token_id,
+        )
         raw_text = agent.tokenizer.decode(response_ids, skip_special_tokens=True)
         atk_text = THINK_RE.sub("", raw_text).strip()
         if atk_text.startswith('"') and atk_text.endswith('"'):
