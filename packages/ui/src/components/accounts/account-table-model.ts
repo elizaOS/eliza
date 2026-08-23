@@ -19,7 +19,7 @@ export type { AccountWithCredentialFlag };
  * null checks.
  */
 function finiteOrZero(value: number | undefined): number {
-	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 export type AccountHealthTone = "success" | "warning" | "danger" | "muted";
@@ -179,15 +179,9 @@ function compareByKey(
       return (au - bu) * factor;
     }
     case "lastUsed":
-      return (
-        (finiteOrZero(a.lastUsedAt) - finiteOrZero(b.lastUsedAt)) *
-        factor
-      );
+      return (finiteOrZero(a.lastUsedAt) - finiteOrZero(b.lastUsedAt)) * factor;
     case "priority":
-      return (
-        (finiteOrZero(a.priority) - finiteOrZero(b.priority)) *
-        factor
-      );
+      return (finiteOrZero(a.priority) - finiteOrZero(b.priority)) * factor;
     default:
       return 0;
   }
