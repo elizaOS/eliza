@@ -42,9 +42,10 @@ describe("scheduleDevtoolsLayoutRefresh", () => {
       return 0;
     });
     expect(scheduled).toHaveLength(DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS.length);
-    scheduled.forEach((cb) => {
-      cb();
+    scheduled.forEach((callback) => {
+      callback();
     });
+    // The 32 ms step nudges the height; every other step restores the frame.
     expect(calls).toHaveLength(DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS.length);
     const nudge = calls[DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS.indexOf(32)];
     expect(nudge[3]).toBe(399);
