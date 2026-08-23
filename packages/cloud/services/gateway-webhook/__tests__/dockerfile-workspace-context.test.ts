@@ -156,17 +156,14 @@ describe("service Dockerfiles can resolve their workspace dependencies", () => {
       (service) => service.name === "gateway-discord",
     );
     expect(gateway?.dockerfile).toContain(
-      "ARG OPUS_PREBUILD_NODE_TARGET=18.4.0",
+      "scripts/install-portable-opus.mjs /usr/local/lib/install-portable-opus.mjs",
     );
     expect(gateway?.dockerfile).toContain(
-      'npm_config_target="$' +
-        '{OPUS_PREBUILD_NODE_TARGET}" bun install --production',
+      'bun /usr/local/lib/install-portable-opus.mjs /app "/app/$' +
+        '{SERVICE_DIR}"',
     );
     expect(gateway?.dockerfile).toContain(
-      'builds[0].replace(/napi-v\\d+/, "napi-v{napi_build_version}")',
-    );
-    expect(gateway?.dockerfile).toContain(
-      "manifest.binary.module_path = `./prebuild/$" + "{modulePath}/`",
+      '"trustedDependencies":["@discordjs/opus"]',
     );
   });
 

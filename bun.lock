@@ -637,7 +637,7 @@
       "name": "@elizaos/gateway-discord",
       "version": "1.0.0",
       "dependencies": {
-        "@discordjs/opus": "^0.10.0",
+        "@discordjs/opus": "0.10.0",
         "@discordjs/voice": "^0.19.2",
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/core": "workspace:*",

@@ -1,0 +1,12 @@
+{
+  "name": "gateway-discord",
+  "private": true,
+  "type": "module",
+  "trustedDependencies": ["@discordjs/opus"],
+  "dependencies": {
+    "@discordjs/opus": "0.10.0",
+    "@discordjs/voice": "^0.19.2",
+    "libsodium-wrappers": "^0.8.0",
+    "prism-media": "1.3.5"
+  }
+}

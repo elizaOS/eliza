@@ -20,16 +20,18 @@
 # WS lib (lazy require -> graceful fallback to no compression).
 set -euo pipefail
 BUILD_ONLY=0
+DOCKER_BUILD_ONLY=0
 case "${1:-}" in
   "") ;;
   --build-only) BUILD_ONLY=1 ;;
+  --docker-build-only) DOCKER_BUILD_ONLY=1 ;;
   *)
-    echo "usage: $0 [--build-only]" >&2
+    echo "usage: $0 [--build-only|--docker-build-only]" >&2
     exit 2
     ;;
 esac
 if [ "$#" -gt 1 ]; then
-  echo "usage: $0 [--build-only]" >&2
+  echo "usage: $0 [--build-only|--docker-build-only]" >&2
   exit 2
 fi
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -50,46 +52,24 @@ echo "[deploy] building self-contained bundle from $HERE ..."
   --external prism-media \
   --external libsodium-wrappers )
 
-cat > "$STAGE/package.json" <<'JSON'
-{
-  "name": "gateway-discord",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@discordjs/opus": "^0.10.0",
-    "@discordjs/voice": "^0.19.2",
-    "libsodium-wrappers": "^0.8.0",
-    "prism-media": "1.3.5"
-  }
-}
-JSON
-
-cat > "$STAGE/Dockerfile" <<'DOCKER'
-FROM oven/bun:1.3.14-alpine AS deps
-WORKDIR /app
-RUN apk add --no-cache python3 make g++ pkgconf opus-dev
-COPY package.json ./
-RUN bun install --production
-
-FROM oven/bun:1.3.14-alpine
-WORKDIR /app
-ENV NODE_ENV=production
-RUN apk add --no-cache ffmpeg opus
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 gateway
-COPY --from=deps /app/node_modules ./node_modules
-COPY dist ./dist
-COPY package.json ./
-USER gateway
-EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=10s --start-period=8s --retries=3 \
-  CMD bun -e "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["bun", "run", "dist/index.js"]
-DOCKER
+cp "$HERE/scripts/railway-runtime-package.json" "$STAGE/package.json"
+cp "$HERE/scripts/Railway.Dockerfile" "$STAGE/Dockerfile"
+cp "$HERE/scripts/install-portable-opus.mjs" "$STAGE/install-portable-opus.mjs"
 
 cp "$HERE/railway.toml" "$STAGE/railway.toml" 2>/dev/null || true
 
 if [ "$BUILD_ONLY" = "1" ]; then
   echo "[deploy] build-only proof passed"
+  exit 0
+fi
+
+if [ "$DOCKER_BUILD_ONLY" = "1" ]; then
+  DOCKER_PLATFORM="${GATEWAY_DISCORD_DOCKER_PLATFORM:-linux/amd64}"
+  DOCKER_TAG="${GATEWAY_DISCORD_DOCKER_TAG:-gateway-discord:railway-proof}"
+  echo "[deploy] building staged Railway image for $DOCKER_PLATFORM ..."
+  docker buildx build --platform "$DOCKER_PLATFORM" --load \
+    --tag "$DOCKER_TAG" "$STAGE"
+  echo "[deploy] staged Railway image proof passed"
   exit 0
 fi
 
