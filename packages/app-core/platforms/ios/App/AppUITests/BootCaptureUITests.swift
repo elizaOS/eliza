@@ -195,10 +195,11 @@ final class BootCaptureUITests: XCTestCase {
         var reachedHome = false
         while Date() < bootDeadline {
             if app.state == .notRunning { break }
-            if let terminal = classifyBootState(of: app) {
-                reachedHome = terminal == .home
+            if hasAuthenticatedChatComposer(app) {
+                reachedHome = true
                 break
             }
+            if classifyBootState(of: app) == .errorCard { break }
             Thread.sleep(forTimeInterval: 1.0)
         }
         attachScreenshot(named: "send-000-home")
@@ -1006,11 +1007,14 @@ final class BootCaptureUITests: XCTestCase {
 
     private func firstHittableComposer(_ app: XCUIApplication) -> XCUIElement? {
         let webView = app.webViews.firstMatch
+        let composerPredicate = NSPredicate(
+            format: "placeholderValue ==[c] 'Message Eliza' OR label ==[c] 'Message Eliza'"
+        )
         let candidates: [XCUIElement] = [
-            webView.textViews.firstMatch,
-            webView.textFields.firstMatch,
-            app.textViews.firstMatch,
-            app.textFields.firstMatch,
+            webView.textViews.matching(composerPredicate).firstMatch,
+            webView.textFields.matching(composerPredicate).firstMatch,
+            app.textViews.matching(composerPredicate).firstMatch,
+            app.textFields.matching(composerPredicate).firstMatch,
         ]
         return candidates.first { $0.waitForExistence(timeout: 10) && $0.isHittable }
     }
