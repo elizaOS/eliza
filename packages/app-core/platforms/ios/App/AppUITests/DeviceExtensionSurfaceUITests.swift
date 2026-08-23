@@ -419,7 +419,7 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         search.tap()
         let dictate = shortcuts.buttons["Dictate with Eliza"].firstMatch
         let keyboard = shortcuts.keyboards.firstMatch
-        let activeElizaNextKeyboard = shortcuts.buttons["Next keyboard"].firstMatch
+        let activeElizaNextKeyboard = keyboardInputModeButton(in: shortcuts)
         XCTAssertTrue(
             keyboard.waitForExistence(timeout: 2)
                 || dictate.waitForExistence(timeout: 8),
@@ -440,9 +440,7 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         // iOS exposes these controls as siblings of the Keyboard element on
         // current devices, so query the owning application rather than the
         // keyboard subtree.
-        let nextKeyboard = shortcuts.buttons["Next keyboard"].firstMatch
-        let emoji = shortcuts.buttons["Emoji"].firstMatch
-        let inputModePicker = nextKeyboard.exists ? nextKeyboard : emoji
+        let inputModePicker = keyboardInputModeButton(in: shortcuts)
         attachAccessibilitySnapshot(of: shortcuts, named: "keyboard-extension-picker-before-open")
         XCTAssertTrue(
             inputModePicker.waitForExistence(timeout: 5) && inputModePicker.isHittable,
@@ -469,7 +467,7 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         attachAccessibilitySnapshot(of: shortcuts, named: "keyboard-extension-selected")
         attachScreenshot(named: "keyboard-extension-selected")
         let fullAccessIsMissing = fullAccessWarning.exists
-        let restoreSystemKeyboard = shortcuts.buttons["Next keyboard"].firstMatch
+        let restoreSystemKeyboard = keyboardInputModeButton(in: shortcuts)
         if restoreSystemKeyboard.waitForExistence(timeout: 2), restoreSystemKeyboard.isHittable {
             restoreSystemKeyboard.tap()
         }
@@ -477,6 +475,18 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
             fullAccessIsMissing,
             "Device acceptance requires Full Access so the Eliza keyboard can reach the containing app for dictation."
         )
+    }
+
+    private func keyboardInputModeButton(in application: XCUIApplication) -> XCUIElement {
+        application.descendants(matching: .button).matching(
+            NSPredicate(
+                format: "label ==[c] %@ OR identifier ==[c] %@ OR label ==[c] %@ OR identifier ==[c] %@",
+                "Next keyboard",
+                "Next keyboard",
+                "Emoji",
+                "emoji"
+            )
+        ).firstMatch
     }
 
     // MARK: - Control Center controls
