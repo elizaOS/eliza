@@ -141,7 +141,11 @@ export function buildUtcDateFromLocalParts(
     .filter((candidate) =>
       sameZonedParts(getZonedDateParts(candidate, timeZone), parts),
     )
-    .sort((left, right) => left.getTime() - right.getTime());
+    .sort((left, right) => {
+      const leftTime = Number.isFinite(left.getTime()) ? left.getTime() : 0;
+      const rightTime = Number.isFinite(right.getTime()) ? right.getTime() : 0;
+      return leftTime - rightTime;
+    });
   if (exact[0]) {
     // Compatible disambiguation selects the earlier instant during a repeat.
     return exact[0];
@@ -154,11 +158,19 @@ export function buildUtcDateFromLocalParts(
         localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) - baseUtcMs,
     }))
     .filter(({ wallDeltaMs }) => wallDeltaMs > 0)
-    .sort(
-      (left, right) =>
-        left.wallDeltaMs - right.wallDeltaMs ||
-        left.candidate.getTime() - right.candidate.getTime(),
-    );
+    .sort((left, right) => {
+      const leftWall = Number.isFinite(left.wallDeltaMs) ? left.wallDeltaMs : 0;
+      const rightWall = Number.isFinite(right.wallDeltaMs)
+        ? right.wallDeltaMs
+        : 0;
+      const leftTime = Number.isFinite(left.candidate.getTime())
+        ? left.candidate.getTime()
+        : 0;
+      const rightTime = Number.isFinite(right.candidate.getTime())
+        ? right.candidate.getTime()
+        : 0;
+      return leftWall - rightWall || leftTime - rightTime;
+    });
   if (shiftedForward[0]) {
     // Compatible disambiguation advances a nonexistent wall time by the gap,
     // including jurisdictions that skip an entire local calendar date.
