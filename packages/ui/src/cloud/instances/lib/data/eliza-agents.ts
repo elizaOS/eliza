@@ -18,6 +18,12 @@ import {
 
 export type AgentListItem = AgentListItemDto;
 
+export type PersonalElizaIdentity = {
+  id: string;
+  displayName: string;
+  runtime: "shared" | "dedicated";
+};
+
 const AGENT_STATUSES = [
   "pending",
   "provisioning",
@@ -166,6 +172,32 @@ export function useAgents() {
     // background could freeze the list stale and briefly resurrect the deleted
     // row on refocus. Cheap authenticated GET; precedent: payment-waiting-overlay.
     refetchIntervalInBackground: true,
+  });
+}
+
+/** The rowless account-native Eliza is authoritative even with zero sandbox rows. */
+export function usePersonalElizaIdentity() {
+  const gate = useAuthenticatedQueryGate();
+  return useQuery({
+    queryKey: authenticatedQueryKey(["agent", "personal-identity"], gate),
+    enabled: gate.enabled,
+    queryFn: async () => {
+      const response = await api<{
+        success?: boolean;
+        data?: { identity?: Partial<PersonalElizaIdentity> };
+      }>("/api/v1/eliza/personal");
+      const identity = response.data?.identity;
+      if (
+        response.success !== true ||
+        typeof identity?.id !== "string" ||
+        !identity.id.startsWith("personal:") ||
+        typeof identity.displayName !== "string" ||
+        (identity.runtime !== "shared" && identity.runtime !== "dedicated")
+      ) {
+        throw new Error("Personal Eliza response was invalid");
+      }
+      return identity as PersonalElizaIdentity;
+    },
   });
 }
 
