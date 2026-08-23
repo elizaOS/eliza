@@ -25,6 +25,9 @@ function Invoke-SecurePipeRoundTrip {
   $start.RedirectStandardInput = $true
   $start.RedirectStandardOutput = $true
   $start.RedirectStandardError = $true
+  # Process.StandardInput otherwise prepends a UTF-8 BOM before the raw native
+  # messaging frame written through BaseStream on Windows PowerShell 5.1.
+  $start.StandardInputEncoding = New-Object System.Text.UTF8Encoding($false)
   $process = New-Object System.Diagnostics.Process
   $process.StartInfo = $start
   if (-not $process.Start()) { throw "secure pipe helper did not start" }
