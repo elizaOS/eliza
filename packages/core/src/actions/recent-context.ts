@@ -27,19 +27,6 @@ function splitConversationText(value: string): string[] {
 		.filter((line) => line.length > 0);
 }
 
-function dedupePreservingOrder(values: string[]): string[] {
-	const seen = new Set<string>();
-	const deduped: string[] = [];
-	for (const value of values) {
-		if (seen.has(value)) {
-			continue;
-		}
-		seen.add(value);
-		deduped.push(value);
-	}
-	return deduped;
-}
-
 export function recentConversationTextsFromState(
 	state: State | undefined,
 	_limit?: number,
@@ -61,7 +48,10 @@ export function recentConversationTextsFromState(
 		}
 	}
 
-	return dedupePreservingOrder(collected);
+	// Do NOT dedupe. Two distinct conversation turns with identical wording are
+	// still two turns — collapsing them drops an occurrence before model
+	// extractors build prompt context (#24858).
+	return collected;
 }
 
 export async function recentConversationTexts(args: {
@@ -92,7 +82,9 @@ export async function recentConversationTexts(args: {
 					)
 					.filter((text) => text.length > 0)
 			: [];
-		return dedupePreservingOrder([...memoryTexts, ...stateTexts]);
+		// Preserve every occurrence, including identical wording from distinct
+		// turns — deduping drops occurrences before prompt assembly (#24858).
+		return [...memoryTexts, ...stateTexts];
 	} catch (error) {
 		// error-policy:J2 A failed history read is not equivalent to an empty room;
 		// report the room context and preserve the storage error.
