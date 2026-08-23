@@ -45,8 +45,32 @@ function harness(text: string) {
 		readDocumentRange: vi.fn(
 			async (
 				_documentId: UUID,
-				params: { unit: "line" | "fragment"; offset: number; limit?: number },
+				params: {
+					unit: "line" | "fragment" | "byte";
+					offset: number;
+					limit: number;
+				},
 			) => {
+				if (params.unit === "byte") {
+					const bytes = Buffer.from(currentText, "utf8");
+					const pageText = bytes
+						.subarray(params.offset, params.offset + params.limit)
+						.toString("utf8");
+					return {
+						unit: "byte" as const,
+						text: pageText,
+						start: params.offset,
+						end: params.offset + Buffer.byteLength(pageText, "utf8"),
+						total: bytes.length,
+						documentRevision: currentRevision,
+						revisionAttemptId: `native-secret-${currentRevision}`,
+						sourceFingerprint: `sha256:${createHash("sha256").update(currentText).digest("hex")}`,
+						examinedSourceSegments: 1,
+						sourceQueryCount: 2,
+						returnedSourceSegments: 1,
+						returnedSourceBytes: Buffer.byteLength(pageText, "utf8"),
+					};
+				}
 				const lines =
 					currentText.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
 				const units =
@@ -63,23 +87,24 @@ function harness(text: string) {
 									return fragments;
 								}, [])
 								.filter(Boolean);
-				const selected =
-					params.limit === undefined
-						? units.slice(params.offset)
-						: units.slice(params.offset, params.offset + params.limit);
+				const pageText = units
+					.slice(params.offset, params.offset + params.limit)
+					.join("");
 				return {
-					text: selected.join(""),
+					unit: params.unit,
+					text: pageText,
 					start: params.offset,
-					end:
-						params.limit === undefined
-							? units.length
-							: Math.min(params.offset + params.limit, units.length),
+					end: Math.min(params.offset + params.limit, units.length),
 					total: units.length,
 					documentRevision: currentRevision,
 					revisionAttemptId: `native-secret-${currentRevision}`,
 					sourceFingerprint: `sha256:${createHash("sha256")
 						.update(currentText)
 						.digest("hex")}`,
+					examinedSourceSegments: 1,
+					sourceQueryCount: 2,
+					returnedSourceSegments: 1,
+					returnedSourceBytes: Buffer.byteLength(pageText, "utf8"),
 				};
 			},
 		),
@@ -103,33 +128,6 @@ function harness(text: string) {
 }
 
 describe("DOCUMENT progressive read", () => {
-	it("returns the complete document when pagination was not requested", async () => {
-		const source = Array.from(
-			{ length: 501 },
-			(_, index) => `line-${index}\n`,
-		).join("");
-		const { runtime, service } = harness(source);
-
-		const result = await documentAction.handler?.(
-			runtime,
-			request(),
-			undefined,
-			options({ action: "read", documentId: DOCUMENT_ID }),
-		);
-
-		expect(result?.text).toBe(source);
-		expect(service.readDocumentRange).toHaveBeenCalledWith(
-			DOCUMENT_ID,
-			{ unit: "line", offset: 0 },
-			request(),
-		);
-		if (!result) throw new Error("DOCUMENT read did not return a result");
-		expect(
-			(result.data as { readView: { slice: { completeness: string } } })
-				.readView.slice.completeness,
-		).toBe("complete");
-	});
-
 	it("reads late line pages exactly and carries only ReadView metadata in structured data", async () => {
 		const lines = Array.from(
 			{ length: 205 },
@@ -264,7 +262,7 @@ describe("DOCUMENT progressive read", () => {
 		{ offset: Number.MAX_SAFE_INTEGER + 1 },
 		{ limit: -1 },
 		{ limit: 0 },
-		{ limit: Number.MAX_SAFE_INTEGER + 1 },
+		{ limit: 101 },
 	])("fails explicitly for an invalid read range %#", async (range) => {
 		const { runtime } = harness("one\ntwo\n");
 		const result = await documentAction.handler?.(
