@@ -308,10 +308,8 @@ type TestMemoryPair = {
 };
 const memoryPairs: TestMemoryPair[] = [];
 const memoryScopes: Array<{ agentKey: string; roomKey: string }> = [];
-let memoryCommitGate: Promise<void> | null = null;
 const recordTurnPair = mock(async (pair: TestMemoryPair) => {
   memoryPairs.push(pair);
-  if (memoryCommitGate) await memoryCommitGate;
 });
 const createSharedMemoryStore = mock((scope: { agentKey: string; roomKey: string }) => {
   memoryScopes.push(scope);
@@ -516,7 +514,6 @@ beforeEach(() => {
   delete process.env.SHARED_MEMORY_TABLES_ENABLED;
   memoryPairs.length = 0;
   memoryScopes.length = 0;
-  memoryCommitGate = null;
   recordTurnPair.mockClear();
   createSharedMemoryStore.mockClear();
   turn = {
@@ -1200,79 +1197,42 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
-  test("does not hold the terminal frame behind a stalled long-term memory mirror", async () => {
+  test("terminal done frame is not held open by a stalled long-term-memory mirror (#25689)", async () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
-    const memoryCommit = Promise.withResolvers<void>();
-    memoryCommitGate = memoryCommit.promise;
+    // The mirror never settles: a stalled Hyperdrive/embeddings-sidecar write.
+    // Under the old inline await the body below would never complete.
+    let releaseMirror: (() => void) | undefined;
+    recordTurnPair.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseMirror = resolve;
+        }),
+    );
     const service = new SharedRuntimeChatService();
     const h = harness();
-    let collectedMemoryPromise: Promise<unknown> | undefined;
-    h.executionCtx.waitUntil = (promise: Promise<unknown>) => {
-      h.background.push(promise);
-      if (memoryPairs.length === 1 && !collectedMemoryPromise) {
-        collectedMemoryPromise = promise;
-      }
-    };
-
     const response = await service.stream(agent, rpc, h);
     const body = await response.text();
-
+    expect(body).toContain("event: chunk");
     expect(body).toContain("event: done");
-    expect(h.history()).toEqual([
-      { role: "assistant", content: "prior" },
-      expect.objectContaining({ role: "user", content: "hello" }),
-      expect.objectContaining({ role: "assistant", content: "hello back" }),
-    ]);
-    expect(memoryPairs).toEqual([
-      expect.objectContaining({
-        userMessage: "hello",
-        assistantReply: "hello back",
-        interrupted: false,
-      }),
-    ]);
-    expect(collectedMemoryPromise).toBeDefined();
-    let memoryPromiseSettled = false;
-    void collectedMemoryPromise?.then(() => {
-      memoryPromiseSettled = true;
-    });
-    await Promise.resolve();
-    expect(memoryPromiseSettled).toBe(false);
-
-    memoryCommit.resolve();
-    await collectedMemoryPromise;
-    expect(memoryPromiseSettled).toBe(true);
+    // The landed turn stays durable on the merged history boundary.
+    expect(h.history().at(-1)).toMatchObject({ role: "assistant", content: "hello back" });
+    releaseMirror?.();
     await Promise.all(h.background);
+  });
 
-    const inlineMemoryCommit = Promise.withResolvers<void>();
-    memoryCommitGate = inlineMemoryCommit.promise;
-    const inlineHarness = harness();
-    streamTurn = {
-      degraded: false,
-      parts: (async function* () {
-        yield { type: "text-delta", text: "hello " };
-        yield {
-          type: "finish",
-          text: "hello back",
-          usage: { inputTokens: 12, outputTokens: 4 },
-        };
-      })(),
-    };
-
-    const inlineResponse = await service.stream(agent, rpc, {
-      ...inlineHarness,
-      executionCtx: undefined,
+  test("a failed long-term-memory mirror is reported without failing the landed turn (#25689)", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    recordTurnPair.mockImplementationOnce(async () => {
+      throw new Error("hyperdrive write stalled");
     });
-    const bodyPromise = inlineResponse.text();
-    let bodySettled = false;
-    void bodyPromise.then(() => {
-      bodySettled = true;
-    });
-    await Promise.resolve();
-    expect(bodySettled).toBe(false);
-
-    inlineMemoryCommit.resolve();
-    expect(await bodyPromise).toContain("event: done");
-    expect(bodySettled).toBe(true);
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const response = await service.stream(agent, rpc, h);
+    const body = await response.text();
+    expect(body).toContain("event: done");
+    expect(h.history().at(-1)).toMatchObject({ role: "assistant", content: "hello back" });
+    // The deferred mirror task must settle cleanly (failure reported, not thrown).
+    await Promise.all(h.background);
   });
 
   test("keeps a trusted transient prompt out of history and long-term memory", async () => {

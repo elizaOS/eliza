@@ -133,17 +133,30 @@ function maxFittingContextForTier(
  * Returns `null` when nothing acceptable fits locally → the caller routes this
  * modality to Cloud (AUTO). Never returns a tier smaller than 2B (0.8B is gone).
  */
-export function selectBestEliza1Fit(freeRamGb: number): Eliza1Fit | null {
+export function selectBestEliza1Fit(
+  freeRamGb: number,
+  catalog: readonly CatalogModel[] = MODEL_CATALOG,
+): Eliza1Fit | null {
   if (!Number.isFinite(freeRamGb) || freeRamGb <= 0) return null;
 
   // Release tiers, largest RAM-floor first. The floor already bakes in a native
   // (128k) q8_0 window, so the first one whose floor fits is the biggest model
   // that still gets its full window.
-  const tiers = [...MODEL_CATALOG]
+  const tiers = [...catalog]
     .filter(
       (m) => typeof m.minRamGb === "number" && typeof m.sizeGb === "number",
     )
-    .sort((a, b) => b.minRamGb - a.minRamGb);
+    .sort((a, b) => {
+      const bRam =
+        typeof b.minRamGb === "number" && Number.isFinite(b.minRamGb)
+          ? b.minRamGb
+          : -Infinity;
+      const aRam =
+        typeof a.minRamGb === "number" && Number.isFinite(a.minRamGb)
+          ? a.minRamGb
+          : -Infinity;
+      return bRam - aRam || a.id.localeCompare(b.id);
+    });
 
   for (const tier of tiers) {
     if (tier.minRamGb == null || freeRamGb < tier.minRamGb) continue;

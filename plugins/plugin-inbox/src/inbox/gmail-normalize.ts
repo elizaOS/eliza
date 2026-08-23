@@ -495,7 +495,12 @@ export function compareGmailMessagePriority(
   if (left.isUnread !== right.isUnread) {
     return right.isUnread ? 1 : -1;
   }
-  return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+  const leftTime = Date.parse(left.receivedAt);
+  const rightTime = Date.parse(right.receivedAt);
+  const leftSafe = Number.isFinite(leftTime) ? leftTime : 0;
+  const rightSafe = Number.isFinite(rightTime) ? rightTime : 0;
+  if (rightSafe !== leftSafe) return rightSafe - leftSafe;
+  return left.id.localeCompare(right.id);
 }
 
 export function normalizeGmailDraftTone(

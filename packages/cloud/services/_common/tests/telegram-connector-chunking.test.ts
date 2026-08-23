@@ -6,6 +6,12 @@
 import { describe, expect, test } from "bun:test";
 import { splitTelegramMessage } from "../src/telegram-connector";
 
+function isWellFormed(value: string): boolean {
+  return !/[\uD800-\uDFFF]/.test(
+    value.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, ""),
+  );
+}
+
 const INVALID_LIMITS = [
   1,
   0,
@@ -25,7 +31,7 @@ describe("splitTelegramMessage surrogate-safe chunking", () => {
     for (const chunk of chunks) {
       expect(chunk.length).toBeGreaterThan(0);
       expect(chunk.length).toBeLessThanOrEqual(4096);
-      expect(chunk.toWellFormed()).toBe(chunk);
+      expect(isWellFormed(chunk)).toBe(true);
     }
   });
 
@@ -36,7 +42,7 @@ describe("splitTelegramMessage surrogate-safe chunking", () => {
     expect(chunks.every((chunk) => chunk.length > 0 && chunk.length <= 2)).toBe(
       true,
     );
-    expect(chunks.every((chunk) => chunk.toWellFormed() === chunk)).toBe(true);
+    expect(chunks.every(isWellFormed)).toBe(true);
   });
 
   test("rejects unsafe chunk limits before splitting", () => {
@@ -58,7 +64,7 @@ describe("splitTelegramMessage surrogate-safe chunking", () => {
     expect(chunks.every((chunk) => chunk.length > 0 && chunk.length <= 5)).toBe(
       true,
     );
-    expect(chunks.every((chunk) => chunk.toWellFormed() === chunk)).toBe(true);
+    expect(chunks.every(isWellFormed)).toBe(true);
   });
 
   test("still splits ASCII lines at the default Telegram limit", () => {

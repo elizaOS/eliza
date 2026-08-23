@@ -27,7 +27,8 @@
  * - Schema seam: the fresh-DB migrate lane pauses at the 0282 usage-quotas
  *   release barrier, so the group tables (0297) and their authority-version
  *   (0303) and delivery-lease (0304) columns never exist on a booted e2e
- *   stack. `ensureGroupSchema` applies those three migrations' DDL directly,
+ *   stack, and neither does the participant identity registry (0311).
+ *   `ensureGroupSchema` applies those migrations' DDL directly,
  *   in journal order, skipping each one whose final object already exists, so
  *   it is a no-op against a fully migrated database. Once the fresh-ledger
  *   barrier fix (branch fix/migration-barrier-fresh-ledger) lands and fresh
@@ -88,6 +89,13 @@ const GROUP_SCHEMA_MIGRATIONS: ReadonlyArray<{
       kind: "column",
       table: "personal_shared_group_bindings",
       column: "delivery_lease_committed_at",
+    },
+  },
+  {
+    file: "0313_personal_shared_group_participants.sql",
+    sentinel: {
+      kind: "relation",
+      name: "personal_shared_group_participants_ordinal_uidx",
     },
   },
 ];

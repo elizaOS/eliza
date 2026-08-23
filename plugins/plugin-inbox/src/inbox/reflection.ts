@@ -12,6 +12,8 @@ import {
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 function parseReflectionObject(raw: string): Record<string, unknown> | null {
@@ -100,7 +102,7 @@ export async function reflectOnSendConfirmation(
     }
     return {
       confirmed: false,
-      reasoning: `Could not parse reflection: ${raw.slice(0, 100)}`,
+      reasoning: `Could not parse reflection: ${truncateWellFormed(toWellFormedUnicode(raw), 100)}`,
     };
   } catch (error) {
     logger.warn(
@@ -185,7 +187,7 @@ export async function reflectOnAutoReply(
 
     return {
       approved: false,
-      reasoning: `Could not parse reflection: ${raw.slice(0, 100)}`,
+      reasoning: `Could not parse reflection: ${truncateWellFormed(toWellFormedUnicode(raw), 100)}`,
     };
   } catch (error) {
     logger.warn(
