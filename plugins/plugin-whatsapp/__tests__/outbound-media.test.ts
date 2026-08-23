@@ -5,6 +5,7 @@
  * build their payload from the same WhatsAppMessage media type, so one path
  * covers both. Mocked runtime — runs offline.
  */
+import crypto from "node:crypto";
 import type { IAgentRuntime, Media, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BaileysClient } from "../src/clients/baileys-client";
@@ -241,6 +242,68 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
   });
 });
 
+describe("WhatsApp sendMediaMessage — canonical personal bytes", () => {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+
+  function personalService(storedBytes: Buffer | null = png) {
+    const clientSend = vi.fn(async () => ({ messages: [{ id: "x" }] }));
+    const storage = { read: vi.fn(async () => storedBytes) };
+    const svc = Object.create(
+      WhatsAppConnectorService.prototype,
+    ) as WhatsAppConnectorService;
+    Object.assign(svc as object, {
+      runtime: { getService: vi.fn(() => storage) },
+      getClientForAccount: vi.fn(() => ({ sendMessage: clientSend })),
+      getConfigForAccount: vi.fn(() => ({
+        accountId: "default",
+        transport: "baileys",
+        authDir: "/tmp/auth",
+        mediaMaxMb: 1,
+      })),
+    });
+    return { svc, clientSend, storage };
+  }
+
+  function canonicalMedia(bytes = png): Media {
+    const hash = crypto.createHash("sha256").update(bytes).digest("hex");
+    return {
+      id: hash,
+      checksum: hash,
+      url: `/api/media/${hash}.png`,
+      contentType: "image",
+      mimeType: "image/png",
+    } as Media;
+  }
+
+  it("reads and hash-verifies canonical bytes before the personal client call", async () => {
+    const { svc, clientSend, storage } = personalService();
+    const media = canonicalMedia();
+    await svc.sendMediaMessage("default", "14155552671@s.whatsapp.net", media);
+
+    expect(storage.read).toHaveBeenCalledWith(`${media.checksum}.png`);
+    expect(clientSend).toHaveBeenCalledWith({
+      type: "image",
+      to: "14155552671@s.whatsapp.net",
+      content: { link: media.url, bytes: png },
+    });
+  });
+
+  it.each([
+    ["external URL", { ...canonicalMedia(), url: "https://cdn.example.com/image.png" }, png],
+    ["missing bytes", canonicalMedia(), null],
+    ["corrupt store", canonicalMedia(), Buffer.from("wrong bytes")],
+  ])("fails before personal client I/O for %s", async (_label, media, storedBytes) => {
+    const { svc, clientSend } = personalService(storedBytes as Buffer | null);
+    await expect(
+      svc.sendMediaMessage("default", "14155552671@s.whatsapp.net", media as Media),
+    ).rejects.toBeInstanceOf(Error);
+    expect(clientSend).not.toHaveBeenCalled();
+  });
+});
+
 describe("WhatsApp personal quoted delivery", () => {
   it("uses the same account-and-chat scope for default and named inbound reply identities", () => {
     const runtime = { agentId: "00000000-0000-0000-0000-000000000010" } as IAgentRuntime;
@@ -267,72 +330,82 @@ describe("WhatsApp personal quoted delivery", () => {
   it.each(["default", "work"])(
     "preserves %s-account group participant and image payload for text and media",
     async (accountId) => {
-    const registrations: MessageConnectorRegistration[] = [];
-    const socketSend = vi.fn(async () => ({ key: { id: "wamid.sent" } }));
-    const client = new BaileysClient({ authDir: "/tmp/whatsapp-quote-test" });
-    (
-      client as unknown as { connection: { getSocket: () => unknown } }
-    ).connection.getSocket = () => ({ sendMessage: socketSend });
-    const runtime = makeRuntime(registrations);
-    vi.mocked(runtime.getMemoryById).mockResolvedValueOnce({
-      content: {
-        text: "photo caption",
-        attachments: [
-          { id: "parent", contentType: "image", url: "/api/media/parent.png" },
-        ],
-      },
-      metadata: {
-        messageIdFull: "wamid.group-parent",
-        rawSenderId: "14155552671@s.whatsapp.net",
-        fromBot: false,
-      },
-    } as never);
-    const service = Object.create(
-      WhatsAppConnectorService.prototype,
-    ) as WhatsAppConnectorService;
-    Object.assign(service as object, {
-      runtime,
-      connected: true,
-      defaultAccountId: accountId,
-      configs: new Map([
-        [accountId, { accountId, transport: "baileys", authDir: "/tmp/quote" }],
-      ]),
-      clients: new Map([[accountId, client]]),
-      knownTargets: new Map(),
-    });
-    WhatsAppConnectorService.registerSendHandlers(runtime, service);
-
-    await registrations[0].sendHandler?.(
-      runtime,
-      { source: "whatsapp", channelId: "120363000000@g.us" } as ConnectorTargetInfo,
-      {
-        text: "reply text",
-        inReplyTo: "00000000-0000-0000-0000-000000000001" as UUID,
-        attachments: [
-          {
-            id: "reply",
-            url: "https://cdn.example.com/reply.png",
-            contentType: "image",
-          },
-        ],
-      } as ConnectorContent,
-    );
-
-    expect(socketSend).toHaveBeenCalledTimes(2);
-    for (const call of socketSend.mock.calls) {
-      expect(call[0]).toBe("120363000000@g.us");
-      expect(call[2]).toEqual({
-        quoted: {
-          key: {
-            remoteJid: "120363000000@g.us",
-            id: "wamid.group-parent",
-            fromMe: false,
-            participant: "14155552671@s.whatsapp.net",
-          },
-          message: { imageMessage: { caption: "photo caption" } },
+      const registrations: MessageConnectorRegistration[] = [];
+      const socketSend = vi.fn(async () => ({ key: { id: "wamid.sent" } }));
+      const client = new BaileysClient({ authDir: "/tmp/whatsapp-quote-test" });
+      (
+        client as unknown as { connection: { getSocket: () => unknown } }
+      ).connection.getSocket = () => ({ sendMessage: socketSend });
+      const runtime = makeRuntime(registrations);
+      const replyBytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      );
+      const replyHash = crypto.createHash("sha256").update(replyBytes).digest("hex");
+      (runtime as unknown as { getService: ReturnType<typeof vi.fn> }).getService = vi.fn(() => ({
+        read: vi.fn(async () => replyBytes),
+      }));
+      vi.mocked(runtime.getMemoryById).mockResolvedValueOnce({
+        content: {
+          text: "photo caption",
+          attachments: [
+            { id: "parent", contentType: "image", url: "/api/media/parent.png" },
+          ],
         },
+        metadata: {
+          messageIdFull: "wamid.group-parent",
+          rawSenderId: "14155552671@s.whatsapp.net",
+          fromBot: false,
+        },
+      } as never);
+      const service = Object.create(
+        WhatsAppConnectorService.prototype,
+      ) as WhatsAppConnectorService;
+      Object.assign(service as object, {
+        runtime,
+        connected: true,
+        defaultAccountId: accountId,
+        configs: new Map([
+          [accountId, { accountId, transport: "baileys", authDir: "/tmp/quote" }],
+        ]),
+        clients: new Map([[accountId, client]]),
+        knownTargets: new Map(),
       });
-    }
+      WhatsAppConnectorService.registerSendHandlers(runtime, service);
+
+      await registrations[0].sendHandler?.(
+        runtime,
+        { source: "whatsapp", channelId: "120363000000@g.us" } as ConnectorTargetInfo,
+        {
+          text: "reply text",
+          inReplyTo: "00000000-0000-0000-0000-000000000001" as UUID,
+          attachments: [
+            {
+              id: replyHash,
+              checksum: replyHash,
+              url: `/api/media/${replyHash}.png`,
+              contentType: "image",
+              mimeType: "image/png",
+            },
+          ],
+        } as ConnectorContent,
+      );
+
+      expect(socketSend).toHaveBeenCalledTimes(2);
+      for (const call of socketSend.mock.calls) {
+        expect(call[0]).toBe("120363000000@g.us");
+        expect(call[2]).toEqual({
+          quoted: {
+            key: {
+              remoteJid: "120363000000@g.us",
+              id: "wamid.group-parent",
+              fromMe: false,
+              participant: "14155552671@s.whatsapp.net",
+            },
+            message: { imageMessage: { caption: "photo caption" } },
+          },
+        });
+      }
     },
   );
 
