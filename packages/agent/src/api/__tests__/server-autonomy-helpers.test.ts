@@ -5,7 +5,7 @@ vi.mock("@elizaos/core", () => ({
 }));
 
 const routeAutonomyTextToUser = vi.fn(async () => undefined);
-vi.mock("./server-helpers-swarm.ts", () => ({
+vi.mock("../server-helpers-swarm.ts", () => ({
   routeAutonomyTextToUser: (...args: unknown[]) =>
     routeAutonomyTextToUser(...args),
 }));
