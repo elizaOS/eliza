@@ -4,6 +4,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../state/app-store";
 import type { BackgroundConfig } from "../state/ui-preferences";
+import { DEFAULT_BACKGROUND_CONFIG } from "../state/ui-preferences";
 import { emitViewEvent } from "../views/view-event-bus";
 import { getShaderPreset } from "./shader-presets";
 import { isPlausibleFragmentSource } from "./shader-schema";
@@ -189,5 +190,176 @@ describe("useBackgroundApplyChannel — named catalog entry (#13538)", () => {
     expect(config.shader?.source).toBe(getShaderPreset("aurora")?.source);
     expect(config.shader?.source).not.toContain("200000");
     expect(config.imageUrl).toBeUndefined();
+  });
+});
+
+describe("useBackgroundApplyChannel — history ops, reset, and plain set paths", () => {
+  function mountChannelWithHistory(backgroundConfig: BackgroundConfig) {
+    const store = {
+      setBackgroundConfig: vi.fn(),
+      undoBackgroundConfig: vi.fn(),
+      redoBackgroundConfig: vi.fn(),
+    };
+    __setAppValueForTests({
+      backgroundConfig,
+      ...store,
+      canUndoBackground: false,
+      canRedoBackground: false,
+    } as never);
+    render(<Channel />);
+    return store;
+  }
+
+  it("forwards op:'undo' to undoBackgroundConfig and nothing else", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({ op: "undo" });
+    expect(store.undoBackgroundConfig).toHaveBeenCalledTimes(1);
+    expect(store.redoBackgroundConfig).not.toHaveBeenCalled();
+    expect(store.setBackgroundConfig).not.toHaveBeenCalled();
+  });
+
+  it("forwards op:'redo' to redoBackgroundConfig and nothing else", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({ op: "redo" });
+    expect(store.redoBackgroundConfig).toHaveBeenCalledTimes(1);
+    expect(store.undoBackgroundConfig).not.toHaveBeenCalled();
+    expect(store.setBackgroundConfig).not.toHaveBeenCalled();
+  });
+
+  it("op:'reset' applies DEFAULT_BACKGROUND_CONFIG verbatim (no history call)", () => {
+    const auroraSource = getShaderPreset("aurora")?.source ?? "";
+    const store = mountChannelWithHistory({
+      mode: "glsl",
+      color: "#101010",
+      shader: {
+        presetId: "aurora",
+        source: auroraSource,
+        uniforms: { u_speed: 1, u_scale: 1, u_intensity: 1, u_seed: 0 },
+      },
+    });
+    apply({ op: "reset" });
+    expect(store.setBackgroundConfig).toHaveBeenCalledTimes(1);
+    expect(store.setBackgroundConfig.mock.calls[0][0]).toBe(
+      DEFAULT_BACKGROUND_CONFIG,
+    );
+    expect(store.undoBackgroundConfig).not.toHaveBeenCalled();
+    expect(store.redoBackgroundConfig).not.toHaveBeenCalled();
+  });
+
+  it("a payload with NO op field defaults to the 'set' path", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({ color: "#ef5a1f" });
+    expect(store.setBackgroundConfig).toHaveBeenCalledTimes(1);
+    const config = store.setBackgroundConfig.mock
+      .calls[0][0] as BackgroundConfig;
+    expect(config.mode).toBe("shader");
+    expect(config.color).toBe("#ef5a1f");
+  });
+
+  it("applies a color-only payload as a shader-mode config", () => {
+    const store = mountChannelWithHistory({ mode: "image", color: "#101010" });
+    apply({ op: "set", color: "#123456" });
+    expect(store.setBackgroundConfig).toHaveBeenCalledTimes(1);
+    const config = store.setBackgroundConfig.mock
+      .calls[0][0] as BackgroundConfig;
+    expect(config.mode).toBe("shader");
+    expect(config.color).toBe("#123456");
+    expect(config.imageUrl).toBeUndefined();
+  });
+
+  it("applies an image payload, inheriting the mounted color when none is given", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({ op: "set", mode: "image", imageUrl: "/api/media/abc.png" });
+    expect(store.setBackgroundConfig).toHaveBeenCalledTimes(1);
+    const config = store.setBackgroundConfig.mock
+      .calls[0][0] as BackgroundConfig;
+    expect(config.mode).toBe("image");
+    expect(config.color).toBe("#101010");
+    expect(config.imageUrl).toBe("/api/media/abc.png");
+  });
+
+  it("an image payload with an explicit color uses the payload color", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({
+      op: "set",
+      mode: "image",
+      imageUrl: "/api/media/abc.png",
+      color: "#ef5a1f",
+    });
+    const config = store.setBackgroundConfig.mock
+      .calls[0][0] as BackgroundConfig;
+    expect(config.mode).toBe("image");
+    expect(config.color).toBe("#ef5a1f");
+  });
+
+  it("an empty-string imageUrl never becomes an image config", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({ op: "set", imageUrl: "" });
+    expect(store.setBackgroundConfig).not.toHaveBeenCalled();
+  });
+
+  it("ignores an entirely empty set payload (never wedges the bg)", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({});
+    expect(store.setBackgroundConfig).not.toHaveBeenCalled();
+  });
+
+  it("a mode:'image' payload without a usable URL degrades to the color path", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({ op: "set", mode: "image", color: "#ef5a1f" });
+    expect(store.setBackgroundConfig).toHaveBeenCalledTimes(1);
+    const config = store.setBackgroundConfig.mock
+      .calls[0][0] as BackgroundConfig;
+    expect(config.mode).toBe("shader");
+    expect(config.color).toBe("#ef5a1f");
+  });
+
+  it("a uniform-only tweak on a NON-glsl background is ignored", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({ op: "set", mode: "glsl", uniforms: { u_speed: 0.5 } });
+    expect(store.setBackgroundConfig).not.toHaveBeenCalled();
+  });
+
+  it("an unknown presetId resolves to nothing and is ignored", () => {
+    const store = mountChannelWithHistory({ mode: "shader", color: "#101010" });
+    apply({ op: "set", mode: "glsl", presetId: "definitely-not-a-preset" });
+    expect(store.setBackgroundConfig).not.toHaveBeenCalled();
+  });
+
+  it("malformed (non-object) uniforms are dropped rather than wedging a live shader", () => {
+    const auroraSource = getShaderPreset("aurora")?.source ?? "";
+    const store = mountChannelWithHistory({
+      mode: "glsl",
+      color: "#101010",
+      shader: {
+        presetId: "aurora",
+        source: auroraSource,
+        uniforms: { u_speed: 1, u_scale: 2, u_intensity: 3, u_seed: 4 },
+      },
+    });
+    apply({ op: "set", mode: "glsl", uniforms: "fast" });
+    expect(store.setBackgroundConfig).not.toHaveBeenCalled();
+  });
+
+  it("a uniform tweak merges into — not over — the live preset's uniforms", () => {
+    const auroraSource = getShaderPreset("aurora")?.source ?? "";
+    const store = mountChannelWithHistory({
+      mode: "glsl",
+      color: "#101010",
+      shader: {
+        presetId: "aurora",
+        source: auroraSource,
+        uniforms: { u_speed: 1, u_scale: 2, u_intensity: 3, u_seed: 4 },
+      },
+    });
+    apply({ op: "set", mode: "glsl", uniforms: { u_intensity: 0.75 } });
+    expect(store.setBackgroundConfig).toHaveBeenCalledTimes(1);
+    const config = store.setBackgroundConfig.mock
+      .calls[0][0] as BackgroundConfig;
+    expect(config.shader?.uniforms.u_intensity).toBe(0.75);
+    expect(config.shader?.uniforms.u_speed).toBe(1);
+    expect(config.shader?.uniforms.u_scale).toBe(2);
+    expect(config.shader?.uniforms.u_seed).toBe(4);
+    expect(config.shader?.source).toBe(auroraSource);
   });
 });
