@@ -85,8 +85,15 @@ export async function readScheduledTaskLog(
         typeof entry.taskId === "string" &&
         typeof entry.recordedAt === "string",
     )
-    .slice()
-    .sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
+    .sort((a, b) => {
+      const aTime = Number.isFinite(Date.parse(a.recordedAt))
+        ? Date.parse(a.recordedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.recordedAt))
+        ? Date.parse(b.recordedAt)
+        : 0;
+      return aTime - bTime;
+    });
 }
 
 /**
