@@ -38,6 +38,10 @@ export interface EnrolledRemoteTargetVaultRecord {
   deviceId: string;
   signingPrivateKeyJwk: JsonWebKey;
   encryptionPrivateKeyJwk: JsonWebKey;
+  managedNetwork?: {
+    hostname: string;
+    loginServer: string;
+  };
 }
 
 type RemoteTargetVaultRecord =
@@ -99,6 +103,38 @@ function canonicalApiBase(value: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
+function canonicalManagedNetworkLoginServer(value: string): string {
+  const canonical = canonicalApiBase(value);
+  const url = new URL(canonical);
+  if (url.pathname !== "/") {
+    throw new Error("Stored managed network login server is invalid.");
+  }
+  return url.origin;
+}
+
+function isManagedNetworkRecord(value: unknown): boolean {
+  if (value === undefined) return true;
+  try {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value) &&
+      typeof Reflect.get(value, "hostname") === "string" &&
+      typeof Reflect.get(value, "loginServer") === "string" &&
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(
+        Reflect.get(value, "hostname") as string,
+      ) &&
+      canonicalManagedNetworkLoginServer(
+        Reflect.get(value, "loginServer") as string,
+      ) === Reflect.get(value, "loginServer")
+    );
+  } catch {
+    // error-policy:J3 malformed secure-store authority is an explicit invalid
+    // record and is never normalized into a usable managed profile.
+    return false;
+  }
+}
+
 export function remoteTargetVaultId(
   canonicalStateDir = resolveCanonicalStateDir(),
 ): string {
@@ -158,7 +194,8 @@ function parseRecord(raw: string): RemoteTargetVaultRecord {
     typeof Reflect.get(value, "apiBaseUrl") !== "string" ||
     typeof Reflect.get(value, "hostToken") !== "string" ||
     !HOST_TOKEN_PATTERN.test(Reflect.get(value, "hostToken") as string) ||
-    !isRemoteTargetPublicIdentity(Reflect.get(value, "identity"))
+    !isRemoteTargetPublicIdentity(Reflect.get(value, "identity")) ||
+    !isManagedNetworkRecord(Reflect.get(value, "managedNetwork"))
   ) {
     throw new Error("Stored remote target identity is corrupt.");
   }
@@ -330,6 +367,44 @@ export class RemoteTargetVault {
     });
   }
 
+  async recordManagedNetwork(input: {
+    hostId: string;
+    hostname: string;
+    loginServer: string;
+  }): Promise<EnrolledRemoteTargetVaultRecord> {
+    const loginServer = canonicalManagedNetworkLoginServer(input.loginServer);
+    if (
+      !isIdentifier(input.hostId) ||
+      !isManagedNetworkRecord({ hostname: input.hostname, loginServer })
+    ) {
+      throw new Error("Managed network identity is invalid.");
+    }
+    return this.serialize(async () => {
+      const existing = await this.load();
+      if (
+        existing?.status !== "enrolled" ||
+        existing.identity.runtimeId !== input.hostId
+      ) {
+        throw new Error(
+          "Managed network enrollment does not match stored state.",
+        );
+      }
+      const updated: EnrolledRemoteTargetVaultRecord = {
+        ...existing,
+        managedNetwork: { hostname: input.hostname, loginServer },
+      };
+      const stored = await this.secureStore.set(
+        this.vaultId,
+        TARGET_VAULT_KIND,
+        JSON.stringify(updated),
+      );
+      if (!stored.ok) {
+        throw new Error("Secure remote target storage is unavailable.");
+      }
+      return updated;
+    });
+  }
+
   async delete(): Promise<boolean> {
     return this.serialize(async () => {
       const result = await this.secureStore.delete(
@@ -350,4 +425,5 @@ export const remoteTargetVaultInternals = {
   parseRecord,
   publicJwk,
   canonicalApiBase,
+  canonicalManagedNetworkLoginServer,
 };

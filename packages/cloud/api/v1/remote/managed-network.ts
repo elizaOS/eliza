@@ -3,6 +3,7 @@ import {
   HeadscaleClient,
   type HeadscaleNode,
 } from "@/lib/services/headscale-client";
+import { logger } from "@/lib/utils/logger";
 
 const REMOTE_HOST_TAG = "tag:eliza-remote-host";
 const ENROLLMENT_TTL_MS = 15 * 60 * 1_000;
@@ -198,15 +199,19 @@ export async function enrollManagedNetwork(input: {
       preAuthKeyId: preAuthKey.id,
     });
   } catch (cause) {
+    // error-policy:J6 enrollment failed before authority was returned; both
+    // external cleanup operations are attempted and aggregated below.
     const cleanupFailures: unknown[] = [];
     try {
       await client.expirePreAuthKey(preAuthKey.id);
     } catch (cleanupCause) {
+      // error-policy:J6 best-effort compensation continues to key deletion.
       cleanupFailures.push(cleanupCause);
     }
     try {
       await client.deletePreAuthKey(preAuthKey.id);
     } catch (cleanupCause) {
+      // error-policy:J6 best-effort compensation is retained in the aggregate.
       cleanupFailures.push(cleanupCause);
     }
     if (cleanupFailures.length > 0) {
@@ -220,6 +225,8 @@ export async function enrollManagedNetwork(input: {
           message: "Managed-network enrollment compensation is pending retry.",
         });
       } catch (trackingCause) {
+        // error-policy:J6 failure to persist cleanup state is preserved beside
+        // the primary and external compensation failures.
         cleanupFailures.push(trackingCause);
       }
       throw new AggregateError(
@@ -254,6 +261,8 @@ export async function cleanupManagedNetwork(input: {
     try {
       await client.expirePreAuthKey(keyId);
     } catch (cause) {
+      // error-policy:J6 cleanup continues so every independent resource gets
+      // one bounded removal attempt before the aggregate is returned.
       failures.push(cause);
     }
   }
@@ -273,6 +282,7 @@ export async function cleanupManagedNetwork(input: {
       );
       for (const node of cleanupNodes) await client.deleteNode(node.id);
     } catch (cause) {
+      // error-policy:J6 node cleanup failure does not skip pre-auth key removal.
       failures.push(cause);
     }
   }
@@ -280,6 +290,7 @@ export async function cleanupManagedNetwork(input: {
     try {
       await client.deletePreAuthKey(keyId);
     } catch (cause) {
+      // error-policy:J6 key deletion failure is retained in the cleanup aggregate.
       failures.push(cause);
     }
   }
@@ -390,10 +401,15 @@ export async function reconcileManagedNetworkCleanup(input: {
         client: input.client,
       });
       completed += 1;
-    } catch {
-      // cleanupManagedNetwork durably records external cleanup failures. A
-      // revoke/storage failure already leaves the candidate selected for the
-      // next bounded sweep; aggregate only counts at this orchestration layer.
+    } catch (error) {
+      // error-policy:J7 one tenant's cleanup diagnostics must not prevent the
+      // bounded worker from attempting unrelated candidates.
+      logger.error("[ManagedNetworkCleanup] Candidate reconciliation failed", {
+        error,
+        hostId: candidate.id,
+        organizationId: candidate.organization_id,
+        userId: candidate.user_id,
+      });
       failed += 1;
     }
   }

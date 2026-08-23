@@ -4,7 +4,10 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { TailscaleCliManagedNetworkJoiner } from "./remote-target-managed-network";
+import {
+  remoteTargetManagedNetworkInternals,
+  TailscaleCliManagedNetworkJoiner,
+} from "./remote-target-managed-network";
 
 class FakeChild extends EventEmitter {
   killed = false;
@@ -43,6 +46,7 @@ describe("native managed-network enrollment", () => {
         },
         temporaryRoot,
         () => 2_000_000_000_000,
+        async () => undefined,
       );
       const authKey = "hskey-auth-one-use-secret";
       await joiner.join({
@@ -89,6 +93,158 @@ describe("native managed-network enrollment", () => {
         expiresAt: 1_999_999_999_999,
       }),
     ).rejects.toThrow("expired");
+    expect(spawned).toBe(false);
+  });
+
+  it("refuses to switch an existing personal tailnet before spawning up", async () => {
+    let spawned = false;
+    const joiner = new TailscaleCliManagedNetworkJoiner(
+      async () => "/test/tailscale",
+      () => {
+        spawned = true;
+        return new FakeChild() as unknown as ChildProcess;
+      },
+      os.tmpdir(),
+      () => 2_000_000_000_000,
+      async () =>
+        remoteTargetManagedNetworkInternals.assertVacantTailscaleStatus(
+          JSON.stringify({
+            BackendState: "Running",
+            CurrentTailnet: { Name: "personal.example" },
+            Self: { HostName: "personal-laptop" },
+            TailscaleIPs: ["100.64.0.1"],
+          }),
+        ),
+    );
+
+    await expect(
+      joiner.join({
+        loginServer: "https://headscale.example",
+        authKey: "hskey-auth-one-use-secret",
+        hostname: "eliza-host-one",
+        expiresAt: 2_000_000_030_000,
+      }),
+    ).rejects.toThrow("cannot replace an existing Tailscale tailnet");
+    expect(spawned).toBe(false);
+  });
+
+  it("accepts only a vacant daemon status", () => {
+    expect(() =>
+      remoteTargetManagedNetworkInternals.assertVacantTailscaleStatus(
+        JSON.stringify({ BackendState: "NeedsLogin", TailscaleIPs: [] }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      remoteTargetManagedNetworkInternals.assertVacantTailscaleStatus(
+        "not-json",
+      ),
+    ).toThrow("could not be verified safely");
+  });
+
+  it("logs out only the durable managed hostname", async () => {
+    let observedArgs: readonly string[] = [];
+    const joiner = new TailscaleCliManagedNetworkJoiner(
+      async () => "/test/tailscale",
+      (_command, args) => {
+        observedArgs = args;
+        const child = new FakeChild();
+        queueMicrotask(() => child.emit("close", 0));
+        return child as unknown as ChildProcess;
+      },
+      os.tmpdir(),
+      () => 2_000_000_000_000,
+      async () => undefined,
+      async () =>
+        JSON.stringify({
+          BackendState: "Running",
+          Self: { HostName: "eliza-host-one-cafebabe" },
+        }),
+      async () =>
+        JSON.stringify({ ControlURL: "https://headscale.example.test/" }),
+    );
+
+    await joiner.leave({
+      hostname: "eliza-host-one",
+      loginServer: "https://headscale.example.test",
+    });
+    expect(observedArgs).toEqual(["logout"]);
+  });
+
+  it("does not log out a same-hostname profile from another control server", async () => {
+    let spawned = false;
+    const joiner = new TailscaleCliManagedNetworkJoiner(
+      async () => "/test/tailscale",
+      () => {
+        spawned = true;
+        return new FakeChild() as unknown as ChildProcess;
+      },
+      os.tmpdir(),
+      () => 2_000_000_000_000,
+      async () => undefined,
+      async () =>
+        JSON.stringify({
+          BackendState: "Running",
+          Self: { HostName: "eliza-host-one" },
+        }),
+      async () =>
+        JSON.stringify({ ControlURL: "https://controlplane.tailscale.com" }),
+    );
+
+    await expect(
+      joiner.leave({
+        hostname: "eliza-host-one",
+        loginServer: "https://headscale.example.test",
+      }),
+    ).rejects.toThrow("does not use the managed Eliza control server");
+    expect(spawned).toBe(false);
+  });
+
+  it("does not log out a profile that no longer matches the managed host", async () => {
+    let spawned = false;
+    const joiner = new TailscaleCliManagedNetworkJoiner(
+      async () => "/test/tailscale",
+      () => {
+        spawned = true;
+        return new FakeChild() as unknown as ChildProcess;
+      },
+      os.tmpdir(),
+      () => 2_000_000_000_000,
+      async () => undefined,
+      async () =>
+        JSON.stringify({
+          BackendState: "Running",
+          Self: { HostName: "personal-laptop" },
+        }),
+    );
+
+    await expect(
+      joiner.leave({
+        hostname: "eliza-host-one",
+        loginServer: "https://headscale.example.test",
+      }),
+    ).rejects.toThrow("not the managed Eliza membership");
+    expect(spawned).toBe(false);
+  });
+
+  it("treats an already-vacant daemon as idempotently left", async () => {
+    let spawned = false;
+    const joiner = new TailscaleCliManagedNetworkJoiner(
+      async () => "/test/tailscale",
+      () => {
+        spawned = true;
+        return new FakeChild() as unknown as ChildProcess;
+      },
+      os.tmpdir(),
+      () => 2_000_000_000_000,
+      async () => undefined,
+      async () =>
+        JSON.stringify({ BackendState: "NeedsLogin", TailscaleIPs: [] }),
+    );
+
+    await joiner.leave({
+      hostname: "eliza-host-one",
+      loginServer: "https://headscale.example.test",
+    });
     expect(spawned).toBe(false);
   });
 });

@@ -384,6 +384,7 @@ class DeferredCompensationRelay extends ImmediateActivationRelay {
 
 class ManagedEnrollmentRelay extends FakeRelay {
   activateManagedCalls = 0;
+  activateManagedFailure: Error | null = null;
 
   override async enroll(
     input: RemoteTargetEnrollmentRequest,
@@ -406,6 +407,7 @@ class ManagedEnrollmentRelay extends FakeRelay {
 
   override async activateManagedNetwork(): Promise<{ hostname: string }> {
     this.activateManagedCalls += 1;
+    if (this.activateManagedFailure) throw this.activateManagedFailure;
     return { hostname: "eliza-host-one-cnpx9uop" };
   }
 }
@@ -1645,6 +1647,7 @@ describe("remote target durable runner", () => {
     );
     const relay = new ManagedEnrollmentRelay();
     let joined = false;
+    let left = false;
     const service = new RemoteTargetDesktopService(
       vault,
       new MemoryRemoteTargetStateStore(),
@@ -1653,6 +1656,9 @@ describe("remote target durable runner", () => {
       {
         join: async () => {
           joined = true;
+        },
+        leave: async () => {
+          left = true;
         },
       },
     );
@@ -1668,7 +1674,23 @@ describe("remote target durable runner", () => {
     ).resolves.toMatchObject({ hostId: HOST_ID, status: "active" });
     expect(joined).toBe(true);
     expect(relay.activateManagedCalls).toBe(1);
-    await expect(vault.load()).resolves.toMatchObject({ status: "enrolled" });
+    await expect(vault.load()).resolves.toMatchObject({
+      status: "enrolled",
+      managedNetwork: {
+        hostname: "eliza-host-one",
+        loginServer: "https://headscale.example.test",
+      },
+    });
+    relay.revocations.push({
+      hostId: HOST_ID,
+      status: "revoked",
+      alreadyRevoked: false,
+      cleanup: { sessions: 0, commands: 0, more: false },
+    });
+    await expect(
+      service.finalizeHostRevoke({ hostId: HOST_ID }),
+    ).resolves.toEqual({ cleaned: true });
+    expect(left).toBe(true);
   });
 
   it("revokes pending Cloud authority and deletes local credentials after a native join failure", async () => {
@@ -1692,6 +1714,7 @@ describe("remote target durable runner", () => {
         join: async () => {
           throw new Error("Tailscale unavailable");
         },
+        leave: async () => undefined,
       },
     );
     await expect(
@@ -1705,6 +1728,48 @@ describe("remote target durable runner", () => {
       }),
     ).rejects.toThrow("Tailscale unavailable");
     expect(relay.activateManagedCalls).toBe(0);
+    await expect(vault.load()).resolves.toBeNull();
+  });
+
+  it("leaves the managed membership when Cloud activation fails", async () => {
+    const vault = new RemoteTargetVault(
+      new MemorySecureStore(),
+      "managed-activation-failure-target",
+    );
+    const relay = new ManagedEnrollmentRelay();
+    relay.activateManagedFailure = new Error("Headscale node unavailable");
+    relay.revocations.push({
+      hostId: HOST_ID,
+      status: "revoked",
+      alreadyRevoked: false,
+      cleanup: { sessions: 0, commands: 0, more: false },
+    });
+    let leaveCalls = 0;
+    const service = new RemoteTargetDesktopService(
+      vault,
+      new MemoryRemoteTargetStateStore(),
+      relay,
+      () => NOW,
+      {
+        join: async () => undefined,
+        leave: async ({ hostname, loginServer }) => {
+          expect(hostname).toBe("eliza-host-one");
+          expect(loginServer).toBe("https://headscale.example.test");
+          leaveCalls += 1;
+        },
+      },
+    );
+
+    await expect(
+      service.enroll({
+        apiBaseUrl: "https://api.example.test",
+        ownerId: "owner-1",
+        ownerAccessToken: "owner-token-123456789",
+        displayName: "Linux target",
+        managedNetwork: true,
+      }),
+    ).rejects.toThrow("Headscale node unavailable");
+    expect(leaveCalls).toBe(1);
     await expect(vault.load()).resolves.toBeNull();
   });
 });

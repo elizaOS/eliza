@@ -6,6 +6,6 @@
     "includes": ["src/**/*.ts", "src/**/*.tsx", "!src/**/*.d.ts"]
   },
   "formatter": {
-    "indentStyle": "tab"
+    "indentStyle": "space"
   }
 }
