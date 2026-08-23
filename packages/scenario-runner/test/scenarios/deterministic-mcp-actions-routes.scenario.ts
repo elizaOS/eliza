@@ -525,8 +525,9 @@ function registerMcpRoutes(runtime: RuntimeWithMcpScenario): void {
 }
 
 async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
-  const runtime = ctx.runtime as RuntimeWithMcpScenario | undefined;
-  if (!runtime) return "scenario runtime was not available";
+  const agentRuntime = ctx.runtime as IAgentRuntime | undefined;
+  if (!agentRuntime) return "scenario runtime was not available";
+  const runtime = agentRuntime as RuntimeWithMcpScenario;
   scenarioRuntime = runtime;
   previousMcpEvaluators = runtime.evaluators;
   runtime.evaluators = [];
@@ -537,7 +538,7 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   runtime.setSetting("mcp", mcpConfig().mcp, false);
   const originalGetService = runtime.getService.bind(runtime);
   await originalGetService<McpService>(MCP_SERVICE_NAME)?.stop();
-  scenarioMcpService = await McpService.start(runtime);
+  scenarioMcpService = await McpService.start(agentRuntime);
   runtime.getService = ((serviceType: string) =>
     serviceType === MCP_SERVICE_NAME
       ? scenarioMcpService
