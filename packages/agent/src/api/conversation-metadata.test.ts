@@ -137,4 +137,41 @@ describe("extractConversationMetadataFromRoom", () => {
       ),
     ).toBeUndefined();
   });
+
+  it("sorts conversation items and messages safely when timestamps contain NaN", () => {
+    const convs = [
+      { id: "c-nan", updatedAt: "invalid-date" },
+      { id: "c-1", updatedAt: "2026-08-23T10:00:00Z" },
+    ];
+    convs.sort((a, b) => {
+      const bTime = new Date(b.updatedAt).getTime();
+      const aTime = new Date(a.updatedAt).getTime();
+      const bVal = Number.isFinite(bTime) ? bTime : 0;
+      const aVal = Number.isFinite(aTime) ? aTime : 0;
+      return bVal - aVal || a.id.localeCompare(b.id);
+    });
+    expect(convs[0]?.id).toBe("c-1");
+    expect(convs[1]?.id).toBe("c-nan");
+
+    const memories = [
+      { id: "m-nan", createdAt: NaN },
+      { id: "m-1", createdAt: 1000 },
+    ];
+    memories.sort((a, b) => {
+      const aCreated =
+        typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+          ? a.createdAt
+          : 0;
+      const bCreated =
+        typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+          ? b.createdAt
+          : 0;
+      return (
+        aCreated - bCreated ||
+        (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
+      );
+    });
+    expect(memories[0]?.id).toBe("m-nan");
+    expect(memories[1]?.id).toBe("m-1");
+  });
 });

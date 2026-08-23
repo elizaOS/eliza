@@ -2212,7 +2212,23 @@ export async function persistRecentAssistantActionCallbackHistory(
             : createdAt >= sinceMs - 2000)
         );
       })
-      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .sort((left, right) => {
+        const leftCreated =
+          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+            ? left.createdAt
+            : 0;
+        const rightCreated =
+          typeof right.createdAt === "number" &&
+          Number.isFinite(right.createdAt)
+            ? right.createdAt
+            : 0;
+        return (
+          leftCreated - rightCreated ||
+          (left.id ? String(left.id) : "").localeCompare(
+            right.id ? String(right.id) : "",
+          )
+        );
+      })
       .at(-1);
 
     if (!target || typeof target.id !== "string") {
@@ -2569,7 +2585,20 @@ async function ensureConversationGreetingStoredUnlocked(
     });
   }
 
-  memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  memories.sort((a, b) => {
+    const aCreated =
+      typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+        ? a.createdAt
+        : 0;
+    const bCreated =
+      typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+        ? b.createdAt
+        : 0;
+    return (
+      aCreated - bCreated ||
+      (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
+    );
+  });
   const existingGreeting = memories.find((memory) => {
     const content = memory.content as Record<string, unknown> | undefined;
     return (
@@ -2753,10 +2782,13 @@ export async function handleConversationRoutes(
     const convos = Array.from(state.conversations.values())
       .filter((c) => !state.deletedConversationIds.has(c.id))
       .filter((c) => canWaifuAccessConversation(waifuAccess, c))
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
+      .sort((a, b) => {
+        const bTime = new Date(b.updatedAt).getTime();
+        const aTime = new Date(a.updatedAt).getTime();
+        const bVal = Number.isFinite(bTime) ? bTime : 0;
+        const aVal = Number.isFinite(aTime) ? aTime : 0;
+        return bVal - aVal || a.id.localeCompare(b.id);
+      });
     json(res, { conversations: convos });
     return true;
   }
@@ -3126,7 +3158,20 @@ export async function handleConversationRoutes(
             });
       }
       // Sort by createdAt ascending
-      memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      memories.sort((a, b) => {
+        const aCreated =
+          typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+            ? a.createdAt
+            : 0;
+        const bCreated =
+          typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+            ? b.createdAt
+            : 0;
+        return (
+          aCreated - bCreated ||
+          (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
+        );
+      });
       const agentId = runtime.agentId;
       // Per-viewer attachment disclosure (#14781): a boundary-role viewer
       // token (WaifuChat, artifact share-viewer) carries a principal; trunk

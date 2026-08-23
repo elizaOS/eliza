@@ -210,7 +210,15 @@ export const notificationTriageAction: Action = {
           }),
         };
       });
-      triaged.sort((a, b) => b.score - a.score);
+      triaged.sort((a, b) => {
+        const bScore =
+          typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+        const aScore =
+          typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+        return (
+          bScore - aScore || a.notification.id.localeCompare(b.notification.id)
+        );
+      });
       const boundedTriaged = triaged.slice(0, NOTIFICATION_TRIAGE_LIMIT);
       await callback?.({
         text: formatTriageSummary(
