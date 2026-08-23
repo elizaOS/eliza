@@ -67,9 +67,18 @@ function localBridgeApiBase(value: string | null): string | null {
   }
 }
 
+function localRestApiBase(value: string | null | undefined): string | null {
+  const healthBase = localBridgeApiBase(value ?? null);
+  if (!healthBase) return null;
+  const url = new URL(healthBase);
+  return url.origin;
+}
+
 /** Resolve the same Dedicated agent base for cutover and future account login. */
 export function personalDedicatedAgentApiBase(
-  target: Pick<AgentSandbox, "id" | "headscale_ip" | "bridge_url">,
+  target: Pick<AgentSandbox, "id" | "headscale_ip" | "bridge_url"> & {
+    health_url?: string | null;
+  },
   baseDomain?: string,
 ): string | null {
   const publicBase = getElizaAgentPublicWebUiUrl(target, {
@@ -82,12 +91,16 @@ export function personalDedicatedAgentApiBase(
   // explicit mode may fall back to the server-owned loopback bridge; accepting
   // arbitrary stored hosts here would turn an account bearer into an SSRF
   // credential leak. Production's configured domain always wins above.
-  return baseDomain === undefined ? null : localBridgeApiBase(target.bridge_url);
+  return baseDomain === undefined
+    ? null
+    : (localRestApiBase(target.health_url) ?? localBridgeApiBase(target.bridge_url));
 }
 
 /** Resolve the browser-facing base; local Docker stays behind the Cloud proxy. */
 export function personalDedicatedClientApiBase(
-  target: Pick<AgentSandbox, "id" | "headscale_ip" | "bridge_url">,
+  target: Pick<AgentSandbox, "id" | "headscale_ip" | "bridge_url"> & {
+    health_url?: string | null;
+  },
   baseDomain: string | undefined,
   cloudApiOrigin: string,
 ): string | null {

@@ -64,12 +64,13 @@ describe("personalSharedAgent", () => {
       id: "00000000-0000-4000-8000-000000000004",
       headscale_ip: null,
       bridge_url: "http://127.0.0.1:8787/api/compat/agents/local",
+      health_url: "http://127.0.0.1:8788/api",
     };
 
     expect(personalDedicatedAgentApiBase(target, "cloud.eliza.app")).toBe(
       `https://${target.id}.cloud.eliza.app`,
     );
-    expect(personalDedicatedAgentApiBase(target, "https://")).toBe(target.bridge_url);
+    expect(personalDedicatedAgentApiBase(target, "https://")).toBe("http://127.0.0.1:8788");
     expect(
       personalDedicatedClientApiBase(target, "https://", "http://127.0.0.1:8787/request"),
     ).toBe(`http://127.0.0.1:8787/api/v1/eliza/agents/${target.id}`);
@@ -78,13 +79,27 @@ describe("personalSharedAgent", () => {
     );
     expect(
       personalDedicatedAgentApiBase(
-        { ...target, bridge_url: "https://attacker.example/agent" },
+        { ...target, health_url: "https://attacker.example/api" },
+        "https://",
+      ),
+    ).toBe(target.bridge_url);
+    expect(
+      personalDedicatedAgentApiBase(
+        {
+          ...target,
+          bridge_url: "https://attacker.example/agent",
+          health_url: "https://attacker.example/api",
+        },
         "https://",
       ),
     ).toBeNull();
     expect(
       personalDedicatedAgentApiBase(
-        { ...target, bridge_url: "http://user:secret@127.0.0.1:8787" },
+        {
+          ...target,
+          bridge_url: "http://user:secret@127.0.0.1:8787",
+          health_url: "http://user:secret@127.0.0.1:8788/api",
+        },
         "https://",
       ),
     ).toBeNull();

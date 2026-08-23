@@ -992,6 +992,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       status: "running",
       database_status: "none",
       bridge_url: "https://dedicated-cutover.test/chat",
+      environment_vars: { ELIZA_API_TOKEN: "agent_cutover_transport" },
     });
 
     const originalFetch = globalThis.fetch;
@@ -1300,7 +1301,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
-            Authorization: "Bearer steward-test",
+            Authorization: "Bearer agent_cutover_transport",
+            "X-API-Key": "agent_cutover_transport",
           }),
         }),
       );
