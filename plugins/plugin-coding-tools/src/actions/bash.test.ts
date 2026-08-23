@@ -4055,3 +4055,196 @@ describeIfPosix("destructive-bulk scanner integration", () => {
     expect(result.text).toContain("done");
   });
 });
+
+describeIfPosix("SHELL workspace delta receipts", () => {
+  async function makeGitRepo(): Promise<string> {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "shell-workspace-delta-"),
+    );
+    await execFileAsync("git", ["init", "--initial-branch=main"], {
+      cwd: tempDir,
+    });
+    await execFileAsync("git", ["config", "user.email", "test@example.com"], {
+      cwd: tempDir,
+    });
+    await execFileAsync("git", ["config", "user.name", "Test User"], {
+      cwd: tempDir,
+    });
+    await fs.writeFile(path.join(tempDir, "file.txt"), "before\n", "utf8");
+    await execFileAsync("git", ["add", "file.txt"], { cwd: tempDir });
+    await execFileAsync("git", ["commit", "-m", "initial"], { cwd: tempDir });
+    return tempDir;
+  }
+
+  function receiptOf(result: ActionResult): Record<string, unknown> {
+    const data = (result.data ?? {}) as Record<string, unknown>;
+    const receipt = data.workspace_delta;
+    expect(receipt).toBeTypeOf("object");
+    return receipt as Record<string, unknown>;
+  }
+
+  it("attaches an unchanged receipt to a read-only command", async () => {
+    const tempDir = await makeGitRepo();
+    const { runtime } = await makeRuntime();
+    try {
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("11111111-aaaa-bbbb-cccc-707070707070"),
+          undefined,
+          { command: "cat file.txt", cwd: tempDir },
+        ),
+      );
+      expect(result.success).toBe(true);
+      const receipt = receiptOf(result);
+      expect(receipt.status).toBe("unchanged");
+      expect(receipt.version).toBe(1);
+      expect(receipt.beforeFingerprint).toBe(receipt.afterFingerprint);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("attaches a changed receipt when a successful command mutates the workspace", async () => {
+    const tempDir = await makeGitRepo();
+    const { runtime } = await makeRuntime();
+    try {
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("11111111-aaaa-bbbb-cccc-707070707071"),
+          undefined,
+          { command: "echo generated > generated.txt", cwd: tempDir },
+        ),
+      );
+      expect(result.success).toBe(true);
+      const receipt = receiptOf(result);
+      expect(receipt.status).toBe("changed");
+      expect(receipt.beforeFingerprint).not.toBe(receipt.afterFingerprint);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps failure and mutation independent: nonzero exit still reports changed", async () => {
+    const tempDir = await makeGitRepo();
+    const { runtime } = await makeRuntime();
+    try {
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("11111111-aaaa-bbbb-cccc-707070707072"),
+          undefined,
+          { command: "echo broken >> file.txt; exit 3", cwd: tempDir },
+        ),
+      );
+      expect(result.success).toBe(false);
+      expect((result.data as Record<string, unknown>).exit_code).toBe(3);
+      expect(receiptOf(result).status).toBe("changed");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps timeout and mutation independent: timed-out command still reports changed", async () => {
+    const tempDir = await makeGitRepo();
+    const { runtime } = await makeRuntime();
+    try {
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("11111111-aaaa-bbbb-cccc-707070707073"),
+          undefined,
+          {
+            command: "echo late >> file.txt && sleep 5",
+            cwd: tempDir,
+            timeout: 300,
+          },
+        ),
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("timeout");
+      expect(receiptOf(result).status).toBe("changed");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports indeterminate outside a git worktree", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "shell-workspace-delta-plain-"),
+    );
+    const { runtime } = await makeRuntime();
+    try {
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("11111111-aaaa-bbbb-cccc-707070707074"),
+          undefined,
+          { command: "echo hi > plain.txt", cwd: tempDir },
+        ),
+      );
+      expect(result.success).toBe(true);
+      const receipt = receiptOf(result);
+      expect(receipt.status).toBe("indeterminate");
+      expect(receipt.reason).toBe("not_a_git_worktree");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("attaches no local receipt to remote capability-router execution", async () => {
+    const tempDir = await makeGitRepo();
+    const runCommand = vi.fn(async () => ({
+      output: "remote ok",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    try {
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("11111111-aaaa-bbbb-cccc-707070707075"),
+          undefined,
+          { command: "echo remote > remote.txt", cwd: tempDir },
+        ),
+      );
+      expect(result.success).toBe(true);
+      expect(runCommand).toHaveBeenCalledTimes(1);
+      expect(
+        (result.data as Record<string, unknown>).workspace_delta,
+      ).toBeUndefined();
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("marks a dispatch failure with a router present as route-unknown indeterminate", async () => {
+    const tempDir = await makeGitRepo();
+    const runCommand = vi.fn(async () => {
+      throw new Error("remote pty exploded");
+    });
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    try {
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("11111111-aaaa-bbbb-cccc-707070707076"),
+          undefined,
+          { command: "echo x > y.txt", cwd: tempDir },
+        ),
+      );
+      expect(result.success).toBe(false);
+      const receipt = receiptOf(result);
+      expect(receipt.status).toBe("indeterminate");
+      expect(receipt.reason).toBe("execution_route_unknown");
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});

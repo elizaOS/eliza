@@ -14,10 +14,13 @@ import {
   type ActionResult,
   CANONICAL_SUBACTION_KEY,
   logger as coreLogger,
+  getCapabilityRouter,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
+  WORKSPACE_DELTA_RECEIPT_KEY,
+  type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import {
@@ -41,6 +44,11 @@ import {
   type ShellOutputArtifactStream,
 } from "../lib/shell-output-artifact.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
+import {
+  captureWorkspaceBaseline,
+  resolveWorkspaceDeltaReceipt,
+  unknownExecutionRouteReceipt,
+} from "../lib/workspace-delta.js";
 import type { BackgroundShellService } from "../services/background-shell-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
@@ -1916,13 +1924,20 @@ export const shellAction: Action = {
       `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch configuration`,
     );
 
-    const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
     coreLogger.info(
       { mode, cwd: redactedCwd },
       `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch`,
     );
 
+    // Fingerprint the local Git workspace immediately before dispatch so the
+    // result can carry a typed changed/unchanged/indeterminate receipt on
+    // every foreground path — including failures and timeouts, which may
+    // still have mutated the workspace. Captured before `startedAt` so the
+    // reported command duration stays free of fingerprint cost.
+    const workspaceBaseline = await captureWorkspaceBaseline(cwd);
+
+    const startedAt = Date.now();
     let result: ShellResult;
     try {
       result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
@@ -1934,13 +1949,36 @@ export const shellAction: Action = {
       coreLogger.error(
         `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,
       );
+      // When a capability router is registered the failed dispatch may have
+      // executed remotely, so the local before/after relationship cannot be
+      // attested; without a router the execution was local by construction.
+      const dispatchFailureReceipt = getCapabilityRouter(runtime)
+        ? unknownExecutionRouteReceipt()
+        : await resolveWorkspaceDeltaReceipt(workspaceBaseline, cwd);
       return failureToActionResult(
         { reason: "internal", message },
-        { cwd: redactedCwd },
+        {
+          cwd: redactedCwd,
+          [WORKSPACE_DELTA_RECEIPT_KEY]: dispatchFailureReceipt,
+        },
       );
     }
 
+    // `took` describes the command itself; measure it before the
+    // post-execution fingerprint capture so the receipt cost never inflates
+    // the reported command duration.
     const took = Date.now() - startedAt;
+
+    // A local workspace receipt cannot attest a remotely routed execution;
+    // routed results deliberately carry no receipt at all.
+    const workspaceDelta: WorkspaceDeltaReceipt | undefined =
+      result.sandbox === "capability-router"
+        ? undefined
+        : await resolveWorkspaceDeltaReceipt(workspaceBaseline, cwd);
+    const workspaceDeltaData = workspaceDelta
+      ? { [WORKSPACE_DELTA_RECEIPT_KEY]: workspaceDelta }
+      : {};
+
     if (result.outputLimitExceeded) {
       return failureToActionResult(
         {
@@ -1948,7 +1986,11 @@ export const shellAction: Action = {
           message:
             "command output exceeded the 1,000,000-character complete-capture safety limit; no partial output is available",
         },
-        { command: redactShellText(runtime, command), cwd: redactedCwd },
+        {
+          command: redactShellText(runtime, command),
+          cwd: redactedCwd,
+          ...workspaceDeltaData,
+        },
       );
     }
     const timedOut = result.timedOut;
@@ -1984,6 +2026,7 @@ export const shellAction: Action = {
           cwd: redactedCwd,
           output: text,
           output_truncated: false,
+          ...workspaceDeltaData,
         },
       );
     }
@@ -1999,6 +2042,7 @@ export const shellAction: Action = {
           cwd: redactedCwd,
           output: text,
           output_truncated: false,
+          ...workspaceDeltaData,
         },
       );
     }
@@ -2010,6 +2054,7 @@ export const shellAction: Action = {
       sandbox_backend: result.sandbox,
       signal,
       output_truncated: false,
+      ...workspaceDeltaData,
     });
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is

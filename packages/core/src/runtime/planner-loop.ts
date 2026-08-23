@@ -51,6 +51,7 @@ import {
 	type ToolChoice,
 	type ToolDefinition,
 } from "../types/model";
+import { readWorkspaceDeltaReceipt } from "../types/workspace-delta";
 import {
 	isModelProviderError,
 	modelProviderErrorDetail,
@@ -3746,11 +3747,15 @@ function isTerminalToolCall(toolCall: PlannerToolCall): boolean {
 }
 
 /**
- * Prevents a coding turn from treating an unverified file mutation as done.
- * A successful SHELL call after the most recent successful WRITE/EDIT is the
- * deliberately small, provider-independent proof boundary: the model chooses
- * the repository-appropriate command, while the runtime verifies that the
- * command actually ran and exited successfully.
+ * Prevents a coding turn from treating an unverified workspace mutation as
+ * done. Mutation evidence comes from two sources: the legacy WRITE/EDIT/FILE
+ * action-name inference, and the typed WorkspaceDeltaReceipt a foreground
+ * SHELL execution attaches when it observed the local Git workspace change —
+ * which catches shell-driven mutations (generation, `git apply`, deletes)
+ * that carry no WRITE/EDIT step. The gate clears on a successful SHELL
+ * verification command; when receipts are present, that verification must
+ * itself report the workspace unchanged, so a "verifier" that mutates the
+ * workspace cannot prove anything.
  */
 function deferCodingCompletionUntilMutationVerified(args: {
 	trajectory: PlannerTrajectory;
@@ -3765,7 +3770,7 @@ function deferCodingCompletionUntilMutationVerified(args: {
 			success: false,
 			decision: "CONTINUE",
 			thought:
-				"A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
+				"A workspace mutation (WRITE/EDIT or a SHELL command whose receipt reports workspace changes) has not been followed by a successful SHELL verification that left the workspace unchanged.",
 			messageToUser:
 				"Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
 		};
@@ -3789,46 +3794,83 @@ function deferCodingCompletionUntilMutationVerified(args: {
 function codingMutationRequiresVerification(
 	trajectory: PlannerTrajectory,
 ): boolean {
-	let latestMutationIndex = -1;
 	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
-	for (let index = 0; index < steps.length; index++) {
-		const step = steps[index];
-		const name = step?.toolCall?.name.toUpperCase();
-		const fileMutation =
-			name === "FILE" &&
-			[
-				"write",
-				"edit",
-				"create",
-				"delete",
-				"move",
-				"copy",
-				"mkdir",
-				"touch",
-			].includes(
-				String(
-					(step.toolCall?.params as Record<string, unknown> | undefined)
-						?.action ??
-						(step.toolCall?.params as Record<string, unknown> | undefined)
-							?.operation ??
-						"",
-				)
-					.trim()
-					.toLowerCase(),
-			);
-		if (
-			(name === "WRITE" || name === "EDIT" || fileMutation) &&
-			step.result?.success === true
-		) {
-			latestMutationIndex = index;
+	// Pending mutation evidence. `receiptBacked` records that a typed
+	// WorkspaceDeltaReceipt attested a real workspace change; that evidence is
+	// sticky and can only be cleared by a verification whose own receipt
+	// attests the workspace stayed unchanged — never by a legacy or
+	// receipt-less shell result.
+	let pending: { receiptBacked: boolean } | null = null;
+	for (const step of steps) {
+		if (!step) continue;
+		const name = step.toolCall?.name.toUpperCase();
+		const receipt =
+			name === "SHELL" ? readWorkspaceDeltaReceipt(step.result?.data) : null;
+		if (receipt?.status === "changed") {
+			// A SHELL execution that changed the workspace is mutation evidence
+			// regardless of exit status — a failed or timed-out command can still
+			// have written files — and a mutating step can never clear the gate,
+			// even when its command text looks like a verifier.
+			pending = { receiptBacked: true };
+			continue;
+		}
+		if (isLegacyCodingMutationStep(step, name)) {
+			pending = { receiptBacked: pending?.receiptBacked === true };
+			continue;
+		}
+		if (pending === null) continue;
+		if (!isSuccessfulCodingVerificationStep(step)) continue;
+		if (receipt?.status === "unchanged") {
+			pending = null;
+			continue;
+		}
+		// No receipt (legacy plugin, non-SHELL-attested environment) or an
+		// indeterminate receipt (non-Git or unobservable workspace): this is
+		// the compatibility fallback and may clear only legacy WRITE/EDIT/FILE
+		// evidence. It is never proof that the workspace remained unchanged,
+		// so receipt-backed evidence stays pending.
+		if (!pending.receiptBacked) {
+			pending = null;
 		}
 	}
-	if (latestMutationIndex < 0) return false;
+	return pending !== null;
+}
 
-	const verified = steps
-		.slice(latestMutationIndex + 1)
-		.some((step) => isSuccessfulCodingVerificationStep(step));
-	return !verified;
+/**
+ * The pre-receipt mutation inference: a successful WRITE, EDIT, or mutating
+ * FILE sub-operation. Retained as a compatibility fallback while receipts
+ * roll out; receipt-backed SHELL evidence is handled by the caller.
+ */
+function isLegacyCodingMutationStep(
+	step: PlannerStep,
+	name: string | undefined,
+): boolean {
+	const fileMutation =
+		name === "FILE" &&
+		[
+			"write",
+			"edit",
+			"create",
+			"delete",
+			"move",
+			"copy",
+			"mkdir",
+			"touch",
+		].includes(
+			String(
+				(step.toolCall?.params as Record<string, unknown> | undefined)
+					?.action ??
+					(step.toolCall?.params as Record<string, unknown> | undefined)
+						?.operation ??
+					"",
+			)
+				.trim()
+				.toLowerCase(),
+		);
+	return (
+		(name === "WRITE" || name === "EDIT" || fileMutation) &&
+		step.result?.success === true
+	);
 }
 
 /**
@@ -4355,7 +4397,8 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
  * deterministic unavailability (e.g. PAGE_DELEGATE's PAGE_CHILD_UNAVAILABLE)
  * that cannot change within the turn. Neither kind is re-executed. Legacy
  * archived steps still count, so a settled call stays settled after loading
- * an older persisted trajectory. In coding mode, a successful WRITE/EDIT
+ * an older persisted trajectory. In coding mode, a successful WRITE/EDIT — or
+ * a SHELL execution whose workspace-delta receipt reports a change —
  * invalidates earlier successes because an identical inspection can now
  * return changed source.
  */
@@ -4372,6 +4415,20 @@ export function partitionRedundantSucceededCalls(
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.toolCall || !step.result) continue;
 		const identity = toolCallIdentity(step.toolCall);
+		// A SHELL execution whose workspace-delta receipt reports a change
+		// invalidated every earlier settled answer regardless of its exit
+		// status, and its own identity must not settle either: re-running a
+		// command that mutates the workspace can legitimately return new
+		// information (and a subsequent identical verification must be allowed
+		// to prove the workspace is now stable).
+		if (
+			trajectory.codingMode === true &&
+			step.toolCall.name.toUpperCase() === "SHELL" &&
+			readWorkspaceDeltaReceipt(step.result.data)?.status === "changed"
+		) {
+			succeeded.clear();
+			continue;
+		}
 		if (step.result.success === true) {
 			// A successful coding mutation can change the answer to any earlier
 			// inspection. Clear those settled identities before recording the

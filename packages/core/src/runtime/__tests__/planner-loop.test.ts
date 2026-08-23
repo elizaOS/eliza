@@ -1034,6 +1034,359 @@ describe("v5 planner loop skeleton", () => {
 			expect(result.finalMessage).toBe("Implemented and tested the change.");
 		});
 	});
+
+	describe("workspace delta receipts", () => {
+		const receipt = (
+			status: "changed" | "unchanged" | "indeterminate",
+			reason?: string,
+		) => ({
+			version: 1,
+			status,
+			...(reason ? { reason } : {}),
+		});
+		const codingShellTools = [
+			{ name: "WRITE", description: "Write a file." },
+			{ name: "SHELL", description: "Run a command." },
+			{ name: "REPLY", description: "Reply to the user." },
+		];
+		const writeCall = () => ({
+			text: "",
+			toolCalls: [
+				{
+					id: "write-1",
+					name: "WRITE",
+					arguments: { path: "config.go", content: "package config" },
+				},
+			],
+		});
+		const shellCall = (id: string, command: string) => ({
+			text: "",
+			toolCalls: [{ id, name: "SHELL", arguments: { command } }],
+		});
+		const continueDeferrals = (result: {
+			trajectory: { evaluatorOutputs: { decision?: string }[] };
+		}) =>
+			result.trajectory.evaluatorOutputs.filter(
+				(output) => output.decision === "CONTINUE",
+			);
+
+		it("completes when the verification receipt reports the workspace unchanged", async () => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(writeCall())
+						.mockResolvedValueOnce(shellCall("verify-1", "go test ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-verified", "Implemented and tested."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({ success: true, text: "wrote config.go" })
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("unchanged") },
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: codingShellTools,
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(3);
+				expect(executeToolCall).toHaveBeenCalledTimes(2);
+				expect(result.finalMessage).toBe("Implemented and tested.");
+				expect(continueDeferrals(result)).toHaveLength(0);
+			});
+		});
+
+		it("rejects a verification whose receipt reports workspace changes until a clean one follows", async () => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(writeCall())
+						.mockResolvedValueOnce(shellCall("verify-dirty", "go test ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-early", "Implemented the change."),
+						)
+						.mockResolvedValueOnce(shellCall("verify-clean", "go test ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-verified", "Implemented and verified."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({ success: true, text: "wrote config.go" })
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("changed") },
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("unchanged") },
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: codingShellTools,
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(5);
+				expect(executeToolCall).toHaveBeenCalledTimes(3);
+				expect(result.finalMessage).toBe("Implemented and verified.");
+				expect(continueDeferrals(result)).toHaveLength(1);
+			});
+		});
+
+		it("treats a standalone mutating SHELL call as a pending mutation", async () => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(
+							shellCall("mutate-1", "echo generated > out.txt"),
+						)
+						.mockResolvedValueOnce(
+							codingReply("reply-early", "Generated the file."),
+						)
+						.mockResolvedValueOnce(shellCall("verify-1", "go test ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-verified", "Generated and verified."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("changed") },
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("unchanged") },
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: codingShellTools,
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(4);
+				expect(executeToolCall).toHaveBeenCalledTimes(2);
+				expect(result.finalMessage).toBe("Generated and verified.");
+				expect(continueDeferrals(result)).toHaveLength(1);
+			});
+		});
+
+		it("keeps a failed mutating SHELL call pending: failure and mutation are independent facts", async () => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(
+							shellCall("mutate-fail", "./generate.sh > out.txt"),
+						)
+						.mockResolvedValueOnce(
+							codingReply("reply-early", "Generation failed."),
+						)
+						.mockResolvedValueOnce(shellCall("verify-1", "go test ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-verified", "Cleaned up and verified."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: false,
+						text: "exit 3",
+						data: { workspace_delta: receipt("changed") },
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("unchanged") },
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: codingShellTools,
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(4);
+				expect(executeToolCall).toHaveBeenCalledTimes(2);
+				// The receipt-backed pending mutation deferred the early reply once
+				// and was cleared by the clean verification; the command failure
+				// itself remains authoritative independently of the mutation gate.
+				expect(continueDeferrals(result)).toHaveLength(1);
+				expect(result.terminalFailure?.kind).toBe("coding_tool_failure");
+				expect(result.terminalFailure?.kind).not.toBe(
+					"coding_mutation_unverified",
+				);
+			});
+		});
+
+		it("does not clear receipt-backed mutation evidence with a receipt-less verification", async () => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(
+							shellCall("mutate-1", "echo generated > out.txt"),
+						)
+						.mockResolvedValueOnce(shellCall("verify-legacy", "go test ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-early", "Generated the file."),
+						)
+						.mockResolvedValueOnce(shellCall("verify-clean", "go vet ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-verified", "Generated and verified."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("changed") },
+					})
+					.mockResolvedValueOnce({ success: true, text: "ok" })
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("unchanged") },
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: codingShellTools,
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(5);
+				expect(executeToolCall).toHaveBeenCalledTimes(3);
+				expect(result.finalMessage).toBe("Generated and verified.");
+				expect(continueDeferrals(result)).toHaveLength(1);
+			});
+		});
+
+		it("does not treat an indeterminate receipt as proof the workspace stayed unchanged", async () => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(
+							shellCall("mutate-1", "echo generated > out.txt"),
+						)
+						.mockResolvedValueOnce(shellCall("verify-unknown", "go test ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-early", "Generated the file."),
+						)
+						.mockResolvedValueOnce(shellCall("verify-clean", "go vet ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-verified", "Generated and verified."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("changed") },
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: {
+							workspace_delta: receipt("indeterminate", "post_capture_failed"),
+						},
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "ok",
+						data: { workspace_delta: receipt("unchanged") },
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: codingShellTools,
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(5);
+				expect(executeToolCall).toHaveBeenCalledTimes(3);
+				expect(result.finalMessage).toBe("Generated and verified.");
+				expect(continueDeferrals(result)).toHaveLength(1);
+			});
+		});
+
+		it("still clears a legacy WRITE mutation with a receipt-less verification (compat fallback)", async () => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce(writeCall())
+						.mockResolvedValueOnce(shellCall("verify-1", "go test ./..."))
+						.mockResolvedValueOnce(
+							codingReply("reply-verified", "Implemented and tested."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({ success: true, text: "wrote config.go" })
+					.mockResolvedValueOnce({ success: true, text: "ok" });
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: codingShellTools,
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(3);
+				expect(executeToolCall).toHaveBeenCalledTimes(2);
+				expect(result.finalMessage).toBe("Implemented and tested.");
+				expect(continueDeferrals(result)).toHaveLength(0);
+			});
+		});
+	});
+
 	it("bounds repeated terminal replies while a coding mutation remains unverified", async () => {
 		await withCodingRequiredToolDefaults(async () => {
 			const unverifiedReply = codingReply(

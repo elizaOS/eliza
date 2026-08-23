@@ -123,3 +123,4 @@ export {
 	VIEW_KIND_META,
 	VIEW_KINDS,
 } from "./view-kind";
+export * from "./workspace-delta";
