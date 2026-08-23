@@ -98,6 +98,35 @@ function stubToken(subject: string, nonce: string) {
   );
 }
 
+function stubTokenAndUserInfo(
+  tokenIdentity: Record<string, unknown>,
+  userInfo: Record<string, unknown>
+) {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "access-token",
+            refresh_token: "refresh-token",
+            expires_in: 3600,
+            scope: GOOGLE_OAUTH_SCOPES.gmail.read,
+            id_token: unsignedJwt(tokenIdentity),
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(userInfo), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+  );
+}
+
 function callback(accountId?: string) {
   return {
     provider: "google",
@@ -139,6 +168,34 @@ describe("Google OAuth connector-account identity binding", () => {
       expect.objectContaining({ externalId: "subject-1" }),
       expected
     );
+  });
+
+  it("fetches userinfo when the ID token has email but no stable subject", async () => {
+    stubTokenAndUserInfo(
+      { email: "ada@example.com", nonce: "expected-nonce" },
+      { sub: "userinfo-subject", email: "ada@example.com" }
+    );
+    const provider = createGoogleConnectorAccountProvider(runtime());
+    const harness = manager();
+
+    const result = await provider.completeOAuth?.(callback(), harness.value);
+
+    expect(result?.account?.id).toBe(stableGoogleConnectorAccountId("userinfo-subject", "OWNER"));
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects an identity that has email but no stable subject anywhere", async () => {
+    stubTokenAndUserInfo(
+      { email: "ada@example.com", nonce: "expected-nonce" },
+      { email: "ada@example.com" }
+    );
+    const provider = createGoogleConnectorAccountProvider(runtime());
+    const harness = manager();
+
+    await expect(provider.completeOAuth?.(callback(), harness.value)).rejects.toMatchObject({
+      code: "GOOGLE_OAUTH_IDENTITY_SUBJECT_MISSING",
+    });
+    expect(harness.upsertAccount).not.toHaveBeenCalled();
   });
 
   it("rejects choosing a different Google subject during reauthorization", async () => {

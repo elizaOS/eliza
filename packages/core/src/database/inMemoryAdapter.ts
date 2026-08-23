@@ -34,6 +34,7 @@ import type {
 	ConnectorAccountRecord,
 	ConsumeOAuthFlowStateParams,
 	CreateOAuthFlowStateParams,
+	DeleteConnectorAccountCredentialRefsParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
@@ -2620,6 +2621,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				...credential,
 				metadata: cloneConnectorJsonObject(credential.metadata),
 			}));
+	}
+
+	async deleteConnectorAccountCredentialRefs(
+		params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number> {
+		let deleted = 0;
+		for (const [key, credential] of this.connectorCredentialRefs) {
+			if (credential.accountId === params.accountId) {
+				this.connectorCredentialRefs.delete(key);
+				deleted += 1;
+			}
+		}
+		return deleted;
 	}
 
 	async appendConnectorAccountAuditEvent(
