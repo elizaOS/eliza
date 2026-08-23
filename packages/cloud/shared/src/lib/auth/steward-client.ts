@@ -370,6 +370,12 @@ function extractStagingSessionBinding(payload: JWTPayload): StagingSessionBindin
 }
 
 function extractClaims(payload: JWTPayload): StewardTokenClaims {
+  const userId =
+    typeof payload.sub === "string" && payload.sub.length > 0
+      ? payload.sub
+      : typeof payload.userId === "string" && payload.userId.length > 0
+        ? payload.userId
+        : "";
   const walletAddress = (payload.walletAddress ?? payload.address ?? payload.publicKey) as
     | string
     | undefined;
@@ -388,7 +394,7 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
   }
 
   return {
-    userId: (payload.sub ?? payload.userId ?? "") as string,
+    userId,
     email: payload.email as string | undefined,
     address: walletAddress,
     walletAddress,
@@ -500,8 +506,8 @@ async function verifyStewardTokenWithoutCaches(input: {
 
   const claims = extractClaims(payload);
 
-  if (typeof payload.sub !== "string" || payload.sub.length === 0) {
-    logger.warn("[StewardClient] JWT valid but missing sub claim");
+  if (!claims.userId) {
+    logger.warn("[StewardClient] JWT valid but missing sub/userId identity claim");
     return null;
   }
 

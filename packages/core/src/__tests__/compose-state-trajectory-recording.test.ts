@@ -32,7 +32,7 @@ function makeRecordedMessage(id: string, text = "gm"): Memory {
 }
 
 describe("composeState under trajectory recording", () => {
-	it("still hands providers the turn's cached state, so the planner recompose fetches cross-room interactions", async () => {
+	it("keeps cross-room interactions suppressed for a group during every compose", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "Agent" } as Character,
 		});
@@ -91,7 +91,8 @@ describe("composeState under trajectory recording", () => {
 
 		const message = makeRecordedMessage("cccccccc-cccc-cccc-cccc-cccccccccccc");
 
-		// Stage-1 compose: first pass of the turn, lean — no cross-room fetch.
+		// The room is a group, so owner-private continuity must fail closed before
+		// the identity or cross-room storage reads on every compose.
 		const stage1State = await runtime.composeState(
 			message,
 			["RECENT_MESSAGES"],
@@ -102,9 +103,6 @@ describe("composeState under trajectory recording", () => {
 		expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
 		expect(stage1State.values?.recentMessageInteractions).toBe("");
 
-		// Planner recompose: RECENT_MESSAGES is already in the turn's cached
-		// state, so its recompose gate must see it — trajectory recording
-		// included — and run the cross-room interactions fetch.
 		const plannerState = await runtime.composeState(
 			message,
 			["RECENT_MESSAGES"],
@@ -112,14 +110,9 @@ describe("composeState under trajectory recording", () => {
 			false,
 			["RECENT_MESSAGES"],
 		);
-		expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
-			tableName: "messages",
-			roomIds: [OTHER_ROOM_ID],
-			limit: 20,
-		});
-		expect(plannerState.values?.recentMessageInteractions).toContain(
-			"the blue key is under the mat",
-		);
+		expect(getRoomsForParticipants).not.toHaveBeenCalled();
+		expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
+		expect(plannerState.values?.recentMessageInteractions).toBe("");
 	});
 
 	it("reuses cached providers outside the refresh list without changing behavior", async () => {

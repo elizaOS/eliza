@@ -9,6 +9,7 @@
  * Consumed by relationships providers/actions, LifeOps, and the dashboard.
  */
 import { sql } from "drizzle-orm";
+import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Component, Entity, Relationship } from "../types/environment";
 import type {
@@ -39,6 +40,39 @@ import {
  * level CONTACT_PLATFORM_SET in agent/src/services/relationships-graph.ts.
  */
 const CONTACT_HANDLE_PLATFORMS = new Set(["email", "phone", "website"]);
+const RELATIONSHIP_MESSAGE_PAGE_SIZE = 200;
+
+async function getAllRelationshipMessages(
+	runtime: IAgentRuntime,
+	roomIds: UUID[],
+): Promise<Awaited<ReturnType<IAgentRuntime["getMemoriesByRoomIds"]>>> {
+	const messages: Awaited<ReturnType<IAgentRuntime["getMemoriesByRoomIds"]>> =
+		[];
+	const seenMemoryIds = new Set<UUID>();
+	for (let offset = 0; ; offset += RELATIONSHIP_MESSAGE_PAGE_SIZE) {
+		const page = await runtime.getMemoriesByRoomIds({
+			tableName: "messages",
+			roomIds,
+			limit: RELATIONSHIP_MESSAGE_PAGE_SIZE,
+			offset,
+		});
+		const pageIds = page.flatMap((memory) => (memory.id ? [memory.id] : []));
+		if (
+			page.length === RELATIONSHIP_MESSAGE_PAGE_SIZE &&
+			pageIds.length === page.length &&
+			pageIds.every((id) => seenMemoryIds.has(id))
+		) {
+			throw new ElizaError("Relationship message pagination made no progress", {
+				code: "RELATIONSHIP_MESSAGE_PAGINATION_STALLED",
+				context: { offset, pageSize: RELATIONSHIP_MESSAGE_PAGE_SIZE },
+				severity: "fatal",
+			});
+		}
+		for (const id of pageIds) seenMemoryIds.add(id);
+		messages.push(...page);
+		if (page.length < RELATIONSHIP_MESSAGE_PAGE_SIZE) return messages;
+	}
+}
 
 function isConfirmedIdentityLinkLike(relationship: Relationship): boolean {
 	const tags = relationship.tags;
@@ -1061,11 +1095,7 @@ export class RelationshipsService extends Service {
 		);
 		const sharedMessages =
 			sharedRoomIds.length > 0
-				? await this.runtime.getMemoriesByRoomIds({
-						tableName: "messages",
-						roomIds: sharedRoomIds,
-						limit: 200,
-					})
+				? await getAllRelationshipMessages(this.runtime, sharedRoomIds)
 				: [];
 
 		const interactions = sharedMessages
@@ -1140,7 +1170,7 @@ export class RelationshipsService extends Service {
 			lastInteractionAt,
 			averageResponseTime,
 			sentimentScore: 0.7, // Default neutral-positive score until sentiment is observed
-			topicsDiscussed: Array.from(topicsSet).slice(0, 10),
+			topicsDiscussed: Array.from(topicsSet),
 		};
 
 		// Update relationship with calculated strength
@@ -2148,6 +2178,40 @@ export class RelationshipsService extends Service {
 			return [primaryEntityId];
 		}
 		return members;
+	}
+
+	/**
+	 * Return the connected component formed only by explicitly confirmed
+	 * `identity_link` relationships. Sensitive disclosure paths use this legacy
+	 * fallback when the canonical identity-resolution authority is unavailable;
+	 * inferred same-handle matches are deliberately excluded.
+	 */
+	async getVerifiedMemberEntityIds(primaryEntityId: UUID): Promise<UUID[]> {
+		const uf = new UnionFind<UUID>([primaryEntityId]);
+		const visited = new Set<UUID>();
+		let frontier: UUID[] = [primaryEntityId];
+		while (frontier.length > 0) {
+			const pending = frontier.filter((id) => !visited.has(id));
+			if (pending.length === 0) break;
+			for (const id of pending) visited.add(id);
+			const nextFrontier = new Set<UUID>();
+			const relationships = await this.runtime.getRelationships({
+				entityIds: pending,
+			});
+			for (const relationship of relationships) {
+				if (!isConfirmedIdentityLinkLike(relationship)) continue;
+				uf.union(relationship.sourceEntityId, relationship.targetEntityId);
+				if (!visited.has(relationship.sourceEntityId)) {
+					nextFrontier.add(relationship.sourceEntityId);
+				}
+				if (!visited.has(relationship.targetEntityId)) {
+					nextFrontier.add(relationship.targetEntityId);
+				}
+			}
+			frontier = Array.from(nextFrontier);
+		}
+		const members = uf.componentOf(primaryEntityId);
+		return members.length > 0 ? members : [primaryEntityId];
 	}
 
 	/**

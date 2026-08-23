@@ -205,13 +205,17 @@ export function resolveDesktopRuntimeModeWithDeployment(
  * after sign-in; only its model sourcing and the renderer's first-run UI change.
  * Returns `null` (the default) when no cloud-only opt-in is present, so existing
  * desktop/mobile/web behavior is unchanged.
+ * A persisted cloud deployment is also honored so a selected cloud target
+ * survives subsequent desktop boots without requiring an environment flag.
  */
 export function resolveDesktopRuntimeModeSignal(
   env: Record<string, string | undefined>,
+  deployment?: PersistedDeployment | null,
 ): "cloud" | null {
   const explicit = env.ELIZA_DESKTOP_RUNTIME_MODE?.trim().toLowerCase();
   if (explicit === "cloud" || explicit === "elizacloud") return "cloud";
   if (isEnabledFlag(env.ELIZA_DESKTOP_CLOUD_ONLY)) return "cloud";
+  if (deployment?.runtime === "cloud") return "cloud";
   return null;
 }
 

@@ -139,7 +139,6 @@ function getRunnableTypes(): SubAgentType[] {
   const types: SubAgentType[] = [
     "eliza",
     "elizaos-native",
-    "opencode",
     "codex",
     "claude-code",
   ];

@@ -8,6 +8,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * POST /api/compat/agents/[id]/restart
  */
 
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
 import {
   envelope,
   errorEnvelope,
@@ -30,13 +31,59 @@ async function __hono_POST(
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;
 
-    const agent = await elizaSandboxService.getAgent(
+    const agent = await elizaSandboxService.getAgentForWrite(
       agentId,
       user.organization_id,
     );
     if (!agent) {
       return withCompatCors(
         Response.json(errorEnvelope("Agent not found"), { status: 404 }),
+        CORS_METHODS,
+      );
+    }
+
+    // This primary snapshot is an admission check, not a lifecycle lock or CAS.
+    if (
+      !CONTAINER_BACKED_EXECUTION_TIERS.some(
+        (executionTier) => executionTier === agent.execution_tier,
+      )
+    ) {
+      return withCompatCors(
+        Response.json(
+          errorEnvelope(
+            "Agent restart requires a container-backed execution tier",
+          ),
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    if (agent.pool_status !== null) {
+      return withCompatCors(
+        Response.json(
+          errorEnvelope("Agent restart cannot target pool-owned capacity"),
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    if (agent.deleted_at !== null) {
+      return withCompatCors(
+        Response.json(
+          errorEnvelope("Agent restart cannot target a deleted agent"),
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    if (agent.deletion_attempt_id !== null) {
+      return withCompatCors(
+        Response.json(
+          errorEnvelope(
+            "Agent restart cannot start while agent deletion is in progress",
+          ),
+          { status: 409 },
+        ),
         CORS_METHODS,
       );
     }

@@ -88,11 +88,9 @@ export function parseMessageHandlerOutput(
 		typeof parsed.replyText === "string"
 			? stripJsonStructuralJunkReply(parsed.replyText)
 			: undefined;
-	const candidateActions = normalizeStringHints(
-		parsed.candidateActionNames,
-		12,
-	);
-	const intents = normalizeStringHints(parsed.intents, 8);
+	const candidateActions = readCompleteStringHints(parsed.candidateActionNames);
+	const intents = readCompleteStringHints(parsed.intents);
+	if (candidateActions === null || intents === null) return null;
 
 	const extract = parseExtract(parsed);
 
@@ -152,11 +150,8 @@ function parseMessageHandlerFieldTranscript(
 		typeof fields.replyText === "string"
 			? stripJsonStructuralJunkReply(fields.replyText)
 			: undefined;
-	const candidateActions = normalizeStringHints(
-		splitTranscriptList(fields.candidateActionNames),
-		12,
-	);
-	const intents = normalizeStringHints(splitTranscriptList(fields.intents), 8);
+	const candidateActions = splitTranscriptList(fields.candidateActionNames);
+	const intents = splitTranscriptList(fields.intents);
 
 	const extract = parseExtract({
 		facts: splitTranscriptList(fields.facts),
@@ -183,31 +178,12 @@ function parseMessageHandlerFieldTranscript(
 	};
 }
 
-function normalizeStringHints(raw: unknown, maxItems: number): string[] {
-	if (!Array.isArray(raw) || maxItems <= 0) {
-		return [];
+function readCompleteStringHints(raw: unknown): string[] | null {
+	if (raw === undefined || raw === null) return [];
+	if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
+		return null;
 	}
-	const seen = new Set<string>();
-	const result: string[] = [];
-	for (const item of raw) {
-		if (typeof item !== "string") {
-			continue;
-		}
-		const value = item.trim();
-		if (!value) {
-			continue;
-		}
-		const dedupeKey = value.toLowerCase();
-		if (seen.has(dedupeKey)) {
-			continue;
-		}
-		seen.add(dedupeKey);
-		result.push(value);
-		if (result.length >= maxItems) {
-			break;
-		}
-	}
-	return result;
+	return [...raw];
 }
 
 function parseExtract(raw: unknown): MessageHandlerExtract | undefined {

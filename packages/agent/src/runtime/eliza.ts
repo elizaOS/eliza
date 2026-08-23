@@ -139,7 +139,6 @@ import {
   createBasicCapabilitiesPlugin,
   createMessageMemory,
   drainAppRoutePluginLoaders,
-  E2B_SANDBOX_FACTORY_SERVICE_TYPE,
   ElizaError,
   EmbeddingDimensionProbeError,
   type Entity,
@@ -151,7 +150,6 @@ import {
   type Provider,
   type RuntimeStopOptions,
   requireConfirmedSendHandlerDelivery,
-  type ServiceClass,
   stringToUuid,
   subAgentCredentialsPlugin,
   type TargetInfo,
@@ -258,34 +256,14 @@ import {
   resolvePrimaryModel,
 } from "./model-resolution.ts";
 
-type E2BCapabilityRouterModule =
-  typeof import("../services/e2b-capability-router.ts");
+type RemoteCodingRunnerModule =
+  typeof import("../services/remote-coding-runner.ts");
 
-async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModule> {
-  const moduleId = "../services/e2b-capability-router.ts";
+async function loadRemoteCodingRunnerModule(): Promise<RemoteCodingRunnerModule> {
+  const moduleId = "../services/remote-coding-runner.ts";
   return (await import(
     /* @vite-ignore */ moduleId
-  )) as E2BCapabilityRouterModule;
-}
-
-// The e2b (`e2b.dev`) SDK backend for the remote capability router lives in the
-// optional `@elizaos/plugin-e2b-sandbox` package — not in `@elizaos/agent`, so
-// the `e2b` dependency stays out of the trunk. When the router selects the
-// `e2b` provider we register the plugin's factory service so the router can
-// route filesystem / terminal / git into an e2b sandbox; if the plugin is not
-// installed we log and leave E2B unavailable rather than failing boot.
-async function registerE2BSandboxFactoryService(
-  runtime: IAgentRuntime,
-): Promise<boolean> {
-  if (runtime.getService(E2B_SANDBOX_FACTORY_SERVICE_TYPE)) return true;
-  const moduleId = "@elizaos/plugin-e2b-sandbox";
-  const mod = (await import(/* @vite-ignore */ moduleId)) as {
-    E2BSandboxFactoryService?: ServiceClass;
-  };
-  const ServiceClassRef = mod.E2BSandboxFactoryService;
-  if (!ServiceClassRef) return false;
-  await runtime.registerService(ServiceClassRef);
-  return true;
+  )) as RemoteCodingRunnerModule;
 }
 
 import {
@@ -1307,6 +1285,44 @@ export function ensureProvisionedCloudContainerConfig(
     changed = true;
   }
 
+  // A managed container normally routes inference through Eliza Cloud. The
+  // repository's explicitly opted-in local Docker acceptance lane is the one
+  // exception: it retains the managed Cloud credential/session and lifecycle,
+  // while a real direct provider owns the embedded runtime's text brain. Do
+  // this before the generic topology repair below, otherwise the provisioned
+  // marker rewrites the direct route back to cloud-proxy at every boot.
+  const directInferenceDisabledCloud = isExplicitFalseEnvValue(
+    readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_INFERENCE", env),
+  );
+  const directProvider = readEffectiveEnvValue(config, "CEREBRAS_API_KEY", env)
+    ? "cerebras"
+    : readEffectiveEnvValue(config, "OPENAI_API_KEY", env)
+      ? "openai"
+      : undefined;
+  if (directInferenceDisabledCloud && directProvider) {
+    const existingRouting = resolveServiceRoutingInConfig(
+      config as Record<string, unknown>,
+    );
+    const smallModel = readEffectiveEnvValue(config, "OPENAI_SMALL_MODEL", env);
+    const largeModel = readEffectiveEnvValue(config, "OPENAI_LARGE_MODEL", env);
+    config.deploymentTarget = {
+      runtime: "local",
+    };
+    config.serviceRouting = {
+      ...(existingRouting ?? {}),
+      llmText: {
+        backend: directProvider,
+        transport: "direct",
+        ...(smallModel ? { smallModel } : {}),
+        ...(largeModel ? { largeModel } : {}),
+      },
+    };
+    logger.info(
+      `[eliza][cloud-topology] provisioned=true directProvider=${directProvider} -> runtime=local inference=false`,
+    );
+    return true;
+  }
+
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
@@ -2312,7 +2328,11 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // Cloud inference is selected from the canonical first-run connection, not
   // just from raw cloud flags. This keeps linked cloud auth from re-enabling
   // Eliza Cloud after the user has switched to a local or remote provider.
-  const inferenceConfigured = topology.services.inference || isCloudContainer;
+  // ensureProvisionedCloudContainerConfig() repairs ordinary managed agents to
+  // a canonical Cloud route above. Reading that repaired topology is enough;
+  // the container marker alone must not overwrite the explicit local-Docker
+  // direct-provider lane back to Cloud between the two boot passes.
+  const inferenceConfigured = topology.services.inference;
   const shouldLoadCloudPlugin = topology.shouldLoadPlugin || isCloudContainer;
   const configuredCloudApiKey = trimCloudCredential(cloud?.apiKey);
   const effectiveCloudApiKey =
@@ -2323,8 +2343,12 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // have the actual credential that plugin-elizacloud will use before Cloud can
   // register the high-priority chat-brain handlers.
   const inferenceAvailable =
-    isCloudContainer ||
-    (topology.services.inference && Boolean(effectiveCloudApiKey));
+    (topology.services.inference &&
+      (isCloudContainer || Boolean(effectiveCloudApiKey))) ||
+    (isCloudContainer &&
+      !isExplicitFalseEnvValue(
+        readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_INFERENCE"),
+      ));
 
   const setCloudUsageEnv = (key: string, enabled: boolean): void => {
     if (enabled) {
@@ -4932,18 +4956,11 @@ export async function startEliza(
     if (isBundledMobileRuntime()) return;
     if (!shouldLoadRemoteCodingRunnerForBoot(runtime)) return;
     try {
-      const { registerE2BRemoteCapabilityRouterIfEnabled } =
-        await loadE2BCapabilityRouterModule();
-      const result = await registerE2BRemoteCapabilityRouterIfEnabled(runtime);
+      const { registerRemoteCodingCapabilityRouterIfEnabled } =
+        await loadRemoteCodingRunnerModule();
+      const result =
+        await registerRemoteCodingCapabilityRouterIfEnabled(runtime);
       if (result.registered) {
-        if (result.provider === "e2b") {
-          const loaded = await registerE2BSandboxFactoryService(runtime);
-          if (!loaded) {
-            logger.warn(
-              "[eliza] E2B remote runner selected but @elizaos/plugin-e2b-sandbox is not installed; E2B filesystem/terminal/git will be unavailable until it is added.",
-            );
-          }
-        }
         logger.info("[eliza] Remote coding runner registered");
       }
     } catch (err) {

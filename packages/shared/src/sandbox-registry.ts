@@ -14,8 +14,8 @@
  *
  * Two transports are supported, selected by the URL scheme so the same registry
  * works before and after the managed Redis is migrated off Upstash:
- *   - `http(s)://` — Upstash REST API via `fetch` (the pipeline endpoint applies
- *     both SET-with-EX commands atomically server-side).
+ *   - `http(s)://` — Upstash REST API via `fetch` (Lua applies the routing and
+ *     private generation keys atomically server-side).
  *   - `redis(s)://` — native RESP over a TCP socket (e.g. a Railway Redis public
  *     proxy). Auth is carried inline in the URL, so no separate token is
  *     required. This mirrors what the gateways already do (`gateway-discord` /
@@ -26,12 +26,19 @@
  * instead of concatenating until the 10s socket timeout.
  */
 
+import { randomUUID } from "node:crypto";
 import net from "node:net";
 
 import { ElizaError, logger } from "@elizaos/core";
 
 /** Hard cap on a single TCP register/refresh round-trip. */
 const REGISTRY_TCP_TIMEOUT_MS = 10_000;
+/**
+ * Maximum graceful-shutdown wait before falling back to Redis key expiry.
+ * Runtime service teardown may use 13s of the dev supervisor's 15s ceiling,
+ * so registry cleanup must leave that path enough headroom to finish.
+ */
+const REGISTRY_HEARTBEAT_DRAIN_TIMEOUT_MS = 1_000;
 const MAX_REGISTRY_TCP_BYTES = 1_048_576;
 
 function formatErr(err: unknown): string {
@@ -79,7 +86,9 @@ export interface SandboxRegistryConfig {
 }
 
 export class SandboxRegistry {
+  private readonly generation = randomUUID();
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatInFlight: Promise<void> | null = null;
   private readonly tcp: boolean;
 
   constructor(private readonly config: SandboxRegistryConfig) {
@@ -87,20 +96,62 @@ export class SandboxRegistry {
   }
 
   async register(): Promise<void> {
-    await this.writeKeys();
+    await this.registerKeys();
     logger.info(
       `[sandbox-registry] Registered ${this.config.serverName} -> ${this.config.serverUrl} (agent ${this.config.agentId}, ttl ${this.config.ttlSeconds}s, transport ${this.tcp ? "tcp" : "rest"})`,
     );
   }
 
   async refresh(): Promise<void> {
-    await this.writeKeys();
+    await this.refreshOwnedKeys();
   }
 
   async unregister(): Promise<void> {
+    this.stopHeartbeat();
+    const heartbeat = this.heartbeatInFlight;
+    if (heartbeat) {
+      let drainTimer: ReturnType<typeof setTimeout> | null = null;
+      let drained = false;
+      try {
+        drained = await Promise.race([
+          heartbeat.then(() => true),
+          new Promise<false>((resolve) => {
+            drainTimer = setTimeout(() => {
+              resolve(false);
+            }, REGISTRY_HEARTBEAT_DRAIN_TIMEOUT_MS);
+            if (typeof drainTimer === "object" && "unref" in drainTimer) {
+              drainTimer.unref();
+            }
+          }),
+        ]);
+      } finally {
+        if (drainTimer !== null) clearTimeout(drainTimer);
+      }
+      if (!drained) {
+        void heartbeat
+          .then(() => this.deleteOwnedKeys())
+          .catch((err) => {
+            // error-policy:J6 teardown already failed closed; warn if the
+            // handled late-write cleanup cannot remove this instance's keys.
+            logger.warn(
+              `[sandbox-registry] Late heartbeat cleanup failed: ${formatErr(err)}`,
+            );
+          });
+        throw new ElizaError(
+          "Timed out draining sandbox registry heartbeat; late-write cleanup remains attached",
+          { code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT" },
+        );
+      }
+    }
+
+    await this.deleteOwnedKeys();
+  }
+
+  private async deleteOwnedKeys(): Promise<void> {
     const { serverName, serverUrl, agentId } = this.config;
     const serverUrlKey = `server:${serverName}:url`;
     const agentServerKey = `agent:${agentId}:server`;
+    const generationKey = `server:${serverName}:registration`;
     // Compare-and-delete inside a single Lua script so the ownership check and
     // the delete are one atomic Redis operation. A read-then-delete over two
     // round-trips leaves a window where another sandbox's register()/refresh()
@@ -108,14 +159,18 @@ export class SandboxRegistry {
     // delete that fresh registration instead of its own stale one.
     await this.command([
       "EVAL",
-      "if redis.call('GET',KEYS[1])==ARGV[1] then redis.call('DEL',KEYS[1]) end " +
+      "-- unregister\nif redis.call('GET',KEYS[3])~=ARGV[3] then return 0 end " +
+        "if redis.call('GET',KEYS[1])==ARGV[1] then redis.call('DEL',KEYS[1]) end " +
         "if redis.call('GET',KEYS[2])==ARGV[2] then redis.call('DEL',KEYS[2]) end " +
+        "redis.call('DEL',KEYS[3]) " +
         "return 1",
-      "2",
+      "3",
       serverUrlKey,
       agentServerKey,
+      generationKey,
       serverUrl,
       serverName,
+      this.generation,
     ]);
     logger.info(
       `[sandbox-registry] Unregistered ${serverName} (agent ${agentId})`,
@@ -126,11 +181,7 @@ export class SandboxRegistry {
     if (this.heartbeatTimer) return;
 
     this.heartbeatTimer = setInterval(() => {
-      void this.refresh().catch((err) => {
-        logger.warn(
-          `[sandbox-registry] Heartbeat refresh failed: ${formatErr(err)}`,
-        );
-      });
+      this.runHeartbeat();
     }, intervalMs);
 
     if (
@@ -148,19 +199,85 @@ export class SandboxRegistry {
     }
   }
 
+  private runHeartbeat(): void {
+    if (this.heartbeatInFlight) return;
+
+    const heartbeat = this.refresh()
+      .catch((err) => {
+        // error-policy:J7 a transient heartbeat failure is warned without
+        // terminating the recurring liveness loop; the next tick retries.
+        logger.warn(
+          `[sandbox-registry] Heartbeat refresh failed: ${formatErr(err)}`,
+        );
+      })
+      .finally(() => {
+        if (this.heartbeatInFlight === heartbeat) {
+          this.heartbeatInFlight = null;
+        }
+      });
+    this.heartbeatInFlight = heartbeat;
+  }
+
   /**
-   * Atomic two-key write. Both keys must succeed together — partial state
+   * Atomic registration write. Both public keys and the private generation
+   * fence must succeed together — partial state
    * would let gateways resolve `agent:X:server` to a stale `server:Y:url`
-   * value or miss a routing entry whose other half was just renewed. REST uses
-   * the Upstash pipeline endpoint; TCP pipelines both commands on one socket.
+   * value or miss a routing entry whose other half was just renewed.
    */
-  private async writeKeys(): Promise<void> {
+  private async registerKeys(): Promise<void> {
     const { serverName, serverUrl, agentId, ttlSeconds } = this.config;
-    const ttl = String(ttlSeconds);
-    await this.pipeline([
-      ["SET", `server:${serverName}:url`, serverUrl, "EX", ttl],
-      ["SET", `agent:${agentId}:server`, serverName, "EX", ttl],
+    await this.command([
+      "EVAL",
+      "-- register\nredis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[4]) " +
+        "redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[4]) " +
+        "redis.call('SET',KEYS[3],ARGV[3],'EX',ARGV[4]) return 1",
+      "3",
+      `server:${serverName}:url`,
+      `agent:${agentId}:server`,
+      `server:${serverName}:registration`,
+      serverUrl,
+      serverName,
+      this.generation,
+      String(ttlSeconds),
     ]);
+  }
+
+  /**
+   * Renew only exact ownership. Missing state is not authority: after complete
+   * expiry an older live generation and its successor are indistinguishable,
+   * so recovery must wait for the provisioner-owned handshake tracked in
+   * #24767 rather than letting whichever heartbeat arrives first take over.
+   */
+  private async refreshOwnedKeys(): Promise<void> {
+    const { serverName, serverUrl, agentId, ttlSeconds } = this.config;
+    const refreshed = await this.command([
+      "EVAL",
+      "-- refresh\nlocal u=redis.call('GET',KEYS[1]) local s=redis.call('GET',KEYS[2]) " +
+        "local g=redis.call('GET',KEYS[3]) " +
+        "local owned=u==ARGV[1] and s==ARGV[2] and g==ARGV[3] " +
+        "if owned then " +
+        "redis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[4]) " +
+        "redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[4]) " +
+        "redis.call('SET',KEYS[3],ARGV[3],'EX',ARGV[4]) return 1 end return 0",
+      "3",
+      `server:${serverName}:url`,
+      `agent:${agentId}:server`,
+      `server:${serverName}:registration`,
+      serverUrl,
+      serverName,
+      this.generation,
+      String(ttlSeconds),
+    ]);
+    if (refreshed !== 1) {
+      throw new ElizaError(
+        "Sandbox registry heartbeat refused because the route is owned by another lifecycle generation",
+        {
+          code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+          context: { agentId, serverName },
+          severity: "ephemeral",
+        },
+      );
+    }
   }
 
   private async command(args: string[]): Promise<unknown> {
@@ -184,43 +301,6 @@ export class SandboxRegistry {
     const json = (await res.json()) as { result?: unknown; error?: string };
     if (json.error) throw new Error(`Upstash error: ${json.error}`);
     return json.result;
-  }
-
-  private async pipeline(commands: string[][]): Promise<void> {
-    if (this.tcp) {
-      await this.tcpExec(commands);
-      return;
-    }
-    const res = await fetch(`${this.config.redisUrl}/pipeline`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.config.redisToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(commands),
-    });
-    if (!res.ok) {
-      throw new Error(
-        `Upstash pipeline failed: ${res.status} ${await res.text()}`,
-      );
-    }
-    const json: unknown = await res.json();
-    if (!Array.isArray(json) || json.length !== commands.length) {
-      throw new Error("Upstash pipeline returned an invalid response");
-    }
-    for (const entry of json) {
-      if (typeof entry !== "object" || entry === null) {
-        throw new Error("Upstash pipeline returned an invalid response");
-      }
-      const result = Reflect.get(entry, "result");
-      const error = Reflect.get(entry, "error");
-      if (typeof error === "string" && error.length > 0) {
-        throw new Error(`Upstash error: ${error}`);
-      }
-      if (result !== "OK") {
-        throw new Error("Upstash pipeline returned an invalid response");
-      }
-    }
   }
 
   /**

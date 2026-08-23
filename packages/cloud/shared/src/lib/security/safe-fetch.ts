@@ -10,6 +10,9 @@ import { isForbiddenIpAddress, normalizeHostname, resolveSafeOutboundTarget } fr
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const DEFAULT_MAX_REDIRECTS = 5;
+// Preserve eager completion for ordinary status-only responses while bounding
+// an unread Node body to this queue plus at most one transport chunk.
+const NODE_RESPONSE_QUEUE_HIGH_WATER_MARK_BYTES = 64 * 1024;
 
 type LookupCallback = (
   err: NodeJS.ErrnoException | null,
@@ -140,32 +143,74 @@ function toUint8ArrayChunk(chunk: unknown): Uint8Array {
 }
 
 function nodeResponseBodyStream(res: IncomingMessage): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      const cleanup = () => {
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  let settled = false;
+
+  const cleanup = () => {
+    res.off("data", onData);
+    res.off("end", onEnd);
+    res.off("error", onError);
+    res.off("close", onClose);
+  };
+  const onData = (chunk: unknown) => {
+    if (settled) return;
+    controller.enqueue(toUint8ArrayChunk(chunk));
+    if (controller.desiredSize !== null && controller.desiredSize <= 0) {
+      res.pause();
+    }
+  };
+  const onEnd = () => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    controller.close();
+  };
+  const onError = (error: Error) => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    controller.error(error);
+  };
+  const onClose = () => {
+    if (settled) {
+      cleanup();
+      return;
+    }
+    settled = true;
+    cleanup();
+    controller.error(new Error("Pinned response closed before its body completed"));
+  };
+
+  // Adding a `data` listener normally switches an IncomingMessage into flowing
+  // mode. Pause first so the WHATWG stream owns the bounded producer demand.
+  res.pause();
+  return new ReadableStream<Uint8Array>(
+    {
+      start(nextController) {
+        controller = nextController;
+        res.on("data", onData);
+        res.on("end", onEnd);
+        res.on("error", onError);
+        res.on("close", onClose);
+      },
+      pull() {
+        if (!settled) res.resume();
+      },
+      cancel() {
+        if (settled) return;
+        settled = true;
+        // Keep terminal listeners until destroy emits close so any already
+        // scheduled Node error remains handled. onClose performs final cleanup.
         res.off("data", onData);
         res.off("end", onEnd);
-        res.off("error", onError);
-      };
-      const onData = (chunk: unknown) => {
-        controller.enqueue(toUint8ArrayChunk(chunk));
-      };
-      const onEnd = () => {
-        cleanup();
-        controller.close();
-      };
-      const onError = (error: Error) => {
-        cleanup();
-        controller.error(error);
-      };
-      res.on("data", onData);
-      res.on("end", onEnd);
-      res.on("error", onError);
+        res.destroy();
+      },
     },
-    cancel() {
-      res.destroy();
+    {
+      highWaterMark: NODE_RESPONSE_QUEUE_HIGH_WATER_MARK_BYTES,
+      size: (chunk) => (chunk === undefined ? 0 : chunk.byteLength),
     },
-  });
+  );
 }
 
 async function writeRequestBody(
@@ -263,8 +308,13 @@ export async function safeFetch(rawUrl: string, init: RequestInit = {}): Promise
     // Validate (resolve DNS + screen every address) on every hop in both
     // runtimes. On Node we then pin the connection to the validated IP; on
     // workerd we cannot pin an arbitrary IP, so the platform fetch re-resolves
-    // — a residual rebinding window documented on canPinSockets().
-    const { url, address, family } = await resolveSafeOutboundTarget(currentUrl);
+    // — a residual rebinding window documented on canPinSockets(). DNS lookup
+    // is raced against this signal inside resolveSafeOutboundTarget so a
+    // never-settling resolution returns on deadline instead of retaining the
+    // Worker request until lookup happens to complete.
+    const { url, address, family } = await resolveSafeOutboundTarget(currentUrl, {
+      signal: currentInit.signal ?? undefined,
+    });
     // DNS APIs do not accept AbortSignal. Re-check immediately after the await
     // so a lookup that outlives its caller's deadline cannot open a socket.
     currentInit.signal?.throwIfAborted();
@@ -280,6 +330,14 @@ export async function safeFetch(rawUrl: string, init: RequestInit = {}): Promise
       return response;
     }
 
+    // A redirect response is never returned to the caller. Dispose it before
+    // every follow/error path so the backpressured Node bridge cannot strand a
+    // paused socket while this request moves on or rejects.
+    await response.body?.cancel().catch(() => {
+      // error-policy:J6 Redirect handling is already authoritative; disposal
+      // is best-effort teardown of the unused response connection.
+    });
+
     if (redirectMode === "error") {
       throw new Error(
         `Outbound request was redirected (${response.status}) but redirects are not allowed`,
@@ -294,9 +352,6 @@ export async function safeFetch(rawUrl: string, init: RequestInit = {}): Promise
     if (!location) {
       throw new Error("Redirect response missing Location header");
     }
-
-    // Free the socket before re-issuing the request.
-    await response.body?.cancel().catch(() => {});
 
     currentUrl = new URL(location, currentUrl).toString();
     currentInit = nextRedirectInit(currentInit, response.status);

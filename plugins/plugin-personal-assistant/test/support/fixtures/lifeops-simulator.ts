@@ -2,7 +2,6 @@
 export const LIFEOPS_SIMULATOR_CHANNELS = [
   "discord",
   "telegram",
-  "signal",
   "whatsapp",
   "imessage",
 ] as const;
@@ -15,7 +14,6 @@ export interface LifeOpsSimulatorPerson {
   name: string;
   email: string;
   phone: string;
-  signalNumber: string;
   whatsappNumber: string;
   telegramUsername: string;
   telegramPeerId: string;
@@ -80,10 +78,6 @@ export const LIFEOPS_SIMULATOR_OWNER_IDENTITIES = {
     username: "mocked_lifeops_owner",
     firstName: "Eliza",
   },
-  signal: {
-    uuid: "lifeops-simulator-signal-owner",
-    deviceName: "LifeOps Simulator Signal",
-  },
   discord: {
     id: "lifeops-simulator-owner",
     username: "mocked_owner",
@@ -101,7 +95,6 @@ export const LIFEOPS_SIMULATOR_PEOPLE: LifeOpsSimulatorPerson[] = [
     name: "Alice Nguyen",
     email: "alice.nguyen@example.test",
     phone: "+15551112222",
-    signalNumber: "+15551110001",
     whatsappNumber: "+15551118888",
     telegramUsername: "alice_ops",
     telegramPeerId: "7001001",
@@ -113,7 +106,6 @@ export const LIFEOPS_SIMULATOR_PEOPLE: LifeOpsSimulatorPerson[] = [
     name: "Bob Martinez",
     email: "bob.martinez@example.test",
     phone: "+15552223333",
-    signalNumber: "+15551110002",
     whatsappNumber: "+15552228888",
     telegramUsername: "bob_builder",
     telegramPeerId: "7001002",
@@ -125,7 +117,6 @@ export const LIFEOPS_SIMULATOR_PEOPLE: LifeOpsSimulatorPerson[] = [
     name: "Priya Shah",
     email: "priya.shah@example.test",
     phone: "+15553334444",
-    signalNumber: "+15551110003",
     whatsappNumber: "+15553338888",
     telegramUsername: "priya_sched",
     telegramPeerId: "7001003",
@@ -137,7 +128,6 @@ export const LIFEOPS_SIMULATOR_PEOPLE: LifeOpsSimulatorPerson[] = [
     name: "Marco Alvarez",
     email: "marco.alvarez@example.test",
     phone: "+15554445555",
-    signalNumber: "+15551110004",
     whatsappNumber: "+15554448888",
     telegramUsername: "marco_ops",
     telegramPeerId: "7001004",
@@ -177,7 +167,7 @@ export const LIFEOPS_SIMULATOR_EMAILS: LifeOpsSimulatorEmail[] = [
     snippet:
       "Can you send comments on the diligence packet before our calendar item?",
     bodyText:
-      "Please send comments on the diligence packet before our calendar item. Priya said Signal is the fastest fallback if email gets buried.\n",
+      "Please send comments on the diligence packet before our calendar item. Priya said WhatsApp is the fastest fallback if email gets buried.\n",
     labels: ["INBOX", "UNREAD", "IMPORTANT"],
     internalDateOffsetMs: -2 * 60 * 60 * 1000,
   },
@@ -263,28 +253,6 @@ export const LIFEOPS_SIMULATOR_CHANNEL_MESSAGES: LifeOpsSimulatorChannelMessage[
       unread: true,
     },
     {
-      id: "sim-signal-alice-1",
-      channel: "signal",
-      threadId: "+15551110001",
-      threadName: "Alice Signal",
-      threadType: "dm",
-      fromPersonKey: "alice",
-      text: "Signal check: are we still meeting after the calendar invite?",
-      sentAtOffsetMs: -22 * 60 * 1000,
-      unread: true,
-    },
-    {
-      id: "sim-signal-ops-group-1",
-      channel: "signal",
-      threadId: "group-signal-atlas",
-      threadName: "Atlas Signal Group",
-      threadType: "group",
-      fromPersonKey: "bob",
-      text: "Reminder from Signal group: vendor call starts in 20 minutes.",
-      sentAtOffsetMs: -18 * 60 * 1000,
-      unread: true,
-    },
-    {
       id: "sim-whatsapp-priya-1",
       channel: "whatsapp",
       threadId: "+15553338888",
@@ -345,7 +313,7 @@ export const LIFEOPS_SIMULATOR_REMINDERS: LifeOpsSimulatorReminder[] = [
     description:
       "Mock reminder tied to Marco and Priya's email and calendar thread.",
     dueOffsetMs: 3 * 60 * 60 * 1000,
-    channel: "signal",
+    channel: "whatsapp",
   },
 ];
 

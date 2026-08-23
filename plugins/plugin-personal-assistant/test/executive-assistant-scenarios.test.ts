@@ -189,7 +189,7 @@ const requiredDomains = [
  * Turn-level assertion fields the executor enforces that a canned/echoing
  * reply cannot trivially satisfy. `responseIncludesAny` / `responseIncludesAll`
  * are deliberately absent: keyword-echo assertions are tracked (and only
- * allowed to shrink) by the scenario-runner echo-assertion ratchet.
+ * allowed to shrink) by the scenario-runner echo-assertion guard.
  */
 const LOAD_BEARING_TURN_FIELDS = [
   "assertTurn",

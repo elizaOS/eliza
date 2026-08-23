@@ -462,6 +462,7 @@ const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 function applyMacOSWindowEffects(
   win: BrowserWindow,
   nativeShadow: boolean,
+  nativeInteractiveChrome: boolean,
 ): void {
   if (process.platform !== "darwin") return;
 
@@ -503,8 +504,10 @@ function applyMacOSWindowEffects(
     );
 
   const alignChrome = () => {
-    alignButtons();
-    alignDragRegion();
+    if (nativeInteractiveChrome) {
+      alignButtons();
+      alignDragRegion();
+    }
     disableSwipeBackGesture();
   };
 
@@ -1272,14 +1275,22 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         );
       }
     }
-    applyMacOSWindowEffects(win, presentation.nativeShadow);
+    applyMacOSWindowEffects(
+      win,
+      presentation.nativeShadow,
+      presentation.nativeInteractiveChrome,
+    );
     // Keep the bar pinned to the primary display's bottom edge across display
     // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).
     getDesktopManager().enableBottomBarReanchor();
     return win;
   }
 
-  applyMacOSWindowEffects(win, presentation.nativeShadow);
+  applyMacOSWindowEffects(
+    win,
+    presentation.nativeShadow,
+    presentation.nativeInteractiveChrome,
+  );
   win.on("resize", () => scheduleStateSave(statePath, win));
   win.on("move", () => scheduleStateSave(statePath, win));
 
@@ -2542,7 +2553,10 @@ async function main(): Promise<void> {
   // ship no embedded runtime; promote that to the runtime env contract before
   // the first runtime-mode resolution. Runs after env-file loading so an
   // operator's explicit env always wins.
-  const cloudOnlyHydration = hydrateCloudOnlyEnv(BRAND.cloudOnly);
+  const cloudOnlyHydration = hydrateCloudOnlyEnv(
+    BRAND.cloudOnly,
+    BRAND.cloudApiBase,
+  );
   if (cloudOnlyHydration.applied.length > 0) {
     console.log(
       `[Env] cloud-only brand flag raised: ${cloudOnlyHydration.applied.join(", ")}`,

@@ -111,6 +111,7 @@ Multi-account config: set `character.settings.slack.accounts` as a record keyed 
 
 - **Socket Mode only** in the default path. HTTP mode (`mode: "socket" | "http"` in `SlackAccountConfig`) is configured but the signing-secret HTTP receiver requires the app to be reachable from the internet; Socket Mode requires only `xapp-`.
 - **Multi-account:** `SlackService` holds a `Map<string, SlackAccountRuntime>`. Each account gets its own `App` instance, event handlers, caches, and registered connector. The default account is the first in the map.
+- **Connector target inventories are complete.** Target resolution, room listing, and recent-target discovery return every deduplicated matching Slack target. Do not silently slice these model-facing lists; add an explicit lossless page contract first if a boundary needs one.
 - **OWNER vs AGENT role:** OWNER-role accounts with a `userToken` route outbound `chat.postMessage` calls through `SlackWebClient(userToken)` so the bot posts as the user. AGENT-role (default) always uses the bot client.
 - **Token format enforcement:** `init()` warns (but does not reject) if tokens do not match expected prefixes (`xoxb-`, `xapp-`, `xoxp-`).
 - **Channel restriction:** `SLACK_CHANNEL_IDS` builds a static allowlist; channels the bot joins at runtime are tracked in `dynamicChannelIds`. Inbound messages outside both sets are silently dropped.

@@ -43,6 +43,7 @@ describe("inline-widget registry", () => {
       "background",
       "checklist",
       "choice",
+      "connector",
       "followups",
       "form",
       "mapscard",

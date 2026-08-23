@@ -69,6 +69,7 @@ import {
 	type ActionCatalog,
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
+	normalizeActionName,
 } from "../runtime/action-catalog";
 import {
 	actionGateFailure,
@@ -83,6 +84,7 @@ import { tierActionResults } from "../runtime/action-tiering";
 import {
 	applyAddressedTo,
 	messageAddressedToOtherParticipant,
+	messageVocativelyAddressesOtherParticipant,
 } from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
 import {
@@ -222,6 +224,7 @@ import {
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	getTrustedDeliveryAudience,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
 	ownerExclusiveDisclosureWasUsed,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
@@ -265,10 +268,12 @@ import type {
 	IMessageService,
 	MessageProcessingOptions,
 	MessageProcessingResult,
+	MessageTerminalFailure,
 	ShouldRespondModelType,
 } from "../types/message-service";
 import {
 	MESSAGE_SOURCE_CLIENT_CHAT,
+	MESSAGE_SOURCE_SUB_AGENT,
 	MESSAGE_SOURCE_TRIGGER_PROMPT,
 } from "../types/message-source";
 import type {
@@ -467,7 +472,20 @@ function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function textContainsAgentName(
+const NON_DISTINCTIVE_AGENT_NAME_TOKENS = new Set([
+	"agent",
+	"assistant",
+	"bot",
+	"chatbot",
+	"demo",
+	"helper",
+	"system",
+	"test",
+]);
+
+/** Returns whether text names the agent through a complete configured alias or
+ * a distinctive token from a multi-word alias. */
+export function textContainsAgentName(
 	text: string | undefined,
 	names: Array<string | null | undefined>,
 ): boolean {
@@ -475,12 +493,30 @@ function textContainsAgentName(
 		return false;
 	}
 
-	return names.some((name) => {
+	// A multi-word agent name is addressed by any of its distinctive tokens:
+	// "remilio nubilio" answers to "nubilio …" (live 2026-08-22: the full-phrase
+	// match classified "nubilio whats the setting …" as ambient, arming the
+	// engagement gate on a message that literally opens with the agent's name).
+	// Short fragments and generic role/test words stay excluded because length
+	// alone does not make "agent", "assistant", or "test" an identity signal.
+	// The complete configured name/username remains authoritative even when one
+	// of its component words is generic.
+	const candidates = new Set<string>();
+	for (const name of names) {
 		const candidate = name?.trim();
-		if (!candidate) {
-			return false;
+		if (!candidate) continue;
+		candidates.add(candidate);
+		for (const token of candidate.split(/\s+/u)) {
+			if (
+				token.length >= 4 &&
+				!NON_DISTINCTIVE_AGENT_NAME_TOKENS.has(token.toLowerCase())
+			) {
+				candidates.add(token);
+			}
 		}
+	}
 
+	return [...candidates].some((candidate) => {
 		const pattern = new RegExp(
 			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
 			"iu",
@@ -1321,6 +1357,7 @@ function _resolvePromptAttachments(
  */
 type ResolvedMessageOptions = {
 	maxRetries: number;
+	codingMode: boolean;
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
@@ -1382,6 +1419,7 @@ interface StrategyResult {
 	responseContent: Content | null;
 	responseMessages: Memory[];
 	actionResults?: ActionResult[];
+	terminalFailure?: MessageTerminalFailure;
 	state: State;
 	mode: StrategyMode;
 }
@@ -1690,17 +1728,46 @@ function trackSettledPlannerToolResult(
 export function subAgentCompletionRelayBody(
 	text: string | undefined,
 ): string | undefined {
-	if (!text) return undefined;
-	const trimmed = text.trimStart();
-	if (!trimmed.startsWith("[sub-agent:")) return undefined;
-	const headerEnd = trimmed.indexOf("]");
-	if (headerEnd < 0) return undefined;
-	if (!trimmed.slice(0, headerEnd + 1).includes("task_complete")) {
-		return undefined;
-	}
+	const parsed = parseSubAgentTaskCompleteRelay(text);
+	if (!parsed) return undefined;
+	const { trimmed, headerEnd } = parsed;
 	const body = trimmed.slice(headerEnd + 1).trim();
 	if (!body) return undefined;
 	return toWellFormedUnicode(body);
+}
+
+/**
+ * Parses the complete bracketed status header emitted by the sub-agent router.
+ * Status matching stays inside that header and requires either the compact
+ * legacy form or the router's delimited status field; task text and result
+ * bodies are untrusted prose and cannot classify a relay as complete.
+ */
+function parseSubAgentTaskCompleteRelay(
+	text: string | undefined,
+): { trimmed: string; headerEnd: number } | undefined {
+	if (!text) return undefined;
+	const trimmed = text.trimStart();
+	if (!trimmed.startsWith("[sub-agent:")) return undefined;
+	const compactHeader = "[sub-agent:task_complete]";
+	if (trimmed.startsWith(compactHeader)) {
+		return { trimmed, headerEnd: compactHeader.length - 1 };
+	}
+	const lineEnd = trimmed.indexOf("\n");
+	if (lineEnd < 0) return undefined;
+	const headerLine = trimmed.slice(0, lineEnd).trimEnd();
+	if (!headerLine.endsWith("]")) return undefined;
+	const headerEnd = headerLine.length - 1;
+	const header = trimmed.slice(0, headerEnd + 1);
+	const inner = header.slice("[sub-agent:".length, -1).trim();
+	const routeDelimiters = [...inner.matchAll(/\([^()\r\n]+\)\s—\s*/gu)];
+	const finalDelimiter = routeDelimiters.at(-1);
+	if (finalDelimiter?.index === undefined) return undefined;
+	const routedStatus = inner.slice(
+		finalDelimiter.index + finalDelimiter[0].length,
+	);
+	return /^task_complete(?:\s—|$)/iu.test(routedStatus)
+		? { trimmed, headerEnd }
+		: undefined;
 }
 
 /**
@@ -1823,17 +1890,19 @@ export type ZeroDeliveryRecoverySource =
 	| "fallbackText";
 
 /**
- * Decides whether — and with what text — a RESPOND turn that ran tools but
- * delivered nothing terminal recovers instead of ending silent (#20083,
- * corrected by #20086). Source precedence: the planner's surviving terminal
- * text, then the last explicit action-owned `userFacingText`, then the
- * Stage-1 ack ONLY when no early ack already shipped it, then a hardcoded
- * fallback whose wording is failure-aware — it claims completion only when at
- * least one tool actually succeeded. After an early progress ack the turn
- * recovers only when grounded text exists or any tool failed: a successful
- * async handoff reports through a later completion relay, so manufacturing a
- * "finished" line behind its ack would be a lie, while a failed handoff will
- * never relay anything and the ack's promise must be corrected.
+ * Decides whether — and with what text — a turn that owes the user a terminal
+ * response but delivered nothing recovers instead of ending silent (#20083,
+ * corrected by #20086). The turn may have run tools or may be an addressed,
+ * toolless turn covered by the delivery floor. Source precedence is the
+ * planner's surviving terminal text, then the last explicit action-owned
+ * `userFacingText`, then the Stage-1 ack ONLY when no early ack already shipped
+ * it, then a hardcoded fallback. Fallback wording is effect-aware: it claims
+ * completion only when a tool succeeded, failure only when a tool ran, and
+ * otherwise gives a neutral no-answer response. After an early progress ack,
+ * the turn recovers only when grounded text exists or any tool failed: a
+ * successful async handoff reports through a later completion relay, so
+ * manufacturing a "finished" line behind its ack would be a lie, while a failed
+ * handoff will never relay anything and the ack's promise must be corrected.
  * `plannedText` must arrive pre-blanked when it merely repeats the early ack.
  */
 export function resolveZeroDeliveryRecovery(args: {
@@ -1866,12 +1935,19 @@ export function resolveZeroDeliveryRecovery(args: {
 			.filter((ownedText) => ownedText.length > 0)
 			.at(-1) ?? "";
 	const ackRecoveryText = args.earlyReplySent ? "" : args.stageOneAck;
+	const ranAnySteps = args.actionResults.length > 0;
+	// Effect honesty: the failure-flavored fallbacks may only describe steps
+	// that actually ran. A toolless turn (planner ended with no tool calls —
+	// e.g. a deliberate IGNORE on an addressed turn the delivery floor still
+	// answers) must not fabricate "I ran the steps … they failed".
 	const fallbackRecoveryText =
 		actionSuccessCount > 0 && actionFailureCount > 0
 			? "Some steps completed and some failed, but I could not produce a reliable summary. Check the current state before deciding whether to retry."
 			: actionSuccessCount > 0
 				? "The requested steps completed, but I could not produce a reliable summary. Check the current state before retrying."
-				: "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry.";
+				: ranAnySteps
+					? "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry."
+					: "I don't have a useful answer to that right now — ask again and I will retry.";
 	const text =
 		args.plannedText ||
 		lastActionUserFacingText ||
@@ -2120,6 +2196,12 @@ function createV5ReplyStrategyResult(args: {
 	 * planner text so the gate can still rewrite canned strings.
 	 */
 	agentVoiced?: boolean;
+	/**
+	 * Machine-readable terminal failure for coding/CLI callers. The visible
+	 * text still reaches interactive surfaces, while adapters can return a
+	 * non-success process/result instead of treating any nonempty reply as done.
+	 */
+	terminalFailure?: MessageTerminalFailure;
 }): StrategyResult {
 	let responseContent: Content = {
 		thought: args.thought,
@@ -2128,6 +2210,13 @@ function createV5ReplyStrategyResult(args: {
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
 		...(args.agentVoiced === true ? { agentVoiced: true } : {}),
+		...(args.terminalFailure
+			? {
+					failureKind: args.terminalFailure.kind,
+					elizaSyntheticFailure: true,
+					transient: args.terminalFailure.transient,
+				}
+			: {}),
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
 		...(args.transcriptVisibility
 			? { transcriptVisibility: args.transcriptVisibility }
@@ -2159,6 +2248,7 @@ function createV5ReplyStrategyResult(args: {
 		],
 		state: args.state,
 		mode: args.mode ?? "simple",
+		...(args.terminalFailure ? { terminalFailure: args.terminalFailure } : {}),
 	};
 }
 
@@ -2273,6 +2363,23 @@ function priorDialogueContent(text: string, speaker?: string): string {
 		return text;
 	}
 	return `${speaker}: ${text}`;
+}
+
+function verifiedCrossRoomContent(memory: Memory): string {
+	const text = getUserMessageText(memory);
+	const attachmentText = (memory.content.attachments ?? [])
+		.map((attachment) => {
+			const label =
+				attachment.filename ??
+				attachment.title ??
+				attachment.id ??
+				"attachment";
+			const mediaType = attachment.mimeType ?? attachment.contentType;
+			const readable = attachment.text ?? attachment.description;
+			return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readable ? `; ${readable}` : ""}]`;
+		})
+		.join(" ");
+	return [text, attachmentText].filter(Boolean).join(" ");
 }
 
 /**
@@ -2410,6 +2517,57 @@ function appendPriorDialogueEvents(
 			},
 		});
 	}
+
+	const recentInteractions =
+		data &&
+		typeof data === "object" &&
+		(data as { recentInteractionsDisclosure?: unknown })
+			.recentInteractionsDisclosure ===
+			OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS &&
+		Array.isArray((data as { recentInteractions?: unknown }).recentInteractions)
+			? (data as { recentInteractions: unknown[] }).recentInteractions
+			: [];
+	for (const candidate of recentInteractions) {
+		if (!candidate || typeof candidate !== "object") continue;
+		const memory = candidate as Memory;
+		if (memory.roomId === currentMessage.roomId) continue;
+		if (memory.content?.type === "action_result") continue;
+		if (isSubAgentCompletionArtifact(memory)) continue;
+		if (
+			memory.entityId === runtime.agentId &&
+			(!includeOwnReplies ||
+				(options?.excludeToolDerivedOwnReplies === true &&
+					isToolDerivedAssistantContent(memory.content)))
+		) {
+			continue;
+		}
+		const content = verifiedCrossRoomContent(memory);
+		if (!content || looksLikePriorDialogueArtifact(content)) continue;
+		const isOwnReply = memory.entityId === runtime.agentId;
+		const speakerName = isOwnReply
+			? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
+			: priorDialogueSpeakerName(memory);
+		events.push({
+			id: `verified-cross-room:${memory.id}`,
+			type: "segment",
+			source: "verified-cross-room-context",
+			createdAt: memory.createdAt,
+			segment: {
+				id: `verified-cross-room:${memory.id}`,
+				label: isOwnReply
+					? "verified_cross_room_message:agent"
+					: "verified_cross_room_message:user",
+				content: priorDialogueContent(content, speakerName),
+				stable: false,
+				metadata: {
+					roomId: memory.roomId,
+					entityId: memory.entityId,
+					disclosureBasis: OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+					...(speakerName ? { speakerName } : {}),
+				},
+			},
+		});
+	}
 }
 
 function currentMessageContentForContext(message: Memory): Memory["content"] {
@@ -2542,14 +2700,24 @@ function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	const content = memory.content;
 	if (!content || typeof content !== "object") return false;
 	const metadata =
-		content.metadata && typeof content.metadata === "object"
+		content.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata)
 			? (content.metadata as Record<string, unknown>)
-			: {};
-	if (metadata.subAgent === true) return true;
+			: undefined;
 	const source = typeof content.source === "string" ? content.source : "";
-	if (source.startsWith("acpx:sub-agent-router")) return true;
-	const text = typeof content.text === "string" ? content.text.trim() : "";
-	return text.startsWith("[sub-agent:");
+	return source === MESSAGE_SOURCE_SUB_AGENT && metadata?.subAgent === true;
+}
+
+/** The inbound turn has the routing shape of a finished sub-agent lane. This
+ * classifier controls presentation only; it does not prove that any claimed
+ * effect occurred. */
+function isTaskCompleteRelayTurn(memory: Memory): boolean {
+	return (
+		isSubAgentCompletionArtifact(memory) &&
+		parseSubAgentTaskCompleteRelay(String(memory.content?.text ?? "")) !==
+			undefined
+	);
 }
 
 function looksLikePriorDialogueArtifact(text: string): boolean {
@@ -2728,13 +2896,7 @@ type V5PlannerActionSurfaceSummary = {
 	catalogParentCount: number;
 	exposedActionCount: number;
 	tierAParents: string[];
-	/**
-	 * Children exposed as first-class planner tools per tier-A parent, after
-	 * the per-parent child narrowing (`maxTierAChildrenPerParent`). Read back
-	 * by `collectPlannerTools` so the native-tool expansion matches the tiered
-	 * surface instead of re-expanding every subaction of a hot parent. Absent
-	 * in full-surface mode, where every subaction expands.
-	 */
+	/** Every registered child exposed as a first-class planner tool per parent. */
 	tierAChildrenByParent?: Record<string, string[]>;
 	tierBParents: string[];
 	omittedParentCount: number;
@@ -3065,8 +3227,8 @@ function mergeAgentContexts(
 }
 
 /**
- * The agent contexts a focused coding sub-agent (the eliza-code ACP server,
- * which sets ELIZA_PLANNER_FULL_ACTION_SURFACE) is considered to be operating in.
+ * The agent contexts a focused per-turn coding loop is considered to be
+ * operating in.
  * Used to admit the coding tools (FILE/SHELL/WORKTREE gate on these) while the
  * messaging/social chat actions stay gated off.
  */
@@ -3077,28 +3239,8 @@ const CODING_SUB_AGENT_CONTEXTS: readonly AgentContext[] = [
 	"automation",
 ];
 
-/**
- * Parent actions a coding sub-agent never needs, excluded from its planner
- * surface even though they'd otherwise pass the coding-context gate. Each extra
- * tool schema enlarges the request, and a large tool set + a large file
- * generation is exactly what makes weaker hosted models (Cerebras glm-4.7)
- * intermittently reject the request (server_error / 400) or narrate instead of
- * emitting FILE. A coding sub-agent does not open/close UI views or spawn its
- * own sub-agents, so dropping these trims the surface toward the tools that
- * actually do the work (FILE/SHELL/WORKTREE/WEB/REPLY/STOP).
- */
-const CODING_SUB_AGENT_EXCLUDED_ACTIONS: ReadonlySet<string> = new Set(
-	// Stored in normalizeActionIdentifier() form (uppercase, underscores
-	// stripped), since that is what the filter compares against.
-	["VIEWS", "CLOSEVIEW", "CLOSEALLVIEWS", "TASKS"],
-);
-
 function actionNameTokenKey(name: string): string {
-	return normalizeActionIdentifier(name)
-		.split("_")
-		.filter(Boolean)
-		.sort()
-		.join("_");
+	return normalizeActionName(name).split("_").filter(Boolean).sort().join("_");
 }
 
 function getMessageHandlerCandidateActions(
@@ -3236,9 +3378,11 @@ export function getCachedActionCatalog(
 
 function buildV5PlannerActionSurface(params: {
 	actions: readonly Action[];
+	forceFullSurface?: boolean;
 	message: Memory;
 	state?: State;
 	messageHandler: MessageHandlerResult;
+	/** @deprecated Candidate hints rank tools but never remove authorized tools. */
 	restrictToCandidateActions?: boolean;
 	// The messageHandler-selected contexts for this turn. Passed through to
 	// `retrieveActions` as a *weight* (boost on-context candidates) — never
@@ -3265,18 +3409,9 @@ function buildV5PlannerActionSurface(params: {
 		params.messageHandler,
 	);
 
-	// Expose EVERY action as a native tool (no tiering) when the action set is
-	// empty, OR when explicitly forced. Tiering is built for large chat catalogs
-	// (30+ actions → expose the relevant few); a focused coding sub-agent has a
-	// small, all-relevant tool set (FILE/SHELL/READ/EDIT/…) and MUST get them all
-	// exposed natively — otherwise the model sees a tool in the prompt but cannot
-	// call it (it lands in tier-B, described-only), narrates instead of acting, and
-	// trips the terminal-only-continuations guard. `ELIZA_PLANNER_FULL_ACTION_SURFACE=1`
-	// opts a runtime into full mode (the eliza-code ACP coding agent sets it).
-	const fullSurfaceFlag =
-		typeof process !== "undefined"
-			? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
-			: undefined;
+	// An explicitly forced surface retains the historical summary mode, but both
+	// paths preserve every authorized action. Retrieval and tier metadata only
+	// order and describe the complete catalog.
 	// A task_complete relay's only job is delivering the finished result. Any
 	// catalog tool on this synthetic turn invites task-management
 	// improvisation over the completed work (live 2026-08-19: the planner
@@ -3284,10 +3419,7 @@ function buildV5PlannerActionSurface(params: {
 	// of relaying the result). Protocol tools (REPLY/IGNORE/STOP) remain.
 	// Blocked/question/coordination relays keep the full surface — those turns
 	// may legitimately act (answer a child, coordinate a sibling).
-	if (
-		isSubAgentCompletionArtifact(params.message) &&
-		String(params.message.content?.text ?? "").includes("task_complete")
-	) {
+	if (isTaskCompleteRelayTurn(params.message)) {
 		return {
 			exposedActionNames: new Set<string>(),
 			summary: {
@@ -3309,11 +3441,7 @@ function buildV5PlannerActionSurface(params: {
 		};
 	}
 	const forceFullSurface =
-		fullSurfaceFlag === "1" ||
-		fullSurfaceFlag === "true" ||
-		fullSurfaceFlag === "yes" ||
-		fullSurfaceFlag === "on" ||
-		params.actions.length === 0;
+		params.forceFullSurface === true || params.actions.length === 0;
 	if (forceFullSurface) {
 		return buildFullV5PlannerActionSurface({
 			actions: params.actions,
@@ -3323,8 +3451,28 @@ function buildV5PlannerActionSurface(params: {
 	}
 
 	const toolSearchStartedAt = Date.now();
+	const authorizedActionIdentities = new Set(
+		params.actions.map((action) => action.name.trim()),
+	);
+	const authorizedActionNames = new Set(
+		params.actions.map((action) => normalizeActionIdentifier(action.name)),
+	);
+	// A parent may retain inline metadata for every registered child even when
+	// this turn's action gate rejected one of those children. Build retrieval and
+	// tier metadata from the authorized view so a denied child's name,
+	// description, schema, or examples cannot influence or enter model context.
+	const authorizedCatalogActions = params.actions.map((action) => ({
+		...action,
+		subActions: action.subActions?.filter((child) => {
+			const childName = typeof child === "string" ? child : child.name;
+			// Authorization uses the exact native tool identity. The retrieval
+			// normalizer intentionally collapses separators, so using it here would
+			// let an allowed FOO_BAR disclose a denied FOOBAR child (or vice versa).
+			return authorizedActionIdentities.has(childName.trim());
+		}),
+	}));
 	const catalog = getCachedActionCatalog(
-		params.actions,
+		authorizedCatalogActions,
 		params.localizedExamples,
 	);
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
@@ -3356,104 +3504,19 @@ function buildV5PlannerActionSurface(params: {
 		catalog,
 		results: retrieval.results,
 		narrowToCandidateActions: candidateActions,
-		// Message-text + candidate tokens rank children WITHIN each tier-A
-		// parent so a hot parent exposes its turn-relevant children instead of
-		// its whole namespace (maxTierAChildrenPerParent).
+		// Kept for source compatibility; child availability is complete.
 		queryTokens: retrieval.query.tokens,
 	});
 	const toolSearchEndedAt = Date.now();
-	const exposedActionNames = new Set(
-		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
+	const exposedActionNames = authorizedActionNames;
+	const tierAChildrenByParent = Object.fromEntries(
+		tieredSurface.tierAParents.map((parent) => [
+			parent.name,
+			parent.childNames.filter((childName) =>
+				authorizedActionIdentities.has(childName.trim()),
+			),
+		]),
 	);
-	if (params.restrictToCandidateActions && candidateActions.length > 0) {
-		const allowed = new Set(candidateActions.map(normalizeActionIdentifier));
-		for (const exposed of exposedActionNames) {
-			if (!allowed.has(exposed)) exposedActionNames.delete(exposed);
-		}
-	}
-
-	let fallback: string | undefined;
-	if (
-		params.actions.every(
-			(action) =>
-				!exposedActionNames.has(normalizeActionIdentifier(action.name)),
-		)
-	) {
-		let addedFallbackAction = false;
-		for (const result of retrieval.results) {
-			if (result.score <= 0) {
-				continue;
-			}
-			exposedActionNames.add(normalizeActionIdentifier(result.name));
-			addedFallbackAction = true;
-		}
-		if (addedFallbackAction) {
-			fallback = "top-ranked-parent-fallback";
-		}
-	}
-
-	// Every candidate action the message-handler proposed is described to the
-	// planner (and reinforced by action examples), so each MUST also be callable.
-	// Tiering can otherwise leave a proposed action in the described-only tier:
-	// the model then emits a tool_call the surface rejects as "unavailable",
-	// burning unavailable-tool retries and — for delegation (TASKS_SPAWN_AGENT) —
-	// silently breaking the hand-off (observed live: the planner called
-	// TASKS_SPAWN_AGENT, it was unavailable, and the build never delegated). The
-	// candidate set is already narrowed to the relevant actions, so exposing the
-	// registered ones keeps the callable surface tight.
-	for (const name of candidateActions) {
-		const normalized = normalizeActionIdentifier(name);
-		if (
-			params.actions.some(
-				(action) => normalizeActionIdentifier(action.name) === normalized,
-			)
-		) {
-			exposedActionNames.add(normalized);
-		}
-	}
-
-	// Selected-context representation guarantee: stage-1 routed this turn to
-	// specific contexts, and a narrowed surface with ZERO callable actions for
-	// a selected context contradicts that routing — the planner then improvises
-	// with off-context tools (observed live: a web+notes composite surfaced
-	// WEB_FETCH/WEB_SEARCH only, so the "save a note" half of the ask was
-	// impossible and the turn ended on an in-flight claim with nothing saved).
-	// For each selected context with no exposed representative, expose the
-	// highest-ranked action that DECLARES the context; `params.actions` is the
-	// already gate-checked collection, so this can never expose a gated action.
-	for (const context of params.selectedContexts ?? []) {
-		const normalizedContext = String(context).trim().toLowerCase();
-		if (!normalizedContext || normalizedContext === "simple") continue;
-		const declaresContext = (action: Action): boolean =>
-			(action.contexts ?? []).some(
-				(declared) =>
-					String(declared).trim().toLowerCase() === normalizedContext,
-			);
-		const hasRepresentative = params.actions.some(
-			(action) =>
-				exposedActionNames.has(normalizeActionIdentifier(action.name)) &&
-				declaresContext(action),
-		);
-		if (hasRepresentative) continue;
-		const scoreByName = new Map(
-			retrieval.results.map((result) => [
-				normalizeActionIdentifier(result.name),
-				result.score,
-			]),
-		);
-		const best = params.actions
-			.filter(declaresContext)
-			.sort(
-				(a, b) =>
-					(scoreByName.get(normalizeActionIdentifier(b.name)) ?? 0) -
-					(scoreByName.get(normalizeActionIdentifier(a.name)) ?? 0),
-			)
-			.at(0);
-		if (best) {
-			exposedActionNames.add(normalizeActionIdentifier(best.name));
-		}
-	}
-
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
@@ -3492,7 +3555,6 @@ function buildV5PlannerActionSurface(params: {
 						omitted: tieredSurface.omittedParentNames.length,
 					},
 					durationMs: toolSearchEndedAt - toolSearchStartedAt,
-					fallback,
 					...(retrieval.measurement
 						? {
 								perStageScores: retrieval.measurement.perStageScores,
@@ -3522,12 +3584,7 @@ function buildV5PlannerActionSurface(params: {
 			catalogParentCount: catalog.parents.length,
 			exposedActionCount,
 			tierAParents: tieredSurface.sortedTierAParentNames,
-			tierAChildrenByParent: Object.fromEntries(
-				tieredSurface.tierAParents.map((parent) => [
-					parent.name,
-					[...parent.childNames],
-				]),
-			),
+			tierAChildrenByParent,
 			tierBParents: tieredSurface.sortedTierBParentNames,
 			omittedParentCount: tieredSurface.omittedParentNames.length,
 			omittedParentNamesPreview: tieredSurface.omittedParentNames,
@@ -3536,7 +3593,6 @@ function buildV5PlannerActionSurface(params: {
 			queryTokens: retrieval.query.tokens,
 			candidateActions,
 			parentActionHints,
-			...(fallback ? { fallback } : {}),
 		},
 	};
 }
@@ -7083,11 +7139,11 @@ async function executeV5PlannedToolCall(
 	const resolvedName = resolvedNames[0] ?? args.toolCall.name;
 	const toolCall: PlannerToolCall = { ...args.toolCall, name: resolvedName };
 
-	// Per-turn `actions` is the narrowed action surface — the executable subset
+	// Per-turn `actions` is the authorized action surface — the executable subset
 	// the model was given as tools. It does NOT include the CORE_PLANNER_TERMINALS
 	// (REPLY / IGNORE / STOP) which are surfaced as tools but live in the global
 	// runtime registry. When the model calls a terminal (or, under
-	// strictResolve, an action not in the narrow), pull it from the global
+	// strictResolve, an action outside that authorization), pull it from the global
 	// registry by exact name. With `toolChoice: "required"` + tools-array
 	// enforcement the model can only call names that are in our exposed set, so
 	// this can't be an off-surface escape — it's the terminal/registry bridge.
@@ -7355,7 +7411,7 @@ export function subPlannerResultToPlannerToolResult(
 }
 
 /**
- * Planner-loop tool surface. Each narrowed Action is exposed as its own native
+ * Planner-loop tool surface. Each authorized Action is exposed as its own native
  * tool whose name is the action name and whose `parameters` is the action's
  * JSONSchema. We also always include the universal terminal-sentinel tools
  * (REPLY / IGNORE / STOP) so the planner has a stable way to end the turn.
@@ -7384,7 +7440,6 @@ function collectPlannerTools(
 		actionLookup: new Map(
 			actions.map((action) => [action.name, action] as const),
 		),
-		tierAChildrenByParent: readTierAChildrenByParentFromContext(context),
 	});
 	const terminalNames = new Set(
 		CORE_PLANNER_TERMINALS.map((tool) => normalizeActionIdentifier(tool.name)),
@@ -7402,11 +7457,8 @@ function collectPlannerTools(
 }
 
 /**
- * Read the tier-A parent names from the action surface metadata attached to the
- * context object by `buildV5PlannerActionSurface`. Returns an empty set when no
- * surface metadata is present (full-surface mode, or contexts built outside the
- * tiered pipeline), in which case the tiered builder degrades to plain
- * one-tool-per-action behavior.
+ * Read the historical tier-A metadata for telemetry compatibility. Tool
+ * construction ignores it and expands every authorized parent and child.
  */
 function readTierAParentsFromContext(context: ContextObject): Set<string> {
 	const surface = (context.metadata as { actionSurface?: unknown } | undefined)
@@ -7425,38 +7477,6 @@ function readTierAParentsFromContext(context: ContextObject): Set<string> {
 		}
 	}
 	return set;
-}
-
-/**
- * Read the per-parent tier-A child allow-list from the action surface
- * metadata. Returns `undefined` when the surface carries no
- * `tierAChildrenByParent` (full-surface mode, or contexts built outside the
- * tiered pipeline), in which case the tiered tool builder expands every
- * subaction of a tier-A parent as before.
- */
-function readTierAChildrenByParentFromContext(
-	context: ContextObject,
-): Record<string, string[]> | undefined {
-	const surface = (context.metadata as { actionSurface?: unknown } | undefined)
-		?.actionSurface;
-	if (!surface || typeof surface !== "object") {
-		return undefined;
-	}
-	const raw = (surface as { tierAChildrenByParent?: unknown })
-		.tierAChildrenByParent;
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-		return undefined;
-	}
-	const record: Record<string, string[]> = {};
-	for (const [parentName, childNames] of Object.entries(raw)) {
-		if (!Array.isArray(childNames)) {
-			continue;
-		}
-		record[parentName] = childNames.filter(
-			(name): name is string => typeof name === "string",
-		);
-	}
-	return record;
 }
 
 /**
@@ -7855,11 +7875,45 @@ function withoutIntermediateVisibleText(content: Content): Content | null {
 	return hasIntermediateCallbackPayload(filtered) ? filtered : null;
 }
 
+/**
+ * Trusted host routing for a dedicated coding turn. This deliberately looks
+ * like the canonical Stage 1 tool result so the existing parsing and safety
+ * pipeline stays shared, but it is never recorded or accounted as a model
+ * response. Authorization remains owned by the normal context/action gates.
+ */
+function directCodingResponseHandlerResult(): GenerateTextResult {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "direct-coding-route",
+				name: HANDLE_RESPONSE_TOOL_NAME,
+				arguments: {
+					shouldRespond: "RESPOND",
+					contexts: [...CODING_SUB_AGENT_CONTEXTS],
+					intents: [],
+					replyText: "",
+					replyEffectStatus: "none",
+					candidateActionNames: [],
+					facts: [],
+					relationships: [],
+					topics: [],
+					addressedTo: [],
+					emotion: "none",
+				},
+			},
+		],
+		finishReason: "tool_calls",
+	};
+}
+
 export async function runV5MessageRuntimeStage1(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
 	responseId: UUID;
+	/** Trusted per-turn direct coding-loop selection. */
+	codingMode?: boolean;
 	callback?: HandlerCallback;
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
@@ -8053,38 +8107,36 @@ export async function runV5MessageRuntimeStage1(args: {
 			}),
 		);
 
-		// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1 model
-		// call. Used to inject providers / facts / relationships into the
-		// stable prefix.
-		await timeInferenceSpan(
-			"actions:response-handler-before",
-			() =>
-				args.runtime.runActionsByMode(
-					"RESPONSE_HANDLER_BEFORE",
-					args.message,
-					args.state,
-				),
-			{ mode: "RESPONSE_HANDLER_BEFORE" },
-		);
+		if (!args.codingMode) {
+			// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1
+			// model call. A direct coding turn has no such model boundary.
+			await timeInferenceSpan(
+				"actions:response-handler-before",
+				() =>
+					args.runtime.runActionsByMode(
+						"RESPONSE_HANDLER_BEFORE",
+						args.message,
+						args.state,
+					),
+				{ mode: "RESPONSE_HANDLER_BEFORE" },
+			);
 
-		// RESPONSE_HANDLER_DURING (non-blocking): fire-and-forget alongside the model
-		// call. We don't await — the user contract is "during".
-		// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection escaping
-		// runActionsByMode must not abort the turn, but it must surface.
-		const responseHandlerDuring = args.runtime
-			.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
-			.catch((err) =>
-				args.runtime.reportError("MessageService.runActionsByMode", err, {
-					mode: "RESPONSE_HANDLER_DURING",
-				}),
-			);
-		if (args.runTerminalOwner) {
-			args.runTerminalOwner.adopt(
-				"RESPONSE_HANDLER_DURING",
-				responseHandlerDuring,
-			);
-		} else {
-			void responseHandlerDuring;
+			// RESPONSE_HANDLER_DURING runs only alongside a real handler model call.
+			const responseHandlerDuring = args.runtime
+				.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
+				.catch((err) =>
+					args.runtime.reportError("MessageService.runActionsByMode", err, {
+						mode: "RESPONSE_HANDLER_DURING",
+					}),
+				);
+			if (args.runTerminalOwner) {
+				args.runTerminalOwner.adopt(
+					"RESPONSE_HANDLER_DURING",
+					responseHandlerDuring,
+				);
+			} else {
+				void responseHandlerDuring;
+			}
 		}
 
 		// Per-turn structure forcing. `buildResponseGrammar` composes the
@@ -8177,16 +8229,26 @@ export async function runV5MessageRuntimeStage1(args: {
 		// number of times before falling back to the planner.
 		const stage1RetryLimit = readStage1EmptyRetryLimit(args.runtime);
 		let stage1RetryCount = 0;
-		recordInferenceSpan(
-			"message:stage1:preprocess",
-			performance.now() - stage1PreprocessStartedAt,
-		);
-		let rawMessageHandler = (await args.runtime.useModel(
-			ModelType.RESPONSE_HANDLER,
-			stage1ModelParams,
-		)) as string | GenerateTextResult;
+		if (!args.codingMode) {
+			recordInferenceSpan(
+				"message:stage1:preprocess",
+				performance.now() - stage1PreprocessStartedAt,
+			);
+		} else {
+			args.runtime.logger.debug?.(
+				{ src: "service:message", codingMode: true },
+				"Skipping Stage 1 model call for direct coding loop",
+			);
+		}
+		let rawMessageHandler: string | GenerateTextResult = args.codingMode
+			? directCodingResponseHandlerResult()
+			: ((await args.runtime.useModel(
+					ModelType.RESPONSE_HANDLER,
+					stage1ModelParams,
+				)) as string | GenerateTextResult);
 		let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		while (
+			!args.codingMode &&
 			stage1RetryCount < stage1RetryLimit &&
 			shouldRetryStage1Generation(
 				stage1RetryReason,
@@ -8215,9 +8277,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// right after it completes, before any later model call could overwrite the
 		// runtime-wide last-resolved-provider, so the recorded stage names the real
 		// provider instead of the fabricated "default" literal (#13623).
-		const messageHandlerProvider = args.runtime.getLastResolvedModelProvider?.(
-			ModelType.RESPONSE_HANDLER,
-		);
+		const messageHandlerProvider = args.codingMode
+			? undefined
+			: args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		// An explicit continuation turn ("finish my request", "that is good")
 		// carries no inferable intent of its own, so candidate inference runs on
@@ -8320,16 +8382,18 @@ export async function runV5MessageRuntimeStage1(args: {
 		// RESPONSE_HANDLER_AFTER (blocking): hooks fire after Stage 1 returns and the
 		// routing decision is parsed, but before the runtime acts on it.
 		// Lets a hook inspect / mutate the parsed plan.
-		await timeInferenceSpan(
-			"actions:response-handler-after",
-			() =>
-				args.runtime.runActionsByMode(
-					"RESPONSE_HANDLER_AFTER",
-					args.message,
-					args.state,
-				),
-			{ mode: "RESPONSE_HANDLER_AFTER" },
-		);
+		if (!args.codingMode) {
+			await timeInferenceSpan(
+				"actions:response-handler-after",
+				() =>
+					args.runtime.runActionsByMode(
+						"RESPONSE_HANDLER_AFTER",
+						args.message,
+						args.state,
+					),
+				{ mode: "RESPONSE_HANDLER_AFTER" },
+			);
+		}
 
 		if (!messageHandler) {
 			if (isEmptyStage1Result(rawMessageHandler)) {
@@ -8365,7 +8429,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
-		if (recorder && trajectoryId) {
+		if (!args.codingMode && recorder && trajectoryId) {
 			messageHandlerStageTask = recordMessageHandlerStage({
 				recorder,
 				trajectoryId,
@@ -8577,7 +8641,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.replyEffectStatus;
 		const prePatchStageOneReplyIsUngroundedAppliedClaim =
 			prePatchStageOneReplyEffectStatus === "applied";
-		const responseHandlerEvaluation = fieldRunResult?.preempt
+		const responseHandlerEvaluation = args.codingMode
 			? {
 					activeEvaluators: [],
 					appliedPatches: [],
@@ -8585,17 +8649,25 @@ export async function runV5MessageRuntimeStage1(args: {
 					candidateActionsClearedByEvaluators: false,
 					errors: [],
 				}
-			: await timeInferenceSpan("evaluators:response-handler", () =>
-					runResponseHandlerEvaluators({
-						runtime: args.runtime,
-						message: args.message,
-						state: args.state,
-						messageHandler,
-						availableContexts,
-						userRoles: [senderRole],
-						evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
-					}),
-				);
+			: fieldRunResult?.preempt
+				? {
+						activeEvaluators: [],
+						appliedPatches: [],
+						candidateActionsAddedByEvaluators: [],
+						candidateActionsClearedByEvaluators: false,
+						errors: [],
+					}
+				: await timeInferenceSpan("evaluators:response-handler", () =>
+						runResponseHandlerEvaluators({
+							runtime: args.runtime,
+							message: args.message,
+							state: args.state,
+							messageHandler,
+							availableContexts,
+							userRoles: [senderRole],
+							evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+						}),
+					);
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -8619,33 +8691,46 @@ export async function runV5MessageRuntimeStage1(args: {
 		// transient failure must NOT convert a normal turn into silence — it
 		// just means "don't suppress", matching the conservative contract and
 		// the fire-and-forget addressee handling above.
+		// Candidate suppression first (corroborated Stage-1 tag, or — when the
+		// tag is empty — the structural vocative check: a message that OPENS by
+		// addressing another participant by name, "hey eliza", is evidence the
+		// gate verifies itself, closing the fail-open interjection path, live
+		// 2026-08-22). The personality reply_gate override is consulted LAST and
+		// only on a positive, so turns with no gating signal never pay the
+		// personality-store lookup.
+		const suppressionCandidate = ambientTurn
+			? await (addressedTo.length > 0
+					? messageAddressedToOtherParticipant({
+							runtime: args.runtime,
+							message: args.message,
+							addressedTo,
+						})
+					: messageVocativelyAddressesOtherParticipant({
+							runtime: args.runtime,
+							message: args.message,
+						})
+				).catch((error) => {
+					// error-policy:J7 addressee-resolution diagnostics must not kill
+					// the message loop or suppress a response, but the required runtime
+					// error stream still owns the failure.
+					args.runtime.reportError("MessageService.resolveAddressees", error, {
+						roomId: args.message.roomId,
+					});
+					return false;
+				})
+			: false;
 		const addressedToOtherParticipant =
-			ambientTurn &&
-			addressedTo.length > 0 &&
-			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always"
-				? await messageAddressedToOtherParticipant({
-						runtime: args.runtime,
-						message: args.message,
-						addressedTo,
-					}).catch((error) => {
-						// error-policy:J4 an unresolved addressee must not suppress a
-						// response, but the failed room lookup remains observable.
-						args.runtime.reportError(
-							"MessageService.resolveAddressees",
-							error,
-							{
-								roomId: args.message.roomId,
-							},
-						);
-						return false;
-					})
-				: false;
+			suppressionCandidate &&
+			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always";
 		if (addressedToOtherParticipant) {
-			args.runtime.logger?.debug?.(
+			// warn, not debug: this gate converts a turn into TOTAL silence, and a
+			// silent non-delivery must be diagnosable from the server log (live
+			// 2026-08-22: four suppressed replies left zero log evidence).
+			args.runtime.logger?.warn?.(
 				{
 					src: "service:message",
 					roomId: args.message.roomId,
-					addressedToCount: addressedTo.length,
+					addressedTo,
 				},
 				"[message] Turn addressed to another participant — engagement gate ignores it",
 			);
@@ -8864,47 +8949,31 @@ export async function runV5MessageRuntimeStage1(args: {
 			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
-		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
-		// narrowing entirely and hand the planner EVERY action whose execution gates
-		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
-		// few); a coding agent's whole small tool set is relevant, and narrowing was
-		// returning zero candidates → planner got no native tools → model narrated.
-		const fullSurfaceEnv =
-			typeof process !== "undefined"
-				? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
-				: undefined;
-		const useFullSurface =
-			fullSurfaceEnv === "1" ||
-			fullSurfaceEnv === "true" ||
-			fullSurfaceEnv === "yes" ||
-			fullSurfaceEnv === "on";
+		if (args.codingMode === true) {
+			plannerState.data = {
+				...(plannerState.data ?? {}),
+				// Execution-mode provenance only; actions must never use this as an
+				// authorization signal. Coding tools use it to skip chat-only command
+				// rewrites that would alter an explicit repository command.
+				elizaTrustedCodingMode: true,
+			};
+		}
+		// A focused coding turn receives every action whose ordinary execution gates
+		// pass for the coding contexts. Relevance or a fixed name list may order or
+		// describe the tools, but cannot hide a newly registered authorized action.
+		const useFullSurface = args.codingMode === true;
 		const plannerCandidateActions = useFullSurface
-			? (args.runtime.actions ?? []).filter(
-					(action) =>
-						// Full-surface = the eliza-code coding sub-agent (its ACP server
-						// sets ELIZA_PLANNER_FULL_ACTION_SURFACE). It must NOT receive the
-						// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
-						// the model and it never calls FILE. Instead treat the coding
-						// contexts (code/files/terminal/automation) as active and run the
-						// normal execution gates: that admits the coding tools
-						// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
-						// context-free control actions (REPLY/STOP/…) and drops the
-						// messaging/social chat actions. Role still applies (FILE=ADMIN,
-						// SHELL=OWNER; the coding sub-agent runs as OWNER). UI/orchestration
-						// parents that pass the gate but a coder never needs are dropped
-						// too (see CODING_SUB_AGENT_EXCLUDED_ACTIONS) to keep the request
-						// small enough for weaker hosted models to handle large builds.
-						!CODING_SUB_AGENT_EXCLUDED_ACTIONS.has(
-							normalizeActionIdentifier(action.name),
-						) &&
-						// Static candidate-action set for a coding sub-agent — no concrete
-						// turn message here, so skip the private-action gate; the eventual
-						// execution still enforces it through the executor.
-						canActionRun(action, {
-							activeContexts: CODING_SUB_AGENT_CONTEXTS,
-							userRoles: [senderRole],
-							skipPrivateGate: true,
-						}),
+			? (args.runtime.actions ?? []).filter((action) =>
+					// The execution gates are the authority for a focused coding turn.
+					// Names may rank tools but cannot form a second fixed allowlist that
+					// silently hides newly registered coding capabilities.
+					canActionRun(action, {
+						activeContexts: CODING_SUB_AGENT_CONTEXTS,
+						userRoles: [senderRole],
+						// There is no concrete turn message in this static surface build;
+						// execution still enforces the private gate.
+						skipPrivateGate: true,
+					}),
 				)
 			: await collectV5PlannerCandidateActions({
 					runtime: args.runtime,
@@ -9058,6 +9127,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			: null;
 		const actionSurface = buildV5PlannerActionSurface({
 			actions: plannerCandidateActions,
+			forceFullSurface: args.codingMode === true,
 			message: args.message,
 			state: plannerState,
 			messageHandler,
@@ -9495,6 +9565,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				runPlannerLoop({
 					runtime: plannerRuntime,
 					context: loopContext,
+					codingMode: args.codingMode === true,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
 					requireNonTerminalToolCall,
@@ -9631,6 +9702,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					)
 				: await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
+			// A coding turn is an all-the-way-to-verification transaction. A
+			// successful intermediate file operation cannot rescue a loop that hit
+			// its call/token/provider limit before a grounded terminal result; doing
+			// so makes CLI/ACP report partial work as success.
+			if (args.codingMode === true) throw error;
 			const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
 				? undefined
 				: prePatchStageOneReply?.trim();
@@ -9733,11 +9809,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannerResult.trajectory,
 			exposedPlannerActions,
 		);
-		const plannedReplyEgressDecision = evaluatePlannedReplyEgress({
-			reply: String(plannerResult.finalMessage ?? ""),
-			actionResults: egressActionResults,
-			actions: args.runtime.actions,
-		});
+		const plannedReplyEgressDecision =
+			args.codingMode === true
+				? ({ verdict: "allow" } as const)
+				: evaluatePlannedReplyEgress({
+						reply: String(plannerResult.finalMessage ?? ""),
+						actionResults: egressActionResults,
+						actions: args.runtime.actions,
+					});
 		// A reply an action callback already delivered this turn (verbatim or as
 		// a strict superset) is a planner echo: the suppression below drops it, so
 		// it never egresses. Bouncing it here instead would follow the visible,
@@ -9920,11 +9999,19 @@ export async function runV5MessageRuntimeStage1(args: {
 				effectiveReplyText = relayBody;
 			}
 		}
-		const finalReplyEgressDecision = evaluatePlannedReplyEgress({
-			reply: effectiveReplyText,
-			actionResults,
-			actions: args.runtime.actions,
-		});
+		// Coding-mode terminal claims were already checked against the concrete
+		// planner trajectory (including mandatory post-mutation SHELL proof).
+		// Generic chat egress requires EffectReceipts, which local file tools do
+		// not mint, and would replace a verified coding result with a false
+		// "couldn't verify" fallback.
+		const finalReplyEgressDecision =
+			args.codingMode === true
+				? ({ verdict: "allow" } as const)
+				: evaluatePlannedReplyEgress({
+						reply: effectiveReplyText,
+						actionResults,
+						actions: args.runtime.actions,
+					});
 		if (finalReplyEgressDecision.verdict === "reject") {
 			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
 		}
@@ -10132,6 +10219,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannedTextRaw || effectiveReplyText,
 			actionResults,
 		);
+		const terminalFailure = plannerResult.terminalFailure;
 
 		return {
 			kind: "planned_reply",
@@ -10153,6 +10241,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								? { effectReceiptIds: effectiveReplyReceiptIds }
 								: {}),
 							...(transcriptVisibility ? { transcriptVisibility } : {}),
+							...(terminalFailure ? { terminalFailure } : {}),
 						}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					}
@@ -10161,6 +10250,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						responseMessages: [],
 						state: finalPlannerState,
 						mode: "none",
+						...(terminalFailure ? { terminalFailure } : {}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					},
 		};
@@ -11131,6 +11221,39 @@ function looksLikeExplicitDelegationRequest(text: string): boolean {
 	);
 }
 
+const COMPUTED_OBJECT_RE =
+	/[/\\:@]|https?:|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|api|file|url|env|variable|ip|address|size|length|temperature|stats?|status|usage|memory|disk|uptime|hostname|version|fetch(?:es|ed)?|read(?:s)?|calculat\w*|comput\w*)\b/iu;
+
+/** The object of "just prints X" is a constant when it is a quoted literal,
+ * a bare numeric literal, or a few bare words naming nothing computed. The
+ * WHOLE object is scanned — a computed continuation after "and"/"then"
+ * ("prints hello and then fetches the weather") is still a real program. */
+function isConstantPrintedObject(object: string): boolean {
+	const trimmed = object.trim().replace(/[.!?]+$/u, "");
+	if (!trimmed) return false;
+	// A quoted constant must be the complete expression. Merely starting with a
+	// quote is insufficient: `"hello" and then fetches the weather` still asks
+	// for computed work. Accept escaped ASCII delimiters and paired typographic
+	// delimiters, including a literal whose contents span lines.
+	if (
+		/^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|“[^”]*”|‘[^’]*’)$/su.test(
+			trimmed,
+		)
+	) {
+		return true;
+	}
+	const head =
+		trimmed.split(/\s*(?:,|;|\band\b|\bthen\b|\bwhen\b|\bif\b)\s*/iu)[0] ?? "";
+	// "just prints 42" is a constant, not a computation.
+	if (/^(?:the\s+)?(?:number\s+)?\d+$/u.test(head)) {
+		return !COMPUTED_OBJECT_RE.test(trimmed.replace(/\d+/gu, ""));
+	}
+	const words = head.split(/\s+/u).filter(Boolean);
+	if (words.length === 0 || words.length > 4) return false;
+	if (/\d/u.test(trimmed)) return false;
+	return !COMPUTED_OBJECT_RE.test(trimmed);
+}
+
 function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (
@@ -11145,10 +11268,26 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	// it through a coding sub-agent spent a 27s build and the user never saw
 	// the one line (live 2026-08-22). Scoped by the just/only/simply marker so
 	// computed deliverables ("prints a random card") still get built and run.
-	const constantOutputScript =
-		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\b/iu.test(
+	// The printed OBJECT must itself be constant: a quoted literal, or a few
+	// bare words with no path, URL, number or computed noun ("the current
+	// bitcoin price", "the contents of /etc/hosts", "the primes under a
+	// million" are real programs however the ask is phrased).
+	// The printed object is captured to the END of the request — a capped
+	// capture (formerly 80 chars) let a computed tail ("… and then fetches the
+	// current bitcoin price") hide beyond the window, while a line-bounded
+	// capture let the same tail hide after a newline. isConstantPrintedObject
+	// scans the whole expression it receives.
+	const constantOutputMatch =
+		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\s+([\s\S]*)/iu.exec(
 			normalized,
 		);
+	const constantOutputScript =
+		constantOutputMatch !== null &&
+		isConstantPrintedObject(constantOutputMatch[1] ?? "");
+	// The explicit just/only/simply form is eligible for inline handling only
+	// when its complete object is constant. Do not let generic words such as
+	// "simple" or "example" override a computed tail.
+	if (constantOutputMatch !== null && !constantOutputScript) return false;
 	const asksForSnippet =
 		constantOutputScript ||
 		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(
@@ -12763,6 +12902,7 @@ export class DefaultMessageService implements IMessageService {
 
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
+					codingMode: options?.codingMode === true,
 					continueAfterActions:
 						options?.continueAfterActions ??
 						parseBooleanFromText(
@@ -13723,6 +13863,7 @@ export class DefaultMessageService implements IMessageService {
 							message,
 							state,
 							responseId,
+							codingMode: opts.codingMode,
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
 							...(opts.roomHandlerLease
@@ -14008,6 +14149,7 @@ export class DefaultMessageService implements IMessageService {
 			Array.from(persistedEarlyReplyIds, (id) => id as UUID),
 		);
 		let actionResults: ActionResult[] | undefined;
+		let terminalFailure: MessageTerminalFailure | undefined;
 		let mode: StrategyMode = "none";
 
 		if (shouldRespondToMessage) {
@@ -14035,6 +14177,7 @@ export class DefaultMessageService implements IMessageService {
 					: result.responseMessages;
 			state = result.state;
 			actionResults = result.actionResults;
+			terminalFailure = result.terminalFailure;
 			mode = result.mode;
 
 			// Race check before we send anything.
@@ -14534,6 +14677,7 @@ export class DefaultMessageService implements IMessageService {
 					}
 				: {}),
 			...(actionResults ? { actionResults } : {}),
+			...(terminalFailure ? { terminalFailure } : {}),
 			state,
 			mode,
 		};
@@ -15612,44 +15756,24 @@ export class DefaultMessageService implements IMessageService {
 			"Clearing message memories from channel",
 		);
 
-		// Get all message memories for this room
-		const memories = await runtime.getMemoriesByRoomIds({
-			tableName: "messages",
+		// Bulk room delete — do not snapshot via getMemoriesByRoomIds. The
+		// in-memory adapter defaults that read to 20 rows, so a successful
+		// per-id loop left the rest of the channel intact. deleteAllMemories
+		// is the adapter contract for "this room, this table, all rows".
+		const totalCount = await runtime.countMemories({
 			roomIds: [roomId],
+			tableName: "messages",
+			unique: false,
 		});
-
-		runtime.logger.debug(
-			{ src: "service:message", channelId, count: memories.length },
-			"Found message memories to delete",
-		);
-
-		const messageIds: UUID[] = [];
-		for (const memory of memories) {
-			if (!memory.id) {
-				throw new ElizaError(
-					"Cannot clear a channel containing a message memory without an ID",
-					{
-						code: "CHANNEL_MESSAGE_ID_MISSING",
-						context: { roomId, channelId },
-					},
-				);
-			}
-			messageIds.push(memory.id);
-		}
-
-		let deletedCount = 0;
-		for (const messageId of messageIds) {
-			await runtime.deleteMemory(messageId);
-			deletedCount++;
-		}
+		await runtime.deleteAllMemories([roomId], "messages");
 
 		runtime.logger.info(
 			{
 				src: "service:message",
 				agentId: runtime.agentId,
 				channelId,
-				deletedCount,
-				totalCount: memories.length,
+				deletedCount: totalCount,
+				totalCount,
 			},
 			"Cleared message memories from channel",
 		);

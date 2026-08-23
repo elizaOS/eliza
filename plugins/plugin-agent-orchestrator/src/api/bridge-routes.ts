@@ -334,13 +334,46 @@ async function handleGet(
       scopedToken,
     });
     if (outcome.status === "ready") {
+      // The long-poll may have waited minutes after the initial ownership
+      // check. Re-authorize at the disclosure boundary: a child that stopped,
+      // was removed, or otherwise became terminal while the adapter was
+      // waiting must never receive the plaintext even if its one-shot scope
+      // became ready in the same race.
+      const authorizedSession = await resolveActiveSession(ctx, sessionId);
+      if (!authorizedSession) {
+        sendJson(
+          res,
+          {
+            error:
+              "sub-agent session became inactive before credential delivery",
+            code: "session_not_active",
+          },
+          410,
+        );
+        return;
+      }
       // #8907: tell the origin thread the task is unblocked (best-effort).
       await emitCredentialResolved({
         runtime: ctx.runtime,
-        metadata: session.metadata,
+        metadata: authorizedSession.metadata,
         key,
-        label: session.name,
+        label: authorizedSession.name,
       });
+      // `emitCredentialResolved` may cross a connector boundary. Close that
+      // final await-shaped race as well: this check is the last operation
+      // before the synchronous plaintext response write.
+      if (!(await resolveActiveSession(ctx, sessionId))) {
+        sendJson(
+          res,
+          {
+            error:
+              "sub-agent session became inactive before credential delivery",
+            code: "session_not_active",
+          },
+          410,
+        );
+        return;
+      }
       sendJson(res, {
         key,
         value: outcome.value,

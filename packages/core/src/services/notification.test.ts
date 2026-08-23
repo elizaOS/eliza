@@ -111,6 +111,238 @@ describe("NotificationService", () => {
 		expect(event.data.unreadCount).toBe(1);
 	});
 
+	it("does not broadcast success when durable persistence rejects", async () => {
+		const originalSetCache = runtime.setCache.bind(runtime);
+		runtime.setCache = async () => {
+			throw new Error("injected notification persistence failure");
+		};
+		try {
+			await expect(
+				service.notify({ title: "Must not escape", priority: "urgent" }),
+			).rejects.toThrow("injected notification persistence failure");
+			expect(emitted).toEqual([]);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+		expect(service.listIncludingExpired()).toEqual([]);
+	});
+
+	it("does not broadcast success when durable persistence returns false", async () => {
+		const originalSetCache = runtime.setCache.bind(runtime);
+		runtime.setCache = async () => false;
+		try {
+			await expect(service.notify({ title: "Rejected" })).rejects.toThrow(
+				/persistence was rejected/,
+			);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+		expect(emitted).toEqual([]);
+		expect(service.list()).toEqual([]);
+	});
+
+	it("keeps durable success when a live listener throws", async () => {
+		const eventService = runtime.getService(
+			ServiceType.AGENT_EVENT,
+		) as AgentEventService;
+		const stopThrowing = eventService.subscribe(() => {
+			throw new Error("injected listener failure");
+		});
+		try {
+			const notification = await service.notify({
+				title: "Durable despite listener",
+				priority: "urgent",
+			});
+			expect(service.listIncludingExpired()).toContainEqual(notification);
+		} finally {
+			stopThrowing();
+		}
+	});
+
+	it("serializes overlapping writes across one rejected persistence", async () => {
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let releaseFirst: (() => void) | undefined;
+		const firstBlocked = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		let notificationWrites = 0;
+		runtime.setCache = async (key, value) => {
+			notificationWrites += 1;
+			if (notificationWrites === 1) {
+				await firstBlocked;
+				throw new Error("injected first persistence failure");
+			}
+			return originalSetCache(key, value);
+		};
+		try {
+			const first = service.notify({ title: "Rejected first" });
+			const second = service.notify({ title: "Durable second" });
+			releaseFirst?.();
+			await expect(first).rejects.toThrow("injected first persistence failure");
+			await expect(second).resolves.toMatchObject({ title: "Durable second" });
+			expect(
+				service.listIncludingExpired().map((entry) => entry.title),
+			).toEqual(["Durable second"]);
+			const stored = await runtime.getCache<AgentNotification[]>(
+				`notifications:${runtime.agentId}`,
+			);
+			expect(stored?.map((entry) => entry.title)).toEqual(["Durable second"]);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("serializes notify with concurrent removal without resurrecting the row", async () => {
+		const removed = await service.notify({ title: "Remove me" });
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let releaseNotify: (() => void) | undefined;
+		const notifyBlocked = new Promise<void>((resolve) => {
+			releaseNotify = resolve;
+		});
+		let writes = 0;
+		runtime.setCache = async (key, value) => {
+			writes += 1;
+			if (writes === 1) await notifyBlocked;
+			return originalSetCache(key, value);
+		};
+		try {
+			const arriving = service.notify({ title: "Keep me" });
+			const removal = service.remove(removed.id);
+			releaseNotify?.();
+			await expect(arriving).resolves.toMatchObject({ title: "Keep me" });
+			await expect(removal).resolves.toBe(true);
+			const stored = await runtime.getCache<AgentNotification[]>(
+				`notifications:${runtime.agentId}`,
+			);
+			expect(stored?.map((entry) => entry.title)).toEqual(["Keep me"]);
+			expect(service.list().map((entry) => entry.title)).toEqual(["Keep me"]);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("reconciles a committed removal failure before the next queued notify", async () => {
+		const removed = await service.notify({ title: "Committed removal" });
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let injected = false;
+		runtime.setCache = async (key, value) => {
+			const result = await originalSetCache(key, value);
+			if (!injected) {
+				injected = true;
+				throw new Error("injected post-removal failure");
+			}
+			return result;
+		};
+		try {
+			const removal = service.remove(removed.id);
+			const arriving = service.notify({ title: "After ambiguous removal" });
+			await expect(removal).rejects.toThrow("injected post-removal failure");
+			await expect(arriving).resolves.toMatchObject({
+				title: "After ambiguous removal",
+			});
+			const stored = await runtime.getCache<AgentNotification[]>(
+				`notifications:${runtime.agentId}`,
+			);
+			expect(stored?.map((entry) => entry.title)).toEqual([
+				"After ambiguous removal",
+			]);
+			expect(service.list().map((entry) => entry.title)).toEqual([
+				"After ambiguous removal",
+			]);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("awaits a rejected in-flight write before ensuring an exact grouped projection", async () => {
+		const input = {
+			title: "Approval needed",
+			category: "approval",
+			priority: "high" as const,
+			groupKey: "approval:race",
+			data: { requestId: "race", kind: "execute_workflow" },
+		};
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let releaseFirst: (() => void) | undefined;
+		const firstBlocked = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		let writes = 0;
+		runtime.setCache = async (key, value) => {
+			writes += 1;
+			if (writes === 1) {
+				await firstBlocked;
+				throw new Error("injected pending projection failure");
+			}
+			return originalSetCache(key, value);
+		};
+		try {
+			const pending = service.notify(input);
+			const ensured = service.ensureGroupedNotification(
+				input,
+				(entry) =>
+					entry.title === input.title &&
+					entry.groupKey === input.groupKey &&
+					entry.data?.requestId === "race",
+			);
+			releaseFirst?.();
+			await expect(pending).rejects.toThrow(
+				"injected pending projection failure",
+			);
+			await expect(ensured).resolves.toMatchObject(input);
+			const stored = await runtime.getCache<AgentNotification[]>(
+				`notifications:${runtime.agentId}`,
+			);
+			expect(stored).toHaveLength(1);
+			expect(stored?.[0]).toMatchObject(input);
+			expect(stored?.[0]?.data).toEqual(input.data);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("replaces a stale grouped projection without inheriting coalesced count", async () => {
+		await service.notify({
+			title: "Stale one",
+			groupKey: "approval:stale",
+			data: { requestId: "stale" },
+		});
+		await service.notify({
+			title: "Stale two",
+			groupKey: "approval:stale",
+			data: { requestId: "stale" },
+		});
+		const expected = {
+			title: "Approval needed",
+			groupKey: "approval:stale",
+			data: { requestId: "stale", kind: "execute_workflow" },
+		};
+		const ensured = await service.ensureGroupedNotification(
+			expected,
+			(entry) =>
+				entry.title === expected.title &&
+				JSON.stringify(entry.data) === JSON.stringify(expected.data),
+		);
+		expect(ensured.data).toEqual(expected.data);
+		expect(service.listIncludingExpired()).toHaveLength(1);
+	});
+
+	it("rejects a full inbox without evicting unrelated durable rows", async () => {
+		for (let index = 0; index < 300; index += 1) {
+			await service.notify({ title: `Existing ${index}` });
+		}
+		expect(service.getAvailableCapacity()).toBe(0);
+		await expect(
+			service.notifyWithoutEviction({ title: "Must not evict" }),
+		).rejects.toThrow(/capacity is exhausted/);
+		const stored = await runtime.getCache<AgentNotification[]>(
+			`notifications:${runtime.agentId}`,
+		);
+		expect(stored).toHaveLength(300);
+		expect(stored?.[0]?.title).toBe("Existing 0");
+		expect(stored?.at(-1)?.title).toBe("Existing 299");
+	});
+
 	it("still records when no event bus is present", async () => {
 		const headless = await createRuntime([NotificationService]);
 		try {
@@ -355,9 +587,10 @@ describe("NotificationService", () => {
 		expect(service.getUnreadCount()).toBe(1);
 	});
 
-	it("drops expired notifications on rehydrate", async () => {
-		await service.notify({ title: "Expired", expiresAt: Date.now() - 1000 });
+	it("keeps expired durable rows addressable after rehydrate", async () => {
 		await service.notify({ title: "Alive" });
+		await service.notify({ title: "Expired", expiresAt: Date.now() + 10 });
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		const restarted = (await NotificationService.start(
 			runtime,
 		)) as NotificationService;
@@ -365,6 +598,9 @@ describe("NotificationService", () => {
 		expect(list).toHaveLength(1);
 		expect(list[0].title).toBe("Alive");
 		expect(restarted.getUnreadCount()).toBe(1);
+		expect(
+			restarted.listIncludingExpired().map((entry) => entry.title),
+		).toEqual(["Expired", "Alive"]);
 	});
 
 	it("evicts oldest beyond the retention cap", async () => {

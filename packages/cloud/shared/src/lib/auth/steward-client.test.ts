@@ -243,16 +243,24 @@ describe("verifyStewardTokenCached — token lifecycle claims", () => {
     }
   });
 
-  test("requires the ordinary Steward JWT token class and sub claim", async () => {
+  test("requires the ordinary Steward JWT token class and a string identity claim", async () => {
     const now = Math.floor(Date.now() / 1000);
     const wrongType = await new SignJWT({ sub: "steward-user", iat: now, exp: now + 60 })
       .setProtectedHeader({ alg: "HS256", typ: "not-a-steward-session" })
       .sign(secretKey());
-    const userIdOnly = await new SignJWT({ userId: "legacy-user", iat: now, exp: now + 60 })
+    const canonicalUserId = await new SignJWT({
+      userId: "canonical-steward-user",
+      iat: now,
+      exp: now + 60,
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .sign(secretKey());
+    const invalidUserId = await new SignJWT({ userId: 42, iat: now, exp: now + 60 })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
       .sign(secretKey());
     expect(await verify(wrongType)).toBeNull();
-    expect(await verify(userIdOnly)).toBeNull();
+    expect((await verify(canonicalUserId))?.userId).toBe("canonical-steward-user");
+    expect(await verify(invalidUserId)).toBeNull();
   });
 
   test("accepts canonical Steward session tokens whose protected header omits typ", async () => {

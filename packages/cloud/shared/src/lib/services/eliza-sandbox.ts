@@ -777,7 +777,7 @@ const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
 const RECONCILE_SSH_CMD_TIMEOUT_MS = 15_000;
 // Cap on consecutive heartbeat cycles a docker-healthy container may stay
 // `running` while its current tailnet IP cannot be resolved (node SSH down,
-// docker exec failing). Each such cycle ratchets error_count; hitting the cap
+// docker exec failing). Each such cycle guards error_count; hitting the cap
 // escalates to `disconnected` so the recovery cycle's reprovision self-heal
 // still fires — an unreachable paid agent must never look "running" forever.
 const IP_RECONCILE_MAX_UNRESOLVED_CYCLES = 3;
@@ -3318,13 +3318,21 @@ export class ElizaSandboxService {
       previousStatus = candidate.status;
       const lock = await agentSandboxesRepository.trySetProvisioning(candidate.id);
       if (!lock) {
-        if (candidate.status === "running" && candidate.bridge_url && candidate.health_url)
+        if (candidate.status === "running" && candidate.bridge_url && candidate.health_url) {
+          if (restoreOverride?.kind === "from-backup") {
+            return {
+              success: false,
+              sandboxRecord: candidate,
+              error: RESTORE_AUTHORITY_CHANGED,
+            };
+          }
           return {
             success: true,
             sandboxRecord: candidate,
             bridgeUrl: candidate.bridge_url,
             healthUrl: candidate.health_url,
           };
+        }
         return {
           success: false,
           sandboxRecord: candidate,
@@ -8000,7 +8008,7 @@ export class ElizaSandboxService {
       if (reconcile.outcome === "ip-unresolvable") {
         // Docker reports the container healthy but the node cannot tell us its
         // current tailnet IP — indistinguishable from a transient SSH outage,
-        // so disconnecting now could destroy a healthy paid container. Ratchet
+        // so disconnecting now could destroy a healthy paid container. Guard
         // error_count and only escalate once the cap of consecutive cycles is
         // hit, so an agent that stays unresolvable still reaches the
         // disconnect → reprovision self-heal instead of sitting unreachable
@@ -8286,7 +8294,7 @@ export class ElizaSandboxService {
     const ssh = await this.getNodeSshForAgent(rec);
     if (!ssh) return null;
     // error-policy:J4 best-effort resolve — a failed resolve returns null (no
-    // positive signal), never throws; the caller ratchets toward disconnect.
+    // positive signal), never throws; the caller guards toward disconnect.
     try {
       const out = await ssh.exec(
         `docker exec ${shellQuote(rec.container_name)} tailscale --socket=/tmp/tailscaled.sock ip -4`,

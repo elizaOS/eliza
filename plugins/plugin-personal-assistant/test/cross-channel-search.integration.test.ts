@@ -70,7 +70,7 @@ function restoreEnv(): void {
 }
 
 type SeedMessageInput = {
-  platform: "discord" | "telegram" | "imessage" | "signal" | "whatsapp";
+  platform: "discord" | "telegram" | "imessage" | "whatsapp";
   speakerName: string;
   text: string;
   ageMs: number;
@@ -149,12 +149,6 @@ beforeAll(async () => {
     ageMs: 10_000,
   });
   await seedMessage({
-    platform: "signal",
-    speakerName: "PartnerOne",
-    text: "ProjectAtlas Signal fallback thread has the vendor call note.",
-    ageMs: 8_000,
-  });
-  await seedMessage({
     platform: "whatsapp",
     speakerName: "PartnerOne",
     text: "ProjectAtlas WhatsApp room has the launch checklist screenshot.",
@@ -178,7 +172,6 @@ describe("cross-channel-search WS1 integration", () => {
         "telegram",
         "imessage",
         "gmail",
-        "signal",
         "whatsapp",
       ],
       limit: 5,
@@ -188,7 +181,6 @@ describe("cross-channel-search WS1 integration", () => {
     expect(platforms.has("discord")).toBe(true);
     expect(platforms.has("telegram")).toBe(true);
     expect(platforms.has("imessage")).toBe(true);
-    expect(platforms.has("signal")).toBe(true);
     expect(platforms.has("whatsapp")).toBe(true);
 
     for (const hit of result.hits) {
@@ -198,7 +190,6 @@ describe("cross-channel-search WS1 integration", () => {
     }
 
     const unsupportedChannels = result.unsupported.map((u) => u.channel);
-    expect(unsupportedChannels).toContain("signal");
     expect(unsupportedChannels).toContain("whatsapp");
 
     const gmailStatus =

@@ -57,7 +57,7 @@ export default scenario({
       kind: "message",
       name: "request-deduped-inbox",
       room: "main",
-      text: "Show me what unread messages need my attention from Priya Rao across Gmail, Signal, Telegram, and WhatsApp, without treating her like four different contacts.",
+      text: "Show me what unread messages need my attention from Priya Rao across Gmail, Discord, Telegram, and WhatsApp, without treating her like four different contacts.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: ["MESSAGE", "MESSAGE", "MESSAGE", "READ_MESSAGES"],
         description: "deduped inbox lookup for one canonical person",
@@ -65,13 +65,13 @@ export default scenario({
           "priya",
           "unread",
           "gmail",
-          "signal",
+          "discord",
           "telegram",
           "whatsapp",
         ],
       }),
       // De-echoed (#9310): the old keywords ("Priya", "unread", "Gmail",
-      // "Signal", "Telegram", "WhatsApp") all appeared in the user's own turn
+      // "Discord", "Telegram", "WhatsApp") all appeared in the user's own turn
       // text. The reply must now express the derived dedupe outcome in words
       // the prompt never used.
       responseIncludesAny: [
@@ -84,7 +84,7 @@ export default scenario({
       responseJudge: {
         minimumScore: 0.75,
         rubric:
-          "The assistant must present Priya Rao as one person in the inbox view, while still surfacing her unread context across Gmail, Signal, Telegram, and WhatsApp.",
+          "The assistant must present Priya Rao as one person in the inbox view, while still surfacing her unread context across Gmail, Discord, Telegram, and WhatsApp.",
       },
     },
   ],
@@ -113,7 +113,7 @@ export default scenario({
           "priya",
           "unread",
           "gmail",
-          "signal",
+          "discord",
           "telegram",
           "whatsapp",
         ],
@@ -123,7 +123,7 @@ export default scenario({
       name: "cross-platform-inbox-rubric",
       threshold: 0.75,
       description:
-        "End-to-end: the inbox response dedupes Priya Rao into one canonical person while still surfacing unread context across Gmail, Signal, Telegram, and WhatsApp.",
+        "End-to-end: the inbox response dedupes Priya Rao into one canonical person while still surfacing unread context across Gmail, Discord, Telegram, and WhatsApp.",
     }),
   ],
 });

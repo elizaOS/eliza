@@ -651,3 +651,41 @@ describe("skill install request lifecycle", () => {
     expect(socket.listenerCount("close")).toBe(0);
   });
 });
+
+describe("catalog pagination parameter parsing", () => {
+  function catalogContext(query: string) {
+    const pathname = "/api/skills/catalog";
+    const { ctx, json, error } = createSkillsContext("GET", pathname);
+    ctx.url = new URL(`http://localhost${pathname}${query}`);
+    return { ctx, json, error };
+  }
+
+  it("ignores a non-finite page instead of slicing from Infinity", async () => {
+    // Number("Infinity") is Infinity, so `start = (page - 1) * perPage` became
+    // Infinity: an always-empty page whose echoed `page` serializes as null.
+    const { ctx, json } = catalogContext("?page=Infinity");
+    await handleSkillsRoutes(ctx);
+    expect(json).toHaveBeenCalled();
+    const body = json.mock.calls[0]?.[1] as { page: number };
+    expect(Number.isSafeInteger(body.page)).toBe(true);
+    expect(body.page).toBe(1);
+  });
+
+  it("ignores a fractional page instead of producing overlapping windows", async () => {
+    // page=2.7 sliced [4.59, 7.29), overlapping the windows for pages 2 and 3.
+    const { ctx, json } = catalogContext("?page=2.7&perPage=2");
+    await handleSkillsRoutes(ctx);
+    const body = json.mock.calls[0]?.[1] as { page: number; perPage: number };
+    expect(Number.isSafeInteger(body.page)).toBe(true);
+    expect(body.page).toBe(1);
+    expect(body.perPage).toBe(2);
+  });
+
+  it("still honours clean pagination values", async () => {
+    const { ctx, json } = catalogContext("?page=3&perPage=25");
+    await handleSkillsRoutes(ctx);
+    const body = json.mock.calls[0]?.[1] as { page: number; perPage: number };
+    expect(body.page).toBe(3);
+    expect(body.perPage).toBe(25);
+  });
+});

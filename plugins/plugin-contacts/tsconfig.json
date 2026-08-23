@@ -71,7 +71,6 @@
         "../../plugins/plugin-registry/src/index.ts"
       ],
       "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
-      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
@@ -85,6 +84,9 @@
       ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/src/index.ts"
       ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"

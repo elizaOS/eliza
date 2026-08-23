@@ -3,7 +3,7 @@
  * for `PROVIDERS`. The v5 chat planner does not use a model-emitted
  * request-by-name loop; it selects provider text before the model call through
  * context gates plus `alwaysInResponseState`. This catalog stays out of v5
- * planner composition so provider descriptions do not become prompt-stuffing.
+ * planner composition. Explicit legacy callers receive complete descriptions.
  */
 
 import {
@@ -21,7 +21,6 @@ import {
 	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "../../../utils/context-routing.ts";
-import { compressPromptDescription } from "../../../utils/prompt-compression.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("PROVIDERS");
@@ -63,11 +62,11 @@ export const providersProvider: Provider = {
 		const renderDescription = (provider: Provider): string => {
 			const providerSpec = getProviderSpec(provider.name);
 			return (
+				provider.description ??
+				providerSpec?.description ??
 				provider.descriptionCompressed ??
 				providerSpec?.descriptionCompressed ??
-				(provider.description
-					? compressPromptDescription(provider.description)
-					: "No description available")
+				"No description available"
 			);
 		};
 

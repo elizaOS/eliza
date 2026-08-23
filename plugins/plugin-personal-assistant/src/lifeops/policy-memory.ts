@@ -71,7 +71,6 @@ export const LIFEOPS_POLICY_CHANNELS = [
   "slack",
   "imessage",
   "sms",
-  "signal",
   "whatsapp",
   "x_dm",
   "email",

@@ -152,9 +152,9 @@ const CloudAgentsSection = lazy(() =>
     default: m.CloudAgentsSection,
   })),
 );
-const MyRuntimesContainer = lazy(() =>
-  import("../cockpit/MyRuntimesContainer").then((m) => ({
-    default: m.MyRuntimesContainer,
+const DevicesRuntimesContainer = lazy(() =>
+  import("./DevicesRuntimesContainer").then((m) => ({
+    default: m.DevicesRuntimesContainer,
   })),
 );
 
@@ -547,8 +547,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     cloudOnly: true,
     Component: CloudAgentsSection,
   },
-  // "My Runtimes" — manage + switch between local / cloud-dedicated /
-  // VPS-remote runtimes (the cockpit's runtime registry).
+  // Devices & Runtimes — local / Cloud / relay / verified SSH management.
   {
     ...nonCatalogMeta("my-runtimes"),
     catalog: false,
@@ -557,10 +556,12 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     hue: "slate",
     labelKey: "settings.sections.myRuntimes.label",
     titleKey: "settings.sections.myRuntimes.title",
+    defaultTitle: "Devices & Runtimes",
     order: 3.5,
-    // Hidden for MVP (kept registered so its route/deep-link still resolves).
+    // Hidden for MVP until the expanded pairing and remote-target surface has
+    // explicit product authority. Its deep link remains registered.
     developerOnly: true,
-    Component: MyRuntimesContainer,
+    Component: DevicesRuntimesContainer,
   },
 ] as const;
 

@@ -12,7 +12,6 @@ import {
 } from "react";
 
 import { useActivityEvents } from "../../hooks/useActivityEvents";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
@@ -25,7 +24,6 @@ import { useNotifications } from "../../state/notifications/notification-store";
 import { useShellSurface } from "../../state/shell-surface-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
-import { TasksEventsPanel } from "../chat/TasksEventsPanel";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 
@@ -215,8 +213,6 @@ export interface HomeScreenProps {
 export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
-  const showChatSidebar = useMediaQuery("(min-width: 1024px)");
-  const [chatSidebarCollapsed, setChatSidebarCollapsed] = useState(false);
   // The entrance rise plays once, on first mount only - never re-triggered by a
   // re-render or resize (issue 9304).
   const enterClass = useEnterOnceClass();
@@ -455,15 +451,6 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
             </section>
           </div>
         </div>
-        {showChatSidebar ? (
-          <TasksEventsPanel
-            open
-            events={events}
-            clearEvents={clearEvents}
-            collapsed={chatSidebarCollapsed}
-            onToggleCollapsed={setChatSidebarCollapsed}
-          />
-        ) : null}
       </div>
     </div>
   );

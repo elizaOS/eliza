@@ -58,6 +58,7 @@ import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
 import { mergeElizaTurnStopSequences } from "./services/eliza-turn-stops.js";
+import { ramHeadroomReserveMb } from "./services/ram-budget.js";
 import { augmentVisionRequest } from "./services/vision/augmenter.js";
 import { prepareVisionImageInput } from "./services/vision/image-input.js";
 import type { VisionImageInput } from "./services/vision/types.js";
@@ -603,17 +604,12 @@ function createTextHandler(modelType: string) {
 			const budget = resolveBackgroundInferenceBudget(
 				inferenceRamClassFromEnv() ?? "standard",
 			);
-			const clamped = applyBackgroundInferenceBudget(
+			const budgetedArgs = applyBackgroundInferenceBudget(
 				{ prompt: args.prompt, maxTokens: args.maxTokens },
 				budget,
 			);
-			if (clamped.clamped.length > 0) {
-				logger.info(
-					`[local-inference] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
-				);
-			}
-			args.prompt = clamped.prompt;
-			args.maxTokens = clamped.maxTokens;
+			args.prompt = budgetedArgs.prompt;
+			args.maxTokens = budgetedArgs.maxTokens;
 			lockWaitMs = budget.lockWaitMs;
 		}
 		return getInferencePriorityGate().runExclusive(
@@ -1244,6 +1240,10 @@ export const localInferencePlugin: Plugin = {
 	// app come online.
 	models: createStaticPluginModelHandlers(),
 	async init(_config: unknown, runtime: IAgentRuntime) {
+		// Validate explicit resource policy before advertising provider readiness.
+		// An absent override retains the default; malformed configuration throws a
+		// typed fatal error through the runtime's plugin-startup boundary.
+		ramHeadroomReserveMb();
 		const service = serviceFromRuntime(runtime);
 		if (!service) {
 			logger.info(

@@ -542,7 +542,7 @@ function PdfTile({
             <span className="block truncate text-xs-tight font-medium">
               {label}
             </span>
-            <span className="block text-2xs uppercase tracking-wide text-muted">
+            <span className="block text-2xs uppercase tracking-wider text-muted">
               {t("messageattachments.pdfLabel")}
             </span>
           </span>
@@ -825,7 +825,7 @@ function CodeTile({
             <span className="block truncate text-xs-tight font-medium">
               {label}
             </span>
-            <span className="block text-2xs uppercase tracking-wide text-muted">
+            <span className="block text-2xs uppercase tracking-wider text-muted">
               {t("messageattachments.textLabel")}
             </span>
           </span>
@@ -847,7 +847,7 @@ function CodeTile({
         <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
           {label}
         </span>
-        <span className="shrink-0 text-2xs uppercase tracking-wide text-muted">
+        <span className="shrink-0 text-2xs uppercase tracking-wider text-muted">
           {language}
         </span>
         <TileButton

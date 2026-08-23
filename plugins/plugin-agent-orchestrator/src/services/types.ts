@@ -5,6 +5,87 @@
  */
 export type AgentType = "elizaos" | "pi-agent" | "claude" | "codex" | string;
 
+/** Declares whether a subscription coding-agent session has an active user. */
+export type SubscriptionExecutionMode = "user-attended" | "unattended";
+
+export const SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY =
+  "subscriptionExecutionAuthorization";
+
+export interface SubscriptionExecutionAuthorization {
+  version: 1;
+  mode: "user-attended";
+  source: "interactive-message";
+  requestId: string;
+  subjectId: string;
+  issuedAtMs: number;
+  expiresAtMs: number;
+}
+
+const SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS = 2 * 60 * 1_000;
+
+/** Minted only while handling a concrete user-authored message. */
+export function createSubscriptionExecutionAuthorization(
+  requestId: string,
+  subjectId: string,
+  nowMs = Date.now(),
+): SubscriptionExecutionAuthorization | undefined {
+  const normalizedRequestId = requestId.trim();
+  const normalizedSubjectId = subjectId.trim();
+  if (!normalizedRequestId || !normalizedSubjectId || !Number.isFinite(nowMs)) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    mode: "user-attended",
+    source: "interactive-message",
+    requestId: normalizedRequestId,
+    subjectId: normalizedSubjectId,
+    issuedAtMs: nowMs,
+    expiresAtMs: nowMs + SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS,
+  };
+}
+
+/** Validate a short-lived attendance capability at its consumption boundary. */
+export function subscriptionExecutionAuthorizationFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+  nowMs = Date.now(),
+): SubscriptionExecutionAuthorization | undefined {
+  const candidate =
+    metadata?.[SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY];
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return undefined;
+  }
+  const record = candidate as Record<string, unknown>;
+  if (
+    record.version !== 1 ||
+    record.mode !== "user-attended" ||
+    record.source !== "interactive-message" ||
+    typeof record.requestId !== "string" ||
+    !record.requestId.trim() ||
+    typeof record.subjectId !== "string" ||
+    !record.subjectId.trim() ||
+    typeof record.issuedAtMs !== "number" ||
+    typeof record.expiresAtMs !== "number" ||
+    !Number.isFinite(record.issuedAtMs) ||
+    !Number.isFinite(record.expiresAtMs) ||
+    record.expiresAtMs - record.issuedAtMs !==
+      SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS ||
+    nowMs < record.issuedAtMs ||
+    nowMs >= record.expiresAtMs
+  ) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    mode: "user-attended",
+    source: "interactive-message",
+    requestId: record.requestId.trim(),
+    subjectId: record.subjectId.trim(),
+    issuedAtMs: record.issuedAtMs,
+    expiresAtMs: record.expiresAtMs,
+  };
+}
+
 export type ApprovalPreset =
   | "readonly"
   | "standard"
@@ -149,6 +230,11 @@ export interface SpawnOptions {
    */
   slotClass?: SessionSlotClass;
   /**
+   * Proof minted by an interactive product boundary. Kimi Code fails closed
+   * when this is omitted; the exact object is persisted for valid recovery.
+   */
+  subscriptionExecutionAuthorization?: SubscriptionExecutionAuthorization;
+  /**
    * When true, spawnSession places this session in a per-session subdir of
    * `workdir` (a SHARED scratch root) so concurrent tasks can't collide.
    * Set by the orchestrator only when the workdir resolved to a configured
@@ -224,8 +310,18 @@ export interface AvailableAgentInfo {
   adapter: AgentType;
   agentType: AgentType;
   installed: boolean;
+  unavailableReason?: string;
   installCommand?: string;
   docsUrl?: string;
+  billingSource?: {
+    kind: "included-plan" | "api-payg";
+    label: string;
+    mayUsePaidOverage?: boolean;
+    disclosure?: string;
+  };
+  executionPolicy?: {
+    requiresUserAttended: boolean;
+  };
   auth?: {
     status?: "authenticated" | "unauthenticated" | "unknown" | string;
     detail?: string;

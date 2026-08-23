@@ -316,6 +316,48 @@ describe("updateManagedFiles", () => {
       expect(() => readFileSync(join(projectRoot, "delete.txt"))).toThrow();
     }));
 
+  it("does not re-track a previously untracked conflict with the unwritten template hash", () =>
+    withTempDir((dir) => {
+      const projectRoot = join(dir, "project");
+      const renderedDir = join(dir, "rendered");
+      mkdirSync(projectRoot, { recursive: true });
+      mkdirSync(renderedDir, { recursive: true });
+      writeFileSync(join(projectRoot, "conflict.txt"), "local edit");
+      writeFileSync(join(renderedDir, "conflict.txt"), "new conflict");
+
+      const first = updateManagedFiles({
+        projectRoot,
+        renderedDir,
+        currentMetadata: metadata({
+          "conflict.txt": hashFor("old conflict"),
+        }),
+        renderedManagedFiles: {
+          "conflict.txt": hashFor("new conflict"),
+        },
+      });
+
+      expect(first.conflicts).toEqual(["conflict.txt"]);
+      expect(first.nextManagedFiles).not.toHaveProperty("conflict.txt");
+      expect(readFileSync(join(projectRoot, "conflict.txt"), "utf8")).toBe(
+        "local edit",
+      );
+
+      const second = updateManagedFiles({
+        projectRoot,
+        renderedDir,
+        currentMetadata: metadata(first.nextManagedFiles),
+        renderedManagedFiles: {
+          "conflict.txt": hashFor("new conflict"),
+        },
+      });
+
+      expect(second.conflicts).toEqual(["conflict.txt"]);
+      expect(second.nextManagedFiles).not.toHaveProperty("conflict.txt");
+      expect(readFileSync(join(projectRoot, "conflict.txt"), "utf8")).toBe(
+        "local edit",
+      );
+    }));
+
   it("does not write during dry runs", () =>
     withTempDir((dir) => {
       const projectRoot = join(dir, "project");

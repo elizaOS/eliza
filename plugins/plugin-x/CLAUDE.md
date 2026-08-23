@@ -137,7 +137,7 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 | `TWITTER_DISCOVERY_INTERVAL_MIN` | No | `15` | Minimum minutes between discovery cycles |
 | `TWITTER_DISCOVERY_INTERVAL_MAX` | No | `30` | Maximum minutes between discovery cycles |
 | `TWITTER_MAX_ENGAGEMENTS_PER_RUN` | No | `5` | Max interactions per engagement cycle |
-| `TWITTER_MAX_TWEET_LENGTH` | No | `280` | Max tweet length |
+| `TWITTER_MAX_TWEET_LENGTH` | No | `280` | X-weighted post limit; oversized posts fail without rewriting |
 | `TWITTER_MIN_FOLLOWER_COUNT` | No | `100` | Min follower count for discovery follows |
 | `TWITTER_MAX_FOLLOWS_PER_CYCLE` | No | `5` | Max follows per discovery cycle |
 | `TWITTER_AUTO_RESPOND_MENTIONS` | No | `true` | Auto-respond to mentions |

@@ -9,7 +9,7 @@
  * agent only ever sees one decision per prompt.
  */
 
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, X } from "lucide-react";
 import { memo, useCallback, useState } from "react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -65,25 +65,36 @@ export const ChoiceWidget = memo(function ChoiceWidget({
   allowCustom = false,
 }: ChoiceWidgetProps) {
   const [selected, setSelected] = useState<ChoiceOption | null>(null);
+  const [dismissed, setDismissed] = useState(false);
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
+  const locked = selected !== null || dismissed;
 
   const handleChoose = useCallback(
     (option: ChoiceOption) => {
-      if (selected) return;
+      if (locked) return;
       setSelected(option);
       onChoose(option.value);
     },
-    [onChoose, selected],
+    [onChoose, locked],
   );
+
+  // Local-only dismissal (the ✕ in the header): collapses the prompt without
+  // sending anything — declining to decide is not an answer the agent should
+  // receive. First-run prompts are not dismissable; the composer is frozen
+  // behind them, so a dismiss would dead-end onboarding.
+  const handleDismiss = useCallback(() => {
+    if (locked) return;
+    setDismissed(true);
+  }, [locked]);
 
   const submitCustom = useCallback(() => {
     const value = customText.trim();
-    if (!value || selected) return;
+    if (!value || locked) return;
     const option = { value, label: value };
     setSelected(option);
     onChoose(value);
-  }, [customText, onChoose, selected]);
+  }, [customText, onChoose, locked]);
 
   if (options.length === 0 && !allowCustom) return null;
 
@@ -116,7 +127,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
           data-testid={`choice-${soleOption.value}`}
           // The locked (selected) state stays at full opacity: it is the
           // confirmation the user just acted on, not a faded leftover.
-          className="h-auto min-h-10 w-full justify-center whitespace-normal rounded-md border border-white/30 bg-[#2c2f3a] px-4 py-2 text-[14px] font-semibold text-[#f0f2f7] transition-colors hover:bg-[#363a46] disabled:bg-[#2c2f3a] disabled:text-[#f0f2f7] disabled:opacity-100"
+          className="h-auto min-h-10 w-full justify-center whitespace-normal rounded-md border border-white/30 bg-[#2c2f3a] px-4 py-2 text-sm font-semibold text-[#f0f2f7] transition-colors hover:bg-[#363a46] disabled:bg-[#2c2f3a] disabled:text-[#f0f2f7] disabled:opacity-100"
           onClick={() => handleChoose(soleOption)}
         >
           <span className="flex w-full min-w-0 items-center justify-center gap-2">
@@ -136,19 +147,38 @@ export const ChoiceWidget = memo(function ChoiceWidget({
     <ChatWidgetShell
       title={firstRun ? "Choose next step" : "Choose"}
       status={
-        // Plain muted text, no pill chrome: the theme text token stays
-        // readable on every surface (chat-native de-slop, supersedes the
-        // #15144 pill-background fix by removing the pill).
-        <span className="text-[11px] font-medium text-muted">
-          {selected ? "Selected" : `${options.length} options`}
-        </span>
+        <>
+          {/* Plain muted text, no pill chrome: the theme text token stays
+              readable on every surface (chat-native de-slop, supersedes the
+              #15144 pill-background fix by removing the pill). */}
+          <span className="text-xs-tight font-medium text-muted">
+            {selected
+              ? "Selected"
+              : dismissed
+                ? "Dismissed"
+                : `${options.length} options`}
+          </span>
+          {!firstRun && !locked && (
+            <button
+              type="button"
+              aria-label="Dismiss"
+              data-testid={`choice-dismiss-${id}`}
+              className="flex h-5 w-5 items-center justify-center rounded-sm text-muted transition-colors hover:text-txt"
+              onClick={handleDismiss}
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
+        </>
       }
       summary={
         selected ? (
           <span role="status">Selected: {selected.label}</span>
+        ) : dismissed ? (
+          <span role="status">Dismissed</span>
         ) : undefined
       }
-      complete={selected !== null}
+      complete={locked}
       testId={`choice-shell-${id}`}
     >
       <fieldset
@@ -187,7 +217,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
                 type="button"
                 variant={variant}
                 size="default"
-                disabled={selected !== null}
+                disabled={locked}
                 aria-label={option.label}
                 aria-pressed={isSelected}
                 data-testid={`choice-${option.value}`}
@@ -218,7 +248,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
               type="button"
               variant={variant}
               size="sm"
-              disabled={selected !== null}
+              disabled={locked}
               aria-label={option.label}
               aria-pressed={isSelected}
               data-testid={`choice-${option.value}`}
@@ -240,7 +270,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             </Button>
           );
         })}
-        {allowCustom && !selected ? (
+        {allowCustom && !locked ? (
           customMode ? (
             <span className="inline-flex items-center gap-1">
               <Input

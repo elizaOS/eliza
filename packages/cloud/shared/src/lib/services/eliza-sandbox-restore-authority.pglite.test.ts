@@ -731,6 +731,39 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
     expect(winner?.lifecycle_revision).toBe(sandbox.lifecycle_revision + 1);
   });
 
+  test("fails closed when a wake from-backup provision loses generic admission to a running generation", async () => {
+    const sandbox = await seedSandbox({ status: "stopped" });
+    const running: AgentSandbox = {
+      ...sandbox,
+      status: "running",
+      bridge_url: "http://127.0.0.1:21060",
+      health_url: "http://127.0.0.1:3000/health",
+    };
+    const fetchMock = installRestoreFetch();
+    globalThis.fetch = fetchMock;
+    spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(running);
+    const genericAdmission = spyOn(
+      agentSandboxesRepository,
+      "trySetProvisioning",
+    ).mockResolvedValue(undefined);
+    const exactAdmission = spyOn(agentSandboxesRepository, "trySetProvisioningFromRestoreCapture");
+
+    await expect(
+      new ElizaSandboxService().provision(sandbox.id, sandbox.organization_id, {
+        kind: "from-backup",
+        backupId: crypto.randomUUID(),
+      }),
+    ).resolves.toEqual({
+      success: false,
+      sandboxRecord: running,
+      error: AUTHORITY_CHANGED,
+    });
+
+    expect(genericAdmission).toHaveBeenCalledWith(sandbox.id);
+    expect(exactAdmission).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("rejects every captured authority dimension changed before stopped admission", async () => {
     const mutations = new Map<string, Partial<AgentSandbox>>();
     const originalLatest =

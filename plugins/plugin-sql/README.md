@@ -14,7 +14,7 @@ This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that
 
 ## Identity authority
 
-The plugin registers `SqlIdentityResolutionService` as the runtime's canonical
+The plugin registers `SqlPrincipalService` as the runtime's canonical
 identity authority. Its private person-link endpoints let an authenticated
 OWNER or ADMIN attest that two preserved principals represent the same person
 without merging or deleting either principal:

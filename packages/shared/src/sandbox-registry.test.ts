@@ -34,13 +34,34 @@ interface Recorded {
 const recorded: Recorded[] = [];
 const store = new Map<string, string>();
 let failNextFetch = false;
-let nextPipelineResponse: unknown = null;
+let nextCommandError: string | null = null;
+let nextWriteDelay: {
+  started: () => void;
+  wait: Promise<void>;
+} | null = null;
+
+function delayNextRegistryWrite(): {
+  started: Promise<void>;
+  release: () => void;
+} {
+  let markStarted: () => void = () => {};
+  let release: () => void = () => {};
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  nextWriteDelay = { started: markStarted, wait };
+  return { started, release };
+}
 
 function installFetch(): void {
   recorded.length = 0;
   store.clear();
   failNextFetch = false;
-  nextPipelineResponse = null;
+  nextCommandError = null;
+  nextWriteDelay = null;
   global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     if (failNextFetch) {
       failNextFetch = false;
@@ -50,21 +71,14 @@ function installFetch(): void {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     recorded.push({ url, body });
 
-    if (url.endsWith("/pipeline")) {
-      if (nextPipelineResponse !== null) {
-        return {
-          ok: true,
-          json: async () => nextPipelineResponse,
-        } as unknown as Response;
-      }
-      for (const cmd of body as string[][]) {
-        if (cmd[0] === "SET") store.set(cmd[1], cmd[2]);
-      }
-      return {
-        ok: true,
-        json: async () => (body as unknown[]).map(() => ({ result: "OK" })),
-      } as unknown as Response;
+    const command = Array.isArray(body) ? body[0] : undefined;
+    if (nextWriteDelay && command === "EVAL") {
+      const delay = nextWriteDelay;
+      nextWriteDelay = null;
+      delay.started();
+      await delay.wait;
     }
+
     const cmd = body as string[];
     if (cmd[0] === "GET") {
       return {
@@ -80,12 +94,72 @@ function installFetch(): void {
       } as unknown as Response;
     }
     if (cmd[0] === "EVAL") {
-      // Simulates the registry's compare-and-delete script: EVAL, script,
-      // numkeys, key1, key2, expected1, expected2.
-      const [, , , key1, key2, expected1, expected2] = cmd;
-      if (store.get(key1) === expected1) store.delete(key1);
-      if (store.get(key2) === expected2) store.delete(key2);
-      return { ok: true, json: async () => ({ result: 1 }) } as Response;
+      if (nextCommandError !== null) {
+        const error = nextCommandError;
+        nextCommandError = null;
+        return {
+          ok: true,
+          json: async () => ({ error }),
+        } as Response;
+      }
+      const [
+        ,
+        script,
+        ,
+        key1,
+        key2,
+        generationKey,
+        value1,
+        value2,
+        generation,
+      ] = cmd;
+      if (script.includes("-- register")) {
+        store.set(key1, value1);
+        store.set(key2, value2);
+        store.set(generationKey, generation);
+        return { ok: true, json: async () => ({ result: 1 }) } as Response;
+      }
+      if (script.includes("-- refresh")) {
+        // Honor the script rather than assume it: each guard is applied only
+        // when the Lua actually carries it, so deleting a check from the real
+        // script makes this double stop enforcing it and the ownership tests
+        // fail. Otherwise the script — the thing Redis runs — is untested.
+        const owned =
+          (!script.includes("u==ARGV[1]") || store.get(key1) === value1) &&
+          (!script.includes("s==ARGV[2]") || store.get(key2) === value2) &&
+          (!script.includes("g==ARGV[3]") ||
+            store.get(generationKey) === generation);
+        // Only honored when the script actually offers the unclaimed-reclaim
+        // branch, so reintroducing it to the Lua fails the containment test.
+        const unclaimed =
+          script.includes("unclaimed") &&
+          !store.has(key1) &&
+          !store.has(key2) &&
+          !store.has(generationKey);
+        if (owned || unclaimed) {
+          store.set(key1, value1);
+          store.set(key2, value2);
+          store.set(generationKey, generation);
+        }
+        return {
+          ok: true,
+          json: async () => ({ result: owned ? 1 : 0 }),
+        } as Response;
+      }
+      const owned =
+        !script.includes("KEYS[3])~=ARGV[3]") ||
+        store.get(generationKey) === generation;
+      if (owned) {
+        if (!script.includes("KEYS[1])==ARGV[1]") || store.get(key1) === value1)
+          store.delete(key1);
+        if (!script.includes("KEYS[2])==ARGV[2]") || store.get(key2) === value2)
+          store.delete(key2);
+        store.delete(generationKey);
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: owned ? 1 : 0 }),
+      } as Response;
     }
     return { ok: true, json: async () => ({ result: null }) } as Response;
   }) as unknown as typeof fetch;
@@ -107,36 +181,33 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     vi.restoreAllMocks();
   });
 
-  it("register() writes both keys with TTL via the pipeline endpoint", async () => {
+  it("register() writes public keys and a private generation fence atomically", async () => {
     const reg = new SandboxRegistry(baseConfig);
     await reg.register();
 
-    const pipe = recorded.find((r) => r.url.endsWith("/pipeline"));
-    expect(pipe).toBeTruthy();
-    const cmds = pipe?.body as string[][];
-    expect(cmds).toContainEqual([
-      "SET",
+    expect(recorded).toHaveLength(1);
+    const command = recorded[0]?.body as string[];
+    expect(command.slice(0, 6)).toEqual([
+      "EVAL",
+      expect.stringContaining("-- register"),
+      "3",
       "server:sandbox-abc:url",
-      "http://1.2.3.4:1999/api",
-      "EX",
-      "90",
-    ]);
-    expect(cmds).toContainEqual([
-      "SET",
       "agent:char-123:server",
-      "sandbox-abc",
-      "EX",
-      "90",
+      "server:sandbox-abc:registration",
     ]);
+    expect(command.slice(6, 8)).toEqual([
+      "http://1.2.3.4:1999/api",
+      "sandbox-abc",
+    ]);
+    expect(command[8]).toEqual(expect.any(String));
+    expect(command[9]).toBe("90");
   });
 
-  it("rejects a top-level Upstash pipeline error response", async () => {
-    nextPipelineResponse = { error: "pipeline unavailable" };
+  it("rejects a top-level Upstash registration error response", async () => {
+    nextCommandError = "registration unavailable";
     const reg = new SandboxRegistry(baseConfig);
 
-    await expect(reg.register()).rejects.toThrow(
-      "Upstash pipeline returned an invalid response",
-    );
+    await expect(reg.register()).rejects.toThrow("registration unavailable");
   });
 
   it("unregister() deletes keys only when they still point at this sandbox", async () => {
@@ -153,9 +224,13 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     // Simulate another sandbox claiming the agent.
     store.set("agent:char-123:server", "sandbox-other");
     store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
+    store.set("server:sandbox-abc:registration", "successor-generation");
     await reg.unregister();
     expect(store.get("agent:char-123:server")).toBe("sandbox-other");
     expect(store.get("server:sandbox-abc:url")).toBe("http://9.9.9.9:1/api");
+    expect(store.get("server:sandbox-abc:registration")).toBe(
+      "successor-generation",
+    );
   });
 
   it("unregister() does not delete keys another sandbox claims in the same instant it decides to delete", async () => {
@@ -174,6 +249,7 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
         if (verb === "DEL" || verb === "EVAL") {
           store.set("agent:char-123:server", "sandbox-other");
           store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
+          store.set("server:sandbox-abc:registration", "successor-generation");
         }
         return realFetch(input, init);
       },
@@ -183,6 +259,9 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
 
     expect(store.get("agent:char-123:server")).toBe("sandbox-other");
     expect(store.get("server:sandbox-abc:url")).toBe("http://9.9.9.9:1/api");
+    expect(store.get("server:sandbox-abc:registration")).toBe(
+      "successor-generation",
+    );
   });
 
   it("startHeartbeat() refreshes on the interval; errors do not kill the timer", async () => {
@@ -195,12 +274,177 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
 
     failNextFetch = true;
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(0);
+    expect(recorded).toHaveLength(0);
 
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
+    expect(recorded).toHaveLength(1);
 
     reg.stopHeartbeat();
+  });
+
+  it("reports ownership loss after a transient initial registration failure", async () => {
+    const reg = new SandboxRegistry(baseConfig);
+
+    failNextFetch = true;
+    await expect(reg.register()).rejects.toThrow("simulated upstash failure");
+    await expect(reg.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    expect(store).toEqual(new Map());
+  });
+
+  it("does not let stale-first ordering reclaim a fully expired route", async () => {
+    const stale = new SandboxRegistry(baseConfig);
+    const successor = new SandboxRegistry(baseConfig);
+    await stale.register();
+    await successor.register();
+    store.clear();
+
+    await expect(stale.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    await expect(successor.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    expect(store).toEqual(new Map());
+  });
+
+  it("does not let successor-first ordering guess after full route expiry", async () => {
+    const stale = new SandboxRegistry(baseConfig);
+    const successor = new SandboxRegistry(baseConfig);
+    await stale.register();
+    await successor.register();
+    store.clear();
+
+    await expect(successor.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    await expect(stale.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    expect(store).toEqual(new Map());
+  });
+
+  it("does not overlap heartbeat refreshes when a tick is still in flight", async () => {
+    vi.useFakeTimers();
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    recorded.length = 0;
+
+    const delayed = delayNextRegistryWrite();
+    reg.startHeartbeat(30_000);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    await delayed.started;
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(recorded).toHaveLength(1);
+
+    delayed.release();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(recorded).toHaveLength(2);
+
+    reg.stopHeartbeat();
+  });
+
+  it("unregister() drains an in-flight heartbeat before deleting its keys", async () => {
+    vi.useFakeTimers();
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    recorded.length = 0;
+
+    const delayed = delayNextRegistryWrite();
+    reg.startHeartbeat(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await delayed.started;
+
+    const unregistering = reg.unregister();
+    await Promise.resolve();
+    expect(recorded).toHaveLength(1);
+
+    delayed.release();
+    await unregistering;
+    expect(store.has("agent:char-123:server")).toBe(false);
+    expect(store.has("server:sandbox-abc:url")).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(recorded).toHaveLength(2);
+  });
+
+  it("unregister() falls back within the shutdown margin without deleting keys", async () => {
+    vi.useFakeTimers();
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    recorded.length = 0;
+
+    const delayed = delayNextRegistryWrite();
+    reg.startHeartbeat(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await delayed.started;
+
+    const unregistering = reg.unregister();
+    const outcome = unregistering.then(
+      () => ({ status: "resolved" as const }),
+      (error: unknown) => ({ status: "rejected" as const, error }),
+    );
+    let settled = false;
+    const observed = outcome.then((result) => {
+      settled = true;
+      return result;
+    });
+
+    // The dev supervisor allows 15s while runtime service teardown may use
+    // 13s. Registry cleanup must settle well inside the remaining 2s margin.
+    await vi.advanceTimersByTimeAsync(999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(observed).resolves.toMatchObject({
+      status: "rejected",
+      error: { code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT" },
+    });
+
+    expect(recorded).toHaveLength(1);
+    expect(store.get("agent:char-123:server")).toBe("sandbox-abc");
+    expect(store.get("server:sandbox-abc:url")).toBe("http://1.2.3.4:1999/api");
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(recorded).toHaveLength(1);
+
+    delayed.release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(recorded).toHaveLength(2);
+  });
+
+  it("a late heartbeat cannot refresh or delete a same-identity successor", async () => {
+    vi.useFakeTimers();
+    const oldRegistry = new SandboxRegistry(baseConfig);
+    await oldRegistry.register();
+    const oldGeneration = store.get("server:sandbox-abc:registration");
+    recorded.length = 0;
+
+    const delayed = delayNextRegistryWrite();
+    oldRegistry.startHeartbeat(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await delayed.started;
+
+    const unregistering = oldRegistry.unregister();
+    const outcome = unregistering.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(outcome).resolves.toMatchObject({
+      code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT",
+    });
+
+    const successor = new SandboxRegistry(baseConfig);
+    await successor.register();
+    const successorGeneration = store.get("server:sandbox-abc:registration");
+    expect(successorGeneration).not.toBe(oldGeneration);
+
+    delayed.release();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(store.get("agent:char-123:server")).toBe("sandbox-abc");
+    expect(store.get("server:sandbox-abc:url")).toBe("http://1.2.3.4:1999/api");
+    expect(store.get("server:sandbox-abc:registration")).toBe(
+      successorGeneration,
+    );
   });
 
   it("stopHeartbeat() halts the timer", async () => {
@@ -241,13 +485,10 @@ describe("buildSandboxRegistryFromEnv", () => {
     });
     expect(reg).not.toBeNull();
     await reg?.register();
-    const pipe = recorded.find((r) => r.url.endsWith("/pipeline"));
-    const cmds = pipe?.body as string[][];
+    const command = recorded[0]?.body as string[];
     // Must register under the routing character_id, not the sandbox id.
-    expect(cmds.some((c) => c[1] === "agent:char-a1f08a41:server")).toBe(true);
-    expect(cmds.some((c) => c[1] === "agent:sandbox-id-2facbf59:server")).toBe(
-      false,
-    );
+    expect(command).toContain("agent:char-a1f08a41:server");
+    expect(command).not.toContain("agent:sandbox-id-2facbf59:server");
   });
 
   it("falls back to SANDBOX_AGENT_ID when no route id is injected", () => {
@@ -400,12 +641,47 @@ async function startFakeRedis(opts?: {
           for (const k of cmd.slice(1)) if (store.delete(k)) n++;
           send(`:${n}\r\n`);
         } else if (verb === "EVAL") {
-          // Simulates the registry's compare-and-delete script: EVAL, script,
-          // numkeys, key1, key2, expected1, expected2.
-          const [, , , key1, key2, expected1, expected2] = cmd;
-          if (store.get(key1) === expected1) store.delete(key1);
-          if (store.get(key2) === expected2) store.delete(key2);
-          send(":1\r\n");
+          const [
+            ,
+            script,
+            ,
+            key1,
+            key2,
+            generationKey,
+            value1,
+            value2,
+            generation,
+          ] = cmd;
+          if (script.includes("-- register")) {
+            store.set(key1, value1);
+            store.set(key2, value2);
+            store.set(generationKey, generation);
+            send(":1\r\n");
+          } else if (script.includes("-- refresh")) {
+            const owned =
+              store.get(key1) === value1 &&
+              store.get(key2) === value2 &&
+              store.get(generationKey) === generation;
+            const unclaimed =
+              script.includes("unclaimed") &&
+              !store.has(key1) &&
+              !store.has(key2) &&
+              !store.has(generationKey);
+            if (owned || unclaimed) {
+              store.set(key1, value1);
+              store.set(key2, value2);
+              store.set(generationKey, generation);
+            }
+            send(`:${owned ? 1 : 0}\r\n`);
+          } else {
+            const owned = store.get(generationKey) === generation;
+            if (owned) {
+              if (store.get(key1) === value1) store.delete(key1);
+              if (store.get(key2) === value2) store.delete(key2);
+              store.delete(generationKey);
+            }
+            send(`:${owned ? 1 : 0}\r\n`);
+          }
         } else {
           send("-ERR unknown command\r\n");
         }
@@ -458,6 +734,82 @@ describe("SandboxRegistry (native TCP transport)", () => {
     await reg.register();
     expect(fake.authedWith).toContainEqual(["default", "s3cret"]);
     expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
+  });
+
+  it("refresh() does not reclaim an agent key owned by a successor", async () => {
+    fake = await startFakeRedis();
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+    await reg.register();
+    fake.store.set("agent:char-tcp:server", "sandbox-successor");
+
+    await expect(reg.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+
+    expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-successor");
+    expect(fake.store.get("server:sandbox-tcp:url")).toBe(
+      "http://5.6.7.8:1999/api",
+    );
+  });
+
+  it("a stale same-identity instance cannot refresh or unregister its TCP successor", async () => {
+    fake = await startFakeRedis();
+    const stale = new SandboxRegistry(tcpConfig(fake.port));
+    const successor = new SandboxRegistry(tcpConfig(fake.port));
+    await stale.register();
+    const staleGeneration = fake.store.get("server:sandbox-tcp:registration");
+    await successor.register();
+    const successorGeneration = fake.store.get(
+      "server:sandbox-tcp:registration",
+    );
+    expect(successorGeneration).not.toBe(staleGeneration);
+
+    await expect(stale.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    await stale.unregister();
+
+    expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
+    expect(fake.store.get("server:sandbox-tcp:url")).toBe(
+      "http://5.6.7.8:1999/api",
+    );
+    expect(fake.store.get("server:sandbox-tcp:registration")).toBe(
+      successorGeneration,
+    );
+  });
+
+  it("does not let stale-first TCP ordering reclaim a fully expired route", async () => {
+    fake = await startFakeRedis();
+    const stale = new SandboxRegistry(tcpConfig(fake.port));
+    const successor = new SandboxRegistry(tcpConfig(fake.port));
+    await stale.register();
+    await successor.register();
+    fake.store.clear();
+
+    await expect(stale.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    await expect(successor.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    expect(fake.store).toEqual(new Map());
+  });
+
+  it("does not let successor-first TCP ordering guess after full route expiry", async () => {
+    fake = await startFakeRedis();
+    const stale = new SandboxRegistry(tcpConfig(fake.port));
+    const successor = new SandboxRegistry(tcpConfig(fake.port));
+    await stale.register();
+    await successor.register();
+    fake.store.clear();
+
+    await expect(successor.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    await expect(stale.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
+    expect(fake.store).toEqual(new Map());
   });
 
   it("unregister() deletes only keys still pointing at this sandbox", async () => {

@@ -16,6 +16,7 @@ import type {
   PlatformAdapter,
   WebhookConfig,
 } from "./adapters/types";
+import { PlatformDeliveryError } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { resolveConnectorAccountId } from "./connector-account";
 import { tryConfirmIdentityLink } from "./identity-link";
@@ -29,7 +30,7 @@ import {
 } from "./server-router";
 import { resolveWebhookConfig } from "./webhook-config";
 
-const DEDUP_TTL_SECONDS = 300;
+const PERSONAL_SHARED_DELIVERY_LEASE_MS = 90_000;
 // Must outlive the 75s non-idempotent message-forward budget plus Telegram
 // egress. Otherwise a provider retry can reclaim the update while the first
 // worker is still generating and execute the same user turn twice.
@@ -37,6 +38,9 @@ const PERSONAL_SHARED_ATTEMPTS = 3;
 const PERSONAL_SHARED_RETRY_DELAY_CAP_MS = 5_000;
 const PROCESSING_TTL_SECONDS = 120;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
+const CONNECTOR_PROCESSING = "processing";
+const CONNECTOR_DELIVERED = "delivered";
+const CONNECTOR_UNCERTAIN = "uncertain";
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
 const TELEGRAM_TYPING_REFRESH_MS = 4_000;
@@ -48,6 +52,10 @@ const ZERO_TRACE_ID = "0".repeat(32);
 
 class PersonalSharedPreEgressError extends Error {
   override readonly name = "PersonalSharedPreEgressError";
+}
+
+class PersonalSharedRecoverablePostEgressError extends Error {
+  override readonly name = "PersonalSharedRecoverablePostEgressError";
 }
 
 interface HandlerDeps {
@@ -65,9 +73,85 @@ interface PersonalSharedDeliveryTiming {
   cloudServerTiming: string | null;
 }
 
+interface GroupDeliveryAuthority {
+  bindingId: string;
+  ownerUserId: string;
+  personalAgentId: string;
+  version: number;
+}
+
+type GroupDeliveryDirective =
+  | { kind: "control" }
+  | { kind: "binding"; authority: GroupDeliveryAuthority };
+
+function parseGroupDeliveryDirective(
+  value: unknown,
+): GroupDeliveryDirective | null {
+  if (!value || typeof value !== "object") return null;
+  const directive = value as Record<string, unknown>;
+  if (directive.kind === "control") return { kind: "control" };
+  const authority = directive.authority;
+  if (
+    directive.kind !== "binding" ||
+    !authority ||
+    typeof authority !== "object"
+  ) {
+    return null;
+  }
+  const candidate = authority as Record<string, unknown>;
+  if (
+    typeof candidate.bindingId !== "string" ||
+    typeof candidate.ownerUserId !== "string" ||
+    typeof candidate.personalAgentId !== "string" ||
+    typeof candidate.version !== "number" ||
+    !Number.isSafeInteger(candidate.version) ||
+    candidate.version <= 0
+  ) {
+    return null;
+  }
+  return {
+    kind: "binding",
+    authority: candidate as unknown as GroupDeliveryAuthority,
+  };
+}
+
 interface MessageTraceContext {
   traceId: string;
   gatewayReceivedAtMs: number;
+}
+
+async function sendReplyWithRequiredReceipt(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  text: string,
+  deliveryHooks?: TelegramDeliveryHooks,
+): Promise<void> {
+  if (!adapter.sendReplyWithReceipt) {
+    throw new PlatformDeliveryError(
+      `${adapter.platform} adapter does not expose provider receipts`,
+      "failed",
+      "DELIVERY_RECEIPT_UNSUPPORTED",
+      false,
+    );
+  }
+  const receipt = await adapter.sendReplyWithReceipt(
+    config,
+    event,
+    text,
+    deliveryHooks,
+  );
+  const providerMessageIds = receipt.providerMessageIds
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (providerMessageIds.length === 0) {
+    throw new PlatformDeliveryError(
+      `${adapter.platform} accepted delivery without a message receipt`,
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
+  }
 }
 
 async function reconcileLegacyTelegramDelivery(
@@ -463,6 +547,29 @@ export async function handleWebhook(
 
   const priorDeliveryState = await redis.get<string>(dedupKey);
   if (priorDeliveryState) {
+    if (
+      priorDeliveryState === CONNECTOR_UNCERTAIN ||
+      priorDeliveryState === "1"
+    ) {
+      logger.error("Webhook delivery outcome is uncertain; refusing replay", {
+        platform: adapter.platform,
+        messageId: event.messageId,
+        dedupKey,
+      });
+      return new Response(
+        JSON.stringify({ error: "delivery outcome uncertain" }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    if (priorDeliveryState === CONNECTOR_PROCESSING) {
+      return new Response(JSON.stringify({ error: "delivery in progress" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     logger.debug("Duplicate webhook skipped", {
       platform: adapter.platform,
       messageId: event.messageId,
@@ -471,9 +578,13 @@ export async function handleWebhook(
     return ackResponse(adapter.platform);
   }
 
-  const isNew = await redis.set(dedupKey, "1", {
+  const isNew = await redis.set(dedupKey, CONNECTOR_PROCESSING, {
     nx: true,
-    ex: DEDUP_TTL_SECONDS,
+    // A worker can disappear after provider acceptance but before recording a
+    // receipt. Keep that orphaned claim for the terminal ledger lifetime; a
+    // short lease would eventually replay an outcome that is necessarily
+    // uncertain. Explicit idempotent pre-egress failures delete the claim.
+    ex: TELEGRAM_DELIVERY_TTL_SECONDS,
   });
   if (!isNew) {
     logger.debug("Duplicate webhook skipped", {
@@ -486,8 +597,13 @@ export async function handleWebhook(
 
   // ── Async phase: identity → forward → reply (runs in background) ──
 
-  processMessage(adapter, config, event, deps, project, trace, agentId).catch(
-    async (err) => {
+  processMessage(adapter, config, event, deps, project, trace, agentId)
+    .then(async () => {
+      await redis.set(dedupKey, CONNECTOR_DELIVERED, {
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+    })
+    .catch(async (err) => {
       logger.error("Background message processing failed", {
         error: err instanceof Error ? err.message : String(err),
         project,
@@ -495,10 +611,16 @@ export async function handleWebhook(
         messageId: event.messageId,
         traceId: trace.traceId,
       });
-      if (err instanceof PersonalSharedPreEgressError) {
+      if (
+        err instanceof PersonalSharedPreEgressError ||
+        err instanceof PersonalSharedRecoverablePostEgressError ||
+        (err instanceof PlatformDeliveryError &&
+          err.deliveryStatus === "failed")
+      ) {
         try {
-          // The Shared endpoint is idempotent and provider egress has not
-          // started, so reopening lets the messaging provider retry safely.
+          // The Shared endpoint is idempotent. Blooio also keys provider
+          // egress by the inbound message id, so a lost receipt response can
+          // safely reopen the webhook without sending a second text.
           await redis.del(dedupKey);
         } catch (cleanupError) {
           // error-policy:J7 The original delivery failure is already observed;
@@ -513,9 +635,29 @@ export async function handleWebhook(
             messageId: event.messageId,
           });
         }
+        return;
       }
-    },
-  );
+      try {
+        // A generic failure can occur after the provider accepted the reply.
+        // Persist ambiguity and refuse replay rather than converting a lost
+        // receipt into a duplicate user-visible message.
+        await redis.set(dedupKey, CONNECTOR_UNCERTAIN, {
+          ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+        });
+      } catch (ledgerError) {
+        // error-policy:J7 The provider result is already ambiguous; retain the
+        // original processing claim and surface the ledger failure separately.
+        logger.error("Failed to persist uncertain webhook delivery", {
+          error:
+            ledgerError instanceof Error
+              ? ledgerError.message
+              : String(ledgerError),
+          project,
+          platform: adapter.platform,
+          messageId: event.messageId,
+        });
+      }
+    });
 
   return ackResponse(adapter.platform);
 }
@@ -561,7 +703,13 @@ async function processMessage(
     event.text,
   );
   if (linkAttempt.handled && linkAttempt.reply) {
-    await adapter.sendReply(config, event, linkAttempt.reply, deliveryHooks);
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      linkAttempt.reply,
+      deliveryHooks,
+    );
     return;
   }
 
@@ -753,7 +901,13 @@ async function processMessage(
 
   try {
     stageStartedAt = Date.now();
-    await adapter.sendReply(config, event, responseText, deliveryHooks);
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      responseText,
+      deliveryHooks,
+    );
     logger.info("Connector message completed", {
       project,
       platform: adapter.platform,
@@ -1086,17 +1240,23 @@ async function sendPersonalSharedReply(
     );
   }
   const cloudMs = attemptResult.durationMs;
-  const reply =
-    body && typeof body === "object" && "data" in body
-      ? (body.data as { reply?: unknown } | null)?.reply
-      : undefined;
+  const data =
+    body &&
+    typeof body === "object" &&
+    "data" in body &&
+    body.data &&
+    typeof body.data === "object"
+      ? (body.data as Record<string, unknown>)
+      : null;
+  const reply = data?.reply;
   if (typeof reply !== "string") {
     throw new PersonalSharedPreEgressError(
       "personal Shared chat returned no reply",
     );
   }
-  // Empty is the agent's deliberate shouldRespond=no result. It is a
-  // successful turn with no provider egress, not a malformed response.
+  // Empty is the agent's deliberate shouldRespond=no result. Membership
+  // changes and stale turns intentionally take this path with no authority
+  // token because there will be no provider egress to authorize.
   if (reply.length === 0) {
     return {
       cloudMs,
@@ -1105,12 +1265,173 @@ async function sendPersonalSharedReply(
       cloudServerTiming,
     };
   }
+  const groupDelivery = parseGroupDeliveryDirective(data?.groupDelivery);
   const egressStartedAt = Date.now();
   if (isGroup) {
+    if (!groupDelivery) {
+      throw new PersonalSharedPreEgressError(
+        "personal Shared group reply returned no delivery directive",
+      );
+    }
     if (!sendReplyWithReceipt) {
       throw new PersonalSharedPreEgressError(
         "group connector cannot return a provider delivery receipt",
       );
+    }
+    if (groupDelivery.kind === "control") {
+      await sendReplyWithReceipt(config, event, reply, deliveryHooks);
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: Date.now() - egressStartedAt,
+        cloudServerTiming,
+      };
+    }
+    const deliveryLeaseToken = crypto.randomUUID();
+    const sourceMessageId = `${adapter.platform}:${project}:${event.messageId}`;
+    const authorizationBody = JSON.stringify({
+      eventType: "delivery_authorization",
+      platform: adapter.platform,
+      project,
+      connectorAccountId,
+      chatId: event.chatId,
+      sourceMessageId,
+      leaseToken: deliveryLeaseToken,
+      invocation: groupInvocationForEvent(event),
+      authority: groupDelivery.authority,
+    });
+    const postAuthorization = (header: Record<string, string>) =>
+      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...header,
+        },
+        body: authorizationBody,
+        signal: AbortSignal.timeout(10_000),
+      });
+    let authorizationResponse = await postAuthorization(authHeader);
+    if (
+      authorizationResponse.status === 401 ||
+      authorizationResponse.status === 403
+    ) {
+      await authorizationResponse.body?.cancel();
+      authHeader = await reauth();
+      authorizationResponse = await postAuthorization(authHeader);
+    }
+    if (!authorizationResponse.ok) {
+      await authorizationResponse.body?.cancel();
+      throw new PersonalSharedPreEgressError(
+        `group delivery authorization failed (${authorizationResponse.status})`,
+      );
+    }
+    let authorizationResult: unknown;
+    try {
+      authorizationResult = await authorizationResponse.json();
+    } catch (error) {
+      // error-policy:J3 authorization is untrusted until the explicit boolean
+      // contract parses; provider egress has not started.
+      throw new PersonalSharedPreEgressError(
+        "group delivery authorization returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const authorizationData =
+      authorizationResult !== null &&
+      typeof authorizationResult === "object" &&
+      "success" in authorizationResult &&
+      authorizationResult.success === true &&
+      "data" in authorizationResult &&
+      authorizationResult.data !== null &&
+      typeof authorizationResult.data === "object" &&
+      (authorizationResult.data as Record<string, unknown>);
+    const leaseExpiresAtMs =
+      authorizationData !== false &&
+      typeof authorizationData.expiresAt === "string"
+        ? Date.parse(authorizationData.expiresAt)
+        : Number.NaN;
+    const authorizationObservedAt = Date.now();
+    if (
+      authorizationData === false ||
+      authorizationData.code !== "group_delivery_authorization" ||
+      authorizationData.authorized !== true ||
+      authorizationData.leaseToken !== deliveryLeaseToken ||
+      !Number.isFinite(leaseExpiresAtMs) ||
+      leaseExpiresAtMs <= authorizationObservedAt ||
+      leaseExpiresAtMs >
+        authorizationObservedAt + PERSONAL_SHARED_DELIVERY_LEASE_MS
+    ) {
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: 0,
+        cloudServerTiming,
+      };
+    }
+    const commitBody = JSON.stringify({
+      eventType: "delivery_commit",
+      platform: adapter.platform,
+      project,
+      connectorAccountId,
+      chatId: event.chatId,
+      sourceMessageId,
+      leaseToken: deliveryLeaseToken,
+      authority: groupDelivery.authority,
+    });
+    const postCommit = (header: Record<string, string>) =>
+      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...header,
+        },
+        body: commitBody,
+        signal: AbortSignal.timeout(10_000),
+      });
+    let commitResponse = await postCommit(authHeader);
+    if (commitResponse.status === 401 || commitResponse.status === 403) {
+      await commitResponse.body?.cancel();
+      authHeader = await reauth();
+      commitResponse = await postCommit(authHeader);
+    }
+    if (!commitResponse.ok) {
+      await commitResponse.body?.cancel();
+      throw new PersonalSharedPreEgressError(
+        `group delivery commit failed (${commitResponse.status})`,
+      );
+    }
+    let commitResult: unknown;
+    try {
+      commitResult = await commitResponse.json();
+    } catch (error) {
+      // error-policy:J3 no provider call begins unless the durable commit's
+      // explicit boolean contract parses.
+      throw new PersonalSharedPreEgressError(
+        "group delivery commit returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const committed =
+      commitResult !== null &&
+      typeof commitResult === "object" &&
+      "success" in commitResult &&
+      commitResult.success === true &&
+      "data" in commitResult &&
+      commitResult.data !== null &&
+      typeof commitResult.data === "object" &&
+      "code" in commitResult.data &&
+      commitResult.data.code === "group_delivery_committed" &&
+      "committed" in commitResult.data &&
+      commitResult.data.committed === true;
+    if (!committed) {
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: 0,
+        cloudServerTiming,
+      };
     }
     const receipt = await sendReplyWithReceipt(
       config,
@@ -1124,8 +1445,10 @@ async function sendPersonalSharedReply(
       project,
       connectorAccountId,
       chatId: event.chatId,
-      sourceMessageId: `${adapter.platform}:${project}:${event.messageId}`,
+      sourceMessageId,
       providerMessageIds: receipt.providerMessageIds,
+      authority: groupDelivery.authority,
+      leaseToken: deliveryLeaseToken,
     });
     const postReceipt = (header: Record<string, string>) =>
       fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
@@ -1146,13 +1469,46 @@ async function sendPersonalSharedReply(
     }
     if (!receiptResponse.ok) {
       await receiptResponse.body?.cancel();
-      throw new Error(
+      throw new PersonalSharedRecoverablePostEgressError(
         `group delivery receipt persistence failed (${receiptResponse.status})`,
       );
     }
-    await receiptResponse.body?.cancel();
+    let receiptResult: unknown;
+    try {
+      receiptResult = await receiptResponse.json();
+    } catch (error) {
+      // error-policy:J3 provider egress is idempotent, so malformed receipt
+      // persistence can reopen the webhook for an exact retry.
+      throw new PersonalSharedRecoverablePostEgressError(
+        "group delivery receipt persistence returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const recorded =
+      receiptResult !== null &&
+      typeof receiptResult === "object" &&
+      "success" in receiptResult &&
+      receiptResult.success === true &&
+      "data" in receiptResult &&
+      receiptResult.data !== null &&
+      typeof receiptResult.data === "object" &&
+      "code" in receiptResult.data &&
+      receiptResult.data.code === "group_delivery_receipt_recorded" &&
+      "recorded" in receiptResult.data &&
+      receiptResult.data.recorded === true;
+    if (!recorded) {
+      throw new PersonalSharedRecoverablePostEgressError(
+        "group delivery receipt persistence rejected stale authority",
+      );
+    }
   } else {
-    await adapter.sendReply(config, event, reply, deliveryHooks);
+    await sendReplyWithRequiredReceipt(
+      adapter,
+      config,
+      event,
+      reply,
+      deliveryHooks,
+    );
   }
   return {
     cloudMs,
@@ -1231,7 +1587,13 @@ async function sendOnboardingReply(
   if (typeof reply !== "string" || reply.trim().length === 0) {
     throw new Error("onboarding chat returned no reply");
   }
-  await adapter.sendReply(config, event, reply, deliveryHooks);
+  await sendReplyWithRequiredReceipt(
+    adapter,
+    config,
+    event,
+    reply,
+    deliveryHooks,
+  );
 }
 
 function ackResponse(platform: Platform): Response {

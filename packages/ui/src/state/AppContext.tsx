@@ -1314,6 +1314,8 @@ function AppProviderInner({
         uiLanguage: setUiLanguage as (v: AppState["uiLanguage"]) => void,
         autonomousRunHealthByRunId: setAutonomousRunHealthByRunId,
         startupError: setStartupError,
+        pairingEnabled: setPairingEnabled,
+        pairingExpiresAt: setPairingExpiresAt,
         pairingCodeInput: setPairingCodeInput,
         pluginFilter: setPluginFilter,
         pluginStatusFilter: setPluginStatusFilter,

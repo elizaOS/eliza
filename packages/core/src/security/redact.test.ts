@@ -85,6 +85,28 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(redactSensitiveText(benign)).toBe(benign);
 	});
 
+	it("does not corrupt ordinary source assignments to key-like variables", () => {
+		const source = [
+			"var (",
+			"\tkey = prefix + tag",
+			"\ttoken = currentToken",
+			")",
+		].join("\n");
+		expect(redactSensitiveText(source)).toBe(source);
+	});
+
+	it("still masks uppercase and compound lowercase environment assignments", () => {
+		for (const assignment of [
+			"API_KEY=credential-value-123456",
+			"api_key=credential-value-123456",
+			"refresh_token=credential-value-123456",
+		]) {
+			expect(redactSensitiveText(assignment)).not.toContain(
+				"credential-value-123456",
+			);
+		}
+	});
+
 	it("masks a quoted credential key the ENV-style row cannot reach", () => {
 		// The ENV-style assignment pattern requires the key's word boundary to be
 		// followed immediately by `=`/`:`; a quoted key's closing quote always

@@ -179,7 +179,6 @@ const RULES = [
         "telegram",
         "discord",
         "imessage",
-        "signal",
         "whatsapp",
         "collector",
         "corpus",

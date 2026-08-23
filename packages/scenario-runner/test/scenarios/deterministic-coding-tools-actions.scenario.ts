@@ -77,6 +77,14 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Write the deterministic coding tools note file",
     messageToUser: `Wrote ${notePath}`,
+    plannerToolNames: [
+      "FILE",
+      "WEB_FETCH",
+      "START_CODING_TASK",
+      "REPLY",
+      "IGNORE",
+      "STOP",
+    ],
   },
   {
     actionName: "FILE",
@@ -84,6 +92,7 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Read the deterministic coding tools note file",
     messageToUser: "alpha coding-tools scenario",
+    plannerToolNames: ["FILE", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
   },
   {
     actionName: "SHELL",
@@ -92,6 +101,7 @@ const strictCodingToolRoutes = [
     input:
       "Run a shell command to count the deterministic coding tools note lines",
     messageToUser: "shell-ok:2",
+    plannerToolNames: ["SHELL", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
   },
   {
     actionName: "WORKTREE",
@@ -99,6 +109,7 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Enter an isolated repo worktree",
     messageToUser: `Entered worktree ${worktreeBranch}`,
+    plannerToolNames: ["SHELL", "WORKTREE", "REPLY", "IGNORE", "STOP"],
   },
   {
     actionName: "WORKTREE",
@@ -106,14 +117,9 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Exit and clean up the isolated repo worktree",
     messageToUser: "Exited and removed worktree",
+    plannerToolNames: ["SHELL", "WORKTREE", "REPLY", "IGNORE", "STOP"],
   },
 ];
-
-const plannerToolNames: Record<string, readonly string[]> = {
-  FILE: ["FILE", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
-  SHELL: ["SHELL", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
-  WORKTREE: ["SHELL", "WORKTREE", "REPLY", "IGNORE", "STOP"],
-};
 
 function currentTurnInputPattern(input: string): string {
   const escaped = input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -147,7 +153,7 @@ const codingToolModelFixtures: ScenarioModelFixture[] = [
         match: {
           modelType: "ACTION_PLANNER" as const,
           input: { pattern: currentTurnInputPattern(route.input) },
-          toolNames: plannerToolNames[route.actionName],
+          toolNames: route.plannerToolNames,
         },
         response: {
           json: {
@@ -182,6 +188,7 @@ const codingToolModelFixtures: ScenarioModelFixture[] = [
     },
     response: {
       json: {
+        text: "alpha coding-tools scenario\nbeta strict e2e",
         thought: "Report the complete file contents returned by FILE.",
         messageToUser: "alpha coding-tools scenario\nbeta strict e2e",
         completed: true,
@@ -203,6 +210,7 @@ const codingToolModelFixtures: ScenarioModelFixture[] = [
     },
     response: {
       json: {
+        text: "Exited and removed worktree",
         thought: "Report the completed worktree cleanup.",
         messageToUser: "Exited and removed worktree",
         completed: true,

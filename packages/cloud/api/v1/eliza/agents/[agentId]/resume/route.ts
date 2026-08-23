@@ -1,5 +1,6 @@
 // Handles v1 cloud API v1 eliza agents agentid resume route traffic with route-local auth expectations.
 import { Hono } from "hono";
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
@@ -84,6 +85,65 @@ async function __hono_POST(
         ),
         CORS_METHODS,
       );
+    }
+
+    // This primary snapshot is not a lock/CAS. Fence only the legacy blocking
+    // path here; async behavior remains unchanged and is covered by separate
+    // enqueue/worker authority work.
+    if (sync) {
+      if (
+        !CONTAINER_BACKED_EXECUTION_TIERS.some(
+          (tier) => tier === agent.execution_tier,
+        )
+      ) {
+        return applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: "Agent resume requires a container-backed execution tier",
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+        );
+      }
+      if (agent.pool_status !== null) {
+        return applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: "Agent resume cannot target pool-owned capacity",
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+        );
+      }
+      if (agent.deleted_at !== null) {
+        return applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: "Agent resume cannot target deleted capacity",
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+        );
+      }
+      if (agent.deletion_attempt_id !== null) {
+        return applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error:
+                "Agent resume cannot target capacity with deletion in progress",
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+        );
+      }
     }
 
     if (agent.execution_tier === "shared") {

@@ -3,7 +3,6 @@
  * plugin object is exercised without replacing its initialization path.
  */
 import { describe, expect, it } from "vitest";
-import { shouldEnable } from "../auto-enable";
 import signalPlugin, { SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE, signalUnsupportedError } from "./index";
 
 describe("Signal direct transport cutover", () => {
@@ -14,7 +13,6 @@ describe("Signal direct transport cutover", () => {
     expect(signalPlugin.routes).toEqual([]);
     expect(signalPlugin.connectorSources).toBeUndefined();
     expect(signalPlugin.autoEnable).toBeUndefined();
-    expect(shouldEnable({} as never)).toBe(false);
   });
 
   it("fails explicit imports with a typed unsupported error", async () => {

@@ -97,6 +97,30 @@ describe("applyStreamingTextModification", () => {
     expect(harness.current[0].failureKind).toBe("no_provider");
   });
 
+  it("complete retains typed terminal failure details", () => {
+    const initial = [assistantMsg("a1", "Done")];
+    const harness = makeSetter(initial);
+
+    applyStreamingTextModification(harness.setter, {
+      messageId: "a1",
+      mode: "complete",
+      fullText: "Shell execution failed.",
+      failureKind: "coding_tool_failure",
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        message: "Shell execution failed.",
+        transient: true,
+        code: "SHELL_UNAVAILABLE",
+      },
+    });
+
+    expect(harness.current[0].terminalFailure).toMatchObject({
+      kind: "coding_tool_failure",
+      transient: true,
+      code: "SHELL_UNAVAILABLE",
+    });
+  });
+
   it("complete clears a stale failureKind when none is provided", () => {
     const initial = [
       assistantMsg("a1", "partial", { failureKind: "no_provider" }),

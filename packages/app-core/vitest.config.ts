@@ -77,7 +77,6 @@ const pluginRegistrySrc = path.join(
   monorepoRoot,
   "plugins/plugin-registry/src",
 );
-const pluginSignalSrc = path.join(monorepoRoot, "plugins/plugin-signal/src");
 const pluginVideoSrc = path.join(monorepoRoot, "plugins/plugin-video/src");
 const pluginWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src");
 const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
@@ -170,6 +169,8 @@ export default defineConfig({
       "scripts/stage-android-agent.test.mjs",
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",
+      "scripts/lib/electrobun-loopback-hardening.test.mjs",
+      "scripts/lib/linux-artifact-permissions.test.mjs",
       // Uses Node.js built-in test runner (node:test), not vitest; runs in
       // `bun run test:script-suites` (node --test list).
       "scripts/store-listing-urls.test.mjs",
@@ -478,10 +479,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-registry\/(.+)$/,
         replacement: path.join(pluginRegistrySrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-signal$/,
-        replacement: path.join(pluginSignalSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-video$/,

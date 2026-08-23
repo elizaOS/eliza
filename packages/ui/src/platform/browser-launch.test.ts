@@ -106,6 +106,20 @@ describe("browser launch connection handling", () => {
     expect(window.location.href).toBe("http://localhost/");
   });
 
+  it("treats a canonical Cloud control-plane apiBase as renderer boot config, not an agent launch", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "http://localhost/?apiBase=https%3A%2F%2Fapi.eliza.app",
+    );
+
+    await expect(applyLaunchConnectionFromUrl()).resolves.toBe(false);
+
+    expect(window.location.href).toBe("http://localhost/");
+    expect(mocks.setBaseUrl).not.toHaveBeenCalled();
+    expect(mocks.savePersistedActiveServer).not.toHaveBeenCalled();
+  });
+
   it("rejects public cloud apiBase parameters outside the managed launch-session flow", async () => {
     window.history.replaceState(
       null,

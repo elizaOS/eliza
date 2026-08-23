@@ -104,10 +104,8 @@ function userMessage(): Memory {
 describe("DocumentService list semantics", () => {
 	it("excludes room documents immediately after membership revocation", async () => {
 		const { adapter, runtime, service } = await makeHarness();
-		const revocationUserId =
-			"00000000-0000-0000-0000-00000000cafe" as UUID;
-		const revocationRoomId =
-			"00000000-0000-0000-0000-00000000da7a" as UUID;
+		const revocationUserId = "00000000-0000-0000-0000-00000000cafe" as UUID;
+		const revocationRoomId = "00000000-0000-0000-0000-00000000da7a" as UUID;
 		await adapter.createRoomParticipants(
 			[AGENT_ID, revocationUserId],
 			revocationRoomId,

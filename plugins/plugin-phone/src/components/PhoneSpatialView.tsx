@@ -16,6 +16,8 @@ import {
   VStack,
 } from "@elizaos/ui/spatial";
 
+import { normalizeNumber } from "./phone-view-helpers.ts";
+
 export interface PhoneCallRow {
   id: string;
   /** Display name: cached contact name, else the number. */
@@ -116,6 +118,9 @@ export function PhoneSpatialView({
   onAction,
 }: PhoneSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
+  // Mirror the `placeCall()` guard: only a dialed value that normalizes to a
+  // callable number enables Call, so separators or stray keys keep it off.
+  const canCall = Boolean(normalizeNumber(snapshot.dialed));
   return (
     <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
@@ -165,7 +170,17 @@ export function PhoneSpatialView({
         >
           +
         </Button>
-        <Button grow={1} agent="call" onPress={dispatch("call")}>
+        <Button
+          grow={1}
+          agent={{
+            id: "phone-call",
+            role: "button",
+            label: "Call dialed number",
+          }}
+          disabled={!canCall}
+          variant={canCall ? "solid" : "outline"}
+          onPress={dispatch("call")}
+        >
           Call
         </Button>
         <Button
@@ -198,6 +213,21 @@ export function PhoneSpatialView({
       </HStack>
 
       <Divider label="recent" />
+      <HStack gap={1} justify="end">
+        <Button
+          variant="ghost"
+          tone="default"
+          agent={{
+            id: "phone-refresh",
+            role: "button",
+            label: "Refresh recent calls",
+          }}
+          disabled={snapshot.loading}
+          onPress={dispatch("refresh")}
+        >
+          {snapshot.loading ? "Refreshing…" : "Refresh"}
+        </Button>
+      </HStack>
       {snapshot.calls.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
           None

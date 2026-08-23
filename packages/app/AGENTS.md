@@ -36,8 +36,6 @@ packages/app/
     url-trust-policy.ts      Validates deep-link gateway URLs
     native/
       voice-capture.ts       Native voice capture shim
-    services/
-      android-update-checker.ts  Android OTA update checker
     types/                   Type declaration files for module shims
     shims/                   Browser shims for Node built-ins
   vite/

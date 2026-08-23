@@ -1,7 +1,8 @@
 /**
- * Tests for FollowUpService lifecycle: a completed follow-up must never fire
- * through the task scheduler and its completion record must survive. Driven
- * by fake timers over the real TaskService tick loop with an in-memory store.
+ * Tests for FollowUpService lifecycle: completed or stopped follow-ups must
+ * never fire through the task scheduler, persisted rows must survive service
+ * teardown, and restart must install exactly one live worker. Driven by fake
+ * timers over the real TaskService tick loop with an in-memory store.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UUID } from "../types/primitives";
@@ -45,6 +46,7 @@ function makeRuntime() {
 			workers.set(worker.name, worker);
 		},
 		getTaskWorker: (name: string) => workers.get(name),
+		unregisterTaskWorker: (name: string) => workers.delete(name),
 		getServiceLoadPromise: async () => relationshipsService,
 		getEntityById: async (id: UUID) =>
 			id === ENTITY_ID ? { id, names: ["Test Contact"] } : null,
@@ -264,5 +266,96 @@ describe("FollowUpService completion lifecycle", () => {
 		expect(memories).toHaveLength(0);
 
 		await followUps.stop();
+	});
+
+	it("parks pending rows on stop and executes them exactly once after restart", async () => {
+		const { runtime, tasks, workers, memories } = makeRuntime();
+		const first = (await FollowUpService.start(runtime)) as FollowUpService;
+		service = (await TaskService.start(runtime)) as TaskService;
+		const task = await first.scheduleFollowUp(
+			ENTITY_ID,
+			new Date(T0 + 5_000),
+			"survive relationships reload",
+		);
+		const liveWorker = workers.get("follow_up");
+		expect(liveWorker).toBeDefined();
+
+		await first.stop();
+		const parkedWorker = workers.get("follow_up");
+		expect(parkedWorker).toBeDefined();
+		expect(parkedWorker).not.toBe(liveWorker);
+		expect(await parkedWorker?.shouldRun?.(runtime, task)).toBe(false);
+
+		// TaskService's orphan grace has elapsed, but the exact persisted row is
+		// retained and the stopped service cannot emit a reminder.
+		await vi.advanceTimersByTimeAsync(70_000);
+		expect(memories).toHaveLength(0);
+		expect(tasks.get(task.id as string)).toEqual(task);
+
+		// Repeated stop is a no-op and must not replace the parking worker.
+		await first.stop();
+		expect(workers.get("follow_up")).toBe(parkedWorker);
+
+		const restarted = (await FollowUpService.start(runtime)) as FollowUpService;
+		expect(workers.get("follow_up")).not.toBe(parkedWorker);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(memories).toHaveLength(1);
+		expect(tasks.has(task.id as string)).toBe(false);
+
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(memories).toHaveLength(1);
+		await restarted.stop();
+	});
+
+	it("does not remove a newer worker that replaced its owned registration", async () => {
+		const { runtime, workers } = makeRuntime();
+		const followUps = (await FollowUpService.start(runtime)) as FollowUpService;
+		const replacement: TaskWorker = {
+			name: "follow_up",
+			execute: async () => undefined,
+		};
+		runtime.registerTaskWorker(replacement);
+
+		await followUps.stop();
+		await followUps.stop();
+
+		expect(workers.get("follow_up")).toBe(replacement);
+	});
+});
+
+describe("FollowUpService suggestion completeness", () => {
+	it("returns every qualifying suggestion in priority order", async () => {
+		const contacts = Array.from({ length: 12 }, (_, index) => ({
+			entityId:
+				`00000000-0000-4000-8000-${String(index).padStart(12, "0")}` as UUID,
+			categories: [],
+		}));
+		const relationshipsService = {
+			searchContacts: async () => contacts,
+			getRelationshipInsights: async () => ({
+				needsAttention: contacts.map((contact, index) => ({
+					entity: { id: contact.entityId },
+					daysSinceContact: 20 + index,
+				})),
+			}),
+			analyzeRelationship: async () => ({ strength: 50 }),
+		};
+		const runtime = {
+			agentId: AGENT_ID,
+			getEntityById: async (id: UUID) => ({ id, names: [`Contact ${id}`] }),
+		};
+		const followUps = new FollowUpService(runtime as never);
+		(
+			followUps as unknown as {
+				relationshipsService: typeof relationshipsService;
+			}
+		).relationshipsService = relationshipsService;
+
+		const suggestions = await followUps.getFollowUpSuggestions();
+
+		expect(suggestions).toHaveLength(12);
+		expect(suggestions.map((item) => item.daysSinceLastContact)).toEqual(
+			Array.from({ length: 12 }, (_, index) => 31 - index),
+		);
 	});
 });

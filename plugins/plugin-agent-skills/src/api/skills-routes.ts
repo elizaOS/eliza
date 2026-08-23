@@ -662,11 +662,19 @@ export async function handleSkillsRoutes(
       const all = (await getCatalogSkills()).filter((skill) =>
         shouldExposeBinanceSkillRecord(skill),
       );
-      const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
-      const perPage = Math.min(
-        100,
-        Math.max(1, Number(url.searchParams.get("perPage")) || 50),
-      );
+      // `Number()` accepts "Infinity" and fractions, which reach the slice
+      // below as `start = Infinity` (an empty page reported as `"page": null`)
+      // or as fractional bounds that make consecutive pages overlap. The shared
+      // strict parser is already used elsewhere in this file.
+      const page = parseClampedInteger(url.searchParams.get("page"), {
+        min: 1,
+        fallback: 1,
+      });
+      const perPage = parseClampedInteger(url.searchParams.get("perPage"), {
+        min: 1,
+        max: 100,
+        fallback: 50,
+      });
       const sort = url.searchParams.get("sort") ?? "downloads";
       const sorted = [...all];
       if (sort === "downloads")
@@ -745,10 +753,11 @@ export async function handleSkillsRoutes(
       const { searchCatalogSkills } = await import(
         "../services/skill-catalog-client"
       );
-      const limit = Math.min(
-        100,
-        Math.max(1, Number(url.searchParams.get("limit")) || 30),
-      );
+      const limit = parseClampedInteger(url.searchParams.get("limit"), {
+        min: 1,
+        max: 100,
+        fallback: 30,
+      });
       const results = (await searchCatalogSkills(q, limit)).filter((skill) =>
         shouldExposeBinanceSkillRecord(skill),
       );
