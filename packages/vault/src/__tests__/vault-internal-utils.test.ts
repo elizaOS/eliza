@@ -36,10 +36,10 @@ describe("well-formed truncation", () => {
   });
   it("does not split surrogate pair at truncation boundary", () => {
     expect(
-      truncateWellFormed("x".repeat(199) + "🦊" + "y".repeat(10), 200),
+      truncateWellFormed(`${"x".repeat(199)}🦊${"y".repeat(10)}`, 200),
     ).toBe("x".repeat(199));
-    expect(truncateWellFormed("x".repeat(198) + "🦊", 200)).toBe(
-      "x".repeat(198) + "🦊",
+    expect(truncateWellFormed(`${"x".repeat(198)}🦊`, 200)).toBe(
+      `${"x".repeat(198)}🦊`,
     );
   });
 });
