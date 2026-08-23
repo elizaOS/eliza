@@ -94,16 +94,6 @@ export const memoryTable = pgTable(
       .where(
         sql`${table.type} = 'documents' AND ${table.metadata}->>'type' = 'document' AND ${table.metadata}->>'pinned' = 'true'`
       ),
-    index("idx_memories_document_source_search")
-      .using("gin", documentSearchTokensExpression(table.content, table.metadata))
-      .where(
-        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
-      ),
-    index("idx_memories_documents_pinned_created")
-      .on(table.createdAt, table.id)
-      .where(
-        sql`${table.type} = 'documents' AND ${table.metadata}->>'type' = 'document' AND ${table.metadata}->>'pinned' = 'true'`
-      ),
     index("idx_fragments_order").on(
       sql`((metadata->>'documentId'))`,
       sql`((metadata->>'position'))`
