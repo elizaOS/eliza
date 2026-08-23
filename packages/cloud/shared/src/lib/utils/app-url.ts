@@ -9,17 +9,59 @@
  * appropriate for the browser bundle (Vite replaces `process.env.NEXT_PUBLIC_*`
  * at build time) and Node tests.
  */
+import { ElizaError } from "@elizaos/core";
+
 interface AppUrlEnv {
   NEXT_PUBLIC_APP_URL?: unknown;
   [key: string]: unknown;
 }
 
+const DEFAULT_APP_URL = "http://localhost:3000";
+const EXPLICIT_SCHEME_PATTERN = /^([A-Za-z][A-Za-z\d+.-]*):/;
+const HTTP_SCHEME_PATTERN = /^https?:\/\//i;
+
+function invalidAppUrl(configured: string, reason: string): never {
+  const explicitScheme = EXPLICIT_SCHEME_PATTERN.exec(configured)?.[1]?.toLowerCase();
+  throw new ElizaError("NEXT_PUBLIC_APP_URL must identify a valid HTTP(S) application URL", {
+    code: "INVALID_APP_URL",
+    context: {
+      reason,
+      configuredLength: configured.length,
+      explicitScheme: explicitScheme ?? null,
+    },
+    severity: "fatal",
+  });
+}
+
 export function getAppUrl(env: AppUrlEnv = process.env): string {
   const configuredUrl =
-    typeof env.NEXT_PUBLIC_APP_URL === "string" ? env.NEXT_PUBLIC_APP_URL : undefined;
-  const url = configuredUrl || "http://localhost:3000";
-  const base = url.startsWith("http") ? url : `https://${url}`;
-  return base.replace(/\/$/, "");
+    typeof env.NEXT_PUBLIC_APP_URL === "string" ? env.NEXT_PUBLIC_APP_URL.trim() : "";
+  const value = configuredUrl || DEFAULT_APP_URL;
+  const explicitScheme = EXPLICIT_SCHEME_PATTERN.test(value);
+
+  if ((explicitScheme && !HTTP_SCHEME_PATTERN.test(value)) || value.startsWith("//")) {
+    return invalidAppUrl(value, "unsupported-or-ambiguous-scheme");
+  }
+
+  const candidate = HTTP_SCHEME_PATTERN.test(value) ? value : `https://${value}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    // error-policy:J3 Invalid operator configuration fails closed without
+    // retaining a parser error that can echo embedded credentials.
+    return invalidAppUrl(value, "malformed-url");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return invalidAppUrl(value, "unsupported-scheme");
+  }
+  if (!parsed.hostname) return invalidAppUrl(value, "missing-hostname");
+  if (parsed.username || parsed.password) {
+    return invalidAppUrl(value, "embedded-credentials");
+  }
+
+  return parsed.href.replace(/\/$/, "");
 }
 
 export function getAppHost(env: AppUrlEnv = process.env): string {
