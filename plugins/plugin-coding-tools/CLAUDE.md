@@ -12,7 +12,7 @@ Adds filesystem operations, shell command execution, and git worktree management
 
 - **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
 - **READ / WRITE / EDIT** — strict, operation-specific schemas for direct coding loops. They delegate to the same FILE handlers and preserve its sandbox, stale-file, secret, and size checks.
-- **SHELL** — `action=run` executes a command via `/bin/bash -c` and returns the complete accepted redacted stdout/stderr to the planner; output above the explicit 1,000,000-character capture ceiling is rejected with no partial result. `read_output_artifact` remains available for scoped artifacts retained by earlier runtimes. `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
+- **SHELL** — `action=run` streams host stdout/stderr independently through encrypted-at-rest capture, publishes the complete redacted result as an immutable private owner/conversation-scoped artifact, and returns a bounded head/tail model projection plus the opaque handle. `read_output_artifact` reads bounded pages with stable offsets and revision. Full-string capability-router or sandbox results require exact bounded-capture attestation; otherwise SHELL fails with typed irreversible source loss and exposes no returned prefix. `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
 ### Providers
@@ -123,14 +123,17 @@ canonical SHELL action above continues to use the `CODING_TOOLS_*` settings.
 | `SHELL_ALLOW_BACKGROUND` | `true` | Set to exact `false` to disable compatibility-service background/yield behavior. |
 | `SHELL_FORBIDDEN_COMMANDS` | — | Comma-separated additions to the built-in forbidden-command set. |
 
-Foreground SHELL results accepted by the one-million-character complete-capture
-boundary are returned in full after redaction. A larger result fails explicitly
-and exposes no partial prefix. The action never substitutes a preview, summary,
-or optional artifact handle for model-facing stdout/stderr. For compatibility,
-`action=read_output_artifact` can still retrieve bounded pages from an unexpired
-opaque artifact issued by an earlier runtime, but only when its persisted agent
-and conversation scope match the requesting turn; state-root paths remain
-private.
+Foreground host SHELL capture has no one-million-character kill boundary. Raw
+streams are independently AES-GCM encrypted while the process runs, with keys
+kept only in process memory; exact runtime and pattern redaction runs before
+atomic immutable publication, so plaintext secrets are not persisted. The model
+projection is capped at 20,000 characters and explicitly reports that it is a
+projection, never source loss. `action=read_output_artifact` retrieves bounded
+pages from the unexpired opaque artifact only when its persisted agent and
+conversation scope match the requesting turn; state-root paths remain private.
+The signed manifest records raw source and stored redacted byte/character/line
+counts, exit state, expiry, and content revision. Unattested upstream full-string
+backends fail as `SHELL_UPSTREAM_CAPTURE_UNVERIFIED`.
 
 Auto-enable keys (in agent `config.features`):
 - `config.features.codingTools` (canonical) — `true` or `{ enabled: true }`.
