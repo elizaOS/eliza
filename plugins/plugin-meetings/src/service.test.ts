@@ -1062,7 +1062,10 @@ describe("MeetingService — roster, transcripts, listing", () => {
       const listed = service.listSessions();
       // Both sessions really do tie, so only the id tiebreak can order them.
       expect(listed.map((s) => s.requestedAt)).toEqual([fixedNow, fixedNow]);
-      expect(listed.map((s) => s.id)).toEqual([LOW_SESSION_ID, HIGH_SESSION_ID]);
+      expect(listed.map((s) => s.id)).toEqual([
+        LOW_SESSION_ID,
+        HIGH_SESSION_ID,
+      ]);
     } finally {
       restore();
     }
@@ -1088,9 +1091,7 @@ describe("MeetingService — roster, transcripts, listing", () => {
       });
 
       const listed = service.listSessions();
-      expect(
-        listed.find((s) => s.id === broken.id)?.requestedAt,
-      ).toBeNaN();
+      expect(listed.find((s) => s.id === broken.id)?.requestedAt).toBeNaN();
       // The NaN timestamp must not poison the comparator: the session with a
       // real timestamp still sorts ahead of it.
       expect(listed.map((s) => s.id)).toEqual([healthy.id, broken.id]);

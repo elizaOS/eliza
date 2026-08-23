@@ -1596,12 +1596,14 @@ export class RelationshipsService extends Service {
 		for (const i of [...primary.interactions, ...secondary.interactions]) {
 			interactionMap.set(i.id, i);
 		}
-		const mergedInteractions = Array.from(interactionMap.values()).sort((a, b) => {
-			const aSafe = safeSortNumber(new Date(a.occurredAt).getTime());
-			const bSafe = safeSortNumber(new Date(b.occurredAt).getTime());
-			if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
-			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
-		});
+		const mergedInteractions = Array.from(interactionMap.values()).sort(
+			(a, b) => {
+				const aSafe = safeSortNumber(new Date(a.occurredAt).getTime());
+				const bSafe = safeSortNumber(new Date(b.occurredAt).getTime());
+				if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
+				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+			},
+		);
 		const mergedCategories = Array.from(
 			new Set([...primary.categories, ...secondary.categories]),
 		);
@@ -1762,7 +1764,9 @@ export class RelationshipsService extends Service {
 			const aSafe = safeSortNumber(a.daysSinceInteraction);
 			const bSafe = safeSortNumber(b.daysSinceInteraction);
 			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
-			return String(a.contact.entityId).localeCompare(String(b.contact.entityId));
+			return String(a.contact.entityId).localeCompare(
+				String(b.contact.entityId),
+			);
 		});
 		return results;
 	}

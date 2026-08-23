@@ -166,10 +166,7 @@ export interface HeadscaleUser {
 // Client
 // ---------------------------------------------------------------------------
 
-export function compareHeadscaleIds(
-  a: { id: string },
-  b: { id: string },
-): number {
+export function compareHeadscaleIds(a: { id: string }, b: { id: string }): number {
   const bNum = Number((b as any).id);
   const aNum = Number((a as any).id);
   const bVal = Number.isFinite(bNum) ? bNum : 0;

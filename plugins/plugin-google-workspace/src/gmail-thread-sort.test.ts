@@ -6,14 +6,10 @@
  */
 import { describe, expect, it } from "vitest";
 import { compareUnrespondedThreads, sortGmailMessages } from "./gmail.js";
-import type {
-  GoogleGmailMessageSummary,
-  GoogleGmailUnrespondedThread,
-} from "./types.js";
+import type { GoogleGmailMessageSummary, GoogleGmailUnrespondedThread } from "./types.js";
 
 function makeMessage(
-  overrides: Partial<GoogleGmailMessageSummary> &
-    Pick<GoogleGmailMessageSummary, "externalId">,
+  overrides: Partial<GoogleGmailMessageSummary> & Pick<GoogleGmailMessageSummary, "externalId">
 ): GoogleGmailMessageSummary {
   return {
     threadId: "thread-1",
@@ -37,10 +33,7 @@ function makeMessage(
   };
 }
 
-function makeThread(
-  threadId: string,
-  daysWaiting: number,
-): GoogleGmailUnrespondedThread {
+function makeThread(threadId: string, daysWaiting: number): GoogleGmailUnrespondedThread {
   return {
     threadId,
     externalMessageId: `${threadId}-message`,
@@ -78,10 +71,7 @@ describe("compareUnrespondedThreads", () => {
 
     threads.sort(compareUnrespondedThreads);
 
-    expect(threads.map((thread) => thread.threadId)).toEqual([
-      "a-thread",
-      "z-thread",
-    ]);
+    expect(threads.map((thread) => thread.threadId)).toEqual(["a-thread", "z-thread"]);
   });
 
   it("does not throw when threads tie, which is the common whole-day case", () => {
@@ -127,9 +117,6 @@ describe("sortGmailMessages", () => {
       }),
     ]);
 
-    expect(sorted.map((message) => message.externalId)).toEqual([
-      "msg-a",
-      "msg-z",
-    ]);
+    expect(sorted.map((message) => message.externalId)).toEqual(["msg-a", "msg-z"]);
   });
 });

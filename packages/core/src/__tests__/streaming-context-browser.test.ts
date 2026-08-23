@@ -4,11 +4,11 @@
  * `run`/`active` surface — no mocks, no AsyncLocalStorage, no I/O.
  */
 import { describe, expect, it } from "vitest";
-import type { StreamingContext } from "../streaming-context.ts";
 import {
 	createBrowserStreamingContextManager,
 	StackContextManager,
 } from "../streaming-context.browser.ts";
+import type { StreamingContext } from "../streaming-context.ts";
 
 const ctx = (messageId: string): StreamingContext => ({ messageId });
 

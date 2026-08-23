@@ -146,7 +146,6 @@ describe("createDynamicSkillProvider instructions well-formed Unicode", () => {
     expect(isWellFormed(result.text)).toBe(true);
     expect(result.text).toContain(longBody);
   });
-
 });
 
 describe("dynamic skill ranking determinism", () => {
@@ -155,7 +154,11 @@ describe("dynamic skill ranking determinism", () => {
   // first, which is the order a comparator returning 0 for a tie preserves.
   const sharedDescription = "Use when converting spreadsheets into charts.";
   const tiedSkills = [
-    { slug: "zeta-runner", name: "Zeta Runner", description: sharedDescription },
+    {
+      slug: "zeta-runner",
+      name: "Zeta Runner",
+      description: sharedDescription,
+    },
     {
       slug: "alpha-runner",
       name: "Alpha Runner",
