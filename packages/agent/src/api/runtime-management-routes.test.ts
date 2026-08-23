@@ -46,6 +46,24 @@ afterEach(() => {
 });
 
 describe("POST /api/runtime/manage", () => {
+  it.each(["/api/runtime/manage/claim", "/api/runtime/manage/result"])(
+    "rejects unauthenticated shell callbacks at %s",
+    async (pathname) => {
+      const request = makeContext("POST", pathname, {
+        requestId: "request-1",
+        claimToken: "claim-1",
+      });
+      request.ctx.callerAuthorization = { ok: false, role: "GUEST" };
+      await handleRuntimeManagementRoutes(request.ctx);
+      expect(request.error).toHaveBeenCalledWith(
+        expect.anything(),
+        "Runtime management authentication required.",
+        401,
+      );
+      expect(request.json).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects authenticated non-owner callers before shell delivery", async () => {
     const request = makeContext("POST", "/api/runtime/manage", { op: "list" });
     request.ctx.callerAuthorization = { ok: true, role: "USER" };

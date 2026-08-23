@@ -24,6 +24,7 @@ import {
   type StreamEventEnvelope,
 } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { fetchWithCsrf } from "../api/csrf-client";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { dispatchCompletedActionNavigation } from "../completed-action-navigation";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
@@ -639,7 +640,7 @@ export function bindReadyPhase(
         typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
 
       void (async () => {
-        const claimResponse = await fetch(
+        const claimResponse = await fetchWithCsrf(
           `${originBase}/api/runtime/manage/claim`,
           {
             method: "POST",
@@ -675,7 +676,7 @@ export function bindReadyPhase(
                 : "The runtime operation failed before it could start.",
           };
         }
-        const resultResponse = await fetch(
+        const resultResponse = await fetchWithCsrf(
           `${originBase}/api/runtime/manage/result`,
           {
             method: "POST",

@@ -88,6 +88,12 @@ describe("RUNTIMES action", () => {
 		"Can you confirm the runtime status?",
 		"I don't confirm removing it.",
 		"No, do not proceed.",
+		"No, don't do it",
+		"Yes, but do not proceed",
+		"I did not confirm",
+		"Never revoke it",
+		"Confirm after I check",
+		"Wait, yes",
 	])("rejects non-authorizing confirmation language: %s", async (text) => {
 		const manageRuntime = vi.fn();
 		const action = createRuntimeManagementAction({ manageRuntime });
@@ -105,6 +111,49 @@ describe("RUNTIMES action", () => {
 		expect(result?.success).toBe(false);
 		expect(manageRuntime).not.toHaveBeenCalled();
 	});
+
+	it.each([
+		"confirm the removal",
+		"yes, confirm remove",
+		"proceed with the removal",
+	])("accepts exact operation-bound confirmation: %s", async (text) => {
+		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+			ok: true,
+			op: request.op,
+		}));
+		const action = createRuntimeManagementAction({ manageRuntime });
+		const result = await action.handler(
+			runtime,
+			{ content: { text } } as Memory,
+			undefined,
+			{ op: "remove", runtimeId: "runtime-1", confirm: "true" },
+			callback(),
+		);
+		expect(result?.success).toBe(true);
+		expect(manageRuntime).toHaveBeenCalledTimes(1);
+	});
+
+	it.each(["yes", "Yes, please", "confirm", "proceed", "go ahead", "do it"])(
+		"rejects generic approval that is not bound to the requested operation: %s",
+		async (text) => {
+			const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+				ok: true,
+				op: request.op,
+			}));
+			const action = createRuntimeManagementAction({ manageRuntime });
+			const result = await action.handler(
+				runtime,
+				{ content: { text } } as Memory,
+				undefined,
+				{ op: "remove", runtimeId: "runtime-1", confirm: "true" },
+				callback(),
+			);
+			expect(result?.values).toEqual(
+				expect.objectContaining({ awaitingConfirmation: true }),
+			);
+			expect(manageRuntime).not.toHaveBeenCalled();
+		},
+	);
 
 	it("dispatches a confirmed pairing and narrates the one-use receipt", async () => {
 		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({

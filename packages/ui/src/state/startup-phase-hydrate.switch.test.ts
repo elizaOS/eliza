@@ -8,6 +8,7 @@
 // fetch (the result callback transport) are doubled.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setBootConfig } from "../config/boot-config";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { addAgentProfile } from "./agent-profiles";
 import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
@@ -268,6 +269,9 @@ describe("bindReadyPhase shell:manage-runtime handler", () => {
     clientMock.handlers.clear();
     executeRuntimeManagementCommand.mockClear();
     setActionNotice.mockClear();
+    setBootConfig({ branding: {}, apiToken: "runtime-owner-token" });
+    // biome-ignore lint/suspicious/noDocumentCookie: jsdom has no Cookie Store API.
+    document.cookie = "eliza_csrf=runtime-csrf-token; path=/";
   });
 
   it("claims before executing and reports the exact result", async () => {
@@ -296,6 +300,12 @@ describe("bindReadyPhase shell:manage-runtime handler", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       "/api/runtime/manage/claim",
     );
+    for (const [, init] of fetchMock.mock.calls as [string, RequestInit][]) {
+      const headers = new Headers(init.headers);
+      expect(headers.get("authorization")).toBe("Bearer runtime-owner-token");
+      expect(headers.get("x-eliza-csrf")).toBe("runtime-csrf-token");
+      expect(init.credentials).toBe("include");
+    }
     expect(executeRuntimeManagementCommand).toHaveBeenCalledWith({
       op: "inspect_ssh",
       target: "user@host",
@@ -329,6 +339,26 @@ describe("bindReadyPhase shell:manage-runtime handler", () => {
       request: { op: "revoke", targetId: "host:mac" },
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(executeRuntimeManagementCommand).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("does not execute when the authenticated claim is rejected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 401 })),
+    );
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+    clientMock.handlers.get("shell:manage-runtime")?.({
+      requestId: "request-auth-rejected",
+      request: { op: "remove", runtimeId: "vps-1" },
+    });
+    await vi.waitFor(() =>
+      expect(setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("could not claim"),
+        "error",
+      ),
+    );
     expect(executeRuntimeManagementCommand).not.toHaveBeenCalled();
     cleanup();
   });
