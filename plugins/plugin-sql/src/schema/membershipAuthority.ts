@@ -78,7 +78,7 @@ export const membershipAuthorityScopeTable = pgTable(
     ),
     check(
       "membership_authority_scope_current_check",
-      sql`${table.health} <> 'current' OR (${table.validUntil} IS NOT NULL AND ${table.publisherInstanceId} IS NOT NULL AND ${table.sourceCursor} IS NOT NULL)`
+      sql`${table.health} <> 'current' OR (${table.validUntil} IS NOT NULL AND ${table.validUntil} > ${table.observedAt} AND ${table.publisherInstanceId} IS NOT NULL AND ${table.sourceVersion} >= 0 AND ${table.sourceCursor} IS NOT NULL)`
     ),
   ]
 );
@@ -140,12 +140,16 @@ export const membershipAuthorityTable = pgTable(
       sql`${table.reason} IN ('joined','reconciled_present','permission_restored','left','kicked','banned','permission_lost','account_removed','reconciled_absent')`
     ),
     check(
+      "membership_authority_state_reason_check",
+      sql`(${table.state} = 'active' AND ${table.reason} IN ('joined','reconciled_present','permission_restored')) OR (${table.state} = 'revoked' AND ${table.reason} IN ('left','kicked','banned','permission_lost','account_removed','reconciled_absent'))`
+    ),
+    check(
       "membership_authority_evidence_check",
       sql`${table.evidenceMode} IN ('complete_snapshot','ordered_delta','point_query') AND ${table.publisherGeneration} >= 0`
     ),
     check(
       "membership_authority_version_check",
-      sql`${table.generation} > 0 AND ${table.sourceVersion} >= 0`
+      sql`${table.generation} > 0 AND ${table.sourceVersion} >= 0 AND ${table.validUntil} > ${table.observedAt}`
     ),
   ]
 );

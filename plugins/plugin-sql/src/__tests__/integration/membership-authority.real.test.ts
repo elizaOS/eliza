@@ -383,6 +383,30 @@ describe("SqlMembershipService real authority", () => {
     expect(await db.select().from(membershipAuthorityTable)).toHaveLength(0);
   });
 
+  it("rejects contradictory membership state at the database boundary", async () => {
+    await register();
+    await expect(
+      db.insert(membershipAuthorityTable).values({
+        ...scope,
+        canonicalPrincipalId: principalId,
+        state: "active",
+        reason: "left",
+        roles: ["member"],
+        permissionSnapshot: { canRead: true },
+        runtimeWorldId: null,
+        runtimeRoomId: null,
+        runtimeEntityId: principalId,
+        ...publisher,
+        generation: 1,
+        sourceVersion: 0,
+        sourceCursor: "forged",
+        observedAt: new Date(nowMs),
+        validUntil: new Date(nowMs + 60_000),
+      })
+    ).rejects.toThrow();
+    expect(await db.select().from(membershipAuthorityTable)).toHaveLength(0);
+  });
+
   it("supports bounded point-query proof without claiming connector or document integration", async () => {
     const pointPublisher = {
       publisherInstanceId: "point-query",

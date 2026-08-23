@@ -183,7 +183,9 @@ function mapMember(row: MembershipRow): MembershipRecord {
   if (
     !MEMBERSHIP_STATES.includes(row.state as MembershipRecord["state"]) ||
     !MEMBERSHIP_REASONS.includes(row.reason as MembershipRecord["reason"]) ||
-    !MEMBERSHIP_EVIDENCE_MODES.includes(row.evidenceMode as MembershipEvidenceMode)
+    !MEMBERSHIP_EVIDENCE_MODES.includes(row.evidenceMode as MembershipEvidenceMode) ||
+    (row.state === "active") !== ACTIVE_REASONS.has(row.reason) ||
+    row.validUntil <= row.observedAt
   )
     fail("MEMBERSHIP_PERSISTED_STATE_INVALID", "Persisted membership enum is invalid.");
   assertRoles(row.roles);

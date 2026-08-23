@@ -35,6 +35,7 @@ describe("canonical membership authority schema", () => {
       expect.arrayContaining([
         "membership_authority_state_check",
         "membership_authority_reason_check",
+        "membership_authority_state_reason_check",
         "membership_authority_evidence_check",
         "membership_authority_version_check",
       ])
