@@ -1,29 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  existsSync: vi.fn(),
+  existsSync: vi.fn((_path?: unknown) => false),
   join: vi.fn((...p: string[]) => p.join("/")),
-  dirname: vi.fn(() => "/views"),
-  fileURLToPath: vi.fn(() => "/views/launch-dynamic-view.ts"),
+  dirname: vi.fn((_path?: unknown) => "/views"),
+  fileURLToPath: vi.fn((_url?: unknown) => "/views/launch-dynamic-view.ts"),
   pathToFileURL: vi.fn((p: string) => ({ href: `file://${p}` })),
 }));
 
 vi.mock("node:fs", () => ({
-  existsSync: (...a: unknown[]) => mocks.existsSync(...a),
+  existsSync: (path: unknown) => mocks.existsSync(path),
 }));
 vi.mock("node:path", () => ({
-  join: (...a: unknown[]) => mocks.join(...(a as string[])),
-  dirname: (...a: unknown[]) => mocks.dirname(...a),
+  join: (...paths: string[]) => mocks.join(...paths),
+  dirname: (path: string) => mocks.dirname(path),
 }));
 vi.mock("node:url", () => ({
-  fileURLToPath: (...a: unknown[]) => mocks.fileURLToPath(...a),
-  pathToFileURL: (...a: unknown[]) => mocks.pathToFileURL(...a),
+  fileURLToPath: (url: string | URL) => mocks.fileURLToPath(url),
+  pathToFileURL: (path: string) => mocks.pathToFileURL(path),
 }));
 
 import {
   createLaunchDiagnosticsViewManifest,
   LAUNCH_DIAGNOSTICS_VIEW_ID,
-} from "./launch-dynamic-view.ts";
+} from "../launch-dynamic-view.ts";
 
 describe("createLaunchDiagnosticsViewManifest", () => {
   it("builds the launch diagnostics manifest with resolved entrypoint", () => {
