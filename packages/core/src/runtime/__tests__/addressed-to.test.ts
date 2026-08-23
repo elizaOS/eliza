@@ -10,6 +10,7 @@
  * and its entity lookup are vi-mocked; no model or database.
  */
 import { describe, expect, it, vi } from "vitest";
+import { hardenIncomingUserMessage } from "../../security/incoming-message-security.ts";
 import type { Entity, IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import {
 	classifyLeadingVocative,
@@ -633,5 +634,67 @@ describe("classifyLeadingVocative (identity notice classifier)", () => {
 				})
 			).kind,
 		).toBe("none");
+	});
+});
+
+describe("envelope-wrapped (external/bot-authored) messages", () => {
+	// hardenIncomingUserMessage replaces content.text with the security
+	// envelope; the ^-anchored vocative shapes must read the retained payload
+	// (live 2026-08-23: every webhook-authored "hey eliza" classified none
+	// because the text began "SECURITY NOTICE:").
+	const room = (): Partial<IAgentRuntime> =>
+		({
+			getEntitiesForRoom: vi.fn(async () => [
+				{ id: AGENT_ID, names: ["remilio nubilio"] },
+				{ id: OTHER_BOT, names: ["Eliza"] },
+				{ id: SENDER_ID, names: ["nubs"] },
+			]),
+		}) as unknown as Partial<IAgentRuntime>;
+	const nubilio = (): IAgentRuntime =>
+		makeRuntime({
+			character: { name: "remilio nubilio" },
+			...room(),
+		} as Partial<IAgentRuntime>);
+	const enveloped = (text: string): Memory => {
+		const memory = makeMessage(undefined, undefined, text);
+		hardenIncomingUserMessage(memory);
+		expect(memory.content.text).toContain("SECURITY NOTICE");
+		return memory;
+	};
+
+	it("classifies the retained payload, not the envelope", async () => {
+		// This room HAS an Eliza — resolving her proves the classifier read
+		// the inner payload (the envelope contains no participant names).
+		expect(
+			await classifyLeadingVocative({
+				runtime: nubilio(),
+				message: enveloped("hey eliza"),
+			}),
+		).toEqual({ kind: "participant", name: "eliza" });
+	});
+
+	it("wrapped vocative of an unknown name classifies unresolved", async () => {
+		const noEliza = makeRuntime({
+			character: { name: "remilio nubilio" },
+			getEntitiesForRoom: vi.fn(async () => [
+				{ id: AGENT_ID, names: ["remilio nubilio"] },
+				{ id: SENDER_ID, names: ["nubs"] },
+			]),
+		} as unknown as Partial<IAgentRuntime>);
+		expect(
+			await classifyLeadingVocative({
+				runtime: noEliza,
+				message: enveloped("hey eliza"),
+			}),
+		).toEqual({ kind: "unresolved", name: "eliza" });
+	});
+
+	it("suppression matcher gates a wrapped vocative of a real participant", async () => {
+		expect(
+			await messageVocativelyAddressesOtherParticipant({
+				runtime: nubilio(),
+				message: enveloped("hey Eliza can you take this"),
+			}),
+		).toBe(true);
 	});
 });

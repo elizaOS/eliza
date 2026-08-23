@@ -13,6 +13,7 @@ import { filterByContextGate } from "../../runtime/context-gates.ts";
 import type { IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import { searchMessagesAction } from "../messaging/triage/actions/searchMessages.ts";
 import {
+	CHANNEL_RECAP_DELIVERABLE_CHARS,
 	CHANNEL_RECAP_MAX_FETCH,
 	channelRecapAction,
 } from "./actions/channel-recap.ts";
@@ -349,8 +350,11 @@ describe("CHANNEL_RECAP complete transcript and offset paging", () => {
 	const ROOM = "00000000-0000-4000-8000-00000000f1f1" as UUID;
 
 	it("serves the entire requested range even when it is large", async () => {
+		// Large but deliverable: every requested message renders complete. An
+		// UNdeliverable range is rejected outright (see the deliverable-size
+		// describe below) — never sliced.
 		const rows = Array.from({ length: 20 }, (_, i) =>
-			makeMessage(ROOM, 1_000 + i, `M${i}-${"x".repeat(9_000)}`),
+			makeMessage(ROOM, 1_000 + i, `M${i}-${"x".repeat(2_000)}`),
 		);
 		const { runtime } = makeRuntime({ [ROOM]: rows });
 		const result = (await channelRecapAction.handler(
@@ -363,7 +367,7 @@ describe("CHANNEL_RECAP complete transcript and offset paging", () => {
 		const scope = (result.data as { scope: Record<string, unknown> }).scope;
 		expect(scope.renderedCount).toBe(20);
 		for (let i = 0; i < 20; i++) {
-			expect(result.text).toContain(`M${i}-${"x".repeat(9_000)}`);
+			expect(result.text).toContain(`M${i}-${"x".repeat(2_000)}`);
 		}
 	});
 
@@ -387,7 +391,26 @@ describe("CHANNEL_RECAP complete transcript and offset paging", () => {
 		expect(result.text).toContain("messages 5–8 back");
 	});
 
-	it("serves every requested message complete without a text-fit slice", async () => {
+	it("rejects an oversized single message before dispatch without slicing it", async () => {
+		const giant = "G".repeat(65_000);
+		const rows = [makeMessage(ROOM, 2_000, giant)];
+		const { runtime } = makeRuntime({ [ROOM]: rows });
+		const result = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 1 } },
+		)) as ActionResult;
+		expect(result.success).toBe(false);
+		const data = result.data as Record<string, unknown>;
+		expect(data.error).toBe("CHANNEL_RECAP_RANGE_NOT_DELIVERABLE");
+		expect(data.deliverableCount).toBeNull();
+		expect(data.nextOffset).toBe(1);
+		expect(result.text).not.toContain(giant);
+		expect(result.text).toContain("no complete newest message fits");
+	});
+
+	it("skips a newest giant message instead of proposing an undeliverable count", async () => {
 		const giant = "G".repeat(65_000);
 		const rows = [
 			makeMessage(ROOM, 1_000, "older small"),
@@ -400,10 +423,78 @@ describe("CHANNEL_RECAP complete transcript and offset paging", () => {
 			undefined,
 			{ parameters: { count: 2 } },
 		)) as ActionResult;
+		expect(result.success).toBe(false);
+		expect((result.data as Record<string, unknown>).error).toBe(
+			"CHANNEL_RECAP_RANGE_NOT_DELIVERABLE",
+		);
+		expect(
+			(result.data as Record<string, unknown>).deliverableCount,
+		).toBeNull();
+		expect((result.data as Record<string, unknown>).nextOffset).toBe(1);
+		expect(result.text).not.toContain(giant);
+		expect(result.text).not.toContain("older small");
+
+		const retry = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 1, offset: 1 } },
+		)) as ActionResult;
+		expect(retry.success).toBe(true);
+		expect(retry.text).toContain("older small");
+		expect(retry.text).not.toContain(giant);
+	});
+});
+
+describe("CHANNEL_RECAP deliverable-size rejection", () => {
+	const ROOM = "00000000-0000-4000-8000-0000000000d1" as UUID;
+
+	it("rejects an over-size range with an actionable count and no partial payload", async () => {
+		// Live 2026-08-23: a complete 500-message transcript rendered ~202K
+		// tokens against a 131K-token provider limit and killed the turn.
+		const rows = Array.from({ length: 30 }, (_, i) =>
+			makeMessage(ROOM, 1_000 + i, `M${i}-${"x".repeat(4_000)}`),
+		);
+		const { runtime } = makeRuntime({ [ROOM]: rows });
+		const result = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 30 } },
+		)) as ActionResult;
+		expect(result.success).toBe(false);
+		const data = result.data as Record<string, unknown>;
+		expect(data.error).toBe("CHANNEL_RECAP_RANGE_NOT_DELIVERABLE");
+		// No transcript content leaks into the rejection.
+		expect(result.text).not.toContain("xxxx");
+		const suggested = data.deliverableCount as number;
+		expect(suggested).toBeGreaterThan(0);
+		expect(suggested).toBeLessThan(30);
+		expect(result.text).toContain(`at most ${suggested}`);
+
+		const retry = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: suggested } },
+		)) as ActionResult;
+		expect(retry.success).toBe(true);
+		expect(retry.text.length).toBeLessThan(CHANNEL_RECAP_DELIVERABLE_CHARS);
+	});
+
+	it("serves a range that fits, complete", async () => {
+		const rows = Array.from({ length: 5 }, (_, i) =>
+			makeMessage(ROOM, 2_000 + i, `fits-${i}`),
+		);
+		const { runtime } = makeRuntime({ [ROOM]: rows });
+		const result = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 5 } },
+		)) as ActionResult;
 		expect(result.success).toBe(true);
-		expect(result.text).toContain(giant);
-		const scope = (result.data as { scope: Record<string, unknown> }).scope;
-		expect(scope.renderedCount).toBe(2);
-		expect(result.text).toContain("older small");
+		for (let i = 0; i < 5; i++) expect(result.text).toContain(`fits-${i}`);
+		expect(result.text.length).toBeLessThan(CHANNEL_RECAP_DELIVERABLE_CHARS);
 	});
 });

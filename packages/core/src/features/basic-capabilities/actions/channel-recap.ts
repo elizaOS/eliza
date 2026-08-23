@@ -46,6 +46,18 @@ export const CHANNEL_RECAP_DEFAULT_COUNT = 50;
  */
 export const CHANNEL_RECAP_MAX_FETCH = 500;
 
+/**
+ * Deliverable-size bound on the rendered transcript, in characters. The row
+ * bound above cannot express this: 500 short messages fit any model window
+ * while 500 long ones do not (live 2026-08-23: a complete 500-message
+ * transcript rendered ~202K tokens against a 131K-token provider limit and
+ * killed the turn, so the caller received nothing at all). A transcript that
+ * cannot be delivered is not a completeness win, so an over-size range is
+ * REJECTED before dispatch with an actionable count — never sliced, never
+ * partially served.
+ */
+export const CHANNEL_RECAP_DELIVERABLE_CHARS = 60_000;
+
 function resolveRequestedCount(options?: HandlerOptions): number | undefined {
 	const raw =
 		options?.parameters && typeof options.parameters === "object"
@@ -241,6 +253,48 @@ export const channelRecapAction: Action = {
 			dialogue,
 		);
 		const transcript = formatMessages({ messages: dialogue, entities });
+		if (transcript.length > CHANNEL_RECAP_DELIVERABLE_CHARS) {
+			// Find the largest newest-message range that actually fits by rendering
+			// and measuring each binary-search candidate through the same formatter
+			// and bound. A proportional estimate is unsafe when message sizes are
+			// uneven: one giant newest message can make even count=1 undeliverable.
+			let low = 1;
+			let high = dialogue.length - 1;
+			let deliverableCount: number | undefined;
+			while (low <= high) {
+				const candidateCount = Math.floor((low + high) / 2);
+				const candidateTranscript = formatMessages({
+					messages: dialogue.slice(0, candidateCount),
+					entities,
+				});
+				if (candidateTranscript.length <= CHANNEL_RECAP_DELIVERABLE_CHARS) {
+					deliverableCount = candidateCount;
+					low = candidateCount + 1;
+				} else {
+					high = candidateCount - 1;
+				}
+			}
+			const nextOffset =
+				offset + (deliverableCount === undefined ? 1 : deliverableCount);
+			const guidance =
+				deliverableCount === undefined
+					? `no complete newest message fits the bound; skip that oversized message and retry with offset=${nextOffset}`
+					: `request at most ${deliverableCount} message(s), or page older history with offset=${nextOffset}`;
+			return {
+				success: false,
+				text: `CHANNEL_RECAP range renders ${transcript.length} characters, over the ${CHANNEL_RECAP_DELIVERABLE_CHARS}-character deliverable bound for one call; ${guidance}.`,
+				values: { success: false },
+				data: {
+					actionName: "CHANNEL_RECAP",
+					error: "CHANNEL_RECAP_RANGE_NOT_DELIVERABLE",
+					roomId,
+					renderedChars: transcript.length,
+					deliverableChars: CHANNEL_RECAP_DELIVERABLE_CHARS,
+					deliverableCount: deliverableCount ?? null,
+					nextOffset,
+				},
+			};
+		}
 
 		// Store-exhaustion is measured against the full fetch depth
 		// (count + offset): with a nonzero offset the store can satisfy
