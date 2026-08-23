@@ -9,6 +9,36 @@ import { dirname } from "node:path";
 
 export const LIVENESS_DIAGNOSTIC_ARTIFACT_SCHEMA =
   "elizaos.cloud.liveness-failure-diagnostics/v1";
+export const LIVENESS_DIAGNOSTIC_ARTIFACT_FIELDS = Object.freeze([
+  "originalErrorName",
+  "chatSendAttemptDelta",
+  "logicalChatSendDelta",
+  "unidentifiedChatSendDelta",
+  "namedWarmingResponseDelta",
+  "successfulChatResponseDelta",
+  "clientErrorChatResponseDelta",
+  "serverErrorChatResponseDelta",
+  "otherChatResponseDelta",
+  "retryObservationAvailable",
+  "retryChipEverObserved",
+  "domSnapshotAvailable",
+  "draftCleared",
+  "newUserRowCount",
+  "newAssistantRowCount",
+  "failureRowPresent",
+  "retryRowPresent",
+  "interruptedRowPresent",
+  "widgetOnlyReplyRowPresent",
+  "threadLinesAvailable",
+  "anchorUserPresent",
+  "assistantRowPresent",
+  "assistantFailurePresent",
+  "assistantRetryPresent",
+  "assistantInterrupted",
+  "assistantHasMessageText",
+  "assistantPhase",
+  "assistantHasText",
+]);
 export const LIVENESS_DIAGNOSTIC_WRITE_FAILURE_ANNOTATION = Object.freeze({
   type: "privacy-safe-liveness-diagnostic-artifact",
   description: "write-failed",
@@ -32,6 +62,18 @@ export async function writePrivacySafeLivenessDiagnostic({
   writeFileFn = writeFile,
 }) {
   try {
+    const privacySafeRecord = {};
+    for (const field of LIVENESS_DIAGNOSTIC_ARTIFACT_FIELDS) {
+      const value = diagnosticRecord[field];
+      if (
+        value === null ||
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        privacySafeRecord[field] = value;
+      }
+    }
     await mkdirFn(dirname(diagnosticPath), {
       recursive: true,
       mode: 0o700,
@@ -40,7 +82,7 @@ export async function writePrivacySafeLivenessDiagnostic({
       diagnosticPath,
       `${JSON.stringify(
         {
-          ...diagnosticRecord,
+          ...privacySafeRecord,
           schema: LIVENESS_DIAGNOSTIC_ARTIFACT_SCHEMA,
         },
         null,
