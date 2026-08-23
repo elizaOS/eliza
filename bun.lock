@@ -1099,6 +1099,19 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/synthetic-world": {
+      "name": "@elizaos/synthetic-world",
+      "version": "0.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@elizaos/cloud-test-mocks": "workspace:*",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "bun-types": "*",
+      },
+    },
     "packages/test": {
       "name": "@elizaos/test-corpus",
       "version": "0.0.0",
@@ -4331,6 +4344,8 @@
     "@elizaos/shared": ["@elizaos/shared@workspace:packages/shared"],
 
     "@elizaos/skills": ["@elizaos/skills@workspace:packages/skills"],
+
+    "@elizaos/synthetic-world": ["@elizaos/synthetic-world@workspace:packages/synthetic-world"],
 
     "@elizaos/test-corpus": ["@elizaos/test-corpus@workspace:packages/test"],
 
