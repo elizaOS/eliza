@@ -182,4 +182,25 @@ describe("globHandler — read-only query stays silent", () => {
     expect(result.success).toBe(true);
     expect(callback).not.toHaveBeenCalled();
   });
+
+  it("sorts file candidates safely when mtimeMs contains NaN", () => {
+    const filtered = [
+      { filePath: "file-nan.ts", mtimeMs: NaN },
+      { filePath: "file-recent.ts", mtimeMs: 2000 },
+    ];
+    filtered.sort((a, b) => {
+      const bMtime =
+        typeof b.mtimeMs === "number" && Number.isFinite(b.mtimeMs)
+          ? b.mtimeMs
+          : 0;
+      const aMtime =
+        typeof a.mtimeMs === "number" && Number.isFinite(a.mtimeMs)
+          ? a.mtimeMs
+          : 0;
+      return bMtime - aMtime || a.filePath.localeCompare(b.filePath);
+    });
+
+    expect(filtered[0]?.filePath).toBe("file-recent.ts");
+    expect(filtered[1]?.filePath).toBe("file-nan.ts");
+  });
 });
