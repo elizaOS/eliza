@@ -462,7 +462,11 @@ export async function recommendSkillsForTask(
       const score = applyContextBoost(baseScore, candidate, contextTokens);
       return { candidate, score };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      const aScore = Number.isFinite(a.score) ? a.score : 0;
+      const bScore = Number.isFinite(b.score) ? b.score : 0;
+      return bScore - aScore;
+    });
 
   if (scoredCandidates.every((entry) => entry.score === 0)) {
     log.debug(`${LOG_PREFIX} no keyword overlap for task; skipping LLM pass`);
