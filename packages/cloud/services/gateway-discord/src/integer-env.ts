@@ -6,7 +6,7 @@
  * question: it stops at the first non-digit, so "3600junk" parses to 3600 and
  * silently becomes configuration nobody set.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 
 /** Build the fatal configuration error shared by lexical and range checks. */
 export function invalidIntegerEnvError(

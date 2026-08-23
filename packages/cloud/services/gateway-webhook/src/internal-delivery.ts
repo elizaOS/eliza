@@ -273,7 +273,8 @@ export async function deliverInternalMessage(
   } catch (error) {
     if (
       error instanceof TelegramApiResponseError ||
-      error instanceof BlooioApiResponseError
+      (error instanceof BlooioApiResponseError &&
+        error.deliveryStatus === "failed")
     ) {
       let claimReleased = true;
       try {
