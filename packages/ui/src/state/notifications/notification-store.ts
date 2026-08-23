@@ -542,9 +542,12 @@ function onStewardSessionChange(event: Event): void {
 function mergeHydratedNotifications(
   persisted: AgentNotification[],
 ): AgentNotification[] {
-  const combined = [...state.notifications, ...persisted].sort(
-    (a, b) => b.createdAt - a.createdAt,
-  );
+  const combined = [...state.notifications, ...persisted].sort((a, b) => {
+    const aSafe = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+    const bSafe = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+    if (bSafe !== aSafe) return bSafe - aSafe;
+    return a.id.localeCompare(b.id);
+  });
   const seenIds = new Set<string>();
   const seenGroups = new Set<string>();
   const merged: AgentNotification[] = [];
@@ -890,7 +893,12 @@ function revertMutation(
       const original = snapshot.originals.get(id);
       if (original) restored.push(original);
     }
-    restored.sort((a, b) => b.createdAt - a.createdAt);
+    restored.sort((a, b) => {
+      const aSafe = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+      const bSafe = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+      if (bSafe !== aSafe) return bSafe - aSafe;
+      return a.id.localeCompare(b.id);
+    });
     setState({ notifications: restored, unreadCount: countUnread(restored) });
   }
   logger.error({ err }, `[notification-store] ${op} failed; reverted`);
