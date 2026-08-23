@@ -60,6 +60,11 @@ describe("writeWorkspaceIdentity", () => {
     expect(manual).toContain('"command":"apps.create"');
     expect(manual).toContain('"command":"containers.create"');
     expect(manual).toContain("environmentVars.ELIZA_CLOUD_API_KEY");
+    expect(manual).toContain("PARENT_AGENT_FAILURE_RECEIPT ");
+    expect(manual).toMatch(/Parse only that first line/);
+    expect(manual).toMatch(
+      /never describe that broker\s+operation as successful/,
+    );
     expect(manual).not.toContain("{{BROKER_SECTION}}");
   });
 

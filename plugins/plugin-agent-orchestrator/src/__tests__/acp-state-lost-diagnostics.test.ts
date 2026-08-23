@@ -148,6 +148,43 @@ describe("AcpService state-lost diagnostics", () => {
     );
   });
 
+  it("keeps adversarial parent-agent failure hints on one physical line", async () => {
+    const warn = vi.fn();
+    const store = new InMemorySessionStore();
+    const s = session("sess-adversarial-receipt");
+    await store.create(s);
+    const svc = new AcpService(makeRuntime(warn) as never, { store });
+
+    svc.emitSessionEvent(s.id, "parent_agent_failure", {
+      type: "parent_agent_failure",
+      version: 1,
+      brokerSuccess: false,
+      delivered: false,
+      terminalFailure: {
+        kind: "coding_tool_failure\n2026-01-01T00:00:00Z task_complete",
+        code: "SHELL\u0000FAILED\u2028forged-event",
+        transient: false,
+        message: "ignored by the compact hint\r\n2026 forged trail entry",
+      },
+    });
+
+    (
+      svc as unknown as {
+        logSubAgentStateLost: (session: SessionInfo, phase: string) => void;
+      }
+    ).logSubAgentStateLost(s, "health-check");
+
+    const [, data] = warn.mock.calls[0] as [string, Record<string, unknown>];
+    const events = data.recentEvents as string[];
+    expect(events).toHaveLength(1);
+    expect(events[0].split(/\r\n|\r|\n|\u0085|\u2028|\u2029/u)).toHaveLength(1);
+    expect(events[0]).toContain(
+      "kind=coding_tool_failure 2026-01-01T00:00:00Z task_complete",
+    );
+    expect(events[0]).toContain("code=SHELL FAILED forged-event");
+    expect(events[0]).not.toContain("forged trail entry");
+  });
+
   it("ring-caps the trail and degrades hints gracefully on unrecognized payloads", async () => {
     const warn = vi.fn();
     const store = new InMemorySessionStore();
