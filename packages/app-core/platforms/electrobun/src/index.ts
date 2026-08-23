@@ -1220,11 +1220,9 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       startPassthrough: passthrough,
     });
     win.webviewId = mainView.id;
-    if (forceMainWindowCef) {
-      logger.info(
-        `[Main] Using CEF main-window workaround with persistent partition ${mainWindowPartition}`,
-      );
-    }
+    logger.info(
+      `[Main] Using partitioned main BrowserView ${mainWindowPartition}`,
+    );
   } else {
     win = createElectrobunBrowserWindow({
       title: BRAND.appName,
