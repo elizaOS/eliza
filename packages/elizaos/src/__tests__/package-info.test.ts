@@ -1,9 +1,12 @@
+/**
+ * Exercises CLI package-root and metadata resolution against the checked-out package filesystem.
+ */
 import { describe, expect, it } from "vitest";
 import {
   getCliVersion,
   getPackageRoot,
   readPackageJson,
-} from "./package-info.ts";
+} from "../package-info.ts";
 
 describe("package-info", () => {
   it("getPackageRoot resolves to the package parent", () => {

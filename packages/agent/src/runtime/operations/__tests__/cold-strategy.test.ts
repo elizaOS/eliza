@@ -3,7 +3,7 @@
  * success/failure phase reporting, and intent description.
  */
 import { describe, expect, it, vi } from "vitest";
-import { createColdStrategy } from "./runtime/operations/cold-strategy.ts";
+import { createColdStrategy } from "../cold-strategy.ts";
 
 function makeCtx(overrides: Partial<Record<string, unknown>> = {}) {
   return {

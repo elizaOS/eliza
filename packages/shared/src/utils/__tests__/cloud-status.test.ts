@@ -1,3 +1,6 @@
+/**
+ * Verifies cloud-status authentication and API-key reason classification through deterministic pure-function tests.
+ */
 import { describe, expect, it } from "vitest";
 import {
   isCloudStatusAuthenticated,

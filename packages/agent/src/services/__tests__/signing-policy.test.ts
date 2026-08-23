@@ -9,7 +9,7 @@ import {
   SigningPolicy,
   SigningPolicyEvaluator,
   type SigningRequest,
-} from "./signing-policy.ts";
+} from "../signing-policy.ts";
 
 function makeRequest(overrides: Partial<SigningRequest> = {}): SigningRequest {
   return {

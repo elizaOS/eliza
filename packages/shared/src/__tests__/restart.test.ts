@@ -1,3 +1,6 @@
+/**
+ * Verifies restart requests expose the canonical exit code and delegate through the registered handler in a deterministic unit harness.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   RESTART_EXIT_CODE,

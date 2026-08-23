@@ -1,3 +1,6 @@
+/**
+ * Verifies Electrobun PGlite path resolution and reset-target safety with deterministic filesystem-independent inputs.
+ */
 import { describe, expect, it } from "vitest";
 import {
   assertSafePgliteResetTarget,

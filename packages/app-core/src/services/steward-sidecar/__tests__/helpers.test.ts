@@ -1,3 +1,6 @@
+/**
+ * Exercises Steward sidecar helper contracts against real implementations without external services.
+ */
 import { describe, expect, it } from "vitest";
 import {
   fingerprintRandomToken,

@@ -36,7 +36,7 @@ import {
   parseDocumentScope,
   roomIsPrivateSurface,
   roomIsPublicSurface,
-} from "./document-access.ts";
+} from "../document-access.ts";
 
 const OWNER = { entityId: "owner-1", role: "OWNER" as const };
 const USER = { entityId: "user-1", role: "USER" as const };
