@@ -11,8 +11,8 @@
  * be retired without killing the call.
  */
 import { createAnthropic } from "@ai-sdk/anthropic";
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { IAgentRuntime, PreparedModelRequestGuard } from "@elizaos/core";
+import { createPreparedModelRequestGuard, ElizaError, logger } from "@elizaos/core";
 import { getApiKeyOptional, getAuthMode, getBaseURL, isBrowser } from "../utils/config";
 import {
   clearTokenCache,
@@ -124,8 +124,13 @@ function getApiKeyForSdk(runtime: IAgentRuntime, useOAuth: boolean): string | un
   return isBrowser() ? undefined : (getApiKeyOptional(runtime) ?? undefined);
 }
 
-export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {
+export function createAnthropicClientWithTopPSupport(
+  runtime: IAgentRuntime,
+  admission?: { model: string; outputReserveTokens?: number }
+) {
   const useOAuth = getAuthMode(runtime) === "oauth";
+  let admittedBody: string | undefined;
+  let guard: PreparedModelRequestGuard | undefined;
 
   const topPFetch = Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -150,6 +155,22 @@ export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {
           delete body.temperature;
           init.body = JSON.stringify(body);
         }
+      }
+      if (admission) {
+        if (!init || typeof init.body !== "string") {
+          throw new ElizaError("Anthropic model request has no serialized JSON body", {
+            code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+            context: { provider: "anthropic", model: admission.model },
+          });
+        }
+        admittedBody = init.body;
+        guard ??= createPreparedModelRequestGuard({
+          provider: "anthropic",
+          model: admission.model,
+          serializeRequest: () => admittedBody as string,
+          outputReserveTokens: admission.outputReserveTokens,
+        });
+        guard.assertBeforeAttempt();
       }
       return fetch(input, init);
     },
