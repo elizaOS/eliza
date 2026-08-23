@@ -72,7 +72,11 @@ export class VoteLockTable {
 
     const total = [...byName.values()].reduce((a, b) => a + b, 0);
     const [topName, topVotes] = [...byName.entries()].sort(
-      (a, b) => b[1] - a[1],
+      (a, b) => {
+        const bWeight = Number.isFinite(b[1]) ? b[1] : 0;
+        const aWeight = Number.isFinite(a[1]) ? a[1] : 0;
+        return bWeight - aWeight || a[0].localeCompare(b[0]);
+      },
     )[0];
     if (
       topVotes >= LOCK_THRESHOLD &&
@@ -91,7 +95,11 @@ export class VoteLockTable {
     if (locked) return locked;
     const byName = this.votes.get(track);
     if (!byName) return null;
-    for (const [name] of [...byName.entries()].sort((a, b) => b[1] - a[1])) {
+    for (const [name] of [...byName.entries()].sort((a, b) => {
+      const bWeight = Number.isFinite(b[1]) ? b[1] : 0;
+      const aWeight = Number.isFinite(a[1]) ? a[1] : 0;
+      return bWeight - aWeight || a[0].localeCompare(b[0]);
+    })) {
       if (!this.isNameTaken(name, track)) return name;
     }
     return null;

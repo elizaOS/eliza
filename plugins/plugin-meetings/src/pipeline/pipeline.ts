@@ -260,7 +260,13 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
       }
 
       this.manager.removeAll();
-      this.confirmed.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+      this.confirmed.sort((a, b) => {
+        const aStart = Number.isFinite(a.startMs) ? a.startMs : 0;
+        const bStart = Number.isFinite(b.startMs) ? b.startMs : 0;
+        const aEnd = Number.isFinite(a.endMs) ? a.endMs : 0;
+        const bEnd = Number.isFinite(b.endMs) ? b.endMs : 0;
+        return aStart - bStart || aEnd - bEnd;
+      });
       this.notify([]);
       logger.info(
         `[MeetingPipeline] Finalized session ${this.idPrefix}: ${this.confirmed.length} segments, ${this.speakerNames().length} speakers`,
