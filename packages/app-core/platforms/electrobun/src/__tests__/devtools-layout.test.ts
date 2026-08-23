@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS,
   scheduleDevtoolsLayoutRefresh,
-} from "./devtools-layout.ts";
+} from "../devtools-layout.ts";
 
 function collectWindow(initial: {
   x: number;
