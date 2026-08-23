@@ -84,7 +84,7 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
       <Button
         aria-label="Open Eliza Cloud sign-in in your browser"
         variant="ghost"
-        className="block h-auto w-full whitespace-normal break-all px-0 py-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
+        className="block h-auto w-full whitespace-normal break-all p-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
         onClick={() => void openExternalUrl(browserUrl)}
       >
         {browserUrl}
@@ -449,8 +449,8 @@ export function ConfigPageView({
               })}
             </span>
             {rpcMode === "cloud" && (
-              <span className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
-                <Check className="h-3 w-3" aria-hidden />
+              <span className="absolute top-3 right-3 flex size-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
+                <Check className="size-3" aria-hidden />
               </span>
             )}
           </Button>
@@ -497,8 +497,8 @@ export function ConfigPageView({
               })}
             </span>
             {rpcMode === "custom" && (
-              <span className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
-                <Check className="h-3 w-3" aria-hidden />
+              <span className="absolute top-3 right-3 flex size-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
+                <Check className="size-3" aria-hidden />
               </span>
             )}
           </Button>
@@ -533,7 +533,7 @@ export function ConfigPageView({
                       key={chain.label}
                       className="flex items-center gap-3 px-3 py-2.5"
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-ok shrink-0" />
+                      <span className="size-1.5 rounded-full bg-ok shrink-0" />
                       <span className="text-xs font-semibold text-txt">
                         {chain.label}
                       </span>

@@ -190,7 +190,7 @@ export function TelegramConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Bot className="h-6 w-6 text-txt-strong" />}
+            icon={<Bot className="size-6 text-txt-strong" />}
             iconClassName="bg-accent"
             title={`@${status?.botUsername}`}
             subtitle={`Bot ID: ${status?.botId}`}
@@ -202,7 +202,7 @@ export function TelegramConnection() {
                   window.open(`https://t.me/${status?.botUsername}`, "_blank")
                 }
               >
-                <ExternalLink className="h-4 w-4 mr-1" />
+                <ExternalLink className="size-4 mr-1" />
                 {t("cloud.telegram.openBot", { defaultValue: "Open Bot" })}
               </Button>
             }
@@ -379,14 +379,14 @@ export function TelegramConnection() {
           >
             {isConnecting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="size-4 animate-spin mr-2" />
                 {t("cloud.telegram.connecting", {
                   defaultValue: "Connecting...",
                 })}
               </>
             ) : (
               <>
-                <MessageSquare className="h-4 w-4 mr-2" />
+                <MessageSquare className="size-4 mr-2" />
                 {t("cloud.telegram.connectButton", {
                   defaultValue: "Connect Telegram Bot",
                 })}

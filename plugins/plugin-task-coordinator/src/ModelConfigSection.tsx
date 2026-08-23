@@ -103,9 +103,9 @@ export function ModelConfigSection({
           }
         >
           {isDynamic ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-ok" aria-hidden />
+            <CheckCircle2 className="size-3.5 text-ok" aria-hidden />
           ) : (
-            <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden />
+            <AlertTriangle className="size-3.5 text-warn" aria-hidden />
           )}
           <span className="sr-only">
             {isDynamic

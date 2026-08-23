@@ -1405,7 +1405,7 @@ describe("ChatOverlay", () => {
     });
     const className = screen.getByTestId("chat-composer-textarea").className;
     expect(className).toContain("text-sm");
-    expect(className).toContain("pointer-coarse:text-[16px]");
+    expect(className).toContain("pointer-coarse:text-base");
   });
 
   it("renders composer controls icon-only — no capsule/border/fill, neutral when active (#10711)", () => {

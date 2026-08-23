@@ -6,7 +6,7 @@ const meta = {
   title: "Brand/ElizaMark",
   component: ElizaMark,
   parameters: { layout: "centered" },
-  args: { className: "h-32 w-32 text-accent" },
+  args: { className: "size-32 text-accent" },
 } satisfies Meta<typeof ElizaMark>;
 
 export default meta;
@@ -17,7 +17,7 @@ export const Default: Story = {};
 export const OnBrandSurface: Story = {
   render: () => (
     <div className="rounded-3xl bg-accent p-8 text-accent-fg">
-      <ElizaMark className="h-24 w-24" />
+      <ElizaMark className="size-24" />
     </div>
   ),
 };

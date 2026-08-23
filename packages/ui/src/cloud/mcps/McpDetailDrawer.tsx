@@ -168,7 +168,7 @@ export function McpDetailDrawer({
             <div className="shrink-0 flex items-start justify-between gap-4 p-4 sm:p-6 border-b border-border">
               <div className="flex items-start gap-3 min-w-0">
                 <div className="p-2.5 rounded-sm border border-border bg-bg-elevated shrink-0">
-                  <Puzzle className="h-5 w-5 text-accent" />
+                  <Puzzle className="size-5 text-accent" />
                 </div>
                 <div className="min-w-0">
                   <DrawerTitle className="flex items-center gap-2 flex-wrap">
@@ -186,7 +186,7 @@ export function McpDetailDrawer({
                 </div>
               </div>
               <DrawerClose className="inline-flex min-h-touch items-center justify-center p-2 rounded-sm hover:bg-bg-hover transition-colors">
-                <X className="h-5 w-5 text-muted" />
+                <X className="size-5 text-muted" />
               </DrawerClose>
             </div>
 
@@ -310,7 +310,7 @@ export function McpDetailDrawer({
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      <ExternalLink className="h-4 w-4" />
+                      <ExternalLink className="size-4" />
                       {t("cloud.mcps.docs", { defaultValue: "Docs" })}
                     </a>
                   </BrandButton>
@@ -322,7 +322,7 @@ export function McpDetailDrawer({
                       size="sm"
                       onClick={() => onEdit(mcp)}
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Pencil className="size-4" />
                       {t("cloud.mcps.edit", { defaultValue: "Edit" })}
                     </BrandButton>
                     {mcp.status === "live" ? (
@@ -343,7 +343,7 @@ export function McpDetailDrawer({
                         onClick={() => void doPublish()}
                         disabled={publish.isPending}
                       >
-                        <Upload className="h-4 w-4" />
+                        <Upload className="size-4" />
                         {t("cloud.mcps.publish", { defaultValue: "Publish" })}
                       </BrandButton>
                     )}
@@ -354,7 +354,7 @@ export function McpDetailDrawer({
                       disabled={del.isPending}
                       className="text-destructive hover:text-destructive hover:bg-destructive-subtle"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="size-4" />
                       {t("cloud.mcps.delete", { defaultValue: "Delete" })}
                     </BrandButton>
                   </>
@@ -374,9 +374,9 @@ export function McpDetailDrawer({
                 }
               >
                 {testing ? (
-                  <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                  <span className="size-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
                 ) : (
-                  <Play className="h-4 w-4" />
+                  <Play className="size-4" />
                 )}
                 {t("cloud.mcps.testConnection", {
                   defaultValue: "Test connection",

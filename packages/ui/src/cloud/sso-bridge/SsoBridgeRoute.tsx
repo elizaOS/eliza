@@ -82,7 +82,7 @@ function forgetMintIntent(state: string): void {
 function BridgeNotice({ label }: { label: string }): React.JSX.Element {
   return (
     <div className="theme-cloud flex min-h-dvh flex-col items-center justify-center bg-black px-6 text-center text-white">
-      <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/62">
+      <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-white/62">
         {label}
       </p>
     </div>

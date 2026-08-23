@@ -518,7 +518,7 @@ export function ApiTester({
             placeholder={`Select ${param.name}`}
           />
         ) : param.type === "boolean" ? (
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <Checkbox
               id={inputId}
               checked={Boolean(value || false)}
@@ -589,11 +589,11 @@ export function ApiTester({
                   className={`p-2.5 rounded-sm ${endpoint.pricing.isFree ? "bg-green-500/10" : endpoint.pricing.isVariable ? "bg-surface" : "bg-surface"}`}
                 >
                   {endpoint.pricing.isFree ? (
-                    <Sparkles className={`h-5 w-5 text-green-400`} />
+                    <Sparkles className={`size-5 text-green-400`} />
                   ) : endpoint.pricing.isVariable ? (
-                    <TrendingUp className={`h-5 w-5 text-muted`} />
+                    <TrendingUp className={` size-5 text-muted`} />
                   ) : (
-                    <Coins className={`h-5 w-5 text-muted`} />
+                    <Coins className={`size-5 text-muted`} />
                   )}
                 </div>
                 <div>
@@ -617,8 +617,8 @@ export function ApiTester({
                 </div>
               </div>
               {endpoint.pricing.isVariable && !endpoint.pricing.isFree && (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-surface border border-border rounded-sm">
-                  <Info className="h-3.5 w-3.5 text-muted" />
+                <div className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border rounded-sm">
+                  <Info className="size-3.5 text-muted" />
                   <span className="text-xs text-muted font-medium">
                     Variable pricing
                   </span>
@@ -636,14 +636,14 @@ export function ApiTester({
           className="gap-2 bg-txt text-bg hover:bg-txt/90 active:bg-txt/80 border-0"
         >
           {isLoading ? (
-            <LoaderIcon className="h-4 w-4 animate-spin" />
+            <LoaderIcon className="size-4 animate-spin" />
           ) : (
-            <PlayIcon className="h-4 w-4" />
+            <PlayIcon className="size-4" />
           )}
           {isLoading
-            ? "Testing..."
+            ? "Testing…"
             : endpoint.requiresAuth && isAuthLoading
-              ? "Loading API key..."
+              ? "Loading API key…"
               : "Send Request"}
         </Button>
 
@@ -652,7 +652,7 @@ export function ApiTester({
           onClick={copyCurlCommand}
           className="gap-2 sm:w-auto"
         >
-          <CodeIcon className="h-4 w-4" />
+          <CodeIcon className="size-4" />
           Copy cURL
         </Button>
 
@@ -688,7 +688,7 @@ export function ApiTester({
             <Card className="border-border/60 bg-background/60 rounded-sm">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <MicIcon className="h-5 w-5" />
+                  <MicIcon className="size-5" />
                   Audio Recording
                 </CardTitle>
                 <CardDescription>
@@ -711,7 +711,7 @@ export function ApiTester({
                           onClick={audioRecorder.startRecording}
                           className="gap-2"
                         >
-                          <MicIcon className="h-4 w-4" />
+                          <MicIcon className="size-4" />
                           Start Recording
                         </Button>
                       )}
@@ -723,7 +723,7 @@ export function ApiTester({
                           variant="destructive"
                           className="gap-2"
                         >
-                          <StopCircleIcon className="h-4 w-4" />
+                          <StopCircleIcon className="size-4" />
                           Stop Recording
                         </Button>
                         <Badge variant="secondary" className="text-sm">
@@ -753,7 +753,7 @@ export function ApiTester({
                           size="sm"
                           className="gap-2"
                         >
-                          <Trash2Icon className="h-4 w-4" />
+                          <Trash2Icon className="size-4" />
                           Clear
                         </Button>
                       </>
@@ -776,7 +776,7 @@ export function ApiTester({
             <Card className="border-border/60 bg-background/60 rounded-sm">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <UploadIcon className="h-5 w-5" />
+                  <UploadIcon className="size-5" />
                   Audio Sample Upload
                 </CardTitle>
                 <CardDescription>
@@ -798,7 +798,7 @@ export function ApiTester({
                       htmlFor="audio-file-upload"
                       className="flex flex-col items-center gap-3 cursor-pointer"
                     >
-                      <UploadIcon className="h-12 w-12 text-muted-foreground/60" />
+                      <UploadIcon className="size-12 text-muted-foreground/60" />
                       <div className="text-center">
                         <p className="text-sm font-medium">
                           Click to upload audio files
@@ -822,7 +822,7 @@ export function ApiTester({
                           size="sm"
                           className="gap-2 text-xs"
                         >
-                          <Trash2Icon className="h-3 w-3" />
+                          <Trash2Icon className="size-3" />
                           Clear All
                         </Button>
                       </div>
@@ -834,7 +834,7 @@ export function ApiTester({
                             className="flex items-center justify-between p-3 bg-muted/50 rounded-sm border border-border/40"
                           >
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <FileAudioIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                              <FileAudioIcon className="size-4 text-muted-foreground shrink-0" />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">
                                   {file.name}
@@ -848,9 +848,9 @@ export function ApiTester({
                               onClick={() => removeFile(index)}
                               variant="ghost"
                               size="sm"
-                              className="gap-1 flex-shrink-0"
+                              className="gap-1 shrink-0"
                             >
-                              <XCircleIcon className="h-4 w-4" />
+                              <XCircleIcon className="size-4" />
                             </Button>
                           </div>
                         ))}
@@ -972,9 +972,9 @@ export function ApiTester({
                   <div className="flex items-center justify-between">
                     <CardTitle className="flex items-center gap-2">
                       {response.success ? (
-                        <CheckIcon className="h-5 w-5 text-green-500" />
+                        <CheckIcon className="size-5 text-green-500" />
                       ) : (
-                        <XIcon className="h-5 w-5 text-red-500" />
+                        <XIcon className="size-5 text-red-500" />
                       )}
                       Response
                     </CardTitle>
@@ -1028,7 +1028,7 @@ export function ApiTester({
                             });
                           }}
                         >
-                          <CopyIcon className="h-4 w-4" />
+                          <CopyIcon className="size-4" />
                           Copy
                         </Button>
                       )}
@@ -1150,7 +1150,7 @@ export function ApiTester({
                   className="gap-2"
                   onClick={copyCurlCommand}
                 >
-                  <CopyIcon className="h-4 w-4" />
+                  <CopyIcon className="size-4" />
                   Copy
                 </Button>
               </div>

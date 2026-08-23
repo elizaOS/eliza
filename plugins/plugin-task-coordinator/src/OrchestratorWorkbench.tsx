@@ -147,7 +147,7 @@ function TimelineHeader({
       aria-label={pausedLabel}
       role="img"
     >
-      <Pause className="h-3.5 w-3.5" aria-hidden />
+      <Pause className="size-3.5" aria-hidden />
     </span>
   ) : null;
   const detailsLabel = t("orchestrator.action.details", {
@@ -188,7 +188,7 @@ function TimelineHeader({
             data-testid="orchestrator-back"
             {...backAgentProps}
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="size-4" />
           </Button>
           {statusDot}
           {title}
@@ -203,7 +203,7 @@ function TimelineHeader({
             data-testid="orchestrator-open-inspector"
             {...detailsAgentProps}
           >
-            <PanelRightOpen className="h-4 w-4" aria-hidden />
+            <PanelRightOpen className="size-4" aria-hidden />
           </Button>
         </div>
         {pausedBadge ? (
@@ -230,7 +230,7 @@ function TimelineHeader({
         data-testid="orchestrator-open-inspector"
         {...detailsAgentProps}
       >
-        <PanelRightOpen className="h-4 w-4" aria-hidden />
+        <PanelRightOpen className="size-4" aria-hidden />
       </Button>
     </div>
   );
@@ -259,13 +259,13 @@ function TimelineInspectButton({
       ref={ref}
       type="button"
       onClick={() => onInspect(block)}
-      className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center text-muted opacity-0 transition-colors hover:text-txt focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+      className="mt-1.5 flex size-6 shrink-0 items-center justify-center text-muted opacity-0 transition-colors hover:text-txt focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
       aria-label={label}
       title={label}
       data-testid="orchestrator-inspect-block"
       {...agentProps}
     >
-      <PanelRightOpen className="h-3.5 w-3.5" />
+      <PanelRightOpen className="size-3.5" />
     </Button>
   );
 }
@@ -324,7 +324,7 @@ function TimelineLoadOlderButton({
       aria-label={label}
       {...agentProps}
     >
-      <ArrowDownToLine className="h-3 w-3" />
+      <ArrowDownToLine className="size-3" />
       {label}
     </Button>
   );
@@ -700,7 +700,7 @@ export function OrchestratorWorkbench() {
                     data-testid="orchestrator-show-archived"
                     {...showArchivedAgentProps}
                   >
-                    <Archive className="h-3.5 w-3.5" />
+                    <Archive className="size-3.5" />
                     {showArchivedLabel}
                   </Button>
                 </div>
@@ -780,7 +780,7 @@ export function OrchestratorWorkbench() {
               <div
                 ref={listRef}
                 onScroll={handleListScroll}
-                className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
+                className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4"
                 data-testid="orchestrator-message-list"
               >
                 {timelineCursor ? (
@@ -835,7 +835,7 @@ export function OrchestratorWorkbench() {
                   data-testid="orchestrator-running-bar"
                 >
                   <span className="flex items-center gap-1.5 text-2xs font-medium text-warn">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warn" />
+                    <span className="size-1.5 animate-pulse rounded-full bg-warn" />
                     {t("orchestrator.agentsWorking", {
                       defaultValue: "Agent working…",
                     })}
@@ -851,7 +851,7 @@ export function OrchestratorWorkbench() {
                     data-agent-authority="human"
                     data-agent-human-id="timeline-stop-active"
                   >
-                    <CircleStop className="h-3 w-3" />
+                    <CircleStop className="size-3" />
                     {stopLabel}
                     <kbd className="ml-0.5 px-1 text-[0.9em] text-muted">
                       Esc

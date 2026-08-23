@@ -630,9 +630,9 @@ export function CloudDashboard() {
             disabled={elizaCloudLoginBusy}
           >
             {elizaCloudLoginBusy ? (
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              <RefreshCw className="mr-2 size-4 animate-spin" />
             ) : (
-              <Zap className="mr-2 h-4 w-4" />
+              <Zap className="mr-2  size-4" />
             )}
             {elizaCloudLoginBusy
               ? t("game.connecting")
@@ -660,7 +660,7 @@ export function CloudDashboard() {
     <div className="px-3 py-2 sm:px-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <CreditCard className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+          <CreditCard className="size-4 shrink-0 text-muted" aria-hidden />
           <span
             className={`text-base font-semibold tracking-tight tabular-nums ${creditStatusColor}`}
           >
@@ -670,7 +670,7 @@ export function CloudDashboard() {
             )}
           </span>
           {billingLoading && (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />
+            <Loader2 className="size-3.5 animate-spin text-muted" />
           )}
         </div>
         <span
@@ -685,7 +685,7 @@ export function CloudDashboard() {
             className="h-8 rounded-sm px-2.5 text-xs font-semibold"
             onClick={goBilling}
           >
-            <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+            <CreditCard className="mr-1.5 size-3.5" />
             {t("elizaclouddashboard.TopUpCredits", {
               defaultValue: "Top up credits",
             })}
@@ -693,7 +693,7 @@ export function CloudDashboard() {
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-sm"
+            className="size-8 rounded-sm"
             onClick={handleRefresh}
             disabled={refreshing || billingLoading || isRateLimited}
             aria-label={t("common.refresh")}
@@ -704,7 +704,7 @@ export function CloudDashboard() {
             }
           >
             <RefreshCw
-              className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+              className={`size-3.5 ${refreshing ? "animate-spin" : ""}`}
             />
           </Button>
           {cloudRuntimeLocked ? null : (
@@ -795,7 +795,7 @@ export function CloudDashboard() {
           onClick={goOverview}
           aria-label={t("common.back", { defaultValue: "Back" })}
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="size-4" />
         </Button>
         <h3 className="text-sm font-semibold text-txt-strong">
           {t("elizaclouddashboard.TopUpCredits", {
@@ -869,7 +869,7 @@ export function CloudDashboard() {
             onClick={() => void handleStartCheckout()}
           >
             {checkoutBusy ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
               t("elizaclouddashboard.Pay", { defaultValue: "Pay" })
             )}
@@ -963,7 +963,7 @@ export function CloudDashboard() {
             onClick={() => void handleSaveBillingSettings()}
           >
             {billingSettingsBusy && (
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              <Loader2 className="mr-1 size-3 animate-spin" />
             )}
             {t("common.save")}
           </Button>
@@ -978,7 +978,7 @@ export function CloudDashboard() {
           onClick={() => void openExternalUrl(fallbackBillingUrl)}
         >
           {t("elizaclouddashboard.OpenBrowserBilling")}
-          <ExternalLink className="ml-1 h-3 w-3" />
+          <ExternalLink className="ml-1 size-3" />
         </Button>
       )}
     </div>
@@ -1024,7 +1024,7 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
       <Button
         aria-label="Open Eliza Cloud sign-in in your browser"
         variant="ghost"
-        className="block h-auto w-full whitespace-normal break-all px-0 py-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
+        className="block h-auto w-full whitespace-normal break-all p-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
         onClick={() => void openExternalUrl(browserUrl)}
       >
         {browserUrl}

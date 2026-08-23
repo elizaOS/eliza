@@ -70,10 +70,10 @@ function HeavyBody({ which }: { which: "legacy" | "shipped" }) {
           margin: "2px 6px",
           borderRadius: 4,
           background: `linear-gradient(90deg, hsl(${(i * 7) % 360} 60% 30%), hsl(${(i * 7 + 40) % 360} 60% 22%))`,
-          boxShadow: "inset 0 0 4px rgba(0,0,0,0.4)",
+          boxShadow: "inset 0 0 4px rgba(16,10,5,0.4)",
         }}
       >
-        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>
+        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
           row {i}
         </span>
       </div>,
@@ -199,7 +199,7 @@ function Fixture() {
   return (
     <div
       data-testid="divider-perf-root"
-      style={{ display: "flex", gap: 40, padding: 24, height: "100vh" }}
+      style={{ display: "flex", gap: 40, padding: 24, height: "100dvh" }}
     >
       <div style={{ flex: 1 }} />
       <LegacyDivider />

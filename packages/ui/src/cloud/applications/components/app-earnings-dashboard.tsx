@@ -171,7 +171,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted" />
+        <Loader2 className="size-8 animate-spin text-muted" />
       </div>
     );
   }
@@ -179,7 +179,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   if (error) {
     return (
       <div className="bg-card rounded-sm p-8 text-center">
-        <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-400" />
+        <AlertCircle className="size-12 mx-auto mb-4 text-red-400" />
         <h3 className="text-lg font-medium text-txt-strong mb-2">
           Error loading earnings
         </h3>
@@ -204,7 +204,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
     <div className="space-y-4">
       {isTestData && (
         <div className="flex items-center gap-2 p-3 bg-surface border border-border rounded-sm">
-          <FlaskConical className="h-4 w-4 text-muted" />
+          <FlaskConical className="size-4 text-muted" />
           <p className="text-sm text-muted">
             Test Data Mode - Showing sample earnings data
           </p>
@@ -231,7 +231,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       {/* Empty State */}
       {!summary && !isLoading && (
         <div className="bg-card rounded-sm p-8 text-center">
-          <TrendingUp className="h-12 w-12 mx-auto mb-4 text-neutral-600" />
+          <TrendingUp className="size-12 mx-auto mb-4 text-neutral-600" />
           <h3 className="text-lg font-medium text-neutral-500 mb-2">
             No earnings yet
           </h3>
@@ -272,12 +272,12 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 </p>
                 {breakdown && (
                   <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                    <ArrowUpRight className="h-3 w-3" />$
+                    <ArrowUpRight className="size-3" />$
                     {breakdown.thisWeek.total.toFixed(2)} this week
                   </p>
                 )}
               </div>
-              <TrendingUp className="h-5 w-5 text-muted" />
+              <TrendingUp className="size-5 text-muted" />
             </div>
           </div>
 
@@ -295,7 +295,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   ${summary.withdrawableBalance.toFixed(2)}
                 </p>
               </div>
-              <Wallet className="h-5 w-5 text-green-400" />
+              <Wallet className="size-5 text-green-400" />
             </div>
             <div className="mt-3">
               {canWithdraw ? (
@@ -304,7 +304,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   size="sm"
                   className="w-full bg-green-600 hover:bg-green-500 text-txt"
                 >
-                  <Wallet className="h-4 w-4 mr-2" />
+                  <Wallet className="size-4 mr-2" />
                   Withdraw Now
                 </Button>
               ) : (
@@ -325,25 +325,25 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           <DashboardStatCard
             label="Pending"
             value={`$${summary.pendingBalance.toFixed(2)}`}
-            icon={<Clock className="h-5 w-5" />}
+            icon={<Clock className="size-5" />}
             accent="amber"
           />
           <DashboardStatCard
             label="Withdrawable"
             value={`$${summary.withdrawableBalance.toFixed(2)}`}
-            icon={<Wallet className="h-5 w-5" />}
+            icon={<Wallet className="size-5" />}
             accent="emerald"
           />
           <DashboardStatCard
             label="From Inference"
             value={`$${summary.totalInferenceEarnings.toFixed(2)}`}
-            icon={<Zap className="h-5 w-5" />}
+            icon={<Zap className="size-5" />}
             accent="violet"
           />
           <DashboardStatCard
             label="From Purchases"
             value={`$${summary.totalPurchaseEarnings.toFixed(2)}`}
-            icon={<Coins className="h-5 w-5" />}
+            icon={<Coins className="size-5" />}
             accent="orange"
           />
         </div>
@@ -365,11 +365,10 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
               </p>
               <div className="flex gap-3 text-xs mt-2">
                 <span className="text-accent flex items-center gap-1">
-                  <Zap className="h-3 w-3" />$
-                  {data.inferenceEarnings.toFixed(2)}
+                  <Zap className="size-3" />${data.inferenceEarnings.toFixed(2)}
                 </span>
                 <span className="text-muted flex items-center gap-1">
-                  <Coins className="h-3 w-3" />$
+                  <Coins className="size-3" />$
                   {data.purchaseEarnings.toFixed(2)}
                 </span>
               </div>
@@ -381,7 +380,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       {/* Chart */}
       <div className="bg-card rounded-sm p-4">
         <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-neutral-400" />
+          <BarChart3 className="size-4 text-neutral-400" />
           Earnings Over Time
         </h3>
         {chartData.length > 0 ? (
@@ -394,11 +393,11 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
               <XAxis
                 dataKey="date"
                 stroke="rgba(255,255,255,0.4)"
-                style={{ fontSize: "11px" }}
+                style={{ fontSize: "12px" }}
               />
               <YAxis
                 stroke="rgba(255,255,255,0.4)"
-                style={{ fontSize: "11px" }}
+                style={{ fontSize: "12px" }}
                 tickFormatter={(value) => `$${value.toFixed(2)}`}
               />
               <Tooltip
@@ -435,7 +434,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           </ResponsiveContainer>
         ) : (
           <div className="text-center text-neutral-500 py-8">
-            <DollarSign className="h-10 w-10 mx-auto mb-3 text-neutral-600" />
+            <DollarSign className="size-10 mx-auto mb-3 text-neutral-600" />
             <p className="text-sm">No earnings data yet</p>
           </div>
         )}
@@ -444,7 +443,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       {/* Recent Transactions */}
       <div className="bg-card rounded-sm p-4">
         <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
-          <Clock className="h-4 w-4 text-neutral-400" />
+          <Clock className="size-4 text-neutral-400" />
           Recent Earnings
         </h3>
 
@@ -485,7 +484,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           </div>
         ) : (
           <div className="text-center text-neutral-500 py-8">
-            <DollarSign className="h-10 w-10 mx-auto mb-3 text-neutral-600" />
+            <DollarSign className="size-10 mx-auto mb-3 text-neutral-600" />
             <p className="text-sm mb-1">No transactions yet</p>
             <p className="text-xs text-neutral-600">
               Transactions will appear here once you start earning
@@ -512,13 +511,13 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
 function TransactionIcon({ type }: { type: string }) {
   switch (type) {
     case "inference_markup":
-      return <Zap className="h-4 w-4 text-accent" />;
+      return <Zap className="size-4 text-accent" />;
     case "purchase_share":
-      return <Coins className="h-4 w-4 text-yellow-400" />;
+      return <Coins className="size-4 text-yellow-400" />;
     case "withdrawal":
-      return <ArrowUpRight className="h-4 w-4 text-red-400" />;
+      return <ArrowUpRight className="size-4 text-red-400" />;
     default:
-      return <DollarSign className="h-4 w-4 text-gray-400" />;
+      return <DollarSign className="size-4 text-gray-400" />;
   }
 }
 
@@ -526,25 +525,25 @@ function TransactionBadge({ type }: { type: string }) {
   switch (type) {
     case "inference_markup":
       return (
-        <Badge className="bg-accent/20 text-accent border-accent/30 text-[10px]">
+        <Badge className="bg-accent/20 text-accent border-accent/30 text-2xs">
           Inference
         </Badge>
       );
     case "purchase_share":
       return (
-        <Badge className="bg-surface text-muted border-border text-[10px]">
+        <Badge className="bg-surface text-muted border-border text-2xs">
           Purchase
         </Badge>
       );
     case "withdrawal":
       return (
-        <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-[10px]">
+        <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-2xs">
           Withdrawal
         </Badge>
       );
     default:
       return (
-        <Badge className="bg-surface text-neutral-400 border-border text-[10px]">
+        <Badge className="bg-surface text-neutral-400 border-border text-2xs">
           {type}
         </Badge>
       );

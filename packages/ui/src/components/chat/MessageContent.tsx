@@ -1057,7 +1057,7 @@ export function SensitiveRequestBlock({
             isSaved ? "text-ok" : "text-muted",
           )}
         >
-          {isSaved && <Check className="h-3.5 w-3.5" aria-hidden />}
+          {isSaved && <Check className="size-3.5" aria-hidden />}
           {sensitiveRequestStatusLabel(status)}
         </div>
       </div>
@@ -1167,7 +1167,7 @@ export function SensitiveRequestBlock({
             data-testid="sensitive-request-submit"
           >
             {saving
-              ? "Saving..."
+              ? "Saving…"
               : (request.form?.submitLabel ??
                 (isRemoteConnect ? "Connect" : "Save securely"))}
           </Button>
@@ -1176,10 +1176,10 @@ export function SensitiveRequestBlock({
               className="flex items-center gap-1.5 text-xs text-muted"
               data-testid="sensitive-request-security-note"
             >
-              <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
               {tunnel
-                ? "Sent once to the waiting session — never stored, never posted to chat."
-                : "Sent directly to the agent — never posted to chat."}
+                ? "Sent once to the waiting session. Never stored, never posted to chat."
+                : "Sent directly to the agent. Never posted to chat."}
             </div>
           )}
         </form>
@@ -1332,10 +1332,10 @@ function OAuthRequestPanel({
         disabled={authorizing}
         data-testid="sensitive-request-oauth-start"
       >
-        {authorizing ? "Authorizing..." : label}
+        {authorizing ? "Authorizing…" : label}
       </Button>
       <div className="flex items-center gap-1.5 text-xs text-muted">
-        <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
         Authorization happens on the provider's secure page. The token is stored
         securely and is never shown in chat.
       </div>
@@ -1445,7 +1445,7 @@ export function MessageContent({
             {downloading
               ? "Downloading"
               : localDownloadState === "busy"
-                ? "Starting..."
+                ? "Starting…"
                 : localDownloadState === "queued"
                   ? "Download queued"
                   : "Download default model"}
@@ -1614,7 +1614,7 @@ export function MessageContent({
                   key={segmentKey}
                   className="my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden"
                 >
-                  <div className="bg-accent/10 px-3 py-1 text-xs font-mono font-bold text-accent uppercase tracking-wider">
+                  <div className="bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
                     &lt;{seg.tag}&gt;
                   </div>
                   <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-muted m-0 overflow-x-auto overscroll-x-contain">
@@ -1657,8 +1657,8 @@ export function MessageContent({
       ) : null}
       {analysisMode && message.actionName && (
         <div className="my-2 overflow-hidden rounded-sm border border-accent/20 bg-accent/5">
-          <div className="bg-accent/10 px-3 py-1 text-xs font-mono font-bold text-accent uppercase tracking-wider">
-            ACTION TAKEN
+          <div className="bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
+            Action taken
           </div>
           <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
             {message.actionName}
@@ -1669,8 +1669,8 @@ export function MessageContent({
         message.actionCallbackHistory &&
         message.actionCallbackHistory.length > 0 && (
           <div className="my-2 overflow-hidden rounded-sm border border-border/60 bg-surface/70">
-            <div className="bg-bg-accent px-3 py-1 text-xs font-mono font-bold text-muted-strong uppercase tracking-wider">
-              ACTION CALLBACK HISTORY
+            <div className="bg-bg-accent px-3 py-2 text-xs font-semibold text-muted-strong">
+              Action callback history
             </div>
             <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
               {(() => {

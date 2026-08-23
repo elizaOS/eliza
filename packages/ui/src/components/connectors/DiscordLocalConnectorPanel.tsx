@@ -353,7 +353,7 @@ export function DiscordLocalConnectorPanel() {
               })}
             </div>
             {guilds.length > 0 ? (
-              <div className="block space-y-1">
+              <div className="space-y-1">
                 <span className="font-medium text-txt">
                   {t("common.server", {
                     defaultValue: "Server",

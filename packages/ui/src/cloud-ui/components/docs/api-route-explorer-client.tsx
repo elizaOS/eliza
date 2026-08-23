@@ -184,7 +184,7 @@ export function ApiRouteExplorerClient({
             <div className="border-b border-border p-4 bg-bg-elevated">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-muted" />
+                  <div className="size-2 rounded-full bg-muted" />
                   <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted">
                     Route Explorer
                   </span>
@@ -198,7 +198,7 @@ export function ApiRouteExplorerClient({
                     type="checkbox"
                     checked={showAll}
                     onChange={(e) => setShowAll(e.target.checked)}
-                    className="accent-txt w-3.5 h-3.5"
+                    className="accent-txt size-3.5"
                   />
                   Show all
                 </label>
@@ -214,7 +214,7 @@ export function ApiRouteExplorerClient({
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search endpoints..."
+                  placeholder="Search endpoints…"
                   className="w-full min-h-touch pl-10 pr-4 py-2.5 rounded-sm border border-border bg-bg text-sm text-txt placeholder:text-muted transition-colors"
                 />
               </div>
@@ -549,7 +549,7 @@ export function ApiRouteExplorerClient({
           ) : (
             /* Empty state */
             <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-bg-muted flex items-center justify-center mb-4">
+              <div className="size-16 rounded-full bg-bg-muted flex items-center justify-center mb-4">
                 <Terminal
                   aria-hidden="true"
                   className="size-8 text-muted"

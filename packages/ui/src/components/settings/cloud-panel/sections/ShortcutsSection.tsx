@@ -384,7 +384,7 @@ export function ShortcutsSection() {
                       setRecordingId(isRecording ? null : shortcut.id);
                     }}
                   >
-                    <Keyboard className="h-4 w-4" aria-hidden />
+                    <Keyboard className="size-4" aria-hidden />
                   </Button>
                   <Button
                     type="button"
@@ -397,7 +397,7 @@ export function ShortcutsSection() {
                     }
                     onClick={() => resetCombo(shortcut.id)}
                   >
-                    <RotateCcw className="h-4 w-4" aria-hidden />
+                    <RotateCcw className="size-4" aria-hidden />
                   </Button>
                 </div>
                 {isPending && conflictForThis ? (
@@ -405,10 +405,7 @@ export function ShortcutsSection() {
                     className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
                     role="alert"
                   >
-                    <AlertTriangle
-                      className="h-3.5 w-3.5 shrink-0"
-                      aria-hidden
-                    />
+                    <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
                     <span className="flex-1">
                       This combo is used by “{conflictForThis.label}”. Override?
                     </span>

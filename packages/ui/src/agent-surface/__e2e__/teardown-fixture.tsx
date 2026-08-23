@@ -138,7 +138,7 @@ function App() {
         color: "#eee",
         background: "#0d1117",
         padding: 28,
-        minHeight: "100vh",
+        minHeight: "100dvh",
       }}
     >
       <div data-testid="active-section">section={section}</div>

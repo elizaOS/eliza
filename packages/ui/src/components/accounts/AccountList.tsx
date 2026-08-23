@@ -106,7 +106,7 @@ export function AccountList({ providerId }: AccountListProps) {
   if (accounts.loading && !accounts.data) {
     return (
       <div className="mt-3 flex items-center gap-2 text-xs text-muted">
-        <Spinner className="h-3 w-3" />
+        <Spinner className="size-3" />
         {t("accounts.loading", { defaultValue: "Loading accounts…" })}
       </div>
     );
@@ -162,7 +162,7 @@ export function AccountList({ providerId }: AccountListProps) {
             }}
             className="h-8 gap-1 px-2.5 text-xs"
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden />
+            <Plus className="size-3.5" aria-hidden />
             {t("accounts.add.button", { defaultValue: "Add account" })}
           </Button>
         </div>

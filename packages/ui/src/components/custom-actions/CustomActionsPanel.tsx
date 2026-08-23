@@ -225,7 +225,7 @@ export function CustomActionsPanel({
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="text-muted hover:text-txt h-7 w-7"
+              className="text-muted hover:text-txt size-7"
               aria-label={t("aria.closePanel")}
             >
               <svg

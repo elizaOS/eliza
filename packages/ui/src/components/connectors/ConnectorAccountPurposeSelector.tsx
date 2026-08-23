@@ -104,7 +104,7 @@ export function ConnectorAccountPurposeSelector({
   return (
     <>
       <div className="flex min-w-[180px] items-center gap-2">
-        <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
+        <span className="shrink-0 text-2xs font-medium uppercase tracking-wider text-muted">
           {t("connectorpurpose.actsAs", { defaultValue: "Acts as:" })}
         </span>
         <Select
@@ -210,7 +210,7 @@ export function ConnectorAccountPurposeSelector({
               onClick={() => void handleConfirm()}
             >
               {confirmBusy ? (
-                <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+                <span className="size-3 animate-spin rounded-full border border-current border-t-transparent" />
               ) : (
                 t("connectorpurpose.confirm", { defaultValue: "Confirm" })
               )}

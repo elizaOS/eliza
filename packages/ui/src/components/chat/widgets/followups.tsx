@@ -41,7 +41,7 @@ export type FollowupsWidgetProps = {
 
 function iconForKind(kind: FollowupKind) {
   return kind === "navigate" ? (
-    <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+    <ArrowRight className="size-3.5" aria-hidden />
   ) : null;
 }
 
@@ -110,7 +110,7 @@ export const FollowupsWidget = memo(function FollowupsWidget({
           >
             {isChosen ? (
               <span className="inline-flex items-center gap-1">
-                <Check className="h-3.5 w-3.5" aria-hidden />
+                <Check className="size-3.5" aria-hidden />
                 <span>{option.label}</span>
               </span>
             ) : icon ? (
@@ -135,9 +135,9 @@ export const FollowupsWidget = memo(function FollowupsWidget({
           data-testid="followups-dismiss"
           variant="ghost"
           size="icon-sm"
-          className="h-7 w-7 text-muted hover:text-txt"
+          className="size-7 text-muted hover:text-txt"
         >
-          <X className="h-3.5 w-3.5" aria-hidden />
+          <X className="size-3.5" aria-hidden />
         </Button>
       )}
     </fieldset>

@@ -46,6 +46,20 @@ const CREDITS_MESSAGE =
   "You're out of credits. Add funds to keep chatting with your agent.";
 
 const warmingSequence = ["agent_cache_warming", "shared_runtime_cache_warming"];
+
+const FIXTURE_NOTICE_STYLE: React.CSSProperties = {
+  position: "fixed",
+  top: 16,
+  left: "50%",
+  transform: "translateX(-50%)",
+  background: "rgba(0,0,0,0.75)",
+  border: "1px solid rgba(255,255,255,0.25)",
+  borderRadius: 12,
+  padding: "10px 16px",
+  fontSize: 13,
+  zIndex: 100,
+  maxWidth: 480,
+};
 let streamPosts = 0;
 
 function warming503(code: string): Response {
@@ -299,25 +313,11 @@ function Harness(): React.JSX.Element {
         <p style={{ opacity: 0.7, marginTop: 12, lineHeight: 1.6 }}>
           {scenario === "credits"
             ? "The agent behind this fixture answers the send with the canonical insufficient_credits 402."
-            : "The agent behind this fixture 503s the first two sends with the named warming barriers, replies, then returns a temporarily stale history view — the hosted regression sequence."}
+            : "The agent behind this fixture 503s the first two sends with the named warming barriers, replies, then returns a temporarily stale history view: the hosted regression sequence."}
         </p>
       </div>
       {notice ? (
-        <div
-          data-testid="fixture-notice"
-          style={{
-            position: "fixed",
-            top: 16,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "rgba(0,0,0,0.75)",
-            border: "1px solid rgba(255,255,255,0.25)",
-            borderRadius: 12,
-            padding: "10px 16px",
-            fontSize: 13,
-            zIndex: 100,
-            maxWidth: 480,
-          }}
+        <div data-testid="fixture-notice" style={FIXTURE_NOTICE_STYLE}
         >
           {notice}
         </div>

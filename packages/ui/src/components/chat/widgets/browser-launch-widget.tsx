@@ -68,13 +68,13 @@ export function BrowserLaunchWidget({
       className="my-2 text-sm space-y-3"
     >
       <div className="flex items-center gap-2">
-        <Globe className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+        <Globe className="size-4 shrink-0 text-muted" aria-hidden />
         <span className="min-w-0 flex-1 truncate font-medium">
           {target ?? "Browser session"}
         </span>
         <span className="inline-flex shrink-0 items-center gap-1.5">
           <span
-            className={`h-1.5 w-1.5 rounded-full ${style.dotClass}`}
+            className={`size-1.5 rounded-full ${style.dotClass}`}
             aria-hidden
           />
           <span
@@ -99,7 +99,7 @@ export function BrowserLaunchWidget({
           src={screenshotUrl}
           alt={target ? `Screenshot of ${target}` : "Browser screenshot"}
           data-testid="browser-launch-screenshot"
-          className="max-h-48 w-full object-cover"
+          className="aspect-video max-h-48 w-full object-cover"
         />
       ) : null}
 
@@ -110,7 +110,7 @@ export function BrowserLaunchWidget({
           data-testid="browser-launch-start"
           onClick={() => onLaunch?.()}
         >
-          <Globe className="h-3.5 w-3.5" aria-hidden />
+          <Globe className="size-3.5" aria-hidden />
           Launch browser
         </Button>
       ) : null}
@@ -118,7 +118,7 @@ export function BrowserLaunchWidget({
       {inFlight ? (
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 text-xs text-muted">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            <Loader2 className="size-3.5 animate-spin" aria-hidden />
             {status === "launching"
               ? "Starting the browser…"
               : "Waiting for you to finish in the browser…"}

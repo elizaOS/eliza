@@ -43,7 +43,7 @@ export const SidebarSearchBar = React.forwardRef<
 
     return (
       <div className={cn("relative flex items-center", className)}>
-        <Search className="pointer-events-none absolute left-3.5 h-4 w-4 text-muted" />
+        <Search className="pointer-events-none absolute left-3.5 size-4 text-muted" />
         <Input
           ref={ref}
           type="text"
@@ -53,16 +53,16 @@ export const SidebarSearchBar = React.forwardRef<
           {...props}
         />
         {loading ? (
-          <div className="absolute right-3.5 h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted/35 border-t-accent" />
+          <div className="absolute right-3.5  size-3.5 animate-spin rounded-full border-2 border-muted/35 border-t-accent" />
         ) : hasValue && onClear ? (
           <Button
             variant="ghost"
             size="icon-sm"
             aria-label={clearLabel}
-            className="absolute right-2.5 h-6 w-6 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt"
+            className="absolute right-2.5 size-6 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt"
             onClick={onClear}
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="size-3.5" />
           </Button>
         ) : null}
       </div>

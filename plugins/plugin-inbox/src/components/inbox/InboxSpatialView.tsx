@@ -276,7 +276,7 @@ function InboxEmptyBody({
       <VStack gap={1}>
         <Text bold>No messages from reachable channels</Text>
         <Text tone="muted" style="caption">
-          {`${labels} could not be checked — this may not be everything.`}
+          {`${labels} could not be checked; this may not be everything.`}
         </Text>
       </VStack>
     );

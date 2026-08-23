@@ -121,15 +121,15 @@ export function SocialConnectionHint({
             className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/60 hover:text-white/60"
             aria-label="Dismiss Discord hint"
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
           <div className="flex items-start gap-4 pr-8">
             <div className="p-3 rounded-sm bg-[#5865F2]/20 shrink-0">
-              <DiscordIcon className="h-6 w-6 text-[#5865F2]" />
+              <DiscordIcon className="size-6 text-[#5865F2]" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
-                <Sparkles className="h-4 w-4 text-[#5865F2]" />
+                <Sparkles className="size-4 text-[#5865F2]" />
                 Connect Discord for Automated Promotion
               </h3>
               <p className="text-white/60 text-sm mb-3">
@@ -145,7 +145,7 @@ export function SocialConnectionHint({
                 >
                   <Link to="/cloud/connectors">
                     Connect Discord
-                    <ArrowRight className="h-4 w-4 ml-2" />
+                    <ArrowRight className="size-4 ml-2" />
                   </Link>
                 </Button>
                 <span className="text-white/60 text-xs">
@@ -167,15 +167,15 @@ export function SocialConnectionHint({
             className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/60 hover:text-white/60"
             aria-label="Dismiss Telegram hint"
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
           <div className="flex items-start gap-4 pr-8">
             <div className="p-3 rounded-sm bg-[#0088cc]/20 shrink-0">
-              <MessageSquare className="h-6 w-6 text-[#0088cc]" />
+              <MessageSquare className="size-6 text-[#0088cc]" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
-                <Bot className="h-4 w-4 text-[#0088cc]" />
+                <Bot className="size-4 text-[#0088cc]" />
                 Connect Telegram Bot for Announcements
               </h3>
               <p className="text-white/60 text-sm mb-3">
@@ -190,7 +190,7 @@ export function SocialConnectionHint({
                 >
                   <Link to="/cloud/connectors">
                     Connect Telegram
-                    <ArrowRight className="h-4 w-4 ml-2" />
+                    <ArrowRight className="size-4 ml-2" />
                   </Link>
                 </Button>
                 <span className="text-white/60 text-xs">

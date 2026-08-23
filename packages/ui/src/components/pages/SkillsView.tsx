@@ -522,7 +522,7 @@ function SkillsFullViewContent({
       >
         <div data-testid="skills-detail">
           <PagePanel variant="section">
-            <div className="px-4 py-4 sm:px-5">
+            <div className="p-4 sm:px-5">
               {skills.length === 0 && !skillCreateFormOpen ? (
                 <div
                   data-testid="skills-empty-state"
@@ -530,7 +530,7 @@ function SkillsFullViewContent({
                 >
                   <PagePanel.Empty
                     className="flex-1"
-                    icon={<Brain className="h-6 w-6" aria-hidden />}
+                    icon={<Brain className="size-6" aria-hidden />}
                     title={t("skillsview.noSkillsInstalled", {
                       defaultValue: "No Skills Installed",
                     })}
@@ -551,7 +551,7 @@ function SkillsFullViewContent({
                 />
               ) : skillCreateFormOpen ? (
                 <PagePanel variant="surface" className="overflow-hidden">
-                  <div className="px-4 py-4 sm:px-5">
+                  <div className="p-4 sm:px-5">
                     <div className="flex flex-col gap-3">
                       <div>
                         <span className="mb-1 block text-xs-tight font-medium text-muted">
@@ -639,9 +639,9 @@ function SkillsFullViewContent({
                   className="overflow-hidden"
                   data-skill-id={selectedSkill.id}
                 >
-                  <div className="flex items-start gap-3 px-4 py-4 sm:px-5">
+                  <div className="flex items-start gap-3 p-4 sm:px-5">
                     <div className="mt-0.5 shrink-0">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-sm bg-accent/18 p-2.5 text-base font-bold text-txt-strong">
+                      <div className="flex  size-11 items-center justify-center rounded-sm bg-accent/18 p-2.5 text-base font-bold text-txt-strong">
                         {selectedSkill.name.charAt(0).toUpperCase()}
                       </div>
                     </div>
@@ -711,7 +711,7 @@ function SkillsFullViewContent({
                       />
                     </div>
                   </div>
-                  <div className="px-4 py-4 sm:px-5">
+                  <div className="p-4 sm:px-5">
                     <div className="mb-4 flex flex-wrap items-center gap-2">
                       <Button
                         ref={editSourceButton.ref}

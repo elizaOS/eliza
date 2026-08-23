@@ -123,7 +123,7 @@ function PipelineNodeButton({
         ${statusClasses[node.status]}
       `}
     >
-      <Icon className={`h-5 w-5 ${iconColor[node.status]}`} />
+      <Icon className={`size-5 ${iconColor[node.status]}`} />
       <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-strong whitespace-nowrap">
         {node.label}
       </span>

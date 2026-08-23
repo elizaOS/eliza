@@ -115,7 +115,7 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
   return (
     <WidgetSection
       title="Browser"
-      icon={<Globe className="h-3.5 w-3.5" />}
+      icon={<Globe className="size-3.5" />}
       testId="chat-widget-browser-status"
       onTitleClick={() => setTab("browser")}
     >
@@ -130,10 +130,10 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
               title={tab.url ?? label}
               data-testid={`chat-widget-browser-tab-${tab.id}`}
               variant="ghost"
-              className="flex h-auto w-full items-center justify-start gap-2 whitespace-normal rounded-sm px-0.5 py-0.5 text-left font-normal transition-colors hover:bg-bg-hover/40"
+              className="flex h-auto w-full items-center justify-start gap-2 whitespace-normal rounded-sm p-0.5 text-left font-normal transition-colors hover:bg-bg-hover/40"
             >
               <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dotClass}`}
+                className={`size-1.5 shrink-0 rounded-full ${status.dotClass}`}
                 aria-hidden
               />
               <span

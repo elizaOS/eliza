@@ -271,7 +271,7 @@ function FinancesReadyBody({
       ) : null}
       {snapshot.stale ? (
         <Text tone="warning" style="caption">
-          Data may be out of date — the last refresh failed.
+          Data may be out of date. The last refresh failed.
         </Text>
       ) : null}
       <BalanceSection balance={snapshot.balance} />

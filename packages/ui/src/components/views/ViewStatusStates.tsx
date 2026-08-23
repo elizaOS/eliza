@@ -63,7 +63,7 @@ export function ViewStatusFrame({
         className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 ${toneClass}`}
       >
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-background/70">
+          <div className="grid size-10 shrink-0 place-items-center rounded-md bg-background/70">
             {icon}
           </div>
           <div className="min-w-0 text-left">
@@ -84,9 +84,7 @@ export function ViewLoadingSkeleton() {
   return (
     <ViewStatusFrame
       tone="loading"
-      icon={
-        <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
-      }
+      icon={<LoaderCircle className="size-5 animate-spin" aria-hidden="true" />}
       title={t("dynamicviewloader.loading", { defaultValue: "Loading view…" })}
     />
   );
@@ -109,7 +107,7 @@ export function ViewRecoveryActions({
         className="h-7 gap-1 rounded-sm text-xs"
         onClick={onRetry}
       >
-        <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+        <RotateCw className="size-3.5" aria-hidden="true" />
         {t("dynamicviewloader.retry", { defaultValue: "Retry" })}
       </Button>
       <Button
@@ -119,7 +117,7 @@ export function ViewRecoveryActions({
         className="h-7 gap-1 rounded-sm text-xs"
         onClick={onBack}
       >
-        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        <ArrowLeft className="size-3.5" aria-hidden="true" />
         {t("dynamicviewloader.back", { defaultValue: "Back to views" })}
       </Button>
     </>
@@ -141,7 +139,7 @@ export function ViewErrorState({
   return (
     <ViewStatusFrame
       tone="error"
-      icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
+      icon={<AlertTriangle className="size-5" aria-hidden="true" />}
       title={t("dynamicviewloader.error.title", {
         defaultValue: "Failed to load view",
       })}
@@ -158,7 +156,7 @@ export function ViewErrorState({
         })}
       </span>
       {error?.message ? (
-        <span className="mt-1 block break-words font-mono text-[10px]">
+        <span className="mt-1 block break-words font-mono text-xs">
           {error.message}
         </span>
       ) : null}
@@ -171,7 +169,7 @@ export function ViewRestrictedState({ viewId }: { viewId: string }) {
   return (
     <ViewStatusFrame
       tone="restricted"
-      icon={<Ban className="h-5 w-5" aria-hidden="true" />}
+      icon={<Ban className="size-5" aria-hidden="true" />}
       title={t("dynamicviewloader.restricted.title", {
         defaultValue: "View not available on this platform",
       })}

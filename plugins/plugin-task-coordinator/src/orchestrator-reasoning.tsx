@@ -136,11 +136,11 @@ export function ReasoningCell({
         {...agentProps}
       >
         <ChevronRight
-          className={`h-3 w-3 shrink-0 text-muted transition-transform ${
+          className={`size-3 shrink-0 text-muted transition-transform ${
             open ? "rotate-90" : ""
           }`}
         />
-        <Brain className="h-3.5 w-3.5 shrink-0 text-muted-strong" />
+        <Brain className="size-3.5 shrink-0 text-muted-strong" />
         <span
           className={`min-w-0 flex-1 truncate text-2xs italic text-muted ${
             // The header itself gets the shimmer while streaming so the cell

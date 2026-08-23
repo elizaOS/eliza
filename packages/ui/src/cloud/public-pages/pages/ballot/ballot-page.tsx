@@ -148,7 +148,7 @@ export default function BallotPage() {
         aria-live="polite"
       >
         <div className="flex items-center gap-3 text-muted">
-          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+          <Loader2 className="size-6 animate-spin" aria-hidden="true" />
           <p>
             {t("cloud.ballot.loading", {
               defaultValue: "Loading ballot…",
@@ -162,7 +162,7 @@ export default function BallotPage() {
   if (error || !ballot) {
     return (
       <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col items-center justify-center px-4 py-16 text-center text-txt">
-        <AlertCircle className="h-8 w-8 text-destructive" aria-hidden="true" />
+        <AlertCircle className="size-8 text-destructive" aria-hidden="true" />
         <h1 className="mt-4 text-2xl font-semibold">
           {t("cloud.ballot.unavailableHeading", {
             defaultValue: "Ballot unavailable",
@@ -190,7 +190,7 @@ export default function BallotPage() {
     <div className="mx-auto max-w-lg space-y-6 px-4 py-12 text-txt">
       <header className="space-y-2">
         <div className="flex items-center gap-2 text-sm text-muted">
-          <Vote className="h-4 w-4" />
+          <Vote className="size-4" />
           <span>
             {t("cloud.ballot.secretBallot", { defaultValue: "Secret ballot" })}
           </span>
@@ -267,9 +267,9 @@ export default function BallotPage() {
             className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <CheckCircle2 className="h-4 w-4" />
+              <CheckCircle2 className="size-4" />
             )}
             {t("cloud.ballot.submitVote", { defaultValue: "Submit vote" })}
           </Button>

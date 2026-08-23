@@ -2410,7 +2410,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-11 w-11 shrink-0"
+        className="size-11 shrink-0"
         aria-label={newTabLabel}
         disabled={busyAction !== null}
         onClick={() =>
@@ -2423,7 +2423,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         data-testid="browser-workspace-nav-new-tab"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="size-4" />
       </BrowserNavButton>
       <BrowserNavButton
         agentId="reload"
@@ -2437,7 +2437,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-11 w-11"
+        className="size-11"
         aria-label={t("common.refresh", { defaultValue: "Refresh" })}
         disabled={!selectedTab || busyAction !== null}
         onClick={() =>
@@ -2446,7 +2446,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           })
         }
       >
-        <RefreshCw className="h-4 w-4" />
+        <RefreshCw className="size-4" />
       </BrowserNavButton>
       <BrowserNavButton
         agentId="close-all-tabs"
@@ -2462,7 +2462,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-11 w-11"
+        className="size-11"
         aria-label={t("browserworkspace.CloseAllTabs", {
           defaultValue: "Close all tabs",
         })}
@@ -2477,7 +2477,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         data-testid="browser-workspace-close-all-tabs"
       >
-        <X className="h-4 w-4" />
+        <X className="size-4" />
       </BrowserNavButton>
       <BrowserAddressInput
         agentLabel={t("browserworkspace.AddressPlaceholder", {
@@ -2555,7 +2555,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-11 w-11"
+        className="size-11"
         aria-label={t("browserworkspace.OpenExternal", {
           defaultValue: "Open external",
         })}
@@ -2567,7 +2567,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           })
         }
       >
-        <ExternalLink className="h-4 w-4" />
+        <ExternalLink className="size-4" />
       </BrowserNavButton>
     </div>
   );
@@ -2593,7 +2593,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         >
           <span
             aria-hidden
-            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent "
+            className="inline-block size-1.5 animate-pulse rounded-full bg-accent "
           />
           <span className="truncate">{watchBannerLabel}</span>
         </div>
@@ -2626,7 +2626,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               <PagePanel.Empty
                 variant="inset"
                 className="flex-none py-1 sm:py-2"
-                icon={<Globe className="h-6 w-6" aria-hidden />}
+                icon={<Globe className="size-6" aria-hidden />}
                 title={t("browserworkspace.EmptyTitle", {
                   defaultValue: "No page open",
                 })}
@@ -2717,7 +2717,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                       )
                     }
                   >
-                    <ExternalLink className="h-4 w-4" />
+                    <ExternalLink className="size-4" />
                     {t("browserworkspace.OpenExternal", {
                       defaultValue: "Open external",
                     })}
@@ -2797,7 +2797,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                       )
                     }
                   >
-                    <ExternalLink className="h-4 w-4" />
+                    <ExternalLink className="size-4" />
                     {t("browserworkspace.OpenExternal", {
                       defaultValue: "Open external",
                     })}
@@ -2902,6 +2902,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                       })
                 }
                 src={`data:image/png;base64,${selectedTabSnapshot}`}
+                width={1280}
+                height={720}
                 className="h-full w-full object-contain"
               />
             ) : (
@@ -2965,7 +2967,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     >
       <div
         data-testid="browser-workspace-toolbar"
-        className="shrink-0 rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_48px_rgba(0,0,0,.20)] backdrop-blur-[24px] backdrop-saturate-[1.45]"
+        className="shrink-0 rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_48px_rgba(16,10,5,.20)] backdrop-blur-[24px] backdrop-saturate-[1.45]"
       >
         {navNode}
       </div>

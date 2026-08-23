@@ -362,7 +362,7 @@ export function RoutingTab(props: RoutingTabProps) {
               defaultValue: "Add routing rule",
             })}
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden />{" "}
+            <Plus className="size-3.5" aria-hidden />{" "}
             {t("routing.addRuleShort", { defaultValue: "Add rule" })}
           </Button>
         </div>
@@ -571,7 +571,7 @@ export function RoutingTab(props: RoutingTabProps) {
         {config.rules.length === 0 ? (
           <div
             data-testid="routing-rules-empty"
-            className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+            className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
           >
             {t("routing.empty", {
               defaultValue:
@@ -581,7 +581,7 @@ export function RoutingTab(props: RoutingTabProps) {
         ) : visibleRules.length === 0 ? (
           <div
             data-testid="routing-rules-no-match"
-            className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+            className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
           >
             {t("routing.noMatch", {
               filter: rulesFilter,
@@ -651,7 +651,8 @@ export function RoutingTab(props: RoutingTabProps) {
 
         {saving && (
           <div className="flex items-center gap-2 px-1 text-2xs text-muted">
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />{" "}
+            <Loader2 className="size-3 animate-spin" aria-hidden />
+            {""}
             {t("routing.saving", { defaultValue: "Saving…" })}
           </div>
         )}
@@ -721,7 +722,7 @@ const RoutingRuleRow = memo(
               })}
             >
               {keyPattern}
-              <ArrowRight className="h-3 w-3" aria-hidden />
+              <ArrowRight className="size-3" aria-hidden />
             </Button>
           ) : (
             <span className="font-mono text-2xs text-muted">{keyPattern}</span>
@@ -744,14 +745,14 @@ const RoutingRuleRow = memo(
             {...deleteAgentProps}
             variant="ghost"
             size="sm"
-            className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
+            className="size-6 rounded-sm p-0 text-muted hover:text-danger"
             onClick={onDelete}
             aria-label={t("routing.deleteRule", {
               keyPattern,
               defaultValue: "Delete rule for {{keyPattern}}",
             })}
           >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            <Trash2 className="size-3.5" aria-hidden />
           </Button>
         </td>
       </tr>

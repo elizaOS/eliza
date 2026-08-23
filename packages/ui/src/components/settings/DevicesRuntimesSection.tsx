@@ -330,7 +330,7 @@ function PairingQr({ payload }: { payload: string }) {
       viewBox={`0 0 ${matrix.length} ${matrix.length}`}
       role="img"
       aria-label="QR code for this one-use pairing session"
-      className="h-40 w-40 rounded-lg bg-white p-2 text-black"
+      className="size-40 rounded-lg bg-white p-2 text-black"
       shapeRendering="crispEdges"
     >
       <path d={dark.join("")} fill="currentColor" />
@@ -364,7 +364,7 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
     <div className="grid gap-5 rounded-xl border border-accent/35 bg-accent/5 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
       <div className="min-w-0">
         <div className="flex items-center gap-2 text-sm font-semibold text-txt-strong">
-          <ShieldCheck className="h-4 w-4 text-accent" aria-hidden />
+          <ShieldCheck className="size-4 text-accent" aria-hidden />
           Pair {pairing.hostLabel}
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted">
@@ -443,7 +443,7 @@ function RuntimeCard({
     >
       <div className="flex min-w-0 items-start gap-3">
         <div className="mt-0.5 rounded-lg border border-border bg-surface p-2">
-          <Icon className="h-4 w-4 text-muted" aria-hidden />
+          <Icon className="size-4 text-muted" aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -451,8 +451,8 @@ function RuntimeCard({
               {target.label}
             </h4>
             {target.selected ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">
-                <Check className="h-3 w-3" aria-hidden /> Selected
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs-tight font-medium text-accent">
+                <Check className="size-3" aria-hidden /> Selected
               </span>
             ) : null}
           </div>
@@ -473,10 +473,7 @@ function RuntimeCard({
               className="mt-2 flex items-start gap-1.5 text-xs text-destructive"
               role="alert"
             >
-              <CircleAlert
-                className="mt-0.5 h-3.5 w-3.5 shrink-0"
-                aria-hidden
-              />
+              <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               {target.error}
             </p>
           ) : null}
@@ -503,7 +500,7 @@ function RuntimeCard({
             disabled={busy}
             onClick={onPair}
           >
-            <Link2 className="mr-1.5 h-4 w-4" aria-hidden /> Pair device
+            <Link2 className="mr-1.5 size-4" aria-hidden /> Pair device
           </Button>
         ) : null}
         {target.status === "offline" || target.status === "error" ? (
@@ -515,7 +512,7 @@ function RuntimeCard({
             disabled={busy}
             onClick={onRetry}
           >
-            <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden /> Retry
+            <RefreshCw className="mr-1.5 size-4" aria-hidden /> Retry
           </Button>
         ) : null}
         {target.canRevoke && !confirming ? (
@@ -527,7 +524,7 @@ function RuntimeCard({
             disabled={busy}
             onClick={() => setConfirming("revoke")}
           >
-            <Unplug className="mr-1.5 h-4 w-4" aria-hidden /> Revoke
+            <Unplug className="mr-1.5 size-4" aria-hidden /> Revoke
           </Button>
         ) : null}
         {target.canRemove && !confirming ? (
@@ -539,7 +536,7 @@ function RuntimeCard({
             disabled={busy}
             onClick={() => setConfirming("remove")}
           >
-            <Trash2 className="mr-1.5 h-4 w-4" aria-hidden /> Remove
+            <Trash2 className="mr-1.5 size-4" aria-hidden /> Remove
           </Button>
         ) : null}
         {confirming ? (
@@ -610,7 +607,7 @@ function AdvancedSsh({
 
   return (
     <details className="rounded-xl border border-border bg-card p-4">
-      <summary className="min-h-11 cursor-pointer select-none py-2 text-sm font-semibold text-txt-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+      <summary className="min-h-11 cursor-pointer select-none py-2 text-sm font-semibold text-txt-strong">
         Advanced SSH
       </summary>
       <p className="mb-4 text-xs leading-relaxed text-muted">
@@ -747,12 +744,12 @@ function AdvancedSsh({
           >
             <p className="flex items-center gap-2 text-xs font-semibold text-txt-strong">
               {inspection.changed ? (
-                <CircleAlert className="h-4 w-4 text-destructive" aria-hidden />
+                <CircleAlert className="size-4 text-destructive" aria-hidden />
               ) : (
-                <ShieldCheck className="h-4 w-4 text-accent" aria-hidden />
+                <ShieldCheck className="size-4 text-accent" aria-hidden />
               )}
               {inspection.changed
-                ? "Host key changed — connection blocked"
+                ? "Host key changed: connection blocked"
                 : "Verify this host fingerprint"}
             </p>
             <code className="mt-2 block break-all text-xs text-txt-strong">
@@ -774,14 +771,14 @@ function AdvancedSsh({
           >
             {busy ? (
               <LoaderCircle
-                className="mr-1.5 h-4 w-4 motion-safe:animate-spin"
+                className="mr-1.5 size-4 motion-safe:animate-spin"
                 aria-hidden
               />
             ) : (
-              <ShieldCheck className="mr-1.5 h-4 w-4" aria-hidden />
+              <ShieldCheck className="mr-1.5 size-4" aria-hidden />
             )}
             {inspection && inspectedTarget
-              ? "I verified this fingerprint — connect"
+              ? "Fingerprint verified, connect"
               : "Inspect fingerprint"}
           </Button>
           <span className="text-xs text-muted">
@@ -857,7 +854,7 @@ export function DevicesRuntimesSection({
             disabled={busy}
             onClick={() => void onRefresh()}
           >
-            <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden />
+            <RefreshCw className="mr-1.5 size-4" aria-hidden />
             Refresh
           </Button>
         }

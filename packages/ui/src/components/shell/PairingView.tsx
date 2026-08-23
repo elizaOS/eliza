@@ -194,7 +194,7 @@ export function PairingView() {
                 <div
                   id="pairing-code-error"
                   role="alert"
-                  className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-3 text-sm leading-relaxed text-danger"
+                  className="rounded-sm border border-danger/30 bg-danger/10 p-3 text-sm leading-relaxed text-danger"
                 >
                   {pairingError}
                 </div>

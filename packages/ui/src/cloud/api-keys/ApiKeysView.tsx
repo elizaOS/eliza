@@ -119,7 +119,7 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
           className="gap-2"
           onClick={() => setCreateOpen(true)}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="size-4" />
           {t("cloud.apiKeys.createApiKey", { defaultValue: "Generate key" })}
         </BrandButton>
       ) : undefined,
@@ -292,7 +292,7 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
                 copyLabel={t("cloud.apiKeys.created.copyAria", {
                   defaultValue: "Copy API key",
                 })}
-                className="h-10 w-10 shrink-0 justify-center rounded-sm border border-border bg-bg-elevated"
+                className="size-10 shrink-0 justify-center rounded-sm border border-border bg-bg-elevated"
               />
             </div>
             <DialogFooter>

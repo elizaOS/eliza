@@ -119,7 +119,14 @@ export const WithImage: Story = {
         <img
           src="https://placehold.co/288x160/0a0a0a/f97316?text=TELEMETRY"
           alt="telemetry"
-          style={{ width: "100%", display: "block", borderRadius: 2 }}
+          width={288}
+          height={160}
+          style={{
+            width: "100%",
+            height: "auto",
+            display: "block",
+            borderRadius: 2,
+          }}
         />
         <div style={{ marginTop: 12, fontSize: 12, color: "#a3a3a3" }}>
           Live feed - sector 7G

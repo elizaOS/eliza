@@ -16,7 +16,7 @@ function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
   const t = useT();
   return (
     <EmptyState
-      icon={<Bot className="h-6 w-6" />}
+      icon={<Bot className="size-6" />}
       title={t("cloud.myAgents.noCloudAgent", {
         defaultValue: "No agents yet",
       })}
@@ -26,7 +26,7 @@ function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
       })}
       action={
         <BrandButton variant="primary" onClick={onCreateNew}>
-          <Plus className="h-4 w-4" />
+          <Plus className="size-4" />
           {t("cloud.myAgents.createFirstAgent", {
             defaultValue: "Create your first agent",
           })}

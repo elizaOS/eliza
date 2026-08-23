@@ -223,7 +223,7 @@ export default function GetStartedPage(): React.JSX.Element {
 
   return (
     <div
-      className="theme-cloud flex min-h-screen w-full flex-col items-center justify-center bg-black px-4 text-white"
+      className="theme-cloud flex min-h-dvh w-full flex-col items-center justify-center bg-black px-4 text-white"
       style={{ background: "var(--background)" }}
     >
       <div className="flex w-full max-w-sm flex-col items-center gap-6 text-center">
@@ -347,7 +347,7 @@ export default function GetStartedPage(): React.JSX.Element {
             role="status"
             aria-busy="true"
           >
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/80 border-t-transparent" />
+            <div className="size-8 animate-spin rounded-full border-2 border-white/80 border-t-transparent" />
             <p className="text-sm text-white/72">
               {t("cloud.getStarted.linking", {
                 defaultValue:

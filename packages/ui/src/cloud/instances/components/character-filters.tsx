@@ -47,7 +47,7 @@ export function CharacterFilters({
       {/* Left side - Search and count */}
       <div className="flex w-full flex-1 items-center gap-3 sm:w-auto">
         <div className="relative w-full flex-1 sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
           <Input
             type="text"
             placeholder={t("cloud.characterFilters.searchPlaceholder", {
@@ -115,7 +115,7 @@ export function CharacterFilters({
                 : "text-white/50 hover:text-white"
             }`}
           >
-            <LayoutGrid className="h-4 w-4" />
+            <LayoutGrid className="size-4" />
           </Button>
           <Button
             variant="ghost"
@@ -131,7 +131,7 @@ export function CharacterFilters({
                 : "text-white/50 hover:text-white"
             }`}
           >
-            <List className="h-4 w-4" />
+            <List className="size-4" />
           </Button>
         </div>
       </div>

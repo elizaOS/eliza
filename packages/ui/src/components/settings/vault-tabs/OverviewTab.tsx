@@ -186,7 +186,7 @@ export function OverviewTab(props: OverviewTabProps) {
             defaultValue: "Re-detect backends",
           })}
         >
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          <RefreshCw className="size-3.5" aria-hidden />
         </Button>
       </div>
 
@@ -271,12 +271,12 @@ export function ProtectionCard({
       <div className="flex items-start gap-2">
         {protectedLocally ? (
           <CheckCircle2
-            className="mt-0.5 h-4 w-4 shrink-0 text-success"
+            className="mt-0.5  size-4 shrink-0 text-success"
             aria-hidden
           />
         ) : (
           <AlertCircle
-            className="mt-0.5 h-4 w-4 shrink-0 text-warning"
+            className="mt-0.5 size-4 shrink-0 text-warning"
             aria-hidden
           />
         )}
@@ -443,7 +443,7 @@ export function BackendRow(props: BackendRowProps) {
           checked={enabled}
           disabled={lockedInHouse}
           onChange={(e) => onToggle(e.target.checked)}
-          className="h-4 w-4 cursor-pointer border-border p-0 accent-accent disabled:cursor-not-allowed"
+          className="size-4 cursor-pointer border-border p-0 accent-accent disabled:cursor-not-allowed"
           aria-label={t("vault.backend.enableLabel", {
             label: backend.label,
             defaultValue: "Enable {{label}}",
@@ -496,7 +496,7 @@ export function BackendRow(props: BackendRowProps) {
                 defaultValue: "Install {{label}}",
               })}
             >
-              <Download className="h-3.5 w-3.5" aria-hidden />
+              <Download className="size-3.5" aria-hidden />
               {t("vault.backend.install", { defaultValue: "Install" })}
             </Button>
           )}
@@ -513,7 +513,7 @@ export function BackendRow(props: BackendRowProps) {
                 defaultValue: "Sign in to {{label}}",
               })}
             >
-              <LogIn className="h-3.5 w-3.5" aria-hidden />
+              <LogIn className="size-3.5" aria-hidden />
               {t("vault.backend.signIn", { defaultValue: "Sign in" })}
             </Button>
           )}
@@ -531,7 +531,7 @@ export function BackendRow(props: BackendRowProps) {
               })}
               title={t("vault.backend.signOut", { defaultValue: "Sign out" })}
             >
-              <LogOut className="h-3.5 w-3.5" aria-hidden />
+              <LogOut className="size-3.5" aria-hidden />
               {t("vault.backend.signOut", { defaultValue: "Sign out" })}
             </Button>
           )}
@@ -542,7 +542,7 @@ export function BackendRow(props: BackendRowProps) {
                 {...moveUpAgentProps}
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 rounded-sm p-0"
+                className="size-7 rounded-sm p-0"
                 onClick={onMoveUp}
                 disabled={position <= 0}
                 title={t("vault.backend.moveUp", { defaultValue: "Move up" })}
@@ -550,14 +550,14 @@ export function BackendRow(props: BackendRowProps) {
                   defaultValue: "Move up",
                 })}
               >
-                <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+                <ChevronUp className="size-3.5" aria-hidden />
               </Button>
               <Button
                 ref={moveDownRef}
                 {...moveDownAgentProps}
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 rounded-sm p-0"
+                className="size-7 rounded-sm p-0"
                 onClick={onMoveDown}
                 disabled={position < 0 || position >= totalEnabled - 1}
                 title={t("vault.backend.moveDown", {
@@ -567,7 +567,7 @@ export function BackendRow(props: BackendRowProps) {
                   defaultValue: "Move down",
                 })}
               >
-                <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                <ChevronDown className="size-3.5" aria-hidden />
               </Button>
             </>
           )}
@@ -613,7 +613,7 @@ function StatusPill({
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-2xs font-medium ${classes}`}
     >
-      <Icon className="h-3 w-3" aria-hidden />
+      <Icon className="size-3" aria-hidden />
       {text}
     </span>
   );
@@ -821,7 +821,7 @@ export function InstallSheet({
       {running && (
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs text-muted">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            <Loader2 className="size-3.5 animate-spin" aria-hidden />
             {t("vault.install.installing", { defaultValue: "Installing…" })}
           </div>
           {lastLog && (
@@ -835,7 +835,7 @@ export function InstallSheet({
       {done && !error && (
         <div className="flex items-center justify-between gap-2 rounded-sm border border-ok/30 bg-ok/10 px-2 py-1.5 text-xs text-ok">
           <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+            <CheckCircle2 className="size-3.5" aria-hidden />
             {t("vault.install.complete", { defaultValue: "Install complete." })}
           </span>
           <Button
@@ -909,9 +909,9 @@ function InstallMethodButton({
       onClick={onStart}
     >
       {method.kind === "manual" ? (
-        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+        <ExternalLink className="size-3.5" aria-hidden />
       ) : (
-        <Download className="h-3.5 w-3.5" aria-hidden />
+        <Download className="size-3.5" aria-hidden />
       )}
       <span className="truncate text-xs">{describeMethod(method)}</span>
     </Button>
@@ -1232,12 +1232,12 @@ export function SigninSheet({
         >
           {submitting ? (
             <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
               {t("vault.signin.signingIn", { defaultValue: "Signing in…" })}
             </>
           ) : (
             <>
-              <LogIn className="h-3.5 w-3.5" aria-hidden />
+              <LogIn className="size-3.5" aria-hidden />
               {t("vault.signin.signIn", { defaultValue: "Sign in" })}
             </>
           )}

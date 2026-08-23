@@ -74,9 +74,9 @@ export function ExportButton({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm">
-            <Upload className="mr-2 h-4 w-4" />
+            <Upload className="mr-2 size-4" />
             Export data
-            <ChevronDown className="ml-2 h-4 w-4" />
+            <ChevronDown className="ml-2  size-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
@@ -134,7 +134,7 @@ export function ExportButton({
       variant="outline"
       size="sm"
     >
-      <Download className="mr-2 h-4 w-4" />
+      <Download className="mr-2 size-4" />
       Export {format.toUpperCase()}
     </Button>
   );

@@ -49,8 +49,8 @@ root.render(
     className="mx-auto flex max-w-xl flex-col gap-6 p-5 text-txt"
     data-testid="deslop-walkthrough"
   >
-    <div className="text-[15px] leading-[1.7]">
-      Sure — I can set that up. A couple of quick questions:
+    <div className="text-sm leading-[1.7]">
+      Sure, I can set that up. A couple of quick questions:
     </div>
     <ChoiceWidget
       id="walkthrough-choice"

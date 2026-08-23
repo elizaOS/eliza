@@ -221,7 +221,7 @@ export const ChatConversationItem = memo(function ChatConversationItem({
           data-testid="conv-actions"
           aria-label={labels.actions ?? "More actions"}
           className={cn(
-            "h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:bg-transparent hover:text-txt ",
+            "size-6 shrink-0 rounded-sm p-0 text-muted hover:bg-transparent hover:text-txt ",
             mobile
               ? "opacity-100"
               : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
@@ -232,7 +232,7 @@ export const ChatConversationItem = memo(function ChatConversationItem({
             onOpenActions(event, conversation);
           }}
         >
-          <MoreHorizontal className="h-4 w-4" aria-hidden />
+          <MoreHorizontal className="size-4" aria-hidden />
         </Button>
       ) : null}
 
@@ -256,7 +256,7 @@ export const ChatConversationItem = memo(function ChatConversationItem({
             onRequestRename?.();
           }}
         >
-          <PencilLine className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+          <PencilLine className="size-3.5" strokeWidth={2.25} aria-hidden />
         </Button>
       ) : null}
 
@@ -281,12 +281,12 @@ export const ChatConversationItem = memo(function ChatConversationItem({
             onRequestDeleteConfirm?.();
           }}
         >
-          <X className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+          <X className="size-3.5" strokeWidth={2.25} aria-hidden />
         </Button>
       ) : null}
 
       {isConfirmingDelete ? (
-        <div className="flex flex-shrink-0 items-center gap-1.5 rounded-sm border border-danger/30 bg-destructive-subtle px-2 py-1 ">
+        <div className="flex shrink-0 items-center gap-1.5 rounded-sm border border-danger/30 bg-destructive-subtle p-2">
           <span className="text-2xs font-medium text-txt-strong">
             {labels.deleteConfirm ?? "Delete?"}
           </span>

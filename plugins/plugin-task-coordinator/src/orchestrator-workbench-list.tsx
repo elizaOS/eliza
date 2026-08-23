@@ -123,7 +123,7 @@ export function orchestratorTaskChips(
     <>
       {thread.sessionCount > 0 ? (
         <TaskMetaChip
-          icon={<Bot className="h-3 w-3" />}
+          icon={<Bot className="size-3" />}
           tone={thread.activeSessionCount > 0 ? "accent" : "muted"}
         >
           {t("orchestrator.chip.agents", {
@@ -134,12 +134,12 @@ export function orchestratorTaskChips(
         </TaskMetaChip>
       ) : null}
       {thread.paused ? (
-        <TaskMetaChip icon={<Pause className="h-3 w-3" />}>
+        <TaskMetaChip icon={<Pause className="size-3" />}>
           {t("orchestrator.status.paused", { defaultValue: "Paused" })}
         </TaskMetaChip>
       ) : null}
       {PriorityIcon && thread.priority !== "normal" ? (
-        <TaskMetaChip icon={<PriorityIcon className="h-3 w-3" />}>
+        <TaskMetaChip icon={<PriorityIcon className="size-3" />}>
           {labelPriority(thread.priority, t)}
         </TaskMetaChip>
       ) : null}

@@ -30,7 +30,7 @@ const Header = ({ title }: { title: string }) => (
     <div className="text-sm font-medium text-white">{title}</div>
     <div className="flex items-center gap-3 text-xs text-white/60">
       <span>v1.4.2</span>
-      <div className="h-7 w-7 rounded-full bg-orange-500" />
+      <div className="size-7 rounded-full bg-orange-500" />
     </div>
   </header>
 );
@@ -93,7 +93,7 @@ export const EmptyContent: Story = {
         <img
           src="https://placehold.co/120x120/0a0a0a/f97316?text=%2B"
           alt=""
-          className="mb-4 h-24 w-24 rounded-full"
+          className="mb-4 size-24 rounded-full"
         />
         <div className="text-lg font-medium text-white">No agents yet</div>
         <div className="mt-1 text-sm text-white/60">
@@ -117,7 +117,7 @@ export const MinimalShell: Story = {
         {["O", "A", "B", "U", "S"].map((letter, i) => (
           <div
             key={letter}
-            className={`flex h-9 w-9 items-center justify-center rounded-md text-xs ${
+            className={`flex size-9 items-center justify-center rounded-md text-xs ${
               i === 0
                 ? "bg-orange-500 text-black"
                 : "bg-white/5 text-white/70 hover:bg-white/10"

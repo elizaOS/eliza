@@ -73,7 +73,7 @@ function DefaultViewErrorFallback({
       <p className="text-sm font-semibold text-destructive">
         This view ran into a problem
       </p>
-      <p className="max-w-sm break-words font-mono text-[11px] text-muted opacity-70">
+      <p className="max-w-sm break-words font-mono text-xs text-muted opacity-70">
         {error.message}
       </p>
       <div className="flex items-center gap-2">

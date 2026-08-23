@@ -23,7 +23,7 @@ export function DashboardSection({
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center gap-2">
         <span className="inline-block size-2 bg-accent" />
-        <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-muted-foreground">
+        <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-foreground">
           {label}
         </p>
       </div>

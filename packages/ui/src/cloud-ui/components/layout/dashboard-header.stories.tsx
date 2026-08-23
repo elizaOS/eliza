@@ -45,12 +45,12 @@ export const WithActions: Story = {
             aria-label="Search"
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="size-8"
           >
-            <Search className="h-4 w-4" />
+            <Search className="size-4" />
           </BrandButton>
           <BrandButton variant="primary" className="h-8 gap-2 px-3">
-            <Plus className="h-4 w-4" />
+            <Plus className="size-4" />
             <span>New Agent</span>
           </BrandButton>
         </div>
@@ -88,11 +88,11 @@ export const WithRightContent: Story = {
           aria-label="Notifications"
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
+          className="size-8"
         >
-          <Bell className="h-4 w-4" />
+          <Bell className="size-4" />
         </BrandButton>
-        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-orange-500 to-orange-700" />
+        <div className="size-8 rounded-full bg-gradient-to-br from-orange-500 to-orange-700" />
       </div>
     ),
   },

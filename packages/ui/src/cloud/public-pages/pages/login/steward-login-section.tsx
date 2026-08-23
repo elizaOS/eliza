@@ -1579,7 +1579,7 @@ export default function StewardLoginSection() {
     return (
       <ReservedLoginFrame>
         <div className="flex flex-col items-center gap-4" role="status">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <div className="size-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
             {t("cloud.login.completingSignIn", {
               defaultValue: "Completing sign-in…",
@@ -1594,7 +1594,7 @@ export default function StewardLoginSection() {
     return (
       <ReservedLoginFrame>
         <div className="flex flex-col items-center gap-4" role="status">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <div className="size-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
             {t("cloud.login.redirecting", {
               defaultValue: "Redirecting to Eliza...",
@@ -2078,7 +2078,7 @@ export default function StewardLoginSection() {
             >
               {t("cloud.login.phoneLabel", { defaultValue: "Phone number" })}
             </label>
-            <div className="flex w-full min-h-touch overflow-hidden rounded-md border border-input bg-bg-elevated transition-colors hover:border-border-strong focus-within:border-border-strong">
+            <div className="flex w-full min-h-touch overflow-hidden rounded-md border border-input bg-bg-elevated transition-colors hover:border-border-strong">
               <Select
                 name="phone-country"
                 value={phoneCountry}
@@ -2335,7 +2335,7 @@ export default function StewardLoginSection() {
               {loading === "telegram" ? (
                 <Spinner />
               ) : (
-                <TelegramIcon className="h-4 w-4" />
+                <TelegramIcon className="size-4" />
               )}{" "}
               {t("cloud.login.button.telegram", {
                 defaultValue: "Telegram",
@@ -2503,7 +2503,7 @@ export default function StewardLoginSection() {
 
 function Spinner() {
   return (
-    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
+    <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
   );
 }
 
@@ -2527,9 +2527,9 @@ function StewardOAuthIcon({ provider }: { provider: StewardOAuthProvider }) {
     case "google":
       return <GoogleIcon />;
     case "discord":
-      return <DiscordIcon className="h-4 w-4" />;
+      return <DiscordIcon className="size-4" />;
     case "github":
-      return <Github className="h-4 w-4" />;
+      return <Github className="size-4" />;
     case "twitter":
       return <XIcon />;
     case "apple":
@@ -2540,7 +2540,7 @@ function StewardOAuthIcon({ provider }: { provider: StewardOAuthProvider }) {
 function AppleIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
@@ -2553,7 +2553,7 @@ function AppleIcon() {
 function XIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
@@ -2565,7 +2565,7 @@ function XIcon() {
 
 function GoogleIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+    <svg className="size-4" viewBox="0 0 24 24" aria-hidden="true">
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -2589,7 +2589,7 @@ function GoogleIcon() {
 function PasskeyIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"
@@ -2607,7 +2607,7 @@ function PasskeyIcon() {
 function EmailIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"

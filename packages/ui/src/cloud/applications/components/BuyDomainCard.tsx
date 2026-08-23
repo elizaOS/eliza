@@ -172,7 +172,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
     <div className="bg-card rounded-sm p-4 space-y-4">
       <div>
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-          <ShoppingCart className="h-4 w-4 text-muted" />
+          <ShoppingCart className="size-4 text-muted" />
           {t("cloud.appDomains.buyTitle", { defaultValue: "Buy a Domain" })}
         </h3>
         <p className="text-xs text-neutral-500 mt-1">
@@ -211,9 +211,9 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
           className="bg-txt hover:bg-txt/90 text-bg rounded-sm shrink-0"
         >
           {checking ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="size-4 animate-spin" />
           ) : (
-            <Search className="h-4 w-4" />
+            <Search className="size-4" />
           )}
           <span className="ml-1.5">
             {t("cloud.appDomains.buyCheck", { defaultValue: "Check" })}
@@ -223,7 +223,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
 
       {result && !result.available && (
         <div className="flex items-center gap-2 p-3 rounded-sm bg-surface text-sm text-neutral-300">
-          <XCircle className="h-4 w-4 text-neutral-500 shrink-0" />
+          <XCircle className="size-4 text-neutral-500 shrink-0" />
           <span>
             {t("cloud.appDomains.buyTaken", {
               defaultValue: "{{domain}} is not available.",
@@ -237,7 +237,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-sm bg-surface">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-txt shrink-0" />
+              <CheckCircle2 className="size-4 text-txt shrink-0" />
               <span className="text-sm font-medium text-txt truncate">
                 {result.domain}
               </span>
@@ -267,9 +267,9 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
                 className="bg-txt hover:bg-txt/90 text-bg rounded-sm shrink-0"
               >
                 {buying ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <ShoppingCart className="h-4 w-4" />
+                  <ShoppingCart className="size-4" />
                 )}
                 <span className="ml-1.5">
                   {t("cloud.appDomains.buyAction", {
@@ -319,7 +319,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
       {error && (
         <div className="flex flex-col gap-2 p-3 rounded-sm bg-red-500/10 border border-red-500/20">
           <div className="flex items-center gap-2 text-sm text-red-300">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <AlertTriangle className="size-4 shrink-0" />
             <span>{error}</span>
           </div>
           {needsCredits && (
@@ -329,7 +329,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
               onClick={openBilling}
               className="self-start border-neutral-700 hover:bg-bg-hover"
             >
-              <CreditCard className="h-4 w-4 mr-1.5" />
+              <CreditCard className="size-4 mr-1.5" />
               {t("cloud.appDomains.buyAddCredits", {
                 defaultValue: "Add credits",
               })}

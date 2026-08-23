@@ -236,7 +236,7 @@ const MemoryCard = memo(function MemoryCard({
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-xs-tight text-muted">
           <span
-            className={`memory-type-dot-${typeKey} inline-block h-2 w-2 rounded-full`}
+            className={`memory-type-dot-${typeKey} inline-block size-2 rounded-full`}
           />
           {typeLabel(memory.type, t)}
         </span>
@@ -621,7 +621,7 @@ function MemoryBrowserPanel({
                 className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs-tight text-muted"
               >
                 <span
-                  className={`memory-type-dot-${type} inline-block h-2 w-2 rounded-full`}
+                  className={`memory-type-dot-${type} inline-block size-2 rounded-full`}
                 />
                 {typeLabel(type, t)}
               </span>
@@ -742,12 +742,12 @@ function TypeFilterMenu({
           <span className="flex min-w-0 items-center gap-2">
             {singleType ? (
               <span
-                className={`memory-type-dot-${memoryTypeKey(singleType)} inline-block h-2 w-2 shrink-0 rounded-full`}
+                className={`memory-type-dot-${memoryTypeKey(singleType)} inline-block size-2 shrink-0 rounded-full`}
               />
             ) : null}
             <span className="truncate">{triggerLabel}</span>
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+          <ChevronDown className="size-4 shrink-0 text-muted" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -772,7 +772,7 @@ function TypeFilterMenu({
           >
             <span className="flex min-w-0 flex-1 items-center gap-2">
               <span
-                className={`memory-type-dot-${memoryTypeKey(type.key)} inline-block h-2 w-2 shrink-0 rounded-full`}
+                className={`memory-type-dot-${memoryTypeKey(type.key)} inline-block size-2 shrink-0 rounded-full`}
               />
               <span className="min-w-0 truncate">{type.label}</span>
             </span>
@@ -833,7 +833,7 @@ const PeoplePicker = memo(function PeoplePicker({
         >
           <span className="flex min-w-0 items-center gap-2">
             {selected ? (
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
+              <span className="flex  size-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
                 {selected.displayName.charAt(0).toUpperCase()}
               </span>
             ) : null}
@@ -841,7 +841,7 @@ const PeoplePicker = memo(function PeoplePicker({
               {selected ? selected.displayName : everyoneLabel}
             </span>
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+          <ChevronDown className="size-4 shrink-0 text-muted" aria-hidden />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="min-w-[14rem] space-y-2 p-2">
@@ -884,7 +884,7 @@ const PeoplePicker = memo(function PeoplePicker({
                   setOpen(false);
                 }}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
                   {person.displayName.charAt(0).toUpperCase()}
                 </span>
                 <span className="min-w-0 flex-1 truncate">
@@ -1154,7 +1154,7 @@ export function MemoryViewerView({
                       })}
                       onClick={handleClearPerson}
                     >
-                      <X className="h-4 w-4" aria-hidden />
+                      <X className="size-4" aria-hidden />
                     </Button>
                   ) : null}
                 </div>

@@ -84,7 +84,7 @@ export function AppsListView({
   }
 
   return (
-    <DashboardDataList className="grid grid-cols-1 gap-2 space-y-0">
+    <DashboardDataList className="grid grid-cols-1 gap-2">
       {apps.map((app) => (
         <div
           key={app.id}
@@ -111,7 +111,7 @@ export function AppsListView({
                 <StatusBadge
                   status={app.is_active ? "success" : "neutral"}
                   label={app.is_active ? "Active" : "Inactive"}
-                  className="px-1.5 py-0 text-[10px]"
+                  className="px-1.5 py-0 text-2xs"
                 />
                 {app.affiliate_code ? (
                   <Badge className="shrink-0 rounded-sm border-border bg-surface px-1.5 py-0 text-2xs text-muted">
@@ -133,7 +133,7 @@ export function AppsListView({
                       app,
                       children: (
                         <>
-                          <Settings className="mr-2 h-4 w-4" />
+                          <Settings className="mr-2 size-4" />
                           Manage App
                         </>
                       ),
@@ -157,7 +157,7 @@ export function AppsListView({
                               target="_blank"
                               rel="noopener noreferrer"
                             >
-                              <ExternalLink className="mr-2 h-4 w-4" />
+                              <ExternalLink className="mr-2  size-4" />
                               Visit Website
                             </a>
                           ),
@@ -183,11 +183,11 @@ export function AppsListView({
               </span>
               <span className="hidden text-white/20 sm:inline">-</span>
               <div className="flex shrink-0 items-center gap-1 text-white/50">
-                <Users className="h-3 w-3 text-muted" />
+                <Users className="size-3 text-muted" />
                 <span>{app.total_users.toLocaleString()}</span>
               </div>
               <div className="flex shrink-0 items-center gap-1 text-white/50">
-                <Activity className="h-3 w-3 text-muted" />
+                <Activity className="size-3 text-muted" />
                 <span>{app.total_requests.toLocaleString()}</span>
               </div>
               <span className="text-white/20">-</span>

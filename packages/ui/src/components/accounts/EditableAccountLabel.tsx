@@ -105,7 +105,7 @@ export function EditableAccountLabel({
     >
       <span className="truncate">{value}</span>
       <Pencil
-        className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
         aria-hidden
       />
     </Button>
