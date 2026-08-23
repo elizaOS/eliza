@@ -40,10 +40,10 @@ import {
 } from "../../../ui/status-badge.helpers";
 import { currentCloudManagementToken } from "../cloud-management-auth";
 import {
-  NuphyRow,
+  CloudRow,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../cloud-settings-primitives";
 
 /** Maximum length accepted for a (new or edited) cloud agent name. */
 const AGENT_NAME_MAX_LENGTH = 60;
@@ -613,7 +613,7 @@ export function AgentSection() {
       >
         {activeAgent ? (
           <>
-            <NuphyRow
+            <CloudRow
               label={
                 <span className="flex items-center gap-2">
                   <Circle
@@ -637,7 +637,7 @@ export function AgentSection() {
               }
             />
             {otherAgents.length > 0 ? (
-              <NuphyRow
+              <CloudRow
                 label={`${otherAgents.length} other ${otherAgents.length === 1 ? "agent" : "agents"} available`}
                 control={
                   <Button
@@ -654,7 +654,7 @@ export function AgentSection() {
             ) : null}
           </>
         ) : (
-          <NuphyRow label="No active cloud agent on this device." />
+          <CloudRow label="No active cloud agent on this device." />
         )}
       </SettingsGroup>
 
@@ -663,7 +663,7 @@ export function AgentSection() {
         title="Your Cloud Agents"
         footer="Create, rename, start, pause, or delete cloud agents."
       >
-        <NuphyRow
+        <CloudRow
           label="Refresh"
           description="Reload the agent list from Eliza Cloud."
           control={
@@ -680,12 +680,12 @@ export function AgentSection() {
           }
         />
         {loading ? (
-          <NuphyRow
+          <CloudRow
             label="Loading agents…"
             data-testid="cloud-agents-loading"
           />
         ) : loadError ? (
-          <NuphyRow
+          <CloudRow
             label={loadError}
             data-testid="cloud-agents-error"
             control={
@@ -703,7 +703,7 @@ export function AgentSection() {
             }
           />
         ) : agents.length === 0 ? (
-          <NuphyRow
+          <CloudRow
             label="No cloud agents yet"
             description="Create one to get started."
             data-testid="cloud-agents-empty"
@@ -720,7 +720,7 @@ export function AgentSection() {
             const errorMessage = errored ? agent.error_message?.trim() : null;
             const detailsOpen = detailsId === agent.agent_id;
             return (
-              <NuphyRow
+              <CloudRow
                 key={agent.agent_id}
                 data-testid={`cloud-agent-row-${agent.agent_id}`}
                 label={
@@ -889,7 +889,7 @@ export function AgentSection() {
 
         {/* Create new agent — inline form toggled by the + New Agent button. */}
         {showCreate ? (
-          <NuphyRow
+          <CloudRow
             label="New agent"
             description={`Agent name (e.g. ${appName})`}
             control={
@@ -934,7 +934,7 @@ export function AgentSection() {
             }
           />
         ) : (
-          <NuphyRow
+          <CloudRow
             label="New agent"
             description="Create a new cloud agent."
             control={
@@ -950,7 +950,7 @@ export function AgentSection() {
           />
         )}
         {createError ? (
-          <NuphyRow
+          <CloudRow
             label={createError}
             data-testid="cloud-agent-create-error"
           />

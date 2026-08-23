@@ -3,7 +3,7 @@
  *
  * Consolidated view of the cloud-hosted connectors (grouped by category) plus
  * configured MCP servers. Each connector's Connect/Disconnect flow is handled
- * inline through NuPhy-styled modals — token-credential connectors show a form,
+ * inline through the shared settings modals — token-credential connectors show a form,
  * OAuth-redirect connectors initiate the redirect, and destructive actions
  * confirm before executing. MCP servers are created/removed through a modal
  * form that posts to the real `/api/v1/mcps` CRUD routes.
@@ -30,14 +30,14 @@ import {
 } from "../cloud-connector-contracts";
 import { hasCloudManagementCredential } from "../cloud-management-auth";
 import {
+  CloudFormField,
+  CloudModal,
+  CloudRow,
+  CloudTextInput,
   DestructiveSecondaryButton,
-  NuphyFormField,
-  NuphyModal,
-  NuphyRow,
-  NuphyTextInput,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../cloud-settings-primitives";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -125,7 +125,7 @@ function ConnectorRow({
   });
 
   return (
-    <NuphyRow
+    <CloudRow
       label={connector.name}
       description={
         state.loading ? "Checking status…" : (state.error ?? state.statusText)
@@ -285,7 +285,7 @@ function ConnectModal({
   };
 
   return (
-    <NuphyModal
+    <CloudModal
       open={connector !== null}
       title={`Connect ${connector.name}`}
       description={
@@ -329,13 +329,13 @@ function ConnectModal({
       {connector.authMode === "token" && connector.fields ? (
         <div className="space-y-4">
           {connector.fields.map((field) => (
-            <NuphyFormField
+            <CloudFormField
               key={field.key}
               label={field.label}
               description={field.description}
               htmlFor={`field-${field.key}`}
             >
-              <NuphyTextInput
+              <CloudTextInput
                 id={`field-${field.key}`}
                 type={field.type ?? "text"}
                 value={fieldValues[field.key] ?? ""}
@@ -346,10 +346,10 @@ function ConnectModal({
                 disabled={busy}
                 autoComplete="off"
               />
-            </NuphyFormField>
+            </CloudFormField>
           ))}
           {connector.id === "discord" && (
-            <NuphyFormField
+            <CloudFormField
               label="Agent"
               description="The agent this Discord bot responds as."
               htmlFor="connect-agent"
@@ -374,7 +374,7 @@ function ConnectModal({
                   </FormSelectItem>
                 ))}
               </FormSelect>
-            </NuphyFormField>
+            </CloudFormField>
           )}
         </div>
       ) : (
@@ -383,7 +383,7 @@ function ConnectModal({
           page. After authorizing, you'll return here automatically.
         </p>
       )}
-    </NuphyModal>
+    </CloudModal>
   );
 }
 
@@ -476,7 +476,7 @@ function DisconnectDialog({
 
   if (!connector) return null;
   return (
-    <NuphyModal
+    <CloudModal
       open={connector !== null}
       title={`Disconnect ${connector.name}?`}
       onClose={onClose}
@@ -535,7 +535,7 @@ function DisconnectDialog({
           can reconnect later.
         </p>
         {needsChoice && (
-          <NuphyFormField
+          <CloudFormField
             label="Connection"
             description="Exactly this connection will be disconnected."
             htmlFor="disconnect-connection"
@@ -560,10 +560,10 @@ function DisconnectDialog({
                 </FormSelectItem>
               ))}
             </FormSelect>
-          </NuphyFormField>
+          </CloudFormField>
         )}
       </div>
-    </NuphyModal>
+    </CloudModal>
   );
 }
 
@@ -625,7 +625,7 @@ function McpAddModal({
   };
 
   return (
-    <NuphyModal
+    <CloudModal
       open={open}
       title="Add MCP Server"
       description="Configure a new Model Context Protocol server for this agent."
@@ -661,56 +661,56 @@ function McpAddModal({
       }
     >
       <div className="space-y-4">
-        <NuphyFormField label="Name" htmlFor="mcp-name">
-          <NuphyTextInput
+        <CloudFormField label="Name" htmlFor="mcp-name">
+          <CloudTextInput
             id="mcp-name"
             value={name}
             onChange={setName}
             placeholder="My MCP Server"
             disabled={busy}
           />
-        </NuphyFormField>
-        <NuphyFormField
+        </CloudFormField>
+        <CloudFormField
           label="Slug"
           description="URL-safe identifier. Auto-generated from name if left blank."
           htmlFor="mcp-slug"
         >
-          <NuphyTextInput
+          <CloudTextInput
             id="mcp-slug"
             value={slug}
             onChange={setSlug}
             placeholder="my-mcp-server"
             disabled={busy}
           />
-        </NuphyFormField>
-        <NuphyFormField
+        </CloudFormField>
+        <CloudFormField
           label="Endpoint URL"
           description="The MCP server's HTTP/SSE endpoint."
           htmlFor="mcp-url"
         >
-          <NuphyTextInput
+          <CloudTextInput
             id="mcp-url"
             value={endpointUrl}
             onChange={setEndpointUrl}
             placeholder="https://my-mcp-server.example.com/sse"
             disabled={busy}
           />
-        </NuphyFormField>
-        <NuphyFormField
+        </CloudFormField>
+        <CloudFormField
           label="Description"
           description="Required. Shown wherever this MCP server is listed."
           htmlFor="mcp-desc"
         >
-          <NuphyTextInput
+          <CloudTextInput
             id="mcp-desc"
             value={description}
             onChange={setDescription}
             placeholder="What does this MCP server provide?"
             disabled={busy}
           />
-        </NuphyFormField>
+        </CloudFormField>
       </div>
-    </NuphyModal>
+    </CloudModal>
   );
 }
 
@@ -729,7 +729,7 @@ function McpRemoveDialog({
   const [error, setError] = useState<string | null>(null);
   if (!mcp) return null;
   return (
-    <NuphyModal
+    <CloudModal
       open={mcp !== null}
       title={`Remove ${mcp.name}?`}
       onClose={onClose}
@@ -781,7 +781,7 @@ function McpRemoveDialog({
         This will remove the MCP server from your agent. You can add it again
         later.
       </p>
-    </NuphyModal>
+    </CloudModal>
   );
 }
 
@@ -835,7 +835,7 @@ function McpRow({
   onRemove: (mcp: McpEntry) => void;
 }) {
   return (
-    <NuphyRow
+    <CloudRow
       label={mcp.name}
       description={mcp.statusText}
       control={
@@ -887,7 +887,7 @@ function CloudDisconnectedEmpty() {
       title="Connections"
       footer="Connect to Eliza Cloud to manage channels."
     >
-      <NuphyRow label="No cloud connection" />
+      <CloudRow label="No cloud connection" />
     </SettingsGroup>
   );
 }
@@ -1004,7 +1004,7 @@ export function ConnectionsSection() {
         title="MCP Servers"
         footer="Model Context Protocol servers extend the agent with tools and data sources."
       >
-        <NuphyRow
+        <CloudRow
           label="Add MCP Server"
           description="Configure a new MCP server for this agent."
           control={
@@ -1019,7 +1019,7 @@ export function ConnectionsSection() {
           }
         />
         {mcpError ? (
-          <NuphyRow
+          <CloudRow
             label="MCP servers unavailable"
             description={mcpError}
             control={
@@ -1037,9 +1037,9 @@ export function ConnectionsSection() {
             }
           />
         ) : mcpLoading ? (
-          <NuphyRow label="Loading MCP servers…" />
+          <CloudRow label="Loading MCP servers…" />
         ) : mcpServers.length === 0 ? (
-          <NuphyRow
+          <CloudRow
             label="No MCP servers"
             description="Add an MCP server to extend your agent with tools."
           />
