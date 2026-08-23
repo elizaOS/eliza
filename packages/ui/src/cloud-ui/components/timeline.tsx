@@ -54,7 +54,7 @@ export const Timeline = ({
       ref={containerRef}
     >
       <div className="max-w-7xl mx-auto py-20 px-4 md:px-8 lg:px-10">
-        <h2 className="text-lg md:text-4xl mb-4 text-white max-w-4xl">
+        <h2 className="text-lg md:text-5xl mb-4 text-white max-w-4xl">
           {title}
         </h2>
         <p className="text-neutral-300 text-sm md:text-base max-w-sm">
@@ -72,7 +72,7 @@ export const Timeline = ({
               <div className="h-10 absolute left-3 md:left-3 w-10 rounded-full bg-neutral-900 flex items-center justify-center">
                 <div className="h-4 w-4 rounded-full bg-neutral-700 border border-neutral-600 p-2" />
               </div>
-              <h3 className="hidden md:block text-xl md:pl-20 md:text-5xl font-bold text-neutral-400">
+              <h3 className="hidden md:block text-xl md:pl-20 md:text-4xl font-bold text-neutral-400">
                 {item.title}
               </h3>
             </div>
@@ -93,7 +93,7 @@ export const Timeline = ({
         >
           <motion.div
             style={progressStyle}
-            className="absolute inset-x-0 top-0  w-[2px] bg-gradient-to-t from-purple-500 via-blue-500 to-transparent from-[0%] via-[10%] rounded-full"
+            className="absolute inset-x-0 top-0  w-[2px] bg-gradient-to-t from-accent via-accent/60 to-transparent from-[0%] via-[10%] rounded-full"
           />
         </div>
       </div>

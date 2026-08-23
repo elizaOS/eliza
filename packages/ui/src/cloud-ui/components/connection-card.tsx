@@ -96,7 +96,13 @@ function ConnectionConnectedBadge({
   className?: string;
 }) {
   return (
-    <Badge variant="default" className={cn("bg-green-500", className)}>
+    <Badge
+      variant="outline"
+      className={cn(
+        "bg-status-success-bg text-status-success border-status-success/30",
+        className,
+      )}
+    >
       <CheckCircle className="h-3 w-3 mr-1" />
       {label}
     </Badge>

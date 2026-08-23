@@ -109,7 +109,7 @@ interface SystemStatus {
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   approved: "bg-white/10 text-white/80 border-white/20",
-  processing: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  processing: "bg-accent/20 text-accent border-accent/30",
   completed: "bg-green-500/20 text-green-400 border-green-500/30",
   failed: "bg-red-500/20 text-red-400 border-red-500/30",
   rejected: "bg-red-500/20 text-red-400 border-red-500/30",
@@ -395,7 +395,7 @@ export default function RedemptionsPage(): React.JSX.Element {
               </p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-purple-400">
+              <p className="text-2xl font-bold text-accent">
                 {stats?.processing || 0}
               </p>
               <p className="text-xs text-muted-foreground">

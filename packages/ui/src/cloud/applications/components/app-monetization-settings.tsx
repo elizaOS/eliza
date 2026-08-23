@@ -473,7 +473,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <span className="text-lg font-mono font-semibold text-purple-400">
+                <span className="text-lg font-mono font-semibold text-accent">
                   {settings.inferenceMarkupPercentage}%
                 </span>
               </div>
@@ -496,7 +496,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     className={cn(
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.inferenceMarkupPercentage === preset
-                        ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                        ? "bg-accent/20 text-accent border border-accent/30"
                         : "bg-surface text-neutral-400 hover:bg-bg-hover border border-transparent",
                     )}
                     onClick={() =>
