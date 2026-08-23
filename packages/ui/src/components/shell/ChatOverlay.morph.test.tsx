@@ -30,6 +30,7 @@ vi.mock("../../api/client", () => ({
 
 import {
   ChatOverlay,
+  desktopPersistentHandleTop,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
   pillHandleCounterScale,
@@ -170,6 +171,22 @@ describe("handle fade through the maximize over-pull (grabberBarOpacity)", () =>
   });
 });
 
+describe("detached desktop persistent handle", () => {
+  it("moves monotonically from the resting bottom to the composer top", () => {
+    expect(desktopPersistentHandleTop(0, 48, 12)).toBe(36);
+    expect(desktopPersistentHandleTop(0.25, 48, 12)).toBe(27);
+    expect(desktopPersistentHandleTop(0.5, 48, 12)).toBe(18);
+    expect(desktopPersistentHandleTop(0.75, 48, 12)).toBe(9);
+    expect(desktopPersistentHandleTop(1, 48, 12)).toBe(0);
+  });
+
+  it("stays pinned to the top while transcript height changes", () => {
+    for (const panelHeight of [48, 120, 353, 768]) {
+      expect(desktopPersistentHandleTop(1, panelHeight, 12)).toBe(0);
+    }
+  });
+});
+
 describe("open-sheet blackout (sheetBlackoutProgress)", () => {
   it("keeps the resting glass at zero reveal and lands opaque at the half detent", () => {
     // Closed thread: the composer keeps the translucent glass fill.
@@ -191,11 +208,14 @@ describe("open-sheet blackout (sheetBlackoutProgress)", () => {
     expect(sheetBlackoutProgress(200, 0, 0.4)).toBeCloseTo(0.4, 10);
   });
 
-  it("blends the live sheet surface to the opaque --bg once the drag crosses the half detent", async () => {
+  it("blends a stable compositor child to opaque once the drag crosses the half detent", async () => {
     render(<ChatOverlay controller={makeController()} />);
     const el = grabber();
     const surface = () =>
       screen.getByTestId("chat-sheet-surface") as HTMLElement;
+    const blackout = () =>
+      screen.getByTestId("chat-sheet-blackout") as HTMLElement;
+    const restingSurfaceFill = surface().style.backgroundColor;
 
     const now = vi.spyOn(performance, "now");
     const eventTime = vi
@@ -206,9 +226,8 @@ describe("open-sheet blackout (sheetBlackoutProgress)", () => {
     // jsdom viewport: halfH is 353 — drag the thread 500px up, past HALF.
     now.mockReturnValue(400);
     fireEvent.pointerMove(el, { clientY: 300, pointerId: 1 });
-    await waitFor(() =>
-      expect(surface().style.backgroundColor).toContain("var(--bg) 100"),
-    );
+    await waitFor(() => expect(blackout().style.opacity).toBe("1"));
+    expect(surface().style.backgroundColor).toBe(restingSurfaceFill);
     now.mockReturnValue(3000);
     fireEvent.pointerUp(el, { clientY: 300, pointerId: 1 });
     eventTime.mockRestore();
@@ -218,7 +237,8 @@ describe("open-sheet blackout (sheetBlackoutProgress)", () => {
     // left it): the blackout holds — no glass re-frost.
     await waitFor(() => {
       expect(sheet().getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
-      expect(surface().style.backgroundColor).toContain("var(--bg) 100");
+      expect(blackout().style.opacity).toBe("1");
+      expect(surface().style.backgroundColor).toBe(restingSurfaceFill);
     });
   });
 });
@@ -279,7 +299,7 @@ describe("follow-the-finger after an over-pull past the top (overshoot rebase)",
   });
 });
 
-describe("handle glow while recording (pill-only pulse)", () => {
+describe("handle motion stays quiet during voice", () => {
   it("does NOT pulse the open-sheet grabber while recording", () => {
     render(
       <ChatOverlay
@@ -306,7 +326,7 @@ describe("handle glow while recording (pill-only pulse)", () => {
     expect(grabberBar()?.className ?? "").not.toContain("animate-pulse");
   });
 
-  it("breathes the PILL in white while recording once minimized", () => {
+  it("keeps the PILL still while recording once minimized", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -317,7 +337,9 @@ describe("handle glow while recording (pill-only pulse)", () => {
     // Collapse the input down to the pill.
     flick(grabber(), 200, 260);
     expect(sheet().getAttribute("data-detent")).toBe("pill");
-    expect(pillBar()?.className ?? "").toContain("eliza-chat-handle-breathe");
+    expect(pillBar()?.className ?? "").not.toContain(
+      "eliza-chat-handle-breathe",
+    );
     expect(pillBar()?.className ?? "").not.toContain("animate-pulse");
     expect(pillBar()?.className ?? "").not.toContain("bg-accent");
     expect(pillBar()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");

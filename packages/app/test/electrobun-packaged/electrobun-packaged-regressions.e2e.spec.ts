@@ -1020,7 +1020,7 @@ test("packaged desktop reset from the application menu returns the shell to firs
   });
 });
 
-test("packaged desktop shortcut bridge summons the main window", async ({
+test("packaged desktop summon shortcut follows the platform contract", async ({
   browserName: _browserName,
 }) => {
   void _browserName;
@@ -1047,6 +1047,24 @@ test("packaged desktop shortcut bridge summons the main window", async ({
           id: "command-palette",
           accelerator: "CommandOrControl+K",
         }),
+      ]),
+    );
+
+    if (process.platform === "darwin") {
+      expect(initialState.shell.shortcuts ?? []).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "chat-overlay" }),
+        ]),
+      );
+      // The macOS path is a trusted native left+right Option event tap. The
+      // renderer dispatch is unit-tested; real key-state acceptance remains a
+      // manual packaged-app gate because this HTTP harness cannot inject a
+      // trusted modifier transition into a listen-only CGEventTap.
+      return;
+    }
+
+    expect(initialState.shell.shortcuts ?? []).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
           id: "chat-overlay",
           accelerator: PACKAGED_CHAT_OVERLAY_ACCELERATOR,

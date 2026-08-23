@@ -40,8 +40,12 @@ describe("desktop tray config", () => {
     const nativeDesktopSource = readFileSync(desktopNativePath, "utf8");
 
     expect(nativeDesktopSource).toContain("FALLBACK_TRAY_MENU_ITEMS");
-    expect(nativeDesktopSource).toContain('label: "Windows"');
-    expect(nativeDesktopSource).toContain('{ id: "quit", label: "Quit" }');
+    expect(nativeDesktopSource).toContain(
+      '{ id: "tray-show-window", label: "Open Eliza" }',
+    );
+    expect(nativeDesktopSource).toContain(
+      '{ id: "quit", label: "Quit Eliza" }',
+    );
     expect(nativeDesktopSource).toContain(
       "options.menu ?? FALLBACK_TRAY_MENU_ITEMS",
     );
@@ -49,15 +53,22 @@ describe("desktop tray config", () => {
 });
 
 describe("shouldStartTrayFirst", () => {
-  it("defaults ON (dockless) for macOS (#12184)", () => {
-    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(true);
+  it("defaults the normal macOS app to the Dock and makes assistant tray-first explicit", () => {
+    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(false);
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "darwin", []),
     ).toBe(true);
+    expect(
+      shouldStartTrayFirst(
+        { ELIZA_DESKTOP_EXPERIENCE: "macos-assistant" },
+        "darwin",
+        [],
+      ),
+    ).toBe(true);
   });
 
-  it("honors the ELIZA_DESKTOP_TRAY_FIRST=0 kill switch on macOS", () => {
-    for (const off of ["0", "false", "no"]) {
+  it("honors explicit legacy tray-first overrides on macOS", () => {
+    for (const off of ["", "0", "false", "no"]) {
       expect(
         shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: off }, "darwin", []),
       ).toBe(false);

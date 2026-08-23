@@ -15,6 +15,12 @@ const REPO_ROOT = path.resolve(HERE, "../../../../..");
 
 function createDesktopFixture() {
   const desktop = {
+    closeWindow: vi.fn(async () => {}),
+    openWorkspace: vi.fn(),
+    dismissWorkspace: vi.fn(() => ({
+      closed: true,
+      reason: "closed" as const,
+    })),
     openSettings: vi.fn(),
     openSurfaceWindow: vi.fn(
       async (surface: string, _browse?: string, alwaysOnTop?: boolean) => ({
@@ -53,6 +59,49 @@ function createDesktopFixture() {
 }
 
 describe("window RPC handlers", () => {
+  it("closes the owning managed window when a per-window closer is provided", async () => {
+    const desktop = createDesktopFixture().desktop;
+    const closeCurrentWindow = vi.fn(async () => {});
+    const handlers = buildWindowRpcHandlers({
+      desktop,
+      appName: "Test App",
+      closeCurrentWindow,
+    });
+
+    await handlers.desktopCloseWindow();
+
+    expect(closeCurrentWindow).toHaveBeenCalledTimes(1);
+    expect(desktop.closeWindow).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the desktop main-window close contract", async () => {
+    const { desktop, handlers } = createDesktopFixture();
+
+    await handlers.desktopCloseWindow();
+
+    expect(desktop.closeWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("dismisses the Workspace without closing the pill", async () => {
+    const { desktop, handlers } = createDesktopFixture();
+
+    await expect(handlers.desktopDismissWorkspaceWindow()).resolves.toEqual({
+      closed: true,
+      reason: "closed",
+    });
+    expect(desktop.dismissWorkspace).toHaveBeenCalledTimes(1);
+    expect(desktop.closeWindow).not.toHaveBeenCalled();
+  });
+
+  it("maps renderer window and interactive-material sizing to distinct RPC methods", () => {
+    expect(CHANNEL_TO_RPC_METHOD["desktop:setBottomBarSize"]).toBe(
+      "desktopSetBottomBarSize",
+    );
+    expect(CHANNEL_TO_RPC_METHOD["desktop:setBottomBarInteractiveSize"]).toBe(
+      "desktopSetBottomBarInteractiveSize",
+    );
+  });
+
   it("opens settings with an optional tab hint", async () => {
     const { desktop, handlers } = createDesktopFixture();
 
@@ -61,6 +110,21 @@ describe("window RPC handlers", () => {
 
     expect(desktop.openSettings).toHaveBeenNthCalledWith(1, "voice");
     expect(desktop.openSettings).toHaveBeenNthCalledWith(2, undefined);
+  });
+
+  it("opens the complete workstation through its dedicated native callback", async () => {
+    const { desktop, handlers } = createDesktopFixture();
+
+    await handlers.desktopOpenWorkspaceWindow({
+      routePath: "/notes",
+      maximize: true,
+    });
+
+    expect(desktop.openWorkspace).toHaveBeenCalledWith({
+      routePath: "/notes",
+      maximize: true,
+      presentation: "standard",
+    });
   });
 
   it("forwards browser surface browse targets and coerces always-on-top", async () => {
@@ -298,7 +362,6 @@ describe("notification RPC handlers", () => {
     for (const relative of [
       "packages/ui/src/state/notifications/notification-store.ts",
       "packages/ui/src/state/useChatLifecycle.ts",
-      "packages/app-core/src/runtime/desktop/DesktopTrayRuntime.tsx",
     ]) {
       const source = readFileSync(path.join(REPO_ROOT, relative), "utf8");
       expect(source, relative).toContain(

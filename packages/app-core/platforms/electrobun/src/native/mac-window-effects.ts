@@ -16,7 +16,20 @@ import { resolveNativeLibraryCandidate } from "../../../../src/platform/native-l
  */
 type MacEffectsSymbols = {
   enableWindowVibrancy(ptr: Pointer): boolean;
+  ensureWindowTransparentBackground(ptr: Pointer): boolean;
+  setWindowInteractiveMaterialSize(
+    ptr: Pointer,
+    width: number,
+    height: number,
+    cornerRadius: number,
+  ): boolean;
+  refreshWindowInteractiveMaterial(ptr: Pointer): boolean;
+  prepareDetachedWebInspector(): boolean;
+  installTrustedMediaCaptureOrigin(origin: Pointer): boolean;
+  pollWindowOutsideClick(ptr: Pointer): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
+  setWindowUserResizable(ptr: Pointer, enabled: boolean): boolean;
+  setWindowNonactivatingPanel(ptr: Pointer, enabled: boolean): boolean;
   setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
   setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
   disableWindowBackForwardNavigationGestures(ptr: Pointer): boolean;
@@ -33,6 +46,8 @@ type MacEffectsSymbols = {
   elizaOnboardingNotificationDismiss(): void;
   checkNotificationPermission(): number;
   requestNotificationPermission(): number;
+  elizaLaunchAtLoginStatus(): number;
+  elizaLaunchAtLoginSetEnabled(enabled: boolean): number;
   elizaFnMonitorStart(): number;
   elizaFnMonitorStop(): void;
   elizaFnMonitorPoll(): number;
@@ -76,7 +91,39 @@ function loadLib(): MacEffectsLib {
     // FFIType descriptors at the TypeScript level.
     return dlopen(dylibPath, {
       enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
+      ensureWindowTransparentBackground: {
+        args: [FFIType.ptr],
+        returns: FFIType.bool,
+      },
+      setWindowInteractiveMaterialSize: {
+        args: [FFIType.ptr, FFIType.f64, FFIType.f64, FFIType.f64],
+        returns: FFIType.bool,
+      },
+      refreshWindowInteractiveMaterial: {
+        args: [FFIType.ptr],
+        returns: FFIType.bool,
+      },
+      prepareDetachedWebInspector: {
+        args: [],
+        returns: FFIType.bool,
+      },
+      installTrustedMediaCaptureOrigin: {
+        args: [FFIType.ptr],
+        returns: FFIType.bool,
+      },
+      pollWindowOutsideClick: {
+        args: [FFIType.ptr],
+        returns: FFIType.bool,
+      },
       setWindowShadowEnabled: {
+        args: [FFIType.ptr, FFIType.bool],
+        returns: FFIType.bool,
+      },
+      setWindowUserResizable: {
+        args: [FFIType.ptr, FFIType.bool],
+        returns: FFIType.bool,
+      },
+      setWindowNonactivatingPanel: {
         args: [FFIType.ptr, FFIType.bool],
         returns: FFIType.bool,
       },
@@ -123,6 +170,11 @@ function loadLib(): MacEffectsLib {
       },
       checkNotificationPermission: { args: [], returns: FFIType.i32 },
       requestNotificationPermission: { args: [], returns: FFIType.i32 },
+      elizaLaunchAtLoginStatus: { args: [], returns: FFIType.i32 },
+      elizaLaunchAtLoginSetEnabled: {
+        args: [FFIType.bool],
+        returns: FFIType.i32,
+      },
       elizaFnMonitorStart: { args: [], returns: FFIType.i32 },
       elizaFnMonitorStop: { args: [], returns: FFIType.void },
       elizaFnMonitorPoll: { args: [], returns: FFIType.i32 },
@@ -167,8 +219,71 @@ export function enableVibrancy(ptr: Pointer): boolean {
   return getLib()?.symbols.enableWindowVibrancy(ptr) ?? false;
 }
 
+/** Keep a chromeless overlay's native canvas clear without adding vibrancy. */
+export function ensureWindowTransparentBackground(ptr: Pointer): boolean {
+  return getLib()?.symbols.ensureWindowTransparentBackground(ptr) ?? false;
+}
+
+export function setWindowInteractiveMaterialSize(
+  ptr: Pointer,
+  width: number,
+  height: number,
+  cornerRadius: number,
+): boolean {
+  return (
+    getLib()?.symbols.setWindowInteractiveMaterialSize(
+      ptr,
+      width,
+      height,
+      cornerRadius,
+    ) ?? false
+  );
+}
+
+/** Re-stack saved detached-host drag strips after WKWebView native layout. */
+export function refreshWindowInteractiveMaterial(ptr: Pointer): boolean {
+  return getLib()?.symbols.refreshWindowInteractiveMaterial(ptr) ?? false;
+}
+
+/** Persist WebKit's safe separate-window inspector presentation on macOS. */
+export function prepareDetachedWebInspector(): boolean {
+  return getLib()?.symbols.prepareDetachedWebInspector() ?? false;
+}
+
+/**
+ * Trust exactly the app-owned loopback renderer origin for WKWebView media.
+ * macOS still enforces the signed app's TCC microphone grant; this removes only
+ * Electrobun's redundant page-level modal/cache for our own local UI.
+ */
+export function installTrustedMediaCaptureOrigin(origin: string): boolean {
+  const lib = getLib();
+  if (!lib || !origin.trim()) return false;
+  const originBuffer = cStringBuffer(origin);
+  return lib.symbols.installTrustedMediaCaptureOrigin(ptr(originBuffer));
+}
+
 export function setWindowShadow(ptr: Pointer, enabled: boolean): boolean {
   return getLib()?.symbols.setWindowShadowEnabled(ptr, enabled) ?? false;
+}
+
+/**
+ * Enable or disable user-driven native window resizing. Disabling also removes
+ * any previously installed native drag/resize overlay views so a hot-reloaded
+ * bottom-bar window cannot retain stale resize cursors or invisible hit bands.
+ */
+export function setWindowUserResizable(
+  ptr: Pointer,
+  enabled: boolean,
+): boolean {
+  return getLib()?.symbols.setWindowUserResizable(ptr, enabled) ?? false;
+}
+
+/** Use a true nonactivating NSPanel only for the detached resting pill. */
+export function setWindowNonactivatingPanel(
+  ptr: Pointer,
+  enabled: boolean,
+): boolean {
+  return getLib()?.symbols.setWindowNonactivatingPanel(ptr, enabled) ?? false;
 }
 
 export function setTrafficLightsPosition(
@@ -180,10 +295,13 @@ export function setTrafficLightsPosition(
 }
 
 /**
- * @param height Pass `0` for thickness derived from the window's NSScreen (backing
- *   scale + very wide displays). Pass a positive value (points) to pin depth. The same
- *   value sizes the top drag strip and the right/bottom/corner resize overlay views
- *   (native, above WKWebView).
+ * @param x Left inset in points. Pass a negative value to mark the remainder of
+ *   the titlebar as one continuous drag surface (used by managed Workspace and
+ *   Settings windows, whose top strip contains no renderer controls).
+ * @param height Pass `0` for thickness derived from the window's NSScreen
+ *   (backing scale + very wide displays). Pass a positive value (points) to pin
+ *   depth. The same value sizes the top drag strip and the
+ *   right/bottom/corner resize overlay views (native, above WKWebView).
  */
 export function setNativeDragRegion(
   ptr: Pointer,
@@ -226,6 +344,11 @@ export function isAppActive(): boolean {
 /** Returns true if the window is currently the key (focused) window */
 export function isKeyWindow(ptr: Pointer): boolean {
   return getLib()?.symbols.isWindowKey(ptr) ?? false;
+}
+
+/** Consume a native click that landed outside the painted pill material. */
+export function pollWindowOutsideClick(ptr: Pointer): boolean {
+  return getLib()?.symbols.pollWindowOutsideClick(ptr) ?? false;
 }
 
 export function createSecurityScopedBookmark(path: string): string | null {
@@ -296,6 +419,51 @@ export function requestNotificationPermission(): number | null {
   return lib ? lib.symbols.requestNotificationPermission() : null;
 }
 
+export type MacLaunchAtLoginStatus =
+  | "disabled"
+  | "enabled"
+  | "requires-approval"
+  | "not-found"
+  | "unavailable"
+  | "error";
+
+function mapMacLaunchAtLoginStatus(value: number): MacLaunchAtLoginStatus {
+  switch (value) {
+    case 0:
+      return "disabled";
+    case 1:
+      return "enabled";
+    case 2:
+      return "requires-approval";
+    case 3:
+      return "not-found";
+    case -2:
+      return "unavailable";
+    default:
+      return "error";
+  }
+}
+
+/** Read Launch at Login from Apple's public SMAppService authority. */
+export function getMacLaunchAtLoginStatus(): MacLaunchAtLoginStatus {
+  const lib = getLib();
+  return lib
+    ? mapMacLaunchAtLoginStatus(lib.symbols.elizaLaunchAtLoginStatus())
+    : "unavailable";
+}
+
+/** Update Launch at Login through Apple's public SMAppService authority. */
+export function setMacLaunchAtLoginEnabled(
+  enabled: boolean,
+): MacLaunchAtLoginStatus {
+  const lib = getLib();
+  return lib
+    ? mapMacLaunchAtLoginStatus(
+        lib.symbols.elizaLaunchAtLoginSetEnabled(enabled),
+      )
+    : "unavailable";
+}
+
 // ── Fn-key hold monitor (push-to-talk quasimode, #20483) ──────────────────
 
 /** Outcome of starting the fn monitor. `permission-missing` means macOS
@@ -307,9 +475,10 @@ export type FnMonitorStartResult =
   | "failed"
   | "unavailable";
 
-/** One drained fn-key transition. `up-chord` is a release where another key
- *  was pressed mid-hold (fn+arrow etc.) — treat as cancel, not send. */
-export type FnMonitorEvent = "down" | "up" | "up-chord";
+/** One drained modifier-key transition. `up-chord` is a release where another
+ *  key was pressed mid-fn-hold (fn+arrow etc.); `both-options` is a one-shot
+ *  event when both physical Option keys become held. */
+export type FnMonitorEvent = "down" | "up" | "up-chord" | "both-options";
 
 export function startFnMonitor(): FnMonitorStartResult {
   const lib = getLib();
@@ -339,6 +508,8 @@ export function pollFnMonitor(): FnMonitorEvent | null {
       return "up";
     case 3:
       return "up-chord";
+    case 4:
+      return "both-options";
     default:
       return null;
   }

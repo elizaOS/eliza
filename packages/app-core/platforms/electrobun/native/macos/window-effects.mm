@@ -12,9 +12,15 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreLocation/CoreLocation.h>
 #import <EventKit/EventKit.h>
+#import <IOKit/hidsystem/IOLLEvent.h>
+#import <objc/runtime.h>
+#import <ServiceManagement/ServiceManagement.h>
 #import <UserNotifications/UserNotifications.h>
+#import <WebKit/WebKit.h>
 #include <atomic>
+#include <limits>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -28,8 +34,386 @@ static NSString *const kElectrobunNativeDragRightGapViewIdentifier =
 	@"ElectrobunNativeDragRightGapView";
 static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 	@"ElectrobunNativeDragRightEdge";
+static NSString *const kElizaBottomBarDragLeftIdentifier =
+	@"ElizaBottomBarDragLeft";
+static NSString *const kElizaBottomBarDragRightIdentifier =
+	@"ElizaBottomBarDragRight";
 static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	@"ElizaInactiveTrafficLightsOverlay";
+
+// Electrobun deliberately asks for a second, page-level media decision after
+// macOS has already authorized the signed app. That is appropriate for an
+// arbitrary embedded website, but Eliza's renderer is an app-owned loopback
+// origin. A modal page prompt can appear behind the detached pill and a single
+// accidental dismissal is then cached for the whole native process, making a
+// granted OS microphone look denied until relaunch. Keep Electrobun's delegate
+// for every other origin and grant only the exact loopback renderer origin the
+// host supplies after its environment has loaded.
+static IMP elizaOriginalMediaCapturePermissionImp = NULL;
+static NSString *elizaTrustedMediaProtocol = nil;
+static NSString *elizaTrustedMediaHost = nil;
+static NSInteger elizaTrustedMediaPort = -1;
+static BOOL elizaMediaCaptureSwizzleInstalled = NO;
+
+static void elizaRequestMediaCapturePermission(
+	id delegate,
+	SEL selector,
+	WKWebView *webView,
+	WKSecurityOrigin *origin,
+	WKFrameInfo *frame,
+	WKMediaCaptureType type,
+	void (^decisionHandler)(WKPermissionDecision)) {
+	BOOL exactTrustedOrigin =
+		elizaTrustedMediaProtocol != nil &&
+		elizaTrustedMediaHost != nil &&
+		[origin.protocol isEqualToString:elizaTrustedMediaProtocol] &&
+		[origin.host isEqualToString:elizaTrustedMediaHost] &&
+		origin.port == elizaTrustedMediaPort;
+	if (exactTrustedOrigin) {
+		decisionHandler(WKPermissionDecisionGrant);
+		return;
+	}
+	if (elizaOriginalMediaCapturePermissionImp != NULL) {
+		using OriginalImplementation = void (*)(
+			id,
+			SEL,
+			WKWebView *,
+			WKSecurityOrigin *,
+			WKFrameInfo *,
+			WKMediaCaptureType,
+			void (^)(WKPermissionDecision));
+		reinterpret_cast<OriginalImplementation>(
+			elizaOriginalMediaCapturePermissionImp)(
+				delegate, selector, webView, origin, frame, type, decisionHandler);
+		return;
+	}
+	decisionHandler(WKPermissionDecisionDeny);
+}
+
+extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
+	if (originCString == NULL) return false;
+	NSString *originString = [NSString stringWithUTF8String:originCString];
+	NSURLComponents *components = [NSURLComponents componentsWithString:originString];
+	NSString *scheme = components.scheme.lowercaseString;
+	NSString *host = components.host.lowercaseString;
+	NSNumber *port = components.port;
+	BOOL loopback = [host isEqualToString:@"127.0.0.1"] ||
+		[host isEqualToString:@"localhost"];
+	if (!loopback || ![scheme isEqualToString:@"http"] || port == nil) {
+		return false;
+	}
+
+	elizaTrustedMediaProtocol = scheme;
+	elizaTrustedMediaHost = host;
+	elizaTrustedMediaPort = port.integerValue;
+	if (elizaMediaCaptureSwizzleInstalled) return true;
+
+	Class delegateClass = NSClassFromString(@"MyWebViewUIDelegate");
+	SEL selector = @selector(webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:);
+	Method method = delegateClass == Nil
+		? NULL
+		: class_getInstanceMethod(delegateClass, selector);
+	if (method == NULL) return false;
+
+	elizaOriginalMediaCapturePermissionImp = method_setImplementation(
+		method,
+		reinterpret_cast<IMP>(elizaRequestMediaCapturePermission));
+	elizaMediaCaptureSwizzleInstalled =
+		elizaOriginalMediaCapturePermissionImp != NULL;
+	return elizaMediaCaptureSwizzleInstalled;
+}
+
+@interface ElizaWindowInteractiveMaterialController : NSObject
+{
+@private
+	std::atomic_bool _outsideClickPending;
+	uint32_t _lastLeftMouseDownCount;
+	uint32_t _lastRightMouseDownCount;
+	uint32_t _lastOtherMouseDownCount;
+}
+@property(nonatomic, weak) NSWindow *window;
+@property(nonatomic) NSSize materialSize;
+@property(nonatomic) CGFloat materialCornerRadius;
+@property(nonatomic) BOOL interactionPinned;
+@property(nonatomic, strong) id globalMonitor;
+@property(nonatomic, strong) id localMonitor;
+@property(nonatomic, strong) NSTimer *pointerPollTimer;
+- (instancetype)initWithWindow:(NSWindow *)window;
+- (void)handleEvent:(NSEvent *)event;
+- (void)handleGlobalEvent:(NSEvent *)event;
+- (void)pollPointerState;
+- (BOOL)materialFillsContentBounds;
+- (BOOL)consumeOutsideClick;
+- (void)setMaterialWidth:(CGFloat)width
+				  height:(CGFloat)height
+			cornerRadius:(CGFloat)cornerRadius;
+@end
+
+@implementation ElizaWindowInteractiveMaterialController
+
+- (instancetype)initWithWindow:(NSWindow *)window {
+	self = [super init];
+	if (self == nil) return nil;
+	_window = window;
+	_materialSize = window.contentView.bounds.size;
+	_outsideClickPending.store(false, std::memory_order_relaxed);
+	_lastLeftMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventLeftMouseDown);
+	_lastRightMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventRightMouseDown);
+	_lastOtherMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventOtherMouseDown);
+	__weak ElizaWindowInteractiveMaterialController *weakSelf = self;
+	NSEventMask mask = NSEventMaskMouseMoved | NSEventMaskLeftMouseDown |
+		NSEventMaskLeftMouseUp | NSEventMaskLeftMouseDragged |
+		NSEventMaskRightMouseDown | NSEventMaskRightMouseUp |
+		NSEventMaskRightMouseDragged | NSEventMaskOtherMouseDown |
+		NSEventMaskOtherMouseUp | NSEventMaskOtherMouseDragged;
+	_globalMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:mask
+										 handler:^(NSEvent *event) {
+		[weakSelf handleGlobalEvent:event];
+	}];
+	_localMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:mask
+									 handler:^NSEvent *(NSEvent *event) {
+		[weakSelf handleEvent:event];
+		return event;
+	}];
+	// A global mouse monitor is only a best-effort acceleration path. macOS can
+	// suppress it when the host lacks Input Monitoring permission; if the window
+	// was already ignoring mouse events, relying on that callback alone left the
+	// overlay permanently click-through. Poll the public cursor location on the
+	// main run loop as the permission-independent recovery path. Common modes keep
+	// it alive while a local drag is tracking.
+	_pointerPollTimer = [NSTimer timerWithTimeInterval:(1.0 / 30.0)
+										  repeats:YES
+											block:^(__unused NSTimer *timer) {
+		[weakSelf pollPointerState];
+	}];
+	[[NSRunLoop mainRunLoop] addTimer:_pointerPollTimer
+								 forMode:NSRunLoopCommonModes];
+	return self;
+}
+
+- (void)handleGlobalEvent:(NSEvent *)event {
+	switch (event.type) {
+		case NSEventTypeLeftMouseDown:
+		case NSEventTypeRightMouseDown:
+		case NSEventTypeOtherMouseDown:
+			if (![self containsScreenPoint:[NSEvent mouseLocation]]) {
+				_outsideClickPending.store(true, std::memory_order_release);
+			}
+			break;
+		default:
+			break;
+	}
+	[self handleEvent:event];
+}
+
+- (BOOL)consumeOutsideClick {
+	return _outsideClickPending.exchange(false, std::memory_order_acq_rel)
+		? YES
+		: NO;
+}
+
+- (void)pollPointerState {
+	uint32_t leftMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventLeftMouseDown);
+	uint32_t rightMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventRightMouseDown);
+	uint32_t otherMouseDownCount = CGEventSourceCounterForEventType(
+		kCGEventSourceStateCombinedSessionState, kCGEventOtherMouseDown);
+	BOOL mouseDownOccurred =
+		leftMouseDownCount != _lastLeftMouseDownCount ||
+		rightMouseDownCount != _lastRightMouseDownCount ||
+		otherMouseDownCount != _lastOtherMouseDownCount;
+	_lastLeftMouseDownCount = leftMouseDownCount;
+	_lastRightMouseDownCount = rightMouseDownCount;
+	_lastOtherMouseDownCount = otherMouseDownCount;
+
+	NSPoint screenPoint = [NSEvent mouseLocation];
+	if (mouseDownOccurred && ![self containsScreenPoint:screenPoint]) {
+		_outsideClickPending.store(true, std::memory_order_release);
+	}
+	[self applyForScreenPoint:screenPoint];
+}
+
+- (void)dealloc {
+	[_pointerPollTimer invalidate];
+	if (_globalMonitor != nil) [NSEvent removeMonitor:_globalMonitor];
+	if (_localMonitor != nil) [NSEvent removeMonitor:_localMonitor];
+}
+
+- (BOOL)containsScreenPoint:(NSPoint)screenPoint {
+	NSWindow *window = self.window;
+	NSView *contentView = window.contentView;
+	if (window == nil || contentView == nil) return NO;
+	NSPoint windowPoint = [window convertPointFromScreen:screenPoint];
+	NSPoint contentPoint = [contentView convertPoint:windowPoint fromView:nil];
+	NSRect bounds = contentView.bounds;
+	CGFloat width = MIN(MAX(0.0, self.materialSize.width), bounds.size.width);
+	CGFloat height = MIN(MAX(0.0, self.materialSize.height), bounds.size.height);
+	NSRect materialRect = NSMakeRect(
+		NSMidX(bounds) - width / 2.0,
+		[contentView isFlipped] ? NSMaxY(bounds) - height : NSMinY(bounds),
+		width,
+		height);
+	CGFloat radius = MIN(
+		MAX(0.0, self.materialCornerRadius),
+		MIN(materialRect.size.width, materialRect.size.height) / 2.0);
+	if (radius <= 0.0) return NSPointInRect(contentPoint, materialRect);
+	NSBezierPath *materialPath =
+		[NSBezierPath bezierPathWithRoundedRect:materialRect
+									xRadius:radius
+									yRadius:radius];
+	return [materialPath containsPoint:contentPoint];
+}
+
+/**
+ * When renderer and native material have converged to the same exact frame,
+ * there is no surrounding transparent host to protect. Keep that window
+ * interactive continuously so a fast mouse-down on the resting bar cannot
+ * pass through while the hover poll is still catching up.
+ */
+- (BOOL)materialFillsContentBounds {
+	NSView *contentView = self.window.contentView;
+	if (contentView == nil) return NO;
+	NSSize boundsSize = contentView.bounds.size;
+	return fabs(self.materialSize.width - boundsSize.width) <= 0.5 &&
+		fabs(self.materialSize.height - boundsSize.height) <= 0.5;
+}
+
+- (void)applyForScreenPoint:(NSPoint)screenPoint {
+	NSWindow *window = self.window;
+	if (window == nil) return;
+	BOOL interactive =
+		self.interactionPinned || [self materialFillsContentBounds] ||
+		[self containsScreenPoint:screenPoint];
+	if (window.ignoresMouseEvents == interactive) {
+		[window setIgnoresMouseEvents:!interactive];
+	}
+}
+
+- (void)handleEvent:(NSEvent *)event {
+	BOOL inside = [self containsScreenPoint:[NSEvent mouseLocation]];
+	switch (event.type) {
+		case NSEventTypeLeftMouseDown:
+		case NSEventTypeRightMouseDown:
+		case NSEventTypeOtherMouseDown:
+			self.interactionPinned = inside;
+			break;
+		case NSEventTypeLeftMouseUp:
+		case NSEventTypeRightMouseUp:
+		case NSEventTypeOtherMouseUp:
+			self.interactionPinned = NO;
+			break;
+		default:
+			break;
+	}
+	[self applyForScreenPoint:[NSEvent mouseLocation]];
+}
+
+- (void)setMaterialWidth:(CGFloat)width
+				  height:(CGFloat)height
+			cornerRadius:(CGFloat)cornerRadius {
+	self.materialSize = NSMakeSize(width, height);
+	self.materialCornerRadius = cornerRadius;
+	[self applyForScreenPoint:[NSEvent mouseLocation]];
+}
+
+@end
+
+static const void *kElizaWindowInteractiveMaterialControllerKey =
+	&kElizaWindowInteractiveMaterialControllerKey;
+
+static NSMutableDictionary<NSValue *, NSValue *> *
+elizaOriginalAcceptsFirstMouseImplementations(void) {
+	static NSMutableDictionary<NSValue *, NSValue *> *implementations = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		implementations = [[NSMutableDictionary alloc] init];
+	});
+	return implementations;
+}
+
+/**
+ * AppKit normally consumes the first click in an inactive window to activate
+ * the app. That is correct for a document window, but makes a floating pill
+ * feel broken: its visible button needs a second click. Keep ordinary windows'
+ * behavior, while letting views inside the interactive-material window accept
+ * the activating click itself.
+ */
+static BOOL elizaAcceptsFirstMouseForInteractiveMaterial(id receiver,
+													 SEL selector,
+													 NSEvent *event) {
+	NSView *view = [receiver isKindOfClass:[NSView class]]
+		? (NSView *)receiver
+		: nil;
+	NSWindow *window = [view window];
+	if (window != nil &&
+		objc_getAssociatedObject(
+			window, kElizaWindowInteractiveMaterialControllerKey) != nil) {
+		return YES;
+	}
+
+	Class cls = object_getClass(receiver);
+	NSValue *key = [NSValue valueWithPointer:(__bridge const void *)cls];
+	NSValue *stored =
+		[elizaOriginalAcceptsFirstMouseImplementations() objectForKey:key];
+	IMP original = (IMP)[stored pointerValue];
+	if (original == nullptr ||
+		original == (IMP)elizaAcceptsFirstMouseForInteractiveMaterial) {
+		return NO;
+	}
+	return ((BOOL(*)(id, SEL, NSEvent *))original)(receiver, selector, event);
+}
+
+static IMP elizaUnpatchedAcceptsFirstMouseImplementation(Class cls) {
+	NSMutableDictionary<NSValue *, NSValue *> *implementations =
+		elizaOriginalAcceptsFirstMouseImplementations();
+	for (Class cursor = cls; cursor != Nil;
+		 cursor = class_getSuperclass(cursor)) {
+		NSValue *key =
+			[NSValue valueWithPointer:(__bridge const void *)cursor];
+		NSValue *stored = [implementations objectForKey:key];
+		IMP candidate = (IMP)[stored pointerValue];
+		if (candidate != nullptr &&
+			candidate != (IMP)elizaAcceptsFirstMouseForInteractiveMaterial) {
+			return candidate;
+		}
+	}
+	Method method = class_getInstanceMethod(cls, @selector(acceptsFirstMouse:));
+	return method == nullptr ? nullptr : method_getImplementation(method);
+}
+
+static void elizaInstallFirstMouseAcceptance(NSView *view) {
+	if (view == nil) return;
+
+	// Patch deepest views first because WKWebView delegates mouse handling to
+	// private content subviews. Per-class replacement is conditional on the
+	// window's associated controller, so full Workspace windows retain standard
+	// AppKit activation semantics.
+	for (NSView *subview in [view subviews]) {
+		elizaInstallFirstMouseAcceptance(subview);
+	}
+
+	Class cls = object_getClass(view);
+	NSValue *key = [NSValue valueWithPointer:(__bridge const void *)cls];
+	NSMutableDictionary<NSValue *, NSValue *> *implementations =
+		elizaOriginalAcceptsFirstMouseImplementations();
+	if ([implementations objectForKey:key] != nil) return;
+
+	Method method = class_getInstanceMethod(cls, @selector(acceptsFirstMouse:));
+	if (method == nullptr) return;
+	IMP original = elizaUnpatchedAcceptsFirstMouseImplementation(cls);
+	if (original == nullptr) return;
+	[implementations
+		setObject:[NSValue valueWithPointer:(const void *)original]
+		  forKey:key];
+	class_replaceMethod(
+		cls, @selector(acceptsFirstMouse:),
+		(IMP)elizaAcceptsFirstMouseForInteractiveMaterial,
+		method_getTypeEncoding(method));
+}
 
 static NSMutableArray<NSURL *> *elizaSecurityScopedUrls(void) {
 	static NSMutableArray<NSURL *> *urls = nil;
@@ -130,6 +514,11 @@ static NSString *elizaErrorMessage(NSError *error, NSString *fallback) {
 	return NO;
 }
 
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+	(void)event;
+	return YES;
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
 	(void)dirtyRect;
 }
@@ -137,6 +526,22 @@ static NSString *elizaErrorMessage(NSError *error, NSString *fallback) {
 - (void)mouseDown:(NSEvent *)event {
 	NSWindow *window = [self window];
 	if (window != nil && event != nil) {
+		// A custom client-area drag view replaces AppKit's normal titlebar hit
+		// target, so it must preserve the user's system titlebar double-click
+		// preference itself. NSUserDefaults searches NSGlobalDomain, where macOS
+		// stores AppleActionOnDoubleClick (Maximize, Minimize, or None).
+		if ([event clickCount] >= 2) {
+			NSString *action = [[NSUserDefaults standardUserDefaults]
+				stringForKey:@"AppleActionOnDoubleClick"];
+			if ([action caseInsensitiveCompare:@"Minimize"] == NSOrderedSame) {
+				[window miniaturize:nil];
+			} else if (action == nil ||
+					   [action caseInsensitiveCompare:@"None"] != NSOrderedSame) {
+				// Missing preference is the macOS default: zoom/fill the window.
+				[window performZoom:nil];
+			}
+			return;
+		}
 		// Standard API for dragging from client-area views (hiddenInset).
 		[window performWindowDragWithEvent:event];
 	}
@@ -363,6 +768,90 @@ static void elizaRemoveResizeStripOverlays(NSView *contentView) {
 	}
 }
 
+/**
+ * Opt a window in or out of user-driven native resizing. The detached Eliza
+ * pill is repositioned and resized only by its state machine; AppKit edge
+ * resizing creates misleading cursors and can desynchronize the native frame
+ * from the painted surface. Removing our overlay views here also cleans up a
+ * window that installed them before a development hot reload.
+ */
+extern "C" bool setWindowUserResizable(void *windowPtr, bool enabled) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+
+		NSWindowStyleMask styleMask = [window styleMask];
+		if (enabled) {
+			styleMask |= NSWindowStyleMaskResizable;
+		} else {
+			styleMask &= ~NSWindowStyleMaskResizable;
+		}
+		[window setStyleMask:styleMask];
+
+		if (!enabled) {
+			NSView *contentView = [window contentView];
+			elizaRemoveResizeStripOverlays(contentView);
+			[window invalidateCursorRectsForView:contentView];
+		}
+
+		success = YES;
+	});
+
+	return success;
+}
+
+/**
+ * Switch the detached assistant between a Spotlight-style nonactivating pill
+ * and an ordinary key-capable chat panel. The window is created as NSPanel by
+ * Electrobun when NonactivatingPanel is present; toggling the same AppKit mask
+ * preserves the one-window renderer while giving the resting surface true
+ * first-click delivery. Opening chat removes the mask and activates normally
+ * so its composer can become first responder.
+ */
+extern "C" bool setWindowNonactivatingPanel(void *windowPtr, bool enabled) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSPanel class]]) {
+			return;
+		}
+
+		NSWindowStyleMask styleMask = [window styleMask];
+		BOOL currentlyNonactivating =
+			(styleMask & NSWindowStyleMaskNonactivatingPanel) != 0;
+		if (currentlyNonactivating != (enabled ? YES : NO)) {
+			if (enabled) {
+				styleMask |= NSWindowStyleMaskNonactivatingPanel;
+			} else {
+				styleMask &= ~NSWindowStyleMaskNonactivatingPanel;
+			}
+			[window setStyleMask:styleMask];
+		}
+
+		if (enabled) {
+			// Keep the pill visible at its floating level without activating Eliza.
+			[window orderFrontRegardless];
+		} else if (![window isKeyWindow] || ![NSApp isActive]) {
+			[NSApp activateIgnoringOtherApps:YES];
+			[window makeKeyAndOrderFront:nil];
+		}
+		success = YES;
+	});
+
+	return success;
+}
+
 /** Positions right/bottom/BR strips; z-order: below dragView, corner above
  *  right above bottom so BR gets diagonal hit testing. */
 static void elizaInstallResizeStripOverlays(NSWindow *window,
@@ -562,6 +1051,74 @@ static void removeNativeDragView(NSView *contentView, NSString *identifier) {
 	}
 }
 
+/**
+ * Install two narrow AppKit-owned movement strips in the empty top chrome of
+ * the detached composer/panel. The center remains WebKit-owned because its
+ * visible grabber changes chat detents; rounded corners and all controls remain
+ * outside these native hit targets. The tiny 48x6 resting pill deliberately has
+ * no movement overlay so its whole visible bar continues to open on click.
+ */
+static void elizaLayoutBottomBarDragViews(NSWindow *window,
+									  NSView *contentView,
+									  CGFloat materialWidth,
+									  CGFloat materialHeight,
+									  CGFloat cornerRadius) {
+	NSArray<NSString *> *identifiers = @[
+		kElizaBottomBarDragLeftIdentifier,
+		kElizaBottomBarDragRightIdentifier,
+	];
+	if (window == nil || contentView == nil || materialWidth < 240.0 ||
+		materialWidth > 700.0 || materialHeight > 900.0) {
+		for (NSString *identifier in identifiers) {
+			removeNativeDragView(contentView, identifier);
+		}
+		return;
+	}
+
+	NSRect bounds = [contentView bounds];
+	CGFloat width = MIN(materialWidth, bounds.size.width);
+	CGFloat height = MIN(materialHeight, bounds.size.height);
+	CGFloat stripHeight = MIN(12.0, height);
+	CGFloat sideInset = MIN(MAX(24.0, cornerRadius), width / 4.0);
+	CGFloat centerGap = MIN(104.0, width / 3.0);
+	CGFloat sideWidth = (width - sideInset * 2.0 - centerGap) / 2.0;
+	if (sideWidth < 56.0 || stripHeight <= 0.0) {
+		for (NSString *identifier in identifiers) {
+			removeNativeDragView(contentView, identifier);
+		}
+		return;
+	}
+
+	CGFloat materialX = NSMidX(bounds) - width / 2.0;
+	CGFloat materialY = [contentView isFlipped]
+		? NSMaxY(bounds) - height
+		: NSMinY(bounds);
+	CGFloat topY = [contentView isFlipped]
+		? materialY
+		: NSMaxY(NSMakeRect(materialX, materialY, width, height)) - stripHeight;
+	NSArray<NSValue *> *frames = @[
+		[NSValue valueWithRect:NSMakeRect(materialX + sideInset,
+										topY,
+										sideWidth,
+										stripHeight)],
+		[NSValue valueWithRect:NSMakeRect(materialX + sideInset + sideWidth +
+											centerGap,
+										topY,
+										sideWidth,
+										stripHeight)],
+	];
+	[window setMovable:YES];
+	for (NSUInteger index = 0; index < [identifiers count]; index++) {
+		ElectrobunNativeDragView *dragView =
+			ensureNativeDragView(contentView, identifiers[index]);
+		[dragView setFrame:[frames[index] rectValue]];
+		[dragView setAutoresizingMask:NSViewNotSizable];
+		[contentView addSubview:dragView
+					 positioned:NSWindowAbove
+					 relativeTo:nil];
+	}
+}
+
 static ElectrobunNativeDragView *findNativeDragRightEdgeView(NSView *contentView) {
 	return findNativeDragView(contentView,
 							  kElectrobunNativeDragRightEdgeIdentifier);
@@ -610,6 +1167,40 @@ extern "C" bool requestAccessibilityPermission(void) {
  */
 extern "C" bool checkAccessibilityPermission(void) {
 	return AXIsProcessTrusted();
+}
+
+/**
+ * Read the public macOS main-app login-item state.
+ * Returns the SMAppServiceStatus raw value on macOS 13+, or -2 when the API is
+ * unavailable. This deliberately avoids hand-written LaunchAgent plists.
+ */
+extern "C" int elizaLaunchAtLoginStatus(void) {
+	if (@available(macOS 13.0, *)) {
+		return (int)[SMAppService mainAppService].status;
+	}
+	return -2;
+}
+
+/**
+ * Register or unregister this signed application through SMAppService.
+ * Returns the resulting SMAppServiceStatus, -1 on an API error, or -2 when the
+ * host OS predates macOS 13.
+ */
+extern "C" int elizaLaunchAtLoginSetEnabled(bool enabled) {
+	if (@available(macOS 13.0, *)) {
+		SMAppService *service = [SMAppService mainAppService];
+		NSError *error = nil;
+		BOOL succeeded = enabled
+			? [service registerAndReturnError:&error]
+			: [service unregisterAndReturnError:&error];
+		if (!succeeded) {
+			NSLog(@"[ElizaDesktop] Launch at Login update failed: %@",
+				  error.localizedDescription ?: @"unknown error");
+			return -1;
+		}
+		return (int)service.status;
+	}
+	return -2;
 }
 
 /**
@@ -1372,6 +1963,82 @@ static NSString *elizaEventAvailabilityString(EKEventAvailability availability) 
 	return @"unknown";
 }
 
+static NSString *elizaCalendarSourceTypeString(EKSource *source) {
+	if (source == nil) {
+		return @"unknown";
+	}
+	switch ([source sourceType]) {
+		case EKSourceTypeLocal:
+			return @"local";
+		case EKSourceTypeExchange:
+			return @"exchange";
+		case EKSourceTypeCalDAV:
+			return @"caldav";
+		case EKSourceTypeMobileMe:
+			return @"mobile_me";
+		case EKSourceTypeSubscribed:
+			return @"subscribed";
+		case EKSourceTypeBirthdays:
+			return @"birthdays";
+	}
+	return @"unknown";
+}
+
+static NSString *elizaRecurrenceFrequencyString(
+	EKRecurrenceFrequency frequency) {
+	switch (frequency) {
+		case EKRecurrenceFrequencyDaily:
+			return @"daily";
+		case EKRecurrenceFrequencyWeekly:
+			return @"weekly";
+		case EKRecurrenceFrequencyMonthly:
+			return @"monthly";
+		case EKRecurrenceFrequencyYearly:
+			return @"yearly";
+	}
+	return @"unknown";
+}
+
+static NSArray *elizaRecurrenceRulesJson(EKEvent *event) {
+	NSMutableArray *rules = [NSMutableArray array];
+	for (EKRecurrenceRule *rule in [event recurrenceRules] ?: @[]) {
+		EKRecurrenceEnd *end = [rule recurrenceEnd];
+		NSInteger occurrenceCount = end != nil ? [end occurrenceCount] : 0;
+		NSDate *endDate = end != nil ? [end endDate] : nil;
+		[rules addObject:@{
+			@"frequency" : elizaRecurrenceFrequencyString([rule frequency]),
+			@"interval" : @([rule interval]),
+			@"occurrenceCount" : occurrenceCount > 0
+				? @(occurrenceCount)
+				: (id)[NSNull null],
+			@"endDate" : endDate != nil
+				? elizaISO8601StringFromDate(endDate)
+				: (id)[NSNull null],
+		}];
+	}
+	return rules;
+}
+
+static NSArray *elizaEventRemindersJson(EKEvent *event) {
+	NSMutableArray *reminders = [NSMutableArray array];
+	for (EKAlarm *alarm in [event alarms] ?: @[]) {
+		NSDate *absoluteDate = [alarm absoluteDate];
+		NSString *locationTitle = [[alarm structuredLocation] title];
+		[reminders addObject:@{
+			@"relativeOffsetSeconds" : absoluteDate == nil
+				? @([alarm relativeOffset])
+				: (id)[NSNull null],
+			@"absoluteDate" : absoluteDate != nil
+				? elizaISO8601StringFromDate(absoluteDate)
+				: (id)[NSNull null],
+			@"locationTitle" : [locationTitle length] > 0
+				? locationTitle
+				: (id)[NSNull null],
+		}];
+	}
+	return reminders;
+}
+
 static NSString *elizaParticipantStatusString(EKParticipantStatus status) {
 	switch (status) {
 		case EKParticipantStatusUnknown:
@@ -1489,6 +2156,13 @@ static NSDictionary *elizaCalendarJson(EKCalendar *calendar,
 			? [[NSTimeZone localTimeZone] name]
 			: (id)[NSNull null],
 		@"selected" : @YES,
+		@"sourceIdentifier" : [[source sourceIdentifier] length] > 0
+			? [source sourceIdentifier]
+			: (id)[NSNull null],
+		@"sourceTitle" : [[source title] length] > 0
+			? [source title]
+			: (id)[NSNull null],
+		@"sourceType" : elizaCalendarSourceTypeString(source),
 	};
 }
 
@@ -1504,6 +2178,10 @@ static NSDictionary *elizaEventJson(EKEvent *event) {
 	id organizer = [event organizer] != nil
 		? (id)elizaParticipantJson([event organizer])
 		: (id)[NSNull null];
+	NSString *iCalUID = [event calendarItemExternalIdentifier];
+	NSDate *occurrenceDate = [event occurrenceDate];
+	NSDate *lastModifiedDate = [event lastModifiedDate];
+	EKSource *source = [calendar source];
 	return @{
 		@"id" : identifier,
 		@"externalId" : identifier,
@@ -1522,7 +2200,64 @@ static NSDictionary *elizaEventJson(EKEvent *event) {
 		@"conferenceLink" : [NSNull null],
 		@"organizer" : organizer,
 		@"attendees" : attendees,
+		@"iCalUID" : [iCalUID length] > 0 ? iCalUID : (id)[NSNull null],
+		@"originalStartAt" : occurrenceDate != nil
+			? elizaISO8601StringFromDate(occurrenceDate)
+			: (id)[NSNull null],
+		@"lastModifiedAt" : lastModifiedDate != nil
+			? elizaISO8601StringFromDate(lastModifiedDate)
+			: (id)[NSNull null],
+		@"recurrenceRules" : elizaRecurrenceRulesJson(event),
+		@"reminders" : elizaEventRemindersJson(event),
+		@"sourceIdentifier" : [[source sourceIdentifier] length] > 0
+			? [source sourceIdentifier]
+			: (id)[NSNull null],
+		@"sourceTitle" : [[source title] length] > 0
+			? [source title]
+			: (id)[NSNull null],
+		@"sourceType" : elizaCalendarSourceTypeString(source),
 	};
+}
+
+// Calendar consumers need only an invalidation signal. Observe EventKit's
+// process-local store-change notification without inspecting or retaining its
+// object/userInfo, and expose a saturating generation instead of EventKit data.
+static std::atomic<uint64_t> elizaAppleCalendarChangeGeneration{0};
+static id elizaAppleCalendarChangeObserver = nil;
+
+static void elizaAdvanceAppleCalendarChangeGeneration(void) {
+	uint64_t current =
+		elizaAppleCalendarChangeGeneration.load(std::memory_order_relaxed);
+	const uint64_t maximum = std::numeric_limits<uint64_t>::max();
+	while (current < maximum &&
+		   !elizaAppleCalendarChangeGeneration.compare_exchange_weak(
+			   current,
+			   current + 1,
+			   std::memory_order_release,
+			   std::memory_order_relaxed)) {
+	}
+}
+
+static void elizaEnsureAppleCalendarChangeObserver(void) {
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		elizaAppleCalendarChangeObserver =
+			[[NSNotificationCenter defaultCenter]
+				addObserverForName:EKEventStoreChangedNotification
+						 object:nil
+						  queue:nil
+					 usingBlock:^(NSNotification *notification) {
+						 (void)notification;
+						 elizaAdvanceAppleCalendarChangeGeneration();
+					 }];
+	});
+}
+
+extern "C" uint64_t appleCalendarEventStoreGeneration(void) {
+	@autoreleasepool {
+		elizaEnsureAppleCalendarChangeObserver();
+		return elizaAppleCalendarChangeGeneration.load(std::memory_order_acquire);
+	}
 }
 
 static NSDictionary *elizaAppleCalendarUnsupportedAttendeesError(void) {
@@ -2244,6 +2979,36 @@ extern "C" void stopAccessingSecurityScopedBookmarks(void) {
 	}
 }
 
+extern "C" bool ensureWindowTransparentBackground(void *windowPtr) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+
+		// The detached pill paints only its visible glass material in WKWebView.
+		// Reassert the native clear canvas after window creation so AppKit cannot
+		// temporarily restore an opaque default backing surface during frame or
+		// Space transitions. This intentionally adds no NSVisualEffectView.
+		[window setOpaque:NO];
+		[window setBackgroundColor:[NSColor clearColor]];
+		[window setTitlebarAppearsTransparent:YES];
+		// The resting host is only 48x6 points. AppKit's ordinary window shadow
+		// expands far beyond that material and reads as a dark outlined capsule
+		// around the renderer's white bar. The detached overlay owns its complete
+		// visual treatment, so the native host must stay shadowless at every frame.
+		[window setHasShadow:NO];
+		[window invalidateShadow];
+		success = YES;
+	});
+	return success;
+}
+
 extern "C" bool enableWindowVibrancy(void *windowPtr) {
 	if (windowPtr == nullptr) {
 		return false;
@@ -2303,6 +3068,98 @@ extern "C" bool enableWindowVibrancy(void *windowPtr) {
 	});
 
 	return success;
+}
+
+/** Restrict pointer interaction to the bottom-centered painted material. */
+extern "C" bool setWindowInteractiveMaterialSize(void *windowPtr, double width,
+												 double height,
+												 double cornerRadius) {
+	if (windowPtr == nullptr || !isfinite(width) || !isfinite(height) ||
+		!isfinite(cornerRadius) || width <= 0.0 || height <= 0.0 ||
+		cornerRadius < 0.0) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) return;
+		ElizaWindowInteractiveMaterialController *controller =
+			objc_getAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey);
+		if (controller == nil) {
+			controller = [[ElizaWindowInteractiveMaterialController alloc]
+				initWithWindow:window];
+			objc_setAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey, controller,
+				OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		}
+		elizaInstallFirstMouseAcceptance([window contentView]);
+		[controller setMaterialWidth:(CGFloat)width
+							height:(CGFloat)height
+						  cornerRadius:(CGFloat)cornerRadius];
+		elizaLayoutBottomBarDragViews(window, [window contentView],
+									  (CGFloat)width, (CGFloat)height,
+									  (CGFloat)cornerRadius);
+		success = YES;
+	});
+	return success;
+}
+
+/** Re-stack the detached host's saved movement strips above a late WKWebView. */
+extern "C" bool refreshWindowInteractiveMaterial(void *windowPtr) {
+	if (windowPtr == nullptr) return false;
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) return;
+		ElizaWindowInteractiveMaterialController *controller =
+			objc_getAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey);
+		if (controller == nil) return;
+		NSView *contentView = [window contentView];
+		elizaInstallFirstMouseAcceptance(contentView);
+		elizaLayoutBottomBarDragViews(window, contentView,
+									  controller.materialSize.width,
+									  controller.materialSize.height,
+									  controller.materialCornerRadius);
+		success = YES;
+	});
+	return success;
+}
+
+/**
+ * Keep Web Inspector in its own standard window. Docked WKWebView inspection
+ * can leave the inspected app view present but unpainted on current macOS;
+ * WebKit's page-group preference is durable and is read before each open.
+ */
+extern "C" bool prepareDetachedWebInspector(void) {
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSString *key =
+			@"__WebInspectorPageGroupLevel1__.WebKit2InspectorStartsAttached";
+		NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+		[defaults setBool:NO forKey:key];
+		success = [defaults boolForKey:key] == NO;
+	});
+	return success;
+}
+
+/** Consume one click that landed outside the painted interactive material. */
+extern "C" bool pollWindowOutsideClick(void *windowPtr) {
+	if (windowPtr == nullptr) return false;
+
+	__block BOOL outsideClick = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) return;
+		ElizaWindowInteractiveMaterialController *controller =
+			objc_getAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey);
+		outsideClick = [controller consumeOutsideClick];
+	});
+	return outsideClick == YES;
 }
 
 extern "C" bool setWindowShadowEnabled(void *windowPtr, bool enabled) {
@@ -2383,12 +3240,6 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 		}
 
 		if (contentView != nil) {
-			ElizaInactiveTrafficLightsOverlayView *oldOverlay =
-				findInactiveTrafficLightsOverlay(buttonContainer);
-			if (oldOverlay != nil) {
-				[oldOverlay removeFromSuperview];
-			}
-
 			NSMutableArray<NSValue *> *buttonRectsInContent =
 				[NSMutableArray arrayWithCapacity:3];
 			NSRect overlayFrame = NSZeroRect;
@@ -2405,6 +3256,9 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 
 			if (hasOverlayFrame) {
 				overlayFrame = NSInsetRect(overlayFrame, -1.0, -1.0);
+				// Reuse one overlay owned by the content view. Looking under the
+				// traffic-light button container (the old behavior) never found this
+				// view, so every resize/focus refresh stacked another native overlay.
 				ElizaInactiveTrafficLightsOverlayView *overlay =
 					ensureInactiveTrafficLightsOverlay(contentView);
 				[overlay setFrame:overlayFrame];
@@ -2427,6 +3281,16 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 
 		[buttonContainer setNeedsLayout:YES];
 		[buttonContainer layoutSubtreeIfNeeded];
+		// hiddenInset WKWebView navigation/zoom can restack the renderer above the
+		// titlebar subtree. Reorder the existing AppKit button container in its own
+		// host (without reparenting or replacing the standard controls) so close,
+		// minimize, and zoom stay visible and fully native after every route/layout.
+		NSView *titlebarHost = [buttonContainer superview];
+		if (titlebarHost != nil) {
+			[titlebarHost addSubview:buttonContainer
+						 positioned:NSWindowAbove
+						relativeTo:nil];
+		}
 		[window invalidateShadow];
 		success = YES;
 	});
@@ -2518,13 +3382,24 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 		if (![window isKindOfClass:[NSWindow class]]) {
 			return;
 		}
+		// Electrobun can construct hiddenInset managed windows with movement
+		// disabled even though they have no native titlebar. Explicit native drag
+		// views call performWindowDragWithEvent:, which is a no-op for a
+		// non-movable NSWindow. Restore the standard macOS window contract here;
+		// only the visible top strip receives those mouse events.
+		[window setMovable:YES];
 
 		NSView *contentView = [window contentView];
 		if (contentView == nil) {
 			return;
 		}
 
-		CGFloat dragX = MAX(0.0, x);
+		// Managed Workspace/Settings windows pass a negative inset to request one
+		// continuous, obvious drag surface across the otherwise-empty title strip.
+		// Main windows keep the positive-inset segmented behavior so renderer
+		// controls in their title rows remain interactive.
+		BOOL continuousTitlebar = x < 0.0;
+		CGFloat dragX = MAX(0.0, fabs(x));
 		CGFloat dragHeight = elizaChromeDepthPoints(window, height);
 		CGFloat resizeDepth = MIN(dragHeight, 12.0);
 		CGFloat contentWidth = contentView.bounds.size.width;
@@ -2536,8 +3411,10 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 		CGFloat dragY = flipped ? 0.0 : contentView.bounds.size.height - dragHeight;
 		dragY = MAX(0.0, dragY);
 
-		NSArray<NSValue *> *dragRects =
-			elizaTitlebarNativeDragRects(contentWidth, dragHeight, flipped);
+		NSArray<NSValue *> *dragRects = continuousTitlebar
+			? @[[NSValue valueWithRect:NSMakeRect(0.0, 0.0, contentWidth,
+											 dragHeight)]]
+			: elizaTitlebarNativeDragRects(contentWidth, dragHeight, flipped);
 		NSArray<NSString *> *identifiers = elizaNativeDragViewIdentifiers();
 		ElectrobunNativeDragView *lastDragView = nil;
 		for (NSUInteger index = 0; index < [identifiers count]; index++) {
@@ -2645,13 +3522,14 @@ extern "C" bool disableWindowBackForwardNavigationGestures(void *windowPtr) {
 }
 
 // ============================================================================
-// Fn-key hold monitor (push-to-talk quasimode, #20483)
+// Modifier-key monitor (fn push-to-talk + two-Option Eliza summon)
 // ============================================================================
 
 /*
- * Listen-only CGEventTap on flagsChanged that reports fn (Globe) key DOWN and
- * UP transitions, giving the renderer the held quasimode that trigger-only
- * GlobalShortcut cannot express. The tap runs on a dedicated thread with its
+ * Listen-only CGEventTap on flagsChanged that reports fn (Globe) key DOWN/UP
+ * transitions and the simultaneous left+right Option chord. This gives the
+ * renderer modifier-only gestures that trigger-only GlobalShortcut cannot
+ * express. The tap runs on a dedicated thread with its
  * own CFRunLoop; transitions land in a small lock-free ring buffer drained by
  * the Bun host over FFI (elizaFnMonitorPoll), matching the poll-based
  * delivery the dylib already uses for notification choices.
@@ -2668,7 +3546,7 @@ extern "C" bool disableWindowBackForwardNavigationGestures(void *windowPtr) {
 static const int kElizaFnEventQueueCapacity = 64;
 
 // Ring buffer: single producer (tap thread) / single consumer (FFI poll).
-// Values: 1 = fn down, 2 = fn up.
+// Values: 1 = fn down, 2 = fn up, 4 = both physical Option keys down.
 static std::atomic<int> elizaFnEventQueue[kElizaFnEventQueueCapacity];
 static std::atomic<unsigned> elizaFnEventHead{0};
 static std::atomic<unsigned> elizaFnEventTail{0};
@@ -2676,6 +3554,9 @@ static std::atomic<unsigned> elizaFnEventTail{0};
 static std::atomic<bool> elizaFnMonitorRunning{false};
 static std::atomic<bool> elizaFnKeyIsDown{false};
 static std::atomic<bool> elizaFnSawOtherKeyDuringHold{false};
+static std::atomic<bool> elizaLeftOptionIsDown{false};
+static std::atomic<bool> elizaRightOptionIsDown{false};
+static std::atomic<bool> elizaBothOptionsLatched{false};
 static CFMachPortRef elizaFnEventTap = nullptr;
 static CFRunLoopRef elizaFnTapRunLoop = nullptr;
 static NSThread *elizaFnTapThread = nil;
@@ -2698,6 +3579,12 @@ static CGEventRef elizaFnTapCallback(CGEventTapProxy proxy, CGEventType type,
 
 	if (type == kCGEventTapDisabledByTimeout ||
 		type == kCGEventTapDisabledByUserInput) {
+		// A disabled tap may miss one or both Option releases. Clear every
+		// latched side before re-enabling so a later chord always requires a
+		// fresh physical press instead of inheriting stale modifier state.
+		elizaLeftOptionIsDown.store(false);
+		elizaRightOptionIsDown.store(false);
+		elizaBothOptionsLatched.store(false);
 		if (elizaFnEventTap != nullptr) {
 			CGEventTapEnable(elizaFnEventTap, true);
 		}
@@ -2707,6 +3594,24 @@ static CGEventRef elizaFnTapCallback(CGEventTapProxy proxy, CGEventType type,
 	if (type == kCGEventFlagsChanged) {
 		int64_t keycode =
 			CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+		// Physical Option keycodes are distinct (left 58, right 61), and the
+		// flagsChanged event carries the post-transition device-side masks. Read
+		// those masks directly: querying CGEventSourceKeyState from a head-insert
+		// tap can still return the state from before this event, causing a chord
+		// to fire late on release or not at all.
+		if (keycode == 58 || keycode == 61) {
+			CGEventFlags flags = CGEventGetFlags(event);
+			bool leftDown = (flags & NX_DEVICELALTKEYMASK) != 0;
+			bool rightDown = (flags & NX_DEVICERALTKEYMASK) != 0;
+			elizaLeftOptionIsDown.store(leftDown);
+			elizaRightOptionIsDown.store(rightDown);
+			bool bothDown = leftDown && rightDown;
+			bool wasLatched = elizaBothOptionsLatched.exchange(bothDown);
+			if (bothDown && !wasLatched) {
+				elizaFnEventPush(4);
+			}
+			return event;
+		}
 		// kVK_Function == 63. Other modifiers also arrive as flagsChanged;
 		// they must not disturb an in-flight fn hold.
 		if (keycode == 63) {
@@ -2745,13 +3650,17 @@ extern "C" int elizaFnMonitorStart(void) {
 	if (elizaFnMonitorRunning.load()) {
 		return 0;
 	}
+	elizaLeftOptionIsDown.store(false);
+	elizaRightOptionIsDown.store(false);
+	elizaBothOptionsLatched.store(false);
 
 	__block int result = 2;
 	dispatch_semaphore_t ready = dispatch_semaphore_create(0);
 
 	NSThread *thread = [[NSThread alloc] initWithBlock:^{
 		CGEventMask mask = CGEventMaskBit(kCGEventFlagsChanged) |
-						   CGEventMaskBit(kCGEventKeyDown);
+						   CGEventMaskBit(kCGEventKeyDown) |
+						   CGEventMaskBit(kCGEventKeyUp);
 		CFMachPortRef tap = CGEventTapCreate(
 			kCGSessionEventTap, kCGHeadInsertEventTap,
 			kCGEventTapOptionListenOnly, mask, elizaFnTapCallback, nullptr);
@@ -2811,6 +3720,9 @@ extern "C" void elizaFnMonitorStop(void) {
 	}
 	elizaFnTapThread = nil;
 	elizaFnKeyIsDown.store(false);
+	elizaLeftOptionIsDown.store(false);
+	elizaRightOptionIsDown.store(false);
+	elizaBothOptionsLatched.store(false);
 	// Drain the queue so a later start begins clean.
 	elizaFnEventTail.store(elizaFnEventHead.load());
 }
@@ -2819,7 +3731,7 @@ extern "C" void elizaFnMonitorStop(void) {
  * Drain one queued fn transition.
  * Returns 0 = none pending, 1 = fn down, 2 = fn up,
  * 3 = fn up after a chord (another key was pressed during the hold — the
- * host should cancel rather than send).
+ * host should cancel rather than send), 4 = both physical Option keys down.
  */
 extern "C" int elizaFnMonitorPoll(void) {
 	unsigned tail = elizaFnEventTail.load(std::memory_order_relaxed);

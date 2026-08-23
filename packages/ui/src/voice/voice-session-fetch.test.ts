@@ -7,14 +7,18 @@ const readStoredStewardToken = vi.fn();
 const readCsrfTokenFromCookie = vi.fn();
 const requestViaAgentTransport = vi.fn();
 const fetchWithCsrf = vi.fn();
+const fetchSameOriginWithCsrf = vi.fn();
 const loadPersistedActiveServer = vi.fn();
 const configuredCloudVoiceOrigin = vi.fn();
+const isRealtimeVoiceForceEnabled = vi.fn();
 
 vi.mock("@elizaos/shared/steward-session-client", () => ({
   readStoredStewardToken: () => readStoredStewardToken(),
 }));
 vi.mock("../api/csrf-client", () => ({
   fetchWithCsrf: (...args: unknown[]) => fetchWithCsrf(...args),
+  fetchSameOriginWithCsrf: (...args: unknown[]) =>
+    fetchSameOriginWithCsrf(...args),
   readCsrfTokenFromCookie: () => readCsrfTokenFromCookie(),
   requestViaAgentTransport: (...args: unknown[]) =>
     requestViaAgentTransport(...args),
@@ -24,6 +28,9 @@ vi.mock("../state/persistence", () => ({
 }));
 vi.mock("./shared-runtime-voice", () => ({
   configuredCloudVoiceOrigin: () => configuredCloudVoiceOrigin(),
+}));
+vi.mock("./realtime-voice-config", () => ({
+  isRealtimeVoiceForceEnabled: () => isRealtimeVoiceForceEnabled(),
 }));
 
 import { fetchVoiceSession } from "./voice-session-fetch";
@@ -36,6 +43,10 @@ describe("fetchVoiceSession", () => {
       new Response(null, { status: 204 }),
     );
     fetchWithCsrf.mockResolvedValue(new Response(null, { status: 204 }));
+    fetchSameOriginWithCsrf.mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+    isRealtimeVoiceForceEnabled.mockReturnValue(false);
   });
 
   it("routes cloud consent to the control plane with the Steward credential", async () => {
@@ -99,7 +110,23 @@ describe("fetchVoiceSession", () => {
     );
   });
 
-  it("keeps self-hosted voice-session traffic on the selected runtime", async () => {
+  it("keeps forced local voice traffic on the renderer-owned proxy", async () => {
+    loadPersistedActiveServer.mockReturnValue({ kind: "remote" });
+    isRealtimeVoiceForceEnabled.mockReturnValue(true);
+
+    await fetchVoiceSession("/api/v1/voice/session/consent", {
+      method: "POST",
+    });
+
+    expect(fetchSameOriginWithCsrf).toHaveBeenCalledWith(
+      "/api/v1/voice/session/consent",
+      { method: "POST" },
+    );
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+    expect(requestViaAgentTransport).not.toHaveBeenCalled();
+  });
+
+  it("keeps unforced self-hosted voice traffic on the selected runtime", async () => {
     loadPersistedActiveServer.mockReturnValue({ kind: "remote" });
 
     await fetchVoiceSession("/api/v1/voice/session/consent", {
@@ -110,7 +137,7 @@ describe("fetchVoiceSession", () => {
       "/api/v1/voice/session/consent",
       { method: "POST" },
     );
-    expect(requestViaAgentTransport).not.toHaveBeenCalled();
+    expect(fetchSameOriginWithCsrf).not.toHaveBeenCalled();
   });
 
   it("rejects an absolute cloud target before attaching credentials", async () => {

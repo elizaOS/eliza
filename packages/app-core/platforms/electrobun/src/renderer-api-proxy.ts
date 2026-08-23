@@ -7,6 +7,47 @@ export function isRendererApiProxyPath(pathname: string): boolean {
   );
 }
 
+/** Matches the local realtime/TTS routes that Vite sends to the voice gateway. */
+export function isRendererLocalVoiceProxyPath(pathname: string): boolean {
+  return pathname === "/api/v1/voice" || pathname.startsWith("/api/v1/voice/");
+}
+
+/**
+ * Resolve the optional loopback voice gateway without baking a dev port into
+ * the packaged renderer. The gateway returns its own direct WebSocket URL from
+ * the mint route, so the static HTTP proxy only needs the runtime-owned base.
+ */
+export function resolveRendererLocalVoiceGatewayBase(
+  env: Record<string, string | undefined>,
+): string | undefined {
+  const raw = env.ELIZA_LOCAL_VOICE_GATEWAY_PORT?.trim();
+  if (!raw) return undefined;
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      "ELIZA_LOCAL_VOICE_GATEWAY_PORT must be an integer TCP port",
+    );
+  }
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(
+      "ELIZA_LOCAL_VOICE_GATEWAY_PORT must be an integer TCP port",
+    );
+  }
+  return `http://127.0.0.1:${port}`;
+}
+
+/** Keep the packaged renderer's route ownership identical to Vite's order. */
+export function resolveRendererProxyTargetBase(
+  pathname: string,
+  apiBase: string | undefined,
+  voiceGatewayBase: string | undefined,
+): string | undefined {
+  if (voiceGatewayBase && isRendererLocalVoiceProxyPath(pathname)) {
+    return voiceGatewayBase;
+  }
+  return apiBase;
+}
+
 /**
  * True when the resolved api base is a reachable HTTP(S) listener the static
  * server can forward `/api`,`/ws`,`/music-player` to.
@@ -83,19 +124,58 @@ const HOP_BY_HOP_HEADERS = [
   "host",
 ] as const;
 
-function createProxyHeaders(req: Request): Headers {
+function createProxyHeaders(req: Request, target: URL): Headers {
   const headers = new Headers(req.headers);
   for (const header of HOP_BY_HOP_HEADERS) {
     headers.delete(header);
   }
+  rewriteSameOriginRendererProxySource(headers, req.url, target);
+  if (isRendererLocalVoiceProxyPath(target.pathname)) {
+    // The loopback gateway returns its bound direct WebSocket URL unless it is
+    // told that an HTTP proxy also owns upgrades. The static renderer does not
+    // own that socket; keep the mint response pointed at the gateway itself.
+    headers.delete("x-forwarded-host");
+    headers.delete("x-forwarded-proto");
+  }
   return headers;
+}
+
+/**
+ * Keep the packaged static renderer proxy at parity with Vite's trusted local
+ * proxy boundary. A same-origin browser request to 5174 carries that renderer
+ * origin in Origin/Referer; forwarding it unchanged to the API on 32437 makes
+ * the API correctly reject the apparent cross-origin request. Rewrite only
+ * when the source header exactly matches the incoming renderer origin. A real
+ * cross-origin caller retains its headers and remains subject to API policy.
+ */
+export function rewriteSameOriginRendererProxySource(
+  headers: Headers,
+  incomingUrl: string,
+  target: URL,
+): boolean {
+  const origin = headers.get("origin");
+  const referer = headers.get("referer");
+  const browserSource = origin ?? referer;
+  if (!browserSource) return false;
+
+  try {
+    const incomingOrigin = new URL(incomingUrl).origin;
+    const sourceOrigin = new URL(browserSource).origin;
+    if (sourceOrigin !== incomingOrigin) return false;
+    if (origin) headers.set("origin", target.origin);
+    if (referer) headers.set("referer", `${target.origin}/`);
+    headers.set("sec-fetch-site", "same-origin");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function createRendererApiProxyRequestInit(
   req: Request,
   _target: URL,
 ): RequestInit & { duplex?: "half" } {
-  const headers = createProxyHeaders(req);
+  const headers = createProxyHeaders(req, _target);
   const init: RequestInit & { duplex?: "half" } = {
     method: req.method,
     headers,

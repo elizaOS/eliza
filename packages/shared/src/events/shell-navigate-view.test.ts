@@ -29,6 +29,7 @@ describe("shell navigate view websocket event", () => {
       viewPath: "/wallet",
       subview: "activity",
     });
+    expect(event.cancelable).toBe(true);
   });
 
   it("normalizes valid navigation fields", () => {

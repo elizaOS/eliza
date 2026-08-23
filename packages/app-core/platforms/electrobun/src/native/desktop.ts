@@ -45,11 +45,15 @@ import Electrobun, {
 import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
 import {
+  anchorBottomBarFrame,
+  type BottomBarAnchor,
   type BottomBarSurfaceState,
   computeBottomBarFrame,
   computeBottomBarSurfaceFrame,
   isBottomBarSurfaceState,
+  normalizeBottomBarMaterialSize,
   resolveBottomBarFrameSize,
+  resolveBottomBarMaterialCornerRadius,
   type ScreenWorkArea,
   shouldReanchorBottomBar,
 } from "../desktop-bottom-bar-config";
@@ -96,8 +100,10 @@ import {
 } from "./agent";
 import {
   createSecurityScopedBookmark,
+  ensureWindowTransparentBackground,
   type FnMonitorStartResult,
   getFnSystemUsageType,
+  getMacLaunchAtLoginStatus,
   isAppActive,
   isFnKeyDown,
   isFnMonitorHealthy,
@@ -105,6 +111,10 @@ import {
   makeKeyAndOrderFront,
   orderOut,
   pollFnMonitor,
+  pollWindowOutsideClick,
+  setMacLaunchAtLoginEnabled,
+  setWindowInteractiveMaterialSize,
+  setWindowNonactivatingPanel,
   startAccessingSecurityScopedBookmark,
   startFnMonitor,
   stopAccessingSecurityScopedBookmarks,
@@ -165,13 +175,9 @@ interface ShowItemInFolderOptions {
 }
 
 const FALLBACK_TRAY_MENU_ITEMS: TrayMenuItem[] = [
-  {
-    id: "tray-windows",
-    label: "Windows",
-    submenu: [{ id: "tray-show-window", label: "Open Eliza" }],
-  },
+  { id: "tray-show-window", label: "Open Eliza" },
   { id: "tray-fallback-separator", type: "separator" },
-  { id: "quit", label: "Quit" },
+  { id: "quit", label: "Quit Eliza" },
 ];
 
 type ElectrobunEventHandler = (...args: unknown[]) => void;
@@ -365,11 +371,16 @@ export class DesktopManager {
   private fnHoldPoller: ReturnType<typeof setInterval> | null = null;
   private fnHoldWatchdog: ReturnType<typeof setInterval> | null = null;
   private fnHoldDownReported = false;
+  private optionChordToggleQueue: Promise<void> = Promise.resolve();
   private notificationCounter = 0;
   private notificationDiagnostics: NotificationDiagnosticsEntry[] = [];
   private sendToWebview: SendToWebview | null = null;
   private _windowFocused = true;
   private _windowHidden = false;
+  /** Workspace owns the shared ChatOverlay only while it is the key window. */
+  private mainWindowSuppressedByWorkspace = false;
+  /** User/tray/shortcut intent retained while Workspace suppresses rendering. */
+  private mainWindowVisibilityRequested = true;
   private _focusPoller: ReturnType<typeof setInterval> | null = null;
   private _appActive = false;
   // Bottom-bar (pill) re-anchoring: the bar frame is derived from the primary
@@ -381,9 +392,22 @@ export class DesktopManager {
   private bottomBarSurfaceState: BottomBarSurfaceState | null = null;
   private bottomBarPoller: ReturnType<typeof setInterval> | null = null;
   private bottomBarSize = resolveBottomBarFrameSize({ expanded: false });
+  private bottomBarInteractiveSize = resolveBottomBarFrameSize({
+    expanded: false,
+  });
   private bottomBarFrameDirty = false;
+  private bottomBarUserAnchor: BottomBarAnchor | null = null;
+  private bottomBarLastProgrammaticPosition: { x: number; y: number } | null =
+    null;
 
   // Callback to open the settings window (set by index.ts)
+  private openWorkspaceCallback:
+    | ((options?: {
+        routePath?: string;
+        maximize?: boolean;
+        presentation?: "standard" | "content";
+      }) => void)
+    | null = null;
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
   private openSurfaceWindowCallback:
     | ((
@@ -417,6 +441,12 @@ export class DesktopManager {
     | null = null;
   private requestQuitCallback: (() => void | Promise<void>) | null = null;
   private restoreMainWindowCallback: (() => void | Promise<void>) | null = null;
+  private dismissWorkspaceCallback:
+    | (() => {
+        closed: boolean;
+        reason: "closed" | "already-closed";
+      })
+    | null = null;
   /**
    * Dockless (tray-first) mode: the Dock icon reflects the presence of FULL
    * windows only (dashboard / surface / settings / app windows), never the
@@ -456,6 +486,9 @@ export class DesktopManager {
     this.teardownWindowEvents(this.mainWindow);
     this.mainWindow = window;
     this.setupWindowEvents();
+    if (this.mainWindowSuppressedByWorkspace) {
+      this.hideMainWindowNow();
+    }
   }
 
   async getShellDiagnosticsState(): Promise<{
@@ -489,6 +522,32 @@ export class DesktopManager {
    */
   setSendToWebview(fn: SendToWebview): void {
     this.sendToWebview = fn;
+  }
+
+  /**
+   * Set the callback used to open the complete workstation window.
+   */
+  setOpenWorkspaceCallback(
+    cb:
+      | ((options?: {
+          routePath?: string;
+          maximize?: boolean;
+          presentation?: "standard" | "content";
+        }) => void)
+      | null,
+  ): void {
+    this.openWorkspaceCallback = cb;
+  }
+
+  setDismissWorkspaceCallback(
+    cb:
+      | (() => {
+          closed: boolean;
+          reason: "closed" | "already-closed";
+        })
+      | null,
+  ): void {
+    this.dismissWorkspaceCallback = cb;
   }
 
   /**
@@ -563,6 +622,29 @@ export class DesktopManager {
       this.mainWindowIsFullWindow = false;
       this.refreshMainWindowPresence();
     }
+  }
+
+  /**
+   * Open the complete workstation window via the registered callback.
+   */
+  openWorkspace(options?: {
+    routePath?: string;
+    maximize?: boolean;
+    presentation?: "standard" | "content";
+  }): void {
+    this.openWorkspaceCallback?.(options);
+  }
+
+  dismissWorkspace(): {
+    closed: boolean;
+    reason: "closed" | "already-closed";
+  } {
+    return (
+      this.dismissWorkspaceCallback?.() ?? {
+        closed: false,
+        reason: "already-closed",
+      }
+    );
   }
 
   /**
@@ -798,7 +880,13 @@ export class DesktopManager {
     this.teardownTrayEvents();
 
     // Electrobun tray click is simpler — no bounds/modifiers
-    this.trayClickHandler = () => {
+    this.trayClickHandler = (event?: { data?: { action?: string } }) => {
+      // Electrobun delivers native menu selections through the same
+      // `tray-clicked` channel as a bare tray-icon click. Let the menu handler
+      // below own those actions. Treating "Open Eliza" as both an icon click
+      // and a menu click races hideWindow() against showWindow(), which can
+      // leave the resting pill invisible even though the menu action fired.
+      if (event?.data?.action) return;
       const win = this.mainWindow;
       const windowVisible =
         Boolean(win) && !this._windowHidden && !(win?.isMinimized() ?? true);
@@ -866,11 +954,24 @@ export class DesktopManager {
       // Native actions — these must work even when the renderer RPC bridge
       // is not yet connected (e.g. PGLite init on Windows can take 240s).
       if (action === "show" || action === "tray-show-window") {
-        void this.showWindow().catch((err: unknown) => {
-          logger.warn(
-            `[Desktop] Failed to show window from tray menu: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
+        void this.showWindow()
+          .then(() => {
+            // Menu wording is explicit ("Open Eliza"), so expand the shared
+            // overlay rather than applying the global hotkey's toggle policy.
+            this.send("desktopShortcutPressed", {
+              id: "chat-overlay-open",
+              accelerator: "tray",
+            });
+          })
+          .catch((err: unknown) => {
+            logger.warn(
+              `[Desktop] Failed to show window from tray menu: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      } else if (action === "tray-open-desktop-workspace") {
+        this.openWorkspaceCallback?.();
+      } else if (action === "tray-open-settings") {
+        this.openSettingsCallback?.();
       } else if (action === "tray-hide-window") {
         void this.hideWindow().catch((err: unknown) => {
           logger.warn(
@@ -1018,7 +1119,7 @@ export class DesktopManager {
     return true;
   }
 
-  // MARK: - Fn-hold push-to-talk (#20483)
+  // MARK: - Modifier-key gestures (fn push-to-talk + Option chord)
 
   /**
    * Start the native fn (Globe) key monitor and forward hold transitions to
@@ -1070,7 +1171,9 @@ export class DesktopManager {
     for (;;) {
       const event = pollFnMonitor();
       if (event === null) break;
-      if (event === "down" && !this.fnHoldDownReported) {
+      if (event === "both-options") {
+        this.queueOptionChordToggle();
+      } else if (event === "down" && !this.fnHoldDownReported) {
         this.fnHoldDownReported = true;
         this.send("desktopFnHoldChanged", { held: true, cancelled: false });
       } else if (
@@ -1092,22 +1195,64 @@ export class DesktopManager {
     }
   }
 
+  /**
+   * Toggle the existing main pill directly from the native modifier monitor.
+   * Keeping this in the host makes the global chord work while the renderer is
+   * loading, backgrounded, or hidden. It deliberately refuses to restore a
+   * missing window: the tray's "Open Eliza" action remains the recovery path,
+   * and one chord can never create a duplicate window or runtime.
+   */
+  private queueOptionChordToggle(): void {
+    this.optionChordToggleQueue = this.optionChordToggleQueue
+      .then(async () => {
+        if (!this.mainWindow) {
+          logger.warn(
+            "[Desktop] Ignoring Option chord because the main window is absent; use the tray Open Eliza action",
+          );
+          return;
+        }
+        if (this.mainWindowSuppressedByWorkspace) {
+          // An explicit global summon always escapes Workspace ownership. Do
+          // not mutate restore intent while the pill is invisibly suppressed.
+          await this.setMainWindowSuppressedByWorkspace(false);
+          await this.showWindow();
+          await this.focusWindow();
+          return;
+        }
+        const visible = (await this.isWindowVisible()).visible;
+        const focused = (await this.isWindowFocused()).focused;
+        if (focused && visible) {
+          await this.hideWindow();
+          return;
+        }
+        await this.showWindow();
+        await this.focusWindow();
+      })
+      .catch((err: unknown) => {
+        logger.warn(
+          `[Desktop] Failed to toggle the main window from the Option chord: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+  }
+
   // MARK: - Auto Launch
 
   async setAutoLaunch(options: {
     enabled: boolean;
     openAsHidden?: boolean;
   }): Promise<void> {
-    const appPath = process.execPath;
-
     const openAsHidden = options.openAsHidden ?? false;
 
     if (process.platform === "darwin") {
-      await this.setAutoLaunchMac(options.enabled, appPath, openAsHidden);
+      this.setAutoLaunchMac(options.enabled);
     } else if (process.platform === "linux") {
-      this.setAutoLaunchLinux(options.enabled, appPath, openAsHidden);
+      this.setAutoLaunchLinux(options.enabled, process.execPath, openAsHidden);
     } else if (process.platform === "win32") {
-      await this.setAutoLaunchWin(options.enabled, appPath, openAsHidden);
+      await this.setAutoLaunchWin(
+        options.enabled,
+        process.execPath,
+        openAsHidden,
+      );
     } else {
       logger.warn(
         `[DesktopManager] setAutoLaunch: unsupported platform ${process.platform}`,
@@ -1120,11 +1265,10 @@ export class DesktopManager {
     openAsHidden: boolean;
   }> {
     if (process.platform === "darwin") {
-      const plistPath = this.getMacLaunchAgentPath();
-      if (!fs.existsSync(plistPath))
-        return { enabled: false, openAsHidden: false };
-      const content = fs.readFileSync(plistPath, "utf8");
-      return { enabled: true, openAsHidden: content.includes("--hidden") };
+      return {
+        enabled: getMacLaunchAtLoginStatus() === "enabled",
+        openAsHidden: false,
+      };
     }
 
     if (process.platform === "linux") {
@@ -1145,61 +1289,13 @@ export class DesktopManager {
 
   // MARK: - Auto-launch helpers (macOS)
 
-  private getMacLaunchAgentPath(): string {
-    return path.join(
-      os.homedir(),
-      "Library",
-      "LaunchAgents",
-      getBrandConfig().macLaunchAgentPlist,
-    );
-  }
-
-  private async setAutoLaunchMac(
-    enabled: boolean,
-    appPath: string,
-    openAsHidden = false,
-  ): Promise<void> {
-    const plistPath = this.getMacLaunchAgentPath();
-
-    if (enabled) {
-      const hiddenArg = openAsHidden ? "\n    <string>--hidden</string>" : "";
-      const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${getBrandConfig().macLaunchAgentLabel}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${appPath}</string>${hiddenArg}
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <false/>
-</dict>
-</plist>
-`;
-      const dir = path.dirname(plistPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(plistPath, plistContent, "utf8");
-
-      const proc = Bun.spawn(["launchctl", "load", plistPath], {
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      await proc.exited;
-    } else {
-      if (fs.existsSync(plistPath)) {
-        const proc = Bun.spawn(["launchctl", "unload", plistPath], {
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        await proc.exited;
-        fs.unlinkSync(plistPath);
-      }
+  private setAutoLaunchMac(enabled: boolean): void {
+    const status = setMacLaunchAtLoginEnabled(enabled);
+    if (status === "error" || status === "not-found") {
+      throw new Error("macOS could not update Launch at Login for this app.");
+    }
+    if (status === "unavailable") {
+      throw new Error("Launch at Login requires macOS 13 or later.");
     }
   }
 
@@ -1392,6 +1488,8 @@ X-GNOME-Autostart-enabled=true
   }
 
   async showWindow(): Promise<void> {
+    this.mainWindowVisibilityRequested = true;
+    if (this.mainWindowSuppressedByWorkspace) return;
     let win = this.mainWindow;
     if (!win) {
       await this.restoreMainWindowCallback?.();
@@ -1413,6 +1511,31 @@ X-GNOME-Autostart-enabled=true
   }
 
   async hideWindow(): Promise<void> {
+    this.mainWindowVisibilityRequested = false;
+    this.hideMainWindowNow();
+  }
+
+  /**
+   * Suppress the detached pill while the focused Workspace renders the same
+   * ChatOverlay.
+   * This is native window ownership—not renderer hiding—so there is never a
+   * second visible/click-blocking surface over the workstation. Visibility
+   * intent is preserved and applied when Workspace blurs or closes.
+   */
+  async setMainWindowSuppressedByWorkspace(suppressed: boolean): Promise<void> {
+    if (this.mainWindowSuppressedByWorkspace === suppressed) return;
+    this.mainWindowSuppressedByWorkspace = suppressed;
+    if (suppressed) {
+      this.send("desktopWorkspaceHandoff");
+      this.hideMainWindowNow();
+      return;
+    }
+    if (this.mainWindowVisibilityRequested) {
+      await this.showWindow();
+    }
+  }
+
+  private hideMainWindowNow(): void {
     const win = this.mainWindow;
     if (!win) return;
     const ptr = (win as { ptr?: unknown }).ptr;
@@ -1521,6 +1644,17 @@ X-GNOME-Autostart-enabled=true
         this.send("desktopWindowUnmaximize");
       }
       wasMaximized = isMaximized;
+      if (this.bottomBarReanchorEnabled) {
+        const { x, y } = win.getPosition();
+        const programmed = this.bottomBarLastProgrammaticPosition;
+        if (!programmed || x !== programmed.x || y !== programmed.y) {
+          const { width, height } = win.getSize();
+          this.bottomBarUserAnchor = {
+            centerX: x + width / 2,
+            bottomY: y + height,
+          };
+        }
+      }
     };
     this.windowEventHandlers.move = moveHandler;
     win.on("move", moveHandler);
@@ -1556,6 +1690,10 @@ X-GNOME-Autostart-enabled=true
   enableBottomBarReanchor(): void {
     this.bottomBarReanchorEnabled = true;
     this.bottomBarWorkArea = this.readPrimaryWorkArea();
+    const position = this.mainWindow?.getPosition();
+    this.bottomBarLastProgrammaticPosition = position
+      ? { x: position.x, y: position.y }
+      : null;
     if (this.bottomBarPoller) return;
     this.bottomBarPoller = setInterval(() => {
       if (this._windowHidden) return;
@@ -1578,10 +1716,82 @@ X-GNOME-Autostart-enabled=true
     const win = this.mainWindow;
     const workArea = this.readPrimaryWorkArea();
     if (!win || !workArea) return;
-    const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
-    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    const frame = this.resolveBottomBarFrame(
+      workArea,
+      computeBottomBarFrame(workArea, this.bottomBarSize),
+    );
+    this.applyBottomBarFrame(win, frame);
+    this.applyBottomBarTransparentHost();
     this.bottomBarWorkArea = workArea;
     this.bottomBarFrameDirty = false;
+  }
+
+  /** Resize the stable native envelope around the renderer animation. */
+  async setBottomBarSize(size: {
+    width: number;
+    height: number;
+  }): Promise<void> {
+    this.bottomBarSurfaceState = null;
+    this.bottomBarSize = normalizeBottomBarMaterialSize(size);
+    this.bottomBarFrameDirty = true;
+    if (!this.bottomBarReanchorEnabled) return;
+    const win = this.mainWindow;
+    const workArea = this.readPrimaryWorkArea();
+    if (!win || !workArea) return;
+    const frame = this.resolveBottomBarFrame(
+      workArea,
+      computeBottomBarFrame(workArea, this.bottomBarSize),
+    );
+    this.applyBottomBarFrame(win, frame);
+    this.applyBottomBarTransparentHost();
+    this.applyBottomBarInteractiveMaterial();
+    this.bottomBarWorkArea = workArea;
+    this.bottomBarFrameDirty = false;
+  }
+
+  /** Keep transparent envelope pixels mouse-transparent outside visible UI. */
+  async setBottomBarInteractiveSize(size: {
+    width: number;
+    height: number;
+  }): Promise<void> {
+    this.bottomBarInteractiveSize = normalizeBottomBarMaterialSize(size);
+    if (!this.bottomBarReanchorEnabled) return;
+    this.applyBottomBarInteractiveMaterial();
+  }
+
+  private applyBottomBarInteractiveMaterial(): void {
+    if (process.platform !== "darwin") return;
+    const win = this.mainWindow;
+    if (!win) return;
+    const ptr = (win as typeof win & { ptr?: unknown }).ptr;
+    if (!ptr) {
+      throw new Error(
+        "[Desktop] bottom-bar native window pointer is unavailable",
+      );
+    }
+    const applied = setWindowInteractiveMaterialSize(
+      ptr as Parameters<typeof setWindowInteractiveMaterialSize>[0],
+      this.bottomBarInteractiveSize.width,
+      this.bottomBarInteractiveSize.height,
+      resolveBottomBarMaterialCornerRadius(this.bottomBarInteractiveSize),
+    );
+    if (!applied) {
+      throw new Error(
+        "[Desktop] failed to apply bottom-bar interactive material bounds",
+      );
+    }
+  }
+
+  /** Reassert the chromeless host after AppKit processes a frame transition. */
+  private applyBottomBarTransparentHost(): void {
+    if (process.platform !== "darwin") return;
+    const win = this.mainWindow;
+    if (!win) return;
+    const ptr = (win as typeof win & { ptr?: unknown }).ptr;
+    if (!ptr) return;
+    ensureWindowTransparentBackground(
+      ptr as Parameters<typeof ensureWindowTransparentBackground>[0],
+    );
   }
 
   /** Mirror the canonical mobile pull-sheet state in the native host frame. */
@@ -1602,8 +1812,27 @@ X-GNOME-Autostart-enabled=true
     // sign-in and permission windows come in front; restore the floating level
     // as soon as the sheet returns to half/input/pill mode.
     win.setAlwaysOnTop(options.state !== "MAXIMIZED");
-    const frame = computeBottomBarSurfaceFrame(workArea, options.state);
-    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    const baseFrame = computeBottomBarSurfaceFrame(workArea, options.state);
+    const frame =
+      options.state === "MAXIMIZED"
+        ? baseFrame
+        : this.resolveBottomBarFrame(workArea, baseFrame);
+    this.applyBottomBarFrame(win, frame);
+    this.applyBottomBarTransparentHost();
+    if (process.platform === "darwin") {
+      const ptr = (win as typeof win & { ptr?: unknown }).ptr;
+      if (
+        ptr &&
+        !setWindowNonactivatingPanel(
+          ptr as Parameters<typeof setWindowNonactivatingPanel>[0],
+          options.state === "CLOSED",
+        )
+      ) {
+        throw new Error(
+          "[Desktop] failed to update bottom-bar activation behavior",
+        );
+      }
+    }
     this.bottomBarWorkArea = workArea;
     this.bottomBarFrameDirty = false;
   }
@@ -1618,6 +1847,31 @@ X-GNOME-Autostart-enabled=true
       );
       return null;
     }
+  }
+
+  private resolveBottomBarFrame(
+    workArea: ScreenWorkArea,
+    frame: { x: number; y: number; width: number; height: number },
+  ): { x: number; y: number; width: number; height: number } {
+    if (!this.bottomBarUserAnchor) return frame;
+    const anchored = anchorBottomBarFrame(
+      workArea,
+      frame,
+      this.bottomBarUserAnchor,
+    );
+    this.bottomBarUserAnchor = {
+      centerX: anchored.x + anchored.width / 2,
+      bottomY: anchored.y + anchored.height,
+    };
+    return anchored;
+  }
+
+  private applyBottomBarFrame(
+    win: BrowserWindow,
+    frame: { x: number; y: number; width: number; height: number },
+  ): void {
+    this.bottomBarLastProgrammaticPosition = { x: frame.x, y: frame.y };
+    win.setFrame(frame.x, frame.y, frame.width, frame.height);
   }
 
   /**
@@ -1638,11 +1892,17 @@ X-GNOME-Autostart-enabled=true
     ) {
       return;
     }
-    const frame = this.bottomBarSurfaceState
+    const baseFrame = this.bottomBarSurfaceState
       ? computeBottomBarSurfaceFrame(nextWorkArea, this.bottomBarSurfaceState)
       : computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
+    const frame =
+      this.bottomBarSurfaceState === "MAXIMIZED"
+        ? baseFrame
+        : this.resolveBottomBarFrame(nextWorkArea, baseFrame);
     try {
-      win.setFrame(frame.x, frame.y, frame.width, frame.height);
+      this.applyBottomBarFrame(win, frame);
+      this.applyBottomBarTransparentHost();
+      this.applyBottomBarInteractiveMaterial();
       this.bottomBarWorkArea = nextWorkArea;
       this.bottomBarFrameDirty = false;
     } catch (err) {
@@ -1664,13 +1924,33 @@ X-GNOME-Autostart-enabled=true
       // When the app becomes foreground again with only a minimized window
       // (for example via Dock click), restore it automatically.
       const appActive = isAppActive();
+      const wasAppActive = this._appActive;
       if (!this._appActive && appActive && win.isMinimized()) {
         void this.showWindow();
       }
       this._appActive = appActive;
 
+      // A detached assistant panel can accept its first mouse event without
+      // becoming the key window. In that state `isKeyWindow()` remains false
+      // for the entire interaction, so the key-window edge below cannot report
+      // the user's click into another application. Application deactivation is
+      // the authoritative click-away edge for that non-key panel: notify the
+      // renderer even when `_windowFocused` was already false so an expanded
+      // sheet reliably steps down to its visible composer.
+      if (wasAppActive && !appActive) {
+        this._windowFocused = false;
+        this.send("desktopWindowBlur");
+      }
+
       const ptr = (win as { ptr?: unknown }).ptr;
       if (!ptr) return;
+      const outsideClick = pollWindowOutsideClick(
+        ptr as Parameters<typeof pollWindowOutsideClick>[0],
+      );
+      if (outsideClick && !(wasAppActive && !appActive)) {
+        this._windowFocused = false;
+        this.send("desktopWindowBlur");
+      }
       const focused = isKeyWindow(ptr as Parameters<typeof isKeyWindow>[0]);
       if (focused !== this._windowFocused) {
         this._windowFocused = focused;

@@ -27,32 +27,85 @@ interface ServiceTrajectoryListItem {
 	startTime: number;
 	endTime?: number | null;
 	durationMs?: number | null;
+	stepCount?: number;
 	llmCallCount: number;
+	totalPromptTokens?: number;
+	totalCompletionTokens?: number;
+	totalCacheReadInputTokens?: number;
+	totalCacheCreationInputTokens?: number;
+	totalReward?: number;
+	scenarioId?: string | null;
+	batchId?: string | null;
 	createdAt: string;
 	updatedAt?: string;
 }
 
 interface ServiceLlmCall {
 	callId: string;
+	stepId?: string;
+	trajectoryId?: string;
+	timestamp?: number;
 	model: string;
+	modelVersion?: string;
+	modelType?: string;
 	provider?: string;
+	systemPrompt?: string;
+	userPrompt?: string;
+	prompt?: string;
+	messages?: unknown[];
+	tools?: unknown;
+	toolChoice?: unknown;
+	output?: unknown;
+	responseSchema?: unknown;
+	providerOptions?: unknown;
 	response: string;
+	toolCalls?: unknown[];
+	finishReason?: string;
+	providerMetadata?: unknown;
+	reasoning?: string;
+	temperature?: number;
+	maxTokens?: number;
+	maxTokensOmitted?: boolean;
+	topP?: number;
 	purpose?: string;
 	actionType?: string;
 	stepType?: string;
+	tags?: string[];
+	latencyMs?: number;
+	promptTokens?: number;
+	completionTokens?: number;
+	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
+	modelSlot?: string;
+	runId?: string;
+	createdAt?: string;
 }
 
 interface ServiceProviderAccess {
 	providerId: string;
+	stepId?: string;
+	trajectoryId?: string;
 	providerName: string;
 	purpose?: string;
+	data?: Record<string, unknown>;
+	timestamp?: number;
+	startedAt?: number | null;
+	endedAt?: number | null;
+	durationMs?: number | null;
+	overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
+	runId?: string;
+	createdAt?: string;
 }
 
 interface ServiceActionAttempt {
 	attemptId: string;
+	timestamp?: number;
 	actionType: string;
 	actionName: string;
+	parameters?: Record<string, unknown>;
 	success: boolean;
+	result?: Record<string, unknown>;
 	error?: string;
 }
 
@@ -188,6 +241,14 @@ function listItemToUi(
 		startTime: item.startTime,
 		endTime: item.endTime ?? null,
 		durationMs: item.durationMs ?? null,
+		stepCount: item.stepCount ?? 0,
+		totalPromptTokens: item.totalPromptTokens ?? 0,
+		totalCompletionTokens: item.totalCompletionTokens ?? 0,
+		totalCacheReadInputTokens: item.totalCacheReadInputTokens ?? 0,
+		totalCacheCreationInputTokens: item.totalCacheCreationInputTokens ?? 0,
+		totalReward: item.totalReward ?? 0,
+		scenarioId: item.scenarioId ?? null,
+		batchId: item.batchId ?? null,
 		createdAt: item.createdAt,
 		updatedAt: item.updatedAt ?? item.createdAt,
 	};
@@ -214,20 +275,82 @@ function detailToUi(
 		for (const c of calls) {
 			llmCalls.push({
 				id: c.callId,
+				stepId: c.stepId ?? step.stepId,
+				trajectoryId: c.trajectoryId ?? id,
+				...(c.timestamp !== undefined ? { timestamp: c.timestamp } : {}),
 				model: c.model,
-				response: c.response,
+				...(c.modelVersion ? { modelVersion: c.modelVersion } : {}),
+				...(c.modelType ? { modelType: c.modelType } : {}),
 				...(c.provider ? { provider: c.provider } : {}),
+				...(c.systemPrompt !== undefined
+					? { systemPrompt: c.systemPrompt }
+					: {}),
+				...(c.userPrompt !== undefined ? { userPrompt: c.userPrompt } : {}),
+				...(c.prompt !== undefined ? { prompt: c.prompt } : {}),
+				...(c.messages !== undefined ? { messages: c.messages } : {}),
+				...(c.tools !== undefined ? { tools: c.tools } : {}),
+				...(c.toolChoice !== undefined ? { toolChoice: c.toolChoice } : {}),
+				...(c.output !== undefined ? { output: c.output } : {}),
+				...(c.responseSchema !== undefined
+					? { responseSchema: c.responseSchema }
+					: {}),
+				...(c.providerOptions !== undefined
+					? { providerOptions: c.providerOptions }
+					: {}),
+				response: c.response,
+				...(c.toolCalls !== undefined ? { toolCalls: c.toolCalls } : {}),
+				...(c.finishReason ? { finishReason: c.finishReason } : {}),
+				...(c.providerMetadata !== undefined
+					? { providerMetadata: c.providerMetadata }
+					: {}),
+				...(c.reasoning ? { reasoning: c.reasoning } : {}),
+				...(c.temperature !== undefined ? { temperature: c.temperature } : {}),
+				...(c.maxTokens !== undefined ? { maxTokens: c.maxTokens } : {}),
+				...(c.maxTokensOmitted !== undefined
+					? { maxTokensOmitted: c.maxTokensOmitted }
+					: {}),
+				...(c.topP !== undefined ? { topP: c.topP } : {}),
 				...(c.purpose ? { purpose: c.purpose } : {}),
 				...(c.actionType ? { actionType: c.actionType } : {}),
 				...(c.stepType ? { stepType: c.stepType } : {}),
+				...(c.tags ? { tags: c.tags } : {}),
+				...(c.latencyMs !== undefined ? { latencyMs: c.latencyMs } : {}),
+				...(c.promptTokens !== undefined
+					? { promptTokens: c.promptTokens }
+					: {}),
+				...(c.completionTokens !== undefined
+					? { completionTokens: c.completionTokens }
+					: {}),
+				...(c.cacheReadInputTokens !== undefined
+					? { cacheReadInputTokens: c.cacheReadInputTokens }
+					: {}),
+				...(c.cacheCreationInputTokens !== undefined
+					? { cacheCreationInputTokens: c.cacheCreationInputTokens }
+					: {}),
+				...(c.reasoningTokens !== undefined
+					? { reasoningTokens: c.reasoningTokens }
+					: {}),
+				...(c.modelSlot ? { modelSlot: c.modelSlot } : {}),
+				...(c.runId ? { runId: c.runId } : {}),
+				...(c.createdAt ? { createdAt: c.createdAt } : {}),
 			});
 		}
 		const accesses = step.providerAccesses;
 		for (const p of accesses) {
 			providerAccesses.push({
 				id: p.providerId,
+				stepId: p.stepId ?? step.stepId,
+				trajectoryId: p.trajectoryId ?? id,
 				providerName: p.providerName,
 				...(p.purpose ? { purpose: p.purpose } : {}),
+				...(p.data !== undefined ? { data: p.data } : {}),
+				...(p.timestamp !== undefined ? { timestamp: p.timestamp } : {}),
+				...(p.startedAt !== undefined ? { startedAt: p.startedAt } : {}),
+				...(p.endedAt !== undefined ? { endedAt: p.endedAt } : {}),
+				...(p.durationMs !== undefined ? { durationMs: p.durationMs } : {}),
+				...(p.overlapsWith ? { overlapsWith: p.overlapsWith } : {}),
+				...(p.runId ? { runId: p.runId } : {}),
+				...(p.createdAt ? { createdAt: p.createdAt } : {}),
 			});
 		}
 		// Genuinely actionless steps (Agent bridge LLM-only capture) contribute
@@ -239,6 +362,11 @@ function detailToUi(
 				id: action.attemptId,
 				type: failed ? "tool_error" : "tool_result",
 				actionName: action.actionName || action.actionType,
+				...(action.timestamp !== undefined
+					? { timestamp: action.timestamp }
+					: {}),
+				...(action.parameters ? { args: action.parameters } : {}),
+				...(action.result ? { result: action.result } : {}),
 				status: failed ? "failed" : "completed",
 				success: !failed,
 				...(action.error ? { error: action.error } : {}),

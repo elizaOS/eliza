@@ -29,6 +29,22 @@ export function grabberBarOpacity(
 }
 
 /**
+ * Top-relative position for the detached desktop's one persistent handle.
+ * The fieldset keeps its unscaled composer layout while the pill morphs, so
+ * progress zero places the handle at that layout's bottom and progress one
+ * places it at its top. Once a transcript grows the fieldset, progress stays
+ * one and the same DOM node remains pinned to the moving top edge.
+ */
+export function desktopPersistentHandleTop(
+  openProgress: number,
+  panelHeight: number,
+  restingHeight: number,
+): number {
+  const progress = clamp01(openProgress);
+  return Math.max(0, panelHeight - restingHeight) * (1 - progress);
+}
+
+/**
  * How far the sheet fill has blended from the resting translucent glass to the
  * opaque panel `--bg`. Rides the live drag: 0 with the thread closed (the
  * composer keeps its glass), 1 once the revealed thread reaches the HALF

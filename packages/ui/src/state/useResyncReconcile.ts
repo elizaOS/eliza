@@ -35,15 +35,39 @@ export function useResyncReconcile({
 }: UseResyncReconcileDeps): void {
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let interruptedVoiceTimer: ReturnType<typeof setTimeout> | null = null;
+    const reloadIfActive = (convId: string) => {
+      if (activeConversationIdRef.current !== convId) return;
+      void loadConversationMessages(convId);
+    };
     const onResync = (event: Event) => {
       const detail = (event as CustomEvent<ResyncEventDetail>).detail;
       const convId = detail?.conversationId ?? activeConversationIdRef.current;
       if (!convId) return;
       if (activeConversationIdRef.current !== convId) return;
-      void loadConversationMessages(convId);
+      if (detail?.reason === "voice-turn-interrupted") {
+        // The voice gateway must emit `interrupted` synchronously for fast
+        // barge-in, while the aborted canonical stream persists its durable
+        // assistant receipt just afterward. A single coalesced trailing reload
+        // prevents that reply from appearing only when the next turn starts.
+        if (interruptedVoiceTimer !== null) {
+          clearTimeout(interruptedVoiceTimer);
+        }
+        interruptedVoiceTimer = setTimeout(() => {
+          interruptedVoiceTimer = null;
+          reloadIfActive(convId);
+        }, 300);
+        return;
+      }
+      reloadIfActive(convId);
     };
     window.addEventListener(RESYNC_EVENT, onResync);
-    return () => window.removeEventListener(RESYNC_EVENT, onResync);
+    return () => {
+      window.removeEventListener(RESYNC_EVENT, onResync);
+      if (interruptedVoiceTimer !== null) {
+        clearTimeout(interruptedVoiceTimer);
+      }
+    };
     // `activeConversationIdRef` is a stable ref read at event time; re-subscribe
     // only when the loader identity changes.
   }, [activeConversationIdRef, loadConversationMessages]);

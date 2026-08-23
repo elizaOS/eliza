@@ -8,6 +8,10 @@ import {
   type ChatOverlayWindowBounds,
   computeChatOverlayWindowBounds,
   createChatOverlayWindowBoundsCoordinator,
+  createChatOverlayWindowSizeCoordinator,
+  resolveChatOverlayCompactWindowSize,
+  resolveChatOverlayMaterialSize,
+  shouldHideRestingChatOverlay,
 } from "./chat-overlay-window-bounds";
 
 function deferred<T>() {
@@ -30,7 +34,7 @@ describe("computeChatOverlayWindowBounds", () => {
   it("clamps an opened overlay to a short primary-display work area", () => {
     expect(
       computeChatOverlayWindowBounds(
-        { x: 651, y: 724, width: 64, height: 44 },
+        { x: 651, y: 756, width: 64, height: 12 },
         { x: 0, y: 24, width: 1_366, height: 744 },
         true,
       ),
@@ -44,7 +48,50 @@ describe("computeChatOverlayWindowBounds", () => {
         { x: 0, y: 24, width: 1_366, height: 744 },
         false,
       ),
-    ).toEqual({ x: 651, y: 724, width: 64, height: 44 });
+    ).toEqual({ x: 651, y: 756, width: 64, height: 12 });
+  });
+});
+
+describe("resolveChatOverlayCompactWindowSize", () => {
+  it("gives the visible composer a real first native frame", () => {
+    expect(
+      resolveChatOverlayCompactWindowSize("input", {
+        width: 600,
+        height: 820,
+      }),
+    ).toEqual({ width: 576, height: 64 });
+  });
+
+  it("keeps the final visible resting capsule hitbox exact", () => {
+    expect(
+      resolveChatOverlayCompactWindowSize("resting", {
+        width: 600,
+        height: 820,
+      }),
+    ).toEqual({ width: 64, height: 12 });
+  });
+});
+
+describe("resolveChatOverlayMaterialSize", () => {
+  it("keeps the visible panel bounds until the pill collapse reaches rest", () => {
+    expect(
+      resolveChatOverlayMaterialSize({ width: 312, height: 48 }, true, 0.4),
+    ).toEqual({ width: 312, height: 48 });
+    expect(
+      resolveChatOverlayMaterialSize({ width: 312, height: 48 }, true, 0),
+    ).toEqual({ width: 64, height: 12 });
+  });
+});
+
+describe("shouldHideRestingChatOverlay", () => {
+  it("keeps the window visible while Escape collapses sheet or composer", () => {
+    expect(shouldHideRestingChatOverlay("Escape", "sheet")).toBe(false);
+    expect(shouldHideRestingChatOverlay("Escape", "input")).toBe(false);
+  });
+
+  it("hides only on Escape from the already-settled resting pill", () => {
+    expect(shouldHideRestingChatOverlay("Escape", "resting")).toBe(true);
+    expect(shouldHideRestingChatOverlay("Enter", "resting")).toBe(false);
   });
 });
 
@@ -52,9 +99,9 @@ describe("createChatOverlayWindowBoundsCoordinator", () => {
   it("serializes close behind an in-flight open and leaves the final frame closed", async () => {
     let current: ChatOverlayWindowBounds = {
       x: 688,
-      y: 856,
+      y: 888,
       width: 64,
-      height: 44,
+      height: 12,
     };
     const firstSet = deferred<void>();
     const applied: ChatOverlayWindowBounds[] = [];
@@ -84,8 +131,8 @@ describe("createChatOverlayWindowBoundsCoordinator", () => {
 
     firstSet.resolve();
     await coordinator.whenIdle();
-    expect(applied.map((bounds) => bounds.height)).toEqual([820, 44]);
-    expect(current).toEqual({ x: 688, y: 856, width: 64, height: 44 });
+    expect(applied.map((bounds) => bounds.height)).toEqual([820, 12]);
+    expect(current).toEqual({ x: 688, y: 888, width: 64, height: 12 });
     expect(onFailure).not.toHaveBeenCalled();
   });
 
@@ -94,7 +141,7 @@ describe("createChatOverlayWindowBoundsCoordinator", () => {
     const firstDisplay = deferred<{
       workArea: ChatOverlayWindowBounds;
     } | null>();
-    const current = { x: 688, y: 856, width: 64, height: 44 };
+    const current = { x: 688, y: 888, width: 64, height: 12 };
     const setWindowBounds = vi.fn(async () => {});
     let readCount = 0;
     const coordinator = createChatOverlayWindowBoundsCoordinator({
@@ -129,9 +176,9 @@ describe("createChatOverlayWindowBoundsCoordinator", () => {
     const coordinator = createChatOverlayWindowBoundsCoordinator({
       getWindowBounds: async () => ({
         x: 688,
-        y: 856,
+        y: 888,
         width: 64,
-        height: 44,
+        height: 12,
       }),
       getPrimaryDisplay: async () => ({
         workArea: { x: 0, y: 0, width: 1_440, height: 900 },
@@ -145,5 +192,65 @@ describe("createChatOverlayWindowBoundsCoordinator", () => {
     coordinator.schedule(true);
     await coordinator.whenIdle();
     expect(onFailure).toHaveBeenCalledWith(failure);
+  });
+});
+
+describe("createChatOverlayWindowSizeCoordinator", () => {
+  it("restores the latest detent after an older native resize completes", async () => {
+    const restingWrite = deferred<void>();
+    const applied: Array<{ width: number; height: number }> = [];
+    const onFailure = vi.fn();
+    const coordinator = createChatOverlayWindowSizeCoordinator({
+      setBottomBarSize: async (size) => {
+        applied.push(size);
+        if (size.height === 12) await restingWrite.promise;
+      },
+      onFailure,
+    });
+
+    coordinator.schedule({ width: 576, height: 64 });
+    await coordinator.whenIdle();
+
+    coordinator.schedule({ width: 64, height: 12 });
+    await flushMicrotasks();
+    expect(applied).toEqual([
+      { width: 576, height: 64 },
+      { width: 64, height: 12 },
+    ]);
+
+    // The final renderer request intentionally matches the size that was last
+    // settled before the in-flight resting write. It must still invalidate the
+    // older revision and restore the composer after that write completes.
+    coordinator.schedule({ width: 576, height: 64 });
+    restingWrite.resolve();
+    await coordinator.whenIdle();
+
+    expect(applied).toEqual([
+      { width: 576, height: 64 },
+      { width: 64, height: 12 },
+      { width: 576, height: 64 },
+    ]);
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it("cancels a queued stale resize when the latest size is already applied", async () => {
+    const firstWrite = deferred<void>();
+    const applied: Array<{ width: number; height: number }> = [];
+    const coordinator = createChatOverlayWindowSizeCoordinator({
+      setBottomBarSize: async (size) => {
+        applied.push(size);
+        if (applied.length === 1) await firstWrite.promise;
+      },
+      onFailure: vi.fn(),
+    });
+
+    coordinator.schedule({ width: 576, height: 64 });
+    await flushMicrotasks();
+    coordinator.schedule({ width: 64, height: 12 });
+    coordinator.schedule({ width: 576, height: 64 });
+    firstWrite.resolve();
+    await coordinator.whenIdle();
+
+    expect(applied).toEqual([{ width: 576, height: 64 }]);
   });
 });

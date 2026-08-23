@@ -8,7 +8,7 @@ import type http from "node:http";
 import { decodePathComponent } from "./route-utils.js";
 
 const EMPTY_APPROVAL_SNAPSHOT = {
-  mode: "full_control",
+  mode: "smart_approve",
   pendingCount: 0,
   pendingApprovals: [],
 } as const;

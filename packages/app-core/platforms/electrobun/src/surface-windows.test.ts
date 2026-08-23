@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BoundsStore,
   buildAppWindowRendererUrl,
+  buildSurfaceWindowRendererUrl,
+  buildWorkspaceWindowRendererUrl,
   type CreateManagedWindowOptions,
   type ManagedWindowFrame,
   type ManagedWindowLike,
@@ -24,6 +26,10 @@ class FakeManagedWindow implements ManagedWindowLike {
   readonly focus = vi.fn(() => {
     this.emit("focus");
   });
+  readonly close = vi.fn(() => {
+    this.emit("close");
+  });
+  readonly maximize = vi.fn();
   readonly setAlwaysOnTop = vi.fn((flag: boolean) => {
     this.alwaysOnTop = flag;
   });
@@ -34,7 +40,10 @@ class FakeManagedWindow implements ManagedWindowLike {
     this.frame = options.frame;
   }
 
-  on(event: "close" | "focus" | "resize" | "move", handler: () => void) {
+  on(
+    event: "close" | "focus" | "blur" | "resize" | "move",
+    handler: () => void,
+  ) {
     const handlers = this.handlers.get(event) ?? [];
     handlers.push(handler);
     this.handlers.set(event, handlers);
@@ -44,7 +53,7 @@ class FakeManagedWindow implements ManagedWindowLike {
     return this.frame;
   }
 
-  emit(event: "close" | "focus" | "resize" | "move" | "dom-ready") {
+  emit(event: "close" | "focus" | "blur" | "resize" | "move" | "dom-ready") {
     if (event === "dom-ready") {
       for (const handler of this.webview.handlers.get(event) ?? []) {
         handler();
@@ -80,8 +89,10 @@ function createFixture(
   const created: FakeManagedWindow[] = [];
   const registryChanged = vi.fn();
   const focused = vi.fn();
+  const blurred = vi.fn();
   const wired = vi.fn();
   const injected = vi.fn();
+  const navigated = vi.fn(() => true);
   const manager = new SurfaceWindowManager({
     createWindow: (windowOptions) => {
       const window = new FakeManagedWindow(windowOptions);
@@ -94,11 +105,22 @@ function createFixture(
     readPreload: () => "// preload",
     wireRpc: wired,
     injectApiBase: injected,
+    navigateWindow: navigated,
     onWindowFocused: focused,
+    onWindowBlurred: blurred,
     onRegistryChanged: registryChanged,
     boundsStore: options.boundsStore,
   });
-  return { created, focused, injected, manager, registryChanged, wired };
+  return {
+    blurred,
+    created,
+    focused,
+    injected,
+    manager,
+    navigated,
+    registryChanged,
+    wired,
+  };
 }
 
 describe("SurfaceWindowManager app windows", () => {
@@ -129,7 +151,41 @@ describe("SurfaceWindowManager app windows", () => {
     );
   });
 
-  it("opens settings as a singleton, focuses the existing window, and encodes tab hints", async () => {
+  it("keeps the host-owned API base on an app window's first document", () => {
+    expect(
+      buildAppWindowRendererUrl(
+        "http://127.0.0.1:5173/?apiBase=http%3A%2F%2F127.0.0.1%3A32437#old",
+        "/notes",
+      ),
+    ).toBe(
+      "http://127.0.0.1:5173/?apiBase=http%3A%2F%2F127.0.0.1%3A32437&appWindow=1#/notes",
+    );
+  });
+
+  it("preserves only host-owned runtime parameters for workspace first paint", () => {
+    expect(
+      buildSurfaceWindowRendererUrl(
+        "http://127.0.0.1:5173/?boot=stale&apiBase=http%3A%2F%2F127.0.0.1%3A32437&enableRuntimeChooser=1#old",
+        "workspace",
+      ),
+    ).toBe(
+      "http://127.0.0.1:5173/?apiBase=http%3A%2F%2F127.0.0.1%3A32437&enableRuntimeChooser=1&desktopSurface=workspace",
+    );
+  });
+
+  it("routes settings inside the full workspace while preserving runtime boot parameters", () => {
+    expect(
+      buildWorkspaceWindowRendererUrl(
+        "http://127.0.0.1:5173/?boot=stale&apiBase=http%3A%2F%2F127.0.0.1%3A32437#old",
+        "/settings",
+        "voice",
+      ),
+    ).toBe(
+      "http://127.0.0.1:5173/settings?apiBase=http%3A%2F%2F127.0.0.1%3A32437&desktopSurface=workspace#voice",
+    );
+  });
+
+  it("opens settings inside the singleton workspace and encodes section hints", async () => {
     const fixture = createFixture();
 
     const first = await fixture.manager.openSettingsWindow(
@@ -140,14 +196,118 @@ describe("SurfaceWindowManager app windows", () => {
     expect(second).toEqual(first);
     expect(fixture.created).toHaveLength(1);
     expect(fixture.created[0]?.options).toMatchObject({
-      title: "elizaOS Settings",
-      url: "http://127.0.0.1:5173/?shell=settings&tab=voice",
+      title: "elizaOS Workspace",
+      url: "http://127.0.0.1:5173/settings?desktopSurface=workspace#voice",
+      titleBarStyle: "hiddenInset",
     });
     expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
-    expect(fixture.manager.listWindows("settings")).toEqual([first]);
+    expect(fixture.manager.listWindows("workspace")).toEqual([first]);
+    expect(fixture.manager.listWindows("settings")).toEqual([]);
   });
 
-  it("navigates an already-open settings window to the requested tab instead of just focusing it (#19996)", async () => {
+  it("opens the complete frameless workstation root as a singleton", async () => {
+    const fixture = createFixture();
+
+    const first = await fixture.manager.openWorkspaceWindow();
+    const second = await fixture.manager.openWorkspaceWindow();
+
+    expect(second).toEqual(first);
+    expect(fixture.created).toHaveLength(1);
+    expect(fixture.created[0]?.options).toMatchObject({
+      title: "elizaOS Workspace",
+      url: "http://127.0.0.1:5173/?desktopSurface=workspace",
+      titleBarStyle: "hiddenInset",
+      transparent: false,
+    });
+    expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
+    expect(fixture.manager.listWindows("workspace")).toEqual([first]);
+
+    fixture.created[0]?.emit("blur");
+    expect(fixture.blurred).toHaveBeenCalledWith(
+      fixture.created[0],
+      "workspace",
+      "standard",
+    );
+  });
+
+  it("keeps pill view intents in a content-only singleton workspace", async () => {
+    const fixture = createFixture();
+
+    await fixture.manager.openWorkspaceWindow();
+    const window = fixture.created[0];
+    await fixture.manager.openWorkspaceWindow(
+      "/notes",
+      undefined,
+      true,
+      "content",
+    );
+
+    expect(fixture.navigated).toHaveBeenCalledWith(
+      window,
+      "/notes",
+      undefined,
+      "content",
+    );
+    expect(window?.maximize).toHaveBeenCalledTimes(1);
+    expect(window?.focus).toHaveBeenCalledTimes(1);
+    expect(fixture.focused).toHaveBeenLastCalledWith(
+      window,
+      "workspace",
+      "content",
+    );
+  });
+
+  it("dismisses only the Workspace and reports an already-closed retry", async () => {
+    const fixture = createFixture();
+
+    await fixture.manager.openWorkspaceWindow(
+      "/notes",
+      undefined,
+      true,
+      "content",
+    );
+
+    expect(fixture.manager.dismissWorkspaceWindow()).toEqual({
+      closed: true,
+      reason: "closed",
+    });
+    expect(fixture.created[0]?.close).toHaveBeenCalledTimes(1);
+    expect(fixture.manager.listWindows("workspace")).toEqual([]);
+    expect(fixture.manager.dismissWorkspaceWindow()).toEqual({
+      closed: false,
+      reason: "already-closed",
+    });
+  });
+
+  it("tags a newly created content workspace on first paint", async () => {
+    const fixture = createFixture();
+
+    await fixture.manager.openWorkspaceWindow(
+      "/notes",
+      undefined,
+      true,
+      "content",
+    );
+
+    expect(fixture.created[0]?.options.url).toBe(
+      "http://127.0.0.1:5173/notes?desktopSurface=workspace&workspacePresentation=content",
+    );
+    expect(fixture.focused).toHaveBeenCalledWith(
+      fixture.created[0],
+      "workspace",
+      "content",
+    );
+
+    const focusCountBeforeReady = fixture.created[0]?.focus.mock.calls.length;
+    fixture.created[0]?.emit("dom-ready");
+
+    expect(fixture.created[0]?.maximize).toHaveBeenCalledTimes(2);
+    expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(
+      focusCountBeforeReady ?? 0,
+    );
+  });
+
+  it("navigates the already-open workspace to the requested settings section (#19996)", async () => {
     const fixture = createFixture();
 
     await fixture.manager.openSettingsWindow("open-settings-voice");
@@ -159,15 +319,24 @@ describe("SurfaceWindowManager app windows", () => {
     await fixture.manager.openSettingsWindow("open-settings-permissions");
 
     expect(fixture.created).toHaveLength(1);
-    expect(window?.webview.loadURL).toHaveBeenCalledWith(
-      "http://127.0.0.1:5173/?shell=settings&tab=permissions",
+    expect(fixture.navigated).toHaveBeenCalledWith(
+      window,
+      "/settings",
+      "permissions",
+      "standard",
     );
     expect(window?.focus).toHaveBeenCalled();
 
-    // No tab hint (plain "Settings Window" menu item): focus only, no reload.
-    window?.webview.loadURL.mockClear();
+    // Plain Settings returns the same workstation to the Settings hub.
+    fixture.navigated.mockClear();
     await fixture.manager.openSettingsWindow();
-    expect(window?.webview.loadURL).not.toHaveBeenCalled();
+    expect(fixture.navigated).toHaveBeenCalledWith(
+      window,
+      "/settings",
+      undefined,
+      "standard",
+    );
+    expect(fixture.manager.listWindows("settings")).toEqual([]);
   });
 
   it("opens browser surfaces with browse query encoding and ignores browse for non-browser surfaces", async () => {
@@ -271,7 +440,11 @@ describe("SurfaceWindowManager app windows", () => {
     });
     expect(fixture.created[0]?.setAlwaysOnTop).toHaveBeenCalledWith(true);
     expect(fixture.wired).toHaveBeenCalledWith(fixture.created[0]);
-    expect(fixture.focused).toHaveBeenCalledWith(fixture.created[0]);
+    expect(fixture.focused).toHaveBeenCalledWith(
+      fixture.created[0],
+      "app",
+      undefined,
+    );
 
     fixture.created[0]?.emit("dom-ready");
     expect(fixture.injected).toHaveBeenCalledWith(fixture.created[0]);

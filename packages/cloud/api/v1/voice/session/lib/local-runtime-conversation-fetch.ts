@@ -24,6 +24,8 @@ const FORWARDED_HEADER_NAMES = [
 export interface LocalRuntimeConversationScope {
   agentId: string;
   conversationId: string;
+  /** Conversations admitted by the gateway's live-runtime mint validator. */
+  isConversationAuthorized?: (conversationId: string) => boolean;
 }
 
 export class LocalRuntimeConversationFetchError extends Error {
@@ -73,7 +75,10 @@ export function createLocalRuntimeConversationFetch(
 
     const agentId = decodeIdentity("agent id", match[1]);
     const conversationId = decodeIdentity("conversation id", match[2]);
-    if (agentId !== scope.agentId || conversationId !== scope.conversationId) {
+    const conversationIsAuthorized = scope.isConversationAuthorized
+      ? scope.isConversationAuthorized(conversationId)
+      : conversationId === scope.conversationId;
+    if (agentId !== scope.agentId || !conversationIsAuthorized) {
       throw new LocalRuntimeConversationFetchError(
         "local voice request does not match the bound runtime identity",
       );

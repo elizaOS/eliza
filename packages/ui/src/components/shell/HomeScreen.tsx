@@ -107,6 +107,11 @@ const HOME_SCREEN_CSS = `
     grid-template-rows var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
     opacity 220ms ease-out;
 }
+[data-home-below-notifications][data-home-notifications-pending] {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
 [data-home-below-notifications-inner] {
   min-height: 0;
 }
@@ -226,6 +231,17 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   const wasAppsDisplacedRef = useRef(false);
   const [notificationShadeExpanded, setNotificationShadeExpanded] =
     useState(false);
+  const { notifications, hydrated, hydrationStatus } = useNotifications();
+  // The store publishes persisted rows and `hydrated=true` in one snapshot.
+  // Keep the secondary home region unpainted until that first authority read
+  // settles so its final position is the first position users see; otherwise
+  // persisted cards insert after first paint and push every widget downward.
+  // A retrying authority releases the home immediately rather than hiding the
+  // launcher behind a slow or unavailable notification service.
+  const notificationLayoutPending =
+    notifications.length === 0 &&
+    hydrated === false &&
+    (hydrationStatus === "idle" || hydrationStatus === "loading");
   const [
     pendingNotificationCenterOpenRequestId,
     setPendingNotificationCenterOpenRequestId,
@@ -234,8 +250,8 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
     useState<number | null>(null);
   const activeTab = useAppSelector((state) => state.tab);
   const { page: shellSurfacePage } = useShellSurface();
-  const { notifications } = useNotifications();
   const appsDisplaced = notificationShadeExpanded && notifications.length > 0;
+  const appsSuppressed = appsDisplaced || notificationLayoutPending;
   appsDisplacedRef.current = appsDisplaced;
 
   useLayoutEffect(() => {
@@ -416,6 +432,9 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
 
           <div
             data-home-below-notifications=""
+            data-home-notifications-pending={
+              notificationLayoutPending ? "" : undefined
+            }
             data-eliza-layout-shift-intent={
               enterClass ? "transient" : undefined
             }
@@ -424,8 +443,8 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
             <section
               ref={appsRegionRef}
               aria-label="Home content"
-              aria-hidden={appsDisplaced || undefined}
-              inert={appsDisplaced || undefined}
+              aria-hidden={appsSuppressed || undefined}
+              inert={appsSuppressed || undefined}
               onBlurCapture={handleAppsBlurCapture}
               onFocusCapture={handleAppsFocusCapture}
               data-home-below-notifications-inner=""
@@ -433,7 +452,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
               data-scroll-cert-scroller=""
               className={cn(
                 "scrollbar-hide relative min-h-0 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
-                appsDisplaced && "pointer-events-none",
+                appsSuppressed && "pointer-events-none",
               )}
             >
               {apps}

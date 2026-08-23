@@ -39,15 +39,20 @@ const ALL_AGENT_STATES = [
 ] as const;
 
 /**
- * Build a runtime whose `getModel` resolves exactly the supplied model keys to a
- * handler — `hasTextGenerationHandler` (the core helper `computeCanRespond`
- * delegates to) probes TEXT_LARGE/SMALL/MEDIUM/NANO/MEGA + ACTION_PLANNER +
- * RESPONSE_HANDLER, so the chosen key controls whether a text handler is "wired".
+ * Build a runtime whose registration inventory and legacy getModel lookup both
+ * expose exactly the supplied model keys.
  */
 function makeRuntime(modelKeys: string[]): AgentRuntime {
   const wired = new Set(modelKeys);
   return {
     getModel: (key: string) => (wired.has(key) ? () => undefined : undefined),
+    getModelRegistrations: () =>
+      modelKeys.map((modelType, index) => ({
+        modelType,
+        provider: "test-provider",
+        priority: 0,
+        registrationOrder: index + 1,
+      })),
   } as unknown as AgentRuntime;
 }
 
@@ -94,21 +99,26 @@ describe("computeCanRespond — WS status broadcast contract", () => {
     ).toBe(true);
   });
 
-  it("is true running with any single text-capable handler the core helper probes", () => {
-    // `hasTextGenerationHandler` accepts any of these; lock each so a narrowed
-    // probe in core does not silently drop a valid provider from the gate.
+  it("is true running with any direct chat text provider registration", () => {
     const handlerKeys = [
       ModelType.TEXT_LARGE,
       ModelType.TEXT_SMALL,
       ModelType.TEXT_MEDIUM,
       ModelType.TEXT_NANO,
       ModelType.TEXT_MEGA,
-      ModelType.ACTION_PLANNER,
-      ModelType.RESPONSE_HANDLER,
     ];
     for (const key of handlerKeys) {
       expect(computeCanRespond(makeRuntime([key]), "running")).toBe(true);
     }
+  });
+
+  it("is false when only planner/response wrappers exist without a chat text provider", () => {
+    expect(
+      computeCanRespond(
+        makeRuntime([ModelType.ACTION_PLANNER, ModelType.RESPONSE_HANDLER]),
+        "running",
+      ),
+    ).toBe(false);
   });
 
   it("is false running when only a non-text handler (e.g. embedding) is wired", () => {

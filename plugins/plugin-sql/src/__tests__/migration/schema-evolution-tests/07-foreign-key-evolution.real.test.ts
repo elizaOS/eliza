@@ -392,6 +392,57 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     console.log("  ✅ CASCADE delete propagated correctly through all relationships");
   });
 
+  it("adds a parent unique constraint before a new child's composite foreign key", async () => {
+    const accountsV1 = pgTable("ordering_accounts", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      agentId: uuid("agent_id").notNull(),
+    });
+
+    await migrator.migrate("@elizaos/fk-ordering", { accounts: accountsV1 });
+
+    const accountsV2 = pgTable(
+      "ordering_accounts",
+      {
+        id: uuid("id").primaryKey().defaultRandom(),
+        agentId: uuid("agent_id").notNull(),
+      },
+      (table) => [unique("ordering_accounts_id_agent_unique").on(table.id, table.agentId)]
+    );
+    const claimsV2 = pgTable(
+      "ordering_claims",
+      {
+        id: uuid("id").primaryKey().defaultRandom(),
+        accountId: uuid("account_id").notNull(),
+        agentId: uuid("agent_id").notNull(),
+      },
+      (table) => [
+        foreignKey({
+          name: "ordering_claim_account_fk",
+          columns: [table.accountId, table.agentId],
+          foreignColumns: [accountsV2.id, accountsV2.agentId],
+        }),
+      ]
+    );
+
+    await migrator.migrate("@elizaos/fk-ordering", {
+      accounts: accountsV2,
+      claims: claimsV2,
+    });
+
+    const constraints = await db.execute(sql`
+      SELECT conname
+      FROM pg_constraint
+      WHERE conname IN (
+        'ordering_accounts_id_agent_unique',
+        'ordering_claim_account_fk'
+      )
+    `);
+    expect(constraints.rows.map((row) => row.conname).sort()).toEqual([
+      "ordering_accounts_id_agent_unique",
+      "ordering_claim_account_fk",
+    ]);
+  });
+
   it("should handle foreign keys with manager references", async () => {
     // V1: Tables with manager-employee relationship
     const departmentTableV1 = pgTable("departments", {

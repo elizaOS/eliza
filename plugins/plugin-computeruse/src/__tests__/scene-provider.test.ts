@@ -2,8 +2,8 @@
  * Provider integration test for the `scene` provider.
  *
  * The provider is supposed to:
- *   1. Read `service.getCurrentScene()` first.
- *   2. If no scene yet, force a `refreshScene("agent-turn")`.
+ *   1. Force a fresh `refreshScene("agent-turn")` on every selected turn.
+ *   2. Fall back to `service.getCurrentScene()` only when refresh fails.
  *   3. Serialize the result via `serializeSceneForPrompt` and emit both
  *      `text` (fenced JSON for the prompt) and `data.scene` (the full
  *      Scene for downstream pieces like WS7).
@@ -95,6 +95,7 @@ function makeRuntime(
     refreshScene:
       refresh ??
       (async () => {
+        if (scene) return scene;
         throw new Error("no scene available");
       }),
   };
@@ -113,7 +114,7 @@ const dummyMessage: Memory = {} as Memory;
 const dummyState: State = {} as State;
 
 describe("sceneProvider", () => {
-  it("returns parsed text + data for an existing scene", async () => {
+  it("refreshes and returns parsed text + full provider data", async () => {
     const scene = makeScene();
     const result = await sceneProvider.get(
       makeRuntime(scene),
@@ -161,6 +162,19 @@ describe("sceneProvider", () => {
     expect(result.text).toBe("");
     // A broken scene pipeline must be agent-visible (#12273), not a
     // silently-empty provider result.
+    expect(runtime.reportedErrors).toEqual([
+      { scope: "Computeruse.sceneProvider" },
+    ]);
+  });
+
+  it("reports refresh failure and falls back to the latest cached scene", async () => {
+    const scene = makeScene();
+    const runtime = makeRuntime(scene, async () => {
+      throw new Error("capture unavailable");
+    });
+    const result = await sceneProvider.get(runtime, dummyMessage, dummyState);
+    expect(result.text).toContain('"id": "t0-1"');
+    expect(result.data?.scene).toBe(scene);
     expect(runtime.reportedErrors).toEqual([
       { scope: "Computeruse.sceneProvider" },
     ]);

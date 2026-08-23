@@ -1112,6 +1112,53 @@ describe("useShellController — voice capture routing", () => {
     expect(result.current.micPermission).toBe("granted");
   });
 
+  it("does not misreport a post-capture empty transcription as missing hardware", async () => {
+    const { result } = renderHook(() => useShellController());
+    appMock.value.setActionNotice.mockClear();
+
+    await act(async () => {
+      result.current.startRecording("dictate");
+    });
+    act(() => {
+      lastCaptureOpts?.onStateChange?.(
+        "error",
+        new Error("No microphone audio was captured"),
+      );
+    });
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "Didn't catch that — voice transcription failed. Try again.",
+      "error",
+      6000,
+    );
+    expect(appMock.value.setActionNotice).not.toHaveBeenCalledWith(
+      expect.stringContaining("No microphone was found"),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("still reports a genuine getUserMedia NotFoundError as missing hardware", async () => {
+    const { result } = renderHook(() => useShellController());
+    appMock.value.setActionNotice.mockClear();
+
+    await act(async () => {
+      result.current.startRecording("dictate");
+    });
+    act(() => {
+      lastCaptureOpts?.onStateChange?.(
+        "error",
+        new DOMException("Requested device not found", "NotFoundError"),
+      );
+    });
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "No microphone was found. Connect a microphone to use voice.",
+      "error",
+      6000,
+    );
+  });
+
   it("a denied background refresh rolls back a phantom always-on engage", async () => {
     // Fast-path engage while a reply is responding: onProceed sets handsFree but
     // does not open capture yet (gated on !responding). If the background
@@ -2443,6 +2490,20 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(result.current.transcript).toBe("");
   });
 
+  it("does not resurrect stale batch thinking after realtime speaking ends", () => {
+    realtimeVoiceMock.state.active = true;
+    realtimeVoiceMock.state.status = "listening";
+    realtimeVoiceMock.state.agentSpeaking = false;
+    appMock.value.chatSending = true;
+    composerMock.value.chatSending = true;
+    appMock.serverTurnStatus = { kind: "thinking" };
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.responding).toBe(false);
+    expect(result.current.turnStatus).toBeNull();
+  });
+
   it("reconciles gateway-written voice turns through the canonical conversation loader", () => {
     const resyncEvents: CustomEvent[] = [];
     const onResync = (event: Event) => {
@@ -2483,6 +2544,18 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
       expect(resyncEvents[1]?.detail).toEqual({
         conversationId,
         reason: "voice-turn-complete",
+      });
+
+      act(() => {
+        onServerEvent?.({
+          t: "interrupted",
+          reason: "acoustic",
+          traceId: "trace-voice-turn",
+        });
+      });
+      expect(resyncEvents[2]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-interrupted",
       });
     } finally {
       window.removeEventListener(RESYNC_EVENT, onResync);

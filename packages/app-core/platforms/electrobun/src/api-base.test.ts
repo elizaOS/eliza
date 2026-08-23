@@ -9,6 +9,7 @@ import {
   resolveCloudHostedAgentApiBase,
   resolveDesktopRuntimeModeSignal,
   resolveDesktopRuntimeModeWithDeployment,
+  resolveExternalRendererFacingApiBase,
   resolveInitialApiBase,
   resolveLocalAgentIpcMode,
   resolveRendererFacingApiBase,
@@ -422,5 +423,22 @@ describe("resolveRendererFacingApiBase — IPC scheme vs dev-server/loopback (#1
     expect(resolveRendererFacingApiBase({}, 31337)).toBe(
       "http://127.0.0.1:31337",
     );
+  });
+});
+
+describe("resolveExternalRendererFacingApiBase", () => {
+  it("keeps the desktop dev renderer on its same-origin Vite proxy", () => {
+    expect(
+      resolveExternalRendererFacingApiBase(
+        { ELIZA_RENDERER_URL: "http://127.0.0.1:2338/chat" },
+        "http://127.0.0.1:32437",
+      ),
+    ).toBe("http://127.0.0.1:2338");
+  });
+
+  it("preserves the configured external base without a loopback dev renderer", () => {
+    expect(
+      resolveExternalRendererFacingApiBase({}, "https://agent.example.test"),
+    ).toBe("https://agent.example.test");
   });
 });

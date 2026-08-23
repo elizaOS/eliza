@@ -701,13 +701,19 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
   it("routes every window command string through executeCommand", async () => {
     const commands = {
       list_windows: "list",
+      focus_window: "focus",
       switch_to_window: "switch",
       arrange_windows: "arrange",
       move_window: "move",
+      set_window_bounds: "set_bounds",
       minimize_window: "minimize",
       maximize_window: "maximize",
       restore_window: "restore",
       close_window: "close",
+      get_current_window_id: "get_current_window_id",
+      get_application_windows: "get_application_windows",
+      get_window_size: "get_window_size",
+      get_window_position: "get_window_position",
     } as const;
     const routedActions: string[] = [];
     const executeWindowAction = service.executeWindowAction;

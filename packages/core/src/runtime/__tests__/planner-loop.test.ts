@@ -4419,7 +4419,7 @@ describe("v5 planner loop — evaluator gate", () => {
 				],
 			})
 			.mockResolvedValueOnce({
-				text: "Notes are open. What do you want to work on?",
+				text: "Notes are open.",
 				toolCalls: [],
 			});
 		const evaluate = vi.fn(async () => ({
@@ -4461,10 +4461,11 @@ describe("v5 planner loop — evaluator gate", () => {
 			| undefined;
 		expect(synthesisParams).not.toHaveProperty("tools");
 		expect(synthesisParams).not.toHaveProperty("toolChoice");
-		expect(evaluate).not.toHaveBeenCalled();
-		expect(result.finalMessage).toBe(
-			"Notes are open. What do you want to work on?",
+		expect(JSON.stringify(synthesisParams?.messages)).toContain(
+			"view_navigation",
 		);
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.finalMessage).toBe("Notes are open.");
 		expect(result.evaluator?.thought).toContain("model-authored reply");
 		expect(
 			recordedStages.find((stage) => stage.kind === "evaluation")?.evaluation
@@ -4540,6 +4541,42 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(result.finalMessage).toBe(
 			"The app launched successfully. [Open the app](/api/apps/local/demo/)",
 		);
+		expect(executeToolCall).not.toHaveBeenCalled();
+	});
+
+	it("keeps a directly seeded asynchronous handoff pending on provider outage", async () => {
+		const providerError = Object.assign(new Error("provider unavailable"), {
+			statusCode: 503,
+		});
+		const executeToolCall = vi.fn();
+		const result = await runPlannerLoop({
+			runtime: {
+				useModel: vi.fn().mockRejectedValue(providerError),
+				logger: { warn: vi.fn() },
+			},
+			context: { id: "ctx" },
+			postToolReplySeed: {
+				toolCall: {
+					id: "app-edit-started",
+					name: "APP",
+					arguments: { action: "edit" },
+				},
+				result: {
+					success: true,
+					text: "Started app edit task.",
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					promptData: {
+						operation: "edit_app",
+						outcome: "started",
+					},
+				},
+			},
+			executeToolCall,
+			evaluate: vi.fn(),
+		});
+
+		expect(result.finalMessage).toBe("The requested action is underway.");
 		expect(executeToolCall).not.toHaveBeenCalled();
 	});
 

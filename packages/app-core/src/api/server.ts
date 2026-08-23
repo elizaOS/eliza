@@ -155,6 +155,7 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
+import { handleDesktopAuthBootstrapRoute } from "./desktop-auth-bootstrap-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
@@ -174,7 +175,11 @@ import {
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
-import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
+import {
+  getCorsAllowedPorts,
+  isAllowedOrigin,
+  LOCAL_API_CORS_ALLOWED_HEADERS,
+} from "./server-cors";
 
 const _require = createRequire(import.meta.url);
 
@@ -664,6 +669,12 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     handler: ({ req, res }) => handleCloudPairRoute(req, res),
   },
   {
+    // One-shot local desktop session proof must precede generic auth routes.
+    id: "desktop-auth-bootstrap",
+    handler: ({ req, res, state }) =>
+      handleDesktopAuthBootstrapRoute(req, res, state),
+  },
+  {
     // Must precede the auth-pairing handler so the rate-limited route owns
     // /api/auth/bootstrap/exchange.
     id: "auth-bootstrap",
@@ -1004,7 +1015,7 @@ async function runCompatRequestPipeline(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-Platform, X-Eliza-CSRF",
+      LOCAL_API_CORS_ALLOWED_HEADERS,
     );
     res.setHeader("Access-Control-Allow-Credentials", "true");
   }

@@ -2391,6 +2391,71 @@ describe("view management actions", () => {
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
+	it("turns a pill Close Notes request into one Workspace dismissal", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const client = {
+			listViews: vi.fn(async () => []),
+			getCurrentView: vi.fn(async () => ({
+				viewId: "notes",
+				viewPath: "/notes",
+				viewLabel: "Notes",
+				viewType: "gui" as const,
+				updatedAt: "2026-08-20T00:00:00.000Z",
+			})),
+		};
+		const action = createViewsAliasAction("CLOSE_VIEW", {
+			client,
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			{
+				...message("close notes"),
+				content: {
+					text: "close notes",
+					metadata: { viewClientId: "desktop-pill-1" },
+				},
+			} as never,
+			undefined,
+			{ target: "notes" },
+			callback,
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			text: "Closed the Workspace.",
+			data: {
+				viewId: "__workspace__",
+				action: "close",
+				closed: true,
+			},
+		});
+		expect(client.listViews).not.toHaveBeenCalled();
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/__workspace__/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "close",
+					alwaysOnTop: false,
+					delivery: "completed-action",
+					clientId: "desktop-pill-1",
+				}),
+			}),
+		);
+		expect(callback).toHaveBeenCalledWith({
+			text: "Closed the Workspace.",
+		});
+	});
+
 	it('treats VIEWS action=delete for "close all views" as close-all, not plugin deletion', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
@@ -2538,6 +2603,13 @@ describe("view management actions", () => {
 			{ action: "show", mode: "simple" },
 			callback,
 		);
+		const backHomeResult = await action.handler(
+			runtime as never,
+			message("go back") as never,
+			undefined,
+			{ action: "close", view: "chat" },
+			callback,
+		);
 
 		expect(notesResult?.success).toBe(true);
 		expect(notesResult?.values).toMatchObject({
@@ -2554,6 +2626,11 @@ describe("view management actions", () => {
 			mode: "show",
 			viewId: "chat",
 		});
+		expect(backHomeResult).toMatchObject({
+			success: true,
+			values: { mode: "show", viewId: "chat", label: "Home" },
+			modelReplyRequired: true,
+		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/navigate",
 			expect.objectContaining({ method: "POST" }),
@@ -2566,6 +2643,14 @@ describe("view management actions", () => {
 			"http://127.0.0.1:3456/api/views/chat/navigate",
 			expect.objectContaining({ method: "POST" }),
 		);
+		expect(
+			vi
+				.mocked(globalThis.fetch)
+				.mock.calls.filter(([url]) =>
+					String(url).includes("/api/views/chat/navigate"),
+				)
+				.some(([, init]) => String(init?.body).includes('"action":"close"')),
+		).toBe(false);
 	});
 
 	it("opens the plugins page from plugin-browser aliases", async () => {
@@ -4888,6 +4973,14 @@ describe("view management actions", () => {
 				subMode: "edit",
 				name: "proof-app",
 				workdir: pluginDir,
+			});
+			expect(result.promptData).toMatchObject({
+				operation: "edit_app",
+				outcome: "started",
+				verification: "pending",
+				replyGuidance: expect.stringContaining(
+					"one short present-tense sentence",
+				),
 			});
 			expect(codingHandler).toHaveBeenCalledTimes(1);
 			expect(codingHandler.mock.calls[0][1]).toMatchObject({

@@ -6,6 +6,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  clearDevelopmentServiceWorkers,
   registerViewServiceWorker,
   wireServiceWorkerUpdateActivation,
 } from "./sw-registration";
@@ -90,6 +91,39 @@ describe("service-worker update activation", () => {
     const { serviceWorkers } = makeHarness({ hasController: true });
 
     expect(serviceWorkers.addEventListener).not.toHaveBeenCalled();
+  });
+
+  it("removes stale production workers and reloads a controlled dev document once", async () => {
+    const unregisterA = vi.fn(async () => true);
+    const unregisterB = vi.fn(async () => false);
+    const reload = vi.fn();
+    const serviceWorkers = {
+      controller: {} as ServiceWorker,
+      getRegistrations: vi.fn(async () => [
+        { unregister: unregisterA },
+        { unregister: unregisterB },
+      ]),
+    } as unknown as ServiceWorkerContainer;
+
+    await clearDevelopmentServiceWorkers(serviceWorkers, reload);
+
+    expect(unregisterA).toHaveBeenCalledOnce();
+    expect(unregisterB).toHaveBeenCalledOnce();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("does not reload an uncontrolled dev document", async () => {
+    const reload = vi.fn();
+    const serviceWorkers = {
+      controller: null,
+      getRegistrations: vi.fn(async () => [
+        { unregister: vi.fn(async () => true) },
+      ]),
+    } as unknown as ServiceWorkerContainer;
+
+    await clearDevelopmentServiceWorkers(serviceWorkers, reload);
+
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("registers once when the public shell hands the same document to the full app", async () => {

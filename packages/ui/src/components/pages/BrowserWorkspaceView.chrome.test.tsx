@@ -79,6 +79,9 @@ vi.mock("../../api", async (importOriginal) => {
       openBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
+      showBrowserWorkspaceTab: vi
+        .fn()
+        .mockRejectedValue(new Error("no api in test")),
       navigateBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
@@ -167,6 +170,9 @@ beforeEach(() => {
   vi.mocked(client.openBrowserWorkspaceTab).mockRejectedValue(
     new Error("no api in test"),
   );
+  vi.mocked(client.showBrowserWorkspaceTab).mockRejectedValue(
+    new Error("no api in test"),
+  );
   vi.mocked(client.navigateBrowserWorkspaceTab).mockRejectedValue(
     new Error("no api in test"),
   );
@@ -184,10 +190,16 @@ describe("Browser workspace URL normalization", () => {
   const translate = (key: string, vars?: Record<string, unknown>): string =>
     String(vars?.defaultValue ?? key);
 
-  it("resolves local app paths against the active remote agent API base", () => {
+  it("keeps local app previews on the renderer origin", () => {
     expect(
       normalizeBrowserWorkspaceInputUrl("/api/apps/local/demo/", translate),
-    ).toBe("https://remote-agent.example/api-root/api/apps/local/demo/");
+    ).toBe(`${window.location.origin}/api/apps/local/demo/`);
+  });
+
+  it("resolves other relative API paths against the active agent API base", () => {
+    expect(
+      normalizeBrowserWorkspaceInputUrl("/api/views/notes/", translate),
+    ).toBe("https://remote-agent.example/api-root/api/views/notes/");
   });
 
   it("preserves external http(s) and adds https to a schemeless host", () => {
@@ -234,6 +246,56 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(
       await screen.findByTestId("browser-session-policy-error"),
     ).not.toBeNull();
+  });
+
+  it("reloads an existing local app preview without duplicating its tab", async () => {
+    const previewPath = "/api/apps/local/nubs-color-pebble/";
+    const previewTab = {
+      ...GOOGLE_WORKSPACE.tabs[0],
+      id: "tab-preview",
+      title: "Nubs Color Pebble",
+      url: `${window.location.origin}${previewPath}`,
+    };
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
+      mode: "web",
+      tabs: [previewTab],
+    });
+    vi.mocked(client.showBrowserWorkspaceTab).mockResolvedValue({
+      tab: previewTab,
+    });
+    window.history.replaceState(
+      {},
+      "",
+      `/browser?browse=${encodeURIComponent(previewPath)}`,
+    );
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await screen.findByTitle("Nubs Color Pebble");
+      await waitFor(() =>
+        expect(client.showBrowserWorkspaceTab).toHaveBeenCalledTimes(1),
+      );
+      const firstFrame = screen.getByTitle("Nubs Color Pebble");
+
+      act(() => {
+        window.history.pushState(
+          {},
+          "",
+          `/browser?browse=${encodeURIComponent(previewPath)}`,
+        );
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+
+      await waitFor(() =>
+        expect(client.showBrowserWorkspaceTab).toHaveBeenCalledTimes(2),
+      );
+      await waitFor(() =>
+        expect(screen.getByTitle("Nubs Color Pebble")).not.toBe(firstFrame),
+      );
+      expect(screen.getAllByTitle("Nubs Color Pebble")).toHaveLength(1);
+    } finally {
+      window.history.replaceState({}, "", "/");
+    }
   });
 
   it("floats the navigation toolbar as its own glass panel above the web surface", async () => {

@@ -265,6 +265,45 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
     properties: { displayId: DISPLAY },
   },
   {
+    name: "computer_accessibility_snapshot",
+    description:
+      "Capture a fresh macOS Accessibility tree scoped to one exact running app. Prefer this before ordinary UI control.",
+    command: "accessibility_snapshot",
+    destructive: false,
+    properties: {
+      app: { type: "string", description: "Exact running application name." },
+    },
+    required: ["app"],
+  },
+  {
+    name: "computer_accessibility_action",
+    description:
+      "Act on one element from a fresh app-scoped Accessibility snapshot without moving the physical cursor.",
+    command: "accessibility_action",
+    destructive: true,
+    properties: {
+      app: { type: "string", description: "Exact running application name." },
+      axSnapshotId: {
+        type: "string",
+        description: "Opaque id returned by computer_accessibility_snapshot.",
+      },
+      axElementId: {
+        type: "string",
+        description: "Opaque element id from that snapshot.",
+      },
+      axAction: {
+        type: "string",
+        description:
+          "press | confirm | raise | focus | set_value | scroll_up | scroll_down | scroll_left | scroll_right",
+      },
+      text: {
+        type: "string",
+        description: "Value for axAction=set_value only.",
+      },
+    },
+    required: ["app", "axSnapshotId", "axElementId", "axAction"],
+  },
+  {
     name: "computer_left_click",
     description: "Left-click at a coordinate.",
     command: "click",

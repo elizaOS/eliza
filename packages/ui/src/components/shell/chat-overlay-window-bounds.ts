@@ -3,7 +3,7 @@
  * while serializing renderer-to-main bounds updates across rapid open/close
  * transitions.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
@@ -32,10 +32,150 @@ export interface ChatOverlayWindowBoundsCoordinator {
   whenIdle: () => Promise<void>;
 }
 
+// The detached rest control is a visible 64x12 white bar. Keeping the native
+// host identical to the painted control gives mouse users a normal forgiving
+// target without adding an invisible click-blocking halo over the desktop.
 export const CHAT_OVERLAY_RESTING_WINDOW_WIDTH = 64;
-export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 44;
+export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 12;
+export const CHAT_OVERLAY_INPUT_WINDOW_HEIGHT = 64;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH = 600;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT = 820;
+export const CHAT_OVERLAY_STAGE_WIDTH = CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH;
+export const CHAT_OVERLAY_STAGE_HEIGHT = CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT;
+export const CHAT_OVERLAY_AUTH_WINDOW_WIDTH = 240;
+export const CHAT_OVERLAY_AUTH_WINDOW_HEIGHT = 56;
+
+export interface ChatOverlayMaterialSize {
+  width: number;
+  height: number;
+}
+
+export type ChatOverlayWindowSizeClass = "resting" | "input" | "sheet";
+
+/** Only a second Escape from the already-settled resting pill hides native UI. */
+export function shouldHideRestingChatOverlay(
+  key: string,
+  sizeClass: ChatOverlayWindowSizeClass,
+): boolean {
+  return key === "Escape" && sizeClass === "resting";
+}
+
+/**
+ * Returns the stable compact native envelope for the visible composer or the
+ * final compact-capsule rest state. The renderer cannot measure a 64px composer
+ * while its WKWebView is still clipped to the compact resting host, so INPUT must
+ * receive a real first frame instead of depending on ResizeObserver recovery.
+ */
+export function resolveChatOverlayCompactWindowSize(
+  sizeClass: Extract<ChatOverlayWindowSizeClass, "resting" | "input">,
+  stageSize: ChatOverlayMaterialSize,
+): ChatOverlayMaterialSize {
+  if (sizeClass === "input") {
+    return {
+      width: Math.max(CHAT_OVERLAY_RESTING_WINDOW_WIDTH, stageSize.width - 24),
+      height: CHAT_OVERLAY_INPUT_WINDOW_HEIGHT,
+    };
+  }
+  return {
+    width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+    height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+  };
+}
+
+interface ChatOverlayWindowSizeBridge {
+  setBottomBarSize: (size: ChatOverlayMaterialSize) => Promise<void>;
+  onFailure: (error: unknown) => void;
+}
+
+export interface ChatOverlayWindowSizeCoordinator {
+  cancel: () => void;
+  schedule: (size: ChatOverlayMaterialSize) => void;
+  whenIdle: () => Promise<void>;
+}
+
+function normalizeMaterialSize(
+  size: ChatOverlayMaterialSize,
+): ChatOverlayMaterialSize {
+  if (
+    !Number.isFinite(size.width) ||
+    !Number.isFinite(size.height) ||
+    size.width <= 0 ||
+    size.height <= 0
+  ) {
+    throw new RangeError(
+      "[chat-overlay-window] material size must be positive and finite",
+    );
+  }
+  return {
+    width: Math.max(1, Math.ceil(size.width)),
+    height: Math.max(1, Math.ceil(size.height)),
+  };
+}
+
+/**
+ * Converts the transformed panel rect into the exact native material size.
+ * A pill-mode commit precedes its closing spring, so the final 64x12 geometry
+ * cannot take over until that still-visible panel has actually reached rest.
+ */
+export function resolveChatOverlayMaterialSize(
+  rect: ChatOverlayMaterialSize,
+  pilled = false,
+  openProgress = pilled ? 0 : 1,
+): ChatOverlayMaterialSize {
+  if (pilled && openProgress <= 0.001) {
+    return {
+      width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+      height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+    };
+  }
+  return normalizeMaterialSize({
+    width: Math.max(CHAT_OVERLAY_RESTING_WINDOW_WIDTH, rect.width),
+    height: Math.max(CHAT_OVERLAY_RESTING_WINDOW_HEIGHT, rect.height),
+  });
+}
+
+function sizesEqual(
+  left: ChatOverlayMaterialSize | null,
+  right: ChatOverlayMaterialSize,
+): boolean {
+  return left?.width === right.width && left.height === right.height;
+}
+
+/** Reads the native host's canonical logical stage dimensions from its URL. */
+export function readChatOverlayStageSize(
+  search = typeof window === "undefined" ? "" : window.location.search,
+): ChatOverlayMaterialSize {
+  const params = new URLSearchParams(search);
+  const width = Number(params.get("chatOverlayStageWidth"));
+  const height = Number(params.get("chatOverlayStageHeight"));
+  return {
+    width:
+      Number.isFinite(width) && width > 0 ? width : CHAT_OVERLAY_STAGE_WIDTH,
+    height:
+      Number.isFinite(height) && height > 0
+        ? height
+        : CHAT_OVERLAY_STAGE_HEIGHT,
+  };
+}
+
+/** Reads the host-owned sign-in chip dimensions from the renderer URL. */
+export function readChatOverlayAuthSize(
+  search = typeof window === "undefined" ? "" : window.location.search,
+): ChatOverlayMaterialSize {
+  const params = new URLSearchParams(search);
+  const width = Number(params.get("chatOverlayAuthWidth"));
+  const height = Number(params.get("chatOverlayAuthHeight"));
+  return {
+    width:
+      Number.isFinite(width) && width > 0
+        ? width
+        : CHAT_OVERLAY_AUTH_WINDOW_WIDTH,
+    height:
+      Number.isFinite(height) && height > 0
+        ? height
+        : CHAT_OVERLAY_AUTH_WINDOW_HEIGHT,
+  };
+}
 
 function assertValidBounds(
   bounds: ChatOverlayWindowBounds,
@@ -184,4 +324,105 @@ export function useChatOverlayWindowBounds(
     coordinator.schedule(overlayOpen);
     return () => coordinator.cancel();
   }, [coordinator, overlayOpen]);
+}
+
+/** Creates a serialized latest-request-wins native size queue. */
+export function createChatOverlayWindowSizeCoordinator(
+  bridge: ChatOverlayWindowSizeBridge,
+): ChatOverlayWindowSizeCoordinator {
+  let latestRevision = 0;
+  let lastApplied: ChatOverlayMaterialSize | null = null;
+  let tail: Promise<void> = Promise.resolve();
+
+  const schedule = (requestedSize: ChatOverlayMaterialSize): void => {
+    const size = normalizeMaterialSize(requestedSize);
+    const revision = ++latestRevision;
+    const operation = tail.then(async () => {
+      if (revision !== latestRevision || sizesEqual(lastApplied, size)) return;
+      await bridge.setBottomBarSize(size);
+      // Record every completed native mutation, even if a newer request arrived
+      // while this write was in flight. Otherwise the queue can believe the
+      // host is still at the prior size and incorrectly skip restoring the
+      // renderer's latest detent.
+      lastApplied = size;
+    });
+    // error-policy:J4 Native geometry failure becomes the visible action notice
+    // supplied by the detached shell boundary.
+    tail = operation.catch((error: unknown) => {
+      if (revision === latestRevision) bridge.onFailure(error);
+    });
+  };
+
+  return {
+    cancel: () => {
+      latestRevision += 1;
+    },
+    schedule,
+    whenIdle: () => tail,
+  };
+}
+
+type ChatOverlaySizeRpcMethod =
+  | "desktopSetBottomBarSize"
+  | "desktopSetBottomBarInteractiveSize";
+type ChatOverlaySizeIpcChannel =
+  | "desktop:setBottomBarSize"
+  | "desktop:setBottomBarInteractiveSize";
+
+function useChatOverlayNativeMaterialSize(
+  onFailure: (error: unknown) => void,
+  rpcMethod: ChatOverlaySizeRpcMethod,
+  ipcChannel: ChatOverlaySizeIpcChannel,
+): (size: ChatOverlayMaterialSize) => void {
+  const onFailureRef = useRef(onFailure);
+  useEffect(() => {
+    onFailureRef.current = onFailure;
+  }, [onFailure]);
+
+  const coordinator = useMemo(
+    () =>
+      createChatOverlayWindowSizeCoordinator({
+        setBottomBarSize: async (size) => {
+          await invokeDesktopBridgeRequest<void>({
+            rpcMethod,
+            ipcChannel,
+            params: size,
+          });
+        },
+        onFailure: (error) => onFailureRef.current(error),
+      }),
+    [ipcChannel, rpcMethod],
+  );
+
+  useEffect(() => () => coordinator.cancel(), [coordinator]);
+
+  return useCallback(
+    (size: ChatOverlayMaterialSize) => {
+      if (!isElectrobunRuntime()) return;
+      coordinator.schedule(size);
+    },
+    [coordinator],
+  );
+}
+
+/** Applies measured material size without duplicating native display geometry. */
+export function useChatOverlayWindowSize(
+  onFailure: (error: unknown) => void,
+): (size: ChatOverlayMaterialSize) => void {
+  return useChatOverlayNativeMaterialSize(
+    onFailure,
+    "desktopSetBottomBarSize",
+    "desktop:setBottomBarSize",
+  );
+}
+
+/** Publishes the visible material separately from the stable window envelope. */
+export function useChatOverlayWindowInteractiveSize(
+  onFailure: (error: unknown) => void,
+): (size: ChatOverlayMaterialSize) => void {
+  return useChatOverlayNativeMaterialSize(
+    onFailure,
+    "desktopSetBottomBarInteractiveSize",
+    "desktop:setBottomBarInteractiveSize",
+  );
 }

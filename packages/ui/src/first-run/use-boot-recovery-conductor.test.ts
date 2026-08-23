@@ -85,6 +85,7 @@ interface ConductorInputs {
   booting: boolean;
   noProviderConfigured: boolean;
   handoff: CloudHandoffPhaseDetail | null;
+  cloudOnly?: boolean;
 }
 
 function renderConductor(initial: ConductorInputs) {
@@ -102,7 +103,12 @@ function renderConductor(initial: ConductorInputs) {
     React.createElement(ConversationMessagesCtx.Provider, { value }, children);
   const utils = renderHook(
     (p: ConductorInputs) =>
-      useBootRecoveryConductor(p.booting, p.noProviderConfigured, p.handoff),
+      useBootRecoveryConductor(
+        p.booting,
+        p.noProviderConfigured,
+        p.handoff,
+        p.cloudOnly ?? true,
+      ),
     { wrapper, initialProps: initial },
   );
   const card = (): ConversationMessage | undefined =>
@@ -114,6 +120,7 @@ const BOOTING: ConductorInputs = {
   booting: true,
   noProviderConfigured: false,
   handoff: null,
+  cloudOnly: true,
 };
 
 function stall() {
@@ -184,6 +191,23 @@ describe("useBootRecoveryConductor", () => {
     unmount();
   });
 
+  it("never diagnoses a local runtime stall as a Cloud sign-out", () => {
+    mocks.hasUsableStoredStewardToken.mockReturnValue(false);
+    const { card, unmount } = renderConductor({
+      ...BOOTING,
+      cloudOnly: false,
+    });
+    stall();
+    const text = card()?.text ?? "";
+    expect(text).toContain("local runtime");
+    expect(text).not.toContain("Cloud");
+    expect(text).not.toContain("signed out");
+    expect(text).not.toContain("waking up");
+    expect(text).not.toContain("__boot_recovery__:relogin=");
+    expect(text).toContain("__boot_recovery__:retry=");
+    unmount();
+  });
+
   it("removes the card the moment the boot recovers", () => {
     const { card, rerender, unmount } = renderConductor(BOOTING);
     stall();
@@ -219,6 +243,7 @@ describe("useBootRecoveryConductor", () => {
       booting: false,
       noProviderConfigured: false,
       handoff: { phase: "failed", agentId: "agent-1" },
+      cloudOnly: true,
     });
     expect(card()?.text).toContain("dedicated agent");
     expect(card()?.text).toContain("__boot_recovery__:retry-handoff=");
@@ -357,6 +382,7 @@ describe("useBootRecoveryConductor", () => {
       booting: false,
       noProviderConfigured: false,
       handoff: { phase: "timed-out", agentId: "agent-9" },
+      cloudOnly: true,
     });
     expect(card()).toBeTruthy();
     act(() => {

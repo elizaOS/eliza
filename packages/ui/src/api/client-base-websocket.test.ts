@@ -10,6 +10,15 @@
 import { Capacitor } from "@capacitor/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
+
+const { isElectrobunRuntimeMock } = vi.hoisted(() => ({
+  isElectrobunRuntimeMock: vi.fn(() => false),
+}));
+
+vi.mock("../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: isElectrobunRuntimeMock,
+}));
+
 import { __resetNetworkStatusForTests, ElizaClient } from "./client-base";
 
 function stubWebSocket(): string[] {
@@ -113,6 +122,7 @@ describe("ElizaClient websocket connection policy", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     __resetNetworkStatusForTests();
+    isElectrobunRuntimeMock.mockReturnValue(false);
   });
 
   it("treats shared-runtime REST adapter bases as connected without opening a websocket", () => {
@@ -590,12 +600,28 @@ describe("ElizaClient websocket connection policy", () => {
     stubInjectedWsBase("ws://127.0.0.1:2653");
 
     const client = new ElizaClient("", "agent-token");
+    client.setBaseUrl("https://agent.example.test", { persist: false });
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("wss://agent.example.test/ws?");
+    expect(createdUrls[0]).not.toContain("2653");
+    stubInjectedWsBase(undefined);
+  });
+
+  it("uses the same-origin websocket proxy for an Electrobun loopback agent", () => {
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("http:", "127.0.0.1:2653");
+    stubInjectedWsBase("ws://127.0.0.1:2653");
+    isElectrobunRuntimeMock.mockReturnValue(true);
+
+    const client = new ElizaClient("", "");
     client.setBaseUrl("http://127.0.0.1:31337", { persist: false });
     client.connectWs();
 
     expect(createdUrls).toHaveLength(1);
-    expect(createdUrls[0]).toContain("ws://127.0.0.1:31337/ws?");
-    expect(createdUrls[0]).not.toContain("2653");
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:2653/ws?");
+    expect(createdUrls[0]).not.toContain("31337");
     stubInjectedWsBase(undefined);
   });
 

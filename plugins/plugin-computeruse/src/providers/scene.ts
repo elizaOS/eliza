@@ -48,17 +48,19 @@ export const sceneProvider: Provider = {
     if (!service) {
       return { text: "" };
     }
-    let scene = service.getCurrentScene();
-    if (!scene) {
-      try {
-        scene = await service.refreshScene("agent-turn");
-      } catch (error) {
-        // error-policy:J4 the empty provider result is the designed degrade,
-        // and the failure is reported so the agent sees a broken scene
-        // pipeline via RECENT_ERRORS instead of a silently sceneless turn.
-        runtime.reportError("Computeruse.sceneProvider", error);
-        return { text: "" };
-      }
+    let scene: ReturnType<ComputerUseService["getCurrentScene"]>;
+    try {
+      // A cached Scene is action-time state, not a durable prompt snapshot. A
+      // previous browser fixture or window tree can otherwise survive into a
+      // later native-app turn and both misground the model and overflow its
+      // context. Refresh once on every selected computer-use turn; the service
+      // itself deduplicates per-turn captures for downstream consumers.
+      scene = await service.refreshScene("agent-turn");
+    } catch (error) {
+      // error-policy:J4 report the broken live pipeline. A previously captured
+      // Scene remains a labeled best-effort fallback; without one, stay empty.
+      runtime.reportError("Computeruse.sceneProvider", error);
+      scene = service.getCurrentScene();
     }
     if (!scene) return { text: "" };
     const text = serializeSceneForPrompt(scene);

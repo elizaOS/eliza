@@ -37,6 +37,30 @@ function isElectrobunHost(): boolean {
 }
 
 let registrationStarted = false;
+let developmentCleanupStarted = false;
+
+/**
+ * A browser can remain controlled by a production service worker after the
+ * developer switches back to Vite. That stale worker rewrites local API
+ * requests using its old routing rules, which makes a healthy loopback runtime
+ * look remote/authenticated and can strand the dev shell in onboarding.
+ *
+ * Development never needs an offline worker, so remove every registration. If
+ * the current document was already controlled, one reload is required to shed
+ * that controller; the next load has no registration and therefore cannot loop.
+ */
+export async function clearDevelopmentServiceWorkers(
+  serviceWorkers: ServiceWorkerContainer,
+  reload: () => void = () => globalThis.location.reload(),
+): Promise<void> {
+  const wasControlled = Boolean(serviceWorkers.controller);
+  const registrations = await serviceWorkers.getRegistrations();
+  const unregistered = await Promise.all(
+    registrations.map((registration) => registration.unregister()),
+  );
+
+  if (wasControlled && unregistered.some(Boolean)) reload();
+}
 
 /**
  * When a NEW service worker reaches `installed` while an existing controller is
@@ -86,10 +110,24 @@ export function wireServiceWorkerUpdateActivation(
  * Safe to call unconditionally — bails out when the environment is unsuitable.
  */
 export function registerViewServiceWorker(): void {
-  if (!import.meta.env.PROD) return;
   if (!("serviceWorker" in navigator)) return;
   if (isCapacitorNative()) return;
   if (isElectrobunHost()) return;
+
+  if (!import.meta.env.PROD) {
+    if (developmentCleanupStarted) return;
+    developmentCleanupStarted = true;
+    void clearDevelopmentServiceWorkers(navigator.serviceWorker).catch(
+      (err: unknown) => {
+        console.warn(
+          "[SW] Development cleanup failed:",
+          err instanceof Error ? err.message : err,
+        );
+      },
+    );
+    return;
+  }
+
   if (registrationStarted) return;
   registrationStarted = true;
 

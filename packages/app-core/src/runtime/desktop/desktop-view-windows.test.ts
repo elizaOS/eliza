@@ -3,8 +3,8 @@
  * @elizaos/agent BUILTIN_VIEWS catalog that neither the renderer bundle nor the
  * bun main process can, so it asserts that the renderer DESKTOP_VIEW_WINDOWS and
  * the menu-bar VIEW_MENU_ENTRIES both match the desktop-eligible builtin views
- * (id, label, path) and cover the same set, and that tray view-item ids
- * round-trip through parse/build.
+ * plus the packaged Computer Sessions app-shell page (id, label, path), and
+ * that tray view-item ids round-trip through parse/build.
  */
 import { BUILTIN_VIEWS } from "@elizaos/agent/api/builtin-views";
 import { describe, expect, it } from "vitest";
@@ -25,9 +25,11 @@ import {
  * views, because neither bundle can pull the `@elizaos/agent` view catalog. This
  * lane CAN import that catalog, so it is the drift guard: if `BUILTIN_VIEWS`
  * gains/loses a desktop-eligible view, this test fails until both copies match.
+ * Computer Sessions is separately pinned because it is a packaged plugin page,
+ * not a server-owned BUILTIN_VIEWS entry.
  */
 function expectedDesktopViewIds(): string[] {
-  return BUILTIN_VIEWS.filter((view) => {
+  const builtinIds = BUILTIN_VIEWS.filter((view) => {
     if (view.desktopTabEnabled !== true) {
       return false;
     }
@@ -35,6 +37,7 @@ function expectedDesktopViewIds(): string[] {
     // desktop. (Excludes the android-only `camera` view.)
     return !view.platforms || view.platforms.includes("desktop");
   }).map((view) => view.id);
+  return [...builtinIds, "computer-use-sessions"];
 }
 
 describe("desktop view-window catalog", () => {
@@ -63,6 +66,10 @@ describe("desktop view-window catalog", () => {
   it("every catalog path matches the BUILTIN_VIEWS path for that id", () => {
     const byId = new Map(BUILTIN_VIEWS.map((v) => [v.id, v]));
     for (const view of DESKTOP_VIEW_WINDOWS) {
+      if (view.id === "computer-use-sessions") {
+        expect(view.path).toBe("/computer-use-sessions");
+        continue;
+      }
       expect(view.path).toBe(byId.get(view.id)?.path);
     }
   });

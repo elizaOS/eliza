@@ -35,6 +35,20 @@ describe("resolveRuntimeMode", () => {
     expect(snap.mode).toBe("local-only");
   });
 
+  test("host-owned fallback overrides persisted remote routing in memory", () => {
+    const persisted = {
+      deploymentTarget: {
+        runtime: "remote" as const,
+        remoteApiBase: "http://127.0.0.1:2250",
+      },
+    };
+    expect(resolveRuntimeMode(persisted, "local").mode).toBe("local");
+    expect(
+      resolveRuntimeMode({ ...persisted, cloud: { enabled: false } }, "local")
+        .mode,
+    ).toBe("local-only");
+  });
+
   test("cloud when deploymentTarget.runtime === cloud", () => {
     const snap = resolveRuntimeMode({
       deploymentTarget: { runtime: "cloud", provider: "elizacloud" },

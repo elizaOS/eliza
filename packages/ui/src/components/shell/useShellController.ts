@@ -85,6 +85,7 @@ import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
   type VoiceContinuousStatus,
+  type VoiceTtsError,
 } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { ServerControlFrame } from "../../voice/voice-session-protocol";
@@ -213,6 +214,8 @@ export interface ShellController {
   needsAudioUnlock: boolean;
   /** Resume audio output in response to a user gesture (enable sound). */
   unlockAudio: () => void;
+  /** Configured TTS failed; manual Play must never fail without visible state. */
+  ttsError?: VoiceTtsError | null;
   /** True while the hands-free voice conversation loop is active — the mic
    *  re-opens automatically after each spoken reply. Toggled by a tap on the mic. */
   handsFree: boolean;
@@ -363,17 +366,10 @@ function describeCaptureFailure(err: unknown): string {
   if (isMicPermissionDenialError(err)) {
     return "Microphone access was denied. Enable microphone permission in your browser or system settings to use voice.";
   }
-  if (
-    haystack.includes("notfound") ||
-    haystack.includes("devices not found") ||
-    haystack.includes("no device") ||
-    haystack.includes("no microphone")
-  ) {
-    return "No microphone was found. Connect a microphone to use voice.";
-  }
-  // Post-capture transcription failure (cloud/local STT): the mic worked and
-  // the utterance was recorded, but the words could not be transcribed — the
-  // honest message is "didn't catch that", not a microphone accusation.
+  // Post-capture transcription failures can contain the phrase "no microphone
+  // audio was captured" even after getUserMedia succeeded and WebKit produced
+  // a live track. Classify those before the generic no-device branch below or
+  // a quiet/empty utterance falsely tells the user their Mac has no microphone.
   if (
     haystack.includes("cloudstterror") ||
     haystack.includes("cloud asr") ||
@@ -381,6 +377,14 @@ function describeCaptureFailure(err: unknown): string {
     haystack.includes("no microphone audio was captured")
   ) {
     return "Didn't catch that — voice transcription failed. Try again.";
+  }
+  if (
+    haystack.includes("notfound") ||
+    haystack.includes("devices not found") ||
+    haystack.includes("no device") ||
+    haystack.includes("no microphone")
+  ) {
+    return "No microphone was found. Connect a microphone to use voice.";
   }
   return "Could not start the microphone. Check your microphone permissions and try again.";
 }
@@ -558,10 +562,18 @@ export function useShellController(): ShellController {
       // The voice gateway submits through the canonical conversation stream,
       // outside this renderer's useChatSend instance. Reconcile at first model
       // text so the committed user turn appears promptly, then at terminal usage
-      // so the persisted assistant reply replaces the in-flight state. Never
-      // synthesize local bubbles: the normal conversation loader remains the
-      // sole reader and deduper for saved history.
-      if (event.t !== "llm_first_text" && event.t !== "usage") return;
+      // so the persisted assistant reply replaces the in-flight state. An
+      // interrupted turn needs one trailing reconcile because usage is emitted
+      // synchronously before the aborted upstream persists its durable receipt.
+      // Never synthesize local bubbles: the normal conversation loader remains
+      // the sole reader and deduper for saved history.
+      if (
+        event.t !== "llm_first_text" &&
+        event.t !== "usage" &&
+        event.t !== "interrupted"
+      ) {
+        return;
+      }
       const conversationId = activeConversationIdRef.current?.trim() || null;
       if (!conversationId) return;
       dispatchConversationResync({
@@ -569,7 +581,9 @@ export function useShellController(): ShellController {
         reason:
           event.t === "llm_first_text"
             ? "voice-turn-progress"
-            : "voice-turn-complete",
+            : event.t === "interrupted"
+              ? "voice-turn-interrupted"
+              : "voice-turn-complete",
       });
     },
     [],
@@ -1819,8 +1833,17 @@ export function useShellController(): ShellController {
       realtimeVoice.status === "transcribing");
   const realtimeVoiceRecording =
     realtimeVoiceEnabled && (realtimeVoice.active || realtimeVoice.connecting);
+  const realtimeVoiceOwnsTurn = realtimeVoiceRecording;
+  // While the realtime session owns the composer, its wire phase is
+  // authoritative. A late generic chat/SSE flag from the just-persisted voice
+  // turn must not resurrect "Thinking" after `speaking_end` has already put
+  // the session back in listening. Text sends cannot start from the composer
+  // while this voice activity surface owns it, so suppressing those stale
+  // batch flags here cannot hide a concurrent typed turn.
   const responding =
-    chatSending || voiceOutput.speaking || realtimeVoiceResponding;
+    voiceOutput.speaking ||
+    realtimeVoiceResponding ||
+    (!realtimeVoiceOwnsTurn && chatSending);
 
   // The rich status (#8813): what the agent is *doing*, distinct from the coarse
   // `responding` boolean. Voice playback wins (the server can't see local TTS).
@@ -1834,6 +1857,9 @@ export function useShellController(): ShellController {
     }
     if (realtimeVoiceEnabled && realtimeVoice.status === "thinking") {
       return { kind: "thinking" };
+    }
+    if (realtimeVoiceOwnsTurn) {
+      return null;
     }
     if (
       serverTurnStatus &&
@@ -1850,6 +1876,7 @@ export function useShellController(): ShellController {
     realtimeVoice.agentSpeaking,
     realtimeVoice.status,
     realtimeVoiceEnabled,
+    realtimeVoiceOwnsTurn,
     serverTurnStatus,
     chatSending,
     chatFirstTokenReceived,
@@ -2710,6 +2737,7 @@ export function useShellController(): ShellController {
         realtimeVoice.needsUnlock) ||
       voiceOutput.needsAudioUnlock,
     unlockAudio: unlockVoiceAudio,
+    ttsError: voiceOutput.ttsError,
     clearConversation,
     openSettings,
     navigateHome,

@@ -24,6 +24,7 @@ import * as React from "react";
 import type { ConversationMessage } from "../api";
 import { openCloudBillingConsole } from "../cloud/billing-console";
 import { useShellControllerContext } from "../components/shell/ShellControllerContext.hooks";
+import { useBranding } from "../config/branding";
 import {
   type CloudHandoffPhaseDetail,
   dispatchChatOpen,
@@ -89,6 +90,7 @@ type Trouble =
   | { kind: "insufficient-credits"; agentId: string }
   | { kind: "handoff"; agentId: string }
   | { kind: "signed-out" }
+  | { kind: "local-unresponsive" }
   | { kind: "unresponsive" }
   | null;
 
@@ -117,6 +119,11 @@ function liveCard(trouble: NonNullable<Trouble>): RecoveryCard {
         text: "I'm having a hard time waking up — your Eliza Cloud session looks signed out.",
         choices: [RELOGIN_CHOICE, RETRY_CHOICE],
       };
+    case "local-unresponsive":
+      return {
+        text: "The local runtime still isn't responding.",
+        choices: [RETRY_CHOICE],
+      };
     case "unresponsive":
       return {
         text: "I'm having a hard time waking up — the agent still isn't responding.",
@@ -134,6 +141,7 @@ export function useBootRecoveryConductor(
   booting: boolean,
   noProviderConfigured: boolean,
   handoff: CloudHandoffPhaseDetail | null,
+  cloudOnly: boolean,
 ): void {
   const {
     firstRunComplete,
@@ -210,9 +218,11 @@ export function useBootRecoveryConductor(
         : handoffFailed
           ? { kind: "handoff", agentId: handoff.agentId }
           : stalled && !noProviderConfigured
-            ? hasUsableStoredStewardToken()
-              ? { kind: "unresponsive" }
-              : { kind: "signed-out" }
+            ? cloudOnly
+              ? hasUsableStoredStewardToken()
+                ? { kind: "unresponsive" }
+                : { kind: "signed-out" }
+              : { kind: "local-unresponsive" }
             : null;
 
   // An action pins its in-flight copy over the live card; when the action
@@ -438,10 +448,12 @@ export function useBootRecoveryConductor(
 export function BootRecoveryConductorMount(): null {
   const controller = useShellControllerContext();
   const handoff = useCloudHandoffPhase();
+  const { cloudOnly } = useBranding();
   useBootRecoveryConductor(
     controller?.phase === "booting",
     controller?.noProviderConfigured ?? false,
     handoff,
+    cloudOnly === true,
   );
   return null;
 }

@@ -22,6 +22,9 @@ import {
   resolveDetachedShellTarget,
 } from "./platform/window-shell";
 
+const collapseWhitespace = (value: string): string =>
+  value.replace(/\s+/g, " ").trim();
+
 const APP_TSX = readFileSync(resolve(__dirname, "./App.tsx"), "utf8");
 const APP_MAIN_TS = readFileSync(
   resolve(__dirname, "../../app/src/main.tsx"),
@@ -55,27 +58,17 @@ const DETACHED_SHELL_ROOT_TSX = readFileSync(
   "utf8",
 );
 
-/**
- * Collapses runs of whitespace so a JSX-wiring assertion stays true when the
- * formatter reflows the element across lines. Only the token order matters.
- */
-function collapseWhitespace(source: string): string {
-  return source.replace(/\s+/g, " ");
-}
-
 describe("App standalone chat-overlay wiring", () => {
   it("mounts the chat overlay outside the full chat tab", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
-    expect(collapseWhitespace(APP_TSX)).toContain(
-      "<ShellFoundationMount useWebChatPanel",
-    );
-    expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
+    expect(APP_TSX).toContain("function ChatOverlayMount(");
+    expect(APP_TSX).toContain("pointer-events-none fixed bottom-0 left-1/2");
     // The floating glass chat remains available in the main shell, including
     // the ambient /chat route.
     expect(APP_TSX).toContain("Chat overlay");
     expect(APP_TSX).toContain("<ChatOverlayMount");
     expect(APP_TSX).toContain(
-      "releaseFirstRunToFull={firstRunChatRelease.releasePending}",
+      "releaseFirstRunToHalf={firstRunChatRelease.releasePending}",
     );
     expect(APP_TSX).toContain(
       "onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}",
@@ -103,71 +96,32 @@ describe("App standalone chat-overlay wiring", () => {
     expect(auxiliaryGuard).toContain("<TutorialConductorMount />");
   });
 
-  it("opens the packaged desktop pill into the shared mobile chat composer", () => {
+  it("opens the packaged desktop pill into the shared web chat panel", () => {
     const overlayShell = APP_TSX.slice(
       APP_TSX.indexOf("function ChatOverlayShell({"),
       APP_TSX.indexOf("function TrayPopoverShell()"),
     );
-    const foundation = APP_TSX.slice(
-      APP_TSX.indexOf("function ShellFoundationMount({"),
-      APP_TSX.indexOf("function ChatOverlayMount("),
-    );
 
     expect(overlayShell).toContain("<GlassStyles />");
-    expect(collapseWhitespace(overlayShell)).toContain(
-      "<ShellFoundationMount useWebChatPanel",
+    // The detached macOS surface mounts the same ChatOverlayMount used by the
+    // full app. It must not route through ShellFoundationMount, whose legacy
+    // HomePill/AssistantOverlay path is a distinct implementation.
+    expect(overlayShell).toContain("<ChatOverlayMount");
+    expect(overlayShell).toContain('initialMode="pill"');
+    expect(overlayShell).toContain("initiallyOpen");
+    expect(overlayShell).toContain("desktopOverlayHost");
+    expect(overlayShell).toContain("requestedOpen={controller?.isOpen}");
+    expect(overlayShell).toContain(
+      "onWindowSizeClassChange={handleWindowSizeClassChange}",
     );
     expect(overlayShell).toContain(
-      "releaseFirstRunToFull={releaseFirstRunToFull}",
+      "onWindowMaterialSizeChange={reportWindowMaterialSize}",
     );
+    expect(overlayShell).not.toContain("<ShellFoundationMount");
     expect(overlayShell).not.toContain("useChatOverlayWindowBounds");
     expect(overlayShell).not.toContain("<AppBackground");
-    expect(foundation).toContain("const firstRunJustCompleted =");
-    expect(foundation).toContain("keepChatOpenAfterFirstRun");
-    expect(foundation).toContain("const shouldMountWebChatPanel =");
-    expect(foundation).toContain(
-      "const firstRunPinnedOpen = isAuthoritativeFirstRunOpen(",
-    );
-    expect(foundation).toContain("shouldMountWebChatPanel");
-    expect(foundation).toContain("<ChatOverlayMount");
-    expect(foundation).toContain("const { setChatInput } = useChatComposer();");
-    expect(foundation).toContain("useChatInputRef()");
-    expect(foundation).toContain("onPilledChange={closeWebChatWhenPilled}");
-    expect(foundation).toContain("onStateChange={syncNativeSurfaceState}");
-    expect(foundation).toContain("setDesktopBottomBarSurfaceState(state)");
-    expect(foundation).toContain(
-      'expanded: shellIsOpen && shellHostDetent !== "input"',
-    );
-    expect(foundation).toContain(
-      '(shellIsOpen && shellHostDetent === "input")',
-    );
-    expect(foundation).toContain('shellPhase === "listening"');
-    expect(foundation).toContain("showComposerPreview={!useWebChatPanel}");
-    expect(foundation).not.toContain("setShellPreviewHovered");
-    expect(foundation).toContain(
-      "{!useWebChatPanel ? (\n        <AssistantOverlay",
-    );
-  });
-
-  it("keeps a completed desktop relaunch at the pill until the user opens the shared composer", () => {
-    const foundation = APP_TSX.slice(
-      APP_TSX.indexOf("function ShellFoundationMount({"),
-      APP_TSX.indexOf("function ChatOverlayMount("),
-    );
-
-    // A completed relaunch begins as the pill, while the one completion edge
-    // keeps the already-mounted half-height overlay visible until dismissal.
-    expect(foundation).toContain("firstRunJustCompleted");
-    expect(foundation).toContain("keepChatOpenAfterFirstRun");
-    expect(foundation).toContain("setKeepChatOpenAfterFirstRun(false)");
-    expect(foundation).toContain("<HomePill");
-    expect(foundation).toContain(
-      "focusComposerOnOpenRef.current = useWebChatPanel;",
-    );
-    expect(foundation).toContain("const openSharedDesktopComposer");
-    expect(foundation).toContain("window.addEventListener(CHAT_OPEN_EVENT");
-    expect(foundation).toContain('initialMode="input"');
-    expect(foundation).toContain('setShellHostDetent("input")');
+    expect(APP_TSX).toContain("function ChatOverlayMount(");
+    expect(APP_TSX).toContain("<ChatOverlay");
   });
 
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {

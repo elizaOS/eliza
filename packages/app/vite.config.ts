@@ -29,6 +29,7 @@ import {
   type DevSettingsRow,
   formatDevSettingsTable,
 } from "../shared/src/dev-settings-table.ts";
+import { isLoopbackRemoteAddress } from "../shared/src/loopback-trust.ts";
 import {
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
@@ -642,6 +643,90 @@ function isExpectedApiProxyConnectError(
       ? (error as { code?: unknown }).code
       : undefined;
   return code === "ECONNREFUSED" || text.includes("ECONNREFUSED");
+}
+
+/**
+ * A browser request to Vite's same-origin `/api` proxy carries the Vite page's
+ * Origin (for example `http://127.0.0.1:2563`), not the upstream API origin.
+ * The API correctly rejects that otherwise-unknown development port. Normalize
+ * only an origin that exactly matches this request's Host; cross-origin callers
+ * keep their original header and remain subject to the API's CORS policy.
+ */
+export function rewriteSameOriginDevProxyOrigin(
+  proxyRequest: { setHeader(name: string, value: string): void },
+  incomingRequest: {
+    headers: {
+      host?: string;
+      origin?: string | string[];
+      referer?: string | string[];
+    };
+    socket?: { remoteAddress?: string | null } | null;
+  },
+  upstreamOrigin: string,
+  expectedRendererOrigin?: string,
+): boolean {
+  const origin = incomingRequest.headers.origin;
+  const referer = incomingRequest.headers.referer;
+  const host = incomingRequest.headers.host?.trim().toLowerCase();
+  const browserSource =
+    typeof origin === "string"
+      ? origin
+      : typeof referer === "string"
+        ? referer
+        : null;
+  if (!browserSource || !host) return false;
+
+  try {
+    const parsed = new URL(browserSource);
+    const expectedRenderer = expectedRendererOrigin
+      ? new URL(expectedRendererOrigin)
+      : null;
+    const exactIncomingOrigin = parsed.host.toLowerCase() === host;
+    // node-http-proxy may replace Host before its proxyReq listener runs. In
+    // that case recover the browser-boundary proof only for an exact renderer
+    // origin arriving over a loopback socket. A LAN client cannot use this
+    // fallback to inherit the Mac owner's local trust.
+    const exactLoopbackRendererOrigin =
+      isLoopbackRemoteAddress(incomingRequest.socket?.remoteAddress) &&
+      expectedRenderer !== null &&
+      parsed.origin === expectedRenderer.origin;
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      (!exactIncomingOrigin && !exactLoopbackRendererOrigin)
+    ) {
+      return false;
+    }
+    if (typeof origin === "string") {
+      proxyRequest.setHeader("Origin", upstreamOrigin);
+    }
+    if (typeof referer === "string") {
+      proxyRequest.setHeader("Referer", `${upstreamOrigin}/`);
+    }
+    // Chromium classifies different loopback ports as `same-site`, even when
+    // the browser is making a same-origin request to this Vite server and Vite
+    // is the component crossing ports. The upstream API deliberately rejects
+    // `same-site` local requests. Once the Host/Origin equality above proves
+    // this was same-origin at the browser boundary, preserve that fact across
+    // the trusted local proxy hop.
+    proxyRequest.setHeader("Sec-Fetch-Site", "same-origin");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Browser dev keeps the request authority intact so the API can validate the
+ * browser's same-origin boundary. The native desktop shell pins a loopback
+ * renderer origin; for that trusted same-machine hop the proxy must target the
+ * API authority directly and must not synthesize forwarded-client headers.
+ */
+export function resolveDevApiProxyAuthority(
+  expectedRendererOrigin?: string,
+): { changeOrigin: boolean; xfwd: boolean } {
+  return expectedRendererOrigin
+    ? { changeOrigin: true, xfwd: false }
+    : { changeOrigin: false, xfwd: true };
 }
 
 function stringifyBuildLogMessage(message: unknown): string {
@@ -3550,13 +3635,16 @@ export const INVALID_TRACER_PROVIDER = {};
         : {}),
       "/api": {
         target: `http://127.0.0.1:${apiPort}`,
-        // Keep Host aligned with the browser's same-origin Origin. Rewriting
-        // Host to the upstream API port while preserving Origin at the Vite
-        // port makes the loopback trust boundary correctly reject the request
-        // as an authority mismatch, stranding a local browser on Pairing/Login.
-        changeOrigin: false,
-        xfwd: true,
+        ...resolveDevApiProxyAuthority(viteDevServerRuntime.origin),
         configure: (proxy) => {
+          proxy.on("proxyReq", (proxyRequest, incomingRequest) => {
+            rewriteSameOriginDevProxyOrigin(
+              proxyRequest,
+              incomingRequest,
+              `http://127.0.0.1:${apiPort}`,
+              viteDevServerRuntime.origin,
+            );
+          });
           proxy.on("error", (_err, _req, res) => {
             if (!res.headersSent) {
               res.writeHead(502, { "Content-Type": "application/json" });
@@ -3568,7 +3656,16 @@ export const INVALID_TRACER_PROVIDER = {};
       "/ws": {
         target: `ws://127.0.0.1:${apiPort}`,
         ws: true,
+        changeOrigin: true,
         configure: (proxy) => {
+          proxy.on("proxyReqWs", (proxyRequest, incomingRequest) => {
+            rewriteSameOriginDevProxyOrigin(
+              proxyRequest,
+              incomingRequest,
+              `http://127.0.0.1:${apiPort}`,
+              viteDevServerRuntime.origin,
+            );
+          });
           // Suppress noisy ECONNREFUSED errors during API restart.
           // Clients reconnect automatically via the WS reconnect loop.
           proxy.on("error", () => {});

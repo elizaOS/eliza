@@ -12,7 +12,7 @@ import { dispatchChatOpen } from "../../events";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
-import { isAospShellEnabled } from "../../navigation";
+import { isAospShellEnabled, tabFromPath } from "../../navigation";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { shellHistory } from "../../surface-realm-channel";
@@ -160,6 +160,13 @@ export const LauncherSurface = React.memo(function LauncherSurface({
       const path = entry.path ?? `/apps/${entry.id}`;
       try {
         if (typeof window === "undefined") return;
+        // Keep the in-memory router in the same transaction as the URL. The
+        // startup popstate listener is intentionally lifecycle-bound and can
+        // be absent in a newly opened desktop app window after hydration; URL
+        // mutation alone then leaves the warm Home/Launcher surface visible.
+        // Preserve the exact registered path while activating its owning tab.
+        const routeTab = tabFromPath(path);
+        if (routeTab) setTab(routeTab, { history: "preserve" });
         if (window.location.protocol === "file:") {
           window.location.hash = path;
         } else {

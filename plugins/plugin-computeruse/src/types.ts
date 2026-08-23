@@ -34,6 +34,8 @@ export type DesktopActionType =
   | "get_cursor_position"
   | "detect_elements"
   | "ocr"
+  | "accessibility_snapshot"
+  | "accessibility_action"
   | "open"
   | "launch"
   | "kill_app"
@@ -81,6 +83,21 @@ export interface DesktopActionParams {
   app?: string;
   /** Arguments passed to the launched application (`launch`). */
   appArgs?: string[];
+  /** Opaque id returned by `accessibility_snapshot`. */
+  axSnapshotId?: string;
+  /** Opaque per-snapshot element id returned by `accessibility_snapshot`. */
+  axElementId?: string;
+  /** Accessibility-first operation; never targets an element outside `app`. */
+  axAction?:
+    | "press"
+    | "confirm"
+    | "raise"
+    | "focus"
+    | "set_value"
+    | "scroll_up"
+    | "scroll_down"
+    | "scroll_left"
+    | "scroll_right";
 }
 
 // ── Browser Actions ───────────────────────────────────────────────────────
@@ -181,6 +198,9 @@ export interface ComputerUseResult {
   permissionType?: PermissionType;
   approvalRequired?: boolean;
   approvalId?: string;
+  controlMode?: "accessibility" | "coordinate_fallback" | "keyboard";
+  physicalPointerBorrowed?: boolean;
+  fallbackDisclosure?: string;
 }
 
 export interface ComputerActionResult extends ComputerUseResult {

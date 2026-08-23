@@ -14,8 +14,9 @@
  *   distStale: boolean,
  *   distExists: boolean,
  *   skipRequested: boolean,
+ *   liveDevServer?: boolean,
  * }} input
- * @returns {"build" | "skip-fresh" | "skip-stale"}
+ * @returns {"build" | "skip-fresh" | "skip-stale" | "skip-hmr"}
  *   - "build": run the blocking production build
  *   - "skip-fresh": dist is up to date, nothing to do
  *   - "skip-stale": dist is stale but skipped by explicit request (renderer may
@@ -26,8 +27,13 @@ export function resolveRendererBuildAction({
   distStale,
   distExists,
   skipRequested,
+  liveDevServer = false,
 }) {
   if (forceRenderer) return "build";
+  // Vite's dev server transforms the source graph directly and never reads
+  // app/dist. Building that production bundle before HMR adds minutes to the
+  // inner loop and contradicts dev:desktop:watch's documented contract.
+  if (liveDevServer) return "skip-hmr";
   if (!distStale) return "skip-fresh";
   // dist is stale below this point
   if (skipRequested && distExists) return "skip-stale";

@@ -127,6 +127,16 @@ const MAX_LOCAL_TTS_TEXT_LENGTH = 4_000;
 type WsLike = CartesiaInkWebSocket & CartesiaWebSocketLike;
 
 function wrapNodeWsAsDom(socket: NodeWebSocket): WsLike {
+  // A DOM WebSocket error is an ordinary event even when no application
+  // listener is currently attached. Node's EventEmitter-compatible `ws`
+  // transport instead throws when an `error` event has no listener. Provider
+  // streams deliberately detach their per-context listeners after `done`,
+  // while the call-scoped socket can remain open for reuse; a late transport
+  // error in that interval must close/recover the provider path, not terminate
+  // the entire local voice gateway. Keep one transport-lifetime sink so this
+  // Node shim preserves DOM semantics. Active adapter listeners still receive
+  // the same event through the normal mapping below.
+  socket.on("error", () => undefined);
   const listenerMap = new WeakMap<
     (e: unknown) => void,
     (...a: unknown[]) => void
@@ -337,6 +347,14 @@ export interface RealServerConfig {
   userId: string;
   agentId: string;
   conversationId: string;
+  /**
+   * Optional local-runtime boundary for conversation switching. Production and
+   * evidence callers remain pinned to `conversationId` unless they provide a
+   * validator that proves the requested conversation belongs to their runtime.
+   */
+  authorizeConversationId?: (
+    conversationId: string,
+  ) => "authorized" | "forbidden" | Promise<"authorized" | "forbidden">;
   hooks: RealServerHooks;
   /** Optional LLM transport adapter, used by the local-runtime evidence lane. */
   fetchImpl?: typeof fetch;
@@ -476,15 +494,31 @@ export async function startRealVoiceServer(
       const body = await readJsonBody(req);
       // The force-armed browser sends a recognizable sentinel. Identity never
       // comes from that debug affordance: this loopback server binds the real
-      // local agent in its config and scopes only the active conversation here.
+      // local agent in its config and validates the requested conversation here.
       const conversationId = readCanonicalConversationId(body);
       const consentNonce = readRequiredString(body, "consentNonce");
-      if (conversationId !== config.conversationId) {
-        writeJson(res, 403, { code: "conversation_scope_mismatch" });
-        return;
-      }
       if (body.transport !== "websocket") {
         writeJson(res, 400, { code: "invalid_transport" });
+        return;
+      }
+      let conversationAuthorization: "authorized" | "forbidden" =
+        conversationId === config.conversationId ? "authorized" : "forbidden";
+      if (config.authorizeConversationId) {
+        try {
+          conversationAuthorization =
+            await config.authorizeConversationId(conversationId);
+        } catch (error) {
+          hooks.log("warn", "conversation authorization failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          writeJson(res, 503, {
+            code: "conversation_authorization_unavailable",
+          });
+          return;
+        }
+      }
+      if (conversationAuthorization !== "authorized") {
+        writeJson(res, 403, { code: "conversation_scope_mismatch" });
         return;
       }
       const minted = await mintWithConsent(conversationId, consentNonce);

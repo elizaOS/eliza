@@ -69,6 +69,16 @@ export interface GlassRecipe {
 export const GLASS_SHEET_FILL =
   "color-mix(in srgb, var(--bg) 88%, transparent)";
 /**
+ * Stable detached-macOS sheet fill.
+ *
+ * A transparent WKWebView cannot reliably use `backdrop-filter` to sample
+ * pixels from applications behind its NSWindow. Depending on compositor
+ * promotion it alternates between the desktop and an opaque fallback. Keep the
+ * detached overlay visibly translucent with one fixed alpha instead; the
+ * ordinary in-app/mobile sheet retains the richer blurred recipe above.
+ */
+export const GLASS_DESKTOP_SHEET_FILL = "rgb(10 10 12 / 64%)";
+/**
  * Backdrop filter for the chat sheet: a heavy neutral blur with NO saturate.
  * The blur keeps text legible while letting the backdrop's color and light
  * through; saturate is omitted because it muddies the warm/orange field to

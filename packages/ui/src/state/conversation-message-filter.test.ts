@@ -110,6 +110,35 @@ describe("shouldKeepConversationMessage", () => {
     ).toBe(true);
   });
 
+  it("drops a legacy internal scheduler diagnostic without visibility metadata", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: [
+            'Repeated runtime failure "SCHEDULED_DISPATCH_RENDER_FAILED".',
+            "The scheduled dispatch will retry internally.",
+          ].join("\n"),
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps user text and ordinary assistant prose about runtime failures", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          role: "user",
+          text: 'Repeated runtime failure "SCHEDULED_DISPATCH_RENDER_FAILED".',
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldKeepConversationMessage(
+        msg({ text: "The runtime failed twice, but it recovered." }),
+      ),
+    ).toBe(true);
+  });
+
   it("drops empty assistant turns with no media or blocks", () => {
     expect(shouldKeepConversationMessage(msg({ text: "  " }))).toBe(false);
   });

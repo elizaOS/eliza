@@ -18,9 +18,11 @@ export const CARTESIA_INK_CHUNK_BYTES = 3_200;
 export const CARTESIA_INK_TURN_START_THRESHOLD = 0.5;
 export const CARTESIA_INK_TURN_EAGER_END_THRESHOLD = 0.4;
 export const CARTESIA_INK_TURN_END_THRESHOLD = 0.3;
-// Cartesia's documented minimum bounds uncertain end-of-turn detection without
-// delaying every short phone reply by another half-second beyond necessity.
-export const CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS = 640;
+// Keep enough silence for a speaker to continue a natural sentence. The 640ms
+// provider minimum split ordinary hesitations into one-word turns in the live
+// macOS Talk surface; 1200ms is the last accepted conversation cadence and
+// still keeps short replies responsive.
+export const CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS = 1_200;
 
 const DEFAULT_CLOSE_CODE = 1000;
 

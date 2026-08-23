@@ -9,7 +9,8 @@ export type DetachedSurface =
   | "plugins"
   | "connectors"
   | "cloud";
-export type ManagedSurface = DetachedSurface | "settings" | "app";
+export type ManagedSurface = DetachedSurface | "workspace" | "settings" | "app";
+export type WorkspacePresentation = "standard" | "content";
 export type ManagedWindowTitleBarStyle = "default" | "hidden" | "hiddenInset";
 
 export interface ManagedWindowSnapshot {
@@ -27,10 +28,20 @@ export interface ManagedWindowFrame {
   height: number;
 }
 
+export interface WorkspaceDismissResult {
+  closed: boolean;
+  reason: "closed" | "already-closed";
+}
+
 export interface ManagedWindowLike {
+  close(): void;
   focus(): void;
+  maximize?: () => void;
   setAlwaysOnTop(flag: boolean): void;
-  on(event: "close" | "focus" | "resize" | "move", handler: () => void): void;
+  on(
+    event: "close" | "focus" | "blur" | "resize" | "move",
+    handler: () => void,
+  ): void;
   /**
    * Optional — when present, used to capture window position+size for
    * per-slug bounds persistence. Mocks may omit this.
@@ -68,6 +79,7 @@ export interface CreateManagedWindowOptions {
 interface ManagedWindowRecord extends ManagedWindowSnapshot {
   window: ManagedWindowLike;
   slug?: string;
+  workspacePresentation?: WorkspacePresentation;
 }
 
 interface PendingAppWindow {
@@ -81,7 +93,22 @@ interface SurfaceWindowManagerOptions {
   readPreload: () => string;
   wireRpc: (window: ManagedWindowLike) => void;
   injectApiBase: (window: ManagedWindowLike) => void;
-  onWindowFocused?: (window: ManagedWindowLike) => void;
+  navigateWindow?: (
+    window: ManagedWindowLike,
+    routePath: string,
+    section?: string,
+    presentation?: WorkspacePresentation,
+  ) => boolean;
+  onWindowFocused?: (
+    window: ManagedWindowLike,
+    surface: ManagedSurface,
+    workspacePresentation?: WorkspacePresentation,
+  ) => void;
+  onWindowBlurred?: (
+    window: ManagedWindowLike,
+    surface: ManagedSurface,
+    workspacePresentation?: WorkspacePresentation,
+  ) => void;
   onRegistryChanged?: () => void;
   /**
    * Optional per-slug bounds persistence. When supplied, slug-keyed
@@ -99,6 +126,7 @@ const SURFACE_LABELS: Record<ManagedSurface, string> = {
   plugins: "Plugins",
   connectors: "Connectors",
   cloud: "Cloud",
+  workspace: "Workspace",
   settings: "Settings",
   app: "App",
 };
@@ -111,7 +139,8 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
   plugins: { x: 180, y: 160, width: 1180, height: 860 },
   connectors: { x: 200, y: 180, width: 1180, height: 860 },
   cloud: { x: 220, y: 140, width: 1280, height: 900 },
-  settings: { x: 220, y: 160, width: 760, height: 560 },
+  workspace: { x: 120, y: 80, width: 1440, height: 960 },
+  settings: { x: 180, y: 120, width: 1240, height: 900 },
   app: { x: 180, y: 120, width: 1280, height: 900 },
 };
 
@@ -119,7 +148,9 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
 export function resolveManagedWindowTitleBarStyle(
   surface: ManagedSurface,
 ): ManagedWindowTitleBarStyle {
-  return surface === "settings" ? "hiddenInset" : "default";
+  return surface === "workspace" || surface === "settings"
+    ? "hiddenInset"
+    : "default";
 }
 
 export function isDetachedSurface(value: string): value is DetachedSurface {
@@ -135,7 +166,12 @@ export function isDetachedSurface(value: string): value is DetachedSurface {
 }
 
 function isManagedSurface(value: string): value is ManagedSurface {
-  return value === "settings" || value === "app" || isDetachedSurface(value);
+  return (
+    value === "workspace" ||
+    value === "settings" ||
+    value === "app" ||
+    isDetachedSurface(value)
+  );
 }
 
 function ordinalTitle(surface: ManagedSurface, ordinal: number): string {
@@ -157,6 +193,9 @@ export function buildSurfaceShellQuery(
   tabHint?: string,
   browse?: string,
 ): string {
+  if (surface === "workspace") {
+    return "";
+  }
   if (surface === "settings") {
     const normalizedTab = normalizeSettingsTabHint(tabHint);
     return normalizedTab
@@ -177,8 +216,45 @@ export function buildSurfaceWindowRendererUrl(
   browse?: string,
 ): string {
   const renderer = new URL(rendererUrl);
+  // Surface windows must receive the runtime target on their very first
+  // document load. The native dom-ready injection is a repair/failover path;
+  // it happens after the renderer's startup coordinator has already read the
+  // URL and can therefore arrive too late to prevent a false "Can't connect"
+  // state. Preserve only the trusted host-owned boot parameters while
+  // discarding unrelated/stale renderer query state.
+  const apiBase = renderer.searchParams.get("apiBase");
+  const runtimeChooser = renderer.searchParams.get("enableRuntimeChooser");
   renderer.search = buildSurfaceShellQuery(surface, tabHint, browse);
+  if (apiBase) renderer.searchParams.set("apiBase", apiBase);
+  if (runtimeChooser) {
+    renderer.searchParams.set("enableRuntimeChooser", runtimeChooser);
+  }
+  if (surface === "workspace" || surface === "settings") {
+    renderer.searchParams.set("desktopSurface", surface);
+  }
   renderer.hash = "";
+  return renderer.toString();
+}
+
+/**
+ * Route the one full workstation window without turning the destination into
+ * a detached `appWindow`. Settings is part of the workstation product, not a
+ * second native application/window.
+ */
+export function buildWorkspaceWindowRendererUrl(
+  rendererUrl: string,
+  routePath = "/",
+  section?: string,
+  presentation: WorkspacePresentation = "standard",
+): string {
+  const renderer = new URL(
+    buildSurfaceWindowRendererUrl(rendererUrl, "workspace"),
+  );
+  renderer.pathname = routePath.startsWith("/") ? routePath : `/${routePath}`;
+  if (presentation === "content") {
+    renderer.searchParams.set("workspacePresentation", "content");
+  }
+  renderer.hash = section ? `#${encodeURIComponent(section)}` : "";
   return renderer.toString();
 }
 
@@ -200,7 +276,9 @@ export class SurfaceWindowManager {
   private readonly readPreloadFn: SurfaceWindowManagerOptions["readPreload"];
   private readonly wireRpcFn: SurfaceWindowManagerOptions["wireRpc"];
   private readonly injectApiBaseFn: SurfaceWindowManagerOptions["injectApiBase"];
+  private readonly navigateWindow?: SurfaceWindowManagerOptions["navigateWindow"];
   private readonly onWindowFocused?: SurfaceWindowManagerOptions["onWindowFocused"];
+  private readonly onWindowBlurred?: SurfaceWindowManagerOptions["onWindowBlurred"];
   private readonly onRegistryChanged?: SurfaceWindowManagerOptions["onRegistryChanged"];
   private readonly boundsStore?: BoundsStore;
   private readonly windows = new Map<string, ManagedWindowRecord>();
@@ -217,7 +295,9 @@ export class SurfaceWindowManager {
     this.readPreloadFn = options.readPreload;
     this.wireRpcFn = options.wireRpc;
     this.injectApiBaseFn = options.injectApiBase;
+    this.navigateWindow = options.navigateWindow;
     this.onWindowFocused = options.onWindowFocused;
+    this.onWindowBlurred = options.onWindowBlurred;
     this.onRegistryChanged = options.onRegistryChanged;
     this.boundsStore = options.boundsStore;
   }
@@ -241,26 +321,126 @@ export class SurfaceWindowManager {
     });
   }
 
+  dismissWorkspaceWindow(): WorkspaceDismissResult {
+    const workspace = Array.from(this.windows.values()).find(
+      (entry) => entry.surface === "workspace",
+    );
+    if (!workspace) {
+      return { closed: false, reason: "already-closed" };
+    }
+
+    workspace.window.close();
+    return { closed: true, reason: "closed" };
+  }
+
   async openSettingsWindow(tabHint?: string): Promise<ManagedWindowSnapshot> {
+    return this.openWorkspaceWindow(
+      "/settings",
+      normalizeSettingsTabHint(tabHint),
+    );
+  }
+
+  /**
+   * Open the complete Eliza workstation as a singleton. Unlike detached
+   * surface/app windows, this loads the renderer root so it mounts the normal
+   * app shell and its one shared ChatOverlay at the bottom.
+   */
+  async openWorkspaceWindow(
+    routePath = "/",
+    section?: string,
+    maximize = false,
+    presentation: WorkspacePresentation = "standard",
+  ): Promise<ManagedWindowSnapshot> {
     const existing = Array.from(this.windows.values()).find(
-      (entry) => entry.surface === "settings",
+      (entry) => entry.surface === "workspace",
     );
     if (existing) {
-      // A tab hint on an already-open Settings window must navigate the
-      // window to the requested section — the menu items ("Voice Controls",
-      // "Permissions", "Cloud Settings", …) all route through here, and
-      // merely re-focusing left the stale section on screen (#19996).
-      const normalizedTab = normalizeSettingsTabHint(tabHint);
-      if (normalizedTab && existing.window.webview.loadURL) {
+      const presentationChanged =
+        existing.workspacePresentation !== presentation;
+      existing.workspacePresentation = presentation;
+      if (
+        (routePath !== "/" || section || presentationChanged) &&
+        existing.window.webview.loadURL
+      ) {
+        if (
+          this.navigateWindow?.(
+            existing.window,
+            routePath,
+            section,
+            presentation,
+          )
+        ) {
+          if (maximize) existing.window.maximize?.();
+          existing.window.focus();
+          return this.toSnapshot(existing);
+        }
         const rendererUrl = await this.resolveRendererUrlFn();
         existing.window.webview.loadURL(
-          buildSurfaceWindowRendererUrl(rendererUrl, "settings", normalizedTab),
+          buildWorkspaceWindowRendererUrl(
+            rendererUrl,
+            routePath,
+            section,
+            presentation,
+          ),
+        );
+      }
+      if (maximize) {
+        this.maximizeWorkspaceWhenReady(
+          existing.window,
+          presentation !== "content",
         );
       }
       existing.window.focus();
       return this.toSnapshot(existing);
     }
-    return this.createManagedWindow("settings", tabHint, true);
+    const snapshot = await this.createManagedWindow(
+      "workspace",
+      undefined,
+      true,
+      undefined,
+      routePath === "/" && !section ? undefined : routePath,
+      undefined,
+      false,
+      undefined,
+      section,
+      presentation,
+    );
+    if (maximize) {
+      const created = Array.from(this.windows.values()).find(
+        (entry) => entry.id === snapshot.id,
+      );
+      if (created) {
+        this.maximizeWorkspaceWhenReady(
+          created.window,
+          presentation !== "content",
+        );
+        created.window.focus();
+      }
+    }
+    return snapshot;
+  }
+
+  /**
+   * Electrobun can accept maximize before WKWebView attachment without macOS
+   * applying the zoom. Apply it immediately, then reinforce it once after the
+   * renderer reaches dom-ready so Workspace reliably fills the work area while
+   * retaining ordinary traffic lights and window switching.
+   */
+  private maximizeWorkspaceWhenReady(
+    window: ManagedWindowLike,
+    focusWhenReady = true,
+  ): void {
+    window.maximize?.();
+    let reinforced = false;
+    window.webview.on("dom-ready", () => {
+      if (reinforced) return;
+      reinforced = true;
+      window.maximize?.();
+      // A content Workspace is a canvas selected from the detached pill. Its
+      // late WKWebView dom-ready event must not steal key focus back after the
+      // native handoff has restored the pill/composer (or active Talk session).
+      if (focusWhenReady) window.focus();
+    });
   }
 
   async openSurfaceWindow(
@@ -442,6 +622,8 @@ export class SurfaceWindowManager {
     titleOverride?: string,
     alwaysOnTop = false,
     slug?: string,
+    workspaceSection?: string,
+    workspacePresentation?: WorkspacePresentation,
   ): Promise<ManagedWindowSnapshot> {
     if (!isManagedSurface(surface)) {
       throw new Error(`Unsupported surface: ${surface}`);
@@ -473,7 +655,14 @@ export class SurfaceWindowManager {
         ? ordinalTitle(surface, 1)
         : ordinalTitle(surface, existingCount + 1);
     const url = routePath
-      ? buildAppWindowRendererUrl(rendererUrl, routePath)
+      ? surface === "workspace"
+        ? buildWorkspaceWindowRendererUrl(
+            rendererUrl,
+            routePath,
+            workspaceSection,
+            workspacePresentation,
+          )
+        : buildAppWindowRendererUrl(rendererUrl, routePath)
       : buildSurfaceWindowRendererUrl(rendererUrl, surface, tabHint, browse);
     const id = slug ? `${surface}_${slug}` : `${surface}_${++this.counter}`;
 
@@ -505,11 +694,15 @@ export class SurfaceWindowManager {
       alwaysOnTop,
       window,
       slug,
+      workspacePresentation:
+        surface === "workspace"
+          ? (workspacePresentation ?? "standard")
+          : undefined,
     };
 
     this.windows.set(id, record);
     this.wireRpcFn(window);
-    this.onWindowFocused?.(window);
+    this.onWindowFocused?.(window, surface, record.workspacePresentation);
     window.webview.on("dom-ready", () => {
       this.injectApiBaseFn(window);
     });
@@ -521,8 +714,11 @@ export class SurfaceWindowManager {
       this.notifyRegistryChanged();
     });
     window.on("focus", () => {
-      this.onWindowFocused?.(window);
+      this.onWindowFocused?.(window, surface, record.workspacePresentation);
       this.notifyRegistryChanged();
+    });
+    window.on("blur", () => {
+      this.onWindowBlurred?.(window, surface, record.workspacePresentation);
     });
 
     // Per-slug bounds persistence. WHY: getFrame() polls the OS, so we

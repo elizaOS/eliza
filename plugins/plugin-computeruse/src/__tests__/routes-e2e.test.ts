@@ -205,7 +205,7 @@ describe("plugin-computeruse routes (real dispatch)", () => {
     const text = await res.text();
     expect(text).toContain('"type":"snapshot"');
     // EMPTY_APPROVAL_SNAPSHOT is served when no service is registered.
-    expect(text).toContain('"mode":"full_control"');
+    expect(text).toContain('"mode":"smart_approve"');
   });
 
   it("changes the approval mode on POST /approval-mode with valid input", async () => {

@@ -105,7 +105,7 @@ describe("DesktopTrayRuntime — Desktop Workspace launch", () => {
     );
     render(<DesktopTrayRuntime />);
 
-    clickTray("tray-hide-window");
+    clickTray("quit");
 
     await waitFor(() => {
       expect(store.setActionNotice).toHaveBeenCalledWith(
@@ -119,7 +119,7 @@ describe("DesktopTrayRuntime — Desktop Workspace launch", () => {
   it("raises no notice for a successful tray dispatch", async () => {
     render(<DesktopTrayRuntime />);
 
-    clickTray("tray-hide-window");
+    clickTray("quit");
 
     await waitFor(() => {
       expect(bridge.invokeDesktopBridgeRequest).toHaveBeenCalled();

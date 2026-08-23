@@ -288,6 +288,11 @@ export interface DesktopManagedWindowSnapshot {
   alwaysOnTop: boolean;
 }
 
+export interface DesktopWorkspaceDismissResult {
+  closed: boolean;
+  reason: "closed" | "already-closed";
+}
+
 export interface ClipboardWriteOptions {
   text?: string;
   html?: string;
@@ -1572,6 +1577,14 @@ export type ElizaDesktopRPCSchema = {
         params: { expanded: boolean; chip?: boolean; hovered?: boolean };
         response: undefined;
       };
+      desktopSetBottomBarSize: {
+        params: { width: number; height: number };
+        response: undefined;
+      };
+      desktopSetBottomBarInteractiveSize: {
+        params: { width: number; height: number };
+        response: undefined;
+      };
       desktopSetBottomBarSurfaceState: {
         params: {
           state:
@@ -1741,6 +1754,20 @@ export type ElizaDesktopRPCSchema = {
       desktopOpenReleaseNotesWindow: {
         params: { url: string; title?: string };
         response: DesktopReleaseNotesWindowInfo;
+      };
+      desktopOpenWorkspaceWindow: {
+        params:
+          | {
+              routePath?: string;
+              maximize?: boolean;
+              presentation?: "standard" | "content";
+            }
+          | undefined;
+        response: undefined;
+      };
+      desktopDismissWorkspaceWindow: {
+        params: undefined;
+        response: DesktopWorkspaceDismissResult;
       };
       desktopOpenSettingsWindow: {
         params: { tabHint?: string } | undefined;
@@ -2545,6 +2572,15 @@ export type ElizaDesktopRPCSchema = {
       desktopWindowMaximize: undefined;
       desktopWindowUnmaximize: undefined;
       desktopWindowClose: undefined;
+      /** Workspace took visual ownership; reset the hidden detached assistant
+       * to its resting pill before it can be restored over another app. */
+      desktopWorkspaceHandoff: undefined;
+      /** Change the route inside the existing singleton Workspace. */
+      desktopWorkspaceNavigate: {
+        routePath: string;
+        section?: string;
+        presentation?: "standard" | "content";
+      };
       desktopShutdownStarted: { reason: string };
       desktopManagedWindowsChanged: {
         windows: DesktopManagedWindowSnapshot[];
@@ -2717,6 +2753,8 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:getWindowBounds": "desktopGetWindowBounds",
   "desktop:setWindowBounds": "desktopSetWindowBounds",
   "desktop:setBottomBarExpanded": "desktopSetBottomBarExpanded",
+  "desktop:setBottomBarSize": "desktopSetBottomBarSize",
+  "desktop:setBottomBarInteractiveSize": "desktopSetBottomBarInteractiveSize",
   "desktop:minimizeWindow": "desktopMinimizeWindow",
   "desktop:unminimizeWindow": "desktopUnminimizeWindow",
   "desktop:maximizeWindow": "desktopMaximizeWindow",
@@ -2780,6 +2818,9 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:clearSessionData": "desktopClearSessionData",
   "desktop:getWebGpuBrowserStatus": "desktopGetWebGpuBrowserStatus",
   "desktop:openReleaseNotesWindow": "desktopOpenReleaseNotesWindow",
+  "desktop:openWorkspaceWindow": "desktopOpenWorkspaceWindow",
+  "desktop:dismissWorkspaceWindow": "desktopDismissWorkspaceWindow",
+  "desktop:workspaceNavigate": "desktopWorkspaceNavigate",
   "desktop:openSettingsWindow": "desktopOpenSettingsWindow",
   "desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
   "desktop:openAppWindow": "desktopOpenAppWindow",

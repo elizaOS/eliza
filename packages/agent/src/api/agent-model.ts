@@ -32,6 +32,38 @@ import type { ElizaConfig } from "../config/config.ts";
  */
 const ELIZA_CLOUD_PROVIDER_NAME = "elizaOSCloud";
 
+const CHAT_TEXT_MODEL_TYPES = new Set<string>([
+  ModelType.TEXT_LARGE,
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_MEDIUM,
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_MEGA,
+]);
+
+/**
+ * Return the provider behind a directly registered normal-chat text model.
+ * Planner and response-handler delegates may themselves depend on TEXT_SMALL;
+ * counting those wrappers made provider-less runtimes look ready.
+ */
+export function registeredChatTextProvider(
+  runtime: AgentRuntime,
+): string | undefined {
+  if (typeof runtime.getModelRegistrations !== "function") return undefined;
+  try {
+    const registration = runtime
+      .getModelRegistrations()
+      .find(
+        (entry) =>
+          CHAT_TEXT_MODEL_TYPES.has(String(entry.modelType)) &&
+          typeof entry.provider === "string" &&
+          entry.provider.trim().length > 0,
+      );
+    return registration?.provider.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The provider that served the most recent successful chat `useModel` call, or
  * undefined before any call has completed. This is evidence rather than
@@ -46,14 +78,59 @@ export function lastServingTextProvider(
   runtime: AgentRuntime,
 ): string | undefined {
   try {
-    return (
+    const serving =
       runtime.getLastResolvedModelProvider?.(ModelType.TEXT_LARGE) ??
-      runtime.getLastResolvedModelProvider?.(ModelType.TEXT_SMALL)
-    );
+      runtime.getLastResolvedModelProvider?.(ModelType.TEXT_SMALL);
+    return resolveCompatibleTextBackend(runtime, serving);
   } catch {
     // error-policy:J7 diagnostics must not kill the model-label resolver
     return undefined;
   }
+}
+
+function readRuntimeSetting(
+  runtime: AgentRuntime,
+  key: string,
+): string | undefined {
+  const runtimeValue = runtime.getSetting?.(key);
+  if (typeof runtimeValue === "string" && runtimeValue.trim()) {
+    return runtimeValue.trim();
+  }
+  const environmentValue = process.env[key]?.trim();
+  return environmentValue || undefined;
+}
+
+/**
+ * The OpenAI plugin is also the transport for compatible APIs. Core normally
+ * records the concrete backend receipt, but legacy/string-only model results
+ * can expose only the registration name. In that case, apply the same explicit
+ * endpoint selection rules as the plugin so status names the service actually
+ * handling requests instead of the transport implementation.
+ */
+function resolveCompatibleTextBackend(
+  runtime: AgentRuntime,
+  serving: string | undefined,
+): string | undefined {
+  if (serving?.toLowerCase() !== "openai") return serving;
+
+  const explicitProvider = readRuntimeSetting(
+    runtime,
+    "ELIZA_PROVIDER",
+  )?.toLowerCase();
+  if (explicitProvider === "cerebras" || explicitProvider === "evolink") {
+    return explicitProvider;
+  }
+
+  const baseUrl = readRuntimeSetting(runtime, "OPENAI_BASE_URL");
+  if (baseUrl && /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl)) return "cerebras";
+  if (baseUrl && /(^|\.)evolink\.ai(\/|$)/i.test(baseUrl)) return "evolink";
+
+  const openAiKey = readRuntimeSetting(runtime, "OPENAI_API_KEY");
+  if (!openAiKey && !baseUrl) {
+    if (readRuntimeSetting(runtime, "CEREBRAS_API_KEY")) return "cerebras";
+    if (readRuntimeSetting(runtime, "EVOLINK_API_KEY")) return "evolink";
+  }
+  return serving;
 }
 
 /**
@@ -78,36 +155,6 @@ export function hasCloudTextHandlerRegistered(runtime: AgentRuntime): boolean {
 }
 
 const MODEL_PLACEHOLDERS = new Set(["", "n/a", "na", "unknown", "provided"]);
-
-const PROVIDER_HINTS = [
-  "openai-codex",
-  "openai-subscription",
-  "anthropic-subscription",
-  "gemini-subscription",
-  "gemini-cli",
-  "zai-coding-subscription",
-  "zai-coding",
-  "kimi-coding-subscription",
-  "kimi-coding",
-  "deepseek-coding-subscription",
-  "deepseek-coding",
-  "openrouter",
-  "moonshot",
-  "kimi",
-  "deepseek",
-  "anthropic",
-  "openai",
-  "groq",
-  "gemini",
-  "google",
-  "grok",
-  "xai",
-  "ollama",
-  "mistral",
-  "together",
-  "nearai",
-  "zai",
-] as const;
 
 const ENV_PROVIDER_SIGNALS: ReadonlyArray<{
   envVar: string;
@@ -236,26 +283,15 @@ export function detectRuntimeModel(
     );
   }
 
+  const registeredProvider = registeredChatTextProvider(runtime);
+  if (registeredProvider) {
+    return resolveCompatibleTextBackend(runtime, registeredProvider);
+  }
+
   const configModel = normalizeModelSpec(
     config?.agents?.defaults?.model?.primary,
   );
   if (configModel) return configModel;
-
-  const pluginNames = Array.isArray(runtime.plugins)
-    ? runtime.plugins
-        .map((plugin) =>
-          typeof plugin.name === "string" ? plugin.name.trim() : "",
-        )
-        .filter((name): name is string => name.length > 0)
-    : [];
-
-  if (pluginNames.length > 0) {
-    const lowerPluginNames = pluginNames.map((name) => name.toLowerCase());
-    for (const hint of PROVIDER_HINTS) {
-      const index = lowerPluginNames.findIndex((name) => name.includes(hint));
-      if (index >= 0) return pluginNames[index];
-    }
-  }
 
   for (const { envVar, label } of ENV_PROVIDER_SIGNALS) {
     const value = process.env[envVar]?.trim();
@@ -271,6 +307,8 @@ export function resolveProviderFromModel(model: string): string | null {
 
   const providers: Array<{ match: string; label: string }> = [
     { match: "elizacloud", label: "Eliza Cloud" },
+    { match: "cerebras", label: "Cerebras" },
+    { match: "evolink", label: "EvoLink" },
     { match: "openrouter", label: "OpenRouter" },
     { match: "openai", label: "OpenAI" },
     { match: "anthropic", label: "Anthropic" },

@@ -12,6 +12,28 @@ import {
 import { readAliasedEnv } from "@elizaos/shared/utils/env";
 
 /**
+ * Browser-visible headers accepted by the local API. Keep the turn telemetry
+ * pair here with the renderer client that emits them: omitting either header
+ * makes WKWebView stop at CORS preflight before the chat POST reaches the
+ * otherwise healthy local runtime.
+ */
+export const LOCAL_API_CORS_ALLOWED_HEADERS = [
+  "Content-Type",
+  "Authorization",
+  "X-API-Token",
+  "X-Api-Key",
+  "X-ElizaOS-Client-Id",
+  "X-ElizaOS-UI-Language",
+  "X-ElizaOS-Token",
+  "X-ElizaOS-Turn-Correlation",
+  "X-ElizaOS-Turn-Attempt",
+  "X-Eliza-Export-Token",
+  "X-Eliza-Terminal-Token",
+  "X-Eliza-Platform",
+  "X-Eliza-CSRF",
+].join(", ");
+
+/**
  * Build the set of localhost ports allowed for CORS.
  * Reads from env vars at call time so tests can override.
  *

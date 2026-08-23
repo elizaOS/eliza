@@ -2,7 +2,7 @@
  * Verification-room bridge tests for relaying verification outcomes into chat rooms.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VerificationRoomBridgeService } from "../verification-room-bridge.ts";
 
@@ -24,12 +24,21 @@ function makeCoordinator() {
 	};
 }
 
-function makeRuntime(initialServices: Record<string, unknown>) {
+function makeRuntime(
+	initialServices: Record<string, unknown>,
+	options?: { modelReply?: string },
+) {
 	const services = { ...initialServices };
 	return {
 		runtime: {
 			getService: vi.fn((name: string) => services[name] ?? null),
 			createMemory: vi.fn(async () => ({ id: "mem-test" })),
+			...(options?.modelReply
+				? {
+						getModel: vi.fn(() => ({ provider: "test" })),
+						useModel: vi.fn(async () => options.modelReply),
+					}
+				: {}),
 			agentId: "agent-1",
 			logger: {
 				debug: vi.fn(),
@@ -260,7 +269,12 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 			}),
 		} as Response);
 		const coordinator = makeCoordinator();
-		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const modelReply =
+			"Notes is installed and ready whenever you want to launch it.";
+		const { runtime } = makeRuntime(
+			{ SWARM_COORDINATOR: coordinator },
+			{ modelReply },
+		);
 		const service = await VerificationRoomBridgeService.start(runtime);
 
 		coordinator.__emit(appPassEvent());
@@ -281,9 +295,13 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 			.mock.calls[0];
 		expect(table).toBe("messages");
 		expect(memory.roomId).toBe("room-99");
-		const text = memory.content.text as string;
-		expect(text).toContain("notes app built, verified, and installed");
-		expect(text).toContain("launch notes");
+		expect(memory.content.text).toBe(modelReply);
+		expect(runtime.useModel).toHaveBeenCalledWith(
+			ModelType.TEXT_SMALL,
+			expect.objectContaining({
+				prompt: expect.stringContaining('"status":"built_verified_installed"'),
+			}),
+		);
 		expect(memory.content.metadata).toMatchObject({ verdict: "pass" });
 
 		await service.stop();

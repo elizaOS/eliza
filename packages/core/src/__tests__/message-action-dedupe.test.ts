@@ -368,12 +368,19 @@ describe("action-result transcript visibility", () => {
 				success: true,
 				text: "available_views:\nviews[0]:",
 				transcriptVisibility: "internal",
+				promptData: { operation: "edit_view", outcome: "started" },
+				modelReplyRequired: true,
 				data: { views: [{ id: "notes" }] },
 			},
 		);
 
 		expect(result.transcriptVisibility).toBe("internal");
 		expect(result.text).toContain("available_views:");
+		expect(result.promptData).toEqual({
+			operation: "edit_view",
+			outcome: "started",
+		});
+		expect(result.modelReplyRequired).toBe(true);
 		expect(result.data).toEqual({ actionName: "VIEWS" });
 	});
 });

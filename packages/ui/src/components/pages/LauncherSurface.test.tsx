@@ -58,6 +58,7 @@ vi.mock("../../navigation", () => {
   return {
     isAospShellEnabled: () => aospEnabled,
     LAUNCHER_AOSP_ONLY_VIEW_IDS: ["phone"],
+    tabFromPath: (path: string) => (path === "/browser" ? "browser" : "views"),
   };
 });
 
@@ -264,6 +265,21 @@ describe("LauncherSurface", () => {
     render(<LauncherSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Browser" }));
     expect(window.location.pathname).toBe("/browser");
+    expect(setTabMock).toHaveBeenCalledWith("browser", {
+      history: "preserve",
+    });
+  });
+
+  it("activates a plugin view tab before committing its exact route", () => {
+    setViews([view("notes", "Notes", "/notes")]);
+    render(<LauncherSurface />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Notes" }));
+
+    expect(setTabMock).toHaveBeenCalledWith("views", {
+      history: "preserve",
+    });
+    expect(window.location.pathname).toBe("/notes");
   });
 
   it("opens an installable app's returned viewer on the first launch", async () => {

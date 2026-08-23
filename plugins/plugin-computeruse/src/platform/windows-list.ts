@@ -129,12 +129,33 @@ function appleScriptWindowMatchTerms(target: WindowInfo): string[] {
     .filter((value) => value.length > 0 && value !== "unknown");
 }
 
-function runDarwinWindowScript(target: WindowInfo, body: string): string {
-  const terms = appleScriptWindowMatchTerms(target);
-  const termList =
-    terms.length > 0
-      ? `{${terms.map((term) => `"${escapeAppleScriptString(term)}"`).join(", ")}}`
+export function buildDarwinWindowScript(
+  target: WindowInfo,
+  body: string,
+): string {
+  const allTerms = appleScriptWindowMatchTerms(target);
+  const processTerms =
+    normalizeWindowQuery(target.app) !== "unknown" && target.app.trim()
+      ? [normalizeWindowQuery(target.app)]
+      : allTerms;
+  const windowTerms = [target.id, target.title]
+    .map((value) => normalizeWindowQuery(value))
+    .filter(
+      (value, index, values) =>
+        value.length > 0 &&
+        value !== "unknown" &&
+        value !== normalizeWindowQuery(target.app) &&
+        values.indexOf(value) === index,
+    );
+  const processTermList =
+    processTerms.length > 0
+      ? `{${processTerms.map((term) => `"${escapeAppleScriptString(term)}"`).join(", ")}}`
       : "{}";
+  const windowTermList =
+    windowTerms.length > 0
+      ? `{${windowTerms.map((term) => `"${escapeAppleScriptString(term)}"`).join(", ")}}`
+      : "{}";
+  const windowScopedBody = body.replaceAll("window 1 of proc", "targetWindow");
   // Two-pass match: first by process name (fast — no accessibility-tree walk),
   // then by window title only if no process matched. The previous single pass
   // walked `every window of` every non-matching process via System Events,
@@ -148,7 +169,7 @@ function runDarwinWindowScript(target: WindowInfo, body: string): string {
         repeat with proc in (every process whose visible is true)
           try
             set procName to name of proc
-            repeat with term in ${termList}
+            repeat with term in ${processTermList}
               if procName contains term then
                 set matchedProc to contents of proc
                 exit repeat
@@ -161,7 +182,7 @@ function runDarwinWindowScript(target: WindowInfo, body: string): string {
           repeat with proc in (every process whose visible is true)
             try
               repeat with w in (every window of proc)
-                repeat with term in ${termList}
+                repeat with term in ${windowTermList}
                   if (name of w) contains term then
                     set matchedProc to contents of proc
                     exit repeat
@@ -175,9 +196,39 @@ function runDarwinWindowScript(target: WindowInfo, body: string): string {
         end if
         if matchedProc is not missing value then
           set proc to matchedProc
-          ${body}
+          set targetWindow to missing value
+          repeat with w in (every window of proc)
+            try
+              set winName to name of w
+              repeat with term in ${windowTermList}
+                if winName contains term then
+                  -- Keep the AXWindow reference itself. "contents of w" can
+                  -- resolve to the window's content/title element after a
+                  -- physical drag, which reports tiny label bounds instead of
+                  -- the actual top-level window frame.
+                  set targetWindow to w
+                  exit repeat
+                end if
+              end repeat
+            end try
+            if targetWindow is not missing value then exit repeat
+          end repeat
+          if targetWindow is missing value then
+            try
+              set targetWindow to window 1 of proc
+            end try
+          end if
+          if targetWindow is not missing value then
+            ${windowScopedBody}
+          end if
         end if
       end tell`;
+
+  return script;
+}
+
+function runDarwinWindowScript(target: WindowInfo, body: string): string {
+  const script = buildDarwinWindowScript(target, body);
 
   return runCommand("osascript", ["-e", script], 15000);
 }
@@ -284,6 +335,17 @@ for w in list {
 }
 print(out.joined(separator: "<<WIN>>"))`;
 
+/**
+ * Pass the interpreter source as an argument instead of piping it to `swift -`.
+ * The Bun binary embedded by Electrobun can leave the synchronous stdin pipe
+ * open long enough for Swift to hit our timeout, even though the same script
+ * executes immediately via `swift -e`. Keeping this boundary pure also makes
+ * the packaged-runtime invocation contract deterministic in unit coverage.
+ */
+export function darwinWindowListSwiftArgs(): string[] {
+  return ["-e", DARWIN_WINDOW_LIST_SWIFT];
+}
+
 export function parseDarwinWindowOutput(output: string): WindowInfo[] {
   return output
     .split("<<WIN>>")
@@ -299,8 +361,7 @@ export function parseDarwinWindowOutput(output: string): WindowInfo[] {
 function listWindowsDarwinViaSwift(): WindowInfo[] | null {
   if (!commandExists("swift")) return null;
   try {
-    const output = execFileSync("swift", ["-"], {
-      input: DARWIN_WINDOW_LIST_SWIFT,
+    const output = execFileSync("swift", darwinWindowListSwiftArgs(), {
       encoding: "utf-8",
       timeout: 15000,
       stdio: ["pipe", "pipe", "ignore"],

@@ -315,8 +315,12 @@ export function normalizeBrowserWorkspaceInputUrl(
     );
   }
 
-  const candidate = trimmed.startsWith("/")
-    ? new URL(resolveApiUrl(trimmed), window.location.origin).toString()
+  const candidate = /^\/api\/apps\/local\/[A-Za-z0-9._~%-]+\/(?:[?#].*)?$/.test(
+    trimmed,
+  )
+    ? new URL(trimmed, window.location.origin).toString()
+    : trimmed.startsWith("/")
+      ? new URL(resolveApiUrl(trimmed), window.location.origin).toString()
     : /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
       ? trimmed
       : `https://${trimmed}`;
@@ -350,6 +354,17 @@ function readBrowserWorkspaceQueryParam(name: string): string | null {
   );
   const value = params.get(name)?.trim();
   return value ? value : null;
+}
+
+function readBrowserWorkspaceBrowseUrl(t: TranslateFn): string | null {
+  const browseParam = readBrowserWorkspaceQueryParam("browse");
+  try {
+    return browseParam
+      ? normalizeBrowserWorkspaceInputUrl(browseParam, t)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
@@ -571,6 +586,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
+  const [tabReloadVersions, setTabReloadVersions] = useState<
+    Record<string, number>
+  >({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
   // The folded-tab switcher overlay (#13596). The browser folds every tab into
   // this one switcher instead of a permanent sidebar strip, so this is the only
@@ -579,8 +597,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
     readPersistedMobileRuntimeMode,
   );
-  const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
-  const initialBrowseHandledRef = useRef(false);
+  const [browseRequest, setBrowseRequest] = useState(() => ({
+    sequence: 0,
+    url: readBrowserWorkspaceBrowseUrl(t),
+  }));
+  const handledBrowseRequestSequenceRef = useRef(-1);
   const workspaceRootRef = useRef<HTMLElement | null>(null);
   const workspaceSnapshotRef = useRef<BrowserWorkspaceSnapshot>(workspace);
   // Polls are slower than their cadence when the API is unhealthy. Keep them
@@ -644,16 +665,20 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const walletConfigRef = useRef(walletConfig);
   const previousSelectedTabIdRef = useRef<string | null>(null);
 
-  if (typeof initialBrowseUrlRef.current === "undefined") {
-    const browseParam = readBrowserWorkspaceQueryParam("browse");
-    try {
-      initialBrowseUrlRef.current = browseParam
-        ? normalizeBrowserWorkspaceInputUrl(browseParam, t)
-        : null;
-    } catch {
-      initialBrowseUrlRef.current = null;
-    }
-  }
+  useEffect(() => {
+    const syncBrowseRequest = () => {
+      setBrowseRequest((current) => ({
+        sequence: current.sequence + 1,
+        url: readBrowserWorkspaceBrowseUrl(t),
+      }));
+    };
+    window.addEventListener("popstate", syncBrowseRequest);
+    window.addEventListener("hashchange", syncBrowseRequest);
+    return () => {
+      window.removeEventListener("popstate", syncBrowseRequest);
+      window.removeEventListener("hashchange", syncBrowseRequest);
+    };
+  }, [t]);
 
   // A Capacitor native shell (iOS/Android), distinct from the mobile web browser
   // which also reports `mode: "web"` — so the resolver cannot infer it from mode
@@ -1741,6 +1766,33 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     lifecycle: BROWSER_SURFACE_MANIFEST.lifecycle,
   });
 
+  const reloadBrowserWorkspaceTab = useCallback(
+    async (tab: BrowserWorkspaceTab) => {
+      if (browserTabRenderPath === "native-mobile-webview") {
+        nativeTabSurfaces.reloadSurface(tab.id);
+        return;
+      }
+      if (workspace.mode === "web") {
+        // Repeated /browser?browse=<same app URL> requests refresh the
+        // existing sandboxed preview after a rebuild without duplicating it.
+        setTabReloadVersions((current) => ({
+          ...current,
+          [tab.id]: (current[tab.id] ?? 0) + 1,
+        }));
+        return;
+      }
+      if (workspace.mode === "desktop") {
+        const tag = electrobunWebviewRefs.current.get(tab.id);
+        if (tag) {
+          tag.reload();
+          return;
+        }
+      }
+      await client.navigateBrowserWorkspaceTab(tab.id, tab.url);
+    },
+    [browserTabRenderPath, nativeTabSurfaces, workspace.mode],
+  );
+
   const handleTabVaultAutofillRequest = useCallback(
     async (req: {
       tabId: string;
@@ -2235,34 +2287,35 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   useEffect(() => {
     if (
-      !initialBrowseUrlRef.current ||
-      initialBrowseHandledRef.current ||
+      !browseRequest.url ||
+      handledBrowseRequestSequenceRef.current === browseRequest.sequence ||
       loading
     ) {
       return;
     }
 
-    initialBrowseHandledRef.current = true;
+    handledBrowseRequestSequenceRef.current = browseRequest.sequence;
     const existing = workspace.tabs.find(
-      (tab) => tab.url === initialBrowseUrlRef.current,
+      (tab) => tab.url === browseRequest.url,
     );
     if (existing) {
       void runBrowserWorkspaceAction(
-        `show:${existing.id}`,
+        `refresh:${existing.id}`,
         async () => {
           await activateBrowserWorkspaceTab(existing.id);
+          await reloadBrowserWorkspaceTab(existing);
         },
         t("browserworkspace.OpenInitialBrowseFailed", {
-          defaultValue: "Failed to activate the requested browser tab.",
+          defaultValue: "Failed to refresh the requested browser tab.",
         }),
       );
       return;
     }
 
     void runBrowserWorkspaceAction(
-      "open:initial-browse",
+      "open:requested-browse",
       async () => {
-        await openNewBrowserWorkspaceTab(initialBrowseUrlRef.current ?? "");
+        await openNewBrowserWorkspaceTab(browseRequest.url ?? "");
       },
       t("browserworkspace.OpenInitialBrowseFailed", {
         defaultValue: "Failed to open the requested browser tab.",
@@ -2270,8 +2323,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     );
   }, [
     activateBrowserWorkspaceTab,
+    browseRequest,
     loading,
     openNewBrowserWorkspaceTab,
+    reloadBrowserWorkspaceTab,
     runBrowserWorkspaceAction,
     t,
     workspace.tabs,
@@ -2279,35 +2334,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
-    if (browserTabRenderPath === "native-mobile-webview") {
-      nativeTabSurfaces.reloadSurface(selectedTab.id);
-      return;
-    }
-    if (workspace.mode === "web") {
-      const iframe = iframeRefs.current.get(selectedTab.id);
-      if (iframe) {
-        beginBrowserWalletFrameNavigation(selectedTab.id, selectedTab.url);
-        armBrowserWorkspaceIframeFocusReturn(iframe, {
-          navigationUrl: selectedTab.url,
-        });
-        iframe.src = selectedTab.url;
-      }
-      return;
-    }
-    if (workspace.mode === "desktop") {
-      const tag = electrobunWebviewRefs.current.get(selectedTab.id);
-      tag?.reload();
-      return;
-    }
-    await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
-  }, [
-    armBrowserWorkspaceIframeFocusReturn,
-    beginBrowserWalletFrameNavigation,
-    browserTabRenderPath,
-    nativeTabSurfaces,
-    selectedTab,
-    workspace.mode,
-  ]);
+    await reloadBrowserWorkspaceTab(selectedTab);
+  }, [reloadBrowserWorkspaceTab, selectedTab]);
 
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
@@ -2808,7 +2836,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           }
           return (
             <iframe
-              key={tab.id}
+              key={`${tab.id}:${tabReloadVersions[tab.id] ?? 0}`}
               ref={(iframe) => registerBrowserWorkspaceIframe(tab.id, iframe)}
               title={getBrowserWorkspaceTabLabel(tab, t)}
               src={tab.url}

@@ -57,6 +57,9 @@ async function fetchJson(
   const response = await fetch(url, {
     method: "GET",
     headers,
+    // Persisted credentials are bound to the configured origin. Refuse a
+    // redirect rather than risk forwarding authorization to another target.
+    redirect: "error",
     signal,
   });
   if (response.status !== 200) return null;
@@ -73,7 +76,7 @@ export async function probeExternalAgent(
     const health = await fetchJson(
       `${normalizedBase}/api/health`,
       signal,
-      accessToken,
+      undefined,
     );
     if (!isReadyHealth(health)) return false;
 

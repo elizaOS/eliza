@@ -18,6 +18,7 @@
 
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { isElectrobunRuntime } from "../../../bridge/electrobun-runtime";
 
 /** Home-card poll cadence — matches the TodosView 15s background refresh. */
 export const TODAY_TODOS_REFRESH_INTERVAL_MS = 15_000;
@@ -42,6 +43,18 @@ export interface TodayTodo {
   title: string;
   dueDate: string;
   status: TodayTodoStatus;
+}
+
+function lifeOpsUrl(path: string): string {
+  if (
+    isElectrobunRuntime() &&
+    typeof window !== "undefined" &&
+    (window.location.protocol === "http:" ||
+      window.location.protocol === "https:")
+  ) {
+    return path;
+  }
+  return `${client.getBaseUrl()}${path}`;
 }
 
 function toStatus(value: unknown): TodayTodoStatus {
@@ -118,7 +131,7 @@ export async function fetchTodayTodos(
   callerSignal?: AbortSignal,
 ): Promise<TodayTodo[]> {
   const deadline = AbortSignal.timeout(TODAY_TODOS_REQUEST_TIMEOUT_MS);
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/todos`, {
+  const response = await fetch(lifeOpsUrl("/api/lifeops/todos"), {
     method: "GET",
     signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
   });
@@ -135,7 +148,7 @@ export async function fetchTodayTodos(
  */
 export async function completeTodayTodo(id: string): Promise<void> {
   const response = await fetch(
-    `${client.getBaseUrl()}/api/lifeops/occurrences/${encodeURIComponent(id)}/complete`,
+    lifeOpsUrl(`/api/lifeops/occurrences/${encodeURIComponent(id)}/complete`),
     {
       method: "POST",
       headers: { "content-type": "application/json" },

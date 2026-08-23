@@ -432,6 +432,7 @@ const rendererBuildAction = resolveRendererBuildAction({
   distStale: rendererDistStale,
   distExists: rendererDistExists,
   skipRequested: rendererBuildSkipRequested,
+  liveDevServer: viteDevServer,
 });
 let ranInitialViteBuild = false;
 
@@ -453,6 +454,10 @@ if (rendererBuildAction === "build") {
     stdio: "inherit",
   });
   console.log("[eliza] Renderer ready.\n");
+} else if (rendererBuildAction === "skip-hmr") {
+  console.log(
+    "\n[eliza] Skipping production renderer build — Vite HMR serves source directly.\n",
+  );
 } else if (rendererBuildAction === "skip-stale") {
   console.warn(
     "\n[eliza] Skipping STALE vite build (ELIZA_DESKTOP_RENDERER_BUILD=skip) —\n" +
@@ -1031,6 +1036,10 @@ async function launch() {
     {
       NODE_ENV: "development",
       ELECTROBUN_SKIP_CODESIGN: "1",
+      // Reserve a single deterministic native RPC listener for Eliza. The
+      // patched Electrobun dependency treats an explicit port as strict, so a
+      // stale/duplicate native app fails instead of silently moving to 50002.
+      ELECTROBUN_RPC_PORT: process.env.ELIZA_NATIVE_RPC_PORT?.trim() || "50001",
       ELIZA_ELECTROBUN_REPO_ROOT: bundleRoot,
       ...appIdentity,
       ...(desktopCefWorkaroundEnv

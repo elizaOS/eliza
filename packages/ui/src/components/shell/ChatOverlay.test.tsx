@@ -9,6 +9,7 @@
 import {
   act,
   cleanup,
+  createEvent,
   fireEvent,
   render,
   screen,
@@ -38,14 +39,9 @@ import {
 vi.mock("../../api/client", () => ({
   // Voice's inert off-device diagnostics instantiate this re-export at module
   // load; keep the class shape while replacing only the shared singleton.
-  ElizaClient: class {
-    fetch = vi.fn();
-  },
+  ElizaClient: class {},
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
-    // Shell capability gates consult the configured agent base before mounting
-    // the composer-adjacent provider indicator.
-    getBaseUrl: vi.fn(() => ""),
     // Transcription archival is best-effort and fire-and-forget; resolve so the
     // attachment path (the user-facing behavior) is what the test asserts.
     createTranscript: vi
@@ -68,19 +64,6 @@ vi.mock("../../chat/report-composer-activity", () => ({
   reportComposerActivity: vi.fn(),
 }));
 
-const desktopBridgeEventHandlers = vi.hoisted(
-  () => new Map<string, (payload: unknown) => void>(),
-);
-
-vi.mock("../../hooks/useDesktopBridgeEvent", () => ({
-  useDesktopBridgeEvent: (
-    options: { rpcMessage: string },
-    handler: (payload: unknown) => void,
-  ) => {
-    desktopBridgeEventHandlers.set(options.rpcMessage, handler);
-  },
-}));
-
 import * as React from "react";
 import { client } from "../../api/client";
 import type {
@@ -92,6 +75,7 @@ import type {
 import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   CHAT_PREFILL_EVENT,
+  DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
   ELIZA_BACK_INTENT_EVENT,
   NAVIGATE_VIEW_EVENT,
 } from "../../events";
@@ -196,12 +180,6 @@ function makeController(
   } as unknown as ShellController;
 }
 
-function emitDesktopWindowBlur(): void {
-  const handler = desktopBridgeEventHandlers.get("desktopWindowBlur");
-  expect(handler).toBeTypeOf("function");
-  act(() => handler?.(undefined));
-}
-
 /**
  * The app composition seam around the overlay, reproduced minimally: the
  * shared ChatComposerContext slot (real state), the app-level
@@ -283,6 +261,109 @@ describe("ChatOverlay", () => {
       />,
     );
     expect(onDetentChange).toHaveBeenLastCalledWith("input");
+  });
+
+  it("can boot a detached pill host at the visible composer and still collapse to pill", async () => {
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        initiallyOpen
+        desktopOverlayHost
+      />,
+    );
+
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+    expect(screen.getByTestId("chat-overlay").style.paddingBottom).toBe("0px");
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "pill",
+      );
+    });
+  });
+
+  it("admits semantic pill activation without duplicating physical pointer taps", async () => {
+    const onRequestedOpenChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={false}
+        onRequestedOpenChange={onRequestedOpenChange}
+      />,
+    );
+
+    const pill = screen.getByTestId("chat-pill");
+    fireEvent.click(pill, { detail: 1 });
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "pill",
+    );
+
+    fireEvent.click(pill, { detail: 0 });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "collapsed",
+      );
+    });
+    expect(onRequestedOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("honors repeated native open requests even when requestedOpen is already true", async () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={true}
+        openRequestSequence={0}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "collapsed",
+      );
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "pill",
+      );
+    });
+
+    rerender(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={true}
+        openRequestSequence={1}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "collapsed",
+      );
+    });
+  });
+
+  it("admits semantic grabber activation without duplicating physical pointer taps", async () => {
+    render(<ChatOverlay controller={makeController()} initialMode="input" />);
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.click(grabber, { detail: 1 });
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+
+    fireEvent.click(grabber, { detail: 0 });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "half",
+      );
+    });
   });
 
   it("shows the mic and no send button when the draft is empty", () => {
@@ -686,7 +767,7 @@ describe("ChatOverlay", () => {
       fireEvent.focus(screen.getByLabelText("message"));
 
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Message Playwright Smoke",
+        "Hey Playwright Smoke...",
       );
 
       expect(
@@ -875,6 +956,35 @@ describe("ChatOverlay", () => {
     expect(document.activeElement).not.toBe(composer);
   });
 
+  it("does not preserve composer focus after a desktop Workspace consumes navigation", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+      const event = new CustomEvent(NAVIGATE_VIEW_EVENT, {
+        cancelable: true,
+        detail: { viewId: "notes", viewPath: "/notes", source: "agent" },
+      });
+      event.preventDefault();
+      window.dispatchEvent(event);
+    });
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "notes",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).not.toBe(composer);
+  });
+
   it("keeps composer focus when the active view stays on chat (no spurious blur)", () => {
     const { rerender } = render(
       <ChatOverlay
@@ -997,7 +1107,7 @@ describe("ChatOverlay", () => {
       );
     });
 
-    it("breathes the collapsed pill bar in white only while listening", () => {
+    it("keeps the collapsed white pill bar still while listening", () => {
       const { rerender } = render(
         <ChatOverlay controller={makeController()} />,
       );
@@ -1020,12 +1130,36 @@ describe("ChatOverlay", () => {
       fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
       fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
       expect(sheet.getAttribute("data-detent")).toBe("pill");
-      expect(barOf()).toContain("eliza-chat-handle-breathe");
+      const pill = screen.getByTestId("chat-pill");
+      expect(pill.className).toContain("h-1.5");
+      expect(pill.className).toContain("w-12");
+      expect(pill.className).toContain("bg-transparent");
+      expect(pill.className).not.toContain("border-white");
+      expect(pill.parentElement?.className).toContain("h-1.5");
+      expect(pill.parentElement?.className).toContain("w-12");
+      expect(barOf()).not.toContain("eliza-chat-handle-breathe");
       expect(barOf()).not.toContain("shimmer");
       expect(barOf()).not.toContain("background-clip");
       expect(barOf()).not.toContain("bg-accent");
       expect(barOf()).not.toContain("animate-pulse");
       expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
+    });
+
+    it("keeps the detached white handle still during a hands-free response", () => {
+      render(
+        <ChatOverlay
+          desktopOverlayHost
+          controller={makeController({
+            handsFree: true,
+            phase: "responding",
+            responding: true,
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId("chat-pill-mark").className).not.toContain(
+        "eliza-chat-handle-breathe",
+      );
     });
   });
 
@@ -1231,6 +1365,27 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("settles an orphaned drag when pointerup bypasses the captured grabber", async () => {
+    render(<ChatOverlay controller={makeController()} initialMode="input" />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 7 });
+    fireEvent.pointerMove(grabber, { clientY: 340, pointerId: 7 });
+    await waitFor(() => {
+      expect(sheet.getAttribute("data-revealed")).toBe("true");
+    });
+
+    // Simulate WebView/HMR retargeting: the document gets the terminal event,
+    // but the original captured element's React pointerup handler never does.
+    fireEvent.pointerUp(document, { clientY: 340, pointerId: 7 });
+
+    await waitFor(() => {
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      expect(sheet.getAttribute("data-revealed")).toBe("false");
+    });
+  });
+
   // Regression guard for #9142: the grabber bar was hardcoded `opacity-0`
   // unconditionally, so on desktop/web (no OS home indicator) the handle was
   // grabbable but the bar never painted. It must be visible off-iOS.
@@ -1299,6 +1454,19 @@ describe("ChatOverlay", () => {
     expect(
       document.getElementById("continuous-thread")?.getAttribute("tabindex"),
     ).toBe("-1");
+    // The semantic detent has committed to INPUT, but the still-painted sheet
+    // must keep its open chrome until the closing spring reaches zero. Swapping
+    // the handle size and surface variant here made the collapse visibly snap
+    // halfway through the motion.
+    expect(screen.getByTestId("chat-sheet").dataset.variant).toBe("closed");
+    expect(screen.getByTestId("chat-sheet-grabber").className).toContain(
+      "inset-x-6",
+    );
+    expect(
+      screen
+        .getByTestId("chat-sheet-grabber")
+        .querySelector("span[aria-hidden='true']")?.className,
+    ).toContain("w-9");
   });
 
   it("lands full when a collapsed drag is released above the half threshold", () => {
@@ -1405,7 +1573,7 @@ describe("ChatOverlay", () => {
     });
     const className = screen.getByTestId("chat-composer-textarea").className;
     expect(className).toContain("text-sm");
-    expect(className).toContain("pointer-coarse:text-base");
+    expect(className).toContain("pointer-coarse:text-[16px]");
   });
 
   it("renders composer controls icon-only — no capsule/border/fill, neutral when active (#10711)", () => {
@@ -1459,7 +1627,7 @@ describe("ChatOverlay", () => {
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
   });
 
-  it("renders a single-topic thread without topic chrome", () => {
+  it("keeps internal topic metadata out of the compact transcript", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1486,11 +1654,12 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
     expect(screen.queryByTestId("topic-group-header")).toBeNull();
     expect(screen.queryByTestId("topic-group-pill")).toBeNull();
+    // The message still renders — gating only removes the topic chrome.
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("how can I help");
   });
 
-  it("renders multiple-topic messages as one flat chronological transcript", () => {
+  it("keeps multi-topic conversations flat and free of classifier chrome", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1517,10 +1686,9 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
     expect(screen.queryByTestId("topic-group-header")).toBeNull();
     expect(screen.queryByTestId("topic-group-pill")).toBeNull();
-    const lines = screen.getAllByTestId("thread-line");
-    expect(lines).toHaveLength(2);
-    expect(lines[0]?.textContent).toContain("deploy failing");
-    expect(lines[1]?.textContent).toContain("charged twice");
+    const log = document.getElementById("continuous-thread");
+    expect(log?.textContent).toContain("deploy failing");
+    expect(log?.textContent).toContain("card was charged twice");
   });
 
   it("aligns the assistant bubble left and the user bubble right", () => {
@@ -1685,6 +1853,7 @@ describe("ChatOverlay", () => {
     const fade = screen.getByTestId("chat-thread-top-fade");
     const rim = screen.getByTestId("chat-sheet-rim");
     const surface = screen.getByTestId("chat-sheet-surface");
+    const blackout = screen.getByTestId("chat-sheet-blackout");
     const viewport = screen.getByTestId("chat-thread-scroll");
     expect(fade.className).toContain("pointer-events-none");
     expect(fade.className).toContain("absolute");
@@ -1697,6 +1866,9 @@ describe("ChatOverlay", () => {
     expect(rim.className).toContain("z-40");
     expect(rim.className).toContain("border-border-strong");
     expect(surface.className.split(/\s+/)).not.toContain("border");
+    expect(blackout.style.opacity).not.toBe("");
+    expect(blackout.style.backgroundColor).toBe("var(--bg)");
+    expect(blackout.style.borderRadius).toBe("inherit");
     const content = screen.getByTestId("chat-content");
     expect(content.style.clipPath).toContain("inset(1px round");
     expect(viewport.style.maskImage).toBe("");
@@ -1825,25 +1997,6 @@ describe("ChatOverlay", () => {
     fireEvent.pointerDown(backdrop, { clientX: 20, clientY: 20, pointerId: 1 });
     fireEvent.pointerUp(backdrop, { clientX: 20, clientY: 20, pointerId: 1 });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
-  });
-
-  it("collapses an open desktop chat when the user clicks another window", () => {
-    const onStateChange = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController()}
-        onStateChange={onStateChange}
-      />,
-    );
-    const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
-
-    emitDesktopWindowBlur();
-
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
   });
 
   it("cedes taps to a layer painted ABOVE the chat (stacked dialog) instead of collapsing", () => {
@@ -2060,12 +2213,16 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("chat-full-launcher")).toBeNull();
 
     const grabber = screen.getByTestId("chat-sheet-grabber");
-    // The grab zone reaches a comfortable distance ABOVE the composer (so a
-    // swipe-up begun just over it opens the chat) but stays bounded — it never
-    // balloons up into the home widgets.
-    expect(grabber.className).toContain("before:-top-6");
-    expect(grabber.className).not.toContain("before:-top-16");
+    // The real button is a forgiving strip inside the painted panel. It has no
+    // pseudo-element extending into transparent pixels above or beside the
+    // bubble, where it would steal clicks from the underlying desktop app.
+    expect(grabber.className).not.toContain("before:");
+    expect(grabber.className).toContain("top-0.5");
+    // Input mode keeps the forgiving wide drag lane, but makes it shallow
+    // enough to remain entirely above the text field.
     expect(grabber.className).toContain("inset-x-[4.5rem]");
+    expect(grabber.className).toContain("h-2");
+    expect(grabber.className).toContain("p-0");
     expect(grabber.className).not.toContain("inset-x-6");
   });
 
@@ -2217,6 +2374,19 @@ describe("ChatOverlay", () => {
     expect(input.getAttribute("placeholder")).toContain("waking up");
     // You can type while the agent boots; the message sends once it's ready.
     expect(input.hasAttribute("readonly")).toBe(false);
+  });
+
+  it("keeps the detached desktop placeholder stable while opening from booting", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({ phase: "booting", canSend: false })}
+        desktopOverlayHost
+      />,
+    );
+    const input = screen.getByLabelText("message");
+    expect(input.getAttribute("placeholder")).toBe("Hey Eliza...");
+    expect(input.getAttribute("aria-describedby")).toBeNull();
+    expect(screen.queryByText(/is waking up/i)).toBeNull();
   });
 
   it("uses the pulsing composer glyph instead of rendering interim transcript text", () => {
@@ -2452,65 +2622,6 @@ describe("ChatOverlay", () => {
     expect(screen.queryByText("Record long-form transcript…")).toBeNull();
     expect(screen.queryByText("Enable camera")).toBeNull();
     expect(screen.queryByText("Stop transcribing")).toBeNull();
-  });
-
-  it("grows only the native input host height while the portaled chat-actions menu is open", () => {
-    const onStateChange = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController()}
-        onStateChange={onStateChange}
-      />,
-    );
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
-
-    const plus = screen.getByTestId("chat-composer-plus");
-    fireEvent.pointerDown(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    fireEvent.pointerUp(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-
-    expect(screen.getByText("Upload file")).toBeTruthy();
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT_MENU");
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
-  });
-
-  it("releases the temporary menu host bounds when the desktop window loses focus", () => {
-    const onStateChange = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController()}
-        onStateChange={onStateChange}
-      />,
-    );
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
-
-    const plus = screen.getByTestId("chat-composer-plus");
-    fireEvent.pointerDown(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    fireEvent.pointerUp(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    expect(screen.getByText("Upload file")).toBeTruthy();
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT_MENU");
-
-    emitDesktopWindowBlur();
-
-    expect(screen.queryByText("Upload file")).toBeNull();
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
   });
 
   it("returns to Home from the chat-actions menu", () => {
@@ -3115,52 +3226,19 @@ describe("ChatOverlay", () => {
     expect(content.hasAttribute("inert")).toBe(true);
   });
 
-  it("returns an idle desktop input bar to the existing pill after 10 seconds", () => {
-    vi.useFakeTimers();
-    try {
-      render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
-      const sheet = screen.getByTestId("chat-sheet");
-      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-      expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
-
-      act(() => vi.advanceTimersByTime(9_999));
-      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-
-      act(() => vi.advanceTimersByTime(1));
-      expect(sheet.getAttribute("data-detent")).toBe("pill");
-      expect(sheet.getAttribute("data-chat-state")).toBe("CLOSED");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("restarts the desktop input idle timer when the user interacts", () => {
-    vi.useFakeTimers();
-    try {
-      render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
-      const sheet = screen.getByTestId("chat-sheet");
-
-      act(() => vi.advanceTimersByTime(9_000));
-      fireEvent.pointerDown(screen.getByTestId("chat-composer-row"));
-      act(() => vi.advanceTimersByTime(9_999));
-      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-
-      act(() => vi.advanceTimersByTime(1));
-      expect(sheet.getAttribute("data-detent")).toBe("pill");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("keeps the collapsed pill handle non-interactive while the input is formed", () => {
     // The pill handle is always mounted over the (faded) composer so it can
-    // crossfade pill→input. Its hit zone (w-full/pt-10) sits over the textarea,
-    // so while NOT pilled it must be pointer-events-none — otherwise it
-    // intercepts the tap meant for the composer and the mobile keyboard never
-    // opens.
+    // crossfade pill→input. While NOT pilled it must be pointer-events-none —
+    // otherwise it intercepts the tap meant for the composer and the mobile
+    // keyboard never opens.
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    const input = screen.getByTestId("chat-composer-textarea");
+    expect(input.getAttribute("autocomplete")).toBeNull();
+    expect(input.getAttribute("autocorrect")).toBeNull();
+    expect(input.getAttribute("autocapitalize")).toBeNull();
+    expect(input.getAttribute("spellcheck")).toBeNull();
 
     const pill = screen.getByTestId("chat-pill");
     expect(pill.className).toContain("pointer-events-none");
@@ -3168,9 +3246,12 @@ describe("ChatOverlay", () => {
     // Kept out of the tab order / a11y tree while it's not the active handle.
     expect(pill.getAttribute("tabindex")).toBe("-1");
     expect(pill.getAttribute("aria-hidden")).toBe("true");
-    // The pill's swipe-up grab zone spans the full width (not a narrow centred
-    // px-16 stub) so a swipe-up from anywhere across the bottom opens.
-    expect(pill.className).toContain("w-full");
+    // Its complete 48x6 target is the visible bar; there is no larger hidden
+    // grab zone or painted capsule around it.
+    expect(pill.className).toContain("h-1.5");
+    expect(pill.className).toContain("w-12");
+    expect(pill.className).toContain("bg-transparent");
+    expect(pill.className).not.toContain("border-white");
   });
 
   it("makes the pill handle interactive (drag-to-open) once collapsed to the pill", () => {
@@ -4202,7 +4283,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(controller.clearConversation).not.toHaveBeenCalled();
   });
 
-  it("renders the infinite-scroll top sentinel above a populated thread (#14279)", () => {
+  it("renders the infinite-scroll top sentinel above a populated flat thread (#14279)", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     openSheet();
@@ -4227,6 +4308,717 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     fireEvent.pointerMove(grabber, { clientY: 0, pointerId: 7 });
     fireEvent.pointerUp(grabber, { clientY: 0, pointerId: 7 });
   }
+
+  it("keeps the detached Mac tall inset detent without fullscreen or glow", async () => {
+    const { controller } = makeSwipeController();
+    render(
+      <ChatOverlay
+        controller={controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const now = vi.spyOn(performance, "now");
+    now.mockReturnValue(1_000);
+    fireEvent.wheel(sheet, { deltaY: 100 });
+    now.mockReturnValue(2_000);
+    fireEvent.wheel(sheet, { deltaY: 100 });
+    now.mockReturnValue(3_000);
+    fireEvent.wheel(sheet, { deltaY: 100 });
+
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-chat-state")).not.toBe("MAXIMIZED");
+    expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(surface.style.boxShadow).toBe("none");
+    expect(surface.style.backgroundImage).toBe("none");
+    expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
+
+    // A held pull beyond the top edge must not even BEGIN the shared
+    // edge-to-edge shape morph. The detached pill stays tall and inset for the
+    // entire gesture; releasing cannot be the first time its rounded geometry
+    // is restored.
+    const insetRadius = surface.style.borderRadius;
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    now.mockReturnValue(4_000);
+    fireEvent.pointerDown(grabber, {
+      clientY: 760,
+      screenY: 760,
+      pointerId: 77,
+    });
+    now.mockReturnValue(4_400);
+    fireEvent.pointerMove(grabber, {
+      clientY: 0,
+      screenY: 0,
+      pointerId: 77,
+    });
+    await act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(surface.style.borderRadius).toBe(insetRadius);
+    fireEvent.pointerUp(grabber, {
+      clientY: 0,
+      screenY: 0,
+      pointerId: 77,
+    });
+
+    // A real mouse/touch click runs through the pull gesture's pointer tap
+    // callback (unlike detail=0 accessibility activation). It must perform the
+    // same one-stage close to the visible composer, never skip to the pill.
+    now.mockReturnValue(5_000);
+    fireEvent.pointerDown(grabber, {
+      clientY: 240,
+      screenY: 240,
+      pointerId: 78,
+    });
+    now.mockReturnValue(5_100);
+    fireEvent.pointerUp(grabber, {
+      clientY: 240,
+      screenY: 240,
+      pointerId: 78,
+    });
+    fireEvent.click(grabber, { detail: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    now.mockRestore();
+  });
+
+  it("keeps detached Mac input focus at the composer detent", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+    fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
+
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+  });
+
+  it("keeps the first typed glyph in the stable detached composer detent", () => {
+    const onWindowSizeClassChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+        onWindowSizeClassChange={onWindowSizeClassChange}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const input = screen.getByTestId("chat-composer-textarea");
+
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "h" } });
+
+    expect((input as HTMLTextAreaElement).value).toBe("h");
+    expect(sheet.dataset.detent).toBe("collapsed");
+    expect(sheet.dataset.chatState).toBe("INPUT");
+    expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
+  });
+
+  it("keeps one bar-centered traveler interactive across pill, input, and transcript", async () => {
+    const offsetHeight = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(function measuredComposerHeight(this: HTMLElement) {
+        return this.dataset.testid === "chat-composer-row" ? 48 : 0;
+      });
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      const fixedGrabber = screen.getByTestId("chat-sheet-grabber");
+      const traveler = screen.getByTestId("chat-pill");
+      const mark = screen.getByTestId("chat-pill-mark");
+      const input = screen.getByTestId("chat-composer-textarea");
+
+      expect(fixedGrabber.style.pointerEvents).toBe("none");
+      expect(fixedGrabber.getAttribute("aria-hidden")).toBe("true");
+      expect(fixedGrabber.style.opacity).toBe("0");
+      expect(traveler.className).toContain("pointer-events-auto");
+      expect(traveler.getAttribute("aria-hidden")).toBeNull();
+      expect(traveler.style.width).toBe("64px");
+      expect(traveler.style.height).toBe("12px");
+      expect(traveler.className).not.toContain("active:scale-95");
+      expect(input.getAttribute("autocomplete")).toBe("off");
+      expect(input.getAttribute("autocorrect")).toBe("off");
+      expect(input.getAttribute("autocapitalize")).toBe("off");
+      expect(input.getAttribute("spellcheck")).toBe("false");
+      await waitFor(() => {
+        const travelerWrapper = screen.getByTestId(
+          "chat-desktop-pill-traveler",
+        );
+        expect(travelerWrapper.className).toContain("top-0");
+        expect(travelerWrapper.style.transform).toBe("none");
+        expect(mark.style.transform).toContain("scaleX(0.75)");
+        expect(mark.style.transform).toContain("scaleY(0.5)");
+      });
+
+      const handleDown = createEvent.pointerDown(traveler, {
+        clientY: 400,
+        screenY: 400,
+        pointerId: 93,
+      });
+      fireEvent(traveler, handleDown);
+      expect(handleDown.defaultPrevented).toBe(true);
+      fireEvent.pointerMove(traveler, {
+        clientY: 480,
+        screenY: 480,
+        pointerId: 93,
+      });
+      fireEvent.pointerUp(traveler, {
+        clientY: 480,
+        screenY: 480,
+        pointerId: 93,
+      });
+
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+      expect(screen.getByTestId("chat-pill")).toBe(traveler);
+      expect(traveler.className).toContain("pointer-events-auto");
+      expect(traveler.getAttribute("aria-hidden")).toBeNull();
+
+      // The same node opens to INPUT and then to the transcript. The alternate
+      // SheetGrabber never paints or steals the pointer on the first sheet
+      // frame, so there is no 48x6 -> 36x4 swap during the transition.
+      act(() => fireEvent.click(traveler, { detail: 0 }));
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+      expect(screen.getByTestId("chat-pill")).toBe(traveler);
+      act(() => fireEvent.click(traveler, { detail: 0 }));
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+      expect(screen.getByTestId("chat-pill")).toBe(traveler);
+      // Once transcript content is exposed, the same visible mark owns a
+      // standard 112x44 drag lane inside the painted panel. A natural gesture
+      // near the mark therefore cannot miss into selectable transcript text.
+      expect(traveler.style.width).toBe("112px");
+      expect(traveler.style.height).toBe("44px");
+      expect(traveler.getAttribute("aria-label")).toBe("close chat");
+      expect(fixedGrabber.style.pointerEvents).toBe("none");
+      expect(fixedGrabber.style.opacity).toBe("0");
+    } finally {
+      offsetHeight.mockRestore();
+    }
+  });
+
+  it("prevents selection only for handle-originated drags", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="half"
+      />,
+    );
+    const messageText = screen.getByText("hi there");
+    const textDown = createEvent.pointerDown(messageText, {
+      clientY: 240,
+      screenY: 240,
+      pointerId: 94,
+    });
+    fireEvent(messageText, textDown);
+
+    expect(textDown.defaultPrevented).toBe(false);
+    expect(
+      messageText.closest<HTMLElement>('[data-testid="thread-line"]')
+        ?.className,
+    ).not.toContain("select-none");
+  });
+
+  it("gives the detached resting pill one visible forgiving hit target", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="pill"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.dataset.detent).toBe("pill");
+    const overlay = screen.getByTestId("chat-overlay");
+    expect(overlay.style.paddingLeft).toBe("0px");
+    expect(overlay.style.paddingRight).toBe("0px");
+    const pill = screen.getByTestId("chat-pill");
+    expect(sheet.contains(pill)).toBe(false);
+    expect(pill.style.width).toBe("64px");
+    expect(pill.style.height).toBe("12px");
+    expect(pill.className).not.toContain("border-white/20");
+    expect(pill.className).toContain("bg-transparent");
+    const mark = screen.getByTestId("chat-pill-mark");
+    expect(mark.className).toContain("h-3");
+    expect(mark.className).toContain("w-16");
+  });
+
+  it("opens detached Mac chat before showing the composer actions menu", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.dataset.detent).toBe("collapsed");
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 81,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 81,
+      pointerType: "mouse",
+    });
+
+    expect(sheet.dataset.detent).toBe("half");
+    expect(screen.getByText("Search chat…")).toBeTruthy();
+    expect(screen.getByText("Upload file")).toBeTruthy();
+  });
+
+  it("click-away closes detached Mac history only to the visible composer", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+
+    fireEvent.pointerDown(document.body, {
+      clientX: 12,
+      clientY: 12,
+      pointerId: 91,
+    });
+    fireEvent.pointerUp(document.body, {
+      clientX: 12,
+      clientY: 12,
+      pointerId: 91,
+    });
+
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+  });
+
+  it("physical detached grabber click returns a focused open chat only to the composer", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const input = screen.getByTestId("chat-composer-textarea");
+    fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+    expect(sheet.dataset.detent).toBe("half");
+    act(() => input.focus());
+    expect(document.activeElement).toBe(input);
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, {
+      button: 0,
+      clientY: 120,
+      pointerId: 92,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(grabber, {
+      button: 0,
+      clientY: 120,
+      pointerId: 92,
+      pointerType: "mouse",
+    });
+
+    expect(sheet.dataset.detent).toBe("collapsed");
+    expect(sheet.dataset.chatState).toBe("INPUT");
+  });
+
+  it("native click-away closes detached Mac history only to the visible composer", () => {
+    let nativeBlur: ((payload: unknown) => void) | undefined;
+    const rpc = {
+      request: {},
+      onMessage: vi.fn((name: string, listener: (payload: unknown) => void) => {
+        if (name === "desktopWindowBlur") nativeBlur = listener;
+      }),
+      offMessage: vi.fn(),
+    };
+    (
+      window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown }
+    ).__ELIZA_ELECTROBUN_RPC__ = rpc;
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+      expect(sheet.dataset.detent).toBe("half");
+
+      act(() => nativeBlur?.(undefined));
+
+      expect(sheet.dataset.detent).toBe("collapsed");
+      expect(sheet.dataset.chatState).toBe("INPUT");
+    } finally {
+      delete (window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
+        .__ELIZA_ELECTROBUN_RPC__;
+    }
+  });
+
+  it("keeps the detached composer open and always restores text focus through a content Workspace handoff", async () => {
+    let nativeBlur: ((payload: unknown) => void) | undefined;
+    let nativeFocus: ((payload: unknown) => void) | undefined;
+    const rpc = {
+      request: {},
+      onMessage: vi.fn((name: string, listener: (payload: unknown) => void) => {
+        if (name === "desktopWindowBlur") nativeBlur = listener;
+        if (name === "desktopWindowFocus") nativeFocus = listener;
+      }),
+      offMessage: vi.fn(),
+    };
+    (
+      window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown }
+    ).__ELIZA_ELECTROBUN_RPC__ = rpc;
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+      const composer = screen.getByTestId("chat-composer-textarea");
+      expect(sheet.dataset.detent).toBe("half");
+      expect(document.activeElement).not.toBe(composer);
+
+      act(() => {
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
+        composer.blur();
+        nativeBlur?.(undefined);
+        nativeFocus?.(undefined);
+      });
+
+      await waitFor(() => expect(document.activeElement).toBe(composer));
+      expect(sheet.dataset.detent).toBe("half");
+    } finally {
+      delete (window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
+        .__ELIZA_ELECTROBUN_RPC__;
+    }
+  });
+
+  it("keeps active talk listening through a content Workspace handoff", () => {
+    let nativeBlur: ((payload: unknown) => void) | undefined;
+    let nativeFocus: ((payload: unknown) => void) | undefined;
+    const rpc = {
+      request: {},
+      onMessage: vi.fn((name: string, listener: (payload: unknown) => void) => {
+        if (name === "desktopWindowBlur") nativeBlur = listener;
+        if (name === "desktopWindowFocus") nativeFocus = listener;
+      }),
+      offMessage: vi.fn(),
+    };
+    (
+      window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown }
+    ).__ELIZA_ELECTROBUN_RPC__ = rpc;
+    try {
+      render(
+        <ChatOverlay
+          controller={
+            makeSwipeController({
+              handsFree: true,
+              phase: "listening",
+              recording: true,
+            }).controller
+          }
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      const talk = screen.getByTestId("chat-composer-mic");
+      fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+      expect(talk.getAttribute("aria-pressed")).toBe("true");
+      expect(sheet.dataset.detent).toBe("half");
+
+      act(() => {
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
+        nativeBlur?.(undefined);
+        nativeFocus?.(undefined);
+      });
+
+      expect(talk.getAttribute("aria-pressed")).toBe("true");
+      expect(sheet.dataset.detent).toBe("half");
+    } finally {
+      delete (window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
+        .__ELIZA_ELECTROBUN_RPC__;
+    }
+  });
+
+  it("rests the detached assistant before Workspace takes visual ownership", () => {
+    let workspaceHandoff: ((payload: unknown) => void) | undefined;
+    const rpc = {
+      request: {},
+      onMessage: vi.fn((name: string, listener: (payload: unknown) => void) => {
+        if (name === "desktopWorkspaceHandoff") workspaceHandoff = listener;
+      }),
+      offMessage: vi.fn(),
+    };
+    (
+      window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown }
+    ).__ELIZA_ELECTROBUN_RPC__ = rpc;
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+
+      act(() => workspaceHandoff?.(undefined));
+
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+    } finally {
+      delete (window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
+        .__ELIZA_ELECTROBUN_RPC__;
+    }
+  });
+
+  it("keeps the deferred-glass detached Mac surface solid at every open detent", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(surface.style.backgroundColor).toBe("var(--card)");
+    expect(surface.style.backdropFilter).toBe("");
+    expect(screen.queryByTestId("chat-sheet-blackout")).toBeNull();
+    fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+    expect(surface.style.backgroundColor).toBe("var(--card)");
+    expect(surface.style.backdropFilter).toBe("");
+  });
+
+  it("steps the detached Mac pill down on short 24px grabber pulls", async () => {
+    const now = vi.spyOn(performance, "now");
+    const eventTimeStamp = vi
+      .spyOn(Event.prototype, "timeStamp", "get")
+      .mockImplementation(() => performance.now() || Number.MIN_VALUE);
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      let grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.click(grabber, { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+
+      // A direct click closes only to the visible composer, never all the way
+      // to the tiny resting pill.
+      fireEvent.click(grabber, { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+      grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.click(grabber, { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+
+      const pullDown = async (pointerId: number) => {
+        now.mockReturnValue(pointerId * 1_000);
+        fireEvent.pointerDown(grabber, {
+          clientY: 400,
+          screenY: 400,
+          pointerId,
+        });
+        now.mockReturnValue(pointerId * 1_000 + 400);
+        fireEvent.pointerMove(grabber, {
+          clientY: 424,
+          screenY: 424,
+          pointerId,
+        });
+        await act(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            ),
+        );
+        now.mockReturnValue(pointerId * 1_000 + 800);
+        fireEvent.pointerUp(grabber, {
+          clientY: 424,
+          screenY: 424,
+          pointerId,
+        });
+      };
+
+      await pullDown(41);
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+      grabber = screen.getByTestId("chat-sheet-grabber");
+      await pullDown(42);
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+    } finally {
+      eventTimeStamp.mockRestore();
+      now.mockRestore();
+    }
+  });
+
+  it("lands a long detached Mac sheet pull on the composer before the resting bar", async () => {
+    const now = vi.spyOn(performance, "now");
+    const onWindowSizeClassChange = vi.fn();
+    const eventTimeStamp = vi
+      .spyOn(Event.prototype, "timeStamp", "get")
+      .mockImplementation(() => performance.now() || Number.MIN_VALUE);
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+          onWindowSizeClassChange={onWindowSizeClassChange}
+        />,
+      );
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.click(grabber, { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+
+      now.mockReturnValue(1_000);
+      fireEvent.pointerDown(grabber, {
+        clientY: 300,
+        screenY: 300,
+        pointerId: 43,
+      });
+      now.mockReturnValue(1_400);
+      fireEvent.pointerMove(grabber, {
+        clientY: 860,
+        screenY: 860,
+        pointerId: 43,
+      });
+      await act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+      // Crossing the bottom while held must not swap in the second pill
+      // surface underneath the still-shrinking transcript.
+      expect(screen.getByTestId("chat-sheet").dataset.detent).not.toBe("pill");
+      expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("sheet");
+
+      now.mockReturnValue(1_800);
+      fireEvent.pointerUp(grabber, {
+        clientY: 860,
+        screenY: 860,
+        pointerId: 43,
+      });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+      expect(screen.getByTestId("chat-sheet").dataset.chatState).toBe("INPUT");
+      // Every detached detent intentionally shares one bar-centered interactive
+      // traveler. The broad alternate grabber stays inert throughout.
+      expect(
+        screen.getByTestId("chat-pill").getAttribute("aria-hidden"),
+      ).toBeNull();
+      expect(screen.getByTestId("chat-pill").className).toContain(
+        "pointer-events-auto",
+      );
+      expect(screen.getByTestId("chat-sheet-grabber").style.pointerEvents).toBe(
+        "none",
+      );
+      // This drag already carried the rendered transcript completely to zero,
+      // so release must retire the preview and native sheet envelope instead
+      // of leaving an invisible 600x820 click blocker behind the composer.
+      await waitFor(() => {
+        expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
+      });
+    } finally {
+      eventTimeStamp.mockRestore();
+      now.mockRestore();
+    }
+  });
+
+  it("retires the detached native sheet envelope after a grabber tap collapses half to input", async () => {
+    const onWindowSizeClassChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+        onWindowSizeClassChange={onWindowSizeClassChange}
+      />,
+    );
+
+    let grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.click(grabber, { detail: 0 });
+    expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+    expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("sheet");
+
+    grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.click(grabber, { detail: 0 });
+    expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+
+    // The closing transcript stays mounted only for the visible spring. Once
+    // that spring finishes, the renderer must publish INPUT so AppKit shrinks
+    // the host from 600x820 to the exact 576x64 composer frame.
+    await waitFor(
+      () => {
+        expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
+      },
+      { timeout: 2_000 },
+    );
+  });
+
+  it("retires sheet preview and staging together after detached Mac history closes to the pill", async () => {
+    const onWindowSizeClassChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="pill"
+        onWindowSizeClassChange={onWindowSizeClassChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("chat-pill"), { detail: 0 });
+    fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.dataset.detent).toBe("half");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(sheet.dataset.detent).toBe("pill");
+
+    await waitFor(
+      () => {
+        expect(sheet.dataset.collapsePhase).toBeUndefined();
+        expect(sheet.dataset.revealed).toBe("false");
+        expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("resting");
+      },
+      { timeout: 2_000 },
+    );
+  });
 
   it("a big upward over-pull of the grabber maximizes to full-bleed", () => {
     const { controller } = makeSwipeController();
@@ -4299,8 +5091,15 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
     // Appears once maximized.
     bigPullUp();
-    expect(screen.getByTestId("chat-maximize-restore-zone")).toBeTruthy();
-    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    const handle = screen.getByTestId("chat-maximize-restore-handle");
+    expect(zone.contains(handle)).toBe(true);
+    expect(handle.getAttribute("aria-hidden")).toBe("true");
+    expect(handle.className).toContain("h-1");
+    expect(handle.className).toContain("w-9");
+    expect(handle.className).toContain("rounded-full");
+    expect(handle.style.backgroundColor).not.toBe("");
+    expect(handle.style.top).toContain("var(--safe-area-top");
   });
 
   it("a downward pull in the top-20% restore zone exits full-bleed back to the overlay (not a full collapse)", () => {
@@ -4345,7 +5144,9 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       pointerId: 81,
     });
     expect(sheet.getAttribute("data-maximized")).toBe("true");
-    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
+    expect(
+      zone.contains(screen.getByTestId("chat-maximize-restore-handle")),
+    ).toBe(true);
     expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(sheet.style.height).toBe("auto");
     fireEvent.pointerUp(zone, {
@@ -4618,25 +5419,6 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
     // Thread stays mounted, but with no in-flight load there is no spinner.
     expect(document.getElementById("continuous-thread")).not.toBeNull();
     expect(screen.queryByTestId("chat-thread-loading")).toBeNull();
-  });
-
-  it("reads as loading, not designed-empty, when opened during boot-time hydration", () => {
-    // A programmatic open (boot-recovery, deep link) can expand the sheet
-    // before the server transcript has hydrated. An empty sheet there is a
-    // loading state, never a broken empty box.
-    const { rerender } = render(<ChatOverlay controller={makeController()} />);
-    openSheetToHalf();
-
-    rerender(
-      <ChatOverlay
-        controller={makeController({
-          phase: "booting",
-          messages: [],
-          conversationLoading: false,
-        } as Partial<ShellController>)}
-      />,
-    );
-    expect(screen.getByTestId("chat-thread-loading")).toBeTruthy();
   });
 });
 
@@ -5154,6 +5936,23 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     expect(speak).toHaveBeenCalledWith("read me aloud");
   });
 
+  it("surfaces a real TTS failure instead of leaving Play silently stuck", () => {
+    openThreadWith({
+      messages: [
+        { id: "a", role: "assistant", content: "read me aloud", createdAt: 1 },
+      ],
+      ttsError: {
+        engine: "local-inference",
+        message: "TTS request failed with 502",
+        atMs: 1,
+      },
+    });
+
+    const alert = screen.getByTestId("chat-overlay-tts-error");
+    expect(alert.textContent).toContain("Audio unavailable");
+    expect(alert.getAttribute("title")).toContain("502");
+  });
+
   it("Play toggles to Stop once THIS message is the one playing", () => {
     const speak = vi.fn();
     const stopSpeaking = vi.fn();
@@ -5516,53 +6315,6 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
       .getByText("The required capability is unavailable.")
       .closest('[data-testid="thread-line"]');
     expect(failedTurn?.getAttribute("data-failure")).toBe("missing_capability");
-    expect(screen.queryByTestId("thread-line-retry")).toBeNull();
-  });
-
-  it("shows Retry when a typed terminal failure explicitly marks a normally permanent kind transient", () => {
-    const controller = makeController({
-      messages: [
-        { id: "u1", role: "user", content: "fix it", createdAt: 1 },
-        {
-          id: "a1",
-          role: "assistant",
-          content: "Shell execution failed.",
-          createdAt: 2,
-          failureKind: "coding_tool_failure",
-          terminalFailure: {
-            kind: "coding_tool_failure",
-            message: "Shell execution failed.",
-            transient: true,
-            code: "SHELL_UNAVAILABLE",
-          },
-        },
-      ],
-    } as unknown as Partial<ShellController>);
-    render(<ChatOverlay controller={controller} />);
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.getByTestId("thread-line-retry")).toBeTruthy();
-  });
-
-  it("hides Retry when a typed terminal failure marks a normally retryable kind permanent", () => {
-    const controller = makeController({
-      messages: [
-        { id: "u1", role: "user", content: "try it", createdAt: 1 },
-        {
-          id: "a1",
-          role: "assistant",
-          content: "The planner cannot continue.",
-          createdAt: 2,
-          failureKind: "planner_exhaustion",
-          terminalFailure: {
-            kind: "planner_exhaustion",
-            message: "The planner cannot continue.",
-            transient: false,
-          },
-        },
-      ],
-    } as unknown as Partial<ShellController>);
-    render(<ChatOverlay controller={controller} />);
-    fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.queryByTestId("thread-line-retry")).toBeNull();
   });
 

@@ -232,7 +232,8 @@ export const DESKTOP_COMMAND_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     id: "desktop-open-workspace",
     entryPoint: "command-palette",
     label: "Open Desktop Workspace",
-    expectedAction: "Open the complete Eliza shell in a managed app window.",
+    expectedAction:
+      "Open and focus the complete singleton Eliza Workspace at its desktop section.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
@@ -240,8 +241,7 @@ export const DESKTOP_COMMAND_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     id: "desktop-open-voice-controls",
     entryPoint: "command-palette",
     label: "Open Voice Controls",
-    expectedAction:
-      "Open a detached settings window focused on the voice section.",
+    expectedAction: "Open the voice section inside the full Eliza workspace.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },

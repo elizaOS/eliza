@@ -595,41 +595,18 @@ export const NotificationRow = memo(function NotificationRow({
               collapsedOffsetPx +
               (openOffsetPx - collapsedOffsetPx) * stackPeeks.expansionProgress;
             return (
-              <button
+              <div
                 key={`${notification.id}-stack-peek-${layer}`}
-                type="button"
                 data-testid={
                   stackPeeks.testIdVisible
                     ? "notification-stack-peek"
                     : undefined
                 }
-                data-notif-control=""
                 data-notification-stack-peek=""
                 data-notification-peek-mode={stackPeeks.mode}
-                disabled={stackPeeks.disabled || promotingStack}
-                tabIndex={
-                  stackPeeks.disabled ||
-                  promotingStack ||
-                  stackPeeks.visibility < 1
-                    ? -1
-                    : undefined
-                }
-                aria-hidden={
-                  stackPeeks.disabled ||
-                  promotingStack ||
-                  stackPeeks.visibility === 0
-                    ? true
-                    : undefined
-                }
-                aria-label={`Show all ${stackPeeks.totalCount} ${stackPeeks.groupLabel} notifications`}
-                onClick={(event) => {
-                  if (stackKey && onExpandStack) {
-                    onExpandStack(stackKey, event.detail === 0);
-                  }
-                }}
+                aria-hidden
                 className={cn(
-                  "eliza-notif-glass eliza-notif-stack-peek eliza-notif-shade-transition absolute inset-0 rounded-2xl",
-                  stackPeeks.fanned && "pointer-events-none",
+                  "eliza-notif-glass eliza-notif-stack-peek eliza-notif-shade-transition pointer-events-none absolute inset-0 rounded-2xl",
                 )}
                 data-swipe-promoting={promotingStack ? "" : undefined}
                 style={{
@@ -649,7 +626,7 @@ export const NotificationRow = memo(function NotificationRow({
                     visibility={index === 0 ? stackPreviewVisibility : 0}
                   />
                 ) : null}
-              </button>
+              </div>
             );
           })
         : null}

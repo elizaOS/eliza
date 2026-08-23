@@ -396,4 +396,11 @@ describe("dev-platform supervisor wiring", () => {
     );
     expect(devPlatformSource).toContain('childNames.set(child, "api");');
   });
+
+  it("assigns the native Eliza app one strict RPC port", () => {
+    expect(devPlatformSource).toContain("ELECTROBUN_RPC_PORT:");
+    expect(devPlatformSource).toContain(
+      'process.env.ELIZA_NATIVE_RPC_PORT?.trim() || "50001"',
+    );
+  });
 });

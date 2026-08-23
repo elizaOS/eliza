@@ -7,7 +7,7 @@
  */
 import type { AgentRuntime, ModelRegistrationInfo } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { detectRuntimeModel } from "./agent-model";
 
 const ELIZA_CLOUD_PROVIDER_NAME = "elizaOSCloud";
@@ -20,6 +20,8 @@ type RuntimeOpts = {
   characterModel?: string;
   /** Provider core recorded as having served the last chat call. */
   lastServingProvider?: string;
+  settings?: Record<string, string>;
+  textProvider?: string;
 };
 
 function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
@@ -40,10 +42,19 @@ function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
       registrationOrder: 2,
     });
   }
+  if (opts.textProvider) {
+    registrations.push({
+      modelType: ModelType.TEXT_SMALL,
+      provider: opts.textProvider,
+      priority: 10,
+      registrationOrder: registrations.length + 1,
+    });
+  }
   const runtime = {
     plugins: opts.plugins ?? [],
     getModelRegistrations: () => registrations,
     getLastResolvedModelProvider: () => opts.lastServingProvider,
+    getSetting: (key: string) => opts.settings?.[key],
     character: opts.characterModel ? { model: opts.characterModel } : {},
   } as unknown as AgentRuntime;
   return runtime;
@@ -75,18 +86,22 @@ describe("detectRuntimeModel — cloud-proxy branch", () => {
     });
     const model = detectRuntimeModel(runtime, cloudProxyConfig);
     expect(model).not.toBe("elizacloud");
-    // Falls through to the plugin-name path (PROVIDER_HINTS includes none of
-    // the local-inference plugin names, so the env-signal path is reached).
-    // Without ELIZA_LOCAL_LLAMA or any provider env var set, returns undefined.
-    expect(model).toBeUndefined();
+    // A concrete registered local text handler is runtime evidence, unlike a
+    // coincidentally named feature plugin.
+    expect(model).toBe(LOCAL_INFERENCE_PROVIDER_NAME);
   });
 
-  it("falls through to a local provider plugin name when cloud handlers are absent", () => {
+  it("falls through to a registered local provider when cloud handlers are absent", () => {
     const runtime = makeRuntime({
       cloudTextHandlerRegistered: false,
-      plugins: [{ name: "anthropic" }],
+      textProvider: "anthropic",
     });
     expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe("anthropic");
+  });
+
+  it("does not mistake a non-provider Google Workspace plugin for the active model", () => {
+    const runtime = makeRuntime({ plugins: [{ name: "google" }] });
+    expect(detectRuntimeModel(runtime)).toBeUndefined();
   });
 
   it("returns elizacloud even when local handlers are also registered (cloud wins)", () => {
@@ -146,6 +161,32 @@ describe("detectRuntimeModel — non-cloud branches unaffected", () => {
     expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe(
       ELIZA_CLOUD_PROVIDER_NAME,
     );
+  });
+
+  it("reports the concrete Cerebras backend behind the OpenAI-compatible handler", () => {
+    const runtime = makeRuntime({
+      lastServingProvider: "openai",
+      settings: { ELIZA_PROVIDER: "cerebras" },
+    });
+    expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe("cerebras");
+  });
+
+  it("keeps genuine OpenAI serving truth when no compatible backend is selected", () => {
+    const runtime = makeRuntime({
+      lastServingProvider: "openai",
+      settings: { OPENAI_API_KEY: "present" },
+    });
+    expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe("openai");
+  });
+
+  it("uses the same process-environment provider fallback as the compatible handler", () => {
+    vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+    try {
+      const runtime = makeRuntime({ lastServingProvider: "openai" });
+      expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe("cerebras");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("returns the direct-transport primary model", () => {

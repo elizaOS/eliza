@@ -27,7 +27,7 @@ import {
   cloudTokenSecsRemaining,
   refreshCloudStewardSession,
 } from "./client-cloud";
-import { fetchWithCsrf } from "./csrf-client";
+import { fetchWithCsrf, requestViaAgentTransport } from "./csrf-client";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 
 // ── Shared response shapes ────────────────────────────────────────────────────
@@ -314,7 +314,15 @@ export async function authLogout(): Promise<AuthLogoutResult> {
  * Fail closed: network errors are treated as 503 so the startup shell can
  * show a backend failure instead of a misleading credential prompt.
  */
-export async function authMe(): Promise<AuthMeResult> {
+export async function authMe(options?: {
+  /**
+   * Probe the browser session without presenting the boot bearer. Desktop uses
+   * this only after its host-owned local token is rejected by `/auth/me`: the
+   * cookie may still be authoritative, while the same bearer remains required
+   * by the rest of the local agent API.
+   */
+  cookieOnlyHttp?: boolean;
+}): Promise<AuthMeResult> {
   // A serverless shared-runtime agent has no independent password/session
   // service, so this gate reflects the canonical Steward account credential.
   // It must not report synthetic success merely because the selected base has
@@ -398,14 +406,16 @@ export async function authMe(): Promise<AuthMeResult> {
   // LoginView). When the agent does return an authoritative 401,
   // its body lands in `unauthorized` and we map to AuthMeResult.
   try {
-    const viaRpc = isDesktopExternalApiBaseUrl(authBase())
+    const viaRpc = options?.cookieOnlyHttp
       ? null
-      : await invokeDesktopBridgeRequest<{
-          identity?: AuthIdentity;
-          session?: AuthSessionInfo;
-          access?: AuthAccessInfo;
-          unauthorized?: { reason: string; access: AuthAccessInfo };
-        }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
+      : isDesktopExternalApiBaseUrl(authBase())
+        ? null
+        : await invokeDesktopBridgeRequest<{
+            identity?: AuthIdentity;
+            session?: AuthSessionInfo;
+            access?: AuthAccessInfo;
+            unauthorized?: { reason: string; access: AuthAccessInfo };
+          }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
     if (viaRpc) {
       if (viaRpc.identity && viaRpc.session) {
         return {
@@ -442,7 +452,10 @@ export async function authMe(): Promise<AuthMeResult> {
 
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/me`);
+    const url = `${authBase()}/api/auth/me`;
+    res = options?.cookieOnlyHttp
+      ? await requestViaAgentTransport(url, { credentials: "include" })
+      : await fetchWithCsrf(url);
   } catch {
     return { ok: false, status: 503 };
   }

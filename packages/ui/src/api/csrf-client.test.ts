@@ -52,6 +52,7 @@ vi.mock("./native-cloud-http-transport", () => nativeCloudTransportMock);
 vi.mock("./transport", () => fetchTransportMock);
 
 import {
+  fetchSameOriginWithCsrf,
   fetchWithCsrf,
   readCsrfTokenFromCookie,
   requestViaAgentTransport,
@@ -213,6 +214,39 @@ describe("fetchWithCsrf", () => {
     expect(
       desktopTransportMock.desktopHttpTransportForUrl,
     ).toHaveBeenCalledWith("http://127.0.0.1:41337/api/apps/favorites");
+  });
+
+  it("preserves same-origin voice routes while retaining CSRF and boot auth", async () => {
+    bootConfigMock.getBootConfig.mockReturnValue({
+      apiToken: "secret-token",
+      apiBase: "http://127.0.0.1:32437",
+    });
+    setSharedBootConfig({
+      branding: {},
+      apiBase: "http://127.0.0.1:32437",
+    });
+    setCookie("eliza_csrf=voice-csrf");
+
+    await fetchSameOriginWithCsrf("/api/v1/voice/session/consent", {
+      method: "POST",
+    });
+
+    expect(
+      desktopTransportMock.desktopHttpTransportForUrl,
+    ).toHaveBeenCalledWith("/api/v1/voice/session/consent");
+    expect(fetchTransportMock.fetchAgentTransport.request).toHaveBeenCalledWith(
+      "/api/v1/voice/session/consent",
+      expect.objectContaining({
+        credentials: "include",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+      { timeoutMs: 10_000 },
+    );
+    const headers = fetchTransportMock.fetchAgentTransport.request.mock
+      .calls[0]?.[1].headers as Headers;
+    expect(headers.get("authorization")).toBe("Bearer secret-token");
+    expect(headers.get("x-eliza-csrf")).toBe("voice-csrf");
   });
 
   it("never rewrites an already-absolute URL even with an apiBase configured", async () => {

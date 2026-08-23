@@ -1,4 +1,5 @@
 /** Implements Electrobun desktop desktop tray config ts behavior for app-core shell integration. */
+import { isMacosAssistantExperience } from "./desktop-experience-config";
 import { isKioskShellMode } from "./kiosk-mode";
 
 function parseTruthy(value: string | undefined): boolean {
@@ -26,17 +27,9 @@ export function shouldCreateDesktopTray(
 }
 
 /**
- * Whether the app should launch dockless (tray-first): the pill + menu-bar
- * icon are the resting surface and the macOS Dock icon stays hidden until a
- * full window (dashboard / surface / settings / app) opens. The pill window is
- * still created at boot — it just doesn't count for the Dock (#12184).
- *
- * Default ON for macOS (#12184), the platform where the Dock/accessory model
- * and menu-bar tray make this the native, unobtrusive experience. Kept
- * macOS-only — on Windows (CEF) the UI message loop must be running before
- * setApplicationMenu(), and Linux tray support varies. Requires the tray to be
- * enabled and excludes kiosk shell mode (kiosk wants a fullscreen window). Kill
- * switch: ELIZA_DESKTOP_TRAY_FIRST=0 restores the Dock icon at rest.
+ * Whether an explicitly selected macOS assistant build should launch dockless
+ * with the menu-bar item as its recovery surface. The normal Workspace keeps
+ * its Dock presence. Windows and Linux never use this accessory policy.
  */
 export function shouldStartTrayFirst(
   env: NodeJS.ProcessEnv = process.env,
@@ -46,7 +39,11 @@ export function shouldStartTrayFirst(
   if (platform !== "darwin") {
     return false;
   }
-  if (parseFalsy(env.ELIZA_DESKTOP_TRAY_FIRST)) {
+  const trayFirst =
+    env.ELIZA_DESKTOP_TRAY_FIRST !== undefined
+      ? parseTruthy(env.ELIZA_DESKTOP_TRAY_FIRST)
+      : isMacosAssistantExperience(env, platform);
+  if (!trayFirst) {
     return false;
   }
   if (!shouldCreateDesktopTray(env)) {

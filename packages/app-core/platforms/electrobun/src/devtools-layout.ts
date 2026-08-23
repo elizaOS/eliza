@@ -13,6 +13,14 @@ export type DevtoolsRefreshWindow = {
 
 export type ScheduleFn = (callback: () => void, delayMs: number) => unknown;
 
+/** Apply the macOS inspector presentation workaround immediately before open. */
+export function prepareDevtoolsOpen(
+  platform: NodeJS.Platform,
+  prepareDetached: () => unknown,
+): void {
+  if (platform === "darwin") prepareDetached();
+}
+
 const DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS = [0, 32, 96, 220, 900] as const;
 
 /**

@@ -177,6 +177,23 @@ describe("AgentRuntime.useModel provider fallback", () => {
 		);
 	});
 
+	it("records the concrete compatible backend from the model result receipt", async () => {
+		const runtime = makeRuntime();
+		const compatibleApiOk = vi.fn(async () => ({
+			text: "served-response",
+			providerMetadata: {
+				provider: "cerebras",
+				modelName: "gpt-oss-120b",
+			},
+		}));
+		runtime.registerModel(ModelType.TEXT_LARGE, compatibleApiOk, "openai", 100);
+
+		await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hi" });
+		expect(runtime.getLastResolvedModelProvider(ModelType.TEXT_LARGE)).toBe(
+			"cerebras",
+		);
+	});
+
 	it("records the provider that actually answered after a fallback rotation (#13623)", async () => {
 		const runtime = makeRuntime();
 		const primaryFails = vi.fn(async () => {

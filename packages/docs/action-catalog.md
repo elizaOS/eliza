@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 10
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 174
+- **Registered runtime actions:** 180
 
 ## Actions
 
@@ -388,6 +388,7 @@ list. Regenerate this document after changing the registered action surface.
 - `DOORDASH` — `plugins/plugin-doordash/src/action.ts`
 - `DRAFT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `DUPLICATE_AD_CAMPAIGN` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
+- `EDIT` — `plugins/plugin-coding-tools/src/actions/direct-file-actions.ts`
 - `ENABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
 - `ENTITY` — `plugins/plugin-personal-assistant/src/actions/entity.ts`
 - `ESCALATE` — `packages/core/src/features/autonomy/action.ts`
@@ -404,6 +405,7 @@ list. Regenerate this document after changing the registered action surface.
 - `GET_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/get-app-earnings.ts`
 - `GET_COMPANION_STATUS` — `plugins/plugin-companion/src/actions.ts`
 - `GET_MEETING_TRANSCRIPT` — `plugins/plugin-meetings/src/actions/get-meeting-transcript.ts`
+- `GET_OMARCHY_STATUS` — `plugins/plugin-omarchy/src/actions/desktop.ts`
 - `GITHUB` — `plugins/plugin-github/src/actions/github.ts`
 - `HOUSEHOLD_COORDINATION` — `plugins/plugin-personal-assistant/src/actions/household-coordination.ts`
 - `HOUSEHOLD_FOOD` — `plugins/plugin-personal-assistant/src/lifeops/food/action.ts`
@@ -458,6 +460,7 @@ list. Regenerate this document after changing the registered action surface.
 - `PRIORITIZE` — `plugins/plugin-personal-assistant/src/actions/prioritize.ts`
 - `PROBE_PLUGIN_CONFIG_REQUIREMENTS` — `packages/core/src/features/plugin-config/actions/probe-plugin-config-requirements.ts`
 - `PROXY_STATUS` — `plugins/plugin-anthropic-proxy/src/actions/proxy-status.action.ts`
+- `READ` — `plugins/plugin-coding-tools/src/actions/direct-file-actions.ts`
 - `REDACT_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `REGENERATE_APP_API_KEY` — `plugins/plugin-cloud-apps/src/actions/regenerate-app-api-key.ts`
 - `REMINDERS` — `plugins/plugin-scheduling/src/shared-reminders.ts`
@@ -484,6 +487,8 @@ list. Regenerate this document after changing the registered action surface.
 - `SETTINGS` — `packages/agent/src/actions/settings-actions.ts`, `plugins/plugin-app-control/src/actions/settings.ts`
 - `SHARE_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `SHELL` — `plugins/plugin-coding-tools/src/actions/bash.ts`
+- `SHOW_ELIZA_OMARCHY_PILL` — `plugins/plugin-omarchy/src/actions/desktop.ts`
+- `SHOW_OMARCHY_NOTIFICATION` — `plugins/plugin-omarchy/src/actions/desktop.ts`
 - `SKILL` — `plugins/plugin-agent-skills/src/actions/skill.ts`
 - `SPOTIFY` — `plugins/plugin-spotify/src/actions.ts`
 - `START_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
@@ -512,6 +517,7 @@ list. Regenerate this document after changing the registered action surface.
 - `WITHDRAW_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/withdraw-app-earnings.ts`
 - `WORK_THREAD` — `plugins/plugin-personal-assistant/src/actions/work-thread.ts`
 - `WORKTREE` — `plugins/plugin-coding-tools/src/actions/worktree.ts`
+- `WRITE` — `plugins/plugin-coding-tools/src/actions/direct-file-actions.ts`
 
 ## Providers
 

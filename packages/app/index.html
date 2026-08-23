@@ -349,6 +349,30 @@
       } catch {}
     })();
   </script>
+  <script>
+    // Classify native desktop-only surfaces before the FOUC guard below. The
+    // detached assistant is transparent; managed Workspace/Settings windows
+    // use a quiet charcoal canvas. Neither should flash the full-app black
+    // branded preboot shell while its renderer bundle loads.
+    (() => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const shellMode = params.get("shellMode") || params.get("shell-mode");
+        const root = document.documentElement;
+        if (shellMode === "chat-overlay") {
+          root.setAttribute("data-chat-overlay-preboot", "true");
+          root.style.setProperty("--launch-bg", "transparent");
+          return;
+        }
+        const desktopSurface = params.get("desktopSurface");
+        if (desktopSurface === "workspace" || desktopSurface === "settings") {
+          root.setAttribute("data-desktop-managed-preboot", "true");
+          root.style.setProperty("--launch-bg", "#181a20");
+          root.style.setProperty("--launch-foreground", "#f4f5f7");
+        }
+      } catch {}
+    })();
+  </script>
   <style>
     /* FOUC guard — runs before external CSS so we use concrete values.
        The launch surface is black (#000000 — DEFAULT_BACKGROUND_COLOR, the
@@ -370,6 +394,20 @@
     body,
     #root {
       background-color: var(--launch-bg, #000000);
+    }
+
+    html[data-chat-overlay-preboot="true"],
+    html[data-chat-overlay-preboot="true"] body,
+    html[data-chat-overlay-preboot="true"] #root {
+      background: transparent;
+      background-color: transparent;
+    }
+
+    /* Managed native windows paint only their final neutral canvas until React
+       is ready. Hide the branded shell in CSS as well as removing it below so
+       no parser/first-frame timing can expose the logo or loading copy. */
+    html[data-desktop-managed-preboot="true"] .eliza-preboot-shell {
+      display: none;
     }
 
     html, body {
@@ -494,6 +532,19 @@
       const shell = document.getElementById("eliza-preboot-shell");
       const root = document.getElementById("root");
       if (!shell) return;
+      // The overlay's host is transparent from the first style calculation.
+      // Remove the full-app brand lockup synchronously; ChatOverlay owns the
+      // only visible loading/ready surface in this specialized window.
+      if (document.documentElement.getAttribute("data-chat-overlay-preboot") === "true") {
+        shell.remove();
+        return;
+      }
+      // Managed native Workspace/Settings windows use the neutral launch canvas
+      // until their real shell paints; they never show branded loading chrome.
+      if (document.documentElement.getAttribute("data-desktop-managed-preboot") === "true") {
+        shell.remove();
+        return;
+      }
       // The head classified public marketing before any CSS could paint. Drop
       // the agent-branded boot shell synchronously and leave the already-white
       // root visible until the static hero commits.

@@ -31,6 +31,20 @@ function isLegacyViewsInventory(message: ConversationMessage): boolean {
   );
 }
 
+function isLegacyInternalSchedulerDiagnostic(
+  message: ConversationMessage,
+): boolean {
+  const text = message.text.trim();
+
+  // Rows written before transcriptVisibility was persisted can contain the
+  // operator-only scheduler escalation envelope. Match only the frozen legacy
+  // prefix plus a machine error code; ordinary assistant prose about a
+  // scheduled task or runtime failure must remain visible.
+  return /^Repeated runtime failure "[A-Z][A-Z0-9_]{2,127}"(?:[.:\s]|$)/.test(
+    text,
+  );
+}
+
 /**
  * Whether a message should appear in the rendered transcript. User turns always
  * render; an assistant turn renders when it has visible text, structured
@@ -45,6 +59,7 @@ export function shouldKeepConversationMessage(
   if (message.attachments?.length) return true;
   if (message.blocks?.length) return true;
   if (isLegacyViewsInventory(message)) return false;
+  if (isLegacyInternalSchedulerDiagnostic(message)) return false;
   // A zero-token interrupted receipt carries no text but is the turn's durable
   // terminal state; hiding it would leave its user turn visually unanswered.
   if (message.interrupted === true) return true;

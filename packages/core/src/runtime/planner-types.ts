@@ -8,7 +8,7 @@ import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
 } from "../types/action-failure";
-import type { EvaluationResult } from "../types/components";
+import type { EvaluationResult, ProviderDataRecord } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
 import type {
@@ -191,7 +191,7 @@ export interface PlannerToolResult {
 	summary?: string;
 	data?: Record<string, unknown>;
 	/** Model-bound projection of `data`; complete data remains on the result. */
-	promptData?: Record<string, unknown>;
+	promptData?: ProviderDataRecord;
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
@@ -287,9 +287,10 @@ export interface PlannerLoopParams {
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	/**
-	 * A sole tool result that already completed outside the planner loop and
-	 * explicitly requested a model-authored final reply. The loop starts from
-	 * this settled step and performs only the guarded no-tools synthesis round.
+	 * A sole authoritative tool result produced outside the planner loop that
+	 * explicitly requested a model-authored final reply. Its prompt data may
+	 * describe either a completed effect or a truthful asynchronous handoff; the
+	 * loop starts from this step and performs only the guarded no-tools round.
 	 */
 	postToolReplySeed?: {
 		toolCall: PlannerToolCall;

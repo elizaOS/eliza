@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
-import { artifactStaleness, maxMtimeUnder } from "./lib/artifact-staleness.mjs";
+import { artifactStaleness } from "./lib/artifact-staleness.mjs";
 import {
   applyDesktopCloudTarget,
   resolveDesktopCloudTarget,
@@ -25,8 +25,23 @@ import {
 } from "./lib/desktop-preflight.mjs";
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
+import {
+  nativeActivityTrackerBundleBinary,
+  nativeActivityTrackerSourceBinary,
+  nativeActivityTrackerStagedBinary,
+  shouldPackageNativeActivityTracker,
+  verifyNativeActivityTrackerBinary,
+} from "./lib/native-activity-tracker-packaging.mjs";
+import {
+  nativeComputerUseBundleBinary,
+  nativeComputerUseSourceBinary,
+  nativeComputerUseStagedBinary,
+  shouldPackageNativeComputerUse,
+  verifyNativeComputerUseBinary,
+} from "./lib/native-computeruse-packaging.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
+import { workspaceRuntimePackageLooksBuilt } from "./lib/workspace-runtime-package.mjs";
 
 const ROOT = process.cwd();
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -207,9 +222,18 @@ const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
 const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-agent-orchestrator",
 );
+const PLUGIN_COMPUTERUSE_PACKAGE_DIR =
+  resolveWorkspacePluginDir("plugin-computeruse");
 const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-local-inference",
 );
+const PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR = resolveWorkspacePluginDir(
+  "plugin-native-activity-tracker",
+);
+const PLUGIN_ELIZACLOUD_PACKAGE_DIR =
+  resolveWorkspacePluginDir("plugin-elizacloud");
+const PLUGIN_OPENAI_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-openai");
+const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
 const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
@@ -921,7 +945,9 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
 
   if (
     process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES !== "1" &&
-    workspaceRuntimePackageLooksBuilt(packageName, packageDir)
+    workspaceRuntimePackageLooksBuilt(packageName, packageDir, {
+      trustDist: process.env.ELIZA_DESKTOP_TRUST_RUNTIME_PACKAGE_DIST === "1",
+    })
   ) {
     console.log(
       `[desktop-build] Reusing existing ${packageName} runtime package`,
@@ -933,51 +959,6 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
     cwd: packageDir,
     label: `Building ${packageName} runtime package`,
   });
-}
-
-function workspaceRuntimePackageMarkersPresent(packageName, distDir) {
-  if (packageName === "@elizaos/core") {
-    return (
-      fs.existsSync(path.join(distDir, "node", "index.node.js")) &&
-      fs.existsSync(path.join(distDir, "index.node.d.ts")) &&
-      fs.existsSync(path.join(distDir, "testing", "live-provider.d.ts"))
-    );
-  }
-
-  if (packageName === "@elizaos/ui") {
-    return (
-      fs.existsSync(path.join(distDir, "index.js")) &&
-      fs.existsSync(path.join(distDir, "App.js")) &&
-      fs.existsSync(path.join(distDir, "components", "pages", "LogsView.js"))
-    );
-  }
-
-  return true;
-}
-
-function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
-  const distDir = path.join(packageDir, "dist");
-  if (!fs.existsSync(distDir)) return false;
-  if (!workspaceRuntimePackageMarkersPresent(packageName, distDir))
-    return false;
-
-  // Presence of the marker files isn't enough — a dist built from older sources
-  // would silently reuse stale runtime code (issue #9309). Reuse only when the
-  // dist is at least as new as the package's src. ELIZA_DESKTOP_TRUST_RUNTIME_-
-  // PACKAGE_DIST=1 bypasses the mtime check for environments where checkout
-  // mtimes are unreliable.
-  if (process.env.ELIZA_DESKTOP_TRUST_RUNTIME_PACKAGE_DIST === "1") return true;
-  const srcDir = path.join(packageDir, "src");
-  if (!fs.existsSync(srcDir)) return true;
-  const srcMtime = maxMtimeUnder(srcDir);
-  const distMtime = maxMtimeUnder(distDir);
-  if (srcMtime > distMtime) {
-    console.log(
-      `[desktop-build] ${packageName} dist is stale (src newer than dist) — rebuilding`,
-    );
-    return false;
-  }
-  return true;
 }
 
 function ensureWorkspaceRuntimePackagesBuilt() {
@@ -992,6 +973,22 @@ function ensureWorkspaceRuntimePackagesBuilt() {
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
   );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-computeruse",
+    PLUGIN_COMPUTERUSE_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-elizacloud",
+    PLUGIN_ELIZACLOUD_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-openai",
+    PLUGIN_OPENAI_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-sql",
+    PLUGIN_SQL_PACKAGE_DIR,
+  );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/ui", UI_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-local-inference",
@@ -999,6 +996,103 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/agent", AGENT_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
+}
+
+function shouldStageNativeActivityTracker() {
+  return shouldPackageNativeActivityTracker({
+    platform: process.platform,
+    buildVariant,
+    buildProfile,
+    cloudOnly: cloudOnlyBuild,
+  });
+}
+
+function stageNativeActivityTrackerSourceBinary() {
+  if (!shouldStageNativeActivityTracker()) return;
+
+  runBun(["run", "build:swift"], {
+    cwd: PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR,
+    label: "Building native macOS activity collector",
+  });
+  const result = verifyNativeActivityTrackerBinary(
+    nativeActivityTrackerSourceBinary(ROOT),
+    { arch: process.arch, label: "generated activity collector" },
+  );
+  console.log(
+    `[desktop-build] Verified generated activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyStagedNativeActivityTrackerBinary() {
+  if (!shouldStageNativeActivityTracker()) return;
+  const result = verifyNativeActivityTrackerBinary(
+    nativeActivityTrackerStagedBinary(ROOT),
+    { arch: process.arch, label: "staged activity collector" },
+  );
+  console.log(
+    `[desktop-build] Verified staged activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyPackagedNativeActivityTrackerBinary(appBundlePath) {
+  if (!shouldStageNativeActivityTracker()) return;
+  const result = verifyNativeActivityTrackerBinary(
+    nativeActivityTrackerBundleBinary(appBundlePath),
+    { arch: process.arch, label: "packaged activity collector" },
+  );
+  console.log(
+    `[desktop-build] Verified packaged activity collector (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function shouldStageNativeComputerUse() {
+  return shouldPackageNativeComputerUse({
+    platform: process.platform,
+    buildVariant,
+    buildProfile,
+    cloudOnly: cloudOnlyBuild,
+  });
+}
+
+function stageNativeComputerUseSourceBinary() {
+  if (!shouldStageNativeComputerUse()) return;
+
+  runBun(["run", "build:swift"], {
+    cwd: PLUGIN_COMPUTERUSE_PACKAGE_DIR,
+    label: "Building native macOS Computer Use Accessibility helper",
+  });
+  const result = verifyNativeComputerUseBinary(
+    nativeComputerUseSourceBinary(ROOT),
+    {
+      arch: process.arch,
+      label: "generated Computer Use Accessibility helper",
+    },
+  );
+  console.log(
+    `[desktop-build] Verified generated Computer Use Accessibility helper (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyStagedNativeComputerUseBinary() {
+  if (!shouldStageNativeComputerUse()) return;
+  const result = verifyNativeComputerUseBinary(
+    nativeComputerUseStagedBinary(ROOT),
+    { arch: process.arch, label: "staged Computer Use Accessibility helper" },
+  );
+  console.log(
+    `[desktop-build] Verified staged Computer Use Accessibility helper (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
+}
+
+function verifyPackagedNativeComputerUseBinary(appBundlePath) {
+  if (!shouldStageNativeComputerUse()) return;
+  const result = verifyNativeComputerUseBinary(
+    nativeComputerUseBundleBinary(appBundlePath),
+    { arch: process.arch, label: "packaged Computer Use Accessibility helper" },
+  );
+  console.log(
+    `[desktop-build] Verified packaged Computer Use Accessibility helper (${result.arch}, ${result.size} bytes, mode=${result.mode.toString(8)})`,
+  );
 }
 
 function desktopRendererBuildEnv() {
@@ -1430,6 +1524,8 @@ function stageDesktopBuild() {
 
   ensureRootRuntimeBundle();
   ensureWorkspaceRuntimePackagesBuilt();
+  stageNativeComputerUseSourceBinary();
+  stageNativeActivityTrackerSourceBinary();
 
   // Build + bundle the fused local-inference native lib so the packaged app
   // serves local AI out of the box. Gated (see stageDesktopFusedLib) so plain
@@ -1445,6 +1541,8 @@ function stageDesktopBuild() {
   });
 
   copyRuntimeNodeModulesWithRetry();
+  verifyStagedNativeComputerUseBinary();
+  verifyStagedNativeActivityTrackerBinary();
 
   // `bun install` for these workspaces can emit benign EEXIST errors when
   // file: deps overlap with manually-linked @elizaos/* symlinks. The links
@@ -1739,6 +1837,12 @@ function packageDesktopBuild() {
   }
 
   hardenPackagedLinuxArtifacts();
+
+  if (process.platform === "darwin") {
+    const appBundlePath = findLatestMacAppBundle();
+    verifyPackagedNativeComputerUseBinary(appBundlePath);
+    verifyPackagedNativeActivityTrackerBinary(appBundlePath);
+  }
 
   // The legacy compatibility path (APP_DIR/electrobun) is not read by any
   // production code — only docs and this mirror fn reference it (the inno

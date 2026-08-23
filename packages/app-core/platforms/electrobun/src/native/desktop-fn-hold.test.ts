@@ -87,11 +87,14 @@ function createManager() {
   });
   const fnPushes = () =>
     pushes.filter((entry) => entry.message === "desktopFnHoldChanged");
-  return { manager, fnPushes };
+  const shortcutPushes = () =>
+    pushes.filter((entry) => entry.message === "desktopShortcutPressed");
+  return { manager, fnPushes, shortcutPushes };
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.clearAllMocks();
   fnMock.startResult = "started";
   fnMock.queue = [];
   fnMock.healthy = true;
@@ -178,6 +181,38 @@ darwinOnly("DesktopManager fn-hold push-to-talk bridge", () => {
     vi.advanceTimersByTime(20);
     expect(fnPushes()).toHaveLength(1);
     expect(fnPushes()[0]?.payload).toEqual({ held: true, cancelled: false });
+    await manager.stopFnHoldMonitor();
+  });
+
+  it("toggles the existing window natively for each drained Option chord", async () => {
+    const { manager, fnPushes, shortcutPushes } = createManager();
+    const window = {
+      ptr: 1,
+      on: vi.fn(),
+      off: vi.fn(),
+      isMinimized: vi.fn(() => false),
+      isMaximized: vi.fn(() => false),
+      focus: vi.fn(),
+    };
+    manager.setMainWindow(
+      window as unknown as Parameters<typeof manager.setMainWindow>[0],
+    );
+    await manager.startFnHoldMonitor();
+
+    fnMock.queue = ["both-options"];
+    await vi.advanceTimersByTimeAsync(20);
+
+    const { orderOut, makeKeyAndOrderFront } = await import(
+      "./mac-window-effects"
+    );
+    expect(orderOut).toHaveBeenCalledTimes(1);
+
+    fnMock.queue = ["both-options"];
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(makeKeyAndOrderFront).toHaveBeenCalledTimes(1);
+    expect(shortcutPushes()).toHaveLength(0);
+    expect(fnPushes()).toHaveLength(0);
     await manager.stopFnHoldMonitor();
   });
 

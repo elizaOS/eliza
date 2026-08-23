@@ -26,6 +26,16 @@ type DetachedWindowSurface =
   | "cloud";
 
 interface WindowRpcDesktop {
+  closeWindow(): Promise<void>;
+  openWorkspace(options?: {
+    routePath?: string;
+    maximize?: boolean;
+    presentation?: "standard" | "content";
+  }): void;
+  dismissWorkspace(): {
+    closed: boolean;
+    reason: "closed" | "already-closed";
+  };
   openSettings(tabHint?: string): void;
   openSurfaceWindow(
     surface: DetachedWindowSurface,
@@ -63,11 +73,38 @@ export function normalizeRendererRoutePath(path: string): string {
 export function buildWindowRpcHandlers({
   desktop,
   appName,
+  closeCurrentWindow,
 }: {
   desktop: WindowRpcDesktop;
   appName: string;
+  closeCurrentWindow?: () => void | Promise<void>;
 }) {
   return {
+    desktopCloseWindow: async () => {
+      if (closeCurrentWindow) {
+        await closeCurrentWindow();
+        return;
+      }
+      await desktop.closeWindow();
+    },
+    desktopOpenWorkspaceWindow: async (
+      params:
+        | {
+            routePath?: string;
+            maximize?: boolean;
+            presentation?: "standard" | "content";
+          }
+        | undefined,
+    ) => {
+      desktop.openWorkspace({
+        ...(params?.routePath
+          ? { routePath: normalizeRendererRoutePath(params.routePath) }
+          : {}),
+        maximize: params?.maximize === true,
+        presentation: params?.presentation ?? "standard",
+      });
+    },
+    desktopDismissWorkspaceWindow: async () => desktop.dismissWorkspace(),
     desktopOpenSettingsWindow: async (
       params: { tabHint?: string } | undefined,
     ) => {

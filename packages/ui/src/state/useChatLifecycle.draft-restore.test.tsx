@@ -7,7 +7,13 @@
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { Conversation, FirstRunOptions, ImageAttachment } from "../api";
+import {
+  type AgentStatus,
+  type Conversation,
+  client,
+  type FirstRunOptions,
+  type ImageAttachment,
+} from "../api";
 import type { AppState, LifecycleAction } from "./internal";
 import {
   type UseChatLifecycleDeps,
@@ -146,5 +152,41 @@ describe("useChatLifecycle draft restoration", () => {
     expect(state.calls).toEqual(["interrupt", "reset", "text", "images"]);
     expect(state.text).toBe("queued message");
     expect(state.images).toEqual([image]);
+  });
+
+  it("releases the restart lifecycle lock before optional hydration settles", async () => {
+    const state = {
+      text: "",
+      images: [] as ImageAttachment[],
+      calls: [] as string[],
+    };
+    const deps = makeDeps({ text: "", images: [] }, state);
+    const runningStatus: AgentStatus = {
+      state: "running",
+      agentName: "Eliza",
+      model: undefined,
+      uptime: undefined,
+      startedAt: undefined,
+      port: 32437,
+      canRespond: true,
+    };
+    vi.spyOn(client, "restartAndWait").mockResolvedValueOnce(runningStatus);
+    deps.hydrateInitialConversationState = vi.fn(
+      () => new Promise<string | null>(() => {}),
+    );
+
+    const { result } = renderHook(() => useChatLifecycle(deps));
+
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+
+    expect(deps.setAgentStatus).toHaveBeenLastCalledWith(runningStatus);
+    expect(deps.finishLifecycleAction).toHaveBeenCalledTimes(1);
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      "Agent restarted.",
+      "success",
+      2400,
+    );
   });
 });

@@ -12,9 +12,9 @@ export function PermissionsCombinedSection(): React.JSX.Element {
   return (
     <div className="flex flex-col gap-8">
       <PermissionsSection />
-      <section aria-label="App permissions">
+      <section aria-label="App sandbox access">
         <h2 className="mb-3 text-sm font-semibold text-txt-strong">
-          App permissions
+          App sandbox access
         </h2>
         <AppPermissionsSection />
       </section>

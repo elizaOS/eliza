@@ -68,4 +68,28 @@ describe("resolveRendererBuildAction", () => {
       }),
     ).toBe("build");
   });
+
+  it("skips the production bundle when the Vite HMR server owns rendering", () => {
+    expect(
+      resolveRendererBuildAction({
+        forceRenderer: false,
+        distStale: true,
+        distExists: false,
+        skipRequested: false,
+        liveDevServer: true,
+      }),
+    ).toBe("skip-hmr");
+  });
+
+  it("still honors an explicit forced production build in HMR mode", () => {
+    expect(
+      resolveRendererBuildAction({
+        forceRenderer: true,
+        distStale: true,
+        distExists: false,
+        skipRequested: false,
+        liveDevServer: true,
+      }),
+    ).toBe("build");
+  });
 });

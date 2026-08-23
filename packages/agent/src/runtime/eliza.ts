@@ -77,6 +77,7 @@ import {
   isLikelyOpenAiTextModel,
   setEnvIfMissing,
 } from "./provider-model-defaults.ts";
+import { hydrateSelectedProviderCredentialFromVault } from "./provider-vault-credential.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
 import { registerFallbackActionIfAbsent } from "./runtime-action-ownership.ts";
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
@@ -4015,6 +4016,32 @@ function ensureChatLogListenerAttached(): void {
 }
 
 /**
+ * Builds the serving topology selected by an embedded desktop host without
+ * mutating the persisted remote target that remains the user's durable intent.
+ *
+ * @internal Exported for embedded-host fallback coverage.
+ */
+export function applyActiveHostRuntimeMode(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): ElizaConfig {
+  const activeMode = env.ELIZA_ACTIVE_API_RUNTIME_MODE?.trim().toLowerCase();
+  if (activeMode !== "local" && activeMode !== "local-only") return config;
+
+  const effectiveMode =
+    activeMode === "local-only" || config.cloud?.enabled === false
+      ? "local-only"
+      : "local";
+  const activeConfig = structuredClone(config);
+  activeConfig.deploymentTarget = { runtime: "local" };
+  if (effectiveMode === "local-only") {
+    activeConfig.cloud = { ...activeConfig.cloud, enabled: false };
+  }
+  env.ELIZA_ACTIVE_API_RUNTIME_MODE = effectiveMode;
+  return activeConfig;
+}
+
+/**
  * Start the elizaOS runtime with Eliza's configuration.
  *
  * In headless mode the runtime is returned instead of entering the
@@ -4071,6 +4098,11 @@ export async function startEliza(
       }
     }
   }
+
+  const persistedConfig = config;
+  config = applyActiveHostRuntimeMode(config);
+  const installRepairPersistenceConfig =
+    config === persistedConfig ? undefined : persistedConfig;
 
   // 1a. Local / sandbox character override — must run before first-run setup
   //     so character.json (or ELIZA_AGENT_CHARACTER_JSON) sets the agent name
@@ -4516,6 +4548,40 @@ export async function startEliza(
     }
   }
 
+  // Finder/LaunchServices does not inherit a repository dotenv file. The
+  // durable direct-provider selection lives in serviceRouting and its secret
+  // lives in protected Vault, so project only that selected credential into
+  // AgentRuntime.settings. Never place a Vault-only credential in process.env:
+  // unrelated host commands inherit that global environment.
+  // Multi-profile credentials above remain authoritative because an existing
+  // process value is never overwritten.
+  const providerCredentialsOverlay: Record<string, string> = {};
+  if (
+    preferredProviderId &&
+    preferredProviderId !== "elizacloud" &&
+    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1"
+  ) {
+    const providerCredential = await hydrateSelectedProviderCredentialFromVault(
+      {
+        providerId: preferredProviderId,
+        vault: importAppCoreRuntime().sharedVault(),
+        settingsOverlay: providerCredentialsOverlay,
+      },
+    );
+    if (providerCredential.status === "hydrated") {
+      logger.info(
+        `[provider-vault] hydrated selected provider=${providerCredential.providerId} env=${providerCredential.envKey} key=${providerCredential.vaultKey}`,
+      );
+    } else if (
+      providerCredential.status === "missing" ||
+      providerCredential.status === "unavailable"
+    ) {
+      logger.warn(
+        `[provider-vault] selected provider=${providerCredential.providerId} credential=${providerCredential.status} env=${providerCredential.envKey}`,
+      );
+    }
+  }
+
   // Provider plugins snapshot model env during the blocking resolution wave.
   // Seed set-if-missing defaults only after subscription, account-pool, and
   // per-agent vault credentials have all been applied, but before provider
@@ -4581,6 +4647,7 @@ export async function startEliza(
     quiet: preOnboarding,
     phase: initialPluginResolutionPhase,
     forceIncludePluginNames: initialForceIncludePluginNames,
+    installRepairPersistenceConfig,
   });
   bootTimer.lap(`resolve-plugins-${initialPluginResolutionPhase}-import`);
   // #10203: exercise a fault right after the blocking plugin set resolves.
@@ -4855,6 +4922,7 @@ export async function startEliza(
       bundledSkillsDir,
       workspaceSkillsDir,
       connectorSecretsOverlay,
+      providerCredentialsOverlay,
     }),
   });
   installRuntimeMethodBindings(runtime);
@@ -5737,6 +5805,7 @@ export async function startEliza(
     const deferredResolvedPlugins = await resolvePlugins(config, {
       quiet: preOnboarding,
       phase: "deferred",
+      installRepairPersistenceConfig,
     });
     bootTimer.lap("deferred:resolve-plugins-import");
     return deferredResolvedPlugins;
@@ -5893,19 +5962,6 @@ export async function startEliza(
     abortSignal.throwIfAborted();
     await seedBundledDocumentsIfEnabled();
     abortSignal.throwIfAborted();
-    // First-boot onboarding notifications (tour / help / connect calendar) —
-    // once per agent; dismissals are permanent (guard flag, not the rows).
-    try {
-      const { seedOnboardingNotifications } = await import(
-        "./onboarding-notifications.ts"
-      );
-      await seedOnboardingNotifications(runtime);
-    } catch (err) {
-      if (abortSignal.aborted) throw err;
-      logger.warn(
-        `[eliza] Failed to seed onboarding notifications: ${formatError(err)}`,
-      );
-    }
     // Wallet balance-delta watcher (spec §E item 3, #16943): the demoted home
     // wallet card's producer-side replacement — a structural ScheduledTask on
     // the one scheduling spine that notifies on material total-balance moves.

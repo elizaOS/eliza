@@ -16,6 +16,7 @@ import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/shared/elizacloud";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,
@@ -950,6 +951,26 @@ export class ElizaClient {
   }
 
   get apiToken(): string | null {
+    // The Electrobun host owns the credential for the API base it injects into
+    // the renderer. That credential can rotate when the supervised agent
+    // restarts while this WebView (and this client singleton) stays alive. A
+    // previously explicit token must not shadow the newer host credential for
+    // the same base forever: that produced healthy direct API/SSE requests but
+    // 401s from the packaged renderer after a runtime handoff. Keep explicit
+    // tokens authoritative everywhere else (ordinary web, Cloud, or a
+    // separately selected target).
+    if (isElectrobunRuntime()) {
+      const boot = getBootConfig();
+      const bootToken = boot.apiToken?.trim();
+      const bootBase = normalizeBaseUrl(boot.apiBase);
+      if (
+        bootToken &&
+        bootBase &&
+        bootBase === normalizeBaseUrl(this.baseUrl)
+      ) {
+        return bootToken;
+      }
+    }
     if (this._token) return this._token;
     const bootToken = getBootConfig().apiToken;
     if (typeof bootToken === "string" && bootToken.trim())
@@ -2111,7 +2132,19 @@ export class ElizaClient {
             .replace(/^wss:\/\//i, "https://")
             .replace(/^ws:\/\//i, "http://");
         const injectedOrigin = toHttpOrigin(new URL(wsBase).origin);
-        if (injectedOrigin === window.location.origin) {
+        const explicitBaseIsDesktopLoopback = (() => {
+          if (!isElectrobunRuntime() || !this.baseUrl) return false;
+          const hostname = new URL(this.baseUrl).hostname.toLowerCase();
+          return (
+            hostname === "127.0.0.1" ||
+            hostname === "localhost" ||
+            hostname === "::1"
+          );
+        })();
+        if (
+          injectedOrigin === window.location.origin &&
+          !explicitBaseIsDesktopLoopback
+        ) {
           wsBase = undefined; // fall through to the explicit client base
         }
       } catch {

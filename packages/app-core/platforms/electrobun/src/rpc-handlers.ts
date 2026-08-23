@@ -399,9 +399,11 @@ async function configureRemoteTargetForCurrentLoopback(): Promise<void> {
 export function buildBunRpcHandlers({
   sendToWebview,
   shellControllerEndpoint,
+  closeCurrentWindow,
 }: {
   sendToWebview: SendToWebview;
   shellControllerEndpoint?: ShellControllerEndpoint;
+  closeCurrentWindow?: () => void | Promise<void>;
 }): BunRpcHandlers {
   const agent = getAgentManager();
   const camera = getCameraManager();
@@ -869,6 +871,12 @@ export function buildBunRpcHandlers({
     desktopSetBottomBarExpanded: async (
       params: Parameters<typeof desktop.setBottomBarExpanded>[0],
     ) => desktop.setBottomBarExpanded(params),
+    desktopSetBottomBarSize: async (
+      params: Parameters<typeof desktop.setBottomBarSize>[0],
+    ) => desktop.setBottomBarSize(params),
+    desktopSetBottomBarInteractiveSize: async (
+      params: Parameters<typeof desktop.setBottomBarInteractiveSize>[0],
+    ) => desktop.setBottomBarInteractiveSize(params),
     desktopSetBottomBarSurfaceState: async (
       params: Parameters<typeof desktop.setBottomBarSurfaceState>[0],
     ) => desktop.setBottomBarSurfaceState(params),
@@ -876,7 +884,6 @@ export function buildBunRpcHandlers({
     desktopUnminimizeWindow: async () => desktop.unminimizeWindow(),
     desktopMaximizeWindow: async () => desktop.maximizeWindow(),
     desktopUnmaximizeWindow: async () => desktop.unmaximizeWindow(),
-    desktopCloseWindow: async () => desktop.closeWindow(),
     desktopShowWindow: async () => desktop.showWindow(),
     desktopHideWindow: async () => desktop.hideWindow(),
     desktopFocusWindow: async () => desktop.focusWindow(),
@@ -943,6 +950,7 @@ export function buildBunRpcHandlers({
     ...buildWindowRpcHandlers({
       desktop,
       appName: getBrandConfig().appName,
+      closeCurrentWindow,
     }),
     ...buildDynamicViewRpcHandlers({
       registry: dynamicViewRegistry,

@@ -8,14 +8,20 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { NavigateViewDetail } from "../../../app-navigate-view";
+import { DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT } from "../../../events";
 import { useBarSurfaceWindows } from "../useBarSurfaceWindows";
 
 afterEach(() => cleanup());
 
 function dispatchNavigate(detail?: NavigateViewDetail) {
-  return act(() => {
-    window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail }));
+  const event = new CustomEvent("eliza:navigate:view", {
+    detail,
+    cancelable: true,
   });
+  act(() => {
+    window.dispatchEvent(event);
+  });
+  return event;
 }
 
 type OpenWindowArg = {
@@ -29,30 +35,37 @@ function setup(isDesktop = true) {
   const openWindow = vi.fn<
     (opts: OpenWindowArg) => Promise<{ id: string } | null>
   >(async () => ({ id: "w1" }));
-  const openLauncher = vi.fn<() => Promise<{ id: string } | null>>(
-    async () => ({
-      id: "launcher",
-    }),
-  );
+  const openWorkspace = vi.fn<
+    (options?: {
+      routePath?: string;
+      maximize?: boolean;
+      presentation?: "standard" | "content";
+    }) => Promise<void>
+  >(async () => undefined);
+  const dismissWorkspace = vi.fn(async () => ({
+    closed: true,
+    reason: "closed" as const,
+  }));
   renderHook(() =>
     useBarSurfaceWindows({
       openWindow,
-      openLauncher,
+      openWorkspace,
+      dismissWorkspace,
       isDesktop: () => isDesktop,
     }),
   );
-  return { openWindow, openLauncher };
+  return { dismissWorkspace, openWindow, openWorkspace };
 }
 
 describe("useBarSurfaceWindows", () => {
   it("opens a dedicated window for a view navigation", async () => {
-    const { openWindow, openLauncher } = setup();
+    const { openWindow, openWorkspace } = setup();
     await dispatchNavigate({
       viewId: "calendar",
       viewLabel: "Calendar",
       action: "open-window",
     });
-    expect(openLauncher).not.toHaveBeenCalled();
+    expect(openWorkspace).not.toHaveBeenCalled();
     expect(openWindow).toHaveBeenCalledTimes(1);
     expect(openWindow.mock.calls[0][0]).toMatchObject({
       slug: "calendar",
@@ -61,40 +74,70 @@ describe("useBarSurfaceWindows", () => {
     });
   });
 
-  it("summons the launcher for launcher/views ids", async () => {
-    const { openWindow, openLauncher } = setup();
+  it("opens launcher/views ids inside the maximized Workspace", async () => {
+    const { openWindow, openWorkspace } = setup();
     await dispatchNavigate({ viewId: "launcher" });
     await dispatchNavigate({ viewId: "views-manager" });
     expect(openWindow).not.toHaveBeenCalled();
-    expect(openLauncher).toHaveBeenCalledTimes(2);
-  });
-
-  it("honours an explicit view path and alwaysOnTop", async () => {
-    const { openWindow } = setup();
-    await dispatchNavigate({
-      viewId: "phone",
-      viewPath: "/phone",
-      alwaysOnTop: true,
-    });
-    expect(openWindow.mock.calls[0][0]).toMatchObject({
-      path: "/phone",
-      alwaysOnTop: true,
+    expect(openWorkspace).toHaveBeenCalledTimes(2);
+    expect(openWorkspace).toHaveBeenLastCalledWith({
+      routePath: "/views",
+      maximize: true,
+      presentation: "content",
     });
   });
 
-  it("ignores close actions and detail-less events", async () => {
-    const { openWindow, openLauncher } = setup();
-    await dispatchNavigate({ action: "close", viewId: "calendar" });
+  it("opens a normal view path inside the maximized Workspace", async () => {
+    const { openWindow, openWorkspace } = setup();
+    const contentHandoff = vi.fn();
+    window.addEventListener(
+      DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+      contentHandoff,
+      { once: true },
+    );
+    const event = await dispatchNavigate({
+      viewId: "notes",
+      viewPath: "/notes",
+    });
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(openWorkspace).toHaveBeenCalledWith({
+      routePath: "/notes",
+      maximize: true,
+      presentation: "content",
+    });
+    expect(event.defaultPrevented).toBe(true);
+    expect(contentHandoff).toHaveBeenCalledTimes(1);
+  });
+
+  it("dismisses the Workspace for close actions and ignores detail-less events", async () => {
+    const { dismissWorkspace, openWindow, openWorkspace } = setup();
+    const contentHandoff = vi.fn();
+    window.addEventListener(
+      DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+      contentHandoff,
+    );
+    const event = await dispatchNavigate({
+      action: "close",
+      viewId: "calendar",
+    });
+    await dispatchNavigate({ action: "close-all", viewId: "__all__" });
     await dispatchNavigate(undefined);
     expect(openWindow).not.toHaveBeenCalled();
-    expect(openLauncher).not.toHaveBeenCalled();
+    expect(openWorkspace).not.toHaveBeenCalled();
+    expect(dismissWorkspace).toHaveBeenCalledTimes(2);
+    expect(contentHandoff).toHaveBeenCalledTimes(2);
+    expect(event.defaultPrevented).toBe(true);
+    window.removeEventListener(
+      DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+      contentHandoff,
+    );
   });
 
   it("is inert off the desktop runtime", async () => {
-    const { openWindow, openLauncher } = setup(false);
+    const { openWindow, openWorkspace } = setup(false);
     await dispatchNavigate({ viewId: "calendar", action: "open-window" });
     await dispatchNavigate({ viewId: "launcher" });
     expect(openWindow).not.toHaveBeenCalled();
-    expect(openLauncher).not.toHaveBeenCalled();
+    expect(openWorkspace).not.toHaveBeenCalled();
   });
 });

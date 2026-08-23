@@ -8,16 +8,21 @@ import {
   type NavigateViewDetail,
   pathForNavigateViewDetail,
 } from "../../app-navigate-view";
-import {
-  openDesktopAppWindow,
-  openDesktopLauncherWindow,
-} from "../../bridge/electrobun-rpc";
+import { openDesktopAppWindow } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { NAVIGATE_VIEW_EVENT } from "../../events";
+import {
+  DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+  NAVIGATE_VIEW_EVENT,
+} from "../../events";
+import {
+  dismissDesktopWorkspaceWindow,
+  openDesktopWorkspaceWindow,
+} from "../../utils/desktop-workspace";
 
 /** Detail shape used by views/launcher whose own window should open. */
 type OpenWindowFn = typeof openDesktopAppWindow;
-type OpenLauncherFn = typeof openDesktopLauncherWindow;
+type OpenWorkspaceFn = typeof openDesktopWorkspaceWindow;
+type DismissWorkspaceFn = typeof dismissDesktopWorkspaceWindow;
 
 /** View ids that resolve to the launcher/springboard rather than a single view. */
 const LAUNCHER_VIEW_IDS: ReadonlySet<string> = new Set([
@@ -31,39 +36,72 @@ const LAUNCHER_VIEW_IDS: ReadonlySet<string> = new Set([
  * Phase 3). The bar renders only the chat overlay — it has no full-app tab
  * system — so a "show a view" / "show the launcher" intent (the
  * `eliza:navigate:view` bus the agent + slash commands already drive) must open
- * a dedicated desktop window instead of switching an inline tab.
+ * the singleton maximized Workspace at the requested route instead of
+ * switching an inline tab. An explicit `open-window` action retains the utility-window
+ * escape hatch.
  *
- * The launcher is summoned as its own window; it is never the resting surface.
  * No-op off desktop (the bar shell only runs on the Electrobun desktop).
  *
- * The `openWindow` / `openLauncher` deps are injectable for tests.
+ * The bridge deps are injectable for tests.
  */
 export function useBarSurfaceWindows(options?: {
   openWindow?: OpenWindowFn;
-  openLauncher?: OpenLauncherFn;
+  openWorkspace?: OpenWorkspaceFn;
+  dismissWorkspace?: DismissWorkspaceFn;
   isDesktop?: () => boolean;
 }): void {
   const openWindow = options?.openWindow ?? openDesktopAppWindow;
-  const openLauncher = options?.openLauncher ?? openDesktopLauncherWindow;
+  const openWorkspace = options?.openWorkspace ?? openDesktopWorkspaceWindow;
+  const dismissWorkspace =
+    options?.dismissWorkspace ?? dismissDesktopWorkspaceWindow;
   const isDesktop = options?.isDesktop ?? isElectrobunRuntime;
 
   const openWindowRef = React.useRef(openWindow);
   openWindowRef.current = openWindow;
-  const openLauncherRef = React.useRef(openLauncher);
-  openLauncherRef.current = openLauncher;
+  const openWorkspaceRef = React.useRef(openWorkspace);
+  openWorkspaceRef.current = openWorkspace;
+  const dismissWorkspaceRef = React.useRef(dismissWorkspace);
+  dismissWorkspaceRef.current = dismissWorkspace;
 
   React.useEffect(() => {
     if (typeof window === "undefined" || !isDesktop()) return;
     const onNavigate = (event: Event): void => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
-      if (!detail || detail.action === "close" || detail.action === "close-all")
+      if (!detail) return;
+      if (detail.action === "close" || detail.action === "close-all") {
+        event.preventDefault();
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
+        void dismissWorkspaceRef.current();
         return;
+      }
       if (detail.viewId && LAUNCHER_VIEW_IDS.has(detail.viewId)) {
-        void openLauncherRef.current();
+        event.preventDefault();
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
+        void openWorkspaceRef.current({
+          routePath: "/views",
+          maximize: true,
+          presentation: "content",
+        });
         return;
       }
       const path = pathForNavigateViewDetail(detail);
       if (!path) return;
+      if (detail.action !== "open-window") {
+        event.preventDefault();
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
+        void openWorkspaceRef.current({
+          routePath: path,
+          maximize: true,
+          presentation: "content",
+        });
+        return;
+      }
       void openWindowRef.current({
         slug: detail.viewId,
         title: detail.viewLabel ?? detail.viewId ?? "View",
@@ -71,7 +109,11 @@ export function useBarSurfaceWindows(options?: {
         alwaysOnTop: detail.alwaysOnTop === true,
       });
     };
-    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
-    return () => window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    // Capture before App's ordinary in-shell navigation listener. Consuming a
+    // Workspace handoff keeps the detached host parked on /chat instead of
+    // navigating both WebViews and re-focusing the hidden pill composer.
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate, true);
+    return () =>
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate, true);
   }, [isDesktop]);
 }

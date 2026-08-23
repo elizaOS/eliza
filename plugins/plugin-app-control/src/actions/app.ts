@@ -35,6 +35,8 @@ import { runList } from "./app-list.js";
 import { runLoadFromDirectory } from "./app-load-from-directory.js";
 import { runRelaunch } from "./app-relaunch.js";
 import { runStop } from "./app-stop.js";
+import { createViewsClient } from "./views-client.js";
+import { requestWorkspaceDismissal } from "./workspace-dismiss.js";
 
 export type AppMode =
 	| "launch"
@@ -69,6 +71,24 @@ const PLUGIN_ONLY = /\bplugin\b/i;
 const APP_NOUN = /\b(app|apps|application|applications|mini)\b/i;
 const LOAD_FROM_DIR =
 	/\b(load|register|import|scan)\b.*\b(directory|folder|dir|path)\b/i;
+
+const ELIZA_WORKSPACE_TARGET = /^(?:eliza(?:os)?(?:\s+app)?|workspace)$/i;
+
+function isElizaWorkspaceDismissRequest(
+	text: string,
+	options?: Record<string, unknown>,
+): boolean {
+	const explicitTarget =
+		readStringOption(options, "app") ??
+		readStringOption(options, "name") ??
+		readStringOption(options, "target");
+	if (explicitTarget && ELIZA_WORKSPACE_TARGET.test(explicitTarget.trim())) {
+		return true;
+	}
+	return /\b(?:close|hide|quit|exit)\s+(?:the\s+)?(?:eliza(?:os)?(?:\s+app)?|workspace)\b/i.test(
+		text,
+	);
+}
 
 type OwnerAccessFn = (
 	runtime: IAgentRuntime,
@@ -343,6 +363,40 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 
 			const client = clientFactory();
 			const text = userRequestMessageText(message);
+
+			// "Eliza" names this native shell, not a registered mini-app. Never
+			// fuzzy-match it to another app (for example Cloud Apps), and never
+			// terminate the resident pill/tray process. Dismiss only the reusable
+			// Workspace window through the same targeted view delivery path.
+			if (isElizaWorkspaceDismissRequest(text, actionOptions)) {
+				const currentView = await createViewsClient()
+					.getCurrentView()
+					.catch(() => null);
+				const metadata = (
+					message.content as { metadata?: Record<string, unknown> } | undefined
+				)?.metadata;
+				const rawClientId = metadata?.viewClientId;
+				const clientId =
+					typeof rawClientId === "string" &&
+					/^[A-Za-z0-9._-]{1,128}$/.test(rawClientId)
+						? rawClientId
+						: undefined;
+				const result = await requestWorkspaceDismissal({
+					clientId,
+					currentViewExists: Boolean(currentView?.viewId),
+				});
+				await callback?.({ text: result.text });
+				return {
+					success: result.ok,
+					text: result.text,
+					values: { mode: "stop", stopScope: "workspace" },
+					data: {
+						actionName: "APP",
+						target: "workspace",
+						closed: result.closed,
+					},
+				};
+			}
 
 			// Follow-up choice reply always routes to create.
 			if (isChoiceReply(text)) {

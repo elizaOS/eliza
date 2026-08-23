@@ -27,6 +27,7 @@ import {
   type AuthSessionInfo,
   authMe,
 } from "../api/auth-client";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { scrubRejectedActiveServerCredential } from "../state/active-server-credential";
 import { scrubPersistedAgentProfileTokens } from "../state/agent-profiles";
@@ -103,6 +104,32 @@ async function authMeWithRejectedBearerRecovery() {
   const apiToken = getBootConfig().apiToken?.trim();
   const activeServer = loadPersistedActiveServer();
   if (!apiToken || activeServer?.kind === "cloud") return result;
+
+  const apiBase = getBootConfig().apiBase?.trim();
+  let isLoopbackApiBase = false;
+  try {
+    const hostname = apiBase ? new URL(apiBase).hostname.toLowerCase() : "";
+    isLoopbackApiBase =
+      hostname === "127.0.0.1" ||
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname === "[::1]";
+  } catch {
+    // An invalid base is never treated as the desktop host's local authority.
+  }
+
+  if (
+    isElectrobunRuntime() &&
+    isLoopbackApiBase &&
+    activeServer?.kind !== "remote"
+  ) {
+    // The desktop host intentionally uses two local credentials: a session
+    // cookie for `/api/auth/me`, and a boot bearer for the remaining agent API.
+    // A 401 from the auth route does not invalidate that host-owned bearer.
+    // Retry only the auth probe without it and preserve the token for plugin
+    // views such as Computer Sessions.
+    return authMe({ cookieOnlyHttp: true });
+  }
 
   // A 401 makes this bearer definitively unusable for the selected non-cloud
   // target. Remove it before the one retry so a valid cookie can win, or the

@@ -22,6 +22,7 @@ import Electrobun, {
 } from "electrobun/bun";
 import {
   resolveDesktopRuntimeModeWithDeployment,
+  resolveExternalRendererFacingApiBase,
   resolveInitialApiBase,
   resolveRendererFacingApiBase,
 } from "./api-base";
@@ -46,6 +47,8 @@ import { hydrateCloudOnlyEnv } from "./cloud-only-boot";
 import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
+  EXPANDED_BOTTOM_BAR_HEIGHT,
+  EXPANDED_BOTTOM_BAR_WIDTH,
   resolveDesktopShellWindowPresentation,
 } from "./desktop-bottom-bar-config";
 import {
@@ -59,7 +62,10 @@ import {
   shouldEnableTrayPopover,
   shouldStartTrayFirst,
 } from "./desktop-tray-config";
-import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
+import {
+  prepareDevtoolsOpen,
+  scheduleDevtoolsLayoutRefresh,
+} from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import {
   appendKioskShellModeParam,
@@ -67,7 +73,7 @@ import {
   isKioskShellMode,
   readRendererShellMode,
 } from "./kiosk-mode";
-import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
+import { publishLocalAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
   markDesktopSessionStale,
@@ -93,6 +99,8 @@ import {
   getStartupDiagnosticLogTail,
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
+  isStartupDiagnosticsOwnedByBundle,
+  terminateManagedAgentOnHostExit,
 } from "./native/agent";
 import {
   isBrowserBridgeLoopbackApiBase,
@@ -103,9 +111,13 @@ import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
   disableBackForwardNavigationGestures,
+  ensureWindowTransparentBackground,
+  installTrustedMediaCaptureOrigin,
+  prepareDetachedWebInspector,
+  refreshWindowInteractiveMaterial,
   setNativeDragRegion,
-  setTrafficLightsPosition,
   setWindowShadow,
+  setWindowUserResizable,
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
@@ -114,7 +126,9 @@ import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-setting
 import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
+  resolveRendererLocalVoiceGatewayBase,
   resolveRendererProxyIdleTimeoutSeconds,
+  resolveRendererProxyTargetBase,
   shouldProxyToApiBase,
 } from "./renderer-api-proxy";
 import {
@@ -144,6 +158,7 @@ import {
   type ManagedWindowLike,
   SurfaceWindowManager,
 } from "./surface-windows";
+import { resolveTrustedMediaCaptureOrigin } from "./trusted-media-origin";
 import type { SendToWebview } from "./types.js";
 import {
   resolveDesktopBundleVersion,
@@ -443,8 +458,6 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
   }
 }
 
-const MAC_TRAFFIC_LIGHTS_X = 14;
-const MAC_TRAFFIC_LIGHTS_Y = 12;
 /** Left inset of the drag strip so it clears the traffic lights. */
 const MAC_NATIVE_DRAG_REGION_X = 92;
 /**
@@ -455,9 +468,11 @@ const MAC_NATIVE_DRAG_REGION_X = 92;
 const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 
 /**
- * Shadow, traffic lights, drag region, and native chrome layout. Re-calls
- * native layout whenever the window or webview subtree may have reordered so
- * the drag view stays above WKWebView.
+ * Shadow, drag region, and native chrome layout. Re-calls native layout
+ * whenever the window or webview subtree may have reordered so the drag view
+ * stays above WKWebView. AppKit alone owns its standard traffic lights: moving
+ * them after live resize makes the controls visibly jump between AppKit's
+ * layout and an application-defined offset.
  *
  * Deliberately applies NO vibrancy (#12184): a vibrancy NSVisualEffectView
  * behind a transparent window renders as a full-window frosted-glass sheet over
@@ -467,7 +482,10 @@ const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 function applyMacOSWindowEffects(
   win: BrowserWindow,
   nativeShadow: boolean,
-  nativeInteractiveChrome: boolean,
+  trackAsMainWindow = true,
+  continuousManagedDragStrip = false,
+  nativeChromeInteractive = true,
+  detachedMovementInteractive = false,
 ): void {
   if (process.platform !== "darwin") return;
 
@@ -481,21 +499,19 @@ function applyMacOSWindowEffects(
     ptr as Parameters<typeof setWindowShadow>[0],
     nativeShadow,
   );
-  updateCurrentMainWindowEffectsState({
-    vibrancyEnabled: false,
-    shadowEnabled: shadowConfigured ? nativeShadow : null,
-  });
+  if (trackAsMainWindow) {
+    updateCurrentMainWindowEffectsState({
+      vibrancyEnabled: false,
+      shadowEnabled: shadowConfigured ? nativeShadow : null,
+    });
+  }
 
-  const alignButtons = () =>
-    setTrafficLightsPosition(
-      ptr as Parameters<typeof setTrafficLightsPosition>[0],
-      MAC_TRAFFIC_LIGHTS_X,
-      MAC_TRAFFIC_LIGHTS_Y,
-    );
   const alignDragRegion = () =>
     setNativeDragRegion(
       ptr as Parameters<typeof setNativeDragRegion>[0],
-      MAC_NATIVE_DRAG_REGION_X,
+      continuousManagedDragStrip
+        ? -MAC_NATIVE_DRAG_REGION_X
+        : MAC_NATIVE_DRAG_REGION_X,
       MAC_NATIVE_DRAG_REGION_HEIGHT,
     );
   // The shell owns horizontal swipe UI (chat-sheet dismiss, pager row-swipes)
@@ -508,37 +524,61 @@ function applyMacOSWindowEffects(
       ptr as Parameters<typeof disableBackForwardNavigationGestures>[0],
     );
 
-  const alignChrome = () => {
-    if (nativeInteractiveChrome) {
-      alignButtons();
-      alignDragRegion();
+  const alignChromeStructure = () => {
+    if (nativeChromeInteractive) alignDragRegion();
+    if (detachedMovementInteractive) {
+      refreshWindowInteractiveMaterial(
+        ptr as Parameters<typeof refreshWindowInteractiveMaterial>[0],
+      );
     }
+    setWindowUserResizable(
+      ptr as Parameters<typeof setWindowUserResizable>[0],
+      nativeChromeInteractive,
+    );
     disableSwipeBackGesture();
   };
 
-  alignChrome();
-  setTimeout(alignChrome, 120);
-  const chromeRefreshTimer = setInterval(alignChrome, 1000);
+  alignChromeStructure();
+  setTimeout(alignChromeStructure, 120);
+  // WKWebView can reorder its native subtree after initial layout. Keep the
+  // drag/resize structure above it. Never reposition or repaint AppKit's
+  // traffic-light buttons from this refresh cadence.
+  const chromeRefreshTimer = setInterval(alignChromeStructure, 1000);
+  let settledChromeTimer: ReturnType<typeof setTimeout> | null = null;
+  const alignAfterNativeLayoutSettles = () => {
+    alignChromeStructure();
+    if (settledChromeTimer) clearTimeout(settledChromeTimer);
+    settledChromeTimer = setTimeout(() => {
+      settledChromeTimer = null;
+      alignChromeStructure();
+    }, 120);
+  };
 
-  win.on("resize", alignChrome);
-  win.on("focus", alignChrome);
+  // Let AppKit lay out its standard controls throughout live resize/zoom. The
+  // trailing pass only restores the independent drag/resize overlays after
+  // the WKWebView settles; it never changes the controls' frames or artwork.
+  win.on("resize", alignAfterNativeLayoutSettles);
+  win.on("focus", alignChromeStructure);
   win.on("blur", () => {
-    alignChrome();
-    setTimeout(alignChrome, 80);
-    setTimeout(alignChrome, 240);
-    setTimeout(alignChrome, 700);
+    alignChromeStructure();
+    setTimeout(alignChromeStructure, 80);
+    setTimeout(alignChromeStructure, 240);
+    setTimeout(alignChromeStructure, 700);
   });
   // Display (NSScreen) changes without a resize edge case — depth uses window.screen.
-  win.on("move", alignChrome);
-  win.on("close", () => clearInterval(chromeRefreshTimer));
+  win.on("move", alignAfterNativeLayoutSettles);
+  win.on("close", () => {
+    clearInterval(chromeRefreshTimer);
+    if (settledChromeTimer) clearTimeout(settledChromeTimer);
+  });
 
   // WKWebView is often inserted or reordered after first layout; restack native
   // views so drag/resize strips stay hit-testable above the page.
   try {
     win.webview.on("dom-ready", () => {
-      alignChrome();
-      setTimeout(alignChrome, 50);
-      setTimeout(alignChrome, 300);
+      alignChromeStructure();
+      setTimeout(alignChromeStructure, 50);
+      setTimeout(alignChromeStructure, 300);
     });
   } catch {
     // webview may not accept listeners yet in some embed paths
@@ -720,6 +760,14 @@ let rendererUrlPromise: Promise<string> | null = null;
 let backgroundWindowPromise: Promise<void> | null = null;
 let isQuitting = false;
 let quitRequestPromise: Promise<void> | null = null;
+let desktopSessionAgentGeneration: string | null = null;
+
+function desktopSessionGeneration(status: {
+  port: number | null;
+  startedAt: number | null;
+}): string {
+  return `${status.port}:${status.startedAt ?? "unknown"}`;
+}
 
 function requestAppQuit(): Promise<void> {
   if (quitRequestPromise) {
@@ -841,7 +889,10 @@ async function startRendererServer(): Promise<string> {
   // resolved external base directly; local mode keeps the loopback agent port.
   const initialApiBase =
     initialRuntime.mode === "external" && initialRuntime.externalApi.base
-      ? initialRuntime.externalApi.base
+      ? resolveExternalRendererFacingApiBase(
+          process.env as Record<string, string | undefined>,
+          initialRuntime.externalApi.base,
+        )
       : resolveInitialApiBase(
           process.env as Record<string, string | undefined>,
         );
@@ -895,6 +946,9 @@ async function startRendererServer(): Promise<string> {
 
   const rendererProxyIdleTimeoutSeconds =
     resolveRendererProxyIdleTimeoutSeconds(process.env);
+  const localVoiceGatewayBase = resolveRendererLocalVoiceGatewayBase(
+    process.env as Record<string, string | undefined>,
+  );
 
   Bun.serve({
     port,
@@ -908,15 +962,23 @@ async function startRendererServer(): Promise<string> {
       const url = new URL(req.url);
       const pathname = url.pathname;
 
-      // Proxy /api/*, /ws, /music-player to the agent port. Mirrors the Vite
-      // dev-server proxy in apps/app/vite.config.ts so the renderer can rely
-      // on same-origin /api fetches whether it's loaded via Vite (watch mode)
-      // or this static server (non-watch dev:desktop). Without this, every
-      // /api/* call returned SPA HTML and Settings sat on "Loading…" forever.
+      // Mirror Vite's ordered proxy ownership: local /api/v1/voice traffic
+      // belongs to the configured voice gateway, then generic /api, /ws and
+      // /music-player traffic falls through to the agent. The voice mint
+      // response returns the gateway's direct WebSocket URL, preserving the
+      // HTTP + WebSocket handoff without exposing provider credentials.
       const apiBase =
         apiBaseOwner.getCurrent().base ?? initialApiBase ?? undefined;
-      if (shouldProxyToApiBase(apiBase) && isRendererApiProxyPath(pathname)) {
-        const target = new URL(pathname + url.search, apiBase);
+      const proxyTargetBase = resolveRendererProxyTargetBase(
+        pathname,
+        apiBase,
+        localVoiceGatewayBase,
+      );
+      if (
+        shouldProxyToApiBase(proxyTargetBase) &&
+        isRendererApiProxyPath(pathname)
+      ) {
+        const target = new URL(pathname + url.search, proxyTargetBase);
         try {
           const upstreamRequest = createRendererApiProxyRequestInit(
             req,
@@ -1058,20 +1120,35 @@ function appendRuntimeChooserTestParam(rendererUrl: string): string {
 async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
   const rendererUrl = await resolveRendererUrl();
   const runtime = resolveDesktopRuntime();
-  if (runtime.mode === "external" && runtime.externalApi.base) {
-    const externalRendererUrl = appendApiBaseParam(
-      rendererUrl,
-      runtime.externalApi.base,
-    );
-    return appendRuntimeChooserTestParam(externalRendererUrl);
-  }
-  return appendRuntimeChooserTestParam(rendererUrl);
+  const rendererApiBase =
+    runtime.mode === "external" && runtime.externalApi.base
+      ? resolveExternalRendererFacingApiBase(
+          process.env as Record<string, string | undefined>,
+          runtime.externalApi.base,
+        )
+      : (apiBaseOwner.getCurrent().base ??
+        resolveInitialApiBase(
+          process.env as Record<string, string | undefined>,
+        ));
+
+  // Every renderer window needs the runtime target on its first document
+  // load. The static HTML inject remains the canonical secret-bearing boot
+  // path, but WKWebView may reuse a cached root document for a newly opened
+  // app/workspace window. Carrying only the non-secret API base in the URL
+  // prevents that window from entering a false disconnected state before the
+  // dom-ready RPC repair arrives.
+  const runtimeAwareRendererUrl = rendererApiBase
+    ? appendApiBaseParam(rendererUrl, rendererApiBase)
+    : rendererUrl;
+  return appendRuntimeChooserTestParam(runtimeAwareRendererUrl);
 }
 
 /**
- * Resolve the chromeless bottom-bar window frame from the primary display's
- * usable work area. Falls back to a 1080p estimate if the Screen API is
- * unavailable (the user-visible bar still opens; only the width estimate is off).
+ * Resolve one stable transparent host frame for every detached-chat detent.
+ * The exact painted material is a separate native hit target, so keeping this
+ * envelope at stage size does not make its clear pixels block other apps. It
+ * does prevent WKWebView from briefly painting its old pill-sized viewport at
+ * the top of a newly enlarged NSWindow during the first upward drag.
  */
 function resolveBottomBarFrame(): {
   x: number;
@@ -1090,7 +1167,10 @@ function resolveBottomBarFrame(): {
       `[main-window] bottom-bar Screen.getPrimaryDisplay() failed; using default geometry: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  return computeBottomBarFrame(workArea);
+  return computeBottomBarFrame(workArea, {
+    width: EXPANDED_BOTTOM_BAR_WIDTH,
+    height: EXPANDED_BOTTOM_BAR_HEIGHT,
+  });
 }
 
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
@@ -1101,6 +1181,14 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   // Opt-in and mutually exclusive with kiosk.
   const bottomBar = presentation.mode === "bottom-bar";
   const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
+  if (process.platform === "darwin") {
+    const rendererOrigin = resolveTrustedMediaCaptureOrigin(baseRendererUrl);
+    if (rendererOrigin && !installTrustedMediaCaptureOrigin(rendererOrigin)) {
+      logger.warn(
+        `[Main] Renderer media origin was not trusted: ${rendererOrigin}`,
+      );
+    }
+  }
   const requestedShellMode = readRendererShellMode();
   const rendererUrl = kiosk
     ? appendKioskShellModeParam(baseRendererUrl)
@@ -1170,6 +1258,17 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     forceMainWindowCef,
     buildInfo,
   });
+  // A resting assistant pill should behave like Spotlight: clicking it performs
+  // the action without first activating the owning app. Electrobun creates an
+  // NSPanel when this mask is present. The desktop state bridge removes the
+  // mask and activates the window as soon as chat forms, so textarea focus and
+  // ordinary key-window behavior remain available in interactive states.
+  const bottomBarActivationOptions = bottomBar
+    ? {
+        activate: false,
+        styleMask: { NonactivatingPanel: true },
+      }
+    : {};
 
   if (forceMainWindowCef && !canUseCefView) {
     logger.warn(
@@ -1192,6 +1291,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       titleBarStyle,
       transparent,
       passthrough,
+      ...bottomBarActivationOptions,
     });
     win.webview.remove();
     const mainView = new BrowserView({
@@ -1231,6 +1331,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       transparent,
       passthrough,
       rpc,
+      ...bottomBarActivationOptions,
       ...(mainWindowPartition ? { partition: mainWindowPartition } : {}),
     });
   }
@@ -1255,6 +1356,20 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   // has fixed, display-derived geometry, so skip bounds persistence + the
   // first-launch maximize entirely.
   if (bottomBar) {
+    const nativeWindowPointer = (win as { ptr?: unknown }).ptr;
+    if (
+      process.platform === "darwin" &&
+      nativeWindowPointer &&
+      !ensureWindowTransparentBackground(
+        nativeWindowPointer as Parameters<
+          typeof ensureWindowTransparentBackground
+        >[0],
+      )
+    ) {
+      logger.warn(
+        "[main-window] failed to enforce transparent native pill background",
+      );
+    }
     try {
       (
         win as typeof win & { setAlwaysOnTop?: (flag: boolean) => void }
@@ -1280,10 +1395,16 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         );
       }
     }
+    // The detached pill owns its exact painted hit region in the renderer. It
+    // is not a user-resizable document window, so never install native titlebar
+    // drag or edge/corner resize overlays over it.
     applyMacOSWindowEffects(
       win,
       presentation.nativeShadow,
-      presentation.nativeInteractiveChrome,
+      true,
+      false,
+      presentation.nativeChromeInteractive,
+      true,
     );
     // Keep the bar pinned to the primary display's bottom edge across display
     // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).
@@ -1291,11 +1412,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     return win;
   }
 
-  applyMacOSWindowEffects(
-    win,
-    presentation.nativeShadow,
-    presentation.nativeInteractiveChrome,
-  );
+  applyMacOSWindowEffects(win, presentation.nativeShadow);
   win.on("resize", () => scheduleStateSave(statePath, win));
   win.on("move", () => scheduleStateSave(statePath, win));
 
@@ -1669,6 +1786,8 @@ function toggleFocusedWindowDevTools(): void {
     return;
   }
 
+  prepareDevtoolsOpen(process.platform, prepareDetachedWebInspector);
+
   if (typeof webview?.toggleDevTools === "function") {
     webview.toggleDevTools();
     scheduleDevtoolsLayoutRefresh(
@@ -1737,7 +1856,10 @@ const MAX_RPC_REQUEST_TIME_MS = 600_000;
  * @param label  Diagnostic tag included in the "no RPC method" warning so
  *               main / settings / surface windows are distinguishable.
  */
-function createDesktopRpc(label: string): {
+function createDesktopRpc(
+  label: string,
+  closeCurrentWindow?: () => void | Promise<void>,
+): {
   rpc: ElizaDesktopRpc;
   sendToWebview: SendToWebview;
   releaseShellSync: () => void;
@@ -1782,6 +1904,7 @@ function createDesktopRpc(label: string): {
       requests: buildBunRpcHandlers({
         sendToWebview,
         shellControllerEndpoint: shellSyncEndpoint,
+        closeCurrentWindow,
       }) as BunRpcRequestsHandlers,
     },
   });
@@ -1843,9 +1966,13 @@ function injectApiBase(win: BrowserWindow): void {
     runtimeResolution.mode === "external" &&
     runtimeResolution.externalApi.base
   ) {
+    const rendererBase = resolveExternalRendererFacingApiBase(
+      process.env as Record<string, string | undefined>,
+      runtimeResolution.externalApi.base,
+    );
     apiBaseOwner.notifyChange(
       win,
-      runtimeResolution.externalApi.base,
+      rendererBase,
       resolveApiToken(process.env) ?? "",
     );
     setAgentReady(true);
@@ -1986,6 +2113,11 @@ async function _startAgent(): Promise<void> {
       // renderer to start hitting /api. This is the desktop trust path: if
       // the bridge succeeds, the renderer skips the login UI; if it fails,
       // the renderer behaves like a remote browser (password-required).
+      const generation = desktopSessionGeneration(status);
+      if (desktopSessionAgentGeneration !== generation) {
+        markDesktopSessionStale();
+        desktopSessionAgentGeneration = generation;
+      }
       await primeDesktopSessionAuth(apiBase, rendererBase);
       try {
         await startBrowserBridgeDesktopLifecycle({ apiBase });
@@ -1997,10 +2129,16 @@ async function _startAgent(): Promise<void> {
           }`,
         );
       }
-      const apiToken = resolveApiToken(process.env) ?? "";
       // Set the source-of-truth API base FIRST (correct even with zero open
-      // windows), then push to every open window.
-      publishAgentApiBase(rendererBase, apiToken, collectOpenRendererWindows());
+      // windows), then push to every open window. Resolve the canonical native
+      // desktop bearer rather than re-reading process.env: a detached window
+      // loads after this point and needs the same token injected into its first
+      // HTML response, before dom-ready RPC repair can run.
+      publishLocalAgentApiBase(
+        rendererBase,
+        () => configureDesktopLocalApiAuth(),
+        collectOpenRendererWindows(),
+      );
       setAgentReady(true);
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
@@ -2166,8 +2304,18 @@ async function setupUpdater(): Promise<void> {
     const handleSurfaceMenuAction = (action: string | undefined): boolean => {
       const workspaceOptions = resolveDesktopWorkspaceWindowOptions(action);
       if (workspaceOptions) {
-        void getDesktopManager()
-          .openAppWindow(workspaceOptions)
+        const manager = surfaceWindowManager;
+        if (!manager) {
+          logger.warn("[Main] Desktop workspace manager is not ready.");
+          return true;
+        }
+        void manager
+          .openWorkspaceWindow(
+            workspaceOptions.path,
+            undefined,
+            false,
+            "standard",
+          )
           .catch((error: unknown) => {
             // error-policy:J1 The native application-menu boundary translates
             // launch failure into diagnostics and a visible OS notification.
@@ -2189,12 +2337,16 @@ async function setupUpdater(): Promise<void> {
       if (viewId) {
         const entry = findViewMenuEntryById(viewId);
         if (entry) {
-          void getDesktopManager().openAppWindow({
-            slug: `view-${entry.id}`,
-            title: entry.label,
-            path: entry.path,
-            alwaysOnTop: false,
-          });
+          if (entry.id === "settings") {
+            void createSettingsWindow();
+          } else {
+            void getDesktopManager().openAppWindow({
+              slug: `view-${entry.id}`,
+              title: entry.label,
+              path: entry.path,
+              alwaysOnTop: false,
+            });
+          }
         }
         return true;
       }
@@ -2481,7 +2633,14 @@ async function runShutdownCleanup(reason: string): Promise<void> {
 
 function setupShutdown(): void {
   Electrobun.events.on("before-quit", () => {
+    // Electrobun does not await this callback before terminating the Bun host.
+    // Revoke the embedded runtime synchronously before asynchronous native
+    // cleanup so a system-level Quit cannot orphan a multi-gigabyte child.
+    terminateManagedAgentOnHostExit();
     void runShutdownCleanup("before-quit");
+  });
+  process.once("exit", () => {
+    terminateManagedAgentOnHostExit();
   });
 }
 
@@ -2771,7 +2930,11 @@ async function main(): Promise<void> {
         // crash) — the cookies we installed during _startAgent were scoped to
         // the old origin. Re-prime so every renderer's next /api request stays
         // authenticated, including any open secondary renderer windows.
-        markDesktopSessionStale();
+        const generation = desktopSessionGeneration(status);
+        if (desktopSessionAgentGeneration !== generation) {
+          markDesktopSessionStale();
+          desktopSessionAgentGeneration = generation;
+        }
         const apiBase = `http://127.0.0.1:${status.port}`;
         const rendererBase = resolveRendererFacingApiBase(
           process.env as Record<string, string | undefined>,
@@ -2786,11 +2949,9 @@ async function main(): Promise<void> {
   // Create window first — on Windows (CEF) the UI message loop must be
   // running before any synchronous FFI calls like setApplicationMenu().
   // Calling setupApplicationMenu() before createMainWindow() deadlocks.
-  // Dockless (tray-first) mode is the macOS default (#12184): the resting
-  // experience is the pill + menu-bar icon with NO Dock icon. Unlike the old
-  // tray-first behavior we STILL create the pill window at boot — the pill is
-  // not a "full window" for Dock purposes, so setTrayFirstMode keeps the Dock
-  // icon hidden until a full window (dashboard/surface/settings/app) opens.
+  // Accessory builds can opt into dockless mode. The normal application keeps
+  // its Dock presence and full main window, while a dockless pill still checks
+  // the macOS status-item regression before hiding the Dock icon.
   const docklessRequested = shouldStartTrayFirst();
   const hasBrokenStatusItemScene = hasKnownMacosStatusItemSceneRegression(
     process.platform,
@@ -2829,21 +2990,42 @@ async function main(): Promise<void> {
   // RPC built up front via createDesktopRpc, baked into the BrowserWindow
   // constructor, then "wired" post-hoc by wireSettingsRpcAfterCreate.
   const surfaceRpcs = new WeakMap<ManagedWindowLike, ElizaDesktopRpc>();
+  const surfaceSenders = new WeakMap<ManagedWindowLike, SendToWebview>();
+  let focusPillAfterWorkspaceDismiss = false;
 
   surfaceWindowManager = new SurfaceWindowManager({
     createWindow: (options) => {
-      const { rpc, releaseShellSync } = createDesktopRpc("surface");
+      let managedWindow: (BrowserWindow & ManagedWindowLike) | undefined;
+      const { rpc, sendToWebview, releaseShellSync } = createDesktopRpc(
+        "surface",
+        () => {
+          managedWindow?.close();
+        },
+      );
       const window = createElectrobunBrowserWindow({
         ...options,
         rpc,
       }) as BrowserWindow & ManagedWindowLike;
+      managedWindow = window;
+      // hiddenInset removes the native title bar. WKWebView does not reliably
+      // honor CSS app-region dragging, so every managed macOS window using
+      // that presentation needs the same native top drag strip as the normal
+      // workstation. Do not let a secondary window overwrite diagnostics for
+      // the main pill/workstation while applying its own chrome.
+      if (options.titleBarStyle === "hiddenInset") {
+        applyMacOSWindowEffects(window, true, false, true);
+      }
       surfaceRpcs.set(window, rpc);
+      surfaceSenders.set(window, sendToWebview);
       // Drop this window's relay endpoint when it closes so a churned detached
       // surface does not leak (#16442).
       window.on("close", releaseShellSync);
       return window;
     },
-    resolveRendererUrl,
+    // Resolve the runtime-aware URL up front. Late dom-ready API injection is
+    // retained as failover, but cannot be the first source of truth because
+    // the renderer startup coordinator runs before that event is delivered.
+    resolveRendererUrl: resolveRendererUrlForCurrentRuntime,
     readPreload: () => readResolvedPreloadScript(import.meta.dir),
     wireRpc: (window) => {
       const rpc = surfaceRpcs.get(window);
@@ -2857,12 +3039,57 @@ async function main(): Promise<void> {
     },
     injectApiBase: (window) =>
       injectApiBase(window as BrowserWindow & ManagedWindowLike),
-    onWindowFocused: (window) => {
+    navigateWindow: (window, routePath, section, presentation) => {
+      const send = surfaceSenders.get(window);
+      if (!send) return false;
+      send("desktopWorkspaceNavigate", { routePath, section, presentation });
+      return true;
+    },
+    onWindowFocused: (window, surface, workspacePresentation) => {
       lastFocusedWindow = window;
+      if (surface === "workspace") {
+        void getDesktopManager()
+          .setMainWindowSuppressedByWorkspace(
+            workspacePresentation !== "content",
+          )
+          .catch((error: unknown) => {
+            logger.warn(
+              `[surface-windows] Failed to suppress pill for focused Workspace: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+      }
+    },
+    onWindowBlurred: (_window, surface) => {
+      if (surface === "workspace") {
+        void getDesktopManager()
+          .setMainWindowSuppressedByWorkspace(false)
+          .catch((error: unknown) => {
+            logger.warn(
+              `[surface-windows] Failed to restore pill after Workspace blur: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+      }
     },
     onRegistryChanged: () => {
       sendManagedWindowsChanged();
       setupApplicationMenu();
+      const workspacePresent =
+        (surfaceWindowManager?.listWindows("workspace").length ?? 0) > 0;
+      if (!workspacePresent) {
+        const shouldFocusPill = focusPillAfterWorkspaceDismiss;
+        focusPillAfterWorkspaceDismiss = false;
+        void (async () => {
+          await getDesktopManager().setMainWindowSuppressedByWorkspace(false);
+          // Wait for the actual native close event before activating the pill.
+          // Focusing immediately after close() races AppKit's next-key-window
+          // selection and can leave the composer unfocused.
+          if (shouldFocusPill) await getDesktopManager().focusWindow();
+        })().catch((error: unknown) => {
+          logger.warn(
+            `[surface-windows] Failed to restore pill after Workspace close: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }
       // Dockless mode: any open managed window (dashboard/surface/settings/app)
       // reveals the Dock icon; closing the last one hides it again.
       getDesktopManager().setManagedWindowsPresent(
@@ -2879,6 +3106,43 @@ async function main(): Promise<void> {
   }
 
   // Wire detached window callbacks so menus and RPC can open them.
+  getDesktopManager().setOpenWorkspaceCallback((options) => {
+    if (!surfaceWindowManager) {
+      throw new Error("Surface window manager is not ready.");
+    }
+    const manager = surfaceWindowManager;
+    const presentation = options?.presentation ?? "standard";
+    void (async () => {
+      await manager.openWorkspaceWindow(
+        options?.routePath ?? "/",
+        undefined,
+        options?.maximize === true,
+        presentation,
+      );
+      if (presentation !== "content") return;
+      // A view command issued from the detached pill updates Workspace as a
+      // background canvas operation. AppKit necessarily keys a newly-created
+      // or explicitly-focused Workspace briefly; immediately return key/focus
+      // ownership to the canonical pill so typing and an active voice session
+      // continue without a second click.
+      await getDesktopManager().setMainWindowSuppressedByWorkspace(false);
+      await getDesktopManager().focusWindow();
+    })().catch((error: unknown) => {
+      logger.warn(
+        `[surface-windows] Failed to open Workspace: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  });
+  getDesktopManager().setDismissWorkspaceCallback(() => {
+    focusPillAfterWorkspaceDismiss =
+      (surfaceWindowManager?.listWindows("workspace").length ?? 0) > 0;
+    const result = surfaceWindowManager?.dismissWorkspaceWindow() ?? {
+      closed: false,
+      reason: "already-closed" as const,
+    };
+    if (!result.closed) focusPillAfterWorkspaceDismiss = false;
+    return result;
+  });
   getDesktopManager().setOpenSettingsCallback((tabHint) => {
     void createSettingsWindow(tabHint);
   });
@@ -3103,7 +3367,7 @@ function buildStartupCrashDiscordReport(options: {
   const reportLines = [
     `${BRAND.appName} startup crash report`,
     "",
-    "Share this report in Discord and ping @iono.",
+    "Share this report in Discord and ping @eliza bot.",
     "",
     `Source: ${options.source}`,
     `Timestamp: ${new Date().toISOString()}`,
@@ -3184,7 +3448,24 @@ async function maybePromptStartupCrashReport(): Promise<void> {
     return;
   }
 
+  // An externally supervised desktop does not own the embedded AgentManager
+  // lifecycle. Its shared startup-status.json may still describe a failed
+  // launch from another checkout or an older embedded build, so surfacing that
+  // record here produces a false "recovered" dialog in a healthy app. Only the
+  // local/embedded runtime that writes this status is allowed to prompt for it.
+  if (resolveDesktopRuntime().mode !== "local") {
+    return;
+  }
+
   const diagnostics = getStartupDiagnosticsSnapshot();
+  if (
+    !isStartupDiagnosticsOwnedByBundle(
+      diagnostics,
+      resolveStartupBundlePath(process.execPath),
+    )
+  ) {
+    return;
+  }
   const looksLikeStartupFailure =
     diagnostics.state === "error" &&
     diagnostics.phase !== "ready" &&
@@ -3208,7 +3489,7 @@ async function maybePromptStartupCrashReport(): Promise<void> {
     message:
       "The previous launch failed. A crash report is ready to share with support.",
     detail:
-      "Choose Copy Report, paste into Discord, and ping @iono. You can also open logs.",
+      "Choose Copy Report, paste into Discord, and ping @eliza bot. You can also open logs.",
     buttons: ["Copy Report", "Open Logs Folder", "Continue"],
     defaultId: 0,
     cancelId: 2,
@@ -3225,7 +3506,7 @@ async function maybePromptStartupCrashReport(): Promise<void> {
       Utils.clipboardWriteText(report);
       Utils.showNotification({
         title: "Crash report copied",
-        body: "Paste in Discord and ping @iono.",
+        body: "Paste in Discord and ping @eliza bot.",
       });
     } catch (err) {
       logger.warn(

@@ -2002,6 +2002,54 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
 	});
 
+	it("budgets the planner from the resolved Stage 1 model context window", async () => {
+		const runtime = makeRuntime([
+			{
+				...stage1Response({
+					contexts: ["general"],
+					replyText: "Opening it.",
+					candidateActionNames: ["COMPUTER_USE_AGENT"],
+				}),
+				providerMetadata: {
+					modelName: "gemma-4-31b",
+					provider: "cerebras",
+				},
+			},
+			JSON.stringify({
+				thought: "No action is registered in this fixture.",
+				toolCalls: [],
+				messageToUser: "The fixture has no host action.",
+			}),
+		]);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "Open TextEdit and type a harmless line.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			providerOptions?: {
+				eliza?: {
+					modelInputBudget?: {
+						contextWindowTokens?: number;
+						resolvedModelKey?: string;
+					};
+				};
+			};
+		};
+		expect(
+			plannerParams.providerOptions?.eliza?.modelInputBudget,
+		).toMatchObject({
+			contextWindowTokens: 131_072,
+			resolvedModelKey: "gemma-4-31b",
+		});
+	});
+
 	it("keeps edit-style direct messages on the structured routing path", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

@@ -45,7 +45,6 @@ import {
   ttsDebugTextPreview,
 } from "../utils/tts-debug";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
-import { hasConfiguredApiKey } from "../voice";
 import {
   isLocalAsrCaptureSupported,
   isSilentWav,
@@ -70,6 +69,7 @@ import {
   currentSharedRuntimeVoiceOrigin,
   resolveForcedCloudTtsRoute,
 } from "../voice/shared-runtime-voice";
+import { hasConfiguredApiKey } from "../voice/types";
 import { playDecodedVoiceAudio } from "../voice/voice-chat-audio-playback";
 import {
   collapseWhitespace,

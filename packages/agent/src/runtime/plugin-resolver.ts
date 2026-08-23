@@ -2278,6 +2278,8 @@ export async function resolvePlugins(
     quiet?: boolean;
     phase?: PluginResolutionPhase;
     forceIncludePluginNames?: readonly string[];
+    /** Durable config projection used when `config` is an ephemeral host view. */
+    installRepairPersistenceConfig?: ElizaConfig;
   },
 ): Promise<ResolvedPlugin[]> {
   const plugins: ResolvedPlugin[] = [];
@@ -2384,7 +2386,9 @@ export async function resolvePlugins(
       );
     }
   }
-  const forceIncludePluginNames = new Set(opts?.forceIncludePluginNames ?? []);
+  const forceIncludePluginNames = new Set(
+    (opts?.forceIncludePluginNames ?? []).map(resolvePluginPackageAlias),
+  );
 
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
@@ -2398,6 +2402,31 @@ export async function resolvePlugins(
     .filter(Boolean);
   for (const pluginName of envSkipPlugins) {
     denyList.add(pluginName);
+  }
+  const canonicalDenyList = new Set(
+    Array.from(denyList, resolvePluginPackageAlias),
+  );
+  const pluginEntries = config.plugins?.entries as
+    | Record<string, { enabled?: boolean }>
+    | undefined;
+  const isExplicitlyDisabled = (pluginName: string): boolean => {
+    const canonical = resolvePluginPackageAlias(pluginName);
+    const shortId = canonical.includes("/plugin-")
+      ? canonical.slice(canonical.lastIndexOf("/plugin-") + "/plugin-".length)
+      : canonical;
+    return (
+      pluginEntries?.[shortId]?.enabled === false ||
+      pluginEntries?.[canonical]?.enabled === false
+    );
+  };
+  for (const pluginName of forceIncludePluginNames) {
+    if (canonicalDenyList.has(pluginName) || isExplicitlyDisabled(pluginName)) {
+      continue;
+    }
+    pluginsToLoad.add(pluginName);
+    if (!loadReasons.has(pluginName)) {
+      loadReasons.set(pluginName, "host-selected provider");
+    }
   }
   if (envSkipPlugins.length > 0) {
     logger.info(
@@ -2920,7 +2949,26 @@ export async function resolvePlugins(
   // from stale install directories.
   if (repairedInstallRecords.size > 0) {
     try {
-      saveElizaConfig(config);
+      const configToPersist = opts?.installRepairPersistenceConfig ?? config;
+      if (configToPersist !== config) {
+        for (const pluginName of repairedInstallRecords) {
+          const repairedRecord = config.plugins?.installs?.[pluginName];
+          if (!repairedRecord) {
+            throw new ElizaError(
+              `Repaired plugin install record disappeared: ${pluginName}`,
+              {
+                code: "PLUGIN_INSTALL_REPAIR_RECORD_MISSING",
+                context: { pluginName },
+              },
+            );
+          }
+          configToPersist.plugins ??= {};
+          configToPersist.plugins.installs ??= {};
+          configToPersist.plugins.installs[pluginName] =
+            structuredClone(repairedRecord);
+        }
+      }
+      saveElizaConfig(configToPersist);
       logger.info(
         `[eliza] Repaired ${repairedInstallRecords.size} plugin install record(s): ${Array.from(repairedInstallRecords).join(", ")}`,
       );

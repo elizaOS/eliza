@@ -12,6 +12,7 @@ import {
   requestViaAgentTransport,
 } from "../api/csrf-client";
 import { loadPersistedActiveServer } from "../state/persistence";
+import { isRealtimeVoiceForceEnabled } from "./realtime-voice-config";
 import { configuredCloudVoiceOrigin } from "./shared-runtime-voice";
 
 function cloudVoiceSessionUrl(path: string): string {
@@ -35,8 +36,12 @@ export async function fetchVoiceSession(
   init: RequestInit = {},
 ): Promise<Response> {
   if (loadPersistedActiveServer()?.kind !== "cloud") {
-    const { fetchWithCsrf } = await import("../api/csrf-client");
-    return fetchWithCsrf(path, init);
+    const { fetchSameOriginWithCsrf, fetchWithCsrf } = await import(
+      "../api/csrf-client"
+    );
+    return isRealtimeVoiceForceEnabled()
+      ? fetchSameOriginWithCsrf(path, init)
+      : fetchWithCsrf(path, init);
   }
 
   const headers = new Headers(init.headers);

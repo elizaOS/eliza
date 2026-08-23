@@ -11,6 +11,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  buildDarwinWindowScript,
+  darwinWindowListSwiftArgs,
   findWindowsByQuery,
   parseDarwinWindowOutput,
   resolveWindowMatch,
@@ -98,5 +100,43 @@ describe("parseDarwinWindowOutput", () => {
     expect(parseDarwinWindowOutput("")).toEqual([]);
     expect(parseDarwinWindowOutput("<<WIN>><<WIN>>")).toEqual([]);
     expect(parseDarwinWindowOutput("|||<<WIN>>")).toEqual([]);
+  });
+});
+
+describe("darwinWindowListSwiftArgs", () => {
+  it("passes source with -e instead of relying on packaged Bun stdin EOF", () => {
+    const args = darwinWindowListSwiftArgs();
+
+    expect(args[0]).toBe("-e");
+    expect(args[1]).toContain("CGWindowListCopyWindowInfo");
+    expect(args).not.toContain("-");
+  });
+});
+
+describe("buildDarwinWindowScript", () => {
+  it("targets the named window instead of blindly controlling window 1", () => {
+    const script = buildDarwinWindowScript(
+      { app: "TextEdit", title: "Untitled", id: "Untitled" },
+      `set winPos to position of window 1 of proc
+       set winSize to size of window 1 of proc`,
+    );
+
+    expect(script).toContain('repeat with term in {"textedit"}');
+    expect(script).toContain('repeat with term in {"untitled"}');
+    expect(script).toContain("set targetWindow to w");
+    expect(script).not.toContain("set targetWindow to contents of w");
+    expect(script).toContain("set winPos to position of targetWindow");
+    expect(script).toContain("set winSize to size of targetWindow");
+    expect(script).not.toContain("set winPos to position of window 1 of proc");
+  });
+
+  it("falls back to the first process window when no title is available", () => {
+    const script = buildDarwinWindowScript(
+      { app: "Finder", title: "", id: "Finder" },
+      "set frontmost of proc to true",
+    );
+
+    expect(script).toContain("set targetWindow to window 1 of proc");
+    expect(script).toContain("set frontmost of proc to true");
   });
 });

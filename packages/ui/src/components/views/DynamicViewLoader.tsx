@@ -652,7 +652,15 @@ export const hostImport: HostModuleImporter = async (specifier) => {
       `DynamicViewLoader: unsupported host external "${specifier}"`,
     );
   }
-  return importer();
+  try {
+    return await importer();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `DynamicViewLoader: failed to import host external "${specifier}": ${message}`,
+      { cause: error },
+    );
+  }
 };
 
 /**

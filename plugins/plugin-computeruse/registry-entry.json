@@ -41,7 +41,7 @@
       "type": "textarea",
       "required": false,
       "sensitive": false,
-      "default": "full_control",
+      "default": "smart_approve",
       "label": "Use Approval Mode",
       "help": "Approval mode for computer-use commands: full_control auto-approves everything, smart_approve auto-approves safe read-only commands, approve_all requires approval for every command, off denies all commands.",
       "advanced": false

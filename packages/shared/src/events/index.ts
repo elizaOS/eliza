@@ -128,7 +128,7 @@ export type NavigateViewEvent = CustomEvent<NavigateViewDetail>;
 export function createNavigateViewEvent(
   detail: NavigateViewDetail,
 ): NavigateViewEvent {
-  return new CustomEvent(NAVIGATE_VIEW_EVENT, { detail });
+  return new CustomEvent(NAVIGATE_VIEW_EVENT, { detail, cancelable: true });
 }
 
 export function dispatchNavigateViewEvent(detail: NavigateViewDetail): void {

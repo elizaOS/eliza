@@ -36,6 +36,9 @@ const sessions: SessionSnapshot[] = [
     updatedAt: "2026-08-18T00:00:01.000Z",
     cursor: { x: 640, y: 360, updatedAt: "2026-08-18T00:00:01.000Z" },
     lastCommand: "click",
+    lastControlMode: "coordinate_fallback",
+    lastPhysicalPointerBorrowed: true,
+    lastFallbackDisclosure: "Coordinate fallback restored the pointer.",
   },
   {
     contractVersion: 2,
@@ -134,6 +137,15 @@ describe("ComputerUseSessionsView", () => {
       await screen.findByAltText("Chrome research latest frame"),
     ).toBeTruthy();
     expect(screen.getByLabelText("Virtual cursor at 640, 360")).toBeTruthy();
+    expect(screen.getByText("Capture: ready")).toBeTruthy();
+    expect(screen.getByText("Vision: ready")).toBeTruthy();
+    expect(
+      screen.getByText(/Observation 5 · browser · 8f8cbb7dcf/),
+    ).toBeTruthy();
+    expect(screen.getByText("observation.captured")).toBeTruthy();
+    expect(
+      screen.getByText("Coordinate fallback restored the pointer."),
+    ).toBeTruthy();
     expect(screen.getByText("Capture: ready")).toBeTruthy();
     expect(screen.getByText("Vision: ready")).toBeTruthy();
     expect(

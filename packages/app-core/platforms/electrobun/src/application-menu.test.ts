@@ -36,6 +36,7 @@ describe("buildViewsMenu", () => {
         "documents",
         "settings",
         "background",
+        "computer-use-sessions",
       ]),
     );
     // The standalone tutorial + help views were removed (#14476), and camera is
@@ -51,6 +52,9 @@ describe("buildViewsMenu", () => {
     }
     expect(findViewMenuEntryById("documents")?.path).toBe(
       "/character/documents",
+    );
+    expect(findViewMenuEntryById("computer-use-sessions")?.path).toBe(
+      "/computer-use-sessions",
     );
   });
 });

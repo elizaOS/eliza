@@ -43,6 +43,8 @@ describe("computer-use MCP tool catalog", () => {
       "computer_scroll",
       "computer_drag",
       "computer_ocr",
+      "computer_accessibility_snapshot",
+      "computer_accessibility_action",
       "computer_set_value",
       "computer_kill_app",
     ]) {
@@ -71,6 +73,12 @@ describe("computer-use MCP tool catalog", () => {
     expect(
       findComputerUseMcpTool("computer_app_hover_target")?.destructive,
     ).toBe(false);
+    expect(
+      findComputerUseMcpTool("computer_accessibility_snapshot")?.destructive,
+    ).toBe(false);
+    expect(
+      findComputerUseMcpTool("computer_accessibility_action")?.destructive,
+    ).toBe(true);
     expect(
       findComputerUseMcpTool("computer_get_cursor_position")?.destructive,
     ).toBe(false);

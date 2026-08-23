@@ -59,12 +59,58 @@ export const shellLocalStorage = {
   },
 };
 
+const HOST_OWNED_NAVIGATION_PARAMS = [
+  "apiBase",
+  "appWindow",
+  "desktopSurface",
+  "workspacePresentation",
+  "enableRuntimeChooser",
+] as const;
+
+/**
+ * Preserve the desktop host's non-secret boot coordinates across shell-owned
+ * route changes. View code cannot call this channel; it remains subject to the
+ * surface-realm navigation broker. Ordinary browser URLs have none of these
+ * keys and are unchanged.
+ */
+function withCurrentHostNavigationParams(
+  url?: string | URL | null,
+): string | URL | null | undefined {
+  if (url == null || typeof window === "undefined") return url;
+  try {
+    const current = new URL(window.location.href);
+    const destination = new URL(url.toString(), current.href);
+    if (destination.origin !== current.origin) return url;
+    for (const key of HOST_OWNED_NAVIGATION_PARAMS) {
+      const value = current.searchParams.get(key);
+      if (value && !destination.searchParams.has(key)) {
+        destination.searchParams.set(key, value);
+      }
+    }
+    return `${destination.pathname}${destination.search}${destination.hash}`;
+  } catch {
+    return url;
+  }
+}
+
 /** The shell router/chrome's history writer (guard-exempt, DOM signatures). */
 export const shellHistory = {
   pushState(data: unknown, unused: string, url?: string | URL | null): void {
-    runAsPrivilegedShell(() => window.history.pushState(data, unused, url));
+    runAsPrivilegedShell(() =>
+      window.history.pushState(
+        data,
+        unused,
+        withCurrentHostNavigationParams(url),
+      ),
+    );
   },
   replaceState(data: unknown, unused: string, url?: string | URL | null): void {
-    runAsPrivilegedShell(() => window.history.replaceState(data, unused, url));
+    runAsPrivilegedShell(() =>
+      window.history.replaceState(
+        data,
+        unused,
+        withCurrentHostNavigationParams(url),
+      ),
+    );
   },
 };

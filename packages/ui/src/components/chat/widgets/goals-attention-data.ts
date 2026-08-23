@@ -21,6 +21,7 @@
 
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { isElectrobunRuntime } from "../../../bridge/electrobun-runtime";
 
 /** How often a home surface refreshes goals - matches GoalsView's 20s poll. */
 export const GOALS_REFRESH_INTERVAL_MS = 20_000;
@@ -52,6 +53,18 @@ export interface AttentionGoal {
   title: string;
   status: GoalStatus;
   reviewState: GoalReviewState;
+}
+
+function lifeOpsGoalsUrl(): string {
+  if (
+    isElectrobunRuntime() &&
+    typeof window !== "undefined" &&
+    (window.location.protocol === "http:" ||
+      window.location.protocol === "https:")
+  ) {
+    return "/api/lifeops/goals";
+  }
+  return `${client.getBaseUrl()}/api/lifeops/goals`;
 }
 
 function toStatus(value: unknown): GoalStatus {
@@ -101,7 +114,7 @@ export async function fetchGoals(
   callerSignal?: AbortSignal,
 ): Promise<AttentionGoal[]> {
   const deadline = AbortSignal.timeout(GOALS_REQUEST_TIMEOUT_MS);
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/goals`, {
+  const response = await fetch(lifeOpsGoalsUrl(), {
     method: "GET",
     signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
   });

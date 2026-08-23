@@ -4,7 +4,11 @@
  * the already-running local elizaOS API rather than a second model runtime.
  */
 
-import { resolveLocalVoiceRuntimeIdentity } from "./local-voice-runtime-identity";
+import { createLocalRuntimeConversationAuthorization } from "../v1/voice/session/lib/local-runtime-conversation-authorization";
+import {
+  authorizeLocalVoiceRuntimeConversation,
+  resolveLocalVoiceRuntimeIdentity,
+} from "./local-voice-runtime-identity";
 
 const DEFAULT_RUNTIME_ORIGIN = "http://127.0.0.1:31337";
 const DEFAULT_GATEWAY_PORT = 31_338;
@@ -78,6 +82,24 @@ async function main(): Promise<void> {
     import("../v1/voice/session/lib/local-runtime-conversation-fetch"),
     import("../v1/voice/session/lib/harness-real-server"),
   ]);
+  const conversationAuthorization = createLocalRuntimeConversationAuthorization(
+    {
+      validate: async (requestedConversationId) => {
+        try {
+          return await authorizeLocalVoiceRuntimeConversation({
+            runtimeOrigin,
+            agentId,
+            conversationId: requestedConversationId,
+          });
+        } catch (error) {
+          writeLog("warn", "local voice conversation authorization failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
+      },
+    },
+  );
 
   await harness.installHarnessSigningKey();
   const server = await harness.startRealVoiceServer({
@@ -89,9 +111,11 @@ async function main(): Promise<void> {
     userId: LOCAL_USER_ID,
     agentId,
     conversationId,
+    authorizeConversationId: conversationAuthorization.authorize,
     fetchImpl: createLocalRuntimeConversationFetch(runtimeOrigin, {
       agentId,
       conversationId,
+      isConversationAuthorized: conversationAuthorization.isAuthorized,
     }),
     listenPort: gatewayPort,
     hooks: { log: writeLog },

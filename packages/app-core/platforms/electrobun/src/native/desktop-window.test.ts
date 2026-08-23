@@ -2,6 +2,18 @@
 import { Screen } from "electrobun/bun";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
+import {
+  ensureWindowTransparentBackground,
+  getMacLaunchAtLoginStatus,
+  isAppActive,
+  isKeyWindow,
+  makeKeyAndOrderFront,
+  orderOut,
+  pollWindowOutsideClick,
+  setMacLaunchAtLoginEnabled,
+  setWindowInteractiveMaterialSize,
+  setWindowNonactivatingPanel,
+} from "./mac-window-effects";
 
 vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
@@ -16,10 +28,14 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 
 vi.mock("./mac-window-effects", () => ({
   createSecurityScopedBookmark: vi.fn(() => null),
+  ensureWindowTransparentBackground: vi.fn(() => true),
   enableVibrancy: vi.fn(() => false),
   setWindowShadow: vi.fn(() => false),
+  setWindowInteractiveMaterialSize: vi.fn(() => true),
+  setWindowNonactivatingPanel: vi.fn(() => true),
   isAppActive: vi.fn(() => false),
   isKeyWindow: vi.fn(() => false),
+  pollWindowOutsideClick: vi.fn(() => false),
   makeKeyAndOrderFront: vi.fn(),
   orderOut: vi.fn(),
   setNativeDragRegion: vi.fn(),
@@ -32,6 +48,8 @@ vi.mock("./mac-window-effects", () => ({
   isFnMonitorHealthy: vi.fn(() => false),
   isFnKeyDown: vi.fn(() => false),
   getFnSystemUsageType: vi.fn(() => 0),
+  getMacLaunchAtLoginStatus: vi.fn(() => "disabled" as const),
+  setMacLaunchAtLoginEnabled: vi.fn(() => "disabled" as const),
 }));
 
 const electrobunMock = vi.hoisted(() => {
@@ -55,7 +73,6 @@ const electrobunMock = vi.hoisted(() => {
   let nextBrowserWindowId = 1;
   const browserWindowInstances: MockBrowserWindow[] = [];
   const trayInstances: Array<{
-    getBounds: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
@@ -128,7 +145,6 @@ const electrobunMock = vi.hoisted(() => {
     browserWindowInstances.push(this);
   });
   const Tray = vi.fn(function FakeTray(this: {
-    getBounds: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
@@ -136,7 +152,6 @@ const electrobunMock = vi.hoisted(() => {
     setMenu: ReturnType<typeof vi.fn>;
     setTitle: ReturnType<typeof vi.fn>;
   }) {
-    this.getBounds = vi.fn(() => ({ x: 0, y: 0, width: 0, height: 0 }));
     this.on = vi.fn();
     this.off = vi.fn();
     this.remove = vi.fn();
@@ -346,6 +361,9 @@ describe("DesktopManager main window controls", () => {
     vi.mocked(Screen.getPrimaryDisplay).mockReturnValue({
       workArea: { x: 100, y: 50, width: 900, height: 700 },
     } as never);
+    vi.mocked(isAppActive).mockReturnValue(false);
+    vi.mocked(isKeyWindow).mockReturnValue(false);
+    vi.mocked(pollWindowOutsideClick).mockReturnValue(false);
     delete process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY;
   });
 
@@ -412,28 +430,68 @@ describe("DesktopManager main window controls", () => {
     manager.enableBottomBarReanchor();
 
     await manager.setBottomBarExpanded({ expanded: true });
-    expect(window.setFrame).toHaveBeenLastCalledWith(250, 50, 600, 700);
+    expect(window.setFrame).toHaveBeenLastCalledWith(250, 36, 600, 700);
 
     await manager.setBottomBarExpanded({ expanded: false });
-    expect(window.setFrame).toHaveBeenLastCalledWith(518, 706, 64, 44);
+    expect(window.setFrame).toHaveBeenLastCalledWith(526, 730, 48, 6);
 
     await manager.setBottomBarExpanded({ expanded: false, hovered: true });
-    expect(window.setFrame).toHaveBeenLastCalledWith(262, 686, 576, 64);
+    expect(window.setFrame).toHaveBeenLastCalledWith(250, 672, 600, 64);
 
     await manager.setBottomBarExpanded({ expanded: false, chip: true });
-    expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+    expect(window.setFrame).toHaveBeenLastCalledWith(382, 664, 336, 72);
     await manager.dispose();
   });
 
-  it("lets a full onboarding surface yield to the external sign-in browser", async () => {
+  it("separates the stable window envelope from its visible interactive material", async () => {
     const { manager, window } = createManagerWithWindow();
+    const nativeWindowPtr = { id: "native-window" };
+    Object.assign(window, { ptr: nativeWindowPtr });
     manager.enableBottomBarReanchor();
 
-    await manager.setBottomBarSurfaceState({ state: "MAXIMIZED" });
-    expect(window.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+    await manager.setBottomBarSize({ width: 600, height: 820 });
+    expect(window.setFrame).toHaveBeenLastCalledWith(250, 36, 600, 700);
+    expect(ensureWindowTransparentBackground).toHaveBeenLastCalledWith(
+      nativeWindowPtr,
+    );
 
-    await manager.setBottomBarSurfaceState({ state: "OPEN_HALF_OR_OVER" });
-    expect(window.setAlwaysOnTop).toHaveBeenLastCalledWith(true);
+    await manager.setBottomBarInteractiveSize({ width: 380.1, height: 180.1 });
+    expect(setWindowInteractiveMaterialSize).toHaveBeenLastCalledWith(
+      nativeWindowPtr,
+      380,
+      180,
+      32,
+    );
+    await manager.dispose();
+  });
+
+  it("uses a nonactivating native panel only for the resting pill", async () => {
+    const { manager, window } = createManagerWithWindow();
+    const nativeWindowPtr = { id: "native-window" };
+    Object.assign(window, { ptr: nativeWindowPtr });
+    manager.enableBottomBarReanchor();
+
+    await manager.setBottomBarSurfaceState({ state: "CLOSED" });
+    expect(setWindowNonactivatingPanel).toHaveBeenLastCalledWith(
+      nativeWindowPtr,
+      true,
+    );
+
+    await manager.setBottomBarSurfaceState({ state: "INPUT" });
+    expect(setWindowNonactivatingPanel).toHaveBeenLastCalledWith(
+      nativeWindowPtr,
+      false,
+    );
+    await manager.dispose();
+  });
+
+  it("rejects invalid measured material before changing the native frame", async () => {
+    const { manager, window } = createManagerWithWindow();
+    manager.enableBottomBarReanchor();
+    await expect(
+      manager.setBottomBarSize({ width: Number.NaN, height: 56 }),
+    ).rejects.toThrow("material size must be positive and finite");
+    expect(window.setFrame).not.toHaveBeenCalled();
     await manager.dispose();
   });
 
@@ -448,7 +506,7 @@ describe("DesktopManager main window controls", () => {
       manager.setMainWindow(window as never);
       await vi.advanceTimersByTimeAsync(5_000);
 
-      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 664, 336, 72);
       await manager.dispose();
     } finally {
       vi.useRealTimers();
@@ -469,7 +527,7 @@ describe("DesktopManager main window controls", () => {
       ).rejects.toThrow("native frame unavailable");
       await vi.advanceTimersByTimeAsync(5_000);
 
-      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 664, 336, 72);
       expect(window.setFrame).toHaveBeenCalledTimes(2);
       await manager.dispose();
     } finally {
@@ -487,7 +545,7 @@ describe("DesktopManager main window controls", () => {
       expect(window.setFrame).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(5_000);
-      expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
+      expect(window.setFrame).toHaveBeenLastCalledWith(382, 664, 336, 72);
       await manager.dispose();
     } finally {
       vi.useRealTimers();
@@ -565,6 +623,59 @@ describe("DesktopManager main window controls", () => {
     expect(sendToWebview).toHaveBeenCalledWith("desktopWindowFocus", undefined);
   });
 
+  it("reports application deactivation for a non-key detached panel", async () => {
+    vi.useFakeTimers();
+    try {
+      const sendToWebview = vi.fn();
+      vi.mocked(isAppActive).mockReturnValueOnce(true).mockReturnValue(false);
+      vi.mocked(isKeyWindow).mockReturnValue(false);
+      const { manager } = createManagerWithWindow();
+      manager.setSendToWebview(sendToWebview);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(sendToWebview).not.toHaveBeenCalledWith(
+        "desktopWindowBlur",
+        undefined,
+      );
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(sendToWebview).toHaveBeenCalledWith(
+        "desktopWindowBlur",
+        undefined,
+      );
+      await expect(manager.isWindowFocused()).resolves.toEqual({
+        focused: false,
+      });
+      await manager.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports clicks outside a non-key detached panel material", async () => {
+    vi.useFakeTimers();
+    try {
+      const sendToWebview = vi.fn();
+      vi.mocked(isAppActive).mockReturnValue(false);
+      vi.mocked(isKeyWindow).mockReturnValue(false);
+      vi.mocked(pollWindowOutsideClick)
+        .mockReturnValueOnce(true)
+        .mockReturnValue(false);
+      const { manager, window } = createManagerWithWindow();
+      Object.assign(window, { ptr: { id: "detached-panel" } });
+      manager.setSendToWebview(sendToWebview);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(sendToWebview).toHaveBeenCalledWith(
+        "desktopWindowBlur",
+        undefined,
+      );
+      await manager.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("hides on close by default and hard-closes when tray-minimize is disabled", async () => {
     const { manager, window } = createManagerWithWindow();
 
@@ -596,6 +707,34 @@ describe("DesktopManager main window controls", () => {
     await expect(manager.isWindowVisible()).resolves.toEqual({
       visible: true,
     });
+  });
+
+  it("suppresses the pill only while focused Workspace owns the shared ChatOverlay", async () => {
+    const { manager, window } = createManagerWithWindow();
+    const sendToWebview = vi.fn();
+    manager.setSendToWebview(sendToWebview);
+    Object.assign(window, { ptr: { id: "pill-window" } });
+
+    await manager.setMainWindowSuppressedByWorkspace(true);
+    expect(sendToWebview).toHaveBeenCalledWith(
+      "desktopWorkspaceHandoff",
+      undefined,
+    );
+    expect(orderOut).toHaveBeenCalledTimes(1);
+    await expect(manager.isWindowVisible()).resolves.toEqual({
+      visible: false,
+    });
+
+    await manager.showWindow();
+    expect(makeKeyAndOrderFront).not.toHaveBeenCalled();
+
+    await manager.setMainWindowSuppressedByWorkspace(false);
+    expect(makeKeyAndOrderFront).toHaveBeenCalledTimes(1);
+
+    await manager.setMainWindowSuppressedByWorkspace(true);
+    await manager.hideWindow();
+    await manager.setMainWindowSuppressedByWorkspace(false);
+    expect(makeKeyAndOrderFront).toHaveBeenCalledTimes(1);
   });
 
   it("tears down old window event handlers when replacing the main window", () => {
@@ -633,7 +772,69 @@ describe("DesktopManager main window controls", () => {
     expect(electrobunMock.Utils.quit).not.toHaveBeenCalled();
   });
 
-  it("attaches a native Windows and Quit fallback menu at tray creation", async () => {
+  it("routes the product tray destinations natively even when no renderer owns the click", async () => {
+    const manager = new DesktopManager();
+    const window = new FakeBrowserWindow();
+    const openWorkspace = vi.fn();
+    const openSettings = vi.fn();
+    const send = vi.fn();
+    manager.setMainWindow(window as never);
+    manager.setSendToWebview(send);
+    manager.setOpenWorkspaceCallback(openWorkspace);
+    manager.setOpenSettingsCallback(openSettings);
+
+    await manager.createTray({
+      icon: "/tmp/appIcon.png",
+      menu: [
+        { id: "tray-show-window", label: "Open Eliza" },
+        { id: "tray-open-desktop-workspace", label: "Open Workspace" },
+        { id: "tray-open-settings", label: "Settings…" },
+      ],
+    });
+
+    electrobunMock.events.emit("tray-clicked", {
+      data: { action: "tray-open-desktop-workspace" },
+    });
+    electrobunMock.events.emit("tray-clicked", {
+      data: { action: "tray-open-settings" },
+    });
+    electrobunMock.events.emit("tray-clicked", {
+      data: { action: "tray-show-window" },
+    });
+
+    await vi.waitFor(() => expect(openWorkspace).toHaveBeenCalledTimes(1));
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(window.show).toHaveBeenCalledTimes(1);
+    expect(window.focus).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith("desktopShortcutPressed", {
+      id: "chat-overlay-open",
+      accelerator: "tray",
+    });
+  });
+
+  it("does not run bare tray-icon toggle behavior for a native menu action", async () => {
+    const manager = new DesktopManager();
+    const window = new FakeBrowserWindow();
+    manager.setMainWindow(window as never);
+
+    await manager.createTray({
+      icon: "/tmp/appIcon.png",
+      menu: [{ id: "tray-show-window", label: "Open Eliza" }],
+    });
+
+    const tray = electrobunMock.trayInstances[0];
+    const trayClickHandler = tray?.on.mock.calls.find(
+      ([event]) => event === "tray-clicked",
+    )?.[1] as ((event?: unknown) => void) | undefined;
+    expect(trayClickHandler).toBeTypeOf("function");
+
+    trayClickHandler?.({ data: { action: "tray-show-window" } });
+
+    expect(window.show).not.toHaveBeenCalled();
+    expect(window.focus).not.toHaveBeenCalled();
+  });
+
+  it("attaches a minimal native fallback menu at tray creation", async () => {
     const manager = new DesktopManager();
 
     await manager.createTray({ icon: "/tmp/appIcon.png" });
@@ -643,19 +844,13 @@ describe("DesktopManager main window controls", () => {
     expect(tray.setMenu).toHaveBeenCalledWith([
       expect.objectContaining({
         type: "normal",
-        label: "Windows",
-        submenu: [
-          expect.objectContaining({
-            type: "normal",
-            label: "Open Eliza",
-            action: "tray-show-window",
-          }),
-        ],
+        label: "Open Eliza",
+        action: "tray-show-window",
       }),
       { type: "separator" },
       expect.objectContaining({
         type: "normal",
-        label: "Quit",
+        label: "Quit Eliza",
         action: "quit",
       }),
     ]);
@@ -920,6 +1115,7 @@ describe("DesktopManager notifications", () => {
   it("covers callback and native context-menu boundaries used beside notifications", async () => {
     const manager = new DesktopManager();
     const sent = vi.fn();
+    const openWorkspace = vi.fn();
     const openSettings = vi.fn();
     const openSurface = vi.fn(async () => ({
       id: "surface-1",
@@ -936,6 +1132,7 @@ describe("DesktopManager notifications", () => {
       alwaysOnTop: false,
     }));
     manager.setSendToWebview(sent);
+    manager.setOpenWorkspaceCallback(openWorkspace);
     manager.setOpenSettingsCallback(openSettings);
     manager.setOpenSurfaceWindowCallback(openSurface);
     manager.setOpenAppWindowCallback(openApp);
@@ -944,6 +1141,8 @@ describe("DesktopManager notifications", () => {
     manager.setRequestQuitCallback(async () => undefined);
     manager.setRestoreMainWindowCallback(async () => undefined);
 
+    manager.openWorkspace();
+    expect(openWorkspace).toHaveBeenCalledTimes(1);
     manager.openSettings("notifications");
     expect(openSettings).toHaveBeenCalledWith("notifications");
     expect(await manager.openSurfaceWindow("chat")).toMatchObject({
@@ -1209,23 +1408,56 @@ describe("DesktopManager dockless (tray-first) Dock tracking (#12184)", () => {
     manager.setManagedWindowsPresent(true);
     expect(electrobunMock.Utils.setDockIconVisible).not.toHaveBeenCalled();
   });
+});
 
-  it("reveals the Dock icon when tray-first mode is disabled after a tray failure", () => {
-    const manager = new DesktopManager();
-    manager.setTrayFirstMode(true);
-    manager.setTrayFirstMode(false);
+describe("DesktopManager macOS Launch at Login", () => {
+  const originalPlatform = process.platform;
 
-    expect(dockCalls().at(-1)).toBe(true);
+  beforeEach(() => {
+    resetDesktopManagerForTesting();
+    vi.mocked(getMacLaunchAtLoginStatus).mockReset();
+    vi.mocked(getMacLaunchAtLoginStatus).mockReturnValue("disabled");
+    vi.mocked(setMacLaunchAtLoginEnabled).mockReset();
+    vi.mocked(setMacLaunchAtLoginEnabled).mockReturnValue("disabled");
+    Object.defineProperty(process, "platform", {
+      value: "darwin",
+      configurable: true,
+    });
   });
 
-  it("reports whether macOS assigned visible bounds to the tray status item", async () => {
+  afterEach(() => {
+    Object.defineProperty(process, "platform", {
+      value: originalPlatform,
+      configurable: true,
+    });
+  });
+
+  it("reads the public SMAppService state without a LaunchAgent file", async () => {
+    vi.mocked(getMacLaunchAtLoginStatus).mockReturnValue("enabled");
     const manager = new DesktopManager();
-    await manager.createTray({ icon: "/tmp/appIcon.png" });
-    const tray = electrobunMock.trayInstances[0];
 
-    expect(manager.hasVisibleTrayStatusItem()).toBe(false);
+    await expect(manager.getAutoLaunchStatus()).resolves.toEqual({
+      enabled: true,
+      openAsHidden: false,
+    });
+    expect(getMacLaunchAtLoginStatus).toHaveBeenCalledOnce();
+  });
 
-    tray.getBounds.mockReturnValue({ x: 100, y: 0, width: 18, height: 24 });
-    expect(manager.hasVisibleTrayStatusItem()).toBe(true);
+  it("updates the public SMAppService state", async () => {
+    vi.mocked(setMacLaunchAtLoginEnabled).mockReturnValue("enabled");
+    const manager = new DesktopManager();
+
+    await manager.setAutoLaunch({ enabled: true, openAsHidden: true });
+
+    expect(setMacLaunchAtLoginEnabled).toHaveBeenCalledWith(true);
+  });
+
+  it("fails clearly when macOS cannot register the app", async () => {
+    vi.mocked(setMacLaunchAtLoginEnabled).mockReturnValue("not-found");
+    const manager = new DesktopManager();
+
+    await expect(manager.setAutoLaunch({ enabled: true })).rejects.toThrow(
+      "could not update Launch at Login",
+    );
   });
 });
