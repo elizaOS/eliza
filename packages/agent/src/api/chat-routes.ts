@@ -579,7 +579,7 @@ function normalizeAndroidLocalDirectUserText(text: string): string {
     .trim();
 }
 
-function compareCreatedAtAscending(
+export function compareCreatedAtAscending(
   left: { createdAt?: number; id?: string },
   right: { createdAt?: number; id?: string },
 ): number {
@@ -2870,6 +2870,30 @@ export async function getRecentVisibleAssistantMemoryTextSince(
   );
 }
 
+/**
+ * Orders candidate assistant turns newest-first, treating a missing or
+ * non-finite `createdAt` as epoch zero so a poisoned timestamp can never make
+ * the comparator inconsistent, and breaking ties on ascending id so the
+ * selected turn is deterministic rather than dependent on storage order.
+ */
+export function compareAssistantTurnRecencyDescending(
+  a: { createdAt?: number; id?: string },
+  b: { createdAt?: number; id?: string },
+): number {
+  const bCreated =
+    typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+      ? b.createdAt
+      : 0;
+  const aCreated =
+    typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+      ? a.createdAt
+      : 0;
+  return (
+    bCreated - aCreated ||
+    (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
+  );
+}
+
 export async function getRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -2898,20 +2922,7 @@ export async function getRecentVisibleAssistantMemorySince(
           createdAt >= sinceMs - slackMs
         );
       })
-      .sort((a, b) => {
-        const bCreated =
-          typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
-            ? b.createdAt
-            : 0;
-        const aCreated =
-          typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
-            ? a.createdAt
-            : 0;
-        return (
-          bCreated - aCreated ||
-          (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
-        );
-      })[0];
+      .sort(compareAssistantTurnRecencyDescending)[0];
 
     const text = (
       persistedAssistantTurn?.content as { text?: string } | undefined

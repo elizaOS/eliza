@@ -61,34 +61,4 @@ describe("chat-routes action-value projection", () => {
       expect(out.length).toBeLessThanOrEqual(1000);
     }
   });
-
-  it("sorts messages safely when createdAt contains NaN", () => {
-    function compareCreatedAtAscending(
-      left: { createdAt?: number; id?: string },
-      right: { createdAt?: number; id?: string },
-    ): number {
-      if (left.createdAt === right.createdAt) {
-        return (left.id ?? "").localeCompare(right.id ?? "");
-      }
-      const leftVal =
-        typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
-          ? left.createdAt
-          : -1;
-      const rightVal =
-        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
-          ? right.createdAt
-          : -1;
-      return (
-        leftVal - rightVal || (left.id ?? "").localeCompare(right.id ?? "")
-      );
-    }
-
-    const items = [
-      { id: "msg-nan", createdAt: NaN },
-      { id: "msg-100", createdAt: 100 },
-    ];
-    items.sort(compareCreatedAtAscending);
-    expect(items[0]?.id).toBe("msg-nan");
-    expect(items[1]?.id).toBe("msg-100");
-  });
 });
