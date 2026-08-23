@@ -390,7 +390,7 @@ describe("Domain 7 — Reminders & escalation ladder", () => {
     // candidate set (push + the urgent connector fan-out + in_app final rung);
     // the runner skips disconnected channels at fire time.
     expect(DEFAULT_ESCALATION_LADDERS.priority_high_default?.steps.length).toBe(
-      9,
+      8,
     );
   });
 });

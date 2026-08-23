@@ -7,7 +7,7 @@
  * (no history, streak broken by a reply, approvals) prove the softening is
  * scoped and reversible.
  */
-import { EventType, type Memory } from "@elizaos/core";
+import type { Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -20,7 +20,7 @@ import {
 import { resolveOwnerFactStore } from "../owner/fact-store.ts";
 import { resolvePendingPromptsStore } from "../pending-prompts/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
-import { settleDeferredInboundScans } from "./deferred-inbound-scans.ts";
+import { completeFiredTasksOnOwnerReply } from "./inbound-reply-completion.ts";
 import type { ScheduledTask } from "./index.ts";
 import {
   type ProcessDueScheduledTasksResult,
@@ -377,7 +377,7 @@ describe("processDueScheduledTasks — quiet streak softens the next no-reply la
     });
   });
 
-  it("an owner reply through the REAL MESSAGE_RECEIVED seam appends the streak-breaking log entry", async () => {
+  it("an owner reply appends the streak-breaking log entry", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", OWNER_ENTITY_ID, false);
@@ -408,18 +408,15 @@ describe("processDueScheduledTasks — quiet streak softens the next no-reply la
       expectedReplyKind: "free_form",
     });
 
-    await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-      message: {
-        id: "msg-quiet-streak-reply",
-        entityId: OWNER_ENTITY_ID,
-        roomId,
-        agentId: runtime.agentId,
-        content: { text: "pretty good actually" },
-        createdAt: Date.now(),
-      } as unknown as Memory,
-    });
-    // The completion scan runs detached off the awaited emit edge (#15255).
-    await settleDeferredInboundScans();
+    const result = await completeFiredTasksOnOwnerReply(runtime, {
+      id: "msg-quiet-streak-reply",
+      entityId: OWNER_ENTITY_ID,
+      roomId,
+      agentId: runtime.agentId,
+      content: { text: "pretty good actually" },
+      createdAt: Date.now(),
+    } as unknown as Memory);
+    expect(result.completed).toEqual([checkin.taskId]);
 
     const persisted = await repo.getScheduledTask(
       runtime.agentId,

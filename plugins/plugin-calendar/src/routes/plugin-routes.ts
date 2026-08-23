@@ -65,6 +65,7 @@ const CALENDAR_RATE_LIMITS: Record<CalendarRateLimitKey, RateLimitConfig> = {
   calendar_source_read: { maxRequests: 120, windowMs: 60_000 },
   calendar_source_write: { maxRequests: 20, windowMs: 60_000 },
   calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
+  calendar_imported_data_purge: { maxRequests: 10, windowMs: 60_000 },
 };
 
 const runtimeRateLimitBuckets = new WeakMap<
@@ -137,6 +138,10 @@ function isCalendarRouteService(
     typeof (service as CalendarRouteService).deleteIcsCalendarSource ===
       "function" &&
     typeof (service as CalendarRouteService).syncIcsCalendarSource ===
+      "function" &&
+    typeof (service as CalendarRouteService).purgeImportedCalendarData ===
+      "function" &&
+    typeof (service as CalendarRouteService).seedImportedCalendarData ===
       "function"
   );
 }

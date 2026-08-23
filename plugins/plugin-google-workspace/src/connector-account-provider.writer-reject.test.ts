@@ -26,13 +26,6 @@ function b64url(value: object): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-// id_token carrying sub/email so completion never needs the userinfo endpoint.
-const ID_TOKEN = `${b64url({ alg: "none" })}.${b64url({
-  sub: "google-sub-writer-reject",
-  email: "writer-reject@example.com",
-  email_verified: true,
-})}.sig`;
-
 function makeRuntime(
   putSecret: (params: unknown) => Promise<string>,
   adapter: InMemoryDatabaseAdapter
@@ -69,7 +62,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function stubTokenExchangeSuccess(): ReturnType<typeof vi.fn> {
+function stubTokenExchangeSuccess(nonce: string): ReturnType<typeof vi.fn> {
   const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url !== TOKEN_ENDPOINT) {
@@ -83,7 +76,12 @@ function stubTokenExchangeSuccess(): ReturnType<typeof vi.fn> {
         token_type: "Bearer",
         expires_in: 3600,
         scope: "https://www.googleapis.com/auth/gmail.readonly",
-        id_token: ID_TOKEN,
+        id_token: `${b64url({ alg: "none" })}.${b64url({
+          sub: "google-sub-writer-reject",
+          email: "writer-reject@example.com",
+          email_verified: true,
+          nonce,
+        })}.sig`,
       }),
     };
   });
@@ -101,12 +99,12 @@ describe("google provider completion with a rejecting durable credential writer 
     const runtime = makeRuntime(putSecret, adapter);
     const manager: ConnectorAccountManager = getConnectorAccountManager(runtime);
     manager.registerProvider(createGoogleConnectorAccountProvider(runtime));
-    const fetchStub = stubTokenExchangeSuccess();
-
     const flow = await manager.startOAuth("google", {
       scopes: ["gmail.read"],
-      accountId: "writer-reject-account",
     });
+    const fetchStub = stubTokenExchangeSuccess(
+      String((flow.metadata as Record<string, unknown>).oidcNonce)
+    );
 
     // First completion: token exchange succeeds, the durable write rejects,
     // and the callback surfaces the writer failure as a typed error.
