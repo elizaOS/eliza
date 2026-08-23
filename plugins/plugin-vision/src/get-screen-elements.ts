@@ -111,9 +111,15 @@ function byPosition(
   a: { bbox: Bbox; id: string },
   b: { bbox: Bbox; id: string },
 ): number {
-  return (
-    a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0] || a.id.localeCompare(b.id)
-  );
+  const aY =
+    typeof a.bbox[1] === "number" && Number.isFinite(a.bbox[1]) ? a.bbox[1] : 0;
+  const bY =
+    typeof b.bbox[1] === "number" && Number.isFinite(b.bbox[1]) ? b.bbox[1] : 0;
+  const aX =
+    typeof a.bbox[0] === "number" && Number.isFinite(a.bbox[0]) ? a.bbox[0] : 0;
+  const bX =
+    typeof b.bbox[0] === "number" && Number.isFinite(b.bbox[0]) ? b.bbox[0] : 0;
+  return aY - bY || aX - bX || a.id.localeCompare(b.id);
 }
 
 /**
