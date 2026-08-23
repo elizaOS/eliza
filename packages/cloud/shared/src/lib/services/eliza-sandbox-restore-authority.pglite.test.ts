@@ -22,6 +22,7 @@ import {
   type AgentSandbox,
   type AgentSandboxBackup,
   agentSandboxesRepository,
+  type ProvisioningAdmissionCapture,
 } from "../../db/repositories/agent-sandboxes";
 import {
   type AgentBackupDeltaData,
@@ -84,6 +85,21 @@ function state(label: string): AgentBackupStateData {
     memories: [],
     config: { restoreAuthority: label },
     workspaceFiles: { [`${label}.txt`]: label },
+  };
+}
+
+function provisioningAdmissionCapture(sandbox: AgentSandbox): ProvisioningAdmissionCapture {
+  return {
+    id: sandbox.id,
+    organization_id: sandbox.organization_id,
+    status: sandbox.status,
+    lifecycle_job_id: sandbox.lifecycle_job_id,
+    lifecycle_execution_generation: sandbox.lifecycle_execution_generation,
+    execution_tier: sandbox.execution_tier,
+    pool_status: sandbox.pool_status,
+    deleted_at: sandbox.deleted_at,
+    deletion_attempt_id: sandbox.deletion_attempt_id,
+    lifecycle_revision: sandbox.lifecycle_revision,
   };
 }
 
@@ -466,13 +482,21 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
       checkHealth: mock(async () => true),
     };
     const service = new ElizaSandboxService(provider);
+    const buildProvisioningRetryHandle = spyOn(
+      service as unknown as {
+        buildProvisioningRetryHandle(rec: AgentSandbox): unknown;
+      },
+      "buildProvisioningRetryHandle",
+    );
 
     spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(sandbox);
     spyOn(agentSandboxesRepository, "getStoredBackupById").mockResolvedValue(storedBackup);
     spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(storedBackup);
     spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
     spyOn(agentSandboxesRepository, "findById").mockResolvedValue(sandbox);
-    spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(provisioning);
+    spyOn(agentSandboxesRepository, "trySetProvisioningFromRestoreCapture").mockResolvedValue(
+      provisioning,
+    );
     spyOn(agentSandboxesRepository, "getBackupById").mockResolvedValue(backup);
     spyOn(agentSandboxesRepository, "getReconstructedBackupState").mockResolvedValue(
       reconstructedState,
@@ -508,7 +532,14 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
       "transferReplacementToPrimary",
     ).mockResolvedValue(running);
 
-    return { sandbox, storedBackup, running, service, stopForReplacement };
+    return {
+      sandbox,
+      storedBackup,
+      running,
+      service,
+      stopForReplacement,
+      buildProvisioningRetryHandle,
+    };
   }
 
   test("rejects an explicitly selected older backup", async () => {
@@ -553,11 +584,13 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
       kind: "from-backup",
       backupId: latest.id,
       requireRestoreEndpoint: true,
+      expectedAdmission: provisioningAdmissionCapture(sandbox),
     });
     expect(provision).toHaveBeenNthCalledWith(2, sandbox.id, sandbox.organization_id, {
       kind: "from-backup",
       backupId: latest.id,
       requireRestoreEndpoint: true,
+      expectedAdmission: provisioningAdmissionCapture(sandbox),
     });
   });
 
@@ -585,12 +618,123 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
       kind: "from-backup",
       backupId: selected.id,
       requireRestoreEndpoint: true,
+      expectedAdmission: provisioningAdmissionCapture(sandbox),
     });
   });
 
-  test("fails closed when a stopped restore races with a concurrent wake", async () => {
+  test("loses exact admission to a concurrent running generation without reporting the backup applied", async () => {
+    const sandbox = await seedSandbox({
+      status: "stopped",
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      bridge_port: null,
+      web_ui_port: null,
+      headscale_ip: null,
+      database_status: "ready",
+      database_uri: "postgres://restore-authority.example/admission-loss",
+    });
+    await seedBackup(sandbox.id, "admission-loss");
+    const create = mock(async () => ({
+      sandboxId: "must-not-create",
+      bridgeUrl: "http://127.0.0.1:3000",
+      healthUrl: "http://127.0.0.1:3000/health",
+      metadata: {},
+    }));
+    const service = new ElizaSandboxService({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    });
+    const originalLatest =
+      agentSandboxesRepository.getLatestStoredBackup.bind(agentSandboxesRepository);
+    let installedWinner = false;
+    spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockImplementation(async (agentId) => {
+      const latest = await originalLatest(agentId);
+      if (!installedWinner) {
+        installedWinner = true;
+        await dbWrite
+          .update(agentSandboxes)
+          .set({
+            status: "running",
+            sandbox_id: "concurrent-running-sandbox",
+            node_id: "concurrent-running-node",
+            container_name: "concurrent-running-container",
+            bridge_url: "http://127.0.0.1:22060",
+            health_url: "http://127.0.0.1:33000/health",
+          })
+          .where(eq(agentSandboxes.id, sandbox.id));
+      }
+      return latest;
+    });
+    const exactAdmission = spyOn(agentSandboxesRepository, "trySetProvisioningFromRestoreCapture");
+    const genericRead = spyOn(agentSandboxesRepository, "findByIdAndOrg");
+    const genericAdmission = spyOn(agentSandboxesRepository, "trySetProvisioning");
+    const createKey = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "33333333-3333-4333-8333-333333333333",
+      plainKey: "must_not_create_restore_key",
+      prefix: "must_not_create",
+    });
+    const reactivateBilling = spyOn(
+      agentBillingRepository,
+      "reactivateSandboxBillingAfterFunding",
+    ).mockResolvedValue(undefined);
+    const provisionDatabase = spyOn(
+      service as unknown as {
+        provisionAgentDatabase(rec: AgentSandbox): Promise<unknown>;
+      },
+      "provisionAgentDatabase",
+    );
+    const failedWarmCleanup = spyOn(
+      service as unknown as {
+        retireFailedWarmClaimForRetry(
+          agentId: string,
+          orgId: string,
+        ): Promise<{ success: boolean }>;
+      },
+      "retireFailedWarmClaimForRetry",
+    );
+    const replacementCleanup = spyOn(
+      service as unknown as {
+        retirePersistedReplacementCleanup(agentId: string, orgId: string): Promise<unknown>;
+      },
+      "retirePersistedReplacementCleanup",
+    );
+
+    await expect(service.restore(sandbox.id, sandbox.organization_id)).resolves.toEqual({
+      success: false,
+      error: AUTHORITY_CHANGED,
+    });
+
+    expect(exactAdmission).toHaveBeenCalledWith(provisioningAdmissionCapture(sandbox));
+    expect(genericRead).not.toHaveBeenCalled();
+    expect(genericAdmission).not.toHaveBeenCalled();
+    expect(failedWarmCleanup).not.toHaveBeenCalled();
+    expect(replacementCleanup).not.toHaveBeenCalled();
+    expect(provisionDatabase).not.toHaveBeenCalled();
+    expect(createKey).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(reactivateBilling).not.toHaveBeenCalled();
+
+    const [winner] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(winner).toMatchObject({
+      status: "running",
+      sandbox_id: "concurrent-running-sandbox",
+      container_name: "concurrent-running-container",
+      environment_vars: sandbox.environment_vars,
+      database_uri: sandbox.database_uri,
+    });
+    expect(winner?.lifecycle_revision).toBe(sandbox.lifecycle_revision + 1);
+  });
+
+  test("fails closed when a wake from-backup provision loses generic admission to a running generation", async () => {
     const sandbox = await seedSandbox({ status: "stopped" });
-    const selected = await seedBackup(sandbox.id, "concurrent-wake");
     const running: AgentSandbox = {
       ...sandbox,
       status: "running",
@@ -600,18 +744,254 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
     const fetchMock = installRestoreFetch();
     globalThis.fetch = fetchMock;
     spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(running);
-    spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(null);
+    const genericAdmission = spyOn(
+      agentSandboxesRepository,
+      "trySetProvisioning",
+    ).mockResolvedValue(undefined);
+    const exactAdmission = spyOn(agentSandboxesRepository, "trySetProvisioningFromRestoreCapture");
 
     await expect(
-      new ElizaSandboxService().restore(sandbox.id, sandbox.organization_id, selected.id),
-    ).resolves.toEqual({ success: false, error: AUTHORITY_CHANGED });
+      new ElizaSandboxService().provision(sandbox.id, sandbox.organization_id, {
+        kind: "from-backup",
+        backupId: crypto.randomUUID(),
+      }),
+    ).resolves.toEqual({
+      success: false,
+      sandboxRecord: running,
+      error: AUTHORITY_CHANGED,
+    });
 
+    expect(genericAdmission).toHaveBeenCalledWith(sandbox.id);
+    expect(exactAdmission).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  test("rejects every captured authority dimension changed before stopped admission", async () => {
+    const mutations = new Map<string, Partial<AgentSandbox>>();
+    const originalLatest =
+      agentSandboxesRepository.getLatestStoredBackup.bind(agentSandboxesRepository);
+    spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockImplementation(async (agentId) => {
+      const latest = await originalLatest(agentId);
+      const mutation = mutations.get(agentId);
+      if (mutation) {
+        await dbWrite.update(agentSandboxes).set(mutation).where(eq(agentSandboxes.id, agentId));
+      }
+      return latest;
+    });
+    const create = mock(async () => {
+      throw new Error("provider create must not run after restore admission loss");
+    });
+    const service = new ElizaSandboxService({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    });
+    const createKey = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "44444444-4444-4444-8444-444444444444",
+      plainKey: "must_not_create_restore_key",
+      prefix: "must_not_create",
+    });
+    const exactAdmission = spyOn(agentSandboxesRepository, "trySetProvisioningFromRestoreCapture");
+    const genericAdmission = spyOn(agentSandboxesRepository, "trySetProvisioning");
+
+    const cases: Array<{ name: string; mutation: Partial<AgentSandbox> }> = [
+      { name: "status", mutation: { status: "provisioning" } },
+      { name: "tier", mutation: { execution_tier: "shared" } },
+      { name: "pool ownership", mutation: { pool_status: "unclaimed" } },
+      {
+        name: "soft deletion",
+        mutation: { deleted_at: new Date("2026-08-23T00:10:00.000Z") },
+      },
+      {
+        name: "deletion ownership",
+        mutation: {
+          deletion_attempt_id: DELETION_ATTEMPT_ID,
+          deletion_started_at: new Date("2026-08-23T00:20:00.000Z"),
+        },
+      },
+      {
+        name: "lifecycle execution ownership",
+        mutation: {
+          lifecycle_job_id: "a75a32be-2058-4faa-86e5-c0716ae4c6ef",
+          lifecycle_execution_generation: "16b85cea-37d7-4e4c-8a8a-e2d176dce41a",
+        },
+      },
+      { name: "lifecycle revision", mutation: { agent_name: unique("renamed-before-cas") } },
+      {
+        name: "replacement cleanup ownership",
+        mutation: {
+          replacement_cleanup_sandbox_id: unique("replacement-sandbox"),
+          replacement_cleanup_node_id: unique("replacement-node"),
+          replacement_cleanup_container_name: unique("replacement-container"),
+          replacement_cleanup_allocation_counted: true,
+          replacement_cleanup_created_at: new Date("2026-08-23T00:30:00.000Z"),
+        },
+      },
+      {
+        name: "failed warm-claim cleanup",
+        mutation: {
+          claimed_at: new Date("2026-08-23T00:35:00.000Z"),
+          warm_claim_credential_state: "failed",
+          warm_claim_cleanup_completed_at: new Date("2026-08-23T00:40:00.000Z"),
+        },
+      },
+    ];
+
+    for (const { name, mutation } of cases) {
+      const sandbox = await seedSandbox({
+        status: "stopped",
+        sandbox_id: null,
+        node_id: null,
+        container_name: null,
+        bridge_url: null,
+        health_url: null,
+        bridge_port: null,
+        web_ui_port: null,
+        headscale_ip: null,
+        database_status: "ready",
+        database_uri: `postgres://restore-authority.example/${name.replaceAll(" ", "-")}`,
+      });
+      await seedBackup(sandbox.id, `admission-${name}`);
+      mutations.set(sandbox.id, mutation);
+
+      await expect(service.restore(sandbox.id, sandbox.organization_id)).resolves.toEqual({
+        success: false,
+        error: AUTHORITY_CHANGED,
+      });
+      expect(exactAdmission).toHaveBeenLastCalledWith(provisioningAdmissionCapture(sandbox));
+    }
+
+    expect(exactAdmission).toHaveBeenCalledTimes(cases.length);
+    expect(genericAdmission).not.toHaveBeenCalled();
+    expect(createKey).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test("rejects a committed exclusive lifecycle job acquired before stopped admission", async () => {
+    const sandbox = await seedSandbox({
+      status: "stopped",
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      bridge_port: null,
+      web_ui_port: null,
+      headscale_ip: null,
+      database_status: "ready",
+      database_uri: "postgres://restore-authority.example/committed-job",
+    });
+    await seedBackup(sandbox.id, "committed-job");
+    const originalLatest =
+      agentSandboxesRepository.getLatestStoredBackup.bind(agentSandboxesRepository);
+    let inserted = false;
+    spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockImplementation(async (agentId) => {
+      const latest = await originalLatest(agentId);
+      if (!inserted) {
+        inserted = true;
+        await dbWrite.insert(jobs).values({
+          type: JOB_TYPES.AGENT_RESTART,
+          status: "pending",
+          data: {
+            agentId: sandbox.id,
+            organizationId: sandbox.organization_id,
+            userId: sandbox.user_id,
+          },
+          agent_id: sandbox.id,
+          organization_id: sandbox.organization_id,
+          user_id: sandbox.user_id,
+        });
+      }
+      return latest;
+    });
+    const create = mock(async () => {
+      throw new Error("provider create must not run while a lifecycle job owns admission");
+    });
+    const service = new ElizaSandboxService({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    });
+
+    await expect(service.restore(sandbox.id, sandbox.organization_id)).resolves.toEqual({
+      success: false,
+      error: AUTHORITY_CHANGED,
+    });
+    expect(create).not.toHaveBeenCalled();
+
+    const [current] = await dbWrite
+      .select({ status: agentSandboxes.status })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(current?.status).toBe("stopped");
+  });
+
+  test("allows exactly one exact-CAS winner from one stopped generation", async () => {
+    const sandbox = await seedSandbox({ status: "stopped" });
+    const capture = provisioningAdmissionCapture(sandbox);
+
+    const results = await Promise.all([
+      agentSandboxesRepository.trySetProvisioningFromRestoreCapture(capture),
+      agentSandboxesRepository.trySetProvisioningFromRestoreCapture(capture),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(results.filter((result) => result === undefined)).toHaveLength(1);
+    const [current] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(current).toMatchObject({
+      status: "provisioning",
+      organization_id: sandbox.organization_id,
+      execution_tier: sandbox.execution_tier,
+    });
+    expect(current?.lifecycle_revision).toBe(sandbox.lifecycle_revision + 1);
+  });
+
+  test("rejects a mismatched expected tenant identity before the exact CAS", async () => {
+    const sandbox = await seedSandbox({ status: "stopped" });
+    const create = mock(async () => ({
+      sandboxId: "must-not-create",
+      bridgeUrl: "http://127.0.0.1:3000",
+      healthUrl: "http://127.0.0.1:3000/health",
+      metadata: {},
+    }));
+    const service = new ElizaSandboxService({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    });
+    const exactAdmission = spyOn(agentSandboxesRepository, "trySetProvisioningFromRestoreCapture");
+
+    await expect(
+      service.provision(sandbox.id, sandbox.organization_id, {
+        kind: "from-backup",
+        backupId: crypto.randomUUID(),
+        requireRestoreEndpoint: true,
+        expectedAdmission: {
+          ...provisioningAdmissionCapture(sandbox),
+          organization_id: crypto.randomUUID(),
+        },
+      }),
+    ).resolves.toEqual({ success: false, error: AUTHORITY_CHANGED });
+
+    expect(exactAdmission).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
   test("fails a stopped custom restore when the exact backup endpoint returns 404", async () => {
-    const { sandbox, storedBackup, running, service, stopForReplacement } =
-      await armStoppedExactRestore("stopped-custom-404", state("stopped-custom-404"));
+    const {
+      sandbox,
+      storedBackup,
+      running,
+      service,
+      stopForReplacement,
+      buildProvisioningRetryHandle,
+    } = await armStoppedExactRestore("stopped-custom-404", state("stopped-custom-404"));
     const fetchMock = installRestoreFetch({ status: 404, body: "restore endpoint missing" });
     globalThis.fetch = fetchMock;
 
@@ -624,11 +1004,18 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(stopForReplacement).toHaveBeenCalledWith(running.sandbox_id);
+    expect(buildProvisioningRetryHandle).not.toHaveBeenCalled();
   });
 
   test("fails a stopped exact restore when its selected chain disappears", async () => {
-    const { sandbox, storedBackup, running, service, stopForReplacement } =
-      await armStoppedExactRestore("stopped-missing-chain", undefined);
+    const {
+      sandbox,
+      storedBackup,
+      running,
+      service,
+      stopForReplacement,
+      buildProvisioningRetryHandle,
+    } = await armStoppedExactRestore("stopped-missing-chain", undefined);
     const fetchMock = installRestoreFetch();
     globalThis.fetch = fetchMock;
 
@@ -641,6 +1028,7 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(stopForReplacement).toHaveBeenCalledWith(running.sandbox_id);
+    expect(buildProvisioningRetryHandle).not.toHaveBeenCalled();
   });
 });
 

@@ -2744,10 +2744,6 @@
       "source": "src/components/chat/AgentActivityBox.tsx"
     },
     {
-      "specifier": "@elizaos/ui/components/chat/AppsSection",
-      "source": "src/components/chat/AppsSection.tsx"
-    },
-    {
       "specifier": "@elizaos/ui/components/chat/chat-source-registration",
       "source": "src/components/chat/chat-source-registration.tsx"
     },
@@ -2822,10 +2818,6 @@
     {
       "specifier": "@elizaos/ui/components/chat/SaveCommandModal",
       "source": "src/components/chat/SaveCommandModal.tsx"
-    },
-    {
-      "specifier": "@elizaos/ui/components/chat/TasksEventsPanel",
-      "source": "src/components/chat/TasksEventsPanel.tsx"
     },
     {
       "specifier": "@elizaos/ui/components/chat/ThinkingBlock",
@@ -3010,14 +3002,6 @@
     {
       "specifier": "@elizaos/ui/components/chat/widgets/workflow-steps",
       "source": "src/components/chat/widgets/workflow-steps.tsx"
-    },
-    {
-      "specifier": "@elizaos/ui/components/chat/WidgetVisibilityPanel",
-      "source": "src/components/chat/WidgetVisibilityPanel.tsx"
-    },
-    {
-      "specifier": "@elizaos/ui/components/chat/WidgetVisibilityPanel.helpers",
-      "source": "src/components/chat/WidgetVisibilityPanel.helpers.tsx"
     },
     {
       "specifier": "@elizaos/ui/components/cloud/CloudSourceControls",
@@ -6112,7 +6096,7 @@
       "source": "src/views/view-interact-protocol.ts"
     }
   ],
-  "subpathCount": 1390,
+  "subpathCount": 1386,
   "explicitSubpathExports": [
     {
       "specifier": "@elizaos/ui/agent-surface",

@@ -132,7 +132,7 @@ function LegacyDivider() {
 }
 
 /** Shipped pattern: rAF-coalesced ref write during the drag, one React state +
- *  localStorage commit on release (mirrors TasksEventsPanel). */
+ *  localStorage commit on release. */
 function ShippedDivider() {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const barRef = useRef<HTMLElement | null>(null);

@@ -84,7 +84,7 @@ src/
   views/                      View event bus + interact protocol (STANDARD_CAPABILITIES)
   hooks/                      ~35 hooks (useMediaQuery, useActivityEvents, useRenderGuard, ...);
                               many more use* hooks live alongside their features
-  widgets/                    Chat sidebar widget registry + WidgetHost + visibility
+  widgets/                    Widget registry + WidgetHost + visibility
   themes/                     apply-theme, presets
   voice/                      Voice capture factory, character voice config, local ASR
   events/                     Custom DOM event names + dispatch helpers (APP_EMOTE_EVENT, ...)

@@ -283,6 +283,121 @@ realPostgres("stuck provisioning lifecycle lock", () => {
     }
   }, 30_000);
 
+  test("an enqueue holding the agent lock commits before exact restore admission rechecks jobs", async () => {
+    if (!isolatedDsn || !dbWrite || !agentSandboxesRepository || !provisioningJobService) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+
+    const suffix = randomUUID();
+    const identifierSuffix = suffix.replaceAll("-", "").slice(0, 12);
+    const [organization] = await dbWrite
+      .insert(organizations)
+      .values({ name: "Restore Admission Lock Org", slug: `restore-admission-lock-${suffix}` })
+      .returning();
+    const [user] = await dbWrite
+      .insert(users)
+      .values({
+        steward_user_id: `restore-admission-lock-${suffix}`,
+        organization_id: organization.id,
+      })
+      .returning();
+    const [sandbox] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: organization.id,
+        user_id: user.id,
+        agent_name: `restore-admission-lock-${suffix}`,
+        status: "stopped",
+        execution_tier: "dedicated-lazy",
+      })
+      .returning();
+    const capture = {
+      id: sandbox.id,
+      organization_id: sandbox.organization_id,
+      status: sandbox.status,
+      lifecycle_job_id: sandbox.lifecycle_job_id,
+      lifecycle_execution_generation: sandbox.lifecycle_execution_generation,
+      execution_tier: sandbox.execution_tier,
+      pool_status: sandbox.pool_status,
+      deleted_at: sandbox.deleted_at,
+      deletion_attempt_id: sandbox.deletion_attempt_id,
+      lifecycle_revision: sandbox.lifecycle_revision,
+    };
+
+    const gateKeyOne = `restore_gate_${identifierSuffix}`;
+    const gateKeyTwo = `job_insert_${identifierSuffix}`;
+    const functionName = `block_restore_insert_${identifierSuffix}`;
+    const triggerName = `block_restore_insert_trigger_${identifierSuffix}`;
+    const control = new Client({ connectionString: isolatedDsn });
+    const setup = new Client({ connectionString: isolatedDsn });
+    await Promise.all([control.connect(), setup.connect()]);
+    try {
+      await setup.query(`
+        CREATE FUNCTION ${functionName}() RETURNS trigger AS $$
+        BEGIN
+          PERFORM pg_advisory_xact_lock(hashtext(TG_ARGV[0]), hashtext(TG_ARGV[1]));
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+      `);
+      await setup.query(
+        `CREATE TRIGGER ${triggerName}
+         BEFORE INSERT ON jobs
+         FOR EACH ROW
+         EXECUTE FUNCTION ${functionName}('${gateKeyOne}', '${gateKeyTwo}')`,
+      );
+
+      await control.query("BEGIN");
+      await control.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
+        gateKeyOne,
+        gateKeyTwo,
+      ]);
+
+      const enqueue = provisioningJobService.enqueueAgentProvisionOnce({
+        agentId: sandbox.id,
+        organizationId: organization.id,
+        userId: user.id,
+        agentName: sandbox.agent_name ?? sandbox.id,
+        expectedLifecycleRevision: sandbox.lifecycle_revision,
+      });
+      await waitForAdvisoryWaiters(control, 1);
+
+      const admission = agentSandboxesRepository.trySetProvisioningFromRestoreCapture(capture);
+      await waitForAdvisoryWaiters(control, 2);
+      await control.query("COMMIT");
+
+      const [enqueueResult, admitted] = await Promise.all([enqueue, admission]);
+      expect(enqueueResult.created).toBe(true);
+      expect(admitted).toBeUndefined();
+
+      const [persistedSandbox] = await dbWrite
+        .select({
+          status: agentSandboxes.status,
+          lifecycleRevision: agentSandboxes.lifecycle_revision,
+        })
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, sandbox.id));
+      const activeJobs = await dbWrite
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.organization_id, organization.id),
+            eq(jobs.agent_id, sandbox.id),
+            eq(jobs.status, "pending"),
+          ),
+        );
+      expect(persistedSandbox).toEqual({
+        status: "stopped",
+        lifecycleRevision: sandbox.lifecycle_revision,
+      });
+      expect(activeJobs).toHaveLength(1);
+    } finally {
+      await control.query("ROLLBACK");
+      await Promise.allSettled([control.end(), setup.end()]);
+    }
+  }, 30_000);
+
   test("lock contention defers one stuck row without blocking later candidates", async () => {
     if (!isolatedDsn || !dbWrite || !agentSandboxesRepository) {
       throw new Error("real PostgreSQL harness was not initialized");

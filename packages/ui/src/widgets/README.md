@@ -3,7 +3,7 @@
 Plugin-contributed UI fragments rendered into named **slots** across the app
 (`packages/ui/src/widgets/types.ts` → `WidgetSlot`):
 
-`chat-sidebar` · `character` · `nav-page` · **`home`**
+`character` · `nav-page` · **`home`**
 
 A `<WidgetHost slot="…">` (`WidgetHost.tsx`) resolves every enabled declaration
 for a slot, wraps each in an error boundary, and renders the bundled React

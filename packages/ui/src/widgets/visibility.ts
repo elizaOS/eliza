@@ -19,19 +19,11 @@ import type { WidgetSlot } from "./types";
  * `declaration.defaultEnabled`, so default flips don't reset users who never
  * touched the toggle.
  *
- * Active widget slots use the same path once their plugin registers them: they
- * appear with `defaultEnabled` and the user can hide them via the same panel.
+ * Active widget slots use the same path once their plugin registers them.
  */
 
 const CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY = "eliza:chat-sidebar:visibility";
 const WIDGET_VISIBILITY_STORAGE_KEY_PREFIX = "eliza:widget-visibility";
-
-/**
- * Synthetic widget id reserved for the bespoke `AppsSection` rendered in
- * {@link ../components/chat/TasksEventsPanel.tsx}. Lets the same edit panel
- * toggle Apps even though it's not a registry widget.
- */
-export const APPS_SECTION_VISIBILITY_KEY = "app-core/apps.section";
 
 export interface WidgetVisibilityState {
   /**

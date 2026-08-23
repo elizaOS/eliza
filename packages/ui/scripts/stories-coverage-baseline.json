@@ -1,7 +1,7 @@
 {
-  "componentFiles": 385,
-  "withStories": 245,
-  "missingStories": 140,
+  "componentFiles": 382,
+  "withStories": 244,
+  "missingStories": 138,
   "missing": [
     "src/components/accounts/AccountManagementPanel.tsx",
     "src/components/apps/EmbeddedAppViewer.tsx",
@@ -17,11 +17,9 @@
     "src/components/character/CharacterSectionNav.tsx",
     "src/components/character/CharacterSkillsView.tsx",
     "src/components/chat/AccountConnectBlock.tsx",
-    "src/components/chat/AppsSection.tsx",
     "src/components/chat/ChatWidgetHarness.tsx",
     "src/components/chat/InlineWidgetText.tsx",
     "src/components/chat/SaveCommandModal.tsx",
-    "src/components/chat/TasksEventsPanel.tsx",
     "src/components/chat/TranscriptViewerOverlay.tsx",
     "src/components/chat/message-search/MessageSearchPanel.tsx",
     "src/components/chat/widgets/background-widget.tsx",

@@ -80,7 +80,7 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | 11 | Attachments: add/paste/remove outbound; open/lightbox inbound | composer + thread | _not a gesture (see note)_ | L2 `MessageAttachments.test.tsx` |
 | 12 | Keyboard avoidance (visualViewport vs native lift) | overlay layout | _layout math_ | L1 `chat-panel-layout.test.ts` |
 | 13 | Auto-scroll at bottom, reading-scrollback, jump-to-latest | thread | `ChatOverlay.tsx` | L1 `useThreadAutoScroll.test.tsx` + L3 `run-chat-sheet-e2e.mjs` AUTOSCROLL leg (desktop screenshot + mobile video) |
-| 14 | Kiosk window drag; sidebar/panel resize drags | shell surfaces | `KioskViewCanvas.tsx`, `TasksEventsPanel.tsx`, `sidebar-root.tsx` | L2 `KioskViewCanvas.gestures.test.tsx` |
+| 14 | Kiosk window drag; sidebar resize drags | shell surfaces | `KioskViewCanvas.tsx`, `sidebar-root.tsx` | L2 `KioskViewCanvas.gestures.test.tsx` |
 | 15 | Graph pan/pinch/wheel-zoom | RelationshipsGraphPanel | `RelationshipsGraphPanel.tsx` | **gap** — L3 planned (app-side `touchPinch`/`touchPan`) |
 | 16 | Slash menu open/dismiss (incl. outside pointerdown) | composer | _composer_ | L2 `ChatOverlay.slash.test.tsx` + `composer-core.test.tsx` + `MessageContent.slash-command.test.tsx` |
 | 17 | Pinch/dblclick on chat surface (should NOT zoom/break layout) | overlay | `ChatOverlay.tsx` | **gap** — L3 negative test planned |

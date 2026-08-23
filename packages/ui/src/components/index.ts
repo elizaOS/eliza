@@ -183,7 +183,6 @@ export * from "./chat/connector-send-as";
 export * from "./chat/MessageAttachments";
 export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
-export * from "./chat/TasksEventsPanel";
 export {
   OrchestratorAccountsView,
   type OrchestratorAccountsViewProps,

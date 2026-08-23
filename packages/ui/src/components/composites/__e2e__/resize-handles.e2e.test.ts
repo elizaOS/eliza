@@ -1,9 +1,8 @@
 // @vitest-environment node
 /**
  * Real-browser e2e for the drag-to-resize handles with no web-reachable live
- * mount (#10722 item 5): the conversations `Sidebar` resize handle, the
- * `TasksEventsPanel` widgets-bar resize handle, and the cloud
- * `ResizablePanelGroup` handle. Bundles `resize-handles-fixture.tsx` (the
+ * mount (#10722 item 5): the conversations `Sidebar` resize handle and the
+ * cloud `ResizablePanelGroup` handle. Bundles `resize-handles-fixture.tsx` (the
  * REAL shipped components) with esbuild, loads it in headless Chromium, and
  * drives every handle with genuine staged pointer input — pointer capture,
  * window-level move/up listeners, rAF-coalesced width writes, collapse
@@ -14,11 +13,10 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwind from "@tailwindcss/postcss";
-import { build, type Plugin as EsbuildPlugin } from "esbuild";
+import { build } from "esbuild";
 import type { Browser, Page } from "playwright";
 import { chromium } from "playwright";
 import postcss, { type AcceptedPlugin } from "postcss";
@@ -39,7 +37,6 @@ async function compileTheme(): Promise<string> {
 @import "${toUrl(join(stylesDir, "theme.css"))}";
 @import "${toUrl(join(stylesDir, "tailwind-theme.css"))}";
 @source "${toUrl(join(uiRoot, "src/components/composites"))}";
-@source "${toUrl(join(uiRoot, "src/components/chat"))}";
 @source "${toUrl(join(uiRoot, "src/components/ui"))}";
 @source "${toUrl(join(uiRoot, "src/cloud-ui/components"))}";
 @source "${toUrl(here)}";
@@ -55,82 +52,6 @@ async function compileTheme(): Promise<string> {
   return res.css;
 }
 
-// Same browser-stub strategy as the shell __e2e__ runners: the chat/widgets
-// import graph transitively reaches server-only @elizaos/core init; replace it
-// with an inert proxy for this raw esbuild bundle (production Vite resolves
-// core's `browser` export instead).
-const stubElizaCore: EsbuildPlugin = {
-  name: "stub-eliza-core",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
-      path: args.path,
-      namespace: "eliza-core-stub",
-    }));
-    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-      // Named ESM imports are interop-copied from OWN keys, so the functions
-      // WidgetHost/agent-surface actually call must exist as real properties;
-      // everything else falls through to the inert proxy.
-      contents: `
-        const noop = new Proxy(() => noop, { get: () => noop });
-        // The wake/provision path (client-cloud.ts) subclasses the real
-        // ElizaError; esbuild's ESM interop copies only this object's own keys,
-        // so a Proxy fallback would surface undefined here and break the
-        // subclass at evaluation time. Export a real class with core's shape so
-        // the fixture bundle exercises the same error type production does.
-        class ElizaError extends Error {
-          constructor(message, options = {}) {
-            super(
-              message,
-              options.cause !== undefined ? { cause: options.cause } : undefined,
-            );
-            this.name = "ElizaError";
-            this.code = options.code;
-            this.context = options.context;
-            this.severity = options.severity;
-            Object.setPrototypeOf(this, new.target.prototype);
-          }
-        }
-        module.exports = new Proxy(
-          {
-            ElizaError,
-            isElizaError: (v) => v instanceof ElizaError,
-            isViewVisible: () => true,
-            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
-            findInteractionRegions: () => [],
-          },
-          { get: (t, p) => (p in t ? t[p] : noop) },
-        );
-      `,
-      loader: "js",
-    }));
-  },
-};
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins: EsbuildPlugin = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
-
 async function bundleFixture(): Promise<string> {
   const result = await build({
     entryPoints: [join(here, "resize-handles-fixture.tsx")],
@@ -139,10 +60,7 @@ async function bundleFixture(): Promise<string> {
     platform: "browser",
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts" },
-    // NODE_ENV=test → useAppSelector's provider-less fallback proxy powers the
-    // TasksEventsPanel widget slot exactly as it does under vitest.
     define: { "process.env.NODE_ENV": '"test"' },
-    plugins: [stubElizaCore, stubNodeBuiltins],
     write: false,
   });
   const js = result.outputFiles[0].text;
@@ -150,14 +68,6 @@ async function bundleFixture(): Promise<string> {
   const html = `<!doctype html><html class="dark"><head><meta charset="utf-8"><title>resize handles e2e</title>
 <script>
 window.process=window.process||{env:{NODE_ENV:"test"},platform:"browser",cwd:function(){return "/"}};
-// The widgets bar's AppsSection polls the agent API; this page is file:// and
-// hermetic — serve every fetch an empty-ok JSON (list endpoints get [] so
-// iteration paths run) so the poll path executes without network noise.
-window.fetch=function(input){
-  var url=String(input&&input.url?input.url:input);
-  var body=/\\/api\\/apps\\/(runs|installed)/.test(url)?"[]":"{}";
-  return Promise.resolve(new Response(body,{status:200,headers:{"Content-Type":"application/json"}}));
-};
 </script>
 <style>${themeCss}</style>
 <style>html,body{margin:0;height:100%;background:#08080d}</style>
@@ -311,63 +221,6 @@ describe("sidebar resize handle (sidebar-root.tsx)", () => {
       await page.locator('[data-testid="sidebar-resize-handle"]').count(),
     ).toBe(0);
     await snap("sidebar-collapsed");
-  }, 120_000);
-});
-
-describe("TasksEventsPanel widgets-bar resize handle", () => {
-  it("drag left grows the bar, clamps at max, and persists the width", async () => {
-    const bar = await boxOf(page, "chat-widgets-bar");
-    expect(Math.round(bar.width)).toBe(320); // WIDGETS_DEFAULT_WIDTH
-
-    // Handle sits on the LEFT edge: dragging left increases width.
-    await dragHandle(page, "chat-widgets-resize-handle", -100, { grab: "right" });
-    const grown = await boxOf(page, "chat-widgets-bar");
-    expect(grown.width).toBeGreaterThan(bar.width + 80);
-    await snap("widgets-grown");
-
-    // Clamp at WIDGETS_MAX_WIDTH 560.
-    await dragHandle(page, "chat-widgets-resize-handle", -400, { grab: "right" });
-    const clamped = await boxOf(page, "chat-widgets-bar");
-    expect(Math.round(clamped.width)).toBe(560);
-
-    // Width persists to localStorage once on drag release (mouse.up above).
-    const persisted = await page.evaluate(() =>
-      localStorage.getItem("eliza:chat:widgets-bar:width"),
-    );
-    expect(persisted).toBe("560");
-  }, 120_000);
-
-  it("dragging right past the collapse threshold collapses to the floating expand strip, and expand restores", async () => {
-    // From 560, drag right far enough that the computed width falls under the
-    // collapse threshold (200) → onToggleCollapsed(true).
-    await dragHandle(page, "chat-widgets-resize-handle", 420, { grab: "right" });
-    // The collapsed strip is zero-width (hidden to visibility checks) — wait
-    // for attachment and measure layout width directly.
-    await page.waitForSelector(
-      '[data-testid="chat-widgets-bar"][data-collapsed]',
-      { timeout: 10_000, state: "attached" },
-    );
-    const stripWidth = await page
-      .getByTestId("chat-widgets-bar")
-      .evaluate((el) => (el as HTMLElement).offsetWidth);
-    expect(stripWidth).toBeLessThan(2);
-    await snap("widgets-collapsed");
-
-    await page.getByTestId("chat-widgets-expand-floating").click();
-    await page.waitForSelector(
-      '[data-testid="chat-widgets-bar"]:not([data-collapsed])',
-      { timeout: 10_000 },
-    );
-    // Expanded again at the LAST APPLIED width: on the way to the collapse
-    // threshold the drag clamps every applied write at WIDGETS_MIN_WIDTH
-    // (240), so that floor is what persisted and what the bar reopens at.
-    const expanded = await boxOf(page, "chat-widgets-bar");
-    expect(Math.round(expanded.width)).toBe(240);
-    const persistedAfter = await page.evaluate(() =>
-      localStorage.getItem("eliza:chat:widgets-bar:width"),
-    );
-    expect(persistedAfter).toBe("240");
-    await snap("widgets-expanded-again");
   }, 120_000);
 });
 

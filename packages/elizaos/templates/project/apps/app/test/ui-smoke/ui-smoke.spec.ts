@@ -26,7 +26,6 @@ test("chat, apps, and settings routes render through the real shell", async ({
     [
       { selector: '[data-testid="conversations-sidebar"]' },
       { selector: '[data-testid="chat-composer-textarea"]' },
-      { selector: '[data-testid="chat-widgets-bar"]' },
     ],
     "all",
   );

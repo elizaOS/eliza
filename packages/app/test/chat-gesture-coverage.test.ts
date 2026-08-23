@@ -248,10 +248,9 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 14,
-    interaction: "Kiosk window drag; sidebar/panel resize drags",
+    interaction: "Kiosk window drag; sidebar resize drags",
     sites: [
       S("components/shell/KioskViewCanvas.tsx"),
-      S("components/chat/TasksEventsPanel.tsx"),
       S("components/composites/sidebar/sidebar-root.tsx"),
     ],
     tests: [S("components/shell/KioskViewCanvas.gestures.test.tsx")],
@@ -304,7 +303,6 @@ function rosteredSites(): Set<string> {
  * site is intentionally added or removed.
  */
 const PINNED_GESTURE_SITES: readonly string[] = [
-  "packages/ui/src/components/chat/TasksEventsPanel.tsx",
   "packages/ui/src/components/composites/chat/chat-message.tsx",
   "packages/ui/src/components/composites/sidebar/sidebar-root.tsx",
   "packages/ui/src/components/pages/RelationshipsGraphPanel.tsx",
