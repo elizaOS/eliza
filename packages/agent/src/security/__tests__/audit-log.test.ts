@@ -10,7 +10,7 @@ import {
   queryAuditFeed,
   SandboxAuditLog,
   subscribeAuditFeed,
-} from "./audit-log.ts";
+} from "../audit-log.ts";
 
 describe("SandboxAuditLog", () => {
   beforeEach(() => {
