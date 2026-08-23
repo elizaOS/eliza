@@ -9,8 +9,6 @@ vi.mock("node:net", () => ({
 	default: { createServer: (...a: unknown[]) => mocks.createServer(...a) },
 }));
 
-import { canBindLoopback } from "./loopback.ts";
-
 function fakeServer() {
 	const s = new EventEmitter() as EventEmitter & {
 		listen: ReturnType<typeof vi.fn>;
@@ -18,7 +16,6 @@ function fakeServer() {
 		removeAllListeners: ReturnType<typeof vi.fn>;
 	};
 	s.listen = vi.fn((_port: number, _host: string, cb: () => void) => {
-		// 模拟绑定成功后 close
 		process.nextTick(() => cb());
 	});
 	s.close = vi.fn((cb?: () => void) => {
@@ -31,9 +28,11 @@ function fakeServer() {
 describe("canBindLoopback", () => {
 	beforeEach(() => {
 		mocks.createServer.mockReset();
+		vi.resetModules();
 	});
 
 	it("resolves false on server error", async () => {
+		const { canBindLoopback } = await import("./loopback.ts");
 		const s = fakeServer();
 		mocks.createServer.mockReturnValue(s);
 		const p = canBindLoopback();
@@ -42,6 +41,7 @@ describe("canBindLoopback", () => {
 	});
 
 	it("resolves true when binding succeeds", async () => {
+		const { canBindLoopback } = await import("./loopback.ts");
 		const s = fakeServer();
 		mocks.createServer.mockReturnValue(s);
 		expect(await canBindLoopback()).toBe(true);
