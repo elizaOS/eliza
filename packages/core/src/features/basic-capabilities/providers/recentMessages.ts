@@ -452,7 +452,12 @@ export const recentMessagesProvider: Provider = {
 						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
 						!isLeakedAssistantPathDump(msg, runtime.agentId),
 				)
-				.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+				.sort((a, b) => {
+			const aSafe = Number.isFinite(a.createdAt ?? 0) ? (a.createdAt ?? 0) : 0;
+			const bSafe = Number.isFinite(b.createdAt ?? 0) ? (b.createdAt ?? 0) : 0;
+			if (bSafe !== aSafe) return bSafe - aSafe;
+			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+		});
 			const dialogueMessages = dedupeAssistantRunMessages(
 				dedupeConsecutiveDialogueMessages(rawDialogueMessages),
 				runtime.agentId,
