@@ -22,6 +22,22 @@ import { findAsyncCodingDelegationActionName } from "./scaffold-env.js";
 import { buildVerifiedPluginTaskParameters } from "./verified-plugin-task.js";
 import type { ViewSummary } from "./views-client.js";
 import { isRestrictedPlatform } from "./views-platform.js";
+
+function toScoreValue(value: number): number {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function compareScoredEditView(
+  a: { view: ViewSummary; score: number },
+  b: { view: ViewSummary; score: number },
+): number {
+  const aScore = toScoreValue(a.score);
+  const bScore = toScoreValue(b.score);
+  if (bScore !== aScore) return bScore - aScore;
+  return a.view.id.localeCompare(b.view.id);
+}
+
+export const __testCompareScoredEditView = compareScoredEditView;
 import { locatePluginSourceDir } from "./views-plugin-source.js";
 import { scoreView } from "./views-search.js";
 import {
@@ -67,7 +83,7 @@ export function resolveTargetView(
 	const scored = views
 		.map((v) => ({ view: v, score: scoreView(v, target) }))
 		.filter(({ score }) => score > 0)
-		.sort((a, b) => b.score - a.score);
+		.sort(compareScoredEditView);
 
 	if (scored.length === 0) return { kind: "none" };
 	if (scored.length === 1) return { kind: "match", view: scored[0].view };
