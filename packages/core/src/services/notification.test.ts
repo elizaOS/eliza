@@ -2,12 +2,23 @@
  * Integration coverage for NotificationService over a real AgentRuntime,
  * in-memory database adapter, and AgentEventService. External systems are not involved.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import { createCharacter } from "../character.ts";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../runtime.ts";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
-import type { AgentNotification } from "../types/notification.ts";
+import {
+	type AgentNotification,
+	NOTIFICATION_STREAM,
+} from "../types/notification.ts";
 import type { Plugin } from "../types/plugin.ts";
 import { ServiceType } from "../types/service.ts";
 import { AgentEventService } from "./agentEvent.ts";
@@ -811,5 +822,106 @@ describe("NotificationService", () => {
 		await service.notify({ title: "C", groupKey: "gc" });
 		await service.markReadByGroupKey("ga"); // read the oldest
 		expect(service.list().map((n) => n.title)).toEqual(["C", "B", "A"]);
+	});
+
+	describe("stop() drain and admission close", () => {
+		let stopRuntime: AgentRuntime;
+		let stopCleanup: () => Promise<void>;
+		let stopService: NotificationService;
+		let unsubscribeStopEvents: (() => void) | undefined;
+		const stopEmitted: AgentEventPayload[] = [];
+
+		beforeAll(async () => {
+			const created = await createRuntime([
+				AgentEventService,
+				NotificationService,
+			]);
+			stopRuntime = created.runtime;
+			stopCleanup = created.cleanup;
+			stopService = (await stopRuntime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+			const stopEventService = (await stopRuntime.getServiceLoadPromise(
+				ServiceType.AGENT_EVENT,
+			)) as AgentEventService;
+			unsubscribeStopEvents = stopEventService.subscribe((event) =>
+				stopEmitted.push(event),
+			);
+		}, 180_000);
+
+		afterAll(async () => {
+			unsubscribeStopEvents?.();
+			// The runtime's own teardown path is exercised in the drain test; a
+			// second full stop() is idempotent for the remaining lifecycle.
+			await stopCleanup?.();
+		});
+
+		it("drains the durable write tail before stop() resolves", async () => {
+			await stopService.clear();
+			let releaseSetCache: (() => void) | undefined;
+			const originalSetCache = stopRuntime.setCache.bind(stopRuntime);
+			// Block the durable write of an accepted notify() mid-flight, then
+			// call stop() while that write is still pending.
+			(stopRuntime as { setCache: unknown }).setCache = (
+				key: string,
+				value: unknown,
+			) => {
+				if (key.startsWith("notifications:")) {
+					return new Promise<boolean>((resolve) => {
+						releaseSetCache = () => resolve(originalSetCache(key, value));
+					});
+				}
+				return originalSetCache(key, value as never);
+			};
+
+			const accepted = stopService.notify({ title: "in-flight write" });
+			// Wait until the blocked write actually holds the tail.
+			await vi.waitFor(() => {
+				expect(releaseSetCache).toBeDefined();
+			});
+
+			let stopped = false;
+			const stopping = stopService.stop().then(() => {
+				stopped = true;
+			});
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(stopped).toBe(false);
+
+			releaseSetCache?.();
+			await Promise.all([accepted, stopping]);
+
+			// The accepted write persisted and broadcast BEFORE stop resolved.
+			expect(
+				stopEmitted.some(
+					(event) =>
+						event.stream === NOTIFICATION_STREAM &&
+						(event.data as { notification?: { title?: string } }).notification
+							?.title === "in-flight write",
+				),
+			).toBe(true);
+			// The durable write completed: the accepted record survived in the
+			// durable inbox (it must be served again after restart), while the
+			// in-memory list was cleared once the drained tail settled.
+			const persisted = await stopRuntime.getCache<AgentNotification[]>(
+				`notifications:${stopRuntime.agentId}`,
+			);
+			expect(persisted?.map((n) => n.title)).toEqual(["in-flight write"]);
+			expect(stopService.listIncludingExpired()).toEqual([]);
+			// Restore before the runtime-level cleanup stops services again.
+			(stopRuntime as { setCache: unknown }).setCache = originalSetCache;
+			// No post-stop clear(): write admission is closed by design; the
+			// durable record stays for restart hydration and afterAll teardown
+			// discards the whole test runtime.
+		});
+
+		it("rejects writes admitted after stop() with an explicit error", async () => {
+			await stopService.stop();
+			await expect(stopService.notify({ title: "too late" })).rejects.toThrow(
+				/service is stopped/,
+			);
+			await expect(
+				stopService.markRead("00000000-0000-4000-8000-000000000000"),
+			).rejects.toThrow(/service is stopped/);
+		});
 	});
 });
