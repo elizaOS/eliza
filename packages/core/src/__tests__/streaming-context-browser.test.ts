@@ -1,40 +1,82 @@
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("./utils/stack-context-manager", () => {
-	class MockBase {
-		_stack: unknown[] = [];
-		withContext<T>(ctx: unknown, fn: () => T): T {
-			this._stack.push(ctx);
-			try {
-				return fn();
-			} finally {
-				this._stack.pop();
-			}
-		}
-	}
-	return { StackContextManager: MockBase };
-});
-
+/**
+ * Unit coverage for the browser streaming-context manager. Exercises the real
+ * `StackContextManager` from `streaming-context.browser.ts` through its public
+ * `run`/`active` surface — no mocks, no AsyncLocalStorage, no I/O.
+ */
+import { describe, expect, it } from "vitest";
+import type { StreamingContext } from "../streaming-context.ts";
 import {
 	createBrowserStreamingContextManager,
 	StackContextManager,
-} from "./streaming-context.browser.ts";
+} from "../streaming-context.browser.ts";
+
+const ctx = (messageId: string): StreamingContext => ({ messageId });
 
 describe("createBrowserStreamingContextManager", () => {
 	it("returns a StackContextManager instance", () => {
-		const mgr = createBrowserStreamingContextManager();
-		expect(mgr).toBeInstanceOf(StackContextManager);
+		expect(createBrowserStreamingContextManager()).toBeInstanceOf(
+			StackContextManager,
+		);
 	});
 
-	it("supports nested contexts via push/pop", () => {
+	it("has no active context before any run", () => {
+		expect(createBrowserStreamingContextManager().active()).toBeUndefined();
+	});
+
+	it("exposes the running context through active() and returns the callback result", () => {
 		const mgr = createBrowserStreamingContextManager();
-		let inner: string | undefined;
-		mgr.withContext("outer", () => {
-			mgr.withContext("inner", () => {
-				inner = String((mgr as unknown as { _stack: unknown[] })._stack.at(-1));
-			});
+		const outer = ctx("outer");
+		const result = mgr.run(outer, () => {
+			expect(mgr.active()).toBe(outer);
+			return "value";
 		});
-		expect(inner).toBe("inner");
-		expect((mgr as unknown as { _stack: unknown[] })._stack).toHaveLength(0);
+		expect(result).toBe("value");
+		expect(mgr.active()).toBeUndefined();
+	});
+
+	it("restores the outer context after a nested run", () => {
+		const mgr = createBrowserStreamingContextManager();
+		const outer = ctx("outer");
+		const inner = ctx("inner");
+		const seen: (string | undefined)[] = [];
+
+		mgr.run(outer, () => {
+			seen.push(mgr.active()?.messageId);
+			mgr.run(inner, () => {
+				seen.push(mgr.active()?.messageId);
+			});
+			seen.push(mgr.active()?.messageId);
+		});
+
+		expect(seen).toEqual(["outer", "inner", "outer"]);
+		expect(mgr.active()).toBeUndefined();
+	});
+
+	it("pops the context even when the callback throws", () => {
+		const mgr = createBrowserStreamingContextManager();
+		expect(() =>
+			mgr.run(ctx("boom"), () => {
+				throw new Error("boom");
+			}),
+		).toThrow("boom");
+		expect(mgr.active()).toBeUndefined();
+	});
+
+	it("supports an explicitly undefined context that masks the outer one", () => {
+		const mgr = createBrowserStreamingContextManager();
+		mgr.run(ctx("outer"), () => {
+			mgr.run(undefined, () => {
+				expect(mgr.active()).toBeUndefined();
+			});
+			expect(mgr.active()?.messageId).toBe("outer");
+		});
+	});
+
+	it("keeps separate stacks per manager instance", () => {
+		const a = createBrowserStreamingContextManager();
+		const b = createBrowserStreamingContextManager();
+		a.run(ctx("a"), () => {
+			expect(b.active()).toBeUndefined();
+		});
 	});
 });
