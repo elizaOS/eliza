@@ -30,7 +30,7 @@ export class BaileysClient extends EventEmitter implements IWhatsAppClient {
   constructor(config: BaileysConfig) {
     super();
     this.config = config;
-    this.authManager = new BaileysAuthManager(config.authDir);
+    this.authManager = new BaileysAuthManager(config.accountId, config.authDir);
     this.connection = new BaileysConnection(this.authManager);
     this.qrGenerator = new QRCodeGenerator();
     this.adapter = new MessageAdapter();

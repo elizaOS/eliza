@@ -136,9 +136,7 @@ function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | nu
   const allowFrom = readCsvSetting(runtime, "WHATSAPP_ALLOW_FROM");
   const groupAllowFrom = readCsvSetting(runtime, "WHATSAPP_GROUP_ALLOW_FROM");
 
-  const authDir =
-    readStringSetting(runtime, "WHATSAPP_AUTH_DIR") ??
-    readStringSetting(runtime, "WHATSAPP_SESSION_PATH");
+  const authDir = readStringSetting(runtime, "WHATSAPP_AUTH_DIR");
   if (authDir) {
     return {
       accountId: DEFAULT_ACCOUNT_ID,
@@ -980,6 +978,7 @@ export class WhatsAppConnectorService extends Service {
         config.transport === "baileys"
           ? new BaileysClient({
               authMethod: "baileys",
+              accountId: config.accountId,
               authDir: config.authDir,
               printQRInTerminal: false,
             } satisfies BaileysConfig)
