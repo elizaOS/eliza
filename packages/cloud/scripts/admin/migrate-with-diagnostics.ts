@@ -418,14 +418,11 @@ export function validateAppliedMigrationLedger(
  * prefix but pauses before the drop, and the deploy continues without exposing
  * the currently-served Worker to the missing table.
  *
- * An empty ledger (no applied migration, lastAppliedJournalIndex === -1) is
- * outside that contract. No Worker has ever been served from a database with
- * no migrations and no rows exist to expose, so pausing there protects nothing;
- * it only strands every fresh environment (e2e stacks, cloud:mock, a new PGlite
- * data dir) at 0281 with every later migration unapplied. A fresh ledger
- * therefore continues through the whole journal: the drop runs immediately
- * followed by the restore, whose adjacency is still validated above. Production
- * and staging ledgers are never empty, so their semantics are unchanged.
+ * PGlite is the local and ephemeral bootstrap backend. It has no independently
+ * served production Worker to protect, so it may continue through the adjacent
+ * pair from either an empty ledger or a partially applied retry. PostgreSQL is
+ * the deployed backend and remains fenced regardless of whether its ledger is
+ * empty: ledger shape alone cannot prove that no Worker has been attached.
  *
  * Environments that already recorded 0282 must proceed directly to the
  * restoring 0282_01 migration. Any other suffix is unsafe and fails closed
@@ -434,6 +431,7 @@ export function validateAppliedMigrationLedger(
 export function evaluateMigrationReleaseBarrier(
   migrations: Migration[],
   lastAppliedJournalIndex: number,
+  backend: MigrationClient["backend"] = "postgres",
 ): MigrationReleaseBarrierDecision {
   const journalTags = migrations.map((migration) => migration.entry.tag);
   const barrierIndexes = USAGE_QUOTAS_RELEASE_BARRIER_TAGS.map((tag) =>
@@ -476,9 +474,12 @@ export function evaluateMigrationReleaseBarrier(
     );
   }
 
-  // A fresh database has no served Worker to protect. Only ledgers that have
-  // already applied at least one migration are release-barrier targets.
-  if (lastAppliedJournalIndex === -1) return { action: "continue" };
+  // Local PGlite bootstrap may be resumed after any earlier migration. This is
+  // deliberately backend-scoped instead of inferred from an empty ledger so a
+  // retry cannot turn a permitted bootstrap into a permanent pause.
+  if (backend === "pglite" && lastAppliedJournalIndex < restoreIndex) {
+    return { action: "continue" };
+  }
 
   if (lastAppliedJournalIndex < dropIndex) {
     return { action: "pause", stopBeforeJournalIndex: dropIndex };
@@ -707,6 +708,7 @@ export async function runMigrations(
       const releaseBarrier = evaluateMigrationReleaseBarrier(
         migrations,
         validatedLedger.lastAppliedJournalIndex,
+        client.backend,
       );
       const pending = migrations.slice(
         validatedLedger.lastAppliedJournalIndex + 1,

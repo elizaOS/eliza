@@ -1,8 +1,8 @@
 /**
  * Proves the temporary usage-quotas release barrier pauses the destructive
  * pair before SQL, repairs ledgers already at 0282, rejects suffix drift, and
- * lets an empty ledger (a fresh database with no served Worker) apply the
- * whole journal.
+ * lets local PGlite bootstraps apply the whole journal and resume safely while
+ * PostgreSQL remains fenced for operator-controlled deployment sequencing.
  */
 
 import { describe, expect, spyOn, test } from "bun:test";
@@ -58,9 +58,12 @@ function appliedRows(
   }));
 }
 
-function migrationClient(applied: ReturnType<typeof appliedRows>): {
+function migrationClient(
+  applied: ReturnType<typeof appliedRows>,
+  backend: "pglite" | "postgres" = "pglite",
+): {
   client: {
-    backend: "pglite";
+    backend: "pglite" | "postgres";
     query<T = unknown>(
       text: string,
       params?: unknown[],
@@ -76,7 +79,7 @@ function migrationClient(applied: ReturnType<typeof appliedRows>): {
   let didEnd = false;
   return {
     client: {
-      backend: "pglite",
+      backend,
       query: async <T = unknown>(
         text: string,
         params?: unknown[],
@@ -85,6 +88,20 @@ function migrationClient(applied: ReturnType<typeof appliedRows>): {
         queryParams.push(params ?? []);
         if (text.includes(`FROM "drizzle"."__drizzle_migrations"`)) {
           return { rows: applied as T[] };
+        }
+        if (text.includes("pg_advisory_unlock")) {
+          return { rows: [{ unlocked: true }] as T[] };
+        }
+        if (
+          text.includes("INSERT INTO") &&
+          text.includes("__drizzle_migrations") &&
+          params
+        ) {
+          applied.push({
+            id: applied.length + 1,
+            hash: String(params[0]),
+            created_at: Number(params[1]),
+          });
         }
         return { rows: [] };
       },
@@ -101,7 +118,7 @@ function migrationClient(applied: ReturnType<typeof appliedRows>): {
 describe("usage-quotas migration release barrier", () => {
   test("pauses a validated 0281 ledger before either 0282 or 0282_01 SQL", async () => {
     const migrations = barrierMigrations();
-    const harness = migrationClient(appliedRows(migrations, 1));
+    const harness = migrationClient(appliedRows(migrations, 1), "postgres");
     let convergenceCalls = 0;
     const outputLog = spyOn(console, "log").mockImplementation(() => {});
     const warningLog = spyOn(console, "warn").mockImplementation(() => {});
@@ -133,7 +150,7 @@ describe("usage-quotas migration release barrier", () => {
 
   test("applies an older ledger's safe prefix then pauses before 0282", async () => {
     const migrations = barrierMigrations();
-    const harness = migrationClient(appliedRows(migrations, 0));
+    const harness = migrationClient(appliedRows(migrations, 0), "postgres");
     let convergenceCalls = 0;
     const outputLog = spyOn(console, "log").mockImplementation(() => {});
     const warningLog = spyOn(console, "warn").mockImplementation(() => {});
@@ -238,31 +255,23 @@ describe("usage-quotas migration release barrier", () => {
     });
   });
 
-  // The barrier protects a LIVE deployment: a Worker already serving traffic
-  // must never see the window between the drop and the restore. An empty
-  // ledger has no served Worker and no rows, so pausing there protects
-  // nothing; it only strands fresh environments at 0281. A ledger with even
-  // one applied migration is still a barrier target and still pauses.
-  test("continues from an empty ledger but still pauses any older validated ledger", () => {
+  test("permits resumable local PGlite bootstrap but fences PostgreSQL", () => {
     const migrations = barrierMigrations();
 
-    expect(evaluateMigrationReleaseBarrier(migrations, -1)).toEqual({
-      action: "continue",
-    });
-    expect(evaluateMigrationReleaseBarrier(migrations, 0)).toEqual({
-      action: "pause",
-      stopBeforeJournalIndex: 2,
-    });
-    expect(evaluateMigrationReleaseBarrier(migrations, 1)).toEqual({
-      action: "pause",
-      stopBeforeJournalIndex: 2,
-    });
+    for (const journalIndex of [-1, 0, 1]) {
+      expect(
+        evaluateMigrationReleaseBarrier(migrations, journalIndex, "pglite"),
+      ).toEqual({ action: "continue" });
+      expect(
+        evaluateMigrationReleaseBarrier(migrations, journalIndex, "postgres"),
+      ).toEqual({ action: "pause", stopBeforeJournalIndex: 2 });
+    }
   });
 
-  // The fresh-ledger carve-out sits behind the structural checks, so a fresh
-  // database still refuses a journal whose guarded pair is missing, duplicated,
+  // The PGlite carve-out sits behind the structural checks, so a local database
+  // still refuses a journal whose guarded pair is missing, duplicated,
   // interleaved, or reversed instead of applying it without the barrier.
-  test("still validates the guarded pair's shape for an empty ledger", () => {
+  test("still validates the guarded pair's shape for local bootstrap", () => {
     const [checkpoint, before, drop, restore] = barrierMigrations();
 
     expect(() =>
@@ -374,6 +383,29 @@ describe("usage-quotas migration release barrier", () => {
     ).toBe(false);
     expect(convergenceCalls).toBe(1);
     expect(harness.ended()).toBe(true);
+  });
+
+  test("resumes an interrupted PGlite bootstrap without stranding at 0282", async () => {
+    const migrations = barrierMigrations();
+    const persistedLedger = appliedRows(migrations, -1);
+    const outputLog = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const firstRun = migrationClient(persistedLedger, "pglite");
+      await runMigrations(firstRun.client, migrations.slice(0, 2), OPTIONS);
+      expect(persistedLedger).toHaveLength(2);
+      expect(firstRun.ended()).toBe(true);
+
+      const resumedRun = migrationClient(persistedLedger, "pglite");
+      await runMigrations(resumedRun.client, migrations, OPTIONS);
+      expect(resumedRun.queries).toContain("DROP TABLE usage_quotas");
+      expect(resumedRun.queries).toContain(
+        "CREATE TABLE usage_quotas (id uuid)",
+      );
+      expect(persistedLedger).toHaveLength(migrations.length);
+      expect(resumedRun.ended()).toBe(true);
+    } finally {
+      outputLog.mockRestore();
+    }
   });
 
   test("fails closed when either guarded migration is missing or duplicated", () => {
@@ -516,7 +548,10 @@ describe("usage-quotas migration release barrier", () => {
       ...barrierMigrations(),
       migration(284, "0284_pending_future_feature", "SELECT pending_future"),
     ];
-    const harness = migrationClient(appliedRows(barrierMigrations(), 1));
+    const harness = migrationClient(
+      appliedRows(barrierMigrations(), 1),
+      "postgres",
+    );
     let convergenceCalls = 0;
     const barrierEvents: string[] = [];
     const outputLog = spyOn(console, "log").mockImplementation(() => {});
