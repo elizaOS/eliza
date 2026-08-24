@@ -157,3 +157,20 @@ describe("Ollama embeddings", () => {
     expect(embedMock).not.toHaveBeenCalled();
   });
 });
+
+describe("surrogate safety in embedding truncation", () => {
+  it("never bisects surrogate pairs when truncating overlong text", async () => {
+    embedMock.mockResolvedValue({
+      embedding: [1],
+      usage: undefined,
+    });
+    const { runtime } = createRuntime({ OLLAMA_EMBED_MAX_CHARS: "9" });
+    const longEmojis = "😀".repeat(10); // 20 code units
+
+    await handleTextEmbedding(runtime, { text: longEmojis });
+
+    const callArg = embedMock.mock.calls[0][0] as { value: string };
+    expect(callArg.value.length).toBeLessThanOrEqual(9);
+    expect(callArg.value.endsWith("\uD83D")).toBe(false);
+  });
+});

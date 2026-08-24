@@ -39,14 +39,26 @@ export function embedMaxCharsForContext(contextLength: number): number {
 }
 
 export function truncateEmbedInput(input: string | string[], maxChars: number): string | string[] {
+  function truncateString(text: string): string {
+    if (text.length <= maxChars) return text;
+    let end = maxChars;
+    if (end > 0 && end < text.length) {
+      const code = text.charCodeAt(end - 1);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        end -= 1;
+      }
+    }
+    return text.slice(0, end);
+  }
+
   if (typeof input === "string") {
     if (input.length <= maxChars) return input;
     logger.warn(
       `[Ollama] Embedding input too long (${input.length} chars), truncating to ${maxChars}`
     );
-    return input.slice(0, maxChars);
+    return truncateString(input);
   }
-  return input.map((text) => (text.length > maxChars ? text.slice(0, maxChars) : text));
+  return input.map((text) => (text.length > maxChars ? truncateString(text) : text));
 }
 
 export function isEmbedContextOverflow(error: unknown): boolean {
