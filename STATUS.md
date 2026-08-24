@@ -19,7 +19,7 @@ Service and deployed-Cloud proof, system installer lifecycle, RPM tooling,
 review, signing, publication, merge, and deployment remain environment,
 credential, physical-device, or authority gates.
 
-The current host-capacity check records 1.9 GiB free on the root
+The current host-capacity check records 1.8 GiB free on the root
 filesystem versus the 8 GiB required for another desktop rebuild. The completed
 artifacts launch from their current locations, but a fresh rebuild requires
 owner-approved cleanup of generated outputs or caches. No unrelated cache or
@@ -28,7 +28,7 @@ workspace data was deleted to manufacture a green doctor result.
 - Worktree: `/home/nubs/Documents/Codex/2026-08-22/eliza-linux-devices-runtimes`
 - Current local branch: `codex/pr25427-final`
 - Draft PR branch: `fix/linux-cef-devices-runtimes-parity`
-- Integrated `origin/develop`: `6cc570c8efa9000a163df5b37487898551c64d29`
+- Integrated `origin/develop`: `ef10cfb172c73c5628db07bb1aa45f6a2bc70d6f`
 - Product payload source: `be05b667e76b7c8f5266667bfc33f35125b75faf`
 - Packaging/tooling checkpoint: `02c00a3902a35732d7cb134f98570b9d349bdbfc`
 - Original merged work: [PR #24414](https://github.com/elizaOS/eliza/pull/24414), merge commit `acf111c4a`
@@ -227,7 +227,7 @@ root-owned tails/chroot paths remain explicit coverage gaps.
    the exact artifact.
 7. Rebuild capacity: approve removal of specific generated outputs/caches or
    provide another build filesystem until at least 8 GiB is free. The current
-   host has about 1.9 GiB free, so no exact-head packaged rebuild was attempted.
+   host has about 1.8 GiB free, so no exact-head packaged rebuild was attempted.
 8. Publication: refresh and approve draft PR #25427 after exact-head hosted CI
    and evidence review. Signing, release publication, merge, deploy, and
    production mutation remain separately gated.

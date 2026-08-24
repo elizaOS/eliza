@@ -24,12 +24,44 @@ import {
 } from "./surface.helpers.ts";
 
 const run = (
-  id: string,
+  runId: string,
   appName: string,
-  updatedAt?: string | null,
-  startedAt?: string | null,
-): AppRunSummary =>
-  ({ runId: id, appName, updatedAt, startedAt }) as unknown as AppRunSummary;
+  updatedAt = "",
+  startedAt = "",
+): AppRunSummary => ({
+  runId,
+  appName,
+  displayName: appName,
+  pluginName: "test-plugin",
+  launchType: "test",
+  launchUrl: null,
+  viewer: null,
+  session: null,
+  characterId: null,
+  agentId: null,
+  status: "running",
+  summary: null,
+  startedAt,
+  updatedAt,
+  lastHeartbeatAt: null,
+  supportsBackground: false,
+  supportsViewerDetach: false,
+  chatAvailability: "unavailable",
+  controlAvailability: "unavailable",
+  viewerAttachment: "unavailable",
+  recentEvents: [],
+  awaySummary: null,
+  health: { state: "healthy", message: null },
+  healthDetails: {
+    checkedAt: null,
+    auth: { state: "unknown", message: null },
+    runtime: { state: "healthy", message: null },
+    viewer: { state: "unknown", message: null },
+    chat: { state: "unknown", message: null },
+    control: { state: "unknown", message: null },
+    message: null,
+  },
+});
 
 const ids = (runs: AppRunSummary[]) => runs.map((entry) => entry.runId);
 
@@ -71,14 +103,14 @@ describe("selectLatestRunForApp", () => {
   it("uses the newer of updatedAt and startedAt", () => {
     const selected = selectLatestRunForApp("mine", [
       run("byUpdated", "mine", "2026-05-01T00:00:00Z", "2026-01-01T00:00:00Z"),
-      run("byStarted", "mine", null, "2026-03-01T00:00:00Z"),
+      run("byStarted", "mine", "", "2026-03-01T00:00:00Z"),
     ]);
     expect(selected.run?.runId).toBe("byUpdated");
   });
 
   it("does not let a run with no usable timestamps outrank a dated one", () => {
     const selected = selectLatestRunForApp("mine", [
-      run("undated", "mine", null, null),
+      run("undated", "mine"),
       run("dated", "mine", "2026-05-01T00:00:00Z"),
     ]);
     expect(selected.run?.runId).toBe("dated");
