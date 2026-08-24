@@ -77,7 +77,10 @@ function hasConversationBootstrapMessage(
 function isLocalPendingConversationMessage(
   message: ConversationMessage,
 ): boolean {
-  return message.id.startsWith("temp-");
+  return (
+    message.id.startsWith("temp-") ||
+    message.clientRenderId?.startsWith("temp-") === true
+  );
 }
 
 const LOCAL_TURN_MATCH_SLACK_MS = 60_000;
