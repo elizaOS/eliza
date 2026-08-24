@@ -782,6 +782,18 @@ export async function runPollingBackend(
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
           return;
         }
+        // A configured owner password is itself the supported path forward.
+        // Finish backend startup so the independent /api/auth/me boundary can
+        // render LoginView; do not misclassify this app-core host as a
+        // pairing-only standalone agent. The login success callback commits
+        // the authenticated first-run state after the user proves ownership.
+        if (auth.passwordConfigured === true) {
+          deps.setAuthRequired(false);
+          deps.setFirstRunComplete(true);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+          return;
+        }
         // A stale remote that requires auth but has pairing DISABLED is a hard
         // dead end: this is the "Pairing is not enabled on this server" screen,
         // which offers no token field and no in-app way forward — the user can
