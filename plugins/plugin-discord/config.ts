@@ -92,6 +92,11 @@ export type DiscordActionConfig = {
 	reactions?: boolean;
 	stickers?: boolean;
 	polls?: boolean;
+	/**
+	 * Enable channel permission-overwrite editing (manage_server
+	 * edit_permissions and template overwrite reconcile). Default: false —
+	 * structural writes fail closed.
+	 */
 	permissions?: boolean;
 	messages?: boolean;
 	threads?: boolean;
@@ -99,13 +104,25 @@ export type DiscordActionConfig = {
 	search?: boolean;
 	memberInfo?: boolean;
 	roleInfo?: boolean;
+	/**
+	 * Enable role management (create/edit/delete role, assign/remove member
+	 * role) via manage_server. Default: false — fail closed.
+	 */
 	roles?: boolean;
 	channelInfo?: boolean;
 	voiceStatus?: boolean;
 	events?: boolean;
+	/**
+	 * Enable moderation verbs (kick/ban/unban/timeout) via manage_server.
+	 * Default: false — fail closed.
+	 */
 	moderation?: boolean;
 	emojiUploads?: boolean;
 	stickerUploads?: boolean;
+	/**
+	 * Enable structural channel management (create/edit/delete channel and
+	 * category, create_invite) via manage_server. Default: false — fail closed.
+	 */
 	channels?: boolean;
 	/** Enable bot presence/activity changes (default: false). */
 	presence?: boolean;
@@ -186,8 +203,19 @@ export type DiscordAccountConfig = {
 	dms?: Record<string, DmConfig>;
 	/** Retry policy for outbound Discord API calls. */
 	retry?: OutboundRetryConfig;
-	/** Per-action tool gating (default: true for all). */
+	/**
+	 * Per-action tool gating. Lightweight messaging toggles default to true;
+	 * the structural server-management gates (`channels`, `roles`,
+	 * `permissions`, `moderation`) default to FALSE and must be explicitly
+	 * enabled before manage_server writes are allowed.
+	 */
 	actions?: DiscordActionConfig;
+	/**
+	 * Additional guild templates for manage_server apply_template, keyed by
+	 * template id. Merged over the plugin's built-in registry
+	 * (companion-private, friends-casual, project-team, community-public).
+	 */
+	guildTemplates?: Record<string, unknown>;
 	/** Control reply threading when reply tags are present (off|first|all). */
 	replyToMode?: ReplyToMode;
 	dm?: DiscordDmConfig;
