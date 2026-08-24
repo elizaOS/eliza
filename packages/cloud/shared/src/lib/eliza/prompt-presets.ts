@@ -199,11 +199,14 @@ export const promptPresets: Record<PromptPresetName, PromptPreset> = {
  * Get prompt preset by name
  */
 export function getPromptPreset(name: PromptPresetName): PromptPreset {
-  const preset = promptPresets[name];
-  if (!preset) {
+  // Own-key check, not a bare index: the registry is a plain object, so
+  // `promptPresets["toString"]` resolves an inherited Object.prototype function
+  // — truthy, so the guard below would never fire and a Function would be
+  // returned as if it were a preset.
+  if (!Object.hasOwn(promptPresets, name)) {
     throw new Error(`Unknown prompt preset: ${name}`);
   }
-  return preset;
+  return promptPresets[name];
 }
 
 /**
@@ -213,7 +216,9 @@ export function getPresetFromEnv(): PromptPreset | null {
   const presetName = process.env.APP_PROMPT_PRESET as PromptPresetName | undefined;
   if (!presetName) return null;
 
-  if (!(presetName in promptPresets)) {
+  // `in` also resolves inherited Object.prototype members, so an env value of
+  // "toString" or "constructor" would pass this check and return a Function.
+  if (!Object.hasOwn(promptPresets, presetName)) {
     logger.warn(`Unknown APP_PROMPT_PRESET: ${presetName}, using defaults`);
     return null;
   }
