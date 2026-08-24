@@ -81,6 +81,8 @@ export async function loadScenarioTestMocksForTests() {
 
 const DETERMINISTIC_MODEL_PROVIDER_NAME =
   "deterministic-model-provider" as const;
+const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
+  "ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
 const SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX =
   "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.";
 const SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER = "\nInstruction:\n";
@@ -160,6 +162,16 @@ function applyRuntimeSettings(
       /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key),
     );
   }
+}
+
+export function disableScenarioEmbeddingCapability(
+  runtime: Pick<AgentRuntime, "setSetting">,
+): void {
+  // Core recall paths read this canonical host declaration before attempting
+  // TEXT_EMBEDDING. Omitting the provider alone is insufficient: a speculative
+  // recall call would be reported as a runtime error and quarantine the shared
+  // scenario process even though keyword-only recall is intentional here.
+  runtime.setSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING, false, false);
 }
 
 function isPlugin(value: unknown): value is Plugin {
@@ -960,6 +972,9 @@ export async function createScenarioRuntime(
   }
 
   applyRuntimeSettings(runtime, providerConfig.env);
+  if (skipEmbeddingPlugin) {
+    disableScenarioEmbeddingCapability(runtime);
+  }
   if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) {
     if (!testMocks) {
       throw new Error(
