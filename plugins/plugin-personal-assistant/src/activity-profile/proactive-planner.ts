@@ -824,7 +824,14 @@ function summarizeSnippet(value: string): string | null {
   if (trimmed.length <= 72) {
     return trimmed;
   }
-  return `${trimmed.slice(0, 69).trimEnd()}...`;
+  let end = 69;
+  if (end > 0 && end < trimmed.length) {
+    const code = trimmed.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${trimmed.slice(0, end).trimEnd()}...`;
 }
 
 function isBusyDay(
