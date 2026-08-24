@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { getRequestCookie } from "./request-cookie.js";
+
 describe("request-cookie", () => {
   it("parses cookie", () => {
     const req = new Request("https://example.com", { headers: { cookie: "a=1; b=2" } });

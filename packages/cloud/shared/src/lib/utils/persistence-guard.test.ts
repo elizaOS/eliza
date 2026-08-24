@@ -1,8 +1,12 @@
 /**
  * Coverage for persistence-guard.
  */
-import { describe, expect, it, afterEach } from "vitest";
-import { allowEphemeralCloudStateFallback, assertPersistentCloudStateConfigured } from "./persistence-guard.js";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  allowEphemeralCloudStateFallback,
+  assertPersistentCloudStateConfigured,
+} from "./persistence-guard.js";
+
 describe("persistence-guard", () => {
   const orig = process.env.AGENT_ALLOW_EPHEMERAL_CLOUD_STATE;
   afterEach(() => {

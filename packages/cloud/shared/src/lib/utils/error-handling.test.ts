@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { extractErrorMessage } from "./error-handling.js";
+
 describe("error-handling", () => {
   it("extracts from Error", () => {
     expect(extractErrorMessage(new Error("oops"))).toBe("oops");
