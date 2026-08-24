@@ -285,6 +285,177 @@ describe("listInboxAction", () => {
 		});
 	});
 
+	it("matches requested sources case-insensitively", async () => {
+		getDefaultMessageRefStore().saveMessages([
+			messageRef({
+				id: "gmail-cased",
+				externalId: "gmail-cased-external",
+				snippet: "gmail hit",
+				receivedAtMs: 3_000,
+			}),
+			messageRef({
+				id: "discord-cased",
+				source: "discord",
+				externalId: "discord-cased-external",
+				snippet: "discord miss",
+				receivedAtMs: 2_000,
+			}),
+		]);
+
+		const result = await listInboxAction.handler(
+			createFakeRuntime(),
+			messageRef({ id: "turn" }) as never,
+			undefined,
+			{ parameters: { sources: ["GMAIL"] } } as never,
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.data).toMatchObject({ total: 1, returned: 1 });
+		const casedMessages = result.data?.messages;
+		expect(casedMessages).toBeDefined();
+		if (!casedMessages) {
+			throw new Error("Expected filtered inbox messages");
+		}
+		expect(
+			(casedMessages as Array<{ id: string }>).map((message) => message.id),
+		).toEqual(["gmail-cased"]);
+	});
+
+	it("treats unrecognized source names as no filter instead of an empty inbox", async () => {
+		getDefaultMessageRefStore().saveMessages([
+			messageRef({
+				id: "gmail-any",
+				externalId: "gmail-any-external",
+				snippet: "gmail hit",
+				receivedAtMs: 3_000,
+			}),
+			messageRef({
+				id: "discord-any",
+				source: "discord",
+				externalId: "discord-any-external",
+				snippet: "discord hit",
+				receivedAtMs: 2_000,
+			}),
+		]);
+
+		const result = await listInboxAction.handler(
+			createFakeRuntime(),
+			messageRef({ id: "turn" }) as never,
+			undefined,
+			{ parameters: { sources: ["carrier-pigeon"] } } as never,
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.data).toMatchObject({ total: 2, returned: 2 });
+	});
+
+	it("coerces a numeric-string limit at the parameter boundary", async () => {
+		getDefaultMessageRefStore().saveMessages([
+			messageRef({
+				id: "oldest",
+				externalId: "oldest-external",
+				receivedAtMs: 1_000,
+			}),
+			messageRef({
+				id: "older",
+				externalId: "older-external",
+				receivedAtMs: 2_000,
+			}),
+			messageRef({
+				id: "newer",
+				externalId: "newer-external",
+				receivedAtMs: 3_000,
+			}),
+			messageRef({
+				id: "newest",
+				externalId: "newest-external",
+				receivedAtMs: 4_000,
+			}),
+		]);
+
+		const result = await listInboxAction.handler(
+			createFakeRuntime(),
+			messageRef({ id: "turn" }) as never,
+			undefined,
+			{ parameters: { limit: "2" } } as never,
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.data).toMatchObject({ total: 4, returned: 2 });
+		const limitedMessages = result.data?.messages;
+		expect(limitedMessages).toBeDefined();
+		if (!limitedMessages) {
+			throw new Error("Expected trimmed inbox messages");
+		}
+		expect(
+			(limitedMessages as Array<{ id: string }>).map((message) => message.id),
+		).toEqual(["newest", "newer"]);
+	});
+
+	it("summarizes the platform spread in the result text", async () => {
+		getDefaultMessageRefStore().saveMessages([
+			messageRef({
+				id: "gmail-spread",
+				externalId: "gmail-spread-external",
+				receivedAtMs: 3_000,
+			}),
+			messageRef({
+				id: "discord-spread",
+				source: "discord",
+				externalId: "discord-spread-external",
+				receivedAtMs: 2_000,
+			}),
+		]);
+
+		const result = await listInboxAction.handler(
+			createFakeRuntime(),
+			messageRef({ id: "turn" }) as never,
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.text).toBe(
+			"2 unread message(s) across 2 platform(s); details in data.messages.",
+		);
+	});
+
+	it("filters read mail out of a live pull", async () => {
+		const adapter = new FixedListAdapter([
+			messageRef({
+				id: "live-read",
+				externalId: "live-read-external",
+				receivedAtMs: 9_000,
+				isRead: true,
+			}),
+			messageRef({
+				id: "live-unread-new",
+				externalId: "live-unread-new-external",
+				receivedAtMs: 8_000,
+			}),
+			messageRef({
+				id: "live-unread-old",
+				externalId: "live-unread-old-external",
+				receivedAtMs: 7_000,
+			}),
+		]);
+		await registerAdapter(adapter);
+
+		const result = await listInboxAction.handler(
+			createFakeRuntime(),
+			messageRef({ id: "turn" }) as never,
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.data).toMatchObject({ total: 2, returned: 2 });
+		const liveMessages = result.data?.messages;
+		expect(liveMessages).toBeDefined();
+		if (!liveMessages) {
+			throw new Error("Expected live-pull inbox messages");
+		}
+		expect(
+			(liveMessages as Array<{ id: string }>).map((message) => message.id),
+		).toEqual(["live-unread-new", "live-unread-old"]);
+	});
+
 	it("stringifies non-Error failures at the action boundary", async () => {
 		await registerAdapter(new FixedListAdapter([], "connector refused"));
 
