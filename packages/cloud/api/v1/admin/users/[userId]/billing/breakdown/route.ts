@@ -28,9 +28,11 @@ interface BreakdownRow {
   recordCount: number;
 }
 
-function firstOfCurrentMonthUtc(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+export function firstOfCurrentMonthUtc(now: Date = new Date()): Date {
+  const date = new Date(0);
+  date.setUTCFullYear(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
 }
 
 async function __hono_GET(
