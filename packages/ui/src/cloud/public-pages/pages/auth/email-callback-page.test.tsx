@@ -98,6 +98,7 @@ vi.mock("../../../../cloud-ui/components/brand/brand-button", () => ({
 
 import { storePendingOAuthReturnTo } from "../../lib/login-return-to";
 import EmailCallbackPage, {
+  classifyEmailCallbackDestination,
   resolveEmailCallbackDestination,
 } from "./email-callback-page";
 
@@ -384,6 +385,27 @@ describe("EmailCallbackPage", () => {
         "/get-started",
       ),
     ).toBe("/app-auth/authorize?id=1");
+  });
+
+  it("classifies an app-authorization destination explicitly", () => {
+    const { isAppAuthorization, isJoinFallback } =
+      classifyEmailCallbackDestination("/app-auth/authorize?id=1");
+    expect(isAppAuthorization).toBe(true);
+    expect(isJoinFallback).toBe(false);
+  });
+
+  it("classifies the ordinary login fallback as /join, not authorization", () => {
+    const { isAppAuthorization, isJoinFallback } =
+      classifyEmailCallbackDestination("/join");
+    expect(isAppAuthorization).toBe(false);
+    expect(isJoinFallback).toBe(true);
+  });
+
+  it("classifies a neutral same-origin target as neither", () => {
+    const { isAppAuthorization, isJoinFallback } =
+      classifyEmailCallbackDestination("/get-started");
+    expect(isAppAuthorization).toBe(false);
+    expect(isJoinFallback).toBe(false);
   });
 
   it("continues to a same-origin return path without replacing the document", async () => {
