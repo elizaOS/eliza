@@ -26,8 +26,8 @@ env:
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
-  static-smoke:
-    name: All Tests Passed
+  source-smoke:
+    name: Source static smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -148,3 +148,29 @@ jobs:
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
         run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
+
+  browser-bridge-windows-security:
+    name: Browser bridge Windows security
+    uses: ./.github/workflows/browser-bridge-windows-security.yml
+
+  static-smoke:
+    name: All Tests Passed
+    if: always()
+    needs: [source-smoke, browser-bridge-windows-security]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require source and Windows security lanes
+        env:
+          RESULTS: >-
+            source-smoke=${{ needs.source-smoke.result }}
+            browser-bridge-windows-security=${{ needs.browser-bridge-windows-security.result }}
+        run: |
+          set -euo pipefail
+          for pair in $RESULTS; do
+            name="${pair%%=*}"
+            result="${pair#*=}"
+            if [ "$result" != "success" ]; then
+              echo "::error title=PR admission::$name finished with $result"
+              exit 1
+            fi
+          done

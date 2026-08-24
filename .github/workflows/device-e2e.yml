@@ -377,6 +377,30 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  windows-runtime-installation-identity:
+    name: Windows runtime installation identity
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows'
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install workspace
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Prove Windows identity storage fails closed
+        run: bunx vitest run packages/agent/src/runtime/runtime-installation-id.test.ts --config packages/agent/vitest.config.ts -t "real Windows"
+
   windows-computeruse-evidence:
     name: Windows computer-use evidence
     if: github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'windows')

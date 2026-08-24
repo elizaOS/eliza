@@ -623,9 +623,15 @@ export async function requestAllWebsiteAccess(): Promise<boolean> {
   if (!permissions?.request) {
     throw new Error("permissions.request is unavailable");
   }
-  return await invokeAsync<boolean>("permissions.request", (callback) =>
-    permissions.request?.({ origins: ["https://*/*", "http://*/*"] }, callback),
+  const granted = await invokeAsync<boolean>(
+    "permissions.request",
+    (callback) =>
+      permissions.request?.(
+        { origins: ["https://*/*", "http://*/*"] },
+        callback,
+      ),
   );
+  return granted || (await hasAllUrlHostPermission());
 }
 
 /** Requests the browser-managed grant for one exact HTTP(S) origin. */
@@ -636,9 +642,11 @@ export async function requestWebsiteAccess(
   if (!permissions?.request) {
     throw new Error("permissions.request is unavailable");
   }
-  return await invokeAsync<boolean>("permissions.request", (callback) =>
-    permissions.request?.({ origins: [originPattern] }, callback),
+  const granted = await invokeAsync<boolean>(
+    "permissions.request",
+    (callback) => permissions.request?.({ origins: [originPattern] }, callback),
   );
+  return granted || (await hasWebsiteAccess(originPattern));
 }
 
 export async function getGrantedOrigins(): Promise<string[]> {

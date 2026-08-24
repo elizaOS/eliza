@@ -138,6 +138,7 @@
       "import": "./dist/runtime/index.js",
       "default": "./dist/runtime/index.js"
     },
+    "./runtime/runtime-installation-id": null,
     "./runtime/*": {
       "types": "./src/runtime/*.ts",
       "eliza-source": {
