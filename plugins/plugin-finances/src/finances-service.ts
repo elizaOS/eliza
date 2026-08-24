@@ -358,8 +358,9 @@ function buildTransactionId(args: {
   //
   // The Nth genuinely-identical (posted_at, amount, direction, merchant) row
   // gets occurrence index N. Occurrence 0 reuses the bare content-tuple hash
-  // so a pre-fix row (imported when its external id was still NULL) keeps its
-  // deterministic primary key and migrates in place instead of duplicating.
+  // as its deterministic base identity; a pre-fix row (imported when its
+  // external id was still NULL) hashed a different, now-abandoned tuple and is
+  // therefore migrated by content in `insertPaymentTransaction`, not by id.
   // Because reordering cannot distinguish two byte-identical rows, an
   // overlapping export (prepended, trimmed, or reordered) maps each existing
   // charge back onto the same key and stays idempotent, while two distinct
@@ -736,7 +737,12 @@ export class FinancesService {
         metadata: { sourceRowIndex: txn.rowIndex },
         createdAt: new Date().toISOString(),
       };
-      const didInsert = await this.repository.insertPaymentTransaction(record);
+      // Only the occurrence-0 fallback row of a source-external-id-less import
+      // can correspond to a pre-fix NULL-external legacy survivor, so it alone
+      // asks the repository to migrate that legacy content row in place.
+      const didInsert = await this.repository.insertPaymentTransaction(record, {
+        migrateLegacyContentRow: !hasExternalId && occurrenceIndex === 0,
+      });
       if (didInsert) {
         inserted += 1;
       } else {

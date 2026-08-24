@@ -953,6 +953,7 @@ export class FinancesRepository {
 
   async insertPaymentTransaction(
     transaction: LifeOpsPaymentTransaction,
+    options?: { migrateLegacyContentRow?: boolean },
   ): Promise<boolean> {
     const externalId = transaction.externalId;
     if (externalId) {
@@ -968,10 +969,31 @@ export class FinancesRepository {
           throw new Error("Payment transaction source does not exist.");
         }
         // Match on the external id (the normal idempotency key) OR the row's
-        // deterministic primary-key id. The id fallback replaces a legacy row
-        // that predates external ids on this row (e.g. a CSV row imported when
-        // external_id was still NULL) so the immediately following INSERT of
-        // the same deterministic id does not raise a primary-key violation.
+        // deterministic primary-key id. The id fallback covers a row already
+        // stored under this exact deterministic id, so the immediately
+        // following INSERT does not raise a primary-key violation.
+        //
+        // A legacy CSV row imported before this fix carries a NULL external_id
+        // and a primary-key id derived from a different (now-abandoned) hash
+        // formula, so neither key above can reach it. `migrateLegacyContentRow`
+        // — set only for the occurrence-0 fallback row of an import — adds a
+        // content match that migrates that single legacy survivor in place.
+        // The partial `legacy_tuple_unique` index guarantees at most one
+        // NULL-external row per (agent, source, posted_at, amount, merchant),
+        // and folding `direction` into the match keeps a same-amount opposite-
+        // direction charge from being deleted as a false migration target.
+        const legacyContentMatch = options?.migrateLegacyContentRow
+          ? `
+                OR (
+                  external_id IS NULL
+                  AND posted_at = ${sqlQuote(transaction.postedAt)}
+                  AND amount_usd = ${sqlNumber(transaction.amountUsd)}
+                  AND direction = ${sqlQuote(transaction.direction)}
+                  AND merchant_normalized = ${sqlQuote(
+                    transaction.merchantNormalized,
+                  )}
+                )`
+          : "";
         const existing = await executeRawSqlTx(
           tx,
           `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
@@ -979,7 +1001,7 @@ export class FinancesRepository {
               AND source_id = ${sqlQuote(transaction.sourceId)}
               AND (
                 external_id = ${sqlQuote(externalId)}
-                OR id = ${sqlQuote(transaction.id)}
+                OR id = ${sqlQuote(transaction.id)}${legacyContentMatch}
               )
             RETURNING id`,
         );

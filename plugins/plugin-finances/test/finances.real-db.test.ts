@@ -14,6 +14,7 @@
  * behavior execute against the real database.
  */
 
+import { createHash } from "node:crypto";
 import type { AgentRuntime, HandlerOptions, Memory } from "@elizaos/core";
 import {
   PlaidManagedClient,
@@ -1267,30 +1268,49 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       expect(afterReplay.totalSpendUsd).toBeCloseTo(9.0, 2);
 
       // Upgrade path: a row imported before this fix carries a NULL external_id
-      // but the same deterministic primary-key id. Only ONE such row can exist
-      // per content tuple (the partial legacy_tuple_unique index forbade the
-      // second — that was the original drop bug), so reconstruct exactly that
-      // survivor: keep the first CSV row with a NULL external_id and remove the
-      // second so the legacy single-row state is reproduced deterministically.
+      // AND a primary-key id from the abandoned pre-fix formula, which hashed
+      // (agent, source, posted_at, amount, merchant, absoluteRowIndex) — not
+      // the current content tuple. Only ONE such row can exist per content
+      // tuple (the partial legacy_tuple_unique index forbade the second — that
+      // was the original drop bug), so reproduce exactly that survivor: drop
+      // both new-format rows and insert a genuine legacy row whose id is the
+      // real pre-fix SHA-1 (rowIndex=1 for the first data row) with a NULL
+      // external_id. The migration must recover it by CONTENT, since its id can
+      // never be reconstructed from the current formula.
       const [rowOne, rowTwo] = stored;
+      await repository.deletePaymentTransactionById(runtime.agentId, rowOne.id);
       await repository.deletePaymentTransactionById(runtime.agentId, rowTwo.id);
-      await executeRawSql(
-        runtime,
-        `UPDATE app_finances.life_payment_transactions
-            SET external_id = NULL
-          WHERE agent_id = '${runtime.agentId}'
-            AND id = '${rowOne.id}'`,
-      );
+      const legacyId = createHash("sha1")
+        .update(
+          [
+            runtime.agentId,
+            source.id,
+            rowOne.postedAt,
+            rowOne.amountUsd.toFixed(2),
+            rowOne.merchantNormalized,
+            1,
+          ].join("|"),
+        )
+        .digest("hex")
+        .slice(0, 32);
+      expect(legacyId).not.toBe(rowOne.id);
+      const legacyInserted = await repository.insertPaymentTransaction({
+        ...rowOne,
+        id: legacyId,
+        externalId: null,
+      });
+      expect(legacyInserted).toBe(true);
       const legacyRows = await repository.listPaymentTransactions(
         runtime.agentId,
         { sourceId: source.id },
       );
       expect(legacyRows).toHaveLength(1);
+      expect(legacyRows[0].id).toBe(legacyId);
       expect(legacyRows[0].externalId).toBeNull();
 
-      // Re-importing the two-row CSV must NOT raise a primary-key violation on
-      // the legacy row (matched by its deterministic id) and must RECOVER the
-      // previously dropped second charge, restoring the true count of two.
+      // Re-importing the two-row CSV must NOT double-count the legacy survivor:
+      // its content — not its unreconstructable id — is migrated in place, and
+      // the previously dropped second charge is recovered, restoring two rows.
       const upgradeReplay = await service.importTransactionsCsv({
         sourceId: source.id,
         csvText,
