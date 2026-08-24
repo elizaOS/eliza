@@ -1,8 +1,10 @@
 /**
  * Unit coverage for the pure exports of the cloud-apps lib that the deploy
  * suite does not touch: query-key contracts, normalizeDeployRepoUrl's direct
- * branches, the remaining validateDeployAppInput rejections, and
- * deployRepoUrlFromApp's empty-repo fallbacks. Real module, no network.
+ * branches, client-side deploy-source hygiene, and deployRepoUrlFromApp's
+ * empty-repo fallbacks. The authoritative SSRF boundary is enforced again in
+ * cloud-shared's app-image-resolver immediately before BuildKit. Real module,
+ * no network.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -99,8 +101,28 @@ describe("validateDeployAppInput rejection branches", () => {
       }),
     ).toEqual({
       ok: false,
-      error: "Use an http(s) Git repository URL.",
+      error: "Use an HTTPS github.com owner/repository clone URL.",
     });
+  });
+
+  it("rejects network and credential targets before deploy admission", () => {
+    for (const repoUrl of [
+      "https://user:secret@github.com/elizaOS/eliza.git",
+      "http://github.com/elizaOS/eliza.git",
+      "https://127.0.0.1/elizaOS/eliza.git",
+      "https://[::1]/elizaOS/eliza.git",
+      "https://169.254.169.254/latest/meta-data.git",
+      "https://github.com.evil.test/elizaOS/eliza.git",
+      "https://rebind.network/elizaOS/eliza.git",
+      "https://httpbin.org/redirect-to?url=https://github.com/elizaOS/eliza.git",
+      "https://gith\u0443b.com/elizaOS/eliza.git",
+      "https://github.com/%2e%2e/eliza.git",
+    ]) {
+      expect(validateDeployAppInput({ repoUrl, ref: FULL_SHA })).toMatchObject({
+        ok: false,
+        error: "Use an HTTPS github.com owner/repository clone URL.",
+      });
+    }
   });
 
   it("requires a commit SHA even when the repository URL is valid", () => {

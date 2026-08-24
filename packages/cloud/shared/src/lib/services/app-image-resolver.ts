@@ -8,10 +8,11 @@
  * through to `app.metadata.imageTag` / `APP_DEFAULT_IMAGE` for legacy/prebuilt
  * lanes — never an error for the no-repo case.
  *
- * Docker builds git URLs natively (`docker build <git-url>#ref:subdir`), so the
- * repo URL is passed straight through as the build context — no clone step.
+ * Docker builds git URLs natively (`docker build <git-url>#ref:subdir`), so a
+ * canonical GitHub URL becomes the build context without a separate clone step.
  */
 
+import { canonicalizeAppBuildRepoUrl } from "../security/app-build-repo-url";
 import { logger } from "../utils/logger";
 import type { AppImageBuilder } from "./app-image-builder";
 
@@ -122,6 +123,7 @@ export function makeBuildFromRepoResolver(deps: BuildFromRepoResolverDeps): AppI
     const metaRepo = typeof app.metadata?.repoUrl === "string" ? app.metadata.repoUrl : undefined;
     const repo = metaRepo ?? app.repoUrl;
     if (!repo) return undefined;
+    const safeRepo = canonicalizeAppBuildRepoUrl(repo);
 
     const sourceRef = typeof app.metadata?.ref === "string" ? app.metadata.ref : undefined;
     const dockerfile =
@@ -129,7 +131,7 @@ export function makeBuildFromRepoResolver(deps: BuildFromRepoResolverDeps): AppI
     const { imageRef } = await deps.builder.build({
       registry: deps.registry,
       appId: app.id,
-      context: buildContextFor(repo, sourceRef),
+      context: buildContextFor(safeRepo, sourceRef),
       dockerfile,
       sourceRef,
       // Push so the deploy/worker node can pull the freshly built image.

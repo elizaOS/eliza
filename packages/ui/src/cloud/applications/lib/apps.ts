@@ -57,6 +57,8 @@ export type DeployAppValidationResult =
 // mutations (which also invalidate this key directly).
 const APP_STALE_MS = 2 * 60 * 1000;
 const IMMUTABLE_COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/i;
+const CANONICAL_GITHUB_REPOSITORY_PATH =
+  /^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$/;
 const UNSUPPORTED_DEPLOY_SOURCE_KEYS = [
   "archiveUrl",
   "artifact",
@@ -69,6 +71,17 @@ const UNSUPPORTED_DEPLOY_SOURCE_KEYS = [
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function containsEncodedOrControlCharacters(value: string): boolean {
+  return (
+    value.includes("%") ||
+    value.includes("\\") ||
+    Array.from(value).some((character) => {
+      const code = character.charCodeAt(0);
+      return code < 0x20 || code === 0x7f;
+    })
+  );
 }
 
 export function normalizeDeployRepoUrl(repo: string): string {
@@ -109,8 +122,21 @@ export function validateDeployAppInput(
     return { ok: false, error: "Enter a valid repository URL." };
   }
 
-  if (!["http:", "https:"].includes(parsedRepoUrl.protocol)) {
-    return { ok: false, error: "Use an http(s) Git repository URL." };
+  if (
+    parsedRepoUrl.protocol !== "https:" ||
+    parsedRepoUrl.hostname !== "github.com" ||
+    parsedRepoUrl.username !== "" ||
+    parsedRepoUrl.password !== "" ||
+    parsedRepoUrl.port !== "" ||
+    parsedRepoUrl.search !== "" ||
+    parsedRepoUrl.hash !== "" ||
+    containsEncodedOrControlCharacters(repoUrl) ||
+    !CANONICAL_GITHUB_REPOSITORY_PATH.test(parsedRepoUrl.pathname)
+  ) {
+    return {
+      ok: false,
+      error: "Use an HTTPS github.com owner/repository clone URL.",
+    };
   }
 
   const ref = typeof input.ref === "string" ? input.ref.trim() : "";

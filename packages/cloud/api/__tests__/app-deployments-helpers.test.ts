@@ -33,7 +33,7 @@ describe("DeployBodySchema", () => {
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data.repoUrl).toBe("https://github.com/2-A-M/example");
+      expect(parsed.data.repoUrl).toBe("https://github.com/2-A-M/example.git");
       expect(parsed.data.ref).toBe("main");
       expect(parsed.data.dockerfile).toBe("./Dockerfile");
       expect(parsed.data.env).toEqual({ FOO: "bar", BAZ: "qux" });
@@ -43,6 +43,23 @@ describe("DeployBodySchema", () => {
   test("rejects a non-URL repoUrl", () => {
     const parsed = DeployBodySchema.safeParse({ repoUrl: "not-a-url" });
     expect(parsed.success).toBe(false);
+  });
+
+  test("rejects attacker-selected origins and credentials at server admission", () => {
+    for (const repoUrl of [
+      "https://user:secret@github.com/elizaOS/eliza.git",
+      "http://github.com/elizaOS/eliza.git",
+      "https://127.0.0.1/elizaOS/eliza.git",
+      "https://[::1]/elizaOS/eliza.git",
+      "https://169.254.169.254/latest/meta-data.git",
+      "https://rebind.network/elizaOS/eliza.git",
+      "https://httpbin.org/redirect-to?url=https://github.com/elizaOS/eliza.git",
+      "https://github.com.evil.test/elizaOS/eliza.git",
+      "https://gith\u0443b.com/elizaOS/eliza.git",
+      "https://github.com/%2e%2e/eliza.git",
+    ]) {
+      expect(DeployBodySchema.safeParse({ repoUrl }).success).toBe(false);
+    }
   });
 
   test("rejects an empty ref string", () => {

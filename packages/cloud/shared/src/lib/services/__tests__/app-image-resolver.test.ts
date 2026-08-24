@@ -40,9 +40,43 @@ describe("makeBuildFromRepoResolver", () => {
   test("falls back to metadata.repoUrl when github_repo is absent", async () => {
     const { builder, cmds } = recordingBuilder();
     const resolve = makeBuildFromRepoResolver({ builder, registry: "r" });
-    const ref = await resolve({ id: APP, name: "demo", metadata: { repoUrl: "/local/ctx" } });
-    expect(ref).toBe("r/app-aaaaaaaaaaaa4aaa8aaaaaaa:latest");
-    expect(cmds[0]).toContain("'/local/ctx'");
+    await expect(
+      resolve({ id: APP, name: "demo", metadata: { repoUrl: "/local/ctx" } }),
+    ).rejects.toThrow();
+    expect(cmds).toHaveLength(0);
+  });
+
+  test("rejects SSRF and redirect targets at the BuildKit sink without executing", async () => {
+    for (const repoUrl of [
+      "https://user:secret@github.com/u/repo.git",
+      "http://github.com/u/repo.git",
+      "https://localhost/u/repo.git",
+      "https://127.0.0.1/u/repo.git",
+      "https://[::1]/u/repo.git",
+      "https://10.0.0.1/u/repo.git",
+      "https://169.254.169.254/latest/meta-data.git",
+      "https://2130706433/u/repo.git",
+      "https://rebind.network/u/repo.git",
+      "https://httpbin.org/redirect-to?url=https://github.com/u/repo.git",
+      "https://github.com.evil.test/u/repo.git",
+      "https://gith\u0443b.com/u/repo.git",
+      "https://github.com/%2e%2e/repo.git",
+    ]) {
+      const { builder, cmds } = recordingBuilder();
+      const resolve = makeBuildFromRepoResolver({ builder, registry: "r" });
+
+      await expect(resolve({ id: APP, name: "demo", metadata: { repoUrl } })).rejects.toThrow();
+      expect(cmds).toHaveLength(0);
+    }
+  });
+
+  test("canonicalizes persisted owner/repo shorthand before BuildKit", async () => {
+    const { builder, cmds } = recordingBuilder();
+    const resolve = makeBuildFromRepoResolver({ builder, registry: "r" });
+
+    await resolve({ id: APP, name: "demo", metadata: {}, repoUrl: "elizaOS/eliza" });
+
+    expect(cmds[0]).toContain("'https://github.com/elizaOS/eliza.git'");
   });
 
   test("uses deploy metadata for repo, ref, and Dockerfile", async () => {
