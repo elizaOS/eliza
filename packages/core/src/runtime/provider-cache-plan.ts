@@ -4,6 +4,7 @@
  * Anthropic cache breakpoints under its four-block cap, and the eliza-local
  * conversation-pinning options, for a single model generation.
  */
+import { ElizaError } from "../errors";
 import type { PromptSegment } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 
@@ -72,6 +73,7 @@ const ANTHROPIC_MAX_BREAKPOINTS = 4;
 export function buildProviderCachePlan(
 	args: ProviderCachePlanArgs,
 ): ProviderCachePlan {
+	validatePromptSegments(args.promptSegments);
 	const promptCacheKey = buildPromptCacheKey(args.prefixHash);
 	const segmentHashes = args.segmentHashes
 		? [...args.segmentHashes]
@@ -155,6 +157,51 @@ export function buildProviderCachePlan(
 		},
 		warnings,
 	};
+}
+
+function validatePromptSegments(
+	promptSegments: ProviderCachePlanArgs["promptSegments"],
+): void {
+	if (promptSegments === undefined) {
+		return;
+	}
+
+	for (const [segmentIndex, value] of (
+		promptSegments as readonly unknown[]
+	).entries()) {
+		if (typeof value !== "object" || value === null || Array.isArray(value)) {
+			throwInvalidPromptSegment(segmentIndex, "segment", typeof value);
+		}
+		const segment = value as Record<string, unknown>;
+		if ("content" in segment && typeof segment.content !== "string") {
+			throwInvalidPromptSegment(
+				segmentIndex,
+				"content",
+				typeof segment.content,
+			);
+		}
+		if ("stable" in segment && typeof segment.stable !== "boolean") {
+			throwInvalidPromptSegment(segmentIndex, "stable", typeof segment.stable);
+		}
+		if ("ttl" in segment && segment.ttl !== "short" && segment.ttl !== "long") {
+			throwInvalidPromptSegment(segmentIndex, "ttl", typeof segment.ttl);
+		}
+	}
+}
+
+function throwInvalidPromptSegment(
+	segmentIndex: number,
+	field: string,
+	receivedType: string,
+): never {
+	throw new ElizaError(
+		`Prompt cache segment ${segmentIndex} has an invalid ${field} field`,
+		{
+			code: "PROVIDER_CACHE_PROMPT_SEGMENT_INVALID",
+			severity: "fatal",
+			context: { segmentIndex, field, receivedType },
+		},
+	);
 }
 
 export function buildPromptCacheKey(prefixHash: string): string {

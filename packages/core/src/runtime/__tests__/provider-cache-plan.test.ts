@@ -360,28 +360,27 @@ describe("ProviderCachePlan edge branches", () => {
 		expect(noneStable.warnings).toEqual([]);
 	});
 
-	it("strips non-string segment contents and omits promptSegments when none survive", () => {
-		const partial = buildProviderCachePlan({
-			prefixHash: "h",
-			promptSegments: [
-				{ content: "keep", stable: true },
-				{ content: 42, stable: true },
-				{},
-			] as unknown as { stable?: boolean }[],
-		});
-		const eliza = partial.providerOptions.eliza as Record<string, unknown>;
-		expect(eliza.promptSegments).toEqual([{ content: "keep", stable: true }]);
+	it("rejects invalid segment content instead of dropping model input", () => {
+		for (const promptSegments of [
+			[{ content: "keep", stable: true }, { content: 42, stable: true }, {}],
+			[{ content: 42 }],
+		]) {
+			expect(() =>
+				buildProviderCachePlan({
+					prefixHash: "h",
+					promptSegments: promptSegments as unknown as {
+						stable?: boolean;
+					}[],
+				}),
+			).toThrowError(
+				expect.objectContaining({
+					code: "PROVIDER_CACHE_PROMPT_SEGMENT_INVALID",
+				}),
+			);
+		}
+	});
 
-		const allInvalid = buildProviderCachePlan({
-			prefixHash: "h",
-			promptSegments: [{ content: 42 }] as unknown as {
-				stable?: boolean;
-			}[],
-		});
-		expect(allInvalid.providerOptions.eliza).not.toHaveProperty(
-			"promptSegments",
-		);
-
+	it("omits an explicitly empty prompt segment list", () => {
 		const emptyList = buildProviderCachePlan({
 			prefixHash: "h",
 			promptSegments: [],
