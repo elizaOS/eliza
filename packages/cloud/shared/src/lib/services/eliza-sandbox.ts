@@ -394,16 +394,16 @@ function resolveManagedProvisionDockerImage(
 }
 
 /**
- * Thrown when the post-create readiness probe could not REACH the container
- * (SSH transport unresolved), as distinct from the container being genuinely
- * not-ready. The provision path uses it to keep the container in place and
- * return a RETRYABLE failure instead of tearing down a likely-healthy container
- * and marking the row terminally failed (#15310 failure mode #6).
+ * Thrown when post-create readiness cannot establish the required managed
+ * reachability: either every SSH probe failed, or SSH proved the workload
+ * healthy while its tailnet ingress remained unavailable. The provision path
+ * keeps the container in place and returns a RETRYABLE failure instead of
+ * tearing down a healthy or unproven workload (#15310 failure mode #6).
  */
-export class SandboxTransportUnresolvedError extends Error {
+export class SandboxReachabilityUnresolvedError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "SandboxTransportUnresolvedError";
+    this.name = "SandboxReachabilityUnresolvedError";
   }
 }
 
@@ -3536,7 +3536,10 @@ export class ElizaSandboxService {
         const dockerMeta = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
 
         if (!health.ready) {
-          if (health.verdict === "transport_unresolved") {
+          if (
+            health.verdict === "transport_unresolved" ||
+            health.verdict === "ingress_unresolved"
+          ) {
             // Do NOT tear the container down: the probe never reached it, so it
             // is probably up and serving. PERSIST the container handle onto the
             // row (status stays `provisioning`) BEFORE throwing so that:
@@ -3556,9 +3559,10 @@ export class ElizaSandboxService {
               handle,
               dockerMeta,
             );
-            throw new SandboxTransportUnresolvedError(
-              "Sandbox readiness probe could not reach the container (SSH transport unresolved); " +
-                "leaving the container in place for retry/reconciliation",
+            throw new SandboxReachabilityUnresolvedError(
+              health.verdict === "ingress_unresolved"
+                ? "Sandbox container is healthy but its managed ingress is unresolved; leaving the container in place for retry/reconciliation"
+                : "Sandbox readiness probe could not reach the container (SSH transport unresolved); leaving the container in place for retry/reconciliation",
             );
           }
           throw new Error("Sandbox health check timed out");
@@ -3880,9 +3884,9 @@ export class ElizaSandboxService {
         // reconciler re-probes and flips the row to `running` once transport
         // recovers. Preserve the (pending/provisioning) row so the reconciler
         // and job retry both have something to act on.
-        if (err instanceof SandboxTransportUnresolvedError) {
+        if (err instanceof SandboxReachabilityUnresolvedError) {
           logger.warn(
-            "[agent-sandbox] Readiness probe transport-unresolved; leaving container in place for retry/reconciliation",
+            "[agent-sandbox] Managed reachability remains unresolved; leaving container in place for retry/reconciliation",
             { agentId: rec.id, sandboxId: handle.sandboxId, attempt },
           );
           return {
