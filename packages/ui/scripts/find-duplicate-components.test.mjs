@@ -37,6 +37,10 @@ test("the inventory identifies canonical ownership and parallel controls", () =>
   assert.ok(parallelButtons.includes("ViewBackButton"));
   assert.equal(report.atoms.card.rawHostUsage.length, 0);
   assert.ok(report.atoms.button.rawHostUsage.length > 0);
+  assert.equal(
+    report.summary.reviewedParallelPrimitives,
+    report.summary.parallelPrimitives,
+  );
 });
 
 test("the markdown report exposes classifications and the molecular queue", () => {
