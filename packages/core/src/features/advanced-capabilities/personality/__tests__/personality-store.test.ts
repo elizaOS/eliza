@@ -16,6 +16,32 @@ import { initStore, makeFakeRuntime } from "./test-helpers.ts";
 const AGENT = "00000000-0000-4000-8000-000000000aaa" as const;
 const USER_A = "00000000-0000-4000-8000-000000000aab" as const;
 const USER_B = "00000000-0000-4000-8000-000000000aac" as const;
+const AGENT_B = "00000000-0000-4000-8000-000000000bbb" as const;
+
+function seedSlotMemory(args: {
+	fake: ReturnType<typeof makeFakeRuntime>;
+	id: string;
+	slot: unknown;
+}) {
+	args.fake.memories.set(PERSONALITY_SLOT_TABLE, [
+		{
+			id: args.id as never,
+			entityId: AGENT as never,
+			roomId: AGENT as never,
+			agentId: AGENT as never,
+			content: {
+				text: "personality_slot global",
+				source: "personality_slot",
+			},
+			createdAt: 0,
+			metadata: {
+				type: "custom",
+				source: "personality_slot",
+				slot: args.slot,
+			},
+		},
+	]);
+}
 
 function bareStore() {
 	const fake = makeFakeRuntime({ agentId: AGENT as unknown as typeof AGENT });
@@ -288,5 +314,287 @@ describe("PersonalityStore", () => {
 			fake.store.getSlot(USER_A as never, AGENT as never).verbosity,
 		).toBeNull();
 		expect(fake.memories.get(PERSONALITY_SLOT_TABLE)).toEqual([]);
+	});
+
+	test("applyReplyGate writes gate, provenance, and audit for a user slot", async () => {
+		const store = bareStore();
+		const { after } = await store.applyReplyGate({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			mode: "on_mention",
+		});
+		expect(after.reply_gate).toBe("on_mention");
+		expect(after.trait_sources.reply_gate).toBe("user");
+		expect(store.getSlot(USER_A as never, AGENT as never).reply_gate).toBe(
+			"on_mention",
+		);
+		expect(store.getRecentAudit()[0]?.action).toBe("set_reply_gate:on_mention");
+	});
+
+	test("applyReplyGate global scope defaults provenance to admin", async () => {
+		const store = bareStore();
+		await store.applyReplyGate({
+			scope: "global",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			mode: "never_until_lift",
+		});
+		const slot = store.getSlot(GLOBAL_PERSONALITY_SCOPE, AGENT as never);
+		expect(slot.reply_gate).toBe("never_until_lift");
+		expect(slot.trait_sources.reply_gate).toBe("admin");
+	});
+
+	test("null reply-gate mode clears the gate and drops its provenance", async () => {
+		const store = bareStore();
+		await store.applyReplyGate({
+			scope: "global",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			mode: "always",
+		});
+		const { before, after } = await store.applyReplyGate({
+			scope: "global",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			mode: null,
+		});
+		expect(before.reply_gate).toBe("always");
+		expect(after.reply_gate).toBeNull();
+		expect("reply_gate" in after.trait_sources).toBe(false);
+		expect(store.getRecentAudit()[0]?.action).toBe("set_reply_gate:null");
+	});
+
+	test("setting a trait to null drops its provenance and audits the clear", async () => {
+		const store = bareStore();
+		await store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "verbosity",
+			value: "terse",
+		});
+		const { before, after } = await store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "verbosity",
+			value: null,
+		});
+		expect(before.verbosity).toBe("terse");
+		expect(before.trait_sources.verbosity).toBe("user");
+		expect(after.verbosity).toBeNull();
+		expect("verbosity" in after.trait_sources).toBe(false);
+		expect(store.getRecentAudit()[0]?.action).toBe("set_trait:verbosity=null");
+	});
+
+	test("explicit source override stamps slot and trait provenance", async () => {
+		const store = bareStore();
+		const { after } = await store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "tone",
+			value: "warm",
+			source: "agent_inferred",
+		});
+		expect(after.source).toBe("agent_inferred");
+		expect(after.trait_sources.tone).toBe("agent_inferred");
+	});
+
+	test("returned slots are defensive copies, not live cache references", async () => {
+		const store = bareStore();
+		await store.addDirective({
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			directive: "do not mutate",
+		});
+		const slot = store.getSlot(USER_A as never, AGENT as never);
+		slot.custom_directives.push("caller mutation");
+		slot.trait_sources.verbosity = "admin";
+		const fresh = store.getSlot(USER_A as never, AGENT as never);
+		expect(fresh.custom_directives).toEqual(["do not mutate"]);
+		expect(fresh.trait_sources).toEqual({});
+	});
+
+	test("getProfile returns a defensive copy; unknown names return null", () => {
+		const store = bareStore();
+		const profile = store.getProfile("default");
+		expect(profile).not.toBeNull();
+		if (profile) {
+			profile.custom_directives.push("mutation probe");
+		}
+		expect(
+			store.getProfile("default")?.custom_directives.includes("mutation probe"),
+		).toBe(false);
+		expect(store.getProfile("no-such-profile")).toBeNull();
+	});
+
+	test("saveProfile snapshots its input instead of aliasing it", () => {
+		const store = bareStore();
+		const profile: PersonalityProfile = {
+			name: "probe",
+			description: "probe profile",
+			verbosity: null,
+			tone: "neutral",
+			formality: null,
+			reply_gate: null,
+			custom_directives: ["original"],
+		};
+		store.saveProfile(profile);
+		profile.custom_directives.push("mutated after save");
+		expect(store.getProfile("probe")?.custom_directives).toEqual(["original"]);
+	});
+
+	test("snapshotSlotAsProfile registers the live slot as a named profile", async () => {
+		const store = bareStore();
+		await store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "verbosity",
+			value: "terse",
+		});
+		await store.addDirective({
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			directive: "stay terse",
+		});
+		const snapshot = store.snapshotSlotAsProfile(
+			store.getSlot(USER_A as never, AGENT as never),
+			"probed",
+			"snapshot probe",
+		);
+		expect(snapshot.verbosity).toBe("terse");
+		expect(snapshot.tone).toBeNull();
+		expect(snapshot.custom_directives).toEqual(["stay terse"]);
+		expect(store.getProfile("probed")).toEqual(snapshot);
+		expect(store.listProfiles().some((p) => p.name === "probed")).toBe(true);
+	});
+
+	test("setSlot caches a full slot, mirrors one durable row, and skips audit", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT as never });
+		await initStore(fake);
+		await fake.store.setSlot({
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			verbosity: "verbose",
+			tone: "cold",
+			formality: "formal",
+			reply_gate: "addressed_or_ambient",
+			custom_directives: ["seeded"],
+			updated_at: new Date(0).toISOString(),
+			source: "admin",
+			trait_sources: { tone: "admin" },
+		});
+		const slot = fake.store.getSlot(USER_A as never, AGENT as never);
+		expect(slot.verbosity).toBe("verbose");
+		expect(slot.tone).toBe("cold");
+		expect(slot.trait_sources).toEqual({ tone: "admin" });
+		expect(fake.store.getRecentAudit()).toHaveLength(0);
+		const rows = fake.memories.get(PERSONALITY_SLOT_TABLE) ?? [];
+		expect(rows).toHaveLength(1);
+	});
+
+	test("getRecentAudit is newest-first and honors the limit", async () => {
+		const store = bareStore();
+		await store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "tone",
+			value: "warm",
+		});
+		await store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "formality",
+			value: "casual",
+		});
+		await store.applyTrait({
+			scope: "user",
+			userId: USER_A as never,
+			agentId: AGENT as never,
+			actorId: USER_A as never,
+			trait: "verbosity",
+			value: "terse",
+		});
+		expect(store.getRecentAudit().map((entry) => entry.action)).toEqual([
+			"set_trait:verbosity=terse",
+			"set_trait:formality=casual",
+			"set_trait:tone=warm",
+		]);
+		expect(store.getRecentAudit(2).map((entry) => entry.action)).toEqual([
+			"set_trait:verbosity=terse",
+			"set_trait:formality=casual",
+		]);
+	});
+
+	test("in-memory audit log caps at 1000 entries, keeping the newest", () => {
+		const store = bareStore();
+		for (let i = 0; i < 1005; i++) {
+			store.recordAudit({
+				actorId: USER_A as never,
+				scope: "user",
+				targetId: USER_A as never,
+				action: `probe:${i}`,
+				before: null,
+				after: null,
+				timestamp: new Date(i).toISOString(),
+			});
+		}
+		const audit = store.getRecentAudit(1000);
+		expect(audit).toHaveLength(1000);
+		expect(audit[0]?.action).toBe("probe:1004");
+		expect(audit[audit.length - 1]?.action).toBe("probe:5");
+	});
+
+	test("hydration ignores persisted slots owned by another agent", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT as never });
+		seedSlotMemory({
+			fake,
+			id: "00000000-0000-4000-8000-000000000ccc",
+			slot: {
+				userId: GLOBAL_PERSONALITY_SCOPE,
+				agentId: AGENT_B,
+				verbosity: "terse",
+				tone: null,
+				formality: null,
+				reply_gate: null,
+				custom_directives: [],
+				updated_at: new Date(0).toISOString(),
+				source: "admin",
+				trait_sources: {},
+			},
+		});
+		await initStore(fake);
+		expect(
+			fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE, AGENT as never).verbosity,
+		).toBeNull();
+	});
+
+	test("initialization rejects a corrupt persisted slot with a typed error", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT as never });
+		seedSlotMemory({
+			fake,
+			id: "00000000-0000-4000-8000-000000000cdd",
+			slot: { verbosity: "not-a-real-value" },
+		});
+		await expect(initStore(fake)).rejects.toMatchObject({
+			code: "PERSONALITY_SLOT_MEMORY_INVALID",
+		});
 	});
 });
