@@ -4,37 +4,64 @@
  * (https://ui.shadcn.com/docs/components/tabs).
  */
 import * as TabsPrimitive from "@radix-ui/react-tabs";
+import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
 const Tabs = TabsPrimitive.Root;
 
-const TabsList = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn(
-      "inline-flex h-10 items-center justify-center rounded-sm bg-bg-accent p-1 text-muted",
-      className,
-    )}
-    {...props}
-  />
-));
+const tabsListVariants = cva(
+  "inline-flex items-center justify-center rounded-sm text-muted",
+  {
+    variants: {
+      variant: {
+        default: "h-10 bg-bg-accent p-1",
+        brand: "h-9 border border-border bg-bg-elevated p-0",
+      },
+    },
+    defaultVariants: { variant: "default" },
+  },
+);
+
+const tabsTriggerVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default:
+          "px-3 py-1.5 transition-all data-[state=active]:bg-bg data-[state=active]:text-txt",
+        brand:
+          "gap-2 border-b-2 border-transparent px-6 py-1.5 text-txt/70 transition-colors hover:text-txt data-[state=active]:border-txt data-[state=active]:bg-bg-hover data-[state=active]:text-txt",
+      },
+    },
+    defaultVariants: { variant: "default" },
+  },
+);
+
+interface TabsListProps
+  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>,
+    VariantProps<typeof tabsListVariants> {}
+
+const TabsList = React.forwardRef<HTMLDivElement, TabsListProps>(
+  ({ className, variant, ...props }, ref) => (
+    <TabsPrimitive.List
+      ref={ref}
+      className={cn(tabsListVariants({ variant }), className)}
+      {...props}
+    />
+  ),
+);
 TabsList.displayName = TabsPrimitive.List.displayName;
 
 const TabsTrigger = React.forwardRef<
   HTMLButtonElement,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger> &
+    VariantProps<typeof tabsTriggerVariants>
+>(({ className, variant, ...props }, ref) => (
   <TabsPrimitive.Trigger
     ref={ref}
-    className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium  transition-all     disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-bg data-[state=active]:text-txt data-",
-      className,
-    )}
+    className={cn(tabsTriggerVariants({ variant }), className)}
     {...props}
   />
 ));

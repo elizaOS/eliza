@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "../../ui/dialog";
 import { FormSelect, FormSelectItem } from "../../ui/form-select";
+import { Input } from "../../ui/input";
 import { SegmentedControl } from "../../ui/segmented-control";
 import { Slider } from "../../ui/slider";
 import { Switch } from "../../ui/switch";
@@ -768,7 +769,7 @@ export function CloudTextInput({
   autoComplete?: string;
 }) {
   return (
-    <input
+    <Input
       id={id}
       type={type}
       value={value}
@@ -776,12 +777,7 @@ export function CloudTextInput({
       placeholder={placeholder}
       autoComplete={autoComplete}
       onChange={(e) => onChange(e.target.value)}
-      className={cn(
-        "w-full rounded-md border border-border bg-bg px-3 py-2",
-        "text-sm leading-5 text-foreground placeholder:text-muted-foreground/60",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        "transition-colors",
-      )}
+      variant="form"
     />
   );
 }

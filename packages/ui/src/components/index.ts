@@ -28,7 +28,6 @@ export {
   BrandTabsList,
   BrandTabsResponsive,
   BrandTabsTrigger,
-  brandButtonVariants,
   CornerBrackets,
   DashboardSection,
   DashboardStatCard,

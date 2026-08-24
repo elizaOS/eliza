@@ -5,9 +5,9 @@
     "note": "Analytics alert collection, not an Alert primitive."
   },
   "packages/ui/src/cloud-ui/components/docs/llms-txt-badge.tsx:LlmsTxtBadge": {
-    "disposition": "consolidation-candidate",
+    "disposition": "molecular",
     "canonicalOwner": "packages/ui/src/components/ui/badge.tsx",
-    "note": "Link-shaped badge duplicates badge chrome and should compose Badge with asChild support."
+    "note": "Docs-route link group now composes Badge with asChild; it no longer owns badge chrome."
   },
   "packages/ui/src/components/apps/extensions/surface.tsx:SurfaceBadge": {
     "disposition": "consolidation-candidate",
@@ -150,9 +150,9 @@
     "note": "Application list composition, not a table primitive implementation."
   },
   "packages/ui/src/cloud-ui/components/brand/brand-tabs.tsx:BrandTabs": {
-    "disposition": "consolidation-candidate",
+    "disposition": "compatibility-adapter",
     "canonicalOwner": "packages/ui/src/components/ui/tabs.tsx",
-    "note": "Direct Radix Tabs root and subcomponent implementation duplicates canonical Tabs."
+    "note": "Legacy Cloud export now aliases canonical Tabs while callers migrate to the supported atom export."
   },
   "plugins/plugin-notes/src/views/viewPrimitives.tsx:AgentTextarea": {
     "disposition": "consolidation-candidate",

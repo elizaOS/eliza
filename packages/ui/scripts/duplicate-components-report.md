@@ -9,11 +9,11 @@ This is a candidate inventory, not an instruction to merge every entry. Canonica
 | alert | 5 | 0 | 0 | 1 | 0 |
 | avatar | 2 | 0 | 0 | 0 | 0 |
 | badge | 3 | 0 | 9 | 5 | 0 |
-| button | 8 | 0 | 11 | 4 | 63 |
-| card | 6 | 0 | 24 | 3 | 0 |
+| button | 8 | 0 | 14 | 1 | 62 |
+| card | 6 | 0 | 25 | 2 | 0 |
 | checkbox | 1 | 0 | 0 | 0 | 2 |
 | dialog | 10 | 0 | 10 | 2 | 1 |
-| input | 4 | 0 | 3 | 2 | 11 |
+| input | 4 | 0 | 4 | 1 | 11 |
 | popover | 1 | 0 | 1 | 0 | 0 |
 | progress | 1 | 0 | 1 | 2 | 0 |
 | select | 2 | 0 | 2 | 0 | 3 |
@@ -71,8 +71,7 @@ Raw host elements are reported only where HTML provides a meaningful atomic sign
 | ui-raw-host | `packages/ui/src/components/settings/SettingsHubList.tsx` | 47 |
 | ui-raw-host | `packages/ui/src/components/settings/cloud-panel/CloudSettingsPanel.tsx` | 82, 139, 279 |
 | ui-raw-host | `packages/ui/src/components/settings/cloud-panel/CloudSettingsSidebar.tsx` | 71, 118, 132, 164, 217 |
-| mixed-canonical-and-raw | `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx` | 652 |
-| ui-raw-host | `packages/ui/src/components/shared/ViewHeader.tsx` | 69 |
+| mixed-canonical-and-raw | `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx` | 653 |
 | ui-raw-host | `packages/ui/src/components/shared/ViewHeaderSidebarTrigger.tsx` | 40 |
 | ui-raw-host | `packages/ui/src/components/shell/BuildBadge.tsx` | 371, 390, 404, 425 |
 | mixed-canonical-and-raw | `packages/ui/src/components/shell/ChatOverlay.tsx` | 5993 |
@@ -122,7 +121,7 @@ Raw host elements are reported only where HTML provides a meaningful atomic sign
 | ui-raw-host | `packages/ui/src/components/accounts/ConsumerKeyPanel.tsx` | 311, 322, 504 |
 | ui-raw-host | `packages/ui/src/components/accounts/ProviderPicker.tsx` | 143 |
 | test-or-story-harness | `packages/ui/src/components/pages/__e2e__/background-fixture.tsx` | 220 |
-| ui-raw-host | `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx` | 446, 771 |
+| mixed-canonical-and-raw | `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx` | 447 |
 | canonical-implementation | `packages/ui/src/components/ui/input-group.tsx` | 101 |
 | canonical-implementation | `packages/ui/src/components/ui/input.tsx` | 46 |
 | plugin-raw-host | `plugins/plugin-maps/src/components/MapsView.tsx` | 128 |
@@ -209,8 +208,8 @@ No named candidates.
 |  |  | Static labeled badge duplicates canonical badge structure and styling. |  |  |
 | canonical-wrapper | consolidation-candidate | `SpeakerNameAttributionBadge` in `packages/ui/src/components/transcripts/SpeakerNameAttributionBadge.tsx:40` | `packages/ui/src/components/ui/status-badge.tsx` | `StatusBadge`, `span` |
 |  |  | Status-toned attribution label should compose the canonical status badge. |  |  |
-| parallel-primitive | consolidation-candidate | `LlmsTxtBadge` in `packages/ui/src/cloud-ui/components/docs/llms-txt-badge.tsx:8` | `packages/ui/src/components/ui/badge.tsx` | `a`, `div` |
-|  |  | Link-shaped badge duplicates badge chrome and should compose Badge with asChild support. |  |  |
+| parallel-primitive | molecular | `LlmsTxtBadge` in `packages/ui/src/cloud-ui/components/docs/llms-txt-badge.tsx:28` | `packages/ui/src/components/ui/badge.tsx` | `DocsBadgeLink`, `div` |
+|  |  | Docs-route link group now composes Badge with asChild; it no longer owns badge chrome. |  |  |
 | parallel-primitive | intentional-specialization | `ChatVoiceSpeakerBadge` in `packages/ui/src/components/composites/chat/chat-source.tsx:56` | `packages/ui/src/components/ui/badge.tsx` | `Crown`, `Mic`, `span` |
 |  |  | Role and voice icon marker has domain behavior, but should continue to source base badge tokens from the canonical owner. |  |  |
 | parallel-primitive | intentional-specialization | `OwnerBadge` in `packages/ui/src/components/composites/OwnerBadge.tsx:53` | `packages/ui/src/components/ui/badge.tsx` | `Crown`, `span` |
@@ -226,21 +225,21 @@ No named candidates.
 | --- | --- | --- | --- | --- |
 | canonical-wrapper | not-reviewed | `AgentButton` in `packages/ui/src/agent-surface/components.tsx:32` | - | `Button` |
 | canonical-wrapper | not-reviewed | `ExportButton` in `packages/ui/src/cloud-ui/components/analytics/export-button.tsx:36` | - | `Button`, `ChevronDown`, `Download`, `DropdownMenu`, `DropdownMenuContent`, `DropdownMenuItem`, `DropdownMenuLabel`, `DropdownMenuSeparator`, `DropdownMenuTrigger`, `Upload` |
+| canonical-wrapper | consolidation-candidate | `BrandButton` in `packages/ui/src/cloud-ui/components/brand/brand-button.tsx:16` | `packages/ui/src/components/ui/button.tsx` | `Button` |
+|  |  | Reimplements Slot, button attributes, sizes, states, and variants already owned by Button. |  |  |
+| canonical-wrapper | consolidation-candidate | `LockOnButton` in `packages/ui/src/cloud-ui/components/brand/lock-on-button.tsx:10` | `packages/ui/src/components/ui/button.tsx` | `Button` |
+|  |  | Special hover treatment can be a canonical Button variant or wrapper without a second button base. |  |  |
 | canonical-wrapper | not-reviewed | `ElizaConnectButton` in `packages/ui/src/cloud/instances/components/eliza-connect-button.tsx:16` | - | `BrandButton`, `ExternalLink` |
 | canonical-wrapper | not-reviewed | `PstnCallButton` in `packages/ui/src/components/composites/chat/pstn-call-button.tsx:77` | - | `Button`, `Dialog`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogTitle`, `Input`, `Label`, `Loader2`, `PhoneCall`, `div`, `p` |
 | canonical-wrapper | not-reviewed | `SidebarCollapsedActionButton` in `packages/ui/src/components/composites/sidebar/sidebar-collapsed-rail.tsx:77` | - | `Button` |
 | canonical-wrapper | not-reviewed | `SidebarItemButton` in `packages/ui/src/components/composites/sidebar/sidebar-content.tsx:253` | - | `Button` |
-| canonical-wrapper | not-reviewed | `DestructiveSecondaryButton` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:74` | - | `Button` |
-| canonical-wrapper | not-reviewed | `CloudActionButton` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:496` | - | `Button`, `SettingRowShell` |
+| canonical-wrapper | not-reviewed | `DestructiveSecondaryButton` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:75` | - | `Button` |
+| canonical-wrapper | not-reviewed | `CloudActionButton` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:497` | - | `Button`, `SettingRowShell` |
 | canonical-wrapper | not-reviewed | `SettingsActionButton` in `packages/ui/src/components/settings/settings-agent-rows.tsx:576` | - | `Button` |
+| canonical-wrapper | consolidation-candidate | `ViewBackButton` in `packages/ui/src/components/shared/ViewHeader.tsx:45` | `packages/ui/src/components/ui/button.tsx` | `ArrowLeft`, `Button` |
+|  |  | Agent instrumentation is specialized, but the raw button can compose the canonical Button. |  |  |
 | canonical-wrapper | not-reviewed | `GlassIconButton` in `packages/ui/src/components/shell/glass-composer.tsx:24` | - | `Button`, `Icon` |
 | canonical-wrapper | not-reviewed | `RecoveryActionButton` in `plugins/plugin-task-coordinator/src/orchestrator-task-inspector.tsx:1101` | - | `Button` |
-| parallel-primitive | consolidation-candidate | `BrandButton` in `packages/ui/src/cloud-ui/components/brand/brand-button.tsx:46` | `packages/ui/src/components/ui/button.tsx` | `Comp` |
-|  |  | Reimplements Slot, button attributes, sizes, states, and variants already owned by Button. |  |  |
-| parallel-primitive | consolidation-candidate | `LockOnButton` in `packages/ui/src/cloud-ui/components/brand/lock-on-button.tsx:14` | `packages/ui/src/components/ui/button.tsx` | `Component` |
-|  |  | Special hover treatment can be a canonical Button variant or wrapper without a second button base. |  |  |
-| parallel-primitive | consolidation-candidate | `ViewBackButton` in `packages/ui/src/components/shared/ViewHeader.tsx:44` | `packages/ui/src/components/ui/button.tsx` | `ArrowLeft`, `button`, `span` |
-|  |  | Agent instrumentation is specialized, but the raw button can compose the canonical Button. |  |  |
 | parallel-primitive | lab-only | `ActionButton` in `packages/ui/stories/src/lab/lab-ui.tsx:73` | `packages/ui/src/components/ui/button.tsx` | `button` |
 |  |  | Design-lab fixture is not shipped product UI. |  |  |
 | renderer-adapter | not-reviewed | `Button` in `packages/ui/src/spatial/primitives.tsx:517` | - | `UiButton` |
@@ -254,6 +253,8 @@ No named candidates.
 | Classification | Decision | Definition | Canonical owner | Rendered tags |
 | --- | --- | --- | --- | --- |
 | canonical-wrapper | not-reviewed | `CostInsightsCard` in `packages/ui/src/cloud-ui/components/analytics/cost-insights-card.tsx:21` | - | `Badge`, `BrandCard`, `CostAlerts`, `Progress`, `div`, `h3`, `p`, `span` |
+| canonical-wrapper | consolidation-candidate | `BrandCard` in `packages/ui/src/cloud-ui/components/brand/brand-card.tsx:26` | `packages/ui/src/components/ui/card.tsx` | `Card`, `CornerBrackets` |
+|  |  | Reimplements the base card surface, polymorphism, padding, border, and hover contract. |  |  |
 | canonical-wrapper | not-reviewed | `PromptCard` in `packages/ui/src/cloud-ui/components/brand/prompt-card.tsx:15` | - | `ArrowUp`, `Button`, `p` |
 | canonical-wrapper | not-reviewed | `ConnectionCard` in `packages/ui/src/cloud-ui/components/connection-card.tsx:369` | - | `AlertTriangle`, `Button`, `ConnectionLoadingCard`, `div`, `h3`, `p`, `span` |
 | canonical-wrapper | not-reviewed | `DashboardActionCardsSkeleton` in `packages/ui/src/cloud-ui/components/dashboard/cloud-dashboard-components.tsx:169` | - | `Skeleton`, `div` |
@@ -277,7 +278,7 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `WebsiteBlockerSettingsCard` in `plugins/plugin-personal-assistant/src/components/WebsiteBlockerSettingsCard.tsx:80` | - | `Button`, `CheckCircle2`, `Monitor`, `Settings`, `ShieldBan`, `div`, `span` |
 | canonical-wrapper | not-reviewed | `GitHubConnectionCard` in `plugins/plugin-task-coordinator/src/GitHubConnectionCard.tsx:80` | - | `Button`, `CheckCircle2`, `ExternalLink`, `GitPullRequest`, `LogIn`, `SettingsControls.Input`, `Unplug`, `div`, `p`, `span` |
 | canonical-wrapper | not-reviewed | `TaskCard` in `plugins/plugin-task-coordinator/src/TaskCardList.tsx:238` | - | `Button`, `GitBranch`, `TaskStatusChip`, `TaskStatusMedallion`, `span` |
-| molecular-candidate | not-reviewed | `AgentCard` in `packages/ui/src/cloud-ui/components/brand/brand-card.tsx:63` | - | `BrandCard`, `div`, `h3`, `p` |
+| molecular-candidate | not-reviewed | `AgentCard` in `packages/ui/src/cloud-ui/components/brand/brand-card.tsx:62` | - | `BrandCard`, `div`, `h3`, `p` |
 | molecular-candidate | not-reviewed | `DashboardStatCard` in `packages/ui/src/cloud-ui/components/brand/dashboard-stat-card.tsx:37` | - | `BrandCard`, `div`, `p` |
 | molecular-candidate | not-reviewed | `PromptCardGrid` in `packages/ui/src/cloud-ui/components/brand/prompt-card.tsx:40` | - | `PromptCard`, `div` |
 | molecular-candidate | not-reviewed | `ConnectionLoadingCard` in `packages/ui/src/cloud-ui/components/connection-card.tsx:76` | - | `Loader2`, `div` |
@@ -291,8 +292,6 @@ No named candidates.
 | molecular-candidate | not-reviewed | `OrchestratorGrillingCard` in `packages/ui/src/components/chat/widgets/orchestrator-grilling-card.tsx:85` | - | `div`, `li`, `p`, `span`, `ul` |
 | molecular-candidate | not-reviewed | `SummaryCard` in `packages/ui/src/components/composites/page-panel/page-panel-header.tsx:102` | - | `div` |
 | molecular-candidate | not-reviewed | `ProtectionCard` in `packages/ui/src/components/settings/vault-tabs/OverviewTab.tsx:258` | - | `AlertCircle`, `CheckCircle2`, `div`, `p`, `section` |
-| parallel-primitive | consolidation-candidate | `BrandCard` in `packages/ui/src/cloud-ui/components/brand/brand-card.tsx:26` | `packages/ui/src/components/ui/card.tsx` | `Component`, `CornerBrackets` |
-|  |  | Reimplements the base card surface, polymorphism, padding, border, and hover contract. |  |  |
 | parallel-primitive | molecular | `MiniStatCard` in `packages/ui/src/cloud-ui/components/brand/mini-stat-card.tsx:13` | `packages/ui/src/components/ui/card.tsx` | `div`, `p` |
 |  |  | Metric composition, not a base card primitive. |  |  |
 | parallel-primitive | false-positive | `SurfaceCard` in `packages/ui/src/components/apps/extensions/surface.tsx:51` | - | `div` |
@@ -318,7 +317,7 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `AddAccountDialog` in `packages/ui/src/components/accounts/AddAccountDialog.tsx:180` | - | `Button`, `Dialog`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogTitle`, `Input`, `Label`, `ProviderPicker`, `Spinner`, `a`, `code`, `div`, `form`, `p`, `span` |
 | canonical-wrapper | not-reviewed | `ChatConversationRenameDialog` in `packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx:41` | - | `Button`, `Dialog`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogTitle`, `Input`, `Label`, `Sparkles`, `div` |
 | canonical-wrapper | not-reviewed | `PluginSettingsDialog` in `packages/ui/src/components/pages/plugin-view-dialogs.tsx:68` | - | `AdminDialog.BodyScroll`, `AdminDialog.Content`, `AdminDialog.Footer`, `AdminDialog.Header`, `AdminDialog.MetaBadge`, `AdminDialog.MonoMeta`, `Button`, `CheckCircle2`, `ConnectorSetupPanel`, `Dialog`, `DialogDescription`, `DialogTitle`, `PluginConfigForm`, `SettingsDialogIcon`, `div`, `span` |
-| canonical-wrapper | not-reviewed | `CloudConfirmDialog` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:685` | - | `Button`, `CloudModal`, `div`, `p` |
+| canonical-wrapper | not-reviewed | `CloudConfirmDialog` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:686` | - | `Button`, `CloudModal`, `div`, `p` |
 | parallel-primitive | molecular | `PromoteAppDialog` in `packages/ui/src/cloud-ui/components/promotion/promote-app-dialog.tsx:152` | `packages/ui/src/components/ui/dialog.tsx` | `AlertCircle`, `ArrowLeft`, `ArrowRight`, `Braces`, `Button`, `Check`, `CheckCircle`, `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `FileText`, `Input`, `Label`, `Loader2`, `Megaphone`, `Search`, `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue`, `Send`, `Share2`, `Textarea`, `div`, `h3`, `p`, `platform.Icon`, `span` |
 |  |  | Multi-step workflow already composes the canonical Dialog family. |  |  |
 | parallel-primitive | intentional-specialization | `ConversationRenameDialog` in `packages/ui/src/components/conversations/ConversationRenameDialog.tsx:21` | `packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx` | `ChatConversationRenameDialog` |
@@ -330,11 +329,11 @@ No named candidates.
 | --- | --- | --- | --- | --- |
 | canonical-wrapper | not-reviewed | `PhoneNumberInput` in `packages/homepage/src/components/login/phone-number-input.tsx:109` | - | `ChevronDown`, `CountryFlag`, `Input`, `div`, `label`, `option`, `select` |
 | canonical-wrapper | not-reviewed | `AgentInput` in `packages/ui/src/agent-surface/components.tsx:68` | - | `Input` |
-| canonical-wrapper | not-reviewed | `TaskSearchInput` in `plugins/plugin-task-coordinator/src/TaskCardList.tsx:184` | - | `Input`, `Search`, `div` |
-| parallel-primitive | molecular | `CloudInputRow` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:416` | `packages/ui/src/components/ui/input.tsx` | `SettingRowShell`, `input` |
-|  |  | Settings row composition; its internal raw input remains a separate migration target. |  |  |
-| parallel-primitive | consolidation-candidate | `CloudTextInput` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:753` | `packages/ui/src/components/ui/input.tsx` | `input` |
+| canonical-wrapper | consolidation-candidate | `CloudTextInput` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:754` | `packages/ui/src/components/ui/input.tsx` | `Input` |
 |  |  | Directly reimplements the canonical text input with a narrower value callback. |  |  |
+| canonical-wrapper | not-reviewed | `TaskSearchInput` in `plugins/plugin-task-coordinator/src/TaskCardList.tsx:184` | - | `Input`, `Search`, `div` |
+| parallel-primitive | molecular | `CloudInputRow` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:417` | `packages/ui/src/components/ui/input.tsx` | `SettingRowShell`, `input` |
+|  |  | Settings row composition; its internal raw input remains a separate migration target. |  |  |
 | test-double | not-reviewed | `Input` in `plugins/plugin-contacts/test/stubs/ui.tsx:26` | - |  |
 
 ### popover
@@ -411,13 +410,13 @@ No named candidates.
 | Classification | Decision | Definition | Canonical owner | Rendered tags |
 | --- | --- | --- | --- | --- |
 | canonical-wrapper | not-reviewed | `BrandTabsResponsive` in `packages/ui/src/cloud-ui/components/brand/brand-tabs-responsive.tsx:53` | - | `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue`, `TabsPrimitive.List`, `TabsPrimitive.Root`, `TabsPrimitive.Trigger`, `div`, `span` |
-| canonical-wrapper | not-reviewed | `SimpleBrandTabs` in `packages/ui/src/cloud-ui/components/brand/brand-tabs.tsx:67` | - | `Button`, `div` |
+| canonical-wrapper | not-reviewed | `SimpleBrandTabs` in `packages/ui/src/cloud-ui/components/brand/brand-tabs.tsx:51` | - | `Button`, `div` |
 | canonical-wrapper | not-reviewed | `Tabs` in `packages/ui/src/cloud-ui/components/docs/mdx-components.tsx:70` | - | `TabsContent`, `TabsList`, `TabsTrigger`, `UiTabs`, `div` |
 | canonical-wrapper | not-reviewed | `AppDetailsTabs` in `packages/ui/src/cloud/applications/components/app-details-tabs.tsx:49` | - | `AppAnalytics`, `AppDomains`, `AppEarningsDashboard`, `AppFrontendHosting`, `AppMonetizationSettings`, `AppOverview`, `AppPromote`, `AppSettings`, `AppUsers`, `Button`, `Icon`, `div`, `span` |
 | canonical-wrapper | not-reviewed | `BrowserTabSwitcher` in `packages/ui/src/components/pages/BrowserTabSwitcher.tsx:274` | - | `BrowserTabCard`, `Button`, `Dialog`, `DialogClose`, `DialogContent`, `DialogHeader`, `DialogTitle`, `Plus`, `X`, `div`, `h3`, `p`, `section`, `span` |
 | canonical-wrapper | not-reviewed | `AgentTabsSection` in `plugins/plugin-task-coordinator/src/AgentTabsSection.tsx:38` | - | `Button`, `ExternalLink`, `InstallStateIcon`, `KeyRound`, `Loader2`, `RotateCw`, `SettingsControls.MutedText`, `SettingsControls.SegmentedGroup`, `a`, `div`, `span` |
-| parallel-primitive | consolidation-candidate | `BrandTabs` in `packages/ui/src/cloud-ui/components/brand/brand-tabs.tsx:13` | `packages/ui/src/components/ui/tabs.tsx` |  |
-|  |  | Direct Radix Tabs root and subcomponent implementation duplicates canonical Tabs. |  |  |
+| parallel-primitive | compatibility-adapter | `BrandTabs` in `packages/ui/src/cloud-ui/components/brand/brand-tabs.tsx:18` | `packages/ui/src/components/ui/tabs.tsx` |  |
+|  |  | Legacy Cloud export now aliases canonical Tabs while callers migrate to the supported atom export. |  |  |
 | test-double | not-reviewed | `Tabs` in `plugins/plugin-phone/test/stubs/ui-tabs.tsx:25` | - |  |
 
 ### textarea

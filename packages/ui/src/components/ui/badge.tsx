@@ -2,6 +2,8 @@
  * Inline status/label pill with cva-driven variants (default, secondary,
  * destructive, outline). A leaf primitive in the components/ui base layer.
  */
+
+import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
@@ -28,11 +30,17 @@ const badgeVariants = cva(
 
 export interface BadgeProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {}
+    VariantProps<typeof badgeVariants> {
+  asChild?: boolean;
+}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
+function Badge({ asChild = false, className, variant, ...props }: BadgeProps) {
+  const Component = asChild ? Slot : "div";
   return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+    <Component
+      className={cn(badgeVariants({ variant }), className)}
+      {...props}
+    />
   );
 }
 

@@ -8,8 +8,8 @@
  * @param props.asChild - If true, render as Radix Slot child
  */
 
-import { Slot } from "@radix-ui/react-slot";
 import type * as React from "react";
+import { Card } from "../../../components/ui/card";
 import { cn } from "../../lib/utils";
 import { CornerBrackets } from "./corner-brackets";
 
@@ -33,12 +33,11 @@ export function BrandCard({
   asChild = false,
   ...props
 }: BrandCardProps) {
-  const Component = asChild ? Slot : "div";
-
   return (
-    <Component
+    <Card
+      asChild={asChild}
+      variant="brand"
       className={cn(
-        "relative rounded-sm border border-border bg-bg-elevated p-4 md:p-6 text-txt",
         hover &&
           "group transition-colors duration-200 hover:border-border-strong hover:bg-bg-hover",
         className,
@@ -47,7 +46,7 @@ export function BrandCard({
     >
       {corners && <CornerBrackets size={cornerSize} color={cornerColor} />}
       {children}
-    </Component>
+    </Card>
   );
 }
 

@@ -3,6 +3,8 @@
  * Action, Content, Footer). cva variants select behaviour/padding: default,
  * interactive (hover-affordance), status, setting, flat.
  */
+
+import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
@@ -16,6 +18,7 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
       status: "",
       setting: "p-0",
       flat: "",
+      brand: "relative border border-border bg-bg-elevated p-4 text-txt md:p-6",
     },
   },
   defaultVariants: {
@@ -25,16 +28,21 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
 
 export interface CardProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof cardVariants> {}
+    VariantProps<typeof cardVariants> {
+  asChild?: boolean;
+}
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, variant, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn(cardVariants({ variant }), className)}
-      {...props}
-    />
-  ),
+  ({ asChild = false, className, variant, ...props }, ref) => {
+    const Component = asChild ? Slot : "div";
+    return (
+      <Component
+        ref={ref}
+        className={cn(cardVariants({ variant }), className)}
+        {...props}
+      />
+    );
+  },
 );
 Card.displayName = "Card";
 
