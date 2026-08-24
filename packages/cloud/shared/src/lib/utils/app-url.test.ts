@@ -34,6 +34,18 @@ describe("getAppUrl", () => {
     );
   });
 
+  test.each([
+    ["localhost:3000", "https://localhost:3000", "localhost:3000"],
+    ["app.eliza.how:443/path", "https://app.eliza.how/path", "app.eliza.how"],
+  ])(
+    "preserves scheme-less host and port configuration %s",
+    (configured, expectedUrl, expectedHost) => {
+      const env = { NEXT_PUBLIC_APP_URL: configured };
+      expect(getAppUrl(env)).toBe(expectedUrl);
+      expect(getAppHost(env)).toBe(expectedHost);
+    },
+  );
+
   test("trims configuration and canonicalizes case-insensitive HTTP schemes", () => {
     expect(getAppUrl({ NEXT_PUBLIC_APP_URL: " HTTPS://APP.ELIZA.HOW/ " })).toBe(
       "https://app.eliza.how",

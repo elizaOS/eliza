@@ -17,7 +17,7 @@ interface AppUrlEnv {
 }
 
 const DEFAULT_APP_URL = "http://localhost:3000";
-const EXPLICIT_SCHEME_PATTERN = /^([A-Za-z][A-Za-z\d+.-]*):/;
+const EXPLICIT_SCHEME_PATTERN = /^([A-Za-z][A-Za-z\d+.-]*):\/\//;
 const HTTP_SCHEME_PATTERN = /^https?:\/\//i;
 
 function invalidAppUrl(configured: string, reason: string): never {
