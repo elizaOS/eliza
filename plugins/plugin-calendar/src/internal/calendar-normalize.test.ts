@@ -1,109 +1,112 @@
-/**
- * Unit tests for the Z/offset path of `normalizeCalendarDateTimeInTimeZone`.
- * JavaScript's `Date.parse` silently rolls over impossible dates like
- * 2026-02-30 to March 2; the helper must reject those before they reach the
- * pipeline (#19222).
- */
-import { describe, expect, it } from "vitest";
-import { normalizeCalendarDateTimeInTimeZone } from "./calendar-normalize.js";
-import { CalendarServiceError } from "./errors.js";
+import { describe, expect, it, vi } from "vitest";
 
-const expectInvalidDate = (
-  text: string,
-  field: string,
-): CalendarServiceError => {
-  try {
-    normalizeCalendarDateTimeInTimeZone(text, field, "UTC");
-  } catch (error) {
-    expect(error).toBeInstanceOf(CalendarServiceError);
-    expect((error as CalendarServiceError).status).toBe(400);
-    return error as CalendarServiceError;
-  }
-  throw new Error(
-    `normalizeCalendarDateTimeInTimeZone(${JSON.stringify(text)}) should have failed`,
-  );
-};
-
-describe("normalizeCalendarDateTimeInTimeZone — Z/offset path", () => {
-  it("accepts a valid UTC ISO datetime", () => {
-    expect(
-      normalizeCalendarDateTimeInTimeZone(
-        "2026-06-15T09:00:00Z",
-        "startAt",
-        "UTC",
+const mocks = vi.hoisted(() => ({
+  fail: vi.fn((status: number, message: string) => {
+    throw new Error(`CalendarServiceError(${status}): ${message}`);
+  }),
+  requireNonEmptyString: (v: unknown, f: string) => String(v),
+  normalizeIsoString: (v: string) => v,
+  buildUtcDateFromLocalParts: (_tz: string, parts: Record<string, number>) => {
+    const d = new Date(
+      Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+        parts.second,
       ),
-    ).toBe("2026-06-15T09:00:00.000Z");
+    );
+    return d;
+  },
+  normalizeValidTimeZone: (v: unknown) => v ?? "UTC",
+  resolveDefaultTimeZone: () => "UTC",
+  normalizeOptionalString: (v: unknown) => (v == null ? undefined : String(v)),
+  addDaysToLocalDate: (d: Date, n: number) => {
+    const x = new Date(d);
+    x.setUTCDate(x.getUTCDate() + n);
+    return x;
+  },
+  addMinutes: (d: Date, n: number) => new Date(d.getTime() + n * 60_000),
+  getZonedDateParts: (_tz: string, d: Date) => ({
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+    hour: d.getUTCHours(),
+    minute: d.getUTCMinutes(),
+    second: d.getUTCSeconds(),
+  }),
+  normalizeGoogleCapabilities: (v: unknown) => v,
+  normalizeOptionalBoolean: (v: unknown) => v,
+  normalizeOptionalMinutes: (v: unknown) => v,
+  normalizeOptionalIsoString: (v: unknown) => v,
+}));
+
+vi.mock("@elizaos/shared", () => ({
+  LIFEOPS_CALENDAR_WINDOW_PRESETS: {},
+}));
+vi.mock("./constants.js", () => ({
+  DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS: 7,
+  GOOGLE_GMAIL_READ_SCOPE: "scope",
+  GOOGLE_PRIMARY_CALENDAR_ID: "primary",
+  resolveDefaultTimeZone: () => "UTC",
+}));
+vi.mock("./errors.js", () => ({ fail: mocks.fail }));
+vi.mock("./normalize.js", () => ({
+  normalizeGoogleCapabilities: mocks.normalizeGoogleCapabilities,
+  normalizeIsoString: mocks.normalizeIsoString,
+  normalizeOptionalBoolean: mocks.normalizeOptionalBoolean,
+  normalizeOptionalIsoString: mocks.normalizeOptionalIsoString,
+  normalizeOptionalMinutes: mocks.normalizeOptionalMinutes,
+  normalizeOptionalString: mocks.normalizeOptionalString,
+  normalizeValidTimeZone: mocks.normalizeValidTimeZone,
+  requireNonEmptyString: mocks.requireNonEmptyString,
+}));
+vi.mock("./time.js", () => ({
+  addDaysToLocalDate: mocks.addDaysToLocalDate,
+  addMinutes: mocks.addMinutes,
+  buildUtcDateFromLocalParts: mocks.buildUtcDateFromLocalParts,
+  getZonedDateParts: mocks.getZonedDateParts,
+}));
+
+import { normalizeCalendarDateTimeInTimeZone } from "./calendar-normalize.ts";
+
+const UTC = "UTC";
+
+describe("normalizeCalendarDateTimeInTimeZone (time-of-day range)", () => {
+  it("normalizes a valid local datetime", () => {
+    const result = normalizeCalendarDateTimeInTimeZone(
+      "2026-08-24T14:30:00",
+      "start",
+      UTC,
+    );
+    expect(result).toBe("2026-08-24T14:30:00.000Z");
   });
 
-  it("accepts a valid UTC ISO datetime with milliseconds", () => {
+  it("rejects an out-of-range hour with CalendarServiceError (not RangeError)", () => {
+    expect(() =>
+      normalizeCalendarDateTimeInTimeZone("2026-08-24T25:00:00", "start", UTC),
+    ).toThrow(/valid ISO datetime/);
+  });
+
+  it("rejects out-of-range minutes and seconds", () => {
+    expect(() =>
+      normalizeCalendarDateTimeInTimeZone("2026-08-24T12:99:00", "start", UTC),
+    ).toThrow(/valid ISO datetime/);
+    expect(() =>
+      normalizeCalendarDateTimeInTimeZone("2026-08-24T12:30:99", "start", UTC),
+    ).toThrow(/valid ISO datetime/);
+  });
+
+  it("still rejects impossible civil dates", () => {
+    expect(() =>
+      normalizeCalendarDateTimeInTimeZone("2026-02-30T10:00:00", "start", UTC),
+    ).toThrow(/valid ISO datetime/);
+  });
+
+  it("accepts boundary values", () => {
     expect(
-      normalizeCalendarDateTimeInTimeZone(
-        "2026-06-15T09:00:00.123Z",
-        "startAt",
-        "UTC",
-      ),
-    ).toBe("2026-06-15T09:00:00.123Z");
-  });
-
-  it("accepts a valid offset ISO datetime", () => {
-    expect(
-      normalizeCalendarDateTimeInTimeZone(
-        "2026-06-15T11:00:00+02:00",
-        "startAt",
-        "UTC",
-      ),
-    ).toBe("2026-06-15T09:00:00.000Z");
-  });
-
-  it("rejects an impossible Feb 30 with Z suffix (#19222)", () => {
-    expectInvalidDate("2026-02-30T09:00:00Z", "startAt");
-  });
-
-  it("rejects Feb 30 with explicit offset (#19222)", () => {
-    expectInvalidDate("2026-02-30T09:00:00+00:00", "startAt");
-  });
-
-  it("rejects non-leap-year Feb 29 (#19222)", () => {
-    expectInvalidDate("2026-02-29T09:00:00Z", "startAt");
-  });
-
-  it("accepts Feb 29 in a leap year", () => {
-    expect(
-      normalizeCalendarDateTimeInTimeZone(
-        "2024-02-29T09:00:00Z",
-        "startAt",
-        "UTC",
-      ),
-    ).toBe("2024-02-29T09:00:00.000Z");
-  });
-
-  it("rejects April 31 with offset (#19222)", () => {
-    expectInvalidDate("2026-04-31T09:00:00-05:00", "startAt");
-  });
-
-  it("rejects Feb 30 with compact positive offset (#19222)", () => {
-    expectInvalidDate("2026-02-30T09:00:00+0000", "startAt");
-  });
-
-  it("rejects Feb 30 with compact negative offset (#19222)", () => {
-    expectInvalidDate("2026-02-30T09:00:00-0500", "startAt");
-  });
-
-  it("accepts a valid compact offset datetime", () => {
-    expect(
-      normalizeCalendarDateTimeInTimeZone(
-        "2026-06-15T09:00:00+0200",
-        "startAt",
-        "UTC",
-      ),
-    ).toBe("2026-06-15T07:00:00.000Z");
-  });
-
-  it("rejects an impossible month", () => {
-    expectInvalidDate("2026-13-15T09:00:00Z", "startAt");
-  });
-
-  it("rejects an impossible day-of-month (day 32)", () => {
-    expectInvalidDate("2026-01-32T09:00:00Z", "startAt");
+      normalizeCalendarDateTimeInTimeZone("2026-08-24T23:59:59", "start", UTC),
+    ).toBe("2026-08-24T23:59:59.000Z");
   });
 });

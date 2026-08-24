@@ -101,13 +101,23 @@ export function normalizeCalendarDateTimeInTimeZone(
     /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/,
   );
   if (localMatch) {
+    const hour = Number(localMatch[4] ?? "0");
+    const minute = Number(localMatch[5] ?? "0");
+    const second = Number(localMatch[6] ?? "0");
+    // The civil-date prefix is validated above; the time-of-day components
+    // are not, and out-of-range values (e.g. 25:00 or 12:99) would surface
+    // as a raw RangeError from the Date constructor instead of the
+    // documented CalendarServiceError (issue #27640).
+    if (hour > 23 || minute > 59 || second > 59) {
+      fail(400, `${field} must be a valid ISO datetime`);
+    }
     const localized = buildUtcDateFromLocalParts(timeZone, {
       year: Number(localMatch[1]),
       month: Number(localMatch[2]),
       day: Number(localMatch[3]),
-      hour: Number(localMatch[4] ?? "0"),
-      minute: Number(localMatch[5] ?? "0"),
-      second: Number(localMatch[6] ?? "0"),
+      hour,
+      minute,
+      second,
     });
     localized.setUTCMilliseconds(Number((localMatch[7] ?? "0").padEnd(3, "0")));
     return localized.toISOString();
