@@ -82,3 +82,90 @@ describe("voice-session-pcm Float32↔Int16 correctness (golden vectors)", () =>
     expect(downmixChannelsToMono([]).length).toBe(0);
   });
 });
+
+describe("voice-session-pcm clamp and asymmetric scale edges", () => {
+  it("clampFloatSample saturates non-finite infinities to the rails", () => {
+    expect(clampFloatSample(Number.POSITIVE_INFINITY)).toBe(1);
+    expect(clampFloatSample(Number.NEGATIVE_INFINITY)).toBe(-1);
+  });
+
+  it("clampFloatSample passes the exact rails through unchanged", () => {
+    expect(clampFloatSample(1)).toBe(1);
+    expect(clampFloatSample(-1)).toBe(-1);
+  });
+
+  it("floatSampleToInt16 rounds nearest without drifting at quarter scale", () => {
+    // 0.25 * 32767 = 8191.75 -> 8192; -0.25 lands exactly on -8192.
+    expect(floatSampleToInt16(0.25)).toBe(8192);
+    expect(floatSampleToInt16(-0.25)).toBe(-8192);
+  });
+
+  it("int16SampleToFloat is exact on representable negative depths", () => {
+    // Negative side divides by 32768, so power-of-two depths are exact.
+    expect(int16SampleToFloat(-16384)).toBe(-0.5);
+    expect(int16SampleToFloat(-32768)).toBe(-1);
+  });
+
+  it("int16SampleToFloat uses the shallower positive divisor", () => {
+    expect(int16SampleToFloat(16384)).toBe(16384 / 0x7fff);
+    expect(int16SampleToFloat(32767)).toBe(1);
+  });
+});
+
+describe("voice-session-pcm buffer framing edges", () => {
+  it("encodes an empty Float32 buffer to a zero-length Uint8Array", () => {
+    const bytes = floatPcmToInt16Bytes(new Float32Array(0));
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes.byteLength).toBe(0);
+  });
+
+  it("returns a fresh output buffer per encode and leaves input untouched", () => {
+    const pcm = Float32Array.from([1, -1]);
+    const first = floatPcmToInt16Bytes(pcm);
+    const second = floatPcmToInt16Bytes(pcm);
+    expect(first).not.toBe(second);
+    expect(Array.from(pcm)).toEqual([1, -1]);
+  });
+
+  it("decodes a frame sliced at a non-zero byteOffset of a larger buffer", () => {
+    // Socket frames arrive as views into a shared receive buffer.
+    const receiveBuffer = new Uint8Array([0xff, 0xff, 0x00, 0x80]).subarray(2);
+    expect(receiveBuffer.byteOffset).toBe(2);
+    const decoded = int16BytesToFloatPcm(receiveBuffer);
+    expect(Array.from(decoded)).toEqual([-1]);
+  });
+
+  it("keeps every whole sample and drops only the odd trailing byte", () => {
+    // 0x8000 LE = -32768 -> -1; the trailing 0xAA byte is not a sample.
+    const bytes = new Uint8Array([0x00, 0x80, 0xaa]);
+    const decoded = int16BytesToFloatPcm(bytes);
+    expect(decoded.length).toBe(1);
+    expect(decoded[0]).toBe(-1);
+  });
+});
+
+describe("voice-session-pcm downmix edges", () => {
+  it("treats a shorter channel's missing tail as silence instead of NaN", () => {
+    const long = Float32Array.from([0.5, 0.5]);
+    const short = Float32Array.from([0]);
+    const mono = downmixChannelsToMono([long, short]);
+    expect(Array.from(mono)).toEqual([0.25, 0.25]);
+  });
+
+  it("averages three channels per frame", () => {
+    const mono = downmixChannelsToMono([
+      Float32Array.from([3]),
+      Float32Array.from([-1]),
+      Float32Array.from([1]),
+    ]);
+    expect(Array.from(mono)).toEqual([1]);
+  });
+
+  it("sizes the output by the first channel's length", () => {
+    const first = Float32Array.from([2]);
+    const longer = Float32Array.from([2, 2, 2]);
+    const mono = downmixChannelsToMono([first, longer]);
+    expect(mono.length).toBe(1);
+    expect(Array.from(mono)).toEqual([2]);
+  });
+});
