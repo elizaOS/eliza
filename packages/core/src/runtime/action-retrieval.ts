@@ -1222,6 +1222,20 @@ function explicitParentAliasesForCandidateAction(actionName: string): string[] {
 	if (/CALC|MATH|ARITH|MULTIPL|DIVIDE/.test(normalized)) {
 		return ["CALCULATE"];
 	}
+	// Task-acceptance inventions (COMPLETE_TASK, ACCEPT_TASK, MARK_DONE …)
+	// hint the TASKS control surface, whose approve verb is the human
+	// override the park notice asks for (live 2026-08-24: candidate
+	// COMPLETE_TASK resolved to nothing, the planner fell back to a
+	// PAGE_DELEGATE guess, and the acceptance never landed). Bare
+	// ACCEPT/APPROVE stems stay unhinted — they belong to the lifeops
+	// approval queue, not task control.
+	if (
+		/(?:COMPLETE|ACCEPT|APPROVE|FINISH|MARK).*TASK|TASK.*(?:COMPLETE|ACCEPT|APPROVE|DONE)|MARK_?DONE|MARK_?COMPLETE/.test(
+			normalized,
+		)
+	) {
+		return ["TASKS_CONTROL", "TASKS"];
+	}
 	return [];
 }
 
