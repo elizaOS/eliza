@@ -341,4 +341,227 @@ describe("linkExtractionEvaluator", () => {
 		expect(schema.type).toBe("object");
 		expect(schema.required).toEqual(["processed"]);
 	});
+
+	describe("linkExtractionEvaluator additional branches", () => {
+		afterEach(() => {
+			_setLinkPreviewTransportForTests(undefined);
+			vi.restoreAllMocks();
+		});
+
+		function makePrepareContext(
+			runtime: MockRuntime,
+			message: Memory,
+		): Parameters<NonNullable<typeof linkExtractionEvaluator.prepare>>[0] {
+			return {
+				...makeContext(runtime, message),
+				state: { values: {}, data: {}, text: "" } as State,
+			};
+		}
+
+		it("prompt renders the captured link count and the expected instruction", () => {
+			const output = linkExtractionEvaluator.prompt?.({
+				prepared: {
+					links: [
+						{ url: "https://a.example/1", title: "a", summary: "s" },
+						{ url: "https://b.example/2", title: "", summary: "" },
+					],
+				},
+			});
+			expect(output).toContain("2 http(s) URL(s)");
+			expect(output).toContain('Return {"processed":true}');
+		});
+
+		it("parse rejects arrays, null, and non-boolean processed values", () => {
+			expect(linkExtractionEvaluator.parse?.(null)).toEqual({
+				processed: false,
+			});
+			expect(linkExtractionEvaluator.parse?.(["processed"])).toEqual({
+				processed: false,
+			});
+			expect(linkExtractionEvaluator.parse?.({ processed: "yes" })).toEqual({
+				processed: false,
+			});
+			expect(linkExtractionEvaluator.parse?.({ processed: 1 })).toEqual({
+				processed: false,
+			});
+			expect(
+				linkExtractionEvaluator.parse?.({ processed: true, extra: 1 }),
+			).toEqual({ processed: true });
+		});
+
+		it("shouldRun ignores non-http(s) schemes but accepts uppercase http(s)", async () => {
+			const runtime = makeRuntime(async () => "");
+			const ftpMessage = makeMessage(
+				"grab ftp://files.example.com/a.txt or browse www.example.com",
+			);
+			await expect(
+				linkExtractionEvaluator.shouldRun(makeContext(runtime, ftpMessage)),
+			).resolves.toBe(false);
+
+			const upperMessage = makeMessage("BIG ONE: HTTPS://EXAMPLE.COM/BIG");
+			await expect(
+				linkExtractionEvaluator.shouldRun(makeContext(runtime, upperMessage)),
+			).resolves.toBe(true);
+		});
+
+		it("shouldRun is false when content.text is missing or not a string", async () => {
+			const runtime = makeRuntime(async () => "");
+			const numericText = {
+				id: MESSAGE_ID,
+				entityId: ENTITY_ID,
+				agentId: AGENT_ID,
+				roomId: ROOM_ID,
+				content: { text: 42 },
+				createdAt: Date.now(),
+			} as Memory;
+			await expect(
+				linkExtractionEvaluator.shouldRun(makeContext(runtime, numericText)),
+			).resolves.toBe(false);
+
+			const noContent = {
+				id: MESSAGE_ID,
+				entityId: ENTITY_ID,
+				agentId: AGENT_ID,
+				roomId: ROOM_ID,
+				createdAt: Date.now(),
+			} as Memory;
+			await expect(
+				linkExtractionEvaluator.shouldRun(makeContext(runtime, noContent)),
+			).resolves.toBe(false);
+		});
+
+		it.each([
+			[
+				"responds non-html",
+				makeFetchResponse("<html><title>x</title></html>", {
+					contentType: "application/json",
+				}),
+			],
+			[
+				"answers http 500",
+				makeFetchResponse("<html><title>x</title></html>", { ok: false }),
+			],
+		])(
+			"persists the raw URL without enrichment when the preview %s",
+			async (_label, response) => {
+				stubPreviewFetch(response);
+				const runtime = makeRuntime(async () => "model must not run");
+				const context = makePrepareContext(
+					runtime,
+					makeMessage("see https://rejected.example/page"),
+				);
+
+				const prepared = await linkExtractionEvaluator.prepare?.(context);
+
+				expect(prepared?.links).toHaveLength(1);
+				expect(prepared?.links[0]?.url).toBe("https://rejected.example/page");
+				expect(prepared?.links[0]?.title).toBe("");
+				expect(prepared?.links[0]?.summary).toBe("");
+				expect(runtime.useModel).not.toHaveBeenCalled();
+				expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+			},
+		);
+
+		it("skips summarization for an empty page body and persists the bare URL as content text", async () => {
+			stubPreviewFetch(
+				makeFetchResponse(
+					"<html><head><title></title></head><body></body></html>",
+				),
+			);
+			const runtime = makeRuntime(async () => "model must not run");
+			const context = makePrepareContext(
+				runtime,
+				makeMessage("empty page https://blank.example/"),
+			);
+
+			const prepared = await linkExtractionEvaluator.prepare?.(context);
+
+			expect(prepared?.links).toHaveLength(1);
+			expect(prepared?.links[0]).toEqual({
+				url: "https://blank.example/",
+				title: "",
+				summary: "",
+			});
+			expect(runtime.useModel).not.toHaveBeenCalled();
+			expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+			const [memory] = runtime.createMemory.mock.calls[0] as [Memory, string];
+			expect(memory.content.text).toBe("https://blank.example/");
+			const metadata = memory.metadata as Record<string, unknown>;
+			expect(metadata.title).toBe("");
+			expect(metadata.summary).toBe("");
+		});
+
+		it("keeps extracting later URLs when one URL fails to persist", async () => {
+			stubPreviewFetch(
+				makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
+			);
+			const runtime = {
+				...makeRuntime(async () => "sum"),
+				reportError: vi.fn(),
+			};
+			runtime.createMemory.mockRejectedValueOnce(new Error("db down"));
+			const context = makePrepareContext(
+				runtime,
+				makeMessage(
+					"one https://ok.example/first and two https://ok.example/second",
+				),
+			);
+
+			const prepared = await linkExtractionEvaluator.prepare?.(context);
+
+			expect(prepared?.links.map((link) => link.url)).toEqual([
+				"https://ok.example/first",
+				"https://ok.example/second",
+			]);
+			expect(runtime.createMemory).toHaveBeenCalledTimes(2);
+			const [, secondCall] = runtime.createMemory.mock.calls as [
+				Memory,
+				string,
+			][];
+			expect(secondCall?.[0].content.url).toBe("https://ok.example/second");
+			expect(runtime.logger.warn).toHaveBeenCalledTimes(1);
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					src: "evaluator:link-extraction",
+					url: "https://ok.example/first",
+					err: "db down",
+				}),
+				"Link extraction failed",
+			);
+			expect(runtime.reportError).toHaveBeenCalledTimes(1);
+			expect(runtime.reportError).toHaveBeenCalledWith(
+				"LinkExtraction.extract",
+				expect.any(Error),
+				{ url: "https://ok.example/first" },
+			);
+		});
+
+		it("persists one memory per distinct URL in first-seen order", async () => {
+			stubPreviewFetch(
+				makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
+			);
+			const runtime = makeRuntime(async () => "sum");
+			const context = makePrepareContext(
+				runtime,
+				makeMessage(
+					"first https://multi.example/1 then https://multi.example/2",
+				),
+			);
+
+			const prepared = await linkExtractionEvaluator.prepare?.(context);
+
+			expect(prepared?.links.map((link) => link.url)).toEqual([
+				"https://multi.example/1",
+				"https://multi.example/2",
+			]);
+			expect(runtime.createMemory).toHaveBeenCalledTimes(2);
+			const calls = runtime.createMemory.mock.calls as [Memory, string][];
+			expect(calls[0]?.[0].content.url).toBe("https://multi.example/1");
+			expect(calls[1]?.[0].content.url).toBe("https://multi.example/2");
+			calls.forEach(([memory, tableName]) => {
+				expect(tableName).toBe("links");
+				expect(memory.content.type).toBe("link");
+			});
+		});
+	});
 });
