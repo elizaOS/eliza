@@ -184,6 +184,7 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
   training, or later model context. Preserve each record's exact text regardless
   of length or surrounding whitespace; reject malformed Unicode rather than
   repairing the recorded request or response.
+- **Mobile direct replies are complete.** The opted-in local direct-chat path forwards complete history and does not impose its own reply-token ceiling. Provider/native context exhaustion must fail through the model boundary instead of being presented as a completed mobile reply.
 
 ## Package completion evidence
 

@@ -454,16 +454,6 @@ function readRuntimeStringSetting(
   return typeof env === "string" && env.trim().length > 0 ? env.trim() : null;
 }
 
-function readPositiveIntegerSetting(
-  runtime: AgentRuntime,
-  key: string,
-  fallback: number,
-): number {
-  const raw = readRuntimeStringSetting(runtime, key);
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
-
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
   const optIn = readRuntimeStringSetting(
     runtime,
@@ -801,17 +791,11 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     userText,
   });
   if (!prompt) return null;
-  const maxTokens = readPositiveIntegerSetting(
-    args.runtime,
-    "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
-    128,
-  );
   const startedAt = Date.now();
   args.runtime.logger.info(
     {
       src: "eliza-api",
       promptChars: prompt.length,
-      maxTokens,
       messageId: args.message.id,
     },
     "[eliza-api] Android local direct chat fast path start",
@@ -844,7 +828,6 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   };
   const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
-    maxTokens,
     stopSequences: ["<end_of_turn>", "<start_of_turn>"],
     temperature: 0,
     providerOptions: {
@@ -880,7 +863,6 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     mode: "api_fast_path",
     latencyMs,
     promptChars: prompt.length,
-    maxTokens,
     streamedChunks,
   } satisfies LocalInferenceChatMetadata;
   const responseContent = {
