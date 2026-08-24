@@ -160,6 +160,7 @@ export async function requireConfirmation(
 	// Existing pending record found — interpret the user's reply.
 	await args.runtime.deleteCache(cacheKey);
 
+	confirmRegex.lastIndex = 0;
 	const status: ConfirmationStatus = confirmRegex.test(userText)
 		? "confirmed"
 		: "cancelled";

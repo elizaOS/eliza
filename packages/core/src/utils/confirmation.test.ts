@@ -229,4 +229,64 @@ describe("confirmation utilities", () => {
 		expect(llmConfirmedFlagIsAuthoritative(1)).toBe(false);
 		expect(llmConfirmedFlagIsAuthoritative({})).toBe(false);
 	});
+
+	it("handles global-flag confirmRegex without lastIndex alternation", async () => {
+		const globalRegex = /yes/gi;
+		const runtime = createMockRuntime();
+
+		// First pending + confirm: should be confirmed
+		const m1: Memory = {
+			entityId: "user-1",
+			content: { text: "delete" },
+		} as unknown as Memory;
+		await requireConfirmation({
+			runtime,
+			message: m1,
+			actionName: "DELETE_ITEM",
+			pendingKey: "item:g1",
+			prompt: "Delete?",
+			confirmRegex: globalRegex,
+		});
+		const m2: Memory = {
+			entityId: "user-1",
+			content: { text: "yes" },
+		} as unknown as Memory;
+		const d1 = await requireConfirmation({
+			runtime,
+			message: m2,
+			actionName: "DELETE_ITEM",
+			pendingKey: "item:g1",
+			prompt: "Delete?",
+			confirmRegex: globalRegex,
+		});
+		expect(d1.status).toBe("confirmed");
+
+		// Reuse same regex object for a second independent confirmation:
+		// without lastIndex reset it would alternate to cancelled.
+		const m3: Memory = {
+			entityId: "user-1",
+			content: { text: "delete again" },
+		} as unknown as Memory;
+		await requireConfirmation({
+			runtime,
+			message: m3,
+			actionName: "DELETE_ITEM",
+			pendingKey: "item:g2",
+			prompt: "Delete?",
+			confirmRegex: globalRegex,
+		});
+		const m4: Memory = {
+			entityId: "user-1",
+			content: { text: "yes" },
+		} as unknown as Memory;
+		const d2 = await requireConfirmation({
+			runtime,
+			message: m4,
+			actionName: "DELETE_ITEM",
+			pendingKey: "item:g2",
+			prompt: "Delete?",
+			confirmRegex: globalRegex,
+		});
+		expect(d2.status).toBe("confirmed");
+	});
 });
