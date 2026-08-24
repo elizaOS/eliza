@@ -45,7 +45,7 @@ export interface PlatformAdapter {
     rawBody: string,
     config: WebhookConfig,
   ): Promise<boolean>;
-  extractEvent(rawBody: string): Promise<ChatEvent | null>;
+  extractEvent(rawBody: string, config?: WebhookConfig): Promise<ChatEvent | null>;
   sendReply(
     config: WebhookConfig,
     event: ChatEvent,
@@ -83,6 +83,7 @@ export interface ResolvedVoiceNote {
 export interface WebhookConfig {
   // Telegram
   botToken?: string;
+  botUsername?: string;
   webhookSecret?: string;
   // Blooio
   apiKey?: string;

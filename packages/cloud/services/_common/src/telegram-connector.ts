@@ -19,6 +19,7 @@ export interface TelegramConnectorLogger {
 
 export interface TelegramConnectorConfig {
   botToken?: string;
+  botUsername?: string;
   webhookSecret?: string;
 }
 
@@ -370,6 +371,28 @@ async function telegramApi<T>(
     );
   }
   return data.result as T;
+}
+
+const telegramBotUsernameCache = new Map<string, Promise<string>>();
+
+/** Resolve this credential's public username without exposing the token. */
+export async function resolveTelegramBotUsername(
+  config: TelegramConnectorConfig,
+): Promise<string> {
+  const configured = config.botUsername?.trim().replace(/^@/, "");
+  if (configured) return configured;
+  if (!config.botToken) return "";
+  let pending = telegramBotUsernameCache.get(config.botToken);
+  if (!pending) {
+    pending = telegramApi<{ username?: unknown }>(config.botToken, "getMe")
+      .then((me) => (typeof me.username === "string" ? me.username.trim() : ""))
+      .catch((error) => {
+        telegramBotUsernameCache.delete(config.botToken!);
+        throw error;
+      });
+    telegramBotUsernameCache.set(config.botToken, pending);
+  }
+  return pending;
 }
 
 function assertValidTelegramChunkLength(maxLength: number): void {
