@@ -61,6 +61,7 @@ import {
   classifyXcresultSummaryForGate,
   DEFAULT_APP_BUNDLE_ID,
   deriveTargetSigningEntitlements,
+  didIsolatedXcuitestPass,
   evaluateRunnerStaleness,
   extractSwiftXcuitestEntries,
   extractXctestrunAppPaths,
@@ -1371,10 +1372,16 @@ async function main() {
           log(`  isolated re-run: ${failure.identifier}`);
           resetAppContainer(`isolation-${safeName}`);
           const isoResult = runHarness(failure.identifier, isoBundle);
-          exportArtifacts(isoBundle, path.join(isolationDir, safeName));
+          const isolatedArtifacts = exportArtifacts(
+            isoBundle,
+            path.join(isolationDir, safeName),
+          );
           isolatedResults.push({
             identifier: failure.identifier,
-            isolatedPassed: isoResult.status === 0,
+            isolatedPassed: didIsolatedXcuitestPass(
+              isoResult.status,
+              isolatedArtifacts.summaryJson,
+            ),
           });
         }
 

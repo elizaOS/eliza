@@ -1263,6 +1263,24 @@ export function classifyXcresultSummaryForGate(summary) {
 }
 
 /**
+ * Decide whether a failed suite's isolated retry genuinely passed. The
+ * process exit code alone is insufficient because xcodebuild can exit zero
+ * after an invalid `-only-testing` selector runs no tests. Isolation is
+ * accepted only when xcresult records at least one passed test.
+ *
+ * @param {number | null} exitStatus
+ * @param {unknown} summary
+ * @returns {boolean}
+ */
+export function didIsolatedXcuitestPass(exitStatus, summary) {
+  if (exitStatus !== 0) return false;
+  const verdict = classifyXcresultSummaryForGate(summary);
+  return (
+    verdict.ok && verdict.stats.passed !== null && verdict.stats.passed > 0
+  );
+}
+
+/**
  * Recursively replace the __TESTROOT__ placeholder in every string value of a
  * parsed .xctestrun. Required whenever the .xctestrun file is written
  * somewhere other than the Build/Products dir it was generated in — xcodebuild
@@ -1631,6 +1649,9 @@ export function parseCliArgs(argv, { booleans = [] } = {}) {
  * `testIdentifierString` omits the target and keeps the `()` suffix on the
  * method, so we normalize: drop a trailing `()`, and prefix the target
  * (from the row's `targetName`, else the caller-supplied `fallbackTarget`).
+ * `testName` is display copy only and is never promoted into a selector;
+ * runner-level infrastructure failures often populate it without naming a
+ * runnable test.
  *
  * Pure — the caller reads the file and passes the parsed object (or the raw
  * JSON string). A non-object / unparseable input yields an empty list rather
@@ -1687,9 +1708,7 @@ export function parseFailedTestIdentifiers(
         ? row.testIdentifierString.trim()
         : typeof row.testIdentifier === "string" && row.testIdentifier.trim()
           ? row.testIdentifier.trim()
-          : typeof row.testName === "string" && row.testName.trim()
-            ? row.testName.trim()
-            : null;
+          : null;
     if (!rawId) continue;
     const identifier = buildOnlyTestingIdentifier(rawId, {
       targetName: targetName ?? fallbackTarget,

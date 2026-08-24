@@ -36,6 +36,7 @@ import {
   DEFAULT_IOS_XCUITEST_SHARDS,
   deriveSigningEntitlements,
   deriveTargetSigningEntitlements,
+  didIsolatedXcuitestPass,
   entitlementSourceForTarget,
   evaluateRunnerStaleness,
   extractSwiftXcuitestEntries,
@@ -1253,6 +1254,32 @@ describe("classifyXcresultSummaryForGate", () => {
   });
 });
 
+describe("didIsolatedXcuitestPass", () => {
+  it("requires a zero exit and at least one xcresult-recorded pass", () => {
+    expect(
+      didIsolatedXcuitestPass(0, {
+        result: "Passed",
+        passedTests: 1,
+        failedTests: 0,
+      }),
+    ).toBe(true);
+    expect(
+      didIsolatedXcuitestPass(0, {
+        result: "Passed",
+        passedTests: 0,
+        failedTests: 0,
+      }),
+    ).toBe(false);
+    expect(didIsolatedXcuitestPass(0, null)).toBe(false);
+    expect(
+      didIsolatedXcuitestPass(65, {
+        result: "Passed",
+        passedTests: 1,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("ios-device-capture strict summary gate", () => {
   it("keeps test-summary classification behind --strict-gate", () => {
     const source = fs.readFileSync(
@@ -1727,6 +1754,19 @@ describe("parseFailedTestIdentifiers (#13566)", () => {
     expect(parseFailedTestIdentifiers(null)).toEqual([]);
     expect(parseFailedTestIdentifiers(42)).toEqual([]);
     expect(parseFailedTestIdentifiers({})).toEqual([]);
+  });
+
+  it("rejects runner-level failures that have no executable test identifier", () => {
+    expect(
+      parseFailedTestIdentifiers({
+        testFailures: [
+          {
+            testName: "AppUITests-Runner encountered an infrastructure error",
+            targetName: "AppUITests",
+          },
+        ],
+      }),
+    ).toEqual([]);
   });
 });
 
