@@ -276,6 +276,20 @@ export function isModelProviderFallbackError(
 	if (asErrorObject(unwrapped)?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
 		return true;
 	}
+	// An OpenAI-compatible provider registered without a usable credential
+	// (no OPENAI_API_KEY, not in proxy mode) cannot serve the call, but a
+	// DIFFERENT registered text provider can — e.g. a pooled ChatGPT/Codex
+	// RESPONSE_HANDLER (plugin-codex-cli) leasing an `openai-codex`
+	// subscription seat via the local codex-proxy. Without this, an
+	// Anthropic->OpenAI failover that lands on a keyless plugin-openai throws
+	// a bare "OPENAI_API_KEY is required" (not otherwise fallback-class) and
+	// strands the brain instead of advancing to the pooled handler. Typed so
+	// only the deliberate missing-credential path fails over; a real OpenAI
+	// request failure still classifies on its own status/message. Fail-closed:
+	// with no next handler, the terminal error still surfaces.
+	if (asErrorObject(unwrapped)?.code === "OPENAI_CREDENTIAL_UNAVAILABLE") {
+		return true;
+	}
 	if (isRateLimitError(error)) {
 		return true;
 	}
