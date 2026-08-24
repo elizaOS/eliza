@@ -83,4 +83,45 @@ describe("ensureElectrobunGlobal", () => {
       bun.receiveInternalMessageFromBun({ kind: "internal" }),
     ).toBeUndefined();
   });
+
+  it("leaves falsy non-undefined placeholders untouched", () => {
+    for (const placeholder of [false, 0, ""] as const) {
+      const w = makeWindow();
+      (w as { __electrobun?: unknown }).__electrobun = placeholder;
+      ensureElectrobunGlobal();
+      expect(w.__electrobun).toBe(placeholder);
+    }
+  });
+
+  it("leaves a partial stub untouched instead of completing its handlers", () => {
+    const w = makeWindow();
+    const partial = { receiveMessageFromBun: () => "partial" };
+    (w as { __electrobun?: unknown }).__electrobun = partial;
+    ensureElectrobunGlobal();
+    expect(w.__electrobun).toBe(partial);
+    const installed = w.__electrobun;
+    if (installed === null || installed === undefined) {
+      throw new Error("ensureElectrobunGlobal replaced an existing stub");
+    }
+    expect(installed.receiveInternalMessageFromBun).toBeUndefined();
+  });
+
+  it("reinstalls a fresh stub after the global was deleted", () => {
+    const w = makeWindow();
+    ensureElectrobunGlobal();
+    const first = w.__electrobun;
+    delete (w as { __electrobun?: unknown }).__electrobun;
+    ensureElectrobunGlobal();
+    expect(typeof w.__electrobun?.receiveMessageFromBun).toBe("function");
+    expect(typeof w.__electrobun?.receiveInternalMessageFromBun).toBe(
+      "function",
+    );
+    expect(w.__electrobun).not.toBe(first);
+  });
+
+  it("propagates the install failure when window rejects new properties", () => {
+    makeWindow();
+    Object.freeze(globalThis.window);
+    expect(() => ensureElectrobunGlobal()).toThrow(TypeError);
+  });
 });
