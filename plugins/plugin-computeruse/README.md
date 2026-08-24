@@ -50,15 +50,12 @@ through `dist/native/macos-ax-helper`. It lists running apps and returns a
 focused-window screenshot plus the AX tree, incremental diff, and ephemeral
 `element_index` values. App-scoped actions prefer semantic AX operations and
 refuse when an exact window-local pointer route is unavailable; the native
-helper never posts PID mouse or scroll events. Registered Set-of-Marks/OCR can
-reach the guarded global physical pointer only when the operator sets
-`OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`, the request asks for
-fallback, and a distinct action-time approval resolves. Process-scoped keyboard
+helper never posts PID mouse or scroll events. Registered Set-of-Marks/OCR is
+descriptive only and never falls through to global HID. Process-scoped keyboard
 compatibility requires an indexed element, one eligible same-PID window, and
 target-element readback. Planning and target hover use the orange agent overlay
-and never invoke global pointer input. macOS still exposes only one true system
-pointer, so an approved coordinate fallback can move it. The helper reads
-permission state without requesting or changing TCC grants.
+and never invoke global pointer input. The helper reads permission state
+without requesting or changing TCC grants.
 
 Direct macOS builds may optionally package a separate private-ABI experiment
 for exact-window click/scroll. It is absent from the shared plugin and Mac App
@@ -69,6 +66,9 @@ also requires `ELIZA_COMPUTERUSE_EXPERIMENTAL_EXACT_WINDOW=1`, an explicit
 observation/PID/window/bounds revalidation, pointer provenance, and a separate
 action-time approval. This source lane is not signed physical acceptance. See
 [`docs/EXACT_WINDOW_DISPATCH_POLICY.md`](./docs/EXACT_WINDOW_DISPATCH_POLICY.md).
+
+The inert, fixture-only Cerebras AX/CDP readiness packet is documented in
+[`docs/CEREBRAS_LOCAL_MANUAL_DEMO.md`](./docs/CEREBRAS_LOCAL_MANUAL_DEMO.md).
 
 The Linux X11 release-evidence path is executable with
 `bun run capture:linux-desktop-evidence`; it uses a disposable controlled xterm

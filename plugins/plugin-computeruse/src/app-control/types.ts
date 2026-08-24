@@ -101,8 +101,6 @@ export interface AppActionRequest {
   amount?: number;
   format?: "text" | "markdown" | "html";
   secondaryAction?: string;
-  /** Canonical policy must explicitly permit the last-resort pointer path. */
-  allowPhysicalFallback?: boolean;
   /** Explicitly selects the disabled-by-default direct-only experimental route. */
   allowExperimentalExactWindow?: boolean;
 }
@@ -111,27 +109,11 @@ export type AppActionExecutionMode =
   | "semantic_ax"
   | "process_pid_keyboard_cgevent"
   | "experimental_direct_exact_window"
-  | "guarded_physical"
   | "agent_overlay";
 
 export interface AppPointerPosition {
   x: number;
   y: number;
-}
-
-export interface PhysicalFallbackApprovalReceipt {
-  approvalId: string;
-  requestedAt: string;
-  approvedAt: string;
-  mode: string;
-}
-
-export interface PhysicalFallbackApprovalRequest {
-  appId: string;
-  kind: "click" | "scroll";
-  element_index: number;
-  groundingMode: "set_of_marks" | "ocr" | "element_bounds";
-  target: AppPointerPosition;
 }
 
 export interface ExperimentalExactWindowApprovalReceipt {
@@ -209,8 +191,6 @@ export interface AppActionReceipt {
   pointerObservation: "unchanged" | "changed" | "unavailable";
   pointerBefore?: AppPointerPosition;
   pointerAfter?: AppPointerPosition;
-  groundingMode?: "set_of_marks" | "ocr" | "element_bounds";
-  physicalFallbackApproval?: PhysicalFallbackApprovalReceipt;
   experimentalExactWindowApproval?: ExperimentalExactWindowApprovalReceipt;
   clipboardRestored?: boolean;
   targetWindowBounds?: AppElementBounds;
@@ -253,24 +233,9 @@ export interface AppControlGrounder {
   ): Promise<VisualGroundingMatch | null>;
 }
 
-export interface PhysicalPointerDriver {
-  click(x: number, y: number): Promise<void>;
-  scroll(
-    x: number,
-    y: number,
-    direction: "up" | "down" | "left" | "right",
-    amount: number,
-  ): Promise<void>;
-}
-
 export interface AppPointerObserver {
   getPosition(): Promise<AppPointerPosition>;
 }
-
-export type PhysicalFallbackAuthorizer = (
-  request: PhysicalFallbackApprovalRequest,
-  signal?: AbortSignal,
-) => Promise<PhysicalFallbackApprovalReceipt>;
 
 export type ExperimentalExactWindowAuthorizer = (
   request: ExperimentalExactWindowApprovalRequest,

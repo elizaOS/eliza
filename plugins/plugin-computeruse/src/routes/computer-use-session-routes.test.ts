@@ -13,7 +13,9 @@ import type {
   CreateComputerUseSessionInput,
 } from "../sessions/types.js";
 
-const mockedEnv = vi.hoisted(() => ({ apiToken: undefined as string | undefined }));
+const mockedEnv = vi.hoisted(() => ({
+  apiToken: undefined as string | undefined,
+}));
 
 vi.mock("@elizaos/core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/core")>()),

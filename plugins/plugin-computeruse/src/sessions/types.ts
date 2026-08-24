@@ -90,12 +90,6 @@ export interface ComputerUseActionReceipt {
   pointerBefore?: { x: number; y: number };
   pointerAfter?: { x: number; y: number };
   groundingMode?: string;
-  physicalFallbackApproval?: {
-    approvalId: string;
-    requestedAt: string;
-    approvedAt: string;
-    mode: string;
-  };
   clipboardRestored?: boolean;
   element_index?: number;
 }

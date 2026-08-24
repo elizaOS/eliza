@@ -66,7 +66,9 @@ function isFiniteBounds(value: unknown): boolean {
   );
 }
 
-function isDispatchResult(value: unknown): value is AppExactWindowDispatchResult {
+function isDispatchResult(
+  value: unknown,
+): value is AppExactWindowDispatchResult {
   return (
     isRecord(value) &&
     typeof value.success === "boolean" &&
@@ -151,7 +153,9 @@ async function invokeHelper<T>(
       outputBytes += chunk.length;
       if (outputBytes > MAX_OUTPUT_BYTES) {
         child.kill("SIGKILL");
-        finish(new Error("Experimental exact-window helper output exceeded 1 MiB"));
+        finish(
+          new Error("Experimental exact-window helper output exceeded 1 MiB"),
+        );
         return;
       }
       stdout.push(chunk);
@@ -160,7 +164,9 @@ async function invokeHelper<T>(
       outputBytes += chunk.length;
       if (outputBytes > MAX_OUTPUT_BYTES) {
         child.kill("SIGKILL");
-        finish(new Error("Experimental exact-window helper output exceeded 1 MiB"));
+        finish(
+          new Error("Experimental exact-window helper output exceeded 1 MiB"),
+        );
         return;
       }
       stderr.push(chunk);

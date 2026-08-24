@@ -17,9 +17,7 @@ import {
   AppControlError,
 } from "../app-control/coordinator.js";
 import {
-  guardedPhysicalPointer,
   physicalPointerObserver,
-  RegisteredVisualGrounder,
   WindowRegionCapture,
 } from "../app-control/defaults.js";
 import { MacosAxAdapter } from "../app-control/macos-ax-adapter.js";
@@ -31,10 +29,8 @@ import type {
   AppControlPermissionState,
   AppDescriptor,
   AppState,
-  ExperimentalExactWindowApprovalRequest,
   ExperimentalExactWindowApprovalReceipt,
-  PhysicalFallbackApprovalRequest,
-  PhysicalFallbackApprovalReceipt,
+  ExperimentalExactWindowApprovalRequest,
 } from "../app-control/types.js";
 import {
   ComputerUseApprovalManager,
@@ -376,12 +372,8 @@ export class ComputerUseService extends Service {
   private readonly appControl = new AppControlCoordinator({
     adapter: new MacosAxAdapter(),
     capture: new WindowRegionCapture(),
-    grounder: new RegisteredVisualGrounder(),
-    pointer: guardedPhysicalPointer,
     pointerObserver: physicalPointerObserver,
     exactWindowPointer: new MacosExperimentalExactWindowDispatcher(),
-    authorizePhysicalFallback: (request, signal) =>
-      this.awaitPhysicalFallbackApproval(request, signal),
     authorizeExperimentalExactWindow: (request, signal) =>
       this.awaitExperimentalExactWindowApproval(request, signal),
   });
@@ -659,9 +651,6 @@ export class ComputerUseService extends Service {
         : {}),
       ...(typeof parameters.secondaryAction === "string"
         ? { secondaryAction: parameters.secondaryAction }
-        : {}),
-      ...(parameters.allowPhysicalFallback === true
-        ? { allowPhysicalFallback: true }
         : {}),
       ...(parameters.allowExperimentalExactWindow === true
         ? { allowExperimentalExactWindow: true }
@@ -2550,58 +2539,11 @@ export class ComputerUseService extends Service {
       : `Computer-use approval rejected for "${command}".`;
   }
 
-  private async awaitPhysicalFallbackApproval(
-    request: PhysicalFallbackApprovalRequest,
-    signal?: AbortSignal,
-  ): Promise<PhysicalFallbackApprovalReceipt> {
-    if (
-      process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS !== "1"
-    ) {
-      throw new AppControlError(
-        "PHYSICAL_FALLBACK_DENIED",
-        "Global physical pointer fallback is disabled; a supervisor must opt in with OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1 before requesting approval",
-      );
-    }
-    if (this.approvalManager.isDenyAll()) {
-      throw new AppControlError(
-        "PHYSICAL_FALLBACK_DENIED",
-        "Physical pointer fallback is paused by the current approval mode",
-      );
-    }
-    const decision = await this.approvalManager.requestApproval(
-      "app_physical_pointer_fallback",
-      {
-        app: request.appId,
-        kind: request.kind,
-        element_index: request.element_index,
-        groundingMode: request.groundingMode,
-        target: request.target,
-      },
-      signal,
-    );
-    if (!decision.approved) {
-      throw new AppControlError(
-        "PHYSICAL_FALLBACK_DENIED",
-        decision.reason
-          ? `Physical pointer fallback rejected: ${decision.reason}`
-          : "Physical pointer fallback was not approved",
-      );
-    }
-    return {
-      approvalId: decision.id,
-      requestedAt: decision.requestedAt,
-      approvedAt: decision.resolvedAt,
-      mode: decision.mode,
-    };
-  }
-
   private async awaitExperimentalExactWindowApproval(
     request: ExperimentalExactWindowApprovalRequest,
     signal?: AbortSignal,
   ): Promise<ExperimentalExactWindowApprovalReceipt> {
-    if (
-      process.env.ELIZA_COMPUTERUSE_EXPERIMENTAL_EXACT_WINDOW !== "1"
-    ) {
+    if (process.env.ELIZA_COMPUTERUSE_EXPERIMENTAL_EXACT_WINDOW !== "1") {
       throw new AppControlError(
         "EXPERIMENTAL_EXACT_WINDOW_DENIED",
         "Experimental exact-window dispatch is disabled; direct-distribution runtime opt-in is required",

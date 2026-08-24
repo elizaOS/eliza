@@ -20,12 +20,12 @@ signed app on a permissioned physical Mac.
 | Automatic fresh-state recapture | Have | Every app action returns a new app state. Every consequential session action also captures a fresh verification observation; capture failure produces `UNCERTAIN_EFFECT`. |
 | Visible agent cursor/target | Have | Orange target overlay and virtual cursor are renderer-only. Planning and hover do not call the input driver. |
 | No physical pointer movement during semantic planning | Have in deterministic source harness | AX, process-scoped keyboard events, and the overlay do not invoke Eliza's global pointer driver. Receipts independently record before/after coordinates; movement without input is external/unknown, never virtual. Signed-app proof remains open. |
-| Arbitrary coordinate fallback | Disabled by default | Global clicks/scrolls require `OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`, an explicit fallback request, and a second action-time approval. Receipts distinguish `physicalPointerInput` from observed `physicalPointerMoved`. |
+| Arbitrary coordinate fallback | Refused | No global HID request or driver route is registered. Receipts still distinguish physical-input provenance from independently observed pointer movement. |
 | Multi-display | Have | AX bounds remain OS-global; capture chooses the containing display and existing display-local/global conversion owns injection. |
 | Permission readiness | Have, physical acceptance pending | Helper checks `AXIsProcessTrusted()` without prompting. UI reports Accessibility separately from capture/input/vision. No code changes OS permission state. |
 | Pause/stop/lease/cancel | Have | Existing canonical session manager remains the sole host/target lease and cancellation authority. |
 | Prompt-injection resistance | Have | AX/screenshot/OCR content stays untrusted model data; canonical dispatch, approval policy, secure-value redaction, stale observation checks, and repeated-action guard remain in force. |
-| Action receipts | Have | Receipt includes target PID/window binding, truthful execution mode, before/after state IDs, clipboard restoration, pointer coordinates/observation, physical-input provenance, and separate experimental or physical-fallback approval IDs. |
+| Action receipts | Have | Receipt includes target PID/window binding, truthful execution mode, before/after state IDs, clipboard restoration, pointer coordinates/observation, physical-input provenance, and any direct-only experimental approval ID. |
 
 ## Dispatch boundary
 
@@ -35,9 +35,8 @@ and text compatibility route with the single-window and target-readback
 constraints above. Only app click/scroll may next request the optional
 `experimental_direct_exact_window` component, and only after its independent
 probe, binding, opt-in, approval, provenance, and verification gates pass.
-Background operation never raises a real window, changes Spaces, or implicitly
-falls through to global HID. Global physical input is a later separate
-supervised mode, disabled by default.
+Background operation never raises a real window, changes Spaces, or falls
+through to global HID. No global physical-input fallback mode is registered.
 
 The v5 packaging lane keeps the studied private SkyLight route outside the
 shared plugin and every Store source/artifact manifest. A direct-only build flag
@@ -61,7 +60,7 @@ The safety design was compared against MIT-licensed
 `f238d1bc85b53bd785d2618d4fbb5d2402207c7a`, `trycua/cua` at the supplied
 `737dc2a…` reference, and `iFurySt/open-codex-computer-use` at the supplied
 `ead48da2032c69b892c89fd39d38fa587b4d6fbf`. Compatible concepts were adapted: AX-first dispatch,
-software-cursor separation, explicit global-pointer opt-in, process/window
+software-cursor separation, global-pointer refusal, process/window
 identity in receipts, and refusal on uncertainty. No dependency, binary, TCC
 grant, or copied implementation was imported.
 
@@ -87,19 +86,18 @@ fresh verification.
 | --- | --- |
 | `list_apps` (`app_list_apps` compatibility alias) | none |
 | `get_app_state` (`app_get_state` compatibility alias) | `app`, optional `disableDiff` |
-| `app_click` | `app`, `stateId`, `element_index`, optional `allowExperimentalExactWindow`, `allowPhysicalFallback` |
+| `app_click` | `app`, `stateId`, `element_index`, optional `allowExperimentalExactWindow` |
 | `app_key` | `app`, `stateId`, `element_index`, `key`, optional `modifiers` |
 | `app_type` | `app`, `stateId`, `element_index`, `text` |
 | `app_paste` | `app`, `stateId`, `element_index`, `text`, optional `format` |
-| `app_scroll` | `app`, `stateId`, `element_index`, optional `direction`, `amount`, `allowExperimentalExactWindow`, `allowPhysicalFallback` |
+| `app_scroll` | `app`, `stateId`, `element_index`, optional `direction`, `amount`, `allowExperimentalExactWindow` |
 | `app_set_value` | `app`, `stateId`, `element_index`, `text` |
 | `app_select_text` | `app`, `stateId`, `element_index`, `text` |
 | `app_secondary_action` | `app`, `stateId`, `element_index`, `secondaryAction` |
 | `app_hover_target` | `app`, `stateId`, `element_index` |
 
-`allowPhysicalFallback: true` is only a request. It does not bypass canonical
-session authority, the environment opt-in, pointer-provenance availability, or
-the distinct last-moment approval.
+Requests that cannot use semantic AX or the separately selected direct-only
+experimental route fail closed without global input.
 
 `allowExperimentalExactWindow: true` is likewise only a request. It does not
 bypass direct-distribution packaging, runtime capability probing, exact current

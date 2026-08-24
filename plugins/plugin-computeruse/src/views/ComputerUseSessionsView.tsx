@@ -74,7 +74,6 @@ export interface SessionSnapshot {
     physicalPointerInput: boolean;
     physicalPointerMoved: boolean;
     pointerObservation: "unchanged" | "changed" | "unavailable";
-    physicalFallbackApproval?: { approvalId: string };
     clipboardRestored?: boolean;
     element_index?: number;
   };
@@ -87,7 +86,8 @@ function pointerProvenanceLabel(value: {
 }): string {
   if (value.physicalPointerInput) return "physical pointer input approved";
   if (value.physicalPointerMoved) return "pointer moved outside this action";
-  if (value.pointerObservation === "unchanged") return "system pointer unchanged";
+  if (value.pointerObservation === "unchanged")
+    return "system pointer unchanged";
   return "pointer observation unavailable";
 }
 
@@ -323,8 +323,7 @@ function AgentTargetOverlay({
       }}
     >
       <span className="absolute -top-5 left-0 rounded bg-orange-500 px-1.5 py-0.5 text-[9px] font-medium text-white">
-        Agent target ·{" "}
-        {pointerProvenanceLabel(target)}
+        Agent target · {pointerProvenanceLabel(target)}
       </span>
     </span>
   );
@@ -570,9 +569,9 @@ export function ComputerUseSessionsView({
           <h1 className="text-base font-semibold">Computer sessions</h1>
           {!shortLandscape ? (
             <p className="text-xs text-muted-foreground">
-              macOS has one true system pointer. Orange target boxes are
-              virtual and never move it; semantic AX and isolated targets do
-              not use a global HID fallback.
+              macOS has one true system pointer. Orange target boxes are virtual
+              and never move it; semantic AX and isolated targets do not use a
+              global HID fallback.
             </p>
           ) : null}
         </div>
@@ -743,9 +742,6 @@ export function ComputerUseSessionsView({
                       ? " · clipboard restored"
                       : ""}
                     {` · ${pointerProvenanceLabel(selected.lastReceipt)}`}
-                    {selected.lastReceipt.physicalFallbackApproval
-                      ? ` · approval ${selected.lastReceipt.physicalFallbackApproval.approvalId}`
-                      : ""}
                   </p>
                 ) : null}
                 {frames[selected.id]?.provenance ? (

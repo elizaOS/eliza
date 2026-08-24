@@ -1,4 +1,4 @@
-/** Wires app-scoped capture, registered visual grounding, and guarded physical fallback to existing platform seams. */
+/** Wires app-scoped capture, registered visual grounding, and pointer observation to existing platform seams. */
 
 import {
   getCoordOcrProvider,
@@ -6,11 +6,7 @@ import {
 } from "../mobile/ocr-provider.js";
 import { captureDisplayRegion } from "../platform/capture.js";
 import { listDisplays } from "../platform/displays.js";
-import {
-  driverClick,
-  driverGetCursorPosition,
-  driverScroll,
-} from "../platform/driver.js";
+import { driverGetCursorPosition } from "../platform/driver.js";
 import type {
   AppActionRequest,
   AppControlGrounder,
@@ -148,14 +144,6 @@ export class RegisteredVisualGrounder implements AppControlGrounder {
       : null;
   }
 }
-
-export const guardedPhysicalPointer =
-  process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS === "1"
-    ? {
-        click: driverClick,
-        scroll: driverScroll,
-      }
-    : undefined;
 
 export const physicalPointerObserver = {
   getPosition: driverGetCursorPosition,

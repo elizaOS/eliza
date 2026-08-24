@@ -310,8 +310,9 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
  *
  * In Cerebras mode the field defaults to `"low"` when unset only for the exact
  * models whose current provider contract exposes reasoning controls:
- * `gpt-oss-120b` and `zai-glm-4.7`. Both can spend a capped output budget on
- * hidden reasoning and return empty visible content when left unbounded.
+ * `gpt-oss-120b`, `zai-glm-4.7`, and `gemma-4-31b`. The first two can spend a
+ * capped output budget on hidden reasoning and return empty visible content
+ * when left unbounded; Gemma requires the explicit provider value `"none"`.
  * Family-name lookalikes and models without the knob must not receive the
  * field because compatible endpoints reject unsupported request properties.
  * An explicit valid `OPENAI_REASONING_EFFORT` always wins.
@@ -387,12 +388,9 @@ function resolveThinkingOffReasoningEffort(
 }
 
 /**
- * Per-model Cerebras reasoning default, restricted to models whose provider
- * documentation declares the field. `gemma-4-31b` has no documented reasoning
- * contract, so no default is emitted at all — an undocumented
- * `reasoning_effort` value reaches the wire and can be rejected by the
- * endpoint; callers that deliberately configure a different effort remain
- * authoritative.
+ * Per-model Cerebras reasoning default, restricted to exact model ids whose
+ * provider contract declares the field. Callers that deliberately configure a
+ * different valid effort remain authoritative.
  */
 function resolveCerebrasDefaultReasoningEffort(
   modelName: string | undefined
@@ -400,6 +398,7 @@ function resolveCerebrasDefaultReasoningEffort(
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
   if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
+  if (id === "gemma-4-31b") return "none";
   return undefined;
 }
 

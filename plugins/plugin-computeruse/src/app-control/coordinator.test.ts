@@ -1,4 +1,4 @@
-/** Verifies deterministic app-scoped state, stale-index rejection, fallback order, and action receipts. */
+/** Verifies deterministic app-scoped state, stale-index rejection, pointer-free refusal, and action receipts. */
 
 import { describe, expect, it, vi } from "vitest";
 import { AppControlCoordinator, type AppControlError } from "./coordinator.js";
@@ -6,12 +6,9 @@ import type {
   AppActionRequest,
   AppControlAdapter,
   AppExactWindowPointerDispatcher,
-  AppControlGrounder,
   AppPointerObserver,
   ExperimentalExactWindowAuthorizer,
   NativeAppSnapshot,
-  PhysicalFallbackAuthorizer,
-  PhysicalPointerDriver,
 } from "./types.js";
 
 const app = {
@@ -50,14 +47,10 @@ function fixture(
     performSuccess?: boolean;
     clipboardRestored?: boolean;
     permission?: NativeAppSnapshot["permission"];
-    grounder?: AppControlGrounder;
-    pointer?: PhysicalPointerDriver & AppPointerObserver;
-    authorizePhysicalFallback?: PhysicalFallbackAuthorizer;
+    pointer?: AppPointerObserver;
     exactWindowPointer?: AppExactWindowPointerDispatcher;
     authorizeExperimentalExactWindow?: ExperimentalExactWindowAuthorizer;
-    nativeExecutionMode?:
-      | "semantic_ax"
-      | "process_pid_keyboard_cgevent";
+    nativeExecutionMode?: "semantic_ax" | "process_pid_keyboard_cgevent";
   } = {},
 ) {
   const snapshots = options.snapshots ?? [nativeSnapshot(), nativeSnapshot()];
@@ -105,13 +98,9 @@ function fixture(
         },
       })),
     },
-    grounder: options.grounder,
-    pointer: options.pointer,
     pointerObserver: options.pointer,
     exactWindowPointer: options.exactWindowPointer,
-    authorizeExperimentalExactWindow:
-      options.authorizeExperimentalExactWindow,
-    authorizePhysicalFallback: options.authorizePhysicalFallback,
+    authorizeExperimentalExactWindow: options.authorizeExperimentalExactWindow,
     now: () => Date.parse("2026-08-23T00:00:01.000Z"),
     idFactory: () => `id-${++id}`,
   });
@@ -216,7 +205,7 @@ describe("AppControlCoordinator", () => {
     });
   });
 
-  it("classifies process-scoped keyboard input separately from physical fallback", async () => {
+  it("classifies process-scoped keyboard input as pointer-free", async () => {
     const pointer = {
       getPosition: vi.fn(async () => ({ x: 12, y: 34 })),
       click: vi.fn(),
@@ -238,166 +227,6 @@ describe("AppControlCoordinator", () => {
       physicalPointerMoved: false,
       pointerObservation: "unchanged",
     });
-  });
-
-  it("uses Set-of-Marks only after AX fails and only with physical approval", async () => {
-    const order: string[] = [];
-    const grounder: AppControlGrounder = {
-      ground: vi.fn(async () => {
-        order.push("ground");
-        return { mode: "set_of_marks", displayId: 7, x: 180, y: 260 };
-      }),
-    };
-    let pointerPosition = { x: 12, y: 34 };
-    const pointer = {
-      getPosition: vi.fn(async () => ({ ...pointerPosition })),
-      click: vi.fn(async (x: number, y: number) => {
-        order.push("click");
-        pointerPosition = { x, y };
-      }),
-      scroll: vi.fn(),
-    };
-    const authorizePhysicalFallback = vi.fn(async () => ({
-      approvalId: "approval-1",
-      requestedAt: "2026-08-23T00:00:00.500Z",
-      approvedAt: "2026-08-23T00:00:00.750Z",
-      mode: "smart_approve",
-    }));
-    const { adapter, coordinator } = fixture({
-      performSuccess: false,
-      grounder,
-      pointer,
-      authorizePhysicalFallback,
-    });
-    const perform = adapter.perform as ReturnType<typeof vi.fn>;
-    perform.mockImplementation(async () => {
-      order.push("ax");
-      return {
-        success: false,
-        error: "no AXPress",
-        targetPid: 42,
-        targetWindowId: 701,
-      };
-    });
-    const before = await coordinator.getAppState(app.id);
-    await expect(coordinator.act(action(before.stateId))).rejects.toMatchObject(
-      {
-        code: "PHYSICAL_FALLBACK_DENIED",
-      },
-    );
-    expect(pointer.click).not.toHaveBeenCalled();
-    expect(authorizePhysicalFallback).not.toHaveBeenCalled();
-
-    const fresh = await coordinator.getAppState(app.id);
-    const outcome = await coordinator.act(
-      action(fresh.stateId, { allowPhysicalFallback: true }),
-    );
-    expect(order.slice(-3)).toEqual(["ax", "ground", "click"]);
-    expect(outcome.receipt).toMatchObject({
-      executionMode: "guarded_physical",
-      groundingMode: "set_of_marks",
-      physicalPointerInput: true,
-      physicalPointerMoved: true,
-      pointerObservation: "changed",
-      pointerBefore: { x: 12, y: 34 },
-      pointerAfter: { x: 180, y: 260 },
-      physicalFallbackApproval: { approvalId: "approval-1" },
-    });
-  });
-
-  it("pauses after grounding and before any physical input until separately approved", async () => {
-    let releaseApproval: (() => void) | undefined;
-    let markApprovalStarted: (() => void) | undefined;
-    const approvalStarted = new Promise<void>((resolve) => {
-      markApprovalStarted = resolve;
-    });
-    const approval = new Promise<void>((resolve) => {
-      releaseApproval = resolve;
-    });
-    const authorizePhysicalFallback = vi.fn(async () => {
-      markApprovalStarted?.();
-      await approval;
-      return {
-        approvalId: "approval-paused",
-        requestedAt: "2026-08-23T00:00:00.500Z",
-        approvedAt: "2026-08-23T00:00:00.750Z",
-        mode: "smart_approve",
-      };
-    });
-    let pointerPosition = { x: 20, y: 30 };
-    const pointer = {
-      getPosition: vi.fn(async () => ({ ...pointerPosition })),
-      click: vi.fn(async (x: number, y: number) => {
-        pointerPosition = { x, y };
-      }),
-      scroll: vi.fn(),
-    };
-    const { coordinator } = fixture({
-      performSuccess: false,
-      grounder: {
-        ground: vi.fn(async () => ({
-          mode: "ocr" as const,
-          displayId: 7,
-          x: 200,
-          y: 300,
-        })),
-      },
-      pointer,
-      authorizePhysicalFallback,
-    });
-    const before = await coordinator.getAppState(app.id);
-    const pending = coordinator.act(
-      action(before.stateId, { allowPhysicalFallback: true }),
-    );
-    await approvalStarted;
-    expect(authorizePhysicalFallback).toHaveBeenCalled();
-    expect(pointer.click).not.toHaveBeenCalled();
-    releaseApproval?.();
-    const outcome = await pending;
-    expect(pointer.click).toHaveBeenCalledWith(200, 300);
-    expect(outcome.receipt?.physicalFallbackApproval?.approvalId).toBe(
-      "approval-paused",
-    );
-  });
-
-  it("cancels a pending physical approval without injecting input", async () => {
-    let markStarted: (() => void) | undefined;
-    const started = new Promise<void>((resolve) => {
-      markStarted = resolve;
-    });
-    const authorizePhysicalFallback: PhysicalFallbackAuthorizer = vi.fn(
-      async (_request, signal) => {
-        markStarted?.();
-        await new Promise<void>((_resolve, reject) => {
-          signal?.addEventListener(
-            "abort",
-            () => reject(new Error("approval cancelled")),
-            { once: true },
-          );
-        });
-        throw new Error("unreachable");
-      },
-    );
-    const pointer = {
-      getPosition: vi.fn(async () => ({ x: 20, y: 30 })),
-      click: vi.fn(),
-      scroll: vi.fn(),
-    };
-    const { coordinator } = fixture({
-      performSuccess: false,
-      pointer,
-      authorizePhysicalFallback,
-    });
-    const before = await coordinator.getAppState(app.id);
-    const controller = new AbortController();
-    const pending = coordinator.act(
-      action(before.stateId, { allowPhysicalFallback: true }),
-      controller.signal,
-    );
-    await started;
-    controller.abort();
-    await expect(pending).rejects.toThrow("approval cancelled");
-    expect(pointer.click).not.toHaveBeenCalled();
   });
 
   it("does not call observed pointer movement virtual when no pointer input ran", async () => {
@@ -772,12 +601,12 @@ describe("AppControlCoordinator", () => {
       snapshots: [nativeSnapshot("Save"), sibling],
     });
     const before = await coordinator.getAppState(app.id);
-    await expect(coordinator.act(action(before.stateId))).resolves.toMatchObject(
-      {
-        success: false,
-        error: expect.stringContaining("sibling-window state"),
-      },
-    );
+    await expect(
+      coordinator.act(action(before.stateId)),
+    ).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining("sibling-window state"),
+    });
   });
 
   it("records clipboard restoration and rejects unexposed secondary actions", async () => {

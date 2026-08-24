@@ -5,9 +5,7 @@ import { getAppControlRouteMatrix } from "./route-policy.js";
 
 describe("app-control route policy", () => {
   it("blocks exact-window pointer dispatch in the shared signed bundle", () => {
-    const routes = getAppControlRouteMatrix({
-      globalPhysicalFallbackEnabled: false,
-    });
+    const routes = getAppControlRouteMatrix();
     expect(
       routes.find((route) => route.id === "exact_window_pointer"),
     ).toMatchObject({
@@ -44,24 +42,16 @@ describe("app-control route policy", () => {
     });
   });
 
-  it("never enables global physical input implicitly", () => {
-    const disabled = getAppControlRouteMatrix({
-      globalPhysicalFallbackEnabled: false,
-    });
-    const optedIn = getAppControlRouteMatrix({
-      globalPhysicalFallbackEnabled: true,
-    });
+  it("keeps global physical input policy-blocked", () => {
+    const routes = getAppControlRouteMatrix();
     expect(
-      disabled.find((route) => route.id === "global_physical_pointer"),
+      routes.find((route) => route.id === "global_physical_pointer"),
     ).toMatchObject({
-      status: "disabled_by_default",
+      status: "policy_blocked",
       deliveryScope: "host_global",
       exactWindowDelivery: false,
       pointerEffect: "physical",
     });
-    expect(
-      optedIn.find((route) => route.id === "global_physical_pointer"),
-    ).toMatchObject({ status: "conditional" });
   });
 
   it("keeps public pointer-free and isolated routes independently visible", () => {

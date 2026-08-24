@@ -2,19 +2,18 @@
 
 import { randomUUID } from "node:crypto";
 import {
-  getAppControlRouteMatrix,
   type AppControlRouteCapability,
+  getAppControlRouteMatrix,
 } from "./route-policy.js";
 import type {
   AppActionOutcome,
   AppActionRequest,
   AppControlAdapter,
-  AppElementBounds,
-  AppExactWindowPointerDispatcher,
-  AppControlGrounder,
   AppControlPermissionState,
   AppDescriptor,
   AppElement,
+  AppElementBounds,
+  AppExactWindowPointerDispatcher,
   AppPointerObserver,
   AppPointerPosition,
   AppState,
@@ -22,9 +21,6 @@ import type {
   ExperimentalExactWindowApprovalReceipt,
   ExperimentalExactWindowAuthorizer,
   NativeAppElement,
-  PhysicalFallbackApprovalReceipt,
-  PhysicalFallbackAuthorizer,
-  PhysicalPointerDriver,
 } from "./types.js";
 
 export class AppControlError extends Error {
@@ -36,8 +32,7 @@ export class AppControlError extends Error {
       | "STALE_APP_STATE"
       | "ELEMENT_NOT_FOUND"
       | "ACTION_NOT_EXPOSED"
-      | "EXPERIMENTAL_EXACT_WINDOW_DENIED"
-      | "PHYSICAL_FALLBACK_DENIED",
+      | "EXPERIMENTAL_EXACT_WINDOW_DENIED",
     message: string,
   ) {
     super(message);
@@ -53,11 +48,8 @@ interface StoredState {
 interface AppControlCoordinatorOptions {
   adapter: AppControlAdapter;
   capture: AppStateCapture;
-  grounder?: AppControlGrounder;
-  pointer?: PhysicalPointerDriver;
   pointerObserver?: AppPointerObserver;
   exactWindowPointer?: AppExactWindowPointerDispatcher;
-  authorizePhysicalFallback?: PhysicalFallbackAuthorizer;
   authorizeExperimentalExactWindow?: ExperimentalExactWindowAuthorizer;
   now?: () => number;
   idFactory?: () => string;
@@ -117,11 +109,8 @@ export class AppControlCoordinator {
   private readonly states = new Map<string, StoredState>();
   private readonly adapter: AppControlAdapter;
   private readonly capture: AppStateCapture;
-  private readonly grounder?: AppControlGrounder;
-  private readonly pointer?: PhysicalPointerDriver;
   private readonly pointerObserver?: AppPointerObserver;
   private readonly exactWindowPointer?: AppExactWindowPointerDispatcher;
-  private readonly authorizePhysicalFallback?: PhysicalFallbackAuthorizer;
   private readonly authorizeExperimentalExactWindow?: ExperimentalExactWindowAuthorizer;
   private readonly now: () => number;
   private readonly idFactory: () => string;
@@ -130,11 +119,8 @@ export class AppControlCoordinator {
   constructor(options: AppControlCoordinatorOptions) {
     this.adapter = options.adapter;
     this.capture = options.capture;
-    this.grounder = options.grounder;
-    this.pointer = options.pointer;
     this.pointerObserver = options.pointerObserver;
     this.exactWindowPointer = options.exactWindowPointer;
-    this.authorizePhysicalFallback = options.authorizePhysicalFallback;
     this.authorizeExperimentalExactWindow =
       options.authorizeExperimentalExactWindow;
     this.now = options.now ?? Date.now;
@@ -306,8 +292,7 @@ export class AppControlCoordinator {
     let executionMode:
       | "semantic_ax"
       | "process_pid_keyboard_cgevent"
-      | "experimental_direct_exact_window"
-      | "guarded_physical" = "semantic_ax";
+      | "experimental_direct_exact_window" = "semantic_ax";
     let nativeResult = await this.adapter.perform(
       stored.publicState.app,
       element,
@@ -326,9 +311,6 @@ export class AppControlCoordinator {
       };
     }
     executionMode = nativeResult.executionMode ?? "semantic_ax";
-    let physicalPointerInput = false;
-    let groundingMode: "set_of_marks" | "ocr" | "element_bounds" | undefined;
-    let fallbackApproval: PhysicalFallbackApprovalReceipt | undefined;
     let experimentalApproval:
       | ExperimentalExactWindowApprovalReceipt
       | undefined;
@@ -412,82 +394,6 @@ export class AppControlCoordinator {
       };
     }
 
-    if (!nativeResult.success) {
-      const match = await this.grounder?.ground(
-        stored.publicState,
-        request,
-        signal,
-      );
-      if (match) {
-        fallbackApproval = await this.approvePhysicalFallback(
-          request,
-          {
-            x: match.x,
-            y: match.y,
-            groundingMode: match.mode,
-          },
-          signal,
-        );
-        executionMode = "guarded_physical";
-        groundingMode = match.mode;
-        if (request.kind === "click") {
-          await this.pointer?.click(match.x, match.y);
-        } else if (request.kind === "scroll") {
-          await this.pointer?.scroll(
-            match.x,
-            match.y,
-            request.direction ?? "down",
-            request.amount ?? 3,
-          );
-        } else {
-          throw new AppControlError(
-            "PHYSICAL_FALLBACK_DENIED",
-            `Physical fallback is not supported for ${request.kind}`,
-          );
-        }
-        physicalPointerInput = true;
-        nativeResult = {
-          success: true,
-          targetPid: stored.publicState.app.pid,
-          targetWindowId: expectedWindowId,
-        };
-      } else if (
-        request.allowPhysicalFallback &&
-        this.pointer &&
-        element?.bounds
-      ) {
-        const x = element.bounds.x + element.bounds.width / 2;
-        const y = element.bounds.y + element.bounds.height / 2;
-        fallbackApproval = await this.approvePhysicalFallback(
-          request,
-          {
-            x,
-            y,
-            groundingMode: "element_bounds",
-          },
-          signal,
-        );
-        executionMode = "guarded_physical";
-        groundingMode = "element_bounds";
-        if (request.kind === "click") await this.pointer?.click(x, y);
-        else if (request.kind === "scroll") {
-          await this.pointer?.scroll(
-            x,
-            y,
-            request.direction ?? "down",
-            request.amount ?? 3,
-          );
-        } else {
-          return { success: false, error: nativeResult.error };
-        }
-        physicalPointerInput = true;
-        nativeResult = {
-          success: true,
-          targetPid: stored.publicState.app.pid,
-          targetWindowId: expectedWindowId,
-        };
-      }
-    }
     if (!nativeResult.success)
       return { success: false, error: nativeResult.error };
 
@@ -557,15 +463,11 @@ export class AppControlCoordinator {
           : {}),
         completedAt: new Date(this.now()).toISOString(),
         changed,
-        physicalPointerInput,
+        physicalPointerInput: false,
         physicalPointerMoved: pointerObservation === "changed",
         pointerObservation,
         ...(pointerBefore ? { pointerBefore } : {}),
         ...(pointerAfter ? { pointerAfter } : {}),
-        ...(groundingMode ? { groundingMode } : {}),
-        ...(fallbackApproval
-          ? { physicalFallbackApproval: fallbackApproval }
-          : {}),
         ...(experimentalApproval
           ? { experimentalExactWindowApproval: experimentalApproval }
           : {}),
@@ -578,44 +480,6 @@ export class AppControlCoordinator {
           : {}),
       },
     };
-  }
-
-  private async approvePhysicalFallback(
-    request: AppActionRequest,
-    target: AppPointerPosition & {
-      groundingMode: "set_of_marks" | "ocr" | "element_bounds";
-    },
-    signal?: AbortSignal,
-  ): Promise<PhysicalFallbackApprovalReceipt> {
-    if (
-      !request.allowPhysicalFallback ||
-      !this.pointer ||
-      !this.authorizePhysicalFallback ||
-      request.element_index === undefined ||
-      (request.kind !== "click" && request.kind !== "scroll")
-    ) {
-      throw new AppControlError(
-        "PHYSICAL_FALLBACK_DENIED",
-        "A target was grounded, but physical input requires a distinct action-time approval",
-      );
-    }
-    const pointer = await this.readPointerPosition();
-    if (!pointer) {
-      throw new AppControlError(
-        "PHYSICAL_FALLBACK_DENIED",
-        "Physical input was blocked because pointer provenance is unavailable",
-      );
-    }
-    return this.authorizePhysicalFallback(
-      {
-        appId: request.app,
-        kind: request.kind,
-        element_index: request.element_index,
-        groundingMode: target.groundingMode,
-        target: { x: target.x, y: target.y },
-      },
-      signal,
-    );
   }
 
   private async approveExperimentalExactWindow(
@@ -688,8 +552,8 @@ export class AppControlCoordinator {
         ? position
         : undefined;
     } catch {
-      // error-policy:J4 pointer provenance is explicit as unavailable; a
-      // physical fallback still fails closed in approvePhysicalFallback.
+      // error-policy:J4 pointer provenance is explicit as unavailable; the
+      // exact-window experiment requires an observed unchanged pointer.
       return undefined;
     }
   }

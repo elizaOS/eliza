@@ -84,13 +84,12 @@ export class ComputerUseApprovalManager {
   private mode: ApprovalMode = "smart_approve";
   private pending = new Map<string, PendingApprovalRecord>();
   private listeners = new Set<ApprovalListener>();
-  private readonly configPath = path.join(
-    os.homedir(),
-    ".eliza",
-    "computer-use-approval.json",
-  );
+  private readonly configPath: string;
 
   constructor() {
+    this.configPath =
+      process.env.ELIZA_COMPUTERUSE_APPROVAL_CONFIG_PATH?.trim() ||
+      path.join(os.homedir(), ".eliza", "computer-use-approval.json");
     this.loadConfig();
   }
 

@@ -56,7 +56,7 @@ describe("macOS AX helper packaging", () => {
     expect(source).toContain("[redacted]");
   });
 
-  it("keeps global physical input behind opt-in and a distinct approval", () => {
+  it("has no app-scoped global HID fallback", () => {
     const defaults = readFileSync(
       `${packageRoot}/src/app-control/defaults.ts`,
       "utf8",
@@ -65,14 +65,14 @@ describe("macOS AX helper packaging", () => {
       `${packageRoot}/src/services/computer-use-service.ts`,
       "utf8",
     );
-    expect(defaults).toContain(
-      'OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS === "1"',
+    const tools = readFileSync(`${packageRoot}/src/mcp/tools.ts`, "utf8");
+    expect(defaults).not.toContain("driverClick");
+    expect(defaults).not.toContain("driverScroll");
+    expect(service).not.toContain(
+      "OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS",
     );
-    expect(service).toContain(
-      'process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS !== "1"',
-    );
-    expect(service).toContain('"app_physical_pointer_fallback"');
-    expect(service).toContain("requestApproval(");
+    expect(service).not.toContain("app_physical_pointer_fallback");
+    expect(tools).not.toContain("allowPhysicalFallback");
   });
 
   it("keeps private window dispatch out of the shared signed helper", () => {

@@ -5,8 +5,8 @@ Desktop automation for elizaOS agents — screenshots, mouse/keyboard control, b
 The macOS app-control lane is distinct from raw desktop input. It exposes
 running-app discovery, screenshot plus Accessibility state/diffs, ephemeral
 `element_index` targets, and app-scoped AX/PID actions. Dispatch is semantic AX
-first, registered Set-of-Marks/OCR second, and approval-gated physical-pointer
-fallback last. The orange target overlay is virtual; planning and hover must
+first; registered Set-of-Marks/OCR remains descriptive and never falls through
+to global HID. The orange target overlay is virtual; planning and hover must
 never invoke the physical input driver. The native helper checks Accessibility
 trust without prompting and must fail closed when helper or permission is
 unavailable.

@@ -17,13 +17,17 @@ import type { DisplayCapture } from "../platform/capture.js";
 import { pngDimensions } from "../scene/dhash.js";
 import type { Scene } from "../scene/scene-types.js";
 import { ComputerUseService } from "../services/computer-use-service.js";
+import {
+  approveExactManualDemoAction,
+  manualDemoEnabled,
+} from "./computeruse-manual-demo-contract.js";
 
 const SAFE_BUTTON_BOUNDS = [80, 80, 240, 64] as const;
-const HAS_CEREBRAS_KEY = Boolean(process.env.CEREBRAS_API_KEY?.trim());
+const MANUAL_DEMO_ENABLED = manualDemoEnabled();
 
-if (!HAS_CEREBRAS_KEY) {
+if (!MANUAL_DEMO_ENABLED) {
   process.env.SKIP_REASON ||=
-    "missing CEREBRAS_API_KEY for live computer-use vision fixture";
+    "Cerebras computer-use manual demo lacks its exact fixture-only approval fingerprint";
 }
 
 const FIXTURE_HTML = `<!doctype html>
@@ -135,7 +139,7 @@ function captureFromFrame(data: string): {
   };
 }
 
-(HAS_CEREBRAS_KEY ? it : it.skip)(
+(MANUAL_DEMO_ENABLED ? it : it.skip)(
   "uses real Cerebras pixels to plan only the authorized fixture action and verify it",
   async () => {
     const harness = await buildLiveHarness({
@@ -193,15 +197,28 @@ function captureFromFrame(data: string): {
         SAFE_BUTTON_BOUNDS[1] + SAFE_BUTTON_BOUNDS[3],
       );
 
-      const completed = await service.executeSessionAction(session.id, {
+      const pointerBefore = await service.executeCommand("get_cursor_position");
+      expect(pointerBefore.success).toBe(true);
+      const parameters = {
+        coordinate: [plan.proposed.x, plan.proposed.y],
+      };
+      service.setApprovalMode("approve_all");
+      const completion = service.executeSessionAction(session.id, {
         actionId: "live-cerebras-safe-click",
         expectedSequence: 0,
         observationId: before.provenance.observationId,
         observationSequence: before.provenance.sequence,
         command: "browser_click",
-        parameters: { coordinate: [plan.proposed.x, plan.proposed.y] },
+        parameters,
       });
+      await approveExactManualDemoAction(service, "browser_click", parameters);
+      const completed = await completion;
       expect(completed.result).toMatchObject({ success: true });
+      const pointerAfter = await service.executeCommand("get_cursor_position");
+      expect(pointerAfter).toMatchObject({
+        success: true,
+        data: pointerBefore.data,
+      });
 
       const dom = await service.executeCommand("browser_get_dom");
       expect(dom.content).toContain("State: verified");
@@ -224,6 +241,7 @@ function captureFromFrame(data: string): {
       });
       expect(verification.proposed_action.kind).toBe("finish");
     } finally {
+      service.setApprovalMode("full_control");
       await service.executeCommand("browser_close");
       await service.stop();
       await new Promise<void>((resolve) => server.close(() => resolve()));

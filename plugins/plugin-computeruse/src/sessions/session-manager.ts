@@ -169,28 +169,10 @@ function sanitizeViewerUrl(value: string | undefined): string | undefined {
   return parsed.toString();
 }
 
-function isPointerPosition(
-  value: unknown,
-): value is { x: number; y: number } {
+function isPointerPosition(value: unknown): value is { x: number; y: number } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const position = value as Record<string, unknown>;
   return typeof position.x === "number" && typeof position.y === "number";
-}
-
-function isFallbackApproval(value: unknown): value is {
-  approvalId: string;
-  requestedAt: string;
-  approvedAt: string;
-  mode: string;
-} {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const approval = value as Record<string, unknown>;
-  return (
-    typeof approval.approvalId === "string" &&
-    typeof approval.requestedAt === "string" &&
-    typeof approval.approvedAt === "string" &&
-    typeof approval.mode === "string"
-  );
 }
 
 function normalizeTarget(
@@ -264,13 +246,6 @@ function cloneSnapshot(session: MutableSession): ComputerUseSessionSnapshot {
               : {}),
             ...(snapshot.lastReceipt.pointerAfter
               ? { pointerAfter: { ...snapshot.lastReceipt.pointerAfter } }
-              : {}),
-            ...(snapshot.lastReceipt.physicalFallbackApproval
-              ? {
-                  physicalFallbackApproval: {
-                    ...snapshot.lastReceipt.physicalFallbackApproval,
-                  },
-                }
               : {}),
           },
         }
@@ -804,13 +779,6 @@ export class ComputerUseSessionManager {
         : {}),
       ...(typeof receipt.groundingMode === "string"
         ? { groundingMode: receipt.groundingMode }
-        : {}),
-      ...(isFallbackApproval(receipt.physicalFallbackApproval)
-        ? {
-            physicalFallbackApproval: {
-              ...receipt.physicalFallbackApproval,
-            },
-          }
         : {}),
       ...(typeof receipt.clipboardRestored === "boolean"
         ? { clipboardRestored: receipt.clipboardRestored }

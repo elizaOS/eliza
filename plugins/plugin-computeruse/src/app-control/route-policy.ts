@@ -14,10 +14,7 @@ export type AppControlRouteStatus =
   | "disabled_by_default"
   | "policy_blocked";
 
-export type AppControlPointerEffect =
-  | "none"
-  | "software_only"
-  | "physical";
+export type AppControlPointerEffect = "none" | "software_only" | "physical";
 
 export interface AppControlRouteCapability {
   id: AppControlRouteId;
@@ -36,7 +33,6 @@ export interface AppControlRouteCapability {
 }
 
 export interface AppControlRoutePolicyOptions {
-  globalPhysicalFallbackEnabled?: boolean;
   experimentalExactWindowComponentPresent?: boolean;
 }
 
@@ -47,9 +43,6 @@ export interface AppControlRoutePolicyOptions {
 export function getAppControlRouteMatrix(
   options: AppControlRoutePolicyOptions = {},
 ): AppControlRouteCapability[] {
-  const globalPhysicalFallbackEnabled =
-    options.globalPhysicalFallbackEnabled ??
-    process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS === "1";
   const experimentalExactWindowComponentPresent =
     options.experimentalExactWindowComponentPresent ?? false;
 
@@ -126,21 +119,13 @@ export function getAppControlRouteMatrix(
     },
     {
       id: "global_physical_pointer",
-      status: globalPhysicalFallbackEnabled
-        ? "conditional"
-        : "disabled_by_default",
+      status: "policy_blocked",
       deliveryScope: "host_global",
       pointerEffect: "physical",
       exactWindowDelivery: false,
-      reason: globalPhysicalFallbackEnabled
-        ? "Global host input is available only as a supervised fallback with a distinct action-time approval."
-        : "Global host input is disabled until the operator explicitly opts in; no app-control route may enable it implicitly.",
-      requirements: [
-        "operator environment opt-in",
-        "explicit request",
-        "pointer provenance",
-        "distinct action-time approval",
-      ],
+      reason:
+        "App-scoped control has no host-global HID fallback; semantic AX, CDP, and the isolated direct-only experiment fail closed instead.",
+      requirements: ["unsupported by app-scoped control policy"],
     },
   ];
 }

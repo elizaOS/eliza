@@ -98,18 +98,13 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
   {
     name: "computer_app_click",
     description:
-      "Click an app element by fresh state-bound element_index; semantic AX action is attempted before guarded visual fallback.",
+      "Click an app element by fresh state-bound element_index; semantic AX is required unless the separately approved direct-only exact-window experiment is explicitly selected.",
     command: "app_click",
     destructive: true,
     properties: {
       app: APP,
       stateId: STATE_ID,
       element_index: ELEMENT_INDEX,
-      allowPhysicalFallback: {
-        type: "boolean",
-        description:
-          "Request the approval-gated last-resort physical pointer fallback.",
-      },
       allowExperimentalExactWindow: {
         type: "boolean",
         description:
@@ -172,7 +167,7 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
   {
     name: "computer_app_scroll",
     description:
-      "Scroll an app element using exposed AX actions before guarded visual fallback.",
+      "Scroll an app element using exposed AX actions or the separately approved direct-only exact-window experiment; no global HID fallback exists.",
     command: "app_scroll",
     destructive: true,
     properties: {
@@ -181,11 +176,6 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
       element_index: ELEMENT_INDEX,
       direction: { type: "string", description: "up | down | left | right" },
       amount: { type: "number", description: "Requested scroll amount." },
-      allowPhysicalFallback: {
-        type: "boolean",
-        description:
-          "Request the approval-gated last-resort physical pointer fallback.",
-      },
       allowExperimentalExactWindow: {
         type: "boolean",
         description:

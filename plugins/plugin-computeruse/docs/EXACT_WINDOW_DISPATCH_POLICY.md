@@ -35,7 +35,7 @@ and private symbol names.
 | PID keyboard | Process | None | Conditional | One eligible same-PID window, exact binding unchanged, indexed target changed |
 | Experimental direct exact-window pointer | Exact `(pid, CGWindowID)` candidate | Intended none; signed proof pending | Direct-only, disabled by default | Runtime symbol probe, exact stale/bounds checks, pointer before/after, and action-specific target readback |
 | Isolated target | Sandbox, VM, or remote guest | Guest-local/software | Conditional | Backend must provide target-bound observation and action receipt |
-| Global physical pointer | Host global | Moves the one system pointer | Disabled by default | Environment opt-in, explicit request, pointer provenance, separate approval |
+| Global physical pointer | Host global | Moves the one system pointer | Policy blocked | No request or driver route is registered |
 
 PID mouse or scroll events are not an exact-window route and are not present in
 the native helper. PID keyboard events are likewise never described as
@@ -71,8 +71,8 @@ mutation or generic screenshot delta is not success. Missing symbols,
 stale/ambiguous targets, unavailable provenance, or pointer movement return
 refusal and never fall through implicitly.
 
-Global HID posting is absent from the component. Global physical fallback
-remains a later, separately opted-in and separately approved route.
+Global HID posting is absent from the component and from the app-control
+coordinator. Refusal never falls through to a host-global route.
 
 ## Distribution and acceptance boundary
 
