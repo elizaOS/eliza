@@ -1,8 +1,8 @@
 /**
  * Core text generation for the z.ai handlers. `resolveTextParams` maps
- * `GenerateTextParams` to the AI SDK call — selecting the per-size model, caching
- * per-size max-token caps (4096 for `air`/`flash`, 8192 otherwise), and folding
- * in the resolved thinking config. `generateTextWithModel` runs the call and
+ * `GenerateTextParams` to the AI SDK call — selecting the per-size model,
+ * preserving an explicitly supplied output limit, and folding in the resolved
+ * thinking config. `generateTextWithModel` runs the call and
  * emits `MODEL_USED` with token usage.
  *
  * Thinking mode is injected at the HTTP fetch layer via `createZaiRequestFetch`
@@ -10,7 +10,7 @@
  * expects a top-level `thinking` body field the SDK does not natively emit.
  */
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger, ModelType } from "@elizaos/core";
+import { assertModelOutputComplete, ElizaError, logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
 import { createZaiClient, type ZaiFetch } from "../providers";
 import { createModelName, type ModelName, type ModelSize } from "../types";
@@ -47,7 +47,6 @@ function resolveRequestedModelName(params: GenerateTextParams, fallback: ModelNa
 
 function resolveTextParams(
   params: GenerateTextParams,
-  modelName: ModelName,
   thinking: ZaiThinkingConfig | null
 ): ResolvedTextParams {
   const prompt = params.prompt ?? "";
@@ -66,8 +65,7 @@ function resolveTextParams(
   const temperature = params.temperature ?? 0.7;
   const topP = topPExplicit ? (params.topP ?? 0.9) : undefined;
 
-  const defaultMaxTokens = modelName.includes("air") || modelName.includes("flash") ? 4096 : 8192;
-  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? defaultMaxTokens);
+  const maxTokens = params.omitMaxTokens ? undefined : params.maxTokens;
 
   const rawProviderOptions = rawParams.providerOptions;
   const providerOptions: ProviderOptions =
@@ -127,7 +125,7 @@ async function generateTextWithModel(
   }
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
   const thinking = getThinkingConfig(runtime, modelSize);
-  const resolved = resolveTextParams(params, modelName, thinking);
+  const resolved = resolveTextParams(params, thinking);
   const requestFetch = createZaiRequestFetch(thinking, (runtime.fetch ?? fetch) as ZaiFetch);
   const zai = createZaiClient(runtime, { fetch: requestFetch });
 
@@ -156,6 +154,12 @@ async function generateTextWithModel(
   const { text, usage, finishReason } = await generateText(
     generateParams as Parameters<typeof generateText>[0]
   );
+
+  assertModelOutputComplete({
+    finishReason,
+    provider: "z.ai",
+    model: modelName,
+  });
 
   // An empty completion is a provider failure (moderation, truncation,
   // upstream bug) — never a legitimate result for this prompt-only handler.

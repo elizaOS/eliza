@@ -505,40 +505,6 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 
 export const IMAGE_GENERATION_TEMPLATE = imageGenerationTemplate;
 
-export const initialSummarizationTemplate = `# Task: Summarize Conversation
-
-Create a concise summary capturing key points, topics, and details.
-
-# Recent Messages
-{{recentMessages}}
-
-# Instructions
-Generate a summary that:
-1. Captures main topics
-2. Highlights key information
-3. Notes decisions and questions
-4. Maintains context for future reference
-5. Concise but comprehensive
-
-**Keep summary under 2500 tokens.**
-
-Also extract:
-- **Topics**: main topics (comma-separated)
-- **Key Points**: important facts or decisions (bullets)
-
-JSON:
-text: Your comprehensive summary here
-topics[0]: topic1
-topics[1]: topic2
-topics[2]: topic3
-keyPoints[0]: First key point
-keyPoints[1]: Second key point
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
-
-export const INITIAL_SUMMARIZATION_TEMPLATE = initialSummarizationTemplate;
-
 export const longTermExtractionTemplate = `# Task: Extract Long-Term Memory (Strict)
 
 Extract ONLY critical, persistent user info using cognitive memory categories.
@@ -649,7 +615,7 @@ Skills, workflows, methodologies, how-to.
 2. Require overwhelming evidence
 3. Focus on PERSISTENT facts
 4. Verify against existing memories
-5. Max 2-3 extractions per run
+5. Return every qualifying extraction; never drop one to satisfy an item count
 
 If no qualifying facts (common), return no memories entries.
 
@@ -674,7 +640,7 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
 
 export const memoryContextQaTemplate = `Answer only from the provided context. If context is insufficient, say so explicitly.
-Keep the answer under 120 words.
+Return the complete answer supported by the context.
 
 Query: {{query}}
 
@@ -765,16 +731,16 @@ Domain routing (when context is available):
 Otherwise: list relevant context ids. If only general exists and tool needed, use contexts=["general"].
 
 Optional fields:
-- candidateActions: <=12 action-like retrieval hints ("send_email", "calendar_create_event", "search_documents", "play_music"). Hints, not tool calls.
-- parentActionHints: <=6 parent action names when explicit/high-confidence. Omit over guess.
-- contextSlices: <=12 visible stable retrieval slice ids. Never invent.
+- candidateActions: every relevant action-like retrieval hint ("send_email", "calendar_create_event", "search_documents", "play_music"). Hints, not tool calls.
+- parentActionHints: every explicit, high-confidence parent action name. Omit guesses.
+- contextSlices: every relevant visible stable retrieval slice id. Never invent.
 
 thought is internal rationale, not shown to user.
 
 extract OPTIONAL. Populate ONLY durable fact about user/person/relationship.
 - worth extracting: "my birthday is March 5", "Alice is my manager", "I live in Brooklyn"
 - skip: questions, requests, ephemeral state, agent self-talk, anything obvious from agent persona
-- extract.facts: self-contained facts, user voice, ~120 chars max
+- extract.facts: complete self-contained facts in the user's voice
 - extract.relationships: subject-predicate-object; short entities; snake_case predicate
 - extract.addressedTo: UUIDs preferred or participant names addressed. Agent id/name when user talks to agent; other participant by name/@mention. Empty/omit if broadcast/unclear. Do not guess.
 - omit extract when no durable fact/addressee. Never invent.
@@ -798,7 +764,7 @@ Categories to look for:
 - Standing instructions (things they always/never want)
 - Patterns (recurring topics, how they like to work)
 
-Return a JSON array of short observation strings (max 150 chars each).
+Return a JSON array containing every complete durable observation.
 If nothing meaningful is found, return an empty array [].
 Do NOT include observations about the conversation itself, only about the user.
 
@@ -1276,42 +1242,6 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
 
 export const UPDATE_SETTINGS_TEMPLATE = updateSettingsTemplate;
-
-export const updateSummarizationTemplate = `# Task: Update and Condense Conversation Summary
-
-Update an existing summary with new messages, keeping it concise.
-
-# Existing Summary
-{{existingSummary}}
-
-# Existing Topics
-{{existingTopics}}
-
-# New Messages Since Last Summary
-{{newMessages}}
-
-# Instructions
-Update by:
-1. Merging existing summary with new-message insights
-2. Removing redundant or less important details
-3. Keeping the most important context and decisions
-4. Adding new topics as they emerge
-5. **Keep ENTIRE updated summary under 2500 tokens**
-
-Goal: rolling summary that captures conversation essence without growing indefinitely.
-
-JSON:
-text: Your updated and condensed summary here
-topics[0]: topic1
-topics[1]: topic2
-topics[2]: topic3
-keyPoints[0]: First key point
-keyPoints[1]: Second key point
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
-`;
-
-export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
 
 export const booleanFooter = "Respond with only a YES or a NO.";
 

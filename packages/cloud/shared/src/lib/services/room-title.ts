@@ -1,4 +1,5 @@
 // Coordinates cloud service room title behavior behind route handlers.
+import { assertModelOutputComplete } from "@elizaos/core";
 import { generateText } from "ai";
 import { memoriesRepository, roomsRepository } from "../../db/repositories";
 import { getLanguageModel } from "../providers/language-model";
@@ -63,20 +64,23 @@ Title:`;
       model: getLanguageModel("openai/gpt-5-mini"),
       prompt,
     });
+    assertModelOutputComplete({
+      finishReason: result.finishReason,
+      provider: "openai",
+      model: "gpt-5-mini",
+    });
 
     // Normalizes the generated title
     title = result.text
       .trim()
       .replace(/^["']|["']$/g, "") // Remove quotes
       .replace(/^Title:\s*/i, "") // Remove "Title:" prefix if present
-      .replace(/[.!?]$/, "") // Remove trailing punctuation
-      .split("\n")[0] // Take only first line
-      .slice(0, 50); // Limit length
+      .replace(/[.!?]$/, ""); // Remove trailing punctuation
 
     logger.info(`[RoomTitle] AI generated: "${title}"`);
 
     // Validate title is reasonable
-    if (!title || title.length < 3 || title.length > 50) {
+    if (!title || title.length < 3 || title.length > 50 || title.includes("\n")) {
       logger.warn(`[RoomTitle] Invalid AI title, using fallback`);
       title = generateFallbackTitle(text);
     }

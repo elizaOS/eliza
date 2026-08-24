@@ -92,7 +92,6 @@ import {
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
 import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
-import { isProgressiveContentProjectionEnabled } from "../runtime/content-projection-policy";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -320,7 +319,6 @@ import {
 } from "../utils";
 import {
 	collectActionResultSizeWarnings,
-	formatActionResultsForPrompt,
 	trimActionResultForPromptState,
 } from "../utils/action-results";
 import {
@@ -402,8 +400,6 @@ export {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 };
-
-const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 
 /**
  * Per-agent reply-length budget (#16395): a positive-integer `max_tokens`
@@ -5098,20 +5094,20 @@ function renderMessageHandlerModelInput(
 		...dynamicProviderSegments,
 		...turnTailSegments,
 	];
-	const promptSegments = normalizePromptSegments([
+	const stableWireSegments = [
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
+	];
+	const promptSegments = normalizePromptSegments([
+		...stableWireSegments,
 		...orderedDynamicSegments,
 	]);
-	const systemContent = normalizePromptSegments([
-		...stableSegments,
-		{ content: `message_handler_stage:\n${instructions}`, stable: true },
-	])
-		.map(segmentBlock)
-		.join("\n\n");
-	const userContent = normalizePromptSegments(orderedDynamicSegments)
-		.map(segmentBlock)
-		.join("\n\n");
+	// `normalizePromptSegments` embeds separators in segment content for cache
+	// consumers that concatenate the array. Render message blocks from the raw
+	// segments so those separators remain between labeled blocks instead of
+	// becoming extra whitespace inside a block's content.
+	const systemContent = stableWireSegments.map(segmentBlock).join("\n\n");
+	const userContent = orderedDynamicSegments.map(segmentBlock).join("\n\n");
 	return {
 		messages: [
 			{ role: "system", content: systemContent },
@@ -5187,10 +5183,10 @@ export async function renderMessageHandlerStablePrefix(
 		availableContexts,
 		{ directMessage: true },
 	);
-	return normalizePromptSegments([
+	return [
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
-	])
+	]
 		.map(segmentBlock)
 		.join("\n\n");
 }
@@ -8308,9 +8304,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				.eliza ?? {}),
 			thinking: "off",
 		};
-		// Per-agent reply-length budget (#16395): when set it caps every channel
-		// (including DMs) with a real max_tokens; otherwise the existing per-channel
-		// default applies unchanged.
+		// An operator may explicitly cap every channel with a real max_tokens.
+		// Without that setting the selected provider/model owns the output boundary.
 		const maxReplyTokens = resolveMaxReplyTokens(
 			args.runtime.character.settings,
 		);
@@ -8319,15 +8314,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			// Direct/DM/API Stage 1 packs the whole answer into `replyText`. We don't
-			// cap it: a hardcoded ceiling 400s on any model whose real limit differs
-			// and truncates long single-turn replies. `omitMaxTokens` tells adapters
-			// to use provider/model-max output instead of the runtime default; group
-			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
-			maxTokens:
-				maxReplyTokens ??
-				(directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS),
-			omitMaxTokens: maxReplyTokens == null && directMessageChannel,
+			// Stage 1 packs the whole answer into `replyText`; a hidden channel default
+			// can cut the structured envelope off mid-generation.
+			maxTokens: maxReplyTokens,
+			omitMaxTokens: maxReplyTokens == null,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known. User-visible `replyText`
@@ -12468,13 +12458,9 @@ async function rewriteActionCallbackInCharacter(args: {
 export function withActionResultsForPrompt(
 	state: State,
 	actionResults: ActionResult[],
-	runtime?: IAgentRuntime,
+	_runtime?: IAgentRuntime,
 ): State {
-	const promptActionResults = isProgressiveContentProjectionEnabled(runtime)
-		? renderActionResultsForModel(actionResults, {
-				omitRecoverableText: true,
-			}).text
-		: formatActionResultsForPrompt(actionResults);
+	const promptActionResults = renderActionResultsForModel(actionResults).text;
 	return {
 		...state,
 		values: {

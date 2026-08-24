@@ -39,19 +39,61 @@ function toArray<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOptionalBoolean(
+  value: Record<string, unknown>,
+  key: keyof Pick<
+    BrowserTaskShape,
+    "completed" | "needsHuman" | "approvalRequired" | "approvalSatisfied"
+  >,
+): boolean {
+  return value[key] === undefined || typeof value[key] === "boolean";
+}
+
+function hasOptionalCount(
+  value: Record<string, unknown>,
+  key: keyof Pick<
+    BrowserTaskShape,
+    | "artifactCount"
+    | "uploadedAssetCount"
+    | "interventionCount"
+    | "provenanceCount"
+  >,
+): boolean {
+  const count = value[key];
+  return (
+    count === undefined ||
+    (typeof count === "number" && Number.isInteger(count) && count >= 0)
+  );
+}
+
+function isBrowserTaskShape(
+  value: Record<string, unknown>,
+): value is BrowserTaskShape {
+  return (
+    hasOptionalBoolean(value, "completed") &&
+    hasOptionalBoolean(value, "needsHuman") &&
+    hasOptionalBoolean(value, "approvalRequired") &&
+    hasOptionalBoolean(value, "approvalSatisfied") &&
+    hasOptionalCount(value, "artifactCount") &&
+    hasOptionalCount(value, "uploadedAssetCount") &&
+    hasOptionalCount(value, "interventionCount") &&
+    hasOptionalCount(value, "provenanceCount") &&
+    (value.blockedReason === undefined ||
+      value.blockedReason === null ||
+      typeof value.blockedReason === "string")
+  );
+}
+
 function extractBrowserTask(action: CapturedAction): BrowserTaskShape | null {
-  const data =
-    action.result?.data && typeof action.result.data === "object"
-      ? (action.result.data as Record<string, unknown>)
-      : null;
-  const browserTask =
-    data?.browserTask && typeof data.browserTask === "object"
-      ? (data.browserTask as Record<string, unknown>)
-      : null;
-  if (!browserTask) {
+  const data = action.result?.data;
+  if (!isRecord(data) || !isRecord(data.browserTask)) {
     return null;
   }
-  return browserTask as BrowserTaskShape;
+  return isBrowserTaskShape(data.browserTask) ? data.browserTask : null;
 }
 
 function matchesActionFilter(actionName: string, filters: string[]): boolean {

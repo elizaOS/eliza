@@ -1761,7 +1761,6 @@ function dedupeCandidates(candidates: SendCandidate[]): SendCandidate[] {
 
 function formatCandidates(candidates: SendCandidate[]): string {
 	return candidates
-		.slice(0, 6)
 		.map((c, i) => {
 			const kind = c.kind ? ` kind=${c.kind}` : "";
 			return `${i + 1}. ${c.label} source=${c.connector.source}${kind} score=${c.score.toFixed(2)} target=${JSON.stringify(c.target)}`;

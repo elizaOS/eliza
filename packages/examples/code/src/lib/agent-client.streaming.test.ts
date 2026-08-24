@@ -1,7 +1,11 @@
 // Exercises the Code example behavior that this module protects.
+/* The package lane uses Bun while the isolated merge-readiness lane uses Vitest.
 import { beforeEach, describe, expect, it } from "bun:test";
+*/
 import {
+  ChannelType,
   type Content,
+  ElizaError,
   FAILED_TOOL_FALLBACK_MESSAGE,
   type HandlerCallback,
   type IAgentRuntime,
@@ -13,6 +17,10 @@ import {
 import type { ChatRoom } from "../types.js";
 import { getAgentClient, resetAgentClient } from "./agent-client.js";
 import type { SessionIdentity } from "./identity.js";
+
+const { beforeEach, describe, expect, it } = process.env.VITEST
+  ? await import("vitest")
+  : await import("bun:test");
 
 interface HandleMessageOptions {
   codingMode?: boolean;
@@ -256,5 +264,380 @@ describe("AgentClient streaming", () => {
       code: "ELIZA_CODE_SYNTHETIC_TURN_FAILURE",
       context: { failureKind: "unknown", transient: false },
     });
+  });
+});
+
+function makePlumbingRuntime(
+  handleMessage: (
+    message: Memory,
+    options: HandleMessageOptions | undefined,
+  ) => Promise<{
+    didRespond: boolean;
+    responseContent?: Content | null;
+    responseMessages: Memory[];
+    terminalFailure?: MessageTerminalFailure;
+  }>,
+): { runtime: IAgentRuntime; connections: Array<Record<string, unknown>> } {
+  const connections: Array<Record<string, unknown>> = [];
+  const runtime = {
+    ensureConnection: async (connection: Record<string, unknown>) => {
+      connections.push(connection);
+    },
+    messageService: {
+      handleMessage: async (
+        _runtime: IAgentRuntime,
+        message: Memory,
+        _callback?: HandlerCallback,
+        options?: HandleMessageOptions,
+      ) => handleMessage(message, options),
+    },
+  } as unknown as IAgentRuntime;
+  return { runtime, connections };
+}
+
+function makeClearingRuntime(): {
+  runtime: IAgentRuntime;
+  clearCalls: Array<{
+    runtime: unknown;
+    elizaRoomId: unknown;
+    channelId: unknown;
+  }>;
+} {
+  const clearCalls: Array<{
+    runtime: unknown;
+    elizaRoomId: unknown;
+    channelId: unknown;
+  }> = [];
+  const runtime = {
+    ensureConnection: async () => {},
+    messageService: {
+      handleMessage: async () => ({ didRespond: false, responseMessages: [] }),
+      clearChannel: async (
+        runtimeArg: unknown,
+        elizaRoomId: unknown,
+        channelId: unknown,
+      ) => {
+        clearCalls.push({ runtime: runtimeArg, elizaRoomId, channelId });
+      },
+    },
+  } as unknown as IAgentRuntime;
+  return { runtime, clearCalls };
+}
+
+describe("AgentClient client lifecycle, turn plumbing, and clearing", () => {
+  beforeEach(() => {
+    resetAgentClient();
+  });
+
+  it("returns the same client until a reset swaps in a fresh instance", () => {
+    const first = getAgentClient();
+    expect(getAgentClient()).toBe(first);
+
+    resetAgentClient();
+
+    expect(getAgentClient()).not.toBe(first);
+  });
+
+  it("rejects a send while no runtime is attached", async () => {
+    await expect(
+      getAgentClient().sendMessage({
+        room: makeRoom(),
+        text: "hello",
+        identity: makeIdentity(),
+      }),
+    ).rejects.toThrow("Runtime not initialized");
+  });
+
+  it("applies default user name, source, and DM channel type to the turn", async () => {
+    const identity = makeIdentity();
+    const room = makeRoom();
+    let seenMemory: Memory | undefined;
+    let seenOptions: HandleMessageOptions | undefined;
+
+    const { runtime, connections } = makePlumbingRuntime(
+      async (message, options) => {
+        seenMemory = message;
+        seenOptions = options;
+        return { didRespond: true, responseMessages: [] };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room,
+      text: "status",
+      identity,
+    });
+
+    expect(response).toBe("");
+    expect(connections).toHaveLength(1);
+    expect(connections[0]).toMatchObject({
+      entityId: identity.userId,
+      roomId: room.elizaRoomId,
+      worldId: identity.worldId,
+      userName: "User",
+      source: "eliza-code",
+      type: ChannelType.DM,
+      channelId: room.id,
+      messageServerId: identity.messageServerId,
+    });
+    expect(seenMemory?.entityId).toBe(identity.userId);
+    expect(seenMemory?.roomId).toBe(room.elizaRoomId);
+    expect(seenMemory?.content).toMatchObject({
+      text: "status",
+      source: "eliza-code",
+      channelType: ChannelType.DM,
+    });
+    expect(seenOptions).toBeUndefined();
+  });
+
+  it("honours explicit user name, source, and channel type overrides", async () => {
+    const identity = makeIdentity();
+    const room = makeRoom();
+    let seenMemory: Memory | undefined;
+
+    const { runtime, connections } = makePlumbingRuntime(async (message) => {
+      seenMemory = message;
+      return { didRespond: true, responseMessages: [] };
+    });
+
+    getAgentClient().setRuntime(runtime);
+    await getAgentClient().sendMessage({
+      room,
+      text: "deploy check",
+      identity,
+      userName: "Avery",
+      source: "cockpit-test",
+      channelType: ChannelType.GROUP,
+    });
+
+    expect(connections[0]).toMatchObject({
+      userName: "Avery",
+      source: "cockpit-test",
+      type: ChannelType.GROUP,
+    });
+    expect(seenMemory?.content).toMatchObject({
+      text: "deploy check",
+      source: "cockpit-test",
+      channelType: ChannelType.GROUP,
+    });
+  });
+
+  it("emits the raw chunk and adopts the accumulated text after divergence", async () => {
+    const deltas: string[] = [];
+
+    const runtime = makeRuntime(
+      async (_runtime, _message, _callback, options) => {
+        await options?.onStreamChunk?.("Hello", "response-id", "Hello");
+        await options?.onStreamChunk?.(
+          "World!",
+          "response-id",
+          "Goodbye world!",
+        );
+        return { didRespond: true, responseMessages: [] };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "greet",
+      identity: makeIdentity(),
+      onDelta: (delta) => deltas.push(delta),
+    });
+
+    expect(deltas).toEqual(["Hello", "World!"]);
+    expect(response).toBe("Goodbye world!");
+  });
+
+  it("skips stream chunks whose accumulation matches the streamed prefix exactly", async () => {
+    const deltas: string[] = [];
+
+    const runtime = makeRuntime(
+      async (_runtime, _message, _callback, options) => {
+        await options?.onStreamChunk?.("Hi", "response-id", "Hi");
+        await options?.onStreamChunk?.("Hi", "response-id", "Hi");
+        return { didRespond: true, responseMessages: [] };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "greet",
+      identity: makeIdentity(),
+      onDelta: (delta) => deltas.push(delta),
+    });
+
+    expect(deltas).toEqual(["Hi"]);
+    expect(response).toBe("Hi");
+  });
+
+  it("appends unrecognised json payloads to the visible transcript instead of dropping them", async () => {
+    const deltas: string[] = [];
+
+    const runtime = makeRuntime(
+      async (_runtime, _message, _callback, options) => {
+        await options?.onStreamChunk?.(
+          '{"type":"mystery_event"}',
+          "response-id",
+        );
+        await options?.onStreamChunk?.('{"broken"', "response-id");
+        return { didRespond: true, responseMessages: [] };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "stream something",
+      identity: makeIdentity(),
+      onDelta: (delta) => deltas.push(delta),
+    });
+
+    expect(deltas).toEqual(['{"type":"mystery_event"}', '{"broken"']);
+    expect(response).toBe('{"type":"mystery_event"}{"broken"');
+  });
+
+  it("recognises structured events behind leading whitespace", async () => {
+    const deltas: string[] = [];
+
+    const runtime = makeRuntime(
+      async (_runtime, _message, callback, options) => {
+        await options?.onStreamChunk?.(
+          '  {"type":"context_event"}',
+          "response-id",
+        );
+        await callback?.({ text: "final answer" });
+        return { didRespond: true, responseMessages: [] };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "stream something",
+      identity: makeIdentity(),
+      onDelta: (delta) => deltas.push(delta),
+    });
+
+    expect(deltas).toEqual(["final answer"]);
+    expect(response).toBe("final answer");
+  });
+
+  it("maps a transient terminal failure to an ephemeral error carrying the failure code", async () => {
+    const runtime = makeRuntime(async () => ({
+      didRespond: false,
+      responseContent: null,
+      responseMessages: [],
+      terminalFailure: {
+        kind: "tool_boundary_failed",
+        code: "TOOL_EXIT_1",
+        transient: true,
+        message: "The tool run aborted.",
+      },
+    }));
+
+    getAgentClient().setRuntime(runtime);
+    await expect(
+      getAgentClient().sendMessage({
+        room: makeRoom(),
+        text: "run a tool",
+        identity: makeIdentity(),
+      }),
+    ).rejects.toMatchObject({
+      code: "ELIZA_CODE_SYNTHETIC_TURN_FAILURE",
+      severity: "ephemeral",
+      context: {
+        failureKind: "tool_boundary_failed",
+        failureCode: "TOOL_EXIT_1",
+        transient: true,
+      },
+    });
+  });
+
+  it("reports non-transient terminal failures as fatal with no failure code", async () => {
+    const runtime = makeRuntime(async () => ({
+      didRespond: false,
+      responseMessages: [],
+      terminalFailure: {
+        kind: "coding_mutation_unverified",
+        transient: false,
+        message: "Verification could not complete.",
+      },
+    }));
+
+    getAgentClient().setRuntime(runtime);
+
+    let caught: unknown;
+    try {
+      await getAgentClient().sendMessage({
+        room: makeRoom(),
+        text: "change a file",
+        identity: makeIdentity(),
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ElizaError);
+    const elizaError = caught as ElizaError;
+    expect(elizaError.severity).toBe("fatal");
+    expect(elizaError.context).toEqual({
+      failureKind: "coding_mutation_unverified",
+      transient: false,
+    });
+  });
+
+  it("falls back to the generic message when a synthetic failure carries blank text", async () => {
+    const runtime = makeRuntime(async () => ({
+      didRespond: true,
+      responseContent: { text: "   \n\t", elizaSyntheticFailure: true },
+      responseMessages: [],
+    }));
+
+    getAgentClient().setRuntime(runtime);
+    await expect(
+      getAgentClient().sendMessage({
+        room: makeRoom(),
+        text: "retry",
+        identity: makeIdentity(),
+      }),
+    ).rejects.toMatchObject({
+      code: "ELIZA_CODE_SYNTHETIC_TURN_FAILURE",
+      message: "The coding-agent turn failed before producing a result.",
+      severity: "fatal",
+      context: { failureKind: "unknown", transient: false },
+    });
+  });
+
+  it("forwards clearConversation to the runtime channel clearer", async () => {
+    const room = makeRoom();
+    const { runtime, clearCalls } = makeClearingRuntime();
+
+    getAgentClient().setRuntime(runtime);
+    await getAgentClient().clearConversation(room);
+
+    expect(clearCalls).toHaveLength(1);
+    expect(clearCalls[0]?.runtime).toBe(runtime);
+    expect(clearCalls[0]?.elizaRoomId).toBe(room.elizaRoomId);
+    expect(clearCalls[0]?.channelId).toBe(room.id);
+  });
+
+  it("treats clearConversation as a no-op when the message service is absent", async () => {
+    const runtime = {
+      ensureConnection: async () => {},
+    } as unknown as IAgentRuntime;
+
+    getAgentClient().setRuntime(runtime);
+    await expect(
+      getAgentClient().clearConversation(makeRoom()),
+    ).resolves.toBeUndefined();
+  });
+
+  it("resolves silently when clearing before any runtime exists", async () => {
+    await expect(
+      getAgentClient().clearConversation(makeRoom()),
+    ).resolves.toBeUndefined();
   });
 });

@@ -24,9 +24,9 @@
  * after the live destination is revalidated as an owner-exclusive DM.
  */
 
+import { buildCrossWorldConversationAccessContext } from "../../../access-context.ts";
 import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
-import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { isInternalBridgeMessage } from "../../../messaging/automated-turns.ts";
 import {
 	markOwnerExclusiveDisclosureUsed,
@@ -346,23 +346,14 @@ const getRecentInteractions = async (
 		}
 		return [];
 	}
-	const sourceEntityIds = await getVerifiedRelatedEntityIds(
+	if (targetEntityId !== runtime.agentId) return [];
+	const accessContext = await buildCrossWorldConversationAccessContext(
 		runtime,
-		message.entityId,
+		message,
 	);
-	// getRoomsForParticipants is a union query (rooms containing ANY supplied
-	// entity), so intersect the identity-cluster rooms with the target's rooms.
-	// Passing both sides to one call would leak unrelated participant rooms into
-	// recentInteractions.
-	const [sourceRooms, targetRooms] = await Promise.all([
-		runtime.getRoomsForParticipants(sourceEntityIds),
-		runtime.getRoomsForParticipant(targetEntityId),
-	]);
-	const targetRoomIds = new Set(targetRooms);
-	const rooms = Array.from(new Set(sourceRooms)).filter((roomId) =>
-		targetRoomIds.has(roomId),
+	const otherRooms = (accessContext.authorizedRoomIds ?? []).filter(
+		(room) => room !== excludeRoomId,
 	);
-	const otherRooms = rooms.filter((room) => room !== excludeRoomId);
 	if (otherRooms.length === 0) {
 		return [];
 	}
@@ -371,6 +362,7 @@ const getRecentInteractions = async (
 	const interactions = await runtime.getMemoriesByRoomIds({
 		tableName: "messages",
 		roomIds: otherRooms,
+		accessContext,
 	});
 	if (interactions.length > 0) {
 		markOwnerExclusiveDisclosureUsed(message);

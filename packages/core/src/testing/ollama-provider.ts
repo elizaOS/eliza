@@ -13,6 +13,7 @@ import type {
 	TextEmbeddingParams,
 } from "../types";
 import { ModelType } from "../types";
+import { assertModelOutputComplete } from "../utils/model-errors";
 
 /** Default Ollama endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
@@ -36,6 +37,7 @@ const ollamaTagsResponseSchema = z.object({
  */
 const ollamaGenerateResponseSchema = z.object({
 	response: z.string(),
+	done_reason: z.string().optional(),
 });
 
 /**
@@ -114,7 +116,9 @@ async function generateTextWithOllama(
 			system: options.system,
 			options: {
 				temperature: options.temperature ?? 0.7,
-				num_predict: options.maxTokens ?? 2048,
+				...(options.maxTokens !== undefined
+					? { num_predict: options.maxTokens }
+					: {}),
 				stop: options.stopSequences,
 			},
 			stream: false,
@@ -138,6 +142,12 @@ async function generateTextWithOllama(
 			`Invalid Ollama response: ${zodError.issues?.map((i: { message: string }) => i.message).join(", ") || zodError.toString() || "Validation failed"}`,
 		);
 	}
+
+	assertModelOutputComplete({
+		finishReason: parseResult.data.done_reason,
+		provider: "ollama-test-provider",
+		model,
+	});
 
 	return parseResult.data.response;
 }

@@ -353,7 +353,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
-		expect(params.maxTokens).toBe(2048);
+		expect(params.maxTokens).toBeUndefined();
+		expect(
+			(params as typeof params & { omitMaxTokens?: boolean }).omitMaxTokens,
+		).toBe(true);
 		expect(params.signal).toBeInstanceOf(AbortSignal);
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
@@ -1100,7 +1103,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect.objectContaining({
 				src: "service:message",
 				finishReason: "length",
-				maxTokens: 2048,
+				maxTokens: undefined,
 			}),
 			"[message] Stage 1 hit the completion-token limit",
 		);
@@ -3658,7 +3661,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				eliza?: {
 					modelInputBudget?: {
 						reserveTokens?: number;
-						shouldCompact?: boolean;
+						shouldReject?: boolean;
 					};
 				};
 			};
@@ -3729,7 +3732,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.providerOptions?.eliza?.modelInputBudget).toMatchObject({
 			reserveTokens: 10_000,
-			shouldCompact: false,
+			shouldReject: false,
 		});
 	});
 
@@ -3816,7 +3819,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		).messages?.[1]?.content;
 		expect(userContent).toContain(priorAttack);
 		expect(userContent).toContain(providerMarker);
-		expect(userContent?.endsWith(currentMessage)).toBe(true);
+		expect(
+			userContent?.endsWith(
+				JSON.stringify({
+					text: currentMessage,
+					source: "test",
+				}),
+			),
+		).toBe(true);
 	});
 
 	it("renders CURRENT_TIME in Stage 1 for every turn, regardless of phrasing", async () => {
@@ -4577,7 +4587,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"prior_message:user:\n1gig: i was asking about shedick",
 		);
 		expect(userContent).toContain(
-			"message:user:\nwhats the compatibility between her and botdick",
+			'message:user:\n{"text":"whats the compatibility between her and botdick","source":"test"}',
 		);
 	});
 

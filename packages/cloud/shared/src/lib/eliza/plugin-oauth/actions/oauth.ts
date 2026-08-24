@@ -309,7 +309,7 @@ async function runGet(
         actionName: "OAUTH",
         op: "get",
         count: active.length,
-        connections: active.slice(0, 10).map((c) => ({
+        connections: active.map((c) => ({
           platform: c.platform,
           status: c.status,
           identifier: formatConnectionIdentifier(c) || "",

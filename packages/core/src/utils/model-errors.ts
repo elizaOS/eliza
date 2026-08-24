@@ -4,6 +4,8 @@
  * Retry logic around model invocations consumes this to decide whether to back
  * off and try again versus surface the failure.
  */
+import { ElizaError } from "../errors";
+
 const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"service temporarily unavailable",
 	"temporarily unavailable",
@@ -30,6 +32,58 @@ export function isTransientModelError(error: unknown): boolean {
 	const message = getErrorMessage(error).toLowerCase();
 	return TRANSIENT_MODEL_ERROR_PATTERNS.some((pattern) =>
 		message.includes(pattern),
+	);
+}
+
+const OUTPUT_LIMIT_FINISH_REASONS = new Set([
+	"length",
+	"max_tokens",
+	"max_output_tokens",
+	"max_completion_tokens",
+	"stop_length",
+	"stopped_limit",
+	"token_limit",
+	"output_limit",
+]);
+
+const INCOMPLETE_FINISH_REASONS = new Set([
+	...OUTPUT_LIMIT_FINISH_REASONS,
+	"content_filter",
+	"error",
+]);
+
+/** True only for provider terminal reasons that explicitly mean output exhaustion. */
+export function isModelOutputLimitFinishReason(reason: unknown): boolean {
+	if (typeof reason !== "string") return false;
+	const normalized = reason
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "_");
+	return OUTPUT_LIMIT_FINISH_REASONS.has(normalized);
+}
+
+/** Reject partial model output instead of returning it as successful context. */
+export function assertModelOutputComplete(options: {
+	finishReason: unknown;
+	provider: string;
+	model?: string;
+}): void {
+	if (typeof options.finishReason !== "string") return;
+	const normalized = options.finishReason
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "_");
+	if (!INCOMPLETE_FINISH_REASONS.has(normalized)) return;
+	throw new ElizaError(
+		`[${options.provider}] Model output did not complete successfully (${String(options.finishReason)}).`,
+		{
+			code: "MODEL_OUTPUT_INCOMPLETE",
+			context: {
+				provider: options.provider,
+				...(options.model ? { model: options.model } : {}),
+				finishReason: options.finishReason,
+			},
+		},
 	);
 }
 

@@ -4,13 +4,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { DOCUMENT_LIST_MAX_LIMIT } from "../../database/document-list-query";
-import { logger } from "../../logger";
 import { type Memory, MemoryType, type UUID } from "../../types";
-import {
-	documentsProvider,
-	PINNED_DOCUMENT_TRUNCATION_MARKER,
-	renderPinnedDocuments,
-} from "./provider";
+import { documentsProvider, renderPinnedDocuments } from "./provider";
 import { DocumentService } from "./service";
 
 const id = (value: string) => value.padEnd(36, "0") as UUID;
@@ -60,13 +55,13 @@ function runtimeWithDocumentQuery(
 	};
 }
 
-function listPinnedDocuments(
+function listAllProviderDocuments(
 	service: DocumentService,
 	agentId = "00000000-0000-0000-0000-0000000000a1" as UUID,
 ): Promise<Memory[]> {
 	return (
 		service as unknown as {
-			listPinnedDocumentsWithRequester(
+			listAllDocumentsWithRequester(
 				resolveRequester: () => Promise<{
 					entityId: UUID;
 					roomIds: UUID[];
@@ -74,7 +69,7 @@ function listPinnedDocuments(
 				}>,
 			): Promise<Memory[]>;
 		}
-	).listPinnedDocumentsWithRequester(async () => ({
+	).listAllDocumentsWithRequester(async () => ({
 		entityId: agentId,
 		roomIds: [],
 		role: "RUNTIME",
@@ -107,9 +102,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		const after = await documentsProvider.get(runtime as never, message);
 		expect(after.text).toContain("ALWAYS TELL THE TRUTH");
 		expect(after.data?.pinnedDocumentIds).toEqual([irrelevant.id]);
-		expect(service.composeProviderDocuments).toHaveBeenLastCalledWith(message, {
-			limit: 25,
-		});
+		expect(service.composeProviderDocuments).toHaveBeenLastCalledWith(message);
 	});
 
 	it("preserves ordinary retrieval snippets for unpinned documents", async () => {
@@ -148,7 +141,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		expect(rendered.truncated).toBe(false);
 	});
 
-	it("injects an authorized pin even when it is outside the recent-document page", async () => {
+	it("injects an authorized pin while retaining the complete document inventory", async () => {
 		const recent = Array.from({ length: 25 }, (_, index) =>
 			document(`Recent ${index}`, `recent ${index}`),
 		);
@@ -157,7 +150,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			getService: vi.fn(() => ({
 				composeProviderDocuments: vi.fn(async () => ({
 					relevantFragments: [],
-					documents: recent,
+					documents: [...recent, olderPinned],
 					pinnedDocuments: [olderPinned],
 				})),
 			})),
@@ -167,11 +160,11 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			document("query", "unrelated query"),
 		);
 		expect(result.text).toContain("NEVER FABRICATE");
-		expect(result.data?.documents).toHaveLength(25);
+		expect(result.data?.documents).toHaveLength(26);
 		expect(result.data?.pinnedDocumentIds).toEqual([olderPinned.id]);
 	});
 
-	it("marks overflow explicitly and emits a warning from the provider", async () => {
+	it("preserves oversized pinned content completely", async () => {
 		const oversized = document("Ground truth", "X".repeat(40_000), true);
 		const runtime = {
 			getService: vi.fn(() => ({
@@ -182,54 +175,35 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 				})),
 			})),
 		};
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
 		const result = await documentsProvider.get(
 			runtime as never,
 			document("query", "unrelated query"),
 		);
-		expect(result.text).toContain(PINNED_DOCUMENT_TRUNCATION_MARKER);
-		expect(result.text).toContain("X".repeat(100));
+		expect(result.text).toContain("X".repeat(40_000));
 		expect(result.text).toContain(`reference document:${oversized.id}`);
-		expect(result.data?.pinnedDocumentsTruncated).toBe(true);
+		expect(result.data?.pinnedDocumentsTruncated).toBe(false);
 		expect(result.data?.pinnedDocumentIds).toEqual([oversized.id]);
-		expect(warn).toHaveBeenCalledWith(
-			expect.objectContaining({ tokenBudget: 8_000 }),
-			expect.stringContaining("explicitly truncated"),
-		);
-		warn.mockRestore();
 	});
 
-	it("keeps fair pinned excerpts and wrappers inside the declared budget", () => {
+	it("preserves every pinned source and wrapper without a shared budget", () => {
 		const documents = Array.from({ length: 25 }, (_, index) =>
 			document(`${index}-${"title".repeat(80)}`, "X".repeat(40_000), true),
 		);
-		const rendered = renderPinnedDocuments(documents, 8_000);
-		expect(rendered.truncated).toBe(true);
+		const rendered = renderPinnedDocuments(documents);
+		expect(rendered.truncated).toBe(false);
 		expect(rendered.includedIds).toHaveLength(25);
-		expect(rendered.text.length).toBeLessThanOrEqual(32_000);
 		for (const item of documents) {
 			expect(rendered.text).toContain(`reference document:${item.id}`);
+			expect(rendered.text).toContain(item.content.text);
 		}
 	});
 
-	it("preserves complete pinned titles and rejects identity-only overflow", () => {
+	it("preserves complete pinned titles regardless of length", () => {
 		const longTitle = `critical-${"owner-authored-title-".repeat(20)}`;
-		const rendered = renderPinnedDocuments(
-			[document(longTitle, "complete source", true)],
-			8_000,
-		);
+		const rendered = renderPinnedDocuments([
+			document(longTitle, "complete source", true),
+		]);
 		expect(rendered.text).toContain(longTitle);
-
-		expect(() =>
-			renderPinnedDocuments(
-				[document(`critical-${"X".repeat(40_000)}`, "source", true)],
-				8_000,
-			),
-		).toThrowError(
-			expect.objectContaining({
-				code: "PINNED_DOCUMENT_IDENTITY_BUDGET_EXCEEDED",
-			}),
-		);
 	});
 
 	it("rejects repeating pagination cursors when listing pinned documents", async () => {
@@ -278,7 +252,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		};
 
 		await expect(
-			service.composeProviderDocuments(message, { limit: 10 }),
+			service.composeProviderDocuments(message),
 		).rejects.toMatchObject({
 			code: "DOCUMENT_LIST_CURSOR_LOOP",
 		});
@@ -302,7 +276,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			runtimeWithDocumentQuery(queryDocumentsMock) as never,
 		);
 
-		await expect(listPinnedDocuments(service)).rejects.toMatchObject({
+		await expect(listAllProviderDocuments(service)).rejects.toMatchObject({
 			code: "DOCUMENT_LIST_INVALID_RESULT",
 		});
 		expect(queryDocumentsMock).toHaveBeenCalledTimes(1);
@@ -323,7 +297,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			runtimeWithDocumentQuery(queryDocumentsMock) as never,
 		);
 
-		await expect(listPinnedDocuments(service)).rejects.toMatchObject({
+		await expect(listAllProviderDocuments(service)).rejects.toMatchObject({
 			code: "DOCUMENT_LIST_INVALID_RESULT",
 		});
 		expect(queryDocumentsMock).toHaveBeenCalledTimes(1);
@@ -372,7 +346,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			runtimeWithDocumentQuery(queryDocumentsMock) as never,
 		);
 
-		await expect(listPinnedDocuments(service)).rejects.toMatchObject({
+		await expect(listAllProviderDocuments(service)).rejects.toMatchObject({
 			code: "DOCUMENT_LIST_CURSOR_LOOP",
 		});
 		expect(pinnedCalls).toBe(2);
@@ -425,7 +399,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			runtimeWithDocumentQuery(queryDocumentsMock) as never,
 		);
 
-		const result = await listPinnedDocuments(service);
+		const result = await listAllProviderDocuments(service);
 
 		expect(pinnedCalls).toBe(102);
 		expect(result).toEqual([finalPinned]);

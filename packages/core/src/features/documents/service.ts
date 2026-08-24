@@ -699,21 +699,13 @@ export class DocumentService extends Service {
 			this.runtime,
 			accessContext,
 		);
-		const fragments: Memory[] = [];
-		const pageSize = 1_000;
-		for (let offset = 0; ; offset += pageSize) {
-			const page = await this.runtime.adapter.queryDocumentFragments({
-				agentId: this.runtime.agentId,
-				documentId,
-				requesterEntityId: requester.entityId,
-				requesterRoomIds: requester.roomIds,
-				requesterRole: requester.role,
-				limit: pageSize,
-				offset,
-			});
-			fragments.push(...page);
-			if (page.length < pageSize) return fragments;
-		}
+		return this.queryCompleteDocumentFragments({
+			agentId: this.runtime.agentId,
+			documentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		});
 	}
 
 	/**
@@ -924,10 +916,7 @@ export class DocumentService extends Service {
 	}
 
 	/** Runs the DOCUMENTS provider's search and inventory reads on one snapshot. */
-	async composeProviderDocuments(
-		message: Memory,
-		listOptions: DocumentListOptions,
-	): Promise<{
+	async composeProviderDocuments(message: Memory): Promise<{
 		relevantFragments: StoredDocument[];
 		documents: Memory[];
 		pinnedDocuments: Memory[];
@@ -936,7 +925,7 @@ export class DocumentService extends Service {
 			this.runtime,
 			message,
 		);
-		const [relevantFragments, listResult, pinnedDocuments] = await Promise.all([
+		const [relevantFragments, documents] = await Promise.all([
 			this.searchDocumentsWithRequester(
 				message,
 				undefined,
@@ -945,21 +934,27 @@ export class DocumentService extends Service {
 				undefined,
 				resolveRequester,
 			),
-			this.listDocumentsDetailedWithRequester(listOptions, resolveRequester),
-			this.listPinnedDocumentsWithRequester(resolveRequester),
+			this.listAllDocumentsWithRequester(resolveRequester),
 		]);
 		return {
 			relevantFragments,
-			documents: listResult.documents,
-			pinnedDocuments,
+			documents,
+			pinnedDocuments: documents.filter((document) => {
+				const metadata = document.metadata as
+					| DocumentMemoryMetadata
+					| undefined;
+				return (
+					metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true
+				);
+			}),
 		};
 	}
 
-	/** Lists every pinned document visible to the provider's requester. */
-	private async listPinnedDocumentsWithRequester(
+	/** Lists every document visible to the provider's requester. */
+	private async listAllDocumentsWithRequester(
 		resolveRequester: DocumentRequesterResolver,
 	): Promise<Memory[]> {
-		const pinnedDocuments: Memory[] = [];
+		const documents: Memory[] = [];
 		let cursor: DocumentListCursor | undefined;
 		const seenCursors = new Set<string>();
 		do {
@@ -970,16 +965,7 @@ export class DocumentService extends Service {
 				},
 				resolveRequester,
 			);
-			pinnedDocuments.push(
-				...page.documents.filter((document) => {
-					const metadata = document.metadata as
-						| DocumentMemoryMetadata
-						| undefined;
-					return (
-						metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true
-					);
-				}),
-			);
+			documents.push(...page.documents);
 			if (!page.hasMore) break;
 			if (!page.nextCursor) {
 				throw new ElizaError(
@@ -1005,7 +991,7 @@ export class DocumentService extends Service {
 			seenCursors.add(serializedCursor);
 			cursor = page.nextCursor;
 		} while (cursor);
-		return pinnedDocuments;
+		return documents;
 	}
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
@@ -2655,14 +2641,37 @@ export class DocumentService extends Service {
 				entityId: existingDocument.entityId,
 			},
 		);
-		await this.prepareDocumentFragmentEmbeddings(fragments);
-		const mutation = await this.runtime.adapter.replaceDocumentRevision({
-			...requestContext,
-			documentId: options.documentId,
-			expected: snapshot,
-			replacement,
-			fragments,
-		});
+		try {
+			await this.prepareDocumentFragmentEmbeddings(fragments);
+		} catch (cause) {
+			// error-policy:J2 Preparation remains pre-transactional, but callers
+			// need a document-specific failure while the provider cause is retained.
+			throw new ElizaError("Failed to stage replacement fragments", {
+				code: "DOCUMENT_REVISION_PREPARATION_FAILED",
+				context: { documentId: options.documentId },
+				cause,
+			});
+		}
+		let mutation: Awaited<
+			ReturnType<typeof this.runtime.adapter.replaceDocumentRevision>
+		>;
+		try {
+			mutation = await this.runtime.adapter.replaceDocumentRevision({
+				...requestContext,
+				documentId: options.documentId,
+				expected: snapshot,
+				replacement,
+				fragments,
+			});
+		} catch (cause) {
+			// error-policy:J2 The adapter owns one atomic replacement transaction;
+			// preserve its failure without inventing a partial publication status.
+			throw new ElizaError("Failed to atomically replace document revision", {
+				code: "DOCUMENT_REVISION_PUBLICATION_FAILED",
+				context: { documentId: options.documentId },
+				cause,
+			});
+		}
 		if (mutation.status !== "updated") {
 			throw new ElizaError("Document authorization changed before update", {
 				code:
@@ -3054,7 +3063,11 @@ export class DocumentService extends Service {
 		roomId?: UUID;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		end?: number;
+		orderBy?: "createdAt";
+		orderDirection?: "asc" | "desc";
+		includeEmbedding?: boolean;
 	}): Promise<Memory[]> {
 		return this.runtime.getMemories({
 			...params,
