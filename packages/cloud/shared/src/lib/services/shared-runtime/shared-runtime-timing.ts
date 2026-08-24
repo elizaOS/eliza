@@ -5,8 +5,6 @@
  */
 
 export const MAX_SHARED_PROVIDER_TIMING_MS = 10 * 60 * 1_000;
-export const MAX_SHARED_PROVIDER_TIMING_CALL_COUNT = 1_000;
-export const MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS = 16;
 
 export type SharedRuntimeTimingOutcome = "success" | "aborted" | "error";
 export type SharedRuntimeRoutingDecision = "respond" | "silent" | "unknown";
@@ -72,9 +70,8 @@ export interface SharedModelCallTiming {
 
 /**
  * Privacy-bounded model timing safe for Shared REST and SSE clients.
- * `callCount` and `fallbackCount` describe every call. `calls` contains the
- * first 16 calls only, and `callsTruncated` is true exactly when later calls
- * were omitted. `clamped` is true when a single call or the running total
+ * `callCount`, `fallbackCount`, and `calls` describe every call.
+ * `callsTruncated` remains false for transport compatibility. `clamped` is true when a single call or the running total
  * exceeded `MAX_SHARED_PROVIDER_TIMING_MS`, in which case `durationMs` is the
  * bound rather than the measured value — a pathologically slow turn must stay
  * visible instead of collapsing to zero or being discarded.
@@ -107,12 +104,11 @@ export function parseSharedProviderTimingReceipt(
     typeof callCount !== "number" ||
     !Number.isInteger(callCount) ||
     callCount < 0 ||
-    callCount > MAX_SHARED_PROVIDER_TIMING_CALL_COUNT ||
     typeof receipt.callsTruncated !== "boolean" ||
+    receipt.callsTruncated !== false ||
     typeof receipt.clamped !== "boolean" ||
     !Array.isArray(calls) ||
-    calls.length !== Math.min(callCount, MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS) ||
-    receipt.callsTruncated !== callCount > calls.length
+    calls.length !== callCount
   ) {
     return undefined;
   }
@@ -180,9 +176,7 @@ export function parseSharedProviderTimingReceipt(
     durationMs <= MAX_SHARED_PROVIDER_TIMING_MS &&
     (clamped
       ? durationMs === MAX_SHARED_PROVIDER_TIMING_MS
-      : receipt.callsTruncated
-        ? durationMs >= recordedDurationMs
-        : durationMs === recordedDurationMs);
+      : durationMs === recordedDurationMs);
   const replayed = receipt.replayed;
   const emptyReceiptIsConsistent =
     callCount !== 0 ||
@@ -388,9 +382,7 @@ export class SharedRuntimeTimingCollector {
         if (total > MAX_SHARED_PROVIDER_TIMING_MS) this.#modelClamped = true;
         this.#modelDurationMs = Math.min(total, MAX_SHARED_PROVIDER_TIMING_MS);
         if (call.provider !== "unobserved") this.#modelProviders.add(call.provider);
-        if (this.#modelCalls.length < MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS) {
-          this.#modelCalls.push(call);
-        }
+        this.#modelCalls.push(call);
       },
     };
   }
@@ -424,7 +416,7 @@ export class SharedRuntimeTimingCollector {
           .map((contextId) => contextId.trim().toLowerCase())
           .filter((contextId) => /^[a-z0-9_-]{1,64}$/.test(contextId)),
       ),
-    ).slice(0, 16);
+    );
   }
 
   receipt(outcome: SharedRuntimeTimingOutcome): SharedRuntimeTimingReceipt {
@@ -461,7 +453,7 @@ export class SharedRuntimeTimingCollector {
         callCount: this.#modelCallCount,
         fallbackCount: this.#modelFallbackCount,
         selectedProvider: summarizeSelectedProviders(this.#modelProviders),
-        callsTruncated: this.#modelCallCount > this.#modelCalls.length,
+        callsTruncated: false,
         calls: this.#modelCalls.map((call) => ({ ...call })),
       },
       routing: {

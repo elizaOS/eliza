@@ -277,6 +277,20 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		[/text\.trim\(\)\.slice\(0,\s*280\)/],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
 		[/maxOutputTokens:\s*512/],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-turn-trace-recorder.ts": [
+		/MAX_ACTION_STAGES/,
+		/actionResults[^\n]*\.slice\(/,
+	],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-facts.ts": [
+		/SHARED_FACTS_MAX_PER_TURN/,
+		/parsed[^\n]*\.slice\(/,
+	],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-timing.ts": [
+		/MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS/,
+		/MAX_SHARED_PROVIDER_TIMING_CALL_COUNT/,
+		/modelCalls\.length\s*</,
+		/contextIds[\s\S]{0,240}\.slice\(/,
+	],
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
