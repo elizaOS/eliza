@@ -1156,6 +1156,28 @@ function convertNativeUsage(usage: unknown): NativeTokenUsage | undefined {
   };
 }
 
+/**
+ * Map a {@link NativeTokenUsage} (promptTokens/completionTokens naming produced
+ * by the native `/chat/completions` parser) onto the inputTokens/outputTokens
+ * contract {@link emitModelUsageEvent} reads. Without this adapter the raw
+ * native object's keys never matched, so `inputTokens || 0` / `outputTokens ||
+ * 0` collapsed to 0 and every native MODEL_USED payload reported
+ * `tokens.prompt = tokens.completion = 0` — corrupting waifu burn telemetry and
+ * usage attribution (#27732). The `/responses` path already maps explicitly, so
+ * only the three native call sites route through here.
+ */
+function toUsageEventTokens(usage: NativeTokenUsage): {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+} {
+  return {
+    inputTokens: usage.promptTokens,
+    outputTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens,
+  };
+}
+
 type TextModelType =
   | typeof TEXT_NANO_MODEL_TYPE
   | typeof TEXT_MEDIUM_MODEL_TYPE
@@ -1477,7 +1499,7 @@ export async function generateNativeChatCompletion(
 
   const usage = convertNativeUsage(data.usage);
   if (usage) {
-    emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
+    emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(usage), {
       modelName: context.modelName,
       ...(() => {
         const costUsd = extractCostUsd(data.usage, response);
@@ -1968,7 +1990,7 @@ export async function streamNativeChatCompletion(
 			model: context.modelName,
 		});
     if (usage) {
-      emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
+      emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(usage), {
         modelName: context.modelName,
         ...(() => {
           const costUsd = extractCostUsd(data.usage, response);
@@ -2162,7 +2184,7 @@ export async function streamNativeChatCompletion(
         rejectDeferreds(streamCancellationError(signal));
       }
       if (nativeUsage) {
-        emitModelUsageEvent(runtime, modelType, context.prompt, nativeUsage, {
+        emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(nativeUsage), {
           modelName: context.modelName,
           ...(() => {
             const costUsd = extractCostUsd(rawUsage, response);
