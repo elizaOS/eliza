@@ -146,6 +146,22 @@ describe("flattenTextValues", () => {
 			expect(flattenTextValues(new Date(Number.NaN))).toEqual(["Invalid Date"]);
 		});
 
+		it("safely falls back to toString if toISOString throws RangeError", () => {
+			const throwingDate = new Date(1700000000000);
+			const originalToISO = Date.prototype.toISOString;
+			try {
+				Date.prototype.toISOString = () => {
+					throw new RangeError("Invalid time value");
+				};
+				expect(() => flattenTextValues(throwingDate)).not.toThrow();
+				expect(flattenTextValues(throwingDate)).toEqual([
+					Date.prototype.toString.call(throwingDate),
+				]);
+			} finally {
+				Date.prototype.toISOString = originalToISO;
+			}
+		});
+
 		it("recognizes Dates created in another JavaScript realm", () => {
 			const crossRealmDate = runInNewContext(
 				`new Date(${JSON.stringify(timestamp)})`,

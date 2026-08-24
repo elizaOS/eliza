@@ -127,9 +127,15 @@ function flattenTextValuesWithAncestors(
 	if (typeof value === "object") {
 		const dateTimestamp = getDateTimestamp(value);
 		if (dateTimestamp !== undefined) {
-			return Number.isNaN(dateTimestamp)
-				? [Date.prototype.toString.call(value)]
-				: [Date.prototype.toISOString.call(value)];
+			if (Number.isNaN(dateTimestamp)) {
+				return [Date.prototype.toString.call(value)];
+			}
+			try {
+				return [Date.prototype.toISOString.call(value)];
+			} catch {
+				// error-policy:J4 Degrade to Date.prototype.toString when ISO formatting fails on extreme timestamps.
+				return [Date.prototype.toString.call(value)];
+			}
 		}
 	}
 
