@@ -14,16 +14,46 @@ import type {
 } from "./confirm-dialog";
 
 export function useConfirm() {
-  const [state, setState] = React.useState<{
+  type PendingConfirm = {
     opts: ConfirmOptions;
     resolve: (v: boolean) => void;
-  } | null>(null);
+  };
+  const [state, setState] = React.useState<PendingConfirm | null>(null);
+  const pendingRef = React.useRef<PendingConfirm | null>(null);
+
+  const settle = React.useCallback(
+    (pending: PendingConfirm, value: boolean) => {
+      if (pendingRef.current !== pending) return;
+      pendingRef.current = null;
+      pending.resolve(value);
+      setState((current) => (current === pending ? null : current));
+    },
+    [],
+  );
 
   const confirm = React.useCallback(
     (opts: ConfirmOptions): Promise<boolean> =>
       new Promise((resolve) => {
-        setState({ opts, resolve });
+        const superseded = pendingRef.current;
+        if (superseded) {
+          pendingRef.current = null;
+          superseded.resolve(false);
+        }
+
+        const pending = { opts, resolve };
+        pendingRef.current = pending;
+        setState(pending);
       }),
+    [],
+  );
+
+  React.useEffect(
+    () => () => {
+      const pending = pendingRef.current;
+      if (!pending) return;
+      pendingRef.current = null;
+      pending.resolve(false);
+    },
     [],
   );
 
@@ -32,12 +62,10 @@ export function useConfirm() {
         open: true,
         ...state.opts,
         onConfirm: () => {
-          state.resolve(true);
-          setState(null);
+          settle(state, true);
         },
         onCancel: () => {
-          state.resolve(false);
-          setState(null);
+          settle(state, false);
         },
       }
     : {
@@ -51,16 +79,46 @@ export function useConfirm() {
 }
 
 export function usePrompt() {
-  const [state, setState] = React.useState<{
+  type PendingPrompt = {
     opts: PromptOptions;
     resolve: (value: string | null) => void;
-  } | null>(null);
+  };
+  const [state, setState] = React.useState<PendingPrompt | null>(null);
+  const pendingRef = React.useRef<PendingPrompt | null>(null);
+
+  const settle = React.useCallback(
+    (pending: PendingPrompt, value: string | null) => {
+      if (pendingRef.current !== pending) return;
+      pendingRef.current = null;
+      pending.resolve(value);
+      setState((current) => (current === pending ? null : current));
+    },
+    [],
+  );
 
   const prompt = React.useCallback(
     (opts: PromptOptions): Promise<string | null> =>
       new Promise((resolve) => {
-        setState({ opts, resolve });
+        const superseded = pendingRef.current;
+        if (superseded) {
+          pendingRef.current = null;
+          superseded.resolve(null);
+        }
+
+        const pending = { opts, resolve };
+        pendingRef.current = pending;
+        setState(pending);
       }),
+    [],
+  );
+
+  React.useEffect(
+    () => () => {
+      const pending = pendingRef.current;
+      if (!pending) return;
+      pendingRef.current = null;
+      pending.resolve(null);
+    },
     [],
   );
 
@@ -69,12 +127,10 @@ export function usePrompt() {
         open: true,
         ...state.opts,
         onConfirm: (value) => {
-          state.resolve(value);
-          setState(null);
+          settle(state, value);
         },
         onCancel: () => {
-          state.resolve(null);
-          setState(null);
+          settle(state, null);
         },
       }
     : {

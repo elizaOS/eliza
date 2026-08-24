@@ -7,13 +7,24 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useConfirm, usePrompt } from "./confirm-dialog.hooks";
 
 afterEach(() => {
   cleanup();
 });
+
+async function settlementByNextTask<T>(
+  promise: Promise<T>,
+): Promise<{ settled: true; value: T } | { settled: false }> {
+  return Promise.race([
+    promise.then((value) => ({ settled: true as const, value })),
+    new Promise<{ settled: false }>((resolve) => {
+      setTimeout(() => resolve({ settled: false }), 0);
+    }),
+  ]);
+}
 
 describe("useConfirm", () => {
   it("starts closed with a blank message and inert no-op handlers", () => {
@@ -130,26 +141,45 @@ describe("useConfirm", () => {
     expect(result.current.modalProps.open).toBe(false);
   });
 
-  it("replaces an unanswered dialog when confirm is called again, leaving the stale promise pending", async () => {
+  it("cancels a superseded dialog and settles both promises exactly once", async () => {
     const { result } = renderHook(() => useConfirm());
     let stale!: Promise<boolean>;
     act(() => {
       stale = result.current.confirm({ message: "Stale?" });
     });
+    const staleHandler = result.current.modalProps.onConfirm;
+    const staleSettled = vi.fn();
+    void stale.then(staleSettled);
+
     let live!: Promise<boolean>;
     act(() => {
       live = result.current.confirm({ message: "Live?" });
     });
+    const liveSettled = vi.fn();
+    void live.then(liveSettled);
 
     expect(result.current.modalProps.message).toBe("Live?");
+    expect(await settlementByNextTask(stale)).toEqual({
+      settled: true,
+      value: false,
+    });
+    expect(staleSettled).toHaveBeenCalledOnce();
+    expect(staleSettled).toHaveBeenCalledWith(false);
+
+    await act(async () => {
+      staleHandler();
+      await Promise.resolve();
+    });
+    expect(liveSettled).not.toHaveBeenCalled();
 
     await act(async () => {
       result.current.modalProps.onConfirm();
+      result.current.modalProps.onCancel();
     });
     await expect(live).resolves.toBe(true);
-
-    const outcome = await Promise.race([stale, Promise.resolve("pending")]);
-    expect(outcome).toBe("pending");
+    expect(liveSettled).toHaveBeenCalledOnce();
+    expect(liveSettled).toHaveBeenCalledWith(true);
+    expect(staleSettled).toHaveBeenCalledOnce();
   });
 
   it("returns a stable confirm identity across rerenders", () => {
@@ -279,26 +309,45 @@ describe("usePrompt", () => {
     expect(result.current.modalProps.open).toBe(false);
   });
 
-  it("replaces an unanswered prompt when prompt is called again, leaving the stale promise pending", async () => {
+  it("cancels a superseded prompt and settles both promises exactly once", async () => {
     const { result } = renderHook(() => usePrompt());
     let stale!: Promise<string | null>;
     act(() => {
       stale = result.current.prompt({ message: "Stale?" });
     });
+    const staleHandler = result.current.modalProps.onConfirm;
+    const staleSettled = vi.fn();
+    void stale.then(staleSettled);
+
     let live!: Promise<string | null>;
     act(() => {
       live = result.current.prompt({ message: "Live?" });
     });
+    const liveSettled = vi.fn();
+    void live.then(liveSettled);
 
     expect(result.current.modalProps.message).toBe("Live?");
+    expect(await settlementByNextTask(stale)).toEqual({
+      settled: true,
+      value: null,
+    });
+    expect(staleSettled).toHaveBeenCalledOnce();
+    expect(staleSettled).toHaveBeenCalledWith(null);
+
+    await act(async () => {
+      staleHandler("stale choice");
+      await Promise.resolve();
+    });
+    expect(liveSettled).not.toHaveBeenCalled();
 
     await act(async () => {
       result.current.modalProps.onConfirm("chosen");
+      result.current.modalProps.onCancel();
     });
     await expect(live).resolves.toBe("chosen");
-
-    const outcome = await Promise.race([stale, Promise.resolve("pending")]);
-    expect(outcome).toBe("pending");
+    expect(liveSettled).toHaveBeenCalledOnce();
+    expect(liveSettled).toHaveBeenCalledWith("chosen");
+    expect(staleSettled).toHaveBeenCalledOnce();
   });
 
   it("returns a stable prompt identity across rerenders", () => {
