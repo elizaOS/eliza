@@ -206,7 +206,7 @@ describe("InboxService.triageWithCuration", () => {
 
 describe("email curation safe sort (NaN + tiebreak)", () => {
   it("orders via curateEmailCandidates with NaN confidence tiebreak by candidateId", () => {
-    const baseCandidates = [
+    const baseCandidates: EmailCurationCandidate[] = [
       {
         id: "c-1",
         threadId: null,
@@ -233,7 +233,7 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
         labels: [],
         headers: {},
       },
-    ] satisfies readonly EmailCurationCandidate[];
+    ];
     const policyHook: EmailCurationPolicyHook = (ctx) => {
       if (ctx.candidate.id === "c-nan") {
         return [
@@ -269,12 +269,12 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
       candidateId: "b-id",
       action: "review",
       confidence: 0.5,
-    } satisfies Pick<CurationDecision, "candidateId" | "action" | "confidence">;
+    } as CurationDecision;
     const b = {
       candidateId: "a-id",
       action: "review",
       confidence: 0.5,
-    } satisfies Pick<CurationDecision, "candidateId" | "action" | "confidence">;
+    } as CurationDecision;
     const arr = [a, b];
     arr.sort(compareCurationDecisions);
     expect(arr.map((x) => x.candidateId)).toEqual(["a-id", "b-id"]);
@@ -285,12 +285,12 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
       candidateId: "c-nan",
       action: "save",
       confidence: Number.NaN,
-    } satisfies Pick<CurationDecision, "candidateId" | "action" | "confidence">;
+    } as CurationDecision;
     const b = {
       candidateId: "c-1",
       action: "save",
       confidence: 0.8,
-    } satisfies Pick<CurationDecision, "candidateId" | "action" | "confidence">;
+    } as CurationDecision;
     // save weight 4 -> score 40+confidence, NaN -> 0 after guard, so c-1 wins
     const arr = [a, b];
     arr.sort(compareCurationDecisions);
@@ -300,13 +300,13 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
 
 describe("dedupeAndOrder safe sort", () => {
   it("orders unparsable receivedAt via id tiebreak and NaN handling", () => {
-    const items = [
+    const items: InboxItem[] = [
       {
         id: "b",
         platform: "gmail",
         channel: "inbox",
-        senderName: "Bob",
-        snippet: "b",
+        senderName: "",
+        snippet: "",
         receivedAt: "not-a-date",
         threadTopic: "",
       },
@@ -314,8 +314,8 @@ describe("dedupeAndOrder safe sort", () => {
         id: "a",
         platform: "gmail",
         channel: "inbox",
-        senderName: "Alice",
-        snippet: "a",
+        senderName: "",
+        snippet: "",
         receivedAt: "not-a-date",
         threadTopic: "",
       },
@@ -323,8 +323,8 @@ describe("dedupeAndOrder safe sort", () => {
         id: "c",
         platform: "gmail",
         channel: "inbox",
-        senderName: "Carol",
-        snippet: "c",
+        senderName: "",
+        snippet: "",
         receivedAt: "2026-08-23T10:00:00.000Z",
         threadTopic: "",
       },
@@ -335,16 +335,19 @@ describe("dedupeAndOrder safe sort", () => {
   });
 
   it("compareInboxItemsByReceivedAt tiebreaks equal timestamps by id", () => {
-    const a = { id: "b", receivedAt: "2026-08-23T10:00:00.000Z" };
-    const b = { id: "a", receivedAt: "2026-08-23T10:00:00.000Z" };
+    const a = { id: "b", receivedAt: "2026-08-23T10:00:00.000Z" } as InboxItem;
+    const b = { id: "a", receivedAt: "2026-08-23T10:00:00.000Z" } as InboxItem;
     const arr = [a, b];
     arr.sort(compareInboxItemsByReceivedAt);
     expect(arr.map((x) => x.id)).toEqual(["a", "b"]);
   });
 
   it("compareInboxItemsByReceivedAt handles NaN as after finite dates", () => {
-    const a = { id: "nan", receivedAt: "invalid" };
-    const b = { id: "valid", receivedAt: "2026-08-23T10:00:00.000Z" };
+    const a = { id: "nan", receivedAt: "invalid" } as InboxItem;
+    const b = {
+      id: "valid",
+      receivedAt: "2026-08-23T10:00:00.000Z",
+    } as InboxItem;
     const arr = [a, b];
     arr.sort(compareInboxItemsByReceivedAt);
     expect(arr[0].id).toBe("valid");

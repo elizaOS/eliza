@@ -224,7 +224,8 @@ export type ModelDefinitionConfig = {
     cacheWrite: number;
   };
   contextWindow: number;
-  maxTokens: number;
+  /** Optional caller-selected output ceiling; omission delegates to the model. */
+  maxTokens?: number;
   headers?: Record<string, string>;
   compat?: ModelCompatConfig;
 };

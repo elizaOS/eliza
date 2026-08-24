@@ -6,6 +6,7 @@
  * steer the user toward connecting Google, Microsoft, or X.
  */
 
+import { assertModelOutputComplete } from "@elizaos/core";
 import { generateText } from "ai";
 import { cache } from "../../cache/client";
 import { getLanguageModel } from "../../providers/language-model";
@@ -448,6 +449,11 @@ class ConnectionEnforcementService {
         prompt: userMessage || "hey",
         maxOutputTokens: NUDGE_MAX_OUTPUT_TOKENS,
         temperature: mode === "nudge" ? 0.7 : 0.9,
+      });
+      assertModelOutputComplete({
+        finishReason: result.finishReason,
+        provider: "openai",
+        model: NUDGE_MODEL,
       });
 
       return result.text;

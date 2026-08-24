@@ -11,6 +11,7 @@ import {
   AgentEventService,
   type AgentNotification,
   AgentRuntime,
+  assertModelOutputComplete,
   basicProviders,
   basicServices,
   ChannelType,
@@ -648,9 +649,17 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         modelCall.finish();
         throw error;
       }
-      const text = Promise.resolve(result.text);
+      const rawText = Promise.resolve(result.text);
       const toolCalls = Promise.resolve(result.toolCalls);
-      const finishReason = Promise.resolve(result.finishReason);
+      const finishReason = Promise.resolve(result.finishReason).then((reason) => {
+        assertModelOutputComplete({
+          finishReason: reason,
+          provider: "cerebras",
+          model: input.model,
+        });
+        return reason;
+      });
+      const text = Promise.all([rawText, finishReason]).then(([completeText]) => completeText);
       const totalUsage = Promise.resolve(result.totalUsage);
       // error-policy:J5 aborting the provider stream rejects every pending AI
       // SDK result promise. AgentRuntime observes the textStream rejection as
@@ -676,12 +685,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
               yield chunk;
             }
           }
+          await finishReason;
           return;
         }
         for await (const chunk of result.textStream) {
           if (chunk) timing.markProviderFirstText();
           yield chunk;
         }
+        await finishReason;
       })();
       const streamUsage = totalUsage
         .then((value) => {
@@ -717,6 +728,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     } finally {
       modelCall.finish();
     }
+    assertModelOutputComplete({
+      finishReason: result.finishReason,
+      provider: "cerebras",
+      model: input.model,
+    });
     if (result.text.trim()) timing.markProviderFirstText();
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {

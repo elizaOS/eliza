@@ -279,6 +279,49 @@ describe("AgentRuntime structured streaming", () => {
 		});
 	});
 
+	it("rejects an output-limited pass-through stream as incomplete", async () => {
+		const runtime = makeRuntime();
+		const handler = vi.fn(async () => ({
+			textStream: (async function* () {
+				yield "partial";
+			})(),
+			text: Promise.resolve("partial"),
+			usage: Promise.resolve(undefined),
+			finishReason: Promise.resolve("length"),
+		}));
+		runtime.registerModel(ModelType.TEXT_LARGE, handler, "openai");
+
+		const result = await runtime.useModel<{
+			text: Promise<string>;
+			finishReason: Promise<string>;
+		}>(ModelType.TEXT_LARGE, {
+			prompt: "write a complete answer",
+			stream: true,
+		});
+
+		await expect(result.text).rejects.toMatchObject({
+			code: "MODEL_OUTPUT_INCOMPLETE",
+		});
+		await expect(result.finishReason).rejects.toMatchObject({
+			code: "MODEL_OUTPUT_INCOMPLETE",
+		});
+	});
+
+	it("rejects output-limited native results before returning success", async () => {
+		const runtime = makeRuntime();
+		const handler = vi.fn(async () => ({
+			text: "partial",
+			toolCalls: [],
+			usage: { promptTokens: 3, completionTokens: 8, totalTokens: 11 },
+			finishReason: "max_tokens",
+		}));
+		runtime.registerModel(ModelType.ACTION_PLANNER, handler, "openai");
+
+		await expect(
+			runtime.useModel(ModelType.ACTION_PLANNER, { messages: [] }),
+		).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
+	});
+
 	it("surfaces native stream metadata failures instead of fabricating empty usage", async () => {
 		const runtime = makeRuntime();
 		const usageFailure = new Error("provider usage failed");

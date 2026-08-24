@@ -29,6 +29,27 @@ afterEach(() => {
 });
 
 describe("Anthropic native text plumbing", () => {
+  it("rejects an output-limited completion instead of returning its text prefix", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "partial",
+      finishReason: "length",
+      usage: { inputTokens: 1, outputTokens: 8 },
+    }));
+    vi.doMock("ai", () => ({ generateText, streamText: vi.fn() }));
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({
+        modelId: modelName,
+      }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    await expect(
+      handleTextSmall(createRuntime(), { prompt: "complete this" })
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({ code: "MODEL_OUTPUT_INCOMPLETE" }),
+    });
+  }, 60_000);
+
   it("forwards nested __proto__ provider data without changing prototypes", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",

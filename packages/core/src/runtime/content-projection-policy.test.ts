@@ -1,82 +1,72 @@
 /**
- * Verifies the opt-in progressive-content rollout setting and the redacted,
- * count-only diagnostics attached to model-call metadata.
+ * Verifies the deprecated projection API remains source-compatible while no
+ * setting or stale caller metadata can restore model-facing omission.
  */
 
 import { describe, expect, it } from "vitest";
 import {
 	buildContentProjectionDiagnostics,
 	isProgressiveContentProjectionEnabled,
-	PROGRESSIVE_CONTENT_PROJECTION_SETTING,
 } from "./content-projection-policy";
+import { buildContentProjectionBudget } from "./model-input-budget";
 
-describe("progressive content projection policy", () => {
-	it("defaults safely off and accepts repository-standard boolean values", () => {
-		expect(isProgressiveContentProjectionEnabled(undefined)).toBe(false);
-		expect(
-			isProgressiveContentProjectionEnabled({ getSetting: () => undefined }),
-		).toBe(false);
-		expect(
-			isProgressiveContentProjectionEnabled({ getSetting: () => "invalid" }),
-		).toBe(false);
+describe("disabled content projection compatibility", () => {
+	it("cannot be enabled through the retired setting", () => {
 		expect(
 			isProgressiveContentProjectionEnabled({ getSetting: () => "true" }),
-		).toBe(true);
-		expect(
-			isProgressiveContentProjectionEnabled({ getSetting: () => "off" }),
 		).toBe(false);
+	});
+
+	it("reports complete inclusion and zero omission budgets", () => {
 		expect(
-			isProgressiveContentProjectionEnabled({ getSetting: () => true }),
-		).toBe(true);
+			buildContentProjectionDiagnostics({
+				enabled: true,
+				baselineBudget: {
+					estimatedInputTokens: 20,
+					contextWindowTokens: 100,
+					reserveTokens: 10,
+					dispatchThresholdTokens: 90,
+					shouldReject: false,
+					estimationMode: "heuristic",
+					resolvedModelKey: null,
+				},
+				projectionBudget: { perResultTokens: 2, aggregateTokens: 4 },
+				stats: {
+					resultCount: 3,
+					pagesIncluded: 3,
+					pagesOmitted: 2,
+					omissionReasons: { legacy: 2 },
+				},
+			}),
+		).toMatchObject({
+			enabled: false,
+			remainingEstimatedTokens: 70,
+			perResultEstimatedTokens: 0,
+			aggregateEstimatedTokens: 0,
+			pagesIncluded: 3,
+			pagesOmitted: 0,
+			omissionReasons: {},
+		});
 	});
 
-	it("reads only the named rollout setting", () => {
-		const seen: string[] = [];
-		isProgressiveContentProjectionEnabled({
-			getSetting: (key) => {
-				seen.push(key);
-				return false;
-			},
-		});
-		expect(seen).toEqual([PROGRESSIVE_CONTENT_PROJECTION_SETTING]);
-	});
-
-	it("emits numeric projection metadata without content or locators", () => {
-		const diagnostics = buildContentProjectionDiagnostics({
-			enabled: true,
-			baselineBudget: {
-				estimatedInputTokens: 2_000,
-				contextWindowTokens: 10_000,
-				reserveTokens: 1_000,
-				compactionThresholdTokens: 9_000,
-				shouldCompact: false,
-				resolvedModelKey: null,
-			},
-			projectionBudget: {
-				perResultTokens: 3_000,
-				aggregateTokens: 6_000,
-			},
-			stats: {
-				resultCount: 2,
-				pagesIncluded: 1,
-				pagesOmitted: 1,
-				omissionReasons: { "model-input-budget": 1 },
-			},
-		});
-		expect(diagnostics).toEqual({
-			enabled: true,
-			resultCount: 2,
-			baselineEstimatedTokens: 2_000,
-			remainingEstimatedTokens: 7_000,
-			perResultEstimatedTokens: 3_000,
-			aggregateEstimatedTokens: 6_000,
-			pagesIncluded: 1,
-			pagesOmitted: 1,
-			omissionReasons: { "model-input-budget": 1 },
-		});
-		const serialized = JSON.stringify(diagnostics);
-		expect(serialized).not.toMatch(
-			/secret body|\/Users\/|file_opaque|sha256/iu,
+	it("turns legacy projection calls into a typed explicit failure", () => {
+		expect(() =>
+			buildContentProjectionBudget({
+				budget: {
+					estimatedInputTokens: 1,
+					contextWindowTokens: 100,
+					reserveTokens: 10,
+					dispatchThresholdTokens: 90,
+					shouldReject: false,
+					compactionThresholdTokens: 90,
+					shouldCompact: false,
+					estimationMode: "heuristic",
+					resolvedModelKey: null,
+				},
+				resultCount: 1,
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "CONTENT_PROJECTION_RETIRED" }),
 		);
 	});
 });

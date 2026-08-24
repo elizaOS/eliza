@@ -125,6 +125,8 @@ const ALLOWED_EXACT = new Set([
   "evidence:open",
   "evidence:review:no-open",
   "evidence:certify",
+  // Destructive operator-only reset used before validating a clean desktop install.
+  "desktop:clean-install-state",
   "seed:messages",
 ]);
 

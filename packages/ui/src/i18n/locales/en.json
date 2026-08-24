@@ -8470,6 +8470,8 @@
   "cloud.login.loadingOptions.aria": "Loading sign-in options",
   "cloud.login.metaTitle": "Sign In | Eliza",
   "cloud.login.otp.createPasskey": "Create passkey",
+  "cloud.login.otp.recoveryLabel": "Other passkey options",
+  "cloud.login.otp.recoveryMessage": "Already saved this passkey? Sign in with it, or use a Magic Link.",
   "cloud.login.otp.resend": "Resend code",
   "cloud.login.otp.subtitle": "Enter the 6-digit code we sent to",
   "cloud.login.otp.title": "Set up your passkey",

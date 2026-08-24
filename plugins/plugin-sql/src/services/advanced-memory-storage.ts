@@ -1,18 +1,19 @@
 /**
  * `AdvancedMemoryStorageService` implements the runtime's `MemoryStorageProvider`
- * on top of ordinary agent memories, storing long-term memories and session
- * summaries as regular `Memory` rows (tagged via an `advancedMemory` envelope
+ * on top of ordinary agent memories, storing long-term memories as regular
+ * `Memory` rows (tagged via an `advancedMemory` envelope
  * in `metadata`) in dedicated synthetic rooms rather than separate tables.
  *
  * Long-term memories are anchored to an "identity group" resolved through the
  * optional `entity_resolution` service: entities confirmed-linked to the same
  * person share one long-term-memory room (keyed by the lexicographically
  * smallest entity ID in the group), so memories written under any alias in the
- * group are visible from all of them. Session summaries are stored per-room
- * without identity resolution.
+ * group are visible from all of them. Reads exhaust and verify the complete
+ * ordered storage snapshot before applying an explicitly requested limit.
  */
 import {
   ChannelType,
+  ElizaError,
   type IAgentRuntime,
   type JsonValue,
   type Memory,
@@ -32,8 +33,6 @@ const ENTITY_RESOLUTION_SERVICE = "entity_resolution" as ServiceTypeName;
 type LongTermMemoryRecord = Awaited<ReturnType<MemoryStorageProvider["storeLongTermMemory"]>>;
 type LongTermMemoryInput = Parameters<MemoryStorageProvider["storeLongTermMemory"]>[0];
 type LongTermMemoryCategory = LongTermMemoryRecord["category"];
-type SessionSummaryRecord = Awaited<ReturnType<MemoryStorageProvider["storeSessionSummary"]>>;
-type SessionSummaryInput = Parameters<MemoryStorageProvider["storeSessionSummary"]>[0];
 type UnknownRecord = Record<string, unknown>;
 type JsonRecord = Record<string, JsonValue>;
 
@@ -56,26 +55,19 @@ function isEntityResolutionService(service: unknown): service is EntityResolutio
 }
 
 type AdvancedMemoryEnvelope = {
-  kind: "long_term_memory" | "session_summary";
+  kind: "long_term_memory";
   originalEntityId?: UUID;
   anchorEntityId?: UUID;
   category?: LongTermMemoryCategory;
   confidence?: number;
   source?: string;
   semanticMetadata?: JsonRecord;
-  messageCount?: number;
-  lastMessageOffset?: number;
-  startTime?: string;
-  endTime?: string;
-  topics?: string[];
-  summaryMetadata?: JsonRecord;
   updatedAt?: string;
   lastAccessedAt?: string;
   accessCount?: number;
 };
 
 const LONG_TERM_MEMORY_TABLE = "long_term_memories";
-const SESSION_SUMMARY_TABLE = "session_summaries";
 const ADVANCED_MEMORY_SOURCE = "advanced-memory";
 const memoryUpdateQueues = new WeakMap<object, Map<UUID, Promise<void>>>();
 
@@ -153,12 +145,6 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function asStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const values = value.filter((entry): entry is string => typeof entry === "string");
-  return values.length > 0 ? values : undefined;
-}
-
 function toDate(value: unknown, fallback?: Date): Date {
   if (value instanceof Date && Number.isFinite(value.getTime())) {
     return value;
@@ -185,7 +171,7 @@ function getAdvancedMemoryEnvelope(memory: Memory): AdvancedMemoryEnvelope | nul
     return null;
   }
   const kind = asString(advancedMemory.kind);
-  if (kind !== "long_term_memory" && kind !== "session_summary") {
+  if (kind !== "long_term_memory") {
     return null;
   }
 
@@ -197,12 +183,6 @@ function getAdvancedMemoryEnvelope(memory: Memory): AdvancedMemoryEnvelope | nul
     confidence: asNumber(advancedMemory.confidence),
     source: asString(advancedMemory.source),
     semanticMetadata: toJsonRecord(advancedMemory.semanticMetadata),
-    messageCount: asNumber(advancedMemory.messageCount),
-    lastMessageOffset: asNumber(advancedMemory.lastMessageOffset),
-    startTime: asString(advancedMemory.startTime),
-    endTime: asString(advancedMemory.endTime),
-    topics: asStringArray(advancedMemory.topics),
-    summaryMetadata: toJsonRecord(advancedMemory.summaryMetadata),
     updatedAt: asString(advancedMemory.updatedAt),
     lastAccessedAt: asString(advancedMemory.lastAccessedAt),
     accessCount: asNumber(advancedMemory.accessCount),
@@ -363,30 +343,6 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
     };
   }
 
-  private parseSessionSummary(memory: Memory): SessionSummaryRecord | null {
-    const envelope = getAdvancedMemoryEnvelope(memory);
-    if (envelope?.kind !== "session_summary" || !memory.id || !memory.agentId || !memory.roomId) {
-      return null;
-    }
-
-    return {
-      id: memory.id,
-      agentId: memory.agentId,
-      roomId: memory.roomId,
-      entityId: envelope.originalEntityId ?? (memory.entityId as UUID | undefined),
-      summary: getMemoryText(memory),
-      messageCount: envelope.messageCount ?? 0,
-      lastMessageOffset: envelope.lastMessageOffset ?? 0,
-      startTime: toDate(envelope.startTime, toDate(memory.createdAt)),
-      endTime: toDate(envelope.endTime, toDate(memory.createdAt)),
-      topics: envelope.topics,
-      metadata: envelope.summaryMetadata,
-      embedding: Array.isArray(memory.embedding) ? memory.embedding : undefined,
-      createdAt: toDate(memory.createdAt),
-      updatedAt: toDate(envelope.updatedAt, toDate(memory.createdAt)),
-    };
-  }
-
   private sortLongTermMemories(memories: LongTermMemoryRecord[]): LongTermMemoryRecord[] {
     return [...memories].sort((left, right) => {
       const leftUpdated = Number.isFinite(left.updatedAt.getTime()) ? left.updatedAt.getTime() : 0;
@@ -400,23 +356,6 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       const rightConfidence = Number.isFinite(right.confidence) ? (right.confidence as number) : 0;
       if (rightConfidence !== leftConfidence) {
         return rightConfidence - leftConfidence;
-      }
-      const leftCreated = Number.isFinite(left.createdAt.getTime()) ? left.createdAt.getTime() : 0;
-      const rightCreated = Number.isFinite(right.createdAt.getTime())
-        ? right.createdAt.getTime()
-        : 0;
-      return rightCreated - leftCreated;
-    });
-  }
-
-  private sortSessionSummaries(summaries: SessionSummaryRecord[]): SessionSummaryRecord[] {
-    return [...summaries].sort((left, right) => {
-      const leftUpdated = Number.isFinite(left.updatedAt.getTime()) ? left.updatedAt.getTime() : 0;
-      const rightUpdated = Number.isFinite(right.updatedAt.getTime())
-        ? right.updatedAt.getTime()
-        : 0;
-      if (rightUpdated !== leftUpdated) {
-        return rightUpdated - leftUpdated;
       }
       const leftCreated = Number.isFinite(left.createdAt.getTime()) ? left.createdAt.getTime() : 0;
       const rightCreated = Number.isFinite(right.createdAt.getTime())
@@ -488,11 +427,7 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       return [];
     }
 
-    const memories = await this.runtime.getMemoriesByRoomIds({
-      tableName: LONG_TERM_MEMORY_TABLE,
-      roomIds,
-      limit: Math.max((opts?.limit ?? 20) * roomIds.length * 4, 80),
-    });
+    const memories = await this.readCompleteLongTermMemoryRows(roomIds);
 
     const filtered = memories
       .filter((memory) => memory.agentId === agentId)
@@ -500,7 +435,51 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       .filter((memory): memory is LongTermMemoryRecord => memory !== null)
       .filter((memory) => (opts?.category ? memory.category === opts.category : true));
 
-    return this.sortLongTermMemories(filtered).slice(0, opts?.limit ?? 20);
+    const sorted = this.sortLongTermMemories(filtered);
+    return opts?.limit === undefined ? sorted : sorted.slice(0, opts.limit);
+  }
+
+  private async traverseLongTermMemoryRows(roomIds: UUID[]): Promise<Memory[]> {
+    const pageSize = 200;
+    const rows: Memory[] = [];
+    const seenIds = new Set<UUID>();
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await this.runtime.getMemoriesByRoomIds({
+        tableName: LONG_TERM_MEMORY_TABLE,
+        roomIds,
+        limit: pageSize,
+        offset,
+      });
+      const ids = page.flatMap((memory) => (memory.id ? [memory.id] : []));
+      if (
+        page.length === pageSize &&
+        ids.length === page.length &&
+        ids.every((id) => seenIds.has(id))
+      ) {
+        throw new ElizaError("Long-term memory pagination made no progress", {
+          code: "LONG_TERM_MEMORY_PAGINATION_STALLED",
+          context: { offset, pageSize },
+          severity: "fatal",
+        });
+      }
+      for (const id of ids) seenIds.add(id);
+      rows.push(...page);
+      if (page.length < pageSize) return rows;
+    }
+  }
+
+  private async readCompleteLongTermMemoryRows(roomIds: UUID[]): Promise<Memory[]> {
+    const first = await this.traverseLongTermMemoryRows(roomIds);
+    const verified = await this.traverseLongTermMemoryRows(roomIds);
+    const firstIds = first.map((memory) => memory.id);
+    const verifiedIds = verified.map((memory) => memory.id);
+    if (JSON.stringify(firstIds) !== JSON.stringify(verifiedIds)) {
+      throw new ElizaError("Long-term memory changed during complete traversal", {
+        code: "LONG_TERM_MEMORY_SNAPSHOT_UNSTABLE",
+        context: { firstCount: first.length, verifiedCount: verified.length },
+      });
+    }
+    return verified;
   }
 
   async updateLongTermMemory(
@@ -567,128 +546,5 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       throw new Error(`Long-term memory ${id} does not belong to entity ${entityId}`);
     }
     await this.runtime.deleteMemory(id);
-  }
-
-  async storeSessionSummary(summary: SessionSummaryInput): Promise<SessionSummaryRecord> {
-    const now = new Date();
-    const advancedMemory = toJsonRecord({
-      kind: "session_summary",
-      originalEntityId: summary.entityId,
-      messageCount: summary.messageCount,
-      lastMessageOffset: summary.lastMessageOffset,
-      startTime: summary.startTime.toISOString(),
-      endTime: summary.endTime.toISOString(),
-      topics: summary.topics,
-      summaryMetadata: summary.metadata,
-      updatedAt: now.toISOString(),
-    });
-    if (!advancedMemory) {
-      throw new Error("Session summary metadata is not JSON-serializable");
-    }
-    const id = await this.runtime.createMemory(
-      {
-        agentId: this.runtime.agentId,
-        entityId: summary.entityId ?? this.runtime.agentId,
-        roomId: summary.roomId,
-        worldId: this.getMemoryWorldId(),
-        content: { text: summary.summary },
-        metadata: buildCustomMemoryMetadata({
-          scope: "room",
-          timestamp: now.getTime(),
-          advancedMemory,
-        }),
-        embedding: summary.embedding,
-        createdAt: now.getTime(),
-        unique: false,
-      },
-      SESSION_SUMMARY_TABLE,
-      false
-    );
-
-    const stored = await this.runtime.getMemoryById(id);
-    const parsed = stored ? this.parseSessionSummary(stored) : null;
-    if (!parsed) {
-      throw new Error("Failed to persist session summary");
-    }
-    return parsed;
-  }
-
-  async getCurrentSessionSummary(
-    agentId: UUID,
-    roomId: UUID
-  ): Promise<SessionSummaryRecord | null> {
-    const summaries = await this.getSessionSummaries(agentId, roomId, 1);
-    return summaries[0] ?? null;
-  }
-
-  async updateSessionSummary(
-    id: UUID,
-    agentId: UUID,
-    roomId: UUID,
-    updates: Partial<
-      Omit<SessionSummaryRecord, "id" | "agentId" | "roomId" | "createdAt" | "updatedAt">
-    >
-  ): Promise<void> {
-    return this.serializeUpdate(id, async () => {
-      const existing = await this.runtime.getMemoryById(id);
-      const parsed = existing ? this.parseSessionSummary(existing) : null;
-      if (!existing || !parsed || existing.agentId !== agentId || existing.roomId !== roomId) {
-        throw new Error(`Session summary ${id} not found`);
-      }
-
-      const currentEnvelope = getAdvancedMemoryEnvelope(existing);
-      const updatedAt = new Date();
-      const advancedMemory = toJsonRecord({
-        ...(currentEnvelope ?? {}),
-        kind: "session_summary",
-        originalEntityId: currentEnvelope?.originalEntityId ?? parsed.entityId,
-        messageCount: updates.messageCount ?? parsed.messageCount,
-        lastMessageOffset: updates.lastMessageOffset ?? parsed.lastMessageOffset,
-        startTime: (updates.startTime ?? parsed.startTime).toISOString(),
-        endTime: (updates.endTime ?? parsed.endTime).toISOString(),
-        topics: updates.topics ?? parsed.topics,
-        summaryMetadata: updates.metadata ?? parsed.metadata,
-        updatedAt: updatedAt.toISOString(),
-      });
-      if (!advancedMemory) {
-        throw new Error("Updated session summary metadata is not JSON-serializable");
-      }
-      await this.runtime.updateMemory({
-        id,
-        content: {
-          text: updates.summary ?? parsed.summary,
-        },
-        metadata: buildCustomMemoryMetadata({
-          existing: asRecord(existing.metadata),
-          scope: "room",
-          timestamp: updatedAt.getTime(),
-          advancedMemory,
-        }),
-        ...(updates.embedding ? { embedding: updates.embedding } : {}),
-      });
-    });
-  }
-
-  async getSessionSummaries(
-    agentId: UUID,
-    roomId: UUID,
-    limit = 5
-  ): Promise<SessionSummaryRecord[]> {
-    if (limit <= 0) {
-      return [];
-    }
-    const memories = await this.runtime.getMemories({
-      agentId,
-      roomId,
-      tableName: SESSION_SUMMARY_TABLE,
-      count: Math.max(limit * 4, 20),
-      unique: false,
-    });
-
-    return this.sortSessionSummaries(
-      memories
-        .map((memory) => this.parseSessionSummary(memory))
-        .filter((memory): memory is SessionSummaryRecord => memory !== null)
-    ).slice(0, limit);
   }
 }

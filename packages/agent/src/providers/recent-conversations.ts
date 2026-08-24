@@ -18,7 +18,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  getVerifiedRelatedEntityIds,
+  buildCrossWorldConversationAccessContext,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   recordOwnerExclusiveSuppression,
@@ -116,22 +116,15 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      const relatedEntityIds = await getVerifiedRelatedEntityIds(
+      const accessContext = await buildCrossWorldConversationAccessContext(
         runtime,
-        entityId,
+        message,
       );
-      const [requesterRoomIds, agentRoomIds] = await Promise.all([
-        runtime.getRoomsForParticipants(relatedEntityIds),
-        runtime.getRoomsForParticipant(runtime.agentId),
-      ]);
-      const agentRooms = new Set(agentRoomIds);
       const recentMessagesOwnsCurrentRoom = runtime.providers?.some(
         (provider) => provider.name?.trim().toUpperCase() === "RECENT_MESSAGES",
       );
-      const roomIds = Array.from(new Set(requesterRoomIds)).filter(
-        (roomId) =>
-          agentRooms.has(roomId) &&
-          (!recentMessagesOwnsCurrentRoom || roomId !== message.roomId),
+      const roomIds = (accessContext.authorizedRoomIds ?? []).filter(
+        (roomId) => !recentMessagesOwnsCurrentRoom || roomId !== message.roomId,
       );
       if (!roomIds || roomIds.length === 0) {
         return { text: "", values: {}, data: {} };
@@ -140,6 +133,7 @@ export const recentConversationsProvider: Provider = {
       const memories = await runtime.getMemoriesByRoomIds({
         tableName: "messages",
         roomIds,
+        accessContext,
       });
 
       if (!memories || memories.length === 0) {

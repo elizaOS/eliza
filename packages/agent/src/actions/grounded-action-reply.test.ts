@@ -1,9 +1,9 @@
 /**
  * Covers the grounded-action-reply helpers against the real State-mining and
  * reply-rendering path: action-result extraction from every candidate queue,
- * recent-history ordering / ties / empty / overflow, trajectory summary
- * branches, and renderGroundedActionReply fallbacks. Runtime doubles stand in
- * for IAgentRuntime; the module under test is not mocked.
+ * complete recent-history serialization, trajectory propagation, and explicit
+ * model/context failure behavior. Runtime doubles stand in for IAgentRuntime;
+ * the module under test is not mocked.
  */
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
@@ -280,17 +280,19 @@ describe("summarizeRecentActionHistory", () => {
     expect(summarizeRecentActionHistory(stateFrom({}))).toEqual([]);
   });
 
-  it("summarizes a single element", () => {
+  it("serializes a single element completely", () => {
     expect(
       summarizeRecentActionHistory(
         stateFrom({
           actionResults: [result({ actionName: "SHOP", text: "added milk" })],
         }),
       ),
-    ).toEqual(["SHOP ok: added milk"]);
+    ).toEqual([
+      '1. SHOP - succeeded\n{"text":"added milk","data":{"actionName":"SHOP"}}',
+    ]);
   });
 
-  it("orders newest-first by reversing the extracted queue", () => {
+  it("preserves source order", () => {
     expect(
       summarizeRecentActionHistory(
         stateFrom({
@@ -301,10 +303,14 @@ describe("summarizeRecentActionHistory", () => {
           ],
         }),
       ),
-    ).toEqual(["C ok: third", "B ok: second", "A ok: first"]);
+    ).toEqual([
+      '1. A - succeeded\n{"text":"first","data":{"actionName":"A"}}',
+      '1. B - succeeded\n{"text":"second","data":{"actionName":"B"}}',
+      '1. C - succeeded\n{"text":"third","data":{"actionName":"C"}}',
+    ]);
   });
 
-  it("dedupes case-insensitive actionName:text ties, keeping the newest", () => {
+  it("preserves repeated results even when their text differs only by case", () => {
     expect(
       summarizeRecentActionHistory(
         stateFrom({
@@ -314,31 +320,28 @@ describe("summarizeRecentActionHistory", () => {
           ],
         }),
       ),
-    ).toEqual(["shop ok: added milk"]);
+    ).toHaveLength(2);
   });
 
-  it("caps overflow at the default limit of 4 newest unique items", () => {
+  it("preserves every result instead of applying an implicit default limit", () => {
     const actionResults = [1, 2, 3, 4, 5, 6].map((n) =>
       result({ actionName: "STEP", text: `item ${n}` }),
     );
-    expect(summarizeRecentActionHistory(stateFrom({ actionResults }))).toEqual([
-      "STEP ok: item 6",
-      "STEP ok: item 5",
-      "STEP ok: item 4",
-      "STEP ok: item 3",
-    ]);
+    expect(
+      summarizeRecentActionHistory(stateFrom({ actionResults })),
+    ).toHaveLength(6);
   });
 
-  it("honors a smaller custom limit", () => {
+  it("ignores the legacy custom limit instead of dropping results", () => {
     const actionResults = [1, 2, 3].map((n) =>
       result({ actionName: "STEP", text: `item ${n}` }),
     );
     expect(
       summarizeRecentActionHistory(stateFrom({ actionResults }), 1),
-    ).toEqual(["STEP ok: item 3"]);
+    ).toHaveLength(3);
   });
 
-  it("skips items with no text and no title instead of inventing a row", () => {
+  it("preserves results whose structured data has no display title", () => {
     expect(
       summarizeRecentActionHistory(
         stateFrom({
@@ -349,22 +352,21 @@ describe("summarizeRecentActionHistory", () => {
           ],
         }),
       ),
-    ).toEqual(["KEPT ok: visible"]);
+    ).toHaveLength(3);
   });
 
-  it("falls back to ACTION when actionName is missing or whitespace", () => {
-    expect(
-      summarizeRecentActionHistory(
-        stateFrom({
-          actionResults: [
-            { success: true, text: "bare", data: { actionName: "  " } },
-          ],
-        }),
-      ),
-    ).toEqual(["ACTION ok: bare"]);
+  it("preserves a whitespace actionName in the complete serialized payload", () => {
+    const serialized = summarizeRecentActionHistory(
+      stateFrom({
+        actionResults: [
+          { success: true, text: "bare", data: { actionName: "  " } },
+        ],
+      }),
+    );
+    expect(serialized[0]).toContain('"actionName":"  "');
   });
 
-  it("labels success !== false as ok and success false as failed", () => {
+  it("preserves success state for every result", () => {
     expect(
       summarizeRecentActionHistory(
         stateFrom({
@@ -374,69 +376,62 @@ describe("summarizeRecentActionHistory", () => {
           ],
         }),
       ),
-    ).toEqual(["FAIL failed: nope", "IMPLICIT ok: implicit"]);
-  });
-
-  it("uses title fallbacks in definition / goal / event / title / subject / query order", () => {
-    expect(
-      summarizeRecentActionHistory(
-        stateFrom({
-          actionResults: [
-            result({
-              actionName: "DEF",
-              data: { definition: { title: "from definition" } },
-            }),
-            result({
-              actionName: "GOAL",
-              data: { goal: { title: "from goal" } },
-            }),
-            result({
-              actionName: "EVENT",
-              data: { event: { title: "from event" } },
-            }),
-            result({ actionName: "TITLE", data: { title: "from title" } }),
-            result({
-              actionName: "SUBJECT",
-              data: { subject: "from subject" },
-            }),
-            result({ actionName: "QUERY", data: { query: "from query" } }),
-          ],
-        }),
-        6,
-      ),
     ).toEqual([
-      "QUERY ok: from query",
-      "SUBJECT ok: from subject",
-      "TITLE ok: from title",
-      "EVENT ok: from event",
-      "GOAL ok: from goal",
-      "DEF ok: from definition",
+      '1. IMPLICIT - succeeded\n{"text":"implicit","data":{"actionName":"IMPLICIT"}}',
+      '1. FAIL - failed\n{"success":false,"text":"nope","data":{"actionName":"FAIL"}}',
     ]);
   });
 
-  it("collapses whitespace in the snippet", () => {
-    expect(
-      summarizeRecentActionHistory(
-        stateFrom({
-          actionResults: [
-            result({ actionName: "SHOP", text: "added\n\n  milk" }),
-          ],
-        }),
-      ),
-    ).toEqual(["SHOP ok: added milk"]);
+  it("preserves every structured title carrier without selecting one", () => {
+    const serialized = summarizeRecentActionHistory(
+      stateFrom({
+        actionResults: [
+          result({
+            actionName: "DEF",
+            data: { definition: { title: "from definition" } },
+          }),
+          result({
+            actionName: "GOAL",
+            data: { goal: { title: "from goal" } },
+          }),
+          result({
+            actionName: "EVENT",
+            data: { event: { title: "from event" } },
+          }),
+          result({ actionName: "TITLE", data: { title: "from title" } }),
+          result({
+            actionName: "SUBJECT",
+            data: { subject: "from subject" },
+          }),
+          result({ actionName: "QUERY", data: { query: "from query" } }),
+        ],
+      }),
+      6,
+    );
+    expect(serialized).toHaveLength(6);
+    expect(serialized.join("\n")).toContain("from definition");
+    expect(serialized.join("\n")).toContain("from query");
   });
 
-  it("prefers projected model text over raw result.text when projection is on", () => {
+  it("preserves whitespace in action-result text", () => {
+    const serialized = summarizeRecentActionHistory(
+      stateFrom({
+        actionResults: [
+          result({ actionName: "SHOP", text: "added\n\n  milk" }),
+        ],
+      }),
+    );
+    expect(serialized[0]).toContain('"text":"added\\n\\n  milk"');
+  });
+
+  it("ignores legacy projection parameters and emits the same complete payload", () => {
     const state = stateFrom({
       actionResults: [result({ actionName: "FILE", text: "RAW_PAGE_CANARY" })],
     });
     const raw = summarizeRecentActionHistory(state, 4, false);
     const projected = summarizeRecentActionHistory(state, 4, true);
-    expect(raw).toEqual(["FILE ok: RAW_PAGE_CANARY"]);
-    expect(projected).toHaveLength(1);
-    expect(projected[0]).toMatch(/^FILE ok: /);
-    expect(projected[0]).not.toBe(raw[0]);
-    expect(projected[0]).toContain("FILE");
+    expect(projected).toEqual(raw);
+    expect(raw[0]).toContain("RAW_PAGE_CANARY");
   });
 });
 
@@ -445,20 +440,20 @@ describe("summarizeActiveTrajectory", () => {
     expect(await summarizeActiveTrajectory({} as IAgentRuntime)).toBeNull();
   });
 
-  it("falls back when the loader returns nothing or throws", async () => {
+  it("rejects when the loader returns nothing or throws", async () => {
     loadTrajectoryByStepId.mockResolvedValueOnce(null);
-    const missing = await runWithTrajectoryContext(
-      { trajectoryStepId: "step-missing" },
-      () => summarizeActiveTrajectory({ agentId: "agent-1" } as IAgentRuntime),
-    );
-    expect(missing).toBe("active trajectory step step-missing");
+    await expect(
+      runWithTrajectoryContext({ trajectoryStepId: "step-missing" }, () =>
+        summarizeActiveTrajectory({ agentId: "agent-1" } as IAgentRuntime),
+      ),
+    ).rejects.toMatchObject({ code: "GROUNDED_REPLY_TRAJECTORY_UNAVAILABLE" });
 
     loadTrajectoryByStepId.mockRejectedValueOnce(new Error("db down"));
-    const thrown = await runWithTrajectoryContext(
-      { trajectoryStepId: "step-throw" },
-      () => summarizeActiveTrajectory({} as IAgentRuntime),
-    );
-    expect(thrown).toBe("active trajectory step step-throw");
+    await expect(
+      runWithTrajectoryContext({ trajectoryStepId: "step-throw" }, () =>
+        summarizeActiveTrajectory({} as IAgentRuntime),
+      ),
+    ).rejects.toMatchObject({ code: "GROUNDED_REPLY_TRAJECTORY_UNAVAILABLE" });
   });
 
   it("formats an empty step list with the plural", async () => {
@@ -470,7 +465,7 @@ describe("summarizeActiveTrajectory", () => {
       { trajectoryStepId: "step-empty" },
       () => summarizeActiveTrajectory({} as IAgentRuntime),
     );
-    expect(summary).toBe("trajectory traj-empty; 0 steps");
+    expect(summary).toBe('{"id":"traj-empty","steps":[]}');
   });
 
   it("uses singular step, latest llm purpose, and non-empty providers", async () => {
@@ -493,7 +488,7 @@ describe("summarizeActiveTrajectory", () => {
       () => summarizeActiveTrajectory({} as IAgentRuntime),
     );
     expect(summary).toBe(
-      "trajectory traj-one; 1 step; latest llm purpose: reply; recent providers: TIME, ACTION_STATE",
+      '{"id":"traj-one","steps":[{"llmCalls":[{"purpose":"plan"},{"purpose":"reply"}],"providerAccesses":[{"providerName":"TIME"},{"providerName":"  "},{"providerName":12},{"providerName":"ACTION_STATE"}]}]}',
     );
   });
 
@@ -512,7 +507,8 @@ describe("summarizeActiveTrajectory", () => {
       { trajectoryStepId: "step-two" },
       () => summarizeActiveTrajectory({} as IAgentRuntime),
     );
-    expect(summary).toBe("trajectory traj-two; 2 steps");
+    expect(summary).toContain('"id":"traj-two"');
+    expect(summary).toContain('"providerName":"OLD"');
   });
 });
 
@@ -525,48 +521,51 @@ describe("renderGroundedActionReply", () => {
     expect(reply).toBe("Canonical fallback.");
   });
 
-  it("returns the fallback when useModel throws", async () => {
-    const { reply } = await renderWith({
-      useModel: vi.fn(async () => {
-        throw new Error("model down");
-      }) as IAgentRuntime["useModel"],
-      fallback: "Canonical fallback.",
-    });
-    expect(reply).toBe("Canonical fallback.");
+  it("propagates a model failure instead of fabricating fallback success", async () => {
+    await expect(
+      renderWith({
+        useModel: vi.fn(async () => {
+          throw new Error("model down");
+        }) as IAgentRuntime["useModel"],
+        fallback: "Canonical fallback.",
+      }),
+    ).rejects.toThrow("model down");
   });
 
-  it("returns the fallback when useModel emits a non-string", async () => {
-    const { reply } = await renderWith({
-      useModel: vi.fn(async () => ({
-        text: "nope",
-      })) as unknown as IAgentRuntime["useModel"],
-      fallback: "Canonical fallback.",
-    });
-    expect(reply).toBe("Canonical fallback.");
+  it("rejects when useModel emits a non-string", async () => {
+    await expect(
+      renderWith({
+        useModel: vi.fn(async () => ({
+          text: "nope",
+        })) as unknown as IAgentRuntime["useModel"],
+        fallback: "Canonical fallback.",
+      }),
+    ).rejects.toMatchObject({ code: "GROUNDED_REPLY_OUTPUT_INVALID" });
   });
 
-  it("returns the fallback for remaining structured schema-key replies", async () => {
+  it("rejects remaining structured schema-key replies", async () => {
     for (const output of [
       "operation: create",
       "confidence: 0.9",
       "missing: due date",
       "subaction: confirm",
     ]) {
-      const { reply } = await renderWith({
-        useModel: vi.fn(async () => output) as IAgentRuntime["useModel"],
-        fallback: "Canonical fallback.",
-      });
-      expect(reply).toBe("Canonical fallback.");
+      await expect(
+        renderWith({
+          useModel: vi.fn(async () => output) as IAgentRuntime["useModel"],
+          fallback: "Canonical fallback.",
+        }),
+      ).rejects.toMatchObject({ code: "GROUNDED_REPLY_OUTPUT_INVALID" });
     }
   });
 
-  it("prompts TEXT_SMALL and returns normalized prose", async () => {
+  it("prompts TEXT_SMALL and preserves model output exactly", async () => {
     const useModel = vi.fn(async (model: unknown) => {
       expect(model).toBe(ModelType.TEXT_SMALL);
       return '  "Added milk to the list."  ';
     }) as IAgentRuntime["useModel"];
     const { reply } = await renderWith({ useModel });
-    expect(reply).toBe("Added milk to the list.");
+    expect(reply).toBe('  "Added milk to the list."  ');
     expect(useModel).toHaveBeenCalledTimes(1);
   });
 
@@ -634,12 +633,12 @@ describe("renderGroundedActionReply", () => {
     expect(prompt).toContain(
       "Stay within the assistant's established character voice when it fits the task.",
     );
-    expect(prompt).toContain("System:\\nYou are Eliza.");
-    expect(prompt).toContain("- A helpful operator");
-    expect(prompt).toContain("- Speaks plainly");
-    expect(prompt).toContain("- Be brief");
-    expect(prompt).toContain("- Use contractions");
-    expect(prompt).not.toContain("- 3");
+    expect(prompt).toContain('\\"system\\":\\"  You are Eliza.  \\"');
+    expect(prompt).toContain("A helpful operator");
+    expect(prompt).toContain("Speaks plainly");
+    expect(prompt).toContain("Be brief");
+    expect(prompt).toContain("Use contractions");
+    expect(prompt).toContain("3");
   });
 
   it("accepts a string bio when preferring character voice", async () => {
@@ -650,15 +649,15 @@ describe("renderGroundedActionReply", () => {
         bio: "  One-line bio.  ",
       } as unknown as IAgentRuntime["character"],
     });
-    expect(prompt).toContain("Bio:\\n- One-line bio.");
+    expect(prompt).toContain('\\"bio\\":\\"  One-line bio.  \\"');
   });
 
-  it("stringifies circular context via the catch path instead of throwing", async () => {
+  it("rejects circular context instead of substituting a partial string", async () => {
     const context: Record<string, unknown> = { label: "loop" };
     context.self = context;
-    const { prompt, reply } = await renderWith({ context });
-    expect(reply).toBe("Handled it.");
-    expect(prompt).toContain("Structured context: [object Object]");
+    await expect(renderWith({ context })).rejects.toMatchObject({
+      code: "GROUNDED_REPLY_CONTEXT_INVALID",
+    });
   });
 
   it("embeds recent action history from state into the prompt", async () => {
@@ -667,7 +666,8 @@ describe("renderGroundedActionReply", () => {
         actionResults: [result({ actionName: "SHOP", text: "added milk" })],
       }),
     });
-    expect(prompt).toContain("SHOP ok: added milk");
+    expect(prompt).toContain("Complete action history:");
+    expect(prompt).toContain("added milk");
   });
 
   it("preserves repeated storage and provider-state turns in the grounded prompt", async () => {
@@ -717,7 +717,7 @@ describe("renderGroundedActionReply", () => {
     });
 
     expect(prompt).toContain(
-      'Recent conversation: "repeat this\\nrepeat this\\nrepeat this"',
+      'Complete conversation: ["User: repeat this","User: repeat this","User: repeat this"]',
     );
   });
 });

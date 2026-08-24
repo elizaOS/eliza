@@ -172,10 +172,10 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
 - `core-plugins.ts` splits plugins into blocking vs deferred boot phases; slow feature/provider plugins must stay in the deferred set or boot regresses.
 - Several barrel re-exports avoid duplicate-symbol (`TS2308`) collisions and lazy-load heavy plugins (wallet, app-manager, elizacloud) — read the inline comments in `index.ts`/`api/index.ts`/`services/index.ts` before adding broad `export *` lines.
 - `lint`/`lint:check` and `format` cover the complete `src/` tree.
-- Conversation suffix deletion walks the complete room with stable keyset pages,
-  validates forward progress, resolves every target before mutation, and requires
-  a bulk deletion contract for multi-row changes. Never restore a fixed scan cap
-  or per-row partial deletion fallback.
+- Grounded action replies pass complete conversation memories, action results,
+  trajectories, character context, and model output without trimming, deduping,
+  summarizing, or silently falling back from a partial prompt. Missing or invalid
+  context is an explicit failure; final-wire model limits are enforced by core.
 - Provider-neutral TEE policy and key release are gated behind `services/tee-boot-gate*`; the hardware-free trust pipeline is exercised by `scripts/tee-full-stack-local.ts`. Concrete attestation providers and hardware validation belong to their deployment; see `docs/tee-agent-implementation-plan.md`.
 - **Files / media storage.** Attachment bytes live in one content-addressed store, `api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`, served pre-auth at `/api/media/<sha256>.<ext>` with `nosniff` and a download `Content-Disposition` for SVG/active types). `services/file-storage.ts` (`LocalFileStorageService`, fills `ServiceType.REMOTE_FILES`) is the contract the rest of the system resolves through `runtime.getService(ServiceType.REMOTE_FILES)` for `store`/`getUrl`/`list`/`delete`; authenticated `api/files-routes.ts` (`GET`/`DELETE /api/files`) and the `actions/files.ts` `FILES` tool both use it. `api/media-runtime.ts` rehosts inline `data:` and remote generated-media URLs on authenticated outgoing paths through the SSRF guard and runs the reference-aware orphan GC. Do not add a second file store, a `files` table, or a second refcount/GC engine; see issue #8876 and the root media invariant.
 - **Trajectory metadata is append-complete.** Persist every extracted insight and
@@ -184,6 +184,10 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
   training, or later model context. Preserve each record's exact text regardless
   of length or surrounding whitespace; reject malformed Unicode rather than
   repairing the recorded request or response.
+- **Agent read actions are exhaustive.** `FILES`, `SEARCH_KNOWLEDGE`, and
+  `MEMORY` return every authorized match. Storage page sizes are internal
+  transport batches; repeated, changing, or incomplete traversals fail
+  explicitly and must never become a successful model-facing prefix.
 
 ## Package completion evidence
 

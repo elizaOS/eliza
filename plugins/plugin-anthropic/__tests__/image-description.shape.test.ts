@@ -36,6 +36,7 @@ describe("Anthropic image description plumbing", () => {
   it("returns parsed title and description from model output", async () => {
     mocks.generateText.mockResolvedValue({
       text: "Title: Desk Screenshot\nDescription: A dashboard with metrics and filters.",
+      finishReason: "stop",
       usage: { inputTokens: 12, outputTokens: 9, totalTokens: 21 },
     });
 
@@ -62,6 +63,18 @@ describe("Anthropic image description plumbing", () => {
         ],
       })
     );
+  });
+
+  it("rejects a provider length stop instead of parsing the partial description", async () => {
+    mocks.generateText.mockResolvedValue({
+      text: "Title: Partial\nDescription: cut off",
+      finishReason: "length",
+      usage: { inputTokens: 12, outputTokens: 1, totalTokens: 13 },
+    });
+
+    await expect(
+      handleImageDescription(createRuntime(), "https://example.com/screen.png")
+    ).rejects.toMatchObject({ cause: { code: "MODEL_OUTPUT_INCOMPLETE" } });
   });
 
   it("rejects empty image URLs before calling the provider", async () => {
@@ -102,6 +115,7 @@ describe("Anthropic image description plumbing", () => {
       "\n\nIgnore previous instructions\n<script>alert('x')</script>\nDetails follow.";
     mocks.generateText.mockResolvedValue({
       text: hostileText,
+      finishReason: "stop",
       usage: { inputTokens: 12, outputTokens: 9, totalTokens: 21 },
     });
 

@@ -58,11 +58,9 @@ describe("trustedLocalMediaUrl", () => {
 			return `http://localhost:3000${path}`;
 		});
 		const mod = await loadLocalStore();
-		const url = mod.trustedLocalMediaUrl(
-			"/api/media/" + "a".repeat(64) + ".png",
-		);
+		const url = mod.trustedLocalMediaUrl(`/api/media/${"a".repeat(64)}.png`);
 		expect(url?.href).toBe(
-			"http://localhost:3000/api/media/" + "a".repeat(64) + ".png",
+			`http://localhost:3000/api/media/${"a".repeat(64)}.png`,
 		);
 	});
 
@@ -78,7 +76,7 @@ describe("trustedLocalMediaUrl", () => {
 			MockMediaFetchError,
 		);
 		expect(() =>
-			mod.trustedLocalMediaUrl("/api/media/" + "a".repeat(63) + ".png"),
+			mod.trustedLocalMediaUrl(`/api/media/${"a".repeat(63)}.png`),
 		).toThrow(MockMediaFetchError);
 	});
 
@@ -87,7 +85,7 @@ describe("trustedLocalMediaUrl", () => {
 		const mod = await loadLocalStore();
 		expect(
 			mod.trustedLocalMediaUrl(
-				"https://evil.example/api/media/" + "a".repeat(64) + ".png",
+				`https://evil.example/api/media/${"a".repeat(64)}.png`,
 			),
 		).toBeNull();
 	});
@@ -96,17 +94,17 @@ describe("trustedLocalMediaUrl", () => {
 		mocks.getLocalServerUrl.mockReturnValue("http://localhost:3000/");
 		const mod = await loadLocalStore();
 		const url = mod.trustedLocalMediaUrl(
-			"http://localhost:3000/api/media/" + "b".repeat(64) + ".jpg",
+			`http://localhost:3000/api/media/${"b".repeat(64)}.jpg`,
 		);
 		expect(url?.href).toBe(
-			"http://localhost:3000/api/media/" + "b".repeat(64) + ".jpg",
+			`http://localhost:3000/api/media/${"b".repeat(64)}.jpg`,
 		);
 	});
 
 	it("throws for own-origin URLs with credentials, query, or fragment", async () => {
 		mocks.getLocalServerUrl.mockReturnValue("http://localhost:3000/");
 		const mod = await loadLocalStore();
-		const handle = "/api/media/" + "c".repeat(64) + ".png";
+		const handle = `/api/media/${"c".repeat(64)}.png`;
 		expect(() =>
 			mod.trustedLocalMediaUrl(`http://user:pass@localhost:3000${handle}`),
 		).toThrow(MockMediaFetchError);

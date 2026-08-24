@@ -57,6 +57,17 @@ describe("executeKeylessMcpSearch", () => {
     expect(urls).toEqual(["https://search.parallel.ai/mcp"]);
   });
 
+  it("preserves a search answer beyond the former 8000-character cap", async () => {
+    const answer = `start-${"x".repeat(9_000)}-end`;
+    globalThis.fetch = (async () =>
+      new Response(envelope(answer), { status: 200 })) as typeof fetch;
+
+    await expect(executeKeylessMcpSearch("test query", 5)).resolves.toEqual({
+      answer,
+      provider: "parallel",
+    });
+  });
+
   it("falls back to Exa when Parallel fails", async () => {
     const urls: string[] = [];
     globalThis.fetch = (async (url: unknown) => {

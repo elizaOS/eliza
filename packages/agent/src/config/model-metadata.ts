@@ -2,9 +2,8 @@
  * Normalizes model-definition config (context window, max output tokens, cost,
  * input modality) and resolves per-model token metadata for the runtime. Given
  * an ElizaConfig and a model id, resolveModelTokenMetadata returns the context
- * window and max-output tokens, preferring an explicit model-config entry, then
- * the agent-defaults context budget, then the built-in runtime defaults, and
- * reports which source won.
+ * window and an optional explicitly configured max-output value. Omission never
+ * invents an output ceiling; the selected provider/model owns that boundary.
  */
 import type {
   ElizaConfig,
@@ -13,7 +12,6 @@ import type {
 } from "./types.ts";
 
 export const DEFAULT_MODEL_CONTEXT_WINDOW = 128_000;
-export const DEFAULT_MODEL_MAX_TOKENS = 8_192;
 
 const DEFAULT_MODEL_INPUT: ModelDefinitionConfig["input"] = ["text"];
 const DEFAULT_MODEL_COST: ModelDefinitionConfig["cost"] = {
@@ -32,7 +30,7 @@ export interface ModelTokenMetadata {
   modelId: string;
   providerId?: string;
   contextWindow: number;
-  maxTokens: number;
+  maxTokens?: number;
   source: ModelTokenMetadataSource;
 }
 
@@ -99,17 +97,16 @@ export function normalizeModelDefinitionConfig(
     maxTokens?: number;
   },
 ): ModelDefinitionConfig {
+  const { maxTokens: _unvalidatedMaxTokens, ...modelWithoutMaxTokens } = model;
   const contextWindow =
     toPositiveInt(model.contextWindow) ??
     toPositiveInt(defaults?.contextWindow) ??
     DEFAULT_MODEL_CONTEXT_WINDOW;
   const maxTokens =
-    toPositiveInt(model.maxTokens) ??
-    toPositiveInt(defaults?.maxTokens) ??
-    DEFAULT_MODEL_MAX_TOKENS;
+    toPositiveInt(model.maxTokens) ?? toPositiveInt(defaults?.maxTokens);
 
   return {
-    ...model,
+    ...modelWithoutMaxTokens,
     id: model.id,
     name:
       typeof model.name === "string" && model.name.trim().length > 0
@@ -119,7 +116,7 @@ export function normalizeModelDefinitionConfig(
     input: normalizeInput(model.input),
     cost: normalizeCost(model.cost ?? DEFAULT_MODEL_COST),
     contextWindow,
-    maxTokens,
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
   };
 }
 
@@ -204,8 +201,9 @@ export function resolveModelTokenMetadata(
       contextWindow:
         toPositiveInt(configured.model.contextWindow) ??
         DEFAULT_MODEL_CONTEXT_WINDOW,
-      maxTokens:
-        toPositiveInt(configured.model.maxTokens) ?? DEFAULT_MODEL_MAX_TOKENS,
+      ...(toPositiveInt(configured.model.maxTokens) !== undefined
+        ? { maxTokens: toPositiveInt(configured.model.maxTokens) }
+        : {}),
       source: "model-config",
     };
   }
@@ -215,7 +213,6 @@ export function resolveModelTokenMetadata(
     return {
       modelId: modelId?.trim() || "runtime-default",
       contextWindow: defaultContextWindow,
-      maxTokens: DEFAULT_MODEL_MAX_TOKENS,
       source: "agent-defaults",
     };
   }
@@ -223,7 +220,6 @@ export function resolveModelTokenMetadata(
   return {
     modelId: modelId?.trim() || "runtime-default",
     contextWindow: DEFAULT_MODEL_CONTEXT_WINDOW,
-    maxTokens: DEFAULT_MODEL_MAX_TOKENS,
     source: "runtime-default",
   };
 }

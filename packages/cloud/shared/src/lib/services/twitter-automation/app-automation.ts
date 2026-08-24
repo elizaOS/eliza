@@ -1,4 +1,5 @@
 // Coordinates cloud service app automation behavior behind route handlers.
+import { assertModelOutputComplete, ElizaError } from "@elizaos/core";
 import { generateText } from "ai";
 import { TwitterApi } from "twitter-api-v2";
 import { type App, appsRepository } from "../../../db/repositories";
@@ -241,15 +242,27 @@ Return ONLY the tweet text, nothing else.`;
       // This is a background service that requires temperature control for creative output,
       // and enabling CoT would silently drop temperature per @ai-sdk/anthropic behavior.
       // Temperature 0.8 for varied, creative tweet content.
-      const { text } = await generateText({
+      const result = await generateText({
         model: getLanguageModel(twModel),
         ...mergeAnthropicCotProviderOptions(twModel, process.env, 0),
         temperature: 0.8,
         prompt,
       });
+      assertModelOutputComplete({
+        finishReason: result.finishReason,
+        provider: "anthropic",
+        model: twModel,
+      });
+      const text = result.text.trim();
+      if (text.length > 280) {
+        throw new ElizaError("[TwitterAutomation] Generated post exceeds Twitter's limit.", {
+          code: "TWITTER_POST_LENGTH_EXCEEDED",
+          context: { appId: app.id, length: text.length, maximumLength: 280 },
+        });
+      }
 
       return {
-        text: text.trim().slice(0, 280),
+        text,
         type,
       };
     } catch (error) {

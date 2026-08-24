@@ -314,12 +314,7 @@ function renderCompleteDescription(item: {
 	descriptionCompressed?: string;
 	compressedDescription?: string;
 }): string {
-	return (
-		item.description ??
-		item.descriptionCompressed ??
-		item.compressedDescription ??
-		""
-	);
+	return item.description ?? "";
 }
 
 export function formatActionNames(actions: Action[], seed = "actions"): string {

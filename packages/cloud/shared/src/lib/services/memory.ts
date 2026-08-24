@@ -1,6 +1,6 @@
 // Coordinates cloud service memory behavior behind route handlers.
 import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core";
-import { ChannelType, stringToUuid } from "@elizaos/core";
+import { assertModelOutputComplete, ChannelType, stringToUuid } from "@elizaos/core";
 import { streamText } from "ai";
 import { createHash } from "crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -476,6 +476,11 @@ export class MemoryService {
     for await (const delta of result.textStream) {
       fullText += delta;
     }
+    assertModelOutputComplete({
+      finishReason: await result.finishReason,
+      provider: "openai",
+      model: "gpt-5-mini",
+    });
 
     const usage = await result.usage;
 

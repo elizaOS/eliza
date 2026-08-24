@@ -13,6 +13,13 @@ vi.mock("@ai-sdk/openai-compatible", () => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
+  assertModelOutputComplete: ({ finishReason }: { finishReason?: string }) => {
+    if (finishReason === "length") {
+      throw Object.assign(new Error("incomplete"), {
+        code: "MODEL_OUTPUT_INCOMPLETE",
+      });
+    }
+  },
   ElizaError: class extends Error {
     readonly code: string;
     readonly context?: Record<string, unknown>;
@@ -60,6 +67,22 @@ describe("z.ai text parameter resolution", () => {
         temperature: 0.2,
       })
     );
+    expect(generateTextMock.mock.calls[0]?.[0]).not.toHaveProperty("maxTokens");
+  });
+
+  it("passes an output limit only when the caller supplies it", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        return key === "ZAI_API_KEY" ? "test-key" : undefined;
+      },
+    };
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(runtime as never, {
+      prompt: "hello",
+      maxTokens: 333,
+    });
+    expect(generateTextMock.mock.calls[0]?.[0]).toHaveProperty("maxTokens", 333);
   });
 
   it("honors a per-call model override before z.ai slot defaults", async () => {

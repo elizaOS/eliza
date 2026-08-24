@@ -44,7 +44,6 @@ import {
   roomSourceTag,
 } from "../shared/conversation-format.ts";
 
-const MAX_RELEVANT_RESULTS = 10;
 const MATCH_THRESHOLD = 0.7;
 // rankByKeyword returns a [0,1] max-normalized BM25 score. Require a hit to be at
 // least half as relevant as the best match in the scan; BM25's IDF already
@@ -179,7 +178,6 @@ export const relevantConversationsProvider: Provider = {
             query: text,
             agentId: runtime.agentId,
             deliveryMessage: message,
-            count: MAX_RELEVANT_RESULTS + 5,
             matchThreshold: MATCH_THRESHOLD,
           });
         })(),

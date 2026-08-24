@@ -1,15 +1,14 @@
 /**
  * Renders completed planner trajectory steps into native assistant/tool chat
- * message pairs and projects a tool result to plain text for the next planner
+ * message pairs and serializes complete tool results for the next planner
  * call, shaping everything append-only so the prompt prefix stays byte-stable
  * for provider prompt caching. Also re-exports the provider cache-plan helpers.
  */
 
-import { ElizaError } from "../errors";
 import {
 	composeToolDiagnosticRedactor,
-	projectToolDiagnosticArgs,
-	projectToolDiagnosticValue,
+	projectCompleteToolArgsForModel,
+	projectCompleteToolValueForModel,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import type { ActionResult } from "../types/components";
@@ -18,10 +17,6 @@ import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 import { getActionResultActionName } from "../utils/action-results";
 import { stringifyForModel } from "./json-output";
-import {
-	type ContentProjectionBudget,
-	estimateTokensFromChars,
-} from "./model-input-budget";
 import type { PlannerStep, PlannerToolResult } from "./planner-types";
 import {
 	buildProviderCachePlan,
@@ -39,11 +34,7 @@ export interface TrajectoryStepsToMessagesOptions {
 	 * omitted, the shared credential-shape pass still runs.
 	 */
 	redactText?: ToolDiagnosticTextRedactor;
-	/** Final-serialization allowance derived from the active model input budget. */
-	projectionBudget?: ContentProjectionBudget;
-	/** Metadata-only preflight used to compute the final projection allowance. */
-	omitRecoverableText?: boolean;
-	/** Receives redacted aggregate projection counts for the rendered request. */
+	/** Receives count-only diagnostics; model-facing text is always complete. */
 	onProjectionStats?: (stats: ToolResultProjectionStats) => void;
 }
 
@@ -60,8 +51,8 @@ export interface RenderedActionResultsForModel {
 }
 
 /**
- * Render legacy ActionResults through the same promptData-over-data and
- * recoverable-page projection used by native tool messages. This is the
+ * Render legacy ActionResults through the same complete data and supplemental
+ * promptData representation used by native tool messages. This is the
  * migration bridge for prompt builders that cannot yet carry structured tool
  * messages; non-model display code should keep using its display formatter.
  */
@@ -69,8 +60,6 @@ export function renderActionResultsForModel(
 	results: readonly ActionResult[],
 	options: {
 		header?: string;
-		projectionBudget?: ContentProjectionBudget;
-		omitRecoverableText?: boolean;
 		redactText?: ToolDiagnosticTextRedactor;
 	} = {},
 ): RenderedActionResultsForModel {
@@ -85,37 +74,20 @@ export function renderActionResultsForModel(
 			},
 		};
 	}
-	const fairResultBudget = options.projectionBudget
-		? Math.min(
-				options.projectionBudget.perResultTokens,
-				Math.floor(options.projectionBudget.aggregateTokens / results.length),
-			)
-		: undefined;
 	let pagesIncluded = 0;
-	let pagesOmitted = 0;
-	const omissionReasons: Record<string, number> = {};
 	const redactText = options.redactText ?? composeToolDiagnosticRedactor();
 	const rendered = results.map((result, index) => {
-		const safeResult = projectToolDiagnosticValue(
+		const safeResult = projectCompleteToolValueForModel(
 			result,
 			redactText,
 		) as PlannerToolResult;
-		const body = toolMessageContent(safeResult, {
-			...(fairResultBudget === undefined
-				? {}
-				: { maxSerializedTokens: fairResultBudget }),
-			omitRecoverableText: options.omitRecoverableText,
-			onProjection: (observation) => {
-				if (!observation.validatedReadView) return;
-				if (observation.textIncluded) {
-					pagesIncluded++;
-					return;
-				}
-				pagesOmitted++;
-				const reason = observation.omissionReason ?? "unknown";
-				omissionReasons[reason] = (omissionReasons[reason] ?? 0) + 1;
-			},
-		});
+		if (
+			hasRecoverableContentLocator(safeResult.promptData) ||
+			hasRecoverableContentLocator(safeResult.data)
+		) {
+			pagesIncluded++;
+		}
+		const body = toolMessageContent(safeResult);
 		const status = result.success === false ? "failed" : "succeeded";
 		return `${index + 1}. ${getActionResultActionName(result)} - ${status}\n${JSON.stringify(JSON.parse(body))}`;
 	});
@@ -126,8 +98,8 @@ export function renderActionResultsForModel(
 		stats: {
 			resultCount: results.length,
 			pagesIncluded,
-			pagesOmitted,
-			omissionReasons,
+			pagesOmitted: 0,
+			omissionReasons: {},
 		},
 	};
 }
@@ -160,25 +132,18 @@ export function trajectoryStepsToMessages(
 	const resultCount = steps.filter(
 		(step) => step.toolCall && step.result,
 	).length;
-	const fairResultBudget = options.projectionBudget
-		? Math.min(
-				options.projectionBudget.perResultTokens,
-				resultCount === 0
-					? 0
-					: Math.floor(options.projectionBudget.aggregateTokens / resultCount),
-			)
-		: undefined;
 	let pagesIncluded = 0;
-	let pagesOmitted = 0;
-	const omissionReasons: Record<string, number> = {};
 	for (const step of steps) {
 		if (!step.toolCall || !step.result) {
 			continue;
 		}
-		const toolCallId = stableToolCallId(step);
+		const safeArgs =
+			projectCompleteToolArgsForModel(step.toolCall.params ?? {}, redactText) ??
+			{};
+		const toolCallId = stableToolCallId(step, safeArgs);
 
 		const assistantContent: ChatMessageContentPart[] = [];
-		const thought = redactText((step.thought ?? "").trim());
+		const thought = redactText(step.thought ?? "");
 		if (thought) {
 			assistantContent.push({ type: "text", text: thought });
 		}
@@ -186,33 +151,24 @@ export function trajectoryStepsToMessages(
 			type: "tool-call",
 			toolCallId,
 			toolName: step.toolCall.name,
-			input:
-				projectToolDiagnosticArgs(step.toolCall.params ?? {}, redactText) ?? {},
+			input: safeArgs,
 		});
 		messages.push({
 			role: "assistant",
 			content: assistantContent,
 		});
 
-		const rawResultText = toolMessageContent(
-			projectToolDiagnosticValue(step.result, redactText) as PlannerToolResult,
-			{
-				...(fairResultBudget === undefined
-					? {}
-					: { maxSerializedTokens: fairResultBudget }),
-				omitRecoverableText: options.omitRecoverableText,
-				onProjection: (observation) => {
-					if (!observation.validatedReadView) return;
-					if (observation.textIncluded) {
-						pagesIncluded++;
-						return;
-					}
-					pagesOmitted++;
-					const reason = observation.omissionReason ?? "unknown";
-					omissionReasons[reason] = (omissionReasons[reason] ?? 0) + 1;
-				},
-			},
-		);
+		const safeResult = projectCompleteToolValueForModel(
+			step.result,
+			redactText,
+		) as PlannerToolResult;
+		if (
+			hasRecoverableContentLocator(safeResult.promptData) ||
+			hasRecoverableContentLocator(safeResult.data)
+		) {
+			pagesIncluded++;
+		}
+		const rawResultText = toolMessageContent(safeResult);
 		messages.push({
 			role: "tool",
 			content: [
@@ -228,8 +184,8 @@ export function trajectoryStepsToMessages(
 	options.onProjectionStats?.({
 		resultCount,
 		pagesIncluded,
-		pagesOmitted,
-		omissionReasons,
+		pagesOmitted: 0,
+		omissionReasons: {},
 	});
 	return messages;
 }
@@ -240,12 +196,15 @@ export function trajectoryStepsToMessages(
  * calls in the same iteration with different args don't collide and so
  * re-rendering the trajectory produces byte-identical assistant turns.
  */
-function stableToolCallId(step: PlannerStep): string {
+function stableToolCallId(
+	step: PlannerStep,
+	projectedParams: Record<string, unknown>,
+): string {
 	if (step.toolCall?.id) {
 		return step.toolCall.id;
 	}
 	const name = step.toolCall?.name ?? "unknown";
-	const argsDigest = shortArgsDigest(step.toolCall?.params);
+	const argsDigest = shortArgsDigest(projectedParams);
 	return `tc-${step.iteration}-${name}-${argsDigest}`;
 }
 
@@ -259,109 +218,32 @@ function shortArgsDigest(params: Record<string, unknown> | undefined): string {
 	return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
 }
 
-/** Serialize one validated, non-duplicating tool-result projection. */
-export function toolMessageContent(
-	result: PlannerToolResult,
-	options: {
-		maxSerializedTokens?: number;
-		omitRecoverableText?: boolean;
-		onProjection?: (observation: ToolResultProjectionObservation) => void;
-	} = {},
-): string {
-	const validatedReadView = hasRecoverableContentLocator(
-		result.promptData ?? result.data,
-	);
-	const projected = projectToolResultForModel(
-		result,
-		options.omitRecoverableText,
-	);
-	const serialized = stringifyForModel(projected);
-	if (
-		options.maxSerializedTokens === undefined ||
-		estimateTokensFromChars(serialized.length) <= options.maxSerializedTokens
-	) {
-		options.onProjection?.({
-			validatedReadView,
-			textIncluded: validatedReadView && projected.text !== undefined,
-			...(validatedReadView && projected.text === undefined
-				? { omissionReason: "model-input-budget" }
-				: {}),
-		});
-		return serialized;
-	}
-
-	if (!validatedReadView) {
-		throw new ElizaError(
-			"Non-recoverable tool result exceeds the model content projection budget",
-			{
-				code: "MODEL_CONTENT_PROJECTION_BUDGET_EXCEEDED",
-				context: {
-					maxSerializedTokens: options.maxSerializedTokens,
-					serializedTokens: estimateTokensFromChars(serialized.length),
-				},
-				severity: "fatal",
-			},
-		);
-	}
-
-	const metadataOnly = projectToolResultForModel(result, true);
-	const metadataSerialized = stringifyForModel(metadataOnly);
-	if (
-		estimateTokensFromChars(metadataSerialized.length) >
-		options.maxSerializedTokens
-	) {
-		throw new ElizaError(
-			"ReadView metadata exceeds the model content projection budget",
-			{
-				code: "MODEL_CONTENT_PROJECTION_BUDGET_EXCEEDED",
-				context: {
-					maxSerializedTokens: options.maxSerializedTokens,
-					serializedTokens: estimateTokensFromChars(metadataSerialized.length),
-				},
-				severity: "fatal",
-			},
-		);
-	}
-	options.onProjection?.({
-		validatedReadView: true,
-		textIncluded: false,
-		omissionReason: "model-input-budget",
-	});
-	return metadataSerialized;
-}
-
-export interface ToolResultProjectionObservation {
-	validatedReadView: boolean;
-	textIncluded: boolean;
-	omissionReason?: "model-input-budget";
+/** Serialize one validated complete tool result. */
+export function toolMessageContent(result: PlannerToolResult): string {
+	return stringifyForModel(projectToolResultForModel(result));
 }
 
 function hasRecoverableContentLocator(value: unknown): boolean {
-	const pending: Array<{ value: unknown; depth: number }> = [
-		{ value, depth: 0 },
-	];
-	let visited = 0;
-	while (pending.length > 0 && visited < 100) {
+	const pending: unknown[] = [value];
+	const visited = new WeakSet<object>();
+	while (pending.length > 0) {
 		const current = pending.pop();
 		if (!current) break;
-		visited++;
-		if (isReadView(current.value)) {
+		if (isReadView(current)) {
 			return true;
 		}
-		if (
-			current.depth >= 4 ||
-			current.value === null ||
-			typeof current.value !== "object"
-		) {
+		if (current === null || typeof current !== "object") {
 			continue;
 		}
+		if (visited.has(current)) continue;
+		visited.add(current);
 		let children: unknown[];
-		if (Array.isArray(current.value)) {
-			children = current.value;
+		if (Array.isArray(current)) {
+			children = current;
 		} else {
 			children = [];
 			for (const [key, child] of Object.entries(
-				current.value as Record<string, unknown>,
+				current as Record<string, unknown>,
 			)) {
 				if (key === "readView") {
 					if (isReadView(child)) return true;
@@ -371,47 +253,21 @@ function hasRecoverableContentLocator(value: unknown): boolean {
 			}
 		}
 		for (const child of children) {
-			pending.push({ value: child, depth: current.depth + 1 });
+			pending.push(child);
 		}
 	}
 	return false;
 }
 
 /**
- * Produce the sole model-bound shape for a tool result. `promptData` is an
- * explicit replacement for `data`, never an additional payload. Recoverable
- * page text may be omitted during budget preflight/fallback while its validated
- * ReadView remains available for an exact native continuation.
+ * Produce the sole model-bound shape for a tool result. `promptData` is
+ * supplemental metadata and never replaces `data`; final request preparation
+ * rejects unsupported sizes instead of deleting fields.
  */
 export function projectToolResultForModel(
 	result: PlannerToolResult,
-	omitRecoverableText = false,
-): PlannerToolResult & {
-	contentProjection?: { textIncluded: boolean; reason?: string };
-} {
-	const hasReadView = hasRecoverableContentLocator(
-		result.promptData ?? result.data,
-	);
-	const projected = { ...result };
-	if (result.promptData !== undefined) {
-		delete projected.data;
-	}
-	if (omitRecoverableText && hasReadView && projected.text !== undefined) {
-		delete projected.text;
-		return {
-			...projected,
-			contentProjection: {
-				textIncluded: false,
-				reason: "model-input-budget",
-			},
-		};
-	}
-	return {
-		...projected,
-		...(hasReadView
-			? { contentProjection: { textIncluded: projected.text !== undefined } }
-			: {}),
-	};
+): PlannerToolResult {
+	return { ...result };
 }
 
 export function cacheProviderOptions(

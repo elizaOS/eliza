@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import {
+  assertModelOutputComplete,
   ChannelType,
   ElizaError,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -682,11 +683,15 @@ function extractSharedTurnFactsOffPath(
             model: getInteractiveCerebrasLanguageModel(model),
             prompt,
             temperature: 0,
-            maxOutputTokens: 512,
             maxRetries: 0,
             // A stalled provider request must not pin the waitUntil task open;
             // the deadline surfaces as a distinct AbortError in the J7 warn.
             abortSignal: AbortSignal.timeout(SHARED_FACTS_EXTRACTION_TIMEOUT_MS),
+          });
+          assertModelOutputComplete({
+            finishReason: result.finishReason,
+            provider: "cerebras",
+            model,
           });
           return result.text;
         },

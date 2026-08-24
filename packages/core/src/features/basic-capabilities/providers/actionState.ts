@@ -11,8 +11,6 @@
  * "No action state available" rather than throwing.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
-import { isProgressiveContentProjectionEnabled } from "../../../runtime/content-projection-policy.ts";
-import { stringifyForDiagnostics } from "../../../runtime/json-output.ts";
 import { renderActionResultsForModel } from "../../../runtime/planner-rendering.js";
 import type {
 	ActionResult,
@@ -22,7 +20,6 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
-import { formatActionResultsForPrompt } from "../../../utils/action-results.js";
 import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { addHeader } from "../../../utils.ts";
 
@@ -37,10 +34,6 @@ type WorkingMemoryEntry = {
 	result: ActionResult;
 	timestamp: number;
 };
-
-function formatDataForPrompt(data: unknown): string {
-	return stringifyForDiagnostics(data);
-}
 
 export const actionStateProvider: Provider = {
 	name: spec.name,
@@ -59,7 +52,6 @@ export const actionStateProvider: Provider = {
 		state: State,
 	): Promise<ProviderResult> => {
 		try {
-			const projectionEnabled = isProgressiveContentProjectionEnabled(runtime);
 			const actionResults = state.data.actionResults ?? [];
 			const actionPlan = state.data.actionPlan;
 			const workingMemory = state.data.workingMemory;
@@ -104,14 +96,11 @@ export const actionStateProvider: Provider = {
 								stepText += `\n   Error: ${step.error}`;
 							}
 							if (step.result?.text) {
-								stepText += projectionEnabled
-									? `\n   Result: ${
-											renderActionResultsForModel([step.result], {
-												header: "",
-												omitRecoverableText: true,
-											}).text
-										}`
-									: `\n   Result: ${toWellFormedUnicode(step.result.text)}`;
+								stepText += `\n   Result: ${
+									renderActionResultsForModel([step.result], {
+										header: "",
+									}).text
+								}`;
 							}
 
 							return stepText;
@@ -124,14 +113,9 @@ export const actionStateProvider: Provider = {
 			// Format previous action results
 			let resultsText = "";
 			if (actionResults.length > 0) {
-				resultsText = projectionEnabled
-					? renderActionResultsForModel(actionResults, {
-							header: "# Current Chain Action Results",
-							omitRecoverableText: true,
-						}).text
-					: formatActionResultsForPrompt(actionResults, {
-							header: "# Current Chain Action Results",
-						});
+				resultsText = renderActionResultsForModel(actionResults, {
+					header: "# Current Chain Action Results",
+				}).text;
 			} else {
 				resultsText = "";
 			}
@@ -158,16 +142,9 @@ export const actionStateProvider: Provider = {
 					})
 					.map(([key, entry]) => {
 						const result: ActionResult = entry.result;
-						const resultText = projectionEnabled
-							? renderActionResultsForModel([result], {
-									header: "",
-									omitRecoverableText: true,
-								}).text
-							: typeof result.text === "string" && result.text.trim().length > 0
-								? toWellFormedUnicode(result.text)
-								: result.data
-									? formatDataForPrompt(result.data)
-									: "(no output)";
+						const resultText = renderActionResultsForModel([result], {
+							header: "",
+						}).text;
 						return `**${entry.actionName || key}**: ${resultText}`;
 					})
 					.join("\n");

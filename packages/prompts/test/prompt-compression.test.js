@@ -1,38 +1,19 @@
 /**
- * Guards `compressPromptDescription` (a deterministic string transform, no
- * model). The load-bearing invariant: only whitespace *around* punctuation is
- * collapsed, never punctuation inside a token — so decimals ("2.5"), thousands
- * separators ("10,000"), and dotted identifiers ("Node.js") in model-facing
- * action docs survive verbatim rather than being split ("2. 5", "Node. js").
+ * Guards the legacy prompt-description helper as a byte-preserving identity
+ * alias so compatibility imports can never rewrite model-facing text.
  */
 import { describe, expect, it } from "vitest";
 import { compressPromptDescription } from "../src/prompt-compression.js";
 
-describe("compressPromptDescription punctuation normalization", () => {
-  it("preserves decimal numbers", () => {
-    expect(compressPromptDescription("Retrieves up to 2.5 MB of data")).toBe(
-      "Get up to 2.5 MB of data",
-    );
+describe("compressPromptDescription compatibility alias", () => {
+  it("preserves every character in authored descriptions", () => {
+    const description =
+      "  Retrieve every result.\nKeep `Node.js`, 2.5 MB, and https://example.com/a?b=c exactly.  ";
+    expect(compressPromptDescription(description)).toBe(description);
   });
 
-  it("preserves thousands separators", () => {
-    expect(compressPromptDescription("Handles up to 10,000 items")).toBe(
-      "Handles up to 10,000 items",
-    );
-  });
-
-  it("preserves dotted identifiers outside protected spans", () => {
-    expect(compressPromptDescription("Runs Node.js scripts")).toBe(
-      "Runs Node.js scripts",
-    );
-  });
-
-  it("still normalizes whitespace around sentence punctuation", () => {
-    expect(compressPromptDescription("Fetch data , then reply .")).toBe(
-      "Fetch data, then reply.",
-    );
-    expect(compressPromptDescription("First part .  Second part")).toBe(
-      "First part. Second part",
-    );
+  it("maps only an absent description to the empty compatibility value", () => {
+    expect(compressPromptDescription(undefined)).toBe("");
+    expect(compressPromptDescription("")).toBe("");
   });
 });

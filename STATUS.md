@@ -28,8 +28,7 @@ workspace data was deleted to manufacture a green doctor result.
 - Worktree: `/home/nubs/Documents/Codex/2026-08-22/eliza-linux-devices-runtimes`
 - Current local branch: `codex/pr25427-final`
 - Draft PR branch: `fix/linux-cef-devices-runtimes-parity`
-- Current `develop` integration checkpoint: `5f5c843fc3b13e0bc534c860d48737ac1dac4215`
-- Integrated `origin/develop`: `a83dd908470ffb2c3aa428c7f89f85a867677716`
+- Integrated `origin/develop`: `417a22e36d91442a0c61254862c43f309c74f453`
 - Product payload source: `be05b667e76b7c8f5266667bfc33f35125b75faf`
 - Packaging/tooling checkpoint: `02c00a3902a35732d7cb134f98570b9d349bdbfc`
 - Original merged work: [PR #24414](https://github.com/elizaOS/eliza/pull/24414), merge commit `acf111c4a`

@@ -200,6 +200,9 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
         }),
       }),
     );
+    expect(
+      searchCanonicalConversationMemories.mock.calls[0]?.[0],
+    ).not.toHaveProperty("count");
     expect(searchMemories).toHaveBeenCalledWith(
       expect.objectContaining({ embedding: [0.1, 0.2, 0.3] }),
     );

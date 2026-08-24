@@ -1,5 +1,6 @@
 // Coordinates cloud service seo behavior behind route handlers.
 import { Buffer } from "node:buffer";
+import { assertModelOutputComplete } from "@elizaos/core";
 import { generateText } from "ai";
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -228,7 +229,7 @@ async function callClaudeSeoDraft(
   // WARNING: If ANTHROPIC_COT_BUDGET is set and budget 0 is not passed here,
   // temperature will be ignored by the AI SDK when thinking is enabled.
   // Temperature 0.3 for deterministic, consistent SEO metadata output.
-  const { text } = await generateText({
+  const result = await generateText({
     model: getLanguageModel(modelId),
     temperature: 0.3,
     ...mergeAnthropicCotProviderOptions(modelId, process.env, 0),
@@ -246,6 +247,11 @@ async function callClaudeSeoDraft(
       .filter(Boolean)
       .join("\n"),
   });
+  assertModelOutputComplete({
+    finishReason: result.finishReason,
+    provider: "anthropic",
+    model: modelId,
+  });
 
   return parseJson<{
     title?: string;
@@ -253,7 +259,7 @@ async function callClaudeSeoDraft(
     keywords?: string[];
     metaTags?: Record<string, string>;
     schema?: Record<string, unknown>;
-  }>(text);
+  }>(result.text);
 }
 
 async function submitIndexNow(urlToSubmit: string): Promise<{ submitted: boolean }> {

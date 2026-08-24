@@ -257,6 +257,65 @@ export function toElizaError(
   });
 }
 
+const OUTPUT_LIMIT_FINISH_REASONS = new Set([
+  "length",
+  "max_tokens",
+  "max_output_tokens",
+  "max_completion_tokens",
+  "stop_length",
+  "stopped_limit",
+  "token_limit",
+  "output_limit",
+]);
+
+const INCOMPLETE_FINISH_REASONS = new Set([
+  ...OUTPUT_LIMIT_FINISH_REASONS,
+  "content_filter",
+  "error",
+]);
+
+function normalizeModelFinishReason(reason: string): string {
+  return reason
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_");
+}
+
+/** Worker-safe mirror of core's explicit output-limit classifier. */
+export function isModelOutputLimitFinishReason(reason: unknown): boolean {
+  return (
+    typeof reason === "string" &&
+    OUTPUT_LIMIT_FINISH_REASONS.has(normalizeModelFinishReason(reason))
+  );
+}
+
+/** Worker-safe mirror that rejects provider-confirmed partial model output. */
+export function assertModelOutputComplete(options: {
+  finishReason: unknown;
+  provider: string;
+  model?: string;
+}): void {
+  if (
+    typeof options.finishReason !== "string" ||
+    !INCOMPLETE_FINISH_REASONS.has(
+      normalizeModelFinishReason(options.finishReason),
+    )
+  ) {
+    return;
+  }
+  throw new ElizaError(
+    `[${options.provider}] Model output did not complete successfully (${options.finishReason}).`,
+    {
+      code: "MODEL_OUTPUT_INCOMPLETE",
+      context: {
+        provider: options.provider,
+        ...(options.model ? { model: options.model } : {}),
+        finishReason: options.finishReason,
+      },
+    },
+  );
+}
+
 /** Structural shape of a runtime that can resolve a per-agent setting. */
 export interface SettingReader {
   getSetting(key: string): string | boolean | number | null | undefined;
