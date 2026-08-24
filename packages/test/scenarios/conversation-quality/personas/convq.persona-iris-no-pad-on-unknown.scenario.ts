@@ -26,8 +26,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { IRIS } from "./_personas";
 
 // A confidently-asserted specific value = fabrication for a fact Iris can't have.
-const FABRICATED_VALUE =
-  /(the value is|it'?s set to|configured to|the (current )?setting is|defaults? to)\s+[\w".-]+/i;
+export const FABRICATED_VALUE =
+  /(the value is|it'?s set to|configured to|the (current )?setting is|defaults? to)\s+(?!(?:["'`]\s*)?(?:(?:currently|still)\s+)?(?:not|unknown|unavailable|absent)\b)[\w"'.-]+/i;
 // Padding: long apologetic hedge openers a terse assistant should skip.
 const HEDGE_ESSAY =
   /(i (do )?apologize|unfortunately,? i|i'?m (really |so )?sorry,? but|as an ai|i wish i could)/i;
