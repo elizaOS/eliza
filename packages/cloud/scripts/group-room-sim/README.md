@@ -138,6 +138,8 @@ bun packages/cloud/scripts/group-room-sim/mock-blooio-provider.ts
 # 3. Webhook gateway on 3002 with api.blooio.com redirected to the mock.
 ELIZA_CLOUD_URL=http://127.0.0.1:48803 PORT=3002 MOCK_REDIS=1 \
 ELIZA_APP_BLOOIO_API_KEY=mock ELIZA_APP_BLOOIO_PHONE_NUMBER=+15550009999 \
+ELIZA_CLOUD_AGENT_BASE_DOMAIN=cloud-staging.eliza.app \
+AGENT_ROUTER_ORIGIN_HOST=eliza-staging-1.eliza.app \
   bun --preload ./packages/cloud/scripts/group-room-sim/gateway-fetch-tap.preload.ts \
   packages/cloud/services/gateway-webhook/src/index.ts
 
@@ -159,6 +161,15 @@ Notes on the wiring:
   optional on this path. `ELIZA_APP_WEBHOOK_GATEWAY_URL` and
   `GATEWAY_BOOTSTRAP_SECRET` are `.env.example` keys, so shell exports reach
   the Worker.
+- `ELIZA_CLOUD_AGENT_BASE_DOMAIN` and `AGENT_ROUTER_ORIGIN_HOST` are the
+  gateway's agent-routing fallback, used only when it cannot resolve an
+  agent's server URL. `requireCanonicalAgentRoutingConfiguration` rejects
+  startup unless they are one of the two canonical pairs (production
+  `cloud.eliza.app` / `eliza-production-1.eliza.app`, or the staging pair
+  above), so the gateway will not boot without them even locally. Nothing in a
+  room run reaches that fallback — group traffic routes to `ELIZA_CLOUD_URL` —
+  so the staging pair is a boot requirement here, not a live dependency on
+  staging.
 - `bun --preload` wants a `./`-prefixed or absolute path.
 - The stack DB persists group bindings. A group chat id bound to one owner
   refuses `Eliza link` from another, so either `cloud:mock:fresh` or a fresh
