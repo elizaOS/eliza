@@ -19,8 +19,7 @@ export interface DirectActionInferenceHooks {
 }
 
 function unwrapPlannerIdentifier(value: string): string {
-	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
-	const trimmed = safe
+	const trimmed = value
 		.trim()
 		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
 		.replace(/^["'`]+|["'`]+$/g, "");
@@ -466,7 +465,8 @@ export type DirectCurrentRequestCandidateKind =
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
-	| "web";
+	| "web"
+	| "calculate";
 
 export interface DirectCurrentRequestCandidateInference {
 	names: string[];
@@ -1140,6 +1140,36 @@ export function inferDirectCurrentRequestCandidateActions(
 	).names;
 }
 
+/**
+ * Explicit multi-digit arithmetic in the message ("whats 3847 times 292",
+ * "1,234 * 56"). Deterministically detectable, and worth routing: models
+ * reliably miscompute once any operand reaches three digits (live
+ * 2026-08-24: three different wrong products for one ask), while the
+ * CALCULATE action is exact. Two-digit mental math stays on the simple path
+ * — it is fast and demonstrated reliable — so the detector requires at
+ * least one operand of three or more digits (separators ignored).
+ */
+const ARITHMETIC_OPERAND = "\\d[\\d,_]*(?:\\.\\d+)?";
+const ARITHMETIC_OPERATOR =
+	"(?:[*×xX/÷^%]|\\*\\*|[+-]|plus|minus|times|multiplied\\s+by|divided\\s+by|over|mod(?:ulo)?|to\\s+the\\s+power\\s+of)";
+const ARITHMETIC_EXPRESSION_RE = new RegExp(
+	`(${ARITHMETIC_OPERAND})\\s*${ARITHMETIC_OPERATOR}\\s*(${ARITHMETIC_OPERAND})`,
+	"iu",
+);
+
+function looksLikeMultiDigitArithmetic(text: string): boolean {
+	const match = ARITHMETIC_EXPRESSION_RE.exec(text);
+	if (!match) return false;
+	const digits = (operand: string) => operand.replace(/[^\d]/g, "").length;
+	return digits(match[1] ?? "") >= 3 || digits(match[2] ?? "") >= 3;
+}
+
+function findCalculateActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+): string | undefined {
+	return findAvailableActionName(actions, ["CALCULATE"]);
+}
+
 export function inferDirectCurrentRequestCandidateInference(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -1148,6 +1178,12 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findShellDirectActionName(actions);
 		if (shellAction) return { names: [shellAction], kind: "shell" };
+	}
+	if (looksLikeMultiDigitArithmetic(messageText)) {
+		const calculateAction = findCalculateActionName(actions);
+		if (calculateAction) {
+			return { names: [calculateAction], kind: "calculate" };
+		}
 	}
 	if (hooks.looksLikeCodingWorkRequest?.(messageText)) {
 		const codingAction = hooks.findCodingDelegationActionName?.(actions);
@@ -2211,7 +2247,6 @@ function isContinuationDialogueArtifact(
 	return false;
 }
 
-const CONTINUATION_LOOKBACK_ENTRIES = 12;
 const PENDING_ASSISTANT_TURN_MAX_CHARS = 160;
 
 function looksLikePendingAssistantTurn(text: string): boolean {
@@ -2249,8 +2284,7 @@ export function resolveExplicitContinuationRequestText(
 			if (currentMessageId && entry.id === currentMessageId) return false;
 			return continuationEntryText(entry).length > 0;
 		})
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-		.slice(-CONTINUATION_LOOKBACK_ENTRIES);
+		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
 	if (kind === "approval") {
 		// Approval must answer the immediately preceding visible assistant turn.
