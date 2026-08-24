@@ -1150,18 +1150,52 @@ export function inferDirectCurrentRequestCandidateActions(
  * least one operand of three or more digits (separators ignored).
  */
 const ARITHMETIC_OPERAND = "\\d[\\d,_]*(?:\\.\\d+)?";
-const ARITHMETIC_OPERATOR =
-	"(?:[*×xX/÷^%]|\\*\\*|[+-]|plus|minus|times|multiplied\\s+by|divided\\s+by|over|mod(?:ulo)?|to\\s+the\\s+power\\s+of)";
-const ARITHMETIC_EXPRESSION_RE = new RegExp(
-	`(${ARITHMETIC_OPERAND})\\s*${ARITHMETIC_OPERATOR}\\s*(${ARITHMETIC_OPERAND})`,
+const STRONG_ARITHMETIC_OPERATOR =
+	"(?:\\*\\*|[*×÷^%]|plus|minus|times|multiplied\\s+by|divided\\s+by|over|mod(?:ulo)?|to\\s+the\\s+power\\s+of)";
+const AMBIGUOUS_ARITHMETIC_OPERATOR = "(?:[+\\-/]|[xX])";
+const STRONG_ARITHMETIC_EXPRESSION_RE = new RegExp(
+	`(${ARITHMETIC_OPERAND})\\s*${STRONG_ARITHMETIC_OPERATOR}\\s*(${ARITHMETIC_OPERAND})`,
+	"iu",
+);
+const AMBIGUOUS_ARITHMETIC_EXPRESSION_RE = new RegExp(
+	`(${ARITHMETIC_OPERAND})(\\s*)(${AMBIGUOUS_ARITHMETIC_OPERATOR})(\\s*)(${ARITHMETIC_OPERAND})`,
+	"iu",
+);
+const ARITHMETIC_REQUEST_CUE_RE =
+	/\b(?:calculate|compute|evaluate|solve|what(?:'s|\s+is)|how\s+much|equals?|answer)\b/iu;
+const BARE_AMBIGUOUS_ARITHMETIC_RE = new RegExp(
+	`^\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*${AMBIGUOUS_ARITHMETIC_OPERATOR}\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*[?!.]?\\s*$`,
 	"iu",
 );
 
 function looksLikeMultiDigitArithmetic(text: string): boolean {
-	const match = ARITHMETIC_EXPRESSION_RE.exec(text);
-	if (!match) return false;
 	const digits = (operand: string) => operand.replace(/[^\d]/g, "").length;
-	return digits(match[1] ?? "") >= 3 || digits(match[2] ?? "") >= 3;
+	const hasLargeOperand = (left: string, right: string) =>
+		digits(left) >= 3 || digits(right) >= 3;
+	const strongMatch = STRONG_ARITHMETIC_EXPRESSION_RE.exec(text);
+	if (
+		strongMatch &&
+		hasLargeOperand(strongMatch[1] ?? "", strongMatch[2] ?? "")
+	) {
+		return true;
+	}
+
+	const ambiguousMatch = AMBIGUOUS_ARITHMETIC_EXPRESSION_RE.exec(text);
+	if (
+		!ambiguousMatch ||
+		!hasLargeOperand(ambiguousMatch[1] ?? "", ambiguousMatch[5] ?? "")
+	) {
+		return false;
+	}
+
+	// Hyphens, slashes, plus signs, and the letter x occur routinely in dates,
+	// ranges, phone numbers, versions, and dimensions. Treat them as arithmetic
+	// only when the user supplies a math cue or the complete message is the
+	// expression; spacing alone must not narrow the action catalog.
+	return (
+		ARITHMETIC_REQUEST_CUE_RE.test(text) ||
+		BARE_AMBIGUOUS_ARITHMETIC_RE.test(text)
+	);
 }
 
 function findCalculateActionName(
