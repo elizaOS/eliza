@@ -1441,6 +1441,15 @@ export async function handleAppsRoutes(
   // -------------------------------------------------------------------------
 
   if (method === "POST" && pathname === "/api/apps/relaunch") {
+    // Relaunch stops matching runs and launches the app again — the same
+    // privileged operation the /api/apps/launch branch gates. Enforce the
+    // identical OWNER/ADMIN check here so relaunch cannot be used to bypass
+    // the launch authorization control (a USER/GUEST/anonymous actor must
+    // not be able to stop or launch arbitrary apps through this endpoint).
+    if (!canLaunchApps(actorRole)) {
+      error(res, "App relaunch requires OWNER or ADMIN role", 403);
+      return true;
+    }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);

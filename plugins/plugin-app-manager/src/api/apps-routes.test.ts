@@ -293,6 +293,73 @@ describe("handleAppsRoutes", () => {
     },
   );
 
+  it.each([undefined, null, "USER", "GUEST"] as const)(
+    "denies %s actor at /api/apps/relaunch without stopping or launching",
+    async (actorRole) => {
+      const appManager = createAppManager();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/relaunch",
+        appManager,
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error: "App relaunch requires OWNER or ADMIN role",
+      });
+      expect(appManager.launch).not.toHaveBeenCalled();
+      expect(appManager.stop).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["OWNER", "ADMIN"] as const)(
+    "allows %s actor to relaunch apps",
+    async (actorRole) => {
+      const appManager = createAppManager();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/relaunch",
+        appManager,
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      expect(result.res.body).toEqual({
+        launch: { success: true },
+        verify: null,
+      });
+      expect(appManager.stop).toHaveBeenCalledTimes(1);
+      expect(appManager.launch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("denies the relaunch role gate before parsing the request body", async () => {
+    const appManager = createAppManager();
+
+    const result = await callRoute({
+      method: "POST",
+      pathname: "/api/apps/relaunch",
+      appManager,
+      actorRole: "USER",
+      body: { name: "", __proto__: { polluted: true } },
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(403);
+    expect(result.res.body).toEqual({
+      error: "App relaunch requires OWNER or ADMIN role",
+    });
+    expect(appManager.stop).not.toHaveBeenCalled();
+    expect(appManager.launch).not.toHaveBeenCalled();
+  });
+
   it("rejects illegal percent-encoding in app path segments before service calls", async () => {
     const appManager = createAppManager();
     const refreshRegistry = vi.fn(async () => new Map());
