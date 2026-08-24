@@ -19,6 +19,7 @@
  * as a usable secret.
  */
 import { createUniqueUuid } from "./entities";
+import { isTruthyEnvValue } from "./env-utils";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
 import type {
@@ -136,7 +137,11 @@ export function getSalt(): string {
 	const isProduction = nodeEnv === "production";
 	const allowDefaultSaltRaw =
 		getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "";
-	const allowDefaultSalt = allowDefaultSaltRaw.toLowerCase() === "true";
+	// Use the workspace's canonical env-flag truthiness (1/true/yes/y/on/enabled,
+	// trimmed and case-insensitive) rather than an exact "true" match, so the
+	// documented override does not silently fail on `1`, `yes`, or a trailing
+	// space and hard-crash boot via the production throw below.
+	const allowDefaultSalt = isTruthyEnvValue(allowDefaultSaltRaw);
 
 	const isDefaultOrUnset =
 		envSalt === "" || envSalt === LEGACY_DEFAULT_SECRET_SALT;

@@ -72,4 +72,24 @@ describe("getSalt (W1-060)", () => {
 		process.env.ELIZA_ALLOW_DEFAULT_SECRET_SALT = "true";
 		expect(getSalt()).toBe("secretsalt");
 	});
+
+	it.each(["1", "yes", "on", "TRUE", "true "])(
+		"honors the override set to %j, using canonical env truthiness",
+		(flag) => {
+			process.env.NODE_ENV = "production";
+			process.env.ELIZA_ALLOW_DEFAULT_SECRET_SALT = flag;
+			// Before the fix this matched only exactly "true", so any of these
+			// silently failed the override and threw a hard boot error.
+			expect(getSalt()).toBe("secretsalt");
+		},
+	);
+
+	it.each(["false", "0", "no", "", "  "])(
+		"still throws in production when the override is falsy (%j)",
+		(flag) => {
+			process.env.NODE_ENV = "production";
+			process.env.ELIZA_ALLOW_DEFAULT_SECRET_SALT = flag;
+			expect(() => getSalt()).toThrow(/SECRET_SALT must be set/);
+		},
+	);
 });
