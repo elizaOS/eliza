@@ -129,9 +129,9 @@ function addLocalDays(
   date: Pick<LocalMinuteParts, "year" | "month" | "day">,
   dayOffset: number,
 ): Pick<LocalMinuteParts, "year" | "month" | "day"> {
-  const shifted = new Date(
-    Date.UTC(date.year, date.month - 1, date.day + dayOffset, 12),
-  );
+  const shifted = new Date(0);
+  shifted.setUTCFullYear(date.year, date.month - 1, date.day + dayOffset);
+  shifted.setUTCHours(12, 0, 0, 0);
   return {
     year: shifted.getUTCFullYear(),
     month: shifted.getUTCMonth() + 1,
@@ -164,13 +164,12 @@ export function resolveLocalHHMMToIso(
       hour: Math.floor(minuteOfDay / 60),
       minute: minuteOfDay % 60,
     };
-    const wallClockAsUtc = Date.UTC(
-      target.year,
-      target.month - 1,
-      target.day,
-      target.hour,
-      target.minute,
-    );
+    const wallClockAsUtc = (() => {
+      const d = new Date(0);
+      d.setUTCFullYear(target.year, target.month - 1, target.day);
+      d.setUTCHours(target.hour, target.minute, 0, 0);
+      return d.getTime();
+    })();
     const offsets = new Set(
       OFFSET_SAMPLE_HOURS.map((hours) =>
         offsetMinutes(new Date(wallClockAsUtc + hours * HOUR_MS), timeZone),
