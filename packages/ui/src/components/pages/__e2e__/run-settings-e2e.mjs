@@ -147,7 +147,15 @@ const bundle = await build({
   conditions: ["eliza-source", "browser"],
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts", ".css": "empty", ".svg": "dataurl", ".png": "dataurl" },
-  define: { "process.env.NODE_ENV": '"production"' },
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    // This self-contained IIFE does not run through Vite, so import.meta.env
+    // would otherwise be undefined and the real cloud route registry would
+    // throw before React mounts. Keep the production Settings tree intact and
+    // supply only the deterministic empty fixture environment that Vite would
+    // normally inject; responsive behavior still comes from real matchMedia.
+    "import.meta.env": "{}",
+  },
   plugins: [stubBarrels, stubElizaCore, stubNodeBuiltins],
   write: false,
   absWorkingDir: repoRoot,
