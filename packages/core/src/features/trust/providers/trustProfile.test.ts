@@ -218,3 +218,46 @@ describe("trustProfileProvider", () => {
 		},
 	);
 });
+
+describe("trustProfileProvider classification boundaries and tallies", () => {
+	test.each([
+		[79, "good trust"],
+		[59, "moderate trust"],
+		[39, "low trust"],
+	] as const)(
+		"classifies a score of %i just below each tier boundary as %s",
+		async (score, trustLevel) => {
+			const { runtime } = runtimeWithService({ profile: profile(score) });
+
+			const result = await trustProfileProvider.get(runtime, message, state);
+
+			expect(result.text).toBe(
+				`The user has ${trustLevel} (${score}/100) with stable trust trend based on 12 interactions.`,
+			);
+			expect(result.values.trustLevel).toBe(trustLevel);
+			expect(result.values.trustScore).toBe(score);
+		},
+	);
+
+	test("tallies several negative interactions without counting any as positive", async () => {
+		const { runtime } = runtimeWithService({
+			interactions: [interaction(-2), interaction(-5)],
+		});
+
+		const result = await trustProfileProvider.get(runtime, message, state);
+
+		expect(result.values.recentPositiveActions).toBe(0);
+		expect(result.values.recentNegativeActions).toBe(2);
+	});
+
+	test("tallies several positive interactions without counting any as negative", async () => {
+		const { runtime } = runtimeWithService({
+			interactions: [interaction(3), interaction(7)],
+		});
+
+		const result = await trustProfileProvider.get(runtime, message, state);
+
+		expect(result.values.recentPositiveActions).toBe(2);
+		expect(result.values.recentNegativeActions).toBe(0);
+	});
+});
