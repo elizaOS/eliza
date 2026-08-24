@@ -383,4 +383,21 @@ function hasFinding(report, fragment) {
   );
 }
 
+// 20. The macOS clean-install command is an intentional human entrypoint.
+{
+  const report = runAudit({
+    root: {
+      "desktop:clean-install-state":
+        "node scripts/desktop-clean-install-state.mjs",
+    },
+    files: {
+      "scripts/desktop-clean-install-state.mjs": "export function main() {}\n",
+    },
+  });
+  assert(
+    report.ok,
+    `desktop cleanup entrypoint should pass, got ${JSON.stringify(report.failures)}`,
+  );
+}
+
 console.log("audit-scripts self-test passed");
