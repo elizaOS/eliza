@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 
 const migration = await Bun.file(
-  new URL("./0312_billing_resource_cancel_receipts.sql", import.meta.url),
+  new URL("./0313_billing_resource_cancel_receipts.sql", import.meta.url),
 ).text();
 const databases: PGlite[] = [];
 

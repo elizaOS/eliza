@@ -80,6 +80,21 @@ async function waitUntilBlocked(observer: Client): Promise<void> {
   throw new Error("Timed out waiting for a PostgreSQL lock waiter");
 }
 
+async function waitForUserExpiry(observer: Client, userId: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const result = await observer.query<{ expired: boolean }>(
+      `SELECT expires_at <= (clock_timestamp() AT TIME ZONE 'UTC') AS expired
+       FROM users
+       WHERE id = $1`,
+      [userId],
+    );
+    if (result.rows[0]?.expired) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for the billing manager identity to expire");
+}
+
 async function seedContainer(params: {
   organizationId: string;
   userId: string;
@@ -327,10 +342,13 @@ realPostgres("compute stop concurrency", () => {
       await revoker.query("COMMIT");
       await expect(admission).rejects.toMatchObject({ status: 403, code: "access_denied" });
       expect(enqueueCount).toBe(0);
-      const durable = await observer.query(`SELECT
-        (SELECT count(*)::int FROM jobs) AS jobs,
-        (SELECT count(*)::int FROM billing_cancel_commands) AS commands,
-        (SELECT count(*)::int FROM billing_cancel_command_keys) AS keys`);
+      const durable = await observer.query(
+        `SELECT
+          (SELECT count(*)::int FROM jobs WHERE organization_id = $1) AS jobs,
+          (SELECT count(*)::int FROM billing_cancel_commands WHERE organization_id = $1) AS commands,
+          (SELECT count(*)::int FROM billing_cancel_command_keys WHERE organization_id = $1) AS keys`,
+        [organizationId],
+      );
       expect(durable.rows[0]).toEqual({ jobs: 0, commands: 0, keys: 0 });
     } finally {
       await revoker.query("ROLLBACK").catch(() => undefined);
@@ -405,10 +423,13 @@ realPostgres("compute stop concurrency", () => {
       await rebinder.query("COMMIT");
       await expect(admission).rejects.toMatchObject({ status: 403, code: "access_denied" });
       expect(enqueueCount).toBe(0);
-      const durable = await observer.query(`SELECT
-        (SELECT count(*)::int FROM jobs) AS jobs,
-        (SELECT count(*)::int FROM billing_cancel_commands) AS commands,
-        (SELECT count(*)::int FROM billing_cancel_command_keys) AS keys`);
+      const durable = await observer.query(
+        `SELECT
+          (SELECT count(*)::int FROM jobs WHERE organization_id = $1) AS jobs,
+          (SELECT count(*)::int FROM billing_cancel_commands WHERE organization_id = $1) AS commands,
+          (SELECT count(*)::int FROM billing_cancel_command_keys WHERE organization_id = $1) AS keys`,
+        [organizationId],
+      );
       expect(durable.rows[0]).toEqual({ jobs: 0, commands: 0, keys: 0 });
       const rebound = await observer.query<{ steward_user_id: string }>(
         "SELECT steward_user_id FROM users WHERE id = $1",
@@ -418,6 +439,100 @@ realPostgres("compute stop concurrency", () => {
     } finally {
       await rebinder.query("ROLLBACK").catch(() => undefined);
       await Promise.all([rebinder.end(), observer.end()]);
+    }
+  }, 15_000);
+
+  test("billing cancellation rejects an identity that expires while waiting for its user lock", async () => {
+    if (!isolatedDsn || !dbWrite || !BillingCancellationsService) {
+      throw new Error("harness unavailable");
+    }
+    const organizationId = randomUUID();
+    const userId = randomUUID();
+    const resourceId = randomUUID();
+    const stewardUserId = `steward:${userId}`;
+    await dbWrite.execute(
+      sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id, steward_user_id, role, expires_at)
+          VALUES (${userId}, ${organizationId}, ${stewardUserId}, 'owner',
+            (clock_timestamp() AT TIME ZONE 'UTC') + INTERVAL '4 seconds')`,
+    );
+
+    let enqueueCount = 0;
+    const service: BillingResourceCancellationsService = new BillingCancellationsService({
+      transact: (callback) =>
+        dbWrite!.transaction(async (tx) => {
+          await tx.execute(sql`SET LOCAL TIME ZONE 'UTC'`);
+          return callback(tx);
+        }),
+      enqueueStop: async (
+        tx: DbTransaction,
+        options: RequestBillingCancellationOptions,
+      ): Promise<{ jobId: string }> => {
+        enqueueCount += 1;
+        const [job] = await tx
+          .insert(jobsTable)
+          .values({
+            type: "container_stop",
+            status: "pending",
+            data: { resourceId: options.resourceId },
+            organization_id: options.organizationId,
+            user_id: options.requestedByUserId,
+          })
+          .returning({ id: jobsTable.id });
+        if (!job) throw new Error("test job insert returned no row");
+        return { jobId: job.id };
+      },
+      triggerImmediate: async () => {},
+    });
+    const blocker = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([blocker.connect(), observer.connect()]);
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query("UPDATE users SET created_at = created_at WHERE id = $1", [userId]);
+
+      const admission = service.request({
+        organizationId,
+        requestedByUserId: userId,
+        resourceType: "container",
+        resourceId,
+        expectedLifecycleRevision: 1,
+        idempotencyKey: "cancel-concurrent-session-expiry-0001",
+        authorizeInfrastructureMutation: async () => stewardUserId,
+      });
+      const observedAdmission = admission.then(
+        (value) => ({ status: "resolved" as const, value }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      );
+
+      await waitUntilBlocked(observer);
+      const beforeExpiry = await observer.query<{ unexpired: boolean }>(
+        `SELECT expires_at > (clock_timestamp() AT TIME ZONE 'UTC') AS unexpired
+         FROM users
+         WHERE id = $1`,
+        [userId],
+      );
+      expect(beforeExpiry.rows[0]?.unexpired).toBe(true);
+      await waitForUserExpiry(observer, userId);
+      await blocker.query("COMMIT");
+      expect(await observedAdmission).toMatchObject({
+        status: "rejected",
+        error: { status: 403, code: "access_denied" },
+      });
+      expect(enqueueCount).toBe(0);
+      const durable = await observer.query(
+        `SELECT
+          (SELECT count(*)::int FROM jobs WHERE organization_id = $1) AS jobs,
+          (SELECT count(*)::int FROM billing_cancel_commands WHERE organization_id = $1) AS commands,
+          (SELECT count(*)::int FROM billing_cancel_command_keys WHERE organization_id = $1) AS keys`,
+        [organizationId],
+      );
+      expect(durable.rows[0]).toEqual({ jobs: 0, commands: 0, keys: 0 });
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      await Promise.all([blocker.end(), observer.end()]);
     }
   }, 15_000);
 
@@ -450,7 +565,9 @@ realPostgres("compute stop concurrency", () => {
         requested: false,
         reason: "funding_restored",
       });
-      const jobs = await observer.query("SELECT id FROM jobs");
+      const jobs = await observer.query("SELECT id FROM jobs WHERE organization_id = $1", [
+        organizationId,
+      ]);
       expect(jobs.rows).toHaveLength(0);
     } finally {
       await holder.query("ROLLBACK").catch(() => undefined);

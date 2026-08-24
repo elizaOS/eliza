@@ -1,6 +1,6 @@
 /** Transaction-scoped access to durable billable-resource cancellation receipts. */
 
-import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import {
   type AgentComputeStopIntent,
@@ -20,6 +20,7 @@ import {
 import { type Job, jobs } from "../schemas/jobs";
 import { organizations } from "../schemas/organizations";
 import { users } from "../schemas/users";
+import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 export interface BillingCancelCommandBundle {
   command: BillingCancelCommand;
@@ -104,8 +105,10 @@ export const billingCancelCommandsRepository = {
    * cancellation transaction creates any durable effect. PostgreSQL
    * re-evaluates a FOR SHARE predicate after a conflicting UPDATE commits, so
    * a concurrent deactivation, role revocation, or steward identity rebinding
-   * cannot slip through a stale session snapshot. The retained row locks then
-   * fence later authority changes until this transaction commits or rolls back.
+   * cannot slip through a stale session snapshot. Expiry is checked separately
+   * against the primary database clock after the user lock is acquired because
+   * PostgreSQL's transaction timestamp is frozen before a lock wait. The
+   * retained row locks then fence later authority changes until commit/rollback.
    */
   async lockBillingManagerAuthority(
     tx: DbTransaction,
@@ -122,7 +125,7 @@ export const billingCancelCommandsRepository = {
     if (!organization) return false;
 
     const [user] = await tx
-      .select({ id: users.id })
+      .select({ id: users.id, expiresAt: users.expires_at })
       .from(users)
       .where(
         and(
@@ -133,12 +136,14 @@ export const billingCancelCommandsRepository = {
           eq(users.is_active, true),
           eq(users.is_anonymous, false),
           isNull(users.deleted_at),
-          or(isNull(users.expires_at), gt(users.expires_at, sql`CURRENT_TIMESTAMP`)),
         ),
       )
       .for("share")
       .limit(1);
-    return Boolean(user);
+    if (!user) return false;
+
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    return user.expiresAt === null || user.expiresAt.getTime() > databaseNow.getTime();
   },
 
   async findByKeyHash(
