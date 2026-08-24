@@ -295,6 +295,71 @@ export interface SendOptions {
   model?: string;
 }
 
+/** Authoritative failed-turn receipt carried by an ACP prompt result. */
+export interface AcpTerminalFailure {
+  kind: string;
+  code?: string;
+  transient: boolean;
+  message: string;
+}
+
+/**
+ * Read the elizaOS terminal-failure extension from an ACP prompt result.
+ * Presence is authoritative: malformed receipts fail the protocol boundary
+ * instead of being dropped and allowing surrounding prose to imply success.
+ */
+export function readAcpTerminalFailure(
+  promptResult: unknown,
+): AcpTerminalFailure | undefined {
+  if (
+    !promptResult ||
+    typeof promptResult !== "object" ||
+    Array.isArray(promptResult)
+  ) {
+    return undefined;
+  }
+  const metadata = (promptResult as Record<string, unknown>)._meta;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return undefined;
+  }
+  const candidate = (metadata as Record<string, unknown>).terminalFailure;
+  if (candidate === undefined) return undefined;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new TypeError("ACP terminalFailure must be an object");
+  }
+  const record = candidate as Record<string, unknown>;
+  const kind =
+    typeof record.kind === "string" && record.kind.trim()
+      ? record.kind.trim()
+      : undefined;
+  const message =
+    typeof record.message === "string" && record.message.trim()
+      ? record.message
+      : undefined;
+  const code =
+    record.code === undefined
+      ? undefined
+      : typeof record.code === "string" && record.code.trim()
+        ? record.code.trim()
+        : null;
+  if (
+    !kind ||
+    !message ||
+    typeof record.transient !== "boolean" ||
+    code === null
+  ) {
+    throw new TypeError(
+      "ACP terminalFailure requires kind, message, transient, and an optional non-empty code",
+    );
+  }
+  return {
+    kind,
+    ...(code ? { code } : {}),
+    transient: record.transient,
+    message,
+  };
+}
+
 export interface PromptResult {
   sessionId: string;
   response: string;
@@ -304,6 +369,7 @@ export interface PromptResult {
   exitCode?: number | null;
   signal?: NodeJS.Signals | null;
   error?: string;
+  terminalFailure?: AcpTerminalFailure;
 }
 
 export interface AvailableAgentInfo {
