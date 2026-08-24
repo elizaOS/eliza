@@ -25,6 +25,8 @@ function hasNativeBuffer(): boolean {
  * @returns A BufferLike object
  */
 export function fromHex(hex: string): BufferLike {
+	if (typeof hex !== "string")
+		return hasNativeBuffer() ? Buffer.alloc(0) : new Uint8Array(0);
 	// Clean the hex string to remove non-hex characters
 	const cleanHex = hex.replace(/[^0-9a-fA-F]/g, "");
 
@@ -50,6 +52,8 @@ export function fromString(
 	str: string,
 	encoding: "utf8" | "utf-8" | "base64" = "utf8",
 ): BufferLike {
+	if (typeof str !== "string")
+		return hasNativeBuffer() ? Buffer.alloc(0) : new Uint8Array(0);
 	if (hasNativeBuffer()) {
 		const enc = encoding === "utf-8" ? "utf8" : encoding;
 		return Buffer.from(str, enc as BufferEncoding);

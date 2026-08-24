@@ -71,3 +71,17 @@ describe("byte ops", () => {
 		expect(toHex(randomBytes(8))).not.toBe(toHex(randomBytes(8)));
 	});
 });
+
+describe("non-string guardrails", () => {
+	it("returns empty buffer for non-string hex and string inputs", () => {
+		expect(byteLength(fromHex(null as unknown as string))).toBe(0);
+		expect(byteLength(fromHex(undefined as unknown as string))).toBe(0);
+		expect(byteLength(fromHex(42 as unknown as string))).toBe(0);
+		expect(byteLength(fromHex({} as unknown as string))).toBe(0);
+		expect(toHex(fromHex(""))).toBe("");
+		expect(byteLength(fromString(null as unknown as string))).toBe(0);
+		expect(byteLength(fromString(undefined as unknown as string))).toBe(0);
+		expect(byteLength(fromString(123 as unknown as string))).toBe(0);
+		expect(bufferToString(fromString(""))).toBe("");
+	});
+});
