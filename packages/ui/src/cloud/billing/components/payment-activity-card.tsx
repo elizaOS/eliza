@@ -6,7 +6,9 @@
  * or URL state never influences a row. Distinct loading / empty / error with
  * retry / success / unavailable states per the repo error policy; status is
  * never conveyed by color alone (icon + verbatim state text). Credit amounts
- * are labeled as credits — never formatted as currency.
+ * are labeled as credits — never formatted as currency. Each row links to
+ * its payment-state detail at `cloud/billing/payments/:id` (#22966 linked
+ * order/receipt surface) with copyable identifiers there.
  */
 
 "use client";
@@ -27,7 +29,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
@@ -133,26 +135,6 @@ function formatAmount(amount: number, currency: string): string {
 /** Credit-unit amounts are labeled as credits, never formatted as USD. */
 function formatCredits(credits: number): string {
   return `${credits.toFixed(2)} credits`;
-}
-
-/**
- * Copies a provider-neutral receipt or authority id to the clipboard. No
- * receipt/order detail route exists in the cloud console (only
- * `cloud/invoices/:id` for Stripe subscription invoices — a different
- * object), so the actionable link for support/escalation is a copyable
- * stable identifier, never a dead span.
- */
-async function copyReference(text: string, label: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success(`${label} copied to clipboard`);
-  } catch {
-    // error-policy:J4 user-facing degrade: a failed clipboard write (older
-    // browser, permission denied, insecure context) becomes a visible toast
-    // telling the user the reference could not be copied — never a silent
-    // no-op that looks like success.
-    toast.error(`${label} could not be copied`);
-  }
 }
 
 export function PaymentActivityCard() {
@@ -342,23 +324,15 @@ export function PaymentActivityCard() {
                             })}
                     </span>
                     {row.receiptId ? (
-                      <button
-                        type="button"
+                      <Link
+                        to={`/cloud/billing/payments/${encodeURIComponent(row.id)}`}
                         data-testid="payment-receipt-link"
-                        aria-label={t("cloud.billingTab.copyReceiptReference", {
-                          defaultValue: "Copy receipt ID {{id}} to clipboard",
+                        aria-label={t("cloud.billingTab.viewReceiptDetail", {
+                          defaultValue: "View receipt {{id}} payment detail",
                           id: row.receiptId,
                         })}
                         title={row.receiptId}
                         className="underline decoration-dotted underline-offset-2 hover:text-txt-strong cursor-pointer"
-                        onClick={() => {
-                          void copyReference(
-                            row.receiptId as string,
-                            t("cloud.billingTab.paymentActivityReceipt", {
-                              defaultValue: "receipt",
-                            }),
-                          );
-                        }}
                       >
                         {t("cloud.billingTab.paymentActivityReceipt", {
                           defaultValue: "receipt",
@@ -367,13 +341,13 @@ export function PaymentActivityCard() {
                         <span className="text-txt-strong">
                           {row.receiptId.slice(0, 8)}
                         </span>
-                      </button>
+                      </Link>
                     ) : null}
-                    <button
-                      type="button"
+                    <Link
+                      to={`/cloud/billing/payments/${encodeURIComponent(row.id)}`}
                       data-testid="payment-authority-link"
-                      aria-label={t("cloud.billingTab.copyAuthorityReference", {
-                        defaultValue: "Copy {{surface}} ID {{id}} to clipboard",
+                      aria-label={t("cloud.billingTab.viewAuthorityDetail", {
+                        defaultValue: "View {{surface}} {{id}} payment detail",
                         surface:
                           row.surface === "checkout_order"
                             ? t("cloud.billingTab.paymentActivityOrder", {
@@ -386,18 +360,6 @@ export function PaymentActivityCard() {
                       })}
                       title={row.authorityId}
                       className="underline decoration-dotted underline-offset-2 hover:text-txt-strong cursor-pointer"
-                      onClick={() => {
-                        void copyReference(
-                          row.authorityId,
-                          row.surface === "checkout_order"
-                            ? t("cloud.billingTab.paymentActivityOrder", {
-                                defaultValue: "checkout order",
-                              })
-                            : t("cloud.billingTab.paymentActivityRequest", {
-                                defaultValue: "payment request",
-                              }),
-                        );
-                      }}
                     >
                       {row.surface === "checkout_order"
                         ? t("cloud.billingTab.paymentActivityOrder", {
@@ -410,7 +372,7 @@ export function PaymentActivityCard() {
                       <span className="text-txt-strong">
                         {row.authorityId.slice(0, 8)}
                       </span>
-                    </button>
+                    </Link>
                   </div>
 
                   {reversed ? (
