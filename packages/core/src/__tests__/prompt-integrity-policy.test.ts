@@ -135,6 +135,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Object\.entries\([^\n]+\.slice\(/,
 		/actionResults[\s\S]{0,200}\.slice\(-\d+\)/,
 		/truncateWellFormed\(wellFormed/,
+		/\.slice\(-50\)/,
+		/maxTokens:\s*260/,
 	],
 	"packages/agent/src/api/diagnostics-routes.ts": [
 		/entries\.slice\(-\d+\)/,
@@ -163,6 +165,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/agent/src/services/sandbox-manager.ts": [
 		/eventLog\s*=\s*this\.eventLog\.slice/,
 		/eventLog\.splice\(/,
+		/options\.command\.substring\(/,
+		/options\.command\.slice\(/,
 	],
 	"packages/app-core/platforms/electrobun/src/voice/voice-service.ts": [
 		/this\.recent\.splice\(/,
@@ -432,7 +436,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-facts.ts": [
 		/SHARED_FACTS_MAX_PER_TURN/,
-		/parsed[^\n]*\.slice\(/,
 	],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-timing.ts": [
 		/MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS/,
@@ -869,10 +872,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/providers/facts.ts": [
 		/EVIDENCE_TEXT_CHAR_CAP/,
 	],
-	"packages/agent/src/api/chat-routes.ts": [
-		/\.slice\(-50\)/,
-		/maxTokens:\s*260/,
-	],
 	"packages/agent/src/api/fallback-action-helpers.ts": [/maxTokens:\s*260/],
 	"packages/agent/src/api/interactions-routes.ts": [
 		/truncateWellFormed/,
@@ -884,10 +883,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/agent/src/api/server-helpers-swarm.ts": [
 		/originalTask[^\n]*\.slice\(/,
 		/firstLine\.slice\(/,
-	],
-	"packages/agent/src/services/sandbox-manager.ts": [
-		/options\.command\.substring\(/,
-		/options\.command\.slice\(/,
 	],
 	"packages/agent/src/shared/conversation-format.ts": [
 		/room\.id\.slice\(/,
