@@ -43,6 +43,13 @@ describe("dev-ui Vite runtime", () => {
     expect(apiEnv).toBeGreaterThan(viteEnv);
   });
 
+  it("keeps default dev startup non-interactive while preserving Keychain opt-in", () => {
+    const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
+
+    expect(source).toContain("if (!nextEnv.ELIZA_WALLET_OS_STORE?.trim()) {");
+    expect(source).toContain('nextEnv.ELIZA_WALLET_OS_STORE = "0";');
+  });
+
   it("uses the validated package-manager Node instead of a PATH shim", () => {
     const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
 

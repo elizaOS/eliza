@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@elizaos/core": ["../../../packages/core/dist/index.d.ts"]
+    }
+  }
+}

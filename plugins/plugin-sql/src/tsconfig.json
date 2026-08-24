@@ -23,10 +23,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowUnusedLabels": true,
-    "types": ["node", "bun"],
-    "paths": {
-      "@elizaos/core": ["../../../packages/core/dist/index.d.ts"]
-    }
+    "types": ["node", "bun"]
   },
   "include": ["**/*.ts"],
   "exclude": ["dist", "__tests__", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]

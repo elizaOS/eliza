@@ -36,6 +36,8 @@ import {
   WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
 
+type WsClient = InstanceType<typeof WebSocket>;
+
 // The gate contract under test lives in server.ts. The cloud plugin's own
 // handler is NOT exercised here: under the source-alias test environment the
 // real `@elizaos/plugin-elizacloud` module graph fails to evaluate (ENOTDIR
@@ -378,7 +380,7 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
     __resetPendingWebSocketsForTests();
   });
 
-  function openUnauthenticatedWs(port: number): Promise<WebSocket> {
+  function openUnauthenticatedWs(port: number): Promise<WsClient> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
       ws.once("open", () => resolve(ws));
@@ -386,7 +388,7 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
     });
   }
 
-  function waitForClose(ws: WebSocket, timeoutMs: number): Promise<number> {
+  function waitForClose(ws: WsClient, timeoutMs: number): Promise<number> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error("timed out waiting for the server close")),
@@ -400,7 +402,7 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
   }
 
   /** Waits for a specific frame type, ignoring the interleaved status/replay. */
-  function waitForFrame(ws: WebSocket, type: string): Promise<void> {
+  function waitForFrame(ws: WsClient, type: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`timed out waiting for ${type}`)),

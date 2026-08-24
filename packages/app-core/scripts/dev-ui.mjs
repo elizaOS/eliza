@@ -307,6 +307,12 @@ function createApiChildEnv(baseEnv) {
   for (const key of VITE_RENDERER_ONLY_MOBILE_ENV_KEYS) {
     delete nextEnv[key];
   }
+  // A native macOS Keychain read may wait for user interaction and blocks
+  // Bun's event loop while it does so. Dev startup must stay non-interactive;
+  // mirror dev-all's safe default while preserving an explicit operator opt-in.
+  if (!nextEnv.ELIZA_WALLET_OS_STORE?.trim()) {
+    nextEnv.ELIZA_WALLET_OS_STORE = "0";
+  }
   return nextEnv;
 }
 
