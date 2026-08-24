@@ -71,7 +71,7 @@ describe("resolveAdminContext", () => {
 		expect(getWorld).not.toHaveBeenCalled();
 	});
 
-	test("uses a room already present in state instead of loading it", async () => {
+	test("rejects an unknown DM sender using a room already present in state", async () => {
 		const getRoom = vi.fn();
 		const runtime = createMockRuntime({
 			agentId: AGENT_ID,
@@ -85,7 +85,7 @@ describe("resolveAdminContext", () => {
 		};
 
 		await expect(resolveAdminContext(runtime, message, state)).resolves.toBe(
-			true,
+			false,
 		);
 		expect(getRoom).not.toHaveBeenCalled();
 	});
@@ -103,7 +103,7 @@ describe("resolveAdminContext", () => {
 		expect(getWorld).not.toHaveBeenCalled();
 	});
 
-	test("trusts a direct-message sender without world resolution", async () => {
+	test("rejects an unknown direct-message sender without world resolution", async () => {
 		const getWorld = vi.fn();
 		const runtime = createMockRuntime({
 			agentId: AGENT_ID,
@@ -112,7 +112,7 @@ describe("resolveAdminContext", () => {
 			getWorld,
 		});
 
-		await expect(resolveAdminContext(runtime, message)).resolves.toBe(true);
+		await expect(resolveAdminContext(runtime, message)).resolves.toBe(false);
 		expect(getWorld).not.toHaveBeenCalled();
 	});
 
