@@ -71,6 +71,28 @@ describe("fetchDexPaprikaPrices", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("queries every address after the former twenty-token boundary", async () => {
+    const requestedUrls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requestedUrls.push(url);
+        return new Response(
+          JSON.stringify({ summary: { price_usd: 1 } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }),
+    );
+    const addresses = Array.from({ length: 25 }, (_, index) => `0x${index}`);
+
+    const results = await fetchDexPaprikaPrices(42161, addresses);
+
+    expect(requestedUrls).toHaveLength(25);
+    expect(requestedUrls.at(-1)).toContain("/tokens/0x24");
+    expect(results.size).toBe(25);
+  });
+
   it.each([
     ["missing summary", { id: "0xdef", price_usd: 99 }],
     ["zero price", { id: "0xdef", summary: { price_usd: 0 } }],

@@ -145,6 +145,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/pushWithBatchEvict\(\s*state\.logBuffer/,
 		/state\.logBuffer\.splice\(/,
 	],
+	"packages/agent/src/api/wallet-dex-prices.ts": [
+		/addresses\.slice\(0,\s*\d+\)/,
+	],
+	"packages/agent/src/api/wallet-evm-balance.ts": [
+		/nonZero\.slice\(0,\s*\d+\)/,
+		/knownTokenAddresses[\s\S]{0,100}\.slice\(0,\s*\d+\)/,
+		/truncateWellFormed\(/,
+	],
 	"packages/agent/src/services/sandbox-manager.ts": [
 		/eventLog\s*=\s*this\.eventLog\.slice/,
 		/eventLog\.splice\(/,

@@ -5,7 +5,7 @@
  * and automatic fallback to public RPC endpoints when premium APIs are unavailable.
  */
 
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import type { EvmChainBalance, EvmNft, EvmTokenBalance } from "@elizaos/shared";
 import {
   computeValueUsd,
@@ -172,16 +172,11 @@ export const DEFAULT_EVM_CHAINS: readonly EvmChainConfig[] = [
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!res.ok)
-    throw new Error(
-      truncateWellFormed(toWellFormedUnicode(text), 200) ||
-        `HTTP ${res.status}`,
-    );
+    throw new Error(toWellFormedUnicode(text) || `HTTP ${res.status}`);
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new Error(
-      truncateWellFormed(toWellFormedUnicode(text), 200) || "Invalid JSON",
-    );
+    throw new Error(toWellFormedUnicode(text) || "Invalid JSON");
   }
 }
 
@@ -426,7 +421,7 @@ async function fetchAlchemyChainBalances(
   );
 
   const metaResults = await Promise.allSettled(
-    nonZero.slice(0, 50).map(async (tok): Promise<EvmTokenBalance> => {
+    nonZero.map(async (tok): Promise<EvmTokenBalance> => {
       const meta = (
         await jsonOrThrow<{ result?: AlchemyTokenMeta }>(
           await fetch(
@@ -709,9 +704,9 @@ async function fetchEvmChainBalancesViaRpc(
       const tokens: EvmTokenBalance[] = [];
       if (knownTokenAddresses && knownTokenAddresses.length > 0) {
         const results = await Promise.allSettled(
-          knownTokenAddresses
-            .slice(0, 30)
-            .map((addr) => fetchErc20BalanceViaRpc(rpcUrl, address, addr)),
+          knownTokenAddresses.map((addr) =>
+            fetchErc20BalanceViaRpc(rpcUrl, address, addr),
+          ),
         );
         for (const r of results) {
           if (r.status === "fulfilled" && r.value) tokens.push(r.value);
@@ -768,7 +763,7 @@ async function fetchEvmChainBalancesViaRpc(
   }
 
   throw new Error(
-    truncateWellFormed(toWellFormedUnicode(errors.join(" | ")), 400) ||
+    toWellFormedUnicode(errors.join(" | ")) ||
       `${chain.name} RPC unavailable`,
   );
 }
@@ -808,10 +803,7 @@ async function fetchAlchemyChainNfts(
       contractAddress: nft.contract?.address ?? "",
       tokenId: nft.tokenId ?? "",
       name: nft.name ?? "Untitled",
-      description: truncateWellFormed(
-        toWellFormedUnicode(nft.description ?? ""),
-        200,
-      ),
+      description: toWellFormedUnicode(nft.description ?? ""),
       imageUrl:
         nft.image?.cachedUrl ??
         nft.image?.thumbnailUrl ??
@@ -855,10 +847,7 @@ async function fetchAnkrChainNfts(
       contractAddress: nft.contractAddress ?? "",
       tokenId: String(nft.tokenId ?? ""),
       name: nft.name ?? "Untitled",
-      description: truncateWellFormed(
-        toWellFormedUnicode(nft.description ?? ""),
-        200,
-      ),
+      description: toWellFormedUnicode(nft.description ?? ""),
       imageUrl:
         nft.imageUrl ?? nft.imagePreviewUrl ?? nft.imageOriginalUrl ?? "",
       collectionName: nft.collectionName ?? nft.contractName ?? "",
