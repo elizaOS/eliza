@@ -34,7 +34,7 @@ async function seed(messages: Memory[]): Promise<InMemoryDatabaseAdapter> {
 }
 
 describe("InMemoryDatabaseAdapter — textContains", () => {
-	it("filters by entityId while keeping get/count pagination consistent", async () => {
+	it("uses entityId as get context while count retains its row predicate", async () => {
 		const adapter = await seed([
 			msg("requester-authored", 1),
 			{ ...msg("other-authored", 2), entityId: otherEntityId },
@@ -46,6 +46,7 @@ describe("InMemoryDatabaseAdapter — textContains", () => {
 			tableName: "messages",
 		});
 		expect(mine.map((memory) => memory.content.text)).toEqual([
+			"other-authored",
 			"requester-authored",
 		]);
 
@@ -56,6 +57,7 @@ describe("InMemoryDatabaseAdapter — textContains", () => {
 		});
 		expect(theirs.map((memory) => memory.content.text)).toEqual([
 			"other-authored",
+			"requester-authored",
 		]);
 
 		// Pagination stays consistent with the predicate: limit/count and offset apply after filtering.
@@ -67,7 +69,7 @@ describe("InMemoryDatabaseAdapter — textContains", () => {
 			offset: 0,
 		});
 		expect(paged).toHaveLength(1);
-		expect(paged[0].content.text).toBe("requester-authored");
+		expect(paged[0].content.text).toBe("other-authored");
 
 		const offsetPast = await adapter.getMemories({
 			entityId,
@@ -76,9 +78,12 @@ describe("InMemoryDatabaseAdapter — textContains", () => {
 			limit: 10,
 			offset: 1,
 		});
-		expect(offsetPast).toHaveLength(0);
+		expect(offsetPast.map((memory) => memory.content.text)).toEqual([
+			"requester-authored",
+		]);
 
-		// countMemories must agree with the getMemories predicate so callers paginating by count do not drift.
+		// SQL uses entityId as the RLS session for reads, while countMemories's
+		// explicit entityId contract remains a row predicate in both adapters.
 		const countMine = await adapter.countMemories({
 			entityId,
 			agentId,

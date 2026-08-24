@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getDb } from "./db.ts";
+import { getDb } from "../db.ts";
 
 describe("getDb", () => {
 	it("returns the runtime db handle when present", () => {
