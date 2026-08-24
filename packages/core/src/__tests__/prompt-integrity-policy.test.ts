@@ -112,6 +112,14 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/agent/src/actions/context-signal-lexicon.ts": [
+		/contextLimit/,
+		/CONTEXT_LIMIT/,
+	],
+	"packages/agent/src/actions/context-signal.ts": [
+		/contextLimit/,
+		/_contextLimit/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,
@@ -358,9 +366,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/tokenize\(intent\)\.slice\(/,
 		/displayLine\.replace\([^\n]+\.slice\(/,
 	],
-	"packages/training/scripts/eval/eliza1_eval_suite.py": [
-		/toks\s*=\s*toks\[:/,
-	],
+	"packages/training/scripts/eval/eliza1_eval_suite.py": [/toks\s*=\s*toks\[:/],
 	"plugins/plugin-agent-skills/src/actions/parse-helpers.ts": [
 		/truncateWellFormed/,
 	],
