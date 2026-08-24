@@ -2489,6 +2489,45 @@ function AppContent() {
       (isAgentlessCloudOrigin &&
         firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)),
   });
+  // A retry from the auth-unavailable screen restarts the entire startup
+  // coordinator. During that restart the shell's default chat tab can commit
+  // `/chat` before the requested deep route remounts, discarding the user's
+  // return intent (observed after OAuth on `/cloud/agents`). Capture only a
+  // same-origin relative location and restore it once both startup and auth are
+  // ready. Fragments are excluded on normal web hosts so an OAuth callback
+  // code can never be retained by this recovery seam.
+  const authStartupRetryReturnLocationRef = useRef<string | null>(null);
+  const retryAuthStartup = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const navigationPath = getWindowNavigationPath();
+      authStartupRetryReturnLocationRef.current = isRouteRootPath(
+        navigationPath,
+      )
+        ? null
+        : shouldUseHashNavigation()
+          ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+          : `${window.location.pathname}${window.location.search}`;
+    }
+    refetchAuth();
+    retryStartup();
+  }, [refetchAuth, retryStartup]);
+  useEffect(() => {
+    if (
+      startupCoordinator.phase !== "ready" ||
+      authState.phase !== "authenticated"
+    ) {
+      return;
+    }
+    const returnLocation = authStartupRetryReturnLocationRef.current;
+    if (!returnLocation || typeof window === "undefined") return;
+    authStartupRetryReturnLocationRef.current = null;
+    const currentLocation = shouldUseHashNavigation()
+      ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+      : `${window.location.pathname}${window.location.search}`;
+    if (currentLocation === returnLocation) return;
+    shellHistory.replaceState(null, "", returnLocation);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, [authState.phase, startupCoordinator.phase]);
   // The first-run chat must survive its completion edge. Completion starts an
   // auth probe, but replacing the already-painted shell with StartupScreen
   // remounts ChatOverlay and loses its first-run -> FULL transition state. Remember
@@ -3176,8 +3215,7 @@ function AppContent() {
               // whose reducer has no RETRY arm. Re-probe auth so a transient
               // outage (agent restart, phone network blip) actually recovers,
               // and still kick the startup retry for the mixed case.
-              refetchAuth();
-              retryStartup();
+              retryAuthStartup();
             }}
           />
           <BugReportModal />
