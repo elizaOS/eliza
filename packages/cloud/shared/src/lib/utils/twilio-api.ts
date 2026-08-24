@@ -4,6 +4,7 @@
  * Shared constants and helpers for Twilio SMS/MMS/Voice API interactions.
  */
 
+import { ElizaError, isElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import { z } from "zod";
 import { ownedBoundedFetch } from "./owned-bounded-fetch";
@@ -106,29 +107,67 @@ export async function twilioApiRequest<T>(
 
   const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
 
-  const response = await twilioFetch(url, {
-    method,
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: body?.toString(),
-  });
+  let response: Response;
+  try {
+    response = await twilioFetch(url, {
+      method,
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body?.toString(),
+    });
+  } catch (cause) {
+    if (isElizaError(cause)) throw cause;
+    // error-policy:J2 transport failure after dispatch cannot prove whether
+    // Twilio accepted the paid operation.
+    throw new ElizaError("Twilio request acceptance is uncertain", {
+      code: "TWILIO_SUBMISSION_UNCERTAIN",
+      context: { endpoint, method },
+      cause,
+      severity: "fatal",
+    });
+  }
 
   const responseText = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Twilio API error (${response.status}): ${responseText}`);
+    throw new ElizaError(
+      response.status >= 500
+        ? "Twilio request acceptance is uncertain"
+        : "Twilio rejected the request",
+      {
+        code: response.status >= 500 ? "TWILIO_SUBMISSION_UNCERTAIN" : "TWILIO_PROVIDER_REJECTED",
+        context: {
+          endpoint,
+          method,
+          providerStatus: response.status,
+          retryable: response.status === 429,
+        },
+        severity: response.status >= 500 ? "fatal" : "ephemeral",
+      },
+    );
   }
 
   if (!responseText) {
-    return {} as T;
+    throw new ElizaError("Twilio accepted the request without a receipt", {
+      code: "TWILIO_RECEIPT_INVALID",
+      context: { endpoint, method },
+      severity: "fatal",
+    });
   }
 
   try {
     return JSON.parse(responseText) as T;
-  } catch {
-    throw new Error(`Invalid JSON response from Twilio: ${responseText}`);
+  } catch (cause) {
+    // error-policy:J2 accepted responses must retain their parse failure while
+    // refusing to fabricate a provider receipt.
+    throw new ElizaError("Twilio accepted the request without a valid JSON receipt", {
+      code: "TWILIO_RECEIPT_INVALID",
+      context: { endpoint, method },
+      cause,
+      severity: "fatal",
+    });
   }
 }
 
