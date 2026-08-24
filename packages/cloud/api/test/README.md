@@ -63,8 +63,18 @@ Worker doesn't poison subsequent runs.
 
 Earlier documentation referred to a non-secret contract at
 `docs/launchdocs/integration-test-fixtures.md`, but that file was never
-committed to this repository. The live launch-QA fixtures are under
-`./fixtures/`.
+committed to this repository. The `./fixtures/` directory contains
+**local code fixtures only** — Worker mocks and route harnesses (APNS
+provider Worker, Eliza runtime edge Worker, inference-admission gate
+Worker, onboarding route Worker, shared runtime Worker). They are **not**
+live accounts, provider owners, bot identities, funded wallets, or any
+form of live-account evidence.
+
+Live launch-QA accounts and identities are provisioned through the
+approved secret store and evidenced on the issue or PR. A durable
+non-secret fixture/custody ledger is tracked separately (see
+`docs/launchdocs/`); never cite `./fixtures/` as proof of live account
+or provider readiness.
 The e2e harness can exercise cloud routes, connector contracts, and
 direct-crypto boundaries, but live Codex/Gmail accounts, Eliza Cloud orgs, and
 funded wallets must be provided through the approved secret store and evidenced
