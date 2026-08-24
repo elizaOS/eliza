@@ -65,6 +65,7 @@ import {
   queryDocumentFragmentsInMemory,
   queryDocumentsInMemory,
   type Relationship,
+  ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   rankMessageSearch,
   type Task,
@@ -74,6 +75,8 @@ import {
   validateQueryEntitiesPagination,
   validateTaskQueryPagination,
   type World,
+  type WorldMetadataCompareAndSwapParams,
+  type WorldMetadataMutationResult,
   withinCreatedAtWindow,
 } from "@elizaos/core";
 import { dataContainsFilter } from "./data-contains-filter";
@@ -263,6 +266,30 @@ function storedMemoryTableName(memory: StoredMemory): string | undefined {
   return memory.tableName ?? memory.metadata?.type;
 }
 
+/**
+ * Serialization tail for world-metadata writes, keyed by STORAGE INSTANCE
+ * (#23100). The plugin shares one `MemoryStorage` singleton across adapter
+ * instances in a process, and the storage itself has no transaction
+ * isolation — an adapter-local tail would let two adapters (or a legacy
+ * `updateWorlds` writer racing a CAS) both compare the same snapshot and
+ * both "win". Attaching the tail to the shared storage object closes both
+ * holes: every adapter over that storage, and every world write path that
+ * goes through this helper, serializes on the same chain.
+ */
+const worldMetadataTails = new WeakMap<IStorage, Promise<void>>();
+
+function withWorldMetadataTail<T>(storage: IStorage, operation: () => Promise<T>): Promise<T> {
+  const run = (worldMetadataTails.get(storage) ?? Promise.resolve()).then(operation, operation);
+  worldMetadataTails.set(
+    storage,
+    run.then(
+      () => undefined,
+      () => undefined
+    )
+  );
+  return run;
+}
+
 function relationshipFromStored(r: StoredRelationship, fallbackAgentId: UUID): Relationship {
   return {
     id: r.id as UUID,
@@ -382,6 +409,42 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
   const aId = typeof a.id === "string" ? a.id : "";
   const bId = typeof b.id === "string" ? b.id : "";
   return compareMemoryIds(bId, aId);
+}
+
+/**
+ * Deep JSON-value equality for world-metadata compare-and-swap. The stored
+ * `World.metadata` is a live object in this adapter, so snapshots must compare
+ * by value; key order is irrelevant (matching SQL jsonb equality) and
+ * `undefined` is treated as absent, matching how a JSON round-trip drops it.
+ */
+function worldMetadataValueEquals(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((item, index) => worldMetadataValueEquals(item, right[index]))
+    );
+  }
+  if (
+    typeof left === "object" &&
+    left !== null &&
+    typeof right === "object" &&
+    right !== null &&
+    !Array.isArray(left) &&
+    !Array.isArray(right)
+  ) {
+    const leftRecord = left as Record<string, unknown>;
+    const rightRecord = right as Record<string, unknown>;
+    const leftKeys = Object.keys(leftRecord).filter((key) => leftRecord[key] !== undefined);
+    const rightKeys = Object.keys(rightRecord).filter((key) => rightRecord[key] !== undefined);
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every(
+      (key) =>
+        Object.hasOwn(rightRecord, key) &&
+        worldMetadataValueEquals(leftRecord[key], rightRecord[key])
+    );
+  }
+  return false;
 }
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
@@ -1554,43 +1617,150 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async createWorlds(worlds: World[]): Promise<UUID[]> {
-    const ids: UUID[] = [];
-    for (const world of worlds) {
-      const id = world.id as UUID;
-      await this.storage.set(COLLECTIONS.WORLDS, id, { ...world, id });
-      ids.push(id);
-    }
-    return ids;
+    // World-collection mutations share the CAS serialization tail (#23100):
+    // a create or delete interleaving between a CAS read and its write
+    // could resurrect a deleted world or clobber a fresh one.
+    return withWorldMetadataTail(this.storage, async () => {
+      const ids: UUID[] = [];
+      for (const world of worlds) {
+        const id = world.id as UUID;
+        await this.storage.set(COLLECTIONS.WORLDS, id, { ...world, id });
+        ids.push(id);
+      }
+      return ids;
+    });
   }
 
   async deleteWorlds(worldIds: UUID[]): Promise<void> {
-    for (const id of worldIds) {
-      await this.storage.delete(COLLECTIONS.WORLDS, id);
-    }
+    return withWorldMetadataTail(this.storage, async () => {
+      for (const id of worldIds) {
+        await this.storage.delete(COLLECTIONS.WORLDS, id);
+      }
+    });
   }
 
   async updateWorlds(worlds: World[]): Promise<void> {
-    for (const world of worlds) {
-      if (!world.id) continue;
-      const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, world.id);
-      if (!existing) continue;
-      await this.storage.set(COLLECTIONS.WORLDS, world.id, {
-        ...existing,
-        ...world,
-      });
-    }
+    // World writes share the CAS serialization tail so a legacy whole-world
+    // writer cannot interleave between a CAS read/compare and its write
+    // (#23100): the blind write still happens, but never INSIDE another
+    // world-metadata mutation's critical section.
+    return withWorldMetadataTail(this.storage, async () => {
+      for (const world of worlds) {
+        if (!world.id) continue;
+        const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, world.id);
+        if (!existing) continue;
+        await this.storage.set(COLLECTIONS.WORLDS, world.id, {
+          ...existing,
+          ...world,
+        });
+      }
+    });
   }
 
   async upsertWorlds(worlds: World[]): Promise<void> {
-    for (const world of worlds) {
-      const id = world.id as UUID;
-      const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
-      await this.storage.set(COLLECTIONS.WORLDS, id, {
-        ...(existing ?? {}),
-        ...world,
-        id,
-      });
+    return withWorldMetadataTail(this.storage, async () => {
+      for (const world of worlds) {
+        const id = world.id as UUID;
+        const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
+        await this.storage.set(COLLECTIONS.WORLDS, id, {
+          ...(existing ?? {}),
+          ...world,
+          id,
+        });
+      }
+    });
+  }
+
+  /**
+   * Compare-and-swap replacement of a world's whole metadata under the exact
+   * prior snapshot (#23100 role-write atomicity). The whole operation —
+   * read, compare, audit insert, world replacement — runs on the
+   * world-metadata mutation tail so concurrent CAS calls serialize and
+   * exactly one wins per snapshot. If the world write fails after the audit
+   * row was inserted, the audit row is deleted back (best-effort
+   * compensation — the storage has no transactions) so a failed attempt
+   * does not leave a false committed audit record behind.
+   */
+  async compareAndSwapWorldMetadata(
+    params: WorldMetadataCompareAndSwapParams
+  ): Promise<WorldMetadataMutationResult> {
+    // Storage-scoped serialization (see withWorldMetadataTail): this races
+    // correctly against other adapter instances over the same shared
+    // storage AND against the updateWorlds/upsertWorlds writers below,
+    // which route through the same tail.
+    return withWorldMetadataTail(this.storage, () =>
+      this.compareAndSwapWorldMetadataSerialized(params)
+    );
+  }
+
+  private async compareAndSwapWorldMetadataSerialized(
+    params: WorldMetadataCompareAndSwapParams
+  ): Promise<WorldMetadataMutationResult> {
+    const stored = await this.storage.get<World>(COLLECTIONS.WORLDS, params.worldId);
+    if (!stored) return { status: "not_found" };
+    const storedMetadata = (stored.metadata ?? {}) as Record<string, unknown>;
+    if (
+      !worldMetadataValueEquals(storedMetadata, params.expectedMetadata as Record<string, unknown>)
+    ) {
+      return { status: "conflict" };
     }
+    const audit = params.audit;
+    // Validate cloneability BEFORE inserting the audit row: a non-cloneable
+    // replacement must throw with the world untouched and NO audit row left
+    // behind (a committed audit without its metadata change would be a false
+    // authority record).
+    const replacementWorld: World = {
+      ...stored,
+      metadata: structuredClone(params.replacementMetadata) as World["metadata"],
+    };
+    if (audit) {
+      const id = randomUUID() as UUID;
+      await this.storage.set(COLLECTIONS.LOGS, id, {
+        id,
+        entityId: audit.actorEntityId,
+        roomId: audit.roomId,
+        type: ROLE_WRITE_AUDIT_LOG_TYPE,
+        body: {
+          source: "role-write-cas",
+          metadata: {
+            worldId: params.worldId,
+            actorEntityId: audit.actorEntityId,
+            targetEntityId: audit.targetEntityId,
+            previousRole: audit.previousRole,
+            newRole: audit.newRole,
+            grantSource: audit.source,
+            outcome: "committed",
+          },
+        },
+        createdAt: new Date(),
+      } as Log);
+      try {
+        await this.storage.set(COLLECTIONS.WORLDS, params.worldId, replacementWorld);
+      } catch (error) {
+        // error-policy:J6 best-effort teardown: the world write failed after
+        // the audit insert; compensate by deleting the audit row so the
+        // failed attempt leaves no false committed record, then surface the
+        // original storage failure. Compensation failure is warned (and
+        // reported below) — never silently swallowed.
+        try {
+          await this.storage.delete(COLLECTIONS.LOGS, id);
+        } catch (compensationError) {
+          logger.warn(
+            {
+              src: "plugin-inmemorydb:adapter",
+              worldId: params.worldId,
+              auditLogId: id,
+              err: compensationError,
+            },
+            "Failed to roll back the role_audit row after a failed world-metadata write; a stale committed audit row may remain"
+          );
+        }
+        throw error;
+      }
+      return { status: "updated" };
+    }
+    await this.storage.set(COLLECTIONS.WORLDS, params.worldId, replacementWorld);
+    return { status: "updated" };
   }
 
   // ── Room CRUD ─────────────────────────────────────────────────────────

@@ -76,6 +76,7 @@ import {
   type ParticipantUserState,
   type PatchOp,
   type Relationship,
+  ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   type RunStatus,
   type SetConnectorAccountCredentialRefParams,
@@ -91,6 +92,8 @@ import {
   validateQueryEntitiesPagination,
   validateTaskQueryPagination,
   type World,
+  type WorldMetadataCompareAndSwapParams,
+  type WorldMetadataMutationResult,
 } from "@elizaos/core";
 import { sanitizeJsonObject } from "./sanitize-json";
 import {
@@ -194,6 +197,35 @@ function asRawMessage(value: unknown): Record<string, unknown> | undefined {
 
 function asMetadata(value: unknown): Metadata | undefined {
   return (value ?? undefined) as Metadata | undefined;
+}
+
+/**
+ * Deep JSON-value equality for the world-metadata compare-and-swap: a jsonb
+ * column read back from Postgres compares by VALUE with key order
+ * insignificant, so the snapshot comparison must do the same rather than
+ * reference-comparing the objects the caller read. `undefined` is treated as
+ * absent, matching a JSON round-trip.
+ */
+function jsonbValueEquals(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((item, index) => jsonbValueEquals(item, right[index]))
+    );
+  }
+  if (asRawMessage(left) && asRawMessage(right)) {
+    const leftRecord = left as Record<string, unknown>;
+    const rightRecord = right as Record<string, unknown>;
+    const leftKeys = Object.keys(leftRecord).filter((key) => leftRecord[key] !== undefined);
+    const rightKeys = Object.keys(rightRecord).filter((key) => rightRecord[key] !== undefined);
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every(
+      (key) =>
+        Object.hasOwn(rightRecord, key) && jsonbValueEquals(leftRecord[key], rightRecord[key])
+    );
+  }
+  return false;
 }
 
 function normalizeAgentBio(value: unknown): string[] | undefined {
@@ -5189,6 +5221,66 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .update(worldTable)
         .set(normalizedWorld)
         .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)));
+    });
+  }
+
+  /**
+   * Compare-and-swap replacement of a world's whole metadata under the exact
+   * prior snapshot (#23100 role-write atomicity). SELECT ... FOR UPDATE pins
+   * the row, the stored metadata is compared against `expectedMetadata` by
+   * canonical JSON value, the durable `role_audit` log row is inserted in the
+   * SAME transaction, and only then does the metadata column advance — so a
+   * concurrent metadata writer surfaces as a typed conflict instead of being
+   * silently overwritten, and a committed authority change is never
+   * separable from its audit record.
+   */
+  async compareAndSwapWorldMetadata(
+    params: WorldMetadataCompareAndSwapParams
+  ): Promise<WorldMetadataMutationResult> {
+    return this.withDatabase(async () => {
+      return this.db.transaction(async (tx) => {
+        const rows = await tx
+          .select()
+          .from(worldTable)
+          .where(and(eq(worldTable.id, params.worldId), eq(worldTable.agentId, this.agentId)))
+          .for("update")
+          .limit(1);
+        const row = rows[0];
+        if (!row) return { status: "not_found" as const };
+
+        const storedMetadata = (row.metadata ?? {}) as Record<string, unknown>;
+        if (!jsonbValueEquals(storedMetadata, params.expectedMetadata as Record<string, unknown>)) {
+          return { status: "conflict" as const };
+        }
+
+        if (params.audit) {
+          const audit = params.audit;
+          const sanitizedBody = sanitizeJsonObject({
+            source: "role-write-cas",
+            metadata: {
+              worldId: params.worldId,
+              actorEntityId: audit.actorEntityId,
+              targetEntityId: audit.targetEntityId,
+              previousRole: audit.previousRole,
+              newRole: audit.newRole,
+              grantSource: audit.source,
+              outcome: "committed",
+            },
+          });
+          await tx.insert(logTable).values({
+            entityId: audit.actorEntityId,
+            roomId: audit.roomId,
+            type: ROLE_WRITE_AUDIT_LOG_TYPE,
+            body: sql`${JSON.stringify(sanitizedBody)}::jsonb`,
+          });
+        }
+
+        await tx
+          .update(worldTable)
+          .set({ metadata: params.replacementMetadata })
+          .where(eq(worldTable.id, params.worldId));
+        return { status: "updated" as const };
+      });
     });
   }
 

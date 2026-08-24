@@ -83,8 +83,11 @@ import type {
 	UpsertConnectorAccountParams,
 	UUID,
 	World,
+	WorldMetadataCompareAndSwapParams,
+	WorldMetadataMutationResult,
 } from "../types";
 import { MemoryType } from "../types";
+import { ROLE_WRITE_AUDIT_LOG_TYPE } from "../types/database";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
 import { createHash } from "../utils/crypto-compat";
@@ -121,6 +124,38 @@ function randomUuid(): UUID {
 
 function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
+}
+
+/**
+ * Deep JSON-value equality for world-metadata compare-and-swap: the stored
+ * `World.metadata` is a live object in this adapter, so snapshots must compare
+ * by value. Key order is irrelevant (matching SQL jsonb equality); `undefined`
+ * is treated as absent, matching how a JSON round-trip drops it.
+ */
+function jsonValueEquals(left: unknown, right: unknown): boolean {
+	if (left === right) return true;
+	if (isPlainObject(left) && isPlainObject(right)) {
+		const leftKeys = Object.keys(left).filter(
+			(key) => (left as Record<string, unknown>)[key] !== undefined,
+		);
+		const rightKeys = Object.keys(right).filter(
+			(key) => (right as Record<string, unknown>)[key] !== undefined,
+		);
+		if (leftKeys.length !== rightKeys.length) return false;
+		return leftKeys.every((key) =>
+			jsonValueEquals(
+				(left as Record<string, unknown>)[key],
+				(right as Record<string, unknown>)[key],
+			),
+		);
+	}
+	if (Array.isArray(left) && Array.isArray(right)) {
+		return (
+			left.length === right.length &&
+			left.every((item, index) => jsonValueEquals(item, right[index]))
+		);
+	}
+	return false;
 }
 
 function memoryMatchesMetadata(
@@ -1713,6 +1748,63 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const world of worlds) {
 			this.worlds.set(String(world.id), world);
 		}
+	}
+
+	/**
+	 * Compare-and-swap replacement of a world's whole metadata under the exact
+	 * prior snapshot (#23100). Value-compares the stored metadata (never by
+	 * reference — the Map stores live objects), commits the replacement, and
+	 * appends the audit row only when the snapshot still matches, so a
+	 * concurrent metadata write surfaces as a typed conflict rather than being
+	 * silently overwritten.
+	 */
+	async compareAndSwapWorldMetadata(
+		params: WorldMetadataCompareAndSwapParams,
+	): Promise<WorldMetadataMutationResult> {
+		const existing = this.worlds.get(String(params.worldId));
+		if (!existing) {
+			return { status: "not_found" };
+		}
+		if (!jsonValueEquals(existing.metadata ?? {}, params.expectedMetadata)) {
+			return { status: "conflict" };
+		}
+		const audit = params.audit;
+		// Validate cloneability BEFORE appending the audit row: if the
+		// replacement metadata is not cloneable the method must throw with
+		// the world untouched AND no audit row appended (a committed audit
+		// without its metadata change would be a false authority record).
+		const replacementWorld: World = {
+			...existing,
+			metadata: structuredClone(
+				params.replacementMetadata,
+			) as World["metadata"],
+		};
+		if (audit) {
+			// Same "transaction" as the metadata replacement: the audit row is
+			// appended immediately before the world entry is swapped, and any
+			// throw from the insert leaves the map untouched.
+			this.logs.push({
+				id: randomUuid(),
+				createdAt: new Date(),
+				entityId: audit.actorEntityId,
+				roomId: audit.roomId,
+				type: ROLE_WRITE_AUDIT_LOG_TYPE,
+				body: {
+					source: "role-write-cas",
+					metadata: {
+						worldId: params.worldId,
+						actorEntityId: audit.actorEntityId,
+						targetEntityId: audit.targetEntityId,
+						previousRole: audit.previousRole,
+						newRole: audit.newRole,
+						grantSource: audit.source,
+						outcome: "committed",
+					},
+				},
+			});
+		}
+		this.worlds.set(String(params.worldId), replacementWorld);
+		return { status: "updated" };
 	}
 
 	async getAllWorlds(): Promise<World[]> {

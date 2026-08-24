@@ -62,6 +62,8 @@ import type {
 	UpsertConnectorAccountParams,
 	UUID,
 	World,
+	WorldMetadataCompareAndSwapParams,
+	WorldMetadataMutationResult,
 } from "./types";
 
 /** Enforces the shared pagination contract for entity-query boundaries. */
@@ -166,6 +168,17 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract updateDocumentDirectGrants(
 		params: DocumentDirectGrantUpdateParams,
 	): Promise<DocumentMutationResult>;
+
+	/**
+	 * Atomic world-metadata compare-and-swap with same-transaction audit commit
+	 * (#23100). Every first-class adapter implements this natively — the exact
+	 * prior snapshot is compared in the transaction that writes the
+	 * replacement, so concurrent metadata writers lose atomically instead of
+	 * silently overwriting authorization state.
+	 */
+	abstract compareAndSwapWorldMetadata(
+		params: WorldMetadataCompareAndSwapParams,
+	): Promise<WorldMetadataMutationResult>;
 
 	abstract replaceDocumentRevision(
 		params: DocumentRevisionReplaceParams,
