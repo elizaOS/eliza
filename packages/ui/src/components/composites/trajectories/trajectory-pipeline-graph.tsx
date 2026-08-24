@@ -102,13 +102,15 @@ function PipelineNodeButton({
   };
 
   const iconColor = {
-    active: selected ? "text-primary" : "text-muted-strong",
+    active: selected ? "text-accent-fg" : "text-muted-strong",
     skipped: "text-muted/50",
     error: "text-danger/80",
   };
 
   const countBg = {
-    active: selected ? "bg-primary/15 text-primary" : "bg-muted/10 text-txt/60",
+    active: selected
+      ? "bg-accent-fg/15 text-accent-fg"
+      : "bg-muted/10 text-txt/60",
     skipped: "bg-muted/8 text-muted/40",
     error: "bg-danger/10 text-danger/70",
   };
@@ -122,7 +124,11 @@ function PipelineNodeButton({
       className="min-w-[90px] items-center"
     >
       <Icon className={`size-5 ${iconColor[node.status]}`} />
-      <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-strong whitespace-nowrap">
+      <span
+        className={`text-2xs font-semibold uppercase tracking-[0.12em] whitespace-nowrap ${
+          selected ? "text-accent-fg" : "text-muted-strong"
+        }`}
+      >
         {node.label}
       </span>
       <span

@@ -779,6 +779,7 @@ export function CustomActionEditor({
                 />
                 <span className="flex items-center gap-1 text-xs text-muted cursor-pointer">
                   <Checkbox
+                    aria-label={`Required parameter ${param.name || paramIdx + 1}`}
                     checked={param.required}
                     aria-label={t("secretsview.Required")}
                     onCheckedChange={(checked: boolean | "indeterminate") =>

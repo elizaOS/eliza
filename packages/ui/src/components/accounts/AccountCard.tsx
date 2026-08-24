@@ -209,6 +209,8 @@ export function AccountCard({
   const requiresCredentialRepair =
     account.health === "needs-reauth" || account.health === "invalid";
   const healthReason = account.healthDetail?.lastError?.trim();
+  const testLabel = t("accounts.test", { defaultValue: "Test" });
+  const refreshLabel = t("accounts.refresh", { defaultValue: "Refresh" });
 
   return (
     <div
@@ -329,12 +331,9 @@ export function AccountCard({
             disabled={testBusy || saving}
             aria-label={t("accounts.test", { defaultValue: "Test" })}
             onClick={() => void onTest()}
+            aria-label={testLabel}
           >
-            {testBusy ? (
-              <Spinner className="size-3" />
-            ) : (
-              t("accounts.test", { defaultValue: "Test" })
-            )}
+            {testBusy ? <Spinner className="size-3" aria-hidden /> : testLabel}
           </Button>
           <Button
             type="button"
@@ -343,11 +342,12 @@ export function AccountCard({
             disabled={refreshBusy || saving}
             aria-label={t("accounts.refresh", { defaultValue: "Refresh" })}
             onClick={() => void onRefreshUsage()}
+            aria-label={refreshLabel}
           >
             {refreshBusy ? (
-              <Spinner className="size-3" />
+              <Spinner className="size-3" aria-hidden />
             ) : (
-              t("accounts.refresh", { defaultValue: "Refresh" })
+              refreshLabel
             )}
           </Button>
           <Button

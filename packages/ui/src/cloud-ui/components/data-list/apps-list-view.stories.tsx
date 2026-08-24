@@ -3,12 +3,12 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
-import { Button } from "../../../components/ui/button";
 import { type AppsListItem, AppsListView } from "./apps-list-view";
 
 const noop = () => {};
 
 function renderAppLink({
+  app,
   className,
   children,
 }: {
@@ -17,13 +17,13 @@ function renderAppLink({
   children: ReactNode;
 }) {
   return (
-    <Button
-      type="button"
+    <a
+      href={app.app_url}
       className={className}
-      onClick={(e) => e.preventDefault()}
+      onClick={(event) => event.preventDefault()}
     >
       {children}
-    </Button>
+    </a>
   );
 }
 
