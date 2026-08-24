@@ -89,6 +89,11 @@ const SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER = "\n\nFired at:";
 const SCHEDULED_DISPATCH_TITLE_PROMPT_PREFIX =
   "You are the owner's personal assistant. Write a concise notification title for the scheduled message below.";
 const SCHEDULED_DISPATCH_TITLE_BODY_MARKER = "\nMessage body:\n";
+// `EvaluatorService` (packages/core/src/services/evaluator.ts) runs every active
+// post-turn evaluator in one merged TEXT_SMALL call after EVERY turn. It is
+// runtime-wide background work, not scenario-specific: the prompt header below
+// is emitted verbatim by `renderSharedContext`.
+const POST_TURN_EVALUATION_PROMPT_PREFIX = "# Task: Post-turn evaluation";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   const [knowledgeGraphModule, approvalModule] = await Promise.all([
@@ -488,6 +493,21 @@ function deterministicModelProviderConfig(): RuntimeFactoryResult["providerConfi
   };
 }
 
+// The merged post-turn evaluator call fires after every turn on the SAME
+// runtime the scenario drives, so it reaches the strict registry in scenarios
+// that never declared a model manifest. Left unanswered it is recorded as an
+// unexpected call and fails the whole scenario at `assertConsumed()`, even
+// though nothing in the scenario asserts evaluator output. Matched on the
+// header `renderSharedContext` emits plus the `## Active Evaluators` section
+// `renderPrompt` appends, so ordinary conversation text quoting the header
+// alone is never answered by this branch.
+export function isPostTurnEvaluationPrompt(prompt: string): boolean {
+  return (
+    prompt.startsWith(POST_TURN_EVALUATION_PROMPT_PREFIX) &&
+    prompt.includes("\n## Active Evaluators\n")
+  );
+}
+
 export function isScheduledDispatchRenderPrompt(prompt: string): boolean {
   return (
     prompt.startsWith(SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX) &&
@@ -639,6 +659,17 @@ export function resolveScenarioDeterministicModelCall(
     return null;
   }
   const candidates = deterministicCallTextCandidates(call);
+  // Checked first: the evaluator prompt embeds the turn's provider context, so
+  // a dispatch prompt delivered during the turn can appear INSIDE it. The
+  // post-turn header is the more specific signal.
+  if (candidates.some(isPostTurnEvaluationPrompt)) {
+    // "Nothing to record" is the empty shape the evaluator prompt itself
+    // prescribes. Every section is absent, so `processPreparedEntries` skips
+    // each evaluator without an error. Scenarios that need real evaluator
+    // output declare `modelFixtures: { mode: "fixtures" }`, which bypasses this
+    // resolver entirely and stays fail-closed.
+    return "{}";
+  }
   const bodyPrompt = candidates.find(isScheduledDispatchRenderPrompt);
   if (bodyPrompt) {
     return deterministicScheduledDispatchRenderText(bodyPrompt);
