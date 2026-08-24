@@ -577,7 +577,7 @@ describe("useShellVoiceOutput", () => {
       );
     });
 
-    it("skips a whitespace-only latest reply and falls back to the earlier real one", () => {
+    it("stays silent when the latest reply is whitespace-only instead of replaying an older one", () => {
       render({
         ...BASE,
         lastTurnVoice: true,
@@ -587,13 +587,7 @@ describe("useShellVoiceOutput", () => {
           assistantMsg("blank", "   "),
         ],
       });
-      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
-      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledWith(
-        "a1",
-        "Real answer.",
-        true,
-        { replace: true },
-      );
+      expect(hoisted.queueAssistantSpeech).not.toHaveBeenCalled();
     });
 
     it("stays silent when the only assistant message is whitespace-only", () => {

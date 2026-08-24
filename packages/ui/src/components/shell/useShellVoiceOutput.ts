@@ -19,14 +19,14 @@ function findLatestAssistantText(messages: readonly ConversationMessage[]): {
 } | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message && message.role === "assistant" && message.text.trim()) {
-      return {
-        id: message.id,
-        text: message.text,
-        source: message.source,
-        provisional: message.provisional,
-      };
-    }
+    if (message?.role !== "assistant") continue;
+    if (!message.text.trim()) return null;
+    return {
+      id: message.id,
+      text: message.text,
+      source: message.source,
+      provisional: message.provisional,
+    };
   }
   return null;
 }
