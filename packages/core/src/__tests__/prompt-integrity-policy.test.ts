@@ -136,6 +136,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/pushWithBatchEvict\(\s*state\.logBuffer/,
 		/state\.logBuffer\.splice\(/,
 	],
+	"packages/agent/src/services/sandbox-manager.ts": [
+		/eventLog\s*=\s*this\.eventLog\.slice/,
+		/eventLog\.splice\(/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,
@@ -381,6 +385,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-app-control/src/actions/views-create.ts": [
 		/tokenize\(intent\)\.slice\(/,
 		/displayLine\.replace\([^\n]+\.slice\(/,
+	],
+	"plugins/plugin-workflow/src/services/smithers-runtime.ts": [
+		/MAX_STDERR_CHARS/,
+		/\$\{stderr\}\$\{chunk\}`\.slice/,
+		/\$\{stdoutNoise\}\$\{line\}\\n`\.slice/,
 	],
 	"packages/training/scripts/eval/eliza1_eval_suite.py": [/toks\s*=\s*toks\[:/],
 	"plugins/plugin-agent-skills/src/actions/parse-helpers.ts": [
