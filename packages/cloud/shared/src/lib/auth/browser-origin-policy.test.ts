@@ -107,4 +107,16 @@ describe("Steward browser origin policy", () => {
     // An empty marker value is not a marker.
     expect(hasElizaNonSimpleRequestMarker(headers({ "x-eliza-csrf": "  " }))).toBe(false);
   });
+
+  it("extracts IPv6 host header correctly for same-origin matching", () => {
+    expect(
+      checkElizaMutatingRequestOrigin(
+        headers({
+          host: "[::1]:8787",
+          origin: "http://[::1]:8787",
+        }),
+        false,
+      ),
+    ).toEqual({ ok: true });
+  });
 });
