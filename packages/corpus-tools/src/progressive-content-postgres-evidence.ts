@@ -39,7 +39,7 @@ export const CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS = [
   {
     family: "attachment",
     authoritativeStore: "content-addressed-media",
-    productionMethod: "media-store.readStoredMediaBytes",
+    productionMethod: "media-store.readStoredMediaByteRange",
     binaryPolicy: "native-bytes",
     postgresBacked: false,
     expectedIndexNames: [],

@@ -178,7 +178,7 @@ function validPostgresEvidence(
     [
       "attachment",
       "content-addressed-media",
-      "media-store.readStoredMediaBytes",
+      "media-store.readStoredMediaByteRange",
       "native-bytes",
       false,
     ],
