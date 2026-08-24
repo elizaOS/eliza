@@ -359,3 +359,26 @@ describe("isEmailAddress", () => {
     expect(isEmailAddress(42)).toBe(false);
   });
 });
+
+describe("deriveSubject surrogate pair safety", () => {
+  it("never splits surrogate pairs when truncating long subject lines", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    // Subject is derived from first line: repeat emoji past SUBJECT_MAX_LENGTH (120)
+    const longEmojiText = "😀".repeat(70); // length 140
+    await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com" },
+      { text: longEmojiText }
+    );
+
+    expect(sendGmailMessage).toHaveBeenCalledOnce();
+    const sentSubject = sendGmailMessage.mock.calls[0][0].subject;
+    expect(sentSubject.endsWith("...")).toBe(true);
+    expect(sentSubject.endsWith("\uD83D...")).toBe(false);
+  });
+});

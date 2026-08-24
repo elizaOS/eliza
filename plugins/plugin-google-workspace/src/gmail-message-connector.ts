@@ -168,9 +168,17 @@ function subjectFromContent(content: Content): string {
   const firstLine = String(content.text ?? "")
     .split("\n", 1)[0]
     .trim();
-  return firstLine.length <= SUBJECT_MAX_LENGTH
-    ? firstLine
-    : `${firstLine.slice(0, SUBJECT_MAX_LENGTH - 3)}...`;
+  if (firstLine.length <= SUBJECT_MAX_LENGTH) {
+    return firstLine;
+  }
+  let end = SUBJECT_MAX_LENGTH - 3;
+  if (end > 0 && end < firstLine.length) {
+    const code = firstLine.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${firstLine.slice(0, end)}...`;
 }
 
 async function sendGmailFromTarget(
