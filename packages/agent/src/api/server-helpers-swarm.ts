@@ -25,6 +25,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import * as agentOrchestrator from "@elizaos/plugin-agent-orchestrator";
 import { sanitizeCompletionRelay } from "@elizaos/plugin-agent-orchestrator";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
@@ -41,6 +42,22 @@ import type { ConversationMeta, ServerState } from "./server-types.ts";
 import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.ts";
 
 type TaskContext = SwarmCoordinatorTaskContext;
+
+// Deliverable-URL canonicalization (hosting-origin host -> the public custom
+// domain, e.g. agent-home.vercel.app -> nubilio.org) shares ONE implementation
+// with the orchestrator's relay/narration paths via the package root. This
+// live tree's prebuilt plugin declarations (and any not-yet-rebuilt runtime
+// bundle) predate that export, so resolve it dynamically off the namespace and
+// degrade to passthrough rather than failing typecheck or module load against
+// an older plugin build.
+const canonicalizeDeliverableUrlsForRuntime = (
+  agentOrchestrator as unknown as {
+    canonicalizeDeliverableUrlsForRuntime?: (
+      runtime: AgentRuntime | undefined,
+      text: string,
+    ) => string;
+  }
+).canonicalizeDeliverableUrlsForRuntime;
 
 // ---------------------------------------------------------------------------
 // Autonomy -> User message routing
@@ -427,6 +444,52 @@ async function buildSynthesisResultText(
     : `${payload.total} tasks:\n${parts.map((p) => `- ${p}`).join("\n")}`;
 }
 
+/**
+ * Turn a machine spawn label of the shape `kind:slug` (e.g.
+ * "create-app:daily-hue") into a natural phrase ("the daily hue app build").
+ * Known kinds get a purpose-specific noun; any other kind:slug becomes "the
+ * <slug words> task"; anything not shaped like kind:slug (already-human
+ * labels, free-text first lines) passes through untouched. Slug separators
+ * (- and _) read as spaces. Pure: no runtime, no I/O, never throws. Posting a
+ * raw label read as a broken bot in the live room, so every phrasing input
+ * and fallback below goes through this first.
+ */
+export function humanizeTaskLabel(label: string): string {
+  const match = /^([A-Za-z][A-Za-z0-9_-]*):([A-Za-z0-9][A-Za-z0-9_-]*)$/.exec(
+    label.trim(),
+  );
+  if (!match) return label;
+  const words = match[2].replace(/[-_]+/g, " ").trim();
+  if (!words) return label;
+  switch (match[1].toLowerCase()) {
+    case "create-app":
+      return `the ${words} app build`;
+    case "edit-app":
+      return `the ${words} app update`;
+    default:
+      return `the ${words} task`;
+  }
+}
+
+/**
+ * Deterministic lifecycle fallback: one complete natural sentence carrying
+ * both facts (the humanized ask and the terminal status) for a task that
+ * ended before it finished. Used whenever model phrasing is unavailable or
+ * fails validation. Never claims success and never emits an internal
+ * status fragment ("<label> — errored before completion.") — that shape
+ * leaked raw to a live Discord room.
+ */
+export function lifecycleFallbackSentence(ask: string, status: string): string {
+  const subject = ask.charAt(0).toUpperCase() + ask.slice(1);
+  if (status === "errored") {
+    return `${subject} hit an error before it finished.`;
+  }
+  if (status === "stopped") {
+    return `${subject} was stopped before it finished.`;
+  }
+  return `${subject} did not finish (status: ${status}).`;
+}
+
 // ── model-phrased lifecycle line ─────────────────────────────────────────────
 // Local mirror of the orchestrator plugin's `phraseForUser` contract (the
 // package boundary blocks importing the plugin's src/voice module): one
@@ -462,7 +525,7 @@ async function phraseLifecycleLine(
       `- task: ${facts.ask}`,
       `- it ${facts.status} before completion`,
       "Hard rules:",
-      `- Include this exact task name verbatim: "${facts.ask}"`,
+      `- Include this exact task description verbatim: "${facts.ask}"`,
       "- Do NOT claim the task completed, finished, or succeeded.",
       "- One sentence, sentence case, no emoji, no markdown, no preamble.",
       "Your sentence:",
@@ -486,7 +549,7 @@ async function phraseLifecycleLine(
     if (
       text.length === 0 ||
       text.length > LIFECYCLE_PHRASE_MAX_CHARS ||
-      !text.includes(facts.ask) ||
+      !text.toLowerCase().includes(facts.ask.toLowerCase()) ||
       LIFECYCLE_BANNED_VOCAB.test(text)
     ) {
       return fallback;
@@ -527,17 +590,22 @@ async function buildTaskResultLine(
     // single capped line keeps the lifecycle notice a notice.
     const label = task.label?.trim();
     const firstLine = task.originalTask.split("\n", 1)[0]?.trim() ?? "";
-    const ask =
+    // Spawn labels are machine ids ("create-app:daily-hue"); humanize before
+    // ANY phrasing so the model prompt, its inclusion validation, and the
+    // deterministic fallback all speak the user's language, never the
+    // scheduler's.
+    const ask = humanizeTaskLabel(
       label ||
-      (task.originalTask.includes("--- Swarm Coordination ---")
-        ? "coding task"
-        : firstLine.slice(0, 140) || "coding task");
+        (task.originalTask.includes("--- Swarm Coordination ---")
+          ? "coding task"
+          : firstLine.slice(0, 140) || "coding task"),
+    );
     // Model-phrased stop notice (owner directive: user-facing text is
-    // LLM-written); the deterministic literal stays as the fallback shape.
+    // LLM-written); the deterministic sentence stays as the fallback shape.
     return phraseLifecycleLine(
       runtime,
       { ask, status: task.status },
-      `${ask} — ${task.status} before completion.`,
+      lifecycleFallbackSentence(ask, task.status),
     );
   }
   // Defense-in-depth for issue elizaOS/eliza#11578: strip any captured
@@ -547,23 +615,43 @@ async function buildTaskResultLine(
   // again here. sanitizeCompletionRelay preserves prose and plain URLs, and
   // preserveEvidenceUrls still re-appends any evidence URL below.
   const completionSummary = sanitizeCompletionRelay(task.completionSummary);
+  // Every completed-branch composition below (finalText / completionSummary /
+  // validationSummary) is relay-deliverable text; canonicalize hosting-origin
+  // URLs to the public domain at this single return boundary so the user
+  // never sees the provider host the child happened to narrate.
+  const canonicalizeUrls = (text: string): string => {
+    if (typeof canonicalizeDeliverableUrlsForRuntime !== "function") {
+      return text;
+    }
+    try {
+      return canonicalizeDeliverableUrlsForRuntime(runtime, text);
+    } catch {
+      // error-policy:J4 canonicalization is cosmetic host polish; any failure
+      // relays the composed text unchanged.
+      return text;
+    }
+  };
   // Claude Code persists final assistant messages in per-workdir jsonl. That
   // path is Claude-specific; for Codex and other agents the coordinator's
   // completionSummary is already the captured user-facing output.
   if (task.agentType === "claude" && task.workdir) {
     const finalText = await readAgentFinalAssistantMessage(task.workdir);
     if (finalText) {
-      return validationSummary
-        ? preserveEvidenceUrls(validationSummary, finalText)
-        : finalText;
+      return canonicalizeUrls(
+        validationSummary
+          ? preserveEvidenceUrls(validationSummary, finalText)
+          : finalText,
+      );
     }
   }
   if (completionSummary) {
-    return validationSummary
-      ? preserveEvidenceUrls(completionSummary, validationSummary)
-      : completionSummary;
+    return canonicalizeUrls(
+      validationSummary
+        ? preserveEvidenceUrls(completionSummary, validationSummary)
+        : completionSummary,
+    );
   }
-  if (validationSummary) return validationSummary;
+  if (validationSummary) return canonicalizeUrls(validationSummary);
   // Same rule as the non-completed branch: originalTask can be the entire
   // composed kickoff prompt — never echo it raw. Prefer the label; a
   // kickoff-shaped task is unusable; otherwise one capped line.

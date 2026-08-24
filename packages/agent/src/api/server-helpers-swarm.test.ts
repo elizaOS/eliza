@@ -6,7 +6,9 @@
  * originating external message, workdir artifacts attached/renamed, input files
  * not re-uploaded). routeAutonomyTextToUser: persist-vs-ephemeral delivery.
  * Deterministic: in-memory runtime/state stubs with real temp-dir files for the
- * artifact cases.
+ * artifact cases. Lifecycle notices humanize machine spawn labels
+ * (kind:slug) and fall back to complete sentences; completed relays get
+ * deliverable URLs canonicalized to the configured public host.
  */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -14,8 +16,24 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   handleSwarmSynthesis,
+  humanizeTaskLabel,
+  lifecycleFallbackSentence,
   routeAutonomyTextToUser,
 } from "./server-helpers-swarm.ts";
+
+// The live tree's prebuilt plugin dist predates the sibling stream's
+// canonicalizeDeliverableUrlsForRuntime export (server-helpers-swarm.ts
+// resolves it off the package namespace and degrades to passthrough against
+// an older build). Tests must exercise the REAL canonicalizer, so overlay the
+// package with that one function imported straight from the plugin source;
+// everything else (sanitizeCompletionRelay, ...) stays the actual module.
+vi.mock("@elizaos/plugin-agent-orchestrator", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  const { canonicalizeDeliverableUrlsForRuntime } = await import(
+    "../../../../plugins/plugin-agent-orchestrator/src/services/deliverable-links.ts"
+  );
+  return { ...actual, canonicalizeDeliverableUrlsForRuntime };
+});
 
 const runtime = {
   getService() {
@@ -177,7 +195,7 @@ describe("handleSwarmSynthesis", () => {
       },
     );
 
-    expect(routed).toEqual(["app — stopped before completion."]);
+    expect(routed).toEqual(["App was stopped before it finished."]);
   });
 
   it("relays the model-phrased stop line when the model output carries the task name and no machinery vocabulary", async () => {
@@ -256,7 +274,7 @@ describe("handleSwarmSynthesis", () => {
       },
     );
 
-    expect(routed).toEqual(["app — stopped before completion."]);
+    expect(routed).toEqual(["App was stopped before it finished."]);
   });
 
   it("never relays a kickoff-prompt originalTask raw (live incident shape)", async () => {
@@ -300,9 +318,175 @@ describe("handleSwarmSynthesis", () => {
       },
     );
 
-    expect(routed).toEqual(["coding task — stopped before completion."]);
+    expect(routed).toEqual(["Coding task was stopped before it finished."]);
     expect(routed[0]).not.toContain("Swarm Coordination");
     expect(routed[0]).not.toContain("APP_CREATE_DONE");
+  });
+
+  it("never posts a raw kind:slug label: the errored fallback is a humanized sentence (live incident shape)", async () => {
+    const routed: string[] = [];
+    // Model stubbed to fail: the deterministic fallback must already be
+    // human. The live leak was "create-app:daily-hue — errored before
+    // completion." posted verbatim to the Discord room.
+    const failingModelRuntime = {
+      getService() {
+        return null;
+      },
+      character: { name: "TestBot" },
+      useModel: async () => {
+        throw new Error("model down");
+      },
+    } as never;
+
+    await handleSwarmSynthesis(
+      { runtime: failingModelRuntime },
+      {
+        tasks: [
+          {
+            sessionId: "pty-errored-label",
+            label: "create-app:daily-hue",
+            agentType: "claude",
+            originalTask: "Build the daily-hue app",
+            status: "errored",
+            completionSummary: "",
+          },
+        ],
+        total: 1,
+        completed: 0,
+        stopped: 0,
+        errored: 1,
+      },
+      async (text) => {
+        routed.push(text);
+      },
+    );
+
+    expect(routed).toEqual([
+      "The daily hue app build hit an error before it finished.",
+    ]);
+    expect(routed[0]).not.toContain("create-app:daily-hue");
+  });
+
+  it("uses the humanized label in the stopped fallback sentence too", async () => {
+    const routed: string[] = [];
+    const failingModelRuntime = {
+      getService() {
+        return null;
+      },
+      character: { name: "TestBot" },
+      useModel: async () => {
+        throw new Error("model down");
+      },
+    } as never;
+
+    await handleSwarmSynthesis(
+      { runtime: failingModelRuntime },
+      {
+        tasks: [
+          {
+            sessionId: "pty-stopped-label",
+            label: "edit-app:pomodoro-timer",
+            agentType: "codex",
+            originalTask: "Update the pomodoro timer app",
+            status: "stopped",
+            completionSummary: "",
+          },
+        ],
+        total: 1,
+        completed: 0,
+        stopped: 1,
+        errored: 0,
+      },
+      async (text) => {
+        routed.push(text);
+      },
+    );
+
+    expect(routed).toEqual([
+      "The pomodoro timer app update was stopped before it finished.",
+    ]);
+    expect(routed[0]).not.toContain("edit-app:pomodoro-timer");
+  });
+
+  it("validates the phrased line against the HUMANIZED ask, case-insensitively at sentence start", async () => {
+    const routed: string[] = [];
+    // A natural sentence opens with the capitalized humanized phrase; the
+    // inclusion check must accept it (and must NOT demand the raw label).
+    const phrased =
+      "The daily hue app build hit a wall partway through, so nothing shipped yet.";
+    const phrasingRuntime = {
+      getService() {
+        return null;
+      },
+      character: { name: "TestBot" },
+      useModel: async () => phrased,
+    } as never;
+
+    await handleSwarmSynthesis(
+      { runtime: phrasingRuntime },
+      {
+        tasks: [
+          {
+            sessionId: "pty-errored-phrased",
+            label: "create-app:daily-hue",
+            agentType: "claude",
+            originalTask: "Build the daily-hue app",
+            status: "errored",
+            completionSummary: "",
+          },
+        ],
+        total: 1,
+        completed: 0,
+        stopped: 0,
+        errored: 1,
+      },
+      async (text) => {
+        routed.push(text);
+      },
+    );
+
+    expect(routed).toEqual([phrased]);
+    expect(routed[0]).not.toContain("create-app:daily-hue");
+  });
+
+  it("canonicalizes deliverable URLs in the completed relay via the configured rewrites", async () => {
+    const routed: string[] = [];
+    const rewriteRuntime = {
+      getService() {
+        return null;
+      },
+      getSetting: (key: string) =>
+        key === "ELIZA_DELIVERABLE_URL_REWRITES"
+          ? '{"agent-home.vercel.app":"nubilio.org"}'
+          : undefined,
+    } as never;
+
+    await handleSwarmSynthesis(
+      { runtime: rewriteRuntime },
+      {
+        tasks: [
+          {
+            sessionId: "pty-url-canon",
+            label: "create-app:daily-hue",
+            agentType: "codex",
+            originalTask: "build the daily hue app",
+            status: "completed",
+            completionSummary:
+              "Live at https://agent-home.vercel.app/apps/daily-hue/",
+          },
+        ],
+        total: 1,
+        completed: 1,
+        stopped: 0,
+        errored: 0,
+      },
+      async (text) => {
+        routed.push(text);
+      },
+    );
+
+    expect(routed).toEqual(["Live at https://nubilio.org/apps/daily-hue/"]);
+    expect(routed[0]).not.toContain("vercel.app");
   });
 
   it("strips captured tool-output envelopes from the completionSummary, preserving evidence URLs (#11578)", async () => {
@@ -1074,5 +1258,48 @@ describe("routeAutonomyTextToUser", () => {
     await routeAutonomyTextToUser(state, "shared status", "autonomy");
     expect(createMemory).toHaveBeenCalledTimes(1);
     expect(broadcastWs).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("humanizeTaskLabel", () => {
+  it("humanizes create-app labels into a build phrase", () => {
+    expect(humanizeTaskLabel("create-app:daily-hue")).toBe(
+      "the daily hue app build",
+    );
+  });
+
+  it("humanizes edit-app labels into an update phrase", () => {
+    expect(humanizeTaskLabel("edit-app:pomodoro-timer")).toBe(
+      "the pomodoro timer app update",
+    );
+  });
+
+  it("humanizes any other kind:slug into a task phrase, reading - and _ as spaces", () => {
+    expect(humanizeTaskLabel("fix-bug:login_form")).toBe("the login form task");
+  });
+
+  it("passes labels without the kind:slug shape through untouched", () => {
+    expect(humanizeTaskLabel("app")).toBe("app");
+    expect(humanizeTaskLabel("make an app showcasing eliza")).toBe(
+      "make an app showcasing eliza",
+    );
+    expect(humanizeTaskLabel("a:b:c")).toBe("a:b:c");
+  });
+});
+
+describe("lifecycleFallbackSentence", () => {
+  it("phrases errored and stopped as complete sentences that never claim success", () => {
+    expect(
+      lifecycleFallbackSentence("the daily hue app build", "errored"),
+    ).toBe("The daily hue app build hit an error before it finished.");
+    expect(
+      lifecycleFallbackSentence("the daily hue app build", "stopped"),
+    ).toBe("The daily hue app build was stopped before it finished.");
+  });
+
+  it("carries an unrecognized status as a fact without an internal fragment", () => {
+    expect(
+      lifecycleFallbackSentence("the daily hue app build", "expired"),
+    ).toBe("The daily hue app build did not finish (status: expired).");
   });
 });
