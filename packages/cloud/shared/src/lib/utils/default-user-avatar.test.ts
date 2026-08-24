@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { getRandomUserAvatar } from "./default-user-avatar.js";
+
 describe("default-user-avatar", () => {
   it("returns string", () => {
     const a = getRandomUserAvatar();
