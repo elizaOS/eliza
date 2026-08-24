@@ -200,3 +200,117 @@ describe("GET /api/channel-topics/search (#8927)", () => {
 		expect(res.code).toBe(503);
 	});
 });
+
+describe("SEARCH_CHANNEL_TOPICS handler branch coverage (#8927)", () => {
+	it("returns the unavailable result from the handler when the service is absent", async () => {
+		const res = await channelTopicSearchAction.handler(
+			runtimeWith(null),
+			{ content: { text: "billing" } } as never,
+			undefined,
+			undefined,
+		);
+		expect(res.success).toBe(false);
+		expect(res.text).toBe("Channel topic search is unavailable.");
+		expect(res.values?.success).toBe(false);
+		expect((res.data as { actionName: string }).actionName).toBe(
+			"SEARCH_CHANNEL_TOPICS",
+		);
+	});
+
+	it("validate rejects a service whose searchTopics is not callable", async () => {
+		expect(
+			await channelTopicSearchAction.validate?.(
+				runtimeWith({ searchTopics: "not-a-function" }),
+				{} as never,
+			),
+		).toBe(false);
+	});
+
+	it("asks for a topic when neither params nor message text supply a query", async () => {
+		const searchTopics = vi.fn(() => HITS);
+		const res = await channelTopicSearchAction.handler(
+			runtimeWith({ searchTopics }),
+			{ content: { text: "" } } as never,
+			undefined,
+			undefined,
+		);
+		expect(searchTopics).not.toHaveBeenCalled();
+		expect(res.success).toBe(false);
+		expect(res.text).toBe("Provide a topic to search for.");
+		expect(res.values?.success).toBe(false);
+	});
+
+	it("ignores a whitespace-only param query and uses the message text", async () => {
+		const searchTopics = vi.fn(() => []);
+		await channelTopicSearchAction.handler(
+			runtimeWith({ searchTopics }),
+			{ content: { text: "invoice delays" } } as never,
+			undefined,
+			{ parameters: { query: "   " } },
+		);
+		expect(searchTopics).toHaveBeenCalledWith("invoice delays");
+	});
+
+	it("trims surrounding whitespace from an explicit param query", async () => {
+		const searchTopics = vi.fn(() => []);
+		await channelTopicSearchAction.handler(
+			runtimeWith({ searchTopics }),
+			{ content: { text: "" } } as never,
+			undefined,
+			{ parameters: { query: "  stripe payouts  " } },
+		);
+		expect(searchTopics).toHaveBeenCalledWith("stripe payouts");
+	});
+
+	it("renders joined matched topics and the null-room-count scope without getTopicsForAllRooms", async () => {
+		const res = await channelTopicSearchAction.handler(
+			runtimeWith({
+				searchTopics: () => [
+					{
+						roomId: "room-9",
+						matchedTopics: ["billing", "refunds"],
+						topics: ["billing", "refunds"],
+					},
+				],
+			}),
+			{ content: { text: "" } } as never,
+			undefined,
+			{ parameters: { query: "billing" } },
+		);
+		expect(res.success).toBe(true);
+		expect(res.values?.matchCount).toBe(1);
+		expect(res.text).toContain("- room-9: billing, refunds");
+		expect(res.text).toContain(
+			"Scope: searched the in-memory room topic index",
+		);
+		const data = res.data as {
+			scope: { kind: string; roomCount: number | null };
+			hits: unknown[];
+		};
+		expect(data.scope.kind).toBe("in_memory_lru");
+		expect(data.scope.roomCount).toBeNull();
+		expect(data.hits).toHaveLength(1);
+	});
+
+	it("counts in-memory rooms in the no-hit scope message when getTopicsForAllRooms is present", async () => {
+		const res = await channelTopicSearchAction.handler(
+			runtimeWith({
+				searchTopics: () => [],
+				getTopicsForAllRooms: () => ({
+					"room-a": ["pricing"],
+					"room-b": ["roadmap"],
+				}),
+			}),
+			{ content: { text: "" } } as never,
+			undefined,
+			{ parameters: { query: "nonexistent-topic" } },
+		);
+		expect(res.success).toBe(true);
+		expect(res.values?.matchCount).toBe(0);
+		expect(res.values?.hasMore).toBe(false);
+		expect(res.text).toContain(
+			"No channels in 2 active or hydrated room(s) in memory",
+		);
+		expect(res.text).toContain('"nonexistent-topic"');
+	});
+});
