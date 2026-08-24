@@ -79,6 +79,15 @@ describe("createVoiceCancellationToken", () => {
     expect(token.slot).toBe(7);
   });
 
+  it("safely handles non-string runId and ignores non-safe-integer slot", () => {
+    const token = createVoiceCancellationToken({
+      runId: undefined as unknown as string,
+      slot: NaN,
+    });
+    expect(token.runId).toBe("");
+    expect(token.slot).toBeUndefined();
+  });
+
   it("aborts when the linked signal aborts (reason=external)", () => {
     const ctrl = new AbortController();
     const token = createVoiceCancellationToken({

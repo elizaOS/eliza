@@ -141,8 +141,10 @@ export function createVoiceCancellationToken(
   }
 
   const token: VoiceCancellationToken = {
-    runId: opts.runId,
-    ...(opts.slot !== undefined ? { slot: opts.slot } : {}),
+    runId: typeof opts?.runId === "string" ? opts.runId : "",
+    ...(typeof opts?.slot === "number" && Number.isSafeInteger(opts.slot)
+      ? { slot: opts.slot }
+      : {}),
     get aborted() {
       return state.aborted;
     },
