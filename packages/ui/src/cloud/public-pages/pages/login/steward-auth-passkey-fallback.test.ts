@@ -9,8 +9,12 @@
 import { StewardApiError, StewardAuth } from "@stwd/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function jsonResponse(status: number, error: string): Response {
-  return new Response(JSON.stringify({ ok: false, error }), {
+function jsonResponse(
+  status: number,
+  error: string,
+  details: Record<string, unknown> = {},
+): Response {
+  return new Response(JSON.stringify({ ok: false, error, ...details }), {
     status,
     headers: { "Content-Type": "application/json" },
   });
@@ -142,6 +146,34 @@ describe("StewardAuth passkey ceremony boundaries", () => {
     ).rejects.toMatchObject({
       status: 500,
       message: "Passkey service unavailable",
+    });
+    expect(recorder.callCount()).toBe(1);
+  });
+
+  it("preserves structured registration errors through the real SDK", async () => {
+    const recorder = recordFetch([
+      jsonResponse(
+        409,
+        "A passkey already exists for this email. Sign in with it instead.",
+        { code: "passkey_already_registered" },
+      ),
+    ]);
+    vi.stubGlobal("fetch", recorder.fetch);
+    const auth = new StewardAuth({ baseUrl: "https://api.example.test" });
+
+    const error = await auth
+      .addPasskey("person@example.com", { emailGrant: "email-grant" })
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(StewardApiError);
+    expect(error).toMatchObject({
+      status: 409,
+      data: {
+        ok: false,
+        error:
+          "A passkey already exists for this email. Sign in with it instead.",
+        code: "passkey_already_registered",
+      },
     });
     expect(recorder.callCount()).toBe(1);
   });
