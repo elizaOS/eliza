@@ -169,6 +169,20 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/params\.limit\s*\?\?\s*\d+/,
 		/clampLimit\(params\.limit/,
 	],
+	"packages/app-core/platforms/electrobun/src/native/browser-workspace.ts": [
+		/DEFAULT_EVENT_LOG_LIMIT/,
+		/MAX_EVENT_QUERY_LIMIT/,
+		/MAX_EVENT_PAYLOAD_DEPTH/,
+		/MAX_EVENT_STRING_LENGTH/,
+		/this\.events\.splice\(/,
+		/value\.slice\(0,\s*50\)/,
+	],
+	"packages/app-core/platforms/electrobun/src/native/browser-bridge-broker-server.ts": [
+		/stderr[^\n]*\.slice\(/,
+	],
+	"packages/app-core/platforms/electrobun/src/native/permissions.ts": [
+		/stderr\.trim\(\)\.slice\(/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,

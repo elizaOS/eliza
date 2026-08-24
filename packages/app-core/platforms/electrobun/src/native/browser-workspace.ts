@@ -11,10 +11,6 @@ const DEFAULT_EVAL_TIMEOUT_MS = 30_000;
 const MIN_EVAL_TIMEOUT_MS = 1_000;
 const MAX_EVAL_TIMEOUT_MS = 5 * 60 * 1_000;
 const CONNECTOR_PARTITION_PREFIX = "persist:connector-";
-const DEFAULT_EVENT_LOG_LIMIT = 1_000;
-const MAX_EVENT_QUERY_LIMIT = 1_000;
-const MAX_EVENT_PAYLOAD_DEPTH = 4;
-const MAX_EVENT_STRING_LENGTH = 500;
 type BrowserWorkspaceTabKind = "internal" | "standard";
 type BrowserWorkspaceConnectorAuthState =
   | "unknown"
@@ -250,19 +246,6 @@ function resolveEvalTimeoutMs(): number {
   return Math.min(MAX_EVAL_TIMEOUT_MS, Math.max(MIN_EVAL_TIMEOUT_MS, parsed));
 }
 
-function resolveEventLogLimit(): number {
-  const raw = process.env.ELIZA_BROWSER_WORKSPACE_EVENT_LOG_LIMIT?.trim();
-  const parsed = raw ? Number.parseInt(raw, 10) : DEFAULT_EVENT_LOG_LIMIT;
-  if (!Number.isFinite(parsed)) return DEFAULT_EVENT_LOG_LIMIT;
-  return Math.min(MAX_EVENT_QUERY_LIMIT, Math.max(1, parsed));
-}
-
-function sanitizeEventString(value: string): string {
-  return value.length > MAX_EVENT_STRING_LENGTH
-    ? `${value.slice(0, MAX_EVENT_STRING_LENGTH)}...`
-    : value;
-}
-
 function isSensitiveEventPayloadKey(key: string): boolean {
   const normalized = key.toLowerCase();
   return (
@@ -278,12 +261,11 @@ function isSensitiveEventPayloadKey(key: string): boolean {
   );
 }
 
-function scrubEventPayloadValue(value: unknown, depth = 0): unknown {
-  if (depth > MAX_EVENT_PAYLOAD_DEPTH) return "[truncated]";
+function scrubEventPayloadValue(value: unknown, ancestors = new WeakSet<object>()): unknown {
   if (value instanceof Error) {
-    return { error: sanitizeEventString(value.message || "Internal error") };
+    return { error: value.message || "Internal error" };
   }
-  if (typeof value === "string") return sanitizeEventString(value);
+  if (typeof value === "string") return value;
   if (
     value === null ||
     typeof value === "number" ||
@@ -293,10 +275,16 @@ function scrubEventPayloadValue(value: unknown, depth = 0): unknown {
   }
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "undefined") return null;
+  if (value && typeof value === "object") {
+    if (ancestors.has(value)) {
+      throw new TypeError("Browser workspace event payload must not contain cycles");
+    }
+    ancestors.add(value);
+  }
   if (Array.isArray(value)) {
-    return value
-      .slice(0, 50)
-      .map((entry) => scrubEventPayloadValue(entry, depth + 1));
+    const scrubbed = value.map((entry) => scrubEventPayloadValue(entry, ancestors));
+    ancestors.delete(value);
+    return scrubbed;
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
@@ -307,8 +295,9 @@ function scrubEventPayloadValue(value: unknown, depth = 0): unknown {
       if (key === "stack" || key === "stackTrace") continue;
       out[key] = isSensitiveEventPayloadKey(key)
         ? "[redacted]"
-        : scrubEventPayloadValue(entry, depth + 1);
+        : scrubEventPayloadValue(entry, ancestors);
     }
+    ancestors.delete(value);
     return out;
   }
   return String(value);
@@ -456,10 +445,6 @@ export class BrowserWorkspaceManager {
       ...(scrubbedPayload ? { payload: scrubbedPayload } : {}),
     };
     this.events.push(event);
-    const limit = resolveEventLogLimit();
-    if (this.events.length > limit) {
-      this.events.splice(0, this.events.length - limit);
-    }
     return event;
   }
 
@@ -506,24 +491,24 @@ export class BrowserWorkspaceManager {
       typeof options.after === "number" && Number.isFinite(options.after)
         ? options.after
         : 0;
-    const limit =
-      typeof options.limit === "number" && Number.isFinite(options.limit)
-        ? Math.min(
-            MAX_EVENT_QUERY_LIMIT,
-            Math.max(1, Math.floor(options.limit)),
-          )
-        : resolveEventLogLimit();
+    const limit = options.limit;
+    if (
+      limit !== undefined &&
+      (!Number.isInteger(limit) || limit <= 0)
+    ) {
+      throw new TypeError("Browser workspace event limit must be a positive integer");
+    }
     const tabId = options.tabId?.trim();
     const type = options.type;
-    const events = this.events
+    const matchingEvents = this.events
       .filter((event) => event.seq > after)
       .filter((event) => !tabId || event.tabId === tabId)
-      .filter((event) => !type || event.type === type)
-      .slice(-limit);
+      .filter((event) => !type || event.type === type);
+    const events = limit === undefined ? matchingEvents : matchingEvents.slice(-limit);
     return {
       events,
       latestSequence: this.eventSequence,
-      limit: resolveEventLogLimit(),
+      limit: limit ?? events.length,
     };
   }
 
