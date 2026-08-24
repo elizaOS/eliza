@@ -53,6 +53,8 @@ describe("normalizeSpokenText", () => {
     expect(normalizeSpokenText(" 555-0123. ")).toBe("5550123");
     expect(normalizeSpokenText("John  Smith!")).toBe("johnsmith");
     expect(normalizeSpokenText("--- ...")).toBe("");
+    expect(normalizeSpokenText(undefined as unknown as string)).toBe("");
+    expect(normalizeSpokenText(null as unknown as string)).toBe("");
   });
 });
 

@@ -78,6 +78,7 @@ export class RedactionSpanError extends ElizaError {
  * `" 5550123"` both normalize to `"5550123"`.
  */
 export function normalizeSpokenText(raw: string): string {
+  if (typeof raw !== "string" || !raw) return "";
   return raw.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
