@@ -96,8 +96,24 @@ export class MemoryCacheAdapter implements CacheRedisClient {
   }
 
   async incr(key: string): Promise<number> {
-    const next = Number.parseInt(this.getValue(key) ?? "0", 10) + 1;
-    this.setValue(key, String(next));
+    const raw = this.getValue(key);
+    const existingExpireAt = this.values.get(key)?.expireAt ?? null;
+    let current = 0;
+    if (raw !== null) {
+      if (!/^-?\d+$/.test(raw.trim())) {
+        throw new Error("ERR value is not an integer or out of range");
+      }
+      current = Number(raw.trim());
+      if (!Number.isSafeInteger(current)) {
+        throw new Error("ERR value is not an integer or out of range");
+      }
+    }
+    const next = current + 1;
+    this.values.set(key, {
+      value: String(next),
+      expireAt: existingExpireAt,
+    });
+    this.lists.delete(key);
     return next;
   }
 
