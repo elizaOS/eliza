@@ -90,8 +90,13 @@ function protectTechnicalSpans(value: string): {
   const protectedValues: string[] = [];
   let text = value;
 
+  let sentinelPrefix = "__elizaProtected_";
+  while (value.includes(sentinelPrefix)) {
+    sentinelPrefix += "_";
+  }
+
   const protect = (span: string): string => {
-    const token = `__elizaProtected${protectedValues.length}__`;
+    const token = `${sentinelPrefix}${protectedValues.length}__`;
     protectedValues.push(span);
     return token;
   };
@@ -107,11 +112,13 @@ function protectTechnicalSpans(value: string): {
     });
   }
 
+  const restorePattern = new RegExp(`${sentinelPrefix}(\\d+)__`, "g");
+
   return {
     text,
     restore: (restoredText: string) =>
       restoredText.replace(
-        /__elizaProtected(\d+)__/g,
+        restorePattern,
         (_match, index: string) => protectedValues[Number(index)] ?? "",
       ),
   };

@@ -36,3 +36,20 @@ describe("compressPromptDescription punctuation normalization", () => {
     );
   });
 });
+
+describe("compressPromptDescription sentinel preservation", () => {
+  it("preserves literal sentinels without corruption", () => {
+    expect(compressPromptDescription("A __elizaProtected0__ B")).toBe(
+      "A __elizaProtected0__ B",
+    );
+    expect(compressPromptDescription("value __elizaProtected99__ end")).toBe(
+      "value __elizaProtected99__ end",
+    );
+  });
+
+  it("preserves literal sentinels when real protected spans are present", () => {
+    expect(
+      compressPromptDescription("Run `code()` here __elizaProtected0__ done"),
+    ).toBe("Run `code()` here __elizaProtected0__ done");
+  });
+});
