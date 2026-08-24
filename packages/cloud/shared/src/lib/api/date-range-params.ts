@@ -7,10 +7,12 @@ const ISO_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 function parseOptionalDate(raw: string | null): Date | undefined {
   if (raw === null) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed || /^-?\d+$/.test(trimmed)) return undefined;
 
-  const date = new Date(raw);
+  const date = new Date(trimmed);
   if (Number.isNaN(date.getTime())) return undefined;
-  if (ISO_DATE_ONLY.test(raw) && date.toISOString().slice(0, 10) !== raw) {
+  if (ISO_DATE_ONLY.test(trimmed) && date.toISOString().slice(0, 10) !== trimmed) {
     return undefined;
   }
   return date;

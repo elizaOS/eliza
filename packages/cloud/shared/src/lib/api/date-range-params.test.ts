@@ -30,6 +30,10 @@ describe("parseDateRangeParams", () => {
     const r = parseDateRangeParams(new URLSearchParams("start_date=invalid"));
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error).toContain("Invalid start_date");
+
+    const rNum = parseDateRangeParams(new URLSearchParams("start_date=12345"));
+    expect(rNum.success).toBe(false);
+    if (!rNum.success) expect(rNum.error).toContain("Invalid start_date");
   });
 
   it("rejects invalid end", () => {
