@@ -1,3 +1,4 @@
+import { truncateUtf16Safe } from "../action-helpers.js";
 /**
  * Single router action covering the GitHub issue lifecycle ops: create,
  * assign, close, reopen, comment, label. Dispatched to by the umbrella
@@ -279,7 +280,7 @@ function buildPreview(
       case "label":
         return ` with [${labels?.join(", ") ?? ""}]`;
       case "comment":
-        return body ? ` body: "${body.slice(0, 120)}"` : "";
+        return body ? ` body: "${truncateUtf16Safe(body, 120)}"` : "";
       default:
         return "";
     }

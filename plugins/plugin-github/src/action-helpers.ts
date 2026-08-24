@@ -269,3 +269,15 @@ export function describeSelection(selection: GitHubAccountSelection): string {
     ? `${selection.role} (${selection.accountId})`
     : selection.role;
 }
+
+export function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}

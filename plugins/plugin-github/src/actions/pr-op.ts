@@ -15,6 +15,7 @@ import { logger, requireConfirmation } from "@elizaos/core";
 import {
   buildResolvedClient,
   describeSelection,
+  truncateUtf16Safe,
   requireNumber,
   requireString,
   resolveAccountSelection,
@@ -177,7 +178,7 @@ async function runReview(
 
   const preview =
     `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
-    (body ? ` with body: "${body.slice(0, 120)}"` : "") +
+    (body ? ` with body: "${truncateUtf16Safe(body, 120)}"` : "") +
     ` as ${describeSelection(selection)}.`;
   const decision = await requireConfirmation({
     runtime,
