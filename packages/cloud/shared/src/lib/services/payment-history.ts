@@ -156,6 +156,14 @@ function finiteNumber(value: unknown): number | null {
  * The authority identity is parsed from `metadata.reference`
  * ("charge {id}" / "dispute {id} (...)"), falling back to the row's
  * idempotency key (`stripe_payment_intent_id`) when the reference is absent.
+ * The production refund handler keys that column as
+ * `stripe:refund:<charge id>:<cumulative amount_refunded>` (stripe-event.ts),
+ * so a raw fallback would give every cumulative snapshot of one charge its
+ * own authority and the per-authority max would degrade into a sum. The
+ * fallback therefore strips the cumulative suffix under a strict
+ * `stripe:refund:<id>:<cents>` contract and normalizes to the same
+ * `charge <id>` form the reference path emits; keys that do not match the
+ * contract (test rows, legacy spellings) keep the raw fallback unchanged.
  */
 function aggregateReversals(
   rows: Array<{
@@ -256,7 +264,16 @@ function aggregateReversals(
   return byIntent;
 }
 
-/** Stable authority identity for per-charge/dispute cumulative snapshots. */
+/**
+ * Stable authority identity for per-charge/dispute cumulative snapshots.
+ * Falls back to the row's idempotency key when `metadata.reference` is
+ * absent. Production refund rows key that column
+ * `stripe:refund:<charge id>:<cumulative cents>`; the suffix is stripped
+ * under that strict contract so cumulative snapshots of one charge share a
+ * single authority (max, not sum), and the result is normalized to the
+ * `charge <id>` form the reference path emits so mixed provenance also
+ * collapses. Keys that do not match the contract keep the raw fallback.
+ */
 function reversalAuthority(
   metadata: Record<string, unknown>,
   fallback: string,
@@ -271,6 +288,12 @@ function reversalAuthority(
     if (kind === "dispute" && text.startsWith("dispute ")) {
       // "dispute dp_1 (charge ch_1)" — the dispute id is the authority.
       return text.split(" (")[0];
+    }
+  }
+  if (kind === "charge") {
+    const match = /^stripe:refund:([^:]+):(.+)$/.exec(fallback);
+    if (match) {
+      return `charge ${match[1]}`;
     }
   }
   return `${kind}:fallback:${fallback}`;
