@@ -44,8 +44,10 @@ export const ECHO_WINDOW_MS = 9000;
 export const ECHO_OVERLAP_THRESHOLD = 0.7;
 
 function words(text: string): string[] {
+  if (typeof text !== "string") return [];
   return text
     .toLowerCase()
+    .replace(/[’‘]/g, "'")
     .replace(/[^a-z0-9'\s-]/gi, "")
     .split(/\s+/)
     .filter(Boolean);

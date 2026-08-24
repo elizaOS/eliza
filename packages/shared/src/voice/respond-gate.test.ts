@@ -34,6 +34,23 @@ describe("shouldRespondToVoiceTurn", () => {
       }),
     ).toBe(true);
   });
+
+  it("normalizes typographic curly apostrophes when matching echoes", () => {
+    const reply = "it's time to go now";
+    expect(
+      shouldRespondToVoiceTurn("it’s time to go now", {
+        recentAgentReply: reply,
+        agentSpeaking: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("handles non-string or undefined inputs gracefully", () => {
+    expect(shouldRespondToVoiceTurn(undefined as unknown as string)).toBe(
+      false,
+    );
+    expect(shouldRespondToVoiceTurn(null as unknown as string)).toBe(false);
+  });
 });
 
 describe("buildVoiceTurnSignal — bystander + wake word", () => {
