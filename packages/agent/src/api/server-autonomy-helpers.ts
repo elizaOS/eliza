@@ -28,8 +28,8 @@ export async function maybeRouteAutonomyEventToConversation(
     event.data && typeof event.data === "object"
       ? (event.data as Record<string, unknown>)
       : null;
-  const text = typeof payload?.text === "string" ? payload.text.trim() : "";
-  if (!text) return;
+  const text = typeof payload?.text === "string" ? payload.text : "";
+  if (text.trim().length === 0) return;
 
   const explicitSource =
     typeof payload?.source === "string" ? payload.source : null;

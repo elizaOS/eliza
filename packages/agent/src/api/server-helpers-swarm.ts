@@ -98,8 +98,7 @@ export async function routeAutonomyTextToUser(
   const runtime = state.runtime;
   if (!runtime) return;
 
-  const normalizedText = responseText.trim();
-  if (!normalizedText) return;
+  if (responseText.trim().length === 0) return;
 
   // Find target conversation (active, or most recent)
   let conv: ConversationMeta | undefined;
@@ -142,15 +141,15 @@ export async function routeAutonomyTextToUser(
   // sees a templated proactive string. Ephemeral sources are already
   // model-composed relays of a sub-agent/coordinator's output, so they skip the
   // gate; the gate fails open and returns the original text on any outage.
-  let deliveredText = normalizedText;
+  let deliveredText = responseText;
   if (!isEphemeral) {
     const voiced = await ensureAgentVoice(
       runtime,
-      { text: normalizedText, source },
+      { text: responseText, source },
       { source },
     );
     if (typeof voiced.text === "string" && voiced.text.trim().length > 0) {
-      deliveredText = voiced.text.trim();
+      deliveredText = voiced.text;
     }
   }
 

@@ -8,10 +8,13 @@ vi.mock("../server-helpers-swarm.ts", () => ({
     routeAutonomyTextToUser(state, text, source),
 }));
 
+import { stringToUuid } from "@elizaos/core";
+import type { AgentEventPayloadLike } from "../../runtime/agent-event-service.ts";
 import {
   isLifeOpsCloudPluginRoute,
   maybeRouteAutonomyEventToConversation,
 } from "../server-autonomy-helpers.ts";
+import { createServerState } from "../server-state.ts";
 
 describe("isLifeOpsCloudPluginRoute", () => {
   it("matches cloud plugin routes", () => {
@@ -109,29 +112,86 @@ describe("isLifeOpsCloudPluginRoute boundaries", () => {
 });
 
 describe("maybeRouteAutonomyEventToConversation source handling", () => {
-  it("routes a trimmed explicit source even when no roomId exists", async () => {
-    routeAutonomyTextToUser.mockClear();
-    const state = { conversations: new Map() } as never;
-    await maybeRouteAutonomyEventToConversation(state, {
+  function makeState() {
+    return createServerState({
+      config: {},
+      plugins: [],
+      deletedConversationIds: new Set<string>(),
+      resolveAgentName: () => "Eliza",
+      detectRuntimeModel: () => undefined,
+      resolveAgentAutomationMode: () => "connectors-only",
+      resolveTradePermissionMode: () => "user-sign-only",
+    });
+  }
+
+  function makeEvent(
+    overrides: Partial<AgentEventPayloadLike> = {},
+  ): AgentEventPayloadLike {
+    return {
+      runId: "run-1",
+      seq: 1,
       stream: "assistant",
-      data: { text: " hello ", source: " custom " },
-    } as never);
+      ts: 1,
+      data: {},
+      ...overrides,
+    };
+  }
+
+  function makeEventWithInvalidData(data: unknown): AgentEventPayloadLike {
+    return makeEvent({ data: data as AgentEventPayloadLike["data"] });
+  }
+
+  function addConversation(
+    state: ReturnType<typeof makeState>,
+    id: string,
+    roomLabel: string,
+  ): void {
+    const timestamp = "2026-08-24T00:00:00.000Z";
+    state.conversations.set(id, {
+      id,
+      title: "Test conversation",
+      roomId: stringToUuid(roomLabel),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
+
+  it("preserves leading and trailing whitespace with an explicit source", async () => {
+    routeAutonomyTextToUser.mockClear();
+    const state = makeState();
+    await maybeRouteAutonomyEventToConversation(
+      state,
+      makeEvent({ data: { text: " hello ", source: " custom " } }),
+    );
     expect(routeAutonomyTextToUser).toHaveBeenCalledTimes(1);
     expect(routeAutonomyTextToUser).toHaveBeenCalledWith(
       state,
-      "hello",
+      " hello ",
       "custom",
     );
   });
 
+  it("preserves multiline text including indentation and final whitespace", async () => {
+    routeAutonomyTextToUser.mockClear();
+    const state = makeState();
+    const text = "\nfirst line\n  indented line  \n";
+    await maybeRouteAutonomyEventToConversation(
+      state,
+      makeEvent({ data: { text, source: "custom" } }),
+    );
+    expect(routeAutonomyTextToUser).toHaveBeenCalledWith(state, text, "custom");
+  });
+
   it("falls back to autonomy for whitespace-only sources with a room", async () => {
     routeAutonomyTextToUser.mockClear();
-    const state = { conversations: new Map() } as never;
-    await maybeRouteAutonomyEventToConversation(state, {
-      stream: "assistant",
-      roomId: "r-ws",
-      data: { text: "hi", source: "   " },
-    } as never);
+    const state = makeState();
+    await maybeRouteAutonomyEventToConversation(
+      state,
+      makeEvent({
+        roomId: stringToUuid("room-whitespace-source"),
+        data: { text: "hi", source: "   " },
+      }),
+    );
     expect(routeAutonomyTextToUser).toHaveBeenCalledTimes(1);
     expect(routeAutonomyTextToUser).toHaveBeenCalledWith(
       state,
@@ -142,19 +202,19 @@ describe("maybeRouteAutonomyEventToConversation source handling", () => {
 
   it("drops events whose only source is whitespace and which lack a room", async () => {
     routeAutonomyTextToUser.mockClear();
-    const state = { conversations: new Map() } as never;
-    await maybeRouteAutonomyEventToConversation(state, {
-      stream: "assistant",
-      data: { text: "hi", source: "   " },
-    } as never);
+    const state = makeState();
+    await maybeRouteAutonomyEventToConversation(
+      state,
+      makeEvent({ data: { text: "hi", source: "   " } }),
+    );
     expect(routeAutonomyTextToUser).not.toHaveBeenCalled();
   });
 
   it("ignores whitespace-only text", async () => {
     routeAutonomyTextToUser.mockClear();
     await maybeRouteAutonomyEventToConversation(
-      { conversations: new Map() } as never,
-      { stream: "assistant", data: { text: "   " } } as never,
+      makeState(),
+      makeEvent({ data: { text: "   " } }),
     );
     expect(routeAutonomyTextToUser).not.toHaveBeenCalled();
   });
@@ -162,66 +222,64 @@ describe("maybeRouteAutonomyEventToConversation source handling", () => {
   it("ignores non-string text values", async () => {
     routeAutonomyTextToUser.mockClear();
     await maybeRouteAutonomyEventToConversation(
-      { conversations: new Map() } as never,
-      { stream: "assistant", data: { text: 42 } } as never,
+      makeState(),
+      makeEvent({ data: { text: 42 } }),
     );
     expect(routeAutonomyTextToUser).not.toHaveBeenCalled();
   });
 
   it("ignores null, primitive, and array payload data", async () => {
     routeAutonomyTextToUser.mockClear();
-    const state = { conversations: new Map() } as never;
-    await maybeRouteAutonomyEventToConversation(state, {
-      stream: "assistant",
-      data: null,
-    } as never);
-    await maybeRouteAutonomyEventToConversation(state, {
-      stream: "assistant",
-      data: "boom",
-    } as never);
-    await maybeRouteAutonomyEventToConversation(state, {
-      stream: "assistant",
-      data: [{ text: "hi" }],
-    } as never);
+    const state = makeState();
+    await maybeRouteAutonomyEventToConversation(
+      state,
+      makeEventWithInvalidData(null),
+    );
+    await maybeRouteAutonomyEventToConversation(
+      state,
+      makeEventWithInvalidData("boom"),
+    );
+    await maybeRouteAutonomyEventToConversation(
+      state,
+      makeEventWithInvalidData([{ text: "hi" }]),
+    );
     expect(routeAutonomyTextToUser).not.toHaveBeenCalled();
   });
 
   it("still drops client-chat echoes padded with whitespace", async () => {
     routeAutonomyTextToUser.mockClear();
     await maybeRouteAutonomyEventToConversation(
-      { conversations: new Map() } as never,
-      {
-        stream: "assistant",
+      makeState(),
+      makeEvent({
         data: { text: "hi", source: " client_chat " },
-      } as never,
+      }),
     );
     expect(routeAutonomyTextToUser).not.toHaveBeenCalled();
   });
 
   it("routes when only a different room is already open", async () => {
     routeAutonomyTextToUser.mockClear();
-    const state = {
-      conversations: new Map([["c1", { roomId: "other" }]]),
-    } as never;
-    await maybeRouteAutonomyEventToConversation(state, {
-      stream: "assistant",
-      roomId: "r1",
-      data: { text: "hi", source: "custom" },
-    } as never);
+    const state = makeState();
+    addConversation(state, "c1", "other-room");
+    await maybeRouteAutonomyEventToConversation(
+      state,
+      makeEvent({
+        roomId: stringToUuid("target-room"),
+        data: { text: "hi", source: "custom" },
+      }),
+    );
     expect(routeAutonomyTextToUser).toHaveBeenCalledTimes(1);
     expect(routeAutonomyTextToUser).toHaveBeenCalledWith(state, "hi", "custom");
   });
 
-  it("skips the busy-room scan when roomId is an empty string", async () => {
+  it("skips the busy-room scan when the typed event has no roomId", async () => {
     routeAutonomyTextToUser.mockClear();
-    const state = {
-      conversations: new Map([["c1", { roomId: "" }]]),
-    } as never;
-    await maybeRouteAutonomyEventToConversation(state, {
-      stream: "assistant",
-      roomId: "",
-      data: { text: "hi", source: "custom" },
-    } as never);
+    const state = makeState();
+    addConversation(state, "c1", "unrelated-room");
+    await maybeRouteAutonomyEventToConversation(
+      state,
+      makeEvent({ data: { text: "hi", source: "custom" } }),
+    );
     expect(routeAutonomyTextToUser).toHaveBeenCalledTimes(1);
     expect(routeAutonomyTextToUser).toHaveBeenCalledWith(state, "hi", "custom");
   });
@@ -229,12 +287,12 @@ describe("maybeRouteAutonomyEventToConversation source handling", () => {
   it("propagates routeAutonomyTextToUser rejections", async () => {
     routeAutonomyTextToUser.mockClear();
     routeAutonomyTextToUser.mockRejectedValueOnce(new Error("swarm down"));
-    const state = { conversations: new Map() } as never;
+    const state = makeState();
     await expect(
-      maybeRouteAutonomyEventToConversation(state, {
-        stream: "assistant",
-        data: { text: "hi", source: "custom" },
-      } as never),
+      maybeRouteAutonomyEventToConversation(
+        state,
+        makeEvent({ data: { text: "hi", source: "custom" } }),
+      ),
     ).rejects.toThrow("swarm down");
   });
 });
