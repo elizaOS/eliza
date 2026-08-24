@@ -874,6 +874,7 @@ export const memoryAction: Action = {
       description:
         "update/delete: id of the memory to mutate. delete: optional when query is provided.",
       required: false,
+      modelOmissionSentinels: ["", "null", "undefined"],
       schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {
