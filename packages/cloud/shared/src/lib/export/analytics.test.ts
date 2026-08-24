@@ -73,6 +73,8 @@ describe("formatters degrade safely", () => {
   test("formatDate emits ISO for Date/string, empty for junk", () => {
     expect(formatDate(new Date("2026-01-02T00:00:00.000Z"))).toBe("2026-01-02T00:00:00.000Z");
     expect(formatDate("2026-01-02T00:00:00.000Z")).toBe("2026-01-02T00:00:00.000Z");
+    expect(formatDate(new Date("invalid"))).toBe("");
+    expect(formatDate("invalid-date-string")).toBe("");
     expect(formatDate(42)).toBe("");
   });
 });

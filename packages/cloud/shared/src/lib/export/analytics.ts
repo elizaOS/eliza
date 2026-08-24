@@ -289,10 +289,13 @@ export function formatPercentage(value: unknown): string {
  */
 export function formatDate(value: unknown): string {
   if (value instanceof Date) {
+    if (isNaN(value.getTime())) return "";
     return value.toISOString();
   }
   if (typeof value === "string") {
-    return new Date(value).toISOString();
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "";
+    return d.toISOString();
   }
   return "";
 }
