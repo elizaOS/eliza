@@ -1,5 +1,6 @@
 /**
- * Tests for spec-helpers — action/provider spec lookups.
+ * Exercises action and provider spec helpers against generated catalog tables.
+ * Pure deterministic lookup and error verification with no live runtime.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -7,7 +8,7 @@ import {
 	getProviderSpec,
 	requireActionSpec,
 	requireProviderSpec,
-} from "./spec-helpers.ts";
+} from "../generated/spec-helpers.ts";
 
 describe("spec-helpers", () => {
 	it("getActionSpec returns spec for known action", () => {
