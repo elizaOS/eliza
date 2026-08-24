@@ -1,6 +1,8 @@
+diff --git a/dist/auth.d.ts b/dist/auth.d.ts
+index 5555cf294d4b123575e30f35c18d23f9055c8c07..cecb720957d99e4425d7e318e420d4d2403c9a46 100644
 --- a/dist/auth.d.ts
 +++ b/dist/auth.d.ts
-@@ -109,7 +109,9 @@
+@@ -109,7 +109,9 @@ export declare class StewardAuth {
       * Requires a browser environment and `@simplewebauthn/browser` installed.
       * Throws `StewardApiError` in Node or when the dependency is missing.
       */
@@ -11,9 +13,20 @@
      /**
       * Register a new passkey for the given email, regardless of whether the
       * user already has other passkeys on other relying parties (RPs).
+diff --git a/dist/auth.js b/dist/auth.js
+index 50f91554ab7333b11689341f6be543bd3fa68090..96e3e11036e82ef3340e05b8efefd52d21feaeaf 100644
 --- a/dist/auth.js
 +++ b/dist/auth.js
-@@ -540,7 +540,7 @@
+@@ -191,7 +191,7 @@ async function authRequest(baseUrl, path, init = {}, token) {
+         const errMsg = typeof payload.error === "string"
+             ? payload.error
+             : `Request failed with status ${response.status}`;
+-        return { ok: false, status: response.status, error: errMsg };
++        return { ok: false, status: response.status, error: errMsg, data: payload };
+     }
+     return { ok: true, status: response.status, data: payload };
+ }
+@@ -540,7 +540,7 @@ export class StewardAuth {
       * Requires a browser environment and `@simplewebauthn/browser` installed.
       * Throws `StewardApiError` in Node or when the dependency is missing.
       */
@@ -22,7 +35,7 @@
          if (!isBrowser()) {
              throw new StewardApiError("Passkeys require a browser environment. Use signInWithEmail or signInWithSIWE in Node.", 0);
          }
-@@ -564,8 +564,9 @@
+@@ -564,8 +564,9 @@ export class StewardAuth {
              // User exists with passkeys — run authentication flow
              return this.completePasskeyLogin(email, loginOptsRes.data, browserLib);
          }
@@ -34,7 +47,7 @@
              return this.completePasskeyRegister(email, browserLib);
          }
          throw new StewardApiError(loginOptsRes.error, loginOptsRes.status);
-@@ -609,7 +610,7 @@
+@@ -609,7 +610,7 @@ export class StewardAuth {
          let authResponse;
          try {
              // Server-provided options; types are validated by the WebAuthn browser library.
@@ -43,7 +56,13 @@
          }
          catch (err) {
              throw new StewardApiError(`WebAuthn authentication cancelled or failed: ${err instanceof Error ? err.message : String(err)}`, 0);
-@@ -648,7 +649,7 @@
+@@ -643,12 +644,12 @@ export class StewardAuth {
+             }),
+         });
+         if (!regOptsRes.ok) {
+-            throw new StewardApiError(regOptsRes.error, regOptsRes.status);
++            throw new StewardApiError(regOptsRes.error, regOptsRes.status, regOptsRes.data);
+         }
          let regResponse;
          try {
              // Server-provided options; types are validated by the WebAuthn browser library.
@@ -52,7 +71,16 @@
          }
          catch (err) {
              throw new StewardApiError(`WebAuthn registration cancelled or failed: ${err instanceof Error ? err.message : String(err)}`, 0);
-@@ -1092,7 +1093,7 @@
+@@ -663,7 +664,7 @@ export class StewardAuth {
+             }),
+         });
+         if (!verifyRes.ok) {
+-            throw new StewardApiError(verifyRes.error, verifyRes.status);
++            throw new StewardApiError(verifyRes.error, verifyRes.status, verifyRes.data);
+         }
+         return this.storeExchangeResponse(verifyRes.data);
+     }
+@@ -1092,7 +1093,7 @@ export class StewardAuth {
          }
          let authResponse;
          try {
@@ -61,9 +89,11 @@
          }
          catch (err) {
              throw new StewardApiError(`WebAuthn authentication cancelled or failed: ${err instanceof Error ? err.message : String(err)}`, 0);
+diff --git a/dist/client.d.ts b/dist/client.d.ts
+index d3ce2d1a0490833f09470cec693cef155dba259d..f41bb345dad3f3083dbc191f80c2ac29328651b7 100644
 --- a/dist/client.d.ts
 +++ b/dist/client.d.ts
-@@ -1421,5 +1421,15 @@
+@@ -1421,6 +1421,16 @@ export declare class StewardClient {
      revokeTenantRequestSigningKey(tenantId: string, keyId: string): Promise<TenantRequestSigningKey>;
      /** Get the aggregated dashboard for an agent (balance, spend, policies, recent tx, pending approvals). */
      getAgentDashboard(agentId: string): Promise<AgentDashboardResponse>;
@@ -79,12 +109,15 @@
 +    }>>;
      /** Get on-chain and realtime spend accounting for an agent. */
      getAgentSpend(agentId: string): Promise<AgentSpendSummary>;
+     /** Get the aggregated digital asset account for an agent. */
+diff --git a/dist/client.js b/dist/client.js
+index 9381d508632049ed24e8bbf0530ec8d68bca61b4..da03dda10271d5d00cdbde1f4657ffb27a5b70db 100644
 --- a/dist/client.js
 +++ b/dist/client.js
-@@ -2032,6 +2032,26 @@
-             throw new StewardApiError(response.error, response.status, response.data);
+@@ -2032,6 +2032,26 @@ export class StewardClient {
          return response.data;
      }
+     /** Get on-chain and realtime spend accounting for an agent. */
 +    /** List the agent-scoped pending approval page. */
 +    async listPendingApprovals(agentId, opts = {}) {
 +        const params = new URLSearchParams();
@@ -105,6 +138,6 @@
 +            throw new StewardApiError("Steward pending approvals response is invalid", 502, response.data);
 +        return response.data.approvals;
 +    }
-     /** Get on-chain and realtime spend accounting for an agent. */
      async getAgentSpend(agentId) {
          const response = await this.request(`/agents/${encodeURIComponent(agentId)}/spend`);
+         if (!response.ok)
