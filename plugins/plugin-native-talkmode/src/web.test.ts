@@ -460,6 +460,82 @@ describe("TalkModeWeb fallback", () => {
     await expect(plugin.isEnabled()).resolves.toEqual({ enabled: true });
   });
 
+  it("surfaces a genuine synthesis error on an active session instead of swallowing it as listening (issue #27977)", async () => {
+    const utterances: FakeUtterance[] = [];
+    const synthesis = {
+      cancel: vi.fn(),
+      speaking: false,
+      speak: vi.fn((value: FakeUtterance) => {
+        utterances.push(value);
+      }),
+    };
+    setWindow({
+      SpeechRecognition: FakeRecognition,
+      speechSynthesis: synthesis,
+    });
+    setNavigator({});
+    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+    const plugin = new TalkModeWeb();
+
+    await expect(plugin.start()).resolves.toEqual({ started: true });
+    const speaking = plugin.speak({ text: "hi" });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "speaking",
+      statusText: "Speaking",
+    });
+
+    // A real synthesis failure (not a stop-initiated cancel) fires while the
+    // session is still enabled. The interrupted-case fix must not broaden to
+    // swallow this: the boundary is event.error, not this.enabled alone.
+    utterances[0]?.onerror?.({ error: "synthesis-failed" });
+    await expect(speaking).resolves.toEqual({
+      completed: false,
+      interrupted: false,
+      usedSystemTts: true,
+      error: "synthesis-failed",
+    });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "error",
+      statusText: "Speech error",
+    });
+  });
+
+  it("treats a canceled error like an interruption and returns an active session to listening (issue #27977)", async () => {
+    const utterances: FakeUtterance[] = [];
+    const synthesis = {
+      cancel: vi.fn(),
+      speaking: false,
+      speak: vi.fn((value: FakeUtterance) => {
+        utterances.push(value);
+      }),
+    };
+    setWindow({
+      SpeechRecognition: FakeRecognition,
+      speechSynthesis: synthesis,
+    });
+    setNavigator({});
+    vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+    const plugin = new TalkModeWeb();
+
+    await expect(plugin.start()).resolves.toEqual({ started: true });
+    const speaking = plugin.speak({ text: "hi" });
+
+    // Some engines report a deliberate cancel as "canceled" rather than
+    // "interrupted"; on a still-enabled session that is an interruption, not a
+    // failure, so it must return to listening and be reported as interrupted.
+    utterances[0]?.onerror?.({ error: "canceled" });
+    await expect(speaking).resolves.toEqual({
+      completed: false,
+      interrupted: true,
+      usedSystemTts: true,
+      error: "canceled",
+    });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "listening",
+      statusText: "Listening",
+    });
+  });
+
   it("maps speech synthesis errors without throwing", async () => {
     const synthesis = {
       cancel: vi.fn(),

@@ -201,7 +201,11 @@ export class TalkModeWeb extends WebPlugin {
         // currentUtterance before the browser's async end event fires, so a
         // stale completion must not resurrect a live "listening" state on a
         // torn-down session (enabled=false, recognizer nulled). The promise
-        // still resolves so an in-flight speak() never hangs.
+        // still resolves so an in-flight speak() never hangs. onend carries no
+        // interruption signal, so a stale end fired because stop() cut speech
+        // short is indistinguishable here from a genuine finish; the result is
+        // reported as completed and a caller doing delivery accounting must
+        // treat post-stop completion as best-effort rather than authoritative.
         if (this.currentUtterance !== utterance) {
           resolve({ completed: true, interrupted: false, usedSystemTts: true });
           return;
@@ -216,14 +220,20 @@ export class TalkModeWeb extends WebPlugin {
       };
 
       utterance.onerror = (event) => {
-        // Same teardown guard as onend. A deliberate stop() cancels playback,
-        // which the browser reports as onerror("interrupted"); that is a normal
-        // user stop, not a speech failure, so it must not fabricate a
-        // "Speech error" status on an already-idle session.
+        // Same teardown guard as onend. A deliberate stop()/stopSpeaking()
+        // cancels playback, which the browser reports as onerror("interrupted")
+        // or, on some engines, onerror("canceled"); either is a normal user stop
+        // rather than a speech failure, so it must not fabricate a "Speech
+        // error" status. Genuine synthesis failures (synthesis-failed,
+        // audio-busy, voice-unavailable, ...) are NOT interruptions and must
+        // still surface the error state on a live session — gating only on
+        // this.enabled would silently swallow them and report "Listening".
+        const interrupted =
+          event.error === "interrupted" || event.error === "canceled";
         if (this.currentUtterance !== utterance) {
           resolve({
             completed: false,
-            interrupted: event.error === "interrupted",
+            interrupted,
             usedSystemTts: true,
             error: event.error,
           });
@@ -231,13 +241,16 @@ export class TalkModeWeb extends WebPlugin {
         }
         this.currentUtterance = null;
         this.notifyListeners("speakComplete", { completed: false });
-        this.setState(
-          this.enabled ? "listening" : "idle",
-          this.enabled ? "Listening" : "Off",
-        );
+        if (!this.enabled) {
+          this.setState("idle", "Off");
+        } else if (interrupted) {
+          this.setState("listening", "Listening");
+        } else {
+          this.setState("error", "Speech error");
+        }
         resolve({
           completed: false,
-          interrupted: event.error === "interrupted",
+          interrupted,
           usedSystemTts: true,
           error: event.error,
         });
