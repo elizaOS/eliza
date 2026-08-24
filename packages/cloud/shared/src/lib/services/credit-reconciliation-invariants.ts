@@ -31,7 +31,9 @@ export function assertCreditRefundReservationPresent(params: {
   scope: string;
 }): void {
   const { reservationTransactionId, refundAmount, refundTolerance, scope } = params;
-  if (refundAmount < refundTolerance || reservationTransactionId) {
+  const hasReservation =
+    typeof reservationTransactionId === "string" && reservationTransactionId.trim().length > 0;
+  if (refundAmount < refundTolerance || hasReservation) {
     return;
   }
   throw new CreditRefundReservationRequiredError(scope, refundAmount);
