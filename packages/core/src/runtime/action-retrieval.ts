@@ -1171,7 +1171,16 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 
 function explicitParentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	return [...(CANDIDATE_ACTION_PARENT_ALIASES[normalized] ?? [])];
+	const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
+	if (explicit) return [...explicit];
+	// Arithmetic-shaped inventions (CALC_RESULT, DO_MATH, MULTIPLY_NUMBERS …)
+	// are open-ended — Stage 1 produces a fresh spelling per turn — so they
+	// hint the deterministic evaluator by family; admission still passes
+	// through appendIfAllowed's role/context gates.
+	if (/CALC|MATH|ARITH|MULTIPL|DIVIDE/.test(normalized)) {
+		return ["CALCULATE"];
+	}
+	return [];
 }
 
 const APP_SURFACE_TOKENS = new Set([
