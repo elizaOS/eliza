@@ -5,8 +5,9 @@
  * without a live connector, model, or database.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { logger } from "../../../../logger.ts";
 import type {
 	Content,
 	HandlerCallback,
@@ -123,6 +124,7 @@ describe("manageMessageAction", () => {
 	});
 
 	afterEach(() => {
+		vi.restoreAllMocks();
 		__resetDefaultTriageServiceForTests();
 		__resetDefaultMessageRefStoreForTests();
 	});
@@ -327,6 +329,40 @@ describe("manageMessageAction", () => {
 			});
 		},
 	);
+
+	it("reports the resolved lookup target on a reasonless failure", async () => {
+		adapter.messages = [messageRef("resolved-target", 3_000)];
+		adapter.manageResult = { ok: false };
+		const info = vi.spyOn(logger, "info").mockImplementation(() => undefined);
+
+		const result = await manageMessageAction.handler(
+			createRuntime(),
+			turn,
+			undefined,
+			options({
+				sender: "newsletter@example.com",
+				content: "project",
+				operation: "archive",
+			}),
+		);
+
+		expect(result).toEqual({
+			success: false,
+			text: "Operation archive on message resolved-target did not complete.",
+			data: {
+				ok: false,
+				reason: null,
+				messageId: "resolved-target",
+				operation: "archive",
+			},
+		});
+		expect(adapter.managed).toEqual([
+			{ messageId: "resolved-target", operation: { kind: "archive" } },
+		]);
+		expect(info).toHaveBeenCalledWith(
+			"[ManageMessage] op=archive messageId=resolved-target not ok: Operation archive on message resolved-target did not complete.",
+		);
+	});
 
 	it.each([
 		["trash", {}, "Moved that message to trash.", { kind: "trash" }],

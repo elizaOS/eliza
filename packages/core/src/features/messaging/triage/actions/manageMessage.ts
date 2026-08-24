@@ -182,9 +182,9 @@ export const manageMessageAction: Action = {
 		if (!result.ok) {
 			const text =
 				result.reason ??
-				`Operation ${opLabel} on message ${parsed.messageId} did not complete.`;
+				`Operation ${opLabel} on message ${messageId} did not complete.`;
 			logger.info(
-				`[ManageMessage] op=${opLabel} messageId=${parsed.messageId} not ok: ${text}`,
+				`[ManageMessage] op=${opLabel} messageId=${messageId} not ok: ${text}`,
 			);
 			// No visible callback: raw service reasons are tool-speak. The failure
 			// stays planner-facing so the evaluator phrases it once, in voice.
