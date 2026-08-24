@@ -1151,8 +1151,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		 */
 		includeEmbedding?: boolean;
 		/**
-		 * Requester identity to scope retrieval to. When omitted, no
-		 * access-context filtering is applied (single-tenant behavior).
+		 * Requester authority used to intersect disclosure scope and any supplied
+		 * world/authorized-room bounds before ordering and pagination. When omitted,
+		 * no access-context filtering is applied (single-tenant behavior).
 		 */
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
@@ -1239,8 +1240,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		textContains?: string;
 		includeEmbedding?: boolean;
 		/**
-		 * Requester identity to scope retrieval to. When omitted, no
-		 * access-context filtering is applied (single-tenant behavior).
+		 * Requester authority used to intersect disclosure scope and any supplied
+		 * world/authorized-room bounds before ordering and pagination. When omitted,
+		 * no access-context filtering is applied (single-tenant behavior).
 		 */
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
@@ -1326,8 +1328,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		worldId?: UUID;
 		entityId?: UUID;
 		/**
-		 * Requester identity to scope retrieval to. When omitted, no
-		 * access-context filtering is applied (single-tenant behavior).
+		 * Requester authority used to intersect disclosure scope and any supplied
+		 * world/authorized-room bounds before vector ranking and pagination. When
+		 * omitted, no access-context filtering is applied (single-tenant behavior).
 		 */
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;

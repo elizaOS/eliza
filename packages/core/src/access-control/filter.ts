@@ -1,8 +1,8 @@
 /**
- * Read-side access-control filter for memory-shaped retrieval records: maps an
- * {@link AccessContext} to a scope-ladder actor, decides whether that actor may
- * read a record of a given {@link MemoryScope}, and subtractively filters a
- * result array down to the readable set.
+ * Read-side access-control filters for memory-shaped retrieval records: the
+ * general disclosure filter applies the scope ladder, while the adapter-bound
+ * variant additionally intersects agent, world, and authorized-room bounds
+ * before ordering, ranking, or pagination.
  *
  * Composes with — never duplicates — Postgres RLS: RLS gates on
  * `entity_id`/`server_id`, this gates on `metadata.scope`. For the four
@@ -15,7 +15,10 @@ import type { RoleName } from "../roles";
 import type { AccessContext, MemoryScope, UUID } from "../types";
 
 interface AccessScopedRecord {
+	agentId?: UUID;
 	entityId?: UUID;
+	roomId?: UUID;
+	worldId?: UUID;
 	metadata?: {
 		scope?: unknown;
 		scopedToEntityId?: unknown;
@@ -123,10 +126,10 @@ export function canReadScope(
 }
 
 /**
- * Filter retrieval records down to those `ctx`'s requester may read. A pure,
- * strictly subtractive `.filter()`: it composes with (never duplicates)
- * Postgres RLS, which gates on `entity_id`/`server_id` while this gates on
- * `metadata.scope`. An ABSENT scope fails CLOSED to `private` (author-scoped):
+ * Filter retrieval records down to the disclosure scopes `ctx`'s requester may
+ * read. A pure, strictly subtractive `.filter()` that composes with (never
+ * duplicates) Postgres RLS and with the adapter-bound location filter below.
+ * An ABSENT scope fails CLOSED to `private` (author-scoped):
  * an unstamped legacy row must never be treated as globally readable, because
  * a write path that forgot to stamp a scope would otherwise silently publish
  * private data to every actor. `private` (rather than `owner-private`) keeps
@@ -166,4 +169,50 @@ export function filterByAccessContext<T extends AccessScopedRecord>(
 					: memory.entityId;
 		return canReadScope(scope, scopedEntityId, actor);
 	});
+}
+
+/**
+ * Adapter-bound memory filter. Unlike {@link filterByAccessContext}, which is
+ * also used after explicitly authorized cross-world recall, this variant
+ * treats `worldId` and `authorizedRoomIds` as storage-query intersections and
+ * rejects rows stamped for another agent. Adapters call it before any
+ * ordering, ranking, cursor, offset, or limit operation. Message-table callers
+ * with an explicit authorized-room set may pass `room` for `unstampedScope`:
+ * legacy transcript rows predate disclosure stamps, and verified room
+ * membership is their read boundary. Other tables retain author-private
+ * fail-closed behavior.
+ */
+export function filterMemoryReadByAccessContext<T extends AccessScopedRecord>(
+	memories: T[],
+	ctx: AccessContext,
+	agentId: UUID,
+	unstampedScope: MemoryScope = "private",
+): T[] {
+	const authorizedRoomIds =
+		ctx.authorizedRoomIds === undefined
+			? undefined
+			: new Set<UUID>(ctx.authorizedRoomIds);
+	const located = memories.filter((memory) => {
+		if (memory.agentId !== undefined && memory.agentId !== agentId)
+			return false;
+		if (authorizedRoomIds === undefined) return true;
+		if (ctx.worldId !== undefined && memory.worldId !== ctx.worldId)
+			return false;
+		return memory.roomId !== undefined && authorizedRoomIds.has(memory.roomId);
+	});
+	if (unstampedScope === "private") {
+		return filterByAccessContext(located, ctx, agentId);
+	}
+	return filterByAccessContext(
+		located.map((memory) =>
+			memory.metadata?.scope === undefined
+				? {
+						...memory,
+						metadata: { ...memory.metadata, scope: unstampedScope },
+					}
+				: memory,
+		),
+		ctx,
+		agentId,
+	) as T[];
 }
