@@ -123,4 +123,73 @@ describe("useJobPoller — sleep-wake / backgrounding lifecycle (#9943)", () => 
     });
     expect(hungFetch.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
+
+  it("keeps an active server job authoritative past the old ten-minute client deadline", async () => {
+    const { result } = renderHook(() =>
+      useJobPoller({ intervalMs: 60_000, autoRefresh: false }),
+    );
+
+    await act(async () => {
+      result.current.track("agent-1", "job-1", {
+        status: "in_progress",
+        startedAt: Date.now(),
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000 + 1);
+    });
+
+    expect(result.current.getStatus("agent-1")?.status).toBe("in_progress");
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("reattaches when the server advances another attempt on the same job id", async () => {
+    const onFailed = vi.fn();
+    const { result } = renderHook(() =>
+      useJobPoller({
+        intervalMs: 1_000,
+        maxDurationMs: 500,
+        autoRefresh: false,
+        onFailed,
+      }),
+    );
+    const firstStartedAt = Date.now();
+
+    await act(async () => {
+      result.current.track("agent-1", "job-1", {
+        status: "in_progress",
+        startedAt: firstStartedAt,
+        attempts: 0,
+        maxAttempts: 3,
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(result.current.getStatus("agent-1")?.status).toBe("failed");
+    expect(onFailed).toHaveBeenCalledTimes(1);
+
+    const retryStartedAt = firstStartedAt + 2_000;
+    await act(async () => {
+      result.current.track("agent-1", "job-1", {
+        status: "in_progress",
+        startedAt: retryStartedAt,
+        attempts: 1,
+        maxAttempts: 3,
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.getStatus("agent-1")).toMatchObject({
+      jobId: "job-1",
+      status: "in_progress",
+      error: null,
+      startedAt: retryStartedAt,
+      attempts: 1,
+      maxAttempts: 3,
+    });
+  });
 });

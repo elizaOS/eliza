@@ -50,9 +50,10 @@ function isJobStatus(value: unknown): value is JobStatus {
 export function useJobPoller(options: UseJobPollerOptions = {}) {
   const {
     intervalMs = 5_000,
-    // Agent provisioning can take multiple attempts with backoff, plus cron
-    // pickup lag. Keep the default local timeout above the server retry window.
-    maxDurationMs = 10 * 60_000,
+    // The jobs API is the lifecycle authority. Production callers therefore
+    // keep polling until the server publishes a terminal state; an optional
+    // bound remains available for explicitly bounded embeddings/tests.
+    maxDurationMs,
     onComplete,
     onFailed,
     autoRefresh = true,
@@ -93,7 +94,41 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
     ) => {
       setJobMap((prev) => {
         const existing = prev.get(key);
-        if (existing?.jobId === jobId) return prev;
+        if (existing?.jobId === jobId) {
+          if (!initial) return prev;
+
+          // A server retry keeps the same job id while advancing attempts and
+          // startedAt. Rehydrate that authoritative active state instead of
+          // leaving a client-side timeout/failure sticky for the rest of the
+          // page lifetime.
+          const nextStartedAt = initial.startedAt ?? existing.startedAt;
+          const nextAttempts = initial.attempts ?? existing.attempts;
+          const nextMaxAttempts = initial.maxAttempts ?? existing.maxAttempts;
+          const nextEstimate =
+            initial.estimatedCompletionAt ?? existing.estimatedCompletionAt;
+          const nextStatus = initial.status ?? existing.status;
+          if (
+            nextStartedAt === existing.startedAt &&
+            nextAttempts === existing.attempts &&
+            nextMaxAttempts === existing.maxAttempts &&
+            nextEstimate === existing.estimatedCompletionAt &&
+            nextStatus === existing.status
+          ) {
+            return prev;
+          }
+
+          const next = new Map(prev);
+          next.set(key, {
+            ...existing,
+            status: nextStatus,
+            error: isActiveStatus(nextStatus) ? null : existing.error,
+            startedAt: nextStartedAt,
+            attempts: nextAttempts,
+            maxAttempts: nextMaxAttempts,
+            estimatedCompletionAt: nextEstimate,
+          });
+          return next;
+        }
         const next = new Map(prev);
         next.set(key, {
           key,
@@ -152,7 +187,10 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
         let needsRefresh = false;
 
         for (const job of currentActive) {
-          if (Date.now() - job.startedAt > maxDurationMs) {
+          if (
+            typeof maxDurationMs === "number" &&
+            Date.now() - job.startedAt > maxDurationMs
+          ) {
             const timedOutJob: TrackedJob = {
               ...job,
               status: "failed",
