@@ -103,14 +103,19 @@ function formatOffsetToken(offsetMinutes: number): string {
 }
 
 function localPartsToEpochMs(parts: ZonedDateParts): number {
-  return Date.UTC(
+  const date = new Date(0);
+  date.setUTCFullYear(
     parts.year,
     parts.month - 1,
     parts.day,
+  );
+  date.setUTCHours(
     parts.hour,
     parts.minute,
     parts.second,
+    0,
   );
+  return date.getTime();
 }
 
 function sameZonedParts(left: ZonedDateParts, right: ZonedDateParts): boolean {
@@ -218,16 +223,13 @@ export function addDaysToLocalDate(
   dateOnly: Pick<ZonedDateParts, "year" | "month" | "day">,
   dayDelta: number,
 ): Pick<ZonedDateParts, "year" | "month" | "day"> {
-  const utcDate = new Date(
-    Date.UTC(
-      dateOnly.year,
-      dateOnly.month - 1,
-      dateOnly.day + dayDelta,
-      12,
-      0,
-      0,
-    ),
+  const utcDate = new Date(0);
+  utcDate.setUTCFullYear(
+    dateOnly.year,
+    dateOnly.month - 1,
+    dateOnly.day + dayDelta,
   );
+  utcDate.setUTCHours(12, 0, 0, 0);
   return {
     year: utcDate.getUTCFullYear(),
     month: utcDate.getUTCMonth() + 1,
@@ -238,9 +240,10 @@ export function addDaysToLocalDate(
 export function getWeekdayForLocalDate(
   dateOnly: Pick<ZonedDateParts, "year" | "month" | "day">,
 ): number {
-  return new Date(
-    Date.UTC(dateOnly.year, dateOnly.month - 1, dateOnly.day, 12, 0, 0),
-  ).getUTCDay();
+  const utcDate = new Date(0);
+  utcDate.setUTCFullYear(dateOnly.year, dateOnly.month - 1, dateOnly.day);
+  utcDate.setUTCHours(12, 0, 0, 0);
+  return utcDate.getUTCDay();
 }
 
 export function getLocalDateKey(

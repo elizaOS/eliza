@@ -177,6 +177,36 @@ describe("local-date arithmetic + keys", () => {
     );
   });
 
+  it("preserves years 0-99 in addDaysToLocalDate without 1900s remapping", () => {
+    expect(addDaysToLocalDate({ year: 24, month: 1, day: 15 }, 1)).toEqual({
+      year: 24,
+      month: 1,
+      day: 16,
+    });
+    expect(addDaysToLocalDate({ year: 0, month: 12, day: 31 }, 1)).toEqual({
+      year: 1,
+      month: 1,
+      day: 1,
+    });
+  });
+
+  it("calculates getWeekdayForLocalDate correctly for years 0-99", () => {
+    // 0024-01-15 is a Monday (1)
+    expect(getWeekdayForLocalDate({ year: 24, month: 1, day: 15 })).toBe(1);
+  });
+
+  it("builds UTC date from local parts preserving years 0-99", () => {
+    const utc = buildUtcDateFromLocalParts("UTC", {
+      year: 24,
+      month: 1,
+      day: 15,
+      hour: 12,
+      minute: 0,
+      second: 0,
+    });
+    expect(utc.getUTCFullYear()).toBe(24);
+  });
+
   it("addMinutes shifts an instant by whole minutes", () => {
     expect(addMinutes(new Date("2026-01-01T00:00:00Z"), 90).toISOString()).toBe(
       "2026-01-01T01:30:00.000Z",
