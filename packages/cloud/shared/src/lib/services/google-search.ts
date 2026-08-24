@@ -1,4 +1,5 @@
 // Coordinates cloud service google search behavior behind route handlers.
+import { assertModelOutputComplete } from "@elizaos/core";
 import { calculateCost, estimateRequestCost, normalizeModelName } from "../pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
 import { logger } from "../utils/logger";
@@ -53,6 +54,7 @@ export interface HostedSearchResult {
 
 interface GoogleSearchResponse {
   candidates?: Array<{
+    finishReason?: string;
     content?: {
       parts?: Array<{
         text?: string;
@@ -88,7 +90,6 @@ interface GoogleSearchResponse {
 const DEFAULT_SEARCH_MODEL = "google/gemini-2.5-flash";
 const DEFAULT_MAX_RESULTS = 5;
 const MAX_RESULTS = 10;
-const DEFAULT_MAX_OUTPUT_TOKENS = 1_024;
 const GOOGLE_GROUNDED_PROMPT_BASE_COST = 0.035;
 const GOOGLE_GROUNDED_PROMPT_COST =
   Math.round(GOOGLE_GROUNDED_PROMPT_BASE_COST * PLATFORM_MARKUP_MULTIPLIER * 1_000_000) / 1_000_000;
@@ -290,11 +291,8 @@ export async function executeHostedGoogleSearch(
 
   if (auth?.organizationId && auth?.userId) {
     const estimatedCost =
-      (await estimateRequestCost(
-        normalizedModel,
-        [{ role: "user", content: prompt }],
-        DEFAULT_MAX_OUTPUT_TOKENS,
-      )) + GOOGLE_GROUNDED_PROMPT_COST;
+      (await estimateRequestCost(normalizedModel, [{ role: "user", content: prompt }])) +
+      GOOGLE_GROUNDED_PROMPT_COST;
 
     try {
       reservation = await creditsService.reserve({
@@ -340,7 +338,6 @@ export async function executeHostedGoogleSearch(
           tools: [{ google_search: {} }],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
           },
         }),
         signal: AbortSignal.timeout(30_000),
@@ -353,6 +350,12 @@ export async function executeHostedGoogleSearch(
         body.error?.message || `Google Search request failed with ${response.status}`,
       );
     }
+
+    assertModelOutputComplete({
+      finishReason: body.candidates?.[0]?.finishReason,
+      provider: "google-search",
+      model: normalizedModel,
+    });
 
     const answer = extractAnswer(body);
     if (!answer) {

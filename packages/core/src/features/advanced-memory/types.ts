@@ -1,13 +1,11 @@
 /**
  * Type contracts for the advanced-memory capability: the LongTermMemoryCategory
- * enum and the LongTermMemory / SessionSummary record shapes, the MemoryConfig
- * knobs that drive summarization and extraction cadence, and the
- * MemoryExtraction / SummaryResult model-output shapes. Shared by MemoryService,
+ * enum and LongTermMemory record shape, the MemoryConfig knobs that drive
+ * extraction cadence, and the MemoryExtraction model-output shape. Shared by MemoryService,
  * the memory providers and evaluators, and the MemoryStorageProvider contract in
  * types/memory-storage.ts, which re-imports these as its persistence boundary.
  */
 
-import type { TextGenerationModelType } from "../../types/model.ts";
 import type { JsonPrimitive, JsonValue, UUID } from "../../types/primitives.ts";
 
 export type { JsonPrimitive, JsonValue };
@@ -35,34 +33,12 @@ export interface LongTermMemory {
 	similarity?: number;
 }
 
-export interface SessionSummary {
-	id: UUID;
-	agentId: UUID;
-	roomId: UUID;
-	entityId?: UUID;
-	summary: string;
-	messageCount: number;
-	lastMessageOffset: number;
-	startTime: Date;
-	endTime: Date;
-	topics?: string[];
-	metadata?: Record<string, JsonValue>;
-	embedding?: number[];
-	createdAt: Date;
-	updatedAt: Date;
-}
-
 export interface MemoryConfig {
-	shortTermSummarizationThreshold: number;
-	shortTermRetainRecent: number;
-	shortTermSummarizationInterval: number;
 	longTermExtractionEnabled: boolean;
 	longTermVectorSearchEnabled: boolean;
 	longTermConfidenceThreshold: number;
 	longTermExtractionThreshold: number;
 	longTermExtractionInterval: number;
-	summaryModelType?: TextGenerationModelType;
-	summaryMaxTokens?: number;
 }
 
 export interface MemoryExtraction {
@@ -70,12 +46,6 @@ export interface MemoryExtraction {
 	content: string;
 	confidence: number;
 	metadata?: Record<string, JsonValue>;
-}
-
-export interface SummaryResult {
-	summary: string;
-	topics: string[];
-	keyPoints: string[];
 }
 
 export type MemoryServiceTypeName = "memory";

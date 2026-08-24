@@ -1,5 +1,6 @@
 // Coordinates cloud service app automation behavior behind route handlers.
 import { openai } from "@ai-sdk/openai";
+import { assertModelOutputComplete } from "@elizaos/core";
 import { generateText } from "ai";
 import { appsRepository } from "../../../db/repositories/apps";
 import { discordChannelsRepository } from "../../../db/repositories/discord-channels";
@@ -241,6 +242,11 @@ Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your re
         prompt:
           "Create a compelling Discord announcement about this app that would engage a community. Focus on what makes it unique and valuable.",
         maxOutputTokens: 150,
+      });
+      assertModelOutputComplete({
+        finishReason: result.finishReason,
+        provider: "openai",
+        model: "gpt-5-mini",
       });
 
       return result.text;

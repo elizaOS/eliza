@@ -20,9 +20,22 @@ import {
 	createJsonFileTrajectoryRecorder,
 	encodeTrajectoryFieldValue,
 	finalizeTrajectoryRecording,
+	projectRecordedStageToolDiagnostics,
 	type RecordedStage,
 	type RecordedTrajectory,
 } from "../trajectory-recorder";
+
+function deeplyNestedCanaries(depth: number): Record<string, unknown> {
+	let value: Record<string, unknown> = { final: "FINAL-CANARY" };
+	for (let index = depth; index >= 1; index -= 1) {
+		value = {
+			[`level${index}`]:
+				index === Math.ceil(depth / 2) ? "MIDDLE-CANARY" : index,
+			child: value,
+		};
+	}
+	return { first: "FIRST-CANARY", child: value };
+}
 
 let tmpDir: string;
 const originalReviewMode = process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
@@ -78,6 +91,34 @@ afterEach(async () => {
 });
 
 describe("JsonFileTrajectoryRecorder", () => {
+	it("preserves complete protected trajectory data beyond diagnostic depth", () => {
+		const payload = deeplyNestedCanaries(18);
+		const stage: RecordedStage = {
+			stageId: "stage-deep-complete",
+			kind: "planner",
+			startedAt: 1,
+			endedAt: 2,
+			latencyMs: 1,
+			model: {
+				modelType: "ACTION_PLANNER",
+				modelName: "test-model",
+				provider: "test-provider",
+				prompt: "FIRST-CANARY MIDDLE-CANARY FINAL-CANARY",
+				response: "complete",
+				messages: [{ role: "user", content: payload }],
+				toolCalls: [{ id: "call-deep", name: "DEEP", args: payload }],
+			},
+			evaluation: payload as RecordedStage["evaluation"],
+		};
+
+		projectRecordedStageToolDiagnostics(stage, (text) => text);
+		const serialized = JSON.stringify(stage);
+		expect(serialized).toContain("FIRST-CANARY");
+		expect(serialized).toContain("MIDDLE-CANARY");
+		expect(serialized).toContain("FINAL-CANARY");
+		expect(serialized).not.toContain("[REDACTED]");
+	});
+
 	it("startTrajectory + recordStage + endTrajectory produces a JSON file with the §18.1 shape", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({

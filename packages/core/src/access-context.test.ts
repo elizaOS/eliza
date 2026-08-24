@@ -7,7 +7,10 @@
  * elevated access", never "unrestricted".
  */
 import { describe, expect, it } from "vitest";
-import { buildAccessContext } from "./access-context";
+import {
+	buildAccessContext,
+	buildCrossWorldConversationAccessContext,
+} from "./access-context";
 import { createUniqueUuid } from "./entities";
 import type { IAgentRuntime, Memory, UUID } from "./types";
 
@@ -15,6 +18,8 @@ const AGENT = "00000000-0000-0000-0000-0000000000a9" as UUID;
 const USER = "00000000-0000-0000-0000-0000000000u5" as UUID;
 const WORLD = "00000000-0000-0000-0000-00000000w012" as UUID;
 const ROOM = "00000000-0000-0000-0000-00000000r001" as UUID;
+const OTHER_ROOM = "00000000-0000-0000-0000-00000000r002" as UUID;
+const AGENT_ONLY_ROOM = "00000000-0000-0000-0000-00000000r003" as UUID;
 const DISCORD_SERVER_ID = "discord-server-7788";
 
 function runtimeWithRoles(
@@ -37,6 +42,7 @@ function runtimeWithRoles(
 		}),
 		getSetting: () => undefined,
 		getCache: async () => undefined,
+		getService: () => null,
 		getComponents: async () => [],
 		getEntityById: async () => null,
 	} as unknown as IAgentRuntime;
@@ -122,5 +128,25 @@ describe("buildAccessContext", () => {
 		expect(ctx.worldId).toBe(expectedWorldId);
 		expect(ctx.worldId).toBeDefined();
 		expect(ctx.source).toBe("discord");
+	});
+});
+
+describe("buildCrossWorldConversationAccessContext", () => {
+	it("intersects verified requester rooms with agent rooms across worlds", async () => {
+		const runtime = runtimeWithRoles({ [USER]: "OWNER" }, WORLD, {
+			[USER]: "manual",
+		});
+		runtime.getRoomsForParticipants = async () => [ROOM, OTHER_ROOM];
+		runtime.getRoomsForParticipant = async () => [OTHER_ROOM, AGENT_ONLY_ROOM];
+
+		const ctx = await buildCrossWorldConversationAccessContext(
+			runtime,
+			message("discord"),
+		);
+
+		expect(ctx.role).toBe("OWNER");
+		expect(ctx.isOwner).toBe(true);
+		expect(ctx.worldId).toBeUndefined();
+		expect(ctx.authorizedRoomIds).toEqual([OTHER_ROOM]);
 	});
 });

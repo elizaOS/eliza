@@ -58,7 +58,7 @@ describe("core Date.UTC 0-99 regression - real functions", () => {
 		const wCorrect = new Date(utcDateMs(5, 5, 15, 12)).getUTCDay();
 		const wExpected = createViaSet(5, 5, 15).getUTCDay();
 		expect(wCorrect).toBe(wExpected);
-		const wBuggy = new Date(Date.UTC(5, 5, 15, 12, 0, 0)).getUTCDay();
+		const _wBuggy = new Date(Date.UTC(5, 5, 15, 12, 0, 0)).getUTCDay();
 		// At least prove year divergence makes them likely different; assert year not weekday coincidence
 		expect(new Date(Date.UTC(5, 5, 15, 12)).getUTCFullYear()).toBe(1905);
 		expect(createViaSet(5, 5, 15).getUTCFullYear()).toBe(5);

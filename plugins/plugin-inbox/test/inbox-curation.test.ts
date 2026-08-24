@@ -16,11 +16,14 @@
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import type { InboxItem } from "../src/actions/inbox.ts";
 import {
   compareInboxItemsByReceivedAt,
   dedupeAndOrder,
 } from "../src/actions/inbox.ts";
 import type {
+  CurationDecision,
+  EmailCurationCandidate,
   EmailCurationIdentityHook,
   EmailCurationPolicyHook,
 } from "../src/inbox/email-curation.ts";
@@ -203,7 +206,7 @@ describe("InboxService.triageWithCuration", () => {
 
 describe("email curation safe sort (NaN + tiebreak)", () => {
   it("orders via curateEmailCandidates with NaN confidence tiebreak by candidateId", () => {
-    const baseCandidates = [
+    const baseCandidates: EmailCurationCandidate[] = [
       {
         id: "c-1",
         threadId: null,
@@ -231,7 +234,7 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
         headers: {},
       },
     ];
-    const policyHook = (ctx: { candidate: { id: string } }) => {
+    const policyHook: EmailCurationPolicyHook = (ctx) => {
       if (ctx.candidate.id === "c-nan") {
         return [
           {
@@ -245,9 +248,9 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
       return [];
     };
     const out = curateEmailCandidates({
-      candidates: baseCandidates as any,
+      candidates: baseCandidates,
       now: "2026-08-23T00:00:00.000Z",
-      policyHook: policyHook as any,
+      policyHook,
     });
     // c-nan confidence becomes NaN -> sort score NaN -> coerced to 0, so it sorts last; tiebreak by candidateId if scores tie
     const order = out.decisions.map((d) => d.candidateId);
@@ -262,20 +265,32 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
   });
 
   it("tiebreaks equal scores by candidateId via compareCurationDecisions", () => {
-    const a: any = { candidateId: "b-id", action: "review", confidence: 0.5 };
-    const b: any = { candidateId: "a-id", action: "review", confidence: 0.5 };
+    const a = {
+      candidateId: "b-id",
+      action: "review",
+      confidence: 0.5,
+    } as CurationDecision;
+    const b = {
+      candidateId: "a-id",
+      action: "review",
+      confidence: 0.5,
+    } as CurationDecision;
     const arr = [a, b];
     arr.sort(compareCurationDecisions);
     expect(arr.map((x) => x.candidateId)).toEqual(["a-id", "b-id"]);
   });
 
   it("handles NaN in compareCurationDecisions as 0", () => {
-    const a: any = {
+    const a = {
       candidateId: "c-nan",
       action: "save",
       confidence: Number.NaN,
-    };
-    const b: any = { candidateId: "c-1", action: "save", confidence: 0.8 };
+    } as CurationDecision;
+    const b = {
+      candidateId: "c-1",
+      action: "save",
+      confidence: 0.8,
+    } as CurationDecision;
     // save weight 4 -> score 40+confidence, NaN -> 0 after guard, so c-1 wins
     const arr = [a, b];
     arr.sort(compareCurationDecisions);
@@ -285,11 +300,13 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
 
 describe("dedupeAndOrder safe sort", () => {
   it("orders unparsable receivedAt via id tiebreak and NaN handling", () => {
-    const items: any[] = [
+    const items: InboxItem[] = [
       {
         id: "b",
         platform: "gmail",
         channel: "inbox",
+        senderName: "",
+        snippet: "",
         receivedAt: "not-a-date",
         threadTopic: "",
       },
@@ -297,6 +314,8 @@ describe("dedupeAndOrder safe sort", () => {
         id: "a",
         platform: "gmail",
         channel: "inbox",
+        senderName: "",
+        snippet: "",
         receivedAt: "not-a-date",
         threadTopic: "",
       },
@@ -304,6 +323,8 @@ describe("dedupeAndOrder safe sort", () => {
         id: "c",
         platform: "gmail",
         channel: "inbox",
+        senderName: "",
+        snippet: "",
         receivedAt: "2026-08-23T10:00:00.000Z",
         threadTopic: "",
       },
@@ -314,16 +335,19 @@ describe("dedupeAndOrder safe sort", () => {
   });
 
   it("compareInboxItemsByReceivedAt tiebreaks equal timestamps by id", () => {
-    const a: any = { id: "b", receivedAt: "2026-08-23T10:00:00.000Z" };
-    const b: any = { id: "a", receivedAt: "2026-08-23T10:00:00.000Z" };
+    const a = { id: "b", receivedAt: "2026-08-23T10:00:00.000Z" } as InboxItem;
+    const b = { id: "a", receivedAt: "2026-08-23T10:00:00.000Z" } as InboxItem;
     const arr = [a, b];
     arr.sort(compareInboxItemsByReceivedAt);
     expect(arr.map((x) => x.id)).toEqual(["a", "b"]);
   });
 
   it("compareInboxItemsByReceivedAt handles NaN as after finite dates", () => {
-    const a: any = { id: "nan", receivedAt: "invalid" };
-    const b: any = { id: "valid", receivedAt: "2026-08-23T10:00:00.000Z" };
+    const a = { id: "nan", receivedAt: "invalid" } as InboxItem;
+    const b = {
+      id: "valid",
+      receivedAt: "2026-08-23T10:00:00.000Z",
+    } as InboxItem;
     const arr = [a, b];
     arr.sort(compareInboxItemsByReceivedAt);
     expect(arr[0].id).toBe("valid");

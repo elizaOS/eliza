@@ -1,11 +1,11 @@
 /**
- * Resolves the progressive-content projection rollout and builds its redacted
- * per-request diagnostics. The metadata contains counts and token estimates
- * only; source text, references, paths, provider IDs, and hashes are excluded.
+ * Preserves the former progressive-projection API as a disabled compatibility
+ * surface. Model-facing content is never projected; callers receive count-only
+ * diagnostics while final request preparation either dispatches complete input
+ * or rejects it explicitly.
  */
 
 import type { IAgentRuntime } from "../types/runtime";
-import { parseBooleanValue } from "../utils/boolean";
 import type {
 	ContentProjectionBudget,
 	ModelInputBudget,
@@ -17,15 +17,11 @@ export const PROGRESSIVE_CONTENT_PROJECTION_SETTING =
 
 type SettingReader = Pick<IAgentRuntime, "getSetting">;
 
-/** Experimental rollout is opt-in; malformed and absent settings are disabled. */
+/** @deprecated Projection is permanently disabled by the prompt-integrity contract. */
 export function isProgressiveContentProjectionEnabled(
-	runtime: Partial<SettingReader> | undefined,
-): boolean {
-	return (
-		parseBooleanValue(
-			runtime?.getSetting?.(PROGRESSIVE_CONTENT_PROJECTION_SETTING),
-		) ?? false
-	);
+	_runtime: Partial<SettingReader> | undefined,
+): false {
+	return false;
 }
 
 export interface ContentProjectionDiagnostics {
@@ -40,6 +36,7 @@ export interface ContentProjectionDiagnostics {
 	omissionReasons: Record<string, number>;
 }
 
+/** @deprecated Returns complete-content diagnostics and never omission budgets. */
 export function buildContentProjectionDiagnostics(args: {
 	enabled: boolean;
 	baselineBudget: ModelInputBudget;
@@ -47,18 +44,18 @@ export function buildContentProjectionDiagnostics(args: {
 	stats: ToolResultProjectionStats;
 }): ContentProjectionDiagnostics {
 	return {
-		enabled: args.enabled,
+		enabled: false,
 		resultCount: args.stats.resultCount,
 		baselineEstimatedTokens: args.baselineBudget.estimatedInputTokens,
 		remainingEstimatedTokens: Math.max(
 			0,
-			args.baselineBudget.compactionThresholdTokens -
+			args.baselineBudget.dispatchThresholdTokens -
 				args.baselineBudget.estimatedInputTokens,
 		),
-		perResultEstimatedTokens: args.projectionBudget?.perResultTokens ?? 0,
-		aggregateEstimatedTokens: args.projectionBudget?.aggregateTokens ?? 0,
+		perResultEstimatedTokens: 0,
+		aggregateEstimatedTokens: 0,
 		pagesIncluded: args.stats.pagesIncluded,
-		pagesOmitted: args.stats.pagesOmitted,
-		omissionReasons: { ...args.stats.omissionReasons },
+		pagesOmitted: 0,
+		omissionReasons: {},
 	};
 }

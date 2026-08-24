@@ -93,6 +93,34 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     );
   });
 
+  it("returns every long-term memory when no explicit limit is requested", async () => {
+    const agentId = uuidv4() as UUID;
+    const entityId = uuidv4() as UUID;
+    const { runtime, cleanup } = await createTestDatabase(agentId);
+    cleanups.push(cleanup);
+    await runtime.createEntities([
+      { id: entityId, agentId, names: ["Test Entity"], metadata: {} } as Entity,
+    ]);
+    const service = new AdvancedMemoryStorageService();
+    await service.initialize(runtime);
+
+    for (let index = 0; index < 25; index += 1) {
+      await service.storeLongTermMemory({
+        agentId,
+        entityId,
+        category: "semantic",
+        content: `Complete memory ${index}`,
+      });
+    }
+
+    const complete = await service.getLongTermMemories(agentId, entityId);
+    expect(complete).toHaveLength(25);
+    expect(complete.map((memory) => memory.content)).toContain("Complete memory 0");
+    await expect(
+      service.getLongTermMemories(agentId, entityId, { limit: 3 })
+    ).resolves.toHaveLength(3);
+  });
+
   it("replaces the creation access timestamp with an explicit older value", async () => {
     const agentId = uuidv4() as UUID;
     const entityId = uuidv4() as UUID;

@@ -17,6 +17,7 @@ import {
 } from "../../trajectory-utils";
 import { type IAgentRuntime, ModelType } from "../../types";
 import { BatchProcessor } from "../../utils/batch-queue";
+import { assertModelOutputComplete } from "../../utils/model-errors";
 
 type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
 type AIEmbeddingModel = EmbeddingModel;
@@ -103,7 +104,7 @@ type LoggedTextGenerationOptions = {
 	modelName: string;
 	systemPrompt: string;
 	userPrompt: string;
-	maxTokens: number;
+	maxTokens?: number;
 	temperature: number;
 	purpose: string;
 	actionType: string;
@@ -146,6 +147,11 @@ async function generateLoggedText({
 }: LoggedTextGenerationOptions): Promise<TextGenerationResult> {
 	const startedAt = Date.now();
 	const result = await invoke();
+	assertModelOutputComplete({
+		finishReason: result.finishReason,
+		provider: purpose,
+		model: modelName,
+	});
 
 	logActiveTrajectoryLlmCall(runtime, {
 		model: modelName,
@@ -372,7 +378,7 @@ export async function generateText(
 	const config = validateModelConfig(runtime);
 	const provider = overrideConfig?.provider || config.TEXT_PROVIDER;
 	const modelName = overrideConfig?.modelName || config.TEXT_MODEL;
-	const maxTokens = overrideConfig?.maxTokens || config.MAX_OUTPUT_TOKENS;
+	const maxTokens = overrideConfig?.maxTokens ?? config.MAX_OUTPUT_TOKENS;
 	const autoCacheContextualRetrieval =
 		overrideConfig?.autoCacheContextualRetrieval !== false;
 
@@ -449,7 +455,7 @@ async function generateAnthropicText(
 	prompt: string,
 	system: string | undefined,
 	modelName: string,
-	maxTokens: number,
+	maxTokens: number | undefined,
 ): Promise<TextGenerationResult> {
 	const { createAnthropic } = await importAiProvider<{
 		createAnthropic: CreateAnthropic;
@@ -514,7 +520,7 @@ async function generateOpenAIText(
 	prompt: string,
 	system: string | undefined,
 	modelName: string,
-	maxTokens: number,
+	maxTokens: number | undefined,
 ): Promise<TextGenerationResult> {
 	const { createOpenAI } = await importAiProvider<{
 		createOpenAI: CreateOpenAI;
@@ -553,7 +559,7 @@ async function generateGoogleText(
 	prompt: string,
 	system: string | undefined,
 	modelName: string,
-	maxTokens: number,
+	maxTokens: number | undefined,
 	config: ModelConfig,
 ): Promise<TextGenerationResult> {
 	const { google: googleProvider } = await importAiProvider<{
@@ -593,7 +599,7 @@ async function generateOpenRouterText(
 	prompt: string,
 	system: string | undefined,
 	modelName: string,
-	maxTokens: number,
+	maxTokens: number | undefined,
 	cacheDocument?: string,
 	_cacheOptions?: { type: "ephemeral" },
 	autoCacheContextualRetrieval = true,
@@ -670,7 +676,7 @@ async function generateClaudeWithCaching(
 	system: string | undefined,
 	modelInstance: AIModel,
 	modelName: string,
-	maxTokens: number,
+	maxTokens: number | undefined,
 	documentForCaching: string,
 ): Promise<TextGenerationResult> {
 	const messages = [
@@ -763,7 +769,7 @@ async function generateGeminiWithCaching(
 	system: string | undefined,
 	modelInstance: AIModel,
 	modelName: string,
-	maxTokens: number,
+	maxTokens: number | undefined,
 	documentForCaching: string,
 	_isGemini25Model: boolean,
 ): Promise<TextGenerationResult> {
@@ -809,7 +815,7 @@ async function generateStandardOpenRouterText(
 	system: string | undefined,
 	modelInstance: AIModel,
 	modelName: string,
-	maxTokens: number,
+	maxTokens: number | undefined,
 ): Promise<TextGenerationResult> {
 	const result = await generateLoggedText({
 		runtime,

@@ -33,7 +33,7 @@ import {
 } from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
@@ -195,6 +195,18 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		if (!res.ok) {
 			throw new Error(
 				`[BionicHostLoader] host generate failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		if (typeof res.tokens === "number" && res.tokens >= request.maxTokens) {
+			throw new ElizaError(
+				"Bionic local model output reached the decode boundary before a stop condition",
+				{
+					code: "MODEL_OUTPUT_INCOMPLETE",
+					context: {
+						maxTokens: request.maxTokens,
+						outputTokens: res.tokens,
+					},
+				},
 			);
 		}
 		if (typeof res.tokS === "number") {

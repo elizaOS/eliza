@@ -20,6 +20,8 @@ const removedCompactionModules = [
 	"packages/agent/src/runtime/conversation-compactor.ts",
 	"packages/agent/src/runtime/prompt-compaction.ts",
 	"packages/core/src/runtime/conversation-compaction-hook.ts",
+	"packages/core/src/features/advanced-memory/providers/context-summary.ts",
+	"packages/cloud/shared/src/lib/eliza/shared/providers/recent-messages.ts",
 	"packages/training/scripts/transform_drop_oversized.py",
 ];
 
@@ -38,6 +40,8 @@ const removedPromptCapCloneTests = [
 	"packages/core/src/runtime/evaluator.surrogate.test.ts",
 	"packages/core/src/runtime/planner-loop.surrogate.test.ts",
 	"packages/core/src/services/trajectory-json.surrogate.test.ts",
+	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/character.surrogate.test.ts",
+	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/action-state.surrogate.test.ts",
 ];
 
 const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
@@ -52,19 +56,142 @@ const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
 	],
 };
 
+const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
+	"packages/cloud/api/agents/[id]/a2a/route.ts": [
+		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
+	],
+	"packages/cloud/api/agents/[id]/mcp/route.ts": [
+		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
+	],
+	"packages/cloud/api/v1/chat/route.ts": [
+		/onFinish:\s*async\s*\(\{\s*text,\s*usage,\s*finishReason\s*\}\)/,
+		/assertModelOutputComplete\(\{[\s\S]{0,100}finishReason/,
+	],
+	"packages/cloud/api/v1/generate-prompts/route.ts": [
+		/onFinish:\s*\(\{\s*finishReason\s*\}\)/,
+		/assertModelOutputComplete\(\{[\s\S]{0,100}finishReason/,
+	],
+	"packages/cloud/shared/src/lib/api/a2a/skills.ts": [
+		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/discord-automation/app-automation.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/app-promotion-assets.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/app-promotion.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/memory.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}await result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/provisioning-agent-chat.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/room-title.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/seo.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
+	],
+	"packages/cloud/shared/src/lib/services/twitter-automation/app-automation.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-eliza-runtime.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
+		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
+	"packages/cloud/shared/src/lib/services/eliza-app/describe-inbound-media.ts":
+		[/isModelOutputLimitFinishReason\(completion\.finishReason\)/],
+	"plugins/plugin-anthropic/models/image.ts": [
+		/assertModelOutputComplete\([\s\S]{0,120}response\.finishReason/,
+	],
+};
+
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/core/src/action-docs.ts": [
+		/import\s*\{\s*compressPromptDescription/,
+		/source\.descriptionCompressed\s*\?\?/,
+	],
+	"packages/core/src/actions/resolve-action-args.ts": [
+		/RECENT_CONTEXT_LIMIT/,
+		/spec\.descriptionCompressed/,
+	],
+	"packages/core/src/actions/to-tool.ts": [
+		/action\.descriptionCompressed\s*\?\?/,
+		/action\.compressedDescription/,
+	],
+	"packages/core/src/runtime/sub-planner.ts": [
+		/action\.descriptionCompressed\s*\?\?/,
+		/action\.compressedDescription/,
+	],
+	"packages/core/src/features/advanced-memory/evaluators/memory-items.ts": [
+		/summaryEvaluator/,
+		/Extract up to \d+/,
+		/rolling summar/i,
+	],
+	"packages/core/src/features/advanced-memory/types.ts": [
+		/SessionSummary/,
+		/shortTermSummarization/,
+		/summaryMaxTokens/,
+	],
+	"packages/core/src/types/memory-storage.ts": [/SessionSummary/],
+	"packages/core/src/features/advanced-memory/services/memory-service.ts": [
+		/shouldSummarize/,
+		/SessionSummary/,
+		/MEMORY_SUMMARIZATION/,
+		/MEMORY_RETAIN_RECENT/,
+	],
+	"packages/core/src/features/advanced-memory/index.ts": [
+		/contextSummaryProvider/,
+		/summaryEvaluator/,
+	],
+	"packages/prompts/src/index.ts": [
+		/INITIAL_SUMMARIZATION_TEMPLATE/,
+		/UPDATE_SUMMARIZATION_TEMPLATE/,
+		/Keep (?:the )?answer under \d+ words/i,
+		/max \d+ chars/i,
+		/<=\d+ (?:action|parent|visible)/i,
+	],
 	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
 	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
 	"packages/cloud/shared/src/db/schemas/conversations.ts": [
 		/maxTokens:\s*2000/,
 	],
+	"packages/cloud/shared/src/lib/services/provisioning-agent-chat.ts": [
+		/capped at 20/,
+		/\.slice\([^)]*20/,
+	],
+	"packages/cloud/shared/src/lib/services/room-title.ts": [
+		/result\.text[\s\S]{0,240}\.slice\(/,
+		/result\.text[\s\S]{0,240}\.split\("\\n"\)/,
+	],
+	"packages/cloud/shared/src/lib/services/twitter-automation/app-automation.ts":
+		[/text\.trim\(\)\.slice\(0,\s*280\)/],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
+		[/maxOutputTokens:\s*512/],
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
 		/DEFAULT_EVALUATOR_MAX_TOKENS/,
 		/maxTokens\s*:/,
 		/retryMaxTokens/,
+		/contentProjection/,
+	],
+	"packages/core/src/runtime.ts": [
+		/if\s*\(finalBudget\.shouldReject\)/,
+		/code:\s*"MODEL_INPUT_OVER_BUDGET"/,
+	],
+	"packages/core/src/runtime/model-input-budget.ts": [
+		/shouldReject:\s*estimatedInputTokens\s*[><=]/,
+	],
+	"packages/core/src/integrations/managed-provider/pagination.ts": [
+		/DEFAULT_MAX_ITEMS/,
+		/options\.maxItems\s*\?\?/,
 	],
 	"packages/core/src/runtime/message-handler.ts": [
 		/normalizeStringHints/,
@@ -82,12 +209,44 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/documents/service.ts": [
 		/limit:\s*(?:20|40|1_000)[,\n]/,
 	],
+	"packages/core/src/features/documents/provider.ts": [
+		/PINNED_DOCUMENT_(?:TOKEN_BUDGET|TRUNCATION_MARKER)/,
+		/truncateWellFormed/,
+		/composeProviderDocuments\([^)]*limit:/,
+	],
+	"packages/cloud/shared/src/lib/eliza/plugin-web-search/src/services/keyless-search.ts":
+		[/MCP_MAX_ANSWER_CHARS/, /(?:parallel|exa)\.slice\(/],
+	"packages/cloud/shared/src/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.surrogate.test.ts":
+		[/MCP_TOOL_OUTPUT_MAX_CHARS/, /truncateMcpToolOutput/],
 	"packages/core/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,
 		/projectStepForFinalSynthesis/,
 		/DEFAULT_(?:CODING_)?PLANNER_MAX_TOKENS/,
 		/maxTokens:\s*\d+/,
+		/ELIZA_PROMPT_COMPRESS/,
+		/contentProjection/,
+		/maxToolResultChars/,
+	],
+	"packages/core/src/runtime/action-retrieval.ts": [
+		/ELIZA_PROMPT_COMPRESS/,
+		/COMPRESS_MODE_TOP_K_CAP/,
+		/results\.slice\(0,\s*limit\)/,
+	],
+	"packages/core/src/runtime/planner-rendering.ts": [
+		/truncateToolResultText/,
+		/maxToolResultChars/,
+		/contentProjection/,
+		/projectToolDiagnosticValue/,
+		/projectToolDiagnosticArgs/,
+	],
+	"packages/core/src/runtime/content-projection-policy.ts": [
+		/parseBooleanValue/,
+		/enabled:\s*args\.enabled/,
+		/pagesOmitted:\s*args\.stats\.pagesOmitted/,
+	],
+	"packages/core/src/services/optimized-prompt-resolver.ts": [
+		/ELIZA_PROMPT_COMPRESS/,
 	],
 	"packages/core/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,
@@ -100,6 +259,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/services/message.ts": [
 		/slice\(0,\s*400\)[\s\S]{0,120}task_complete/,
 		/CODING_DIRECT_ACTIONS/,
+		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
+	],
+	"packages/core/src/services/evaluator.ts": [
+		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
 	],
 	"packages/core/src/services/relationships.ts": [
 		/MAX_INTERACTION_HISTORY/,
@@ -125,6 +288,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/actions/message.ts": [
 		/sorted\s*\.slice\(0,\s*8\)/,
 		/room\.id\.slice\(0,\s*8\)/,
+		/formatCandidates[\s\S]{0,300}\.slice\(0,/,
+	],
+	"packages/cloud/shared/src/lib/eliza/plugin-oauth/actions/oauth.ts": [
+		/active\.slice\(0,/,
 	],
 	"packages/core/src/features/advanced-capabilities/actions/post.ts": [
 		/truncateWellFormed/,
@@ -145,10 +312,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/max_tokens:\s*options\.maxTokens\s*\?\?\s*1024/,
 		/this\.maxTokens\s*=\s*config\.maxTokens\s*\?\?\s*1024/,
 		/num_predict:\s*this\.maxTokens/,
-	],
-	"packages/core/src/runtime/action-retrieval.ts": [
-		/results\.slice\(0,\s*limit\)/,
-		/COMPRESS_MODE_TOP_K_CAP/,
 	],
 	"packages/core/src/runtime/action-tiering.ts": [
 		/tierAParents\.splice\(/,
@@ -301,8 +464,19 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-anthropic/models/image.ts": [/firstLine\.slice\(/],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
+	"plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts": [
+		/maxTokens:\s*args\.maxTokens\s*\?\?\s*2048/,
+	],
+	"plugins/plugin-native-inference/src/aosp-local-inference-bootstrap.ts": [
+		/maxTokens:\s*args\.maxTokens\s*\?\?\s*512/,
+	],
+	"plugins/plugin-native-llama/src/capacitor-llama-adapter.ts": [
+		/Math\.min\(Math\.floor\(requested\),\s*MOBILE_MAX_TOKENS_CAP\)/,
+	],
 	"plugins/plugin-sql/src/services/advanced-memory-storage.ts": [
 		/entityId\.slice\(0,\s*8\)/,
+		/session_summary/,
+		/opts\?\.limit\s*\?\?\s*20/,
 	],
 	"plugins/plugin-elizacloud/src/cloud/managed-payment-clients.ts": [
 		/text\.slice\(/,
@@ -561,6 +735,22 @@ describe("prompt integrity policy", () => {
 	it("keeps both computer-use emitters behind the shared rejection boundary", () => {
 		for (const [relativePath, requiredPatterns] of Object.entries(
 			computerUseTrajectoryBoundaryCalls,
+		)) {
+			const source = readFileSync(
+				resolve(repositoryRoot, relativePath),
+				"utf8",
+			);
+			for (const pattern of requiredPatterns) {
+				expect(source, `${relativePath} must match ${pattern}`).toMatch(
+					pattern,
+				);
+			}
+		}
+	});
+
+	it("keeps direct AI SDK outputs behind completeness checks", () => {
+		for (const [relativePath, requiredPatterns] of Object.entries(
+			outputCompletenessBoundaryCalls,
 		)) {
 			const source = readFileSync(
 				resolve(repositoryRoot, relativePath),

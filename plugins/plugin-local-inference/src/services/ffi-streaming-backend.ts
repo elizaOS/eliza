@@ -12,7 +12,7 @@
  */
 
 import { statSync } from "node:fs";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type {
 	BackendPlan,
 	GenerateArgs,
@@ -263,11 +263,15 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 						await args.onTextChunk?.(chunk);
 					}
 				: args.onTextChunk;
+		const promptTokens = tokenize(args.prompt);
+		const maxTokens =
+			args.maxTokens ??
+			Math.max(1, (loadConfig?.contextSize ?? 32_768) - promptTokens.length);
 		const result = await runner.generateWithUsage({
-			promptTokens: tokenize(args.prompt),
+			promptTokens,
 			slotId: args.slotId ?? -1,
 			cacheKey: args.cacheKey,
-			maxTokens: args.maxTokens ?? 2048,
+			maxTokens,
 			temperature: args.temperature ?? 0.7,
 			topP: args.topP ?? 0.9,
 			topK: 40,
@@ -285,6 +289,15 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,
 		});
+		if (result.accepted >= maxTokens) {
+			throw new ElizaError(
+				"Local model output reached the decode boundary before a stop condition",
+				{
+					code: "MODEL_OUTPUT_INCOMPLETE",
+					context: { maxTokens, outputTokens: result.accepted },
+				},
+			);
+		}
 		return {
 			// The native grammar starts after the deterministic leading run. Restore
 			// that omitted run once here so parsing, UI streaming, trajectories, and

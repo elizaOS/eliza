@@ -1,16 +1,15 @@
 /**
  * Unit coverage for `buildModelInputBudget`: per-model context-window
- * resolution, reserve-token scaling by the window fraction, compaction-
- * threshold derivation, and the `MODEL_CONTEXT_WINDOWS_JSON` env override.
+ * resolution, reserve-token scaling by the window fraction, pre-dispatch
+ * rejection derivation, and the `MODEL_CONTEXT_WINDOWS_JSON` env override.
  * Pure deterministic assertions — no live model, no database.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage, ToolDefinition } from "../../types/model";
 import {
-	buildContentProjectionBudget,
 	buildModelInputBudget,
-	DEFAULT_COMPACTION_RESERVE_TOKENS,
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
+	DEFAULT_INPUT_RESERVE_TOKENS,
 	MODEL_WINDOW_RESERVE_FRACTION,
 } from "../model-input-budget";
 
@@ -27,37 +26,6 @@ function userMessageOfChars(chars: number): ChatMessage {
 }
 
 describe("buildModelInputBudget", () => {
-	describe("content projection budget", () => {
-		it("uses remaining request capacity with per-result and aggregate ceilings", () => {
-			const projection = buildContentProjectionBudget({
-				budget: {
-					estimatedInputTokens: 50_000,
-					contextWindowTokens: 100_000,
-					reserveTokens: 10_000,
-					compactionThresholdTokens: 90_000,
-					shouldCompact: false,
-					resolvedModelKey: null,
-				},
-				resultCount: 4,
-			});
-			expect(projection).toEqual({
-				perResultTokens: 10_000,
-				aggregateTokens: 40_000,
-			});
-		});
-
-		it("returns no inline capacity when the metadata baseline exhausts the request", () => {
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(500_000)],
-				contextWindowTokens: 20_000,
-				reserveTokens: 1_000,
-			});
-			expect(buildContentProjectionBudget({ budget, resultCount: 2 })).toEqual({
-				perResultTokens: 0,
-				aggregateTokens: 0,
-			});
-		});
-	});
 	describe("backwards compatibility (no modelName)", () => {
 		it("uses the explicit window + reserve when both are passed", () => {
 			const budget = buildModelInputBudget({
@@ -67,7 +35,7 @@ describe("buildModelInputBudget", () => {
 			});
 			expect(budget.contextWindowTokens).toBe(200_000);
 			expect(budget.reserveTokens).toBe(5_000);
-			expect(budget.compactionThresholdTokens).toBe(195_000);
+			expect(budget.dispatchThresholdTokens).toBe(195_000);
 			expect(budget.resolvedModelKey).toBeNull();
 		});
 
@@ -76,7 +44,7 @@ describe("buildModelInputBudget", () => {
 				messages: [userMessageOfChars(100)],
 			});
 			expect(budget.contextWindowTokens).toBe(DEFAULT_CONTEXT_WINDOW_TOKENS);
-			expect(budget.reserveTokens).toBe(DEFAULT_COMPACTION_RESERVE_TOKENS);
+			expect(budget.reserveTokens).toBe(DEFAULT_INPUT_RESERVE_TOKENS);
 		});
 
 		it("preserves the legacy default reserve (10k) when no modelName provided", () => {
@@ -86,7 +54,7 @@ describe("buildModelInputBudget", () => {
 				messages: [userMessageOfChars(100)],
 			});
 			expect(budget.reserveTokens).toBe(10_000);
-			expect(budget.compactionThresholdTokens).toBe(118_000);
+			expect(budget.dispatchThresholdTokens).toBe(118_000);
 		});
 
 		it("treats reserveTokens=0 as a valid explicit override", () => {
@@ -96,23 +64,23 @@ describe("buildModelInputBudget", () => {
 				reserveTokens: 0,
 			});
 			expect(budget.reserveTokens).toBe(0);
-			expect(budget.compactionThresholdTokens).toBe(100_000);
+			expect(budget.dispatchThresholdTokens).toBe(100_000);
 		});
 
-		it("flags shouldCompact when estimate is at-or-above threshold", () => {
+		it("keeps estimates diagnostic at or above the dispatch threshold", () => {
 			// 800_000 chars → 800_000/3.5 ≈ 228_572 estimated tokens → above
 			// the 118k default threshold.
 			const budget = buildModelInputBudget({
 				messages: [userMessageOfChars(800_000)],
 			});
-			expect(budget.shouldCompact).toBe(true);
+			expect(budget.shouldReject).toBe(false);
 		});
 
-		it("leaves shouldCompact off when estimate is below threshold", () => {
+		it("leaves shouldReject off when estimate is below threshold", () => {
 			const budget = buildModelInputBudget({
 				messages: [userMessageOfChars(100)],
 			});
-			expect(budget.shouldCompact).toBe(false);
+			expect(budget.shouldReject).toBe(false);
 		});
 	});
 
@@ -151,7 +119,7 @@ describe("buildModelInputBudget", () => {
 				modelName: "gpt-oss-120b",
 			});
 			expect(budget.reserveTokens).toBe(26_200);
-			expect(budget.compactionThresholdTokens).toBe(131_000 - 26_200);
+			expect(budget.dispatchThresholdTokens).toBe(131_000 - 26_200);
 		});
 
 		it("keeps the 10k floor for tiny-window models (32k * 0.20 = 6.4k → 10k)", () => {
@@ -159,8 +127,8 @@ describe("buildModelInputBudget", () => {
 				messages: [userMessageOfChars(100)],
 				modelName: "llama3.1-8b",
 			});
-			expect(budget.reserveTokens).toBe(DEFAULT_COMPACTION_RESERVE_TOKENS);
-			expect(budget.compactionThresholdTokens).toBe(32_000 - 10_000);
+			expect(budget.reserveTokens).toBe(DEFAULT_INPUT_RESERVE_TOKENS);
+			expect(budget.dispatchThresholdTokens).toBe(32_000 - 10_000);
 		});
 
 		it("scales reserve to 40k for Claude Haiku (200k * 0.20)", () => {
@@ -169,7 +137,7 @@ describe("buildModelInputBudget", () => {
 				modelName: "claude-haiku-4-5",
 			});
 			expect(budget.reserveTokens).toBe(40_000);
-			expect(budget.compactionThresholdTokens).toBe(200_000 - 40_000);
+			expect(budget.dispatchThresholdTokens).toBe(200_000 - 40_000);
 		});
 
 		it("resolves the current 1M-window Claude families (opus / sonnet)", () => {
@@ -181,7 +149,7 @@ describe("buildModelInputBudget", () => {
 				expect(budget.contextWindowTokens).toBe(1_000_000);
 				expect(budget.resolvedModelKey).toBe(modelName);
 				expect(budget.reserveTokens).toBe(200_000); // 1M * 0.20
-				expect(budget.compactionThresholdTokens).toBe(800_000);
+				expect(budget.dispatchThresholdTokens).toBe(800_000);
 			}
 		});
 
@@ -192,7 +160,7 @@ describe("buildModelInputBudget", () => {
 			});
 			expect(budget.contextWindowTokens).toBe(DEFAULT_CONTEXT_WINDOW_TOKENS);
 			expect(budget.resolvedModelKey).toBeNull();
-			expect(budget.reserveTokens).toBe(DEFAULT_COMPACTION_RESERVE_TOKENS);
+			expect(budget.reserveTokens).toBe(DEFAULT_INPUT_RESERVE_TOKENS);
 		});
 
 		it("respects an explicit reserveTokens override even when modelName resolves", () => {
@@ -202,7 +170,7 @@ describe("buildModelInputBudget", () => {
 				reserveTokens: 5_000,
 			});
 			expect(budget.reserveTokens).toBe(5_000);
-			expect(budget.compactionThresholdTokens).toBe(131_000 - 5_000);
+			expect(budget.dispatchThresholdTokens).toBe(131_000 - 5_000);
 			// Lookup still recorded for observability.
 			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
 		});
@@ -210,7 +178,7 @@ describe("buildModelInputBudget", () => {
 		it("treats reserveTokens === DEFAULT as 'no override' so derivation fires (planner-loop call pattern)", () => {
 			// The planner-loop's call site always forwards
 			// `params.config.compactionReserveTokens` which defaults to
-			// `DEFAULT_COMPACTION_RESERVE_TOKENS` (10k). Without this special-
+			// `DEFAULT_INPUT_RESERVE_TOKENS` (10k). Without this special-
 			// case, the explicit-10k would always beat the per-model
 			// derivation, defeating the whole point of #7594's reserve
 			// scaling. The function recognizes the default value as "carrying
@@ -219,10 +187,10 @@ describe("buildModelInputBudget", () => {
 			const budget = buildModelInputBudget({
 				messages: [userMessageOfChars(100)],
 				modelName: "gpt-oss-120b",
-				reserveTokens: DEFAULT_COMPACTION_RESERVE_TOKENS,
+				reserveTokens: DEFAULT_INPUT_RESERVE_TOKENS,
 			});
 			expect(budget.reserveTokens).toBe(26_200); // 131k * 0.20
-			expect(budget.compactionThresholdTokens).toBe(131_000 - 26_200);
+			expect(budget.dispatchThresholdTokens).toBe(131_000 - 26_200);
 			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
 		});
 
@@ -233,9 +201,9 @@ describe("buildModelInputBudget", () => {
 			const budget = buildModelInputBudget({
 				messages: [userMessageOfChars(100)],
 				modelName: "no-such-model-99",
-				reserveTokens: DEFAULT_COMPACTION_RESERVE_TOKENS,
+				reserveTokens: DEFAULT_INPUT_RESERVE_TOKENS,
 			});
-			expect(budget.reserveTokens).toBe(DEFAULT_COMPACTION_RESERVE_TOKENS);
+			expect(budget.reserveTokens).toBe(DEFAULT_INPUT_RESERVE_TOKENS);
 			expect(budget.resolvedModelKey).toBeNull();
 		});
 
@@ -246,7 +214,7 @@ describe("buildModelInputBudget", () => {
 				reserveTokens: 0,
 			});
 			expect(budget.reserveTokens).toBe(0);
-			expect(budget.compactionThresholdTokens).toBe(131_000);
+			expect(budget.dispatchThresholdTokens).toBe(131_000);
 			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
 		});
 
@@ -278,7 +246,7 @@ describe("buildModelInputBudget", () => {
 				messages: [userMessageOfChars(100)],
 				modelName: "some-unknown-model-99",
 			});
-			expect(budget.reserveTokens).toBe(DEFAULT_COMPACTION_RESERVE_TOKENS);
+			expect(budget.reserveTokens).toBe(DEFAULT_INPUT_RESERVE_TOKENS);
 		});
 	});
 
@@ -328,7 +296,7 @@ describe("buildModelInputBudget", () => {
 			});
 			// 70 chars / 3.5 = 20 tokens. Nowhere near the 118k threshold.
 			expect(budget.estimatedInputTokens).toBeLessThan(50);
-			expect(budget.shouldCompact).toBe(false);
+			expect(budget.shouldReject).toBe(false);
 		});
 
 		it("counts tool definitions toward the estimate", () => {
@@ -345,6 +313,65 @@ describe("buildModelInputBudget", () => {
 			});
 			expect(withTools.estimatedInputTokens).toBeGreaterThan(
 				noTools.estimatedInputTokens,
+			);
+		});
+	});
+
+	describe("conservative final-wire estimation", () => {
+		it("uses the complete UTF-8 byte length for multilingual and emoji input", () => {
+			const content = "漢字🙂é";
+			const budget = buildModelInputBudget({
+				messages: [{ role: "user", content }],
+				estimationMode: "utf8-upper-bound",
+				contextWindowTokens: 100_000,
+				reserveTokens: 0,
+			});
+			const serialized = JSON.stringify([{ role: "user", content }]);
+			expect(budget.estimatedInputTokens).toBe(
+				new TextEncoder().encode(serialized).byteLength,
+			);
+			expect(budget.estimationMode).toBe("utf8-upper-bound");
+		});
+
+		it("includes every supported final request field and tool JSON", () => {
+			const base = buildModelInputBudget({
+				messages: [{ role: "user", content: "message-canary" }],
+				estimationMode: "utf8-upper-bound",
+				contextWindowTokens: 100_000,
+				reserveTokens: 0,
+			});
+			const complete = buildModelInputBudget({
+				messages: [{ role: "user", content: "message-canary" }],
+				tools: [
+					{ name: "tool-canary", description: "tool-description-canary" },
+				],
+				system: "system-canary",
+				prompt: "prompt-canary",
+				input: "input-canary",
+				responseSchema: { title: "schema-canary" },
+				responseFormat: { type: "format-canary" },
+				grammar: "grammar-canary",
+				responseSkeleton: "skeleton-canary",
+				prefill: "prefill-canary",
+				estimationMode: "utf8-upper-bound",
+				contextWindowTokens: 100_000,
+				reserveTokens: 0,
+			});
+			expect(complete.estimatedInputTokens).toBeGreaterThan(
+				base.estimatedInputTokens,
+			);
+		});
+
+		it("rejects cyclic request data with a typed serialization error", () => {
+			const cyclic: Record<string, unknown> = { value: "cycle-canary" };
+			cyclic.self = cyclic;
+			expect(() =>
+				buildModelInputBudget({
+					responseSchema: cyclic,
+					estimationMode: "utf8-upper-bound",
+				}),
+			).toThrowError(
+				expect.objectContaining({ code: "MODEL_INPUT_SERIALIZATION_FAILED" }),
 			);
 		});
 	});

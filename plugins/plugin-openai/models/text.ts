@@ -13,6 +13,7 @@ import type {
 } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
+  assertModelOutputComplete,
   assertSchemaAnnotationsSerializable,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
@@ -1885,11 +1886,14 @@ function createLlmCallDetails(
     maxTokens:
       typeof nativeParams?.maxOutputTokens === "number"
         ? nativeParams.maxOutputTokens
-        : params.omitMaxTokens
+        : params.omitMaxTokens || params.maxTokens === undefined
           ? 0
-          : (params.maxTokens ?? 8192),
+          : params.maxTokens,
     maxTokensOmitted:
-      params.omitMaxTokens && typeof nativeParams?.maxOutputTokens !== "number" ? true : undefined,
+      (params.omitMaxTokens || params.maxTokens === undefined) &&
+      typeof nativeParams?.maxOutputTokens !== "number"
+        ? true
+        : undefined,
     purpose: "external_llm",
     actionType,
   };
@@ -2488,10 +2492,10 @@ async function generateTextByModelType(
     system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
     ...(params.signal ? { abortSignal: params.signal } : {}),
-    // Omit the cap when the caller opted out (direct-channel Stage-1) so the
-    // model's own max applies — a hardcoded value 400s when it exceeds the
-    // model's limit. Other callers keep the 8192 default.
-    ...(params.omitMaxTokens ? {} : { maxOutputTokens: params.maxTokens ?? 8192 }),
+    // An omitted caller cap delegates the output boundary to the provider/model.
+    ...(params.omitMaxTokens || params.maxTokens === undefined
+      ? {}
+      : { maxOutputTokens: params.maxTokens }),
     experimental_telemetry: telemetryConfig,
     ...(sanitizedTools ? { tools: sanitizedTools } : {}),
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
@@ -2546,6 +2550,11 @@ async function generateTextByModelType(
         details.finishReason = result.finishReason;
         if (result.usage) applyUsageToDetails(details, result.usage);
         return { ...result, text, toolCalls };
+      });
+      assertModelOutputComplete({
+        finishReason: buffered.finishReason,
+        provider: usageProvider,
+        model: modelName,
       });
       if (buffered.usage) {
         emitModelUsageEvent(
@@ -2698,7 +2707,7 @@ async function generateTextByModelType(
       resolveStructuredText(restoreResponseText(responseChunks.join("")));
     };
     const sdkTextPromise = streamCompanions.text;
-    const textPromise =
+    const rawTextPromise =
       params.streamStructured === true
         ? handledStructuredTextPromise
         : handledMappedPromise(sdkTextPromise, restoreResponseText);
@@ -2709,9 +2718,18 @@ async function generateTextByModelType(
       restoreRecordArgToolCalls(toolCalls, normalizedToolResult.recordArgTransformsByTool)
     );
     const usagePromise = handledMappedPromise(rawUsagePromise, convertUsage);
-    const finishReasonPromise = handledMappedPromise(
-      rawFinishReasonPromise,
-      (r) => r as string | undefined
+    const finishReasonPromise = handledMappedPromise(rawFinishReasonPromise, (r) => {
+      const finishReason = r as string | undefined;
+      assertModelOutputComplete({
+        finishReason,
+        provider: usageProvider,
+        model: modelName,
+      });
+      return finishReason;
+    });
+    const textPromise = handledMappedPromise(
+      Promise.all([rawTextPromise, finishReasonPromise]),
+      ([text]) => text
     );
     const finalizeStreamingTelemetry = async () => {
       if (telemetryFinalized) {
@@ -2740,6 +2758,15 @@ async function generateTextByModelType(
       }
       if (finishReasonResult.status === "fulfilled") {
         details.finishReason = finishReasonResult.value as string | undefined;
+        try {
+          assertModelOutputComplete({
+            finishReason: finishReasonResult.value,
+            provider: usageProvider,
+            model: modelName,
+          });
+        } catch (error) {
+          companionStreamError ??= error;
+        }
       } else {
         companionStreamError ??= finishReasonResult.reason;
       }
@@ -2858,6 +2885,12 @@ async function generateTextByModelType(
       usage: result.usage,
       providerMetadata: result.providerMetadata,
     };
+  });
+
+  assertModelOutputComplete({
+    finishReason: result.finishReason,
+    provider: usageProvider,
+    model: modelName,
   });
 
   if (result.usage) {

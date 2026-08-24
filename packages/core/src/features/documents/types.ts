@@ -106,7 +106,7 @@ export const ModelConfigSchema = z.object({
 	TEXT_MODEL: z.string().optional(),
 
 	MAX_INPUT_TOKENS: positiveSafeIntegerSetting(),
-	MAX_OUTPUT_TOKENS: positiveSafeIntegerSetting(4096),
+	MAX_OUTPUT_TOKENS: positiveSafeIntegerSetting().optional(),
 
 	EMBEDDING_DIMENSION: positiveSafeIntegerSetting(1536),
 

@@ -10,6 +10,7 @@
  * the A2A protocol which only provides user/org context, not agent personality.
  */
 
+import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { SAVE_MEMORY_PRICE_USD } from "../../../billing/organization-credits";
 import { BITROUTER_DEFAULT_TEXT_MODEL } from "../../models/catalog";
@@ -141,6 +142,11 @@ export async function executeSkillChatCompletion(
 
     let fullText = "";
     for await (const delta of result.textStream) fullText += delta;
+    assertModelOutputComplete({
+      finishReason: await result.finishReason,
+      provider,
+      model,
+    });
     const usage = await result.usage;
 
     const { inputCost, outputCost, totalCost } = await calculateCost(

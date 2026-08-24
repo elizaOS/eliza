@@ -288,10 +288,7 @@ export type PlannerToolActionShape = Pick<
 
 function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	assertNativeToolName(action.name);
-	const baseDescription =
-		action.description ??
-		action.descriptionCompressed ??
-		action.compressedDescription;
+	const baseDescription = action.description;
 	const routingHint = action.routingHint?.trim();
 	const description = routingHint
 		? `${routingHint}\n${baseDescription}`.trim()
@@ -589,10 +586,7 @@ export function actionToTool(action: Action): PlannerToolDefinition {
 		type: "function",
 		function: {
 			name: action.name,
-			description:
-				action.description ??
-				action.descriptionCompressed ??
-				action.compressedDescription,
+			description: action.description,
 			parameters: actionToJsonSchema(action),
 			strict: action.toolSchemaStrict ?? true,
 		},
