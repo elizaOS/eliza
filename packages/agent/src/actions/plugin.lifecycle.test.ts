@@ -823,7 +823,7 @@ describe("PLUGIN configure over the local compat API", () => {
 
   it("PUTs normalized string values, auto-tests the connection, and sorts keys in text only", async () => {
     const stub = stubFetchSequence([
-      { payload: { success: true } },
+      { payload: { ok: true } },
       { payload: { success: true, durationMs: 123 } },
     ]);
     restoreFetch = stub.restore;
@@ -873,13 +873,13 @@ describe("PLUGIN configure over the local compat API", () => {
     expect(result.data).toMatchObject({
       op: "configure",
       pluginId: "@elizaos/plugin-discord",
-      success: true,
+      ok: true,
     });
   });
 
   it("appends the restart note only when the save demands one", async () => {
     const stub = stubFetchSequence([
-      { payload: { success: true, requiresRestart: true } },
+      { payload: { ok: true, requiresRestart: true } },
       { payload: { success: true } },
     ]);
     restoreFetch = stub.restore;
@@ -1481,7 +1481,13 @@ describe("PLUGIN list — scoping, top-level filters, and malformed payloads", (
 describe("PLUGIN disconnect — connector-owned revocation endpoints", () => {
   it("routes known connectors to their dedicated endpoints without a body", async () => {
     const stub = stubFetchSequence([
-      { payload: { ok: true, message: "Signed out of Telegram." } },
+      {
+        payload: {
+          connector: "telegram-account",
+          state: "idle",
+          detail: { status: "idle" },
+        },
+      },
     ]);
     restoreFetch = stub.restore;
     const result = await run(bareRuntime, {
@@ -1496,22 +1502,49 @@ describe("PLUGIN disconnect — connector-owned revocation endpoints", () => {
     );
     expect(stub.captured[0].body).toBeUndefined();
     expect(result.success).toBe(true);
-    expect(result.text).toBe("Signed out of Telegram.");
+    expect(result.text).toBe("Disconnected TeLeGrAm.");
     expect(result.data).toMatchObject({
       op: "disconnect",
       endpoint: "/api/setup/telegram-account/cancel",
     });
   });
 
-  it("maps whatsapp and discord-local to their own cancel routes", async () => {
-    for (const [id, path] of [
-      ["whatsapp", "/api/whatsapp/disconnect"],
-      ["discord-local", "/api/discord-local/disconnect"],
+  it("matches whatsapp and discord-local against their shipped route contracts", async () => {
+    for (const [id, path, payload] of [
+      ["whatsapp", "/api/whatsapp/disconnect", { ok: true }],
+      [
+        "discord-local",
+        "/api/setup/discord/cancel",
+        { connector: "discord", state: "idle" },
+      ],
     ] as const) {
-      const stub = stubFetchSequence([{ payload: { ok: true } }]);
+      const stub = stubFetchSequence([{ payload }]);
       restoreFetch = stub.restore;
-      await run(bareRuntime, { action: "disconnect", connectorId: id });
+      const result = await run(bareRuntime, {
+        action: "disconnect",
+        connectorId: id,
+      });
       expect(stub.captured[0].url).toBe(`http://localhost:${TEST_PORT}${path}`);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects a success shape borrowed from a different connector route", async () => {
+    for (const [connectorId, payload] of [
+      ["telegram", { ok: true }],
+      ["whatsapp", { connector: "telegram-account", state: "idle" }],
+      ["discord-local", { ok: true }],
+    ] as const) {
+      const stub = stubFetchSequence([{ payload }]);
+      restoreFetch = stub.restore;
+      const result = await run(bareRuntime, {
+        action: "disconnect",
+        connectorId,
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: "PLUGIN_DISCONNECT_FAILED",
+      });
     }
   });
 

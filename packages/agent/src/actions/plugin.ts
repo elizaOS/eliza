@@ -95,11 +95,32 @@ interface PluginListEntry {
 
 type LocalApiResponse = Record<string, unknown>;
 
-const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
-  telegram: "/api/setup/telegram-account/cancel",
-  "telegram-account": "/api/setup/telegram-account/cancel",
-  whatsapp: "/api/whatsapp/disconnect",
-  "discord-local": "/api/discord-local/disconnect",
+interface ConnectorDisconnectContract {
+  path: string;
+  confirmsDisconnect: (response: LocalApiResponse | null) => boolean;
+}
+
+const telegramDisconnectContract: ConnectorDisconnectContract = {
+  path: "/api/setup/telegram-account/cancel",
+  confirmsDisconnect: (response) =>
+    response?.connector === "telegram-account" && response.state === "idle",
+};
+
+const CONNECTOR_DISCONNECT_CONTRACTS: Record<
+  string,
+  ConnectorDisconnectContract
+> = {
+  telegram: telegramDisconnectContract,
+  "telegram-account": telegramDisconnectContract,
+  whatsapp: {
+    path: "/api/whatsapp/disconnect",
+    confirmsDisconnect: (response) => response?.ok === true,
+  },
+  "discord-local": {
+    path: "/api/setup/discord/cancel",
+    confirmsDisconnect: (response) =>
+      response?.connector === "discord" && response.state === "idle",
+  },
 };
 
 function getApiBase(): string {
@@ -769,10 +790,11 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
     return fail("Missing connector id.", "PLUGIN_DISCONNECT_FAILED");
 
   const base = getApiBase();
-  const dedicatedPath = CONNECTOR_DISCONNECT_PATHS[connectorId.toLowerCase()];
+  const dedicatedContract =
+    CONNECTOR_DISCONNECT_CONTRACTS[connectorId.toLowerCase()];
 
-  if (dedicatedPath) {
-    const resp = await fetch(`${base}${dedicatedPath}`, {
+  if (dedicatedContract) {
+    const resp = await fetch(`${base}${dedicatedContract.path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -781,7 +803,7 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
       signal: AbortSignal.timeout(30_000),
     });
     const data = await readLocalApiResponse(resp);
-    if (!resp.ok || !confirmsMutation(data)) {
+    if (!resp.ok || !dedicatedContract.confirmsDisconnect(data)) {
       const errMsg =
         responseText(data, "error") ??
         responseText(data, "message") ??
@@ -801,7 +823,7 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
         actionName: "PLUGIN",
         op: "disconnect",
         connectorId,
-        endpoint: dedicatedPath,
+        endpoint: dedicatedContract.path,
         ...data,
       },
     };
