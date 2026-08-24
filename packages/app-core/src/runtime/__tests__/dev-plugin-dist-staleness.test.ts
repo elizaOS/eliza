@@ -165,6 +165,79 @@ describe("checkPluginDistStaleness", () => {
     writeAt(path.join(src, "README.md"), 5_000);
     expect(checkPluginDistStaleness(pkg).status).toBe("fresh");
   });
+
+  it("reports no-manifest for a missing or invalid package.json", () => {
+    const missing = path.join(tempRoot(), "plugin-none");
+    mkdirSync(missing, { recursive: true });
+    expect(checkPluginDistStaleness(missing)).toEqual({
+      packageDir: missing,
+      status: "no-manifest",
+    });
+
+    const invalid = path.join(tempRoot(), "plugin-invalid");
+    mkdirSync(invalid, { recursive: true });
+    writeFileSync(path.join(invalid, "package.json"), "{not json");
+    const status = checkPluginDistStaleness(invalid);
+    expect(status.status).toBe("no-manifest");
+    expect(status.packageName).toBeUndefined();
+  });
+
+  it("reports no-entry when no export condition matches", () => {
+    const pkg = makePlugin(tempRoot(), "plugin-require-only", {
+      runtimeTarget: { require: "./dist/index.js" },
+    });
+    const status = checkPluginDistStaleness(pkg);
+    expect(status.status).toBe("no-entry");
+    expect(status.packageName).toBe("@elizaos/plugin-require-only");
+  });
+
+  it("reports no-entry for targets outside the package or lacking ./", () => {
+    const bare = makePlugin(tempRoot(), "plugin-bare-target", {
+      runtimeTarget: "dist/index.js",
+    });
+    expect(checkPluginDistStaleness(bare).status).toBe("no-entry");
+
+    const escaping = makePlugin(tempRoot(), "plugin-escape-target", {
+      runtimeTarget: "./../elsewhere.js",
+    });
+    expect(checkPluginDistStaleness(escaping).status).toBe("no-entry");
+  });
+
+  it("resolves array exports and the unconditional default condition", () => {
+    const arrayPkg = makePlugin(tempRoot(), "plugin-array-exports", {
+      distAt: 1_000,
+      sourceAt: 2_000,
+      runtimeTarget: [{ require: "./dist/legacy.js" }, "./dist/index.js"],
+    });
+    expect(checkPluginDistStaleness(arrayPkg).status).toBe("stale");
+
+    const defaultPkg = makePlugin(tempRoot(), "plugin-default-export", {
+      distAt: 3_000,
+      sourceAt: 2_000,
+      runtimeTarget: { default: "./dist/index.js" },
+    });
+    expect(checkPluginDistStaleness(defaultPkg, new Set(["node"])).status).toBe(
+      "fresh",
+    );
+  });
+
+  it("reports no-source when src is absent and only ignored entries remain", () => {
+    const pkg = makePlugin(tempRoot(), "plugin-no-source", {
+      distAt: 3_000,
+    });
+    const status = checkPluginDistStaleness(pkg);
+    expect(status.status).toBe("no-source");
+    expect(status.runtimeEntryMtimeMs).toBeDefined();
+    expect(status.newestSourcePath).toBeUndefined();
+  });
+
+  it("treats equal mtimes as fresh because comparison is strictly newer", () => {
+    const pkg = makePlugin(tempRoot(), "plugin-tie", {
+      distAt: 2_000,
+      sourceAt: 2_000,
+    });
+    expect(checkPluginDistStaleness(pkg).status).toBe("fresh");
+  });
 });
 
 describe("warnStalePluginDists", () => {
@@ -225,5 +298,64 @@ describe("warnStalePluginDists", () => {
       stale: [],
     });
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("skips plain files whose names look like plugins", () => {
+    const root = tempRoot();
+    makePlugin(root, "plugin-real", { distAt: 1_000, sourceAt: 2_000 });
+    writeFileSync(path.join(root, "plugin-impostor"), "not a package");
+
+    const result = warnStalePluginDists({ pluginsRoot: root, warn: vi.fn() });
+    expect(result.scanned).toBe(1);
+    expect(result.stale).toHaveLength(1);
+  });
+
+  it("reports the sweep as unavailable when the root cannot be listed", () => {
+    const root = tempRoot();
+    const filePath = path.join(root, "plugins-root-file");
+    writeFileSync(filePath, "a directory this is not");
+
+    const warn = vi.fn();
+    const result = warnStalePluginDists({ pluginsRoot: filePath, warn });
+    expect(result).toEqual({
+      scanned: 0,
+      distLoaded: 0,
+      sourceLoaded: 0,
+      stale: [],
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("unavailable");
+  });
+
+  it("keeps sweeping when one package's source scan fails", () => {
+    const root = tempRoot();
+    makePlugin(root, "plugin-stale-later", { distAt: 1_000, sourceAt: 2_000 });
+    const broken = path.join(root, "plugin-broken-src");
+    mkdirSync(broken, { recursive: true });
+    writeFileSync(
+      path.join(broken, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/plugin-broken-src",
+        exports: { ".": "./dist/index.js" },
+      }),
+    );
+    writeAt(path.join(broken, "dist", "index.js"), 3_000);
+    // src exists as a regular file, so listing it throws and the sweep
+    // must name this package instead of dying or faking success.
+    writeFileSync(path.join(broken, "src"), "");
+
+    const warn = vi.fn();
+    const result = warnStalePluginDists({ pluginsRoot: root, warn });
+
+    expect(result.scanned).toBe(2);
+    expect(result.distLoaded).toBe(1);
+    expect(result.stale.map((entry) => entry.packageDir)).toContain(
+      path.join(root, "plugin-stale-later"),
+    );
+    const messages = warn.mock.calls.map((call) => String(call[0]));
+    expect(messages.some((m) => m.includes("plugin-broken-src"))).toBe(true);
+    expect(
+      messages.some((m) => m.includes("stale-dist check unavailable")),
+    ).toBe(true);
   });
 });
