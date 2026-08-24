@@ -79,6 +79,8 @@
     "audit:story-coverage:report": "node scripts/stories-coverage.mjs --write-report",
     "audit:component-inventory": "node scripts/find-duplicate-components.mjs",
     "audit:component-inventory:test": "node --test scripts/find-duplicate-components.test.mjs",
+    "audit:molecular-inventory": "node scripts/find-duplicate-molecular-components.mjs",
+    "audit:molecular-inventory:test": "node --test scripts/find-duplicate-molecular-components.test.mjs",
     "audit:dead-code": "knip --config knip.json --include files,dependencies,unlisted,unresolved --max-issues 0",
     "audit:public-api:test": "node --test scripts/public-api-explicit-subpaths.test.mjs",
     "audit:public-api": "node --test scripts/public-api-explicit-subpaths.test.mjs",

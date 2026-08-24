@@ -1,0 +1,42 @@
+{
+  "dialog:button+dialog": {
+    "disposition": "distinct-domain-compositions",
+    "rationale": "The shared atoms describe ordinary modal chrome; the six components own unrelated workflows and state."
+  },
+  "card:button+input": {
+    "disposition": "distinct-domain-compositions",
+    "rationale": "Domain purchase, chat choice, connector, and app-blocking cards only coincide at a broad dependency signature."
+  },
+  "dialog:button+dialog+input": {
+    "disposition": "shared-pattern-candidate",
+    "rationale": "These are submit-oriented form dialogs; compare their validation, pending, and error-state shell before extracting anything."
+  },
+  "panel:button+input": {
+    "disposition": "distinct-domain-compositions",
+    "rationale": "Search, connector setup, and release-note panels have different interaction and state contracts."
+  },
+  "card:badge+button+checkbox+dialog+spinner": {
+    "disposition": "shared-shell-candidate",
+    "rationale": "AccountCard and ConnectorAccountCard repeat account status, editable identity, action, busy, and destructive-confirmation regions while retaining different domain behavior."
+  },
+  "dialog:button+input": {
+    "disposition": "distinct-domain-compositions",
+    "rationale": "Account deletion and sign-in are unrelated workflows despite using the same atoms."
+  },
+  "form:button+input": {
+    "disposition": "distinct-domain-compositions",
+    "rationale": "Trigger configuration and tag editing do not share a domain contract or meaningful layout beyond generic form controls."
+  },
+  "header:button+input": {
+    "disposition": "distinct-domain-compositions",
+    "rationale": "Search navigation and meeting join controls have unrelated behavior; the role-name match is superficial."
+  },
+  "list:button+spinner": {
+    "disposition": "shared-shell-candidate",
+    "rationale": "Both account lists repeat loading, error, empty, add, and stacked-card regions, but their fetching and mutation controllers must remain domain-specific."
+  },
+  "panel:badge+button+input": {
+    "disposition": "duplicate-implementation",
+    "rationale": "AgentSection and CloudAgentsSection implement the same cloud-agent management lifecycle with near-identical state and operations; one owner should serve both surfaces."
+  }
+}
