@@ -89,4 +89,37 @@ describe("formatError", () => {
 		}).not.toThrow();
 		expect(out).toBe("[object Object]");
 	});
+
+	it("returns [unstringifiable error] when type-tag access is hostile", () => {
+		const hostile = new Proxy(
+			{},
+			{
+				get(_target, prop) {
+					if (
+						prop === Symbol.toPrimitive ||
+						prop === "toString" ||
+						prop === Symbol.toStringTag
+					) {
+						throw new Error("hostile property access");
+					}
+					return undefined;
+				},
+			},
+		);
+
+		let out = "";
+		expect(() => {
+			out = formatError(hostile);
+		}).not.toThrow();
+		expect(out).toBe("[unstringifiable error]");
+	});
+
+	it("formats standard built-in errors and empty message errors", () => {
+		expect(formatError(new TypeError("type mismatch"))).toBe("type mismatch");
+		expect(formatError(new RangeError("out of bounds"))).toBe("out of bounds");
+		expect(formatError(new SyntaxError("unexpected token"))).toBe(
+			"unexpected token",
+		);
+		expect(formatError(new Error(""))).toBe("");
+	});
 });
