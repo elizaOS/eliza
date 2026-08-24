@@ -6,7 +6,7 @@ export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-type DirectRouteCase =
+type DirectRouteCase = (
   | {
       name: string;
       path: string;
@@ -18,7 +18,8 @@ type DirectRouteCase =
       path: string;
       readyChecks: readonly ReadyCheck[];
       timeoutMs?: number;
-    };
+    }
+) & { expectedUrl?: RegExp };
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -195,6 +196,13 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "automations / workflows view",
     path: "/automations",
     selector: '[data-testid="automations-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "vault view",
+    path: "/vault",
+    expectedUrl: /\/vault#vault\/overview$/,
+    selector: '[data-testid="vault-page"]',
     timeoutMs: 90_000,
   },
   {
