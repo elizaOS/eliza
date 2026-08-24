@@ -110,6 +110,34 @@ async function waitForFixtureApp(
   throw new Error(`Disposable AX fixture PID ${pid} was not listed`);
 }
 
+async function waitForExactFixtureState(
+  service: ComputerUseService,
+  appId: string,
+): Promise<{
+  state: AppState;
+  button: AppState["elements"][number];
+}> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const state = await service.getAppState(appId, { disableDiff: true });
+    const button = state.elements.find(
+      (element) =>
+        element.label === "Verify fixture" &&
+        element.actions.includes("AXPress"),
+    );
+    if (
+      state.focusedWindowId &&
+      state.screenshot &&
+      state.screenshotBounds &&
+      button?.bounds
+    ) {
+      return { state, button };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Disposable AX fixture never produced an exact window state");
+}
+
 (MANUAL_DEMO_ENABLED ? it : it.skip)(
   "uses Cerebras pixels to approve and verify one semantic AX fixture press",
   async () => {
@@ -154,19 +182,16 @@ async function waitForFixtureApp(
         harness.runtime,
       )) as ComputerUseService;
       const appId = await waitForFixtureApp(service, fixture.pid);
-      const before = await service.getAppState(appId, { disableDiff: true });
+      const { state: before, button } = await waitForExactFixtureState(
+        service,
+        appId,
+      );
       if (!before.screenshot)
         throw new Error("Fixture state omitted screenshot");
       await writeManualDemoArtifact(
         "ax/before.png",
         Buffer.from(before.screenshot, "base64"),
       );
-      const button = before.elements.find(
-        (element) =>
-          element.label === "Verify fixture" &&
-          element.actions.includes("AXPress"),
-      );
-      if (!button) throw new Error("Fixture AXPress button was not exposed");
       const beforeFrame = sceneFromState(before);
       expect(
         harness.runtime.getModel(ModelType.IMAGE_DESCRIPTION),
