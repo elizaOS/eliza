@@ -1434,6 +1434,116 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       expect(new Set(coffeeRows.map((row) => row.externalId)).size).toBe(2);
     });
 
+    it("keeps an equal-amount debit and credit distinct across overlapping prepend/trim/reorder/replay imports (regression #26540)", async () => {
+      const source = await service.addPaymentSource({
+        kind: "csv",
+        label: "Opposite-direction account",
+      });
+      const d = new Date(Date.now() - 2 * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      // Same date, same merchant, same $4.50 magnitude, opposite directions:
+      // a debit charge and a same-amount refund. Because parsing stores the
+      // absolute amount separately from direction, these share their entire
+      // (posted_at, amount, merchant) content tuple and only differ by
+      // debit/credit. `-4.50` parses as a debit; `4.50` parses as a credit.
+      const debit = `${d},Blue Bottle Coffee,-4.50`;
+      const credit = `${d},Blue Bottle Coffee,4.50`;
+      const rent = `${d},Rent,-1500.00`;
+      const csv = (rows: string[]) =>
+        `Date,Description,Amount\n${rows.join("\n")}\n`;
+
+      // Import both sides. They must be stored as two distinct rows, never
+      // collapsed into one occurrence bucket.
+      const first = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText: csv([debit, credit]),
+      });
+      expect(first.inserted).toBe(2);
+      expect(first.skipped).toBe(0);
+      const firstRows = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      expect(firstRows).toHaveLength(2);
+      const debitRow = firstRows.find((row) => row.direction === "debit");
+      const creditRow = firstRows.find((row) => row.direction === "credit");
+      expect(debitRow).toBeDefined();
+      expect(creditRow).toBeDefined();
+      expect(debitRow?.id).not.toBe(creditRow?.id);
+      expect(new Set(firstRows.map((row) => row.externalId)).size).toBe(2);
+      const debitId = debitRow?.id;
+      const debitExternalId = debitRow?.externalId;
+      const creditId = creditRow?.id;
+      const creditExternalId = creditRow?.externalId;
+
+      // TRIM to only the credit (the refund). Under a direction-blind identity
+      // this would map the refund onto the debit's occurrence 0, overwrite the
+      // debit, and leave the original credit behind — losing the debit and
+      // duplicating the credit. With direction in the content key the refund
+      // replays onto its own identity: nothing new, debit untouched.
+      const trimmed = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText: csv([credit]),
+      });
+      expect(trimmed.inserted).toBe(0);
+      expect(trimmed.skipped).toBe(1);
+      const afterTrim = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      expect(afterTrim).toHaveLength(2);
+      const trimDebit = afterTrim.find((row) => row.direction === "debit");
+      const trimCredit = afterTrim.find((row) => row.direction === "credit");
+      // The debit survives with its exact identity; the credit is not
+      // duplicated and keeps its identity.
+      expect(trimDebit?.id).toBe(debitId);
+      expect(trimDebit?.externalId).toBe(debitExternalId);
+      expect(trimCredit?.id).toBe(creditId);
+      expect(trimCredit?.externalId).toBe(creditExternalId);
+      expect(
+        afterTrim.filter((row) => row.direction === "credit"),
+      ).toHaveLength(1);
+
+      // PREPEND a distinct charge and REORDER the two existing sides. Only the
+      // new charge inserts; both opposite-direction charges replay in place
+      // with unchanged durable identity despite the position shuffle.
+      const reordered = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText: csv([rent, credit, debit]),
+      });
+      expect(reordered.inserted).toBe(1);
+      expect(reordered.skipped).toBe(2);
+      const afterReorder = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      expect(afterReorder).toHaveLength(3);
+      expect(new Set(afterReorder.map((row) => row.externalId)).size).toBe(3);
+      const reDebit = afterReorder.find(
+        (row) => row.direction === "debit" && row.amountUsd === 4.5,
+      );
+      const reCredit = afterReorder.find((row) => row.direction === "credit");
+      expect(reDebit?.id).toBe(debitId);
+      expect(reDebit?.externalId).toBe(debitExternalId);
+      expect(reCredit?.id).toBe(creditId);
+      expect(reCredit?.externalId).toBe(creditExternalId);
+
+      // REPLAY the full opposite-direction export: fully idempotent.
+      const replay = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText: csv([debit, credit]),
+      });
+      expect(replay.inserted).toBe(0);
+      expect(replay.skipped).toBe(2);
+      const afterReplay = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      expect(afterReplay).toHaveLength(3);
+      expect(new Set(afterReplay.map((row) => row.externalId)).size).toBe(3);
+    });
+
     it("balances derives per-source figures with freshness metadata", async () => {
       const source = await service.addPaymentSource({
         kind: "manual",

@@ -54,6 +54,7 @@ import type {
   AddPaymentSourceRequest,
   ImportTransactionsCsvRequest,
   ImportTransactionsCsvResult,
+  LifeOpsPaymentDirection,
   LifeOpsPaymentSource,
   LifeOpsPaymentSourceKind,
   LifeOpsPaymentsDashboard,
@@ -336,6 +337,7 @@ function buildTransactionId(args: {
   externalId?: string | null;
   postedAt: string;
   amountUsd: number;
+  direction: LifeOpsPaymentDirection;
   merchantNormalized: string;
   occurrenceIndex: number;
 }): string {
@@ -345,9 +347,18 @@ function buildTransactionId(args: {
   // identity so identity depends on WHAT the row is and HOW MANY identical
   // rows precede it in the import — never on the absolute CSV row index.
   //
-  // The Nth genuinely-identical (posted_at, amount, merchant) row gets
-  // occurrence index N. Occurrence 0 reuses the bare content-tuple hash so a
-  // pre-fix row (imported when its external id was still NULL) keeps its
+  // The content tuple carries the normalized debit/credit direction because
+  // parsing stores an absolute `amountUsd` separately from `direction`: a
+  // $4.50 debit and a $4.50 refund otherwise share the same date/amount/
+  // merchant tuple, collapse into one occurrence bucket, and a later trimmed
+  // overlap containing only the refund would map onto occurrence 0 and
+  // overwrite the debit's identity while the debit's charge lingers — losing
+  // the debit and duplicating the credit. Folding direction in keeps the two
+  // sides on independent occurrence sequences with distinct durable ids.
+  //
+  // The Nth genuinely-identical (posted_at, amount, direction, merchant) row
+  // gets occurrence index N. Occurrence 0 reuses the bare content-tuple hash
+  // so a pre-fix row (imported when its external id was still NULL) keeps its
   // deterministic primary key and migrates in place instead of duplicating.
   // Because reordering cannot distinguish two byte-identical rows, an
   // overlapping export (prepended, trimmed, or reordered) maps each existing
@@ -360,6 +371,7 @@ function buildTransactionId(args: {
     args.sourceId,
     args.postedAt,
     args.amountUsd.toFixed(2),
+    args.direction,
     args.merchantNormalized,
   ];
   const key = hasExternalId
@@ -663,12 +675,16 @@ export class FinancesService {
     });
     let inserted = 0;
     let skipped = 0;
-    // Count how many identical (posted_at, amount, merchant) rows have already
-    // been seen in THIS import so each gets a stable per-content occurrence
-    // index. Position-based counting is deliberately avoided so that adding,
-    // removing, or reordering rows around an existing charge does not shift its
-    // identity. Only rows without a source external id use this fallback; a
-    // provided external id is already the row's stable identity.
+    // Count how many identical (posted_at, amount, direction, merchant) rows
+    // have already been seen in THIS import so each gets a stable per-content
+    // occurrence index. Direction is part of the bucket key because a debit and
+    // a same-amount refund must occupy independent occurrence sequences;
+    // otherwise a trimmed overlap containing only the refund would collapse
+    // onto the debit's occurrence 0 and overwrite it. Position-based counting is
+    // deliberately avoided so that adding, removing, or reordering rows around
+    // an existing charge does not shift its identity. Only rows without a
+    // source external id use this fallback; a provided external id is already
+    // the row's stable identity.
     const occurrenceByContent = new Map<string, number>();
     for (const txn of parsed.transactions) {
       const merchantNormalized =
@@ -681,6 +697,7 @@ export class FinancesService {
         const contentKey = [
           txn.postedAt,
           amountUsd.toFixed(2),
+          txn.direction,
           merchantNormalized,
         ].join("|");
         occurrenceIndex = occurrenceByContent.get(contentKey) ?? 0;
@@ -692,6 +709,7 @@ export class FinancesService {
         externalId: txn.externalId,
         postedAt: txn.postedAt,
         amountUsd,
+        direction: txn.direction,
         merchantNormalized,
         occurrenceIndex,
       });
