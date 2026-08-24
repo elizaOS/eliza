@@ -63,10 +63,13 @@ CGWindowID, window bounds, element locator, and element bounds before invoking
 the helper. The helper then revalidates the window on-screen owner, ID, bounds,
 screen point, and window-local point immediately before dispatch. The
 coordinator validates the helper receipt and requires fresh same-window,
-action-specific target readback. A sibling same-PID mutation or generic
-screenshot delta is not success. Missing symbols, stale/ambiguous targets,
-unavailable provenance, or pointer movement return refusal and never fall
-through implicitly.
+action-specific target readback. After dispatch it independently reads the
+physical pointer again; experimental success requires that coordinator-owned
+observation to be exactly `unchanged`. A `changed` or `unavailable` observation
+refuses even if the child reports stable coordinates. A sibling same-PID
+mutation or generic screenshot delta is not success. Missing symbols,
+stale/ambiguous targets, unavailable provenance, or pointer movement return
+refusal and never fall through implicitly.
 
 Global HID posting is absent from the component. Global physical fallback
 remains a later, separately opted-in and separately approved route.

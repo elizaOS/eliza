@@ -645,6 +645,61 @@ describe("AppControlCoordinator", () => {
     expect(pointer.click).not.toHaveBeenCalled();
   });
 
+  it.each(["changed", "unavailable"] as const)(
+    "refuses experimental success when the coordinator post-observation is %s",
+    async (postObservation) => {
+      let pointerReads = 0;
+      const pointer = {
+        getPosition: vi.fn(async () => {
+          pointerReads += 1;
+          if (pointerReads === 1) return { x: 100, y: 200 };
+          if (postObservation === "changed") return { x: 101, y: 200 };
+          throw new Error("fixture pointer observer unavailable");
+        }),
+        click: vi.fn(),
+        scroll: vi.fn(),
+      };
+      const exactWindowPointer: AppExactWindowPointerDispatcher = {
+        available: () => true,
+        dispatch: vi.fn(async ({ state }) => ({
+          success: true,
+          route: "experimental_direct_exact_window" as const,
+          observationId: state.stateId,
+          targetPid: 42,
+          targetWindowId: 701,
+          targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+          pointerBefore: { x: 100, y: 200 },
+          pointerAfter: { x: 100, y: 200 },
+        })),
+      };
+      const { coordinator } = fixture({
+        pointer,
+        exactWindowPointer,
+        performSuccess: false,
+        snapshots: [nativeSnapshot("Save"), nativeSnapshot("Saved")],
+        authorizeExperimentalExactWindow: vi.fn(async () => ({
+          approvalId: `approval-exact-${postObservation}`,
+          requestedAt: "2026-08-23T00:00:00.500Z",
+          approvedAt: "2026-08-23T00:00:00.750Z",
+          mode: "smart_approve",
+        })),
+      });
+      const before = await coordinator.getAppState(app.id);
+      await expect(
+        coordinator.act(
+          action(before.stateId, { allowExperimentalExactWindow: true }),
+        ),
+      ).resolves.toMatchObject({
+        success: false,
+        error: expect.stringContaining(
+          `coordinator pointer observation was ${postObservation}`,
+        ),
+      });
+      expect(exactWindowPointer.dispatch).toHaveBeenCalledOnce();
+      expect(pointer.click).not.toHaveBeenCalled();
+    },
+  );
+
   it("does not let an experimental event received by sibling B verify target A", async () => {
     let siblingValue = "before";
     const pointer = {
