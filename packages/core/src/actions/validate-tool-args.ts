@@ -177,8 +177,26 @@ function validateObject(
 		}
 	}
 
+	// Planner models routinely fill UNUSED optional parameters with the
+	// strings "null"/"undefined"/"" rather than omitting them; a patterned
+	// optional then fails validation and kills an otherwise-valid call (live
+	// 2026-08-24: MEMORY create failed on memoryId:"null" and the turn
+	// claimed success anyway). These are canonical spellings of "not
+	// provided", not values — treat them as absent for OPTIONAL properties
+	// only; required properties still demand a real value.
+	const requiredKeys = new Set(schema.required ?? []);
+	const isAbsentSentinel = (key: string, supplied: unknown): boolean =>
+		!requiredKeys.has(key) &&
+		typeof supplied === "string" &&
+		["", "null", "undefined"].includes(supplied.trim().toLowerCase());
+
 	for (const [key, childSchema] of Object.entries(properties)) {
-		if (hasOwn(value, key) && value[key] !== undefined && value[key] !== null) {
+		if (
+			hasOwn(value, key) &&
+			value[key] !== undefined &&
+			value[key] !== null &&
+			!isAbsentSentinel(key, value[key])
+		) {
 			const childPath = path ? `${path}.${key}` : key;
 			const before = errors.length;
 			const childValue = validateSchema(

@@ -154,3 +154,62 @@ describe("validate-tool-args", () => {
 		});
 	});
 });
+
+describe("unused-optional sentinel strings", () => {
+	const action = {
+		name: "MEM",
+		description: "d",
+		parameters: [
+			{
+				name: "content",
+				description: "d",
+				required: true,
+				schema: { type: "string" as const },
+			},
+			{
+				name: "memoryId",
+				description: "d",
+				required: false,
+				schema: {
+					type: "string" as const,
+					pattern:
+						"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+				},
+			},
+		],
+		handler: async () => ({}),
+		validate: async () => true,
+	} as never;
+
+	it('treats "null"/"undefined"/"" on an OPTIONAL patterned param as absent', () => {
+		for (const sentinel of ["null", "undefined", "", " NULL "]) {
+			const result = validateToolArgs(action, {
+				content: "remember this",
+				memoryId: sentinel,
+			});
+			expect(result.valid).toBe(true);
+			expect(result.args).not.toHaveProperty("memoryId");
+		}
+	});
+
+	it("a REQUIRED param still demands a real value", () => {
+		const result = validateToolArgs(action, { content: "null" });
+		// required "content" keeps whatever string was supplied — sentinels
+		// only ever mean absent for optional properties.
+		expect(result.valid).toBe(true);
+		expect(result.args?.content).toBe("null");
+	});
+
+	it("a real value on the optional param still validates against its pattern", () => {
+		const bad = validateToolArgs(action, {
+			content: "x",
+			memoryId: "not-a-uuid",
+		});
+		expect(bad.valid).toBe(false);
+		const good = validateToolArgs(action, {
+			content: "x",
+			memoryId: "12345678-1234-1234-1234-123456789abc",
+		});
+		expect(good.valid).toBe(true);
+	});
+});
