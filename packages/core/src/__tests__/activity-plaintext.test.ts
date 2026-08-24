@@ -291,6 +291,66 @@ describe("activityEventToPlaintext", () => {
 			activityEventToPlaintext({ eventType: "plan", data: { entries: [] } }),
 		).toBeNull();
 	});
+
+	it("formats sub-second and multi-minute durations with precise units", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				payload: { type: "complete", actionName: "BRIEF", duration: 42 },
+			})?.plaintext,
+		).toContain("(42ms)");
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				payload: { type: "complete", actionName: "BRIEF", duration: 1500 },
+			})?.plaintext,
+		).toContain("(1.5s)");
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_end", success: true, duration: 90000 },
+			})?.plaintext,
+		).toBe("Run completed (1m 30s)");
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_end", success: true, duration: 60000 },
+			})?.plaintext,
+		).toBe("Run completed (1m 0s)");
+	});
+
+	it("omits duration suffix when payload duration is missing or non-finite", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_end", success: true },
+			})?.plaintext,
+		).toBe("Run completed");
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				payload: {
+					type: "complete",
+					actionName: "BRIEF",
+					duration: Number.NaN,
+					output: {},
+				},
+			})?.plaintext,
+		).not.toContain("(");
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_end", success: true, duration: "fast" },
+			})?.plaintext,
+		).toBe("Run completed");
+	});
 });
 
 describe("trajectory plaintext serializers", () => {
