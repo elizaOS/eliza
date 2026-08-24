@@ -41,4 +41,21 @@ describe("chunkText", () => {
 			"aaaaa",
 		]);
 	});
+
+	it("preserves UTF-16 surrogate pairs when hard breaking at limit", () => {
+		const text = "😀".repeat(10);
+		const chunks = chunkText(text, 5);
+		expect(chunks).toEqual([
+			"😀😀",
+			"😀😀",
+			"😀😀",
+			"😀😀",
+			"😀😀",
+		]);
+		for (const chunk of chunks) {
+			expect(chunk.length).toBeLessThanOrEqual(5);
+			expect(chunk.endsWith("\uD83D")).toBe(false);
+			expect(chunk.startsWith("\uDE00")).toBe(false);
+		}
+	});
 });
