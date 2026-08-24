@@ -234,7 +234,7 @@ function OrderCard(props: { title: string; entries: RuntimeOrderItem[] }) {
           entries.map((entry) => (
             <div
               key={`${title}-${entry.index}`}
-              className="min-w-0 break-words text-txt"
+              className="min-w-max whitespace-nowrap text-txt"
             >
               {orderItemLabel(entry)}
             </div>
@@ -735,7 +735,7 @@ export function RuntimeView({
               title={t("runtimeview.AgentRuntimeIsNot")}
             />
           ) : activeSection === "summary" ? (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-4">
               <OrderCard
                 title={t("common.plugins")}
                 entries={snapshot.order.plugins}
