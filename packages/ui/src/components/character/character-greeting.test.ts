@@ -23,7 +23,16 @@ describe("character-greeting", () => {
   });
 
   it("resolves animation from style presets when avatarIndex is provided", () => {
-    const res = resolveCharacterGreetingAnimation({ avatarIndex: 1 });
-    expect(res === null || typeof res === "string").toBe(true);
+    expect(resolveCharacterGreetingAnimation({ avatarIndex: 1 })).toBe(
+      "animations/greetings/greeting1.fbx.gz",
+    );
+  });
+
+  it("returns null when avatarIndex is 0", () => {
+    expect(resolveCharacterGreetingAnimation({ avatarIndex: 0 })).toBeNull();
+  });
+
+  it("returns null when avatarIndex does not match any preset", () => {
+    expect(resolveCharacterGreetingAnimation({ avatarIndex: 999 })).toBeNull();
   });
 });
