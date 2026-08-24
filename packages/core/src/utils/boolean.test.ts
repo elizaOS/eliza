@@ -76,4 +76,11 @@ describe("parseBooleanText", () => {
 		expect(parseBooleanText(null)).toBe(false);
 		expect(parseBooleanText(undefined)).toBe(false);
 	});
+
+	it("parses enabled and disabled text variants", () => {
+		expect(parseBooleanText("enabled")).toBe(true);
+		expect(parseBooleanText("ENABLED")).toBe(true);
+		expect(parseBooleanText("disabled")).toBe(false);
+		expect(parseBooleanText("DISABLED")).toBe(false);
+	});
 });

@@ -14,8 +14,26 @@ const DEFAULT_TRUTHY = ["true", "1", "yes", "on"] as const;
 const DEFAULT_FALSY = ["false", "0", "no", "off"] as const;
 const DEFAULT_TRUTHY_SET = new Set<string>(DEFAULT_TRUTHY);
 const DEFAULT_FALSY_SET = new Set<string>(DEFAULT_FALSY);
-const TEXT_TRUTHY = ["yes", "y", "true", "t", "1", "on", "enable"] as const;
-const TEXT_FALSY = ["no", "n", "false", "f", "0", "off", "disable"] as const;
+const TEXT_TRUTHY = [
+	"yes",
+	"y",
+	"true",
+	"t",
+	"1",
+	"on",
+	"enable",
+	"enabled",
+] as const;
+const TEXT_FALSY = [
+	"no",
+	"n",
+	"false",
+	"f",
+	"0",
+	"off",
+	"disable",
+	"disabled",
+] as const;
 
 /**
  * Parse a value as a boolean.
