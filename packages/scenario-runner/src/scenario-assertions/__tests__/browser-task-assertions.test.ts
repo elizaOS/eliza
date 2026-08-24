@@ -104,6 +104,24 @@ describe("expectScenarioBrowserTask", () => {
     expect(message).toContain("UPLOAD_FILE");
   });
 
+  it("rejects array containers instead of treating them as browser-task records", () => {
+    const check = expectScenarioBrowserTask({
+      description: "task done",
+      actionName: "UPLOAD_FILE",
+    });
+    expect(
+      check(
+        ctx([
+          action({ actionName: "UPLOAD_FILE", result: { data: [] } }),
+          action({
+            actionName: "UPLOAD_FILE",
+            result: { success: true, data: { browserTask: [] } },
+          }),
+        ]),
+      ),
+    ).toContain("no browserTask payload found");
+  });
+
   it("ignores a browserTask field that is not an object", () => {
     const message = expectScenarioBrowserTask({
       description: "task done",
@@ -180,6 +198,28 @@ describe("expectScenarioBrowserTask", () => {
     expect(message).toContain("saw browserTask payloads");
   });
 
+  it.each([
+    ["needsHuman", { needsHuman: false }],
+    ["approvalRequired", { approvalRequired: false }],
+    ["approvalSatisfied", { approvalSatisfied: true }],
+  ] as const)("rejects an isolated %s mismatch", (_field, mismatch) => {
+    const check = expectScenarioBrowserTask({
+      description: "awaiting approval",
+      needsHuman: true,
+      approvalRequired: true,
+      approvalSatisfied: false,
+    });
+    const browserTask = {
+      needsHuman: true,
+      approvalRequired: true,
+      approvalSatisfied: false,
+      ...mismatch,
+    };
+    expect(
+      typeof check(ctx([browserAction("ASK_APPROVAL", browserTask)])),
+    ).toBe("string");
+  });
+
   it("treats a missing count field as zero for minimum expectations", () => {
     const strict = expectScenarioBrowserTask({
       description: "with artifacts",
@@ -225,6 +265,54 @@ describe("expectScenarioBrowserTask", () => {
     expect(message).toContain("saw browserTask payloads");
     expect(message).toContain('"uploadedAssetCount":1');
   });
+
+  it.each([
+    ["artifactCount", { artifactCount: 1 }],
+    ["uploadedAssetCount", { uploadedAssetCount: 1 }],
+    ["interventionCount", { interventionCount: 2 }],
+    ["provenanceCount", { provenanceCount: 3 }],
+  ] as const)(
+    "rejects an isolated %s below its minimum",
+    (_field, shortfall) => {
+      const check = expectScenarioBrowserTask({
+        description: "complete evidence",
+        minArtifacts: 2,
+        minUploadedAssets: 2,
+        minInterventions: 3,
+        minProvenance: 4,
+      });
+      const browserTask = {
+        artifactCount: 2,
+        uploadedAssetCount: 2,
+        interventionCount: 3,
+        provenanceCount: 4,
+        ...shortfall,
+      };
+      expect(
+        typeof check(ctx([browserAction("UPLOAD_FILE", browserTask)])),
+      ).toBe("string");
+    },
+  );
+
+  it.each([
+    ["string", { artifactCount: "bogus" }],
+    ["NaN", { uploadedAssetCount: Number.NaN }],
+    ["infinity", { interventionCount: Number.POSITIVE_INFINITY }],
+    ["negative", { provenanceCount: -1 }],
+    ["fraction", { artifactCount: 1.5 }],
+    ["boolean", { completed: "true" }],
+    ["blocked reason object", { blockedReason: { reason: "captcha" } }],
+  ] as const)(
+    "rejects a browserTask with a malformed %s field",
+    (_name, malformed) => {
+      const check = expectScenarioBrowserTask({
+        description: "well-formed evidence",
+      });
+      expect(check(ctx([browserAction("UPLOAD_FILE", malformed)]))).toContain(
+        "no browserTask payload found",
+      );
+    },
+  );
 
   it("matches blockedReasonIncludes case-insensitively", () => {
     const check = expectScenarioBrowserTask({
