@@ -4,12 +4,16 @@
  * (no in-test reimplementation). max<=0 → ""; max===1 → "…"; max>=2 keeps
  * the existing "… (N more chars)" preview suffix.
  */
-import { describe, expect, it } from "vitest";
+
 import { toWellFormedUnicode } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { truncateMessageForDisplay } from "../components/pages/browser-wallet-consent-format";
 
 function isWellFormed(value: string): boolean {
-  if (typeof (value as unknown as { isWellFormed?: () => boolean }).isWellFormed === "function") {
+  if (
+    typeof (value as unknown as { isWellFormed?: () => boolean })
+      .isWellFormed === "function"
+  ) {
     return (value as unknown as { isWellFormed: () => boolean }).isWellFormed();
   }
   for (let i = 0; i < value.length; i++) {
@@ -34,7 +38,9 @@ describe("truncateMessageForDisplay — regression-truncation (real function)", 
     const emoji = String.fromCharCode(0xd83d, 0xde00);
     const out = truncateMessageForDisplay(`${emoji}${"a".repeat(10)}`, 1);
     expect(isWellFormed(out)).toBe(true);
-    expect((out as unknown as { isWellFormed: () => boolean }).isWellFormed()).toBe(true);
+    expect(
+      (out as unknown as { isWellFormed: () => boolean }).isWellFormed(),
+    ).toBe(true);
     expect(out).toBe("…");
     expect(out.length).toBe(1);
   });
@@ -52,7 +58,9 @@ describe("truncateMessageForDisplay — regression-truncation (real function)", 
 
   it("short input under max returns well-formed unchanged", () => {
     const text = "short message";
-    expect(truncateMessageForDisplay(text, 240)).toBe(toWellFormedUnicode(text));
+    expect(truncateMessageForDisplay(text, 240)).toBe(
+      toWellFormedUnicode(text),
+    );
     expect(isWellFormed(truncateMessageForDisplay(text, 240))).toBe(true);
   });
 
@@ -61,7 +69,9 @@ describe("truncateMessageForDisplay — regression-truncation (real function)", 
     const text = `${"a".repeat(239)}${emoji}${"b".repeat(20)}`;
     const out = truncateMessageForDisplay(text, 240);
     expect(isWellFormed(out)).toBe(true);
-    expect((out as unknown as { isWellFormed: () => boolean }).isWellFormed()).toBe(true);
+    expect(
+      (out as unknown as { isWellFormed: () => boolean }).isWellFormed(),
+    ).toBe(true);
     expect(out).toContain("… (");
   });
 
@@ -80,7 +90,9 @@ describe("truncateMessageForDisplay — regression-truncation (real function)", 
       const text = `${"x".repeat(n)}${emoji}${"y".repeat(20)}`;
       const out = truncateMessageForDisplay(text, 240);
       expect(isWellFormed(out)).toBe(true);
-      expect((out as unknown as { isWellFormed: () => boolean }).isWellFormed()).toBe(true);
+      expect(
+        (out as unknown as { isWellFormed: () => boolean }).isWellFormed(),
+      ).toBe(true);
     }
   });
 

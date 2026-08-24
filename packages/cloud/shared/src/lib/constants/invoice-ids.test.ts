@@ -3,11 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import {
-  INVOICE_NAMESPACE,
-  createCryptoCustomerId,
-  createCryptoInvoiceId,
-} from "./invoice-ids.js";
+import { createCryptoCustomerId, createCryptoInvoiceId, INVOICE_NAMESPACE } from "./invoice-ids.js";
 
 describe("invoice-ids", () => {
   it("creates invoice id", () => {
