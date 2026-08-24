@@ -435,19 +435,21 @@ export function PaymentActivityCard() {
                           </span>
                         </p>
                       ) : null}
-                      <p
-                        className="flex items-center gap-1.5 text-xs font-mono text-muted-strong"
-                        data-testid="payment-policy-effect"
-                      >
-                        <AlertCircle
-                          className="size-3.5 shrink-0"
-                          aria-hidden={true}
-                        />
-                        {t("cloud.billingTab.policyEffectUnavailable", {
-                          defaultValue:
-                            "Policy effect unavailable pending refund policy decision",
-                        })}
-                      </p>
+                      {row.policyEffect !== null ? (
+                        <p
+                          className="flex items-center gap-1.5 text-xs font-mono text-muted-strong"
+                          data-testid="payment-policy-effect"
+                        >
+                          <AlertCircle
+                            className="size-3.5 shrink-0"
+                            aria-hidden={true}
+                          />
+                          {t("cloud.billingTab.policyEffectUnavailable", {
+                            defaultValue:
+                              "Policy effect unavailable pending refund policy decision",
+                          })}
+                        </p>
+                      ) : null}
                       {row.supportState === "contact_support" ? (
                         <p className="flex items-center gap-1.5 text-xs font-mono text-txt-strong">
                           <LifeBuoy
