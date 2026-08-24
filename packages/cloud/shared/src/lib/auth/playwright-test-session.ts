@@ -62,6 +62,10 @@ export function verifyPlaywrightTestSessionToken(
   token: string,
   env: PlaywrightTestAuthEnv = process.env,
 ): PlaywrightTestSessionClaims | null {
+  if (typeof token !== "string") {
+    return null;
+  }
+
   const secret = getPlaywrightTestAuthSecret(env);
   if (!isPlaywrightTestAuthEnabled(env) || !secret) {
     return null;
@@ -94,10 +98,11 @@ export function verifyPlaywrightTestSessionToken(
 
     if (
       typeof claims?.userId !== "string" ||
-      !claims.userId ||
+      !claims.userId.trim() ||
       typeof claims.organizationId !== "string" ||
-      !claims.organizationId ||
-      typeof claims.exp !== "number"
+      !claims.organizationId.trim() ||
+      typeof claims.exp !== "number" ||
+      !Number.isSafeInteger(claims.exp)
     ) {
       return null;
     }

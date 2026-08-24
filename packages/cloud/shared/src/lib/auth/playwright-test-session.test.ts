@@ -61,6 +61,8 @@ describe("playwright test session auth", () => {
     expect(verifyPlaywrightTestSessionToken(`${payload}.tampered`, env)).toBeNull();
     expect(verifyPlaywrightTestSessionToken(`${payload}.${signature}.extra`, env)).toBeNull();
     expect(verifyPlaywrightTestSessionToken("not-a-token", env)).toBeNull();
+    expect(verifyPlaywrightTestSessionToken(undefined as unknown as string, env)).toBeNull();
+    expect(verifyPlaywrightTestSessionToken(null as unknown as string, env)).toBeNull();
   });
 
   it("rejects expired tokens and non-string required claims", () => {
