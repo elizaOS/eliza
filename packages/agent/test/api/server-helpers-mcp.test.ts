@@ -2,6 +2,11 @@
 
 import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
 import { describe, expect, it } from "vitest";
+import {
+  mcpServersIncludeStdio,
+  resolveMcpServersRejection,
+  resolveMcpTerminalAuthorizationRejection,
+} from "../../src/api/server-helpers-mcp.ts";
 
 function stdioConfig(
   command: string,
@@ -340,5 +345,250 @@ describe("validateMcpServerConfig deno permission-escape hardening", () => {
         stdioConfig("deno", ["run", "./mcp-server.ts"], {}),
       ),
     ).toBeNull();
+  });
+});
+
+function withMcpAuthEnv(
+  overrides: Record<string, string | undefined>,
+  run: () => void,
+): void {
+  const names = Object.keys(overrides);
+  const prior = names.map((name) => [name, process.env[name]] as const);
+  try {
+    for (const name of names) {
+      const value = overrides[name];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    run();
+  } finally {
+    for (const [name, value] of prior) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+}
+
+describe("mcpServersIncludeStdio classification edges", () => {
+  it("returns false for an empty server map", () => {
+    expect(mcpServersIncludeStdio({})).toBe(false);
+  });
+
+  it("ignores remote-only maps", () => {
+    expect(
+      mcpServersIncludeStdio({
+        remote: { type: "http", url: "https://example.com/mcp" },
+      }),
+    ).toBe(false);
+  });
+
+  it("skips non-object entries instead of throwing", () => {
+    expect(
+      mcpServersIncludeStdio({
+        broken: null,
+        label: "stdio",
+        list: [{ type: "stdio" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("matches the stdio type string exactly", () => {
+    expect(
+      mcpServersIncludeStdio({ local: { type: "STDIO", command: "npx" } }),
+    ).toBe(false);
+  });
+});
+
+describe("resolveMcpServersRejection", () => {
+  it("accepts an empty server map", async () => {
+    expect(await resolveMcpServersRejection({})).toBeNull();
+  });
+
+  it("accepts a benign stdio server config", async () => {
+    expect(
+      await resolveMcpServersRejection({
+        files: stdioConfig("npx", ["@scope/pkg"], { LOG_LEVEL: "info" }),
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects blocked server names before inspecting the config shape", async () => {
+    expect(await resolveMcpServersRejection({ ["__proto__"]: null })).toBe(
+      'Invalid server name: "__proto__"',
+    );
+    expect(await resolveMcpServersRejection({ $include: "x" })).toBe(
+      'Invalid server name: "$include"',
+    );
+  });
+
+  it("requires each server config to be a JSON object", async () => {
+    expect(await resolveMcpServersRejection({ broken: null })).toBe(
+      'Server "broken" config must be a JSON object',
+    );
+    expect(
+      await resolveMcpServersRejection({
+        broken: [stdioConfig("npx", ["p"], {})],
+      }),
+    ).toBe('Server "broken" config must be a JSON object');
+    expect(await resolveMcpServersRejection({ broken: "npx pkg" })).toBe(
+      'Server "broken" config must be a JSON object',
+    );
+  });
+
+  it("rejects blocked object keys nested inside a server config", async () => {
+    expect(
+      await resolveMcpServersRejection({
+        files: {
+          ...stdioConfig("npx", ["@scope/pkg"], {}),
+          env: { LOG_LEVEL: "info", $include: "/etc/passwd" },
+        },
+      }),
+    ).toBe('Server "files" contains blocked object keys');
+    expect(
+      await resolveMcpServersRejection({
+        files: {
+          ...stdioConfig("npx", ["@scope/pkg"], {}),
+          options: { transport: { constructor: "Function" } },
+        },
+      }),
+    ).toBe('Server "files" contains blocked object keys');
+  });
+
+  it("wraps validator rejections with the offending server name", async () => {
+    const rejection = await resolveMcpServersRejection({
+      evil: stdioConfig("npx", ["pkg"], { LD_PRELOAD: "/tmp/evil.so" }),
+    });
+    expect(rejection).toMatch(/^Server "evil": /);
+    expect(rejection).toMatch(/not allowed/i);
+  });
+
+  it("reports the first failing server in declaration order", async () => {
+    expect(
+      await resolveMcpServersRejection({
+        alpha: stdioConfig("npx", ["@scope/pkg"], {}),
+        beta: [],
+        gamma: null,
+      }),
+    ).toBe('Server "beta" config must be a JSON object');
+  });
+
+  it("keeps validating servers after earlier valid ones", async () => {
+    expect(
+      await resolveMcpServersRejection({
+        ok: stdioConfig("npx", ["@scope/pkg"], {}),
+        late: stdioConfig("deno", ["run", "-A", "./server.ts"], {}),
+      }),
+    ).toMatch(/^Server "late": /);
+  });
+});
+
+describe("resolveMcpTerminalAuthorizationRejection stdio token enforcement", () => {
+  it("skips authorization entirely for non-stdio server maps", () => {
+    withMcpAuthEnv({ ELIZA_TERMINAL_RUN_TOKEN: "tok-1234" }, () => {
+      expect(
+        resolveMcpTerminalAuthorizationRejection(
+          { headers: {} },
+          { remote: { type: "http", url: "https://example.com/mcp" } },
+          { terminalToken: "wrong" },
+        ),
+      ).toBeNull();
+    });
+  });
+
+  it("accepts a matching X-Eliza-Terminal-Token header", () => {
+    withMcpAuthEnv(
+      {
+        ELIZA_API_TOKEN: undefined,
+        ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP: undefined,
+        ELIZA_TERMINAL_RUN_TOKEN: "tok-1234",
+      },
+      () => {
+        expect(
+          resolveMcpTerminalAuthorizationRejection(
+            { headers: { "x-eliza-terminal-token": "tok-1234" } },
+            { local: { type: "stdio", command: "npx", args: ["pkg"] } },
+            {},
+          ),
+        ).toBeNull();
+      },
+    );
+  });
+
+  it("accepts a matching terminalToken in the request body", () => {
+    withMcpAuthEnv(
+      {
+        ELIZA_API_TOKEN: undefined,
+        ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP: undefined,
+        ELIZA_TERMINAL_RUN_TOKEN: "tok-1234",
+      },
+      () => {
+        expect(
+          resolveMcpTerminalAuthorizationRejection(
+            { headers: {} },
+            { local: { type: "stdio", command: "npx", args: ["pkg"] } },
+            { terminalToken: "tok-1234" },
+          ),
+        ).toBeNull();
+      },
+    );
+  });
+
+  it("rejects a mismatched terminal token with 401", () => {
+    withMcpAuthEnv(
+      {
+        ELIZA_API_TOKEN: undefined,
+        ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP: undefined,
+        ELIZA_TERMINAL_RUN_TOKEN: "tok-1234",
+      },
+      () => {
+        const rejection = resolveMcpTerminalAuthorizationRejection(
+          { headers: {} },
+          { local: { type: "stdio", command: "npx", args: ["pkg"] } },
+          { terminalToken: "nope" },
+        );
+        expect(rejection?.status).toBe(401);
+        expect(rejection?.reason).toMatch(/invalid terminal token/i);
+      },
+    );
+  });
+
+  it("rejects a stdio request carrying no terminal token with 401", () => {
+    withMcpAuthEnv(
+      {
+        ELIZA_API_TOKEN: undefined,
+        ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP: undefined,
+        ELIZA_TERMINAL_RUN_TOKEN: "tok-1234",
+      },
+      () => {
+        const rejection = resolveMcpTerminalAuthorizationRejection(
+          { headers: {} },
+          { local: { type: "stdio", command: "npx", args: ["pkg"] } },
+          {},
+        );
+        expect(rejection?.status).toBe(401);
+        expect(rejection?.reason).toMatch(/missing terminal token/i);
+      },
+    );
+  });
+
+  it("keeps the API-token lockdown inside the legacy compat passthrough", () => {
+    withMcpAuthEnv(
+      {
+        ELIZA_ALLOW_UNAUTHENTICATED_STDIO_MCP: "1",
+        ELIZA_API_TOKEN: "api-tok",
+        ELIZA_TERMINAL_RUN_TOKEN: undefined,
+      },
+      () => {
+        const rejection = resolveMcpTerminalAuthorizationRejection(
+          { headers: {} },
+          { local: { type: "stdio", command: "npx", args: ["pkg"] } },
+          {},
+        );
+        expect(rejection?.status).toBe(403);
+        expect(rejection?.reason).toMatch(
+          /terminal run is disabled for token-authenticated/i,
+        );
+      },
+    );
   });
 });
