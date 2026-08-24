@@ -11,11 +11,33 @@ export interface RemoteTargetStatus {
   lastErrorCode: string | null;
 }
 
+export interface RemoteTargetPairingChallenge {
+  sessionId: string;
+  code: string;
+  expiresAt: number;
+  capabilities: string[];
+  status: "pending";
+}
+
+export interface RemoteTargetPairingChallengeStatus {
+  sessionId: string;
+  status: "pending" | "claimed" | "denied" | "expired";
+  expiresAt: number;
+  capabilities: string[];
+  controller?: {
+    deviceId: string;
+    keyId: string;
+    displayName: string;
+    platform: "ios" | "macos" | "windows" | "linux" | "android" | "web";
+  };
+}
+
 export async function enrollRemoteTarget(input: {
   apiBaseUrl: string;
   ownerId: string;
   ownerAccessToken: string;
   displayName: string;
+  platform: "macos" | "windows" | "linux";
   managedNetwork?: boolean;
 }): Promise<{ hostId: string; identity: RemoteTargetPublicIdentity }> {
   const result = await invokeDesktopBridgeRequest<{
@@ -28,7 +50,7 @@ export async function enrollRemoteTarget(input: {
     params: input,
   });
   if (!result)
-    throw new Error("Linux remote-target enrollment is unavailable.");
+    throw new Error("Desktop remote-target enrollment is unavailable.");
   return result;
 }
 
@@ -46,6 +68,45 @@ export async function getRemoteTargetIdentity(): Promise<{
       params: {},
     })) ?? { enrolled: false }
   );
+}
+
+export async function createRemoteTargetPairingChallenge(): Promise<RemoteTargetPairingChallenge> {
+  const result = await invokeDesktopBridgeRequest<RemoteTargetPairingChallenge>(
+    {
+      rpcMethod: "remoteTargetCreatePairingChallenge",
+      ipcChannel: "remoteTarget:createPairingChallenge",
+      params: {},
+    },
+  );
+  if (!result) throw new Error("Remote pairing challenge is unavailable.");
+  return result;
+}
+
+export async function readRemoteTargetPairingChallenge(
+  sessionId: string,
+): Promise<RemoteTargetPairingChallengeStatus> {
+  const result =
+    await invokeDesktopBridgeRequest<RemoteTargetPairingChallengeStatus>({
+      rpcMethod: "remoteTargetReadPairingChallenge",
+      ipcChannel: "remoteTarget:readPairingChallenge",
+      params: { sessionId },
+    });
+  if (!result) throw new Error("Remote pairing status is unavailable.");
+  return result;
+}
+
+export async function confirmRemoteTargetPairing(
+  sessionId: string,
+): ReturnType<typeof activateRemoteTarget> {
+  const result = await invokeDesktopBridgeRequest<
+    Awaited<ReturnType<typeof activateRemoteTarget>>
+  >({
+    rpcMethod: "remoteTargetConfirmPairing",
+    ipcChannel: "remoteTarget:confirmPairing",
+    params: { sessionId },
+  });
+  if (!result) throw new Error("Remote pairing confirmation is unavailable.");
+  return result;
 }
 
 export async function activateRemoteTarget(input: {

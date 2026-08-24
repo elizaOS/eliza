@@ -13,6 +13,7 @@ const migrations = [
   "0305_secure_remote_hosts",
   "0306_secure_remote_command_relay",
   "0313_remote_host_managed_network",
+  "0314_remote_target_initiated_pairing",
 ] as const;
 
 async function apply(database: PGlite, name: string): Promise<void> {
@@ -51,8 +52,9 @@ describe("secure remote relay migrations", () => {
         INSERT INTO remote_sessions (
           id, organization_id, user_id, host_id, grant_id, grant_revision,
           status, requester_identity, controller_device_id, controller_key_id,
+          controller_display_name, controller_platform,
           controller_signing_public_jwk, controller_encryption_public_jwk,
-          target_key_id, expires_at, grant_expires_at
+          target_key_id, pairing_consumed_at, expires_at, grant_expires_at
         ) VALUES (
           '50000000-0000-4000-8000-000000000001',
           '10000000-0000-4000-8000-000000000001',
@@ -60,8 +62,9 @@ describe("secure remote relay migrations", () => {
           '40000000-0000-4000-8000-000000000001',
           '60000000-0000-4000-8000-000000000001', 1, 'active',
           '20000000-0000-4000-8000-000000000001', 'controller-one',
-          'controller-key-1', '{"kty":"EC"}', '{"kty":"EC"}',
-          'target-key-1', now() + interval '5 minutes', now() + interval '1 hour'
+          'controller-key-1', 'Controller One', 'ios', '{"kty":"EC"}',
+          '{"kty":"EC"}', 'target-key-1', now(),
+          now() + interval '5 minutes', now() + interval '1 hour'
         );
         INSERT INTO remote_command_envelopes (
           id, session_id, grant_id, grant_revision, organization_id, user_id,
@@ -138,17 +141,19 @@ describe("secure remote relay migrations", () => {
       const journal = JSON.parse(
         await readFile(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
       ) as { entries: Array<{ idx: number; tag: string; when: number }> };
-      const recentEntries = journal.entries.slice(-4);
+      const recentEntries = journal.entries.slice(-5);
       expect(recentEntries.map((entry) => entry.tag)).toEqual([
         "0310_personal_shared_inbound_media_admission",
         "0311_personal_shared_group_participants",
         "0312_remote_session_two_phase_activation",
         "0313_remote_host_managed_network",
+        "0314_remote_target_initiated_pairing",
       ]);
-      expect(recentEntries.map((entry) => entry.idx)).toEqual([293, 294, 295, 296]);
+      expect(recentEntries.map((entry) => entry.idx)).toEqual([293, 294, 295, 296, 297]);
       expect(recentEntries[1]!.when).toBeGreaterThan(recentEntries[0]!.when);
       expect(recentEntries[2]!.when).toBeGreaterThan(recentEntries[1]!.when);
       expect(recentEntries[3]!.when).toBeGreaterThan(recentEntries[2]!.when);
+      expect(recentEntries[4]!.when).toBeGreaterThan(recentEntries[3]!.when);
       expect(new Set(journal.entries.map((entry) => entry.when)).size).toBe(journal.entries.length);
     } finally {
       await database.close();

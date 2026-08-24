@@ -240,6 +240,24 @@ class DeterministicRelay implements RemoteTargetRelayTransport {
     };
   }
 
+  async createPairingChallenge(): Promise<never> {
+    throw new Error(
+      "Target-created pairing is covered by its state-machine suite.",
+    );
+  }
+
+  async readPairingChallenge(): Promise<never> {
+    throw new Error(
+      "Target-created pairing is covered by its state-machine suite.",
+    );
+  }
+
+  async confirmPairing(): Promise<never> {
+    throw new Error(
+      "Target-created pairing is covered by its state-machine suite.",
+    );
+  }
+
   async compensateActivation(
     input: Parameters<RemoteTargetRelayTransport["compensateActivation"]>[0],
   ): Promise<

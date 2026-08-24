@@ -1,5 +1,5 @@
 /**
- * Exposes the native-only Linux target lifecycle to the typed Electrobun RPC
+ * Exposes the native-only desktop target lifecycle to the typed Electrobun RPC
  * composition layer. Renderer callers receive public identity and health data;
  * the host bearer and private JWKs never cross this boundary.
  */
@@ -26,10 +26,14 @@ import {
 import {
   HttpRemoteTargetRelayTransport,
   normalizeRemoteTargetApiBase,
+  type RemoteTargetActivationResponse,
+  type RemoteTargetPairingChallenge,
+  type RemoteTargetPairingChallengeStatus,
   type RemoteTargetRelayTransport,
   RemoteTargetTransportError,
 } from "./remote-target-transport";
 import {
+  type EnrolledRemoteTargetVaultRecord,
   RemoteTargetVault,
   remoteTargetVaultInternals,
 } from "./remote-target-vault";
@@ -253,6 +257,14 @@ export class RemoteTargetDesktopService {
       16_384,
     );
     const displayName = requireString(value.displayName, "display name", 128);
+    const platform = value.platform;
+    if (
+      platform !== "macos" &&
+      platform !== "windows" &&
+      platform !== "linux"
+    ) {
+      throw new Error("Remote target desktop platform is invalid.");
+    }
     const managedNetworkValue = value.managedNetwork;
     if (
       managedNetworkValue !== undefined &&
@@ -264,6 +276,7 @@ export class RemoteTargetDesktopService {
     const prepared = await this.vault.prepare({
       ownerId,
       displayName,
+      platform,
       now: this.now(),
     });
     if (prepared.status === "enrolled") {
@@ -284,6 +297,7 @@ export class RemoteTargetDesktopService {
         ownerId,
         deviceId: prepared.deviceId,
         displayName: prepared.displayName,
+        platform: prepared.platform ?? platform,
         runtimeKeyId: prepared.keyId,
         signingPublicKeyJwk: remoteTargetVaultInternals.publicJwk(
           prepared.signingPrivateKeyJwk,
@@ -429,6 +443,130 @@ export class RemoteTargetDesktopService {
       : { enrolled: false };
   }
 
+  async createPairingChallenge(): Promise<RemoteTargetPairingChallenge> {
+    return this.enqueueConfiguration(async () => {
+      const enrollment = await this.vault.load();
+      if (enrollment?.status !== "enrolled") {
+        throw new Error("Remote target is not enrolled.");
+      }
+      return this.transport.createPairingChallenge({ enrollment });
+    });
+  }
+
+  async readPairingChallenge(
+    params: unknown,
+  ): Promise<RemoteTargetPairingChallengeStatus> {
+    const value = requireObject(params);
+    const sessionId = requireString(value.sessionId, "session id", 256);
+    return this.enqueueConfiguration(async () => {
+      const enrollment = await this.vault.load();
+      if (enrollment?.status !== "enrolled") {
+        throw new Error("Remote target is not enrolled.");
+      }
+      return this.transport.readPairingChallenge({ enrollment, sessionId });
+    });
+  }
+
+  private async finishActivation(
+    enrollment: EnrolledRemoteTargetVaultRecord,
+    activation: RemoteTargetActivationResponse,
+  ): Promise<DesktopRemoteTargetActivationResult> {
+    const installer =
+      this.runner ??
+      new RemoteTargetRunner(
+        this.vault,
+        this.stateStore,
+        this.transport,
+        {
+          execute: async () => ({
+            status: "rejected",
+            errorCode: "REMOTE_TARGET_NOT_STARTED",
+          }),
+        },
+        { now: this.now },
+      );
+    this.runner ??= installer;
+    try {
+      await installer.installActivation(activation);
+    } catch (installError) {
+      try {
+        await this.transport.compensateActivation({
+          enrollment,
+          sessionId: activation.sessionId,
+        });
+      } catch (compensationError) {
+        const failure = new ElizaError(
+          "Remote activation failed locally and Cloud compensation is required",
+          {
+            code: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED",
+            context: { sessionId: activation.sessionId },
+            cause: new AggregateError([installError, compensationError]),
+          },
+        );
+        logger.error(
+          "[RemoteTargetDesktopService] Activation compensation requires retry",
+          failure,
+        );
+        return {
+          sessionId: activation.sessionId,
+          status: "compensation_required",
+          errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED",
+          retryRpc: "remoteTargetCompensateActivation",
+        };
+      }
+      throw new ElizaError(
+        "Remote activation failed locally and was rolled back in Cloud",
+        {
+          code: "REMOTE_ACTIVATION_LOCAL_INSTALL_FAILED",
+          context: { sessionId: activation.sessionId },
+          cause: installError,
+        },
+      );
+    }
+    try {
+      await this.transport.commitActivation({
+        enrollment,
+        sessionId: activation.sessionId,
+      });
+      await installer.commitLocalActivation(activation.sessionId);
+    } catch (commitError) {
+      logger.warn(
+        "[RemoteTargetDesktopService] Activation commit requires retry",
+        { sessionId: activation.sessionId, error: commitError },
+      );
+      return {
+        sessionId: activation.sessionId,
+        status: "commit_required",
+        errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED",
+        retryRpc: "remoteTargetCommitActivation",
+      };
+    }
+    return {
+      sessionId: activation.sessionId,
+      status: "active",
+      controllerDisplayName: activation.controller.displayName,
+      grantExpiresAt: activation.grantExpiresAt,
+    };
+  }
+
+  async confirmPairing(
+    params: unknown,
+  ): Promise<DesktopRemoteTargetActivationResult> {
+    const value = requireObject(params);
+    const sessionId = requireString(value.sessionId, "session id", 256);
+    return this.enqueueConfiguration(async () => {
+      const enrollment = await this.vault.load();
+      if (enrollment?.status !== "enrolled") {
+        throw new Error("Remote target is not enrolled.");
+      }
+      const activation = await this.transport.confirmPairing({
+        enrollment,
+        sessionId,
+      });
+      return this.finishActivation(enrollment, activation);
+    });
+  }
+
   async activate(
     params: unknown,
   ): Promise<DesktopRemoteTargetActivationResult> {
@@ -451,89 +589,7 @@ export class RemoteTargetDesktopService {
         ...(sessionId ? { sessionId } : {}),
         code,
       });
-      const installer =
-        this.runner ??
-        new RemoteTargetRunner(
-          this.vault,
-          this.stateStore,
-          this.transport,
-          {
-            execute: async () => ({
-              status: "rejected",
-              errorCode: "REMOTE_TARGET_NOT_STARTED",
-            }),
-          },
-          { now: this.now },
-        );
-      this.runner ??= installer;
-      try {
-        await installer.installActivation(activation);
-      } catch (installError) {
-        try {
-          await this.transport.compensateActivation({
-            enrollment,
-            sessionId: activation.sessionId,
-          });
-        } catch (compensationError) {
-          // error-policy:J2 preserve both failures and expose the exact,
-          // idempotently retryable session without claiming local authority.
-          const failure = new ElizaError(
-            "Remote activation failed locally and Cloud compensation is required",
-            {
-              code: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED",
-              context: { sessionId: activation.sessionId },
-              cause: new AggregateError([installError, compensationError]),
-            },
-          );
-          logger.error(
-            "[RemoteTargetDesktopService] Activation compensation requires retry",
-            failure,
-          );
-          // The typed non-authoritative response preserves the exact session
-          // required by the idempotent retry RPC. The local journal remains
-          // empty, so this is never presented as active authority.
-          return {
-            sessionId: activation.sessionId,
-            status: "compensation_required" as const,
-            errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED" as const,
-            retryRpc: "remoteTargetCompensateActivation" as const,
-          };
-        }
-        throw new ElizaError(
-          "Remote activation failed locally and was rolled back in Cloud",
-          {
-            code: "REMOTE_ACTIVATION_LOCAL_INSTALL_FAILED",
-            context: { sessionId: activation.sessionId },
-            cause: installError,
-          },
-        );
-      }
-      try {
-        await this.transport.commitActivation({
-          enrollment,
-          sessionId: activation.sessionId,
-        });
-        await installer.commitLocalActivation(activation.sessionId);
-      } catch (commitError) {
-        // error-policy:J4 the durable local staged grant remains
-        // non-executable while exact-session commit is retried idempotently.
-        logger.warn(
-          "[RemoteTargetDesktopService] Activation commit requires retry",
-          { sessionId: activation.sessionId, error: commitError },
-        );
-        return {
-          sessionId: activation.sessionId,
-          status: "commit_required" as const,
-          errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED" as const,
-          retryRpc: "remoteTargetCommitActivation" as const,
-        };
-      }
-      return {
-        sessionId: activation.sessionId,
-        status: "active" as const,
-        controllerDisplayName: activation.controller.displayName,
-        grantExpiresAt: activation.grantExpiresAt,
-      };
+      return this.finishActivation(enrollment, activation);
     });
   }
 
@@ -715,6 +771,22 @@ export function desktopRemoteTargetEnroll(
 
 export function desktopRemoteTargetGetIdentity(): Promise<DesktopRemoteTargetIdentityResult> {
   return desktopRemoteTargetService.getIdentity();
+}
+
+export function desktopRemoteTargetCreatePairingChallenge(): Promise<RemoteTargetPairingChallenge> {
+  return desktopRemoteTargetService.createPairingChallenge();
+}
+
+export function desktopRemoteTargetReadPairingChallenge(
+  params: unknown,
+): Promise<RemoteTargetPairingChallengeStatus> {
+  return desktopRemoteTargetService.readPairingChallenge(params);
+}
+
+export function desktopRemoteTargetConfirmPairing(
+  params: unknown,
+): Promise<DesktopRemoteTargetActivationResult> {
+  return desktopRemoteTargetService.confirmPairing(params);
 }
 
 export function desktopRemoteTargetActivate(

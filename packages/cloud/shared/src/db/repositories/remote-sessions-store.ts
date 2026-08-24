@@ -10,12 +10,13 @@ import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
 import {
+  deriveRemotePairingCodeVerifier,
   isRemotePairingSessionCurrent,
   verifyRemotePairingCodeVerifier,
 } from "../crypto/remote-pairing-code";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { remoteCommandEnvelopes } from "../schemas/remote-command-envelopes";
-import { remoteHosts } from "../schemas/remote-hosts";
+import { type RemoteHost, remoteHosts } from "../schemas/remote-hosts";
 import {
   type NewRemoteSession,
   type RemoteSession,
@@ -24,7 +25,7 @@ import {
 } from "../schemas/remote-sessions";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
-const OPEN_STATUSES: RemoteSessionStatus[] = ["pending", "activating", "active"];
+const OPEN_STATUSES: RemoteSessionStatus[] = ["pending", "claimed", "activating", "active"];
 
 export interface RevokeRemoteSessionResult {
   session: RemoteSession;
@@ -45,6 +46,15 @@ export type CompensateRemoteHostActivationResult =
 export type CommitRemoteHostActivationResult =
   | { kind: "committed"; session: RemoteSession; alreadyCommitted: boolean }
   | { kind: "conflict" }
+  | { kind: "not_found" };
+
+export type ClaimRemoteHostPairingResult =
+  | { kind: "claimed"; session: RemoteSession; host: RemoteHost }
+  | { kind: "not_found" }
+  | { kind: "invalid_pairing" };
+
+export type ReadRemoteHostPairingResult =
+  | { kind: "found"; session: RemoteSession }
   | { kind: "not_found" };
 
 const SESSION_COMMAND_CLEANUP_BATCH = 500;
@@ -203,6 +213,351 @@ export class RemoteSessionsRepository {
         throw storageFailure("Failed to create remote host session", { hostId: host.id });
       }
       return session;
+    });
+  }
+
+  /** Creates a target-initiated challenge under authenticated host authority. */
+  async createPendingForAuthenticatedHost(input: {
+    id: string;
+    hostId: string;
+    hostToken: string;
+    grantId: string;
+    grantRevision: number;
+    code: string;
+    pairingSecret: string;
+    expiresAt: Date;
+    grantExpiresAt: Date;
+  }): Promise<RemoteSession | undefined> {
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(input.hostToken);
+    } catch {
+      return undefined;
+    }
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select()
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, input.hostId),
+            eq(remoteHosts.host_token_hash, tokenHash),
+            eq(remoteHosts.status, "active"),
+          ),
+        )
+        .for("update");
+      if (!host) return undefined;
+      const now = await readPostLockDatabaseNow(tx);
+      if (
+        input.expiresAt.getTime() <= now.getTime() ||
+        input.grantExpiresAt.getTime() <= input.expiresAt.getTime()
+      ) {
+        throw new TypeError("Target-created pairing expiry is invalid");
+      }
+      await tx
+        .update(remoteSessions)
+        .set({ status: "expired", pairing_token_hash: null, ended_at: now, updated_at: now })
+        .where(
+          and(
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.status, "pending"),
+            lte(remoteSessions.expires_at, now),
+          ),
+        );
+      await tx
+        .update(remoteSessions)
+        .set({
+          status: "denied",
+          pairing_token_hash: null,
+          ended_at: now,
+          updated_at: now,
+        })
+        .where(
+          and(
+            eq(remoteSessions.host_id, host.id),
+            inArray(remoteSessions.status, ["pending", "claimed"]),
+          ),
+        );
+      const verifier = await deriveRemotePairingCodeVerifier(
+        input.pairingSecret,
+        {
+          organizationId: host.organization_id,
+          userId: host.user_id,
+          hostId: host.id,
+          sessionId: input.id,
+        },
+        input.code,
+        input.expiresAt,
+      );
+      const [session] = await tx
+        .insert(remoteSessions)
+        .values({
+          id: input.id,
+          organization_id: host.organization_id,
+          user_id: host.user_id,
+          host_id: host.id,
+          grant_id: input.grantId,
+          grant_revision: input.grantRevision,
+          status: "pending",
+          requester_identity: host.user_id,
+          pairing_token_hash: verifier,
+          target_key_id: host.runtime_key_id,
+          expires_at: input.expiresAt,
+          grant_expires_at: input.grantExpiresAt,
+        })
+        .returning();
+      if (!session) {
+        throw storageFailure("Failed to create target pairing challenge", {
+          hostId: host.id,
+        });
+      }
+      return session;
+    });
+  }
+
+  /** Same-owner controller claim; the target still has no executable grant. */
+  async claimPendingHostForOwner(input: {
+    organizationId: string;
+    userId: string;
+    sessionId?: string;
+    hostId?: string;
+    code: string;
+    pairingSecret: string;
+    controllerDeviceId: string;
+    controllerKeyId: string;
+    controllerDisplayName: string;
+    controllerPlatform: string;
+    controllerSigningPublicJwk: JsonWebKey;
+    controllerEncryptionPublicJwk: JsonWebKey;
+  }): Promise<ClaimRemoteHostPairingResult> {
+    if (Boolean(input.sessionId) === Boolean(input.hostId)) {
+      throw new TypeError("Pairing claim must bind exactly one challenge lookup");
+    }
+    return this.database.transaction(async (tx) => {
+      const hostLookup = input.sessionId
+        ? await tx
+            .select({ hostId: remoteSessions.host_id })
+            .from(remoteSessions)
+            .where(
+              and(
+                eq(remoteSessions.id, input.sessionId),
+                eq(remoteSessions.organization_id, input.organizationId),
+                eq(remoteSessions.user_id, input.userId),
+              ),
+            )
+            .limit(1)
+        : [{ hostId: input.hostId ?? null }];
+      const hostId = hostLookup[0]?.hostId;
+      if (!hostId) return { kind: "not_found" };
+      const [host] = await tx
+        .select()
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, hostId),
+            eq(remoteHosts.organization_id, input.organizationId),
+            eq(remoteHosts.user_id, input.userId),
+            eq(remoteHosts.status, "active"),
+          ),
+        )
+        .for("update");
+      if (!host) return { kind: "not_found" };
+      const now = await readPostLockDatabaseNow(tx);
+      const candidates = await tx
+        .select()
+        .from(remoteSessions)
+        .where(
+          and(
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, host.organization_id),
+            eq(remoteSessions.user_id, host.user_id),
+            eq(remoteSessions.status, "pending"),
+            isNull(remoteSessions.controller_device_id),
+            isNotNull(remoteSessions.pairing_token_hash),
+            gt(remoteSessions.expires_at, now),
+            ...(input.sessionId ? [eq(remoteSessions.id, input.sessionId)] : []),
+          ),
+        )
+        .orderBy(desc(remoteSessions.created_at))
+        .limit(CODE_ACTIVATION_CANDIDATE_LIMIT + 1)
+        .for("update");
+      if (candidates.length > CODE_ACTIVATION_CANDIDATE_LIMIT) {
+        return { kind: "invalid_pairing" };
+      }
+      const matches: RemoteSession[] = [];
+      for (const candidate of candidates) {
+        if (
+          candidate.pairing_token_hash &&
+          (await verifyRemotePairingCodeVerifier(
+            input.pairingSecret,
+            {
+              organizationId: host.organization_id,
+              userId: host.user_id,
+              hostId: host.id,
+              sessionId: candidate.id,
+            },
+            input.code,
+            candidate.pairing_token_hash,
+            now,
+          ))
+        ) {
+          matches.push(candidate);
+        }
+      }
+      if (matches.length !== 1) return { kind: "invalid_pairing" };
+      const session = matches[0];
+      if (!session) return { kind: "invalid_pairing" };
+      const [claimed] = await tx
+        .update(remoteSessions)
+        .set({
+          status: "claimed",
+          pairing_token_hash: null,
+          pairing_consumed_at: now,
+          controller_device_id: input.controllerDeviceId,
+          controller_key_id: input.controllerKeyId,
+          controller_display_name: input.controllerDisplayName,
+          controller_platform: input.controllerPlatform,
+          controller_signing_public_jwk: input.controllerSigningPublicJwk,
+          controller_encryption_public_jwk: input.controllerEncryptionPublicJwk,
+          updated_at: now,
+        })
+        .where(and(eq(remoteSessions.id, session.id), eq(remoteSessions.status, "pending")))
+        .returning();
+      if (!claimed) {
+        throw storageFailure("Locked target pairing challenge could not be claimed", {
+          sessionId: session.id,
+        });
+      }
+      return { kind: "claimed", session: claimed, host };
+    });
+  }
+
+  /** Reads one challenge for its authenticated target without owner bearer access. */
+  async readAuthenticatedHostPairing(input: {
+    sessionId: string;
+    hostId: string;
+    hostToken: string;
+  }): Promise<ReadRemoteHostPairingResult> {
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(input.hostToken);
+    } catch {
+      return { kind: "not_found" };
+    }
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select()
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, input.hostId),
+            eq(remoteHosts.host_token_hash, tokenHash),
+            eq(remoteHosts.status, "active"),
+          ),
+        )
+        .for("update");
+      if (!host) return { kind: "not_found" };
+      const [session] = await tx
+        .select()
+        .from(remoteSessions)
+        .where(
+          and(
+            eq(remoteSessions.id, input.sessionId),
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, host.organization_id),
+            eq(remoteSessions.user_id, host.user_id),
+          ),
+        )
+        .for("update");
+      if (!session) return { kind: "not_found" };
+      const now = await readPostLockDatabaseNow(tx);
+      if (
+        (session.status === "pending" || session.status === "claimed") &&
+        (!session.expires_at || session.expires_at.getTime() <= now.getTime())
+      ) {
+        const [expired] = await tx
+          .update(remoteSessions)
+          .set({ status: "expired", pairing_token_hash: null, ended_at: now, updated_at: now })
+          .where(
+            and(
+              eq(remoteSessions.id, session.id),
+              inArray(remoteSessions.status, ["pending", "claimed"]),
+            ),
+          )
+          .returning();
+        if (!expired) {
+          throw storageFailure("Locked target pairing challenge could not expire", {
+            sessionId: session.id,
+          });
+        }
+        return { kind: "found", session: expired };
+      }
+      return { kind: "found", session };
+    });
+  }
+
+  /** Explicit target confirmation is the only claimed -> activating edge. */
+  async confirmClaimedHost(input: {
+    sessionId: string;
+    hostId: string;
+    hostToken: string;
+  }): Promise<ActivateRemoteHostSessionResult> {
+    const read = await this.readAuthenticatedHostPairing(input);
+    if (read.kind === "not_found") return read;
+    if (read.session.status !== "claimed") return { kind: "invalid_pairing" };
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(input.hostToken);
+    } catch {
+      return { kind: "not_found" };
+    }
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select()
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, input.hostId),
+            eq(remoteHosts.host_token_hash, tokenHash),
+            eq(remoteHosts.status, "active"),
+          ),
+        )
+        .for("update");
+      if (!host) return { kind: "not_found" };
+      const [session] = await tx
+        .select()
+        .from(remoteSessions)
+        .where(
+          and(
+            eq(remoteSessions.id, input.sessionId),
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, host.organization_id),
+            eq(remoteSessions.user_id, host.user_id),
+          ),
+        )
+        .for("update");
+      if (!session || session.status !== "claimed") {
+        return { kind: "invalid_pairing" };
+      }
+      const now = await readPostLockDatabaseNow(tx);
+      if (!session.expires_at || session.expires_at.getTime() <= now.getTime()) {
+        await tx
+          .update(remoteSessions)
+          .set({ status: "expired", ended_at: now, updated_at: now })
+          .where(eq(remoteSessions.id, session.id));
+        return { kind: "invalid_pairing" };
+      }
+      const [activated] = await tx
+        .update(remoteSessions)
+        .set({ status: "activating", updated_at: now })
+        .where(and(eq(remoteSessions.id, session.id), eq(remoteSessions.status, "claimed")))
+        .returning();
+      if (!activated) {
+        throw storageFailure("Locked claimed pairing could not be confirmed", {
+          sessionId: session.id,
+        });
+      }
+      return { kind: "activated", session: activated };
     });
   }
 
@@ -532,7 +887,13 @@ export class RemoteSessionsRepository {
           alreadyCompensated: true,
         };
       }
-      if (session.status !== "activating") return { kind: "conflict" };
+      if (
+        session.status !== "pending" &&
+        session.status !== "claimed" &&
+        session.status !== "activating"
+      ) {
+        return { kind: "conflict" };
+      }
 
       const now = await readPostLockDatabaseNow(tx);
       const [compensated] = await tx
@@ -543,7 +904,12 @@ export class RemoteSessionsRepository {
           ended_at: now,
           updated_at: now,
         })
-        .where(and(eq(remoteSessions.id, session.id), eq(remoteSessions.status, "activating")))
+        .where(
+          and(
+            eq(remoteSessions.id, session.id),
+            inArray(remoteSessions.status, ["pending", "claimed", "activating"]),
+          ),
+        )
         .returning();
       if (!compensated) {
         throw storageFailure("Locked remote host activation could not be compensated", {
@@ -584,7 +950,7 @@ export class RemoteSessionsRepository {
             eq(remoteSessions.host_id, host.id),
             eq(remoteSessions.organization_id, organizationId),
             eq(remoteSessions.user_id, userId),
-            inArray(remoteSessions.status, ["pending", "activating", "active"]),
+            inArray(remoteSessions.status, ["pending", "claimed", "activating", "active"]),
           ),
         )
         .orderBy(desc(remoteSessions.created_at));
@@ -682,11 +1048,13 @@ export class RemoteSessionsRepository {
     row: RemoteSession,
     now: Date,
   ): Promise<RemoteSession | undefined> {
-    if (row.status !== "pending" && row.status !== "activating") return undefined;
+    if (row.status !== "pending" && row.status !== "claimed" && row.status !== "activating") {
+      return undefined;
+    }
     const runOut =
       row.expires_at !== null
         ? row.expires_at.getTime() <= now.getTime()
-        : row.status === "activating" ||
+        : row.status !== "pending" ||
           !isRemotePairingSessionCurrent(row.status, row.pairing_token_hash, now.getTime());
     if (!runOut) return undefined;
 
@@ -696,7 +1064,7 @@ export class RemoteSessionsRepository {
       .where(
         and(
           eq(remoteSessions.id, row.id),
-          inArray(remoteSessions.status, ["pending", "activating"]),
+          inArray(remoteSessions.status, ["pending", "claimed", "activating"]),
         ),
       )
       .returning();
@@ -723,7 +1091,7 @@ export class RemoteSessionsRepository {
         .from(remoteSessions)
         .where(
           and(
-            inArray(remoteSessions.status, ["pending", "activating"]),
+            inArray(remoteSessions.status, ["pending", "claimed", "activating"]),
             lte(remoteSessions.expires_at, now),
           ),
         )
@@ -741,7 +1109,7 @@ export class RemoteSessionsRepository {
               remoteSessions.id,
               candidates.map((candidate) => candidate.id),
             ),
-            inArray(remoteSessions.status, ["pending", "activating"]),
+            inArray(remoteSessions.status, ["pending", "claimed", "activating"]),
           ),
         )
         .returning({ id: remoteSessions.id });
@@ -875,7 +1243,7 @@ export class RemoteSessionsRepository {
       let session = current;
       if (OPEN_STATUSES.includes(current.status)) {
         const terminalStatus =
-          current.status === "pending" &&
+          (current.status === "pending" || current.status === "claimed") &&
           (!current.expires_at || current.expires_at.getTime() <= now.getTime())
             ? "expired"
             : "revoked";

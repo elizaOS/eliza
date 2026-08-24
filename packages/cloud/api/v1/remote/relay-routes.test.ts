@@ -52,6 +52,10 @@ const listNodesStrict = mock();
 const deleteNode = mock();
 const createPendingForOwnedAgent = mock();
 const createPendingForOwnedHost = mock();
+const createPendingForAuthenticatedHost = mock();
+const claimPendingHostForOwner = mock();
+const readAuthenticatedHostPairing = mock();
+const confirmClaimedHost = mock();
 const activatePendingHost = mock();
 const activatePendingHostByCode = mock();
 const compensateHostActivation = mock();
@@ -105,6 +109,10 @@ mock.module("@/db/repositories/remote-sessions", () => ({
   remoteSessionsRepository: {
     createPendingForOwnedAgent,
     createPendingForOwnedHost,
+    createPendingForAuthenticatedHost,
+    claimPendingHostForOwner,
+    readAuthenticatedHostPairing,
+    confirmClaimedHost,
     activatePendingHost,
     activatePendingHostByCode,
     compensateHostActivation,
@@ -264,6 +272,10 @@ beforeEach(() => {
     deleteNode,
     createPendingForOwnedAgent,
     createPendingForOwnedHost,
+    createPendingForAuthenticatedHost,
+    claimPendingHostForOwner,
+    readAuthenticatedHostPairing,
+    confirmClaimedHost,
     activatePendingHost,
     activatePendingHostByCode,
     compensateHostActivation,
@@ -710,6 +722,201 @@ describe("secure remote relay routes", () => {
     });
     expect(persisted.pairing_token_hash).toMatch(/^hmac-sha256-v3:/);
     expect(persisted.pairing_token_hash).not.toContain(body.data.code);
+  });
+
+  test("lets the authenticated Mac create a non-authoritative one-use controller challenge", async () => {
+    const expiresAt = new Date(Date.now() + 300_000);
+    const grantExpiresAt = new Date(Date.now() + 28_800_000);
+    createPendingForAuthenticatedHost.mockImplementation(async (input) => ({
+      id: input.id,
+      organization_id: organizationId,
+      user_id: ownerId,
+      host_id: hostId,
+      grant_id: input.grantId,
+      grant_revision: 1,
+      target_key_id: targetKeyId,
+      expires_at: expiresAt,
+      grant_expires_at: grantExpiresAt,
+      status: "pending",
+    }));
+
+    const response = await request(
+      "/api/v1/remote/sessions",
+      undefined,
+      hostHeaders(),
+      "POST",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = (await response.json()) as {
+      data: { code: string; status: string; capabilities: string[] };
+    };
+    expect(body.data.code).toMatch(/^\d{6}$/);
+    expect(body.data.status).toBe("pending");
+    expect(body.data.capabilities).toEqual(["agent.status", "agent.request"]);
+    expect(createPendingForAuthenticatedHost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hostId,
+        hostToken,
+        code: body.data.code,
+        pairingSecret: "route-pairing-secret-at-least-thirty-two-bytes",
+      }),
+    );
+    expect(
+      createPendingForAuthenticatedHost.mock.calls[0]?.[0],
+    ).not.toHaveProperty("controllerDeviceId");
+  });
+
+  test("binds an iPhone claim to the authenticated owner and waits for Mac confirmation", async () => {
+    const claimedAt = new Date();
+    const expiresAt = new Date(Date.now() + 300_000);
+    const grantExpiresAt = new Date(Date.now() + 28_800_000);
+    const claimedSession = {
+      id: sessionId,
+      organization_id: organizationId,
+      user_id: ownerId,
+      host_id: hostId,
+      grant_id: grantId,
+      grant_revision: 1,
+      target_key_id: targetKeyId,
+      expires_at: expiresAt,
+      grant_expires_at: grantExpiresAt,
+      status: "claimed",
+      controller_device_id: "iphone-one",
+      controller_key_id: controllerKeyId,
+      controller_display_name: "Nubs's iPhone",
+      controller_platform: "ios",
+      controller_signing_public_jwk: publicJwk,
+      controller_encryption_public_jwk: publicJwk,
+      pairing_consumed_at: claimedAt,
+    };
+    claimPendingHostForOwner.mockResolvedValue({
+      kind: "claimed",
+      session: claimedSession,
+      host: {
+        id: hostId,
+        device_id: "mac-one",
+        display_name: "Nubs's Mac",
+        platform: "macos",
+        runtime_key_id: targetKeyId,
+        signing_public_jwk: publicJwk,
+        encryption_public_jwk: publicJwk,
+        created_at: new Date("2026-08-22T06:15:00.000Z"),
+      },
+    });
+
+    const response = await request("/api/v1/remote/pair", {
+      sessionId,
+      code: "123456",
+      controller: {
+        ownerId: "attacker-owner-is-ignored",
+        deviceId: "iphone-one",
+        keyId: controllerKeyId,
+        displayName: "Nubs's iPhone",
+        platform: "ios",
+        signingPublicKeyJwk: publicJwk,
+        encryptionPublicKeyJwk: publicJwk,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(claimPendingHostForOwner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId,
+        userId: ownerId,
+        sessionId,
+        code: "123456",
+        controllerDeviceId: "iphone-one",
+        controllerKeyId,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        sessionId,
+        ownerId,
+        status: "claimed",
+        host: { id: hostId, displayName: "Nubs's Mac", platform: "macos" },
+      },
+    });
+
+    readAuthenticatedHostPairing.mockResolvedValue({
+      kind: "found",
+      session: claimedSession,
+    });
+    const read = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      undefined,
+      hostHeaders(),
+      "GET",
+    );
+    expect(read.status).toBe(200);
+    await expect(read.json()).resolves.toMatchObject({
+      data: {
+        status: "claimed",
+        controllerDeviceId: "iphone-one",
+        controllerKeyId,
+        controllerDisplayName: "Nubs's iPhone",
+        controllerPlatform: "ios",
+      },
+    });
+  });
+
+  test("fails closed on claim replay and requires explicit Mac confirmation", async () => {
+    claimPendingHostForOwner.mockResolvedValue({ kind: "invalid_pairing" });
+    const replay = await request("/api/v1/remote/pair", {
+      sessionId,
+      code: "123456",
+      controller: {
+        deviceId: "iphone-one",
+        keyId: controllerKeyId,
+        displayName: "Nubs's iPhone",
+        platform: "ios",
+        signingPublicKeyJwk: publicJwk,
+        encryptionPublicKeyJwk: publicJwk,
+      },
+    });
+    expect(replay.status).toBe(404);
+
+    confirmClaimedHost.mockResolvedValue({
+      kind: "activated",
+      session: {
+        id: sessionId,
+        grant_id: grantId,
+        grant_revision: 1,
+        user_id: ownerId,
+        host_id: hostId,
+        target_key_id: targetKeyId,
+        controller_device_id: "iphone-one",
+        controller_key_id: controllerKeyId,
+        controller_display_name: "Nubs's iPhone",
+        controller_platform: "ios",
+        controller_signing_public_jwk: publicJwk,
+        controller_encryption_public_jwk: publicJwk,
+        pairing_consumed_at: new Date("2026-08-22T06:30:00.000Z"),
+        grant_expires_at: new Date("2026-08-22T14:30:00.000Z"),
+        status: "activating",
+      },
+    });
+    const confirm = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      undefined,
+      hostHeaders(),
+      "PATCH",
+    );
+    expect(confirm.status).toBe(200);
+    expect(confirmClaimedHost).toHaveBeenCalledWith({
+      sessionId,
+      hostId,
+      hostToken,
+    });
+    await expect(confirm.json()).resolves.toMatchObject({
+      data: {
+        status: "activating",
+        controllerDeviceId: "iphone-one",
+        controllerKeyId,
+      },
+    });
   });
 
   test("commits only the exact host-authenticated staged activation and maps replay", async () => {

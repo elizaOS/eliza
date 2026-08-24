@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   RemoteHostDirectory,
   RemoteHostSummary,
-  RemotePairingReceipt,
+  RemotePairingClaimReceipt,
   RemoteSessionSummary,
 } from "../../api/remote-control-cloud-client";
 import {
@@ -18,8 +18,9 @@ import { getOrCreateRemoteControllerIdentity } from "../../platform/remote-contr
 import {
   getRemoteTargetIdentity,
   getRemoteTargetStatus,
+  readRemoteTargetPairingChallenge,
 } from "../../platform/remote-target";
-import { subscribeRemoteTargetPairingIntents } from "../../platform/remote-target-pairing-intent";
+import { subscribeRemoteControllerPairingIntents } from "../../platform/remote-target-pairing-intent";
 import { deleteRuntimeCredentialRecord } from "../../platform/runtime-credential-store";
 import {
   executeRuntimeManagementCommand,
@@ -39,6 +40,7 @@ import {
   switchRuntimeNonDestructive,
 } from "../../state";
 import {
+  type ControllerPairingClaimView,
   type DevicePairingView,
   type DeviceRuntimeTarget,
   DevicesRuntimesSection,
@@ -106,6 +108,26 @@ function platformName(platform: RemoteHostSummary["platform"]): string {
   if (platform === "ios") return "iPhone or iPad";
   if (platform === "android") return "Android device";
   return "Web runtime";
+}
+
+function desktopTargetPlatform(): "macos" | "windows" | "linux" | null {
+  const platform = navigator.platform.toLowerCase();
+  if (platform.includes("mac")) return "macos";
+  if (platform.includes("win")) return "windows";
+  if (platform.includes("linux")) return "linux";
+  return null;
+}
+
+function controllerClaimView(
+  claim: RemotePairingClaimReceipt,
+): ControllerPairingClaimView {
+  return {
+    sessionId: claim.sessionId,
+    hostLabel: claim.host.displayName,
+    hostPlatform: platformName(claim.host.platform),
+    hostKeyId: claim.host.runtimeKeyId,
+    capabilities: claim.capabilities,
+  };
 }
 
 function requireHostCreatedAt(value: string): number {
@@ -451,10 +473,9 @@ export function DevicesRuntimesContainer({
   const [linuxTarget, setLinuxTarget] = useState<LinuxRemoteTargetView | null>(
     null,
   );
-  const [pairing, setPairing] = useState<{
-    hostId: string;
-    receipt: RemotePairingReceipt;
-  } | null>(null);
+  const [pairing, setPairing] = useState<DevicePairingView | null>(null);
+  const [controllerClaim, setControllerClaim] =
+    useState<ControllerPairingClaimView | null>(null);
   const [sshInspection, setSshInspection] = useState<SshHostInspection | null>(
     null,
   );
@@ -481,10 +502,8 @@ export function DevicesRuntimesContainer({
       ),
     );
     setSshStatuses(new Map(statuses));
-    if (
-      isElectrobunRuntime() &&
-      navigator.platform.toLowerCase().includes("linux")
-    ) {
+    const targetPlatform = desktopTargetPlatform();
+    if (isElectrobunRuntime() && targetPlatform) {
       const [status, identity] = await Promise.all([
         getRemoteTargetStatus(),
         getRemoteTargetIdentity(),
@@ -492,6 +511,7 @@ export function DevicesRuntimesContainer({
       setLinuxTarget({
         ...status,
         hostId: identity.identity?.runtimeId ?? null,
+        platform: targetPlatform,
       });
     } else {
       setLinuxTarget(null);
@@ -579,19 +599,6 @@ export function DevicesRuntimesContainer({
     );
   }, [controller, directory, registry, sessions, sshStatuses]);
 
-  const pairingView: DevicePairingView | null = useMemo(() => {
-    if (!pairing) return null;
-    const host = directory?.hosts.find((item) => item.id === pairing.hostId);
-    return {
-      hostId: pairing.hostId,
-      hostLabel: host?.displayName ?? "remote device",
-      sessionId: pairing.receipt.sessionId,
-      code: pairing.receipt.code,
-      expiresAt: pairing.receipt.expiresAt,
-      qrPayload: `elizaos://remote/pair?session=${encodeURIComponent(pairing.receipt.sessionId)}&code=${pairing.receipt.code}`,
-    };
-  }, [directory, pairing]);
-
   const onSelect = (id: string) =>
     run(async () => {
       const result = switchRuntimeNonDestructive(id);
@@ -601,17 +608,17 @@ export function DevicesRuntimesContainer({
         );
     });
 
-  const onPair = (targetId: string) =>
+  const onPair = (targetId: string, code: string) =>
     run(async () => {
       const outcome = await executeRuntimeManagementCommand({
-        op: "pair",
+        op: "claim_pairing",
         targetId,
+        code,
       });
       if (!outcome.ok) throw new Error(outcome.error);
-      setPairing({
-        hostId: String(outcome.data?.hostId ?? ""),
-        receipt: outcome.data?.receipt as RemotePairingReceipt,
-      });
+      setControllerClaim(
+        controllerClaimView(outcome.data?.claim as RemotePairingClaimReceipt),
+      );
     });
 
   const onRevoke = (targetId: string) =>
@@ -670,37 +677,144 @@ export function DevicesRuntimesContainer({
 
   const onEnrollLinuxTarget = (managedNetwork: boolean) =>
     run(async () => {
+      const platform = desktopTargetPlatform();
+      if (!platform) {
+        throw new Error("Remote host enrollment requires a desktop platform.");
+      }
       const outcome = await executeRuntimeManagementCommand({
         op: "enroll_host",
         managedNetwork,
+        platform,
       });
       if (!outcome.ok) throw new Error(outcome.error);
       await refresh();
     });
 
-  const onActivateLinuxTarget = useCallback(
-    (input: { sessionId?: string; code: string }) =>
+  const onCreateTargetPairing = () =>
+    run(async () => {
+      const outcome = await executeRuntimeManagementCommand({
+        op: "create_pairing",
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
+      const challenge = outcome.data?.challenge as
+        | {
+            sessionId: string;
+            code: string;
+            expiresAt: number;
+            capabilities: string[];
+            status: "pending";
+          }
+        | undefined;
+      const identity = await getRemoteTargetIdentity();
+      if (!challenge || !identity.identity) {
+        throw new Error("This computer could not create a pairing challenge.");
+      }
+      const params = new URLSearchParams({
+        session: challenge.sessionId,
+        code: challenge.code,
+      });
+      setPairing({
+        hostId: identity.identity.runtimeId,
+        hostLabel:
+          linuxTarget?.platform === "macos"
+            ? "This Mac"
+            : linuxTarget?.platform === "windows"
+              ? "This Windows PC"
+              : "This Linux computer",
+        sessionId: challenge.sessionId,
+        code: challenge.code,
+        expiresAt: new Date(challenge.expiresAt).toISOString(),
+        qrPayload: `elizaos://remote/control-claim?${params.toString()}`,
+        capabilities: challenge.capabilities,
+        status: "pending",
+      });
+    });
+
+  const pairingSessionId = pairing?.sessionId;
+  useEffect(() => {
+    if (!pairingSessionId) return;
+    let cancelled = false;
+    const update = async () => {
+      try {
+        const status = await readRemoteTargetPairingChallenge(pairingSessionId);
+        if (cancelled) return;
+        if (status.status === "expired" || status.status === "denied") {
+          setPairing(null);
+          setError(
+            status.status === "expired"
+              ? "That pairing code expired. Create a new one to try again."
+              : "That controller claim was denied.",
+          );
+          return;
+        }
+        const liveStatus = status.status;
+        setPairing((current) =>
+          current?.sessionId === status.sessionId
+            ? {
+                ...current,
+                status: liveStatus,
+                capabilities: status.capabilities,
+                ...(status.controller ? { controller: status.controller } : {}),
+              }
+            : current,
+        );
+      } catch (cause) {
+        if (!cancelled) setError(messageFor(cause));
+      }
+    };
+    void update();
+    const timer = window.setInterval(() => void update(), 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [pairingSessionId]);
+
+  const onConfirmTargetPairing = (sessionId: string) =>
+    run(async () => {
+      const outcome = await executeRuntimeManagementCommand({
+        op: "confirm_pairing",
+        sessionId,
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
+      setPairing(null);
+      await refresh();
+    });
+
+  const onDenyTargetPairing = (sessionId: string) =>
+    run(async () => {
+      const outcome = await executeRuntimeManagementCommand({
+        op: "deny_pairing",
+        sessionId,
+      });
+      if (!outcome.ok) throw new Error(outcome.error);
+      setPairing(null);
+    });
+
+  const onClaimControllerPairing = useCallback(
+    (input: { sessionId: string; code: string }) =>
       run(async () => {
         const outcome = await executeRuntimeManagementCommand({
-          op: "approve_pairing",
+          op: "claim_pairing",
           ...input,
         });
         if (!outcome.ok) throw new Error(outcome.error);
-        setPairing(null);
-        await refresh();
+        setControllerClaim(
+          controllerClaimView(outcome.data?.claim as RemotePairingClaimReceipt),
+        );
       }),
-    [refresh, run],
+    [run],
   );
 
   useEffect(
     () =>
-      subscribeRemoteTargetPairingIntents((intent) =>
-        onActivateLinuxTarget({
+      subscribeRemoteControllerPairingIntents((intent) =>
+        onClaimControllerPairing({
           sessionId: intent.sessionId,
           code: intent.code,
         }),
       ),
-    [onActivateLinuxTarget],
+    [onClaimControllerPairing],
   );
 
   const onSetLinuxTargetRunning = (running: boolean) =>
@@ -727,7 +841,8 @@ export function DevicesRuntimesContainer({
     <DevicesRuntimesSection
       className={className}
       targets={targets}
-      pairing={pairingView}
+      pairing={pairing}
+      controllerClaim={controllerClaim}
       sshInspection={sshInspection}
       linuxTarget={linuxTarget}
       busy={busy}
@@ -742,7 +857,9 @@ export function DevicesRuntimesContainer({
       onInspectSsh={onInspectSsh}
       onConnectSsh={onConnectSsh}
       onEnrollLinuxTarget={onEnrollLinuxTarget}
-      onActivateLinuxTarget={onActivateLinuxTarget}
+      onCreateTargetPairing={onCreateTargetPairing}
+      onConfirmTargetPairing={onConfirmTargetPairing}
+      onDenyTargetPairing={onDenyTargetPairing}
       onSetLinuxTargetRunning={onSetLinuxTargetRunning}
       onRevokeLinuxTarget={onRevokeLinuxTarget}
     />

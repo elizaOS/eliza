@@ -1,27 +1,29 @@
-/** Strict, in-memory dispatch for target-side remote pairing deep links. */
+/** Strict, in-memory dispatch for controller-side remote pairing claims. */
 
-const REMOTE_PAIRING_INTENT_EVENT = "eliza:remote-target-pairing";
+const REMOTE_PAIRING_INTENT_EVENT = "eliza:remote-controller-pairing";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export interface RemoteTargetPairingIntent {
+export interface RemoteControllerPairingIntent {
   sessionId: string;
   code: string;
   source: "qr";
 }
 
-let pendingIntent: RemoteTargetPairingIntent | null = null;
+let pendingIntent: RemoteControllerPairingIntent | null = null;
 
 /**
  * Accepts only the canonical
- * `elizaos://remote/pair?session=<uuid>&code=<six-digits>` shape. Unknown,
+ * `elizaos://remote/control-claim?session=<uuid>&code=<six-digits>` shape.
+ * The distinct path can never be mistaken for the retired target-consumes
+ * deep link. Unknown,
  * duplicated, or extra fields fail closed so the URI cannot grow an implicit
  * credential or redirect channel.
  */
-export function parseRemoteTargetPairingDeepLink(
+export function parseRemoteControllerPairingDeepLink(
   rawUrl: string,
   urlScheme = "elizaos",
-): RemoteTargetPairingIntent | null {
+): RemoteControllerPairingIntent | null {
   if (rawUrl.length === 0 || rawUrl.length > 2_048) return null;
   let parsed: URL;
   try {
@@ -33,7 +35,7 @@ export function parseRemoteTargetPairingDeepLink(
   if (
     parsed.protocol !== `${urlScheme.toLowerCase()}:` ||
     parsed.host !== "remote" ||
-    parsed.pathname !== "/pair" ||
+    parsed.pathname !== "/control-claim" ||
     parsed.username ||
     parsed.password ||
     parsed.port ||
@@ -56,8 +58,8 @@ export function parseRemoteTargetPairingDeepLink(
 }
 
 /** Keeps at most one short-lived QR intent in renderer memory until Settings mounts. */
-export function dispatchRemoteTargetPairingIntent(
-  intent: RemoteTargetPairingIntent,
+export function dispatchRemoteControllerPairingIntent(
+  intent: RemoteControllerPairingIntent,
 ): void {
   pendingIntent = intent;
   if (typeof window !== "undefined") {
@@ -68,24 +70,24 @@ export function dispatchRemoteTargetPairingIntent(
 }
 
 /** Subscribes one consumer and atomically drains an intent queued before mount. */
-export function subscribeRemoteTargetPairingIntents(
-  listener: (intent: RemoteTargetPairingIntent) => void | Promise<void>,
+export function subscribeRemoteControllerPairingIntents(
+  listener: (intent: RemoteControllerPairingIntent) => void | Promise<void>,
 ): () => void {
-  const claim = (intent: RemoteTargetPairingIntent): void => {
+  const claim = (intent: RemoteControllerPairingIntent): void => {
     if (pendingIntent !== intent) return;
     pendingIntent = null;
     void listener(intent);
   };
   const handle = (event: Event): void => {
     if (!(event instanceof CustomEvent)) return;
-    claim(event.detail as RemoteTargetPairingIntent);
+    claim(event.detail as RemoteControllerPairingIntent);
   };
   window.addEventListener(REMOTE_PAIRING_INTENT_EVENT, handle);
   if (pendingIntent) claim(pendingIntent);
   return () => window.removeEventListener(REMOTE_PAIRING_INTENT_EVENT, handle);
 }
 
-export const remoteTargetPairingIntentInternals = {
+export const remoteControllerPairingIntentInternals = {
   clearPending(): void {
     pendingIntent = null;
   },

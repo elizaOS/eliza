@@ -133,8 +133,8 @@ import {
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
 import {
-  dispatchRemoteTargetPairingIntent,
-  parseRemoteTargetPairingDeepLink,
+  dispatchRemoteControllerPairingIntent,
+  parseRemoteControllerPairingDeepLink,
 } from "@elizaos/ui/platform/remote-target-pairing-intent";
 import { startRendererServiceHost } from "@elizaos/ui/platform/renderer-services";
 import {
@@ -2190,7 +2190,10 @@ async function handleAuthCallbackDeepLink(
  * can await it instead of acking on dispatch alone.
  */
 function handleDeepLink(url: string): undefined | Promise<boolean> {
-  const remotePairing = parseRemoteTargetPairingDeepLink(url, APP_URL_SCHEME);
+  const remotePairing = parseRemoteControllerPairingDeepLink(
+    url,
+    APP_URL_SCHEME,
+  );
   if (remotePairing) {
     if (
       !isElectrobunRuntime() ||
@@ -2201,7 +2204,7 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
       );
       return;
     }
-    dispatchRemoteTargetPairingIntent(remotePairing);
+    dispatchRemoteControllerPairingIntent(remotePairing);
     return dispatchDeepLinkNavigation({
       viewId: "settings",
       viewPath: "/settings",

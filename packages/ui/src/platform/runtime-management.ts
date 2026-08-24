@@ -25,6 +25,9 @@ import {
 } from "./remote-controller";
 import {
   activateRemoteTarget,
+  compensateRemoteTargetActivation,
+  confirmRemoteTargetPairing,
+  createRemoteTargetPairingChallenge,
   enrollRemoteTarget,
   finalizeRemoteTargetHostRevoke,
   getRemoteTargetIdentity,
@@ -227,6 +230,59 @@ async function execute(
     };
   }
 
+  if (request.op === "create_pairing") {
+    if (!isElectrobunRuntime()) {
+      throw new Error(
+        "Pairing challenges must be created on the target desktop.",
+      );
+    }
+    const identity = await getRemoteTargetIdentity();
+    if (!identity.enrolled) {
+      throw new Error("Enroll this computer before pairing a controller.");
+    }
+    return { challenge: await createRemoteTargetPairingChallenge() };
+  }
+
+  if (request.op === "claim_pairing") {
+    const cloud = createDefaultRemoteControlCloudClient();
+    const directory = await cloud.listHosts();
+    const controller = await getOrCreateRemoteControllerIdentity({
+      ownerId: directory.ownerId,
+    });
+    const sessionId = request.sessionId?.trim();
+    const hostId = request.targetId?.replace(/^host:/, "").trim();
+    return {
+      claim: await cloud.claimPairing({
+        ...(sessionId
+          ? { sessionId }
+          : { hostId: requiredString(hostId, "targetId") }),
+        code: requiredString(request.code, "code"),
+        controller,
+      }),
+    };
+  }
+
+  if (request.op === "confirm_pairing") {
+    const result = await confirmRemoteTargetPairing(
+      requiredString(request.sessionId, "sessionId"),
+    );
+    if (result.status !== "active") {
+      throw new Error(
+        `Pairing confirmation requires ${result.status === "commit_required" ? "Cloud commit" : "Cloud compensation"} retry for session ${result.sessionId}.`,
+      );
+    }
+    await startRemoteTarget();
+    return { controllerDisplayName: result.controllerDisplayName };
+  }
+
+  if (request.op === "deny_pairing") {
+    return {
+      denial: await compensateRemoteTargetActivation(
+        requiredString(request.sessionId, "sessionId"),
+      ),
+    };
+  }
+
   if (request.op === "revoke") {
     await revokeRuntime(requiredString(request.targetId, "targetId"));
     return {};
@@ -320,11 +376,26 @@ async function execute(
     const cloud = createDefaultRemoteControlCloudClient();
     const directory = await cloud.listHosts();
     const connection = getDefaultRemoteControlCloudConnection();
+    const platform = request.platform;
+    if (
+      platform !== "macos" &&
+      platform !== "windows" &&
+      platform !== "linux"
+    ) {
+      throw new Error("Desktop platform is required for host enrollment.");
+    }
     const enrollment = await enrollRemoteTarget({
       apiBaseUrl: connection.baseUrl,
       ownerId: directory.ownerId,
       ownerAccessToken: connection.authToken,
-      displayName: "My Linux computer",
+      displayName:
+        request.label?.trim() ||
+        (platform === "macos"
+          ? "My Mac"
+          : platform === "windows"
+            ? "My Windows PC"
+            : "My Linux computer"),
+      platform,
       managedNetwork: request.managedNetwork === true,
     });
     return { hostId: enrollment.hostId };

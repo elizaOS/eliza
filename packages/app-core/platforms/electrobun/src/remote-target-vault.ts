@@ -23,6 +23,7 @@ export interface PendingRemoteTargetVaultRecord {
   ownerId: string;
   deviceId: string;
   displayName: string;
+  platform?: "macos" | "windows" | "linux";
   keyId: string;
   signingPrivateKeyJwk: JsonWebKey;
   encryptionPrivateKeyJwk: JsonWebKey;
@@ -182,7 +183,11 @@ function parseRecord(raw: string): RemoteTargetVaultRecord {
         128 ||
       Reflect.get(value, "keyId") !==
         keyId(signingPrivateKeyJwk, encryptionPrivateKeyJwk) ||
-      !Number.isSafeInteger(Reflect.get(value, "createdAt"))
+      !Number.isSafeInteger(Reflect.get(value, "createdAt")) ||
+      (Reflect.get(value, "platform") !== undefined &&
+        !["macos", "windows", "linux"].includes(
+          Reflect.get(value, "platform") as string,
+        ))
     ) {
       throw new Error("Stored remote target identity is corrupt.");
     }
@@ -255,6 +260,7 @@ export class RemoteTargetVault {
   async prepare(input: {
     ownerId: string;
     displayName: string;
+    platform: "macos" | "windows" | "linux";
     now: number;
   }): Promise<
     PendingRemoteTargetVaultRecord | EnrolledRemoteTargetVaultRecord
@@ -286,6 +292,7 @@ export class RemoteTargetVault {
         ownerId: input.ownerId,
         deviceId: randomUUID(),
         displayName: input.displayName.trim(),
+        platform: input.platform,
         keyId: keyId(signingPrivateKeyJwk, encryptionPrivateKeyJwk),
         signingPrivateKeyJwk,
         encryptionPrivateKeyJwk,
@@ -340,7 +347,7 @@ export class RemoteTargetVault {
         runtimeId: input.hostId,
         keyId: existing.keyId,
         displayName: existing.displayName,
-        platform: "linux",
+        platform: existing.platform ?? "linux",
         signingPublicKeyJwk: publicJwk(existing.signingPrivateKeyJwk),
         encryptionPublicKeyJwk: publicJwk(existing.encryptionPrivateKeyJwk),
         createdAt: input.createdAt,

@@ -19,6 +19,7 @@ const migrations = [
   "0310_personal_shared_inbound_media_admission",
   "0312_remote_session_two_phase_activation",
   "0313_remote_host_managed_network",
+  "0314_remote_target_initiated_pairing",
 ] as const;
 
 async function applyMigration(
@@ -71,7 +72,7 @@ realPostgresTest(
         VALUES ('bluebubbles-local-bridge');
       `);
 
-      for (const migration of migrations.slice(0, -1)) {
+      for (const migration of migrations.slice(0, -2)) {
         await applyMigration(client, migration);
       }
 
@@ -93,6 +94,7 @@ realPostgresTest(
       expect(managedColumnsBeforeUpgrade.rows).toEqual([{ count: "0" }]);
 
       await applyMigration(client, "0313_remote_host_managed_network");
+      await applyMigration(client, "0314_remote_target_initiated_pairing");
 
       const tables = await client.query<{ table_name: string }>(`
         SELECT table_name
@@ -142,12 +144,14 @@ realPostgresTest(
           'remote_hosts_status_check',
           'remote_sessions_exactly_one_target_check',
           'remote_sessions_host_authority_shape_check',
+          'remote_sessions_host_controller_identity_atomic_check',
+          'remote_sessions_host_pairing_lifecycle_check',
           'remote_hosts_status_check',
           'remote_command_envelopes_lifecycle_shape_check'
         )
         ORDER BY conname
       `);
-      expect(constraints.rows).toHaveLength(4);
+      expect(constraints.rows).toHaveLength(6);
       const definitions = constraints.rows
         .map((row) => `${row.name}: ${row.definition}`)
         .join("\n");
@@ -155,6 +159,7 @@ realPostgresTest(
       expect(definitions).toContain("pending");
       expect(definitions).toContain("controller_device_id");
       expect(definitions).toContain("host_id");
+      expect(definitions).toContain("claimed");
       expect(definitions).toContain("pending");
 
       await client.query(`

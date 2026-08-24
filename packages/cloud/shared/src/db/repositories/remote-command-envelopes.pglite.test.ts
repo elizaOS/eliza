@@ -215,6 +215,7 @@ beforeAll(async () => {
     "0306_secure_remote_command_relay",
     "0312_remote_session_two_phase_activation",
     "0313_remote_host_managed_network",
+    "0314_remote_target_initiated_pairing",
   ]) {
     await applyMigration(migration);
   }
@@ -408,6 +409,160 @@ describe("secure remote relay repositories", () => {
         hostTokenHash: await hashRemoteHostToken(generateRemoteHostToken()),
       }),
     ).toEqual({ kind: "mismatch" });
+  });
+
+  it("runs target challenge claim, confirmation, expiry, denial, replay, and no-resurrection", async () => {
+    hostToken = generateRemoteHostToken();
+    await hosts.createOwned({
+      id: hostId,
+      organization_id: organizationId,
+      user_id: ownerId,
+      device_id: "mac-one",
+      display_name: "Nubs's Mac",
+      platform: "macos",
+      connection_mode: "relay",
+      runtime_key_id: targetKeyId,
+      signing_public_jwk: ecPublicJwk,
+      encryption_public_jwk: ecPublicJwk,
+      host_token_hash: await hashRemoteHostToken(hostToken),
+      status: "active",
+    });
+
+    const challenge = async (id: string, code: string) =>
+      sessions.createPendingForAuthenticatedHost({
+        id,
+        hostId,
+        hostToken,
+        grantId: crypto.randomUUID(),
+        grantRevision: 1,
+        code,
+        pairingSecret,
+        expiresAt: new Date(Date.now() + 5 * 60_000),
+        grantExpiresAt: new Date(Date.now() + 60 * 60_000),
+      });
+    expect(await challenge(sessionId, "123456")).toMatchObject({
+      status: "pending",
+      controller_device_id: null,
+      pairing_consumed_at: null,
+    });
+    const [pending] = await database.select().from(remoteSessions);
+    expect(pending?.pairing_token_hash).toMatch(/^hmac-sha256-v3:/);
+    expect(pending?.pairing_token_hash).not.toContain("123456");
+
+    const controller = {
+      controllerDeviceId: "iphone-one",
+      controllerKeyId,
+      controllerDisplayName: "Nubs's iPhone",
+      controllerPlatform: "ios",
+      controllerSigningPublicJwk: ecPublicJwk,
+      controllerEncryptionPublicJwk: ecPublicJwk,
+    };
+    expect(
+      await sessions.claimPendingHostForOwner({
+        organizationId,
+        userId: otherOwnerId,
+        sessionId,
+        code: "123456",
+        pairingSecret,
+        ...controller,
+      }),
+    ).toEqual({ kind: "not_found" });
+    expect(
+      await sessions.claimPendingHostForOwner({
+        organizationId,
+        userId: ownerId,
+        sessionId,
+        code: "123456",
+        pairingSecret,
+        ...controller,
+      }),
+    ).toMatchObject({
+      kind: "claimed",
+      session: {
+        status: "claimed",
+        controller_device_id: "iphone-one",
+        controller_key_id: controllerKeyId,
+        pairing_token_hash: null,
+      },
+    });
+    expect(
+      await sessions.claimPendingHostForOwner({
+        organizationId,
+        userId: ownerId,
+        sessionId,
+        code: "123456",
+        pairingSecret,
+        ...controller,
+      }),
+    ).toEqual({ kind: "invalid_pairing" });
+    expect(
+      await sessions.readAuthenticatedHostPairing({
+        sessionId,
+        hostId,
+        hostToken: generateRemoteHostToken(),
+      }),
+    ).toEqual({ kind: "not_found" });
+    expect(await sessions.confirmClaimedHost({ sessionId, hostId, hostToken })).toMatchObject({
+      kind: "activated",
+      session: { status: "activating" },
+    });
+    expect(await sessions.commitHostActivation({ sessionId, hostId, hostToken })).toMatchObject({
+      kind: "committed",
+      session: { status: "active" },
+    });
+    expect(await sessions.revoke(sessionId, organizationId, ownerId)).toMatchObject({
+      session: { status: "revoked" },
+      alreadyEnded: false,
+    });
+    expect(
+      await new RemoteSessionsRepository(database).listByOwnedHost(hostId, organizationId, ownerId),
+    ).toEqual([]);
+
+    const expiredSessionId = "50000000-0000-4000-8000-000000000002";
+    await challenge(expiredSessionId, "234567");
+    await database.execute(sql`
+      UPDATE remote_sessions
+      SET expires_at = now() - interval '1 second'
+      WHERE id = ${expiredSessionId}
+    `);
+    expect(
+      await sessions.readAuthenticatedHostPairing({
+        sessionId: expiredSessionId,
+        hostId,
+        hostToken,
+      }),
+    ).toMatchObject({ kind: "found", session: { status: "expired" } });
+    expect(
+      await sessions.claimPendingHostForOwner({
+        organizationId,
+        userId: ownerId,
+        sessionId: expiredSessionId,
+        code: "234567",
+        pairingSecret,
+        ...controller,
+      }),
+    ).toEqual({ kind: "invalid_pairing" });
+
+    const deniedSessionId = "50000000-0000-4000-8000-000000000003";
+    await challenge(deniedSessionId, "345678");
+    expect(
+      await sessions.compensateHostActivation({
+        sessionId: deniedSessionId,
+        hostId,
+        hostToken,
+      }),
+    ).toMatchObject({
+      kind: "compensated",
+      session: { status: "denied" },
+      alreadyCompensated: false,
+    });
+    expect(
+      await sessions.compensateHostActivation({
+        sessionId: deniedSessionId,
+        hostId,
+        hostToken,
+      }),
+    ).toMatchObject({ kind: "compensated", alreadyCompensated: true });
   });
 
   it("consumes a host-bound pairing verifier only once", async () => {

@@ -136,9 +136,12 @@ import {
   desktopRemoteTargetActivate,
   desktopRemoteTargetCommitActivation,
   desktopRemoteTargetCompensateActivation,
+  desktopRemoteTargetConfirmPairing,
+  desktopRemoteTargetCreatePairingChallenge,
   desktopRemoteTargetEnroll,
   desktopRemoteTargetFinalizeHostRevoke,
   desktopRemoteTargetGetIdentity,
+  desktopRemoteTargetReadPairingChallenge,
   desktopRemoteTargetRevoke,
   desktopRemoteTargetStart,
   desktopRemoteTargetStatus,
@@ -1444,6 +1447,16 @@ export function buildBunRpcHandlers({
       desktopAcknowledgeRemoteCommandEnqueue(params),
     remoteTargetEnroll: async (params) => desktopRemoteTargetEnroll(params),
     remoteTargetGetIdentity: async () => desktopRemoteTargetGetIdentity(),
+    remoteTargetCreatePairingChallenge: async () => {
+      await configureRemoteTargetForCurrentLoopback();
+      return desktopRemoteTargetCreatePairingChallenge();
+    },
+    remoteTargetReadPairingChallenge: async (params) =>
+      desktopRemoteTargetReadPairingChallenge(params),
+    remoteTargetConfirmPairing: async (params) => {
+      await configureRemoteTargetForCurrentLoopback();
+      return desktopRemoteTargetConfirmPairing(params);
+    },
     remoteTargetActivate: async (params) => {
       await configureRemoteTargetForCurrentLoopback();
       return desktopRemoteTargetActivate(params);

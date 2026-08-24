@@ -10,6 +10,7 @@ import {
   type EncryptedRemoteControlEnvelope,
   isEncryptedRemoteControlEnvelope,
   isRemoteControllerPublicIdentity,
+  REMOTE_TARGET_PAIRING_CAPABILITIES,
   type RemoteControllerPublicIdentity,
 } from "@elizaos/shared/contracts/remote-control";
 import type { RemoteTargetManagedNetworkEnrollment } from "./remote-target-managed-network";
@@ -47,6 +48,7 @@ export interface RemoteTargetEnrollmentRequest {
   ownerId: string;
   deviceId: string;
   displayName: string;
+  platform: "macos" | "windows" | "linux";
   runtimeKeyId: string;
   signingPublicKeyJwk: JsonWebKey;
   encryptionPublicKeyJwk: JsonWebKey;
@@ -73,6 +75,25 @@ export interface RemoteTargetActivationResponse {
   targetKeyId: string;
   grantExpiresAt: number;
   status: "activating";
+}
+
+export interface RemoteTargetPairingChallenge {
+  sessionId: string;
+  code: string;
+  expiresAt: number;
+  capabilities: string[];
+  status: "pending";
+}
+
+export interface RemoteTargetPairingChallengeStatus {
+  sessionId: string;
+  status: "pending" | "claimed" | "denied" | "expired";
+  expiresAt: number;
+  capabilities: string[];
+  controller?: Pick<
+    RemoteControllerPublicIdentity,
+    "deviceId" | "keyId" | "displayName" | "platform"
+  >;
 }
 
 export interface RemoteTargetActivationCompensationResponse {
@@ -115,6 +136,17 @@ export interface RemoteTargetRelayTransport {
     enrollment: EnrolledRemoteTargetVaultRecord;
     sessionId?: string;
     code: string;
+  }): Promise<RemoteTargetActivationResponse>;
+  createPairingChallenge(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+  }): Promise<RemoteTargetPairingChallenge>;
+  readPairingChallenge(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    sessionId: string;
+  }): Promise<RemoteTargetPairingChallengeStatus>;
+  confirmPairing(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    sessionId: string;
   }): Promise<RemoteTargetActivationResponse>;
   compensateActivation(input: {
     enrollment: EnrolledRemoteTargetVaultRecord;
@@ -169,6 +201,65 @@ function requireTimestamp(value: unknown): number {
     throw new Error("Remote relay response contains an invalid timestamp.");
   }
   return parsed;
+}
+
+function requirePairingCapabilities(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length !== REMOTE_TARGET_PAIRING_CAPABILITIES.length ||
+    value.some(
+      (item, index) => item !== REMOTE_TARGET_PAIRING_CAPABILITIES[index],
+    )
+  ) {
+    throw new Error("Remote pairing capabilities are invalid.");
+  }
+  return [...REMOTE_TARGET_PAIRING_CAPABILITIES];
+}
+
+function parseActivationResponse(
+  data: Record<string, unknown>,
+  expectedSessionId: string,
+): RemoteTargetActivationResponse {
+  const controller: RemoteControllerPublicIdentity = {
+    version: 1,
+    role: "controller",
+    ownerId: data.ownerId as string,
+    deviceId: data.controllerDeviceId as string,
+    keyId: data.controllerKeyId as string,
+    displayName: data.controllerDisplayName as string,
+    platform:
+      data.controllerPlatform as RemoteControllerPublicIdentity["platform"],
+    signingPublicKeyJwk: data.controllerSigningPublicKeyJwk as JsonWebKey,
+    encryptionPublicKeyJwk: data.controllerEncryptionPublicKeyJwk as JsonWebKey,
+    createdAt: requireTimestamp(data.controllerCreatedAt),
+  };
+  const sessionId = requireUuid(data.sessionId);
+  if (
+    sessionId !== expectedSessionId ||
+    data.status !== "activating" ||
+    !Number.isSafeInteger(data.grantRevision) ||
+    (data.grantRevision as number) < 1 ||
+    !isRemoteControllerPublicIdentity(controller)
+  ) {
+    throw new Error("Remote session activation response is invalid.");
+  }
+  return {
+    sessionId,
+    grantId: requireUuid(data.grantId),
+    grantRevision: data.grantRevision as number,
+    ownerId: controller.ownerId,
+    controller,
+    targetRuntimeId: requireUuid(data.targetRuntimeId),
+    targetKeyId:
+      typeof data.targetKeyId === "string" &&
+      /^[A-Za-z0-9._:-]{1,256}$/.test(data.targetKeyId)
+        ? data.targetKeyId
+        : (() => {
+            throw new Error("Remote activation target key is invalid.");
+          })(),
+    grantExpiresAt: requireTimestamp(data.grantExpiresAt),
+    status: "activating",
+  };
 }
 
 export function normalizeRemoteTargetApiBase(value: string): string {
@@ -317,7 +408,7 @@ export class HttpRemoteTargetRelayTransport
     const expectedPublic = {
       deviceId: input.deviceId,
       displayName: input.displayName,
-      platform: "linux",
+      platform: input.platform,
       connectionMode: "relay",
       runtimeKeyId: input.runtimeKeyId,
       signingPublicKeyJwk: input.signingPublicKeyJwk,
@@ -368,7 +459,7 @@ export class HttpRemoteTargetRelayTransport
         body: JSON.stringify({
           deviceId: input.deviceId,
           displayName: input.displayName,
-          platform: "linux",
+          platform: input.platform,
           connectionMode: "relay",
           runtimeKeyId: input.runtimeKeyId,
           signingPublicKeyJwk: input.signingPublicKeyJwk,
@@ -509,47 +600,105 @@ export class HttpRemoteTargetRelayTransport
         },
       ),
     );
-    const controller: RemoteControllerPublicIdentity = {
-      version: 1,
-      role: "controller",
-      ownerId: data.ownerId as string,
-      deviceId: data.controllerDeviceId as string,
-      keyId: data.controllerKeyId as string,
-      displayName: data.controllerDisplayName as string,
-      platform:
-        data.controllerPlatform as RemoteControllerPublicIdentity["platform"],
-      signingPublicKeyJwk: data.controllerSigningPublicKeyJwk as JsonWebKey,
-      encryptionPublicKeyJwk:
-        data.controllerEncryptionPublicKeyJwk as JsonWebKey,
-      createdAt: requireTimestamp(data.controllerCreatedAt),
-    };
     const sessionId = requireUuid(data.sessionId);
-    if (
-      (expectedSessionId !== null && sessionId !== expectedSessionId) ||
-      data.status !== "activating" ||
-      !Number.isSafeInteger(data.grantRevision) ||
-      (data.grantRevision as number) < 1 ||
-      !isRemoteControllerPublicIdentity(controller)
-    ) {
+    if (expectedSessionId !== null && sessionId !== expectedSessionId) {
       throw new Error("Remote session activation response is invalid.");
+    }
+    return parseActivationResponse(data, sessionId);
+  }
+
+  async createPairingChallenge(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+  }): Promise<RemoteTargetPairingChallenge> {
+    const data = requireObject(
+      await this.request(
+        input.enrollment.apiBaseUrl,
+        "/api/v1/remote/sessions",
+        {
+          method: "POST",
+          headers: this.hostHeaders(input.enrollment),
+        },
+      ),
+    );
+    const code = typeof data.code === "string" ? data.code : "";
+    if (!/^\d{6}$/.test(code) || data.status !== "pending") {
+      throw new Error("Remote pairing challenge response is invalid.");
+    }
+    return {
+      sessionId: requireUuid(data.sessionId),
+      code,
+      expiresAt: requireTimestamp(data.expiresAt),
+      capabilities: requirePairingCapabilities(data.capabilities),
+      status: "pending",
+    };
+  }
+
+  async readPairingChallenge(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    sessionId: string;
+  }): Promise<RemoteTargetPairingChallengeStatus> {
+    const sessionId = requireUuid(input.sessionId);
+    const data = requireObject(
+      await this.request(
+        input.enrollment.apiBaseUrl,
+        `/api/v1/remote/sessions/${encodeURIComponent(sessionId)}/activate`,
+        { method: "GET", headers: this.hostHeaders(input.enrollment) },
+      ),
+    );
+    const status = data.status;
+    if (
+      requireUuid(data.sessionId) !== sessionId ||
+      (status !== "pending" &&
+        status !== "claimed" &&
+        status !== "denied" &&
+        status !== "expired")
+    ) {
+      throw new Error("Remote pairing challenge status is invalid.");
+    }
+    const capabilities = requirePairingCapabilities(data.capabilities);
+    const controller =
+      status === "claimed"
+        ? {
+            deviceId: String(data.controllerDeviceId ?? ""),
+            keyId: String(data.controllerKeyId ?? ""),
+            displayName: String(data.controllerDisplayName ?? ""),
+            platform:
+              data.controllerPlatform as RemoteControllerPublicIdentity["platform"],
+          }
+        : undefined;
+    if (
+      controller &&
+      (!controller.deviceId ||
+        !controller.keyId ||
+        !controller.displayName ||
+        !["ios", "macos", "windows", "linux", "android", "web"].includes(
+          controller.platform,
+        ))
+    ) {
+      throw new Error("Remote pairing controller identity is invalid.");
     }
     return {
       sessionId,
-      grantId: requireUuid(data.grantId),
-      grantRevision: data.grantRevision as number,
-      ownerId: controller.ownerId,
-      controller,
-      targetRuntimeId: requireUuid(data.targetRuntimeId),
-      targetKeyId:
-        typeof data.targetKeyId === "string" &&
-        /^[A-Za-z0-9._:-]{1,256}$/.test(data.targetKeyId)
-          ? data.targetKeyId
-          : (() => {
-              throw new Error("Remote activation target key is invalid.");
-            })(),
-      grantExpiresAt: requireTimestamp(data.grantExpiresAt),
-      status: "activating",
+      status,
+      expiresAt: requireTimestamp(data.expiresAt),
+      capabilities,
+      ...(controller ? { controller } : {}),
     };
+  }
+
+  async confirmPairing(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+    sessionId: string;
+  }): Promise<RemoteTargetActivationResponse> {
+    const sessionId = requireUuid(input.sessionId);
+    const data = requireObject(
+      await this.request(
+        input.enrollment.apiBaseUrl,
+        `/api/v1/remote/sessions/${encodeURIComponent(sessionId)}/activate`,
+        { method: "PATCH", headers: this.hostHeaders(input.enrollment) },
+      ),
+    );
+    return parseActivationResponse(data, sessionId);
   }
 
   async commitActivation(input: {

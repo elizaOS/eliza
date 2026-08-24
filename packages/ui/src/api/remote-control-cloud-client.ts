@@ -11,6 +11,7 @@ import type {
 import {
   isEncryptedRemoteControlEnvelope,
   isRemoteControlIdentifier,
+  REMOTE_TARGET_PAIRING_CAPABILITIES,
 } from "@elizaos/shared/contracts/remote-control";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { resolveDirectCloudAuthApiBase } from "./direct-cloud-endpoints";
@@ -64,6 +65,26 @@ export interface RemotePairingReceipt {
   grantExpiresAt: string;
   ttlSeconds: number;
   status: "pending";
+}
+
+export interface RemotePairingClaimReceipt {
+  ownerId: string;
+  sessionId: string;
+  status: "claimed";
+  expiresAt: string;
+  grantExpiresAt: string;
+  capabilities: string[];
+  host: Pick<
+    RemoteHostSummary,
+    | "id"
+    | "deviceId"
+    | "displayName"
+    | "platform"
+    | "runtimeKeyId"
+    | "signingPublicKeyJwk"
+    | "encryptionPublicKeyJwk"
+    | "createdAt"
+  >;
 }
 
 export type RemoteRelayCommandStatus =
@@ -429,6 +450,79 @@ export class RemoteControlCloudClient {
       grantExpiresAt: isoDate(data.grantExpiresAt, "grant expiration"),
       ttlSeconds,
       status: exactEnum(data.status, "pairing status", ["pending"]),
+    };
+  }
+
+  async claimPairing(input: {
+    sessionId?: string;
+    hostId?: string;
+    code: string;
+    controller: RemoteControllerPublicIdentity;
+  }): Promise<RemotePairingClaimReceipt> {
+    if (Boolean(input.sessionId) === Boolean(input.hostId)) {
+      throw new Error("Pairing claim must identify exactly one Mac challenge.");
+    }
+    if (!/^\d{6}$/.test(input.code)) {
+      throw new Error("Pairing code must contain exactly six digits.");
+    }
+    const data = await this.request<Record<string, unknown>>(
+      "/api/v1/remote/pair",
+      {
+        method: "POST",
+        cache: "no-store",
+        body: JSON.stringify({
+          ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+          ...(input.hostId ? { hostId: input.hostId } : {}),
+          code: input.code,
+          controller: input.controller,
+        }),
+      },
+    );
+    const host = record(data.host);
+    if (!host) throw new Error("Cloud response is missing the target Mac.");
+    const ownerId = uuid(data.ownerId, "owner id");
+    const hostPlatform = exactEnum(host.platform, "host platform", [
+      "ios",
+      "macos",
+      "windows",
+      "linux",
+      "android",
+      "web",
+    ]);
+    const capabilities = data.capabilities;
+    if (
+      !Array.isArray(capabilities) ||
+      capabilities.length !== REMOTE_TARGET_PAIRING_CAPABILITIES.length ||
+      capabilities.some(
+        (capability, index) =>
+          capability !== REMOTE_TARGET_PAIRING_CAPABILITIES[index],
+      )
+    ) {
+      throw new Error("Cloud response has invalid pairing capabilities.");
+    }
+    if (ownerId !== input.controller.ownerId) {
+      throw new Error("Cloud pairing owner does not match this controller.");
+    }
+    return {
+      ownerId,
+      sessionId: uuid(data.sessionId, "session id"),
+      status: exactEnum(data.status, "pairing status", ["claimed"]),
+      expiresAt: isoDate(data.expiresAt, "pairing expiration"),
+      grantExpiresAt: isoDate(data.grantExpiresAt, "grant expiration"),
+      capabilities: [...REMOTE_TARGET_PAIRING_CAPABILITIES],
+      host: {
+        id: uuid(host.id, "host id"),
+        deviceId: identifier(host.deviceId, "host device id"),
+        displayName: requiredString(host.displayName, "host name"),
+        platform: hostPlatform,
+        runtimeKeyId: identifier(host.runtimeKeyId, "runtime key id"),
+        signingPublicKeyJwk: publicJwk(host.signingPublicKeyJwk, "signing key"),
+        encryptionPublicKeyJwk: publicJwk(
+          host.encryptionPublicKeyJwk,
+          "encryption key",
+        ),
+        createdAt: isoDate(host.createdAt, "host creation time"),
+      },
     };
   }
 

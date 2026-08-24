@@ -186,6 +186,18 @@ class FakeRelay implements RemoteTargetRelayTransport {
     throw new Error("unused");
   }
 
+  async createPairingChallenge(): Promise<never> {
+    throw new Error("unused");
+  }
+
+  async readPairingChallenge(): Promise<never> {
+    throw new Error("unused");
+  }
+
+  async confirmPairing(): Promise<never> {
+    throw new Error("unused");
+  }
+
   async compensateActivation(
     input: Parameters<RemoteTargetRelayTransport["compensateActivation"]>[0],
   ): Promise<

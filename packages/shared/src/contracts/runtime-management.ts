@@ -3,6 +3,10 @@
 export const RUNTIME_MANAGEMENT_OPERATIONS = [
   "list",
   "pair",
+  "create_pairing",
+  "claim_pairing",
+  "confirm_pairing",
+  "deny_pairing",
   "revoke",
   "remove",
   "retry",
@@ -36,6 +40,7 @@ export interface RuntimeManagementRequest {
   proposalId?: string;
   proposalNonce?: string;
   managedNetwork?: boolean;
+  platform?: "macos" | "windows" | "linux";
 }
 
 export interface RuntimeManagementResult {
