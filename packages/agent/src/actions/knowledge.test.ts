@@ -82,18 +82,24 @@ function makeService(records: DocRecord[] = CORPUS) {
       async ({
         cursor,
         count = ordered.length,
+        end,
       }: {
         cursor?: { createdAt: number; id: UUID };
         count?: number;
+        end?: number;
       }) => {
+        const visible =
+          end === undefined
+            ? ordered
+            : ordered.filter((record) => (record.createdAt ?? 0) <= end);
         const start = cursor
-          ? ordered.findIndex(
+          ? visible.findIndex(
               (record) =>
                 record.createdAt === cursor.createdAt &&
                 record.id === cursor.id,
             ) + 1
           : 0;
-        return ordered.slice(start, start + count);
+        return visible.slice(start, start + count);
       },
     ),
     getDocumentById: vi.fn(
@@ -258,6 +264,48 @@ describe("SEARCH_KNOWLEDGE", () => {
         tags: ["media-format:pdf"],
       }),
     ).rejects.toMatchObject({ code: "KNOWLEDGE_TRAVERSAL_NON_ADVANCING" });
+  });
+
+  it("uses one fixed snapshot boundary across both complete scans", async () => {
+    const service = makeService();
+    const runtime = makeRuntime({ service });
+
+    const res = await call(
+      searchKnowledgeAction,
+      runtime,
+      msg(OWNER_ENTITY, DM_ROOM),
+      { tags: ["media-format:pdf"] },
+    );
+
+    expect(res.success).toBe(true);
+    const boundaries = service.getMemories.mock.calls.map(
+      ([params]) => params.end,
+    );
+    expect(boundaries).toHaveLength(2);
+    expect(typeof boundaries[0]).toBe("number");
+    expect(boundaries[1]).toBe(boundaries[0]);
+  });
+
+  it("rejects an in-snapshot row mutation between complete scans", async () => {
+    const record = { ...doc(DOC_GLOBAL, "global"), createdAt: 1 };
+    const service = makeService([record]);
+    let scan = 0;
+    service.getMemories.mockImplementation(async () => {
+      scan += 1;
+      return [
+        {
+          ...record,
+          content: { ...record.content, text: `body version ${scan}` },
+        },
+      ];
+    });
+    const runtime = makeRuntime({ service });
+
+    await expect(
+      call(searchKnowledgeAction, runtime, msg(OWNER_ENTITY, DM_ROOM), {
+        tags: ["media-format:pdf"],
+      }),
+    ).rejects.toMatchObject({ code: "KNOWLEDGE_TRAVERSAL_INVENTORY_CHANGED" });
   });
 
   it("free-text search composes with the help tag on fragment metadata", async () => {

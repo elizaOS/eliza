@@ -31,6 +31,7 @@ import {
   logger,
   type Media,
   type Memory,
+  stableStringify,
   toWellFormedUnicode,
   type UUID,
   validateUuid,
@@ -279,6 +280,7 @@ function knowledgeTraversalError(
 
 async function scanAllDocumentRows(
   service: DocumentsServiceLike,
+  snapshotEnd: number,
 ): Promise<Memory[]> {
   const rows: Memory[] = [];
   const seen = new Set<string>();
@@ -292,6 +294,7 @@ async function scanAllDocumentRows(
       orderBy: "createdAt",
       orderDirection: "desc",
       includeEmbedding: false,
+      end: snapshotEnd,
     });
     if (batch.length > DOCUMENT_SCAN_BATCH) {
       throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_PAGE_INVALID", {
@@ -364,26 +367,28 @@ function compareDocumentTuple(left: Memory, right: Memory): number {
 async function readStableCompleteDocumentRows(
   service: DocumentsServiceLike,
 ): Promise<Memory[]> {
-  const before = await service.countMemories({ tableName: "documents" });
-  const first = await scanAllDocumentRows(service);
-  const between = await service.countMemories({ tableName: "documents" });
-  const second = await scanAllDocumentRows(service);
-  const after = await service.countMemories({ tableName: "documents" });
-  const firstIds = first.map((memory) => memory.id);
-  const secondIds = second.map((memory) => memory.id);
+  const snapshotEnd = Date.now();
+  const first = await scanAllDocumentRows(service, snapshotEnd);
+  const second = await scanAllDocumentRows(service, snapshotEnd);
+  let firstFingerprints: string[];
+  let secondFingerprints: string[];
+  try {
+    firstFingerprints = first.map((memory) => stableStringify(memory));
+    secondFingerprints = second.map((memory) => stableStringify(memory));
+  } catch (cause) {
+    throw new ElizaError("Knowledge row cannot be fingerprinted", {
+      code: "KNOWLEDGE_TRAVERSAL_FINGERPRINT_FAILED",
+      cause,
+    });
+  }
   if (
-    !Number.isSafeInteger(before) ||
-    before < 0 ||
-    before !== between ||
-    before !== after ||
-    first.length !== before ||
-    second.length !== before ||
-    firstIds.some((id, index) => id !== secondIds[index])
+    first.length !== second.length ||
+    firstFingerprints.some(
+      (fingerprint, index) => fingerprint !== secondFingerprints[index],
+    )
   ) {
     throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_INVENTORY_CHANGED", {
-      before,
-      between,
-      after,
+      snapshotEnd,
       firstLength: first.length,
       secondLength: second.length,
     });
