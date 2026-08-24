@@ -4,7 +4,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui/button";
 import {
   Check,
   ChevronRight,

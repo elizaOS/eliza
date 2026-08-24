@@ -5,7 +5,7 @@
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui/button";
 import { TerminalSquare } from "lucide-react";
 import { useState } from "react";
 

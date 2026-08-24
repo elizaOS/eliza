@@ -12,7 +12,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-} from "@elizaos/ui/components/ui/select";
+} from "@elizaos/ui";
 import { Bot, Pause } from "lucide-react";
 import type { ReactNode } from "react";
 import {

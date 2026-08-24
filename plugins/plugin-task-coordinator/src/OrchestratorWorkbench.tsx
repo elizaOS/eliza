@@ -5,7 +5,7 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentTaskThreadDetail } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui/button";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import {
   Archive,

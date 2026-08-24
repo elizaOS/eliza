@@ -1,5 +1,5 @@
 // Renders the live orchestrator plan checklist.
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui/button";
 import { Check, ChevronRight, Circle, Loader } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 

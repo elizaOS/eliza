@@ -25,16 +25,16 @@ import {
   AlertDialogTrigger,
   DiffReviewPanel,
 } from "@elizaos/ui/components";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+import { Button } from "@elizaos/ui/button";
+import { Input } from "@elizaos/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
+} from "@elizaos/ui";
+import { Textarea } from "@elizaos/ui";
 import {
   Archive,
   Check,

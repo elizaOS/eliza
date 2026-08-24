@@ -7,7 +7,7 @@ import type {
   OrchestratorRoomRosterOverview,
 } from "@elizaos/ui/api/client-types-cloud";
 import { type CockpitSpawnTarget, CockpitView } from "@elizaos/ui/components";
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui/button";
 import { useCallback, useEffect, useState } from "react";
 import {
   CockpitInteractiveTerminal,

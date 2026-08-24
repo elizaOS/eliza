@@ -7,8 +7,8 @@
 // renderer facade, and a barrel import would drag router/marketplace chunks
 // into every shell that boots the facade.
 import { client } from "@elizaos/ui/api";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+import { Button } from "@elizaos/ui/button";
+import { Input } from "@elizaos/ui/input";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   CheckCircle2,

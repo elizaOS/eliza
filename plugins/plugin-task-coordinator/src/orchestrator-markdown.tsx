@@ -1,6 +1,6 @@
 // Renders safe markdown prose inside orchestrator transcripts.
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+import { Button } from "@elizaos/ui/button";
+import { Input } from "@elizaos/ui/input";
 import { Check, Copy } from "lucide-react";
 import { marked, type Token, type Tokens, type TokensList } from "marked";
 import { type ReactNode, useEffect, useRef, useState } from "react";

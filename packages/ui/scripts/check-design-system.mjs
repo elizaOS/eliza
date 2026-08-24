@@ -91,6 +91,9 @@ function importsByLocalName(sourceFile) {
 function resolvesToCanonical(record, file) {
   if (!record) return false;
   if (record.origin === "@elizaos/ui") return true;
+  if (/^@elizaos\/ui\/components\/ui\/[a-z0-9-]+$/.test(record.origin)) {
+    return true;
+  }
   if (/^@elizaos\/ui\/(button|card|input|dropdown-menu)$/.test(record.origin))
     return true;
   if (!record.origin.startsWith(".")) return false;
@@ -180,6 +183,7 @@ function scanFile(file) {
         const imported = element.propertyName?.text ?? element.name.text;
         if (
           /Variants$/.test(imported) &&
+          !rel.startsWith(`${canonicalRoot}/`) &&
           resolvesToCanonical({ imported, origin }, file)
         ) {
           findings.push(

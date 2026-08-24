@@ -31,7 +31,7 @@ import {
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
 } from "@elizaos/ui/components";
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui/button";
 import { useRegisterViewChatBinding } from "@elizaos/ui/state";
 import {
   ArrowLeft,

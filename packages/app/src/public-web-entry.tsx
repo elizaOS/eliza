@@ -10,7 +10,7 @@ import "./renderer-build-stamp";
 
 import { registerPublicCloudSurfaces } from "@elizaos/ui/cloud/register-public";
 import { CloudRouterShell } from "@elizaos/ui/cloud/shell/CloudRouterShell";
-import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
+import { ErrorBoundary } from "@elizaos/ui";
 import * as React from "react";
 import { lazy, Suspense, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";

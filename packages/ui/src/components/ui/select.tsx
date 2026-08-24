@@ -117,22 +117,31 @@ const SelectLabel = React.forwardRef<
 ));
 SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
+export interface SelectItemProps
+  extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> {
+  description?: React.ReactNode;
+}
+
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
+  SelectItemProps
+>(({ className, children, description, ...props }, ref) => (
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "flex w-full cursor-default select-none items-center gap-1.5 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none   data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "flex w-full cursor-default select-none gap-1.5 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      description ? "items-start" : "items-center",
       className,
     )}
     {...props}
   >
-    <SelectPrimitive.ItemText className="min-w-0 flex-1">
-      {children}
-    </SelectPrimitive.ItemText>
-    <span className="flex size-4 shrink-0 items-center justify-center">
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      {description ? (
+        <span className="text-xs text-muted">{description}</span>
+      ) : null}
+    </div>
+    <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
         <Check className="size-3" />
       </SelectPrimitive.ItemIndicator>

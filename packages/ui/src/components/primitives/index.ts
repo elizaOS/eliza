@@ -27,6 +27,7 @@ export * from "../ui/popover";
 export * from "../ui/progress";
 export * from "../ui/select";
 export * from "../ui/separator";
+export * from "../ui/settings-controls";
 export * from "../ui/skeleton";
 export * from "../ui/slider";
 export * from "../ui/spinner";
