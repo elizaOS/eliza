@@ -42,7 +42,10 @@ export interface ProgressiveContentMutantReport {
 	}[];
 }
 
-function mutatedView(view: ReadView, update: Partial<ReadView["slice"]>): ReadView {
+function mutatedView(
+	view: ReadView,
+	update: Partial<ReadView["slice"]>,
+): ReadView {
 	return { ...view, slice: { ...view.slice, ...update } } as ReadView;
 }
 
@@ -64,7 +67,7 @@ export function applyProgressiveContentMutant(
 				mutantId === "missing-expected-revision" && request.expectedRevision
 					? { ...request, expectedRevision: undefined }
 					: mutantId === "continuation-auth-bypass" &&
-						request.authorizationScope !== object.authorizationScope
+							request.authorizationScope !== object.authorizationScope
 						? { ...request, authorizationScope: object.authorizationScope }
 						: request;
 			const page = await base.read(effectiveRequest);

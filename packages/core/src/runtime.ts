@@ -12643,7 +12643,9 @@ ${section_end}`;
 				: value;
 		return {
 			...content,
-			...(typeof content.text === "string" ? { text: redact(content.text) } : {}),
+			...(typeof content.text === "string"
+				? { text: redact(content.text) }
+				: {}),
 			...(content.attachments
 				? {
 						attachments: content.attachments.map((attachment) => ({
@@ -12698,11 +12700,7 @@ ${section_end}`;
 		this.roomMessagesMemo.invalidate(parent.roomId);
 		await this.applyPipelineHooks(
 			"after_memory_persisted",
-			afterMemoryPersistedPipelineHookContext(
-				projectedParent,
-				"messages",
-				id,
-			),
+			afterMemoryPersistedPipelineHookContext(projectedParent, "messages", id),
 		);
 		return id;
 	}
@@ -12722,10 +12720,7 @@ ${section_end}`;
 			content: this.redactMessageContentForStorage(content),
 		};
 		const projection = buildMessageContentProjection(replacement);
-		const oldSegmentIds = collectMessageContentSegmentIds(
-			id,
-			existing.content,
-		);
+		const oldSegmentIds = collectMessageContentSegmentIds(id, existing.content);
 		const retainedIds = new Set(
 			collectMessageContentSegmentIds(id, projection.content).map(String),
 		);

@@ -37,6 +37,7 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Memory,
+	type MessageContentRangePage,
 	ModelType,
 	type ReadView,
 	type State,
@@ -176,7 +177,16 @@ async function pageAttachmentRecord(params: {
 				},
 			);
 		}
-		let page;
+		let page: Pick<
+			MessageContentRangePage,
+			| "text"
+			| "start"
+			| "end"
+			| "total"
+			| "revision"
+			| "sourceSha256"
+			| "sliceSha256"
+		>;
 		if (read.status === "ok") {
 			page = read.page;
 		} else {

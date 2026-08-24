@@ -68,8 +68,12 @@ export function progressiveConformanceAdapter(): ProgressiveContentConformanceAd
 			if (
 				request.expectedRevision &&
 				request.expectedRevision !== object.revision
-			) throw new AdapterError("CONTENT_STALE_REVISION");
-			const page = bytes.subarray(request.offset, request.offset + request.limit);
+			)
+				throw new AdapterError("CONTENT_STALE_REVISION");
+			const page = bytes.subarray(
+				request.offset,
+				request.offset + request.limit,
+			);
 			const end = request.offset + page.byteLength;
 			const hasMore = end < bytes.length;
 			return {

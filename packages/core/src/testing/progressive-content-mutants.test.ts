@@ -6,8 +6,8 @@ import {
 	progressiveConformanceFixture,
 } from "./progressive-content-conformance.fixture";
 import {
-	PROGRESSIVE_CONTENT_MUTANTS,
 	applyProgressiveContentMutant,
+	PROGRESSIVE_CONTENT_MUTANTS,
 	runProgressiveContentMutants,
 } from "./progressive-content-mutants";
 
