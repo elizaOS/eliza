@@ -26,24 +26,35 @@ describe("pipeline-hooks", () => {
 
 	it("builds composeStateProviders context with phase tag", () => {
 		const ctx = composeStateProvidersPipelineHookContext({
-			message: { id: "m1" } as any,
-			roomId: "r1" as any,
+			message: { id: "m1", roomId: "r1" } as any,
 			providers: { current: ["TIME", "WALLET"] },
-			state: {} as any,
+			activeContexts: [],
 			onlyInclude: false,
+			includeList: null,
 		});
 		expect(ctx.phase).toBe("compose_state_providers");
+		expect(ctx.message.id).toBe("m1");
 		expect(ctx.providers.current).toEqual(["TIME", "WALLET"]);
+		expect(ctx.activeContexts).toEqual([]);
+		expect(ctx.onlyInclude).toBe(false);
+		expect(ctx.includeList).toBeNull();
 	});
 
 	it("builds preShouldRespond context with phase tag", () => {
 		const ctx = preShouldRespondPipelineHookContext({ id: "m1" } as any, {
 			roomId: "r1" as any,
+			responseId: "resp-1" as any,
+			runId: "run-1" as any,
 			state: {} as any,
 			isAutonomous: false,
 		});
 		expect(ctx.phase).toBe("pre_should_respond");
 		expect(ctx.message.id).toBe("m1");
+		expect(ctx.roomId).toBe("r1");
+		expect(ctx.responseId).toBe("resp-1");
+		expect(ctx.runId).toBe("run-1");
+		expect(ctx.state).toEqual({});
+		expect(ctx.isAutonomous).toBe(false);
 	});
 
 	it("builds outgoingPipelineHookContext correctly", () => {
@@ -62,18 +73,28 @@ describe("pipeline-hooks", () => {
 
 	it("builds preModel and postModel contexts", () => {
 		const pre = preModelPipelineHookContext({
-			modelType: "TEXT_LARGE" as any,
+			requestedModelType: "TEXT_LARGE",
+			resolvedModelKey: "anthropic/claude-3-5-sonnet",
 			params: { prompt: "test" },
 		});
 		expect(pre.phase).toBe("pre_model");
+		expect(pre.requestedModelType).toBe("TEXT_LARGE");
+		expect(pre.resolvedModelKey).toBe("anthropic/claude-3-5-sonnet");
+		expect(pre.params).toEqual({ prompt: "test" });
 
 		const post = postModelPipelineHookContext({
-			modelType: "TEXT_LARGE" as any,
+			requestedModelType: "TEXT_LARGE",
+			resolvedModelKey: "anthropic/claude-3-5-sonnet",
 			params: { prompt: "test" },
-			output: "generated text",
+			durationMs: 150,
+			result: { current: "generated text" },
 		});
 		expect(post.phase).toBe("post_model");
-		expect(post.output).toBe("generated text");
+		expect(post.requestedModelType).toBe("TEXT_LARGE");
+		expect(post.resolvedModelKey).toBe("anthropic/claude-3-5-sonnet");
+		expect(post.params).toEqual({ prompt: "test" });
+		expect(post.durationMs).toBe(150);
+		expect(post.result.current).toBe("generated text");
 	});
 
 	it("builds afterMemoryPersisted context with updated memory id", () => {
@@ -90,16 +111,29 @@ describe("pipeline-hooks", () => {
 
 	it("builds modelStreamChunk and modelStreamEnd contexts", () => {
 		const chunk = modelStreamChunkPipelineHookContext({
+			source: "use_model",
+			roomId: "r1" as any,
+			runId: "run-1" as any,
 			chunk: "partial text",
-			sequence: 1,
+			accumulated: "partial text",
 		});
 		expect(chunk.phase).toBe("model_stream_chunk");
+		expect(chunk.source).toBe("use_model");
+		expect(chunk.roomId).toBe("r1");
+		expect(chunk.runId).toBe("run-1");
 		expect(chunk.chunk).toBe("partial text");
+		expect(chunk.accumulated).toBe("partial text");
 
 		const end = modelStreamEndPipelineHookContext({
-			accumulatedText: "full text",
+			source: "use_model",
+			roomId: "r1" as any,
+			runId: "run-1" as any,
+			text: "full text",
 		});
 		expect(end.phase).toBe("model_stream_end");
-		expect(end.accumulatedText).toBe("full text");
+		expect(end.source).toBe("use_model");
+		expect(end.roomId).toBe("r1");
+		expect(end.runId).toBe("run-1");
+		expect(end.text).toBe("full text");
 	});
 });
