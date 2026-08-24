@@ -192,4 +192,155 @@ describe("useJobPoller — sleep-wake / backgrounding lifecycle (#9943)", () => 
       maxAttempts: 3,
     });
   });
+
+  it("does not regress a server-terminal job from a stale active snapshot", async () => {
+    const { result } = renderHook(() =>
+      useJobPoller({ intervalMs: 60_000, autoRefresh: false }),
+    );
+
+    await act(async () => {
+      result.current.track("agent-1", "job-1", {
+        status: "completed",
+        startedAt: 2_000,
+        attempts: 2,
+        maxAttempts: 3,
+      });
+      result.current.track("agent-1", "job-1", {
+        status: "in_progress",
+        startedAt: 2_000,
+        attempts: 2,
+        maxAttempts: 3,
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.getStatus("agent-1")).toMatchObject({
+      status: "completed",
+      startedAt: 2_000,
+      attempts: 2,
+      terminalSource: "server",
+    });
+  });
+
+  it("does not let an older in-flight poll overwrite a terminal snapshot", async () => {
+    let releasePoll: ((response: Response) => void) | undefined;
+    const startedAt = Date.now();
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          releasePoll = resolve;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useJobPoller({ intervalMs: 60_000, autoRefresh: false }),
+    );
+
+    await act(async () => {
+      result.current.track("agent-1", "job-1", {
+        status: "in_progress",
+        startedAt,
+        attempts: 2,
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      result.current.track("agent-1", "job-1", {
+        status: "completed",
+        startedAt,
+        attempts: 2,
+      });
+      releasePoll?.(
+        Response.json({
+          data: { status: "in_progress", attempts: 2 },
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.getStatus("agent-1")).toMatchObject({
+      status: "completed",
+      attempts: 2,
+      terminalSource: "server",
+    });
+  });
+
+  it("rejects a same-job snapshot whose attempt decreases", async () => {
+    const { result } = renderHook(() =>
+      useJobPoller({ intervalMs: 60_000, autoRefresh: false }),
+    );
+
+    await act(async () => {
+      result.current.track("agent-1", "job-1", {
+        status: "in_progress",
+        startedAt: 2_000,
+        attempts: 2,
+        maxAttempts: 3,
+      });
+      result.current.track("agent-1", "job-1", {
+        status: "in_progress",
+        startedAt: 3_000,
+        attempts: 1,
+        maxAttempts: 3,
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.getStatus("agent-1")).toMatchObject({
+      startedAt: 2_000,
+      attempts: 2,
+    });
+  });
+
+  it("fails closed when the authoritative job is no longer available", async () => {
+    const onFailed = vi.fn();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const { result } = renderHook(() =>
+      useJobPoller({ intervalMs: 60_000, autoRefresh: false, onFailed }),
+    );
+
+    await act(async () => {
+      result.current.track("agent-1", "job-1");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.getStatus("agent-1")).toMatchObject({
+      status: "failed",
+      terminalSource: "unavailable",
+    });
+    expect(result.current.getStatus("agent-1")?.error).toContain(
+      "no longer available",
+    );
+    expect(onFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed after the bounded 45-minute default ceiling", async () => {
+    const onFailed = vi.fn();
+    const { result } = renderHook(() =>
+      useJobPoller({ intervalMs: 60_000, autoRefresh: false, onFailed }),
+    );
+
+    await act(async () => {
+      result.current.track("agent-1", "job-1", {
+        status: "in_progress",
+        startedAt: Date.now(),
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45 * 60_000 + 60_000);
+    });
+
+    expect(result.current.getStatus("agent-1")).toMatchObject({
+      status: "failed",
+      terminalSource: "client_timeout",
+    });
+    expect(onFailed).toHaveBeenCalledTimes(1);
+  });
 });

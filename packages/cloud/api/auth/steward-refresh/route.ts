@@ -146,18 +146,27 @@ interface StewardRefreshRequestContext {
   userAgent?: string;
 }
 
-function stewardRefreshRequestContext(c: {
-  req: { header: (name: string) => string | undefined };
-}): StewardRefreshRequestContext {
+function stewardRefreshRequestContext(
+  c: {
+    req: { url: string; header: (name: string) => string | undefined };
+  },
+  isProduction: boolean,
+): StewardRefreshRequestContext {
   // Cloudflare owns cf-connecting-ip at the edge. Prefer it over caller-
   // supplied forwarding headers so Steward's per-client auth limiter cannot
-  // be bypassed by spoofing X-Forwarded-For. Local/test callers fall back to
-  // the first proxy address, matching the embedded /steward/* proxy.
-  const clientIp =
-    c.req.header("cf-connecting-ip")?.trim() ||
-    c.req.header("x-real-ip")?.trim() ||
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    undefined;
+  // be bypassed by spoofing X-Forwarded-For. A forwarding-header fallback is
+  // accepted only on a direct loopback request, where the caller already owns
+  // the local listener and the cookie path remains origin/CSRF gated.
+  const hostname = new URL(c.req.url).hostname.toLowerCase();
+  const isLoopback =
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const edgeClientIp = c.req.header("cf-connecting-ip")?.trim();
+  const localClientIp =
+    !isProduction && isLoopback
+      ? c.req.header("x-real-ip")?.trim() ||
+        c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+      : undefined;
+  const clientIp = edgeClientIp || localClientIp || undefined;
   return {
     ...(clientIp ? { clientIp } : {}),
     ...(c.req.header("origin")?.trim()
@@ -370,7 +379,7 @@ app.post("/", async (c) => {
     refreshToken,
     c.env.STEWARD_TENANT_ID,
     c.env.STEWARD_REQUEST_SIGNING_SECRET,
-    stewardRefreshRequestContext(c),
+    stewardRefreshRequestContext(c, isProduction),
   );
 
   if (refresh.kind === "transport") {
