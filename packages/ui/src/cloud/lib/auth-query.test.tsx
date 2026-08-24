@@ -184,3 +184,85 @@ describe("shared cloud query gate — session from persisted JWT only (page-relo
     expect(result.current.userId).toMatch(/^native-api-key:/);
   });
 });
+
+describe("shared cloud query gate — additional branches", () => {
+  it("web: ignores a garbage steward token that is not a JWT", () => {
+    storage.setItem("steward_session_token", "not-a-jwt");
+
+    const { result } = renderHook(() => useAuthenticatedQueryGate());
+
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.userId).toBeNull();
+  });
+
+  it("exposes the user id even when the caller disables the query", () => {
+    storage.setItem(
+      "steward_session_token",
+      makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) + 600 }),
+    );
+
+    const { result } = renderHook(() => useAuthenticatedQueryGate(false));
+
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.userId).toBe("u1");
+  });
+});
+
+// Appended coverage lives in its own chunk so the base import block above
+// stays byte-identical (additive-only PR contract).
+import { authenticatedQueryKey } from "./auth-query";
+
+describe("authenticatedQueryKey", () => {
+  it("namespaces parts with the auth segment and the user id", () => {
+    expect(
+      authenticatedQueryKey(["api-keys", "list"], {
+        enabled: true,
+        userId: "u1",
+      }),
+    ).toEqual(["api-keys", "list", "auth", "u1"]);
+  });
+
+  it("preserves every part in order, including non-string parts", () => {
+    const filters = { status: "active" };
+    expect(
+      authenticatedQueryKey(["instances", 42, filters, true], {
+        enabled: true,
+        userId: "u2",
+      }),
+    ).toEqual(["instances", 42, filters, true, "auth", "u2"]);
+  });
+
+  it("keeps a usable key for an unauthenticated gate with a null user id", () => {
+    expect(
+      authenticatedQueryKey(["agents"], { enabled: false, userId: null }),
+    ).toEqual(["agents", "auth", null]);
+  });
+
+  it("produces a bare key when there are no parts", () => {
+    expect(authenticatedQueryKey([], { enabled: true, userId: "u3" })).toEqual([
+      "auth",
+      "u3",
+    ]);
+  });
+
+  it("changes the key when the session switches users", () => {
+    expect(
+      authenticatedQueryKey(["agents"], { enabled: true, userId: "user-a" }),
+    ).not.toEqual(
+      authenticatedQueryKey(["agents"], { enabled: true, userId: "user-b" }),
+    );
+  });
+
+  it("returns structurally equal keys for identical inputs", () => {
+    const gate = { enabled: true, userId: "u1" };
+    expect(authenticatedQueryKey(["agents"], gate)).toEqual(
+      authenticatedQueryKey(["agents"], gate),
+    );
+  });
+
+  it("does not mutate the parts array it receives", () => {
+    const parts = ["api-keys"];
+    authenticatedQueryKey(parts, { enabled: true, userId: "u1" });
+    expect(parts).toEqual(["api-keys"]);
+  });
+});
