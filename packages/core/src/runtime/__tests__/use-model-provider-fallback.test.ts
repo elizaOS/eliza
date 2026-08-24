@@ -7,6 +7,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 
@@ -197,5 +198,189 @@ describe("AgentRuntime.useModel provider fallback", () => {
 		expect(runtime.getLastResolvedModelProvider(ModelType.TEXT_LARGE)).toBe(
 			"eliza-cloud",
 		);
+	});
+});
+
+/**
+ * Regression for the production incident: Anthropic's RESPONSE_HANDLER
+ * exhausted its overload retries, the runtime failed over to the next
+ * registered RESPONSE_HANDLER provider, and that provider was a keyless
+ * plugin-openai (no OPENAI_API_KEY, not proxy mode). Its client construction
+ * threw "OPENAI_API_KEY is required" as a BARE Error, which is not a
+ * fallback-class error — so the failover chain rethrew and the whole turn died,
+ * even though a healthy pooled ChatGPT/Codex handler (plugin-codex-cli leasing
+ * an `openai-codex` subscription seat via the local codex-proxy Responses path)
+ * was ALSO registered.
+ *
+ * The fix types that missing-credential throw as
+ * `OPENAI_CREDENTIAL_UNAVAILABLE` so `isModelProviderFallbackError` classifies
+ * it as fallback-class and `useModel` advances to the pooled openai-codex
+ * handler. These tests are bidirectional: the typed error rotates to the pool
+ * (post-fix), while a bare "OPENAI_API_KEY is required" Error still strands the
+ * brain (reproduces the pre-fix failure), proving the classification — not the
+ * message text — is what unblocks the pooled fallback.
+ */
+describe("AgentRuntime.useModel RESPONSE_HANDLER openai->openai-codex pool fallback (incident #27268)", () => {
+	function anthropicOverload(): Error {
+		return statusError(
+			529,
+			"API Error: 529 Overloaded. This is a server-side issue.",
+		);
+	}
+
+	it("Anthropic overload -> keyless plugin-openai (typed) -> pooled openai-codex RESPONSE_HANDLER serves", async () => {
+		const runtime = makeRuntime();
+
+		// 1. Anthropic subscription RESPONSE_HANDLER, highest priority, overloaded.
+		const anthropicFails = vi.fn(async () => {
+			throw anthropicOverload();
+		});
+		// 2. plugin-openai RESPONSE_HANDLER with NO credential: it surfaces the
+		//    typed OPENAI_CREDENTIAL_UNAVAILABLE that createOpenAIClient throws.
+		const openaiKeyless = vi.fn(async () => {
+			throw new ElizaError(
+				"OPENAI_API_KEY is required. Set it in your environment variables or runtime settings.",
+				{ code: "OPENAI_CREDENTIAL_UNAVAILABLE", severity: "ephemeral" },
+			);
+		});
+		// 3. plugin-codex-cli RESPONSE_HANDLER: leases an openai-codex seat via the
+		//    local codex-proxy Responses path. This is the pooled fallback target.
+		const codexPooledOk = vi.fn(async () => "codex-pooled-response");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			anthropicFails,
+			"anthropic",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			openaiKeyless,
+			"openai",
+			50,
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			codexPooledOk,
+			"codex-cli",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).resolves.toBe("codex-pooled-response");
+		// All three were consulted in priority order; the pooled handler served.
+		expect(anthropicFails).toHaveBeenCalledTimes(1);
+		expect(openaiKeyless).toHaveBeenCalledTimes(1);
+		expect(codexPooledOk).toHaveBeenCalledTimes(1);
+		expect(
+			runtime.getLastResolvedModelProvider(ModelType.RESPONSE_HANDLER),
+		).toBe("codex-cli");
+	});
+
+	it("pre-fix repro: a BARE 'OPENAI_API_KEY is required' Error strands the brain (pool never reached)", async () => {
+		const runtime = makeRuntime();
+		const anthropicFails = vi.fn(async () => {
+			throw anthropicOverload();
+		});
+		// The pre-fix throw: a plain Error, NOT typed. No rate-limit / 5xx /
+		// timeout signal, so it is not fallback-class — the chain must rethrow.
+		const openaiKeylessBare = vi.fn(async () => {
+			throw new Error(
+				"OPENAI_API_KEY is required. Set it in your environment variables or runtime settings.",
+			);
+		});
+		const codexPooledOk = vi.fn(async () => "codex-pooled-response");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			anthropicFails,
+			"anthropic",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			openaiKeylessBare,
+			"openai",
+			50,
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			codexPooledOk,
+			"codex-cli",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).rejects.toThrow("OPENAI_API_KEY is required");
+		expect(anthropicFails).toHaveBeenCalledTimes(1);
+		expect(openaiKeylessBare).toHaveBeenCalledTimes(1);
+		// The pooled openai-codex handler is stranded behind the untyped throw.
+		expect(codexPooledOk).not.toHaveBeenCalled();
+	});
+
+	it("fails closed: keyless plugin-openai is the LAST handler -> typed error still surfaces (no pool, no silent success)", async () => {
+		const runtime = makeRuntime();
+		const anthropicFails = vi.fn(async () => {
+			throw anthropicOverload();
+		});
+		const openaiKeyless = vi.fn(async () => {
+			throw new ElizaError(
+				"OPENAI_API_KEY is required. Set it in your environment variables or runtime settings.",
+				{ code: "OPENAI_CREDENTIAL_UNAVAILABLE", severity: "ephemeral" },
+			);
+		});
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			anthropicFails,
+			"anthropic",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			openaiKeyless,
+			"openai",
+			50,
+		);
+
+		// No pooled handler registered: the classification never fabricates a
+		// success, it just permits advancing. With nothing after it, the terminal
+		// missing-credential error surfaces (fail-closed).
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).rejects.toThrow("OPENAI_API_KEY is required");
+		expect(anthropicFails).toHaveBeenCalledTimes(1);
+		expect(openaiKeyless).toHaveBeenCalledTimes(1);
+	});
+
+	it("does NOT over-trigger: a real keyed OpenAI request error still classifies on its own signal", async () => {
+		const runtime = makeRuntime();
+		// A genuine OpenAI 400 (keyed, request-level) is NOT the missing-credential
+		// path and must NOT be treated as fallback-class by the new code branch.
+		const openaiBadRequest = vi.fn(async () => {
+			throw statusError(400, "bad request: invalid tool schema");
+		});
+		const codexPooledOk = vi.fn(async () => "unused");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			openaiBadRequest,
+			"openai",
+			50,
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			codexPooledOk,
+			"codex-cli",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).rejects.toThrow("bad request");
+		expect(openaiBadRequest).toHaveBeenCalledTimes(1);
+		expect(codexPooledOk).not.toHaveBeenCalled();
 	});
 });

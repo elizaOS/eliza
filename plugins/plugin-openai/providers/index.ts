@@ -1,2 +1,2 @@
 /** Barrel re-exporting the OpenAI client factory. */
-export { createOpenAIClient } from "./openai";
+export { createOpenAIClient, OPENAI_CREDENTIAL_UNAVAILABLE } from "./openai";
