@@ -105,6 +105,50 @@ export interface IdentityCluster {
 	readAt: string;
 }
 
+/** Deterministic query for one principal's provider/account-scoped delivery identity. */
+export interface ResolveIdentityDeliveryClaimRequest {
+	agentId: UUID;
+	principalId: UUID;
+	/** Connector authority namespace, such as `discord`, `telegram`, or `google`. */
+	connectorId?: string;
+	/** Connected account whose observations are permitted to route this send. */
+	connectorAccountId?: UUID;
+}
+
+/**
+ * Canonical delivery lookup never guesses between verified claims. Consumers
+ * may present `ambiguous` claims as choices, while `no_claim` is a hard stop
+ * before provider I/O rather than permission to inspect legacy entity fields.
+ */
+export type IdentityDeliveryClaimResolution =
+	| {
+			decision: "resolved";
+			requestedPrincipalId: UUID;
+			canonicalPrincipalId: UUID;
+			claim: IdentityClaim;
+			generation: number;
+	  }
+	| {
+			decision: "ambiguous";
+			requestedPrincipalId: UUID;
+			canonicalPrincipalId: UUID;
+			claims: readonly IdentityClaim[];
+			generation: number;
+			reason: "multiple_verified_claims";
+	  }
+	| {
+			decision: "no_claim";
+			requestedPrincipalId: UUID;
+			canonicalPrincipalId: UUID | null;
+			generation: number | null;
+			reason:
+				| "principal_not_found"
+				| "no_active_verified_claim"
+				| "no_connector_claim"
+				| "no_account_claim"
+				| "connector_account_ineligible";
+	  };
+
 export interface IdentityCanonicalResolution {
 	agentId: UUID;
 	requestedPrincipalId: UUID;
@@ -356,6 +400,85 @@ export abstract class PrincipalService extends Service {
 		principalId: UUID,
 		connectorAccountId?: UUID,
 	): Promise<readonly IdentityClaim[]>;
+	async resolveIdentityDeliveryClaim(
+		request: ResolveIdentityDeliveryClaimRequest,
+	): Promise<IdentityDeliveryClaimResolution> {
+		const cluster = await this.getCluster(request.agentId, request.principalId);
+		if (!cluster) {
+			return {
+				decision: "no_claim",
+				requestedPrincipalId: request.principalId,
+				canonicalPrincipalId: null,
+				generation: null,
+				reason: "principal_not_found",
+			};
+		}
+		const verified = cluster.claims.filter(
+			(claim) =>
+				claim.status === "active" &&
+				(claim.verification === "verified" ||
+					claim.verification === "owner_bound"),
+		);
+		if (verified.length === 0) {
+			return {
+				decision: "no_claim",
+				requestedPrincipalId: request.principalId,
+				canonicalPrincipalId: cluster.canonicalPrincipalId,
+				generation: cluster.generation,
+				reason: "no_active_verified_claim",
+			};
+		}
+		const connectorId = request.connectorId?.trim().toLowerCase();
+		const connectorClaims = connectorId
+			? verified.filter(
+					(claim) => claim.connectorId.trim().toLowerCase() === connectorId,
+				)
+			: verified;
+		if (connectorClaims.length === 0) {
+			return {
+				decision: "no_claim",
+				requestedPrincipalId: request.principalId,
+				canonicalPrincipalId: cluster.canonicalPrincipalId,
+				generation: cluster.generation,
+				reason: "no_connector_claim",
+			};
+		}
+		const claims = request.connectorAccountId
+			? connectorClaims.filter(
+					(claim) => claim.connectorAccountId === request.connectorAccountId,
+				)
+			: connectorClaims;
+		if (claims.length === 0) {
+			return {
+				decision: "no_claim",
+				requestedPrincipalId: request.principalId,
+				canonicalPrincipalId: cluster.canonicalPrincipalId,
+				generation: cluster.generation,
+				reason: "no_account_claim",
+			};
+		}
+		const ordered = [...claims].sort((left, right) =>
+			left.id.localeCompare(right.id),
+		);
+		const claim = ordered[0];
+		if (ordered.length === 1 && claim) {
+			return {
+				decision: "resolved",
+				requestedPrincipalId: request.principalId,
+				canonicalPrincipalId: cluster.canonicalPrincipalId,
+				claim,
+				generation: cluster.generation,
+			};
+		}
+		return {
+			decision: "ambiguous",
+			requestedPrincipalId: request.principalId,
+			canonicalPrincipalId: cluster.canonicalPrincipalId,
+			claims: ordered,
+			generation: cluster.generation,
+			reason: "multiple_verified_claims",
+		};
+	}
 	abstract evaluateOwnerBinding(
 		request: EvaluateOwnerBindingRequest,
 	): Promise<OwnerBindingEvaluation>;

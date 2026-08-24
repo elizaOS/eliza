@@ -5,9 +5,10 @@
  * SOURCE_CONNECTOR_NOT_FOUND, and routes delivery through
  * `GoogleWorkspaceService.sendGmailMessage`.
  *
- * Recipient resolution: a literal address on the target (channelId or
- * entityId) is used as-is — a typed address is unambiguous; an entity-store
- * UUID resolves through the entity's stored email handles (component data).
+ * Recipient resolution: a literal address is used as-is when no principal
+ * UUID is present. A principal UUID always resolves through the canonical
+ * identity service's active verified Google claim scoped to the selected
+ * connector account; a carried channelId cannot override that authority.
  * Account routing is `connector`-scoped: the handler honors an explicit
  * target accountId, else the sole policy-authorized, gmail-send-capable Google
  * account, and refuses with a structural not_delivered when the account choice
@@ -24,9 +25,12 @@ import {
   type Content,
   getConnectorAccountManager,
   type IAgentRuntime,
+  type IdentityDeliveryClaimResolution,
   type MessageConnectorRegistration,
   type MessageConnectorTarget,
+  type PrincipalService,
   type SendHandlerOutcome,
+  ServiceType,
   type TargetInfo,
   toWellFormedUnicode,
   type UUID,
@@ -37,7 +41,6 @@ export const GMAIL_MESSAGE_SOURCE = "gmail";
 
 const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EMAIL_COMPONENT_KEYS = ["email", "emailAddress"] as const;
 const GMAIL_SEND_ACCOUNT_STATUSES: ConnectorAccountStatus[] = ["connected"];
 const GMAIL_SEND_ACCOUNT_PURPOSES: ConnectorAccountPurpose[] = ["messaging"];
 const GMAIL_SEND_ACCOUNT_ACCESS_GATES: ConnectorAccountAccessGate[] = ["open", "owner_binding"];
@@ -157,50 +160,160 @@ async function resolveGmailAccountId(
 }
 
 type RecipientResolution =
-  | { kind: "resolved"; email: string }
-  | { kind: "unresolved" }
+  | {
+      kind: "resolved";
+      email: string;
+      identityClaim?: {
+        claimId: UUID;
+        canonicalPrincipalId: UUID;
+        connectorAccountId: UUID;
+        generation: number;
+        deliveryKey: string;
+      };
+    }
+  | { kind: "unresolved"; reason: string }
+  | { kind: "unavailable"; reason: string }
   | { kind: "ambiguous"; candidates: string[] };
 
 /**
- * Resolve the recipient address fail-closed: a literal target address wins;
- * otherwise the entity graph must yield exactly one distinct stored email
- * (across explicitly email-named component fields, or — only when no named
- * field exists — email-shaped component values). Multiple distinct candidates
- * refuse rather than guess, so a contact with work + personal addresses never
- * gets mail routed by component iteration order.
+ * Resolve the recipient address fail-closed. A literal target is explicit only
+ * when the target does not also identify a principal UUID; principal delivery
+ * must yield exactly one active, verified Google claim observed through the
+ * selected sending account. Multiple claims refuse rather than guess, and
+ * legacy entity components are never consulted as recipient authority.
  */
 async function resolveRecipientEmail(
   runtime: IAgentRuntime,
-  target: TargetInfo
+  target: TargetInfo,
+  connectorAccountId: string,
+  expectedClaim?: {
+    claimId: string;
+    canonicalPrincipalId: string;
+    connectorAccountId: string;
+    generation: number;
+    deliveryKey: string;
+  }
 ): Promise<RecipientResolution> {
-  const literal = emailLiteral(target.channelId) ?? emailLiteral(target.entityId);
-  if (literal) return { kind: "resolved", email: literal };
-
   const entityId = String(target.entityId ?? "").trim();
-  if (!UUID_PATTERN.test(entityId) || typeof runtime.getEntityById !== "function") {
-    return { kind: "unresolved" };
+  if (!UUID_PATTERN.test(entityId)) {
+    const literal = emailLiteral(target.channelId) ?? emailLiteral(target.entityId);
+    if (literal) return { kind: "resolved", email: literal };
+    return { kind: "unresolved", reason: "target is not a canonical principal UUID" };
   }
-  const entity = await runtime.getEntityById(entityId as UUID);
-  if (!entity) return { kind: "unresolved" };
-
-  const named = new Set<string>();
-  const emailShaped = new Set<string>();
-  for (const component of entity.components ?? []) {
-    const data = component.data ?? {};
-    for (const key of EMAIL_COMPONENT_KEYS) {
-      const value = emailLiteral(data[key]);
-      if (value) named.add(value.toLowerCase());
-    }
-    for (const value of Object.values(data)) {
-      const email = emailLiteral(value);
-      if (email) emailShaped.add(email.toLowerCase());
-    }
+  if (!UUID_PATTERN.test(connectorAccountId)) {
+    return { kind: "unavailable", reason: "connector account id is not canonical" };
   }
+  const principalService = runtime.getService<PrincipalService>(ServiceType.PRINCIPAL);
+  if (!principalService) {
+    return { kind: "unavailable", reason: "canonical principal service is not registered" };
+  }
+  let resolution: IdentityDeliveryClaimResolution;
+  try {
+    resolution = await principalService.resolveIdentityDeliveryClaim({
+      agentId: runtime.agentId,
+      principalId: entityId as UUID,
+      connectorId: GOOGLE_SERVICE_NAME,
+      connectorAccountId: connectorAccountId as UUID,
+    });
+  } catch (error) {
+    // error-policy:J4 identity authority failures are structurally refused and
+    // reported; an address carried in target.channelId cannot bypass the read.
+    runtime.reportError("gmail.resolveIdentityDeliveryClaim", error, {
+      principalId: entityId,
+      connectorAccountId,
+    });
+    return {
+      kind: "unavailable",
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (resolution.decision === "no_claim") {
+    return { kind: "unresolved", reason: resolution.reason };
+  }
+  if (resolution.decision === "ambiguous") {
+    const candidates = resolution.claims
+      .flatMap((claim) => [claim.handle, claim.externalSubjectId])
+      .filter(isEmailAddress)
+      .map((email) => email.toLowerCase());
+    const distinctCandidates = [...new Set(candidates)].sort();
+    if (distinctCandidates.length === 0) {
+      return {
+        kind: "unresolved",
+        reason: "verified claims contain no deliverable email address",
+      };
+    }
+    return { kind: "ambiguous", candidates: distinctCandidates };
+  }
+  const email =
+    emailLiteral(resolution.claim.handle) ?? emailLiteral(resolution.claim.externalSubjectId);
+  if (!email) {
+    return { kind: "unresolved", reason: "verified claim has no deliverable email address" };
+  }
+  const normalizedEmail = email.toLowerCase();
+  if (
+    expectedClaim &&
+    (expectedClaim.claimId !== resolution.claim.id ||
+      expectedClaim.canonicalPrincipalId !== resolution.canonicalPrincipalId ||
+      expectedClaim.connectorAccountId !== resolution.claim.connectorAccountId ||
+      expectedClaim.generation !== resolution.generation ||
+      expectedClaim.deliveryKey.toLowerCase() !== normalizedEmail)
+  ) {
+    return {
+      kind: "unavailable",
+      reason: "canonical delivery claim changed after target selection",
+    };
+  }
+  return {
+    kind: "resolved",
+    email: normalizedEmail,
+    identityClaim: {
+      claimId: resolution.claim.id,
+      canonicalPrincipalId: resolution.canonicalPrincipalId,
+      connectorAccountId: resolution.claim.connectorAccountId,
+      generation: resolution.generation,
+      deliveryKey: normalizedEmail,
+    },
+  };
+}
 
-  const candidates = named.size > 0 ? named : emailShaped;
-  if (candidates.size === 0) return { kind: "unresolved" };
-  if (candidates.size > 1) return { kind: "ambiguous", candidates: [...candidates].sort() };
-  return { kind: "resolved", email: [...candidates][0] };
+type ExpectedIdentityClaimRead =
+  | { kind: "absent" }
+  | { kind: "invalid" }
+  | {
+      kind: "present";
+      claimId: string;
+      canonicalPrincipalId: string;
+      connectorAccountId: string;
+      generation: number;
+      deliveryKey: string;
+    };
+
+function expectedIdentityClaim(content: Content): ExpectedIdentityClaimRead {
+  const metadata = content.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return { kind: "absent" };
+  }
+  const value = (metadata as Record<string, unknown>).identityDeliveryClaim;
+  if (value === undefined) return { kind: "absent" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { kind: "invalid" };
+  const evidence = value as Record<string, unknown>;
+  if (
+    typeof evidence.claimId !== "string" ||
+    typeof evidence.canonicalPrincipalId !== "string" ||
+    typeof evidence.connectorAccountId !== "string" ||
+    typeof evidence.generation !== "number" ||
+    typeof evidence.deliveryKey !== "string"
+  ) {
+    return { kind: "invalid" };
+  }
+  return {
+    kind: "present",
+    claimId: evidence.claimId,
+    canonicalPrincipalId: evidence.canonicalPrincipalId,
+    connectorAccountId: evidence.connectorAccountId,
+    generation: evidence.generation,
+    deliveryKey: evidence.deliveryKey,
+  };
 }
 
 function subjectFromContent(content: Content): string {
@@ -224,7 +337,7 @@ async function sendGmailFromTarget(
   runtime: IAgentRuntime,
   target: TargetInfo,
   content: Content
-): Promise<SendHandlerOutcome> {
+): Promise<SendHandlerOutcome | undefined> {
   const service = getGmailSendService(runtime);
   if (!service) {
     return {
@@ -234,13 +347,37 @@ async function sendGmailFromTarget(
     };
   }
 
-  const resolution = await resolveRecipientEmail(runtime, target);
+  const account = await resolveGmailAccountId(runtime, target.accountId);
+  if ("error" in account) {
+    return account.error;
+  }
+
+  const expectedClaim = expectedIdentityClaim(content);
+  if (expectedClaim.kind === "invalid") {
+    return {
+      kind: "not_delivered",
+      code: "GMAIL_IDENTITY_AUTHORITY_UNAVAILABLE",
+      message: "Canonical identity evidence is malformed; refusing to send.",
+    };
+  }
+  const resolution = await resolveRecipientEmail(
+    runtime,
+    target,
+    account.accountId,
+    expectedClaim.kind === "present" ? expectedClaim : undefined
+  );
   if (resolution.kind === "unresolved") {
     return {
       kind: "not_delivered",
       code: "GMAIL_RECIPIENT_UNRESOLVED",
-      message:
-        "Could not resolve an email address for the recipient. Provide a literal address (name@example.com) or a contact with a stored email.",
+      message: `Could not resolve an active verified email claim for the recipient (${resolution.reason}). Provide a literal address or verify the contact's Google identity.`,
+    };
+  }
+  if (resolution.kind === "unavailable") {
+    return {
+      kind: "not_delivered",
+      code: "GMAIL_IDENTITY_AUTHORITY_UNAVAILABLE",
+      message: `Canonical identity authority is unavailable (${resolution.reason}); refusing to send.`,
     };
   }
   if (resolution.kind === "ambiguous") {
@@ -254,11 +391,6 @@ async function sendGmailFromTarget(
   }
   const recipient = resolution.email;
 
-  const account = await resolveGmailAccountId(runtime, target.accountId);
-  if ("error" in account) {
-    return account.error;
-  }
-
   const bodyText = String(content.text ?? "");
   const sent = await service.sendGmailMessage({
     accountId: account.accountId,
@@ -267,14 +399,17 @@ async function sendGmailFromTarget(
     bodyText,
   });
 
+  const providerMessageId = sent.messageId ?? sent.threadId;
+  if (!providerMessageId) {
+    // The provider call may have been accepted, but without returned Gmail
+    // evidence the connector cannot truthfully classify it as delivered.
+    return undefined;
+  }
+
   return {
     kind: "delivered",
     receipt: {
-      // Gmail returns the created message id on acceptance; the thread id is
-      // the fallback evidence if the id field is ever absent on a 200.
-      providerMessageIds: [
-        sent.messageId ?? sent.threadId ?? `gmail:${account.accountId}:accepted`,
-      ],
+      providerMessageIds: [providerMessageId],
       acceptedAt: Date.now(),
       persistence: {
         status: "not_attempted",
@@ -316,6 +451,26 @@ export function createGmailMessageConnector(_runtime: IAgentRuntime): MessageCon
           contexts: ["email", "connectors"],
         },
       ];
+    },
+    resolveIdentityClaimTarget: (
+      claim,
+      _context,
+      canonicalPrincipalId
+    ): MessageConnectorTarget | null => {
+      const email = emailLiteral(claim.handle) ?? emailLiteral(claim.externalSubjectId);
+      if (!email) return null;
+      return {
+        target: {
+          source: GMAIL_MESSAGE_SOURCE,
+          entityId: canonicalPrincipalId,
+          channelId: email.toLowerCase(),
+        },
+        identityDeliveryKey: email.toLowerCase(),
+        label: email.toLowerCase(),
+        kind: "email",
+        score: 1,
+        contexts: ["email", "connectors"],
+      };
     },
     sendHandler: async (handlerRuntime, target, content) =>
       sendGmailFromTarget(handlerRuntime, target, content),

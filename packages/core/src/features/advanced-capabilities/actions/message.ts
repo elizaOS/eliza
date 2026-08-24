@@ -42,6 +42,7 @@ import type {
 	Content,
 	HandlerOptions,
 	IAgentRuntime,
+	IdentityDeliveryClaimResolution,
 	Media,
 	Memory,
 	MessageConnector,
@@ -50,6 +51,7 @@ import type {
 	MessageConnectorQueryContext,
 	MessageConnectorTarget,
 	MessageTargetKind,
+	PrincipalService,
 	Room,
 	SearchCategoryRegistration,
 	State,
@@ -64,6 +66,7 @@ import {
 	ChannelType,
 	inspectSendHandlerResult,
 	ModelType,
+	ServiceType,
 } from "../../../types/index.ts";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../../types/message-source.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
@@ -929,6 +932,14 @@ type SendCandidate = {
 	 * room participant (the room-first name resolution), the member to address
 	 * in the outgoing text. Absent for every other candidate shape. */
 	address?: { entityId: UUID; name: string };
+	/** Canonical evidence that authorized this person/account delivery target. */
+	identityClaim?: {
+		claimId: UUID;
+		canonicalPrincipalId: UUID;
+		connectorAccountId: UUID;
+		generation: number;
+		deliveryKey: string;
+	};
 };
 
 type TargetResolution =
@@ -1506,17 +1517,25 @@ function isUnresolvedPersonFallback(candidate: SendCandidate): boolean {
 	return aliases.has("user") || aliases.has("contact");
 }
 
-function componentString(
-	component: { data?: Record<string, unknown> },
-	keys: string[],
-): string | undefined {
-	for (const key of keys) {
-		const value = component.data?.[key];
-		if (typeof value === "string" && value.trim().length > 0)
-			return value.trim();
-		if (typeof value === "number") return String(value);
-	}
-	return undefined;
+type EntityCandidateCollection =
+	| { status: "not_found"; candidates: [] }
+	| {
+			status: "resolved";
+			candidates: SendCandidate[];
+			requiresChoice: boolean;
+	  }
+	| {
+			status: "no_claim" | "authority_unavailable";
+			candidates: [];
+			principalId: UUID;
+			detail: string;
+	  };
+
+function connectorIdentityAuthorityId(connector: ConnectorWithHooks): string {
+	const service = connector.metadata?.service;
+	return typeof service === "string" && service.trim().length > 0
+		? service.trim()
+		: connector.source;
 }
 
 async function collectEntityCandidates(
@@ -1528,16 +1547,17 @@ async function collectEntityCandidates(
 	targetKind: MessageTargetKind | undefined,
 	sourceWasExact: boolean,
 	accountId?: string,
-): Promise<SendCandidate[]> {
+): Promise<EntityCandidateCollection> {
 	if (
 		!query ||
+		EMAIL_LITERAL.test(query.trim()) ||
 		(targetKind &&
 			!kindAliases(targetKind).has("user") &&
 			!kindAliases(targetKind).has("contact") &&
 			!kindAliases(targetKind).has("email") &&
 			!kindAliases(targetKind).has("phone"))
 	) {
-		return [];
+		return { status: "not_found", candidates: [] };
 	}
 
 	// An entity UUID is already an unambiguous identifier. Resolving it through
@@ -1550,7 +1570,19 @@ async function collectEntityCandidates(
 				{ ...message, content: { ...message.content, text: query } },
 				state ?? ({ values: {}, data: {}, text: "" } as State),
 			);
-	if (!entity?.id) return [];
+	if (!entity?.id) return { status: "not_found", candidates: [] };
+
+	const principalService = runtime.getService<PrincipalService>(
+		ServiceType.PRINCIPAL,
+	);
+	if (!principalService) {
+		return {
+			status: "authority_unavailable",
+			candidates: [],
+			principalId: entity.id as UUID,
+			detail: "The canonical principal service is not registered.",
+		};
+	}
 
 	const label = entity.names[0] ?? query;
 	const preferredSource = preferredDeliverySource(entity);
@@ -1558,51 +1590,130 @@ async function collectEntityCandidates(
 		labelMatchesQuery(name, query),
 	);
 	const candidates: SendCandidate[] = [];
+	const noClaimReasons = new Set<string>();
+	let requiresChoice = false;
 	for (const connector of connectors) {
 		if (!connectorSupportsKind(connector, targetKind ?? "contact")) continue;
-		const matchingComponent = entity.components?.find(
-			(c) =>
-				normalizeComparable(c.type) === normalizeComparable(connector.source),
-		);
-		const target = {
-			source: connector.source,
-			accountId: connector.accountId ?? accountId,
-			entityId: entity.id as UUID,
-		} as TargetInfo;
-		if (matchingComponent) {
-			const channelId = componentString(matchingComponent, [
-				"channelId",
-				"chatId",
-				"conversationId",
-				"phone",
-				"phoneNumber",
-				"email",
-			]);
-			if (channelId) target.channelId = channelId;
-			const roomId = componentString(matchingComponent, ["roomId"]);
-			if (roomId) target.roomId = roomId as UUID;
-			const serverId = componentString(matchingComponent, ["serverId"]);
-			if (serverId) target.serverId = serverId;
+		const requestedAccountId = connector.accountId ?? accountId;
+		if (requestedAccountId && !isUuidLike(requestedAccountId)) {
+			noClaimReasons.add("connector account id is not a canonical UUID");
+			continue;
 		}
+		let resolution: IdentityDeliveryClaimResolution;
+		try {
+			resolution = await principalService.resolveIdentityDeliveryClaim({
+				agentId: runtime.agentId,
+				principalId: entity.id as UUID,
+				connectorId: connectorIdentityAuthorityId(connector),
+				connectorAccountId: requestedAccountId as UUID | undefined,
+			});
+		} catch (error) {
+			// error-policy:J4 canonical identity reads fail closed; connector hooks
+			// cannot replace unavailable delivery authority for a known principal.
+			runtime.reportError("MESSAGE.resolveIdentityDeliveryClaim", error, {
+				principalId: entity.id,
+				connector: connector.source,
+			});
+			return {
+				status: "authority_unavailable",
+				candidates: [],
+				principalId: entity.id as UUID,
+				detail: error instanceof Error ? error.message : String(error),
+			};
+		}
+		if (resolution.decision === "no_claim") {
+			noClaimReasons.add(resolution.reason);
+			continue;
+		}
+		const claims =
+			resolution.decision === "resolved"
+				? [resolution.claim]
+				: [...resolution.claims];
+		requiresChoice ||= resolution.decision === "ambiguous";
+		if (!connector.resolveIdentityClaimTarget) {
+			noClaimReasons.add(
+				`${connector.source} does not map identity claims to delivery targets`,
+			);
+			continue;
+		}
+		const context = buildQueryContext(
+			runtime,
+			message,
+			state,
+			connector.source,
+			undefined,
+			connector,
+			requestedAccountId,
+		);
 		const lastChannel =
 			preferredSource !== undefined &&
 			normalizeComparable(connector.source) ===
 				normalizeComparable(preferredSource);
-		const reasons = matchingComponent ? ["entity", "component"] : ["entity"];
-		if (lastChannel) reasons.push("lastChannel");
-		candidates.push({
-			connector,
-			target,
-			label,
-			kind: targetKind ?? "contact",
-			score:
-				(matchingComponent ? 0.78 : sourceWasExact ? 0.66 : 0.56) +
-				(lastChannel ? LAST_CHANNEL_BONUS : 0),
-			reasons,
-			exact,
-		});
+		for (const claim of claims) {
+			let mapped: MessageConnectorTarget | null;
+			try {
+				mapped = await connector.resolveIdentityClaimTarget(
+					claim,
+					context,
+					resolution.canonicalPrincipalId,
+				);
+			} catch (error) {
+				// error-policy:J4 claim-to-target mapping is connector-owned and must
+				// fail closed; shared routing cannot guess a platform identifier.
+				runtime.reportError("MESSAGE.resolveIdentityClaimTarget", error, {
+					principalId: entity.id,
+					connector: connector.source,
+					claimId: claim.id,
+				});
+				return {
+					status: "authority_unavailable",
+					candidates: [],
+					principalId: entity.id as UUID,
+					detail: error instanceof Error ? error.message : String(error),
+				};
+			}
+			const deliveryKey = mapped?.identityDeliveryKey?.trim();
+			if (!mapped || !deliveryKey) {
+				noClaimReasons.add(
+					`${connector.source} could not map verified claim ${claim.id}`,
+				);
+				continue;
+			}
+			const reasons = ["entity", "canonicalClaim"];
+			if (lastChannel) reasons.push("lastChannel");
+			candidates.push({
+				connector,
+				target: {
+					...mapped.target,
+					source: connector.source,
+					accountId: claim.connectorAccountId,
+				},
+				label: `${label} (${mapped.label || deliveryKey})`,
+				kind: mapped.kind ?? targetKind ?? "contact",
+				score:
+					(sourceWasExact ? 0.86 : 0.8) +
+					(lastChannel ? LAST_CHANNEL_BONUS : 0),
+				reasons,
+				exact,
+				identityClaim: {
+					claimId: claim.id,
+					canonicalPrincipalId: resolution.canonicalPrincipalId,
+					connectorAccountId: claim.connectorAccountId,
+					generation: resolution.generation,
+					deliveryKey,
+				},
+			});
+		}
 	}
-	return candidates;
+	if (candidates.length > 0)
+		return { status: "resolved", candidates, requiresChoice };
+	return {
+		status: "no_claim",
+		candidates: [],
+		principalId: entity.id as UUID,
+		detail:
+			[...noClaimReasons].sort().join(", ") || "no eligible connector claim",
+	};
 }
 
 /** The connector this entity was last successfully reached on, if recorded.
@@ -1994,7 +2105,7 @@ async function resolveSendTarget(
 	// the closest, least-surprising referent for a bare name — resolve to an
 	// in-room utterance addressing them before any connector-wide fuzzy lookup
 	// or contact search gets a chance to misroute the send.
-	if (params.target) {
+	if (params.target && !EMAIL_LITERAL.test(params.target.trim())) {
 		const roomMembers = await currentRoomMemberCandidates(
 			runtime,
 			message,
@@ -2023,43 +2134,72 @@ async function resolveSendTarget(
 	}
 
 	const candidates: SendCandidate[] = [];
-
-	for (const connector of considered) {
-		const context = buildQueryContext(
-			runtime,
-			message,
-			state,
-			connector.source,
-			undefined,
-			connector,
-			params.accountId,
-		);
-		candidates.push(
-			...(await collectHookTargets(
-				runtime,
-				connector,
-				params.target,
-				context,
-				params.targetKind,
-				sourceWasExact,
-				params.accountId,
-			)),
-		);
-	}
-	candidates.push(
-		...(await collectEntityCandidates(
-			runtime,
-			message,
-			state,
-			params.target,
-			considered,
-			params.targetKind,
-			sourceWasExact,
-			params.accountId,
-		)),
+	const entityCandidates = await collectEntityCandidates(
+		runtime,
+		message,
+		state,
+		params.target,
+		considered,
+		params.targetKind,
+		sourceWasExact,
+		params.accountId,
 	);
+	if (entityCandidates.status === "authority_unavailable") {
+		return {
+			status: "missing_target",
+			text: `MESSAGE op=send cannot resolve canonical delivery authority for principal ${entityCandidates.principalId}: ${entityCandidates.detail}`,
+			error: "TARGET_IDENTITY_AUTHORITY_UNAVAILABLE",
+			sourceResolution: params.sourceResolution,
+		};
+	}
+	if (entityCandidates.status === "no_claim") {
+		return {
+			status: "missing_target",
+			text:
+				`MESSAGE op=send found principal ${entityCandidates.principalId}, but no active verified delivery claim matches the selected connector/account (${entityCandidates.detail}). ` +
+				"Ask the user for a literal address or link and verify the connector identity before retrying.",
+			error: "TARGET_DELIVERY_CLAIM_MISSING",
+			sourceResolution: params.sourceResolution,
+		};
+	}
+	if (entityCandidates.status === "resolved") {
+		if (entityCandidates.requiresChoice) {
+			return {
+				status: "ambiguous",
+				text:
+					"MESSAGE op=send found multiple active verified delivery claims. Pick one:\n" +
+					formatCandidates(entityCandidates.candidates),
+				candidates: entityCandidates.candidates,
+				sourceResolution: params.source ? "exact" : "inferred",
+			};
+		}
+		candidates.push(...entityCandidates.candidates);
+	} else {
+		for (const connector of considered) {
+			const context = buildQueryContext(
+				runtime,
+				message,
+				state,
+				connector.source,
+				undefined,
+				connector,
+				params.accountId,
+			);
+			candidates.push(
+				...(await collectHookTargets(
+					runtime,
+					connector,
+					params.target,
+					context,
+					params.targetKind,
+					sourceWasExact,
+					params.accountId,
+				)),
+			);
+		}
+	}
 
-	if (params.target) {
+	if (params.target && entityCandidates.status === "not_found") {
 		for (const connector of considered) {
 			candidates.push(
 				explicitSendTarget(
@@ -2202,6 +2342,7 @@ async function recordDeliveryPreference(
 	const entityIdRaw = String(target.entityId ?? "").trim();
 	const entityId =
 		candidate.address?.entityId ??
+		candidate.identityClaim?.canonicalPrincipalId ??
 		(isUuidLike(entityIdRaw) ? (entityIdRaw as UUID) : undefined);
 	if (
 		!entityId ||
@@ -2605,7 +2746,7 @@ async function ensureSendAccountAllowed(
 const RECIPIENT_VETTED_REASONS = new Set([
 	"admin",
 	"entity",
-	"component",
+	"canonicalClaim",
 	"currentRoom",
 	"currentRoomMember",
 ]);
@@ -2798,14 +2939,18 @@ async function handleSend(
 			? `@${selected.address.name} ${normalized.message}`.trim()
 			: normalized.message;
 
-	const content = applyContentShaping(
-		selected.connector,
-		buildContent({
-			...normalized,
-			message: outboundMessage,
-			source: selected.connector.source,
-		}),
-	);
+	const builtContent = buildContent({
+		...normalized,
+		message: outboundMessage,
+		source: selected.connector.source,
+	});
+	if (selected.identityClaim) {
+		builtContent.metadata = {
+			...(isRecord(builtContent.metadata) ? builtContent.metadata : {}),
+			identityDeliveryClaim: selected.identityClaim,
+		};
+	}
+	const content = applyContentShaping(selected.connector, builtContent);
 
 	let persisted: Memory | undefined;
 	let providerMessageId: string | undefined;
@@ -3023,6 +3168,7 @@ async function handleSend(
 			targetKind: selected.kind,
 			sourceResolution: resolution.sourceResolution,
 			resolutionReasons: selected.reasons,
+			identityDeliveryClaim: selected.identityClaim,
 			thread: normalized.thread,
 			urgency: normalized.urgency,
 			memoryId: persisted?.id,
