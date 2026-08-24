@@ -6,7 +6,7 @@ import {
   canUseLocalTradeExecution,
   QUOTE_MAX_AGE_MS,
   recordAgentAutoTrade,
-} from "./trade-safety.ts";
+} from "../trade-safety.ts";
 
 describe("recordAgentAutoTrade", () => {
   beforeEach(() => {
