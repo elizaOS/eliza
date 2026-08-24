@@ -176,8 +176,12 @@ describe("addDocumentFromFilePath", () => {
 
 	it.each([
 		["agentId", ""],
+		["agentId", "not-a-uuid"],
 		["worldId", ""],
+		["worldId", "not-a-uuid"],
+		["roomId", ""],
 		["roomId", "not-a-uuid"],
+		["entityId", ""],
 		["entityId", "00000000-0000-0000-0000-invalid-uuid"],
 	] as const)(
 		"rejects invalid %s before reading file bytes",
@@ -217,27 +221,36 @@ describe("addDocumentFromFilePath", () => {
 });
 
 describe("loadDocumentsFromPath", () => {
-	it("rejects invalid identifiers before resolving the documents path", async () => {
-		const directory = makeTemporaryDirectory();
-		const missing = path.join(directory, "missing");
-		const service = makeService();
+	it.each([
+		["agentId", ""],
+		["worldId", "not-a-uuid"],
+		["roomId", ""],
+		["entityId", "not-a-uuid"],
+	] as const)(
+		"rejects invalid %s before resolving the documents path",
+		async (field, value) => {
+			const directory = makeTemporaryDirectory();
+			const missing = path.join(directory, "missing");
+			const service = makeService();
+			const parameters: unknown[] = [service, agentId, undefined, missing];
 
-		await expect(
-			Reflect.apply(loadDocumentsFromPath, undefined, [
-				service,
-				agentId,
-				"",
-				missing,
-			]),
-		).rejects.toMatchObject({
-			name: "ElizaError",
-			code: "DOCUMENT_SCOPE_ID_INVALID",
-			message: "Document worldId must be a valid UUID",
-			context: { field: "worldId", value: "" },
-		});
-		expect(service.added).toHaveLength(0);
-		expect(service.reported).toHaveLength(0);
-	});
+			if (field === "agentId") parameters[1] = value;
+			if (field === "worldId") parameters[2] = value;
+			if (field === "roomId") parameters[4] = { roomId: value };
+			if (field === "entityId") parameters[4] = { entityId: value };
+
+			await expect(
+				Reflect.apply(loadDocumentsFromPath, undefined, parameters),
+			).rejects.toMatchObject({
+				name: "ElizaError",
+				code: "DOCUMENT_SCOPE_ID_INVALID",
+				message: `Document ${field} must be a valid UUID`,
+				context: { field, value },
+			});
+			expect(service.added).toHaveLength(0);
+			expect(service.reported).toHaveLength(0);
+		},
+	);
 
 	it("returns empty counts for missing and empty directories", async () => {
 		const directory = makeTemporaryDirectory();
