@@ -255,6 +255,71 @@ describe("SpeakerStreamManager", () => {
     expect(h.manager.getPendingSnapshot("a")).toBeNull();
   });
 
+  it("discards a stale response even after the same speaker resubmits, and still accepts the genuine one", async () => {
+    const h = harness();
+    h.manager.addSpeaker("a", "Alice");
+
+    // Submission #1 (generation 0) goes in flight.
+    h.manager.feedAudio("a", seconds(2));
+    vi.advanceTimersByTime(2000);
+    expect(h.submissions).toHaveLength(1);
+
+    // Speaker change / mute / leave flushes while the gen-0 request is still
+    // outstanding: fullReset bumps the generation and clears inFlight, but the
+    // orphaned network request cannot be cancelled.
+    await h.manager.flushSpeaker("a");
+
+    // The same speaker resumes talking. A pending gen-0 request is still
+    // outstanding, so no new submission may start — that would overwrite the
+    // stale-response guard and let the orphan through (the reported defect).
+    h.manager.feedAudio("a", seconds(2));
+    vi.advanceTimersByTime(2000);
+    expect(h.submissions).toHaveLength(1);
+
+    // The orphaned gen-0 response finally returns (twice, enough to cross the
+    // confirm threshold if it were wrongly accepted). It must be discarded and
+    // never poison the transcript.
+    h.manager.handleTranscriptionResult("a", "stale text from old context");
+    h.manager.handleTranscriptionResult("a", "stale text from old context");
+    expect(h.confirmed).toHaveLength(0);
+    expect(h.confirmed.map((c) => c.text)).not.toContain(
+      "stale text from old context",
+    );
+
+    // With the orphan drained, the resumed audio submits as generation 1 and
+    // its genuine response confirms normally — the stream is not wedged.
+    vi.advanceTimersByTime(2000);
+    expect(h.submissions).toHaveLength(2);
+    h.manager.handleTranscriptionResult("a", "fresh words after resume");
+    h.manager.feedAudio("a", seconds(2));
+    vi.advanceTimersByTime(2000);
+    expect(h.submissions).toHaveLength(3);
+    h.manager.handleTranscriptionResult("a", "fresh words after resume");
+    expect(h.confirmed.map((c) => c.text)).toEqual([
+      "fresh words after resume",
+    ]);
+  });
+
+  it("never runs a second concurrent submission while an orphaned request is outstanding", async () => {
+    const h = harness();
+    h.manager.addSpeaker("a", "Alice");
+    h.manager.feedAudio("a", seconds(2));
+    vi.advanceTimersByTime(2000);
+    await h.manager.flushSpeaker("a"); // orphan gen-0 left in flight
+
+    // Feed audio and let several cadence ticks fire: the pending orphan blocks
+    // every one, so exactly one request is ever in flight.
+    h.manager.feedAudio("a", seconds(4));
+    vi.advanceTimersByTime(6000);
+    expect(h.submissions).toHaveLength(1);
+
+    // Only once the orphan resolves does the next submission become eligible.
+    h.manager.handleTranscriptionResult("a", "stale text from old context");
+    vi.advanceTimersByTime(2000);
+    expect(h.submissions).toHaveLength(2);
+    expect(h.confirmed).toHaveLength(0);
+  });
+
   it("speaker-change flush emits the forming transcript immediately", async () => {
     const h = harness();
     h.manager.addSpeaker("a", "Alice");

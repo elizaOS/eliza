@@ -98,6 +98,18 @@ export class SpeakerStreamManager {
   private readonly buffers = new Map<string, SpeakerBuffer>();
   private readonly timers = new Map<string, ReturnType<typeof setInterval>>();
   private readonly submitGeneration = new Map<string, number>();
+  /**
+   * Count of ASR requests dispatched but not yet resolved, per speaker. A
+   * request stays counted across a `fullReset()` (which clears `inFlight` and
+   * bumps `generation` but cannot cancel the outstanding network call), so a
+   * new submission is never started while an orphaned request is still in
+   * flight. That keeps `submitGeneration` pinned to the orphan's generation,
+   * letting the generation guard discard its late response instead of
+   * overwriting the slot and accepting stale text. The pipeline guarantees
+   * exactly one `handleTranscriptionResult` per `onSegmentReady`, so this
+   * counter always drains and never stalls the stream.
+   */
+  private readonly pendingSubmissions = new Map<string, number>();
   private readonly minAudioDurationSec: number;
   private readonly submitIntervalSec: number;
   private readonly confirmThreshold: number;
@@ -197,9 +209,16 @@ export class SpeakerStreamManager {
     if (!buffer) return;
 
     buffer.inFlight = false;
+    // Every response drains exactly one dispatched request, even a stale one
+    // whose buffer was reset — otherwise the counter would wedge and block all
+    // future submissions for this speaker.
+    this.clearOnePending(speakerKey);
 
     // Discard stale responses: buffer was fully reset while this request was
-    // in flight — accepting it would poison lastTranscript with old text.
+    // in flight — accepting it would poison lastTranscript with old text. The
+    // pendingSubmissions gate prevents a newer submission from overwriting
+    // submitGeneration while this orphan is outstanding, so the comparison
+    // still holds even when the same speaker resumed and resubmitted.
     const submitGen = this.submitGeneration.get(speakerKey);
     if (submitGen !== undefined && submitGen < buffer.generation) return;
 
@@ -375,6 +394,7 @@ export class SpeakerStreamManager {
 
     this.buffers.delete(speakerKey);
     this.submitGeneration.delete(speakerKey);
+    this.pendingSubmissions.delete(speakerKey);
   }
 
   removeAll(): void {
@@ -398,7 +418,11 @@ export class SpeakerStreamManager {
       return;
     }
 
-    if (this.unconfirmedSamples(buffer) > 0 && !buffer.inFlight) {
+    if (
+      this.unconfirmedSamples(buffer) > 0 &&
+      !buffer.inFlight &&
+      !this.hasPendingSubmission(speakerKey)
+    ) {
       buffer.idleSubmitted = true;
       logger.debug(
         `[MeetingPipeline] Flush-submit for "${buffer.speakerName}" (${(
@@ -442,7 +466,8 @@ export class SpeakerStreamManager {
 
   private trySubmit(speakerKey: string): void {
     const buffer = this.buffers.get(speakerKey);
-    if (!buffer || buffer.inFlight) return;
+    if (!buffer || buffer.inFlight || this.hasPendingSubmission(speakerKey))
+      return;
 
     const unconfirmedSec = this.unconfirmedSamples(buffer) / this.sampleRate;
     const totalSec = buffer.totalSamples / this.sampleRate;
@@ -518,6 +543,10 @@ export class SpeakerStreamManager {
 
     buffer.inFlight = true;
     this.submitGeneration.set(buffer.speakerKey, buffer.generation);
+    this.pendingSubmissions.set(
+      buffer.speakerKey,
+      (this.pendingSubmissions.get(buffer.speakerKey) ?? 0) + 1,
+    );
 
     try {
       this.onSegmentReady(
@@ -527,9 +556,24 @@ export class SpeakerStreamManager {
         purpose,
       );
     } catch (err) {
+      // The dispatch never left the process, so no handleTranscriptionResult
+      // will drain it — release the counter here to keep the stream moving.
       buffer.inFlight = false;
+      this.clearOnePending(buffer.speakerKey);
       logger.error({ err }, "[MeetingPipeline] onSegmentReady threw");
     }
+  }
+
+  /** True while an ASR request for this speaker is dispatched but unresolved. */
+  private hasPendingSubmission(speakerKey: string): boolean {
+    return (this.pendingSubmissions.get(speakerKey) ?? 0) > 0;
+  }
+
+  /** Release one outstanding submission slot; never drops below zero. */
+  private clearOnePending(speakerKey: string): void {
+    const remaining = (this.pendingSubmissions.get(speakerKey) ?? 0) - 1;
+    if (remaining > 0) this.pendingSubmissions.set(speakerKey, remaining);
+    else this.pendingSubmissions.delete(speakerKey);
   }
 
   /** Emit a confirmed segment. Does NOT reset the buffer. */
