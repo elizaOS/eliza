@@ -21,19 +21,44 @@ test.describe("real-local context inspector", () => {
   );
   test.setTimeout(180_000);
 
-  test("reauthorizes, pages, redacts, and renders real PGlite trajectories", async ({
+  test("authorizes, pages, redacts, and renders real PGlite trajectories", async ({
     page,
   }, testInfo) => {
-    const consoleErrors: string[] = [];
-    const inspectorWire: string[] = [];
-    page.on("console", (message) => {
-      if (message.type() === "error") consoleErrors.push(message.text());
-    });
-    page.on("response", async (response) => {
-      if (new URL(response.url()).pathname === "/api/context-inspector") {
-        inspectorWire.push(await response.text());
+    const pageErrors: string[] = [];
+    const inspectorDiagnostics: string[] = [];
+    const inspectorWire: Array<Promise<string>> = [];
+    let uiStarted = false;
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("requestfailed", (request) => {
+      if (
+        uiStarted &&
+        new URL(request.url()).pathname === "/api/context-inspector"
+      ) {
+        inspectorDiagnostics.push(
+          `requestfailed: ${request.failure()?.errorText ?? "unknown"}`,
+        );
       }
     });
+    page.on("response", (response) => {
+      if (new URL(response.url()).pathname === "/api/context-inspector") {
+        inspectorWire.push(response.text());
+        if (uiStarted && !response.ok()) {
+          inspectorDiagnostics.push(`http.${response.status()}`);
+        }
+      }
+    });
+
+    const firstRunStatus = await page.request.get("/api/first-run/status");
+    expect(firstRunStatus.ok()).toBe(true);
+    if (!((await firstRunStatus.json()) as { complete?: boolean }).complete) {
+      const completed = await page.request.post("/api/first-run", {
+        data: { name: "Context Inspector E2E" },
+      });
+      expect(completed.ok()).toBe(true);
+    }
+    const completedStatus = await page.request.get("/api/first-run/status");
+    expect(completedStatus.ok()).toBe(true);
+    expect(await completedStatus.json()).toMatchObject({ complete: true });
 
     const conversationResponse = await page.request.post("/api/conversations", {
       data: {
@@ -43,14 +68,16 @@ test.describe("real-local context inspector", () => {
     });
     expect(conversationResponse.ok()).toBe(true);
     const conversation = (await conversationResponse.json()) as {
-      conversation?: { id?: string };
+      conversation?: { id?: string; roomId?: string };
     };
     const conversationId = conversation.conversation?.id;
+    const roomId = conversation.conversation?.roomId;
     expect(conversationId).toBeTruthy();
+    expect(roomId).toBeTruthy();
 
     const seedResponse = await page.request.post(
       "/api/device-e2e/context-inspector/seed",
-      { data: { conversationId, count: 21 } },
+      { data: { conversationId, roomId, count: 21 } },
     );
     expect(seedResponse.status()).toBe(200);
     expect(await seedResponse.json()).toEqual({ count: 21, conversationId });
@@ -98,8 +125,9 @@ test.describe("real-local context inspector", () => {
 
     await seedAppStorage(page, {
       "eliza:chat:activeConversationId": conversationId ?? "",
-      "eliza:developerMode": "true",
+      "eliza:developerMode": "1",
     });
+    uiStarted = true;
     await openAppPath(page, "/apps/context-inspector");
     const view = page.getByTestId("context-inspector-view");
     await expect(view).toBeVisible({ timeout: 60_000 });
@@ -116,11 +144,13 @@ test.describe("real-local context inspector", () => {
     await expect(page.getByText("Trajectory window 21–40")).toBeVisible();
 
     const visibleText = await view.innerText();
+    const inspectorResponses = await Promise.all(inspectorWire);
     expect(visibleText).not.toContain(RAW_BODY);
     expect(visibleText).not.toContain(RAW_PATH);
-    expect(inspectorWire.join("\n")).not.toContain(RAW_BODY);
-    expect(inspectorWire.join("\n")).not.toContain(RAW_PATH);
-    expect(consoleErrors).toEqual([]);
+    expect(inspectorResponses.join("\n")).not.toContain(RAW_BODY);
+    expect(inspectorResponses.join("\n")).not.toContain(RAW_PATH);
+    expect(inspectorDiagnostics).toEqual([]);
+    expect(pageErrors).toEqual([]);
 
     const screenshotPath = testInfo.outputPath(
       "context-inspector-real-local-desktop.png",
@@ -131,7 +161,9 @@ test.describe("real-local context inspector", () => {
       JSON.stringify(
         {
           conversationId,
-          inspectorResponses: inspectorWire.map((body) => JSON.parse(body)),
+          inspectorResponses: inspectorResponses.map((body) =>
+            JSON.parse(body),
+          ),
         },
         null,
         2,

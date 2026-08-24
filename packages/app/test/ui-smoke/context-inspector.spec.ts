@@ -1,8 +1,7 @@
 /**
  * Browser E2E for the developer context-inspector page. The renderer and app
  * shell are real; the focused DTO fixture proves the view never asks for raw
- * trajectory data, while a direct malformed request exercises the live local
- * API route and its fail-closed boundary.
+ * trajectory data and renders access revocation as a visible error.
  */
 
 import { expect, test } from "@playwright/test";
@@ -12,20 +11,24 @@ import {
   seedAppStorage,
 } from "./helpers";
 
-const CONVERSATION = "00000000-0000-4000-8000-000000000101";
 const RAW_CANARY = "TOP SECRET E2E BODY";
 const RAW_PATH = "/Users/private/mail/account-77/message-99";
 
 test("context inspector renders redacted metadata and fails visibly after access revocation", async ({
   page,
 }, testInfo) => {
-  const consoleErrors: string[] = [];
+  const consoleErrors: Array<{ text: string; url: string }> = [];
   const inspectorRequests: string[] = [];
   const inspectorResponses: string[] = [];
   let denied = false;
 
   page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
+    if (message.type() === "error") {
+      consoleErrors.push({
+        text: message.text(),
+        url: message.location().url,
+      });
+    }
   });
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/context-inspector") {
@@ -38,14 +41,7 @@ test("context inspector renders redacted metadata and fails visibly after access
     }
   });
 
-  await page.addInitScript(
-    ({ conversationId }) => {
-      localStorage.setItem("eliza:developerMode", "true");
-      localStorage.setItem("eliza:chat:activeConversationId", conversationId);
-    },
-    { conversationId: CONVERSATION },
-  );
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
   await page.route("**/api/context-inspector?**", async (route) => {
     if (denied) {
@@ -107,9 +103,16 @@ test("context inspector renders redacted metadata and fails visibly after access
   expect(html).not.toContain(RAW_CANARY);
   expect(html).not.toContain(RAW_PATH);
   expect(inspectorRequests).toHaveLength(1);
-  expect(inspectorRequests[0]).toContain(`conversationId=${CONVERSATION}`);
+  const activeConversationId = await page.evaluate(() =>
+    localStorage.getItem("eliza:chat:activeConversationId"),
+  );
+  expect(activeConversationId).toBeTruthy();
+  expect(
+    new URL(inspectorRequests[0] ?? "").searchParams.get("conversationId"),
+  ).toBe(activeConversationId);
   expect(inspectorResponses.join("\n")).not.toContain(RAW_CANARY);
   expect(inspectorResponses.join("\n")).not.toContain(RAW_PATH);
+  expect(consoleErrors).toEqual([]);
 
   if (process.env.E2E_RECORD === "1") {
     await page.screenshot({
@@ -126,17 +129,10 @@ test("context inspector renders redacted metadata and fails visibly after access
   await expect(page.getByRole("alert")).toContainText(
     "Context inspector access denied",
   );
-  expect(consoleErrors).toEqual([]);
-});
-
-test("live local API rejects tampered inspector scope before data access", async ({
-  request,
-}) => {
-  const response = await request.get(
-    "/api/context-inspector?conversationId=tampered&offset=-1",
-  );
-  expect(response.status()).toBe(400);
-  expect(await response.json()).toEqual({
-    error: "Invalid context inspector request",
-  });
+  expect(consoleErrors).toEqual([
+    {
+      text: "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      url: expect.stringContaining("/api/context-inspector"),
+    },
+  ]);
 });

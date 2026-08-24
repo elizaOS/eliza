@@ -295,6 +295,31 @@ describe("trajectories trace_id join key (real PGLite)", () => {
 		expect(rows[0]?.trace_id).toBe(traceId);
 	});
 
+	it("filters trajectories by the roomId stored in metadata", async () => {
+		const roomId = "room-filter-target";
+		const matchingId = await service.startTrajectory(serviceRuntime.agentId, {
+			source: "room-filter-test",
+			metadata: { roomId },
+		});
+		await service.startTrajectory(serviceRuntime.agentId, {
+			source: "room-filter-test",
+			metadata: { roomId: "room-filter-other" },
+		});
+
+		const filtered = await service.listTrajectories({ roomId, limit: 50 });
+
+		expect(filtered.total).toBe(1);
+		expect(filtered.trajectories).toEqual([
+			expect.objectContaining({ id: matchingId, roomId }),
+		]);
+		const indexes = await raw(
+			"SELECT indexname FROM pg_indexes WHERE indexname = 'idx_trajectories_room_id'",
+		);
+		expect(indexes).toEqual([
+			expect.objectContaining({ indexname: "idx_trajectories_room_id" }),
+		]);
+	});
+
 	it("round-trips terminated status through the public list filter", async () => {
 		const trajectoryId = await service.startTrajectory(
 			"00000000-0000-4000-8000-000000000001",
