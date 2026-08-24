@@ -168,6 +168,36 @@ describe("PaymentStateDetailPage fetch states", () => {
     await screen.findByTestId("payment-detail-error");
     expect(screen.getByText(/malformed/i)).toBeTruthy();
   });
+
+  it("rejects a partial row missing rendered fields, never rendering fabricated values", async () => {
+    // Start from a valid row and drop one rendered field at a time: a
+    // payload missing amount, currency, identifiers, event fields, or
+    // reversal totals must fail validation — a fabricated-success render
+    // (NaN amount, invalid date, invented policy effect) is the failure
+    // this guard exists to prevent (#22966 review r4).
+    const dropFields = [
+      "amountCents",
+      "currency",
+      "authorityId",
+      "eventTime",
+      "eventTimeKind",
+      "cumulativeRefundedUsd",
+      "supportState",
+      "disputeReinstated",
+    ] as const;
+    for (const field of dropFields) {
+      apiMock.api.mockReset();
+      const partial = { ...stateRow() } as Record<string, unknown>;
+      delete partial[field];
+      apiMock.api.mockResolvedValueOnce({ state: partial });
+      renderDetail();
+      // eslint-disable-next-line no-await-in-loop
+      await screen.findByTestId("payment-detail-error");
+      expect(screen.getByText(/malformed/i)).toBeTruthy();
+      expect(screen.queryByTestId("payment-detail-title")).toBeNull();
+      cleanup();
+    }
+  });
 });
 
 describe("PaymentStateDetailPage success rendering", () => {
