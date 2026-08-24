@@ -29,6 +29,7 @@ type GenerateFn = (_options: Record<string, unknown>) => Promise<{
   promptTokens: number;
   outputTokens: number;
   durationMs: number;
+  finishReason?: "stop" | "length" | "tool" | "cancel" | "error";
 }>;
 
 type TestBundleRecord = {
@@ -565,6 +566,93 @@ describe("iOS local-agent local inference flow", () => {
       error: "Local model could not be loaded",
     });
     expect(response.error).not.toContain(marker);
+  });
+
+  it("forwards local generation without imposing a reply-token cap", async () => {
+    const generate = vi.fn(async (_options: Record<string, unknown>) => ({
+      text: "complete native answer",
+      promptTokens: 4,
+      outputTokens: 3,
+      durationMs: 10,
+      finishReason: "stop" as const,
+    }));
+    const kernel = await loadKernel({
+      generate,
+      availableModels: [
+        {
+          name: "eliza-1-2b-128k.gguf",
+          path: "/models/eliza-1-2b-128k.gguf",
+          size: 1_200_000_000,
+        },
+      ],
+      bundleRecords: [
+        verifiedEliza1BundleRecord(
+          "eliza-1-2b",
+          "/models/eliza-1-2b-128k.gguf",
+        ),
+      ],
+    });
+
+    await jsonRequest(kernel, "POST", "/api/local-inference/active", {
+      modelId: "eliza-1-2b",
+    });
+    const created = (await jsonRequest(kernel, "POST", "/api/conversations", {
+      title: "Complete generation",
+    })) as { conversation: { id: string } };
+
+    await jsonRequest(
+      kernel,
+      "POST",
+      `/api/conversations/${created.conversation.id}/messages`,
+      { text: "Give me the complete answer" },
+    );
+
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate.mock.calls[0]?.[0]).not.toHaveProperty("maxTokens");
+  });
+
+  it("rejects a native reply that ends at the decode boundary", async () => {
+    const kernel = await loadKernel({
+      generate: vi.fn(async () => ({
+        text: "partial native answer",
+        promptTokens: 4,
+        outputTokens: 256,
+        durationMs: 10,
+        finishReason: "length" as const,
+      })),
+      availableModels: [
+        {
+          name: "eliza-1-2b-128k.gguf",
+          path: "/models/eliza-1-2b-128k.gguf",
+          size: 1_200_000_000,
+        },
+      ],
+      bundleRecords: [
+        verifiedEliza1BundleRecord(
+          "eliza-1-2b",
+          "/models/eliza-1-2b-128k.gguf",
+        ),
+      ],
+    });
+
+    await jsonRequest(kernel, "POST", "/api/local-inference/active", {
+      modelId: "eliza-1-2b",
+    });
+    const created = (await jsonRequest(kernel, "POST", "/api/conversations", {
+      title: "Incomplete generation",
+    })) as { conversation: { id: string } };
+
+    await expect(
+      kernel.handleIosLocalAgentRequest(
+        new Request(
+          `http://127.0.0.1:31337/api/conversations/${created.conversation.id}/messages`,
+          {
+            method: "POST",
+            body: JSON.stringify({ text: "Do not return a partial answer" }),
+          },
+        ),
+      ),
+    ).rejects.toThrow("decode boundary before completion");
   });
 
   it("reports bundled voice assets separately from TTS engine readiness", async () => {

@@ -584,6 +584,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/ui/src/components/chat/message-parser-helpers.ts": [
 		/MAX_DISPLAY_LEN/,
 	],
+	"packages/ui/src/api/ios-local-agent-kernel.ts": [
+		/messages\s*\.slice\(-12\)/,
+		/maxTokens:\s*256/,
+	],
 	"packages/shared/src/utils/assistant-text.ts": [
 		/input\.length\s*>\s*200_000/,
 		/input\.slice\(0,\s*200_000\)/,

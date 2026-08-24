@@ -328,6 +328,7 @@ This package mostly reads config injected by the host, not raw env vars:
   shimmer and spinner for thinking, tool work, and speaking so transport-phase
   changes do not flash the app accent. Preserve its `motion-reduce` fallback
   when changing the status treatment.
+- **Local-agent prompt integrity.** The iOS in-renderer compatibility kernel forwards the complete conversation and does not add reply-token caps to local or Cloud generation. Native decode-boundary exhaustion must be rejected rather than displayed as a completed response.
 - **Builtin view mutations need semantic action twins.** When adding a
   button/filter/toggle/form handler to a builtin view, add or reuse the owning
   action first; see "Add a mutating control to a builtin view" above.
