@@ -55,7 +55,14 @@ function normalizePostText(text: string): string {
     return `${text.slice(0, spaceIndex).trim()}...`;
   }
 
-  return `${text.slice(0, TWEET_MAX_LENGTH - 3).trim()}...`;
+  let end = TWEET_MAX_LENGTH - 3;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${text.slice(0, end).trim()}...`;
 }
 
 export function createTwitterPostCallback({

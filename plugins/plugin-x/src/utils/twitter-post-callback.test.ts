@@ -307,3 +307,19 @@ describe("createTwitterPostCallback", () => {
     ).toBeUndefined();
   });
 });
+
+describe("surrogate safety in tweet text normalization", () => {
+  it("never bisects surrogate pairs when truncating overlong continuous emoji tweets", async () => {
+    const runtime = makeRuntime();
+    const client = makeClient();
+    const callback = makeCallback({ client, runtime });
+
+    const longEmojis = "😀".repeat(200); // 400 code units (exceeds TWEET_MAX_LENGTH = 280)
+    const result = await callback({ text: longEmojis } as any);
+
+    expect(result).toHaveLength(1);
+    const sentText = (result[0].content as any).text;
+    expect(sentText.endsWith("...")).toBe(true);
+    expect(sentText.endsWith("\uD83D...")).toBe(false);
+  });
+});
