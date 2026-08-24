@@ -669,4 +669,55 @@ describe("renderGroundedActionReply", () => {
     });
     expect(prompt).toContain("SHOP ok: added milk");
   });
+
+  it("preserves repeated storage and provider-state turns in the grounded prompt", async () => {
+    let prompt = "";
+    const runtime = runtimeForReply({
+      useModel: vi.fn(async (_model: unknown, params: { prompt: string }) => {
+        prompt = params.prompt;
+        return "Handled it.";
+      }) as IAgentRuntime["useModel"],
+    });
+    runtime.getMemories = vi.fn(async () => [
+      {
+        id: "stored-turn",
+        entityId: "entity-1",
+        roomId: "room-1",
+        content: { text: "User: repeat this" },
+      } as Memory,
+    ]) as IAgentRuntime["getMemories"];
+
+    await renderGroundedActionReply({
+      runtime,
+      message: {
+        roomId: "room-1",
+        content: { text: "continue" },
+      } as Memory,
+      state: {
+        values: { recentMessages: "User: repeat this" },
+        data: {
+          providers: {
+            RECENT_MESSAGES: {
+              data: {
+                recentMessages: [
+                  {
+                    id: "provider-turn",
+                    content: { text: "User: repeat this" },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      } as never,
+      intent: "continue",
+      domain: "lifeops",
+      scenario: "continue prior request",
+      fallback: "Continuing.",
+    });
+
+    expect(prompt).toContain(
+      'Recent conversation: "repeat this\\nrepeat this\\nrepeat this"',
+    );
+  });
 });
