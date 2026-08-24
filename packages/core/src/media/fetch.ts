@@ -231,8 +231,15 @@ function enforceContentLengthLimit(
 		return;
 	}
 
-	const length = Number(contentLength);
-	if (Number.isFinite(length) && length > maxBytes) {
+	// Headers.get() concatenates duplicate headers with ", " per Fetch spec,
+	// so "10, 9999" would make Number() return NaN and bypass the check.
+	// Take only the first value and require canonical decimal form.
+	const firstValue = contentLength.split(",")[0]?.trim();
+	if (!firstValue || !/^(0|[1-9]\d*)$/.test(firstValue)) {
+		return;
+	}
+	const length = Number(firstValue);
+	if (Number.isSafeInteger(length) && length > maxBytes) {
 		throw new MediaFetchError(
 			"max_bytes",
 			`Failed to fetch media from ${url}: content length ${length} exceeds maxBytes ${maxBytes}`,
