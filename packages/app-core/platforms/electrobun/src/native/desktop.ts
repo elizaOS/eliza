@@ -111,8 +111,10 @@ import {
   makeKeyAndOrderFront,
   orderOut,
   pollFnMonitor,
+  pollWindowAssistantSemanticOpenRequest,
   pollWindowOutsideClick,
   setMacLaunchAtLoginEnabled,
+  setWindowAssistantSemanticOpenEnabled,
   setWindowInteractiveMaterialSize,
   setWindowNonactivatingPanel,
   startAccessingSecurityScopedBookmark,
@@ -396,6 +398,7 @@ export class DesktopManager {
     expanded: false,
   });
   private bottomBarFrameDirty = false;
+  private bottomBarSemanticOpenReceiptSequence = 0;
   private bottomBarUserAnchor: BottomBarAnchor | null = null;
   private bottomBarLastProgrammaticPosition: { x: number; y: number } | null =
     null;
@@ -1782,6 +1785,28 @@ X-GNOME-Autostart-enabled=true
     }
   }
 
+  /**
+   * Keep one AppKit-owned AX button in the tree only while the renderer is the
+   * tiny resting pill. This is the pointer-free semantic boundary used by
+   * Accessibility clients; the hidden WKWebView composer is never its owner.
+   */
+  private applyBottomBarSemanticOpenControl(): void {
+    if (process.platform !== "darwin") return;
+    const win = this.mainWindow;
+    if (!win) return;
+    const ptr = (win as typeof win & { ptr?: unknown }).ptr;
+    if (!ptr) return;
+    const applied = setWindowAssistantSemanticOpenEnabled(
+      ptr as Parameters<typeof setWindowAssistantSemanticOpenEnabled>[0],
+      this.bottomBarSurfaceState === "CLOSED",
+    );
+    if (!applied) {
+      throw new Error(
+        "[Desktop] failed to apply bottom-bar semantic open control",
+      );
+    }
+  }
+
   /** Reassert the chromeless host after AppKit processes a frame transition. */
   private applyBottomBarTransparentHost(): void {
     if (process.platform !== "darwin") return;
@@ -1803,6 +1828,7 @@ X-GNOME-Autostart-enabled=true
     }
     this.bottomBarSurfaceState = options.state;
     this.bottomBarFrameDirty = true;
+    this.applyBottomBarSemanticOpenControl();
     if (!this.bottomBarReanchorEnabled) return;
     const win = this.mainWindow;
     const workArea = this.readPrimaryWorkArea();
@@ -1950,6 +1976,19 @@ X-GNOME-Autostart-enabled=true
       if (outsideClick && !(wasAppActive && !appActive)) {
         this._windowFocused = false;
         this.send("desktopWindowBlur");
+      }
+      const semanticOpenRequested = pollWindowAssistantSemanticOpenRequest(
+        ptr as Parameters<typeof pollWindowAssistantSemanticOpenRequest>[0],
+      );
+      if (semanticOpenRequested && this.bottomBarSurfaceState === "CLOSED") {
+        const receipt = ++this.bottomBarSemanticOpenReceiptSequence;
+        this.send("desktopShortcutPressed", {
+          id: "chat-overlay-open",
+          accelerator: "accessibility-semantic",
+        });
+        logger.info(
+          `[Desktop] accepted pointer-free semantic action=open-chat receipt=${receipt}`,
+        );
       }
       const focused = isKeyWindow(ptr as Parameters<typeof isKeyWindow>[0]);
       if (focused !== this._windowFocused) {

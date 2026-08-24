@@ -350,6 +350,7 @@ describe("ChatOverlay", () => {
     );
 
     const pill = screen.getByRole("button", { name: "open chat" });
+    const sheet = screen.getByTestId("chat-sheet") as HTMLFieldSetElement;
     const content = screen.getByTestId("chat-content");
     const composer = screen.getByTestId(
       "chat-composer-textarea",
@@ -358,12 +359,16 @@ describe("ChatOverlay", () => {
     const talk = screen.getByTestId("chat-composer-mic") as HTMLButtonElement;
 
     expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+    expect(sheet.hidden).toBe(true);
+    expect(sheet.style.display).toBe("none");
     expect(content.hasAttribute("inert")).toBe(true);
     expect(content.getAttribute("aria-hidden")).toBe("true");
     expect(composer.tabIndex).toBe(-1);
     expect(plus.tabIndex).toBe(-1);
     expect(talk.tabIndex).toBe(-1);
     expect(pill.tabIndex).toBe(0);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getAllByRole("button")).toEqual([pill]);
 
     pill.focus();
     expect(document.activeElement).toBe(pill);
@@ -375,7 +380,7 @@ describe("ChatOverlay", () => {
     expect(onRequestedOpenChange).toHaveBeenLastCalledWith(true);
   });
 
-  it("opens the detached resting pill through pointer-free AXPress", async () => {
+  it("keeps the renderer resting button click-compatible for pointer input", async () => {
     const onRequestedOpenChange = vi.fn();
     render(
       <ChatOverlay
@@ -388,8 +393,9 @@ describe("ChatOverlay", () => {
     );
 
     const pill = screen.getByRole("button", { name: "open chat" });
-    // AXPress reaches the semantic click without any pointerdown/up sequence;
-    // positive detail remains valid on WKWebView.
+    // macOS semantic Accessibility activation is owned by the native AppKit
+    // sibling. This renderer seam remains click-compatible for ordinary web
+    // and synthetic pointer paths without becoming the desktop AX authority.
     fireEvent.click(pill, { detail: 1 });
 
     await waitFor(() => {

@@ -123,10 +123,13 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 	return elizaMediaCaptureSwizzleInstalled;
 }
 
+@class ElizaAssistantSemanticOpenView;
+
 @interface ElizaWindowInteractiveMaterialController : NSObject
 {
 @private
 	std::atomic_bool _outsideClickPending;
+	std::atomic_bool _semanticOpenPending;
 	uint32_t _lastLeftMouseDownCount;
 	uint32_t _lastRightMouseDownCount;
 	uint32_t _lastOtherMouseDownCount;
@@ -138,15 +141,75 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 @property(nonatomic, strong) id globalMonitor;
 @property(nonatomic, strong) id localMonitor;
 @property(nonatomic, strong) NSTimer *pointerPollTimer;
+@property(nonatomic, strong) ElizaAssistantSemanticOpenView *semanticOpenView;
+@property(nonatomic) BOOL semanticOpenEnabled;
 - (instancetype)initWithWindow:(NSWindow *)window;
 - (void)handleEvent:(NSEvent *)event;
 - (void)handleGlobalEvent:(NSEvent *)event;
 - (void)pollPointerState;
 - (BOOL)materialFillsContentBounds;
 - (BOOL)consumeOutsideClick;
+- (BOOL)consumeSemanticOpen;
+- (BOOL)requestSemanticOpen;
+- (void)setSemanticOpenControlEnabled:(BOOL)enabled;
+- (void)layoutSemanticOpenControl;
 - (void)setMaterialWidth:(CGFloat)width
 				  height:(CGFloat)height
 			cornerRadius:(CGFloat)cornerRadius;
+@end
+
+/**
+ * App-owned semantic control for the resting assistant pill.
+ *
+ * This is deliberately an accessibility-only sibling of WKWebView: AppKit
+ * exposes one stable AX button, while `hitTest:` returns nil so ordinary mouse
+ * and drag input continues to reach the shared renderer pill. The semantic AX
+ * action never posts a HID event or moves the physical pointer.
+ *
+ * Design reference (behavioral adaptation, no copied source):
+ * QwenLM/open-computer-use main f238d1bc85b53bd785d2618d4fbb5d2402207c7a
+ * (MIT), whose macOS control path prefers owner-scoped AX actions and refuses
+ * global pointer fallback by default.
+ */
+@interface ElizaAssistantSemanticOpenView : NSView
+@property(nonatomic, weak) ElizaWindowInteractiveMaterialController *controller;
+@end
+
+@implementation ElizaAssistantSemanticOpenView
+
+- (BOOL)isOpaque {
+	return NO;
+}
+
+- (nullable NSView *)hitTest:(NSPoint)point {
+	(void)point;
+	return nil;
+}
+
+- (BOOL)acceptsFirstResponder {
+	return NO;
+}
+
+- (BOOL)isAccessibilityElement {
+	return YES;
+}
+
+- (NSString *)accessibilityRole {
+	return NSAccessibilityButtonRole;
+}
+
+- (NSString *)accessibilityLabel {
+	return @"Open chat";
+}
+
+- (NSString *)accessibilityIdentifier {
+	return @"eliza.chat-overlay.open";
+}
+
+- (BOOL)accessibilityPerformPress {
+	return [self.controller requestSemanticOpen];
+}
+
 @end
 
 @implementation ElizaWindowInteractiveMaterialController
@@ -157,6 +220,7 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 	_window = window;
 	_materialSize = window.contentView.bounds.size;
 	_outsideClickPending.store(false, std::memory_order_relaxed);
+	_semanticOpenPending.store(false, std::memory_order_relaxed);
 	_lastLeftMouseDownCount = CGEventSourceCounterForEventType(
 		kCGEventSourceStateCombinedSessionState, kCGEventLeftMouseDown);
 	_lastRightMouseDownCount = CGEventSourceCounterForEventType(
@@ -213,6 +277,50 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 	return _outsideClickPending.exchange(false, std::memory_order_acq_rel)
 		? YES
 		: NO;
+}
+
+- (BOOL)requestSemanticOpen {
+	if (!self.semanticOpenEnabled) return NO;
+	_semanticOpenPending.store(true, std::memory_order_release);
+	return YES;
+}
+
+- (BOOL)consumeSemanticOpen {
+	return _semanticOpenPending.exchange(false, std::memory_order_acq_rel)
+		? YES
+		: NO;
+}
+
+- (void)layoutSemanticOpenControl {
+	ElizaAssistantSemanticOpenView *view = self.semanticOpenView;
+	NSView *contentView = self.window.contentView;
+	if (view == nil || contentView == nil) return;
+	NSRect bounds = contentView.bounds;
+	CGFloat width = MIN(MAX(0.0, self.materialSize.width), bounds.size.width);
+	CGFloat height = MIN(MAX(0.0, self.materialSize.height), bounds.size.height);
+	CGFloat materialY = [contentView isFlipped]
+		? NSMaxY(bounds) - height
+		: NSMinY(bounds);
+	[view setFrame:NSMakeRect(NSMidX(bounds) - width / 2.0,
+						 materialY, width, height)];
+	[contentView addSubview:view positioned:NSWindowAbove relativeTo:nil];
+}
+
+- (void)setSemanticOpenControlEnabled:(BOOL)enabled {
+	self.semanticOpenEnabled = enabled;
+	_semanticOpenPending.store(false, std::memory_order_release);
+	if (!enabled) {
+		[self.semanticOpenView removeFromSuperview];
+		self.semanticOpenView = nil;
+		return;
+	}
+	if (self.semanticOpenView == nil) {
+		ElizaAssistantSemanticOpenView *view =
+			[[ElizaAssistantSemanticOpenView alloc] initWithFrame:NSZeroRect];
+		view.controller = self;
+		self.semanticOpenView = view;
+	}
+	[self layoutSemanticOpenControl];
 }
 
 - (void)pollPointerState {
@@ -317,6 +425,7 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 			cornerRadius:(CGFloat)cornerRadius {
 	self.materialSize = NSMakeSize(width, height);
 	self.materialCornerRadius = cornerRadius;
+	[self layoutSemanticOpenControl];
 	[self applyForScreenPoint:[NSEvent mouseLocation]];
 }
 
@@ -3160,6 +3269,47 @@ extern "C" bool pollWindowOutsideClick(void *windowPtr) {
 		outsideClick = [controller consumeOutsideClick];
 	});
 	return outsideClick == YES;
+}
+
+/** Enable exactly one AppKit-owned AX button for the resting assistant pill. */
+extern "C" bool setWindowAssistantSemanticOpenEnabled(void *windowPtr,
+												 bool enabled) {
+	if (windowPtr == nullptr) return false;
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) return;
+		ElizaWindowInteractiveMaterialController *controller =
+			objc_getAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey);
+		if (controller == nil) {
+			controller = [[ElizaWindowInteractiveMaterialController alloc]
+				initWithWindow:window];
+			objc_setAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey, controller,
+				OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		}
+		[controller setSemanticOpenControlEnabled:enabled ? YES : NO];
+		success = YES;
+	});
+	return success;
+}
+
+/** Consume one pointer-free AXPress request from the native semantic button. */
+extern "C" bool pollWindowAssistantSemanticOpenRequest(void *windowPtr) {
+	if (windowPtr == nullptr) return false;
+
+	__block BOOL requested = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) return;
+		ElizaWindowInteractiveMaterialController *controller =
+			objc_getAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey);
+		requested = [controller consumeSemanticOpen];
+	});
+	return requested == YES;
 }
 
 extern "C" bool setWindowShadowEnabled(void *windowPtr, bool enabled) {

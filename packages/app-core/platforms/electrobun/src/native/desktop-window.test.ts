@@ -9,8 +9,10 @@ import {
   isKeyWindow,
   makeKeyAndOrderFront,
   orderOut,
+  pollWindowAssistantSemanticOpenRequest,
   pollWindowOutsideClick,
   setMacLaunchAtLoginEnabled,
+  setWindowAssistantSemanticOpenEnabled,
   setWindowInteractiveMaterialSize,
   setWindowNonactivatingPanel,
 } from "./mac-window-effects";
@@ -31,10 +33,12 @@ vi.mock("./mac-window-effects", () => ({
   ensureWindowTransparentBackground: vi.fn(() => true),
   enableVibrancy: vi.fn(() => false),
   setWindowShadow: vi.fn(() => false),
+  setWindowAssistantSemanticOpenEnabled: vi.fn(() => true),
   setWindowInteractiveMaterialSize: vi.fn(() => true),
   setWindowNonactivatingPanel: vi.fn(() => true),
   isAppActive: vi.fn(() => false),
   isKeyWindow: vi.fn(() => false),
+  pollWindowAssistantSemanticOpenRequest: vi.fn(() => false),
   pollWindowOutsideClick: vi.fn(() => false),
   makeKeyAndOrderFront: vi.fn(),
   orderOut: vi.fn(),
@@ -355,6 +359,7 @@ describe("DesktopManager main window controls", () => {
   const originalCloseMinimizes = process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     resetDesktopManagerForTesting();
     electrobunMock.reset();
     vi.mocked(Screen.getPrimaryDisplay).mockReset();
@@ -363,6 +368,7 @@ describe("DesktopManager main window controls", () => {
     } as never);
     vi.mocked(isAppActive).mockReturnValue(false);
     vi.mocked(isKeyWindow).mockReturnValue(false);
+    vi.mocked(pollWindowAssistantSemanticOpenRequest).mockReturnValue(false);
     vi.mocked(pollWindowOutsideClick).mockReturnValue(false);
     delete process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY;
   });
@@ -483,6 +489,42 @@ describe("DesktopManager main window controls", () => {
       false,
     );
     await manager.dispose();
+  });
+
+  it("routes the native resting-pill AX action through the pointer-free open receipt", async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, window } = createManagerWithWindow();
+      const send = vi.fn();
+      const nativeWindowPtr = { id: "native-window" };
+      Object.assign(window, { ptr: nativeWindowPtr });
+      manager.setSendToWebview(send);
+      manager.enableBottomBarReanchor();
+
+      await manager.setBottomBarSurfaceState({ state: "CLOSED" });
+      expect(setWindowAssistantSemanticOpenEnabled).toHaveBeenLastCalledWith(
+        nativeWindowPtr,
+        true,
+      );
+
+      vi.mocked(pollWindowAssistantSemanticOpenRequest).mockReturnValueOnce(
+        true,
+      );
+      await vi.advanceTimersByTimeAsync(500);
+      expect(send).toHaveBeenCalledWith("desktopShortcutPressed", {
+        id: "chat-overlay-open",
+        accelerator: "accessibility-semantic",
+      });
+
+      await manager.setBottomBarSurfaceState({ state: "INPUT" });
+      expect(setWindowAssistantSemanticOpenEnabled).toHaveBeenLastCalledWith(
+        nativeWindowPtr,
+        false,
+      );
+      await manager.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects invalid measured material before changing the native frame", async () => {

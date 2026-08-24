@@ -27,6 +27,11 @@ type MacEffectsSymbols = {
   prepareDetachedWebInspector(): boolean;
   installTrustedMediaCaptureOrigin(origin: Pointer): boolean;
   pollWindowOutsideClick(ptr: Pointer): boolean;
+  setWindowAssistantSemanticOpenEnabled(
+    ptr: Pointer,
+    enabled: boolean,
+  ): boolean;
+  pollWindowAssistantSemanticOpenRequest(ptr: Pointer): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
   setWindowUserResizable(ptr: Pointer, enabled: boolean): boolean;
   setWindowNonactivatingPanel(ptr: Pointer, enabled: boolean): boolean;
@@ -112,6 +117,14 @@ function loadLib(): MacEffectsLib {
         returns: FFIType.bool,
       },
       pollWindowOutsideClick: {
+        args: [FFIType.ptr],
+        returns: FFIType.bool,
+      },
+      setWindowAssistantSemanticOpenEnabled: {
+        args: [FFIType.ptr, FFIType.bool],
+        returns: FFIType.bool,
+      },
+      pollWindowAssistantSemanticOpenRequest: {
         args: [FFIType.ptr],
         returns: FFIType.bool,
       },
@@ -349,6 +362,22 @@ export function isKeyWindow(ptr: Pointer): boolean {
 /** Consume a native click that landed outside the painted pill material. */
 export function pollWindowOutsideClick(ptr: Pointer): boolean {
   return getLib()?.symbols.pollWindowOutsideClick(ptr) ?? false;
+}
+
+/** Toggle the AppKit-owned, pointer-free AX button for the resting pill. */
+export function setWindowAssistantSemanticOpenEnabled(
+  ptr: Pointer,
+  enabled: boolean,
+): boolean {
+  return (
+    getLib()?.symbols.setWindowAssistantSemanticOpenEnabled(ptr, enabled) ??
+    false
+  );
+}
+
+/** Consume one AXPress request from the resting pill's native semantic owner. */
+export function pollWindowAssistantSemanticOpenRequest(ptr: Pointer): boolean {
+  return getLib()?.symbols.pollWindowAssistantSemanticOpenRequest(ptr) ?? false;
 }
 
 export function createSecurityScopedBookmark(path: string): string | null {

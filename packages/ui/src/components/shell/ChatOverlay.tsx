@@ -6577,6 +6577,8 @@ export function ChatOverlay({
         <motion.fieldset
           ref={bindPanelRef}
           aria-label="Chat composer"
+          aria-hidden={pilled ? "true" : undefined}
+          hidden={pilled}
           data-testid="chat-sheet"
           onWheel={onSheetWheel}
           data-variant={sheetOpen ? "open" : "closed"}
@@ -6625,6 +6627,11 @@ export function ChatOverlay({
             // Pilled: span the (invisible) input area but pass taps through to the
             // home screen — only the pill-capsule child re-enables pointer events.
             pointerEvents: pilled ? "none" : "auto",
+            // WKWebView has exposed descendants of `inert` content to macOS AX.
+            // Remove the resting composer from layout/accessibility altogether;
+            // the native AppKit semantic button outside this fieldset is the one
+            // pointer-free owner while the white pill is at rest.
+            display: pilled ? "none" : undefined,
           }}
           className={cn(
             // overflow-VISIBLE on the outer fieldset: the pill's tall grab zone
