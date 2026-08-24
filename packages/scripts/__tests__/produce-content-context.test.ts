@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS,
   parseProductionArgs,
+  resolveProductionCommit,
   validateProductionPlan,
 } from "../produce-content-context.mjs";
 
@@ -50,5 +51,14 @@ describe("produce-content-context", () => {
         ),
       }),
     ).toThrow(/invalid/u);
+  });
+
+  it("resolves an omitted commit to the exact repository head", async () => {
+    await expect(resolveProductionCommit(undefined)).resolves.toMatch(
+      /^[0-9a-f]{40}$/u,
+    );
+    await expect(resolveProductionCommit("short")).rejects.toThrow(
+      /exact SHA/u,
+    );
   });
 });
