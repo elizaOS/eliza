@@ -648,6 +648,11 @@ describe("executePlannedToolCall", () => {
 					modelOmissionSentinels: ["null"],
 					schema: { type: "string", pattern: "^[0-9a-f-]{36}$" },
 				},
+				{
+					name: "note",
+					description: "Optional byte-exact note",
+					schema: { type: "string" },
+				},
 			],
 			handler,
 		});
@@ -670,7 +675,7 @@ describe("executePlannedToolCall", () => {
 					{ message: makeMessage() },
 					{
 						name: "MEMORY",
-						params: { text: "remember this", memoryId: "null" },
+						params: { text: "remember this", memoryId: "null", note: "" },
 					},
 				),
 		);
@@ -680,14 +685,18 @@ describe("executePlannedToolCall", () => {
 			expect.any(Object),
 			expect.any(Object),
 			undefined,
-			expect.objectContaining({ parameters: { text: "remember this" } }),
+			expect.objectContaining({
+				parameters: { text: "remember this", note: "" },
+			}),
 			undefined,
 			undefined,
 		);
 		expect(trajectoryLogger.completeStep).toHaveBeenCalledWith(
 			"normalization-trajectory",
 			"normalized-action-step",
-			expect.objectContaining({ parameters: { text: "remember this" } }),
+			expect.objectContaining({
+				parameters: { text: "remember this", note: "" },
+			}),
 		);
 	});
 
@@ -2409,6 +2418,7 @@ describe("dropEmptyOptionalArgs", () => {
 					name: "preset",
 					description: "Shader preset",
 					required: false,
+					modelOmissionSentinels: [""],
 					schema: { type: "string", enum: ["aurora", "lava"] },
 				},
 			],
@@ -2465,7 +2475,7 @@ describe("dropEmptyOptionalArgs", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
-	it("drops only empty-string optional keys and returns the same object when nothing matches", () => {
+	it("drops only opted-in empty-string sentinels and preserves ordinary empty strings", () => {
 		const action = backgroundLikeAction();
 
 		const untouched = { op: "set", color: "teal" };
@@ -2473,7 +2483,7 @@ describe("dropEmptyOptionalArgs", () => {
 
 		expect(
 			dropEmptyOptionalArgs(action, { op: "set", color: "", preset: "" }),
-		).toEqual({ op: "set" });
+		).toEqual({ op: "set", color: "" });
 
 		// Undeclared keys and non-string empties pass through untouched — strict
 		// validation still owns rejecting them.
