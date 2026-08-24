@@ -635,6 +635,138 @@ describe("listPaymentStates — refund and dispute derivation", () => {
     expect(row.paymentState).toBe("partially_refunded");
   });
 
+  test("missing-reference cumulative snapshots for one charge take the max, never the sum", async () => {
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 10000,
+      status: "settled",
+      settlementTxRef: "pi_fallback_snap",
+      settledAt: new Date(Date.now() - 40_000),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_fallback_snap",
+      amountCents: 10000,
+    });
+    // Two cumulative snapshots for ONE charge with metadata.reference absent:
+    // the production handler keys each as
+    // `stripe:refund:<charge>:<cumulative cents>`. A raw idempotency-key
+    // fallback would treat these as two authorities and sum $20 + $50 = $70.
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-20",
+      paymentIntentId: "pi_fallback_snap",
+      source: "charge.refunded",
+      reversedUsd: 20,
+      idempotencyKey: "stripe:refund:ch_snap:2000",
+      createdAt: new Date(Date.now() - 30_000),
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-50",
+      paymentIntentId: "pi_fallback_snap",
+      source: "charge.refunded",
+      reversedUsd: 50,
+      idempotencyKey: "stripe:refund:ch_snap:5000",
+      createdAt: new Date(Date.now() - 20_000),
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows[0];
+    expect(row.cumulativeRefundedUsd).toBe(50);
+    expect(row.paymentState).toBe("partially_refunded");
+  });
+
+  test("missing-reference snapshots keep distinct charges additive across the idempotency-key fallback", async () => {
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 10000,
+      status: "settled",
+      settlementTxRef: "pi_fallback_multi",
+      settledAt: new Date(Date.now() - 40_000),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_fallback_multi",
+      amountCents: 10000,
+    });
+    // Two DISTINCT charges, references absent: each snapshot strips to its
+    // own charge identity, so the per-authority maxes still add (30 + 40).
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-30",
+      paymentIntentId: "pi_fallback_multi",
+      source: "charge.refunded",
+      reversedUsd: 30,
+      idempotencyKey: "stripe:refund:ch_X:3000",
+      createdAt: new Date(Date.now() - 30_000),
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-40",
+      paymentIntentId: "pi_fallback_multi",
+      source: "charge.refunded",
+      reversedUsd: 40,
+      idempotencyKey: "stripe:refund:ch_Y:4000",
+      createdAt: new Date(Date.now() - 20_000),
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows[0];
+    expect(row.cumulativeRefundedUsd).toBe(70);
+    expect(row.paymentState).toBe("partially_refunded");
+  });
+
+  test("mixed provenance: reference row and key-fallback row for one charge collapse to one authority", async () => {
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 10000,
+      status: "settled",
+      settlementTxRef: "pi_mixed_prov",
+      settledAt: new Date(Date.now() - 40_000),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_mixed_prov",
+      amountCents: 10000,
+    });
+    // One snapshot carries metadata.reference, the other lacks it and falls
+    // back to the handler key: both must resolve to `charge ch_mixed`.
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-25",
+      paymentIntentId: "pi_mixed_prov",
+      source: "charge.refunded",
+      reversedUsd: 25,
+      reference: "charge ch_mixed",
+      idempotencyKey: "stripe:refund:ch_mixed:2500",
+      createdAt: new Date(Date.now() - 30_000),
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-60",
+      paymentIntentId: "pi_mixed_prov",
+      source: "charge.refunded",
+      reversedUsd: 60,
+      idempotencyKey: "stripe:refund:ch_mixed:6000",
+      createdAt: new Date(Date.now() - 20_000),
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows[0];
+    expect(row.cumulativeRefundedUsd).toBe(60);
+    expect(row.paymentState).toBe("partially_refunded");
+  });
+
   test("settled payment request without its receipt projects unavailable, never a fabricated success", async () => {
     await insertStripePaymentRequest({
       organizationId,
