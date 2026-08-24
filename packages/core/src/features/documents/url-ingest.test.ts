@@ -3,6 +3,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter.js";
+import { AgentRuntime } from "../../runtime.js";
+import type { Character, UUID } from "../../types/index.js";
+import { DocumentService } from "./service.js";
 import {
 	__setDocumentUrlFetchImplForTests,
 	fetchDocumentFromUrl,
@@ -200,6 +204,43 @@ describe("url-ingest", () => {
 			contentType: "binary",
 			mimeType: "application/octet-stream",
 		});
+	});
+
+	it("preserves absent-header binary content through document persistence", async () => {
+		__setDocumentUrlFetchImplForTests(
+			async () => new Response(new TextEncoder().encode("raw text")),
+		);
+		const fetched = await fetchDocumentFromUrl("https://8.8.8.8/raw");
+		const agentId = "00000000-0000-4000-8000-000000026346" as UUID;
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const runtime = new AgentRuntime({
+			agentId,
+			character: {
+				name: "UrlIngestPersistenceTestAgent",
+				bio: "Exercises binary URL ingestion persistence.",
+				settings: {},
+			} as Character,
+			adapter,
+			logLevel: "fatal",
+		});
+		const service = new DocumentService(runtime);
+
+		const added = await service.addDocument({
+			agentId,
+			worldId: agentId,
+			roomId: agentId,
+			entityId: agentId,
+			clientDocumentId: agentId,
+			contentType: fetched.mimeType,
+			originalFilename: fetched.filename,
+			content: fetched.content,
+			metadata: { textBacked: fetched.contentType !== "binary" },
+		});
+		const stored = await runtime.getMemoryById(added.storedDocumentMemoryId);
+
+		expect(stored?.content.text).toBe("cmF3IHRleHQ=");
+		expect(stored?.metadata).toMatchObject({ textBacked: false });
 	});
 
 	it("rejects declared bodies larger than the import limit", async () => {
