@@ -2962,7 +2962,7 @@ export async function handleConversationRoutes(
         title: conv.title,
         roomId: conv.roomId,
         createdAt: new Date(conv.createdAt).toISOString(),
-        updatedAt: new Date(conv.lastMessageAt).toISOString(),
+        updatedAt: new Date(conv.lastMessageAt ?? conv.createdAt).toISOString(),
       });
     }
     evictOldestConversation(state.conversations, 500);
