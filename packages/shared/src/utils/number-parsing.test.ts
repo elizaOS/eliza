@@ -19,6 +19,10 @@ describe("parseCanonicalInteger", () => {
   it("distinguishes omission from malformed and unsafe input", () => {
     expect(parseCanonicalInteger(null, { min: 1 })).toBeUndefined();
     expect(parseCanonicalInteger("", { min: 1 })).toBeUndefined();
+    expect(parseCanonicalInteger("   ", { min: 1 })).toBeUndefined();
+    expect(parseCanonicalInteger(" 1", { min: 1 })).toBe("invalid");
+    expect(parseCanonicalInteger("1 ", { min: 1 })).toBe("invalid");
+    expect(parseCanonicalInteger("-1", { min: 1 })).toBe("invalid");
     expect(parseCanonicalInteger("1e2", { min: 1 })).toBe("invalid");
     expect(parseCanonicalInteger("007", { min: 1 })).toBe("invalid");
     expect(parseCanonicalInteger("0x10", { min: 1 })).toBe("invalid");
@@ -35,6 +39,24 @@ describe("parseCanonicalInteger", () => {
     expect(
       parseCanonicalInteger("101", { min: 1, max: 100, clamp: true }),
     ).toBe(100);
+    expect(
+      parseCanonicalInteger("2", { min: 5, max: 100, clamp: true }),
+    ).toBe(5);
+  });
+
+  it("throws RangeError when bounds are unordered or not safe integers", () => {
+    expect(() => parseCanonicalInteger("10", { min: 100, max: 10 })).toThrow(
+      RangeError,
+    );
+    expect(() => parseCanonicalInteger("10", { min: 1.5, max: 10 })).toThrow(
+      RangeError,
+    );
+    expect(() => parseCanonicalInteger("10", { min: Number.NaN, max: 10 })).toThrow(
+      RangeError,
+    );
+    expect(() => parseCanonicalInteger("10", { min: 0, max: Number.POSITIVE_INFINITY })).toThrow(
+      RangeError,
+    );
   });
 });
 
@@ -44,6 +66,11 @@ describe("number parsing utilities", () => {
     expect(parsePositiveInteger("0", 7)).toBe(7);
     expect(parsePositiveInteger("-1", 7)).toBe(7);
     expect(parsePositiveInteger("12abc", 7)).toBe(7);
+    expect(parsePositiveInteger("1.5", 7)).toBe(7);
+    expect(parsePositiveInteger("9007199254740991")).toBe(9007199254740991);
+    expect(parsePositiveInteger("9007199254740992")).toBeUndefined();
+    expect(parsePositiveInteger("invalid", Number.NaN)).toBeUndefined();
+    expect(parsePositiveInteger("invalid", Number.POSITIVE_INFINITY)).toBeUndefined();
   });
 
   it("parses non-negative integers without accepting alternate syntax", () => {
@@ -52,7 +79,9 @@ describe("number parsing utilities", () => {
     expect(parseNonNegativeInteger("1e3", 7)).toBe(7);
     expect(parseNonNegativeInteger("5junk", 7)).toBe(7);
     expect(parseNonNegativeInteger("-1", 7)).toBe(7);
+    expect(parseNonNegativeInteger("9007199254740991")).toBe(9007199254740991);
     expect(parseNonNegativeInteger("9007199254740993", 7)).toBe(7);
+    expect(parseNonNegativeInteger("invalid", Number.NaN)).toBeUndefined();
   });
 
   it("parses positive floats with optional flooring", () => {
@@ -62,18 +91,26 @@ describe("number parsing utilities", () => {
     expect(parsePositiveFloat("0.5", { floor: true })).toBeUndefined();
     expect(parsePositiveFloat("-1", { fallback: 3 })).toBe(3);
     expect(parsePositiveFloat("abc", { fallback: 3 })).toBe(3);
+    expect(parsePositiveFloat("Infinity", { fallback: 3 })).toBe(3);
+    expect(parsePositiveFloat("NaN", { fallback: 3 })).toBe(3);
+    expect(parsePositiveFloat("abc", { fallback: Number.NaN })).toBeUndefined();
   });
 
   it("clamps floats and rejects non-finite values", () => {
     expect(parseClampedFloat("12.5", { min: 1, max: 10 })).toBe(10);
     expect(parseClampedFloat("-5", { min: 1, max: 10 })).toBe(1);
     expect(parseClampedFloat("Infinity", { fallback: 4 })).toBe(4);
+    expect(parseClampedFloat("-50", { min: -100, max: -10 })).toBe(-50);
+    expect(parseClampedFloat("-5", { min: -100, max: -10 })).toBe(-10);
+    expect(parseClampedFloat("-200", { min: -100, max: -10 })).toBe(-100);
+    expect(parseClampedFloat("invalid", { fallback: Number.NaN })).toBeUndefined();
   });
 
   it("parses clamped integers without accepting partial strings", () => {
     expect(parseClampedInteger(" 12 ", { min: 1, max: 50 })).toBe(12);
     expect(parseClampedInteger("+12", { min: 1, max: 50 })).toBe(12);
     expect(parseClampedInteger("-12", { min: -10, max: 50 })).toBe(-10);
+    expect(parseClampedInteger("-25", { min: -50, max: 50 })).toBe(-25);
     expect(parseClampedInteger("99", { min: 1, max: 50 })).toBe(50);
   });
 
@@ -85,6 +122,7 @@ describe("number parsing utilities", () => {
     expect(parseClampedInteger("0x10", options)).toBe(15);
     expect(parseClampedInteger("1e2", options)).toBe(15);
     expect(parseClampedInteger("", options)).toBe(15);
+    expect(parseClampedInteger("abc")).toBeUndefined();
   });
 
   it("rejects unsafe clamped integers", () => {
