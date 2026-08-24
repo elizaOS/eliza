@@ -23,7 +23,6 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@elizaos/cloud-test-mocks": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "*"
   },
