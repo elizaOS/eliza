@@ -24,6 +24,9 @@ function stubFetch(response: Record<string, unknown>): {
   captured: CapturedRequest[];
   restore: () => void;
 } {
+  // PUT /api/plugins/:id ships `ok: true`; keep these older request-focused
+  // fixtures aligned with that response contract without rewriting each case.
+  response.ok ??= true;
   const captured: CapturedRequest[] = [];
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: unknown, init?: RequestInit) => {

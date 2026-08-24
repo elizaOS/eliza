@@ -318,7 +318,7 @@ describe("PLUGIN validate — op resolution and plugin_manager gating", () => {
 describe("PLUGIN executor authorization and self-API boundary", () => {
   it("denies non-owners before I/O and sends exact self-auth headers for an owner", async () => {
     const stub = stubFetchSequence([
-      { payload: { success: true } },
+      { payload: { ok: true } },
       { payload: { success: true, durationMs: 9 } },
     ]);
     restoreFetch = stub.restore;
@@ -881,6 +881,8 @@ describe("PLUGIN configure over the local compat API", () => {
     const stub = stubFetchSequence([
       { payload: { ok: true, requiresRestart: true } },
       { payload: { success: true } },
+      { payload: { ok: true } },
+      { payload: { success: true } },
     ]);
     restoreFetch = stub.restore;
 
@@ -939,6 +941,26 @@ describe("PLUGIN configure over the local compat API", () => {
     }
   });
 
+  it("rejects a probe-shaped success:true body from the config mutation route", async () => {
+    const stub = stubFetchSequence([
+      { payload: { success: true } },
+      { payload: { success: true, durationMs: 42 } },
+    ]);
+    restoreFetch = stub.restore;
+
+    const result = await run(bareRuntime, {
+      action: "configure",
+      pluginId: "discord",
+      config: { TOKEN: "x" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(stub.captured).toHaveLength(1);
+    expect(result.text).toBe(
+      "Failed to save config for discord: Save returned an invalid success response.",
+    );
+  });
+
   it("fails closed on an invalid save body without running the connection probe", async () => {
     const stub = stubFetchSequence([
       { failJson: true },
@@ -981,10 +1003,7 @@ describe("PLUGIN configure over the local compat API", () => {
       },
     ];
     for (const { testResponse, expectedReason } of cases) {
-      const stub = stubFetchSequence([
-        { payload: { success: true } },
-        testResponse,
-      ]);
+      const stub = stubFetchSequence([{ payload: { ok: true } }, testResponse]);
       restoreFetch = stub.restore;
       const result = await run(bareRuntime, {
         action: "configure",
@@ -1012,7 +1031,7 @@ describe("PLUGIN configure over the local compat API", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ success: true }),
+          json: async () => ({ ok: true }),
         } as Response;
       }
       throw new Error("probe socket closed");
@@ -1040,7 +1059,7 @@ describe("PLUGIN configure over the local compat API", () => {
 
   it("accepts an explicitly successful connection probe", async () => {
     const stub = stubFetchSequence([
-      { payload: { success: true } },
+      { payload: { ok: true } },
       { payload: { success: true } },
     ]);
     restoreFetch = stub.restore;
@@ -1300,9 +1319,24 @@ describe("PLUGIN toggle — remaining failure and restart branches", () => {
     expect(result.text).toBe("Failed to enable discord: locked");
   });
 
+  it("rejects a probe-shaped success:true body from the toggle mutation route", async () => {
+    const stub = stubFetchSequence([{ payload: { success: true } }]);
+    restoreFetch = stub.restore;
+    const result = await run(bareRuntime, {
+      action: "toggle",
+      pluginId: "discord",
+      enabled: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toBe(
+      "Failed to enable discord: Toggle returned an invalid success response.",
+    );
+  });
+
   it("appends the restart note when the toggle demands one", async () => {
     const stub = stubFetchSequence([
-      { payload: { success: true, requiresRestart: true } },
+      { payload: { ok: true, requiresRestart: true } },
     ]);
     restoreFetch = stub.restore;
     const result = await run(bareRuntime, {

@@ -169,10 +169,7 @@ function responseBoolean(
 }
 
 function confirmsMutation(response: LocalApiResponse | null): boolean {
-  return (
-    responseBoolean(response, "success") === true ||
-    responseBoolean(response, "ok") === true
-  );
+  return responseBoolean(response, "ok") === true;
 }
 
 function normalizeNpmName(pluginId: string): string {
