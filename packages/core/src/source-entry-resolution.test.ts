@@ -58,10 +58,24 @@ async function runResolutionProbe(
 	importRoot = false,
 ): Promise<string> {
 	const probe = [
+		'import { existsSync, realpathSync } from "node:fs";',
+		'import { basename, dirname, resolve } from "node:path";',
+		'import { fileURLToPath, pathToFileURL } from "node:url";',
+		"function canonicalFileUrl(url) {",
+		"  let cursor = fileURLToPath(url);",
+		"  const suffix = [];",
+		"  while (!existsSync(cursor)) {",
+		"    const parent = dirname(cursor);",
+		"    if (parent === cursor) break;",
+		"    suffix.unshift(basename(cursor));",
+		"    cursor = parent;",
+		"  }",
+		"  return pathToFileURL(resolve(realpathSync.native(cursor), ...suffix)).href;",
+		"}",
 		`const expected = ${JSON.stringify(expected)};`,
 		"for (const [specifier, target] of Object.entries(expected)) {",
 		"  const actual = import.meta.resolve(specifier);",
-		'  if (actual !== target) throw new Error(specifier + " resolved to " + actual + ", expected " + target);',
+		'  if (canonicalFileUrl(actual) !== canonicalFileUrl(target)) throw new Error(specifier + " resolved to " + actual + ", expected " + target);',
 		"}",
 		...(importRoot
 			? [
@@ -270,8 +284,11 @@ describe("core source export resolution", () => {
 			await writeFile(
 				join(fixtureRoot, "vite.config.mjs"),
 				[
+					'import { realpathSync } from "node:fs";',
+					'import { fileURLToPath, pathToFileURL } from "node:url";',
 					`const expectedCoreSource = ${JSON.stringify(pathToFileURL(join(copiedCoreRoot, "src", "index.ts")).href)};`,
-					'if (import.meta.resolve("@elizaos/core") !== expectedCoreSource) throw new Error("Vite resolved " + import.meta.resolve("@elizaos/core") + ", expected " + expectedCoreSource);',
+					"const canonicalFileUrl = (url) => pathToFileURL(realpathSync.native(fileURLToPath(url))).href;",
+					'if (canonicalFileUrl(import.meta.resolve("@elizaos/core")) !== canonicalFileUrl(expectedCoreSource)) throw new Error("Vite resolved " + import.meta.resolve("@elizaos/core") + ", expected " + expectedCoreSource);',
 					'import { ElizaError } from "@elizaos/core";',
 					'if (typeof ElizaError !== "function") throw new Error("Vite did not load the core source export");',
 					"export default {",

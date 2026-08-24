@@ -1,10 +1,10 @@
 /**
  * Conversation text extraction. Pulls every available conversation line from
  * `State` (the `recentMessages` / `text` values plus the recent-messages memory
- * array), strips language-agnostic speaker-prefix labels ("Name: …"), and dedupes
- * while preserving order. `recentConversationTexts` additionally falls back to
- * `runtime.getMemories` on the room's `messages` table when state alone is too
- * thin. Storage failures propagate so missing history is not mistaken for a
+ * array), strips language-agnostic speaker-prefix labels ("Name: …"), and
+ * preserves every occurrence in source order. `recentConversationTexts`
+ * additionally reads the room's `messages` table and appends complete state
+ * context. Storage failures propagate so missing history is not mistaken for a
  * legitimately short conversation.
  */
 import { getRecentMessagesData } from "../recent-messages-state";
@@ -58,7 +58,8 @@ export async function recentConversationTexts(args: {
 	runtime: IAgentRuntime;
 	message?: Memory;
 	state: State | undefined;
-	limit: number;
+	/** @deprecated Complete conversation context is always returned. */
+	limit?: number;
 }): Promise<string[]> {
 	const stateTexts = recentConversationTextsFromState(args.state);
 	const roomId =
@@ -76,7 +77,7 @@ export async function recentConversationTexts(args: {
 		const memoryTexts = Array.isArray(memories)
 			? memories
 					.map((memory) =>
-						typeof memory.content.text === "string"
+						memory.content && typeof memory.content.text === "string"
 							? normalizeConversationLine(memory.content.text)
 							: "",
 					)
