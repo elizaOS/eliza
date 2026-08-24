@@ -104,6 +104,11 @@ function makeRuntime(options?: {
         if (index >= 0) rows.splice(index, 1);
       }
     },
+    deleteMemoriesAtomically: async (memoryIds: UUID[]) => {
+      const idSet = new Set(memoryIds);
+      const retained = rows.filter((row) => !idSet.has(row.memory.id as UUID));
+      rows.splice(0, rows.length, ...retained);
+    },
   } as unknown as IAgentRuntime;
   return { runtime, rows };
 }
@@ -785,7 +790,8 @@ describe("MEMORY op:delete by query", () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "duplicate durable fact", entityId: USER_ID });
     seedFact(rows, { text: "duplicate durable fact", entityId: USER_ID });
-    delete (runtime as unknown as { deleteMemories?: unknown }).deleteMemories;
+    delete (runtime as unknown as { deleteMemoriesAtomically?: unknown })
+      .deleteMemoriesAtomically;
 
     const result = await runAction(runtime, makeMessage(), {
       action: "delete",

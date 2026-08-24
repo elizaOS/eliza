@@ -12365,6 +12365,17 @@ ${section_end}`;
 		this.roomMessagesMemo.invalidate();
 	}
 
+	get deleteMemoriesAtomically():
+		| ((memoryIds: UUID[]) => Promise<void>)
+		| undefined {
+		const atomicDelete = this.adapter?.deleteMemoriesAtomically;
+		if (!atomicDelete) return undefined;
+		return async (memoryIds: UUID[]) => {
+			await atomicDelete.call(this.adapter, memoryIds);
+			this.roomMessagesMemo.invalidate();
+		};
+	}
+
 	// ── Single-item memory wrappers ────────────────────────────────────
 	// These exist for caller convenience. getMemoryById and createMemory
 	// are the most frequently called methods in the entire codebase.

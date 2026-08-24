@@ -169,6 +169,25 @@ describe("Memory Integration Tests", () => {
     expect(await adapter.getMemoryById(fragment.id as UUID)).toBeNull();
   });
 
+  it("rolls back an atomic multi-row delete when one id fails", async () => {
+    const first = createTestMemory({ text: "atomic delete first" });
+    const second = createTestMemory({ text: "atomic delete second" });
+    await adapter.createMemories([
+      { memory: first, tableName: "facts" },
+      { memory: second, tableName: "facts" },
+    ]);
+
+    const atomicDelete = runtime.deleteMemoriesAtomically;
+    expect(atomicDelete).toBeTypeOf("function");
+    if (!atomicDelete) throw new Error("SQL runtime must expose atomic deletion");
+    await expect(
+      atomicDelete([first.id as UUID, "not-a-uuid" as UUID, second.id as UUID])
+    ).rejects.toThrow();
+
+    expect(await adapter.getMemoryById(first.id as UUID)).not.toBeNull();
+    expect(await adapter.getMemoryById(second.id as UUID)).not.toBeNull();
+  });
+
   it("isolates a failing atomic batch from a concurrent successful batch", async () => {
     const committed = [
       createTestMemory({ text: "committed parent" }),

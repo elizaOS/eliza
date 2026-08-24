@@ -3,7 +3,7 @@
  * for agents, caches, components, pending tasks, and room participants.
  */
 import { describe, expect, it } from "vitest";
-import type { Agent, Component, Task, UUID } from "../types";
+import type { Agent, Component, Memory, Task, UUID } from "../types";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -18,6 +18,8 @@ const COMPONENT_ID = "40000000-0000-0000-0000-000000000001" as UUID;
 const TASK_ID = "50000000-0000-0000-0000-000000000001" as UUID;
 const OTHER_TASK_ID = "50000000-0000-0000-0000-000000000002" as UUID;
 const MISSING_ID = "ffffffff-ffff-ffff-ffff-ffffffffffff" as UUID;
+const MEMORY_ID = "60000000-0000-0000-0000-000000000001" as UUID;
+const OTHER_MEMORY_ID = "60000000-0000-0000-0000-000000000002" as UUID;
 
 function component(overrides: Partial<Component> = {}): Component {
 	return {
@@ -35,6 +37,29 @@ function component(overrides: Partial<Component> = {}): Component {
 }
 
 describe("InMemoryDatabaseAdapter", () => {
+	it("deletes a logical multi-row memory record through its atomic capability", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const memories: Memory[] = [MEMORY_ID, OTHER_MEMORY_ID].map((id) => ({
+			id,
+			agentId: AGENT_ID,
+			entityId: ENTITY_ID,
+			roomId: ROOM_ID,
+			content: { text: `logical record ${id}` },
+		}));
+		await adapter.createMemories(
+			memories.map((memory) => ({ memory, tableName: "facts" })),
+		);
+
+		await adapter.deleteMemoriesAtomically([MEMORY_ID, OTHER_MEMORY_ID]);
+
+		await expect(
+			adapter.getMemoriesByIds([MEMORY_ID, OTHER_MEMORY_ID]),
+		).resolves.toEqual([]);
+		await expect(
+			adapter.getMemories({ roomId: ROOM_ID, tableName: "facts" }),
+		).resolves.toEqual([]);
+	});
+
 	it("tracks lifecycle state and passes the real adapter through transactions", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 

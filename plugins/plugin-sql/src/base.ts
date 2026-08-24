@@ -6816,6 +6816,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     await this.deleteManyMemories(memoryIds);
   }
 
+  async deleteMemoriesAtomically(memoryIds: UUID[]): Promise<void> {
+    await this.deleteManyMemories(memoryIds);
+  }
+
   // ── World batch methods ───────────────────────────────────────────────
 
   async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {

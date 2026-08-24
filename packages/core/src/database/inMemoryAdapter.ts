@@ -1573,6 +1573,24 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 	}
 
+	async deleteMemoriesAtomically(memoryIds: UUID[]): Promise<void> {
+		const idSet = new Set(memoryIds.map(String));
+		const nextMemoriesById = new Map(this.memoriesById);
+		for (const id of idSet) nextMemoriesById.delete(id);
+
+		const nextMemoriesByRoom = new Map<string, Memory[]>();
+		for (const [key, list] of this.memoriesByRoom) {
+			const retained = list.filter((memory) => !idSet.has(String(memory.id)));
+			if (retained.length > 0) nextMemoriesByRoom.set(key, retained);
+		}
+
+		// Both replacement indexes are complete before the first assignment, and
+		// no async boundary exists between the swaps, so readers cannot observe a
+		// partially deleted logical record.
+		this.memoriesById = nextMemoriesById;
+		this.memoriesByRoom = nextMemoriesByRoom;
+	}
+
 	async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
 		for (const roomId of roomIds) {
 			const key = roomTableKey(tableName, roomId);

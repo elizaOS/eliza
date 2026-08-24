@@ -1365,6 +1365,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void>;
 	deleteMemories(memoryIds: UUID[]): Promise<void>;
+	/**
+	 * Deletes one logical record spanning several memory rows atomically.
+	 *
+	 * Adapters must expose this capability only when every row and associated
+	 * embedding either commits or rolls back as one operation. Ordinary bulk
+	 * deletion does not imply this stronger contract.
+	 */
+	deleteMemoriesAtomically?(memoryIds: UUID[]): Promise<void>;
 
 	/**
 	 * Upsert memories (insert or update by ID)

@@ -731,13 +731,13 @@ async function doDeleteByQuery(
   );
   const ids = deletable.map((candidate) => candidate.memory.id);
   if (ids.length > 1) {
-    if (!runtime.deleteMemories) {
+    if (!runtime.deleteMemoriesAtomically) {
       return fail(
         "Refusing a multi-record forget because this runtime cannot delete the whole set atomically.",
         "MEMORY_ATOMIC_DELETE_UNAVAILABLE",
       );
     }
-    await runtime.deleteMemories(ids);
+    await runtime.deleteMemoriesAtomically(ids);
   } else if (ids[0]) {
     await runtime.deleteMemory(ids[0]);
   }
