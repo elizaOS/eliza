@@ -8,7 +8,7 @@
 import { DashboardLoadingState } from "@elizaos/ui/cloud-ui";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../lib/api-client";
+import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { PaymentStateDisplay } from "./components/payment-activity-card";
 import { PaymentStateDetailClient } from "./components/payment-state-detail-client";
@@ -60,7 +60,7 @@ export default function PaymentStateDetailPage() {
       // A 404 from the authoritative endpoint is a distinct not-found state,
       // not a generic error — the linked row may have scrolled out of the
       // projection window or the id may simply be stale.
-      if (error instanceof Error && /404|NOT_FOUND/i.test(error.message)) {
+      if (error instanceof ApiError && error.status === 404) {
         setPhase({ kind: "not-found" });
         return;
       }

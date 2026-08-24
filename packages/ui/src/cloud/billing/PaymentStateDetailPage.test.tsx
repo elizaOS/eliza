@@ -19,10 +19,30 @@ import {
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const apiMock = vi.hoisted(() => vi.fn());
+const apiMock = vi.hoisted(() => {
+  class MockApiError extends Error {
+    constructor(
+      public readonly status: number,
+      public readonly code: string,
+      message: string,
+    ) {
+      super(message);
+      this.name = "ApiError";
+    }
+  }
+  return {
+    api: vi.fn(),
+    MockApiError,
+  };
+});
+const { MockApiError } = apiMock;
 
 vi.mock("../lib/api-client", () => ({
-  api: (...args: unknown[]) => apiMock(...args),
+  api: (...args: unknown[]) => apiMock.api(...args),
+  // Referenced lazily via the hoisted container — the factory is hoisted
+  // above the const destructure, so it must not close over MockApiError
+  // directly.
+  ApiError: apiMock.MockApiError,
 }));
 
 vi.mock("sonner", () => ({
@@ -91,7 +111,7 @@ function renderDetail(id = "checkout_order:o1") {
 }
 
 beforeEach(() => {
-  apiMock.mockReset();
+  apiMock.api.mockReset();
 });
 
 afterEach(() => {
@@ -101,7 +121,7 @@ afterEach(() => {
 
 describe("PaymentStateDetailPage fetch states", () => {
   it("renders the loading state before data arrives", async () => {
-    apiMock.mockImplementation(() => new Promise(() => {}));
+    apiMock.api.mockImplementation(() => new Promise(() => {}));
     renderDetail();
     // Loading is a visible skeleton with an accessible status label — never
     // a blank page.
@@ -110,15 +130,19 @@ describe("PaymentStateDetailPage fetch states", () => {
     // The fetch is scheduled via queueMicrotask — wait for it to start while
     // the pending promise keeps the loading state rendered.
     await waitFor(() =>
-      expect(apiMock).toHaveBeenCalledWith(
+      expect(apiMock.api).toHaveBeenCalledWith(
         "/api/v1/billing/payment-states/checkout_order%3Ao1",
       ),
     );
   });
 
   it("renders a distinct not-found state on 404", async () => {
-    apiMock.mockRejectedValueOnce(
-      new Error("HTTP 404: PAYMENT_STATE_NOT_FOUND"),
+    apiMock.api.mockRejectedValueOnce(
+      new MockApiError(
+        404,
+        "PAYMENT_STATE_NOT_FOUND",
+        "Request failed with status 404",
+      ),
     );
     renderDetail();
     await screen.findByTestId("payment-detail-not-found");
@@ -126,8 +150,8 @@ describe("PaymentStateDetailPage fetch states", () => {
   });
 
   it("renders an explicit error state with retry after transport failure", async () => {
-    apiMock.mockRejectedValueOnce(new Error("network down"));
-    apiMock.mockResolvedValueOnce({ state: stateRow() });
+    apiMock.api.mockRejectedValueOnce(new Error("network down"));
+    apiMock.api.mockResolvedValueOnce({ state: stateRow() });
     renderDetail();
 
     await screen.findByTestId("payment-detail-error");
@@ -135,11 +159,11 @@ describe("PaymentStateDetailPage fetch states", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     await screen.findByTestId("payment-detail-title");
-    expect(apiMock).toHaveBeenCalledTimes(2);
+    expect(apiMock.api).toHaveBeenCalledTimes(2);
   });
 
   it("renders an error state on a malformed success payload", async () => {
-    apiMock.mockResolvedValueOnce({ unrelated: true });
+    apiMock.api.mockResolvedValueOnce({ unrelated: true });
     renderDetail();
     await screen.findByTestId("payment-detail-error");
     expect(screen.getByText(/malformed/i)).toBeTruthy();
@@ -148,7 +172,7 @@ describe("PaymentStateDetailPage fetch states", () => {
 
 describe("PaymentStateDetailPage success rendering", () => {
   it("shows the full row: state, amount, provider, event time kind, and full identifiers", async () => {
-    apiMock.mockResolvedValueOnce({
+    apiMock.api.mockResolvedValueOnce({
       state: stateRow({
         id: "payment_request:pr1",
         surface: "payment_request",
@@ -177,7 +201,7 @@ describe("PaymentStateDetailPage success rendering", () => {
   });
 
   it("shows the honest no-receipt state instead of a fabricated receipt", async () => {
-    apiMock.mockResolvedValueOnce({
+    apiMock.api.mockResolvedValueOnce({
       state: stateRow({ receiptId: null }),
     });
     renderDetail();
@@ -193,7 +217,7 @@ describe("PaymentStateDetailPage success rendering", () => {
       value: { writeText },
       configurable: true,
     });
-    apiMock.mockResolvedValueOnce({
+    apiMock.api.mockResolvedValueOnce({
       state: stateRow({
         id: "payment_request:pr2",
         surface: "payment_request",
@@ -214,7 +238,7 @@ describe("PaymentStateDetailPage success rendering", () => {
   });
 
   it("renders reversal totals, credit-unit labels, and policy effect for a refunded row", async () => {
-    apiMock.mockResolvedValueOnce({
+    apiMock.api.mockResolvedValueOnce({
       state: stateRow({
         paymentState: "partially_refunded",
         cumulativeRefundedUsd: 12,
@@ -242,7 +266,7 @@ describe("PaymentStateDetailPage success rendering", () => {
   });
 
   it("omits the reversal section for plain succeeded rows", async () => {
-    apiMock.mockResolvedValueOnce({ state: stateRow() });
+    apiMock.api.mockResolvedValueOnce({ state: stateRow() });
     renderDetail();
     await screen.findByTestId("payment-detail-title");
     expect(screen.queryByTestId("payment-detail-reversal")).toBeNull();
