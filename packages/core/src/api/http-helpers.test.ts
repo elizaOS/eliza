@@ -5,7 +5,16 @@
 import http from "node:http";
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors.js";
-import { readJsonBody, readRequestBodyBuffer } from "./http-helpers.js";
+import {
+	isJsonObjectBody,
+	readJsonBody,
+	readRequestBody,
+	readRequestBodyBuffer,
+	sendJson,
+	sendJsonError,
+	writeJsonError,
+	writeJsonResponse,
+} from "./http-helpers.js";
 
 interface IncomingRequestResult<T> {
 	inspection: T;
@@ -142,5 +151,95 @@ describe("readRequestBodyBuffer", () => {
 		expect(outcome.responseBody).toBe(
 			JSON.stringify({ error: "Request body exceeds this route's limit" }),
 		);
+	});
+});
+
+describe("isJsonObjectBody", () => {
+	it("returns true for plain objects and false for arrays, null, or primitives", () => {
+		expect(isJsonObjectBody({ key: "val" })).toBe(true);
+		expect(isJsonObjectBody({})).toBe(true);
+		expect(isJsonObjectBody([])).toBe(false);
+		expect(isJsonObjectBody([1, 2, 3])).toBe(false);
+		expect(isJsonObjectBody(null)).toBe(false);
+		expect(isJsonObjectBody(undefined)).toBe(false);
+		expect(isJsonObjectBody("string")).toBe(false);
+		expect(isJsonObjectBody(123)).toBe(false);
+	});
+});
+
+describe("writeJsonResponse and writeJsonError", () => {
+	it("writes JSON payload and headers correctly", async () => {
+		const outcome = await withIncomingRequest("", async (_req, res) => {
+			await writeJsonResponse(res, { status: "ok" }, 201);
+		});
+
+		expect(outcome.status).toBe(201);
+		expect(outcome.responseBody).toBe(JSON.stringify({ status: "ok" }));
+	});
+
+	it("writes structured error payload and default status 400", async () => {
+		const outcome = await withIncomingRequest("", async (_req, res) => {
+			await writeJsonError(res, "Bad request", 400);
+		});
+
+		expect(outcome.status).toBe(400);
+		expect(outcome.responseBody).toBe(JSON.stringify({ error: "Bad request" }));
+	});
+
+	it("sendJson and sendJsonError fire-and-forget responders write responses safely", async () => {
+		const outcomeSuccess = await withIncomingRequest("", async (_req, res) => {
+			sendJson(res, { ack: true }, 200);
+		});
+		expect(outcomeSuccess.status).toBe(200);
+		expect(outcomeSuccess.responseBody).toBe(JSON.stringify({ ack: true }));
+
+		const outcomeError = await withIncomingRequest("", async (_req, res) => {
+			sendJsonError(res, "Forbidden", 403);
+		});
+		expect(outcomeError.status).toBe(403);
+		expect(outcomeError.responseBody).toBe(
+			JSON.stringify({ error: "Forbidden" }),
+		);
+	});
+});
+
+describe("readRequestBody and readJsonBody error handling", () => {
+	it("readRequestBody returns string body text", async () => {
+		const outcome = await withIncomingRequest("hello world", async (req) =>
+			readRequestBody(req),
+		);
+		expect(outcome.inspection).toBe("hello world");
+	});
+
+	it("readJsonBody handles malformed JSON and writes 400 parse error response", async () => {
+		const outcome = await withIncomingRequest(
+			"not-json-at-all",
+			async (req, res) => readJsonBody(req, res),
+		);
+		expect(outcome.inspection).toBeNull();
+		expect(outcome.status).toBe(400);
+		expect(outcome.responseBody).toBe(
+			JSON.stringify({ error: "Invalid JSON in request body" }),
+		);
+	});
+
+	it("readJsonBody rejects non-object JSON when requireObject is true", async () => {
+		const outcome = await withIncomingRequest(
+			'["array","item"]',
+			async (req, res) => readJsonBody(req, res, { requireObject: true }),
+		);
+		expect(outcome.inspection).toBeNull();
+		expect(outcome.status).toBe(400);
+		expect(outcome.responseBody).toBe(
+			JSON.stringify({ error: "Request body must be a JSON object" }),
+		);
+	});
+
+	it("readJsonBody permits array JSON when requireObject is false", async () => {
+		const outcome = await withIncomingRequest(
+			'["item1","item2"]',
+			async (req, res) => readJsonBody(req, res, { requireObject: false }),
+		);
+		expect(outcome.inspection).toEqual(["item1", "item2"]);
 	});
 });
