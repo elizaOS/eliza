@@ -3,7 +3,7 @@ import {
   classifyAuthFailureReason,
   isRefreshTokenExpiryText,
   isTokenExpiryText,
-} from "./token-expiry.ts";
+} from "../token-expiry.ts";
 
 describe("isRefreshTokenExpiryText", () => {
   it("recognizes explicit refresh-token expiry language", () => {

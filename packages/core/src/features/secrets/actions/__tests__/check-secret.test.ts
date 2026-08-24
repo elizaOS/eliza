@@ -14,7 +14,7 @@ vi.mock("../services/secrets.ts", () => ({
 	SECRETS_SERVICE_TYPE: "SECRETS",
 }));
 
-import { checkSecretHandler } from "./check-secret.ts";
+import { checkSecretHandler } from "../check-secret.ts";
 
 describe("checkSecretHandler", () => {
 	it("returns failure when the secrets service is unavailable", async () => {
