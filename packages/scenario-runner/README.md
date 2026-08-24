@@ -45,7 +45,9 @@ location with `--run-dir=<dir>`.
 The evaluator writes an atomic checkpoint after every selected row by default.
 Use `--checkpoint-every=<n>` to reduce checkpoint frequency and
 `--resume=<in-progress-report>` to continue the same output after a provider
-failure. Resume rejects changed cell identity or duplicate/gapped prior rows.
+failure. Every report binds the input path and SHA-256 content digest; resume
+rejects changed input content, changed cell identity, or duplicate/gapped prior
+rows, and a run fails if the input changes while it is being evaluated.
 Use `--start-row=<n>` for an explicitly partial diagnostic, and zero-based
 `--shard-index` with `--shard-count` to partition the physical JSONL rows
 without shortening any accepted dialogue. Reports record the backend and requested model separately;
@@ -54,7 +56,8 @@ served.
 
 After every shard finishes, merge them into a comparative matrix. The merger
 reopens the source JSONL and rejects partial status, bounded runs, missing or
-duplicate shards, duplicate rows, and incomplete physical-row coverage:
+duplicate shards, rows assigned to the wrong shard, source-content drift,
+duplicate rows, and incomplete physical-row coverage:
 
 ```bash
 bun run --cwd packages/scenario-runner eval:timing:merge -- \

@@ -3,6 +3,7 @@
  * response handler. Malformed rows fail before inference; accepted dialogue
  * is never truncated or windowed.
  */
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -62,6 +63,7 @@ export interface TimingReport {
   status: "in-progress" | "complete";
   dataset: TimingDataset;
   input: string;
+  inputSha256: string;
   provider: string;
   requestedModel: string;
   backend: string;
@@ -423,6 +425,7 @@ function hasTimingRow(value: unknown): value is { row: number } {
     value !== null &&
     typeof value === "object" &&
     "row" in value &&
+    typeof value.row === "number" &&
     Number.isSafeInteger(value.row) &&
     value.row > 0
   );
@@ -491,6 +494,7 @@ export function validateTimingResumeRows(options: {
 function validateResumeReport(options: {
   value: unknown;
   input: string;
+  inputSha256: string;
   dataset: TimingDataset;
   provider: string;
   requestedModel: string;
@@ -513,6 +517,8 @@ function validateResumeReport(options: {
     value.dataset !== options.dataset ||
     !("input" in value) ||
     path.resolve(String(value.input)) !== options.input ||
+    !("inputSha256" in value) ||
+    value.inputSha256 !== options.inputSha256 ||
     !("provider" in value) ||
     value.provider !== options.provider ||
     !("requestedModel" in value) ||
@@ -575,6 +581,7 @@ export async function runWhen2SpeakEval(options: {
   const shardIndex = options.shardIndex ?? 0;
   const shardCount = options.shardCount ?? 1;
   const startRow = options.startRow ?? 1;
+  const checkpointEvery = options.checkpointEvery;
   if (
     !Number.isSafeInteger(shardCount) ||
     shardCount <= 0 ||
@@ -582,13 +589,27 @@ export async function runWhen2SpeakEval(options: {
     shardIndex < 0 ||
     shardIndex >= shardCount ||
     !Number.isSafeInteger(startRow) ||
-    startRow <= 0
+    startRow <= 0 ||
+    (options.limit !== undefined &&
+      (!Number.isSafeInteger(options.limit) || options.limit <= 0)) ||
+    (checkpointEvery !== undefined &&
+      (!Number.isSafeInteger(checkpointEvery) || checkpointEvery <= 0))
   ) {
     throw new ElizaError("Invalid When2Speak row selection", {
       code: "WHEN2SPEAK_INVALID_SELECTION",
-      context: { shardIndex, shardCount, startRow },
+      context: {
+        shardIndex,
+        shardCount,
+        startRow,
+        limit: options.limit,
+        checkpointEvery,
+      },
     });
   }
+  const input = path.resolve(options.input);
+  const inputSha256 = createHash("sha256")
+    .update(fs.readFileSync(input))
+    .digest("hex");
   let startedAt = new Date().toISOString();
   const previousTrajectoryDir = process.env.ELIZA_TRAJECTORY_DIR;
   const trajectoryDir = path.resolve(options.trajectoryDir);
@@ -629,7 +650,8 @@ export async function runWhen2SpeakEval(options: {
     runtimeResult.providerName;
   const resumeReport = validateResumeReport({
     value: options.resumeReport,
-    input: path.resolve(options.input),
+    input,
+    inputSha256,
     dataset,
     provider: runtimeResult.providerName,
     requestedModel,
@@ -657,7 +679,8 @@ export async function runWhen2SpeakEval(options: {
       schema: 2,
       status,
       dataset,
-      input: path.resolve(options.input),
+      input,
+      inputSha256,
       provider: runtimeResult.providerName,
       requestedModel,
       backend,
@@ -688,7 +711,6 @@ export async function runWhen2SpeakEval(options: {
     let row = 0;
     for await (const line of lines) {
       row += 1;
-      if (!line.trim()) continue;
       if (row <= lastCoveredRow) continue;
       if (!isTimingRowSelected({ row, startRow, shardIndex, shardCount }))
         continue;
@@ -751,6 +773,15 @@ export async function runWhen2SpeakEval(options: {
     } else {
       process.env.ELIZA_TRAJECTORY_DIR = previousTrajectoryDir;
     }
+  }
+  const finishedInputSha256 = createHash("sha256")
+    .update(fs.readFileSync(input))
+    .digest("hex");
+  if (finishedInputSha256 !== inputSha256) {
+    throw new ElizaError("When2Speak input changed during evaluation", {
+      code: "WHEN2SPEAK_INPUT_CHANGED",
+      context: { input, inputSha256, finishedInputSha256 },
+    });
   }
   return report("complete");
 }

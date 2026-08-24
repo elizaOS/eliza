@@ -3,10 +3,12 @@
  * merger rereads each source JSONL and refuses missing, duplicate, partial, or
  * mixed-configuration coverage instead of extrapolating a baseline.
  */
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import {
+  isTimingRowSelected,
   summarizeTimingPredictions,
   type TimingDataset,
   type TimingPrediction,
@@ -19,6 +21,7 @@ type TimingReportFragment = Pick<
   | "status"
   | "dataset"
   | "input"
+  | "inputSha256"
   | "provider"
   | "requestedModel"
   | "backend"
@@ -31,6 +34,7 @@ type TimingReportFragment = Pick<
 export interface TimingMatrixCell {
   dataset: TimingDataset;
   input: string;
+  inputSha256: string;
   provider: string;
   requestedModel: string;
   backend: string;
@@ -75,6 +79,7 @@ function isTimingPrediction(value: unknown): value is TimingPrediction {
   if (value === null || typeof value !== "object") return false;
   return (
     "row" in value &&
+    typeof value.row === "number" &&
     Number.isSafeInteger(value.row) &&
     "gold" in value &&
     (value.gold === "SPEAK" || value.gold === "SILENT") &&
@@ -96,6 +101,7 @@ function isTimingFailure(
     value !== null &&
     typeof value === "object" &&
     "row" in value &&
+    typeof value.row === "number" &&
     Number.isSafeInteger(value.row) &&
     "error" in value &&
     typeof value.error === "string"
@@ -109,6 +115,7 @@ function isTimingExclusion(
     value !== null &&
     typeof value === "object" &&
     "row" in value &&
+    typeof value.row === "number" &&
     Number.isSafeInteger(value.row) &&
     "reason" in value &&
     typeof value.reason === "string"
@@ -120,13 +127,23 @@ function isSelection(value: unknown): value is TimingReport["selection"] {
     value !== null &&
     typeof value === "object" &&
     "shardIndex" in value &&
+    typeof value.shardIndex === "number" &&
     Number.isSafeInteger(value.shardIndex) &&
     "shardCount" in value &&
+    typeof value.shardCount === "number" &&
     Number.isSafeInteger(value.shardCount) &&
+    value.shardCount > 0 &&
+    value.shardIndex >= 0 &&
+    value.shardIndex < value.shardCount &&
     "startRow" in value &&
+    typeof value.startRow === "number" &&
     Number.isSafeInteger(value.startRow) &&
+    value.startRow > 0 &&
     "limit" in value &&
-    (value.limit === null || Number.isSafeInteger(value.limit))
+    (value.limit === null ||
+      (typeof value.limit === "number" &&
+        Number.isSafeInteger(value.limit) &&
+        value.limit > 0))
   );
 }
 
@@ -154,6 +171,9 @@ function parseReport(file: string): TimingReportFragment {
     !isDataset(value.dataset) ||
     !("input" in value) ||
     typeof value.input !== "string" ||
+    !("inputSha256" in value) ||
+    typeof value.inputSha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.inputSha256) ||
     !("provider" in value) ||
     typeof value.provider !== "string" ||
     !("requestedModel" in value) ||
@@ -183,6 +203,7 @@ function parseReport(file: string): TimingReportFragment {
     status: value.status,
     dataset: value.dataset,
     input: value.input,
+    inputSha256: value.inputSha256,
     provider: value.provider,
     requestedModel: value.requestedModel,
     backend: value.backend,
@@ -197,6 +218,7 @@ function cellKey(report: TimingReportFragment): string {
   return JSON.stringify([
     report.dataset,
     path.resolve(report.input),
+    report.inputSha256,
     report.provider,
     report.requestedModel,
     report.backend,
@@ -205,10 +227,9 @@ function cellKey(report: TimingReportFragment): string {
 }
 
 function countPhysicalRows(input: string): number {
-  return fs
-    .readFileSync(input, "utf8")
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0).length;
+  const lines = fs.readFileSync(input, "utf8").split(/\r?\n/);
+  if (lines.at(-1) === "") lines.pop();
+  return lines.length;
 }
 
 export function mergeTimingReports(
@@ -259,6 +280,12 @@ export function mergeTimingReports(
         );
       }
       for (const prediction of report.predictions) {
+        if (!isTimingRowSelected({ row: prediction.row, ...report.selection }))
+          throw mergeError(
+            "TIMING_REPORT_WRONG_SHARD_ROW",
+            "Timing matrix row does not belong to its reported shard",
+            { file, row: prediction.row, selection: report.selection },
+          );
         if (rows.has(prediction.row))
           throw mergeError(
             "TIMING_REPORT_DUPLICATE_ROW",
@@ -269,6 +296,12 @@ export function mergeTimingReports(
         predictions.push(prediction);
       }
       for (const failure of report.failures) {
+        if (!isTimingRowSelected({ row: failure.row, ...report.selection }))
+          throw mergeError(
+            "TIMING_REPORT_WRONG_SHARD_ROW",
+            "Timing matrix row does not belong to its reported shard",
+            { file, row: failure.row, selection: report.selection },
+          );
         if (rows.has(failure.row))
           throw mergeError(
             "TIMING_REPORT_DUPLICATE_ROW",
@@ -279,6 +312,12 @@ export function mergeTimingReports(
         malformedRows += 1;
       }
       for (const exclusion of report.exclusions) {
+        if (!isTimingRowSelected({ row: exclusion.row, ...report.selection }))
+          throw mergeError(
+            "TIMING_REPORT_WRONG_SHARD_ROW",
+            "Timing matrix row does not belong to its reported shard",
+            { file, row: exclusion.row, selection: report.selection },
+          );
         if (rows.has(exclusion.row))
           throw mergeError(
             "TIMING_REPORT_DUPLICATE_ROW",
@@ -296,6 +335,15 @@ export function mergeTimingReports(
         { missingShardIndexes: [...expectedShards] },
       );
     const input = path.resolve(first.input);
+    const currentInputSha256 = createHash("sha256")
+      .update(fs.readFileSync(input))
+      .digest("hex");
+    if (currentInputSha256 !== first.inputSha256)
+      throw mergeError(
+        "TIMING_REPORT_INPUT_CHANGED",
+        "Timing matrix input content does not match the shard reports",
+        { input, expected: first.inputSha256, actual: currentInputSha256 },
+      );
     const physicalRows = countPhysicalRows(input);
     const missingRows = Array.from(
       { length: physicalRows },
@@ -314,6 +362,7 @@ export function mergeTimingReports(
     return {
       dataset: first.dataset,
       input,
+      inputSha256: first.inputSha256,
       provider: first.provider,
       requestedModel: first.requestedModel,
       backend: first.backend,
