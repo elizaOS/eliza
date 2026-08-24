@@ -12,8 +12,8 @@
  * inbox / draft ops delegate to the triage actions in features/messaging/triage.
  */
 
-import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { buildAccessContext } from "../../../access-context.ts";
+import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
 import { ElizaError } from "../../../errors.ts";
@@ -35,6 +35,7 @@ import {
 	resolveMutedWorldFlags,
 } from "../../../services/message/mute-state.ts";
 import type {
+	AccessContext,
 	Action,
 	ActionExample,
 	ActionParameter,
@@ -44,10 +45,10 @@ import type {
 	IAgentRuntime,
 	Media,
 	Memory,
-	MessageContentRangeReadResult,
 	MessageConnector,
 	MessageConnectorQueryContext,
 	MessageConnectorTarget,
+	MessageContentRangeReadResult,
 	MessageTargetKind,
 	Room,
 	SearchCategoryRegistration,
@@ -3231,7 +3232,7 @@ async function handleReadStoredMemory(
 			"The message store cannot perform a bounded authorized read.",
 		);
 	}
-	let accessContext;
+	let accessContext: AccessContext;
 	try {
 		accessContext = await buildAccessContext(runtime, message);
 	} catch (error) {

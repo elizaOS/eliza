@@ -54,7 +54,6 @@ export * from "./entities";
 export * from "./env-utils";
 export * from "./errors";
 export * from "./features/advanced-memory";
-export * from "./features/messaging/content-segments";
 export { AutonomyService } from "./features/autonomy/index";
 export type { DocumentSourceReadMetadata } from "./features/documents/index";
 export {
@@ -72,6 +71,7 @@ export {
 	readDocumentSourceProjection,
 	requireDocumentSourceReadMetadata,
 } from "./features/documents/index";
+export * from "./features/messaging/content-segments";
 export type {
 	DeferredMessageScheduleCommit,
 	DeferredMessageScheduleRequest,
@@ -144,8 +144,8 @@ export {
 	registerDirectActionRoutingRule,
 } from "./runtime/direct-action-routing";
 export * from "./runtime/execute-planned-tool-call";
-export * from "./runtime/rlm";
 export * from "./runtime/prepared-model-request";
+export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";
 export * from "./runtime/shortcut-registry";
 export * from "./runtime/sub-planner";

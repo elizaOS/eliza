@@ -23,7 +23,6 @@ import {
 	readResponseWithLimit,
 } from "../../media/fetch.ts";
 import { describeImageCached } from "../../media/index.ts";
-import { hashAttachmentIdForLocator } from "../messaging/content-segments.ts";
 import {
 	trustedLocalMediaUrl,
 	VISION_IMAGE_FETCH_TIMEOUT_MS,
@@ -38,6 +37,7 @@ import {
 	type MemoryScope,
 	type UUID,
 } from "../../types/index.ts";
+import { hashAttachmentIdForLocator } from "../messaging/content-segments.ts";
 
 type AttachmentWithInlineData = Media & {
 	_data?: string;

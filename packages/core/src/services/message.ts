@@ -362,7 +362,6 @@ import { toWellFormedUnicode } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
-import { persistMessageContentContinuity } from "./message-content-continuity.ts";
 import {
 	runBotGroupAddressGate,
 	runBotLoopGate,
@@ -404,6 +403,7 @@ import {
 import { resolveEffectiveMuteState } from "./message/mute-state";
 import { sanitizeOutboundText } from "./message/outbound-sanitize";
 import { isUnaddressedTextGroupTurn } from "./message/stage1-prompt-tier";
+import { persistMessageContentContinuity } from "./message-content-continuity.ts";
 import type { OptimizedPromptTask } from "./optimized-prompt";
 import {
 	type OptimizedPromptRuntimeLike,
@@ -14456,11 +14456,7 @@ export class DefaultMessageService implements IMessageService {
 				});
 			}
 			if (message.id) {
-				await replaceStoredMessageContent(
-					runtime,
-					message.id,
-					message.content,
-				);
+				await replaceStoredMessageContent(runtime, message.id, message.content);
 				await runtime.queueEmbeddingGeneration(
 					{ ...message, id: message.id },
 					"normal",
@@ -14955,11 +14951,7 @@ export class DefaultMessageService implements IMessageService {
 		) {
 			message.content.text = joinedTranslation;
 			if (message.id) {
-				await replaceStoredMessageContent(
-					runtime,
-					message.id,
-					message.content,
-				);
+				await replaceStoredMessageContent(runtime, message.id, message.content);
 				await runtime.queueEmbeddingGeneration(
 					{ ...message, id: message.id },
 					"normal",
@@ -15215,7 +15207,7 @@ export class DefaultMessageService implements IMessageService {
 										"Saving response to memory",
 									);
 									await timeInferenceSpan("message:delivery:persistence", () =>
-									persistMessageMemory(runtime, responseMemory),
+										persistMessageMemory(runtime, responseMemory),
 									);
 									if (responseMemory.id) {
 										persistedResponseMessageIds.add(responseMemory.id);

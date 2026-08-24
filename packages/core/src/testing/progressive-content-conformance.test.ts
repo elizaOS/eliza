@@ -1,11 +1,11 @@
 /** Exercises Unicode traversal and real negative conformance vectors. */
 
 import { describe, expect, it } from "vitest";
+import { runProgressiveContentConformance } from "./progressive-content-conformance";
 import {
 	progressiveConformanceAdapter,
 	progressiveConformanceFixture,
 } from "./progressive-content-conformance.fixture";
-import { runProgressiveContentConformance } from "./progressive-content-conformance";
 
 describe("progressive content conformance", () => {
 	it("proves traversal, restart, repeats, cleanup, and bounded work", async () => {

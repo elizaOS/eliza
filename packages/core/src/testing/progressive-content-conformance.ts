@@ -130,10 +130,8 @@ export async function runProgressiveContentConformance(input: {
 		maxPageLatencyMs: input.performanceCeilings?.maxPageLatencyMs ?? 5_000,
 		maxRssGrowthBytes:
 			input.performanceCeilings?.maxRssGrowthBytes ?? 128 * 1024 * 1024,
-		maxReadAmplification:
-			input.performanceCeilings?.maxReadAmplification ?? 2,
-		maxReadCallsPerPage:
-			input.performanceCeilings?.maxReadCallsPerPage ?? 2,
+		maxReadAmplification: input.performanceCeilings?.maxReadAmplification ?? 2,
+		maxReadCallsPerPage: input.performanceCeilings?.maxReadCallsPerPage ?? 2,
 		maxRowsPerPage: input.performanceCeilings?.maxRowsPerPage ?? 8,
 		...(input.performanceCeilings?.maxDatabaseGrowthBytes === undefined
 			? {}
@@ -161,10 +159,16 @@ export async function runProgressiveContentConformance(input: {
 			fail("source-work", `${label} has invalid counters`);
 			return;
 		}
-		readCallsPerPageMax = Math.max(readCallsPerPageMax, page.sourceWork.readCalls);
+		readCallsPerPageMax = Math.max(
+			readCallsPerPageMax,
+			page.sourceWork.readCalls,
+		);
 		rowsPerPageMax = Math.max(rowsPerPageMax, page.sourceWork.rowsRead);
 		if (page.sourceWork.readCalls > ceilings.maxReadCallsPerPage) {
-			fail("source-work", `${label} performed ${page.sourceWork.readCalls} source reads`);
+			fail(
+				"source-work",
+				`${label} performed ${page.sourceWork.readCalls} source reads`,
+			);
 		}
 		if (page.sourceWork.rowsRead > ceilings.maxRowsPerPage) {
 			fail("source-work", `${label} read ${page.sourceWork.rowsRead} rows`);
@@ -209,7 +213,10 @@ export async function runProgressiveContentConformance(input: {
 				...(offset > 0 ? { expectedRevision: input.object.revision } : {}),
 			});
 		} catch (error) {
-			fail("read", `page at ${offset} rejected with ${errorCode(error) ?? "untyped error"}`);
+			fail(
+				"read",
+				`page at ${offset} rejected with ${errorCode(error) ?? "untyped error"}`,
+			);
 			break;
 		}
 		maxPageLatencyMs = Math.max(
@@ -220,7 +227,10 @@ export async function runProgressiveContentConformance(input: {
 		try {
 			view = validateReadView(page.view);
 		} catch (error) {
-			fail("read-view", error instanceof Error ? error.message : "invalid read view");
+			fail(
+				"read-view",
+				error instanceof Error ? error.message : "invalid read view",
+			);
 			break;
 		}
 		pages += 1;
@@ -233,25 +243,29 @@ export async function runProgressiveContentConformance(input: {
 			view.reference.kind !== input.object.family ||
 			view.reference.revision !== input.object.revision ||
 			view.slice.revision !== input.object.revision
-		) fail("revision", `page ${pages} has wrong revision`);
+		)
+			fail("revision", `page ${pages} has wrong revision`);
 		const nextOffset = offset + page.bytes.byteLength;
 		if (
 			view.slice.range.unit !== "byte" ||
 			view.slice.range.start !== offset ||
 			view.slice.range.end !== nextOffset ||
 			view.slice.range.total !== input.object.byteLength
-		) fail("exact-range", `page ${pages} has inexact range`);
+		)
+			fail("exact-range", `page ${pages} has inexact range`);
 		if (
 			createHash("sha256").update(page.bytes).digest("hex") !==
 			view.slice.sliceSha256
-		) fail("page-hash", `page ${pages} SHA-256 differs`);
+		)
+			fail("page-hash", `page ${pages} SHA-256 differs`);
 		const shouldHaveMore = nextOffset < input.object.byteLength;
 		if (
 			view.slice.hasMore !== shouldHaveMore ||
 			(shouldHaveMore && view.slice.nextOffset !== nextOffset) ||
 			view.slice.completeness !==
 				(shouldHaveMore ? "partial-recoverable" : "complete")
-		) fail("completeness", `page ${pages} misreports continuation`);
+		)
+			fail("completeness", `page ${pages} misreports continuation`);
 		for (const canary of input.object.canaries) {
 			const overlapStart = Math.max(offset, canary.byteStart);
 			const overlapEnd = Math.min(nextOffset, canary.byteEnd);
@@ -277,7 +291,10 @@ export async function runProgressiveContentConformance(input: {
 				await input.adapter.restart();
 				restartVerified = true;
 			} catch (error) {
-				fail("restart", error instanceof Error ? error.message : "restart failed");
+				fail(
+					"restart",
+					error instanceof Error ? error.message : "restart failed",
+				);
 				break;
 			}
 		}
@@ -288,21 +305,33 @@ export async function runProgressiveContentConformance(input: {
 			await input.adapter.restart();
 			restartVerified = true;
 		} catch (error) {
-			fail("restart", error instanceof Error ? error.message : "restart failed");
+			fail(
+				"restart",
+				error instanceof Error ? error.message : "restart failed",
+			);
 		}
 	}
 	const reassembledSha256 = digest.digest("hex");
-	if (offset !== input.object.byteLength) fail("reassembly", `traversal ended at ${offset}`);
-	if (reassembledSha256 !== input.object.sourceSha256) fail("reassembly", "full traversal SHA-256 differs");
+	if (offset !== input.object.byteLength)
+		fail("reassembly", `traversal ended at ${offset}`);
+	if (reassembledSha256 !== input.object.sourceSha256)
+		fail("reassembly", "full traversal SHA-256 differs");
 	for (const canary of input.object.canaries) {
 		const state = canaryState.get(canary.label);
 		if (!state?.matched || state.bytesSeen !== Buffer.byteLength(canary.text)) {
 			fail("canary", `missing ${canary.label} canary`);
 		}
 	}
-	if (parentScans > 0) fail("source-work", `performed ${parentScans} parent scans`);
-	if (bytesRead > input.object.byteLength * ceilings.maxReadAmplification + pageBytes * 2) {
-		fail("source-work", `read ${bytesRead} bytes for ${input.object.byteLength}`);
+	if (parentScans > 0)
+		fail("source-work", `performed ${parentScans} parent scans`);
+	if (
+		bytesRead >
+		input.object.byteLength * ceilings.maxReadAmplification + pageBytes * 2
+	) {
+		fail(
+			"source-work",
+			`read ${bytesRead} bytes for ${input.object.byteLength}`,
+		);
 	}
 
 	for (const negative of [
@@ -335,7 +364,10 @@ export async function runProgressiveContentConformance(input: {
 		} catch (error) {
 			const code = errorCode(error);
 			if (!code || !(negative.codes as readonly string[]).includes(code)) {
-				fail(negative.vector, `adapter rejected with untyped code ${code ?? "none"}`);
+				fail(
+					negative.vector,
+					`adapter rejected with untyped code ${code ?? "none"}`,
+				);
 			}
 		}
 	}
@@ -355,15 +387,28 @@ export async function runProgressiveContentConformance(input: {
 				input.adapter.read(request),
 			]);
 			const repeated = await input.adapter.read(request);
-			for (const [label, page] of [["concurrent-left", left], ["concurrent-right", right], ["repeated-page", repeated]] as const) {
+			for (const [label, page] of [
+				["concurrent-left", left],
+				["concurrent-right", right],
+				["repeated-page", repeated],
+			] as const) {
 				observeWork(page, label, false);
 			}
-			concurrencyVerified = Buffer.from(left.bytes).equals(Buffer.from(right.bytes)) && left.view.slice.sliceSha256 === right.view.slice.sliceSha256;
-			repeatedPageVerified = Buffer.from(left.bytes).equals(Buffer.from(repeated.bytes)) && left.view.slice.sliceSha256 === repeated.view.slice.sliceSha256;
-			if (!concurrencyVerified) fail("concurrency", "same-revision concurrent reads differ");
-			if (!repeatedPageVerified) fail("repeated-page", "repeated same-revision page differs");
+			concurrencyVerified =
+				Buffer.from(left.bytes).equals(Buffer.from(right.bytes)) &&
+				left.view.slice.sliceSha256 === right.view.slice.sliceSha256;
+			repeatedPageVerified =
+				Buffer.from(left.bytes).equals(Buffer.from(repeated.bytes)) &&
+				left.view.slice.sliceSha256 === repeated.view.slice.sliceSha256;
+			if (!concurrencyVerified)
+				fail("concurrency", "same-revision concurrent reads differ");
+			if (!repeatedPageVerified)
+				fail("repeated-page", "repeated same-revision page differs");
 		} catch (error) {
-			fail("concurrency", error instanceof Error ? error.message : "concurrent read failed");
+			fail(
+				"concurrency",
+				error instanceof Error ? error.message : "concurrent read failed",
+			);
 		}
 	}
 
@@ -386,7 +431,11 @@ export async function runProgressiveContentConformance(input: {
 			fail("cleanup", "object remained readable after cleanup");
 		} catch (error) {
 			postCleanupProbeVerified = NOT_FOUND_CODES.has(errorCode(error) ?? "");
-			if (!postCleanupProbeVerified) fail("cleanup", `post-cleanup probe rejected with ${errorCode(error) ?? "untyped error"}`);
+			if (!postCleanupProbeVerified)
+				fail(
+					"cleanup",
+					`post-cleanup probe rejected with ${errorCode(error) ?? "untyped error"}`,
+				);
 		}
 	}
 
@@ -395,12 +444,27 @@ export async function runProgressiveContentConformance(input: {
 		initialResources?.databaseBytes === undefined ||
 		finalResources?.databaseBytes === undefined
 			? undefined
-			: Math.max(0, finalResources.databaseBytes - initialResources.databaseBytes);
+			: Math.max(
+					0,
+					finalResources.databaseBytes - initialResources.databaseBytes,
+				);
 	const rssGrowthBytes = Math.max(0, process.memoryUsage.rss() - initialRss);
-	if (maxPageLatencyMs > ceilings.maxPageLatencyMs) fail("performance", `page latency ${maxPageLatencyMs.toFixed(2)}ms exceeded ceiling`);
-	if (rssGrowthBytes > ceilings.maxRssGrowthBytes) fail("performance", `RSS growth ${rssGrowthBytes} exceeded ceiling`);
-	if (databaseGrowthBytes !== undefined && ceilings.maxDatabaseGrowthBytes !== undefined && databaseGrowthBytes > ceilings.maxDatabaseGrowthBytes) {
-		fail("performance", `database growth ${databaseGrowthBytes} exceeded ceiling`);
+	if (maxPageLatencyMs > ceilings.maxPageLatencyMs)
+		fail(
+			"performance",
+			`page latency ${maxPageLatencyMs.toFixed(2)}ms exceeded ceiling`,
+		);
+	if (rssGrowthBytes > ceilings.maxRssGrowthBytes)
+		fail("performance", `RSS growth ${rssGrowthBytes} exceeded ceiling`);
+	if (
+		databaseGrowthBytes !== undefined &&
+		ceilings.maxDatabaseGrowthBytes !== undefined &&
+		databaseGrowthBytes > ceilings.maxDatabaseGrowthBytes
+	) {
+		fail(
+			"performance",
+			`database growth ${databaseGrowthBytes} exceeded ceiling`,
+		);
 	}
 
 	return {
@@ -412,10 +476,15 @@ export async function runProgressiveContentConformance(input: {
 		pageBytes,
 		pages,
 		reassembledSha256,
-		canariesFound: input.object.canaries.filter((canary) => {
-			const state = canaryState.get(canary.label);
-			return state?.matched && state.bytesSeen === Buffer.byteLength(canary.text);
-		}).map(({ label }) => label).sort(),
+		canariesFound: input.object.canaries
+			.filter((canary) => {
+				const state = canaryState.get(canary.label);
+				return (
+					state?.matched && state.bytesSeen === Buffer.byteLength(canary.text)
+				);
+			})
+			.map(({ label }) => label)
+			.sort(),
 		restartVerified,
 		concurrencyVerified,
 		repeatedPageVerified,
@@ -426,7 +495,8 @@ export async function runProgressiveContentConformance(input: {
 			elapsedMs: performance.now() - startedAt,
 			maxPageLatencyMs,
 			rssGrowthBytes,
-			readAmplification: input.object.byteLength === 0 ? 0 : bytesRead / input.object.byteLength,
+			readAmplification:
+				input.object.byteLength === 0 ? 0 : bytesRead / input.object.byteLength,
 			readCallsPerPageMax,
 			rowsPerPageMax,
 			...(databaseGrowthBytes === undefined ? {} : { databaseGrowthBytes }),

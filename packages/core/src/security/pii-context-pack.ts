@@ -203,13 +203,19 @@ interface PrefixRequest {
 	readonly offset: number;
 }
 
-function requiredSourceIdentity(source: string, value: { readonly id?: UUID }): string {
+function requiredSourceIdentity(
+	source: string,
+	value: { readonly id?: UUID },
+): string {
 	if (value.id) return value.id;
-	throw new ElizaError(`PII context ${source} source returned an unidentifiable row`, {
-		code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
-		context: { source },
-		severity: "fatal",
-	});
+	throw new ElizaError(
+		`PII context ${source} source returned an unidentifiable row`,
+		{
+			code: "PII_CONTEXT_SOURCE_INVALID_PAGE",
+			context: { source },
+			severity: "fatal",
+		},
+	);
 }
 
 async function readStableCompletePages<T>(
