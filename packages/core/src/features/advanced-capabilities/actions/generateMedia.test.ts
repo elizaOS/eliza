@@ -126,6 +126,66 @@ describe("generateMediaAction availability", () => {
 		).resolves.toBe(true);
 	});
 
+	it("forwards the exact source image URL and Seedance controls for image-to-video", async () => {
+		const generateMedia = vi.fn(async () => ({
+			mediaType: "video",
+			videoUrl: "https://cdn.example.com/generated/clip.mp4",
+		}));
+		await generateMediaAction.handler?.(
+			runtimeWithMediaService(true, generateMedia),
+			message,
+			undefined,
+			{
+				parameters: {
+					mediaType: "video",
+					prompt: "Make the dog wag its tail",
+					imageUrl: "https://media.blooio.com/files/dog.png",
+					duration: 12,
+					resolution: "480p",
+					aspectRatio: "9:16",
+					audio: false,
+					seed: 42,
+				},
+			},
+			vi.fn(),
+		);
+
+		expect(generateMedia).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mediaType: "video",
+				imageUrl: "https://media.blooio.com/files/dog.png",
+				duration: 12,
+				resolution: "480p",
+				aspectRatio: "9:16",
+				audio: false,
+				seed: 42,
+			}),
+		);
+	});
+
+	it("does not silently remove explicit video controls after a provider rejection", async () => {
+		const generateMedia = vi.fn(async () => {
+			throw new Error(
+				"Seedance 2.5 duration must be a whole number from 4 to 30 seconds",
+			);
+		});
+		const result = await generateMediaAction.handler?.(
+			runtimeWithMediaService(true, generateMedia),
+			message,
+			undefined,
+			{
+				parameters: {
+					mediaType: "video",
+					prompt: "Make a clip",
+					duration: 3,
+				},
+			},
+		);
+
+		expect(generateMedia).toHaveBeenCalledTimes(1);
+		expect(result).toEqual(expect.objectContaining({ success: false }));
+	});
+
 	it("returns MEDIA_GENERATION_MISSING_URL when video service omits videoUrl", async () => {
 		const generateMedia = vi.fn(async () => ({
 			mediaType: "video",

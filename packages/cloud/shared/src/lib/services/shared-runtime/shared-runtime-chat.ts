@@ -27,6 +27,10 @@ import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
 import { getProviderFromModel } from "../../pricing";
+import {
+  collectVideoProviderApiKeys,
+  getConfiguredVideoProviderCandidates,
+} from "../../providers/video/registry";
 import { getCloudAwareEnv, getCloudBinding } from "../../runtime/cloud-bindings";
 import type { PublicObjectBindings } from "../../storage/r2-public-object";
 import { logger } from "../../utils/logger";
@@ -40,10 +44,12 @@ import {
   recordUsageAnalytics,
 } from "../ai-billing";
 import { aiBillingRecordsService } from "../ai-billing-records";
-import { DEFAULT_IMAGE_MODEL_ID } from "../ai-pricing-definitions";
+import { getSupportedVideoModelDefinition } from "../ai-pricing-definitions";
 import { chatSseFrame } from "../chat-sse-frames";
+import { contentSafetyService } from "../content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import { generationsService } from "../generations";
 import {
   executeImageGeneration,
   imageProviderKeysFromCloudEnvironment,
@@ -63,6 +69,12 @@ import {
 } from "../inference-provider-outcome";
 import { admitOrganizationInference } from "../organization-inference-admission";
 import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
+import {
+  estimatePersonalSharedSeedanceCostUsd,
+  PERSONAL_SHARED_IMAGE_VIDEO_MODEL_ID,
+  PERSONAL_SHARED_TEXT_VIDEO_MODEL_ID,
+  resolvePersonalSharedSeedanceOptions,
+} from "./personal-shared-seedance";
 import {
   type RunSharedAgentTurnInput,
   type RunSharedAgentTurnResult,
@@ -113,6 +125,7 @@ const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
+const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
 function elapsedTurnMs(startedAt: number): number {
@@ -335,11 +348,10 @@ function imageDimensionsFromMediaSize(size: string | undefined): {
   return { width, height };
 }
 
-function personalSharedImagePort(
+function personalSharedMediaPort(
   agent: SharedRuntimeAgent,
   roomId: string,
   turnKey: string | undefined,
-  executionCtx: BridgeExecutionContext | undefined,
 ): SharedMediaGenerationPort | undefined {
   const blob = getCloudBinding<PublicObjectBindings["BLOB"]>("BLOB");
   const providerKeys = imageProviderKeysFromCloudEnvironment();
@@ -349,44 +361,29 @@ function personalSharedImagePort(
     BLOB: blob,
     ...(cloudEnv.R2_PUBLIC_HOST ? { R2_PUBLIC_HOST: cloudEnv.R2_PUBLIC_HOST } : {}),
   };
-  if (!isImageGenerationConfigured(DEFAULT_IMAGE_MODEL_ID, bindings, providerKeys)) {
+  const videoKeys = collectVideoProviderApiKeys(cloudEnv as unknown as Record<string, unknown>);
+  const videoConfigured = Boolean(videoKeys.FAL_KEY || videoKeys.FAL_API_KEY);
+  const imageConfigured = isImageGenerationConfigured(
+    PERSONAL_SHARED_IMAGE_MODEL_ID,
+    bindings,
+    providerKeys,
+  );
+  if (!imageConfigured && !videoConfigured) {
     return undefined;
   }
 
   const turnIdentity = turnKey ?? crypto.randomUUID();
   let actionOrdinal = 0;
   return {
-    canGenerateMedia: ({ mediaType }) => mediaType === "image",
+    canGenerateMedia: ({ mediaType }) =>
+      mediaType === "image" ? imageConfigured : mediaType === "video" && videoConfigured,
     generateMedia: async (request) => {
-      if (request.mediaType !== "image") {
-        throw new Error("Personal Shared media generation supports images only");
-      }
       const ordinal = actionOrdinal;
       actionOrdinal += 1;
-      let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
-      if (executionCtx) {
-        try {
-          admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
-            agent.organization_id,
-            executionCtx,
-          );
-        } catch (error) {
-          // error-policy:J1 translate the cache-only admission boundary into
-          // the Shared runtime's single retryable warming signal.
-          if (error instanceof InferenceAdmissionSnapshotCacheWarmingError) {
-            throw new SharedRuntimeCacheWarmingError(
-              "Image billing authorization is warming. Retry shortly.",
-            );
-          }
-          throw error;
-        }
-      }
       let rateLimited: Response | null;
       try {
         rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict", {
-          cacheOnly: Boolean(executionCtx),
-          executionCtx,
-          config: inferenceRateLimitConfig(admissionSnapshot, "strict"),
+          config: PERSONAL_SHARED_RATE_LIMIT,
         });
       } catch (error) {
         // error-policy:J1 translate the cache-only rate-limit boundary into
@@ -411,10 +408,97 @@ function personalSharedImagePort(
         );
       }
 
+      if (request.mediaType === "video") {
+        const model = request.imageUrl
+          ? PERSONAL_SHARED_IMAGE_VIDEO_MODEL_ID
+          : PERSONAL_SHARED_TEXT_VIDEO_MODEL_ID;
+        const definition = getSupportedVideoModelDefinition(model);
+        if (!definition) throw new Error(`Personal Shared video model is unsupported: ${model}`);
+        const candidate = getConfiguredVideoProviderCandidates([definition], videoKeys)[0];
+        if (!candidate) throw new Error("fal.ai video generation is not configured");
+        const options = resolvePersonalSharedSeedanceOptions(request);
+        const costUsd = estimatePersonalSharedSeedanceCostUsd(options);
+        await contentSafetyService.assertSafeForPublicUse({
+          surface: "media_generation_prompt",
+          organizationId: agent.organization_id,
+          userId: agent.user_id,
+          text: request.prompt,
+          imageUrls: request.imageUrl ? [request.imageUrl] : undefined,
+          metadata: { type: "video", model, source: "personal-shared" },
+        });
+        const generated = await candidate.provider.generate({
+          model,
+          prompt: request.prompt,
+          referenceUrl: request.imageUrl,
+          durationSeconds: options.durationSeconds,
+          resolution: options.resolution,
+          audio: options.audio,
+          aspectRatio: options.aspectRatio,
+          seed: options.seed,
+          endUserId: agent.user_id,
+          apiKeys: videoKeys,
+        });
+        if (generated.hasNsfwConcepts?.some(Boolean)) {
+          throw new Error("Generated video failed safety review");
+        }
+        const generationId = stableUuid(
+          `shared-video:${agent.id}:${roomId}:${turnIdentity}:${ordinal}`,
+        );
+        await generationsService.create({
+          id: generationId,
+          organization_id: agent.organization_id,
+          user_id: agent.user_id,
+          type: "video",
+          model,
+          provider: definition.provider,
+          prompt: request.prompt,
+          result: {
+            requestId: generated.requestId,
+            seed: generated.seed,
+            timings: generated.timings,
+            billingSource: definition.billingSource,
+            source: "personal-shared",
+            funding: "platform",
+          },
+          status: "completed",
+          storage_url: generated.video.url,
+          thumbnail_url: generated.video.url,
+          file_size: generated.video.file_size ? BigInt(generated.video.file_size) : undefined,
+          mime_type: generated.video.content_type ?? "video/mp4",
+          parameters: {
+            referenceUrl: request.imageUrl,
+            durationSeconds: options.durationSeconds,
+            resolution: options.resolution,
+            aspectRatio: options.aspectRatio,
+            audio: options.audio,
+            seed: options.seed,
+          },
+          dimensions: {
+            width: generated.video.width,
+            height: generated.video.height,
+            duration: options.durationSeconds,
+          },
+          cost: String(costUsd),
+          credits: "0",
+          job_id: generated.requestId,
+          completed_at: new Date(),
+        });
+        return {
+          mediaType: "video",
+          url: generated.video.url,
+          videoUrl: generated.video.url,
+          mimeType: generated.video.content_type ?? "video/mp4",
+          duration: options.durationSeconds,
+          provider: definition.provider,
+        };
+      }
+      if (request.mediaType !== "image") {
+        throw new Error(`Personal Shared media generation does not support ${request.mediaType}`);
+      }
       const outcome = await executeImageGeneration({
         input: {
           prompt: request.prompt,
-          model: DEFAULT_IMAGE_MODEL_ID,
+          model: PERSONAL_SHARED_IMAGE_MODEL_ID,
           numImages: 1,
           aspectRatio: request.aspectRatio,
           stylePreset: request.style,
@@ -439,18 +523,7 @@ function personalSharedImagePort(
         },
         bindings,
         providerKeys,
-        admit: async ({ context, cost }) => ({
-          kind: "organization" as const,
-          admission: await admitOrganizationInference({
-            context,
-            apiKeyId: null,
-            estimatedInputTokens: 0,
-            estimatedOutputTokens: 0,
-            flatCost: cost,
-            executionCtx,
-            admissionSnapshot,
-          }),
-        }),
+        admit: async () => ({ kind: "platform" as const }),
       });
       const image = outcome.images[0];
       if (!image) throw new Error("Canonical Cloud image generation returned no artifact");
@@ -481,9 +554,7 @@ function sharedElizaRuntimeExecution(
     source: personalShared ? MESSAGE_SOURCE_CLIENT_CHAT : "shared-runtime",
   };
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
-  const media = personalShared
-    ? personalSharedImagePort(agent, roomId, turnKey, executionCtx)
-    : undefined;
+  const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
   return {
     agentKey: agent.id,
     roomKey: roomId,

@@ -145,6 +145,7 @@ describe("workspace source aliases", () => {
             "eliza-source": "../outside.ts",
             import: "./dist/escape.js",
           },
+          "./retired": null,
         },
       }),
     );
