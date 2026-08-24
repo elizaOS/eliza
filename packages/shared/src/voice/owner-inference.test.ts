@@ -75,6 +75,15 @@ describe("resolveOwnerCandidate", () => {
     },
   );
 
+  it("rejects non-array observations and non-string entityId types", () => {
+    expect(() => resolveOwnerCandidate([C(123 as unknown as string)])).toThrow(
+      "observations[0].entityId must be null or a non-empty string",
+    );
+    expect(() => resolveOwnerCandidate([C({} as unknown as string)])).toThrow(
+      "observations[0].entityId must be null or a non-empty string",
+    );
+  });
+
   it("accepts the documented confidence and margin boundaries", () => {
     const zeroConfidence = resolveOwnerCandidate([C("owner", 0)], {
       minObservations: 1,

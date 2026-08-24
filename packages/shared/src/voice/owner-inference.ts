@@ -87,13 +87,17 @@ export function resolveOwnerCandidate(
     throw new RangeError("minMargin must be a finite non-negative number");
   }
 
+  if (!Array.isArray(observations)) {
+    throw new TypeError("observations must be an array");
+  }
+
   const scores = new Map<string, number>();
   let qualifying = 0;
   let totalScore = 0;
   for (const [index, obs] of observations.entries()) {
     assertUnitInterval(obs.confidence, `observations[${index}].confidence`);
     if (obs.entityId === null) continue;
-    if (obs.entityId.trim().length === 0) {
+    if (typeof obs.entityId !== "string" || obs.entityId.trim().length === 0) {
       throw new TypeError(
         `observations[${index}].entityId must be null or a non-empty string`,
       );
