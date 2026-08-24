@@ -44,6 +44,11 @@ describe("usdFromPoints (API boundary -> canonical USD)", () => {
     }
   });
 
+  test("fails closed on negative points with a typed error", () => {
+    expect(() => usdFromPoints(-1)).toThrow(/non-negative/);
+    expect(() => usdFromPoints(-100)).toThrow(/non-negative/);
+  });
+
   test("large points stay exact where float math would drift", () => {
     // 0.07-style drift class: 12,345,678 points = $123,456.78 exactly.
     expect(usdFromPoints(12_345_678).toString()).toBe("123456.78");

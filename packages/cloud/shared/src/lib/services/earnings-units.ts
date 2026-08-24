@@ -41,11 +41,14 @@ export type EarningsUsd = Decimal;
  * backstop).
  */
 export function usdFromPoints(points: number): Decimal {
-  if (!Number.isInteger(points)) {
-    throw new ElizaError(`pointsAmount must be an integer number of points, received: ${points}`, {
-      code: "INVALID_REDEMPTION_POINTS",
-      context: { received: String(points) },
-    });
+  if (!Number.isInteger(points) || points < 0) {
+    throw new ElizaError(
+      `pointsAmount must be a non-negative integer number of points, received: ${points}`,
+      {
+        code: "INVALID_REDEMPTION_POINTS",
+        context: { received: String(points) },
+      },
+    );
   }
   return new Decimal(points).div(REDEMPTION_POINTS_PER_USD);
 }
