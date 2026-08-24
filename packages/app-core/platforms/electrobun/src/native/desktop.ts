@@ -1805,9 +1805,9 @@ X-GNOME-Autostart-enabled=true
   }
 
   /**
-   * Keep one AppKit-owned AX button in the tree only while the renderer is the
-   * tiny resting pill. This is the pointer-free semantic boundary used by
-   * Accessibility clients; the hidden WKWebView composer is never its owner.
+   * Let the native window vend one AppKit-owned AX button while the renderer is
+   * the tiny resting pill. This is the pointer-free semantic boundary used by
+   * Accessibility clients; inactive WKWebView children are restored on open.
    */
   private applyBottomBarSemanticOpenControl(): void {
     if (process.platform !== "darwin") return;

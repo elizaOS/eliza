@@ -18,17 +18,21 @@ function implementation(name: string): string {
 
 describe("macOS semantic shell contract", () => {
   it("opens the resting pill through one AX-only control without HID input", () => {
+    const element = implementation("ElizaAssistantSemanticOpenElement");
     const controller = implementation(
       "ElizaWindowInteractiveMaterialController",
     );
-    expect(controller).toContain("NSAccessibilityCustomAction");
-    expect(controller).toContain('initWithName:@"Open chat"');
-    expect(controller).toContain("[weakSelf requestSemanticOpen]");
-    expect(controller).toContain("window.accessibilityCustomActions = actions");
-    expect(controller).toContain("contentView.accessibilityHidden = YES");
+    expect(element).toContain("NSAccessibilityButtonRole");
+    expect(element).toContain('return @"Open chat"');
+    expect(element).toContain('return @"eliza.chat-overlay.open"');
+    expect(element).toContain("accessibilityPerformPress");
+    expect(element).toContain("[self.controller requestSemanticOpen]");
+    expect(controller).toContain("window.accessibilityChildren = @[");
     expect(controller).toContain(
-      "contentView.accessibilityHidden =\n\t\t\t\tself.semanticContentAccessibilityWasHidden",
+      "self.semanticOriginalAccessibilityChildren ?: @[]",
     );
+    expect(element).not.toContain("NSAccessibilityCustomAction");
+    expect(controller).not.toContain("NSAccessibilityCustomAction");
     expect(controller).not.toMatch(/CGEventPost|CGWarpMouseCursorPosition/);
     expect(nativeSource).toContain(
       'extern "C" bool pollWindowAssistantSemanticOpenRequest',
