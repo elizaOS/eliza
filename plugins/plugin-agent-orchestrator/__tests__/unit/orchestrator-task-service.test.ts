@@ -2407,10 +2407,13 @@ describe("OrchestratorTaskService — store degradation resilience (#11641)", ()
     expect(detail?.sessions).toHaveLength(1);
     expect(detail?.sessions[0]?.sessionId).toBe("session-1");
     // The recording failure is logged (once), not swallowed silently.
+    // Message is the second arg — the logger is pino-shaped (context, msg).
     expect(
       warn.mock.calls.some((c) =>
-        String(c[0]).includes(
-          "spawn succeeded but recording the session failed",
+        c.some((arg) =>
+          String(arg).includes(
+            "spawn succeeded but recording the session failed",
+          ),
         ),
       ),
     ).toBe(true);
@@ -2454,7 +2457,9 @@ describe("OrchestratorTaskService — store degradation resilience (#11641)", ()
 
     const recordWarns = warn.mock.calls
       .slice(before)
-      .filter((c) => String(c[0]).includes("failed to record session event"));
+      .filter((c) =>
+        c.some((arg) => String(arg).includes("failed to record session event")),
+      );
     expect(recordWarns).toHaveLength(1);
   });
 });

@@ -286,10 +286,18 @@ export class RecoveryConflictError extends Error {
 }
 
 type RuntimeLike = IAgentRuntime & {
+  // Pino-shaped call convention (context object first, message second) — the
+  // previous `(message, data)` shape here encoded the wrong argument order and
+  // pushed every context object into the logger's trailing-args slot, where it
+  // printed as an unreadable `[Object: null prototype] { ... }` dump.
   logger?: Partial<
     Record<
       "debug" | "info" | "warn" | "error",
-      (message: string, data?: unknown) => void
+      (
+        context: Record<string, unknown> | string,
+        message?: string,
+        ...args: unknown[]
+      ) => void
     >
   >;
   /** Modern eliza runtime property. */
@@ -344,6 +352,17 @@ function configuredDefaultAgentType(runtime: {
  *  read-only execution verifier (#8898), distinct from the text judge's
  *  `llm-goal-verifier`, so the validation event's origin is unambiguous. */
 const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
+
+/** Provenance stamped on events and verdicts produced by the start-time
+ *  orphaned-validation sweep: verification that died with a restart and was
+ *  either re-armed from durable completion evidence or resolved explicitly. */
+const RESTART_RECOVERY_VERIFIER_NAME = "restart-recovery";
+
+/** Delay before the start-time orphaned-validation sweep fires, mirroring the
+ *  router's completion-relay recovery discipline (RELAY_RECOVERY_SWEEP_DELAY_MS):
+ *  connectors and the message service must be up before a recovered verdict's
+ *  park notice — or a re-engage prompt — can post anywhere. */
+const VALIDATION_RECOVERY_SWEEP_DELAY_MS = 15_000;
 
 /** Cap on child trajectories ingested per task_complete (#13775) so a runaway
  *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
@@ -698,6 +717,61 @@ function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+/** Adapt the pino-shaped runtime logger (context object first) to the task
+ * store's message-first `Logger` contract. The store's trailing context value
+ * (typically a caught error) is folded into the context slot so it renders as
+ * structured fields instead of the sink's raw `[Object: null prototype]`
+ * trailing-arg dump. */
+function storeLoggerAdapter(
+  logger: RuntimeLike["logger"],
+):
+  | Record<
+      "debug" | "info" | "warn" | "error",
+      ((message: string, ...args: unknown[]) => void) | undefined
+    >
+  | undefined {
+  if (!logger) return undefined;
+  const wrap = (
+    level: "debug" | "info" | "warn" | "error",
+  ): ((message: string, ...args: unknown[]) => void) | undefined => {
+    const fn = logger[level];
+    if (typeof fn !== "function") return undefined;
+    return (message: string, ...args: unknown[]) => {
+      const [first, ...rest] = args;
+      const context = isRecord(first)
+        ? first
+        : first === undefined
+          ? {}
+          : { value: first instanceof Error ? first.message : first };
+      fn.call(logger, context, message, ...rest);
+    };
+  };
+  return {
+    debug: wrap("debug"),
+    info: wrap("info"),
+    warn: wrap("warn"),
+    error: wrap("error"),
+  };
+}
+
+/** Log-safe rendering of an unknown thrown value. `String(err)` throws on a
+ * null-prototype object ("Cannot convert object to primitive value"), which
+ * would replace the warn with a second, less diagnosable failure. */
+function errorText(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  try {
+    return String(err);
+  } catch {
+    // error-policy:J3 untrusted thrown value; degrade to a structural dump
+    // rather than losing the log line entirely.
+    try {
+      return JSON.stringify(err) ?? "unstringifiable thrown value";
+    } catch {
+      return "unstringifiable thrown value";
+    }
+  }
+}
+
 function withoutInterruptStamp(
   metadata: unknown,
 ): Record<string, unknown> | undefined {
@@ -815,6 +889,42 @@ function latestWorkspaceSession(
   return doc.sessions
     .filter((session) => session.workdir.trim().length > 0)
     .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+}
+
+/**
+ * The sub-agent's verbatim final completion message for one lane, recovered
+ * from durable state only — the inputs a restart cannot destroy. In order of
+ * fidelity: the recorded `task_complete` task event (full text; addEvent runs
+ * before the status ever advances to `validating`, so a validating task
+ * normally has one), the pending completion-relay stamp (the router's durable
+ * twin of the deferred relay, also full), and the session row's
+ * `completionSummary` (truncated — degraded but honest input; a broken
+ * envelope inside it takes the verifier's normal correction lap, never a
+ * false pass). Returns undefined when no durable completion text exists at
+ * all, which is the sweep's "re-arm impossible" signal.
+ */
+function durableCompletionText(
+  doc: OrchestratorTaskDocument,
+  sessionId: string,
+): string | undefined {
+  const completions = doc.events
+    .filter(
+      (event) =>
+        event.eventType === "task_complete" && event.sessionId === sessionId,
+    )
+    .sort((a, b) => b.timestamp - a.timestamp);
+  for (const event of completions) {
+    const response = str(
+      isRecord(event.data) ? event.data.response : undefined,
+    )?.trim();
+    if (response) return response;
+  }
+  const pending = readPendingCompletionRelays(doc.task.metadata)[sessionId];
+  const pendingResponse = str(pending?.data?.response)?.trim();
+  if (pendingResponse) return pendingResponse;
+  const session = doc.sessions.find((s) => s.sessionId === sessionId);
+  const summary = session?.completionSummary?.trim();
+  return summary && summary.length > 0 ? summary : undefined;
 }
 
 /** Whether the residuals gate must treat the workspace as a REQUIRED git repo
@@ -1221,6 +1331,10 @@ export class OrchestratorTaskService extends Service {
   private admissionDrainLock = Promise.resolve();
   private admissionReconcileTimer: NodeJS.Timeout | undefined;
   private stuckTaskReaperTimer: NodeJS.Timeout | undefined;
+  /** One-shot start-time sweep for `validating` tasks whose in-process
+   * verification died with a restart (see sweepOrphanedValidations). */
+  private validationRecoveryTimer: NodeJS.Timeout | undefined;
+  private validationRecoveryScheduled = false;
   /** Serializes reaper passes — a slow scan must not overlap the next tick. */
   private stuckTaskReapInFlight = false;
   private smithersRecoveryInFlight:
@@ -1242,7 +1356,7 @@ export class OrchestratorTaskService extends Service {
           // while wiring modern eliza runtimes to the SQL backend for real.
           adapter: this.runtime.adapter,
           databaseAdapter: this.runtime.databaseAdapter,
-          logger: this.runtime.logger,
+          logger: storeLoggerAdapter(this.runtime.logger),
           getSetting: (key) => {
             const value = this.runtime.getSetting?.(key);
             return typeof value === "string" ? value : undefined;
@@ -1319,6 +1433,11 @@ export class OrchestratorTaskService extends Service {
   }
 
   private subscribeToAcp(acp: AcpService): void {
+    // A previous process may have died mid-verification: its `validating`
+    // tasks have no live verifier and nothing else re-arms them. Arm the
+    // recovery sweep now that the event source exists (the same post-boot
+    // discipline as the router's completion-relay sweep).
+    this.scheduleValidationRecovery();
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
         // Durable-task work (verification, coaching laps, respawns) is owned
@@ -1383,6 +1502,11 @@ export class OrchestratorTaskService extends Service {
       clearInterval(this.stuckTaskReaperTimer);
       this.stuckTaskReaperTimer = undefined;
     }
+    if (this.validationRecoveryTimer) {
+      clearTimeout(this.validationRecoveryTimer);
+      this.validationRecoveryTimer = undefined;
+    }
+    this.validationRecoveryScheduled = false;
     this.started = false;
   }
 
@@ -3627,6 +3751,281 @@ export class OrchestratorTaskService extends Service {
     return out;
   }
 
+  // ---- validation restart recovery ---------------------------------------
+  //
+  // Verification runs in-process: a restart landing between `task_complete`
+  // (status → `validating`) and the verifier's verdict kills the verifier
+  // with the process, and nothing used to re-arm it — validateTask only fires
+  // on a verdict, and the watchdog treats `validating` as idle by design — so
+  // the task row sat `validating` forever (live 2026-08-24, task a7136dab:
+  // the relay sweep re-delivered the completion message after the restart but
+  // the status never resolved). This sweep is the verification twin of the
+  // router's completion-relay recovery: same never-silent contract, same
+  // post-boot timing.
+
+  /** Arm the one-shot start-time orphaned-validation sweep, delayed so
+   *  connectors and the message service are up before any recovered verdict's
+   *  user-facing leg (park notice, re-engage prompt) posts. */
+  private scheduleValidationRecovery(): void {
+    if (this.validationRecoveryScheduled || !this.started) return;
+    this.validationRecoveryScheduled = true;
+    this.validationRecoveryTimer = setTimeout(() => {
+      void this.sweepOrphanedValidations().catch((err) => {
+        // error-policy:J7 recovery is retried on the next boot; the failure
+        // is logged, never thrown into the timer.
+        this.log("error", "orphaned-validation recovery sweep failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, VALIDATION_RECOVERY_SWEEP_DELAY_MS);
+    this.validationRecoveryTimer.unref?.();
+  }
+
+  /**
+   * Re-arm (or explicitly resolve) every `validating` task whose verification
+   * is not actually running in THIS process. Exhaustive over the store; per
+   * reporting lane:
+   *
+   *  - lane verdict already recorded / verify lap in flight here / ACP
+   *    session still live (the relay sweep's own liveness rule) → skip: a
+   *    live lane owns its completion and re-enters verification normally;
+   *  - durable completion text exists → re-arm for real: the recorded
+   *    completion re-enters the exact {@link autoVerifyCompletion} pipeline,
+   *    so the verdict flows through validateTask and every gate (residuals,
+   *    ground truth, envelope, judge) unchanged — promote/park exactly like
+   *    a live verification;
+   *  - durable completion text is gone → resolve along the deferral-timeout
+   *    philosophy ("no verification verdict arrived"): an evented park on
+   *    `waiting_on_user` with the waiting-on-you notice, via the shared
+   *    escalation path. NEVER left silently validating.
+   *
+   * Idempotent by re-checking durable state, not a one-shot stamp: a second
+   * boot finds the task no longer `validating` (or its lane verdict recorded)
+   * and no-ops. The sweep never posts a completion relay itself — the
+   * router's ledger sweep owns relays, and its request-key dedupe keeps an
+   * already-delivered relay from duplicating when this sweep promotes.
+   */
+  async sweepOrphanedValidations(): Promise<{
+    reArmed: number;
+    resolved: number;
+    skipped: number;
+  }> {
+    const result = { reArmed: 0, resolved: 0, skipped: 0 };
+    // With auto-verify operator-disabled, `validating` legitimately awaits a
+    // manual /validate — that idleness is configuration, not restart loss.
+    if (!shouldAutoVerifyGoal()) return result;
+    let records: OrchestratorTaskRecord[];
+    try {
+      records = await this.store.listTasks({ status: "validating" });
+    } catch (err) {
+      // error-policy:J1 sweep entry boundary: an unreadable store is loud
+      // (the silent-stuck class this sweep exists for stays visible) and the
+      // zero result never fabricates an all-clear.
+      this.log("error", "orphaned-validation sweep: store read failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return result;
+    }
+    for (const record of records) {
+      try {
+        const outcome = await this.recoverOrphanedValidation(record.id);
+        result.reArmed += outcome.reArmed;
+        result.resolved += outcome.resolved;
+        result.skipped += outcome.skipped;
+      } catch (err) {
+        // error-policy:J7 one task's failed recovery must not abort the
+        // sweep; the task stays validating and the next boot retries it.
+        this.log("error", "orphaned-validation recovery failed for task", {
+          taskId: record.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    if (result.reArmed > 0 || result.resolved > 0 || result.skipped > 0) {
+      this.log("info", "orphaned-validation recovery sweep complete", result);
+    }
+    return result;
+  }
+
+  /** {@link sweepOrphanedValidations} body for one task. */
+  private async recoverOrphanedValidation(taskId: string): Promise<{
+    reArmed: number;
+    resolved: number;
+    skipped: number;
+  }> {
+    const counts = { reArmed: 0, resolved: 0, skipped: 0 };
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return counts;
+    // Already resolved (a verdict landed, an operator moved it, or an earlier
+    // lane of this very pass parked the task) → no-op.
+    if (doc.task.status !== "validating") return counts;
+    if (userInterrupted(doc.task) || this.pendingUserInterrupts.has(taskId)) {
+      // The user stopped the task; the interrupt path owns its resolution.
+      counts.skipped += 1;
+      return counts;
+    }
+    const lanes = this.orphanedValidationLanes(doc);
+    if (lanes.length === 0) {
+      // `validating` with no durably reported completion at all is a corrupt
+      // row (the status only advances after the task_complete event writes).
+      // Still never-silent: resolve it explicitly against the latest session.
+      await this.resolveUnverifiableOrphanedValidation(
+        taskId,
+        latestWorkspaceSession(doc)?.sessionId ??
+          doc.sessions.at(-1)?.sessionId ??
+          "",
+      );
+      counts.resolved += 1;
+      return counts;
+    }
+    const verdicts = isRecord(doc.task.metadata?.laneVerdicts)
+      ? (doc.task.metadata.laneVerdicts as Record<string, unknown>)
+      : {};
+    for (const sessionId of lanes) {
+      // A lane with a recorded verdict (passed/parked) already resolved; the
+      // task is validating over a SIBLING lane, handled in its own iteration.
+      if (verdicts[sessionId]) {
+        counts.skipped += 1;
+        continue;
+      }
+      // Verification for this lane IS running in this process (the sweep
+      // raced a live completion) — leave it to finish.
+      if (this.autoVerifyInFlight.has(`${taskId}\u0000${sessionId}`)) {
+        counts.skipped += 1;
+        continue;
+      }
+      // Same liveness rule as the relay sweep: a live (non-terminal) ACP
+      // session owns its own completion — its next task_complete re-enters
+      // verification through the normal event-bridge path.
+      // error-policy:J4 an unreadable session store degrades to "not live",
+      // which fails open toward re-verification — never toward silence.
+      const live = await this.acp()
+        ?.getSession(sessionId)
+        .catch(() => undefined);
+      if (live && !TERMINAL_SESSION_STATUSES.has(String(live.status))) {
+        counts.skipped += 1;
+        continue;
+      }
+      const rawCompletion = durableCompletionText(doc, sessionId);
+      if (rawCompletion === undefined) {
+        await this.resolveUnverifiableOrphanedValidation(taskId, sessionId);
+        counts.resolved += 1;
+        continue;
+      }
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "verify_restart_rearmed",
+        summary:
+          "Verification did not survive a restart; re-running it against the durably recorded completion.",
+        data: { verifier: RESTART_RECOVERY_VERIFIER_NAME },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      this.emitChange(taskId);
+      // The exact live-completion sequence minus the submit leg (a restart
+      // mid-validation lands after the submit settled; re-running it could
+      // re-push). Evidence is rebuilt from the same durable sources the live
+      // path reads, and the verdict flows through validateTask unchanged.
+      const { evidence, bundle } = await this.buildCompletionEvidence(
+        taskId,
+        sessionId,
+        rawCompletion,
+      );
+      await withStandaloneTrajectory(
+        this.runtime,
+        {
+          source: "orchestrator-task-verify",
+          metadata: { taskId, sessionId, restartRecovery: true },
+        },
+        () =>
+          this.autoVerifyCompletion(
+            taskId,
+            sessionId,
+            evidence,
+            rawCompletion,
+            bundle,
+          ),
+      );
+      counts.reArmed += 1;
+    }
+    return counts;
+  }
+
+  /** Reporting lanes of a `validating` task that still owe a verdict: for a
+   *  multi-lane task, the latest session per lane that durably reported a
+   *  completion; for a single-lane task, the latest reporting session (a
+   *  verify-respawn's newer completion supersedes its predecessor's). A
+   *  completion counts as "reported" when any durable witness exists: the
+   *  task_complete event, the session's taskDelivered flag, or a pending
+   *  completion-relay stamp. */
+  private orphanedValidationLanes(doc: OrchestratorTaskDocument): string[] {
+    const reported = new Set<string>();
+    for (const event of doc.events) {
+      if (event.eventType === "task_complete" && event.sessionId) {
+        reported.add(event.sessionId);
+      }
+    }
+    for (const session of doc.sessions) {
+      if (session.taskDelivered) reported.add(session.sessionId);
+    }
+    for (const sessionId of Object.keys(
+      readPendingCompletionRelays(doc.task.metadata),
+    )) {
+      reported.add(sessionId);
+    }
+    if (reported.size === 0) return [];
+    const [anyReporter] = reported;
+    const { laneSessionIds } = this.laneScope(doc, anyReporter);
+    if (laneSessionIds.length > 1) {
+      return laneSessionIds.filter((sessionId) => reported.has(sessionId));
+    }
+    const latest = doc.sessions
+      .filter((session) => reported.has(session.sessionId))
+      .sort((a, b) => b.registeredAt - a.registeredAt)[0];
+    return latest ? [latest.sessionId] : [...reported].slice(0, 1);
+  }
+
+  /** Resolve a lane whose verification cannot be re-armed (no durable
+   *  completion text survived): record the loss on the timeline, then route
+   *  through the shared escalation path at the attempt cap — an evented park
+   *  on `waiting_on_user` with the verify-park stamp and the waiting-on-you
+   *  notice. Identical semantics to a verification that exhausted its
+   *  attempts, because the honest state is the same: no verification verdict
+   *  ever arrived for the reported completion. */
+  private async resolveUnverifiableOrphanedValidation(
+    taskId: string,
+    sessionId: string,
+  ): Promise<void> {
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType: "verify_restart_orphaned",
+      summary:
+        "Verification did not survive a restart and the completion evidence needed to re-run it is gone; parking for the user instead of leaving the task silently validating.",
+      data: { verifier: RESTART_RECOVERY_VERIFIER_NAME },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    await this.withTaskWriteLock(taskId, () =>
+      this.reEngageOrEscalate({
+        taskId,
+        sessionId,
+        correction: "",
+        eventType: "verify_restart_orphaned",
+        verifier: RESTART_RECOVERY_VERIFIER_NAME,
+        summary:
+          "Verification did not survive an orchestrator restart, so no verdict ever arrived for the reported completion.",
+        missing: [
+          "a verification verdict for the reported completion (the verifier died with a restart and its inputs were not durably recorded)",
+        ],
+        attempt: MAX_AUTO_VERIFY_ATTEMPTS,
+      }),
+    );
+  }
+
   // ---- lifecycle ---------------------------------------------------------
 
   async createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto> {
@@ -4358,10 +4757,17 @@ export class OrchestratorTaskService extends Service {
         { text, source: origin.source, ...AGENT_VOICED_METADATA },
       );
     } catch (err) {
-      // error-policy:J7 escalation notice is best-effort; the park must stand even when the room notice cannot be delivered
+      // error-policy:J7 escalation notice is best-effort; the park must stand
+      // even when the room notice cannot be delivered. The context names the
+      // lane and stage so the NEXT failure is diagnosable (the live occurrence
+      // logged an unreadable null-prototype dump with no fields).
       this.log("warn", "verify-escalation notice delivery failed", {
         taskId,
-        error: err instanceof Error ? err.message : String(err),
+        sessionId: details.sessionId,
+        verifier: details.verifier,
+        attempts: details.attempts,
+        errorName: err instanceof Error ? err.name : typeof err,
+        error: errorText(err),
       });
     }
   }
@@ -8320,15 +8726,26 @@ export class OrchestratorTaskService extends Service {
     );
   }
 
+  /** Context object FIRST, message second — the runtime logger is pino-shaped
+   * (`warn(obj, msg)`). Passing the object as a trailing arg routed it through
+   * the redactor's null-prototype clone straight to the sink, which printed
+   * `[Object: null prototype] { ... }` instead of structured `key=value`
+   * fields (live 2026-08-24: the verify-escalation delivery warn). Non-record
+   * data is wrapped so a bare value still lands as a named field. */
   private log(
     level: "debug" | "info" | "warn" | "error",
     message: string,
     data?: unknown,
   ): void {
-    this.runtime.logger?.[level]?.(
-      `[OrchestratorTaskService] ${message}`,
-      data,
-    );
+    const logger = this.runtime.logger;
+    const fn = logger?.[level];
+    if (typeof fn !== "function") return;
+    const context = isRecord(data)
+      ? data
+      : data === undefined
+        ? {}
+        : { value: data };
+    fn.call(logger, context, `[OrchestratorTaskService] ${message}`);
   }
 }
 
