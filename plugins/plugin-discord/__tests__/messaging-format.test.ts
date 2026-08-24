@@ -14,6 +14,7 @@ import {
 	parseMessageLink,
 	sanitizeThreadName,
 	stripDiscordFormatting,
+	truncateText,
 	truncateUtf16Safe,
 } from "../messaging.ts";
 
@@ -54,6 +55,15 @@ describe("mentions round-trip", () => {
 		expect(extractAllUserMentions("hi <@1> and <@!2>")).toEqual(["1", "2"]);
 		expect(messageContainsMention("yo <@!42> there", "42")).toBe(true);
 		expect(messageContainsMention("no mention", "42")).toBe(false);
+	});
+});
+
+describe("truncateText", () => {
+	it("delegates to truncateUtf16Safe and never splits surrogate pairs", () => {
+		const text = `abc${"😀".repeat(5)}`;
+		const out = truncateText(text, 6, "…");
+		expect(out.length).toBeLessThanOrEqual(6);
+		expect(out.endsWith("\uD83D…")).toBe(false);
 	});
 });
 
