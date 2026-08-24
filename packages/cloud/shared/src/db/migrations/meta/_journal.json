@@ -2085,7 +2085,14 @@
       "idx": 297,
       "version": "7",
       "when": 1794254400005,
-      "tag": "0314_remote_target_initiated_pairing",
+      "tag": "0314_personal_shared_group_delivery_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 298,
+      "version": "7",
+      "when": 1794254400006,
+      "tag": "0315_remote_target_initiated_pairing",
       "breakpoints": true
     }
   ]

@@ -279,7 +279,7 @@ const expectedTodoExecution = {
 };
 const expectedTodoActionResult = {
   success: true,
-  text: "Created: [ ] Buy milk",
+  text: 'Added "Buy milk" to your list.',
   verifiedUserFacing: true,
   effectReceipts: [
     {
@@ -850,10 +850,10 @@ describe("SharedRuntimeChatService", () => {
     streamTurn = {
       degraded: false,
       parts: (async function* () {
-        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield { type: "text-delta", text: 'Added "Buy milk" to your list.' };
         yield {
           type: "finish",
-          text: "Created: [ ] Buy milk",
+          text: 'Added "Buy milk" to your list.',
           actionResults: [expectedTodoActionResult],
         };
       })(),
@@ -891,10 +891,10 @@ describe("SharedRuntimeChatService", () => {
       degraded: false,
       blockedSecondaryCapabilities: [blockedCommunication],
       parts: (async function* () {
-        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield { type: "text-delta", text: 'Added "Buy milk" to your list.' };
         yield {
           type: "finish",
-          text: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+          text: 'Added "Buy milk" to your list.\n\nI can\'t initiate a separate email.',
           actionResults: [expectedTodoActionResult],
         };
       })(),
@@ -913,7 +913,7 @@ describe("SharedRuntimeChatService", () => {
     expect(body).toContain(`/cloud/agents/${encodeURIComponent(agent.id)}`);
     expect(memoryPairs).toEqual([
       expect.objectContaining({
-        assistantReply: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+        assistantReply: 'Added "Buy milk" to your list.\n\nI can\'t initiate a separate email.',
         interrupted: false,
       }),
     ]);
@@ -1220,6 +1220,29 @@ describe("SharedRuntimeChatService", () => {
     await Promise.all(h.background);
   });
 
+  test("flushes transport readiness before the first provider text delta", async () => {
+    let releaseProvider = () => {};
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        await providerGate;
+        yield { type: "text-delta", text: "hello " };
+        yield { type: "finish", text: "hello back" };
+      })(),
+    };
+
+    const response = await new SharedRuntimeChatService().stream(agent, rpc, harness());
+    const reader = response.body?.getReader();
+    const first = await reader?.read();
+    expect(new TextDecoder().decode(first?.value)).toBe(": ready\n\n");
+
+    releaseProvider();
+    await reader?.cancel();
+  });
+
   test("a failed long-term-memory mirror is reported without failing the landed turn (#25689)", async () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     recordTurnPair.mockImplementationOnce(async () => {
@@ -1267,7 +1290,7 @@ describe("SharedRuntimeChatService", () => {
     const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
     const frames = body
       .split("\n\n")
-      .filter(Boolean)
+      .filter((frame) => Boolean(frame) && !frame.startsWith(":"))
       .map((frame) => {
         const lines = frame.split("\n");
         return {
@@ -1291,7 +1314,7 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, harness());
     const frames = (await response.text())
       .split("\n\n")
-      .filter((frame) => frame.trim().length > 0)
+      .filter((frame) => frame.trim().length > 0 && !frame.startsWith(":"))
       .map((frame) => {
         const lines = frame.split("\n");
         const event = lines.find((line) => line.startsWith("event: "))?.slice("event: ".length);
@@ -1395,6 +1418,8 @@ describe("SharedRuntimeChatService", () => {
 
     const response = await service.stream(agent, keyedCancellationRpc, { ...h, turnClaims });
     const reader = response.body!.getReader();
+    const ready = await reader.read();
+    expect(new TextDecoder().decode(ready.value)).toBe(": ready\n\n");
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("partial");
     const cancellation = reader.cancel("barge-in");

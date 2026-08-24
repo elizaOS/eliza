@@ -67,6 +67,14 @@ function writeClaudeCredentials(home: string): void {
 	);
 }
 
+function writeClaudeRootState(home: string): void {
+	fs.writeFileSync(
+		path.join(home, ".claude.json"),
+		JSON.stringify({ hasCompletedOnboarding: true }),
+		"utf8",
+	);
+}
+
 function writeCodexCredentials(home: string): void {
 	fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
 	fs.writeFileSync(
@@ -159,6 +167,16 @@ describe("cli live provider", () => {
 			ELIZA_CHAT_VIA_CLI: "claude",
 			ELIZA_PLANNER_NATIVE_TOOLS: "0",
 		});
+	});
+
+	it("selects the cli provider for Claude's root state layout", () => {
+		resetEnv();
+		writeClaudeRootState(tempHome);
+		process.env.ELIZA_CHAT_VIA_CLI = "claude";
+
+		const provider = selectLiveProvider();
+		expect(provider?.name).toBe("cli");
+		expect(provider?.baseUrl).toBe("cli://claude");
 	});
 
 	it("honors ELIZA_CLI_CLAUDE_MODEL and passes CLI env through", () => {
