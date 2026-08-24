@@ -38,6 +38,10 @@ describe("evaluateArithmetic", () => {
 			text: "24691357802469135780",
 			exact: true,
 		});
+		const power = evaluateArithmetic("10 ^ 5001");
+		expect(power.exact).toBe(true);
+		expect(power.text).toHaveLength(5002);
+		expect(power.text).toMatch(/^10+$/);
 	});
 
 	it("accepts digit separators", () => {
