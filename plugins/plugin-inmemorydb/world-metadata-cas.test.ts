@@ -10,6 +10,7 @@ import { v4 } from "uuid";
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
+import { COLLECTIONS } from "./types";
 
 const AGENT_ID = "70000000-0000-0000-0000-000000000001" as UUID;
 const ACTOR_ID = "70000000-0000-0000-0000-000000000002" as UUID;
@@ -23,7 +24,11 @@ const BASE_METADATA = {
 };
 
 async function buildAdapter() {
-  const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
+  return buildAdapterOn(new MemoryStorage());
+}
+
+async function buildAdapterOn(storage: MemoryStorage) {
+  const adapter = new InMemoryDatabaseAdapter(storage, AGENT_ID);
   await adapter.init();
   await adapter.createWorlds([
     {
@@ -270,72 +275,119 @@ describe("InMemoryDatabaseAdapter.compareAndSwapWorldMetadata", () => {
     expect((after as { marker?: string }).marker).toBeDefined();
   });
 
+  /**
+   * Wraps a MemoryStorage so its first world WRITE (set) parks until
+   * released, exposing an `entered` promise that resolves the moment the
+   * write parks. The CAS always reads before parking (read → compare →
+   * audit insert → park → write), so awaiting `entered` and acting before
+   * `release()` places the test's delete / create actor strictly between
+   * the CAS's read and its write — the exact interleaving the r4 P0
+   * forbids. Gating the read instead would make the forbidden outcome
+   * impossible even pre-fix (the CAS would observe the actor at compare).
+   */
+  function gatedWorldWrite(storage: MemoryStorage) {
+    let release!: () => void;
+    let markEntered!: () => void;
+    // Resolved immediately BEFORE parking on the gate: awaiting `entered`
+    // proves the CAS reached its world write and is parked — no timing
+    // assumption about scheduler delay.
+    const entered = new Promise<void>((r) => (markEntered = r));
+    const gate = new Promise<void>((r) => (release = r));
+    const origSet = storage.set.bind(storage);
+    let armed = true;
+    storage.set = async (collection: string, id: string, data: unknown) => {
+      if (armed && collection === COLLECTIONS.WORLDS) {
+        armed = false;
+        markEntered();
+        await gate;
+      }
+      return origSet(collection, id, data as never);
+    };
+    return { release, entered };
+  }
+
   it("cannot resurrect a world deleted between the CAS read and its write", async () => {
-    const adapter = await buildAdapter();
+    const storage = new MemoryStorage();
+    const adapter = await buildAdapterOn(storage);
     const before = await storedMetadata(adapter);
     const replacement = structuredClone(before);
     (replacement as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "ADMIN";
-    // Deletion lands between the CAS read/compare and its write; the
-    // serialized tail means the delete runs either fully before (CAS then
-    // reports not_found) or fully after (CAS updated, then world deleted).
-    // The forbidden outcome is CAS=updated AND the world still present —
-    // the resurrection signature.
-    const [casResult] = await Promise.all([
-      adapter.compareAndSwapWorldMetadata({
-        worldId: WORLD_ID,
-        expectedMetadata: structuredClone(before) as never,
-        replacementMetadata: replacement as never,
-      }),
-      adapter.deleteWorlds([WORLD_ID]),
-    ]);
+    // Park the CAS on its world WRITE; with the park proven via the
+    // entered handshake, delete the world while it is parked. Pre-fix
+    // (createWorlds/deleteWorlds NOT on the tail) the delete lands and the
+    // parked CAS write resurrects the world; post-fix the delete queues
+    // behind the tail and runs only after the CAS completes.
+    // Forbidden: CAS=updated AND world still present.
+    const gated = gatedWorldWrite(storage);
+    const casPromise = adapter.compareAndSwapWorldMetadata({
+      worldId: WORLD_ID,
+      expectedMetadata: structuredClone(before) as never,
+      replacementMetadata: replacement as never,
+    });
+    await gated.entered; // CAS is proven parked on its world write
+    // Fire WITHOUT awaiting yet: post-fix deleteWorlds queues on the tail
+    // the parked CAS holds, so awaiting it here would deadlock the test.
+    const deletion = adapter.deleteWorlds([WORLD_ID]);
+    gated.release();
+    const casResult = await casPromise;
+    await deletion; // the queued delete completes before final assertions
     const after = await adapter.getWorldsByIds([WORLD_ID]);
-    if (casResult.status === "updated") {
-      expect(after).toHaveLength(0);
-    } else {
-      expect(casResult.status).toBe("not_found");
-      expect(after).toHaveLength(0);
+    expect(after).toHaveLength(0);
+    if (casResult.status !== "updated" && casResult.status !== "not_found") {
+      throw new Error(`unexpected CAS outcome: ${JSON.stringify(casResult)}`);
     }
   });
 
   it("does not let a stale CAS clobber a freshly created world", async () => {
-    const adapter = await buildAdapter();
+    const storage = new MemoryStorage();
+    const adapter = await buildAdapterOn(storage);
     const before = await storedMetadata(adapter);
     const replacement = structuredClone(before);
     (replacement as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "ADMIN";
-    // The world is deleted, then re-created with different metadata, while
-    // a CAS holding the ORIGINAL snapshot runs. Serialized: either the
-    // delete+create land first (CAS must conflict — the stored metadata is
-    // the fresh one, not the stale snapshot) or the CAS lands first (then
-    // delete+create replace it wholesale). The forbidden outcome is
-    // CAS=updated over the freshly created metadata — the clobber.
-    const [casResult] = await Promise.all([
-      adapter.compareAndSwapWorldMetadata({
-        worldId: WORLD_ID,
-        expectedMetadata: structuredClone(before) as never,
-        replacementMetadata: replacement as never,
-      }),
-      (async () => {
-        await adapter.deleteWorlds([WORLD_ID]);
-        await adapter.createWorlds([
-          {
-            id: WORLD_ID,
-            agentId: AGENT_ID,
-            name: "cas-world",
-            metadata: {
-              ownership: { ownerId: String(ACTOR_ID) },
-              roles: { [String(ACTOR_ID)]: "OWNER", [String(TARGET_ID)]: "GUEST" },
-            } as unknown as World["metadata"],
-          },
-        ]);
-      })(),
-    ]);
+    // Park the CAS on its world WRITE (proven via the entered handshake)
+    // while it holds the ORIGINAL snapshot; then delete and recreate the
+    // world with different metadata. Pre-fix the recreate interleaves and
+    // the parked CAS write clobbers the fresh world; post-fix it queues
+    // behind the tail. Forbidden: CAS=updated over the fresh metadata.
+    const gated = gatedWorldWrite(storage);
+    const casPromise = adapter.compareAndSwapWorldMetadata({
+      worldId: WORLD_ID,
+      expectedMetadata: structuredClone(before) as never,
+      replacementMetadata: replacement as never,
+    });
+    await gated.entered; // CAS is proven parked on its world write
+    // Fire WITHOUT awaiting: post-fix the actor queues on the tail behind
+    // the parked CAS; awaiting it here would deadlock the test.
+    const actor = (async () => {
+      await adapter.deleteWorlds([WORLD_ID]);
+      await adapter.createWorlds([
+        {
+          id: WORLD_ID,
+          agentId: AGENT_ID,
+          name: "cas-world",
+          metadata: {
+            ownership: { ownerId: String(ACTOR_ID) },
+            roles: { [String(ACTOR_ID)]: "OWNER", [String(TARGET_ID)]: "GUEST" },
+          } as unknown as World["metadata"],
+        },
+      ]);
+    })();
+    // Let the un-serialized (pre-fix) actor drain fully BEFORE releasing the
+    // parked CAS write: pre-fix this deterministically produces the clobber
+    // (stale CAS write lands last, over the fresh world); post-fix the actor
+    // has queued on the tail and the CAS commits first instead.
+    await new Promise((r) => setTimeout(r, 5));
+    gated.release();
+    const casResult = await casPromise;
+    await actor; // both orders complete before we assert on final state
+    const after = await storedMetadata(adapter);
     if (casResult.status === "updated") {
       // CAS committed first; the recreate then replaced it — the final
       // state is the recreated metadata, not a stale-CAS clobber of it.
-      const after = await storedMetadata(adapter);
       expect((after as { roles: Record<string, string> }).roles[String(TARGET_ID)]).toBe("GUEST");
     } else {
       expect(casResult.status).toBe("conflict");
+      expect((after as { roles: Record<string, string> }).roles[String(TARGET_ID)]).toBe("GUEST");
     }
   });
 
