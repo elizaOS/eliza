@@ -508,4 +508,316 @@ describe("seed-credit-packs idempotence (#22963)", () => {
       await rm(dir, { recursive: true, force: true });
     }
   }, 120_000);
+
+  test("A→B→A configuration rollback restores the reconfigured row as sellable (#22963 review)", async () => {
+    const { dir, url } = await freshDb();
+    try {
+      // Run A: catalogue under the proof price ids.
+      const runA1 = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(runA1.exitCode).toBe(0);
+      expect(JSON.parse(runA1.stdout).inserted).toHaveLength(3);
+      const rowsA1 = await readRawRows(url);
+      const mediumA1 = rowsA1.find(
+        (r) => r.stripe_price_id === "price_proof_medium",
+      );
+      expect(mediumA1).toBeDefined();
+
+      // Run B: Medium's price id is reconfigured to a new provider price
+      // (provider-side rollback/repoint). price_proof_medium becomes stale
+      // and must be deactivated + stamped; the new id is inserted active.
+      const envB = {
+        ...FULL_PACK_ENV,
+        STRIPE_MEDIUM_PACK_PRICE_ID: "price_proof_rollback_medium",
+        STRIPE_MEDIUM_PACK_PRODUCT_ID: "prod_proof_rollback_medium",
+      };
+      const runB = runSeeder(url, ["--json"], envB);
+      expect(runB.exitCode).toBe(0);
+      const runBJson = JSON.parse(runB.stdout);
+      expect(runBJson.inserted).toHaveLength(1);
+      expect(runBJson.deprecated).toHaveLength(1);
+      const rowsB = await readRawRows(url);
+      const staleMedium = rowsB.find(
+        (r) => r.stripe_price_id === "price_proof_medium",
+      );
+      expect(staleMedium?.is_active).toBe(false);
+
+      // Run A again: the configuration rolls BACK to price_proof_medium
+      // (provider restored the price). The reconfigured row must become
+      // sellable again — availability restored, economics untouched, prior
+      // deprecation stamp preserved as history, exactly one reactivation
+      // stamp appended — and the superseded B row must be deactivated.
+      const runA2 = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(runA2.exitCode).toBe(0);
+      const runA2Json = JSON.parse(runA2.stdout);
+      expect(runA2Json.inserted).toHaveLength(0);
+      expect(runA2Json.deprecated).toHaveLength(1);
+      expect(runA2Json.reactivated).toHaveLength(1);
+
+      const rowsA2 = await readRawRows(url);
+      expect(rowsA2).toHaveLength(4);
+      const restored = rowsA2.find(
+        (r) => r.stripe_price_id === "price_proof_medium",
+      );
+      const superseded = rowsA2.find(
+        (r) => r.stripe_price_id === "price_proof_rollback_medium",
+      );
+
+      // The reviewer's core assertion: the restored configured row is ACTIVE
+      // (sellable) and the superseded row is inactive.
+      expect(restored?.is_active).toBe(true);
+      expect(superseded?.is_active).toBe(false);
+
+      // Economics and provider identity survive the round-trip byte-exactly
+      // (only availability metadata may change).
+      expect(restored?.credits).toBe(mediumA1?.credits);
+      expect(restored?.price_cents).toBe(mediumA1?.price_cents);
+      expect(restored?.stripe_product_id).toBe(mediumA1?.stripe_product_id);
+      expect(restored?.name).toBe(mediumA1?.name);
+
+      // Append-only stamp history: the deprecation stamp from run B is
+      // preserved and exactly one reactivation stamp documents the rollback.
+      const stampsA2 = ((restored?.metadata as Record<string, unknown>)
+        ?.deprecation_stamps ?? []) as Array<{ reason: string }>;
+      expect(
+        stampsA2.filter(
+          (st) => st.reason === "stripe_price_id_no_longer_configured",
+        ),
+      ).toHaveLength(1);
+      const reactStamps = ((restored?.metadata as Record<string, unknown>)
+        ?.reactivation_stamps ?? []) as Array<{ reason: string }>;
+      expect(reactStamps).toHaveLength(1);
+      expect(reactStamps[0]?.reason).toBe("stripe_price_id_configured_again");
+
+      // Rerun at rest: fully idempotent — no further stamp appends, no row
+      // changes of any kind.
+      const beforeRest = await readRawRows(url);
+      const runA3 = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(runA3.exitCode).toBe(0);
+      expect(JSON.parse(runA3.stdout).deprecated).toHaveLength(0);
+      const afterRest = await readRawRows(url);
+      expect(afterRest).toHaveLength(beforeRest.length);
+      const restByKey = new Map(afterRest.map((r) => [rowKey(r), r]));
+      for (const before of beforeRest) {
+        expect(restByKey.get(rowKey(before))).toEqual(before);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 180_000);
+
+  test("operator archive after a repair reactivation stays archived (#22963 review)", async () => {
+    const { dir, url } = await freshDb();
+    try {
+      // A→B→A: price_proof_medium is reactivated by the repair.
+      const runA1 = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(runA1.exitCode).toBe(0);
+      const runB = runSeeder(url, ["--json"], {
+        ...FULL_PACK_ENV,
+        STRIPE_MEDIUM_PACK_PRICE_ID: "price_proof_rollback_medium",
+        STRIPE_MEDIUM_PACK_PRODUCT_ID: "prod_proof_rollback_medium",
+      });
+      expect(runB.exitCode).toBe(0);
+      const runA2 = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(runA2.exitCode).toBe(0);
+      expect(JSON.parse(runA2.stdout).reactivated).toHaveLength(1);
+      const restored = (await readRawRows(url)).find(
+        (r) => r.stripe_price_id === "price_proof_medium",
+      );
+      expect(restored?.is_active).toBe(true);
+
+      // An operator archives the pack OUT-OF-BAND: plain is_active=false,
+      // no metadata/stamp write. This is an operator decision, not repair
+      // state — a rerun must NOT reactivate the row.
+      const archiver = Bun.spawnSync(
+        [
+          process.execPath,
+          "-e",
+          `
+          const [{ db }, { creditPacks }] = await Promise.all([
+            import("../../shared/src/db/client"),
+            import("../../shared/src/db/schemas/credit-packs"),
+          ]);
+          const { eq } = await import("drizzle-orm");
+          await db.update(creditPacks).set({ is_active: false })
+            .where(eq(creditPacks.stripe_price_id, "price_proof_medium"));
+          process.exit(0);
+          `,
+        ],
+        {
+          env: childEnv(url),
+          cwd: path.dirname(SCRIPT),
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      expect(archiver.exitCode).toBe(0);
+
+      const rerun = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(rerun.exitCode).toBe(0);
+      const rerunJson = JSON.parse(rerun.stdout);
+      // The core provenance assertion: historical repair stamps exist on the
+      // row, but the present inactive state was produced by the operator —
+      // reactivation must NOT fire.
+      expect(rerunJson.reactivated).toHaveLength(0);
+
+      const rows = await readRawRows(url);
+      const archived = rows.find(
+        (r) => r.stripe_price_id === "price_proof_medium",
+      );
+      expect(archived?.is_active).toBe(false);
+      const reactStamps = ((archived?.metadata as Record<string, unknown>)
+        ?.reactivation_stamps ?? []) as unknown[];
+      expect(reactStamps).toHaveLength(1); // no new stamp appended
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 180_000);
+
+  test("operator archive after an OBSERVED out-of-band revival stays archived (#22963 review)", async () => {
+    const { dir, url } = await freshDb();
+    try {
+      // A→B: price_proof_medium is deactivated by the stale-repair.
+      const runA1 = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(runA1.exitCode).toBe(0);
+      const runB = runSeeder(url, ["--json"], {
+        ...FULL_PACK_ENV,
+        STRIPE_MEDIUM_PACK_PRICE_ID: "price_proof_rollback_medium",
+        STRIPE_MEDIUM_PACK_PRODUCT_ID: "prod_proof_rollback_medium",
+      });
+      expect(runB.exitCode).toBe(0);
+
+      // Operator revives the pack out-of-band (plain is_active=true, no
+      // metadata write) while the price is still unconfigured.
+      const reviver = Bun.spawnSync(
+        [
+          process.execPath,
+          "-e",
+          `
+          const [{ db }, { creditPacks }] = await Promise.all([
+            import("../../shared/src/db/client"),
+            import("../../shared/src/db/schemas/credit-packs"),
+          ]);
+          const { eq } = await import("drizzle-orm");
+          await db.update(creditPacks).set({ is_active: true })
+            .where(eq(creditPacks.stripe_price_id, "price_proof_medium"));
+          process.exit(0);
+          `,
+        ],
+        {
+          env: childEnv(url),
+          cwd: path.dirname(SCRIPT),
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      expect(reviver.exitCode).toBe(0);
+
+      // Rollback to the original configuration: the run observes the row
+      // active with a stale deactivated marker and must normalize it to
+      // activated_out_of_band so a later archive cannot be defeated.
+      const runA2 = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(runA2.exitCode).toBe(0);
+      const afterObservation = (await readRawRows(url)).find(
+        (r) => r.stripe_price_id === "price_proof_medium",
+      );
+      expect(afterObservation?.is_active).toBe(true);
+      expect(
+        (
+          (afterObservation?.metadata as Record<string, unknown>)
+            ?.last_lifecycle_event as { kind?: unknown } | undefined
+        )?.kind,
+      ).toBe("activated_out_of_band");
+
+      // Operator archives the pack. The normalized marker is NOT a repair
+      // deactivation, so a rerun must leave the row archived.
+      const archiver = Bun.spawnSync(
+        [
+          process.execPath,
+          "-e",
+          `
+          const [{ db }, { creditPacks }] = await Promise.all([
+            import("../../shared/src/db/client"),
+            import("../../shared/src/db/schemas/credit-packs"),
+          ]);
+          const { eq } = await import("drizzle-orm");
+          await db.update(creditPacks).set({ is_active: false })
+            .where(eq(creditPacks.stripe_price_id, "price_proof_medium"));
+          process.exit(0);
+          `,
+        ],
+        {
+          env: childEnv(url),
+          cwd: path.dirname(SCRIPT),
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      expect(archiver.exitCode).toBe(0);
+
+      const rerun = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(rerun.exitCode).toBe(0);
+      expect(JSON.parse(rerun.stdout).reactivated).toHaveLength(0);
+      const finalRow = (await readRawRows(url)).find(
+        (r) => r.stripe_price_id === "price_proof_medium",
+      );
+      expect(finalRow?.is_active).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 180_000);
+
+  test("unobserved double-toggle is indistinguishable from repair deactivation (documented residual, #22963 review)", async () => {
+    const { dir, url } = await freshDb();
+    try {
+      // A→B: repair deactivates price_proof_medium.
+      const runA1 = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(runA1.exitCode).toBe(0);
+      const runB = runSeeder(url, ["--json"], {
+        ...FULL_PACK_ENV,
+        STRIPE_MEDIUM_PACK_PRICE_ID: "price_proof_rollback_medium",
+        STRIPE_MEDIUM_PACK_PRODUCT_ID: "prod_proof_rollback_medium",
+      });
+      expect(runB.exitCode).toBe(0);
+
+      // An operator toggles the row active then inactive with NO metadata
+      // writes and NO intervening run. The resulting row state is byte-
+      // identical to the repair-deactivated state, so no state-derived rule
+      // can separate the two: the rollback run WILL reactivate. This test
+      // pins the documented residual honestly instead of hiding it.
+      const toggler = Bun.spawnSync(
+        [
+          process.execPath,
+          "-e",
+          `
+          const [{ db }, { creditPacks }] = await Promise.all([
+            import("../../shared/src/db/client"),
+            import("../../shared/src/db/schemas/credit-packs"),
+          ]);
+          const { eq } = await import("drizzle-orm");
+          const pid = "price_proof_medium";
+          await db.update(creditPacks).set({ is_active: true }).where(eq(creditPacks.stripe_price_id, pid));
+          await db.update(creditPacks).set({ is_active: false }).where(eq(creditPacks.stripe_price_id, pid));
+          process.exit(0);
+          `,
+        ],
+        {
+          env: childEnv(url),
+          cwd: path.dirname(SCRIPT),
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      expect(toggler.exitCode).toBe(0);
+
+      const runA2 = runSeeder(url, ["--json"], FULL_PACK_ENV);
+      expect(runA2.exitCode).toBe(0);
+      expect(JSON.parse(runA2.stdout).reactivated).toHaveLength(1);
+      const row = (await readRawRows(url)).find(
+        (r) => r.stripe_price_id === "price_proof_medium",
+      );
+      expect(row?.is_active).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 180_000);
 });

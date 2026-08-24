@@ -6,12 +6,38 @@
  *
  * Idempotent by design (#22963): a pack whose `stripe_price_id` already
  * exists is left untouched — existing rows carry provider linkage and
- * historical receipts and must not be silently rewritten. The seeded
+ * historical receipts and must not be silently rewritten. One exception:
+ * a row the script's own stale-repair deactivated is reactivated when its
+ * price id is configured again (configuration rollback). Reactivation is
+ * authorized by the row's recorded last-lifecycle-event provenance and is
+ * applied as a compare-and-set on the observed row state, so concurrent
+ * writers are never overwritten and an operator archive made after any
+ * OBSERVED lifecycle change is never reverted. Rows deactivated by an
+ * earlier revision of this script (deprecation_stamps but no
+ * last_lifecycle_event) are deliberately treated as unproven: they are
+ * never auto-reactivated — if a persistent DB carries one, reactivate it
+ * manually after a repoint rather than relying on this script. Known
+ * residual: an operator
+ * toggling a repair-deactivated row active and then inactive with no
+ * metadata write and no intervening run leaves the row byte-identical to
+ * a repair-deactivated row; such a row is reactivated on rollback (a
+ * later plain archive after that reactivation IS respected). A second
+ * residual: archiving an UNCONFIGURED inactive row (a plain operator
+ * archive of a pack whose price id is not currently configured) gets the
+ * first-time deprecation stamp on the next run, which authorizes a future
+ * rollback reactivation — archive again after that rollback run if this
+ * matters (that second archive sticks). Under --dry-run the reactivation
+ * branch reports the projected post-run state (kept[].is_active = true
+ * and the "reactivated" wording) while writing nothing; the JSON
+ * envelope's dryRun flag disambiguates for machines. The `reactivated`
+ * array carries price ids (not row ids) — filter it against
+ * `kept[].stripe_price_id` when joining with `inserted`/`deprecated`,
+ * which carry row ids. The seeded
  * economics are pending product approval (AC2); changing them is a
- * deliberate operator decision, not a side effect of rerunning this script.
- * Use --dry-run to print the plan without writing.
+ * deliberate operator decision, not a side effect of rerunning this
+ * script. Use --dry-run to print the plan without writing.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { loadEnvFiles } from "./local-dev-helpers";
 
@@ -113,17 +139,138 @@ async function seedCreditPacks() {
   const inserted: string[] = [];
   const kept: PackPlan[] = [];
   const deprecated: string[] = [];
+  const reactivated: string[] = [];
   const configuredPriceIds = new Set(plans.map((plan) => plan.stripe_price_id));
   for (const plan of plans) {
     const [existingRow] = await db
       .select({
+        id: creditPacksTable.id,
         credits: creditPacksTable.credits,
         price_cents: creditPacksTable.price_cents,
         is_active: creditPacksTable.is_active,
+        metadata: creditPacksTable.metadata,
       })
       .from(creditPacksTable)
       .where(eq(creditPacksTable.stripe_price_id, plan.stripe_price_id))
       .limit(1);
+    if (existingRow?.is_active) {
+      // Provenance normalization: the row is ACTIVE but its recorded last
+      // lifecycle event says "deactivated" — someone revived it out-of-band.
+      // A stale marker would later authorize reactivation and defeat a
+      // subsequent operator archive. Record what was observed so the marker
+      // reflects reality; nothing else about the row changes.
+      const activeMetadata =
+        (existingRow.metadata as Record<string, unknown> | null) ?? {};
+      const lastActive = activeMetadata.last_lifecycle_event as {
+        kind?: unknown;
+      } | null;
+      if (lastActive?.kind === "deactivated" && !dryRun) {
+        const observedEvent = {
+          kind: "activated_out_of_band",
+          reason: "observed_active_after_repair_deactivation",
+          at: new Date().toISOString(),
+        };
+        await db
+          .update(creditPacksTable)
+          .set({
+            metadata: {
+              ...activeMetadata,
+              last_lifecycle_event: observedEvent,
+            },
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(creditPacksTable.id, existingRow.id),
+              eq(creditPacksTable.is_active, true),
+              eq(creditPacksTable.metadata, existingRow.metadata),
+            ),
+          );
+      }
+    }
+    if (existingRow && !existingRow.is_active) {
+      // Configuration rollback (A→B→A): the price id is configured again
+      // while the row sits deactivated. Reactivation is authorized by the
+      // row's CURRENT-STATE provenance — the last lifecycle event recorded
+      // on the row must be this script's own deactivation — never by the
+      // mere existence of historical repair stamps, which would silently
+      // revert a later operator archive. Economics and provider identity
+      // are never rewritten; stamp history stays append-only; the update
+      // is guarded on the observed current state so a concurrent writer
+      // that changed the row between read and write is never overridden.
+      const metadata =
+        (existingRow.metadata as Record<string, unknown> | null) ?? {};
+      const lastLifecycle = metadata.last_lifecycle_event as {
+        kind?: unknown;
+        reason?: unknown;
+      } | null;
+      const deactivatedByRepair =
+        lastLifecycle?.kind === "deactivated" &&
+        lastLifecycle?.reason === "stripe_price_id_no_longer_configured";
+      if (deactivatedByRepair) {
+        const reactStamps = Array.isArray(metadata.reactivation_stamps)
+          ? (metadata.reactivation_stamps as unknown[])
+          : [];
+        const nextEvent = {
+          kind: "reactivated",
+          reason: "stripe_price_id_configured_again",
+          at: new Date().toISOString(),
+        };
+        const reactivationMetadata = {
+          ...metadata,
+          reactivation_stamps: [...reactStamps, nextEvent],
+          last_lifecycle_event: nextEvent,
+        };
+        if (!dryRun) {
+          // Guarded, id-scoped update: only fires when the row is still in
+          // the exact observed state (inactive, deactivated by repair).
+          const reactivatedRows = await db
+            .update(creditPacksTable)
+            .set({
+              is_active: true,
+              metadata: reactivationMetadata,
+              updated_at: new Date(),
+            })
+            .where(
+              and(
+                eq(creditPacksTable.id, existingRow.id),
+                eq(creditPacksTable.is_active, false),
+                eq(creditPacksTable.metadata, existingRow.metadata),
+              ),
+            )
+            .returning({ id: creditPacksTable.id });
+          if (reactivatedRows.length === 0) {
+            // Lost the race: a concurrent writer changed the row after our
+            // read. Report the row as present but not reactivated here.
+            plan.existing = {
+              credits: existingRow.credits,
+              price_cents: existingRow.price_cents,
+              is_active: false,
+            };
+            kept.push(plan);
+            if (!asJson) {
+              console.log(
+                `• ${plan.name}: row changed concurrently — reactivation skipped`,
+              );
+            }
+            continue;
+          }
+        }
+        reactivated.push(plan.stripe_price_id);
+        plan.existing = {
+          credits: existingRow.credits,
+          price_cents: existingRow.price_cents,
+          is_active: true,
+        };
+        kept.push(plan);
+        if (!asJson) {
+          console.log(
+            `• ${plan.name}: reactivated (price ${plan.stripe_price_id} configured again; economics preserved)`,
+          );
+        }
+        continue;
+      }
+    }
     if (existingRow) {
       // Never rewrite an existing pack row: it may already be referenced by
       // checkout orders and receipts. Reruns are read-only for present rows.
@@ -214,9 +361,21 @@ async function seedCreditPacks() {
         deprecated.push(row.id);
         continue;
       }
+      const driftEvent = {
+        kind: "deactivated",
+        reason: "stripe_price_id_no_longer_configured",
+        at: new Date().toISOString(),
+      };
       await db
         .update(creditPacksTable)
-        .set({ is_active: false, updated_at: new Date() })
+        .set({
+          is_active: false,
+          metadata: {
+            ...metadata,
+            last_lifecycle_event: driftEvent,
+          },
+          updated_at: new Date(),
+        })
         .where(eq(creditPacksTable.id, row.id));
       deprecated.push(row.id);
       continue;
@@ -230,6 +389,11 @@ async function seedCreditPacks() {
       }
       continue;
     }
+    const deprecationEvent = {
+      kind: "deactivated",
+      reason: "stripe_price_id_no_longer_configured",
+      at: new Date().toISOString(),
+    };
     await db
       .update(creditPacksTable)
       .set({
@@ -240,9 +404,10 @@ async function seedCreditPacks() {
             ...stamps,
             {
               reason: "stripe_price_id_no_longer_configured",
-              at: new Date().toISOString(),
+              at: deprecationEvent.at,
             },
           ],
+          last_lifecycle_event: deprecationEvent,
         },
         updated_at: new Date(),
       })
@@ -269,6 +434,7 @@ async function seedCreditPacks() {
             is_active: p.existing?.is_active ?? null,
           })),
           deprecated,
+          reactivated,
         },
         null,
         2,
@@ -278,7 +444,7 @@ async function seedCreditPacks() {
     console.log("Dry run — no rows written.");
   } else {
     console.log(
-      `✅ Credit pack seed complete: ${inserted.length} created, ${kept.length} already present, ${deprecated.length} deprecated.`,
+      `✅ Credit pack seed complete: ${inserted.length} created, ${kept.length} already present, ${deprecated.length} deprecated, ${reactivated.length} reactivated.`,
     );
   }
 }
