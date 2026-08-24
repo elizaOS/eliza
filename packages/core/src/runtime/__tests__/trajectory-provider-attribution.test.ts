@@ -313,7 +313,7 @@ describe("trajectory provider attribution", () => {
 		}
 	});
 
-	it("skips duplicate, missing-from-map, and whitespace-only provider entries while trimming kept text", () => {
+	it("retains whitespace-only provider evidence without claiming a span", () => {
 		const state = {
 			data: {
 				providerOrder: ["ECHO", "ECHO", "ABSENT", "BLANK", "PADDED"],
@@ -326,7 +326,7 @@ describe("trajectory provider attribution", () => {
 		} as State;
 		const result = buildProviderAttributionsFromState({
 			state,
-			prompt: "echo text padded text",
+			prompt: "echo text\n  padded text  ",
 		});
 		// The recorded order is echoed verbatim, duplicates included.
 		expect(result.providerOrder).toEqual([
@@ -336,16 +336,41 @@ describe("trajectory provider attribution", () => {
 			"BLANK",
 			"PADDED",
 		]);
-		const [echo, padded] = result.providerAttributions;
+		const [echo, blank, padded] = result.providerAttributions;
+		expect(result.providerAttributions).toHaveLength(3);
 		expect(echo.position).toBe(0);
-		expect(padded.position).toBe(1);
+		expect(blank.position).toBe(1);
+		expect(blank.providerName).toBe("BLANK");
+		expect(blank.sha256).toBe(sha256Text("   "));
+		expect(blank.tokenCount).toBe(estimateTrajectoryTextTokens("   "));
+		expect(blank.spanStart).toBeUndefined();
+		expect(blank.spanEnd).toBeUndefined();
+		expect(padded.position).toBe(2);
 		expect(padded.providerName).toBe("PADDED");
-		// Kept snapshots trim their text: hash, tokens, and span all use it.
-		expect(padded.sha256).toBe(sha256Text("padded text"));
-		expect(padded.tokenCount).toBe(estimateTrajectoryTextTokens("padded text"));
-		expect(padded.spanStart).toBe(
-			"echo text padded text".indexOf("padded text"),
+	});
+
+	it("hashes, estimates, and locates padded provider text byte-for-byte", () => {
+		const text = "  padded text  ";
+		const prompt = `prefix\n${text}\nsuffix`;
+		const state = {
+			data: {
+				providerOrder: ["PADDED"],
+				providers: {
+					PADDED: { providerName: "PADDED", text },
+				},
+			},
+		} as State;
+		const [padded] = buildProviderAttributionsFromState({
+			state,
+			prompt,
+		}).providerAttributions;
+
+		expect(padded.sha256).toBe(sha256Text("  padded text  "));
+		expect(padded.tokenCount).toBe(
+			estimateTrajectoryTextTokens("  padded text  "),
 		);
+		expect(padded.spanStart).toBe(prompt.indexOf(text));
+		expect(prompt.slice(padded.spanStart, padded.spanEnd)).toBe(text);
 	});
 
 	it("advances the span cursor so identical provider texts claim successive occurrences", () => {

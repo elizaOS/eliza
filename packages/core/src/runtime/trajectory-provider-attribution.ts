@@ -131,12 +131,12 @@ function providerSnapshotsFromState(state: State | undefined): {
 			continue;
 		}
 		const text = (provider as { text?: unknown }).text;
-		if (typeof text !== "string" || text.trim() === "") {
+		if (typeof text !== "string") {
 			continue;
 		}
 		snapshots.push({
 			providerName,
-			text: text.trim(),
+			text,
 			position: snapshots.length,
 		});
 	}
@@ -150,7 +150,7 @@ function locateProviderSpan(
 	snapshot: ProviderTextSnapshot,
 	cursor: number,
 ): { start?: number; end?: number; nextCursor: number } {
-	if (!prompt) {
+	if (!prompt || snapshot.text.trim().length === 0) {
 		return { nextCursor: cursor };
 	}
 	const direct = prompt.indexOf(snapshot.text, cursor);
