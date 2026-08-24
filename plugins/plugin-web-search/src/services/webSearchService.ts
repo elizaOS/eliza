@@ -39,6 +39,8 @@ const PAGE_INFO_HTTP_TIMEOUT_MS = 15_000;
 const PAGE_INFO_HTTP_MAX_REDIRECTS = 5;
 /** Bound untrusted page HTML before it reaches the regex extraction layer. */
 const PAGE_INFO_MAX_HTML_BYTES = 1024 * 1024;
+/** Tavily's documented hard maximum; the API exposes no result-page cursor. */
+const TAVILY_PROVIDER_MAX_RESULTS = 20;
 
 /**
  * Deterministic-test seam for the SSRF-guarded page-info transport.
@@ -112,6 +114,19 @@ function validateSearchOptions(options?: SearchOptions): void {
         throw new Error("search options must be an object");
     }
     assertOptionalPositiveInteger(options.limit, "limit");
+    if (options.limit !== undefined && options.limit > TAVILY_PROVIDER_MAX_RESULTS) {
+        throw new ElizaError("Tavily supports at most 20 results per search", {
+            code: "WEB_SEARCH_PROVIDER_LIMIT_EXCEEDED",
+            context: { requested: options.limit, maximum: TAVILY_PROVIDER_MAX_RESULTS },
+        });
+    }
+    assertOptionalNonNegativeInteger(options.offset, "offset");
+    if (options.offset !== undefined && options.offset !== 0) {
+        throw new ElizaError("Tavily search does not expose lossless result pagination", {
+            code: "WEB_SEARCH_PAGINATION_UNSUPPORTED",
+            context: { requestedOffset: options.offset },
+        });
+    }
     assertOptionalNonNegativeInteger(options.days, "days");
     if (options.topic !== undefined && options.topic !== "general" && options.topic !== "news") {
         throw new Error("topic must be general or news");
@@ -462,7 +477,7 @@ export class WebSearchService extends IWebSearchService {
         try {
             const response = await this.tavilyClient.search(normalizedQuery, {
                 includeAnswer: options?.includeAnswer ?? true,
-                maxResults: options?.limit ?? 3,
+                maxResults: options?.limit ?? TAVILY_PROVIDER_MAX_RESULTS,
                 topic: options?.topic ?? options?.type ?? "general",
                 searchDepth: options?.searchDepth ?? "basic",
                 includeImages: options?.includeImages ?? false,

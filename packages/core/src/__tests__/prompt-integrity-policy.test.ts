@@ -258,6 +258,9 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-sql/src/stores/memory.store.ts": [
 		/\.limit\(params\.count\s*\?\?\s*10\)/,
 	],
+	"plugins/plugin-web-search/src/services/webSearchService.ts": [
+		/maxResults:\s*options\?\.limit\s*\?\?\s*3/,
+	],
 	"plugins/plugin-personal-assistant/src/lifeops/domains/x-read-service.ts": [
 		/opts\.limit\s*\?\?\s*20/,
 	],
