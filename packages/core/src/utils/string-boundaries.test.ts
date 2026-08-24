@@ -23,4 +23,26 @@ describe("core string boundary scanners", () => {
 			`root${sameLowSurrogate}`,
 		);
 	});
+
+	it("returns safe defaults for non-string inputs", () => {
+		expect(trimEndCharacters(null as unknown as string, "/")).toBe("");
+		expect(trimEndCharacters(undefined as unknown as string, "/")).toBe("");
+		expect(trimEndCharacters(42 as unknown as string, "/")).toBe("");
+		expect(trimEndCharacters("abc///", null as unknown as string)).toBe(
+			"abc///",
+		);
+		expect(trimEndCharacters("abc///", undefined as unknown as string)).toBe(
+			"abc///",
+		);
+		expect(trimEndCharacters("abc///", 42 as unknown as string)).toBe("abc///");
+		expect(trimEndCharacters("abc///", "")).toBe("abc///");
+		expect(trimEndCharacters("https://example.test///", "/")).toBe(
+			"https://example.test",
+		);
+		expect(trimEndWhitespace(null as unknown as string)).toBe("");
+		expect(trimEndWhitespace(undefined as unknown as string)).toBe("");
+		expect(trimEndWhitespace(123 as unknown as string)).toBe("");
+		expect(trimEndWhitespace("")).toBe("");
+		expect(trimEndWhitespace("hello   ")).toBe("hello");
+	});
 });
