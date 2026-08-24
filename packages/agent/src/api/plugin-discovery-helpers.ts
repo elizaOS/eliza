@@ -372,7 +372,7 @@ function workspacePluginIdFromPackageName(npmName: string): string | null {
   return normalized.slice("@elizaos/plugin-".length);
 }
 
-function discoverWorkspacePluginPackages(
+export function discoverWorkspacePluginPackages(
   packageRoot: string,
 ): WorkspacePluginPackage[] {
   const scanRoots = [
@@ -389,7 +389,12 @@ function discoverWorkspacePluginPackages(
 
     for (const dirName of fs.readdirSync(scanRoot).sort()) {
       const rootDir = path.join(scanRoot, dirName);
-      if (!fs.statSync(rootDir).isDirectory()) {
+      // `readdirSync` lists broken symlinks, and `statSync` follows the link,
+      // so a stale entry (a removed worktree, an unlinked package) would throw
+      // ENOENT and abort discovery for the whole workspace. Resolving through
+      // the link is deliberate: symlinked plugin directories are supported.
+      const rootStat = fs.statSync(rootDir, { throwIfNoEntry: false });
+      if (!rootStat?.isDirectory()) {
         continue;
       }
 
