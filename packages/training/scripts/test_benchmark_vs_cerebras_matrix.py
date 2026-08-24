@@ -1,10 +1,13 @@
-"""Tests for benchmark_vs_cerebras ResultsStore/matrix integration."""
+"""Tests for the benchmark_vs_cerebras matrix artifact and tier variants.
+
+Deterministic and offline: the sample run-result dicts stand in for a real
+benchmark sweep, and the two tier tests monkeypatch checkpoint discovery and
+the native tool bench so no model is loaded.
+"""
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import benchmark_vs_cerebras as bench
@@ -13,22 +16,6 @@ import benchmark_vs_cerebras as bench
 class _RegistryEntry:
     eliza_short_name = "eliza-1-2b"
     hf_id = "google/gemma-4-E2B-Base"
-
-
-def _load_results_store():
-    module_name = "_test_bvc_results_store"
-    if module_name in sys.modules:
-        return sys.modules[module_name].ResultsStore
-    rs_path = Path(__file__).resolve().parents[2] / "benchmarks" / "lib" / "results_store.py"
-    spec = importlib.util.spec_from_file_location(module_name, rs_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module.ResultsStore
-
-
-ResultsStore = _load_results_store()
 
 
 def _sample_results() -> list[dict]:
@@ -100,43 +87,6 @@ def _sample_base_and_trained_results() -> list[dict]:
             "error": None,
         }
     ]
-
-
-def test_record_results_to_store_writes_trained_and_reference_rows(tmp_path: Path) -> None:
-    db_path = tmp_path / "results.db"
-    rows = bench.record_results_to_store(
-        _sample_results(),
-        db_path=db_path,
-        dataset_version="eliza-native-v1",
-        code_commit="deadbeef",
-        cerebras_model="gpt-oss-120b",
-        ts=1_000,
-    )
-
-    assert [row["variant"] for row in rows] == ["trained", "reference"]
-
-    store = ResultsStore(db_path=db_path)
-    try:
-        trained = store.get_history(
-            model_id="eliza-1-2b",
-            benchmark="hermes",
-            limit=1,
-        )[0]
-        reference = store.get_history(
-            model_id="cerebras/gpt-oss-120b",
-            benchmark="hermes",
-            limit=1,
-        )[0]
-    finally:
-        store.close()
-
-    assert trained.score == 0.42
-    assert trained.dataset_version == "eliza-native-v1"
-    assert trained.raw()["variant"] == "trained"
-    assert trained.raw()["tier"] == "2b"
-    assert reference.score == 0.88
-    assert reference.raw()["variant"] == "reference"
-    assert reference.raw()["provider"] == "cerebras"
 
 
 def test_write_matrix_artifact_from_run_results(tmp_path: Path) -> None:
@@ -306,20 +256,6 @@ def test_matrix_artifact_preserves_live_reference_without_local_variant(
     assert artifact["comparisons"][0]["baseScore"] is None
     assert artifact["comparisons"][0]["trainedScore"] is None
     assert artifact["comparisons"][0]["referenceScore"] == 1.0
-
-
-def test_record_results_to_store_writes_base_trained_and_reference_rows(tmp_path: Path) -> None:
-    db_path = tmp_path / "results.db"
-    rows = bench.record_results_to_store(
-        _sample_base_and_trained_results(),
-        db_path=db_path,
-        dataset_version="eliza-native-v1",
-        code_commit="deadbeef",
-        cerebras_model="gpt-oss-120b",
-        ts=1_000,
-    )
-
-    assert [row["variant"] for row in rows] == ["base", "trained", "reference"]
 
 
 def test_benchmark_tier_uses_explicit_trained_model_path(tmp_path: Path, monkeypatch) -> None:

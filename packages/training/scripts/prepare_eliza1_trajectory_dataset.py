@@ -33,7 +33,6 @@ import hashlib
 import json
 import logging
 import re
-import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -41,7 +40,6 @@ from pathlib import Path
 from typing import Any, Iterable
 
 TRAINING_ROOT = Path(__file__).resolve().parent.parent
-REPO_ROOT = TRAINING_ROOT.parent.parent
 DEFAULT_ALIAS_PATH = TRAINING_ROOT / "config" / "eliza1_action_aliases.json"
 
 SCHEMA_VERSION = "eliza.eliza1_trajectory_record.v1"
@@ -69,23 +67,11 @@ LOG = logging.getLogger("prepare-eliza1-trajectories")
 # ---------------------------------------------------------------------------
 
 
-def _load_privacy_filter():
-    """Use the LifeOpsBench privacy filter when available, else a local port."""
-    bench_pkg = REPO_ROOT / "packages" / "benchmarks" / "lifeops-bench"
-    if bench_pkg.exists():
-        sys.path.insert(0, str(bench_pkg))
-        try:
-            from eliza_lifeops_bench.ingest.privacy import (  # type: ignore
-                FilterStats,
-                apply_privacy_filter,
-            )
-
-            return apply_privacy_filter, FilterStats
-        except Exception:  # pragma: no cover - fallback covered through behavior
-            LOG.debug("LifeOpsBench privacy filter unavailable", exc_info=True)
+def _build_privacy_filter():
+    """Build the credential/geo redaction pass applied to every ingested record."""
 
     @dataclass
-    class FilterStats:  # type: ignore[no-redef]
+    class FilterStats:
         redaction_count: int = 0
         anonymization_count: int = 0
         credential_hits: dict[str, int] = field(default_factory=dict)
@@ -152,7 +138,7 @@ def _load_privacy_filter():
     return apply_privacy_filter, FilterStats
 
 
-apply_privacy_filter, FilterStats = _load_privacy_filter()
+apply_privacy_filter, FilterStats = _build_privacy_filter()
 
 
 # ---------------------------------------------------------------------------
@@ -839,29 +825,8 @@ def is_lifeops_result(raw: Any) -> bool:
     return "scenario_id" in rec and isinstance(rec.get("turns"), list) and "total_score" in rec
 
 
-def _scenario_instruction_from_repo() -> dict[str, dict[str, Any]]:
-    bench_pkg = REPO_ROOT / "packages" / "benchmarks" / "lifeops-bench"
-    if not bench_pkg.exists():
-        return {}
-    sys.path.insert(0, str(bench_pkg))
-    try:
-        from eliza_lifeops_bench.scenarios import SCENARIOS_BY_ID  # type: ignore
-    except Exception:
-        LOG.debug("could not import LifeOpsBench scenario registry", exc_info=True)
-        return {}
-    out: dict[str, dict[str, Any]] = {}
-    for scenario_id, scenario in SCENARIOS_BY_ID.items():
-        out[str(scenario_id)] = {
-            "instruction": getattr(scenario, "instruction", ""),
-            "name": getattr(scenario, "name", ""),
-            "domain": getattr(getattr(scenario, "domain", None), "value", None),
-            "mode": getattr(getattr(scenario, "mode", None), "value", None),
-        }
-    return out
-
-
 def load_lifeops_scenarios(path: Path | None) -> dict[str, dict[str, Any]]:
-    scenarios = _scenario_instruction_from_repo()
+    scenarios: dict[str, dict[str, Any]] = {}
     if path is None:
         return scenarios
     payload = json.loads(path.read_text(encoding="utf-8"))

@@ -3,12 +3,12 @@
 CPU-only. No network. Mocked author + fixture agent → deterministic
 output. Covers:
 
-  - Fixture failure set (JSON artifacts + a tiny SQLite ResultsStore
-    written in-test) → loaded by both source implementations.
+  - Fixture failure set (JSON artifacts written in-test) → loaded by
+    :class:`JsonArtifactFailureSource`.
   - Mocked author → variations generated + tagged with
     ``derived_from`` + ``synth_kind='failure_derived'``.
   - No silent drops: author exceptions land in the report, not stdout.
-  - CLI smoke (--source json end-to-end).
+  - CLI smoke (JSON artifacts end-to-end).
   - ``--since`` parsing for ISO-8601, dates, and bare unix-ms.
 """
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import random
-import sqlite3
 import sys
 from pathlib import Path
 from typing import Any
@@ -41,7 +40,6 @@ from synth.adaptive_synth import (  # noqa: E402
     CallableVariationAuthor,
     FixtureVariationAuthor,
     JsonArtifactFailureSource,
-    ResultsStoreFailureSource,
     _extract_failed_tasks,
     _parse_since,
     main as cli_main,
@@ -375,128 +373,6 @@ def test_json_source_skips_malformed_jsonl_lines(tmp_path):
     assert {f.run_id for f in out} == {"ok", "ok2"}
 
 
-# ─────────────────────────── ResultsStoreFailureSource ────────────────────────────
-
-
-def _make_results_db(tmp_path: Path, rows: list[dict[str, Any]]) -> Path:
-    db_path = tmp_path / "results.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.executescript(
-        """
-        CREATE TABLE benchmark_runs (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            model_id        TEXT    NOT NULL,
-            benchmark       TEXT    NOT NULL,
-            score           REAL    NOT NULL,
-            ts              INTEGER NOT NULL,
-            dataset_version TEXT    NOT NULL,
-            code_commit     TEXT    NOT NULL,
-            raw_json        TEXT    NOT NULL
-        );
-        """
-    )
-    for r in rows:
-        conn.execute(
-            "INSERT INTO benchmark_runs(model_id, benchmark, score, ts, "
-            "dataset_version, code_commit, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                r["model_id"],
-                r["benchmark"],
-                float(r["score"]),
-                int(r["ts"]),
-                r.get("dataset_version", "v1"),
-                r.get("code_commit", "abc"),
-                json.dumps(r.get("raw", {}), sort_keys=True),
-            ),
-        )
-    conn.commit()
-    conn.close()
-    return db_path
-
-
-def test_results_store_source_reads_failures(tmp_path):
-    db = _make_results_db(
-        tmp_path,
-        [
-            # passes threshold — excluded
-            {"model_id": "m", "benchmark": "b1", "score": 0.9, "ts": 2_000},
-            # below threshold — included
-            {
-                "model_id": "m",
-                "benchmark": "b1",
-                "score": 0.2,
-                "ts": 3_000,
-                "raw": {
-                    "failed_tasks": [
-                        {"task_id": "t1", "user_text": "please do x"}
-                    ]
-                },
-            },
-            # too old — excluded
-            {"model_id": "m", "benchmark": "b1", "score": 0.1, "ts": 500},
-        ],
-    )
-    src = ResultsStoreFailureSource(db_path=db)
-    out = src.list_failures(since_ts_ms=1_000, threshold=0.5)
-    assert len(out) == 1
-    f = out[0]
-    assert f.run_id.startswith("run-")
-    assert f.score == 0.2
-    assert f.failed_tasks[0]["user_text"] == "please do x"
-
-
-def test_results_store_source_orders_newest_first(tmp_path):
-    db = _make_results_db(
-        tmp_path,
-        [
-            {"model_id": "m", "benchmark": "b", "score": 0.1, "ts": 1_000},
-            {"model_id": "m", "benchmark": "b", "score": 0.2, "ts": 3_000},
-            {"model_id": "m", "benchmark": "b", "score": 0.3, "ts": 2_000},
-        ],
-    )
-    src = ResultsStoreFailureSource(db_path=db)
-    out = src.list_failures(since_ts_ms=0, threshold=0.5)
-    assert [f.ts for f in out] == [3_000, 2_000, 1_000]
-
-
-def test_results_store_source_skips_malformed_raw_json(tmp_path):
-    db_path = tmp_path / "results.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.executescript(
-        """
-        CREATE TABLE benchmark_runs (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            model_id        TEXT    NOT NULL,
-            benchmark       TEXT    NOT NULL,
-            score           REAL    NOT NULL,
-            ts              INTEGER NOT NULL,
-            dataset_version TEXT    NOT NULL,
-            code_commit     TEXT    NOT NULL,
-            raw_json        TEXT    NOT NULL
-        );
-        """
-    )
-    # Bypass record_run's validation to inject a broken row.
-    conn.execute(
-        "INSERT INTO benchmark_runs(model_id, benchmark, score, ts, "
-        "dataset_version, code_commit, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("m", "b", 0.2, 1_000, "v", "c", "not-json"),
-    )
-    conn.execute(
-        "INSERT INTO benchmark_runs(model_id, benchmark, score, ts, "
-        "dataset_version, code_commit, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("m", "b", 0.3, 2_000, "v", "c", "{}"),
-    )
-    conn.commit()
-    conn.close()
-
-    src = ResultsStoreFailureSource(db_path=db_path)
-    out = src.list_failures(since_ts_ms=0, threshold=0.5)
-    # Malformed row is skipped (logged), but the good row is returned.
-    assert len(out) == 1
-    assert out[0].score == 0.3
-
-
 # ─────────────────────────── AdaptiveSynth orchestration ────────────────────────────
 
 
@@ -762,7 +638,7 @@ def test_parse_since_garbage_raises():
 
 
 def test_cli_smoke_with_json_source(tmp_path):
-    """End-to-end: --source json + fixture author + echo agent → JSONL out."""
+    """End-to-end: JSON artifacts + fixture author + echo agent → JSONL out."""
     artifacts = tmp_path / "artifacts"
     artifacts.mkdir()
     _write_json(
@@ -784,7 +660,6 @@ def test_cli_smoke_with_json_source(tmp_path):
             "--threshold", "0.5",
             "--turns", "1",
             "--output-dir", str(out_dir),
-            "--source", "json",
             "--artifacts-dir", str(artifacts),
             "--seed", "1",
         ]
@@ -812,16 +687,17 @@ def test_cli_smoke_with_json_source(tmp_path):
     assert "elapsed_ms" in rep_blob
 
 
-def test_cli_requires_artifacts_dir_with_json_source(tmp_path):
-    with pytest.raises(SystemExit, match="--artifacts-dir"):
+def test_cli_requires_artifacts_dir(tmp_path, capsys):
+    with pytest.raises(SystemExit) as excinfo:
         cli_main(
             [
                 "--since", "2020-01-01",
                 "--variations", "1",
                 "--output-dir", str(tmp_path / "out"),
-                "--source", "json",
             ]
         )
+    assert excinfo.value.code == 2
+    assert "--artifacts-dir" in capsys.readouterr().err
 
 
 def test_cli_rejects_bad_since(tmp_path):
@@ -830,7 +706,6 @@ def test_cli_rejects_bad_since(tmp_path):
             "--since", "garbage",
             "--variations", "1",
             "--output-dir", str(tmp_path / "out"),
-            "--source", "json",
             "--artifacts-dir", str(tmp_path),
         ]
     )
@@ -843,7 +718,6 @@ def test_cli_rejects_missing_artifacts(tmp_path):
             "--since", "2020-01-01",
             "--variations", "1",
             "--output-dir", str(tmp_path / "out"),
-            "--source", "json",
             "--artifacts-dir", str(tmp_path / "does-not-exist"),
         ]
     )
