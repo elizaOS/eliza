@@ -147,9 +147,10 @@ b7e043197daca54f028b63fc1d05b12e6b69901a76ddbcea84adb653652d5430  electrobun-1.1
 
 ### Current merged source checkpoint
 
-- Current-`develop` merge completed without conflicts. Four newly exposed test
+- Current-`develop` merge completed without conflicts. Eight newly exposed test
   fixture typing drifts were repaired for Bun/Vitest parity and current
-  `AppRunSummary`/character metadata contracts.
+  `AppRunSummary`/character metadata contracts. One newly added Cloud auth
+  fixture was also formatted to the current Biome rules.
 - Focused current-source suites passed: Devices/remote-control UI 109/109,
   storage bridge 6/6, app-core CEF/Flatpak/direct packaging 34/34, the full
   Electrobun package 1,430 passed with 16 intentional skips, Agent runtime/
@@ -158,7 +159,9 @@ b7e043197daca54f028b63fc1d05b12e6b69901a76ddbcea84adb653652d5430  electrobun-1.1
   network/relay 37/37, admin/connector 15/15, and PGlite/persistence 41/41.
 - Supporting build/shared/inbox/auth suites passed 11/11, 8/8, 11/11, and 5/5.
   The repaired example-code fixtures pass 43/43 under both Bun and Vitest; the
-  repaired UI fixtures pass 18/18.
+  repaired UI fixtures pass 18/18. The repaired app-core rate-limit and shared
+  boot-config fixtures pass 6/6 and 2/2, and the repaired Agent memory/action
+  fixtures pass 5/5; all three package typechecks are green.
 - Affected lint passed 143/143 tasks and affected typecheck passed 232/232
   tasks on the latest integrated `develop` base.
 - `git diff --check` passes. Hosted exact-head lint/typecheck/build and secret
