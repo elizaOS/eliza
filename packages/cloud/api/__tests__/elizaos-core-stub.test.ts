@@ -1,5 +1,9 @@
 /** Exercises Worker-safe core stub behavior with deterministic fixtures. */
 import { describe, expect, test } from "bun:test";
+import {
+  groupResponsePrecedencePolicy as canonicalGroupResponsePrecedencePolicy,
+  registerResponsePolicy as canonicalRegisterResponsePolicy,
+} from "@elizaos/prompts";
 
 import {
   DEFAULT_CEREBRAS_TEXT_MODEL,
@@ -7,7 +11,9 @@ import {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   fetchWithSsrfGuard,
   getInferenceTimer,
+  groupResponsePrecedencePolicy,
   hasDocumentAugmentationEnvelope,
+  registerResponsePolicy,
   runWithTrajectoryPurpose,
   SsrfBlockedError,
   stripAugmentationForPersistence,
@@ -16,6 +22,13 @@ import {
 } from "../src/stubs/elizaos-core";
 
 describe("elizaos-core Worker stub", () => {
+  test("mirrors the pure response-policy prompts used by the native planner", () => {
+    expect(groupResponsePrecedencePolicy).toBe(
+      canonicalGroupResponsePrecedencePolicy,
+    );
+    expect(registerResponsePolicy).toBe(canonicalRegisterResponsePolicy);
+  });
+
   test("exports the Eliza Cloud default text model aliases used by plugin-elizacloud", () => {
     expect(DEFAULT_CEREBRAS_TEXT_MODEL).toBe("gemma-4-31b");
     expect(DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
