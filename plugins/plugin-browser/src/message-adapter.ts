@@ -49,7 +49,15 @@ function summarizePage(page: BrowserBridgePageContext): string {
     page.mainText?.trim() ||
     page.title.trim() ||
     page.url;
-  return text.length > 500 ? `${text.slice(0, 497)}...` : text;
+  if (text.length <= 500) return text;
+  let end = 497;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${text.slice(0, end)}...`;
 }
 
 function pageToMessageRef(page: BrowserBridgePageContext): MessageRef {

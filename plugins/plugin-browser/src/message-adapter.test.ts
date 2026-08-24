@@ -84,3 +84,39 @@ describe("BrowserBridgeAdapter", () => {
     ).resolves.toEqual([]);
   });
 });
+
+describe("BrowserBridgeAdapter surrogate safety", () => {
+  it("never bisects surrogate pairs when summarizing long pages", async () => {
+    const longEmojis = "😀".repeat(300); // 600 code units (exceeds 500 max length)
+    const page = {
+      id: "page-2",
+      agentId: "agent-1",
+      browser: "chrome",
+      profileId: "default",
+      windowId: "window-1",
+      tabId: "tab-1",
+      url: "https://example.com",
+      title: "Title",
+      selectionText: null,
+      mainText: longEmojis,
+      headings: [],
+      links: [],
+      forms: [],
+      capturedAt: "2026-06-02T12:00:00.000Z",
+      metadata: {},
+    };
+    const routeService = {
+      getCurrentBrowserPage: vi.fn(async () => page),
+    };
+    const runtime = {
+      agentId: "agent-1",
+      getService: vi.fn(() => routeService),
+    } as unknown as IAgentRuntime;
+    const adapter = new BrowserBridgeAdapter();
+
+    const messages = await adapter.listMessages(runtime, { limit: 5 });
+    expect(messages).toHaveLength(1);
+    expect(messages[0].snippet.endsWith("...")).toBe(true);
+    expect(messages[0].snippet.endsWith("\uD83D...")).toBe(false);
+  });
+});
