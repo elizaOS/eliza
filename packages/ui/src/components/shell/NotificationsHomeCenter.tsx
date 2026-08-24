@@ -2602,8 +2602,10 @@ export function NotificationsHomeCenter({
           </div>
           <Button
             type="button"
+            variant="default"
+            size="touch"
             onClick={() => void retryNotificationHydration()}
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
+            className="shrink-0"
           >
             <RefreshCw aria-hidden className="size-3.5" />
             Retry
@@ -2998,6 +3000,8 @@ export function NotificationsHomeCenter({
                     <span className="flex shrink-0 items-center gap-1">
                       <Button
                         type="button"
+                        variant="ghostMuted"
+                        size="dense"
                         data-testid="notification-stack-collapse"
                         data-notification-stack-collapse=""
                         data-notification-stack-key={group.key}
@@ -3006,7 +3010,6 @@ export function NotificationsHomeCenter({
                         onClick={(event) =>
                           foldStack(group.key, event.detail === 0)
                         }
-                        className="h-8 px-2 text-xs font-medium text-white/60 transition-colors hover:text-white/90"
                       >
                         Show Less
                       </Button>

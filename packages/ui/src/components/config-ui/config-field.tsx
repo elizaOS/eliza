@@ -309,7 +309,8 @@ export function ConfigField({
                             })
                           }
                           onChange={(event) => setDraft(event.target.value)}
-                          className="min-h-40 resize-y border-border/60 bg-bg-muted font-mono text-sm"
+                          variant="configDialog"
+                          density="dialogEditor"
                         />
                       ) : (
                         <Input

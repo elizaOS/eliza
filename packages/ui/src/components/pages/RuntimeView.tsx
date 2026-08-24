@@ -183,11 +183,10 @@ function TreeNode(props: {
       >
         {canExpand ? (
           <Button
-            variant="ghost"
-            size="icon"
+            variant="ghostMuted"
+            size="disclosure"
             type="button"
             onClick={() => onToggle(path)}
-            className="size-5 shrink-0 rounded-sm p-0 text-left text-muted hover:bg-bg-hover hover:text-txt"
             title={open ? t("common.collapse") : t("common.expand")}
           >
             {open ? "▾" : "▸"}
@@ -601,11 +600,11 @@ export function RuntimeView({
           <Button
             ref={sidebarExpandControl.ref}
             variant="outline"
-            size="sm"
+            size="pillDense"
             type="button"
             onClick={expandTop}
             disabled={activeSection === "summary"}
-            className="h-8 w-full rounded-full text-xs-tight font-semibold"
+            className="w-full"
             {...sidebarExpandControl.agentProps}
           >
             {t("runtimeview.ExpandTop")}
@@ -771,10 +770,9 @@ export function RuntimeView({
                     <Button
                       ref={treeCollapseControl.ref}
                       variant="outline"
-                      size="sm"
+                      size="pillDense"
                       type="button"
                       onClick={collapseTree}
-                      className="h-8 rounded-full text-xs-tight font-semibold"
                       {...treeCollapseControl.agentProps}
                     >
                       {t("common.collapse")}
@@ -782,10 +780,9 @@ export function RuntimeView({
                     <Button
                       ref={treeExpandControl.ref}
                       variant="outline"
-                      size="sm"
+                      size="pillDense"
                       type="button"
                       onClick={expandTop}
-                      className="h-8 rounded-full text-xs-tight font-semibold"
                       {...treeExpandControl.agentProps}
                     >
                       {t("runtimeview.ExpandTop")}

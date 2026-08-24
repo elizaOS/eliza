@@ -359,7 +359,8 @@ export function ComputerUseApprovalOverlay() {
                             setDenyReason(event.target.value)
                           }
                           rows={4}
-                          className="min-h-[96px] border-border/60 bg-bg/50 text-txt"
+                          variant="document"
+                          density="relaxed"
                           placeholder={t(
                             "computeruseapprovaloverlay.DenyReasonPlaceholder",
                             {

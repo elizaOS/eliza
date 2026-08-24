@@ -9,7 +9,19 @@ const meta = {
   component: Input,
   tags: ["autodocs"],
   argTypes: {
-    variant: { control: "select", options: ["default", "form", "config"] },
+    variant: {
+      control: "select",
+      options: [
+        "default",
+        "form",
+        "config",
+        "embeddedToken",
+        "nativeFileHidden",
+        "nativeFileDisplayNone",
+        "nativeRange",
+        "nativeColor",
+      ],
+    },
     density: { control: "select", options: ["default", "compact", "relaxed"] },
     adornment: { control: "select", options: ["none", "leading"] },
     type: { control: "text" },
@@ -44,3 +56,28 @@ export const ErrorState: Story = {
   args: { hasError: true, value: "invalid value", readOnly: true },
 };
 export const Disabled: Story = { args: { disabled: true } };
+export const NativeRange: Story = {
+  args: {
+    type: "range",
+    variant: "nativeRange",
+    min: 0,
+    max: 100,
+    defaultValue: 50,
+    "aria-label": "Volume",
+  },
+};
+export const NativeColor: Story = {
+  args: {
+    type: "color",
+    variant: "nativeColor",
+    defaultValue: "#ff7a1a",
+    "aria-label": "Accent color",
+  },
+};
+export const HiddenFileMachinery: Story = {
+  args: {
+    type: "file",
+    variant: "nativeFileHidden",
+    "aria-label": "Upload file",
+  },
+};

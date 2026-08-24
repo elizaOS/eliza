@@ -341,9 +341,9 @@ export function BackgroundSettingsControls({
       <Input
         ref={fileInputRef}
         type="file"
+        variant="nativeFileHidden"
         accept="image/*"
         onChange={onFileChange}
-        className="sr-only border-0 bg-transparent p-0"
         aria-hidden="true"
         tabIndex={-1}
       />

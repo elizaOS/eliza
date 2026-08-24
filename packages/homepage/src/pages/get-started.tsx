@@ -343,10 +343,12 @@ function ContinuationLinkStep({
           </span>
         </p>
         <Button
+          variant="default"
+          size="touch"
           type="button"
           data-testid="continuation-confirm-button"
           onClick={() => void confirmLink()}
-          className="w-full min-h-11 h-[52px] rounded-xs bg-orange-700 text-white font-medium hover:bg-orange-800"
+          className="w-full"
         >
           {t("homepage_eliza.getStarted.continuationConfirmCta", {
             platform: platformLabel,
@@ -384,10 +386,7 @@ function ContinuationLinkStep({
             defaultValue: `Head back to ${platformLabel} — Eliza is getting your agent ready and will pick up right where you left off.`,
           })}
         </p>
-        <Button
-          asChild
-          className="w-full min-h-11 h-[52px] rounded-xs bg-orange-700 hover:bg-orange-800 text-white font-medium gap-2"
-        >
+        <Button asChild variant="default" size="touch" className="w-full">
           <a
             href={platformHref}
             target="_blank"
@@ -418,9 +417,11 @@ function ContinuationLinkStep({
         </h1>
         <p className="text-sm text-destructive text-center mb-8">{error}</p>
         <Button
+          variant="default"
+          size="touch"
           type="button"
           onClick={() => void (identity ? confirmLink() : loadPreview())}
-          className="w-full min-h-11 h-[52px] rounded-xs bg-orange-700 text-white font-medium hover:bg-orange-800"
+          className="w-full"
         >
           {t("homepage_eliza.getStarted.tryAgain", {
             defaultValue: "Try Again",
@@ -627,6 +628,9 @@ function ProvisioningChatStep({
           style={CHAT_INPUT_STYLE}
         />
         <Button
+          variant="surface"
+          size="touch"
+          shape="circle"
           type="button"
           onClick={() => void handleSend()}
           disabled={
@@ -650,8 +654,11 @@ function ProvisioningChatStep({
 
       {(isReady || isDedicatedOff) && (
         <Button
+          variant="surface"
+          size="touch"
+          shape="circle"
           onClick={onContinue}
-          className="w-full h-[52px] rounded-full bg-neutral-900 text-white font-medium hover:bg-neutral-800 transition-colors mt-4"
+          className="mt-4 w-full"
         >
           <Check className="size-4 mr-2" />
           {t("homepage_eliza.getStarted.continueToDashboard", {
@@ -1418,8 +1425,10 @@ export default function GetStartedPage() {
           {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" ? (
             <Button
               type="button"
+              variant="outlineAccent"
+              size="touch"
+              shape="circle"
               onClick={handleBack}
-              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors cursor-pointer`}
             >
               <ArrowLeft className="size-4" />
               <span className="text-sm font-medium">
@@ -1561,8 +1570,11 @@ export default function GetStartedPage() {
               <div className="w-full flex flex-col gap-3">
                 <Button
                   type="button"
+                  variant="outlineAccent"
+                  size="row"
+                  shape="circle"
+                  align="start"
                   onClick={() => handleMethodSelect("telegram")}
-                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(0)}
                 >
                   <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
@@ -1579,8 +1591,11 @@ export default function GetStartedPage() {
 
                 <Button
                   type="button"
+                  variant="outlineAccent"
+                  size="row"
+                  shape="circle"
+                  align="start"
                   onClick={() => handleMethodSelect("imessage")}
-                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(1)}
                 >
                   <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
@@ -1598,8 +1613,11 @@ export default function GetStartedPage() {
                 {whatsappNumber && (
                   <Button
                     type="button"
+                    variant="outlineAccent"
+                    size="row"
+                    shape="circle"
+                    align="start"
                     onClick={() => handleMethodSelect("whatsapp")}
-                    className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                     style={cardStyle(2)}
                   >
                     <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
@@ -1617,8 +1635,11 @@ export default function GetStartedPage() {
 
                 <Button
                   type="button"
+                  variant="outlineAccent"
+                  size="row"
+                  shape="circle"
+                  align="start"
                   onClick={() => handleMethodSelect("discord")}
-                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(3)}
                 >
                   <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
@@ -1635,13 +1656,16 @@ export default function GetStartedPage() {
 
                 <Button
                   type="button"
+                  variant="outlineAccent"
+                  size="row"
+                  shape="circle"
+                  align="start"
                   aria-label={t("homepage_eliza.getStarted.solanaAria", {
                     defaultValue: "Sign in with Solana",
                   })}
                   data-testid="solana-signin"
                   disabled={isSolanaLoading}
                   onClick={() => handleMethodSelect("solana")}
-                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer disabled:opacity-60`}
                   style={cardStyle(4)}
                 >
                   <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
@@ -1694,7 +1718,10 @@ export default function GetStartedPage() {
 
               <Button
                 asChild
-                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
+                variant="surface"
+                size="touch"
+                shape="circle"
+                className="w-full"
               >
                 <a
                   href={buildElizaTelegramHref()}
@@ -1738,9 +1765,12 @@ export default function GetStartedPage() {
               )}
 
               <Button
+                variant="surface"
+                size="touch"
+                shape="circle"
                 onClick={handleTelegramClick}
                 disabled={isTelegramLoading}
-                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
+                className="w-full"
               >
                 {isTelegramLoading ? (
                   t("homepage_eliza.getStarted.telegramConnecting", {
@@ -1798,13 +1828,12 @@ export default function GetStartedPage() {
               )}
 
               <Button
+                variant="surface"
+                size="touch"
+                shape="circle"
                 onClick={handlePhoneSubmit}
                 disabled={!hasPhoneNumber || isSubmittingPhone}
-                className={`w-full h-[52px] rounded-full font-medium transition-colors ${
-                  hasPhoneNumber
-                    ? "bg-neutral-900 text-white hover:bg-neutral-800"
-                    : "bg-white/40 border border-white/60 text-neutral-400 cursor-not-allowed"
-                }`}
+                className="w-full"
               >
                 {isSubmittingPhone
                   ? t("homepage_eliza.getStarted.settingUp", {
@@ -1838,8 +1867,11 @@ export default function GetStartedPage() {
               </p>
 
               <Button
+                variant="surface"
+                size="touch"
+                shape="circle"
                 onClick={() => void handleOpenMessages()}
-                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
+                className="w-full"
               >
                 <IMessageIcon className="size-5 text-[#34C759]" />
                 {t("homepage_eliza.getStarted.openImessage", {
@@ -1878,8 +1910,10 @@ export default function GetStartedPage() {
                 <Button
                   type="button"
                   variant="outline"
+                  size="touch"
+                  shape="circle"
                   onClick={() => void handleCopyMessageNumber()}
-                  className="mt-3 h-11 w-full rounded-full"
+                  className="mt-3 w-full"
                 >
                   {t("homepage_eliza.connected.copyPhoneAria", {
                     defaultValue: "Copy phone number",
@@ -1924,11 +1958,14 @@ export default function GetStartedPage() {
               </p>
 
               <Button
+                variant="surface"
+                size="touch"
+                shape="circle"
                 onClick={() => {
                   const waNumber = whatsappNumber.replace(/\D/g, "");
                   window.open(`https://wa.me/${waNumber}`, "_blank");
                 }}
-                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
+                className="w-full"
               >
                 <WhatsAppIcon className="size-5 text-[#25D366]" />
                 {t("homepage_eliza.getStarted.openWhatsapp", {
@@ -2020,8 +2057,11 @@ export default function GetStartedPage() {
               {discordError ? (
                 <>
                   <Button
+                    variant="surface"
+                    size="touch"
+                    shape="circle"
                     onClick={() => handleMethodSelect("discord")}
-                    className="w-full h-[52px] rounded-full bg-neutral-900 text-white font-medium hover:bg-neutral-800"
+                    className="w-full"
                   >
                     {t("homepage_eliza.getStarted.tryAgain", {
                       defaultValue: "Try Again",
@@ -2068,15 +2108,14 @@ export default function GetStartedPage() {
                   )}
 
                   <Button
+                    variant="surface"
+                    size="touch"
+                    shape="circle"
                     onClick={handleDiscordPhoneSubmit}
                     disabled={
                       !hasPhoneNumber || isSubmittingPhone || isDiscordLoading
                     }
-                    className={`w-full h-[52px] rounded-full font-medium transition-colors ${
-                      hasPhoneNumber
-                        ? "bg-neutral-900 text-white hover:bg-neutral-800"
-                        : "bg-white/40 border border-white/60 text-neutral-400 cursor-not-allowed"
-                    }`}
+                    className="w-full"
                   >
                     {isSubmittingPhone || isDiscordLoading
                       ? t("homepage_eliza.getStarted.settingUp", {
@@ -2159,7 +2198,8 @@ export default function GetStartedPage() {
                       </p>
                       <Button
                         variant="outline"
-                        size="sm"
+                        size="compact"
+                        shape="circle"
                         onClick={() => {
                           const clientId = getDiscordClientId();
                           const params = new URLSearchParams({
@@ -2172,7 +2212,7 @@ export default function GetStartedPage() {
                             "_blank",
                           );
                         }}
-                        className="mt-3 rounded-full border-neutral-300 bg-white/50 text-neutral-800 hover:bg-neutral-900 hover:text-white gap-1.5"
+                        className="mt-3"
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideInviteToServer", {
@@ -2198,7 +2238,8 @@ export default function GetStartedPage() {
                       </p>
                       <Button
                         variant="outline"
-                        size="sm"
+                        size="compact"
+                        shape="circle"
                         onClick={() => {
                           const appId = getDiscordBotApplicationId();
                           window.open(
@@ -2206,7 +2247,7 @@ export default function GetStartedPage() {
                             "_blank",
                           );
                         }}
-                        className="mt-3 rounded-full border-neutral-300 bg-white/50 text-neutral-800 hover:bg-neutral-900 hover:text-white gap-1.5"
+                        className="mt-3"
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideOpenDm", {
@@ -2243,8 +2284,11 @@ export default function GetStartedPage() {
               </div>
 
               <Button
+                variant="surface"
+                size="touch"
+                shape="circle"
                 onClick={handleContinueToConnected}
-                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium mt-6"
+                className="mt-6 w-full"
               >
                 {t("homepage_eliza.getStarted.guideContinue", {
                   defaultValue: "Continue",

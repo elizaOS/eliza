@@ -371,6 +371,8 @@ export function BuildBadge() {
         <span className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-surface/80 px-2 py-0.5 text-3xs leading-none text-muted opacity-70 transition-opacity hover:opacity-100">
           <Button
             type="button"
+            variant="publicRow"
+            size="content"
             data-testid="build-badge"
             title="Build version (tap for on-device diagnostics)"
             aria-label={`Build ${label}. Tap for on-device diagnostics.`}
@@ -405,7 +407,7 @@ export function BuildBadge() {
           <Button
             type="button"
             aria-label="Close build diagnostics"
-            className="fixed inset-0 cursor-default bg-transparent"
+            className="fixed inset-0 cursor-default"
             onClick={closeDiag}
             style={{ zIndex: Z_BUILD_BADGE + 1 }}
           />
@@ -425,10 +427,11 @@ export function BuildBadge() {
               <span className="font-mono text-3xs text-muted">{label}</span>
               <Button
                 type="button"
+                variant="ghostMuted"
+                size="icon-sm"
                 data-testid="build-badge-diag-close"
                 aria-label="Close diagnostics"
                 onClick={closeDiag}
-                className="text-muted hover:text-foreground"
               >
                 <X aria-hidden="true" className="size-3.5" />
               </Button>

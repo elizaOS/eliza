@@ -1517,7 +1517,7 @@ export function CharacterEditor({
                 type="file"
                 id="ce-vrm-upload"
                 accept=".vrm"
-                className="hidden border-0 bg-transparent p-0"
+                variant="nativeFileDisplayNone"
                 style={{ display: "none" }}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => {
                   const file = e.target.files?.[0];
@@ -1618,7 +1618,6 @@ export function CharacterEditor({
             <DialogFooter className="gap-2 sm:gap-2">
               <Button
                 type="button"
-                className="border-accent/55 bg-accent/22 text-accent-fg hover:border-accent/75 hover:bg-accent/32"
                 onClick={() => void resolvePendingNavigation(true)}
                 disabled={characterSaving || voiceSaving}
               >

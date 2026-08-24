@@ -758,13 +758,13 @@ const SliderComponent: ComponentFn = (props, _children, ctx) => {
         </div>
       ) : null}
       <Input
+        variant="nativeRange"
         type="range"
         min={Number(props.min ?? 0)}
         max={Number(props.max ?? 100)}
         step={Number(props.step ?? 1)}
         value={Number(value ?? props.min ?? 0)}
         onChange={(e) => setValue(Number(e.target.value))}
-        className="h-6 w-full p-0"
         style={{ accentColor: "var(--accent)" }}
       />
     </div>

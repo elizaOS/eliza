@@ -609,9 +609,9 @@ function GraphIconButton({
         <Button
           ref={agentRef}
           type="button"
-          size="sm"
+          size="icon-sm"
           variant="outline"
-          className="size-8 rounded-full p-0"
+          shape="circle"
           aria-label={label}
           disabled={disabled}
           onClick={onClick}
@@ -1051,9 +1051,9 @@ export function RelationshipsGraphPanel({
                 <Button
                   ref={zoomToggleButton.ref}
                   onClick={handleZoomPercentClick}
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums text-muted transition hover:text-txt"
+                  variant="ghostMuted"
+                  size="zoomPill"
+                  className="transition"
                   aria-label={t("relationshipsgraph.toggleZoomAria", {
                     defaultValue: "Toggle zoom (fit / 100%)",
                   })}
@@ -1261,7 +1261,8 @@ export function RelationshipsGraphPanel({
                     height={radius + 72}
                   >
                     <Button
-                      variant="ghost"
+                      variant="transparent"
+                      size="fill"
                       onClick={(event) => {
                         if (clickSuppression.consumeArmed()) {
                           event.preventDefault();
@@ -1275,7 +1276,6 @@ export function RelationshipsGraphPanel({
                       }
                       onMouseMove={(event) => showTooltipForNode(person, event)}
                       onMouseLeave={hideTooltip}
-                      className="h-full w-full rounded-sm bg-transparent hover:bg-transparent"
                       aria-label={t("relationshipsgraph.selectPerson", {
                         name: person.displayName,
                         defaultValue: "Select {{name}}",

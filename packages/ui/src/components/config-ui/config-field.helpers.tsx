@@ -766,7 +766,7 @@ function ColorFieldInner({ fp: props }: { fp: FieldRenderProps }) {
   return (
     <div className="flex items-center gap-2">
       <Input
-        className="w-[36px] h-9 border border-border p-0.5 cursor-pointer bg-transparent rounded-sm [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-sm"
+        variant="nativeColor"
         type="color"
         value={color}
         data-config-key={props.key}

@@ -66,19 +66,17 @@ export function RestartBanner() {
       <span className="leading-snug">{text}</span>
       <div className="flex items-center justify-end gap-2">
         <Button
-          variant="ghost"
-          size="sm"
+          variant="ghostMuted"
+          size="tinyWide"
           onClick={dismissRestartBanner}
-          className="rounded-sm px-3 py-1 text-xs text-muted hover:bg-bg-hover"
         >
           {t("restartbanner.Later")}
         </Button>
         <Button
           variant="secondary"
-          size="sm"
+          size="tinyWide"
           onClick={handleRestart}
           disabled={restarting}
-          className="rounded-sm px-3 py-1 text-xs font-semibold border-transparent"
           style={{
             background: "var(--accent)",
             color: "var(--accent-foreground)",

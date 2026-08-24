@@ -281,11 +281,12 @@ export function VoiceCaptureHud() {
         </div>
         <Button
           type="button"
+          variant="ghostMuted"
           data-testid="voice-capture-hud-dismiss"
           title="Hide voice trace for this session"
           aria-label="Hide voice capture trace for this session"
           onClick={dismiss}
-          className="shrink-0 self-start text-white/50 hover:text-white"
+          className="shrink-0 self-start"
         >
           <X aria-hidden="true" className="size-2.5" />
         </Button>

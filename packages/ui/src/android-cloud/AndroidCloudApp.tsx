@@ -321,16 +321,20 @@ export function AndroidCloudApp({
           {busy ? (
             <Button
               type="button"
+              variant="outline"
+              size="touch"
               onClick={cancelSignIn}
-              className="w-full rounded-xl border border-border px-4 py-3 font-semibold"
+              className="w-full"
             >
               Cancel sign-in
             </Button>
           ) : (
             <Button
               type="button"
+              variant="default"
+              size="touch"
               onClick={() => void signIn()}
-              className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-foreground"
+              className="w-full"
             >
               Sign in
             </Button>
@@ -338,8 +342,8 @@ export function AndroidCloudApp({
           {error ? (
             <Button
               type="button"
+              variant="mutedLink"
               onClick={() => void restore()}
-              className="text-sm text-muted underline"
             >
               Retry session check
             </Button>
@@ -359,20 +363,22 @@ export function AndroidCloudApp({
         <div className="flex gap-3">
           <Button
             type="button"
+            variant="ghostMuted"
+            size="compact"
             onClick={() => {
               localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
               setConversationId(null);
               setMessages([]);
             }}
-            className="text-sm text-muted"
           >
             New chat
           </Button>
           <Button
             type="button"
+            variant="ghostMuted"
+            size="compact"
             disabled={busy}
             onClick={() => void signOut()}
-            className="text-sm text-muted disabled:opacity-50"
           >
             Sign out
           </Button>
@@ -396,8 +402,9 @@ export function AndroidCloudApp({
             {message.role === "assistant" && message.text ? (
               <Button
                 type="button"
+                variant="mutedLink"
                 onClick={() => speak(message.text)}
-                className="mt-2 text-xs text-muted underline"
+                className="mt-2"
               >
                 Play
               </Button>
@@ -419,10 +426,11 @@ export function AndroidCloudApp({
       >
         <Button
           type="button"
+          variant="outline"
+          size="touch"
           aria-pressed={listening}
           aria-label={listening ? "Stop dictation" : "Start dictation"}
           onClick={() => void toggleDictation()}
-          className="rounded-xl border border-border px-3"
         >
           {listening ? "Stop" : "Mic"}
         </Button>
@@ -430,27 +438,31 @@ export function AndroidCloudApp({
           Message Eliza
         </label>
         <Textarea
+          variant="mobileComposer"
+          density="singleLine"
           id="android-cloud-message"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={1}
           disabled={busy}
-          className="min-h-11 flex-1 resize-none rounded-xl border border-border bg-card px-3 py-2"
+          className="flex-1"
           placeholder="Message Eliza"
         />
         {busy ? (
           <Button
             type="button"
+            variant="outline"
+            size="touch"
             onClick={() => abortRef.current?.abort()}
-            className="rounded-xl border border-border px-4"
           >
             Stop
           </Button>
         ) : (
           <Button
             type="submit"
+            variant="default"
+            size="touch"
             disabled={!draft.trim()}
-            className="rounded-xl bg-accent px-4 text-accent-foreground disabled:opacity-50"
           >
             Send
           </Button>

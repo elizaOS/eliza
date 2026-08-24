@@ -186,7 +186,8 @@ export function PairingView() {
                       .filter(Boolean)
                       .join(" ") || undefined
                   }
-                  className="h-12 rounded-sm text-base sm:text-sm"
+                  variant="form"
+                  density="search"
                 />
               </div>
 

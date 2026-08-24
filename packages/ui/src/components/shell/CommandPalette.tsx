@@ -362,7 +362,8 @@ export function CommandPalette() {
           ref={inputRef}
           id="command-palette-search"
           type="text"
-          className="w-full px-4 py-3.5 bg-transparent text-sm outline-none font-body"
+          variant="embeddedSearch"
+          density="search"
           style={{
             borderBottom: "1px solid var(--border)",
             color: "var(--text)",
@@ -397,12 +398,13 @@ export function CommandPalette() {
           ) : (
             filteredCommands.map((cmd, idx) => (
               <Button
-                variant="ghost"
+                variant="sectionToggle"
+                size="content"
+                align="start"
                 key={cmd.id}
                 id={`command-palette-option-${cmd.id}`}
                 role="option"
                 aria-selected={idx === commandActiveIndex}
-                className="flex h-auto w-full cursor-pointer items-center justify-between gap-3 rounded-none border-0 px-4 py-2.5 text-left font-body text-sm"
                 style={{
                   background:
                     idx === commandActiveIndex

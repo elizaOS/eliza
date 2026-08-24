@@ -105,4 +105,33 @@ describe("canonical atom composition", () => {
     expect(dialog.tagName).toBe("DIALOG");
     expect(ref.current).toBe(dialog);
   });
+
+  it("preserves native range semantics through a typed presentation", () => {
+    render(
+      <Input
+        type="range"
+        variant="nativeRange"
+        aria-label="Volume"
+        defaultValue="40"
+      />,
+    );
+
+    const slider = screen.getByRole("slider", { name: "Volume" });
+    expect(slider.tagName).toBe("INPUT");
+    expect(slider.classList).toContain("accent-accent");
+  });
+
+  it("keeps hidden native file machinery in the document", () => {
+    render(
+      <Input
+        type="file"
+        variant="nativeFileHidden"
+        aria-label="Upload avatar"
+      />,
+    );
+
+    const input = screen.getByLabelText("Upload avatar");
+    expect(input.getAttribute("type")).toBe("file");
+    expect(input.classList).toContain("sr-only");
+  });
 });

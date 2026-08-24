@@ -147,8 +147,8 @@ function CommandLine({
         <Button
           type="button"
           variant="outline"
-          size="sm"
-          className="h-8 shrink-0 gap-1.5 rounded-sm px-2.5 text-xs font-semibold"
+          size="dense"
+          className="shrink-0"
           onClick={() => void onCopy(command)}
         >
           <Copy className="size-3.5" aria-hidden />

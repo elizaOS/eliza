@@ -440,11 +440,13 @@ function ExperienceGraphNode({
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="selection"
+      size="content"
+      shape="circle"
       aria-label={`Select experience: ${nodeLabel}`}
       aria-pressed={selected}
       data-testid={`experience-graph-node-${experience.id}`}
-      className="absolute h-auto -translate-x-1/2 -translate-y-1/2 rounded-full p-0 outline-none transition duration-200 hover:scale-125"
+      className="absolute -translate-x-1/2 -translate-y-1/2 hover:scale-125"
       style={{
         left: `${position.x}%`,
         top: `${position.y}%`,
@@ -624,8 +626,10 @@ function RelatedExperienceButton({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left font-normal hover:bg-bg-muted/20"
+      variant="selection"
+      size="touch"
+      align="start"
+      className="w-full"
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
@@ -970,7 +974,6 @@ export function CharacterExperienceWorkspace({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="rounded-sm"
                     disabled={
                       deletingExperienceId === visibleSelectedExperience.id
                     }
@@ -989,7 +992,6 @@ export function CharacterExperienceWorkspace({
                     ref={saveRef}
                     type="button"
                     size="sm"
-                    className="rounded-sm"
                     disabled={
                       savingExperienceId === visibleSelectedExperience.id
                     }
@@ -1132,6 +1134,8 @@ export function CharacterExperienceWorkspace({
                 <span className="text-xs text-muted">Learning</span>
                 <Textarea
                   ref={learningRef}
+                  variant="documentEditor"
+                  density="relaxed"
                   id={`experience-learning-${visibleSelectedExperience.id}`}
                   value={draft.learning}
                   rows={6}
@@ -1141,7 +1145,6 @@ export function CharacterExperienceWorkspace({
                       learning: event.target.value,
                     }))
                   }
-                  className="min-h-[8rem] resize-y rounded-none border-0 border-b border-border/40 bg-transparent px-0 font-mono text-sm leading-relaxed"
                   {...learningAgentProps}
                 />
               </label>
@@ -1154,6 +1157,7 @@ export function CharacterExperienceWorkspace({
                   <span className="text-xs text-muted">Importance</span>
                   <Input
                     ref={importanceRef}
+                    variant="config"
                     id={`experience-importance-${visibleSelectedExperience.id}`}
                     type="number"
                     min="0"
@@ -1166,7 +1170,6 @@ export function CharacterExperienceWorkspace({
                         importance: Number(event.target.value || 0),
                       }))
                     }
-                    className="rounded-none border-0 border-b border-border/40 bg-transparent px-0"
                     {...importanceAgentProps}
                   />
                 </label>
@@ -1177,6 +1180,7 @@ export function CharacterExperienceWorkspace({
                   <span className="text-xs text-muted">Confidence</span>
                   <Input
                     ref={confidenceRef}
+                    variant="config"
                     id={`experience-confidence-${visibleSelectedExperience.id}`}
                     type="number"
                     min="0"
@@ -1189,7 +1193,6 @@ export function CharacterExperienceWorkspace({
                         confidence: Number(event.target.value || 0),
                       }))
                     }
-                    className="rounded-none border-0 border-b border-border/40 bg-transparent px-0"
                     {...confidenceAgentProps}
                   />
                 </label>
@@ -1200,6 +1203,7 @@ export function CharacterExperienceWorkspace({
                   <span className="text-xs text-muted">Tags</span>
                   <Input
                     ref={tagsRef}
+                    variant="config"
                     id={`experience-tags-${visibleSelectedExperience.id}`}
                     type="text"
                     value={draft.tags}
@@ -1209,7 +1213,6 @@ export function CharacterExperienceWorkspace({
                         tags: event.target.value,
                       }))
                     }
-                    className="rounded-none border-0 border-b border-border/40 bg-transparent px-0"
                     {...tagsAgentProps}
                   />
                 </label>

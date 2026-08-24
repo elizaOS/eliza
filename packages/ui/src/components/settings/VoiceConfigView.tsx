@@ -444,8 +444,9 @@ function RemoveTriggerButton({
     <Button
       ref={ref}
       variant="ghost"
-      size="icon"
-      className="ml-1 size-5 rounded-full p-0 leading-none text-muted-strong hover:bg-bg-hover hover:text-txt"
+      size="icon-sm"
+      shape="circle"
+      className="ml-1"
       onClick={onRemove}
       aria-label={label}
       {...agentProps}
@@ -764,7 +765,9 @@ export function WakeWordSection({
           <Input
             ref={addTriggerRef}
             type="text"
-            className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-xs shadow-none "
+            variant="embeddedToken"
+            className="min-w-[120px] flex-1"
+            density="compact"
             placeholder={t("voiceconfigview.AddTrigger")}
             value={triggerInput}
             onChange={(e) => setTriggerInput(e.target.value)}
@@ -793,11 +796,11 @@ export function WakeWordSection({
         <Input
           ref={gapRef}
           type="range"
+          variant="nativeRange"
           min={0.1}
           max={2.0}
           step={0.05}
           value={postTriggerGap}
-          className="h-auto border-0 bg-transparent p-0 accent-accent"
           aria-label={t("voiceconfigview.PostTriggerGap", {
             defaultValue: "Post-trigger gap",
           })}

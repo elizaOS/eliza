@@ -639,8 +639,8 @@ export function BugReportModal() {
                 <FieldLabel className="mb-0">{t("common.logs")}</FieldLabel>
                 <Button
                   type="button"
-                  variant="ghost"
-                  className="h-10 rounded-sm px-3 text-xs text-muted hover:text-txt"
+                  variant="ghostMuted"
+                  size="compact"
                   onClick={() => setShowLogs(!showLogs)}
                   aria-expanded={showLogs}
                   aria-controls="bug-report-logs-panel"
@@ -670,7 +670,7 @@ export function BugReportModal() {
                           type="checkbox"
                           checked={attachLogs}
                           onChange={(e) => setAttachLogs(e.target.checked)}
-                          className="size-4 shrink-0 border-border p-0 accent-accent"
+                          className="size-4 shrink-0"
                         />
                         {t("bugreportmodal.attachLogs")}
                       </label>
@@ -685,7 +685,7 @@ export function BugReportModal() {
                           onChange={(e) =>
                             setAttachSystemInfo(e.target.checked)
                           }
-                          className="size-4 shrink-0 border-border p-0 accent-accent"
+                          className="size-4 shrink-0"
                         />
                         {t("bugreportmodal.attachSystemInfo")}
                       </label>

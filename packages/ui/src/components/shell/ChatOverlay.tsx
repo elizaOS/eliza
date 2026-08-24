@@ -898,11 +898,12 @@ function ComposerRealtimeVoiceActivity({
       </div>
       {needsAudioUnlock ? (
         <Button
-          variant="ghost"
-          size="sm"
+          variant="warningOutline"
+          size="tiny"
           onClick={onUnlockAudio}
           data-testid="chat-composer-voice-audio-unlock"
-          className="h-7 shrink-0 rounded-full border border-warn/40 bg-warn/10 px-2 text-xs font-medium text-warn hover:bg-warn/20"
+          shape="circle"
+          className="shrink-0"
         >
           Enable sound
         </Button>
@@ -5991,6 +5992,8 @@ export function ChatOverlay({
               <Button
                 {...restoreZoneBinding}
                 type="button"
+                variant="publicRow"
+                size="content"
                 data-testid="chat-maximize-restore-zone"
                 aria-label="drag down to exit full screen"
                 onKeyDown={(e) => {
@@ -6003,7 +6006,7 @@ export function ChatOverlay({
                     restoreFromMaximizedGuarded();
                   }
                 }}
-                className="pointer-events-auto absolute inset-x-0 top-0 z-[15] touch-none bg-transparent"
+                className="pointer-events-auto absolute inset-x-0 top-0 z-[15] touch-none"
                 style={{
                   height: `calc(env(safe-area-inset-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
                 }}
@@ -6344,7 +6347,7 @@ export function ChatOverlay({
                       const kind = chatUploadKind(img.mimeType);
                       const removeButton = (
                         <Button
-                          variant="ghost"
+                          variant="outlineMuted"
                           size="icon-sm"
                           aria-label={`remove ${img.name}`}
                           onPointerDown={(event) => event.stopPropagation()}
@@ -6353,7 +6356,8 @@ export function ChatOverlay({
                           // invisible `before` overlay so it's thumb-tappable
                           // without crowding the tile. Bottom placement keeps
                           // that hit zone clear of the grabber above the sheet.
-                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 grid  size-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
+                          shape="circle"
+                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 before:absolute before:-inset-3 before:content-['']"
                         >
                           ×
                         </Button>
@@ -6439,7 +6443,7 @@ export function ChatOverlay({
                 // gap on the sides as top/bottom.
                 // No divider above the composer — spacing separates it from the
                 // thread; the sheet is one continuous glass surface (#10710).
-                "relative z-10 flex min-w-0 shrink-0 items-center gap-[clamp(0.125rem,1.25vw,0.5rem)] px-[clamp(0.25rem,1.5vw,0.5rem)] py-[clamp(0.125rem,0.75dvh,0.375rem)]",
+                "relative z-10 flex min-w-0 shrink-0 items-center gap-[clamp(0.125rem,1.25vw,0.5rem)] px-[clamp(0.25rem,1.5vw,0.5rem)] py-[clamp(0.125rem,0.75dvh,0.375rem)] [&_textarea]:max-h-[8.5rem] [&_textarea]:min-h-8 [&_textarea]:border-none [&_textarea]:bg-transparent [&_textarea]:px-1.5 [&_textarea]:py-1 [&_textarea]:text-left [&_textarea]:text-sm [&_textarea]:text-txt [&_textarea]:outline-none [&_textarea]:placeholder:text-muted-strong pointer-coarse:[&_textarea]:text-base",
                 // While INSET the composer dissolves into the sheet (one
                 // continuous glass surface, #10710) — border/fill are morph-
                 // driven inline (transparent at rest). At FULL-BLEED they fade
@@ -6491,7 +6495,7 @@ export function ChatOverlay({
                 >
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="ghost"
+                      variant="ghostMuted"
                       size="icon"
                       aria-label="chat actions"
                       disabled={firstRunOpen}
@@ -6503,7 +6507,7 @@ export function ChatOverlay({
                       }}
                       // Same responsive real target and 20px mark as the
                       // SoftButton controls, so the row reads as one family.
-                      className="relative grid shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
+                      className="relative shrink-0 data-[state=open]:text-txt [&_svg]:size-5"
                     >
                       <Glyph d={PLUS_GLYPH} className="size-5" />
                     </Button>
@@ -6678,7 +6682,7 @@ export function ChatOverlay({
                   // even when the glass pill sits over dark wallpaper. During
                   // onboarding `disabled:opacity-100` prevents the browser from
                   // dimming the locked cue.
-                  className="scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong pointer-coarse:text-base disabled:pointer-events-none disabled:opacity-100"
+                  className="scrollbar-hide min-w-0 flex-1 resize-none self-center leading-relaxed disabled:pointer-events-none disabled:opacity-100"
                 />
               )}
               {!transcriptionComposerActive &&

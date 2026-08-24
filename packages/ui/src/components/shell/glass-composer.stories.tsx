@@ -70,7 +70,9 @@ export const ComposerBar: Story = {
       <Input
         aria-label="Message"
         placeholder="Message…"
-        className="flex-1 bg-transparent px-2 text-base text-txt outline-none placeholder:text-txt/50 sm:text-sm"
+        variant="embeddedName"
+        density="denseResponsive"
+        className="flex-1"
       />
       <GlassIconButton icon="mic" label="Hold to talk" />
       <GlassIconButton icon="send" label="Send message" />

@@ -24,6 +24,10 @@ const textareaVariants = cva(
           "rounded-sm border-border/55 bg-bg/72 px-3 py-2 text-xs shadow-none placeholder:text-muted",
         documentEditor:
           "resize-y rounded-sm border-border/40 bg-bg-muted/15 px-3 py-2 font-mono text-sm leading-relaxed placeholder:text-muted",
+        configDialog:
+          "resize-y rounded-sm border-border/60 bg-bg-muted px-3 py-2 font-mono text-sm placeholder:text-muted",
+        mobileComposer:
+          "resize-none rounded-xl border-border bg-card px-3 py-2 placeholder:text-muted",
       },
       density: {
         default: "min-h-[80px]",
@@ -32,6 +36,8 @@ const textareaVariants = cva(
         editor: "min-h-[420px] text-xs leading-5",
         document: "min-h-28",
         tall: "min-h-[20rem]",
+        dialogEditor: "min-h-40",
+        singleLine: "min-h-11",
       },
     },
     defaultVariants: {

@@ -84,6 +84,7 @@ const buttonVariants = cva(
         mobileBack:
           "h-auto justify-start gap-2 bg-transparent px-0 py-2 text-base font-medium text-muted hover:bg-transparent hover:text-txt",
         mediaZoom: "h-auto rounded-sm bg-transparent p-0 hover:bg-transparent",
+        transparent: "bg-transparent hover:bg-transparent",
       },
       size: {
         default:
@@ -114,6 +115,12 @@ const buttonVariants = cva(
         compactWide: "h-9 rounded-sm px-4 text-xs-tight font-semibold",
         eventRow: "h-auto min-h-11 w-full items-start gap-1 p-0",
         formAction: "h-10 rounded-sm px-4 text-xs-tight font-semibold",
+        disclosure:
+          "size-5 shrink-0 rounded-sm p-0 text-left text-xs text-muted",
+        pillDense: "h-8 rounded-full px-3 text-xs-tight font-semibold",
+        zoomPill:
+          "h-7 min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums",
+        fill: "h-full w-full rounded-sm p-0",
       },
       shape: {
         default: "",

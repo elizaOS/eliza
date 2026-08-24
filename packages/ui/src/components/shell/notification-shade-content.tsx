@@ -540,6 +540,9 @@ export const NotificationRow = memo(function NotificationRow({
       >
         <Button
           type="button"
+          variant="surface"
+          size="row"
+          align="start"
           data-testid="notification-row"
           data-notification-stack-key={stackKey}
           data-notification-stack-opener={stackKey ? "" : undefined}
@@ -560,7 +563,7 @@ export const NotificationRow = memo(function NotificationRow({
               onExpandStack(stackKey, event.detail === 0);
             } else onOpen(notification);
           }}
-          className="eliza-notif-row-content flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left"
+          className="eliza-notif-row-content min-w-0"
         >
           <NotificationSourceIcon
             source={notification.source}
