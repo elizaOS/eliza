@@ -8,7 +8,6 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
-import { activateFollowUpOrigin } from "./services/follow-up-origin.js";
 import { randomUUID } from "node:crypto";
 import type {
   Character,
@@ -30,6 +29,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import { activateFollowUpOrigin } from "./services/follow-up-origin.js";
 
 // Register coding-agent HTTP routes with the runtime route registry.
 // Re-exporting the registration sentinel (rather than a side-effect-only
@@ -39,6 +39,17 @@ import {
 // side-effect of evaluating that module. Without this the entire
 // `/api/coding-agents/*` surface 404s on the node bundle.
 export { codingAgentRouteRegistration } from "./register-routes.js";
+// Deployment-configurable deliverable-URL canonicalization (vercel origin
+// host announced instead of the custom domain, live 2026-08-21). Re-exported
+// from the package root so packages/agent's swarm-synthesis path rewrites
+// with the SAME implementation the router and coordinator use.
+export {
+  canonicalizeDeliverableUrls,
+  canonicalizeDeliverableUrlsForRuntime,
+  DELIVERABLE_URL_REWRITES_SETTING,
+  parseDeliverableUrlRewrites,
+  readDeliverableUrlRewrites,
+} from "./services/deliverable-links.js";
 export {
   cloneLanePlan,
   collisionProviderFromWorkspaceService,
@@ -72,6 +83,7 @@ import {
   tasksSandboxStubAction,
 } from "./actions/sandbox-stub.js";
 import { tasksAction } from "./actions/tasks.js";
+import { donenessInquiryRoutingEvaluator } from "./evaluators/doneness-inquiry-routing.js";
 import { durableCancelRoutingEvaluator } from "./evaluators/durable-cancel-routing.js";
 import { finishedWorkFollowUpRoutingEvaluator } from "./evaluators/finished-work-followup-routing.js";
 import { routeScopedWorkRoutingEvaluator } from "./evaluators/route-scoped-work-routing.js";
@@ -93,6 +105,7 @@ import {
   TASK_AUDIT_EVENT,
   type TaskAuditPayload,
 } from "./services/audit.js";
+import { canonicalizeDeliverableUrlsForRuntime } from "./services/deliverable-links.js";
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
 import { resolveOriginRoomId } from "./services/session-room-binding.js";
 import { SubAgentInbox } from "./services/sub-agent-inbox.js";
@@ -278,6 +291,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
           subAgentCompletionResponseEvaluator,
           subAgentFailureResponseEvaluator,
           durableCancelRoutingEvaluator,
+          donenessInquiryRoutingEvaluator,
           finishedWorkFollowUpRoutingEvaluator,
           routeScopedWorkRoutingEvaluator,
         ]
@@ -1807,7 +1821,14 @@ export function registerProgressHook(runtime: IAgentRuntime): () => void {
       }
     }
     if (progressPolicy.mode === "silent") return;
-    const text = sanitizePlannerText(rawText);
+    // Canonicalize deliverable URLs in narration the same way the completion
+    // relay does (deployment-configured host rewrites; lossless — see
+    // deliverable-links.ts), so progress posts never advertise a hosting
+    // provider's origin host for a page the route serves on a custom domain.
+    const text = canonicalizeDeliverableUrlsForRuntime(
+      runtime,
+      sanitizePlannerText(rawText),
+    );
     const state = progressBySession.get(sessionId);
     // "ack" mode: the spawn ACK posts once (first emit); never edit it
     // afterward. Once the main message exists, suppress every subsequent progress

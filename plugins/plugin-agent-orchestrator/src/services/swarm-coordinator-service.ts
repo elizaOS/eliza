@@ -24,6 +24,7 @@ import {
   SWARM_COORDINATOR_SERVICE_TYPE,
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
+import { canonicalizeDeliverableUrlsForRuntime } from "./deliverable-links.js";
 import { isPendingHandoffCurrent } from "./handoff-pending.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import { isSessionBusyError } from "./parent-agent-dispatch.js";
@@ -1240,6 +1241,15 @@ export class SwarmCoordinatorService
       (terminalStatus === "completed"
         ? "Task completed."
         : `${label} ${terminalStatus}.`);
+    // Deployment-configured deliverable-URL canonicalization at the relay
+    // boundary (lossless: same resource, canonical public name — see
+    // deliverable-links.ts). Applied after sanitizeCompletionRelay so the
+    // synthesis callback (server-helpers-swarm → connector) never announces
+    // a hosting provider's origin host for a finished deliverable.
+    const canonicalCompletionSummary = canonicalizeDeliverableUrlsForRuntime(
+      this.runtime,
+      completionSummary,
+    );
 
     try {
       await cb({
@@ -1250,7 +1260,7 @@ export class SwarmCoordinatorService
             agentType,
             originalTask,
             status: terminalStatus,
-            completionSummary,
+            completionSummary: canonicalCompletionSummary,
             ...(workdir ? { workdir } : {}),
             roomId,
             replyToExternalMessageId,

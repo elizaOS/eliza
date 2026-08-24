@@ -49,6 +49,13 @@ import {
   hasHealthyPooledAccount,
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
+import {
+  completionRelayDedupeKey,
+  type PendingCompletionRelay,
+  type PendingRelaySessionSnapshot,
+  RESTART_RECOVERED_RELAY_DATA_KEY,
+} from "./completion-relay-ledger.js";
+import { canonicalizeDeliverableUrlsForRuntime } from "./deliverable-links.js";
 import { shouldAutoVerifyGoal } from "./goal-llm-verifier.js";
 import {
   beginPendingHandoff,
@@ -94,7 +101,11 @@ import {
   safeFetch,
 } from "./ssrf-guard.js";
 import { stripToolTranscript } from "./transcript-sanitizer.js";
-import type { SessionEventName, SessionInfo } from "./types.js";
+import {
+  type SessionEventName,
+  type SessionInfo,
+  TERMINAL_SESSION_STATUSES,
+} from "./types.js";
 import {
   captureChangeSet,
   getWorkspaceBranch,
@@ -173,6 +184,45 @@ const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 // a first-class one without re-deriving it. Exported as a matching literal in
 // the tests (no cross-import). See sanitizeSuccessorMetadata below.
 export const SUCCESSOR_ROOM_INHERITED_META_KEY = "successorRoomInherited";
+/** Delay before the start-time completion-relay recovery sweep, so the
+ *  message service and connectors are registered before a recovered relay
+ *  posts (a relay emitted into a half-booted runtime silently drops). */
+const RELAY_RECOVERY_SWEEP_DELAY_MS = 15_000;
+
+/** Rebuild a SessionInfo from the durable pending-relay snapshot, for
+ *  re-emitting a relay whose ACP session row did not survive the restart. */
+function sessionInfoFromPendingRelay(
+  snapshot: PendingRelaySessionSnapshot,
+): SessionInfo {
+  return {
+    id: snapshot.id,
+    agentType: snapshot.agentType,
+    workdir: snapshot.workdir,
+    status: snapshot.status,
+    approvalPreset: snapshot.approvalPreset,
+    createdAt: new Date(snapshot.createdAt),
+    lastActivityAt: new Date(snapshot.lastActivityAt),
+    ...(snapshot.metadata ? { metadata: snapshot.metadata } : {}),
+  } as SessionInfo;
+}
+
+/** Serialize the live SessionInfo into the durable pending-relay snapshot
+ *  (Dates → ISO strings; the metadata bag must round-trip through JSON). */
+function snapshotForPendingRelay(
+  session: SessionInfo,
+): PendingRelaySessionSnapshot {
+  return {
+    id: session.id,
+    agentType: String(session.agentType),
+    workdir: session.workdir,
+    status: String(session.status),
+    approvalPreset: String(session.approvalPreset),
+    createdAt: new Date(session.createdAt).toISOString(),
+    lastActivityAt: new Date(session.lastActivityAt).toISOString(),
+    ...(session.metadata ? { metadata: session.metadata } : {}),
+  };
+}
+
 const QUESTION_FOR_TASK_CREATOR = "QUESTION_FOR_TASK_CREATOR";
 const AGENT_COORDINATION = "AGENT_COORDINATION";
 const SWARM_ROLE_ORDER = ["task", "worktree", "origin"] as const;
@@ -994,6 +1044,10 @@ export class SubAgentRouter extends Service {
     const acpBound = !!this.unsubscribe;
     if (acpBound) {
       this.log("info", "router bound to AcpService");
+      // A previous process may have accepted completions it never relayed
+      // (restart in the task_complete → origin-post window). Arm the durable
+      // ledger sweep now that the event source exists.
+      this.scheduleCompletionRelayRecovery();
       return;
     }
     // Service startup is lazy and can happen outside this plugin's ordered
@@ -1025,6 +1079,11 @@ export class SubAgentRouter extends Service {
       clearTimeout(this.bindRetryTimer);
       this.bindRetryTimer = undefined;
     }
+    if (this.relayRecoveryTimer) {
+      clearTimeout(this.relayRecoveryTimer);
+      this.relayRecoveryTimer = undefined;
+    }
+    this.relayRecoveryScheduled = false;
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.acp = null;
@@ -1218,6 +1277,13 @@ export class SubAgentRouter extends Service {
           data,
           turnId,
           timer,
+        });
+        // Durable twin of the in-memory deferral: the map and its timer die
+        // with the process, so a restart during verification used to swallow
+        // the completion outright (live 2026-08-21, Daily Hue). The pending
+        // stamp lets sweepUndeliveredCompletionRelays re-emit it.
+        await this.stampPendingRelay(deferTaskId, sessionId, data, turnId, {
+          session,
         });
         this.log(
           "info",
@@ -2012,6 +2078,19 @@ export class SubAgentRouter extends Service {
       const header = firstNewline === -1 ? text : text.slice(0, firstNewline);
       text = `${header}\n${deliverable}`;
     }
+    // Deployment-configured deliverable-URL canonicalization (lossless: the
+    // same resource under its canonical public name — deliverable-links.ts).
+    // Applied once here, after every completion-text composition above
+    // (verified-URL fallback, deliverable merge), so the captured best
+    // result, the notification preview, and the relay memory all carry the
+    // canonical public host instead of a hosting provider's origin host.
+    text = canonicalizeDeliverableUrlsForRuntime(this.runtime, text);
+    if (deliverable !== undefined) {
+      deliverable = canonicalizeDeliverableUrlsForRuntime(
+        this.runtime,
+        deliverable,
+      );
+    }
     if (event === "task_complete") {
       // Remember the best (longest) CLEAN result for this root origin so the
       // spawn cap (tasks.ts) can relay it instead of re-spawning when a weak
@@ -2129,13 +2208,28 @@ export class SubAgentRouter extends Service {
     // source and selected swarm room. If the connector isn't registered, fall through to
     // handleMessage without a callback — the planner will still update
     // state but no message reaches the user.
+    // Durable pending stamp for the emit window: a crash between here and the
+    // delivered stamp below re-emits on the next start (at-least-once, with an
+    // honest restart note) instead of losing the completion. Resolved before
+    // the loop so the delivered stamp reuses the same task id.
+    let relayTaskId: string | null = null;
     if (event === "task_complete") {
+      relayTaskId = await this.stampPendingRelay(
+        null,
+        sessionId,
+        data,
+        turnId,
+        {
+          session,
+        },
+      );
       this.log("warn", "completion relay injecting", {
         sessionId,
         targets: targets.length,
         requestKey: requestKey ?? null,
       });
     }
+    let relayPosts = 0;
     for (const target of targets) {
       const sessionMeta = session.metadata as
         | Record<string, unknown>
@@ -2247,6 +2341,9 @@ export class SubAgentRouter extends Service {
       if (this.runtime.messageService?.handleMessage) {
         await this.runtime.messageService
           .handleMessage(this.runtime, memory, replyCallback)
+          .then(() => {
+            relayPosts += 1;
+          })
           .catch((err) => {
             // error-policy:J7 per-target delivery: logs the failure at error level
             // and continues the target loop; the subscription .catch is the boundary.
@@ -2267,16 +2364,21 @@ export class SubAgentRouter extends Service {
             roomId: target.roomId,
           },
         );
-        await this.runtime.createMemory(memory, "messages").catch((err) => {
-          // error-policy:J7 fallback createMemory is best-effort in the background
-          // router post; warned, does not abort the loop.
-          this.log("warn", "createMemory for sub-agent post failed", {
-            sessionId,
-            event,
-            roomId: target.roomId,
-            error: err instanceof Error ? err.message : String(err),
+        await this.runtime
+          .createMemory(memory, "messages")
+          .then(() => {
+            relayPosts += 1;
+          })
+          .catch((err) => {
+            // error-policy:J7 fallback createMemory is best-effort in the background
+            // router post; warned, does not abort the loop.
+            this.log("warn", "createMemory for sub-agent post failed", {
+              sessionId,
+              event,
+              roomId: target.roomId,
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
-        });
         const emit = this.runtime.emitEvent.bind(this.runtime) as (
           name: string,
           payload: { source: string; message: Memory; runtime: IAgentRuntime },
@@ -2286,6 +2388,22 @@ export class SubAgentRouter extends Service {
           message: memory,
           source: ACPX_ROUTER_SOURCE,
         });
+      }
+    }
+
+    // Delivered stamp AFTER the emit, never before: stamping first would
+    // record a delivery a crash then prevented — the exact restart-loss class
+    // the ledger closes. Zero successful posts keeps the pending stamp so the
+    // next start's sweep retries.
+    if (event === "task_complete" && relayTaskId) {
+      if (relayPosts > 0) {
+        await this.stampRelayDelivered(relayTaskId, sessionId, requestKey);
+      } else if (targets.length > 0) {
+        this.log(
+          "warn",
+          "completion relay failed for every target; pending stamp retained for restart recovery",
+          { sessionId, taskId: relayTaskId, targets: targets.length },
+        );
       }
     }
 
@@ -2417,6 +2535,13 @@ export class SubAgentRouter extends Service {
         "dropping deferred completion relay after failed verification",
         { taskId, sessionId: pending.sessionId },
       );
+      // Clear the durable pending stamp too, or the next restart's sweep
+      // would re-emit a completion verification rejected.
+      void this.clearPendingRelayStamp(
+        taskId,
+        pending.sessionId,
+        "verification failed; verify-retry or the park notice owns messaging",
+      );
       return;
     }
     this.releasingDeferredRelaySessions.add(pending.sessionId);
@@ -2469,6 +2594,282 @@ export class SubAgentRouter extends Service {
       // error-policy:J4 settle-wait is best-effort ordering; a probe failure
       // releases the relay immediately rather than risking a swallowed one.
     }
+  }
+
+  // ── completion-relay restart recovery (completion-relay-ledger.ts) ──────
+  //
+  // The deferred-relay map, its release timers, and the delivered dedup set
+  // are process memory; a restart in the task_complete → origin-post window
+  // used to swallow the completion (live 2026-08-21: the Daily Hue APP build
+  // finished and deployed during a restart and the room never heard). The
+  // durable ledger stamped on the task record makes the relay at-least-once:
+  // pending BEFORE the emit windows, delivered only AFTER a successful post,
+  // and a start-time sweep re-emits whatever is still pending — with an
+  // honest "finished while I was restarting" note, deduped by request key.
+
+  /** Structural view of the task service's relay-ledger surface. */
+  private relayLedger(): {
+    getTaskForSession?: (sessionId: string) => Promise<{ id?: string } | null>;
+    stampPendingCompletionRelay?: (
+      taskId: string,
+      entry: PendingCompletionRelay,
+    ) => Promise<void>;
+    stampCompletionRelayDelivered?: (
+      taskId: string,
+      sessionId: string,
+      requestKey: string | null,
+    ) => Promise<void>;
+    clearPendingCompletionRelay?: (
+      taskId: string,
+      sessionId: string,
+      reason: string,
+    ) => Promise<void>;
+    listUndeliveredCompletionRelays?: () => Promise<
+      Array<{
+        taskId: string;
+        status: string;
+        pending: PendingCompletionRelay[];
+        deliveredKeys: string[];
+      }>
+    >;
+  } | null {
+    return this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as ReturnType<
+      SubAgentRouter["relayLedger"]
+    >;
+  }
+
+  /** Durably stamp this completion PENDING on its task. Resolves the task id
+   *  when the caller has none (the undeferred emit leg). Returns the task id
+   *  (for the later delivered stamp) or null when no durable task owns the
+   *  session — such sessions keep the pre-ledger fire-and-forget behavior. */
+  private async stampPendingRelay(
+    knownTaskId: string | null,
+    sessionId: string,
+    data: unknown,
+    turnId: string | undefined,
+    ctx: { session: SessionInfo },
+  ): Promise<string | null> {
+    const ledger = this.relayLedger();
+    if (!ledger?.stampPendingCompletionRelay) return null;
+    let taskId = knownTaskId;
+    try {
+      if (!taskId) {
+        taskId = (await ledger.getTaskForSession?.(sessionId))?.id ?? null;
+      }
+      if (!taskId) return null;
+      const payload: Record<string, unknown> =
+        typeof data === "object" && data !== null && !Array.isArray(data)
+          ? (data as Record<string, unknown>)
+          : { response: String(data ?? "") };
+      await ledger.stampPendingCompletionRelay(taskId, {
+        sessionId,
+        requestKey: requestVoiceKeyForMeta(
+          ctx.session.metadata as Record<string, unknown> | undefined,
+        ),
+        stampedAt: Date.now(),
+        data: payload,
+        ...(turnId ? { turnId } : {}),
+        session: snapshotForPendingRelay(ctx.session),
+      });
+      return taskId;
+    } catch (err) {
+      // error-policy:J7 the stamp is recovery bookkeeping; its failure must
+      // never block the live relay (which is about to post anyway).
+      this.log("warn", "pending completion-relay stamp failed", {
+        sessionId,
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return taskId;
+    }
+  }
+
+  /** Stamp the relay DELIVERED — called only after ≥1 successful post. */
+  private async stampRelayDelivered(
+    taskId: string,
+    sessionId: string,
+    requestKey: string | null,
+  ): Promise<void> {
+    try {
+      await this.relayLedger()?.stampCompletionRelayDelivered?.(
+        taskId,
+        sessionId,
+        requestKey,
+      );
+    } catch (err) {
+      // error-policy:J7 a failed delivered stamp leaves the pending entry, so
+      // the worst case is a duplicate (honest) re-emit after the next
+      // restart — never a lost completion.
+      this.log("warn", "delivered completion-relay stamp failed", {
+        sessionId,
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** Drop a durable pending stamp that must not be re-emitted. */
+  private async clearPendingRelayStamp(
+    taskId: string,
+    sessionId: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      await this.relayLedger()?.clearPendingCompletionRelay?.(
+        taskId,
+        sessionId,
+        reason,
+      );
+    } catch (err) {
+      // error-policy:J7 the sweep re-checks terminal status before emitting,
+      // so a lingering stamp is noise, not a wrong message.
+      this.log("warn", "pending completion-relay clear failed", {
+        sessionId,
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private relayRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  private relayRecoveryScheduled = false;
+
+  /** Arm the one-shot start-time recovery sweep, delayed so connectors and
+   *  the message service are up before any recovered relay posts. */
+  private scheduleCompletionRelayRecovery(): void {
+    if (this.relayRecoveryScheduled || this.stopped) return;
+    this.relayRecoveryScheduled = true;
+    this.relayRecoveryTimer = setTimeout(() => {
+      void this.sweepUndeliveredCompletionRelays().catch((err) => {
+        // error-policy:J7 recovery is retried on the next boot; the failure
+        // is logged, never thrown into the timer.
+        this.log("error", "completion-relay recovery sweep failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, RELAY_RECOVERY_SWEEP_DELAY_MS);
+    this.relayRecoveryTimer.unref?.();
+  }
+
+  /**
+   * Re-emit every completion relay a previous process accepted but never
+   * delivered. Exhaustive over the durable ledger; per entry:
+   *
+   *  - already in the task's delivered ledger (request-key dedupe) → clear;
+   *  - task `done` → re-emit (terminal-complete, user never heard);
+   *  - task `validating` with no live session → re-emit (verification died
+   *    with the process; same never-silent contract as the deferral timeout);
+   *  - task terminal-failed (`failed`/`interrupted`/`archived`) → clear (the
+   *    park/failure notice owns messaging there);
+   *  - otherwise (live lane still working / re-verifying) → leave pending.
+   *
+   * Re-emission drives the REAL handleEvent with the stamped payload plus an
+   * honest restart-recovery marker, so URL re-verification, screenshot
+   * delivery, and the delivered stamp all run exactly as a live completion.
+   */
+  async sweepUndeliveredCompletionRelays(): Promise<{
+    reEmitted: number;
+    cleared: number;
+    skipped: number;
+  }> {
+    const result = { reEmitted: 0, cleared: 0, skipped: 0 };
+    if (this.stopped) return result;
+    const ledger = this.relayLedger();
+    if (!ledger?.listUndeliveredCompletionRelays) return result;
+    let tasks: Awaited<
+      ReturnType<NonNullable<typeof ledger.listUndeliveredCompletionRelays>>
+    >;
+    try {
+      tasks = await ledger.listUndeliveredCompletionRelays();
+    } catch (err) {
+      // error-policy:J1 sweep entry boundary: an unreadable ledger is loud
+      // (the loss class this sweep exists for stays visible) and the zero
+      // result never fabricates an all-clear count.
+      this.log("error", "completion-relay sweep: ledger read failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return result;
+    }
+    for (const task of tasks) {
+      for (const entry of task.pending) {
+        const dedupeKey = completionRelayDedupeKey(
+          entry.requestKey,
+          entry.sessionId,
+        );
+        if (task.deliveredKeys.includes(dedupeKey)) {
+          await this.clearPendingRelayStamp(
+            task.taskId,
+            entry.sessionId,
+            "a relay for this request already delivered (request-key dedupe)",
+          );
+          result.cleared += 1;
+          continue;
+        }
+        const status = String(task.status);
+        if (["failed", "interrupted", "archived"].includes(status)) {
+          await this.clearPendingRelayStamp(
+            task.taskId,
+            entry.sessionId,
+            `task is terminal '${status}'; failure/park messaging owns it`,
+          );
+          result.cleared += 1;
+          continue;
+        }
+        // A live session still owns its own completion: its next
+        // task_complete re-stamps and delivers through the normal path.
+        const live = await this.acp
+          ?.getSession(entry.sessionId)
+          .catch(() => undefined);
+        const sessionLive =
+          !!live && !TERMINAL_SESSION_STATUSES.has(String(live.status));
+        const reEmit =
+          status === "done" || (status === "validating" && !sessionLive);
+        if (!reEmit) {
+          result.skipped += 1;
+          continue;
+        }
+        this.log("warn", "re-emitting completion relay lost to a restart", {
+          taskId: task.taskId,
+          sessionId: entry.sessionId,
+          taskStatus: status,
+          requestKey: entry.requestKey,
+        });
+        const snapshot = live ?? sessionInfoFromPendingRelay(entry.session);
+        // The marker makes the recovered relay honest ("finished while I was
+        // restarting") — the payload itself stays complete and verbatim.
+        const payload: Record<string, unknown> = {
+          ...entry.data,
+          [RESTART_RECOVERED_RELAY_DATA_KEY]: true,
+        };
+        // Bypass the deferral re-capture and churn gates exactly like a
+        // verdict release: this IS the one sanctioned user-facing completion.
+        this.releasingDeferredRelaySessions.add(entry.sessionId);
+        try {
+          await this.handleEvent(
+            entry.sessionId,
+            "task_complete",
+            payload,
+            snapshot,
+            entry.turnId,
+          );
+          result.reEmitted += 1;
+        } catch (err) {
+          // error-policy:J7 one failed re-emit must not abort the sweep; the
+          // pending stamp survives for the next start.
+          this.log("error", "completion-relay re-emit failed", {
+            taskId: task.taskId,
+            sessionId: entry.sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          this.releasingDeferredRelaySessions.delete(entry.sessionId);
+        }
+      }
+    }
+    if (result.reEmitted > 0 || result.cleared > 0 || result.skipped > 0) {
+      this.log("info", "completion-relay recovery sweep complete", result);
+    }
+    return result;
   }
 
   private async postQuestionToOriginRoom(
@@ -4305,9 +4706,19 @@ function composeNarration(
   // obediently recited the absolute internal workspace path into chat. The
   // directive now bans internal paths/ids outright while keeping the
   // anti-substitution intent: files by bare name, never a claimed location.
+  // Restart-recovered relays carry an honest provenance note: the work
+  // finished while the orchestrator was down, and pretending it "just
+  // finished" would misrepresent the timeline the user actually lived.
+  const restartRecoveredNote =
+    event === "task_complete" &&
+    typeof data === "object" &&
+    data !== null &&
+    (data as Record<string, unknown>)[RESTART_RECOVERED_RELAY_DATA_KEY] === true
+      ? ' NOTE: this task finished while the orchestrator was restarting and its result is being delivered now, on recovery — tell the user that honestly (e.g. "this finished while I was restarting") when relaying it.'
+      : "";
   const header =
     event === "task_complete"
-      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer and do NOT start another sub-agent for it. Summarize like a human: never repeat absolute filesystem paths or internal ids (session/task uuids, workspace dirs) in the reply — refer to files by bare name. The files live in the agent's own internal workspace, NOT in any folder the user asked for, so never claim a user-requested path.${agentTypeNote}]`
+      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer and do NOT start another sub-agent for it. Summarize like a human: never repeat absolute filesystem paths or internal ids (session/task uuids, workspace dirs) in the reply — refer to files by bare name. The files live in the agent's own internal workspace, NOT in any folder the user asked for, so never claim a user-requested path.${agentTypeNote}${restartRecoveredNote}]`
       : `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
   if (event === QUESTION_FOR_TASK_CREATOR) {
     const message =

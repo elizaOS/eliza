@@ -96,6 +96,15 @@ import {
   renderChangeSetBody,
 } from "./completion-evidence.js";
 import {
+  completionRelayDedupeKey,
+  type PendingCompletionRelay,
+  readDeliveredCompletionRelayKeys,
+  readPendingCompletionRelays,
+  withDeliveredCompletionRelay,
+  withoutPendingCompletionRelay,
+  withPendingCompletionRelay,
+} from "./completion-relay-ledger.js";
+import {
   COMPLETION_RESIDUALS_METADATA_KEY,
   COMPLETION_RESIDUALS_VERIFIER_NAME,
   type CompletionResidualsInput,
@@ -3136,7 +3145,7 @@ export class OrchestratorTaskService extends Service {
     reason: string,
   ): Promise<void> {
     const doc = await this.store.getTask(taskId);
-    if (!doc || doc.task.status !== "interrupted") return;
+    if (doc?.task.status !== "interrupted") return;
     await this.store.updateTask(taskId, {
       metadata: {
         ...(doc.task.metadata ?? {}),
@@ -3509,6 +3518,113 @@ export class OrchestratorTaskService extends Service {
     if (!found) return undefined;
     this.sessionTaskIndex.set(sessionId, found.taskId);
     return found.taskId;
+  }
+
+  // ---- completion-relay ledger (completion-relay-ledger.ts) --------------
+  //
+  // Durable at-least-once bookkeeping for the router's user-facing completion
+  // relay. All three writers run under the task write lock with a fresh read,
+  // because store.updateTask replaces `metadata` wholesale — an unserialized
+  // read-modify-write would drop concurrent stamps (autoVerifyAttempts,
+  // completionEnvelope) the verification writers hold under the same lock.
+
+  /** Stamp a completion relay PENDING on its task. Called by the router when
+   * a task_complete's relay is deferred for verification and again right
+   * before an emit, so a restart in either window can recover the relay. */
+  async stampPendingCompletionRelay(
+    taskId: string,
+    entry: PendingCompletionRelay,
+  ): Promise<void> {
+    await this.withTaskWriteLock(taskId, async () => {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return;
+      await this.store.updateTask(taskId, {
+        metadata: withPendingCompletionRelay(doc.task.metadata, entry),
+      });
+    });
+  }
+
+  /** Stamp a completion relay DELIVERED (clearing its pending entry). Called
+   * by the router only AFTER at least one origin-room post succeeded —
+   * stamping before the emit would record a delivery that never happened. */
+  async stampCompletionRelayDelivered(
+    taskId: string,
+    sessionId: string,
+    requestKey: string | null,
+  ): Promise<void> {
+    await this.withTaskWriteLock(taskId, async () => {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return;
+      await this.store.updateTask(taskId, {
+        metadata: withDeliveredCompletionRelay(
+          doc.task.metadata,
+          sessionId,
+          completionRelayDedupeKey(requestKey, sessionId),
+        ),
+      });
+    });
+  }
+
+  /** Drop a pending relay without delivering it (verification failed, the
+   * user stopped the task, or the dedupe ledger shows it already posted).
+   * The drop is recorded as a task event so the silence stays observable. */
+  async clearPendingCompletionRelay(
+    taskId: string,
+    sessionId: string,
+    reason: string,
+  ): Promise<void> {
+    await this.withTaskWriteLock(taskId, async () => {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return;
+      const pending = readPendingCompletionRelays(doc.task.metadata);
+      if (!pending[sessionId]) return;
+      await this.store.updateTask(taskId, {
+        metadata: withoutPendingCompletionRelay(doc.task.metadata, sessionId),
+      });
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "completion_relay_dropped",
+        summary: `Pending completion relay dropped: ${reason}`,
+        data: { reason },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+    });
+  }
+
+  /** Every task still holding pending completion relays, with its delivered
+   * dedupe ledger. Exhaustive over the store (no limit) — the sweep's whole
+   * point is that no undelivered relay is ever silently skipped. */
+  async listUndeliveredCompletionRelays(): Promise<
+    Array<{
+      taskId: string;
+      status: OrchestratorTaskStatus;
+      pending: PendingCompletionRelay[];
+      deliveredKeys: string[];
+    }>
+  > {
+    const records = await this.store.listTasks({ includeArchived: true });
+    const out: Array<{
+      taskId: string;
+      status: OrchestratorTaskStatus;
+      pending: PendingCompletionRelay[];
+      deliveredKeys: string[];
+    }> = [];
+    for (const record of records) {
+      const pending = Object.values(
+        readPendingCompletionRelays(record.metadata),
+      );
+      if (pending.length === 0) continue;
+      out.push({
+        taskId: record.id,
+        status: record.status,
+        pending,
+        deliveredKeys: readDeliveredCompletionRelayKeys(record.metadata),
+      });
+    }
+    return out;
   }
 
   // ---- lifecycle ---------------------------------------------------------
