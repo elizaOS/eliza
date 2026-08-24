@@ -1651,7 +1651,16 @@ export class FormService extends Service {
   // ============================================================================
 
   /**
-   * Check if all required fields are filled
+   * Check if all required fields are filled.
+   *
+   * A required field is only satisfied when its state is genuinely complete:
+   * status is not `empty`, `invalid`, `uncertain`, or `pending`, AND it holds a
+   * concrete value. This blocks both the ready-transition and submit() for a
+   * required external field that has been activated but not yet confirmed
+   * (status `pending`, value `undefined`) and for a low-confidence extraction
+   * awaiting confirmation (status `uncertain`). Without the value guard an
+   * unconfirmed payment/signature would be recorded as completed and its value
+   * silently dropped from the FormSubmission — a data-integrity failure.
    */
   private checkAllRequiredFilled(
     session: FormSession,
@@ -1664,7 +1673,10 @@ export class FormService extends Service {
       if (
         !fieldState ||
         fieldState.status === "empty" ||
-        fieldState.status === "invalid"
+        fieldState.status === "invalid" ||
+        fieldState.status === "uncertain" ||
+        fieldState.status === "pending" ||
+        fieldState.value === undefined
       ) {
         return false;
       }
