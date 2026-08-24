@@ -1,3 +1,15 @@
+
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
 /**
  * FinancesService — the finance back-end (payment sources, transactions,
  * spending summaries, recurring-charge detection, email bills, and the
@@ -408,11 +420,11 @@ export class FinancesService {
     request: AddPaymentSourceRequest,
   ): Promise<LifeOpsPaymentSource> {
     const kind = normalizeSourceKind(request.kind);
-    const label = requireNonEmptyString(request.label, "label").slice(0, 120);
-    const institution =
-      normalizeOptionalString(request.institution)?.slice(0, 120) ?? null;
-    const accountMask =
-      normalizeOptionalString(request.accountMask)?.slice(0, 16) ?? null;
+    const label = truncateUtf16Safe(requireNonEmptyString(request.label, "label"), 120);
+    const instVal = normalizeOptionalString(request.institution);
+    const institution = instVal ? truncateUtf16Safe(instVal, 120) : null;
+    const maskVal = normalizeOptionalString(request.accountMask);
+    const accountMask = maskVal ? truncateUtf16Safe(maskVal, 16) : null;
     const now = new Date().toISOString();
     const source: LifeOpsPaymentSource = {
       id: crypto.randomUUID(),

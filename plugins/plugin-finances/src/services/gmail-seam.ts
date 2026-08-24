@@ -1,3 +1,15 @@
+
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
 /**
  * Gmail runtime-service seam for the subscriptions back-end.
  *
@@ -251,7 +263,7 @@ function gmailMessageFromGoogle(args: {
     replyTo: message.replyTo?.email ?? null,
     to: (message.to ?? []).map((item) => item.email),
     cc: (message.cc ?? []).map((item) => item.email),
-    snippet: message.snippet ?? message.bodyText?.slice(0, 240) ?? "",
+    snippet: message.snippet ?? (message.bodyText ? truncateUtf16Safe(message.bodyText, 240) : "") ?? "",
     receivedAt,
     isUnread: labels.includes("UNREAD"),
     isImportant: labels.includes("IMPORTANT"),
