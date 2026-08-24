@@ -104,4 +104,49 @@ describe("openWebUIWithPairing redirect guard", () => {
     );
     expect(closeSpy).toHaveBeenCalled();
   });
+
+  it.each([
+    "http://100.64.0.12:5173/pair?token=abc",
+    "http://10.0.0.8:5173/pair?token=abc",
+    "http://172.20.0.8:5173/pair?token=abc",
+    "http://192.168.1.8:5173/pair?token=abc",
+    "http://[fd7a:115c:a1e0::1]:5173/pair?token=abc",
+    "http://agent-12.tunnel.eliza.local:5173/pair?token=abc",
+  ])("refuses an internal pairing redirect: %s", async (redirectUrl) => {
+    const popup = makePopup();
+    const closeSpy = vi.spyOn(popup, "close");
+    vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => pairingResponse({ data: { redirectUrl } })),
+    );
+
+    await openWebUIWithPairing("agent-1");
+
+    expect(popup.location.href).toBe("about:blank");
+    expect(toastError).toHaveBeenCalledWith(
+      "Pairing redirect URL is not a valid URL",
+    );
+    expect(closeSpy).toHaveBeenCalled();
+  });
+
+  it("still allows the explicit local-Docker loopback handoff", async () => {
+    const popup = makePopup();
+    vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        pairingResponse({
+          data: {
+            redirectUrl: "http://127.0.0.1:5173/pair?token=abc",
+          },
+        }),
+      ),
+    );
+
+    await openWebUIWithPairing("agent-1");
+
+    expect(popup.location.href).toBe("http://127.0.0.1:5173/pair?token=abc");
+    expect(toastError).not.toHaveBeenCalled();
+  });
 });
