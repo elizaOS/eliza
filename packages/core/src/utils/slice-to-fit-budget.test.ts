@@ -51,6 +51,22 @@ describe("sliceToFitBudget", () => {
 		expect(sliceToFitBudget([], byLength, 100)).toEqual([]);
 	});
 
+	it("returns empty for non-array items or invalid estimator functions", () => {
+		expect(
+			sliceToFitBudget(undefined as unknown as string[], byLength, 100),
+		).toEqual([]);
+		expect(
+			sliceToFitBudget(null as unknown as string[], byLength, 100),
+		).toEqual([]);
+		expect(
+			sliceToFitBudget(
+				["a"],
+				undefined as unknown as (item: string) => number,
+				100,
+			),
+		).toEqual([]);
+	});
+
 	it("returns empty for a zero or negative budget", () => {
 		expect(sliceToFitBudget(["a"], byLength, 0)).toEqual([]);
 		expect(sliceToFitBudget(["a"], byLength, -10)).toEqual([]);
