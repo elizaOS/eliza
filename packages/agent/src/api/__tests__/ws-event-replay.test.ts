@@ -164,3 +164,121 @@ describe("selectReplayEvents — fail-closed on non-positive limit", () => {
     expect(selectReplayEvents(buffer, 5, 1.9)).toEqual([buffer.at(-1)]);
   });
 });
+
+describe("eventSequence — invalid bufferSeq falls back to eventId", () => {
+  it("ignores a negative bufferSeq and parses the eventId instead", () => {
+    expect(eventSequence({ eventId: "evt-9", bufferSeq: -1 })).toBe(9);
+  });
+
+  it("ignores a fractional bufferSeq", () => {
+    expect(eventSequence({ eventId: "evt-9", bufferSeq: 2.5 })).toBe(9);
+  });
+
+  it("ignores an unsafe bufferSeq above MAX_SAFE_INTEGER", () => {
+    expect(
+      eventSequence({
+        eventId: "evt-4",
+        bufferSeq: Number.MAX_SAFE_INTEGER + 1,
+      }),
+    ).toBe(4);
+  });
+});
+
+describe("eventSequence — eventId parse edges", () => {
+  it("parses digits followed by trailing whitespace", () => {
+    expect(eventSequence({ eventId: "evt-7  " })).toBe(7);
+  });
+
+  it("uses the last digit run when the id has interleaved text", () => {
+    expect(eventSequence({ eventId: "batch12-run34" })).toBe(34);
+  });
+
+  it("returns null when the parsed sequence exceeds MAX_SAFE_INTEGER", () => {
+    expect(eventSequence({ eventId: "evt-99999999999999999999" })).toBeNull();
+  });
+
+  it("returns null for the bare prefix evt-", () => {
+    expect(eventSequence({ eventId: "evt-" })).toBeNull();
+  });
+});
+
+describe("parseEventCursor — numeric bounds", () => {
+  it("accepts exactly MAX_SAFE_INTEGER in both cursor forms", () => {
+    expect(parseEventCursor("9007199254740991")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(parseEventCursor("evt-9007199254740991")).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+  });
+
+  it("returns null for cursors beyond MAX_SAFE_INTEGER", () => {
+    expect(parseEventCursor("9007199254740992")).toBeNull();
+    expect(parseEventCursor("evt-99999999999999999999")).toBeNull();
+  });
+
+  it("parses zero-padded cursors as their integer value", () => {
+    expect(parseEventCursor("007")).toBe(7);
+  });
+});
+
+describe("selectReplayEvents — unsequenceable envelopes under a cursor", () => {
+  it("skips envelopes with no derivable sequence instead of failing or leaking them", () => {
+    const buffer: ReplayableEvent[] = [
+      { eventId: "evt-a" },
+      { eventId: "evt-2" },
+      { eventId: "no-sequence" },
+      { eventId: "evt-3" },
+    ];
+    const result = selectReplayEvents(buffer, 1);
+    expect(result.map((e) => e.eventId)).toEqual(["evt-2", "evt-3"]);
+  });
+});
+
+describe("selectReplayEvents — tied sequences", () => {
+  it("replays every envelope past the cursor, including duplicates, in buffer order", () => {
+    const buffer: ReplayableEvent[] = [
+      { eventId: "evt-1", bufferSeq: 1 },
+      { eventId: "evt-2a", bufferSeq: 2 },
+      { eventId: "evt-2b", bufferSeq: 2 },
+      { eventId: "evt-3", bufferSeq: 3 },
+    ];
+    const result = selectReplayEvents(buffer, 1);
+    expect(result.map((e) => e.eventId)).toEqual(["evt-2a", "evt-2b", "evt-3"]);
+  });
+});
+
+describe("selectReplayEvents — cap boundary under a cursor", () => {
+  it("returns all missing events unsliced when they exactly equal the cap", () => {
+    const buffer = makeBuffer(10); // seq 1..10
+    const result = selectReplayEvents(buffer, 4, 6); // missing 5..10 == cap
+    expect(result.map((e) => e.bufferSeq)).toEqual([5, 6, 7, 8, 9, 10]);
+  });
+
+  it("keeps only the newest cap events when missing exceeds the cap by one", () => {
+    const buffer = makeBuffer(10);
+    const result = selectReplayEvents(buffer, 3, 6); // missing 4..10 = 7 > 6
+    expect(result.map((e) => e.bufferSeq)).toEqual([5, 6, 7, 8, 9, 10]);
+  });
+
+  it("leaves the input buffer untouched after a capped replay", () => {
+    const buffer = makeBuffer(12);
+    const snapshot = [...buffer];
+    selectReplayEvents(buffer, 0, 5);
+    expect(buffer).toEqual(snapshot);
+    expect(buffer).toHaveLength(12);
+  });
+});
+
+describe("selectReplayEvents — explicit non-default limit without a cursor", () => {
+  it("returns tail slice(-limit) for an explicit limit below the buffer size", () => {
+    const buffer = makeBuffer(10);
+    const result = selectReplayEvents(buffer, null, 3);
+    expect(result.map((e) => e.bufferSeq)).toEqual([8, 9, 10]);
+  });
+
+  it("returns a full ordered copy when the limit covers the whole buffer", () => {
+    const buffer = makeBuffer(4);
+    const result = selectReplayEvents(buffer, null, 10);
+    expect(result).toEqual(buffer);
+    expect(result).not.toBe(buffer);
+  });
+});
