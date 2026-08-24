@@ -434,6 +434,27 @@ describe("tryHandleHonoRuntimeRoute", () => {
   });
 });
 
+  it("does not treat non-canonical Content-Length as an early 413", async () => {
+    const { __parseContentLengthForTests } = await import("./hono-mount.ts");
+    // Non-canonical forms are rejected (null) so early guard is skipped
+    expect(__parseContentLengthForTests({ "content-length": "002097152" })).toBeNull();
+    expect(__parseContentLengthForTests({ "content-length": "0x200000" })).toBeNull();
+    expect(__parseContentLengthForTests({ "content-length": "1e6" })).toBeNull();
+    expect(__parseContentLengthForTests({ "content-length": "2097152.0" })).toBeNull();
+    expect(__parseContentLengthForTests({ "content-length": "12abc" })).toBeNull();
+    expect(__parseContentLengthForTests({ "content-length": " 2097152 " })).toBe(2097152);
+    expect(__parseContentLengthForTests({ "content-length": "00" })).toBeNull();
+    // Canonical decimals are parsed
+    expect(__parseContentLengthForTests({ "content-length": "0" })).toBe(0);
+    expect(__parseContentLengthForTests({ "content-length": "2097152" })).toBe(2097152);
+    expect(__parseContentLengthForTests({ "content-length": String(2 * 1024 * 1024) })).toBe(
+      2097152,
+    );
+    // Array header form
+    expect(__parseContentLengthForTests({ "content-length": ["2097152"] })).toBe(2097152);
+    expect(__parseContentLengthForTests({ "content-length": ["0x10"] })).toBeNull();
+  });
+
 describe("resetHonoMountCache", () => {
   it("rebuilds the Hono app after the same runtime gains a route", async () => {
     const routes: Route[] = [

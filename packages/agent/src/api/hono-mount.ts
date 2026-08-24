@@ -104,6 +104,19 @@ export function resetHonoMountCache(): void {
 // ArrayBuffer with no 413, hanging or OOM-ing the process.
 const MAX_HONO_BODY_BYTES = 1024 * 1024; // 1 MiB
 
+/** For tests: parse Content-Length header canonically, or null if not canonical. */
+export function __parseContentLengthForTests(
+  headers: Record<string, string | string[] | undefined>,
+): number | null {
+  const raw = headers["content-length"];
+  const rawStr = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof rawStr !== "string") return null;
+  const trimmed = rawStr.trim();
+  if (!/^(0|[1-9]\d*)$/.test(trimmed)) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 interface ReadNodeBodyResult {
   body: ArrayBuffer | null;
   tooLarge: boolean;
@@ -115,10 +128,17 @@ async function readNodeBody(req: IncomingMessage): Promise<ReadNodeBodyResult> {
     return { body: null, tooLarge: false };
   }
 
-  const declaredLength = Number(req.headers["content-length"]);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_HONO_BODY_BYTES) {
-    req.pause();
-    return { body: null, tooLarge: true };
+  const rawLength = req.headers["content-length"];
+  const rawLengthStr = Array.isArray(rawLength) ? rawLength[0] : rawLength;
+  if (typeof rawLengthStr === "string") {
+    const trimmed = rawLengthStr.trim();
+    if (/^(0|[1-9]\d*)$/.test(trimmed)) {
+      const declaredLength = Number.parseInt(trimmed, 10);
+      if (Number.isSafeInteger(declaredLength) && declaredLength > MAX_HONO_BODY_BYTES) {
+        req.pause();
+        return { body: null, tooLarge: true };
+      }
+    }
   }
 
   return new Promise<ReadNodeBodyResult>((resolve, reject) => {
