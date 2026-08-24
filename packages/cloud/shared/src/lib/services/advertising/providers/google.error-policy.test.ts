@@ -124,6 +124,40 @@ describe("googleAdsProvider.getCampaignMetrics money-path distinctness", () => {
   });
 });
 
+describe("googleAdsProvider.createCreative provider text boundaries", () => {
+  test("rejects oversized display text before creating an ad group instead of slicing it", async () => {
+    let fetchCalls = 0;
+    mockFetch(() => {
+      fetchCalls++;
+      return jsonResponse({});
+    });
+
+    const result = await googleAdsProvider.createCreative(
+      credentials,
+      "123",
+      "123/456",
+      {
+        name: "business",
+        type: "image",
+        headline: "x".repeat(31),
+        primaryText: "complete description",
+        destinationUrl: "https://example.com",
+        media: [
+          {
+            type: "image",
+            url: "https://example.com/image.png",
+            providerAssetId: "customers/123/assets/789",
+          },
+        ],
+      } as never,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("nothing was created");
+    expect(fetchCalls).toBe(0);
+  });
+});
+
 describe("googleAdsFetch — bounded hops fail closed and keep caller signals", () => {
   test("aborts a hung Google Ads API hop at the timeout", async () => {
     // An API that never settles on its own: the only way out is the caller's

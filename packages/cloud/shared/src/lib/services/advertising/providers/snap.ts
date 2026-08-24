@@ -482,6 +482,16 @@ export const snapAdsProvider: AdProvider = {
         };
       }
 
+      const headline = input.headline || input.name;
+      const brandName = input.description || input.name;
+      if (Array.from(headline).length > 34 || Array.from(brandName).length > 32) {
+        return {
+          success: false,
+          error:
+            "Snap creative text exceeds a provider field limit (headline 34, brand name 32 characters); nothing was created",
+        };
+      }
+
       const creativeResponse = await snapRequest<{
         creatives?: Array<SnapEntityEnvelope<{ creative?: SnapCreative }>>;
       }>(`/adaccounts/${accountId}/creatives`, credentials.accessToken, {
@@ -495,8 +505,8 @@ export const snapAdsProvider: AdProvider = {
               type: "WEB_VIEW",
               shareable: true,
               call_to_action: mapCtaToSnap(input.callToAction),
-              headline: (input.headline || input.name).slice(0, 34),
-              brand_name: (input.description || input.name).slice(0, 32),
+              headline,
+              brand_name: brandName,
               top_snap_crop_position: "OPTIMIZED",
               web_view_properties: {
                 url: input.destinationUrl,
