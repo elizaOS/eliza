@@ -29,11 +29,21 @@ describe("streaming-context.browser", () => {
 
 	it("restores after exception", () => {
 		const mgr = new StackContextManager();
-		try {
+		expect(() =>
 			mgr.run("x", () => {
 				throw new Error("boom");
-			});
-		} catch {}
+			}),
+		).toThrow("boom");
+		expect(mgr.active()).toBeUndefined();
+
+		mgr.run("outer", () => {
+			expect(() =>
+				mgr.run("inner", () => {
+					throw new Error("nested boom");
+				}),
+			).toThrow("nested boom");
+			expect(mgr.active()).toBe("outer");
+		});
 		expect(mgr.active()).toBeUndefined();
 	});
 });
