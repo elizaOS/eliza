@@ -38,7 +38,7 @@ const dbStub = {
 
 mock.module("../../db/client", () => ({ dbRead: dbStub, dbWrite: dbStub }));
 
-const { userMetricsService } = await import("./user-metrics");
+const { userMetricsService, startOfDayUtc } = await import("./user-metrics");
 
 beforeEach(() => {
   selectResolver = () => [{ cnt: 0 }];
@@ -107,5 +107,12 @@ describe("UserMetricsService fail-closed contract", () => {
     await expect(userMetricsService.getOAuthConnectionRate()).rejects.toThrow(
       "relation platform_credentials does not exist",
     );
+  });
+
+  test("startOfDayUtc preserves years 0-99 without Date.UTC remapping", () => {
+    const d = new Date("0025-06-15T12:34:56.789Z");
+    const midnight = startOfDayUtc(d);
+    expect(midnight.getUTCFullYear()).toBe(25);
+    expect(midnight.toISOString()).toBe("0025-06-15T00:00:00.000Z");
   });
 });

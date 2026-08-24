@@ -63,6 +63,16 @@ const PLATFORM_TO_SOURCES: Record<MetricsPlatform, string[]> = {
 };
 const ALL_SOURCES = ["web", "telegram", "discord", "blooio", "elizaos"];
 
+/**
+ * Returns UTC midnight for a given date, preserving years 0-99 via setUTCFullYear.
+ */
+export function startOfDayUtc(d: Date): Date {
+  const date = new Date(0);
+  date.setUTCFullYear(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -319,9 +329,7 @@ class UserMetricsService {
 
   private async _buildOverview(rangeDays: number): Promise<MetricsOverview> {
     const now = new Date();
-    const todayStart = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
+    const todayStart = startOfDayUtc(now);
     const sevenDaysAgo = new Date(todayStart.getTime() - 7 * 86_400_000);
     const rangeStart = new Date(todayStart.getTime() - rangeDays * 86_400_000);
 
@@ -379,9 +387,7 @@ class UserMetricsService {
    * Compute and upsert daily_metrics for a given date across all platforms.
    */
   async computeDailyMetrics(date: Date): Promise<void> {
-    const dayStart = new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-    );
+    const dayStart = startOfDayUtc(date);
     const dayEnd = new Date(dayStart.getTime() + 86_400_000);
 
     logger.info("[UserMetrics] Computing daily metrics", {
@@ -452,9 +458,7 @@ class UserMetricsService {
    * retention cohorts are supported by the schema but not yet computed.
    */
   async computeRetentionCohorts(date: Date): Promise<void> {
-    const dayStart = new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-    );
+    const dayStart = startOfDayUtc(date);
 
     logger.info("[UserMetrics] Computing retention cohorts", {
       date: dayStart.toISOString(),
@@ -539,9 +543,7 @@ class UserMetricsService {
 
   private _rangeSince(range: "day" | "7d" | "30d"): Date {
     const now = new Date();
-    const todayMidnight = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
+    const todayMidnight = startOfDayUtc(now);
     const daysBack = { day: 0, "7d": 6, "30d": 29 };
     return new Date(todayMidnight.getTime() - daysBack[range] * 86_400_000);
   }
