@@ -141,7 +141,7 @@ export function sniffMarkupMime(buffer: Buffer): string | null {
   ) {
     i = 3;
   }
-  while (i < buffer.length && i < 64) {
+  while (i < buffer.length && i < 1024) {
     const c = buffer[i];
     if (c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d) {
       i += 1;
