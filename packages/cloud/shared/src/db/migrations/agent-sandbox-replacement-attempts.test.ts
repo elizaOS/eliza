@@ -30,6 +30,8 @@ const RESTORE_SOURCE_GENERATION = "a0000000-0000-4000-8000-000000000001";
 const DIGEST = "a".repeat(64);
 const LIFECYCLE_DIGEST = "b".repeat(64);
 const NODE_RECORD_ID = "b0000000-0000-4000-8000-000000000001";
+const NODE_INCARNATION = "c0000000-0000-4000-8000-000000000001";
+const NODE_HISTORY_ID = "d0000000-0000-4000-8000-000000000001";
 
 function normalizeDefinition(definition: string): string {
   return definition.replace(/\s+/g, " ").trim();
@@ -48,7 +50,8 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
   `),
   agent_sandbox_replacement_attempts_locator_shape_check: normalizeDefinition(`
     CHECK ((num_nonnulls(locator_sandbox_id, locator_node_id, locator_container_name,
-      locator_node_record_id, locator_node_hostname, locator_node_ssh_port,
+      locator_node_record_id, locator_node_incarnation, locator_node_history_id,
+      locator_node_hostname, locator_node_ssh_port,
       locator_node_ssh_user, locator_node_host_key_fingerprint,
       locator_secret_cleanup_version, locator_allocation_counted, locator_vpn_node_name,
       locator_vpn_registration_started_at, locator_previous_vpn_node_id,
@@ -58,6 +61,8 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
       AND locator_node_id IS NOT NULL
       AND locator_container_name IS NOT NULL
       AND locator_node_record_id IS NOT NULL
+      AND locator_node_incarnation IS NOT NULL
+      AND locator_node_history_id IS NOT NULL
       AND locator_node_hostname IS NOT NULL
       AND locator_node_ssh_port IS NOT NULL
       AND locator_node_ssh_user IS NOT NULL
@@ -110,6 +115,11 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
   `),
   agent_sandbox_replacement_attempts_organization_id_fkey: normalizeDefinition(`
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+  `),
+  agent_sandbox_replacement_attempts_node_occurrence_fkey: normalizeDefinition(`
+    FOREIGN KEY (locator_node_history_id, locator_node_record_id, locator_node_incarnation)
+    REFERENCES agent_node_incarnation_histories(id, docker_node_record_id, node_incarnation)
+    ON DELETE RESTRICT
   `),
   agent_sandbox_replacement_attempts_pkey: "PRIMARY KEY (id)",
   agent_sandbox_replacement_attempts_restore_lease_fkey: normalizeDefinition(`
@@ -213,6 +223,13 @@ async function database(): Promise<PGlite> {
   databases.push(db);
   await db.exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY);
+    CREATE TABLE agent_node_incarnation_histories (
+      id uuid PRIMARY KEY,
+      docker_node_record_id uuid NOT NULL,
+      node_incarnation uuid NOT NULL,
+      CONSTRAINT agent_node_incarnation_histories_receipt_authority_unique
+        UNIQUE (id, docker_node_record_id, node_incarnation)
+    );
     CREATE TABLE agent_backup_restore_leases (
       id uuid NOT NULL,
       organization_id uuid NOT NULL,
@@ -234,6 +251,9 @@ async function database(): Promise<PGlite> {
       )
     );
     INSERT INTO organizations (id) VALUES ('${ORGANIZATION_ID}');
+    INSERT INTO agent_node_incarnation_histories
+      (id, docker_node_record_id, node_incarnation)
+    VALUES ('${NODE_HISTORY_ID}', '${NODE_RECORD_ID}', '${NODE_INCARNATION}');
     INSERT INTO agent_backup_restore_leases VALUES (
       '${RESTORE_LEASE_ID}', '${ORGANIZATION_ID}', '${AGENT_ID}', '${BACKUP_ID}',
       '${RESTORE_ATTEMPT_ID}', 'restore-worker', '${RESTORE_GENERATION}', 3,
@@ -273,12 +293,13 @@ async function recordProviderSuccess(db: PGlite, attemptId: string = ATTEMPT_ID)
     `UPDATE agent_sandbox_replacement_attempts SET
        locator_sandbox_id = $1, locator_node_id = 'node-1',
        locator_container_name = $1, locator_node_record_id = $2::uuid,
+       locator_node_incarnation = $3::uuid, locator_node_history_id = $4::uuid,
        locator_node_hostname = 'node-1.internal', locator_node_ssh_port = 22,
        locator_node_ssh_user = 'root', locator_node_host_key_fingerprint = 'SHA256:test',
        locator_secret_cleanup_version = 1, locator_allocation_counted = TRUE,
        locator_recorded_at = clock_timestamp(), updated_at = clock_timestamp()
-     WHERE id = $3::uuid`,
-    [sandboxId, NODE_RECORD_ID, attemptId],
+     WHERE id = $5::uuid`,
+    [sandboxId, NODE_RECORD_ID, NODE_INCARNATION, NODE_HISTORY_ID, attemptId],
   );
   await db.query(
     `UPDATE agent_sandbox_replacement_attempts SET
@@ -329,13 +350,13 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0313 agent sandbox replacement attempts", () => {
+describe("0314 agent sandbox replacement attempts", () => {
   test("is the journal tail and matches the merged schema surface", async () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
     expect(journal.entries.at(-1)).toMatchObject({
-      idx: 296,
+      idx: 297,
       tag: "0314_agent_sandbox_replacement_attempts",
     });
     expect(
@@ -405,6 +426,7 @@ describe("0313 agent sandbox replacement attempts", () => {
 
     const schemaConstraintNames = [
       ...schema.checks.map(({ name }) => name),
+      "agent_sandbox_replacement_attempts_node_occurrence_fkey",
       "agent_sandbox_replacement_attempts_restore_lease_fkey",
     ];
     expect(Object.keys(EXPECTED_CONSTRAINT_DEFINITIONS)).toEqual(
