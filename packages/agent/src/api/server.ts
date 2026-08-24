@@ -3595,6 +3595,14 @@ async function handleRequest(
         url,
         runtime: state.runtime,
         authorization: inspectorAuthorization,
+        resolveConversationRoomId: async (conversationId) => {
+          let conversation = state.conversations.get(conversationId);
+          if (!conversation && state.conversationRestorePromise) {
+            await state.conversationRestorePromise;
+            conversation = state.conversations.get(conversationId);
+          }
+          return conversation?.roomId ?? null;
+        },
       })
     ) {
       return;
