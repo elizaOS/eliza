@@ -1,24 +1,9 @@
 /**
- * Regression coverage for deterministic-mcp-actions-routes' seed-time MCP
- * registration contract.
- *
- * The scenario declares "@elizaos/plugin-mcp" under requires.plugins — a
- * real, resolvable package the batch-level factory imports and registers
- * before the scenario runs (see registerScenarioRequiredPlugins) — never
- * under requires.fixturePlugins (which is reserved for scenario-local
- * fixture plugins only the scenario's own seed can register; see
- * resolveRequiredFixturePlugins / commit 2a589d97652).
- *
- * The scenario's own seed (seedMcp in
- * test/scenarios/deterministic-mcp-actions-routes.scenario.ts) self-heals by
- * checking `runtime.plugins.some((p) => p.name === mcpPlugin.name)` before
- * calling registerPlugin again, then reads `scenarioMcpService.getServers()`
- * straight off the instance it just started with `await McpService.start()`.
- * If the real plugin-mcp package's exported name ever drifts from what
- * pluginNameAliases("@elizaos/plugin-mcp") recognizes, or the real
- * McpService ever stops finding its configured "mcp" setting, the seed fails
- * with exactly the defect's signature: "MCP server scenario_mcp was not
- * registered".
+ * Verifies the deterministic MCP scenario's package-registration contract.
+ * The integration-backed harness registers required plugins through the
+ * scenario runner, starts the real MCP service with a stdio fixture, and
+ * exercises its tool and resource surfaces. Required package plugins must be
+ * available before scenario seeding while fixture-only plugins remain local.
  */
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
