@@ -764,10 +764,14 @@ export class SwarmCoordinatorService
     // reuses the same session (task_complete fires at the end of every turn, then
     // the session returns to a non-terminal status and accepts more input). Cancel
     // any pending post-terminal eviction so the still-live task state is not
-    // deleted mid-turn. Also refresh cached enrichment metadata: session metadata
-    // can be patched between turns, and a resumed turn must not reuse the prior
-    // turn's stale snapshot — so this must run BEFORE enrichment below.
-    if (!this.isTerminalEvent(event)) {
+    // deleted mid-turn. The nonterminal parent_agent_failure receipt is the
+    // exception: it describes a nested broker operation and does not prove the
+    // child session resumed, so it must preserve the preceding terminal turn's
+    // eviction and teardown-dedupe markers. Also refresh cached enrichment
+    // metadata for genuine resume events: session metadata can be patched
+    // between turns, and a resumed turn must not reuse the prior turn's stale
+    // snapshot — so this must run BEFORE enrichment below.
+    if (!this.isTerminalEvent(event) && event !== "parent_agent_failure") {
       this.cancelLegacyTaskEviction(sessionId);
       // Session resumed: the ceded-terminal marker belongs to the PREVIOUS
       // turn. A genuine user stop on this new turn — which the router never

@@ -144,7 +144,7 @@ describe("AcpService state-lost diagnostics", () => {
     expect(events[1]).toContain("tool_running — bun install --frozen-lockfile");
     expect(events[2]).toContain("reasoning — waiting for the install");
     expect(events[3]).toContain(
-      "parent_agent_failure — kind=coding_tool_failure code=SHELL_UNAVAILABLE transient=true delivered=true",
+      "parent_agent_failure — transient=true delivered=true kind=coding_tool_failure code=SHELL_UNAVAILABLE",
     );
   });
 
@@ -178,11 +178,47 @@ describe("AcpService state-lost diagnostics", () => {
     const events = data.recentEvents as string[];
     expect(events).toHaveLength(1);
     expect(events[0].split(/\r\n|\r|\n|\u0085|\u2028|\u2029/u)).toHaveLength(1);
-    expect(events[0]).toContain(
-      "kind=coding_tool_failure 2026-01-01T00:00:00Z task_complete",
-    );
+    expect(events[0]).toContain("kind=coding_tool_failure 2026-01");
     expect(events[0]).toContain("code=SHELL FAILED forged-event");
     expect(events[0]).not.toContain("forged trail entry");
+  });
+
+  it("preserves broker outcome booleans ahead of oversized Unicode receipt fields", async () => {
+    const warn = vi.fn();
+    const store = new InMemorySessionStore();
+    const s = session("sess-oversized-receipt");
+    await store.create(s);
+    const svc = new AcpService(makeRuntime(warn) as never, { store });
+
+    svc.emitSessionEvent(s.id, "parent_agent_failure", {
+      type: "parent_agent_failure",
+      version: 1,
+      brokerSuccess: false,
+      delivered: false,
+      terminalFailure: {
+        kind: `${"🧪".repeat(200)}\nforged-kind`,
+        code: `${"界".repeat(200)}\u2029forged-code`,
+        transient: true,
+        message: "ignored by the compact hint",
+      },
+    });
+
+    (
+      svc as unknown as {
+        logSubAgentStateLost: (session: SessionInfo, phase: string) => void;
+      }
+    ).logSubAgentStateLost(s, "health-check");
+
+    const [, data] = warn.mock.calls[0] as [string, Record<string, unknown>];
+    const [event] = data.recentEvents as string[];
+    expect(event.split(/\r\n|\r|\n|\u0085|\u2028|\u2029/u)).toHaveLength(1);
+    expect(event).toContain(
+      "parent_agent_failure — transient=true delivered=false kind=",
+    );
+    expect(event).toContain(" code=");
+    expect(event.split(" — ")[1]?.length).toBeLessThanOrEqual(120);
+    expect(event).not.toContain("forged-kind");
+    expect(event).not.toContain("forged-code");
   });
 
   it("ring-caps the trail and degrades hints gracefully on unrecognized payloads", async () => {
