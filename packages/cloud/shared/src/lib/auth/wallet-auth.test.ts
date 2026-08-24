@@ -209,4 +209,16 @@ describe("verifyWalletSignature payload binding", () => {
     });
     expect(user?.id).toBe("user-1");
   });
+
+  test("rejects malformed timestamp formats with non-integer strings", async () => {
+    const invalidHeaders = new Request("https://api.eliza.app/api/v1/user/wallets", {
+      method: "GET",
+      headers: {
+        "X-Wallet-Address": account.address,
+        "X-Timestamp": "1700000000junk",
+        "X-Wallet-Signature": "0x1234",
+      },
+    });
+    await expect(verifyWalletSignature(invalidHeaders)).rejects.toThrow("Invalid timestamp format");
+  });
 });

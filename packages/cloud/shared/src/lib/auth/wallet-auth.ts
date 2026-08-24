@@ -59,8 +59,11 @@ export async function verifyWalletSignature(
     throw new Error("Invalid wallet address format");
   }
 
-  const timestamp = parseInt(timestampStr, 10);
-  if (isNaN(timestamp)) {
+  if (!/^\d+$/.test(timestampStr.trim())) {
+    throw new Error("Invalid timestamp format");
+  }
+  const timestamp = Number(timestampStr.trim());
+  if (!Number.isSafeInteger(timestamp)) {
     throw new Error("Invalid timestamp format");
   }
 
