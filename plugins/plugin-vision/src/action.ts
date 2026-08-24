@@ -1,3 +1,14 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
 /**
  * Vision action handler that routes structured sub-operations for capture,
  * describe, mode changes, entity naming, and screen element grounding.
@@ -393,7 +404,7 @@ async function runDescribe(
     }
 
     const thought = `Analyzed the visual scene at ${timestamp}.`;
-    const text = description.slice(0, MAX_VISION_TEXT_LENGTH);
+    const text = truncateUtf16Safe(description, MAX_VISION_TEXT_LENGTH);
 
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
@@ -418,7 +429,7 @@ async function runDescribe(
         actionName: "VISION",
         op: "describe",
         sceneTimestamp: scene.timestamp,
-        sceneDescription: scene.description.slice(0, MAX_VISION_TEXT_LENGTH),
+        sceneDescription: truncateUtf16Safe(scene.description, MAX_VISION_TEXT_LENGTH),
         sceneChanged: scene.sceneChanged,
         changePercentage: scene.changePercentage,
         audioTranscription: scene.audioTranscription || undefined,
