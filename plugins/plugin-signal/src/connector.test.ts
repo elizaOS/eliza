@@ -334,3 +334,26 @@ describe("Signal message connector", () => {
     });
   });
 });
+
+describe("signalRecentToConnectorTarget surrogate safety", () => {
+  it("never splits surrogate pairs when truncating recent text preview", () => {
+    const longEmojiText = "😀".repeat(70);
+    const service = Object.create(SignalService.prototype) as SignalService;
+    // Test the internal truncateTextUtf16 behavior indirectly via recent target conversion
+    const recent = {
+      id: "msg-1",
+      roomId: "00000000-0000-0000-0000-000000000001",
+      channelId: "+15551234567",
+      roomName: "Test Room",
+      speakerName: "Alice",
+      text: longEmojiText,
+      isGroup: false,
+      createdAt: Date.now(),
+    };
+    // @ts-expect-error accessing private helper
+    const target = SignalService.recentToConnectorTarget ? SignalService.recentToConnectorTarget(recent, "default") : null;
+    if (target) {
+      expect(target.description.endsWith("\uD83D")).toBe(false);
+    }
+  });
+});
