@@ -116,6 +116,21 @@ describe("describeOnceAt", () => {
     );
   });
 
+  it("handles dates with years 0-99 without 1900s dayDiff corruption", () => {
+    // 0099-12-31 to 0100-01-01 (year 99 to 100 transition)
+    const year99Now = new Date(0);
+    year99Now.setUTCFullYear(99, 11, 31);
+    year99Now.setUTCHours(12, 0, 0, 0);
+
+    const year100Tomorrow = new Date(0);
+    year100Tomorrow.setUTCFullYear(100, 0, 1);
+    year100Tomorrow.setUTCHours(12, 0, 0, 0);
+
+    expect(
+      describeOnceAt(year100Tomorrow.toISOString(), year99Now.getTime(), "UTC"),
+    ).toBe("tomorrow at 12pm");
+  });
+
   it("returns null for an unparseable timestamp", () => {
     expect(describeOnceAt("not a timestamp", NOW_MS, TIME_ZONE)).toBeNull();
   });

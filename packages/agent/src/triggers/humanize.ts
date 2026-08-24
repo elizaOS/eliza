@@ -185,11 +185,11 @@ export function describeOnceAt(
   const at = zonedDateParts(new Date(atMs), timeZone);
   const now = zonedDateParts(new Date(nowMs), timeZone);
   const time = formatClockTime(at.hour, at.minute);
-  const dayDiff = Math.round(
-    (Date.UTC(at.year, at.month - 1, at.day) -
-      Date.UTC(now.year, now.month - 1, now.day)) /
-      DAY_MS,
-  );
+  const atDate = new Date(0);
+  atDate.setUTCFullYear(at.year, at.month - 1, at.day);
+  const nowDate = new Date(0);
+  nowDate.setUTCFullYear(now.year, now.month - 1, now.day);
+  const dayDiff = Math.round((atDate.getTime() - nowDate.getTime()) / DAY_MS);
   if (dayDiff === 0) return `today at ${time}`;
   if (dayDiff === 1) return `tomorrow at ${time}`;
   if (dayDiff > 1 && dayDiff < 7) {
