@@ -334,6 +334,12 @@ function writeFileAtomically(targetPath: string, content: string): void {
       0o600,
     );
     fs.writeFileSync(fd, content, "utf-8");
+    if (process.platform !== "win32") {
+      fs.fchmodSync(fd, 0o600);
+    }
+    if (fs.fstatSync(fd).size === 0) {
+      throw new Error(`[eliza-config] Refusing to publish an empty config`);
+    }
     fs.fsyncSync(fd);
     fs.closeSync(fd);
     fd = undefined;
@@ -348,6 +354,131 @@ function writeFileAtomically(targetPath: string, content: string): void {
     }
     throw error;
   }
+}
+
+function serializeElizaConfig(config: ElizaConfig): string {
+  const prepared = structuredClone(config);
+  migrateConfig(prepared);
+  if (isWalletOsStoreEnabledInConfig(prepared)) {
+    stripWalletPrivateKeysFromConfig(prepared);
+  }
+  const sanitized = stripIncludeDirectives(prepared);
+  if (!sanitized || typeof sanitized !== "object") {
+    throw new Error(
+      `[eliza-config] stripIncludeDirectives returned invalid result: ${typeof sanitized}`,
+    );
+  }
+  migrateConfig(sanitized as ElizaConfig);
+  if (isWalletOsStoreEnabledInConfig(sanitized as ElizaConfig)) {
+    stripWalletPrivateKeysFromConfig(sanitized as ElizaConfig);
+  }
+  return `${JSON.stringify(sanitized, null, 2)}\n`;
+}
+
+function resolvePersistenceCandidatePaths(): string[] {
+  const configPath = resolveConfigWritePath();
+  const canonicalConfigPath = resolveConfigPath();
+  const overlayPath = resolveBindMountOverlayPath();
+  const rawPaths =
+    configPath === canonicalConfigPath
+      ? [configPath, overlayPath]
+      : [configPath];
+  return [...new Set(rawPaths)];
+}
+
+const PERSISTENCE_READ_UNAVAILABLE = Symbol("persistence-read-unavailable");
+type PersistenceFileSnapshot =
+  | string
+  | null
+  | typeof PERSISTENCE_READ_UNAVAILABLE;
+
+function capturePersistenceFiles(): Map<string, PersistenceFileSnapshot> {
+  const snapshot = new Map<string, PersistenceFileSnapshot>();
+  for (const candidate of resolvePersistenceCandidatePaths()) {
+    try {
+      snapshot.set(
+        candidate,
+        fs.existsSync(candidate) ? fs.readFileSync(candidate, "utf8") : null,
+      );
+    } catch {
+      // error-policy:J1 config commit classification translates an unreadable
+      // durability snapshot into explicit uncertain state rather than success.
+      snapshot.set(candidate, PERSISTENCE_READ_UNAVAILABLE);
+    }
+  }
+  return snapshot;
+}
+
+function persistenceSnapshotsEqual(
+  before: Map<string, PersistenceFileSnapshot>,
+  after: Map<string, PersistenceFileSnapshot>,
+): boolean {
+  const paths = new Set([...before.keys(), ...after.keys()]);
+  for (const candidate of paths) {
+    if ((before.get(candidate) ?? null) !== (after.get(candidate) ?? null)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function persistenceSnapshotIsReadable(
+  snapshot: Map<string, PersistenceFileSnapshot>,
+): boolean {
+  return [...snapshot.values()].every(
+    (value) => value !== PERSISTENCE_READ_UNAVAILABLE,
+  );
+}
+
+export type ElizaConfigCommitResult =
+  | { status: "published" }
+  | { status: "not-published"; cause: unknown }
+  | { status: "uncertain"; cause: unknown };
+
+/**
+ * Persist and read back the exact serialized snapshot. A late filesystem error
+ * after rename is classified as published when the intended bytes are already
+ * authoritative; unchanged durable bytes are not-published; every other state
+ * is uncertain and must fail closed without blind compensation.
+ */
+export function commitElizaConfig(
+  config: ElizaConfig,
+): ElizaConfigCommitResult {
+  let intended: string;
+  try {
+    intended = serializeElizaConfig(config);
+  } catch (cause) {
+    // error-policy:J1 the config persistence boundary classifies a pre-write
+    // serialization failure as proven not-published.
+    return { status: "not-published", cause };
+  }
+  const before = capturePersistenceFiles();
+  let cause: unknown = null;
+  try {
+    saveElizaConfig(config);
+  } catch (error) {
+    // error-policy:J1 retain the write failure while durable read-back
+    // classifies whether the staged bytes were actually published.
+    cause = error;
+  }
+
+  const after = capturePersistenceFiles();
+  if ([...after.values()].some((content) => content === intended)) {
+    return { status: "published" };
+  }
+  if (
+    cause !== null &&
+    persistenceSnapshotIsReadable(before) &&
+    persistenceSnapshotIsReadable(after) &&
+    persistenceSnapshotsEqual(before, after)
+  ) {
+    return { status: "not-published", cause };
+  }
+  return {
+    status: "uncertain",
+    cause:
+      cause ?? new Error("Persisted config did not match the staged snapshot"),
+  };
 }
 
 function stripIncludeDirectives(value: unknown): unknown {
@@ -417,19 +548,7 @@ export function saveElizaConfig(config: ElizaConfig): void {
   if (isWalletOsStoreEnabledInConfig(config)) {
     stripWalletPrivateKeysFromConfig(config);
   }
-  const sanitized = stripIncludeDirectives(config);
-  if (!sanitized || typeof sanitized !== "object") {
-    throw new Error(
-      `[eliza-config] stripIncludeDirectives returned invalid result: ${typeof sanitized}`,
-    );
-  }
-
-  migrateConfig(sanitized as ElizaConfig);
-  if (isWalletOsStoreEnabledInConfig(sanitized as ElizaConfig)) {
-    stripWalletPrivateKeysFromConfig(sanitized as ElizaConfig);
-  }
-
-  const content = `${JSON.stringify(sanitized, null, 2)}\n`;
+  const content = serializeElizaConfig(config);
 
   // Atomic write: write to a temp file then rename. If the process crashes
   // during writeFileSync, only the temp file is corrupted — the original
@@ -474,39 +593,16 @@ export function saveElizaConfig(config: ElizaConfig): void {
     }
   }
 
-  // Enforce 600 on every write — writeFileSync's mode only applies on
-  // creation, so files created by older versions retain their original
-  // (potentially world-readable) permissions.
-  try {
-    fs.chmodSync(writtenPath, 0o600);
-  } catch (error) {
-    // Windows does not implement POSIX permission bits. On POSIX, failure to
-    // enforce the config's secret-bearing 0600 contract is a real write error.
-    if (process.platform !== "win32") throw error;
-  }
-
-  if (!fs.existsSync(writtenPath)) {
-    throw new Error(
-      `[eliza-config] Config file missing after write: ${writtenPath}`,
-    );
-  }
-  const stat = fs.statSync(writtenPath);
-  if (stat.size === 0) {
-    throw new Error(
-      `[eliza-config] Config file is empty after write: ${writtenPath}`,
-    );
-  }
-
   if (isElizaSettingsDebugEnabled()) {
-    const c = sanitized as Record<string, unknown>;
+    const c = JSON.parse(content) as Record<string, unknown>;
     const cloud = c.cloud as Record<string, unknown> | undefined;
     logger.debug(
       {
         path: writtenPath,
-        bytes: stat.size,
+        bytes: Buffer.byteLength(content),
         topLevelKeys: Object.keys(c).sort(),
         cloud: settingsDebugCloudSummary(cloud),
-        snapshot: sanitizeForSettingsDebug(sanitized),
+        snapshot: sanitizeForSettingsDebug(c),
       },
       "[eliza][settings][saveElizaConfig]",
     );

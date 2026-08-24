@@ -1,193 +1,58 @@
 /**
- * Mounts `POST /api/first-run`, the onboarding submit endpoint. Parses the
- * first-run payload, rejects deprecated field shapes, and persists the chosen
- * deployment target / linked accounts / service routing into `ElizaConfig`
- * (flipping `meta.firstRunComplete`). When the run is cloud-linked it resolves
- * the Eliza Cloud API key from config, sealed secrets, or env and writes it
- * back so the upstream config save keeps it, then mirrors the merged config to
- * the live runtime through a loopback `PUT /api/config`.
- *
- * A committed local-target run is also the boot trigger for a fresh install
- * that deferred its runtime at startup (deferred-runtime-boot.ts): once the
- * completion state is on disk, the handler fires the single-flight runtime
- * boot; cloud/remote targets deliberately leave the process runtime-less.
- *
- * Untrusted request JSON is parsed before any persist: syntax errors and
- * non-object bodies return 400 and never report `{ ok: true }`. Request bodies
- * are bounded before parsing so oversized onboarding payloads cannot consume
- * unbounded process memory.
- *
- * A defensive delayed resave (`scheduleCloudApiKeyResave`) re-writes
- * `cloud.apiKey` if a concurrent config write clobbers it — a best-effort
- * workaround for an unreproduced upstream race, logged at warn on failure.
+ * Preflights app-core's canonical first-run submit boundary. The host owns
+ * session/CSRF role resolution and bounded JSON validation; the shared body
+ * cache replays the exact accepted bytes to the canonical agent writer. The
+ * host publishes only deferred-runtime bookkeeping after durable completion.
  */
 import type http from "node:http";
-import {
-  applyCanonicalFirstRunConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent";
-import { logger, readRequestBody } from "@elizaos/core";
-import {
-  type DeploymentTargetRuntime,
-  getCloudSecret,
-  migrateLegacyRuntimeConfig,
-  normalizeDeploymentTargetConfig,
-  normalizeFirstRunProviderId,
-  normalizeLinkedAccountFlagsConfig,
-  normalizeServiceRoutingConfig,
-} from "@elizaos/shared";
-import { ensureRouteAuthorized } from "./auth.ts";
+import { hasPersistedFirstRunState } from "@elizaos/agent/api/server-helpers";
+import { hasPresentedAuthCredential } from "@elizaos/agent/api/server-helpers-auth";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { logger, readRequestBodyBuffer } from "@elizaos/core";
+import { normalizeDeploymentTargetConfig } from "@elizaos/shared";
+import { ensureRouteMinRole } from "./auth.ts";
 import {
   type CompatRuntimeState,
-  hasCompatPersistedFirstRunState,
+  getConfiguredCompatAgentName,
 } from "./compat-route-shared";
 import {
   isRuntimeBootDeferred,
   triggerDeferredRuntimeBoot,
 } from "./deferred-runtime-boot";
 import { sendJson as sendJsonResponse } from "./response";
-import {
-  deriveFirstRunReplayBody,
-  extractAndPersistFirstRunApiKey,
-  hasDeprecatedFirstRunRequestFields,
-  persistFirstRunDefaults,
-} from "./server-first-run-helpers";
 
 export const MAX_FIRST_RUN_BODY_BYTES = 1_048_576;
 
-async function syncFirstRunConfigState(
-  req: http.IncomingMessage,
-  config: Record<string, unknown>,
-): Promise<void> {
-  const loopbackPort = req.socket.localPort;
-  if (!loopbackPort) {
-    return;
-  }
-
-  const syncPatch: Record<string, unknown> = {};
-  for (const key of [
-    "meta",
-    "agents",
-    "ui",
-    "messages",
-    "deploymentTarget",
-    "linkedAccounts",
-    "serviceRouting",
-    "features",
-    "connectors",
-    "cloud",
-  ]) {
-    if (Object.hasOwn(config, key)) {
-      syncPatch[key] = config[key];
-    }
-  }
-
-  if (Object.keys(syncPatch).length === 0) {
-    return;
-  }
-
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
-  const authorization = req.headers.authorization;
-  if (typeof authorization === "string" && authorization.trim()) {
-    headers.authorization = authorization;
-  }
-
-  const response = await fetch(`http://127.0.0.1:${loopbackPort}/api/config`, {
-    method: "PUT",
-    headers,
-    body: JSON.stringify(syncPatch),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Loopback config sync failed (${response.status}): ${await response.text()}`,
-    );
-  }
-}
-
-/**
- * Defensive resave delay (ms). Long enough that the in-flight loopback PUT
- * /api/config triggered by `syncFirstRunConfigState` plus any
- * concurrent renderer-driven PUT settles before we re-check disk. Tracked as
- * a workaround pending the upstream race fix (see WHY block on
- * `scheduleCloudApiKeyResave` below).
- */
-const CLOUD_API_KEY_RESAVE_DELAY_MS = 3000;
-
-/**
- * Defensive: re-write `cloud.apiKey` to disk after a delay if some concurrent
- * config write between now and `CLOUD_API_KEY_RESAVE_DELAY_MS` clobbered it.
- *
- * **WHY this exists:** the synchronous path (resolve apiKey → local
- * `saveElizaConfig` → loopback PUT /api/config) should be sufficient on its
- * own — the upstream PUT handler safeMerges `cloud.apiKey` from the request
- * body into `state.config` before saving. Empirically a clobber still
- * happens in some sequences (likely a concurrent renderer-driven PUT that
- * round-trips through GET (redacted) → PUT and strips apiKey before the
- * `[REDACTED]` filter catches it). Removing the resave requires reproducing
- * the race in an integration test, which is out of scope for the current
- * cleanup batch.
- *
- * Failure here is best-effort (the synchronous path already wrote apiKey
- * once), but log at warn level so a recurring failure is visible — the
- * silent `catch {}` previously here masked real bugs.
- */
-function scheduleCloudApiKeyResave(apiKey: string): void {
-  setTimeout(() => {
-    try {
-      const freshConfig = loadElizaConfig();
-      if (freshConfig.cloud?.apiKey) {
-        return;
-      }
-      if (!freshConfig.cloud) {
-        (freshConfig as Record<string, unknown>).cloud = {};
-      }
-      (freshConfig.cloud as Record<string, unknown>).apiKey = apiKey;
-      migrateLegacyRuntimeConfig(freshConfig as Record<string, unknown>);
-      saveElizaConfig(freshConfig);
-      logger.info(
-        "[api] Re-saved cloud.apiKey after upstream handler clobbered it",
-      );
-    } catch (err) {
-      logger.warn(
-        `[api] Defensive cloud.apiKey resave failed: ${err instanceof Error ? err.message : String(err)}`,
+/** Publish host-only bookkeeping after the canonical agent response commits. */
+export function finalizeFirstRunRouteResponse(
+  statusCode: number,
+  state: CompatRuntimeState,
+): void {
+  if (statusCode < 200 || statusCode >= 300) return;
+  try {
+    const committedConfig = loadElizaConfig();
+    if (!hasPersistedFirstRunState(committedConfig)) return;
+    state.pendingAgentName = getConfiguredCompatAgentName();
+    const target = normalizeDeploymentTargetConfig(
+      committedConfig.deploymentTarget,
+    )?.runtime;
+    if (isRuntimeBootDeferred() && target !== "cloud" && target !== "remote") {
+      void triggerDeferredRuntimeBoot("first-run onboarding committed").catch(
+        (cause) => {
+          // error-policy:J5 deferred boot publishes its own error status; this
+          // log observes the same rejected trigger without altering the reply.
+          logger.error(
+            { err: cause },
+            "[api] Deferred runtime boot after first-run commit failed",
+          );
+        },
       );
     }
-  }, CLOUD_API_KEY_RESAVE_DELAY_MS);
-}
-
-/**
- * Resolve the cloud apiKey from the three sources we accept, in priority order.
- * Returns the first hit (or `undefined` if none) and writes it back into the
- * `config.cloud` slot when found via the secrets/env fallbacks so the
- * subsequent `saveElizaConfig` persists it.
- */
-function resolveCloudApiKeyForFirstRun(
-  config: Record<string, unknown>,
-): string | undefined {
-  if (!config.cloud || typeof config.cloud !== "object") {
-    config.cloud = {};
+  } catch (cause) {
+    // error-policy:J7 the canonical response is already committed; retain the
+    // success bytes and make post-commit bookkeeping observable.
+    state.current?.reportError("app-core.first-run.post-commit", cause);
   }
-  const cloudSlot = config.cloud as Record<string, unknown>;
-
-  const fromConfig = cloudSlot.apiKey;
-  if (fromConfig) return String(fromConfig);
-
-  const fromSealedSecret = getCloudSecret("ELIZAOS_CLOUD_API_KEY") ?? undefined;
-  if (fromSealedSecret) {
-    cloudSlot.apiKey = fromSealedSecret;
-    return fromSealedSecret;
-  }
-
-  const fromEnv = process.env.ELIZAOS_CLOUD_API_KEY;
-  if (fromEnv) {
-    cloudSlot.apiKey = fromEnv;
-    return fromEnv;
-  }
-
-  return undefined;
 }
 
 export async function handleFirstRunRoute(
@@ -197,39 +62,56 @@ export async function handleFirstRunRoute(
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
-  if (method !== "POST" || url.pathname !== "/api/first-run") {
-    return false;
-  }
+  if (method !== "POST" || url.pathname !== "/api/first-run") return false;
 
-  if (!(await ensureRouteAuthorized(req, res, state))) {
+  if (
+    !(await ensureRouteMinRole(req, res, state, "OWNER", {
+      allowTrustedLocalBypass: !hasPresentedAuthCredential(req),
+    }))
+  ) {
     return true;
   }
 
-  let rawBody: string;
   try {
-    const body = await readRequestBody(req, {
+    if (hasPersistedFirstRunState(loadElizaConfig())) {
+      sendJsonResponse(res, 409, {
+        error: "First-run setup is already complete",
+      });
+      return true;
+    }
+  } catch (cause) {
+    // error-policy:J1 an unreadable durable config cannot be treated as a
+    // fresh installation and must not let onboarding overwrite it.
+    logger.error({ err: cause }, "[api] First-run preflight failed");
+    sendJsonResponse(res, 503, { error: "First-run setup is unavailable" });
+    return true;
+  }
+
+  let rawBody: Buffer | null;
+  try {
+    rawBody = await readRequestBodyBuffer(req, {
       maxBytes: MAX_FIRST_RUN_BODY_BYTES,
       returnNullOnTooLarge: true,
     });
-    if (body === null) {
-      sendJsonResponse(res, 413, { error: "Request body too large" });
-      return true;
-    }
-    rawBody = body.trim();
-  } catch (err) {
-    // error-policy:J1 first-run POST is the transport boundary; a broken
-    // stream becomes a structured 400, never a fabricated onboarding success.
-    sendJsonResponse(res, 400, {
-      error: `failed to read onboarding request body: ${err instanceof Error ? err.message : String(err)}`,
-    });
+  } catch (cause) {
+    // error-policy:J1 the compatibility transport rejects an unreadable body
+    // before the canonical writer can observe or mutate onboarding state.
+    logger.warn({ err: cause }, "[api] First-run request body read failed");
+    sendJsonResponse(res, 400, { error: "Invalid JSON body" });
     return true;
   }
+  if (rawBody === null) {
+    sendJsonResponse(res, 413, { error: "Request body too large" });
+    return true;
+  }
+
   let parsed: unknown;
   try {
-    parsed = rawBody === "" ? undefined : JSON.parse(rawBody);
+    const text = rawBody.toString("utf8").trim();
+    parsed = text === "" ? undefined : JSON.parse(text);
   } catch {
-    // error-policy:J3 untrusted-input sanitizing — malformed first-run JSON is
-    // an explicit 400, never a fabricated onboarding success.
+    // error-policy:J3 malformed onboarding JSON is an explicit client error;
+    // the original cached bytes remain available only to accepted requests.
     sendJsonResponse(res, 400, { error: "Invalid JSON body" });
     return true;
   }
@@ -237,138 +119,6 @@ export async function handleFirstRunRoute(
     sendJsonResponse(res, 400, { error: "Invalid JSON body" });
     return true;
   }
-  const body = parsed as Record<string, unknown>;
 
-  let capturedCloudApiKey: string | undefined;
-  let committedRuntimeTarget: DeploymentTargetRuntime | undefined;
-
-  try {
-    if (hasDeprecatedFirstRunRequestFields(body)) {
-      sendJsonResponse(res, 400, {
-        error:
-          "deprecated first-run payloads are no longer supported; send deploymentTarget, linkedAccounts, serviceRouting, and credentialInputs",
-      });
-      return true;
-    }
-    await extractAndPersistFirstRunApiKey(body);
-    persistFirstRunDefaults(body);
-    if (typeof body.name === "string" && body.name.trim()) {
-      state.pendingAgentName = body.name.trim();
-    }
-
-    const { replayBody: replayBodyRecord } = deriveFirstRunReplayBody(body);
-    const replayDeploymentTarget = normalizeDeploymentTargetConfig(
-      replayBodyRecord.deploymentTarget,
-    );
-    committedRuntimeTarget = replayDeploymentTarget?.runtime;
-    const replayLinkedAccounts = normalizeLinkedAccountFlagsConfig(
-      replayBodyRecord.linkedAccounts,
-    );
-    const replayServiceRouting = normalizeServiceRoutingConfig(
-      replayBodyRecord.serviceRouting,
-    );
-    const cloudInferenceSelected = Boolean(
-      replayServiceRouting?.llmText?.transport === "cloud-proxy" &&
-        normalizeFirstRunProviderId(replayServiceRouting.llmText.backend) ===
-          "elizacloud",
-    );
-    const shouldResolveCloudApiKey =
-      replayDeploymentTarget?.runtime === "cloud" ||
-      cloudInferenceSelected ||
-      replayLinkedAccounts?.elizacloud?.status === "linked";
-
-    // Resolve the cloud API key so the upstream handler can write it
-    // into state.config before saving. Without this, the upstream uses
-    // its stale in-memory config (loaded at startup, before OAuth) and
-    // clobbers the apiKey that persistCloudLoginStatus wrote to disk.
-    let resolvedCloudApiKey: string | undefined;
-
-    try {
-      const config = loadElizaConfig();
-      if (!config.meta) {
-        (config as Record<string, unknown>).meta = {};
-      }
-      (config.meta as Record<string, unknown>).firstRunComplete = true;
-      applyCanonicalFirstRunConfig(config as never, {
-        deploymentTarget: replayDeploymentTarget,
-        linkedAccounts: replayLinkedAccounts,
-        serviceRouting: replayServiceRouting,
-      });
-
-      if (shouldResolveCloudApiKey) {
-        resolvedCloudApiKey = resolveCloudApiKeyForFirstRun(
-          config as Record<string, unknown>,
-        );
-
-        if (!resolvedCloudApiKey) {
-          logger.warn(
-            "[api] Cloud-linked first-run but no API key found on disk, in sealed secrets, or in env. " +
-              "The upstream handler will save config WITHOUT cloud.apiKey.",
-          );
-        } else {
-          logger.info(
-            "[api] Cloud-linked first-run: resolved API key, injecting into replay body",
-          );
-        }
-
-        capturedCloudApiKey = resolvedCloudApiKey;
-      }
-      saveElizaConfig(config);
-      await syncFirstRunConfigState(req, config as Record<string, unknown>);
-    } catch (err) {
-      // error-policy:J1 a failed config commit is a server failure, never a
-      // successful onboarding acknowledgement.
-      logger.error(
-        `[api] Failed to persist first-run state: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      sendJsonResponse(res, 500, {
-        error: "Failed to persist first-run state",
-      });
-      return true;
-    }
-  } catch (err) {
-    // error-policy:J1 valid JSON does not imply a successful commit; translate
-    // helper failures at the HTTP boundary without exposing internal details.
-    logger.error(
-      `[api] First-run helper failed after valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    sendJsonResponse(res, 500, { error: "Failed to complete first-run setup" });
-    return true;
-  }
-
-  sendJsonResponse(res, 200, { ok: true });
-
-  if (capturedCloudApiKey) {
-    scheduleCloudApiKeyResave(capturedCloudApiKey);
-  }
-
-  // Fresh-install deferred boot (see deferred-runtime-boot.ts): a committed
-  // LOCAL-target onboarding is THE signal to boot the agent runtime this
-  // process skipped at startup. Cloud/remote targets stay runtime-less on
-  // purpose — the client binds the cloud/remote agent and this process never
-  // needed a local runtime (#13377). Gated on the same on-disk predicate the
-  // status route serves, so a failed persist never boots the discarded
-  // pre-onboarding default runtime. Fire-and-forget: the client's finish flow
-  // does not wait on this response for readiness (it polls /api/status, and
-  // early chat turns hold on the runtime-ready gate); a boot failure is
-  // observable there as state "error".
-  if (
-    isRuntimeBootDeferred() &&
-    committedRuntimeTarget !== "cloud" &&
-    committedRuntimeTarget !== "remote" &&
-    hasCompatPersistedFirstRunState(loadElizaConfig())
-  ) {
-    triggerDeferredRuntimeBoot("first-run onboarding committed").catch(
-      (err) => {
-        // error-policy:J5 — the failure is observed by clients via
-        // /api/status (the boot closure flips state to "error" before
-        // rethrowing); this log is the server-side record of the same event.
-        logger.error(
-          `[api] Deferred runtime boot after first-run commit failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
-        );
-      },
-    );
-  }
-
-  return true;
+  return false;
 }

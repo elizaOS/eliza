@@ -13,6 +13,7 @@
  * list must stay in sync — a managed prefix with no matching policy 401s.
  */
 import type http from "node:http";
+import { hasPresentedAuthCredential } from "@elizaos/agent/api/server-helpers-auth";
 import { ensureRouteAuthorized, ensureRouteMinRole } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJsonError } from "./response";
@@ -177,8 +178,8 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
     "POST",
     /^\/api\/auth\/sessions\/[^/]+\/revoke$/,
   ),
-  sessionExact("first-run.status", "GET", "/api/first-run/status"),
-  sessionExact("first-run.options", "GET", "/api/first-run/options"),
+  ownerExact("first-run.status", "GET", "/api/first-run/status"),
+  ownerExact("first-run.options", "GET", "/api/first-run/options"),
   sessionExact(
     "background.run-due-tasks",
     "POST",
@@ -217,7 +218,7 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   sessionPrefix("workbench", "/api/workbench"),
   sessionPrefix("plugins.management", "/api/plugins"),
   sessionPrefix("catalog", "/api/catalog"),
-  sessionExact("first-run.submit", "POST", "/api/first-run"),
+  ownerExact("first-run.submit", "POST", "/api/first-run"),
   sessionRegex("plugins.ui-spec", "GET", /^\/api\/plugins\/[^/]+\/ui-spec$/),
   sessionExact("agents.list", "GET", "/api/agents"),
   // Per-agent message/event endpoints are OWNED by the upstream agent server
@@ -342,7 +343,15 @@ export async function enforceCompatRouteAuthPolicy(
 
   const authorized =
     policy.tier === "OWNER"
-      ? await ensureRouteMinRole(req, res, state, "OWNER")
+      ? await ensureRouteMinRole(
+          req,
+          res,
+          state,
+          "OWNER",
+          policy.id === "first-run.submit" && hasPresentedAuthCredential(req)
+            ? { allowTrustedLocalBypass: false }
+            : {},
+        )
       : await ensureRouteAuthorized(req, res, state);
   return authorized ? "allowed" : "denied";
 }

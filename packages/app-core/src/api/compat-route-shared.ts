@@ -10,15 +10,13 @@
  * never authentication.
  */
 import type http from "node:http";
+import { hasPersistedFirstRunState } from "@elizaos/agent/api/server-helpers";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   type ElizaConfig,
   isLoopbackRemoteAddress,
   isTrustedLocalRequest as isTrustedLocalRequestShared,
-  normalizeFirstRunProviderId,
-  resolveDeploymentTargetInConfig,
-  resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
 import { sendJsonError as sendJsonErrorResponse } from "./response.js";
 
@@ -184,41 +182,7 @@ export async function readCompatJsonBody(
 }
 
 export function hasCompatPersistedFirstRunState(config: ElizaConfig): boolean {
-  if ((config.meta as Record<string, unknown>)?.firstRunComplete === true) {
-    return true;
-  }
-
-  const deploymentTarget = resolveDeploymentTargetInConfig(
-    config as Record<string, unknown>,
-  );
-  const llmText = resolveServiceRoutingInConfig(
-    config as Record<string, unknown>,
-  )?.llmText;
-  const backend = normalizeFirstRunProviderId(llmText?.backend);
-  const remoteApiBase =
-    llmText?.remoteApiBase?.trim() ?? deploymentTarget.remoteApiBase?.trim();
-  const hasCompleteCanonicalRouting =
-    (llmText?.transport === "direct" &&
-      Boolean(backend && backend !== "elizacloud")) ||
-    (llmText?.transport === "remote" && Boolean(remoteApiBase)) ||
-    (llmText?.transport === "cloud-proxy" &&
-      backend === "elizacloud" &&
-      Boolean(llmText.smallModel?.trim() && llmText.largeModel?.trim())) ||
-    (deploymentTarget.runtime === "remote" &&
-      Boolean(deploymentTarget.remoteApiBase?.trim()));
-
-  if (hasCompleteCanonicalRouting) {
-    return true;
-  }
-
-  if (Array.isArray(config.agents?.list) && config.agents.list.length > 0) {
-    return true;
-  }
-
-  return Boolean(
-    config.agents?.defaults?.workspace?.trim() ||
-      config.agents?.defaults?.adminEntityId?.trim(),
-  );
+  return hasPersistedFirstRunState(config);
 }
 
 export function getConfiguredCompatAgentName(): string | null {

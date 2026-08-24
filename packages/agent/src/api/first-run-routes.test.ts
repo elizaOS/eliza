@@ -8,7 +8,7 @@
  * spies.
  */
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../config/config.ts", () => ({
@@ -81,7 +81,28 @@ function makeContext(
   const json = vi.fn();
   const error = vi.fn();
   const saveElizaConfig = vi.fn();
-  const ensureWalletKeysInEnvAndConfig = vi.fn(() => true);
+  const provisionWalletKeysInEnvAndConfig = vi.fn(
+    (config: ElizaConfig, environment: NodeJS.ProcessEnv = process.env) => {
+      const evmPrivateKey = environment.EVM_PRIVATE_KEY ?? "evm-secret-1234";
+      const solanaPrivateKey =
+        environment.SOLANA_PRIVATE_KEY ?? "solana-secret-5678";
+      environment.EVM_PRIVATE_KEY = evmPrivateKey;
+      environment.SOLANA_PRIVATE_KEY = solanaPrivateKey;
+      config.env = {
+        ...(config.env ?? {}),
+        EVM_PRIVATE_KEY: evmPrivateKey,
+        SOLANA_PRIVATE_KEY: solanaPrivateKey,
+      };
+      return {
+        ok: true as const,
+        generated: true,
+        evmPrivateKey,
+        evmAddress: "0x1234",
+        solanaPrivateKey,
+        solanaAddress: "So111",
+      };
+    },
+  );
   const applyFirstRunVoicePreset = vi.fn();
   const req = {
     headers: {},
@@ -96,6 +117,7 @@ function makeContext(
     pathname,
     url: new URL(`http://127.0.0.1${pathname}`),
     state,
+    authorization: { ok: true, role: "OWNER", principal: "test-owner" },
     json,
     error,
     readJsonBody: vi.fn(
@@ -104,11 +126,8 @@ function makeContext(
     isCloudProvisionedContainer: () => false,
     hasPersistedFirstRunState: (config) =>
       config.meta?.firstRunComplete === true,
-    ensureWalletKeysInEnvAndConfig,
-    getWalletAddresses: () => ({
-      evmAddress: "0xabc",
-      solanaAddress: "So111",
-    }),
+    provisionWalletKeysInEnvAndConfig,
+    walletVault: null,
     pickRandomNames: () => ["Ada", "Grace"],
     getStylePresets: () => [{ id: "concise" }],
     getProviderOptions: () => [{ id: "openai" }],
@@ -125,6 +144,14 @@ function makeContext(
     readUiLanguageHeader: () => null,
     applyFirstRunVoicePreset,
     saveElizaConfig,
+    commitElizaConfig: vi.fn((config) => {
+      try {
+        (options.overrides?.saveElizaConfig ?? saveElizaConfig)(config);
+        return { status: "published" as const };
+      } catch (cause) {
+        return { status: "not-published" as const, cause };
+      }
+    }),
     ...options.overrides,
   };
 
@@ -134,7 +161,7 @@ function makeContext(
     json,
     error,
     saveElizaConfig,
-    ensureWalletKeysInEnvAndConfig,
+    provisionWalletKeysInEnvAndConfig,
     applyFirstRunVoicePreset,
   };
 }
@@ -256,7 +283,7 @@ describe("handleFirstRunRoutes — wallet keys and options", () => {
     const state = makeState({
       meta: { firstRunComplete: true },
     } as ElizaConfig);
-    const { context, json, ensureWalletKeysInEnvAndConfig } = makeContext(
+    const { context, error, provisionWalletKeysInEnvAndConfig } = makeContext(
       "GET",
       "/api/wallet/keys",
       { state },
@@ -264,68 +291,79 @@ describe("handleFirstRunRoutes — wallet keys and options", () => {
 
     await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
 
-    expect(json).toHaveBeenCalledWith(
+    expect(error).toHaveBeenCalledWith(
       context.res,
-      { error: "Wallet keys are only available during first-run" },
-      403,
+      "First-run setup is already complete",
+      409,
     );
-    expect(ensureWalletKeysInEnvAndConfig).not.toHaveBeenCalled();
+    expect(provisionWalletKeysInEnvAndConfig).not.toHaveBeenCalled();
   });
 
-  it("generates, best-effort saves, and masks first-run wallet keys", async () => {
+  it("fails closed and leaves state/env unchanged when wallet persistence fails", async () => {
     process.env.EVM_PRIVATE_KEY = "evm-secret-1234";
-    process.env.SOLANA_PRIVATE_KEY = "sol";
+    process.env.SOLANA_PRIVATE_KEY = "solana-secret-5678";
     const failingSave = vi.fn(() => {
       throw new Error("disk unavailable");
     });
-    const { context, json, ensureWalletKeysInEnvAndConfig } = makeContext(
-      "GET",
-      "/api/wallet/keys",
-      {
+    const state = makeState({ meta: {}, retained: true } as ElizaConfig);
+    const beforeState = structuredClone(state.config);
+    const { context, json, error, provisionWalletKeysInEnvAndConfig } =
+      makeContext("GET", "/api/wallet/keys", {
+        state,
         overrides: {
-          getWalletAddresses: () => ({
-            evmAddress: "0x1234",
-            solanaAddress: null,
-          }),
           saveElizaConfig: failingSave,
         },
-      },
-    );
+      });
 
     await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
 
-    expect(ensureWalletKeysInEnvAndConfig).toHaveBeenCalledWith(
-      context.state.config,
+    expect(provisionWalletKeysInEnvAndConfig).toHaveBeenCalledWith(
+      expect.not.objectContaining({ retained: undefined }),
+      expect.any(Object),
     );
     expect(failingSave).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "Wallet key persistence is unavailable",
+      503,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(state.config).toEqual(beforeState);
+    expect(process.env.EVM_PRIVATE_KEY).toBe("evm-secret-1234");
+    expect(process.env.SOLANA_PRIVATE_KEY).toBe("solana-secret-5678");
+  });
+
+  it("returns complete masked keys and nonblank derived addresses", async () => {
+    const { context, json } = makeContext("GET", "/api/wallet/keys");
+
+    await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
+
     expect(json).toHaveBeenCalledWith(context.res, {
       evmPrivateKey: "****1234",
       evmAddress: "0x1234",
-      solanaPrivateKey: "****",
-      solanaAddress: "",
+      solanaPrivateKey: "****5678",
+      solanaAddress: "So111",
     });
   });
 
-  it("masks boundary-length keys and tolerates missing addresses", async () => {
-    delete process.env.EVM_PRIVATE_KEY;
-    process.env.SOLANA_PRIVATE_KEY = "abcd";
-    const { context, json } = makeContext("GET", "/api/wallet/keys", {
+  it("rejects typed wallet generation failures instead of fabricating empty fields", async () => {
+    const { context, error, json } = makeContext("GET", "/api/wallet/keys", {
       overrides: {
-        getWalletAddresses: () => ({
-          evmAddress: undefined,
-          solanaAddress: null,
+        provisionWalletKeysInEnvAndConfig: () => ({
+          ok: false,
+          code: "wallet_key_generation_failed",
         }),
       },
     });
 
     await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
 
-    expect(json).toHaveBeenCalledWith(context.res, {
-      evmPrivateKey: "",
-      evmAddress: "",
-      solanaPrivateKey: "****",
-      solanaAddress: "",
-    });
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "Wallet key generation is unavailable",
+      503,
+    );
+    expect(json).not.toHaveBeenCalled();
   });
 
   it("aggregates first-run options and trims the OAuth availability signal", async () => {
@@ -371,6 +409,231 @@ describe("handleFirstRunRoutes — wallet keys and options", () => {
 });
 
 describe("handleFirstRunRoutes — POST /api/first-run", () => {
+  it("denies NONE and USER principals before reading the request body", async () => {
+    for (const [authorization, status] of [
+      [{ ok: false, role: "NONE" as const }, 401],
+      [{ ok: true, role: "USER" as const, principal: "service" }, 403],
+    ] as const) {
+      const denied = makeContext("POST", "/api/first-run", {
+        body: { name: "Ada" },
+        overrides: { authorization },
+      });
+
+      await expect(handleFirstRunRoutes(denied.context)).resolves.toBe(true);
+
+      expect(denied.error).toHaveBeenCalledWith(
+        denied.context.res,
+        authorization.ok ? "Owner role required" : "Unauthorized",
+        status,
+      );
+      expect(denied.context.readJsonBody).not.toHaveBeenCalled();
+      expect(denied.context.commitElizaConfig).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects completed and concurrent submissions before reading their bodies", async () => {
+    const completed = makeContext("POST", "/api/first-run", {
+      state: makeState({
+        meta: { firstRunComplete: true },
+      } as ElizaConfig),
+      body: { name: "Grace" },
+    });
+    await expect(handleFirstRunRoutes(completed.context)).resolves.toBe(true);
+    expect(completed.error).toHaveBeenCalledWith(
+      completed.context.res,
+      "First-run setup is already complete",
+      409,
+    );
+    expect(completed.context.readJsonBody).not.toHaveBeenCalled();
+
+    let releaseBody: (() => void) | undefined;
+    const bodyGate = new Promise<void>((resolve) => {
+      releaseBody = resolve;
+    });
+    const state = makeState();
+    const first = makeContext("POST", "/api/first-run", {
+      state,
+      body: { name: "Ada" },
+      overrides: {
+        readJsonBody: vi.fn(async () => {
+          await bodyGate;
+          return { name: "Ada" };
+        }) as FirstRunRouteContext["readJsonBody"],
+      },
+    });
+    const second = makeContext("POST", "/api/first-run", {
+      state,
+      body: { name: "Grace" },
+    });
+
+    const firstRun = handleFirstRunRoutes(first.context);
+    await Promise.resolve();
+    await expect(handleFirstRunRoutes(second.context)).resolves.toBe(true);
+    expect(second.error).toHaveBeenCalledWith(
+      second.context.res,
+      "First-run setup is already in progress",
+      409,
+    );
+    expect(second.context.readJsonBody).not.toHaveBeenCalled();
+    releaseBody?.();
+    await expect(firstRun).resolves.toBe(true);
+  });
+
+  it("compensates DB and vault changes and preserves live state on an unpublished commit", async () => {
+    const config = {
+      env: { ELIZA_WALLET_OS_STORE: "true" },
+      agents: { list: [{ id: "main", default: true }] },
+    } as ElizaConfig;
+    const character = { name: "Before", bio: ["old"] };
+    const persistedAgent = {
+      name: "Before",
+      metadata: { retained: true },
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const updateAgent = vi.fn(async () => true);
+    const runtime = {
+      agentId: "agent-id",
+      character,
+      getAgent: vi.fn(async () => persistedAgent),
+      updateAgent,
+      deleteAgent: vi.fn(async () => true),
+      reportError: vi.fn(),
+    } as unknown as AgentRuntime;
+    const state = makeState(config);
+    state.runtime = runtime;
+    const beforeState = structuredClone({
+      config: state.config,
+      agentName: state.agentName,
+      adminEntityId: state.adminEntityId,
+      chatUserId: state.chatUserId,
+      character,
+    });
+    const secrets = new Map<string, string>();
+    const vault = {
+      has: async (key: string) => secrets.has(key),
+      reveal: async (key: string) => secrets.get(key) ?? "",
+      set: async (key: string, value: string) => {
+        secrets.set(key, value);
+      },
+      remove: async (key: string) => {
+        secrets.delete(key);
+      },
+    };
+    const beforeEvm = process.env.EVM_PRIVATE_KEY;
+    const beforeSolana = process.env.SOLANA_PRIVATE_KEY;
+    const failed = makeContext("POST", "/api/first-run", {
+      state,
+      body: { name: "Ada", bio: ["new"] },
+      overrides: {
+        walletVault: vault as FirstRunRouteContext["walletVault"],
+        commitElizaConfig: () => ({
+          status: "not-published",
+          cause: new Error("disk unavailable"),
+        }),
+      },
+    });
+
+    await expect(handleFirstRunRoutes(failed.context)).resolves.toBe(true);
+
+    expect(failed.error).toHaveBeenCalledWith(
+      failed.context.res,
+      "First-run setup is unavailable",
+      503,
+    );
+    expect(failed.json).not.toHaveBeenCalled();
+    expect(state.config).toEqual(beforeState.config);
+    expect(state.agentName).toBe(beforeState.agentName);
+    expect(state.adminEntityId).toBe(beforeState.adminEntityId);
+    expect(state.chatUserId).toBe(beforeState.chatUserId);
+    expect(character).toEqual(beforeState.character);
+    expect(process.env.EVM_PRIVATE_KEY).toBe(beforeEvm);
+    expect(process.env.SOLANA_PRIVATE_KEY).toBe(beforeSolana);
+    expect(secrets.size).toBe(0);
+    expect(updateAgent).toHaveBeenCalledTimes(2);
+    expect(updateAgent).toHaveBeenLastCalledWith(
+      "agent-id",
+      expect.objectContaining({
+        name: "Before",
+        metadata: { retained: true },
+      }),
+    );
+  });
+
+  it("retries fail-once vault compensation and reports both transaction errors", async () => {
+    const config = {
+      env: { ELIZA_WALLET_OS_STORE: "true" },
+      agents: { list: [{ id: "main", default: true }] },
+    } as ElizaConfig;
+    const primaryFailure = new Error("disk unavailable");
+    const rollbackFailure = new Error("vault remove temporarily unavailable");
+    const reportError = vi.fn();
+    const runtime = {
+      agentId: "agent-id",
+      character: { name: "Before" },
+      getAgent: vi.fn(async () => null),
+      updateAgent: vi.fn(async () => true),
+      deleteAgent: vi.fn(async () => true),
+      reportError,
+    } as unknown as AgentRuntime;
+    const state = makeState(config);
+    state.runtime = runtime;
+    const secrets = new Map<string, string>();
+    const removeOrder: string[] = [];
+    const vault = {
+      has: async (key: string) => secrets.has(key),
+      reveal: async (key: string) => secrets.get(key) ?? "",
+      set: async (key: string, value: string) => {
+        secrets.set(key, value);
+      },
+      remove: async (key: string) => {
+        removeOrder.push(key);
+        secrets.delete(key);
+        if (removeOrder.length === 1) throw rollbackFailure;
+      },
+    };
+    const failed = makeContext("POST", "/api/first-run", {
+      state,
+      body: { name: "Ada" },
+      overrides: {
+        walletVault: vault as FirstRunRouteContext["walletVault"],
+        commitElizaConfig: () => ({
+          status: "not-published",
+          cause: primaryFailure,
+        }),
+      },
+    });
+
+    await expect(handleFirstRunRoutes(failed.context)).resolves.toBe(true);
+
+    expect(removeOrder).toEqual([
+      "SOLANA_PRIVATE_KEY",
+      "SOLANA_PRIVATE_KEY",
+      "EVM_PRIVATE_KEY",
+    ]);
+    expect(secrets.size).toBe(0);
+    expect(failed.error).toHaveBeenCalledWith(
+      failed.context.res,
+      "First-run setup is unavailable",
+      503,
+    );
+    const transactionReport = reportError.mock.calls.find(
+      ([scope]) => scope === "first-run.submit.transaction",
+    );
+    expect(transactionReport).toBeDefined();
+    const reportedError = transactionReport?.[1];
+    expect(reportedError).toBeInstanceOf(ElizaError);
+    expect((reportedError as ElizaError).code).toBe(
+      "WALLET_KEY_COMMIT_COMPENSATION_FAILED",
+    );
+    const combinedCause = (reportedError as ElizaError).cause;
+    expect(combinedCause).toBeInstanceOf(AggregateError);
+    expect((combinedCause as AggregateError).errors[0]).toBe(primaryFailure);
+    const reportedRollback = (combinedCause as AggregateError).errors[1];
+    expect(reportedRollback).toBeInstanceOf(ElizaError);
+    expect((reportedRollback as ElizaError).cause).toBe(rollbackFailure);
+  });
+
   it("rejects invalid canonical sections before any persistence", async () => {
     const badTarget = makeContext("POST", "/api/first-run", {
       body: { name: "Ada", deploymentTarget: { runtime: "bogus" } },
@@ -412,6 +675,7 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
       models: { nano: "n", small: "s", embedder: "e" },
     } as unknown as ElizaConfig;
     const state = makeState(config);
+    vi.mocked(loadElizaConfig).mockReturnValue(config);
     const body = {
       name: "Ada",
       deploymentTarget: { runtime: "remote", provider: "remote" },
@@ -439,23 +703,30 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
     await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
 
     expect(error).not.toHaveBeenCalled();
-    expect(applyCanonicalFirstRunConfig).toHaveBeenCalledWith(config, {
+    const committedConfig = state.config;
+    expect(applyCanonicalFirstRunConfig).toHaveBeenCalledWith(committedConfig, {
       deploymentTarget: { runtime: "local" },
       linkedAccounts: null,
       serviceRouting: rewrittenRouting,
       clearRoutes: [],
     });
-    expect(applyFirstRunCredentialPersistence).toHaveBeenCalledWith(config, {
-      credentialInputs: { llmApiKey: "sk-live-1234" },
-      deploymentTarget: { runtime: "local" },
-      serviceRouting: rewrittenRouting,
-    });
+    expect(applyFirstRunCredentialPersistence).toHaveBeenCalledWith(
+      committedConfig,
+      expect.objectContaining({
+        credentialInputs: { llmApiKey: "sk-live-1234" },
+        deploymentTarget: { runtime: "local" },
+        serviceRouting: rewrittenRouting,
+        environment: expect.any(Object),
+      }),
+    );
     expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
     expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
-    expect((config as Record<string, unknown>).models).toEqual({
+    expect((committedConfig as Record<string, unknown>).models).toEqual({
       embedder: "e",
     });
-    expect(config.agents?.defaults?.model).toEqual({ fallback: "keep" });
+    expect(committedConfig.agents?.defaults?.model).toEqual({
+      fallback: "keep",
+    });
     expect(json).toHaveBeenCalledWith(context.res, { ok: true });
   });
 
@@ -466,6 +737,7 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
     ];
     const config = {} as ElizaConfig;
     const state = makeState(config);
+    vi.mocked(loadElizaConfig).mockReturnValue(config);
     const { context, json, error } = makeContext("POST", "/api/first-run", {
       state,
       body: {
@@ -479,26 +751,34 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
     await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
 
     expect(error).not.toHaveBeenCalled();
-    expect(config.ui?.avatarIndex).toBe(0);
-    expect(config.ui?.presetId).toBeUndefined();
-    expect(config.ui?.theme).toBeUndefined();
-    expect(config.agents?.defaults?.sandbox).toBeUndefined();
-    expect(config.agents?.list?.[0]?.messageExamples).toEqual(messageExamples);
+    expect(state.config.ui?.avatarIndex).toBe(0);
+    expect(state.config.ui?.presetId).toBeUndefined();
+    expect(state.config.ui?.theme).toBeUndefined();
+    expect(state.config.agents?.defaults?.sandbox).toBeUndefined();
+    expect(state.config.agents?.list?.[0]?.messageExamples).toEqual(
+      messageExamples,
+    );
     expect(json).toHaveBeenCalledWith(context.res, { ok: true });
   });
 
   it("resolves language from body first, then UI header, then configured language", async () => {
     vi.mocked(configFileExists).mockReturnValue(true);
+    const headerConfig = { ui: { language: "es" } } as unknown as ElizaConfig;
+    vi.mocked(loadElizaConfig).mockReturnValue(headerConfig);
     const headerWins = makeContext("POST", "/api/first-run", {
-      state: makeState({ ui: { language: "es" } } as unknown as ElizaConfig),
+      state: makeState(headerConfig),
       body: { name: "Ada" },
       overrides: { readUiLanguageHeader: () => "de" },
     });
     await expect(handleFirstRunRoutes(headerWins.context)).resolves.toBe(true);
     expect(headerWins.context.state.config.ui?.language).toBe("de");
 
+    const fallbackConfig = {
+      ui: { language: "es" },
+    } as unknown as ElizaConfig;
+    vi.mocked(loadElizaConfig).mockReturnValue(fallbackConfig);
     const headerFallback = makeContext("POST", "/api/first-run", {
-      state: makeState({ ui: { language: "es" } } as unknown as ElizaConfig),
+      state: makeState(fallbackConfig),
       body: { name: "Ada" },
     });
     await expect(handleFirstRunRoutes(headerFallback.context)).resolves.toBe(
@@ -511,6 +791,7 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
     vi.mocked(configFileExists).mockReturnValue(true);
     const config = {} as ElizaConfig;
     const state = makeState(config);
+    vi.mocked(loadElizaConfig).mockReturnValue(config);
     const { context, json } = makeContext("POST", "/api/first-run", {
       state,
       body: {
@@ -562,8 +843,9 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
       features: { existingFeature: true },
       ui: { assistant: { existing: "kept" } },
     } as unknown as ElizaConfig;
+    vi.mocked(loadElizaConfig).mockReturnValue(config);
     const character: Record<string, unknown> = { name: "Before" };
-    const updateAgent = vi.fn(async () => undefined);
+    const updateAgent = vi.fn(async () => true);
     const runtime = {
       agentId: "agent-id",
       character,
@@ -611,19 +893,23 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
       error,
       saveElizaConfig,
       applyFirstRunVoicePreset,
-      ensureWalletKeysInEnvAndConfig,
+      provisionWalletKeysInEnvAndConfig,
     } = makeContext("POST", "/api/first-run", { state, body });
 
     await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
 
     expect(error).not.toHaveBeenCalled();
-    expect(config.meta?.firstRunComplete).toBe(true);
-    expect(config.agents?.defaults?.adminEntityId).toBe(state.adminEntityId);
+    const committedConfig = state.config;
+    expect(config.meta?.firstRunComplete).not.toBe(true);
+    expect(committedConfig.meta?.firstRunComplete).toBe(true);
+    expect(committedConfig.agents?.defaults?.adminEntityId).toBe(
+      state.adminEntityId,
+    );
     expect(state.chatUserId).toBe(state.adminEntityId);
     expect(state.chatConnectionReady).toBeNull();
     expect(state.chatConnectionPromise).toBeNull();
     expect(state.agentName).toBe("Ada");
-    expect(config.agents?.list?.[0]).toEqual(
+    expect(committedConfig.agents?.list?.[0]).toEqual(
       expect.objectContaining({
         name: "Ada",
         bio: ["Builder"],
@@ -639,7 +925,7 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
         ],
       }),
     );
-    expect(config.ui).toEqual(
+    expect(committedConfig.ui).toEqual(
       expect.objectContaining({
         assistant: expect.objectContaining({ name: "Ada" }),
         avatarIndex: 7,
@@ -648,8 +934,10 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
         theme: "haxor",
       }),
     );
-    expect(config.agents?.defaults?.sandbox).toEqual({ mode: "standard" });
-    expect(config.connectors).toEqual(
+    expect(committedConfig.agents?.defaults?.sandbox).toEqual({
+      mode: "standard",
+    });
+    expect(committedConfig.connectors).toEqual(
       expect.objectContaining({
         telegram: { botToken: "telegram-secret" },
         discord: { token: "discord-secret" },
@@ -658,11 +946,11 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
         blooio: { apiKey: "blooio-secret", fromNumber: "+15551111" },
       }),
     );
-    expect(config.features).toEqual({
+    expect(committedConfig.features).toEqual({
       existingFeature: true,
       shellEnabled: true,
     });
-    expect(config.env).toEqual(
+    expect(committedConfig.env).toEqual(
       expect.objectContaining({
         GITHUB_TOKEN: "github-secret",
         TWILIO_ACCOUNT_SID: "sid",
@@ -697,21 +985,25 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
       }),
     );
     expect(applyFirstRunVoicePreset).toHaveBeenCalledWith(
-      config,
+      committedConfig,
       expect.objectContaining({ name: "Ada", presetId: "  operator  " }),
       "fr",
     );
-    expect(ensureWalletKeysInEnvAndConfig).toHaveBeenCalledWith(config);
-    expect(saveElizaConfig).toHaveBeenCalledWith(config);
+    expect(provisionWalletKeysInEnvAndConfig).toHaveBeenCalledWith(
+      committedConfig,
+      expect.any(Object),
+    );
+    expect(saveElizaConfig).toHaveBeenCalledWith(committedConfig);
     expect(json).toHaveBeenCalledWith(context.res, { ok: true });
   });
 
-  it("reports save and post-save durability failures without success", async () => {
+  it("reports unpublished and uncertain commits without success", async () => {
     const saveFailure = makeContext("POST", "/api/first-run", {
       body: { name: "Ada" },
       overrides: {
-        saveElizaConfig: vi.fn(() => {
-          throw new Error("read-only filesystem");
+        commitElizaConfig: () => ({
+          status: "not-published",
+          cause: new Error("read-only filesystem"),
         }),
       },
     });
@@ -719,22 +1011,28 @@ describe("handleFirstRunRoutes — POST /api/first-run", () => {
     await expect(handleFirstRunRoutes(saveFailure.context)).resolves.toBe(true);
     expect(saveFailure.error).toHaveBeenCalledWith(
       saveFailure.context.res,
-      "Failed to save configuration",
-      500,
+      "First-run setup is unavailable",
+      503,
     );
     expect(saveFailure.json).not.toHaveBeenCalled();
 
-    const missingAfterSave = makeContext("POST", "/api/first-run", {
+    const uncertainCommit = makeContext("POST", "/api/first-run", {
       body: { name: "Grace" },
+      overrides: {
+        commitElizaConfig: () => ({
+          status: "uncertain",
+          cause: new Error("rename state unknown"),
+        }),
+      },
     });
-    await expect(handleFirstRunRoutes(missingAfterSave.context)).resolves.toBe(
+    await expect(handleFirstRunRoutes(uncertainCommit.context)).resolves.toBe(
       true,
     );
-    expect(missingAfterSave.error).toHaveBeenCalledWith(
-      missingAfterSave.context.res,
-      "Configuration file was not persisted to disk",
-      500,
+    expect(uncertainCommit.error).toHaveBeenCalledWith(
+      uncertainCommit.context.res,
+      "First-run persistence state is uncertain",
+      503,
     );
-    expect(missingAfterSave.json).not.toHaveBeenCalled();
+    expect(uncertainCommit.json).not.toHaveBeenCalled();
   });
 });

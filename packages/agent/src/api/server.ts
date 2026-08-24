@@ -337,6 +337,8 @@ function getPluginRegistryApi(): Promise<
 
 import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import {
+  commitElizaConfig,
+  configFileExists,
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
@@ -352,6 +354,7 @@ import {
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
+  hasDurableHostVault,
 } from "../runtime/host-bridge.ts";
 import {
   resolvePreferredProviderId,
@@ -1175,6 +1178,7 @@ import {
   getCloudProviderOptions,
   getProviderOptions,
   isBlockedObjectKey as isBlockedObjectKeyFromConfig,
+  provisionWalletKeysInEnvAndConfig,
   readUiLanguageHeader,
   redactConfigSecrets,
   redactDeep,
@@ -1182,6 +1186,11 @@ import {
   resolveDefaultAgentName,
   stripRedactedPlaceholderValuesDeep,
 } from "./server-helpers-config.ts";
+import {
+  beginWalletKeyPersistence,
+  hydrateWalletKeysFromVault,
+  isWalletOsStoreEnabled,
+} from "./wallet-key-persistence.ts";
 
 export { isSafeResetStateDir } from "./server-helpers-config.ts";
 
@@ -1349,9 +1358,12 @@ import {
   ensurePairingCode as _ensurePairingCode,
   getConfiguredApiToken as _getConfiguredApiToken,
   getPairingExpiresAt as _getPairingExpiresAt,
+  hasPresentedAuthCredential as _hasPresentedAuthCredential,
+  hasPresentedHostCredential as _hasPresentedHostCredential,
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isBoundaryRoleAuthorized as _isBoundaryRoleAuthorized,
+  isConfiguredApiTokenAuthorized as _isConfiguredApiTokenAuthorized,
   isCredentialedCorsOrigin as _isCredentialedCorsOrigin,
   isServerTokenAuthorized as _isServerTokenAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
@@ -1398,6 +1410,9 @@ import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
+const hasPresentedAuthCredential = _hasPresentedAuthCredential;
+const hasPresentedHostCredential = _hasPresentedHostCredential;
+const isConfiguredApiTokenAuthorized = _isConfiguredApiTokenAuthorized;
 const resolveBoundaryRole = _resolveBoundaryRole;
 const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isBoundaryRoleAuthorized = _isBoundaryRoleAuthorized;
@@ -1592,11 +1607,6 @@ async function handleRequest(
     isCloudProvisionedContainer = cloudApi.isCloudProvisionedContainer;
     handleCloudStatusRoutes = cloudApi.handleCloudStatusRoutes;
   }
-  const isCloudProvisioned = isCloudProvisionedContainer();
-  const isCloudFirstRunStatusEndpoint =
-    method === "GET" &&
-    pathname === "/api/first-run/status" &&
-    isCloudProvisioned;
   // app-core authenticates the session-tier dashboard reads
   // (/api/cloud/status, /api/cloud/credits) before forwarding into the agent
   // server. They need no dedicated exemption here: app-core's forwarded
@@ -1657,6 +1667,59 @@ async function handleRequest(
     };
   const isHostSessionAuthorized = async (): Promise<boolean> =>
     (await resolveHostSessionAuthorization()).ok;
+
+  const isExactFirstRunRoute =
+    (method === "GET" &&
+      (pathname === "/api/first-run/status" ||
+        pathname === "/api/first-run/options" ||
+        pathname === "/api/wallet/keys")) ||
+    (method === "POST" && pathname === "/api/first-run");
+  const resolveFirstRunAuthorization =
+    async (): Promise<AgentHttpRequestAuthorization> => {
+      if (isServerTokenAuthorized(req)) {
+        return { ok: true, role: "USER", principal: "service_gateway" };
+      }
+
+      if (hasPresentedHostCredential(req)) {
+        const bridge = getAgentHostBridge();
+        const resolveAuthorization = bridge.resolveHttpRequestAuthorization;
+        if (typeof resolveAuthorization === "function") {
+          const authorization = await resolveAuthorization(req, state.runtime, {
+            allowCookieAuth: allowHostCookieAuth,
+            allowTrustedLocalBypass: false,
+            allowBearerAuth: true,
+          });
+          if (authorization.ok) return authorization;
+        }
+      }
+
+      if (isConfiguredApiTokenAuthorized(req)) {
+        return { ok: true, role: "OWNER", principal: "configured_api_token" };
+      }
+      if (hasPresentedAuthCredential(req)) {
+        return { ok: false, role: "NONE" };
+      }
+
+      if (isTrustedLocalRequest(req)) {
+        if (!configFileExists()) {
+          return { ok: true, role: "OWNER", principal: "onboarding_loopback" };
+        }
+        try {
+          if (!hasPersistedFirstRunState(loadElizaConfig())) {
+            return {
+              ok: true,
+              role: "OWNER",
+              principal: "onboarding_loopback",
+            };
+          }
+        } catch (cause) {
+          // error-policy:J1 the authorization boundary denies credential-free
+          // loopback when durable onboarding state cannot be classified.
+          state.runtime?.reportError("first-run.authorization.config", cause);
+        }
+      }
+      return { ok: false, role: "NONE" };
+    };
 
   const canonicalizeRestartReason = (reason: string): string => {
     if (
@@ -1837,6 +1900,44 @@ async function handleRequest(
     return;
   }
 
+  if (isExactFirstRunRoute) {
+    const authorization = await resolveFirstRunAuthorization();
+    if (
+      await handleFirstRunRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state,
+        authorization,
+        json,
+        error,
+        readJsonBody,
+        isCloudProvisionedContainer,
+        hasPersistedFirstRunState,
+        provisionWalletKeysInEnvAndConfig,
+        walletVault: hasDurableHostVault()
+          ? getAgentHostBridge().sharedVault()
+          : null,
+        pickRandomNames,
+        getStylePresets,
+        getProviderOptions,
+        getCloudProviderOptions,
+        getModelOptions,
+        getInventoryProviderOptions,
+        resolveConfiguredCharacterLanguage,
+        normalizeCharacterLanguage,
+        readUiLanguageHeader,
+        applyFirstRunVoicePreset,
+        saveElizaConfig,
+        commitElizaConfig,
+      })
+    ) {
+      return;
+    }
+  }
+
   if (requireBrowserCompanionOwnerSession) {
     if (!hasBrowserCompanionOwnerSessionCookie(req)) {
       json(res, { error: "Owner session required" }, 401);
@@ -1862,7 +1963,6 @@ async function handleRequest(
     isAuthProtectedPath &&
     !isAuthEndpoint &&
     !isHealthEndpoint &&
-    !isCloudFirstRunStatusEndpoint &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -2241,43 +2341,6 @@ async function handleRequest(
       state,
       json,
       error,
-    })
-  ) {
-    return;
-  }
-
-  if (
-    await handleFirstRunRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      state,
-      json,
-      error,
-      readJsonBody,
-      isCloudProvisionedContainer,
-      hasPersistedFirstRunState,
-      ensureWalletKeysInEnvAndConfig,
-      getWalletAddresses:
-        pathname === "/api/wallet/keys"
-          ? (await getCoreWalletApi()).getWalletAddresses
-          : () => ({
-              evmAddress: null,
-              solanaAddress: null,
-            }),
-      pickRandomNames,
-      getStylePresets,
-      getProviderOptions,
-      getCloudProviderOptions,
-      getModelOptions,
-      getInventoryProviderOptions,
-      resolveConfiguredCharacterLanguage,
-      normalizeCharacterLanguage,
-      readUiLanguageHeader,
-      applyFirstRunVoicePreset,
-      saveElizaConfig,
     })
   ) {
     return;
@@ -3758,14 +3821,65 @@ export async function startApiServer(opts?: {
     walletAutoProvisionRaw === "true" ||
     walletAutoProvisionRaw === "on" ||
     walletAutoProvisionRaw === "yes";
-  if (walletAutoProvisionEnabled && ensureWalletKeysInEnvAndConfig(config)) {
-    try {
-      saveElizaConfig(config);
-    } catch (err) {
-      logger.warn(
-        `[eliza-api] Failed to persist generated wallet keys: ${err instanceof Error ? err.message : err}`,
-      );
+  if (walletAutoProvisionEnabled) {
+    const originalEnvironment = { ...process.env };
+    const plannedEnvironment = { ...process.env };
+    const stagedConfig = structuredClone(config);
+    const osStoreSetting = plannedEnvironment.ELIZA_WALLET_OS_STORE;
+    if (
+      !isWalletOsStoreEnabled(stagedConfig) &&
+      typeof osStoreSetting === "string" &&
+      ["1", "true", "on", "yes"].includes(osStoreSetting.trim().toLowerCase())
+    ) {
+      if (!stagedConfig.env) stagedConfig.env = {};
+      (stagedConfig.env as Record<string, string>).ELIZA_WALLET_OS_STORE =
+        osStoreSetting;
     }
+    const walletVault = hasDurableHostVault()
+      ? getAgentHostBridge().sharedVault()
+      : null;
+    await hydrateWalletKeysFromVault(
+      stagedConfig,
+      plannedEnvironment,
+      walletVault,
+    );
+    const wallet = provisionWalletKeysInEnvAndConfig(
+      stagedConfig,
+      plannedEnvironment,
+    );
+    if (!wallet.ok) {
+      throw new ElizaError("Failed to provision startup wallet keys", {
+        code: "AGENT_WALLET_PROVISION_FAILED",
+        severity: "fatal",
+      });
+    }
+    const persistence = await beginWalletKeyPersistence(
+      stagedConfig,
+      wallet,
+      walletVault,
+      "wallet-startup",
+    );
+    if (wallet.generated || persistence.stagedVault) {
+      const commit = await persistence.commitConfig(
+        stagedConfig,
+        commitElizaConfig,
+      );
+      if (commit.status !== "published") {
+        throw new ElizaError("Failed to persist startup wallet keys", {
+          code:
+            commit.status === "uncertain"
+              ? "AGENT_WALLET_PERSISTENCE_UNCERTAIN"
+              : "AGENT_WALLET_PERSISTENCE_FAILED",
+          cause: commit.cause,
+          severity: "fatal",
+        });
+      }
+      config = stagedConfig;
+    }
+    for (const key of Object.keys(originalEnvironment)) {
+      if (!(key in plannedEnvironment)) delete process.env[key];
+    }
+    Object.assign(process.env, plannedEnvironment);
   }
 
   const blockOnStewardWalletCache =

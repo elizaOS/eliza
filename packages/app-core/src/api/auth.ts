@@ -581,7 +581,11 @@ export async function ensureRouteMinRole(
   res: http.ServerResponse,
   state: CompatStateLike,
   minRole: RoleGateRole,
-  options: { skipCsrf?: boolean; now?: number } = {},
+  options: {
+    allowTrustedLocalBypass?: boolean;
+    skipCsrf?: boolean;
+    now?: number;
+  } = {},
 ): Promise<boolean> {
   const resolved = await resolveAuthorizedRouteRole(req, { ...options, state });
   if (!resolved.ok) {

@@ -104,6 +104,7 @@ function deriveSolanaAddress(privateKeyString: string): string {
 
 export function syncSolanaPublicKeyEnv(
   privateKey = process.env.SOLANA_PRIVATE_KEY,
+  environment: NodeJS.ProcessEnv = process.env,
 ): string | null {
   const trimmed = privateKey?.trim();
   if (!trimmed || PLACEHOLDER_RE.test(trimmed)) {
@@ -112,8 +113,8 @@ export function syncSolanaPublicKeyEnv(
 
   try {
     const publicKey = deriveSolanaAddress(trimmed);
-    process.env.SOLANA_PUBLIC_KEY = publicKey;
-    process.env.WALLET_PUBLIC_KEY = publicKey;
+    environment.SOLANA_PUBLIC_KEY = publicKey;
+    environment.WALLET_PUBLIC_KEY = publicKey;
     return publicKey;
   } catch {
     return null;

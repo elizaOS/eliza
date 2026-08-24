@@ -11,6 +11,9 @@ import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  hasPresentedAuthCredential,
+  hasPresentedHostCredential,
+  isConfiguredApiTokenAuthorized,
   isTrustedLocalRequest,
   isWebSocketAuthorized,
   resolveBoundaryRole,
@@ -40,6 +43,7 @@ const ENV_KEYS = [
   "ELIZA_API_TOKEN",
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZAOS_CLOUD_API_KEY",
+  "ELIZA_ALLOW_WS_QUERY_TOKEN",
   "NODE_ENV",
 ] as const;
 
@@ -92,6 +96,86 @@ describe("agent isTrustedLocalRequest wrapper (policy gates)", () => {
     expect(isTrustedLocalRequest(makeReq({ host: "127.0.0.1.evil.com" }))).toBe(
       false,
     );
+  });
+});
+
+describe("presented credential detection", () => {
+  beforeEach(clearEnv);
+  afterEach(clearEnv);
+
+  it("distinguishes absent credentials from empty or wrong accepted channels", () => {
+    expect(hasPresentedAuthCredential(localReq())).toBe(false);
+    expect(
+      hasPresentedAuthCredential(
+        makeReq({ host: "localhost:2138", authorization: "" }),
+      ),
+    ).toBe(true);
+    expect(
+      hasPresentedAuthCredential(
+        makeReq({ host: "localhost:2138", "x-server-token": "wrong" }),
+      ),
+    ).toBe(true);
+    expect(
+      hasPresentedAuthCredential(
+        makeReq({ host: "localhost:2138", "x-eliza-token": "wrong" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects host bearer aliases and empty eliza_session cookie attempts", () => {
+    expect(
+      hasPresentedHostCredential(
+        makeReq({ host: "localhost:2138", "x-api-token": "wrong" }),
+      ),
+    ).toBe(true);
+    expect(
+      hasPresentedHostCredential(
+        makeReq({ host: "localhost:2138", cookie: "eliza_session=" }),
+      ),
+    ).toBe(true);
+    expect(
+      hasPresentedHostCredential(
+        makeReq({ host: "localhost:2138", cookie: "theme=dark" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("detects only gated SSE query-token candidates", () => {
+    const req = makeReq({
+      host: "localhost:2138",
+      accept: "text/event-stream",
+    });
+    req.method = "GET";
+    req.url = "/api/events?token=";
+    expect(hasPresentedAuthCredential(req)).toBe(false);
+
+    process.env.ELIZA_ALLOW_WS_QUERY_TOKEN = "1";
+    expect(hasPresentedAuthCredential(req)).toBe(true);
+  });
+
+  it("validates configured bearer and alias tokens without loopback trust", () => {
+    process.env.ELIZA_API_TOKEN = "configured-secret";
+    expect(
+      isConfiguredApiTokenAuthorized(
+        makeReq({
+          host: "localhost:2138",
+          authorization: "Bearer configured-secret",
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isConfiguredApiTokenAuthorized(
+        makeReq({
+          host: "localhost:2138",
+          "x-api-key": "configured-secret",
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isConfiguredApiTokenAuthorized(
+        makeReq({ host: "localhost:2138", "x-api-token": "configured-secret" }),
+      ),
+    ).toBe(false);
   });
 });
 

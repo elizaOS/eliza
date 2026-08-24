@@ -23,8 +23,8 @@
  * `OLLAMA_BASE_URL` dev loops, provisioned containers) keep booting the
  * runtime immediately, exactly as before.
  */
-import { PROVIDER_PLUGIN_MAP } from "@elizaos/agent";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { PROVIDER_PLUGIN_MAP } from "@elizaos/agent/runtime/plugin-collector";
 import { logger } from "@elizaos/core";
 import { hasCompatPersistedFirstRunState } from "./compat-route-shared";
 import { isCloudProvisioned } from "./server-first-run-helpers";

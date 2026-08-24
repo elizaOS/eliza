@@ -76,8 +76,11 @@ export function generateWalletKeys(): WalletKeys {
   };
 }
 
-export function setSolanaWalletEnv(privateKey: string): string | null {
+export function setSolanaWalletEnv(
+  privateKey: string,
+  environment: NodeJS.ProcessEnv = process.env,
+): string | null {
   const trimmed = privateKey.trim();
-  process.env.SOLANA_PRIVATE_KEY = trimmed;
-  return syncSolanaPublicKeyEnv(trimmed);
+  environment.SOLANA_PRIVATE_KEY = trimmed;
+  return syncSolanaPublicKeyEnv(trimmed, environment);
 }

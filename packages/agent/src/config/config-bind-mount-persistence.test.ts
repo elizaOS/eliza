@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __setConfigRenameSyncForTests,
+  commitElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
 } from "./config.ts";
@@ -40,6 +41,42 @@ afterEach(() => {
 });
 
 describe("saveElizaConfig bind-mount fallback", () => {
+  it("classifies a pre-rename failure as not-published and retains old bytes", () => {
+    __setConfigRenameSyncForTests(() => {
+      const error = new Error("write refused") as NodeJS.ErrnoException;
+      error.code = "EACCES";
+      throw error;
+    });
+
+    const result = commitElizaConfig({
+      plugins: { entries: { staged: { enabled: true } } },
+    } as never);
+
+    expect(result.status).toBe("not-published");
+    expect(loadElizaConfig().plugins?.entries).toEqual({
+      original: { enabled: true },
+    });
+  });
+
+  it("classifies rename-then-throw as published when exact staged bytes won", () => {
+    const realRename = fs.renameSync.bind(fs);
+    __setConfigRenameSyncForTests((from, to) => {
+      realRename(from, to);
+      const error = new Error("directory sync failed") as NodeJS.ErrnoException;
+      error.code = "EIO";
+      throw error;
+    });
+
+    const result = commitElizaConfig({
+      plugins: { entries: { staged: { enabled: true } } },
+    } as never);
+
+    expect(result).toEqual({ status: "published" });
+    expect(loadElizaConfig().plugins?.entries).toEqual({
+      staged: { enabled: true },
+    });
+  });
+
   it("retires the former aggregate view plugin without removing canonical views", () => {
     fs.writeFileSync(
       configPath,

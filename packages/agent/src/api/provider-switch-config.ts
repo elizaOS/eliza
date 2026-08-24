@@ -213,18 +213,19 @@ function setEnvValue(
   config: MutableElizaConfig,
   key: string,
   value: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env,
 ): void {
   const env = ensureEnv(config);
   const vars = ensureEnvVars(config);
   if (value) {
     env[key] = value;
     vars[key] = value;
-    process.env[key] = value;
+    environment[key] = value;
     return;
   }
   delete env[key];
   delete vars[key];
-  delete process.env[key];
+  delete environment[key];
   pruneEnv(config);
 }
 
@@ -292,16 +293,18 @@ function clearRemoteProviderConfig(config: MutableElizaConfig): void {
 // pairs with them (same cloud key for both SDKs). Only clears a key when its matching
 // base URL pointed at ElizaCloud—so local-provider switches that never set those URLs
 // keep multi-key preservation (provider-switch.e2e).
-function clearElizaCloudCliProxyEnv(): void {
+function clearElizaCloudCliProxyEnv(
+  environment: NodeJS.ProcessEnv = process.env,
+): void {
   const pairs = [
     ["OPENAI_BASE_URL", "OPENAI_API_KEY"],
     ["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY"],
   ] as const;
   for (const [baseKey, apiKey] of pairs) {
-    const v = process.env[baseKey];
+    const v = environment[baseKey];
     if (v && /elizacloud/i.test(v)) {
-      delete process.env[baseKey];
-      delete process.env[apiKey];
+      delete environment[baseKey];
+      delete environment[apiKey];
     }
   }
 }
@@ -309,6 +312,7 @@ function clearElizaCloudCliProxyEnv(): void {
 function persistLinkedCloudApiKey(
   config: MutableElizaConfig,
   apiKey: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env,
 ): void {
   const normalizedApiKey = trimToUndefined(apiKey);
   if (!normalizedApiKey) {
@@ -317,7 +321,7 @@ function persistLinkedCloudApiKey(
 
   const cloud = ensureCloud(config);
   cloud.apiKey = normalizedApiKey;
-  process.env.ELIZAOS_CLOUD_API_KEY = normalizedApiKey;
+  environment.ELIZAOS_CLOUD_API_KEY = normalizedApiKey;
 
   applyCanonicalFirstRunConfig(config, {
     linkedAccounts: {
@@ -336,13 +340,14 @@ function applyLocalProviderCapabilities(
     apiKey?: string;
     primaryModel?: string;
   },
+  environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const normalizedProvider = normalizeFirstRunProviderId(selection.backend);
   if (!normalizedProvider || normalizedProvider === "elizacloud") {
     return Promise.resolve();
   }
 
-  clearElizaCloudCliProxyEnv();
+  clearElizaCloudCliProxyEnv(environment);
   clearRemoteProviderConfig(config);
   clearCloudModelSelections(config);
 
@@ -377,13 +382,13 @@ function applyLocalProviderCapabilities(
   if (providerOption?.envKey) {
     const apiKey = trimToUndefined(selection.apiKey);
     if (apiKey) {
-      setEnvValue(config, providerOption.envKey, apiKey);
+      setEnvValue(config, providerOption.envKey, apiKey, environment);
     }
   } else {
     for (const envKey of getFirstRunProviderSignalEnvKeys(normalizedProvider)) {
       const value = trimToUndefined(selection.apiKey);
       if (value) {
-        setEnvValue(config, envKey, value);
+        setEnvValue(config, envKey, value, environment);
       }
     }
   }
@@ -399,7 +404,7 @@ function applyLocalProviderCapabilities(
 
   // Set provider-specific default model names so TEXT_SMALL and TEXT_LARGE
   // resolve to sensible models even when the user didn't override them.
-  applyDefaultModelNames(config, normalizedProvider);
+  applyDefaultModelNames(config, normalizedProvider, environment);
 
   return Promise.resolve();
 }
@@ -486,8 +491,10 @@ const PROVIDER_DEFAULT_MODELS: Record<
  * is "user has to type their model name", which is strictly better than
  * stamping a model the upstream rejects with 404.
  */
-export function openAiBaseUrlIsThirdParty(): boolean {
-  const raw = process.env.OPENAI_BASE_URL?.trim();
+export function openAiBaseUrlIsThirdParty(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const raw = environment.OPENAI_BASE_URL?.trim();
   if (!raw) return false;
   try {
     const hostname = new URL(raw).hostname.trim().toLowerCase();
@@ -503,6 +510,7 @@ export function openAiBaseUrlIsThirdParty(): boolean {
 function applyDefaultModelNames(
   config: MutableElizaConfig,
   provider: string,
+  environment: NodeJS.ProcessEnv = process.env,
 ): void {
   const defaults = PROVIDER_DEFAULT_MODELS[provider];
   if (!defaults) return;
@@ -518,28 +526,28 @@ function applyDefaultModelNames(
   // provider with this base-URL-override pattern in practice and (b) the
   // `anthropic` / `google` / `groq` / `mlx` provider ids each point at
   // their own SDK + endpoint, with no equivalent "base URL swap" footgun.
-  if (provider === "openai" && openAiBaseUrlIsThirdParty()) {
+  if (provider === "openai" && openAiBaseUrlIsThirdParty(environment)) {
     return;
   }
 
   // Only set if not already configured — don't clobber user overrides. The
   // legacy Cerebras knob remains authoritative for both tiers when present.
   const smallVal =
-    provider === "cerebras" && process.env.CEREBRAS_MODEL
-      ? process.env.CEREBRAS_MODEL
+    provider === "cerebras" && environment.CEREBRAS_MODEL
+      ? environment.CEREBRAS_MODEL
       : defaults.smallVal;
   const largeVal =
-    provider === "cerebras" && process.env.CEREBRAS_MODEL
-      ? process.env.CEREBRAS_MODEL
+    provider === "cerebras" && environment.CEREBRAS_MODEL
+      ? environment.CEREBRAS_MODEL
       : defaults.largeVal;
-  if (!process.env[defaults.smallKey]) {
-    setEnvValue(config, defaults.smallKey, smallVal);
+  if (!environment[defaults.smallKey]) {
+    setEnvValue(config, defaults.smallKey, smallVal, environment);
   }
-  if (!process.env[defaults.largeKey]) {
-    setEnvValue(config, defaults.largeKey, largeVal);
+  if (!environment[defaults.largeKey]) {
+    setEnvValue(config, defaults.largeKey, largeVal, environment);
   }
-  if (provider === "cerebras" && !process.env.CEREBRAS_MODEL) {
-    setEnvValue(config, "CEREBRAS_MODEL", smallVal);
+  if (provider === "cerebras" && !environment.CEREBRAS_MODEL) {
+    setEnvValue(config, "CEREBRAS_MODEL", smallVal, environment);
   }
 }
 
@@ -840,6 +848,7 @@ export function createProviderSwitchConnection(args: {
 export async function applyFirstRunConnectionConfig(
   config: MutableElizaConfig,
   connection: FirstRunConnection,
+  environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const normalizedConnection = connection;
 
@@ -865,7 +874,7 @@ export async function applyFirstRunConnectionConfig(
     const apiKey = trimToUndefined(normalizedConnection.apiKey);
     if (apiKey) {
       cloud.apiKey = apiKey;
-      process.env.ELIZAOS_CLOUD_API_KEY = apiKey;
+      environment.ELIZAOS_CLOUD_API_KEY = apiKey;
     }
     if (normalizedConnection.nanoModel) {
       models.nano = normalizedConnection.nanoModel;
@@ -916,24 +925,24 @@ export async function applyFirstRunConnectionConfig(
       serviceRouting,
     });
 
-    process.env.ELIZAOS_CLOUD_ENABLED = "true";
+    environment.ELIZAOS_CLOUD_ENABLED = "true";
     clearSubscriptionProviderConfig(config);
     migrateLegacyRuntimeConfig(config as Record<string, unknown>);
     return;
   }
 
-  delete process.env.ELIZAOS_CLOUD_ENABLED;
-  delete process.env.ELIZAOS_CLOUD_API_KEY;
-  delete process.env.ELIZAOS_CLOUD_BASE_URL;
-  delete process.env.ELIZAOS_CLOUD_NANO_MODEL;
-  delete process.env.ELIZAOS_CLOUD_MEDIUM_MODEL;
-  delete process.env.ELIZAOS_CLOUD_SMALL_MODEL;
-  delete process.env.ELIZAOS_CLOUD_LARGE_MODEL;
-  delete process.env.ELIZAOS_CLOUD_MEGA_MODEL;
-  delete process.env.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL;
-  delete process.env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL;
-  delete process.env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL;
-  delete process.env.ELIZAOS_CLOUD_PLANNER_MODEL;
+  delete environment.ELIZAOS_CLOUD_ENABLED;
+  delete environment.ELIZAOS_CLOUD_API_KEY;
+  delete environment.ELIZAOS_CLOUD_BASE_URL;
+  delete environment.ELIZAOS_CLOUD_NANO_MODEL;
+  delete environment.ELIZAOS_CLOUD_MEDIUM_MODEL;
+  delete environment.ELIZAOS_CLOUD_SMALL_MODEL;
+  delete environment.ELIZAOS_CLOUD_LARGE_MODEL;
+  delete environment.ELIZAOS_CLOUD_MEGA_MODEL;
+  delete environment.ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL;
+  delete environment.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL;
+  delete environment.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL;
+  delete environment.ELIZAOS_CLOUD_PLANNER_MODEL;
 
   if (normalizedConnection.kind === "remote-provider") {
     clearSubscriptionProviderConfig(config);
@@ -969,15 +978,19 @@ export async function applyFirstRunConnectionConfig(
     return;
   }
 
-  await applyLocalProviderCapabilities(config, {
-    backend: normalizedConnection.provider,
-    ...(normalizedConnection.apiKey
-      ? { apiKey: normalizedConnection.apiKey }
-      : {}),
-    ...(normalizedConnection.primaryModel
-      ? { primaryModel: normalizedConnection.primaryModel }
-      : {}),
-  });
+  await applyLocalProviderCapabilities(
+    config,
+    {
+      backend: normalizedConnection.provider,
+      ...(normalizedConnection.apiKey
+        ? { apiKey: normalizedConnection.apiKey }
+        : {}),
+      ...(normalizedConnection.primaryModel
+        ? { primaryModel: normalizedConnection.primaryModel }
+        : {}),
+    },
+    environment,
+  );
   const linkedAccounts: LinkedAccountFlagsConfig | undefined =
     normalizedConnection.provider === "anthropic-subscription" ||
     normalizedConnection.provider === "openai-subscription"
@@ -1038,6 +1051,7 @@ export async function applyFirstRunCredentialPersistence(
     credentialInputs?: FirstRunCredentialInputs | null;
     deploymentTarget?: DeploymentTargetConfig | null;
     serviceRouting?: ServiceRoutingConfig | null;
+    environment?: NodeJS.ProcessEnv;
   },
 ): Promise<string | null> {
   const plan = deriveFirstRunCredentialPersistencePlan({
@@ -1049,12 +1063,16 @@ export async function applyFirstRunCredentialPersistence(
   if (plan.llmSelection) {
     const llmConnection = toFirstRunConnectionFromSelection(plan.llmSelection);
     if (llmConnection) {
-      await applyFirstRunConnectionConfig(config, llmConnection);
+      await applyFirstRunConnectionConfig(
+        config,
+        llmConnection,
+        args.environment,
+      );
     }
   }
 
   if (plan.cloudApiKey) {
-    persistLinkedCloudApiKey(config, plan.cloudApiKey);
+    persistLinkedCloudApiKey(config, plan.cloudApiKey, args.environment);
   }
 
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);

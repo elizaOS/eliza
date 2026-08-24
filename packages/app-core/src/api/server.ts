@@ -159,7 +159,10 @@ import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
 import { resolveFeatureRouteReadinessFailure } from "./feature-route-readiness.js";
-import { handleFirstRunRoute } from "./first-run-routes";
+import {
+  finalizeFirstRunRouteResponse,
+  handleFirstRunRoute,
+} from "./first-run-routes";
 import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import {
@@ -567,6 +570,10 @@ async function handleCompatRouteInner(
   // request; the forwarder attaches the controller's target token, so it must
   // not run as a pre-auth bypass.
   if (await handleRuntimeModeRemoteForward(req, res)) return true;
+
+  if (method === "POST" && url.pathname === "/api/first-run") {
+    return handleFirstRunRoute(req, res, state);
+  }
 
   // #12089 item 5: the compat route surface below used to be a ~30-branch
   // order-dependent if-chain (each branch `if (await handleX(...)) return true`)
@@ -1061,6 +1068,16 @@ async function runCompatRequestPipeline(
   }
 
   await next();
+
+  const canonicalFirstRunSubmit =
+    req.method === "POST" && pathname === "/api/first-run";
+  if (
+    canonicalFirstRunSubmit &&
+    res.statusCode >= 200 &&
+    res.statusCode < 300
+  ) {
+    finalizeFirstRunRouteResponse(res.statusCode, state);
+  }
 }
 
 export async function startApiServer(

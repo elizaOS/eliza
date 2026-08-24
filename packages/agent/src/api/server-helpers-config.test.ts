@@ -11,13 +11,58 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import type { ElizaConfig } from "../config/config";
 import {
   CONFIG_SECRET_FILTER_UNBOUNDED,
   isSafeResetStateDir,
   MAX_CONFIG_SECRET_FILTER_DEPTH,
+  provisionWalletKeysInEnvAndConfig,
   redactConfigSecrets,
   stripRedactedPlaceholderValuesDeep,
 } from "./server-helpers-config";
+import { generateWalletKeys } from "./wallet-keygen";
+
+describe("typed first-run wallet provisioning", () => {
+  it("stages complete keys and nonblank addresses without touching process.env", () => {
+    const config = {};
+    const environment: NodeJS.ProcessEnv = {};
+    const beforeEvm = process.env.EVM_PRIVATE_KEY;
+    const beforeSolana = process.env.SOLANA_PRIVATE_KEY;
+
+    const result = provisionWalletKeysInEnvAndConfig(config, environment);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected complete wallet material");
+    expect(result.evmPrivateKey.trim()).not.toBe("");
+    expect(result.evmAddress.trim()).not.toBe("");
+    expect(result.solanaPrivateKey.trim()).not.toBe("");
+    expect(result.solanaAddress.trim()).not.toBe("");
+    expect(environment.EVM_PRIVATE_KEY).toBe(result.evmPrivateKey);
+    expect(environment.SOLANA_PRIVATE_KEY).toBe(result.solanaPrivateKey);
+    expect(process.env.EVM_PRIVATE_KEY).toBe(beforeEvm);
+    expect(process.env.SOLANA_PRIVATE_KEY).toBe(beforeSolana);
+  });
+
+  it("returns a typed failure without partial config/env mutation", () => {
+    const validSolana = generateWalletKeys().solanaPrivateKey;
+    const config: ElizaConfig = { env: { RETAINED: "true" } };
+    const environment: NodeJS.ProcessEnv = {
+      EVM_PRIVATE_KEY: "not-a-private-key",
+      SOLANA_PRIVATE_KEY: validSolana,
+    };
+    const beforeConfig = structuredClone(config);
+    const beforeEnvironment = { ...environment };
+
+    const result = provisionWalletKeysInEnvAndConfig(config, environment);
+
+    expect(result).toEqual({
+      ok: false,
+      code: "wallet_key_generation_failed",
+    });
+    expect(config).toEqual(beforeConfig);
+    expect(environment).toEqual(beforeEnvironment);
+  });
+});
 
 describe("isSafeResetStateDir", () => {
   const home = "/home/user";

@@ -16,7 +16,11 @@ import {
 } from "@elizaos/shared/contracts/first-run-options";
 import type { ElizaConfig } from "../config/config.ts";
 import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";
-import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
+import {
+  deriveEvmAddress,
+  generateWalletKeys,
+  setSolanaWalletEnv,
+} from "./wallet-keygen.ts";
 
 // ---------------------------------------------------------------------------
 // Config redaction
@@ -472,20 +476,46 @@ export function getCloudProviderOptions(): Array<{
   }));
 }
 
-export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
-  const missingEvm =
-    typeof process.env.EVM_PRIVATE_KEY !== "string" ||
-    !process.env.EVM_PRIVATE_KEY.trim();
-  const missingSolana =
-    typeof process.env.SOLANA_PRIVATE_KEY !== "string" ||
-    !process.env.SOLANA_PRIVATE_KEY.trim();
+export type WalletKeyProvisionResult =
+  | {
+      ok: true;
+      generated: boolean;
+      evmPrivateKey: string;
+      evmAddress: string;
+      solanaPrivateKey: string;
+      solanaAddress: string;
+    }
+  | { ok: false; code: "wallet_key_generation_failed" };
 
-  if (!missingEvm && !missingSolana) {
-    return false;
-  }
+/** Stage complete wallet credentials and derived addresses into a chosen env. */
+export function provisionWalletKeysInEnvAndConfig(
+  config: ElizaConfig,
+  environment: NodeJS.ProcessEnv = process.env,
+): WalletKeyProvisionResult {
+  const missingEvm =
+    typeof environment.EVM_PRIVATE_KEY !== "string" ||
+    !environment.EVM_PRIVATE_KEY.trim();
+  const missingSolana =
+    typeof environment.SOLANA_PRIVATE_KEY !== "string" ||
+    !environment.SOLANA_PRIVATE_KEY.trim();
 
   try {
-    const walletKeys = generateWalletKeys();
+    const walletKeys =
+      missingEvm || missingSolana ? generateWalletKeys() : null;
+    const evmPrivateKey = missingEvm
+      ? walletKeys?.evmPrivateKey
+      : environment.EVM_PRIVATE_KEY?.trim();
+    const solanaPrivateKey = missingSolana
+      ? walletKeys?.solanaPrivateKey
+      : environment.SOLANA_PRIVATE_KEY?.trim();
+    if (!evmPrivateKey || !solanaPrivateKey) {
+      throw new Error("wallet generator returned incomplete key material");
+    }
+    const evmAddress = deriveEvmAddress(evmPrivateKey);
+    const solanaAddress = setSolanaWalletEnv(solanaPrivateKey, {});
+    if (!evmAddress.trim() || !solanaAddress?.trim()) {
+      throw new Error("wallet address derivation failed");
+    }
     if (
       !config.env ||
       typeof config.env !== "object" ||
@@ -495,27 +525,43 @@ export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
     }
     const envConfig = config.env as Record<string, string>;
 
+    envConfig.EVM_PRIVATE_KEY = evmPrivateKey;
+    envConfig.SOLANA_PRIVATE_KEY = solanaPrivateKey;
+    environment.EVM_PRIVATE_KEY = evmPrivateKey;
+    setSolanaWalletEnv(solanaPrivateKey, environment);
     if (missingEvm) {
-      envConfig.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
-      process.env.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
-      logger.info(`[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`);
+      logger.info(`[eliza-api] Generated EVM wallet: ${evmAddress}`);
     }
-
     if (missingSolana) {
-      envConfig.SOLANA_PRIVATE_KEY = walletKeys.solanaPrivateKey;
-      setSolanaWalletEnv(walletKeys.solanaPrivateKey);
-      logger.info(
-        `[eliza-api] Generated Solana wallet: ${walletKeys.solanaAddress}`,
-      );
+      logger.info(`[eliza-api] Generated Solana wallet: ${solanaAddress}`);
     }
 
-    return true;
+    return {
+      ok: true,
+      generated: missingEvm || missingSolana,
+      evmPrivateKey,
+      evmAddress,
+      solanaPrivateKey,
+      solanaAddress,
+    };
   } catch (err) {
     logger.warn(
       `[eliza-api] Failed to generate wallet keys: ${err instanceof Error ? err.message : String(err)}`,
     );
+    return { ok: false, code: "wallet_key_generation_failed" };
+  }
+}
+
+/** Back-compatible generated/not-generated signal used by plugin-wallet. */
+export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
+  if (
+    process.env.EVM_PRIVATE_KEY?.trim() &&
+    process.env.SOLANA_PRIVATE_KEY?.trim()
+  ) {
     return false;
   }
+  const result = provisionWalletKeysInEnvAndConfig(config);
+  return result.ok && result.generated;
 }
 
 // ---------------------------------------------------------------------------

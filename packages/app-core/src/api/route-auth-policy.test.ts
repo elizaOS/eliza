@@ -74,7 +74,7 @@ describe("compat route auth policy table", () => {
     ).toMatchObject({ id: "auth.pair-code", tier: "public" });
     expect(
       resolveCompatRouteAuthPolicy("GET", "/api/first-run/status"),
-    ).toMatchObject({ id: "first-run.status", tier: "session" });
+    ).toMatchObject({ id: "first-run.status", tier: "OWNER" });
     expect(
       resolveCompatRouteAuthPolicy("GET", "/api/secrets/inventory"),
     ).toMatchObject({ id: "secrets", tier: "OWNER" });
