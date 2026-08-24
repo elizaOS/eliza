@@ -10,7 +10,7 @@
  *   - restart          requests a process restart via the registered RestartHandler.
  *                      When invoked from a chat turn the handler verifies the user
  *                      explicitly asked for it and persists a "Restarting…" memory;
- *                      otherwise it falls through to a plain restart request.
+ *                      non-chat callers need branded internal provenance.
  *
  * @module actions/runtime
  */
@@ -56,6 +56,49 @@ const OP_ALIASES: Record<string, RuntimeOp> = {
 
 const RESTART_SOURCES = ["self-edit", "user", "plugin-install"] as const;
 type RestartSource = (typeof RESTART_SOURCES)[number];
+type TrustedInternalRestartSource = Exclude<RestartSource, "user">;
+
+const TRUSTED_INTERNAL_RESTART = Symbol("trusted-internal-runtime-restart");
+
+/**
+ * Non-planner restart provenance accepted only when minted by
+ * {@link createTrustedRuntimeRestartRequest}. JSON/tool parameters cannot carry
+ * the module-private symbol checked at the handler boundary.
+ */
+export interface TrustedRuntimeRestartRequest {
+  readonly source: TrustedInternalRestartSource;
+  readonly reason?: string;
+}
+
+type BrandedTrustedRuntimeRestartRequest = TrustedRuntimeRestartRequest & {
+  readonly [TRUSTED_INTERNAL_RESTART]: true;
+};
+
+export function createTrustedRuntimeRestartRequest(
+  source: TrustedInternalRestartSource,
+  reason?: string,
+): TrustedRuntimeRestartRequest {
+  return Object.freeze({
+    source,
+    ...(reason !== undefined ? { reason } : {}),
+    [TRUSTED_INTERNAL_RESTART]: true,
+  });
+}
+
+function readTrustedRuntimeRestartRequest(
+  value: unknown,
+): BrandedTrustedRuntimeRestartRequest | null {
+  if (typeof value !== "object" || value === null) return null;
+  const request = value as Partial<BrandedTrustedRuntimeRestartRequest>;
+  return request[TRUSTED_INTERNAL_RESTART] === true &&
+    (request.source === "self-edit" || request.source === "plugin-install")
+    ? (request as BrandedTrustedRuntimeRestartRequest)
+    : null;
+}
+
+interface RuntimeHandlerOptions extends HandlerOptions {
+  trustedRestart?: TrustedRuntimeRestartRequest;
+}
 
 const SELF_STATUS_MODULES = [
   "all",
@@ -98,13 +141,6 @@ function normalizeOp(value: string): RuntimeOp | null {
     return OP_ALIASES[value];
   }
   return null;
-}
-
-function isRestartSource(value: string | undefined): value is RestartSource {
-  return (
-    typeof value === "string" &&
-    (RESTART_SOURCES as readonly string[]).includes(value)
-  );
 }
 
 function isSelfStatusModule(value: string): value is SelfStatusModule {
@@ -332,12 +368,26 @@ async function restartOp(
   runtime: IAgentRuntime,
   message: Memory | undefined,
   params: RuntimeParams,
+  trustedRequest: BrandedTrustedRuntimeRestartRequest | null,
 ): Promise<ActionResult> {
+  const isFromChat = isExplicitRestartRequest(message);
+  if (!isFromChat && !trustedRequest) {
+    return {
+      success: false,
+      text: "Restart refused: the owner did not explicitly request a restart and no trusted internal restart request was provided.",
+      values: { error: "RESTART_INTENT_REQUIRED" },
+      data: {
+        actionName: "RUNTIME",
+        op: "restart",
+        refused: "restart-intent-required",
+      },
+    };
+  }
+
+  const source: RestartSource = trustedRequest?.source ?? "user";
+  const rawReason = trustedRequest ? trustedRequest.reason : params.reason;
   const reason =
-    typeof params.reason === "string"
-      ? toWellFormedUnicode(params.reason)
-      : undefined;
-  const source = isRestartSource(params.source) ? params.source : undefined;
+    typeof rawReason === "string" ? toWellFormedUnicode(rawReason) : undefined;
 
   // Self-edit-driven restarts must only execute when the dev-mode gate is
   // open. Other restart sources (user-issued, plugin install) bypass the gate.
@@ -360,14 +410,12 @@ async function restartOp(
     };
   }
 
-  // When a chat message is present and was an explicit restart request, persist
-  // a memory entry (legacy RESTART_AGENT semantics). When invoked without a
-  // message context (programmatic) or via an internal source, skip the memory
-  // write — that path is the legacy RESTART_RUNTIME semantics.
-  const isFromChat = isExplicitRestartRequest(message);
+  // Explicit owner chat requests retain the legacy RESTART_AGENT memory. A
+  // branded internal request never inherits authority from ambient chat text.
+  const persistChatRestart = isFromChat && !trustedRequest;
   const restartText = reason ? `Restarting… (${reason})` : "Restarting…";
 
-  if (isFromChat && message) {
+  if (persistChatRestart && message) {
     logger.info(`[runtime] ${restartText}`);
     const restartMemory: Memory = {
       id: crypto.randomUUID() as UUID,
@@ -385,7 +433,7 @@ async function restartOp(
 
   return {
     success: true,
-    text: isFromChat
+    text: persistChatRestart
       ? restartText
       : reason
         ? `Runtime restart scheduled (${reason}).`
@@ -396,7 +444,7 @@ async function restartOp(
       op: "restart",
       reason,
       source,
-      fromChat: isFromChat,
+      fromChat: persistChatRestart,
     },
   };
 }
@@ -452,10 +500,12 @@ export const runtimeAction: Action = {
     "polymorphic runtime control: status, self_status, describe_actions, reload_config, restart",
   validate: async () => true,
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+    const handlerOptions = options as RuntimeHandlerOptions | undefined;
     const params =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | RuntimeParams
-        | undefined) ?? {};
+      (handlerOptions?.parameters as RuntimeParams | undefined) ?? {};
+    const trustedRestart = readTrustedRuntimeRestartRequest(
+      handlerOptions?.trustedRestart,
+    );
     const opRaw =
       typeof params.action === "string"
         ? params.action
@@ -487,7 +537,7 @@ export const runtimeAction: Action = {
       case "reload_config":
         return reloadConfigOp();
       case "restart":
-        return restartOp(runtime, message, params);
+        return restartOp(runtime, message, params, trustedRestart);
     }
   },
   parameters: [
@@ -546,7 +596,7 @@ export const runtimeAction: Action = {
     {
       name: "source",
       description:
-        "restart only: 'self-edit' (gated by isSelfEditEnabled), 'user', or 'plugin-install'.",
+        "restart only: legacy diagnostic hint. This planner-controlled field never authorizes a restart; user intent or a trusted internal request is required.",
       required: false,
       schema: {
         type: "string" as const,

@@ -11,10 +11,15 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  UUID,
 } from "@elizaos/core";
+import { executePlannedToolCall } from "@elizaos/core/runtime/execute-planned-tool-call";
 import { setRestartHandler } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runtimeAction } from "./runtime.ts";
+import {
+  createTrustedRuntimeRestartRequest,
+  runtimeAction,
+} from "./runtime.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000aa";
 
@@ -46,6 +51,13 @@ function makeRuntime(options: RuntimeFixtureOptions = {}): IAgentRuntime {
       serviceType === "AWARENESS_REGISTRY"
         ? (options.awarenessService ?? null)
         : null,
+    getRoom: async () => null,
+    reportError: vi.fn(),
+    logger: {
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
     createMemory: async (memory: Memory) => {
       options.createdMemories?.push(memory);
     },
@@ -66,6 +78,35 @@ async function invoke(
   );
   if (!result) throw new Error("RUNTIME handler returned no result");
   return result;
+}
+
+function executorMessage(text: string, entityId?: UUID): Memory {
+  return {
+    id: "00000000-0000-0000-0000-0000000000dd" as UUID,
+    entityId: entityId ?? ("00000000-0000-0000-0000-0000000000ee" as UUID),
+    roomId: "00000000-0000-0000-0000-0000000000bb" as UUID,
+    worldId: "00000000-0000-0000-0000-0000000000cc" as UUID,
+    content: { text },
+  } as Memory;
+}
+
+async function executeRuntime(
+  runtime: IAgentRuntime,
+  message: Memory,
+  userRoles: readonly ("OWNER" | "MEMBER")[],
+  parameters: Record<string, unknown>,
+  options: HandlerOptions = {},
+): Promise<ActionResult> {
+  return executePlannedToolCall(
+    runtime,
+    {
+      message,
+      activeContexts: ["admin"],
+      userRoles,
+    },
+    { name: "RUNTIME", params: parameters },
+    options,
+  );
 }
 
 function setEnv(name: string, value: string | undefined): () => void {
@@ -498,10 +539,21 @@ describe("RUNTIME restart", () => {
     const restoreSelfEdit = setEnv("ELIZA_ENABLE_SELF_EDIT", "0");
     const createdMemories: Memory[] = [];
     try {
-      const result = await invoke(
-        { action: "restart", source: "self-edit", reason: "apply edit" },
-        makeRuntime({ createdMemories }),
-        { roomId: "room-1", content: { text: "/restart" } } as Memory,
+      const runtime = makeRuntime({
+        actions: [runtimeAction],
+        createdMemories,
+      });
+      const result = await executeRuntime(
+        runtime,
+        executorMessage("Internal self-edit completed.", agentId as UUID),
+        ["OWNER"],
+        { action: "restart" },
+        {
+          trustedRestart: createTrustedRuntimeRestartRequest(
+            "self-edit",
+            "apply edit",
+          ),
+        },
       );
 
       expect(result).toMatchObject({
@@ -520,24 +572,42 @@ describe("RUNTIME restart", () => {
     }
   });
 
-  it("persists an explicit chat restart before delayed dispatch", async () => {
+  it("denies a non-owner before the restart handler can run", async () => {
+    vi.useFakeTimers();
+    const realHandler = runtimeAction.handler;
+    if (!realHandler) throw new Error("RUNTIME handler is required");
+    const handler = vi.fn(realHandler);
+    const runtime = makeRuntime({
+      actions: [{ ...runtimeAction, handler }],
+    });
+
+    const result = await executeRuntime(
+      runtime,
+      executorMessage("/restart now"),
+      ["MEMBER"],
+      { action: "restart" },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not allowed for the current role");
+    expect(handler).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("persists an explicit owner chat restart before delayed dispatch", async () => {
     vi.useFakeTimers();
     const restartReasons: Array<string | undefined> = [];
     setRestartHandler((reason) => {
       restartReasons.push(reason);
     });
     const createdMemories: Memory[] = [];
-    const message = {
-      roomId: "00000000-0000-0000-0000-0000000000bb",
-      worldId: "00000000-0000-0000-0000-0000000000cc",
-      content: { text: "  /ReStArT now  " },
-    } as Memory;
-
-    const result = await invoke(
-      { action: "restart", source: "user", reason: "upgrade" },
-      makeRuntime({ createdMemories }),
-      message,
-    );
+    const message = executorMessage("  /ReStArT now  ");
+    const runtime = makeRuntime({ actions: [runtimeAction], createdMemories });
+    const result = await executeRuntime(runtime, message, ["OWNER"], {
+      action: "restart",
+      source: "plugin-install",
+      reason: "upgrade",
+    });
 
     expect(result).toMatchObject({
       success: true,
@@ -565,7 +635,7 @@ describe("RUNTIME restart", () => {
     expect(restartReasons).toEqual(["upgrade"]);
   });
 
-  it("supports the legacy alias without treating ordinary chat as explicit", async () => {
+  it("refuses the legacy alias on unrelated owner chat without scheduling work", async () => {
     vi.useFakeTimers();
     const restartReasons: Array<string | undefined> = [];
     setRestartHandler((reason) => {
@@ -573,42 +643,49 @@ describe("RUNTIME restart", () => {
     });
     const createdMemories: Memory[] = [];
 
-    const result = await invoke(
+    const result = await executeRuntime(
+      makeRuntime({ actions: [runtimeAction], createdMemories }),
+      executorMessage("tell me the weather"),
+      ["OWNER"],
       {
         action: "restart_agent",
-        source: "not-a-source",
+        source: "plugin-install",
         reason: "invalid surrogate \ud800",
       },
-      makeRuntime({ createdMemories }),
-      { content: { text: "tell me the weather" } } as Memory,
     );
 
     expect(result).toMatchObject({
-      success: true,
-      text: "Runtime restart scheduled (invalid surrogate �).",
+      success: false,
+      text: expect.stringContaining("owner did not explicitly request"),
+      values: { error: "RESTART_INTENT_REQUIRED" },
       data: {
         op: "restart",
-        reason: "invalid surrogate �",
-        source: undefined,
-        fromChat: false,
+        refused: "restart-intent-required",
       },
     });
     expect(createdMemories).toEqual([]);
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(restartReasons).toEqual(["invalid surrogate �"]);
+    expect(restartReasons).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("schedules a reasonless programmatic restart", async () => {
+  it("accepts a branded trusted internal restart without chat intent", async () => {
     vi.useFakeTimers();
     const restartReasons: Array<string | undefined> = [];
     setRestartHandler((reason) => {
       restartReasons.push(reason);
     });
 
-    const result = await invoke({
-      action: "restart",
-      source: "plugin-install",
-    });
+    const runtime = makeRuntime({ actions: [runtimeAction] });
+    const result = await executeRuntime(
+      runtime,
+      executorMessage("Plugin installation completed.", agentId as UUID),
+      ["OWNER"],
+      { action: "restart", source: "user", reason: "model reason" },
+      {
+        trustedRestart: createTrustedRuntimeRestartRequest("plugin-install"),
+      },
+    );
 
     expect(result).toMatchObject({
       success: true,
@@ -621,5 +698,22 @@ describe("RUNTIME restart", () => {
     });
     await vi.advanceTimersByTimeAsync(1_500);
     expect(restartReasons).toEqual([undefined]);
+  });
+
+  it("rejects an unbranded object that imitates internal provenance", async () => {
+    vi.useFakeTimers();
+    const runtime = makeRuntime({ actions: [runtimeAction] });
+
+    const result = await executeRuntime(
+      runtime,
+      executorMessage("ordinary chat"),
+      ["OWNER"],
+      { action: "restart" },
+      { trustedRestart: { source: "plugin-install" } },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.values).toMatchObject({ error: "RESTART_INTENT_REQUIRED" });
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
