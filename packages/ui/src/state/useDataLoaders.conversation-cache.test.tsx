@@ -15,10 +15,20 @@ const mocks = vi.hoisted(() => ({
     getConversationMessages: vi.fn(),
     listConversations: vi.fn(async () => ({ conversations: [] })),
     getConfig: vi.fn(async () => ({ ui: {} })),
+    repointBaseUrl: vi.fn(),
+    setBaseUrl: vi.fn(),
   },
+  subscribeRuntimeAuthoritySwitch: vi.fn(),
 }));
 
+let runtimeAuthoritySwitchListener:
+  | ((phase: "before" | "after") => void)
+  | undefined;
+
 vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("./switch-runtime", () => ({
+  subscribeRuntimeAuthoritySwitch: mocks.subscribeRuntimeAuthoritySwitch,
+}));
 
 import {
   listPendingChatTurns,
@@ -89,6 +99,20 @@ beforeEach(() => {
   mocks.client.getConversationMessages.mockReset();
   mocks.client.listConversations.mockReset();
   mocks.client.listConversations.mockResolvedValue({ conversations: [] });
+  runtimeAuthoritySwitchListener = undefined;
+  mocks.client.repointBaseUrl.mockReset();
+  mocks.client.setBaseUrl.mockReset();
+  mocks.subscribeRuntimeAuthoritySwitch.mockReset();
+  mocks.subscribeRuntimeAuthoritySwitch.mockImplementation(
+    (listener: (phase: "before" | "after") => void) => {
+      runtimeAuthoritySwitchListener = listener;
+      return () => {
+        if (runtimeAuthoritySwitchListener === listener) {
+          runtimeAuthoritySwitchListener = undefined;
+        }
+      };
+    },
+  );
   window.localStorage.clear();
 });
 
@@ -753,7 +777,7 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
 
     expect(
       conversationMessagesRef.current.map((message) => message.id),
-    ).toEqual(["persisted-1", "temp-resp-100", "server-user"]);
+    ).toEqual(["persisted-1", "server-user", "temp-resp-100"]);
   });
 
   it("keeps a distinct repeated temp user message when only the earlier identical turn is persisted", async () => {
@@ -1409,6 +1433,162 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     });
   });
 
+  it("uses exact ids for around windows and the first newest response after around even from a canonical view", async () => {
+    const oldUser = {
+      ...userMsg("old-yes"),
+      text: "yes",
+      timestamp: 1_000,
+    };
+    const oldAssistant = {
+      ...assistantMsg("old-answer"),
+      text: "old answer",
+      timestamp: 1_100,
+    };
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [oldUser, oldAssistant] })
+      .mockResolvedValueOnce({ messages: [oldUser, oldAssistant] })
+      .mockResolvedValueOnce({ messages: [oldUser, oldAssistant] });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    const repeatedUser = {
+      ...userMsg("temp-new-yes"),
+      clientRenderId: "temp-new-yes",
+      text: "yes",
+      timestamp: 1_005,
+    };
+    const repeatedAssistant = {
+      ...assistantMsg("temp-resp-new-yes"),
+      clientRenderId: "temp-resp-new-yes",
+      text: "",
+      timestamp: 1_006,
+    };
+    act(() => {
+      setConversationMessages([
+        ...conversationMessagesRef.current,
+        repeatedUser,
+        repeatedAssistant,
+      ]);
+      result.current.registerConversationMessageOverlay("conv-a", [
+        repeatedUser.clientRenderId,
+        repeatedAssistant.clientRenderId,
+      ]);
+    });
+
+    await act(async () => {
+      await result.current.loadConversationMessagesAround("conv-a", "old-yes");
+    });
+    expect(
+      conversationMessagesRef.current
+        .filter((message) => message.role === "user" && message.text === "yes")
+        .map((message) => message.id),
+    ).toEqual(["old-yes", "temp-new-yes"]);
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    expect(
+      conversationMessagesRef.current
+        .filter((message) => message.role === "user" && message.text === "yes")
+        .map((message) => message.id),
+    ).toEqual(["old-yes", "temp-new-yes"]);
+  });
+
+  it("does not consume a new repeated turn from stale newest history after LRU eviction and an around paint", async () => {
+    const oldUser = {
+      ...userMsg("old-yes"),
+      text: "yes",
+      timestamp: 1_000,
+    };
+    const oldAssistant = {
+      ...assistantMsg("old-answer"),
+      text: "old answer",
+      timestamp: 1_100,
+    };
+    mocks.client.getConversationMessages.mockImplementation(
+      async (id: string, opts?: { around?: string }) => {
+        if (id !== "conv-a") return { messages: [userMsg(id)] };
+        if (opts?.around) {
+          return {
+            messages: [
+              {
+                ...userMsg("around-only"),
+                text: "older context",
+                timestamp: 100,
+              },
+            ],
+          };
+        }
+        return { messages: [oldUser, oldAssistant] };
+      },
+    );
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+      result.current.prefetchConversationMessages(
+        Array.from({ length: 17 }, (_, index) => `neighbor-${index}`),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await result.current.loadConversationMessagesAround("conv-a", "hit");
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["around-only"]);
+
+    const repeatedUser = {
+      ...userMsg("temp-new-yes"),
+      clientRenderId: "temp-new-yes",
+      text: "yes",
+      timestamp: 1_005,
+    };
+    const repeatedAssistant = {
+      ...assistantMsg("temp-resp-new-yes"),
+      clientRenderId: "temp-resp-new-yes",
+      text: "",
+      timestamp: 1_006,
+    };
+    act(() => {
+      setConversationMessages([
+        ...conversationMessagesRef.current,
+        repeatedUser,
+        repeatedAssistant,
+      ]);
+      result.current.registerConversationMessageOverlay("conv-a", [
+        repeatedUser.clientRenderId,
+        repeatedAssistant.clientRenderId,
+      ]);
+    });
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toContain("temp-new-yes");
+    expect(
+      conversationMessagesRef.current.filter(
+        (message) => message.role === "user" && message.text === "yes",
+      ),
+    ).toHaveLength(2);
+  });
+
   it("captures a same-owner terminal rekey after its server cache entry was evicted", async () => {
     let resolveReload: ((messages: ConversationMessage[]) => void) | undefined;
     let aRequestCount = 0;
@@ -1735,6 +1915,328 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
       pending[2]?.resolve([userMsg("newest-active")]);
       await revalidate;
     });
+  });
+
+  it("purges visible rows, cache, and overlays synchronously on an explicit runtime authority switch", async () => {
+    let resolveProfileB:
+      | ((value: { messages: ConversationMessage[] }) => void)
+      | undefined;
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({
+        messages: [
+          { ...userMsg("profile-a-row"), text: "private to profile A" },
+        ],
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveProfileB = resolve;
+          }),
+      );
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "shared-id";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("shared-id");
+    });
+    const profileAOverlay = {
+      ...assistantMsg("temp-profile-a"),
+      clientRenderId: "temp-profile-a",
+      text: "profile A partial",
+      timestamp: 10,
+    };
+    act(() => {
+      setConversationMessages([
+        ...conversationMessagesRef.current,
+        profileAOverlay,
+      ]);
+      result.current.registerConversationMessageOverlay("shared-id", [
+        profileAOverlay.clientRenderId,
+      ]);
+      runtimeAuthoritySwitchListener?.("before");
+    });
+
+    // The dedicated authority signal is emitted before the client repoints.
+    // Nothing from profile A may remain visible under profile B, even during
+    // the interval before B's first GET starts.
+    expect(conversationMessagesRef.current).toEqual([]);
+    expect(setConversationMessages).toHaveBeenLastCalledWith([]);
+    let profileBLoad: Promise<unknown>;
+    act(() => {
+      result.current.claimConversationMessagesOwnership("shared-id");
+      activeConversationIdRef.current = "shared-id";
+      profileBLoad = result.current.loadConversationMessages("shared-id");
+    });
+    expect(conversationMessagesRef.current).toEqual([]);
+    await act(async () => {
+      resolveProfileB?.({
+        messages: [
+          { ...userMsg("profile-b-row"), text: "belongs to profile B" },
+        ],
+      });
+      await profileBLoad;
+    });
+    expect(conversationMessagesRef.current).toEqual([
+      { ...userMsg("profile-b-row"), text: "belongs to profile B" },
+    ]);
+  });
+
+  it("preserves the live transcript across raw base repoints used by shared-to-dedicated handoff", async () => {
+    const profileARow = {
+      ...userMsg("profile-a-row"),
+      text: "keep through silent handoff",
+    };
+    mocks.client.getConversationMessages.mockResolvedValueOnce({
+      messages: [profileARow],
+    });
+    const { deps, conversationMessagesRef, activeConversationIdRef } =
+      makeDeps();
+    activeConversationIdRef.current = "shared-id";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("shared-id");
+    });
+
+    act(() => {
+      mocks.client.repointBaseUrl("https://dedicated.example.test");
+      mocks.client.setBaseUrl("https://dedicated.example.test");
+    });
+
+    expect(conversationMessagesRef.current).toEqual([profileARow]);
+    expect(runtimeAuthoritySwitchListener).toBeTypeOf("function");
+  });
+
+  it("patches an exact delete in a warm cache so transient revalidation cannot resurrect it", async () => {
+    const kept = { ...userMsg("kept"), text: "keep" };
+    const removed = {
+      ...assistantMsg("removed"),
+      clientRenderId: "temp-removed",
+      text: "remove me",
+      timestamp: 10,
+    };
+    const neighbor = { ...assistantMsg("neighbor"), text: "keep neighbor" };
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({
+        messages: [kept, removed, neighbor],
+      })
+      .mockResolvedValueOnce({ messages: [userMsg("b-only")] })
+      .mockRejectedValueOnce(
+        Object.assign(new Error("temporary"), { status: 503 }),
+      );
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    act(() => {
+      result.current.registerConversationMessageOverlay("conv-a", [
+        removed.clientRenderId,
+      ]);
+      setConversationMessages([kept, neighbor]);
+      setConversationMessages([kept, removed, neighbor]);
+      result.current.removeConversationMessageStateMessages("conv-a", {
+        mode: "delete-exact",
+        removedMessages: [removed],
+      });
+      expect(conversationMessagesRef.current).toEqual([kept, neighbor]);
+      result.current.claimConversationMessagesOwnership("conv-b");
+      activeConversationIdRef.current = "conv-b";
+    });
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-b");
+    });
+
+    act(() => {
+      result.current.claimConversationMessagesOwnership("conv-a");
+      activeConversationIdRef.current = "conv-a";
+    });
+    let returnToA: Promise<unknown>;
+    act(() => {
+      returnToA = result.current.loadConversationMessages("conv-a");
+    });
+    expect(conversationMessagesRef.current).toEqual([kept, neighbor]);
+    await act(async () => {
+      await returnToA;
+    });
+    expect(conversationMessagesRef.current).toEqual([kept, neighbor]);
+  });
+
+  it("invalidates a wider newest cache when truncating from an around window", async () => {
+    const kept = { ...userMsg("kept"), text: "keep", timestamp: 1 };
+    const targetUser = {
+      ...userMsg("target-user"),
+      text: "retry me",
+      timestamp: 10,
+    };
+    const targetAssistant = {
+      ...assistantMsg("target-assistant"),
+      text: "failed",
+      timestamp: 11,
+    };
+    const hiddenNewerUser = {
+      ...userMsg("hidden-newer-user"),
+      text: "not in around",
+      timestamp: 20,
+    };
+    const hiddenNewerAssistant = {
+      ...assistantMsg("hidden-newer-assistant"),
+      text: "also truncated",
+      timestamp: 21,
+    };
+    const canonicalNewest = [
+      kept,
+      targetUser,
+      targetAssistant,
+      hiddenNewerUser,
+      hiddenNewerAssistant,
+    ];
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: canonicalNewest })
+      .mockResolvedValueOnce({
+        messages: [kept, targetUser, targetAssistant],
+      })
+      .mockResolvedValueOnce({ messages: [userMsg("b-only")] })
+      .mockRejectedValueOnce(
+        Object.assign(new Error("temporary"), { status: 503 }),
+      );
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+      await result.current.loadConversationMessagesAround(
+        "conv-a",
+        "target-user",
+      );
+    });
+    expect(conversationMessagesRef.current).toEqual([
+      kept,
+      targetUser,
+      targetAssistant,
+    ]);
+
+    act(() => {
+      // Simulate a stale newest GET committing while truncate was awaiting the
+      // server. The success callback must restore the exact captured prefix.
+      setConversationMessages(canonicalNewest);
+      result.current.removeConversationMessageStateMessages("conv-a", {
+        mode: "truncate",
+        removedMessages: [targetUser, targetAssistant],
+        preservedMessages: [kept],
+      });
+    });
+    expect(conversationMessagesRef.current).toEqual([kept]);
+
+    act(() => {
+      result.current.claimConversationMessagesOwnership("conv-b");
+      activeConversationIdRef.current = "conv-b";
+    });
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-b");
+    });
+    act(() => {
+      result.current.claimConversationMessagesOwnership("conv-a");
+      activeConversationIdRef.current = "conv-a";
+    });
+    let returnToA: Promise<unknown>;
+    act(() => {
+      returnToA = result.current.loadConversationMessages("conv-a");
+    });
+    expect(conversationMessagesRef.current).toEqual([]);
+    await act(async () => {
+      await returnToA;
+    });
+    expect(
+      conversationMessagesRef.current.some((message) =>
+        [
+          "target-user",
+          "target-assistant",
+          "hidden-newer-user",
+          "hidden-newer-assistant",
+        ].includes(message.id),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not let the first stale newest snapshot consume a same-text replacement after truncate", async () => {
+    const oldUser = {
+      ...userMsg("old-user"),
+      text: "retry me",
+      timestamp: 1_000,
+    };
+    const oldAssistant = {
+      ...assistantMsg("old-assistant"),
+      text: "failed",
+      timestamp: 1_100,
+    };
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [oldUser, oldAssistant] })
+      .mockResolvedValueOnce({ messages: [oldUser, oldAssistant] });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    act(() => {
+      result.current.removeConversationMessageStateMessages("conv-a", {
+        mode: "truncate",
+        removedMessages: [oldUser, oldAssistant],
+        preservedMessages: [],
+      });
+    });
+
+    const replacementUser = {
+      ...userMsg("temp-retry-user"),
+      clientRenderId: "temp-retry-user",
+      text: "retry me",
+      timestamp: 1_005,
+    };
+    const replacementAssistant = {
+      ...assistantMsg("temp-retry-assistant"),
+      clientRenderId: "temp-retry-assistant",
+      text: "",
+      timestamp: 1_006,
+    };
+    act(() => {
+      setConversationMessages([replacementUser, replacementAssistant]);
+      result.current.registerConversationMessageOverlay("conv-a", [
+        replacementUser.clientRenderId,
+        replacementAssistant.clientRenderId,
+      ]);
+    });
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    expect(
+      conversationMessagesRef.current
+        .filter(
+          (message) => message.role === "user" && message.text === "retry me",
+        )
+        .map((message) => message.id),
+    ).toEqual(["old-user", "temp-retry-user"]);
   });
 
   it("does not let an around match retire overlay state and merges stale overlay rows chronologically", async () => {

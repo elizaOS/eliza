@@ -43,10 +43,11 @@ import {
   type StreamingTextModification,
   shouldKeepConversationMessage,
 } from "./internal";
+import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
 import { deriveAgentReady } from "./types";
-
 import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
+import type { ConversationMessageStateMutation } from "./useDataLoaders";
 
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],
@@ -85,6 +86,27 @@ function isPersistedGreetingMessage(message: ConversationMessage): boolean {
     message.source === MESSAGE_SOURCE_AGENT_GREETING &&
     message.text.trim().length > 0
   );
+}
+
+function buildOwnedLocalGreeting(
+  text: string,
+  localInference: ConversationMessage["localInference"] | undefined,
+  ownershipGeneration: number,
+): { lineage: string; message: ConversationMessage } {
+  const timestamp = Date.now();
+  const lineage = `temp-greeting-${ownershipGeneration}-${timestamp}`;
+  return {
+    lineage,
+    message: {
+      id: lineage,
+      clientRenderId: lineage,
+      role: "assistant",
+      text,
+      timestamp,
+      source: MESSAGE_SOURCE_AGENT_GREETING,
+      ...(localInference ? { localInference } : {}),
+    },
+  };
 }
 
 function hasUserConversationMessage(messages: ConversationMessage[]): boolean {
@@ -550,6 +572,7 @@ export interface UseChatCallbacksDeps {
     conversationId: string | null,
     generation: number,
   ) => boolean;
+  getConversationMessagesOwnershipGeneration: () => number;
   registerConversationMessageOverlay: (
     conversationId: string | null,
     lineages: readonly string[],
@@ -559,6 +582,11 @@ export interface UseChatCallbacksDeps {
     conversationId: string | null,
     lineage: string,
     modification: StreamingTextModification,
+    options?: { onlyIfEmpty?: boolean },
+  ) => void;
+  removeConversationMessageStateMessages?: (
+    conversationId: string,
+    mutation: ConversationMessageStateMutation,
   ) => void;
   /** Drop state only after a real delete/404/reset has made it unreachable. */
   discardConversationMessageState: (conversationId?: string) => void;
@@ -676,8 +704,10 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     prefetchConversationMessages,
     claimConversationMessagesOwnership,
     isConversationMessagesOwnershipCurrent,
+    getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
     applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
     discardConversationMessageState,
     loadedConversationIdRef,
     loadPlugins,
@@ -725,35 +755,52 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     isNative,
     isIOS,
   );
+  const greetingInFlightOwnershipGenerationRef = useRef<number | null>(null);
 
   // ── Greeting / hydration (defined here; passed into lifecycle) ──────
 
   const fetchGreeting = useCallback(
     async (convId: string): Promise<boolean> => {
+      const ownershipGeneration = getConversationMessagesOwnershipGeneration();
+      const ownershipIsCurrent = () =>
+        activeConversationIdRef.current === convId &&
+        isConversationMessagesOwnershipCurrent(convId, ownershipGeneration);
+      if (!ownershipIsCurrent()) return false;
       if (!seedSyntheticGreeting) {
         greetingFiredRef.current = false;
         return false;
       }
-      if (greetingInFlightConversationRef.current === convId) {
+      if (
+        greetingInFlightConversationRef.current === convId &&
+        greetingInFlightOwnershipGenerationRef.current === ownershipGeneration
+      ) {
         traceGreeting("fetchGreeting:skip_duplicate_in_flight", {
           convId,
+          ownershipGeneration,
         });
         return false;
       }
       greetingInFlightConversationRef.current = convId;
-      traceGreeting("fetchGreeting:request", { convId });
+      greetingInFlightOwnershipGenerationRef.current = ownershipGeneration;
+      traceGreeting("fetchGreeting:request", {
+        convId,
+        ownershipGeneration,
+      });
       try {
         const data = await client.requestGreeting(convId, uiLanguage);
         if (data.text) {
           const stillActive = activeConversationIdRef.current === convId;
+          const stillOwned = ownershipIsCurrent();
           const stillGreetingEligible =
             stillActive &&
+            stillOwned &&
             !conversationMessagesRef.current.some(
               (message) => message.role === "user",
             );
           traceGreeting("fetchGreeting:response", {
             convId,
             stillActive,
+            stillOwned,
             textLength: data.text.length,
             persisted: data.persisted === true,
           });
@@ -764,34 +811,51 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             // device-review duplicate-greeting defect). `appendGreetingOnce`
             // keeps whatever greeting already seeded the thread and drops this
             // late one, so the visible greeting never doubles or swaps.
-            setConversationMessages((prev: ConversationMessage[]) =>
-              appendGreetingOnce(prev, {
-                id: `greeting-${Date.now()}`,
-                role: "assistant",
-                text: data.text,
-                timestamp: Date.now(),
-                source: MESSAGE_SOURCE_AGENT_GREETING,
-                ...(data.localInference
-                  ? { localInference: data.localInference }
-                  : {}),
-              }),
+            const ownedGreeting = buildOwnedLocalGreeting(
+              data.text,
+              data.localInference,
+              ownershipGeneration,
             );
+            setConversationMessages((prev: ConversationMessage[]) =>
+              appendGreetingOnce(prev, ownedGreeting.message),
+            );
+            // The real setter updates conversationMessagesRef synchronously.
+            // Register only the exact object it actually retained: when an
+            // earlier greeting wins appendGreetingOnce's dedupe, no phantom
+            // overlay may be created for the discarded candidate.
+            if (
+              conversationMessagesRef.current.includes(ownedGreeting.message)
+            ) {
+              registerConversationMessageOverlay(
+                convId,
+                [ownedGreeting.lineage],
+                [ownedGreeting.message],
+              );
+            }
             greetingFiredRef.current = true;
           }
           return stillGreetingEligible;
         }
         traceGreeting("fetchGreeting:empty_or_whitespace", { convId });
-        greetingFiredRef.current = false;
+        if (ownershipIsCurrent()) {
+          greetingFiredRef.current = false;
+        }
       } catch (err) {
         traceGreeting("fetchGreeting:request_failed", {
           convId,
           error: err instanceof Error ? err.message : String(err),
         });
-        greetingFiredRef.current = false;
+        if (ownershipIsCurrent()) {
+          greetingFiredRef.current = false;
+        }
         /* greeting failed silently — user can still chat */
       } finally {
-        if (greetingInFlightConversationRef.current === convId) {
+        if (
+          greetingInFlightConversationRef.current === convId &&
+          greetingInFlightOwnershipGenerationRef.current === ownershipGeneration
+        ) {
           greetingInFlightConversationRef.current = null;
+          greetingInFlightOwnershipGenerationRef.current = null;
         }
       }
       return false;
@@ -800,8 +864,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       uiLanguage,
       activeConversationIdRef,
       conversationMessagesRef,
+      getConversationMessagesOwnershipGeneration,
       greetingFiredRef,
       greetingInFlightConversationRef,
+      isConversationMessagesOwnershipCurrent,
+      registerConversationMessageOverlay,
       seedSyntheticGreeting,
       setConversationMessages,
     ],
@@ -818,20 +885,35 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         });
         return;
       }
+      const ownershipGeneration = getConversationMessagesOwnershipGeneration();
+      const ownershipIsCurrent = () =>
+        activeConversationIdRef.current === convId &&
+        isConversationMessagesOwnershipCurrent(convId, ownershipGeneration);
+      if (!ownershipIsCurrent()) return;
       try {
         const status = await client.getStatus();
         traceGreeting("requestGreetingWhenRunning:status", {
           convId,
           state: status.state,
         });
-        if (status.state === "running" && !greetingFiredRef.current) {
+        if (
+          status.state === "running" &&
+          ownershipIsCurrent() &&
+          !greetingFiredRef.current
+        ) {
           await fetchGreeting(convId);
         }
       } catch {
         // best-effort greeting; will be triggered on next connect
       }
     },
-    [fetchGreeting, seedSyntheticGreeting],
+    [
+      activeConversationIdRef,
+      fetchGreeting,
+      getConversationMessagesOwnershipGeneration,
+      isConversationMessagesOwnershipCurrent,
+      seedSyntheticGreeting,
+    ],
   );
 
   const conversationHydrationTaskRef = useRef<Promise<string | null> | null>(
@@ -883,6 +965,19 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       ),
     [conversationHydrationEpochRef],
   );
+
+  useEffect(() => {
+    return subscribeRuntimeAuthoritySwitch((phase) => {
+      if (phase !== "after") return;
+      // hydrateInitialConversation increments its navigation epoch before the
+      // first await, so this synchronously invalidates any restore that still
+      // belongs to the prior authority. The dedicated after phase fires once,
+      // only after the client has repointed, avoiding an old-id reload.
+      void hydrateInitialConversationState().then((greetId) =>
+        requestGreetingWhenRunning(greetId),
+      );
+    });
+  }, [hydrateInitialConversationState, requestGreetingWhenRunning]);
 
   // Backfill the bootstrap greeting once the agent first becomes ready. The
   // initial post-hydrate `requestGreetingWhenRunning` is one-shot and bails when
@@ -958,6 +1053,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     isConversationMessagesOwnershipCurrent,
     registerConversationMessageOverlay,
     applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
     discardConversationMessageState,
     settleConversationHydrationForSend:
       settleActiveConversationHydrationForSend,
@@ -1154,6 +1250,8 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           // the overlapping pair that double-persists two identical greeting
           // rows server-side (the other half of the duplicate-greeting defect).
           greetingInFlightConversationRef.current = conversation.id;
+          greetingInFlightOwnershipGenerationRef.current =
+            newConversationOwnerGeneration;
           try {
             const resp = await client.requestGreeting(
               conversation.id,
@@ -1164,8 +1262,13 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           } catch {
             // Greeting generation failed — continue without greeting
           } finally {
-            if (greetingInFlightConversationRef.current === conversation.id) {
+            if (
+              greetingInFlightConversationRef.current === conversation.id &&
+              greetingInFlightOwnershipGenerationRef.current ===
+                newConversationOwnerGeneration
+            ) {
               greetingInFlightConversationRef.current = null;
+              greetingInFlightOwnershipGenerationRef.current = null;
             }
           }
         }
@@ -1183,24 +1286,32 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         if (!stillOnNewConversation) {
           return;
         }
-        if (greetingText) {
+        // A same-id reload is only a resync and intentionally keeps this
+        // navigation token valid. Re-check the live transcript separately so a
+        // user turn sent during the greeting await still wins without relying
+        // on an unrelated ownership-generation bump.
+        const hasUserMessageSinceCreate = conversationMessagesRef.current.some(
+          (message) => message.role === "user",
+        );
+        if (greetingText && !hasUserMessageSinceCreate) {
           greetingFiredRef.current = true;
-          const initMessages: ConversationMessage[] = [
-            {
-              id: `greeting-${Date.now()}`,
-              role: "assistant",
-              text: greetingText,
-              timestamp: Date.now(),
-              source: MESSAGE_SOURCE_AGENT_GREETING,
-              ...(greetingLocalInference
-                ? { localInference: greetingLocalInference }
-                : {}),
-            },
-          ];
+          const ownedGreeting = buildOwnedLocalGreeting(
+            greetingText,
+            greetingLocalInference,
+            newConversationOwnerGeneration,
+          );
+          const initMessages: ConversationMessage[] = [ownedGreeting.message];
           conversationMessagesRef.current = initMessages;
           loadedConversationIdRef.current = conversation.id;
           setConversationMessages(initMessages);
-        } else {
+          if (conversationMessagesRef.current.includes(ownedGreeting.message)) {
+            registerConversationMessageOverlay(
+              conversation.id,
+              [ownedGreeting.lineage],
+              [ownedGreeting.message],
+            );
+          }
+        } else if (!greetingText && !hasUserMessageSinceCreate) {
           greetingFiredRef.current = false;
           conversationMessagesRef.current = [];
           loadedConversationIdRef.current = conversation.id;
@@ -1323,6 +1434,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       loadedConversationIdRef,
       loadConversationMessages,
       isConversationMessagesOwnershipCurrent,
+      registerConversationMessageOverlay,
       discardConversationMessageState,
       send.interruptActiveChatPipelineWithDraft,
       setActiveConversationId,

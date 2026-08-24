@@ -81,6 +81,7 @@ import {
   persistPendingChatTurn,
 } from "./pending-chat-turns";
 import { streamingRenderDelayMs } from "./streaming-render-cadence";
+import type { ConversationMessageStateMutation } from "./useDataLoaders";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -486,6 +487,11 @@ export interface UseChatSendDeps {
     conversationId: string | null,
     lineage: string,
     modification: StreamingTextModification,
+    options?: { onlyIfEmpty?: boolean },
+  ) => void;
+  removeConversationMessageStateMessages?: (
+    conversationId: string,
+    mutation: ConversationMessageStateMutation,
   ) => void;
   discardConversationMessageState: (conversationId?: string) => void;
   /**
@@ -579,6 +585,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     isConversationMessagesOwnershipCurrent,
     registerConversationMessageOverlay,
     applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
     discardConversationMessageState,
     settleConversationHydrationForSend,
     elizaCloudEnabled,
@@ -1263,7 +1270,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           return { handled: false, rewrittenText };
         }
 
-        if (slash.name === "commands") {
+        if (slash.name === "/commands") {
           const customActions = (await client.listCustomActions()).filter(
             (action) => action.enabled,
           );
@@ -1471,6 +1478,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           conversationId,
           assistantMsgId,
           { messageId: assistantMsgId, mode: "drop" },
+          { onlyIfEmpty: true },
         );
         return;
       }
@@ -3171,12 +3179,18 @@ export function useChatSend(deps: UseChatSendDeps) {
       // in memory and resent, producing a duplicate [Q, fail, Q-dup, new] turn.
       if (canTruncate && convId) {
         interruptActiveChatPipeline();
+        const removedTail = currentMessages.slice(userIdx);
         const preservedMessages = currentMessages.slice(0, userIdx);
         conversationMessagesRef.current = preservedMessages;
         setConversationMessages(preservedMessages);
         try {
           await client.truncateConversationMessages(convId, userMsg.id, {
             inclusive: true,
+          });
+          removeConversationMessageStateMessages?.(convId, {
+            mode: "truncate",
+            removedMessages: removedTail,
+            preservedMessages,
           });
           await sendChatText(retryText, { conversationId: convId });
         } catch (err) {
@@ -3228,6 +3242,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       activeConversationIdRef,
       interruptActiveChatPipeline,
       loadConversationMessages,
+      removeConversationMessageStateMessages,
       setActionNotice,
     ],
   );
@@ -3271,6 +3286,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         setChatInput("");
       }
 
+      const removedTail = currentMessages.slice(messageIndex);
       const preservedMessages = currentMessages.slice(0, messageIndex);
       conversationMessagesRef.current = preservedMessages;
       setConversationMessages(preservedMessages);
@@ -3278,6 +3294,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       try {
         await client.truncateConversationMessages(convId, messageId, {
           inclusive: true,
+        });
+        removeConversationMessageStateMessages?.(convId, {
+          mode: "truncate",
+          removedMessages: removedTail,
+          preservedMessages,
         });
         await sendChatText(nextText, { conversationId: convId });
         return true;
@@ -3293,6 +3314,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [
       loadConversationMessages,
+      removeConversationMessageStateMessages,
       sendChatText,
       setActionNotice,
       activeConversationIdRef.current,
@@ -3336,6 +3358,10 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       try {
         await client.deleteConversationMessage(convId, messageId);
+        removeConversationMessageStateMessages?.(convId, {
+          mode: "delete-exact",
+          removedMessages: [target],
+        });
         return true;
       } catch (err) {
         // Roll back so the message stays visible — never a silent local-only
@@ -3368,6 +3394,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     [
       activeConversationIdRef,
       conversationMessagesRef,
+      removeConversationMessageStateMessages,
       setConversationMessages,
       setActionNotice,
     ],
