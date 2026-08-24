@@ -220,4 +220,34 @@ describe("hash router", () => {
 
     await expect(getHashTargets(serverUrl, "user-1", 2)).resolves.toEqual([]);
   });
+
+  test("isolates rings by namespace for same serviceName", async () => {
+    spyOn(common, "readServiceAccountToken").mockReturnValue("test-token");
+    spyOn(common, "readServiceAccountCaCert").mockReturnValue(null);
+    spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/namespaces/staging/")) {
+        return endpointSliceResponse(["10.1.0.5"]);
+      }
+      if (url.includes("/namespaces/eliza-agents/")) {
+        return endpointSliceResponse(["10.0.0.1", "10.0.0.2"]);
+      }
+      return endpointSliceResponse([]);
+    });
+
+    const prod = await getHashTargets(
+      "http://agent-server.eliza-agents.svc.cluster.local:3000",
+      "userA",
+      1,
+    );
+    const staging = await getHashTargets(
+      "http://agent-server.staging.svc.cluster.local:3000",
+      "userA",
+      1,
+    );
+
+    expect(prod[0]).toMatch(/10\.0\.0\.\d+:3000/);
+    expect(staging[0]).toBe("10.1.0.5:3000");
+    expect(prod[0]).not.toBe(staging[0]);
+  });
 });

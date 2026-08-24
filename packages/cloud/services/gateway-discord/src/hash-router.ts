@@ -20,6 +20,10 @@ interface RingState {
 const rings = new Map<string, RingState>();
 const refreshes = new Map<string, Promise<RingState | undefined>>();
 
+function ringKey(namespace: string, serviceName: string): string {
+	return `${namespace}/${serviceName}`;
+}
+
 function parseServerUrl(serverUrl: string): {
   serviceName: string;
   namespace: string;
@@ -104,16 +108,19 @@ function sameIPs(a: string[], b: string[]): boolean {
 }
 
 function updateRing(
+  namespace: string,
   serviceName: string,
   podIPs: string[],
   existing?: RingState,
 ): RingState | undefined {
+  const key = ringKey(namespace, serviceName);
   if (podIPs.length === 0) {
     if (existing) {
       logger.info("[hash-router] All pods gone, clearing ring", {
         serviceName,
+        namespace,
       });
-      rings.delete(serviceName);
+      rings.delete(key);
     }
     return undefined;
   }
@@ -143,11 +150,12 @@ function updateRing(
     lastRefresh: now,
     lastAttempt: now,
   };
-  rings.set(serviceName, state);
+  rings.set(key, state);
   return state;
 }
 
 function retainUsableStaleRing(
+  namespace: string,
   serviceName: string,
   existing: RingState | undefined,
 ): RingState | undefined {
@@ -158,9 +166,10 @@ function retainUsableStaleRing(
   }
   logger.warn("[hash-router] Discovery failed, dropping stale ring", {
     serviceName,
+    namespace,
     staleForMs,
   });
-  rings.delete(serviceName);
+  rings.delete(ringKey(namespace, serviceName));
   return undefined;
 }
 
@@ -168,11 +177,11 @@ function refreshRing(
   serviceName: string,
   namespace: string,
 ): Promise<RingState | undefined> {
-  const refreshKey = `${namespace}/${serviceName}`;
+  const refreshKey = ringKey(namespace, serviceName);
   const inFlight = refreshes.get(refreshKey);
   if (inFlight) return inFlight;
 
-  const current = rings.get(serviceName);
+  const current = rings.get(refreshKey);
   if (current) current.lastAttempt = Date.now();
 
   let refresh!: Promise<RingState | undefined>;
@@ -180,8 +189,17 @@ function refreshRing(
     try {
       const resolution = await resolvePodIPs(serviceName, namespace);
       return resolution.ok
-        ? updateRing(serviceName, resolution.podIPs, rings.get(serviceName))
-        : retainUsableStaleRing(serviceName, rings.get(serviceName));
+        ? updateRing(
+            namespace,
+            serviceName,
+            resolution.podIPs,
+            rings.get(refreshKey),
+          )
+        : retainUsableStaleRing(
+            namespace,
+            serviceName,
+            rings.get(refreshKey),
+          );
     } finally {
       if (refreshes.get(refreshKey) === refresh) {
         refreshes.delete(refreshKey);
@@ -217,7 +235,7 @@ export async function getHashTargets(
 
   const { serviceName, namespace, port } = parseServerUrl(serverUrl);
 
-  let entry = rings.get(serviceName);
+  let entry = rings.get(ringKey(namespace, serviceName));
   const now = Date.now();
 
   if (!entry || now - entry.lastRefresh > MAX_STALE_RING_MS) {
