@@ -408,7 +408,7 @@ class DiscordAutomationService {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          nick: trimmed.slice(0, 32),
+          nick: truncateWellFormed(toWellFormedUnicode(trimmed), 32),
         }),
       });
 
