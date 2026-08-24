@@ -363,7 +363,10 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     ).toEqual(expectedIds);
   });
 
-  it("rejects unscoped destructive actions without touching either room", async () => {
+  it("rejects an unscoped write without touching either room", async () => {
+    // write needs a valid roomId to seed brand-new rows, so an unscoped write is
+    // still rejected. clear is deliberately excluded here: it reconciles on the
+    // (entityId, agentId) scope and needs no roomId (see the #28006 cases).
     const entityId = "23456789-2345-4345-8345-23456789abcd" as UUID;
     const roomA = "11111111-aaaa-4aaa-8aaa-111111111111" as UUID;
     const roomB = "22222222-bbbb-4bbb-8bbb-222222222222" as UUID;
@@ -391,23 +394,159 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     ];
 
     for (const message of invalidMessages) {
-      for (const parameters of [
-        { action: "write", todos: [] },
-        { action: "clear" },
-      ]) {
-        const result = await invokeTodoAction(message, parameters);
-        expect(result.success).toBe(false);
-        expect(result.text).toContain("invalid_scope");
-        expect(result.effectReceipts).toBeUndefined();
-        expect(result.userFacingEffectReceiptIds).toBeUndefined();
-        expect(result.verifiedUserFacing).toBeUndefined();
-      }
+      const result = await invokeTodoAction(message, {
+        action: "write",
+        todos: [],
+      });
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_scope");
+      expect(result.effectReceipts).toBeUndefined();
+      expect(result.userFacingEffectReceiptIds).toBeUndefined();
+      expect(result.verifiedUserFacing).toBeUndefined();
       expect(
         (await service.list({ entityId, agentId: runtime.agentId }))
           .map((todo) => todo.id)
           .sort(),
       ).toEqual(expectedIds);
     }
+  });
+
+  it("clears the user's whole cross-room list when action=clear runs from one room (regression #28006)", async () => {
+    // The CURRENT_TODOS provider, actionList, and service.list() all key only on
+    // (entityId, agentId), so "clear my todos" must remove every row for the
+    // user regardless of the room it is invoked from. Before the fix the action
+    // copied message.roomId into the clear filter, deleting only the current
+    // room's rows while the entity-scoped provider kept surfacing the rest.
+    const entityId = "3b3b3b3b-3b3b-4b3b-8b3b-3b3b3b3b3b3b" as UUID;
+    const roomA = "aaaa1111-aaaa-4aaa-8aaa-aaaa1111aaaa" as UUID;
+    const roomB = "bbbb2222-bbbb-4bbb-8bbb-bbbb2222bbbb" as UUID;
+    await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: roomA,
+      content: "Todo made in room A",
+      status: "pending",
+    });
+    await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: roomB,
+      content: "Todo made in room B",
+      status: "pending",
+    });
+
+    // Same filter the action builds when the user is chatting from ROOM_B.
+    const result = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId: roomB,
+        content: { text: "clear my todos" },
+      } as Memory,
+      { action: "clear" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ action: "clear", count: 2 });
+
+    // Both rows are gone, not just ROOM_B's, and the provider that reads the
+    // same entity scope is now empty on the very next turn.
+    const remaining = await service.list({
+      entityId,
+      agentId: runtime.agentId,
+    });
+    expect(remaining).toHaveLength(0);
+    const provider = await currentTodosProvider.get(runtime, {
+      entityId,
+    } as Memory);
+    expect(provider.text).not.toContain("Todo made in room A");
+    expect(provider.text).not.toContain("Todo made in room B");
+    const providerTodos = (provider.data?.todos ?? []) as unknown[];
+    expect(providerTodos).toHaveLength(0);
+  });
+
+  it("still clears every row and reports the count for a single-room user", async () => {
+    const entityId = "4c4c4c4c-4c4c-4c4c-8c4c-4c4c4c4c4c4c" as UUID;
+    const roomId = "ccccdddd-cccc-4ccc-8ccc-ccccddddcccc" as UUID;
+    await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId,
+      content: "Only-room todo one",
+      status: "pending",
+    });
+    await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId,
+      content: "Only-room todo two",
+      status: "in_progress",
+    });
+
+    const result = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId,
+        content: { text: "clear my todos" },
+      } as Memory,
+      { action: "clear" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ action: "clear", count: 2 });
+    expect(await service.list({ entityId, agentId: runtime.agentId })).toEqual(
+      [],
+    );
+  });
+
+  it("clear for one user never touches another user's cross-room rows (regression #28006)", async () => {
+    const victimEntity = "5d5d5d5d-5d5d-4d5d-8d5d-5d5d5d5d5d5d" as UUID;
+    const otherEntity = "6e6e6e6e-6e6e-4e6e-8e6e-6e6e6e6e6e6e" as UUID;
+    const sharedRoom = "eeeeffff-eeee-4eee-8eee-eeeeffffeeee" as UUID;
+    const otherRoom = "ffff0000-ffff-4fff-8fff-ffff0000ffff" as UUID;
+    await service.create({
+      entityId: victimEntity,
+      agentId: runtime.agentId,
+      roomId: sharedRoom,
+      content: "Victim in shared room",
+      status: "pending",
+    });
+    const survivorInShared = await service.create({
+      entityId: otherEntity,
+      agentId: runtime.agentId,
+      roomId: sharedRoom,
+      content: "Other user, shared room",
+      status: "pending",
+    });
+    const survivorElsewhere = await service.create({
+      entityId: otherEntity,
+      agentId: runtime.agentId,
+      roomId: otherRoom,
+      content: "Other user, other room",
+      status: "pending",
+    });
+
+    const result = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId: victimEntity,
+        roomId: sharedRoom,
+        content: { text: "clear my todos" },
+      } as Memory,
+      { action: "clear" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ action: "clear", count: 1 });
+
+    expect(
+      await service.list({ entityId: victimEntity, agentId: runtime.agentId }),
+    ).toEqual([]);
+    const otherRows = await service.list({
+      entityId: otherEntity,
+      agentId: runtime.agentId,
+    });
+    expect(otherRows.map((t) => t.id).sort()).toEqual(
+      [survivorInShared.id, survivorElsewhere.id].sort(),
+    );
   });
 
   it("deletes a todo and clear() removes the remaining rows for a scope", async () => {

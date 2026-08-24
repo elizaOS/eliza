@@ -130,9 +130,12 @@ the Cloud Shared host currently supplies a Hyperdrive-backed Drizzle client.
   `createTodosSqlStore`.
 - **Every operation is tenant-scoped.** `agentId` and `entityId` are required in
   all storage predicates. `write` replaces the entity-scoped list exposed to
-  the planner across rooms, while `clear` may narrow deletion to the current
-  room. `roomId` and `worldId` otherwise remain projection metadata, not
-  ownership boundaries.
+  the planner across rooms, and the planner-facing `TODO` action=clear likewise
+  removes the user's whole cross-room list so it matches what `list` and the
+  `CURRENT_TODOS` provider read. The store's `clear({ roomId })` opt-in can
+  still narrow deletion to one room for trusted internal callers, but the
+  action never uses it. `roomId` and `worldId` otherwise remain projection
+  metadata, not ownership boundaries.
 - **Planner mutations use the ledger.** Calling direct `create` / `update` /
   `delete` from an action bypasses exactly-once replay and is a correctness bug.
 - **`write` is a full replacement.** It reconciles the desired scoped list,

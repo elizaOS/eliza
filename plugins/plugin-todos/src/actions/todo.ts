@@ -700,10 +700,17 @@ async function actionClear({
   callback,
   idempotencyKey,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
+  // "clear my todos" reconciles on the same (entityId, agentId) scope that the
+  // CURRENT_TODOS provider, actionList, and service.list() read, so it removes
+  // the user's whole persisted list. Narrowing by scope.roomId here left rows
+  // created from other rooms behind while the entity-scoped provider kept
+  // surfacing them, contradicting the action's own cross-room contract
+  // (#28006). Room-scoped deletion remains available as the store's explicit
+  // clear({ roomId }) opt-in for trusted internal callers.
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
     idempotencyKey,
-    mutation: { action: "clear", roomId: scope.roomId },
+    mutation: { action: "clear" },
   });
   if (execution.result.action !== "clear") {
     throw new Error("Todo mutation result does not match action=clear");
@@ -788,7 +795,7 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       "CLEAR_TODOS",
     ],
     description:
-      "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+      "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear (remove the user's entire list). Todos are user-scoped (entityId), persistent, and shared across rooms for the same user; clear removes them across every room, matching what list shows.",
     descriptionCompressed:
       "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
     parameters: [
@@ -894,10 +901,7 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       if ("error" in scope) {
         return failure("missing_param", scope.error);
       }
-      if (
-        (action === "write" || action === "clear") &&
-        validateUuid(scope.roomId) === null
-      ) {
+      if (action === "write" && validateUuid(scope.roomId) === null) {
         return failure(
           "invalid_scope",
           `a valid roomId is required for action=${action}`,
