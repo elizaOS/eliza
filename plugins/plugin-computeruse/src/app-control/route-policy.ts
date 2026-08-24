@@ -37,6 +37,7 @@ export interface AppControlRouteCapability {
 
 export interface AppControlRoutePolicyOptions {
   globalPhysicalFallbackEnabled?: boolean;
+  experimentalExactWindowComponentPresent?: boolean;
 }
 
 /**
@@ -49,6 +50,8 @@ export function getAppControlRouteMatrix(
   const globalPhysicalFallbackEnabled =
     options.globalPhysicalFallbackEnabled ??
     process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS === "1";
+  const experimentalExactWindowComponentPresent =
+    options.experimentalExactWindowComponentPresent ?? false;
 
   return [
     {
@@ -92,12 +95,15 @@ export function getAppControlRouteMatrix(
     },
     {
       id: "exact_window_pointer",
-      status: "policy_blocked",
+      status: experimentalExactWindowComponentPresent
+        ? "disabled_by_default"
+        : "policy_blocked",
       deliveryScope: "window",
       pointerEffect: "none",
       exactWindowDelivery: false,
-      reason:
-        "The shared signed distribution has no public macOS CGWindowID-addressed pointer API and no verified store exclusion for a private implementation.",
+      reason: experimentalExactWindowComponentPresent
+        ? "A direct-only experimental component is present but requires explicit route selection, runtime probing, and signed acceptance before it can be treated as supported."
+        : "The shared signed distribution has no public macOS CGWindowID-addressed pointer API; the optional private component is absent.",
       requirements: [
         "public supported window-addressed API or isolated non-store component",
         "signed-package acceptance",

@@ -5,8 +5,10 @@ import { AppControlCoordinator, type AppControlError } from "./coordinator.js";
 import type {
   AppActionRequest,
   AppControlAdapter,
+  AppExactWindowPointerDispatcher,
   AppControlGrounder,
   AppPointerObserver,
+  ExperimentalExactWindowAuthorizer,
   NativeAppSnapshot,
   PhysicalFallbackAuthorizer,
   PhysicalPointerDriver,
@@ -51,6 +53,8 @@ function fixture(
     grounder?: AppControlGrounder;
     pointer?: PhysicalPointerDriver & AppPointerObserver;
     authorizePhysicalFallback?: PhysicalFallbackAuthorizer;
+    exactWindowPointer?: AppExactWindowPointerDispatcher;
+    authorizeExperimentalExactWindow?: ExperimentalExactWindowAuthorizer;
     nativeExecutionMode?:
       | "semantic_ax"
       | "process_pid_keyboard_cgevent";
@@ -104,6 +108,9 @@ function fixture(
     grounder: options.grounder,
     pointer: options.pointer,
     pointerObserver: options.pointer,
+    exactWindowPointer: options.exactWindowPointer,
+    authorizeExperimentalExactWindow:
+      options.authorizeExperimentalExactWindow,
     authorizePhysicalFallback: options.authorizePhysicalFallback,
     now: () => Date.parse("2026-08-23T00:00:01.000Z"),
     idFactory: () => `id-${++id}`,
@@ -439,6 +446,251 @@ describe("AppControlCoordinator", () => {
     });
     expect(pointer.click).not.toHaveBeenCalled();
     expect(pointer.getPosition).toHaveBeenCalledOnce();
+  });
+
+  it("uses the explicit experimental route only after AX refusal and exact receipt validation", async () => {
+    const pointer = {
+      getPosition: vi.fn(async () => ({ x: 692, y: 765 })),
+      click: vi.fn(),
+      scroll: vi.fn(),
+    };
+    const exactWindowPointer: AppExactWindowPointerDispatcher = {
+      available: () => true,
+      dispatch: vi.fn(async ({ state }) => ({
+        success: true,
+        route: "experimental_direct_exact_window" as const,
+        observationId: state.stateId,
+        targetPid: 42,
+        targetWindowId: 701,
+        targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+        pointerBefore: { x: 692, y: 765 },
+        pointerAfter: { x: 692, y: 765 },
+      })),
+    };
+    const authorizeExperimentalExactWindow = vi.fn(async () => ({
+      approvalId: "approval-exact-1",
+      requestedAt: "2026-08-23T00:00:00.500Z",
+      approvedAt: "2026-08-23T00:00:00.750Z",
+      mode: "smart_approve",
+    }));
+    const { coordinator } = fixture({
+      pointer,
+      exactWindowPointer,
+      authorizeExperimentalExactWindow,
+      performSuccess: false,
+      snapshots: [nativeSnapshot("Save"), nativeSnapshot("Saved")],
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(exactWindowPointer.dispatch).toHaveBeenCalledOnce();
+    expect(authorizeExperimentalExactWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        observationId: before.stateId,
+        targetPid: 42,
+        targetWindowId: 701,
+        windowBounds: { x: 100, y: 200, width: 800, height: 600 },
+        targetBounds: { x: 140, y: 240, width: 80, height: 40 },
+      }),
+      undefined,
+    );
+    expect(pointer.click).not.toHaveBeenCalled();
+    expect(outcome.receipt).toMatchObject({
+      executionMode: "experimental_direct_exact_window",
+      targetPid: 42,
+      targetWindowId: 701,
+      targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+      physicalPointerInput: false,
+      pointerObservation: "unchanged",
+      experimentalExactWindowApproval: {
+        approvalId: "approval-exact-1",
+      },
+    });
+  });
+
+  it("pauses before experimental helper dispatch until the separate approval resolves", async () => {
+    let releaseApproval: (() => void) | undefined;
+    let markApprovalStarted: (() => void) | undefined;
+    const approvalStarted = new Promise<void>((resolve) => {
+      markApprovalStarted = resolve;
+    });
+    const approval = new Promise<void>((resolve) => {
+      releaseApproval = resolve;
+    });
+    const pointer = {
+      getPosition: vi.fn(async () => ({ x: 100, y: 200 })),
+      click: vi.fn(),
+      scroll: vi.fn(),
+    };
+    const exactWindowPointer: AppExactWindowPointerDispatcher = {
+      available: () => true,
+      dispatch: vi.fn(async ({ state }) => ({
+        success: true,
+        route: "experimental_direct_exact_window" as const,
+        observationId: state.stateId,
+        targetPid: 42,
+        targetWindowId: 701,
+        targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+        pointerBefore: { x: 100, y: 200 },
+        pointerAfter: { x: 100, y: 200 },
+      })),
+    };
+    const authorizeExperimentalExactWindow = vi.fn(async () => {
+      markApprovalStarted?.();
+      await approval;
+      return {
+        approvalId: "approval-exact-paused",
+        requestedAt: "2026-08-23T00:00:00.500Z",
+        approvedAt: "2026-08-23T00:00:00.750Z",
+        mode: "smart_approve",
+      };
+    });
+    const { coordinator } = fixture({
+      pointer,
+      exactWindowPointer,
+      authorizeExperimentalExactWindow,
+      performSuccess: false,
+      snapshots: [nativeSnapshot("Save"), nativeSnapshot("Saved")],
+    });
+    const before = await coordinator.getAppState(app.id);
+    const pending = coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    await approvalStarted;
+    expect(exactWindowPointer.dispatch).not.toHaveBeenCalled();
+    expect(pointer.click).not.toHaveBeenCalled();
+    releaseApproval?.();
+    await expect(pending).resolves.toMatchObject({ success: true });
+    expect(exactWindowPointer.dispatch).toHaveBeenCalledOnce();
+  });
+
+  it("refuses an experimental receipt for a different window geometry", async () => {
+    const pointer = {
+      getPosition: vi.fn(async () => ({ x: 100, y: 200 })),
+      click: vi.fn(),
+      scroll: vi.fn(),
+    };
+    const { coordinator } = fixture({
+      pointer,
+      performSuccess: false,
+      exactWindowPointer: {
+        available: () => true,
+        dispatch: vi.fn(async ({ state }) => ({
+          success: true,
+          route: "experimental_direct_exact_window" as const,
+          observationId: state.stateId,
+          targetPid: 42,
+          targetWindowId: 701,
+          targetWindowBounds: { x: 101, y: 200, width: 800, height: 600 },
+          pointerBefore: { x: 100, y: 200 },
+          pointerAfter: { x: 100, y: 200 },
+        })),
+      },
+      authorizeExperimentalExactWindow: vi.fn(async () => ({
+        approvalId: "approval-exact-bounds",
+        requestedAt: "2026-08-23T00:00:00.500Z",
+        approvedAt: "2026-08-23T00:00:00.750Z",
+        mode: "smart_approve",
+      })),
+    });
+    const before = await coordinator.getAppState(app.id);
+    await expect(
+      coordinator.act(
+        action(before.stateId, { allowExperimentalExactWindow: true }),
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining("target or pointer validation"),
+    });
+    expect(pointer.click).not.toHaveBeenCalled();
+  });
+
+  it("recaptures after approval and refuses a stale exact-window binding", async () => {
+    const moved = {
+      ...nativeSnapshot("Save"),
+      focusedWindowBounds: { x: 101, y: 200, width: 800, height: 600 },
+    };
+    const exactWindowPointer: AppExactWindowPointerDispatcher = {
+      available: () => true,
+      dispatch: vi.fn(),
+    };
+    const pointer = {
+      getPosition: vi.fn(async () => ({ x: 100, y: 200 })),
+      click: vi.fn(),
+      scroll: vi.fn(),
+    };
+    const { coordinator } = fixture({
+      pointer,
+      performSuccess: false,
+      exactWindowPointer,
+      snapshots: [nativeSnapshot("Save"), moved],
+      authorizeExperimentalExactWindow: vi.fn(async () => ({
+        approvalId: "approval-exact-stale",
+        requestedAt: "2026-08-23T00:00:00.500Z",
+        approvedAt: "2026-08-23T00:00:00.750Z",
+        mode: "smart_approve",
+      })),
+    });
+    const before = await coordinator.getAppState(app.id);
+    await expect(
+      coordinator.act(
+        action(before.stateId, { allowExperimentalExactWindow: true }),
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining("changed after approval"),
+    });
+    expect(exactWindowPointer.dispatch).not.toHaveBeenCalled();
+    expect(pointer.click).not.toHaveBeenCalled();
+  });
+
+  it("does not let an experimental event received by sibling B verify target A", async () => {
+    let siblingValue = "before";
+    const pointer = {
+      getPosition: vi.fn(async () => ({ x: 100, y: 200 })),
+      click: vi.fn(),
+      scroll: vi.fn(),
+    };
+    const exactWindowPointer: AppExactWindowPointerDispatcher = {
+      available: () => true,
+      dispatch: vi.fn(async ({ state }) => {
+        siblingValue = "after";
+        return {
+          success: true,
+          route: "experimental_direct_exact_window" as const,
+          observationId: state.stateId,
+          targetPid: 42,
+          targetWindowId: 701,
+          targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+          pointerBefore: { x: 100, y: 200 },
+          pointerAfter: { x: 100, y: 200 },
+        };
+      }),
+    };
+    const authorizeExperimentalExactWindow = vi.fn(async () => ({
+      approvalId: "approval-exact-sibling",
+      requestedAt: "2026-08-23T00:00:00.500Z",
+      approvedAt: "2026-08-23T00:00:00.750Z",
+      mode: "smart_approve",
+    }));
+    const { coordinator } = fixture({
+      pointer,
+      exactWindowPointer,
+      authorizeExperimentalExactWindow,
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    await expect(
+      coordinator.act(
+        action(before.stateId, { allowExperimentalExactWindow: true }),
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining("action-specific target-element readback"),
+    });
+    expect(siblingValue).toBe("after");
+    expect(pointer.click).not.toHaveBeenCalled();
   });
 
   it("refuses when a process-scoped key mutates sibling B but target A readback is unchanged", async () => {

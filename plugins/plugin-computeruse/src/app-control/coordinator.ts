@@ -9,6 +9,8 @@ import type {
   AppActionOutcome,
   AppActionRequest,
   AppControlAdapter,
+  AppElementBounds,
+  AppExactWindowPointerDispatcher,
   AppControlGrounder,
   AppControlPermissionState,
   AppDescriptor,
@@ -17,6 +19,8 @@ import type {
   AppPointerPosition,
   AppState,
   AppStateCapture,
+  ExperimentalExactWindowApprovalReceipt,
+  ExperimentalExactWindowAuthorizer,
   NativeAppElement,
   PhysicalFallbackApprovalReceipt,
   PhysicalFallbackAuthorizer,
@@ -32,6 +36,7 @@ export class AppControlError extends Error {
       | "STALE_APP_STATE"
       | "ELEMENT_NOT_FOUND"
       | "ACTION_NOT_EXPOSED"
+      | "EXPERIMENTAL_EXACT_WINDOW_DENIED"
       | "PHYSICAL_FALLBACK_DENIED",
     message: string,
   ) {
@@ -51,7 +56,9 @@ interface AppControlCoordinatorOptions {
   grounder?: AppControlGrounder;
   pointer?: PhysicalPointerDriver;
   pointerObserver?: AppPointerObserver;
+  exactWindowPointer?: AppExactWindowPointerDispatcher;
   authorizePhysicalFallback?: PhysicalFallbackAuthorizer;
+  authorizeExperimentalExactWindow?: ExperimentalExactWindowAuthorizer;
   now?: () => number;
   idFactory?: () => string;
 }
@@ -113,7 +120,9 @@ export class AppControlCoordinator {
   private readonly grounder?: AppControlGrounder;
   private readonly pointer?: PhysicalPointerDriver;
   private readonly pointerObserver?: AppPointerObserver;
+  private readonly exactWindowPointer?: AppExactWindowPointerDispatcher;
   private readonly authorizePhysicalFallback?: PhysicalFallbackAuthorizer;
+  private readonly authorizeExperimentalExactWindow?: ExperimentalExactWindowAuthorizer;
   private readonly now: () => number;
   private readonly idFactory: () => string;
   private permission: AppControlPermissionState | "unknown" = "unknown";
@@ -124,7 +133,10 @@ export class AppControlCoordinator {
     this.grounder = options.grounder;
     this.pointer = options.pointer;
     this.pointerObserver = options.pointerObserver;
+    this.exactWindowPointer = options.exactWindowPointer;
     this.authorizePhysicalFallback = options.authorizePhysicalFallback;
+    this.authorizeExperimentalExactWindow =
+      options.authorizeExperimentalExactWindow;
     this.now = options.now ?? Date.now;
     this.idFactory = options.idFactory ?? randomUUID;
   }
@@ -140,7 +152,10 @@ export class AppControlCoordinator {
       available,
       adapter: this.adapter.name,
       permission: available ? this.permission : "helper_unavailable",
-      routes: getAppControlRouteMatrix(),
+      routes: getAppControlRouteMatrix({
+        experimentalExactWindowComponentPresent:
+          this.exactWindowPointer?.available() ?? false,
+      }),
     };
   }
 
@@ -291,6 +306,7 @@ export class AppControlCoordinator {
     let executionMode:
       | "semantic_ax"
       | "process_pid_keyboard_cgevent"
+      | "experimental_direct_exact_window"
       | "guarded_physical" = "semantic_ax";
     let nativeResult = await this.adapter.perform(
       stored.publicState.app,
@@ -313,6 +329,88 @@ export class AppControlCoordinator {
     let physicalPointerInput = false;
     let groundingMode: "set_of_marks" | "ocr" | "element_bounds" | undefined;
     let fallbackApproval: PhysicalFallbackApprovalReceipt | undefined;
+    let experimentalApproval:
+      | ExperimentalExactWindowApprovalReceipt
+      | undefined;
+
+    if (
+      !nativeResult.success &&
+      request.allowExperimentalExactWindow &&
+      element &&
+      (request.kind === "click" || request.kind === "scroll")
+    ) {
+      if (!this.exactWindowPointer?.available()) {
+        return {
+          success: false,
+          error:
+            "Experimental exact-window route is not packaged, enabled, or capability-addressable",
+        };
+      }
+      if (!pointerBefore) {
+        return {
+          success: false,
+          error:
+            "Experimental exact-window dispatch requires physical pointer provenance",
+        };
+      }
+      experimentalApproval = await this.approveExperimentalExactWindow(
+        request,
+        stored.publicState,
+        element,
+        expectedWindowId,
+        signal,
+      );
+      const preflightError = await this.revalidateExperimentalExactWindow(
+        request,
+        stored.publicState,
+        element,
+        expectedWindowId,
+        signal,
+      );
+      if (preflightError) {
+        return { success: false, error: preflightError };
+      }
+      const experimental = await this.exactWindowPointer.dispatch(
+        {
+          app: stored.publicState.app,
+          state: stored.publicState,
+          element,
+          request,
+          expectedWindowId,
+        },
+        signal,
+      );
+      if (
+        !experimental.success ||
+        experimental.route !== "experimental_direct_exact_window" ||
+        experimental.observationId !== request.stateId ||
+        experimental.targetPid !== stored.publicState.app.pid ||
+        experimental.targetWindowId !== expectedWindowId ||
+        !stored.publicState.screenshotBounds ||
+        !this.sameBounds(
+          experimental.targetWindowBounds,
+          stored.publicState.screenshotBounds,
+        ) ||
+        experimental.pointerBefore.x !== pointerBefore.x ||
+        experimental.pointerBefore.y !== pointerBefore.y ||
+        experimental.pointerAfter.x !== pointerBefore.x ||
+        experimental.pointerAfter.y !== pointerBefore.y
+      ) {
+        return {
+          success: false,
+          error:
+            experimental.error ??
+            "Experimental exact-window receipt failed target or pointer validation",
+        };
+      }
+      executionMode = "experimental_direct_exact_window";
+      nativeResult = {
+        success: true,
+        targetPid: experimental.targetPid,
+        targetWindowId: experimental.targetWindowId,
+        executionMode,
+      };
+    }
 
     if (!nativeResult.success) {
       const match = await this.grounder?.ground(
@@ -419,13 +517,16 @@ export class AppControlCoordinator {
       };
     }
     if (
-      executionMode === "process_pid_keyboard_cgevent" &&
+      (executionMode === "process_pid_keyboard_cgevent" ||
+        executionMode === "experimental_direct_exact_window") &&
       !targetChanged
     ) {
       return {
         success: false,
         error:
-          "Process-scoped PID event delivery could not be verified by target-element readback in the exact bound window",
+          executionMode === "process_pid_keyboard_cgevent"
+            ? "Process-scoped PID event delivery could not be verified by target-element readback in the exact bound window"
+            : "Experimental exact-window dispatch could not be verified by action-specific target-element readback",
         state: after,
       };
     }
@@ -454,6 +555,12 @@ export class AppControlCoordinator {
         ...(groundingMode ? { groundingMode } : {}),
         ...(fallbackApproval
           ? { physicalFallbackApproval: fallbackApproval }
+          : {}),
+        ...(experimentalApproval
+          ? { experimentalExactWindowApproval: experimentalApproval }
+          : {}),
+        ...(stored.publicState.screenshotBounds
+          ? { targetWindowBounds: stored.publicState.screenshotBounds }
           : {}),
         ...(element?.bounds ? { targetBounds: element.bounds } : {}),
         ...(nativeResult.clipboardRestored !== undefined
@@ -501,6 +608,68 @@ export class AppControlCoordinator {
     );
   }
 
+  private async approveExperimentalExactWindow(
+    request: AppActionRequest,
+    state: AppState,
+    element: NativeAppElement,
+    expectedWindowId: number,
+    signal?: AbortSignal,
+  ): Promise<ExperimentalExactWindowApprovalReceipt> {
+    if (
+      !request.allowExperimentalExactWindow ||
+      !this.authorizeExperimentalExactWindow ||
+      request.element_index === undefined ||
+      !element.bounds ||
+      !state.screenshotBounds ||
+      (request.kind !== "click" && request.kind !== "scroll")
+    ) {
+      throw new AppControlError(
+        "EXPERIMENTAL_EXACT_WINDOW_DENIED",
+        "Experimental exact-window dispatch requires a distinct action-time approval",
+      );
+    }
+    return this.authorizeExperimentalExactWindow(
+      {
+        appId: request.app,
+        kind: request.kind,
+        element_index: request.element_index,
+        observationId: state.stateId,
+        targetPid: state.app.pid,
+        targetWindowId: expectedWindowId,
+        windowBounds: state.screenshotBounds,
+        targetBounds: element.bounds,
+      },
+      signal,
+    );
+  }
+
+  private async revalidateExperimentalExactWindow(
+    request: AppActionRequest,
+    state: AppState,
+    element: NativeAppElement,
+    expectedWindowId: number,
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    const current = await this.adapter.snapshot(request.app, signal);
+    const currentElement = current.elements.find((candidate) =>
+      this.sameLocator(candidate.locator, element.locator),
+    );
+    if (
+      current.permission !== "ready" ||
+      current.app.pid !== state.app.pid ||
+      current.focusedWindowId !== expectedWindowId ||
+      !state.screenshotBounds ||
+      !current.focusedWindowBounds ||
+      !this.sameBounds(current.focusedWindowBounds, state.screenshotBounds) ||
+      !element.bounds ||
+      !currentElement?.bounds ||
+      !this.sameBounds(currentElement.bounds, element.bounds)
+    ) {
+      return "Experimental exact-window target changed after approval; capture a fresh observation and approve again";
+    }
+    return null;
+  }
+
   private async readPointerPosition(): Promise<AppPointerPosition | undefined> {
     if (!this.pointerObserver) return undefined;
     try {
@@ -545,6 +714,15 @@ export class AppControlCoordinator {
     return (
       left.length === right.length &&
       left.every((value, index) => value === right[index])
+    );
+  }
+
+  private sameBounds(left: AppElementBounds, right: AppElementBounds): boolean {
+    return (
+      left.x === right.x &&
+      left.y === right.y &&
+      left.width === right.width &&
+      left.height === right.height
     );
   }
 

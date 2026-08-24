@@ -30,6 +30,20 @@ describe("app-control route policy", () => {
     });
   });
 
+  it("reports a packaged direct-only component as experimental and disabled", () => {
+    const routes = getAppControlRouteMatrix({
+      experimentalExactWindowComponentPresent: true,
+    });
+    expect(
+      routes.find((route) => route.id === "exact_window_pointer"),
+    ).toMatchObject({
+      status: "disabled_by_default",
+      deliveryScope: "window",
+      exactWindowDelivery: false,
+      pointerEffect: "none",
+    });
+  });
+
   it("never enables global physical input implicitly", () => {
     const disabled = getAppControlRouteMatrix({
       globalPhysicalFallbackEnabled: false,

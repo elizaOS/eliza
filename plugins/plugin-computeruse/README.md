@@ -60,6 +60,16 @@ and never invoke global pointer input. macOS still exposes only one true system
 pointer, so an approved coordinate fallback can move it. The helper reads
 permission state without requesting or changing TCC grants.
 
+Direct macOS builds may optionally package a separate private-ABI experiment
+for exact-window click/scroll. It is absent from the shared plugin and Mac App
+Store artifacts, disabled by default, and never selected before semantic AX.
+Building it requires `--build-experimental-exact-window-helper`; runtime use
+also requires `ELIZA_COMPUTERUSE_EXPERIMENTAL_EXACT_WINDOW=1`, an explicit
+`allowExperimentalExactWindow` request, a successful capability probe, exact
+observation/PID/window/bounds revalidation, pointer provenance, and a separate
+action-time approval. This source lane is not signed physical acceptance. See
+[`docs/EXACT_WINDOW_DISPATCH_POLICY.md`](./docs/EXACT_WINDOW_DISPATCH_POLICY.md).
+
 The Linux X11 release-evidence path is executable with
 `bun run capture:linux-desktop-evidence`; it uses a disposable controlled xterm
 and emits a strict-validator-compatible evidence bundle. The lane requires

@@ -23,6 +23,7 @@ import {
   WindowRegionCapture,
 } from "../app-control/defaults.js";
 import { MacosAxAdapter } from "../app-control/macos-ax-adapter.js";
+import { MacosExperimentalExactWindowDispatcher } from "../app-control/macos-exact-window-dispatcher.js";
 import type { AppControlRouteCapability } from "../app-control/route-policy.js";
 import type {
   AppActionOutcome,
@@ -30,6 +31,8 @@ import type {
   AppControlPermissionState,
   AppDescriptor,
   AppState,
+  ExperimentalExactWindowApprovalRequest,
+  ExperimentalExactWindowApprovalReceipt,
   PhysicalFallbackApprovalRequest,
   PhysicalFallbackApprovalReceipt,
 } from "../app-control/types.js";
@@ -376,8 +379,11 @@ export class ComputerUseService extends Service {
     grounder: new RegisteredVisualGrounder(),
     pointer: guardedPhysicalPointer,
     pointerObserver: physicalPointerObserver,
+    exactWindowPointer: new MacosExperimentalExactWindowDispatcher(),
     authorizePhysicalFallback: (request, signal) =>
       this.awaitPhysicalFallbackApproval(request, signal),
+    authorizeExperimentalExactWindow: (request, signal) =>
+      this.awaitExperimentalExactWindowApproval(request, signal),
   });
   private displayIdDeprecationWarned = false;
   private sceneBuilder: SceneBuilder = new SceneBuilder({
@@ -656,6 +662,9 @@ export class ComputerUseService extends Service {
         : {}),
       ...(parameters.allowPhysicalFallback === true
         ? { allowPhysicalFallback: true }
+        : {}),
+      ...(parameters.allowExperimentalExactWindow === true
+        ? { allowExperimentalExactWindow: true }
         : {}),
     };
     try {
@@ -2576,6 +2585,54 @@ export class ComputerUseService extends Service {
         decision.reason
           ? `Physical pointer fallback rejected: ${decision.reason}`
           : "Physical pointer fallback was not approved",
+      );
+    }
+    return {
+      approvalId: decision.id,
+      requestedAt: decision.requestedAt,
+      approvedAt: decision.resolvedAt,
+      mode: decision.mode,
+    };
+  }
+
+  private async awaitExperimentalExactWindowApproval(
+    request: ExperimentalExactWindowApprovalRequest,
+    signal?: AbortSignal,
+  ): Promise<ExperimentalExactWindowApprovalReceipt> {
+    if (
+      process.env.ELIZA_COMPUTERUSE_EXPERIMENTAL_EXACT_WINDOW !== "1"
+    ) {
+      throw new AppControlError(
+        "EXPERIMENTAL_EXACT_WINDOW_DENIED",
+        "Experimental exact-window dispatch is disabled; direct-distribution runtime opt-in is required",
+      );
+    }
+    if (this.approvalManager.isDenyAll()) {
+      throw new AppControlError(
+        "EXPERIMENTAL_EXACT_WINDOW_DENIED",
+        "Experimental exact-window dispatch is paused by the current approval mode",
+      );
+    }
+    const decision = await this.approvalManager.requestApproval(
+      "app_experimental_exact_window_dispatch",
+      {
+        app: request.appId,
+        kind: request.kind,
+        element_index: request.element_index,
+        observationId: request.observationId,
+        targetPid: request.targetPid,
+        targetWindowId: request.targetWindowId,
+        windowBounds: request.windowBounds,
+        targetBounds: request.targetBounds,
+      },
+      signal,
+    );
+    if (!decision.approved) {
+      throw new AppControlError(
+        "EXPERIMENTAL_EXACT_WINDOW_DENIED",
+        decision.reason
+          ? `Experimental exact-window dispatch rejected: ${decision.reason}`
+          : "Experimental exact-window dispatch was not approved",
       );
     }
     return {

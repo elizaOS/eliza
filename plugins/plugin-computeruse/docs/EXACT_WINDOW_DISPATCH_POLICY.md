@@ -2,10 +2,13 @@
 
 ## Decision
 
-The shared signed Computer Use plugin does not ship a private macOS
-exact-window pointer dispatcher. The route is reported as `policy_blocked`, and
-click or scroll refuses when semantic Accessibility is unavailable unless the
-operator separately enables and approves the existing global physical fallback.
+The shared Computer Use plugin and every Mac App Store artifact exclude the
+private macOS exact-window implementation. Direct builds may separately package
+an optional `computeruse-exact-window-helper` executable. It is disabled by
+default, capability-probed at runtime, and exposed only as
+`experimental_direct_exact_window`. It is not production-accepted and cannot
+become an automatic route until legal/release review and signed direct-package
+acceptance are complete.
 
 This is a distribution-policy boundary, not an assertion that exact-window
 background dispatch is technically impossible. elizaOS builds both a direct
@@ -17,9 +20,11 @@ requires App Store apps to use public APIs, while the studied implementation
 depends on undocumented SkyLight symbols. Resolving those symbols dynamically
 changes link-time mechanics but does not make them public APIs.
 
-No source, binary, package, dependency, permission grant, or native dispatcher
-from the references below was imported. Consequently there is no new runtime
-third-party component to list in the packaged notices.
+The direct-only component adapts the pinned MIT event recipe in a separate
+source directory and carries its own third-party notice. The Mac App Store
+build rejects the component flag, omits its copy mapping and runtime authority,
+and scans the finished artifact for its names, route, private framework path,
+and private symbol names.
 
 ## Production route matrix
 
@@ -28,7 +33,7 @@ third-party component to list in the packaged notices.
 | Semantic AX | Indexed AX element in a uniquely bound `(pid, CGWindowID)` window | None | Supported | Re-resolve locator and exact window, then fresh target readback |
 | Browser CDP | Exact browser target | Software-only browser pointer | Supported | Target-bound browser state/readback; not represented as a CGWindowID claim |
 | PID keyboard | Process | None | Conditional | One eligible same-PID window, exact binding unchanged, indexed target changed |
-| Exact-window pointer | CGWindowID window | None | Policy blocked | No public production implementation in the shared signed bundle |
+| Experimental direct exact-window pointer | Exact `(pid, CGWindowID)` candidate | Intended none; signed proof pending | Direct-only, disabled by default | Runtime symbol probe, exact stale/bounds checks, pointer before/after, and action-specific target readback |
 | Isolated target | Sandbox, VM, or remote guest | Guest-local/software | Conditional | Backend must provide target-bound observation and action receipt |
 | Global physical pointer | Host global | Moves the one system pointer | Disabled by default | Environment opt-in, explicit request, pointer provenance, separate approval |
 
@@ -38,21 +43,55 @@ window-addressed. Sibling-window state, generic screenshot change, or an
 unchanged `focusedWindowId` cannot independently prove an action affected the
 requested target.
 
-## Requirements before reconsidering a separate direct-distribution module
+## Direct-only selection contract
 
-A future proposal must be a separately packaged component that is provably
-absent from every Mac App Store artifact. It must remain disabled by default and
-must pass legal/release review plus signed direct-package acceptance. Its ABI
-must be capability-probed at runtime; exact `(pid, CGWindowID)` and window-local
-coordinates must be revalidated immediately before dispatch; foreground app,
-window order, and Space must remain unchanged; global HID fallback must be
-impossible; and receipts must include pointer before/after plus action-specific
-target readback. Same-PID sibling windows and indistinguishable title/bounds
-windows must be negative canaries. Unsupported macOS versions or missing
-symbols must return an explicit refusal.
+The runtime considers this route only for app-scoped click or scroll after the
+normal semantic AX attempt refuses. Browser targets remain on their exact CDP
+path, while process-scoped keyboard compatibility applies only to keyboard and
+text actions. Selection additionally requires all of the following:
 
-Until all of those conditions are met, adding a dormant private helper to the
-shared package is not acceptable and the route must not be automatic.
+- a direct macOS build containing the separately copied executable and notice;
+- build-time and runtime opt-ins;
+- a successful helper probe for the full private ABI and minimum macOS version;
+- a current observation bound to exact PID, CGWindowID, screenshot bounds, and
+  indexed element bounds;
+- a distinct action-time approval bound to that observation and target; and
+- physical pointer provenance before dispatch.
+
+After approval, the coordinator recaptures AX state and requires unchanged PID,
+CGWindowID, window bounds, element locator, and element bounds before invoking
+the helper. The helper then revalidates the window on-screen owner, ID, bounds,
+screen point, and window-local point immediately before dispatch. The
+coordinator validates the helper receipt and requires fresh same-window,
+action-specific target readback. A sibling same-PID mutation or generic
+screenshot delta is not success. Missing symbols, stale/ambiguous targets,
+unavailable provenance, or pointer movement return refusal and never fall
+through implicitly.
+
+Global HID posting is absent from the component. Global physical fallback
+remains a later, separately opted-in and separately approved route.
+
+## Distribution and acceptance boundary
+
+Build inclusion requires
+`--build-experimental-exact-window-helper` on a `direct` macOS build. Runtime
+selection additionally requires
+`ELIZA_COMPUTERUSE_EXPERIMENTAL_EXACT_WINDOW=1`, request field
+`allowExperimentalExactWindow: true`, and the separate action-time approval.
+The direct embedded runtime adapter resolves only the fixed helper sibling in
+the app resources tree; packaged children cannot substitute an arbitrary path.
+The shared desktop shell has no helper-specific launcher import or path.
+
+The Store build rejects the component build flag. Its copy map is empty, the
+Store package has no embedded agent runtime, the published Electrobun source
+manifest excludes `direct-only/` and `build/`, and the Store artifact verifier
+rejects helper, route, private-framework, and private-symbol markers.
+
+No live dispatch, TCC grant, signing, notarization, or physical-pointer test was
+performed for this source checkpoint. Legal/release approval, signed direct
+packaging proof, a real capability probe, and disposable same-PID multi-window
+acceptance remain mandatory. Until those gates pass, the readiness matrix must
+not claim accepted exact-window delivery and the route must not be automatic.
 
 ## Design references and attribution
 
