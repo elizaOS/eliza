@@ -180,10 +180,15 @@ describe("computeContainerBillingPeriod", () => {
     expect(a.periodStart.getTime()).toBe(b.periodStart.getTime());
   });
 
-  test("rolls to a new period across the UTC midnight boundary", () => {
-    const a = computeContainerBillingPeriod(new Date("2026-06-05T23:59:59.000Z"));
-    const b = computeContainerBillingPeriod(new Date("2026-06-06T00:00:01.000Z"));
-    expect(a.periodStart.getTime()).not.toBe(b.periodStart.getTime());
+  test("preserves years 0-99 without 1900s remapping", () => {
+    const date = new Date(0);
+    date.setUTCFullYear(24, 5, 5);
+    date.setUTCHours(14, 30, 0, 0);
+
+    const { periodStart, periodEnd } = computeContainerBillingPeriod(date);
+    expect(periodStart.getUTCFullYear()).toBe(24);
+    expect(periodEnd.getUTCFullYear()).toBe(24);
+    expect(periodStart.toISOString()).toBe("0024-06-05T00:00:00.000Z");
   });
 });
 

@@ -100,7 +100,9 @@ export interface ContainerBillingPeriod {
  * billing_period_start)` unique index both collide and prevent a double-debit.
  */
 export function computeContainerBillingPeriod(now: Date): ContainerBillingPeriod {
-  const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const periodStart = new Date(0);
+  periodStart.setUTCFullYear(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  periodStart.setUTCHours(0, 0, 0, 0);
   const periodEnd = new Date(periodStart.getTime() + 24 * 60 * 60 * 1000);
   return { periodStart, periodEnd };
 }
