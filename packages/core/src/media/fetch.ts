@@ -100,9 +100,12 @@ function parseContentDispositionFileName(
 			return getBasename(encoded);
 		}
 	}
-	const match = /filename\s*=\s*([^;]+)/i.exec(header);
-	if (match?.[1]) {
-		return getBasename(stripQuotes(match[1].trim()));
+	const match = /filename\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;\s]+))/i.exec(header);
+	if (match) {
+		const raw = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+		if (raw) {
+			return getBasename(stripQuotes(raw));
+		}
 	}
 	return undefined;
 }
