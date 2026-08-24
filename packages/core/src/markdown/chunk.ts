@@ -242,6 +242,16 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 					: undefined;
 		}
 
+		if (breakIdx > 0 && breakIdx < remaining.length) {
+			const prevCharCode = remaining.charCodeAt(breakIdx - 1);
+			if (prevCharCode >= 0xd800 && prevCharCode <= 0xdbff) {
+				breakIdx -= 1;
+				if (breakIdx === 0) {
+					breakIdx = Math.min(2, remaining.length);
+				}
+			}
+		}
+
 		let rawChunk = remaining.slice(0, breakIdx);
 		if (!rawChunk) {
 			break;

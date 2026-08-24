@@ -61,6 +61,23 @@ describe("chunkMarkdownText", () => {
 		expect(reopened.length).toBeGreaterThan(0);
 	});
 
+	it("preserves UTF-16 surrogate pairs when breaking markdown at limit", () => {
+		const text = "😀".repeat(10);
+		const chunks = chunkMarkdownText(text, 5);
+		expect(chunks).toEqual([
+			"😀😀",
+			"😀😀",
+			"😀😀",
+			"😀😀",
+			"😀😀",
+		]);
+		for (const chunk of chunks) {
+			expect(chunk.length).toBeLessThanOrEqual(5);
+			expect(chunk.endsWith("\uD83D")).toBe(false);
+			expect(chunk.startsWith("\uDE00")).toBe(false);
+		}
+	});
+
 	it("property: every chunk fits the limit for arbitrary fenced markdown", () => {
 		const piece = fc.constantFrom(
 			"word ",
