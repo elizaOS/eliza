@@ -559,7 +559,13 @@ export class NativeEnrollmentCoordinator {
   private readonly randomBytes: (length: number) => Uint8Array;
   private readonly timeoutMs: number;
   private generation = 0;
-  private abandonedConfig: BrowserBridgeCompanionConfig | null = null;
+  private readonly pendingNativeRequests = new Set<
+    Promise<NativeEnrollmentResult>
+  >();
+  private readonly uncommittedConfigs = new Map<
+    string,
+    BrowserBridgeCompanionConfig
+  >();
 
   constructor(private readonly dependencies: NativeEnrollmentDependencies) {
     this.now = dependencies.now ?? Date.now;
@@ -596,27 +602,27 @@ export class NativeEnrollmentCoordinator {
   }
 
   /**
-   * Fences an enrollment already awaiting the native host. The returned
-   * promise settles only after that attempt can no longer write retry state.
-   * If the broker minted a companion before observing cancellation, the
-   * abandoned config is returned so durable Disconnect can revoke it.
+   * Fences enrollment and awaits every underlying native request, including a
+   * request whose public timeout already fired. Broker-issued configs that
+   * were not confirmed in durable storage are returned for owner revocation.
    */
-  async cancel(): Promise<BrowserBridgeCompanionConfig | null> {
+  async cancel(): Promise<readonly BrowserBridgeCompanionConfig[]> {
     this.generation += 1;
-    this.abandonedConfig = null;
     const active = this.inFlight?.promise ?? null;
+    const pendingNativeRequests = [...this.pendingNativeRequests];
     this.inFlight = null;
-    if (active) {
-      try {
-        await active;
-      } catch {
-        // error-policy:J5 The enroll caller remains the primary observer of
-        // the same in-flight native protocol rejection.
-      }
-    }
-    const abandoned = this.abandonedConfig;
-    this.abandonedConfig = null;
+    const pending = active
+      ? [active, ...pendingNativeRequests]
+      : pendingNativeRequests;
+    if (pending.length > 0) await Promise.allSettled(pending);
+    const abandoned = [...this.uncommittedConfigs.values()];
+    this.uncommittedConfigs.clear();
     return abandoned;
+  }
+
+  /** Removes a broker-issued config only after durable extension storage succeeds. */
+  confirmPersisted(companionId: string): void {
+    this.uncommittedConfigs.delete(companionId);
   }
 
   private assertCurrent(generation: number): void {
@@ -679,18 +685,25 @@ export class NativeEnrollmentCoordinator {
           );
         }, this.timeoutMs);
       });
-      const rawResponse = await Promise.race([
-        this.dependencies.send(request),
-        timeout,
-      ]);
-      const response = validateNativeEnrollmentResponse(
-        rawResponse,
-        request,
-        this.now(),
-      );
-      if (generation !== this.generation) {
-        this.abandonedConfig = response.config;
-      }
+      const nativeResponse = this.dependencies.send(request).then((raw) => {
+        const response = validateNativeEnrollmentResponse(
+          raw,
+          request,
+          this.now(),
+        );
+        this.uncommittedConfigs.set(
+          response.config.companionId,
+          response.config,
+        );
+        return response;
+      });
+      this.pendingNativeRequests.add(nativeResponse);
+      void nativeResponse
+        .finally(() => this.pendingNativeRequests.delete(nativeResponse))
+        .catch(() => {
+          // error-policy:J5 runEnrollment or cancel observes this same native rejection.
+        });
+      const response = await Promise.race([nativeResponse, timeout]);
       this.assertCurrent(generation);
       await this.dependencies.saveState({ ...EMPTY_NATIVE_ENROLLMENT_STATE });
       this.assertCurrent(generation);

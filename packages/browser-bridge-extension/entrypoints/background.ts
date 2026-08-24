@@ -930,6 +930,7 @@ async function enrollNativeCompanion(options: {
       false,
     );
   }
+  nativeEnrollment.confirmPersisted(persisted.companionId);
   backgroundState.config = persisted;
   return persisted;
 }
@@ -1180,11 +1181,11 @@ async function handlePopupMessage(
         operationGeneration.cancelAndBlock();
         activeSessionId = null;
         try {
-          let abandonedEnrollmentConfig: CompanionConfig | null = null;
+          let abandonedEnrollmentConfigs: readonly CompanionConfig[] = [];
           await performDurableDisconnect({
             cancelSync: async () => await syncRunner.cancelPending(),
             cancelEnrollment: async () => {
-              abandonedEnrollmentConfig = await nativeEnrollment.cancel();
+              abandonedEnrollmentConfigs = await nativeEnrollment.cancel();
             },
             revoke: async () => {
               const persistedConfig = await readConfig();
@@ -1192,7 +1193,7 @@ async function handlePopupMessage(
               if (persistedConfig) {
                 targets.set(persistedConfig.companionId, persistedConfig);
               }
-              if (abandonedEnrollmentConfig) {
+              for (const abandonedEnrollmentConfig of abandonedEnrollmentConfigs) {
                 targets.set(
                   abandonedEnrollmentConfig.companionId,
                   abandonedEnrollmentConfig,

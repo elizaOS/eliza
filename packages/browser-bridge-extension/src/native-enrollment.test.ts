@@ -319,11 +319,13 @@ describe("native enrollment", () => {
       code: "native_enrollment_cancelled",
       retryable: false,
     });
-    await expect(cancellation).resolves.toMatchObject({
-      companionId: "companion-123",
-      browser: "chrome",
-      profileId: PROFILE_ID,
-    });
+    await expect(cancellation).resolves.toEqual([
+      expect.objectContaining({
+        companionId: "companion-123",
+        browser: "chrome",
+        profileId: PROFILE_ID,
+      }),
+    ]);
     expect(test.state()).toEqual(EMPTY_NATIVE_ENROLLMENT_STATE);
   });
 
@@ -348,6 +350,42 @@ describe("native enrollment", () => {
     await expect(
       test.coordinator.enroll({ browser: "chrome", profileId: PROFILE_ID }),
     ).rejects.toMatchObject({ code: "native_enrollment_backoff" });
+  });
+
+  it("keeps a timed-out native request in the cancellation barrier and returns its late companion", async () => {
+    vi.useFakeTimers();
+    let request: NativeEnrollmentRequest | null = null;
+    let resolveResponse: ((value: unknown) => void) | null = null;
+    const test = harness(
+      async (nextRequest) =>
+        await new Promise((resolve) => {
+          request = nextRequest;
+          resolveResponse = resolve;
+        }),
+      100,
+    );
+    const enrollment = test.coordinator.enroll({
+      browser: "chrome",
+      profileId: PROFILE_ID,
+    });
+    await vi.waitFor(() => expect(request).not.toBeNull());
+    const rejection = expect(enrollment).rejects.toMatchObject({
+      code: "native_enrollment_timeout",
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    await rejection;
+
+    let cancellationSettled = false;
+    const cancellation = test.coordinator.cancel().then((configs) => {
+      cancellationSettled = true;
+      return configs;
+    });
+    await Promise.resolve();
+    expect(cancellationSettled).toBe(false);
+    resolveResponse?.(resultFor(request as NativeEnrollmentRequest));
+    await expect(cancellation).resolves.toEqual([
+      expect.objectContaining({ companionId: "companion-123" }),
+    ]);
   });
 
   it("lets one explicit retry bypass backoff without bypassing validation", async () => {

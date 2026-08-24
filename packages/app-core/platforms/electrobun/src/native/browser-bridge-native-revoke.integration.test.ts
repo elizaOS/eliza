@@ -201,6 +201,7 @@ describe("browser bridge native revoke integration", () => {
       now: () => nowMs,
       randomUUID: () => requestId,
       randomBytes: () => new Uint8Array(32).fill(13),
+      timeoutMs: 10,
     });
     const oldConfig = {
       apiBaseUrl: "http://127.0.0.1:31337",
@@ -215,15 +216,18 @@ describe("browser bridge native revoke integration", () => {
     let persistedConfig: BrowserBridgeCompanionConfig | null = oldConfig;
     const enrollment = coordinator.enroll({ browser: "chrome", profileId });
     await pairStarted;
+    await expect(enrollment).rejects.toMatchObject({
+      code: "native_enrollment_timeout",
+    });
 
-    let abandonedConfig: BrowserBridgeCompanionConfig | null = null;
+    let abandonedConfigs: readonly BrowserBridgeCompanionConfig[] = [];
     const disconnect = performDurableDisconnect({
       cancelSync: async () => undefined,
       cancelEnrollment: async () => {
-        abandonedConfig = await coordinator.cancel();
+        abandonedConfigs = await coordinator.cancel();
       },
       revoke: async () => {
-        const targets = [persistedConfig, abandonedConfig].filter(
+        const targets = [persistedConfig, ...abandonedConfigs].filter(
           (config): config is BrowserBridgeCompanionConfig => config !== null,
         );
         await Promise.all(
@@ -248,10 +252,6 @@ describe("browser bridge native revoke integration", () => {
       new Set(["companion-old", "companion-new"]),
     );
     releasePair();
-
-    await expect(enrollment).rejects.toMatchObject({
-      code: "native_enrollment_cancelled",
-    });
     await disconnect;
     expect(activeCompanions.size).toBe(0);
     expect(persistedConfig).toBeNull();
