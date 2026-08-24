@@ -1298,3 +1298,297 @@ describe("F21 aliases survive production retrieval topology filtering", () => {
 		expect(response.results[0]).toMatchObject({ name: "EMAIL" });
 	});
 });
+
+describe("action-retrieval edge coverage", () => {
+	it("returns an empty result set for an empty catalog without throwing", () => {
+		const catalog = buildActionCatalog([]);
+		const response = retrieveActions({
+			catalog,
+			candidateActions: ["MUSIC"],
+			parentActionHints: ["music"],
+		});
+
+		expect(response.results).toEqual([]);
+		expect(response.warnings).toEqual([]);
+		expect(response.query.candidateActions).toEqual(["MUSIC"]);
+		expect(response.query.parentActionHints).toEqual(["music"]);
+	});
+
+	it("ranks a signal-free query alphabetically with contiguous ranks and zero scores", () => {
+		const catalog = buildActionCatalog([
+			{ name: "ZULU", description: "Handle zulu operations." },
+			{ name: "ALPHA", description: "Handle alpha operations." },
+			{ name: "MIKE", description: "Handle mike operations." },
+		]);
+		const response = retrieveActions({ catalog });
+
+		expect(response.results.map((result) => result.name)).toEqual([
+			"ALPHA",
+			"MIKE",
+			"ZULU",
+		]);
+		expect(
+			response.results.map((result) => [
+				result.score,
+				result.rank,
+				result.rrfScore,
+			]),
+		).toEqual([
+			[0, 1, 0],
+			[0, 2, 0],
+			[0, 3, 0],
+		]);
+		for (const result of response.results) {
+			expect(result.matchedBy).toEqual([]);
+		}
+		expect(response.query.text).toBe("");
+		expect(response.query.tokens).toEqual([]);
+	});
+
+	it("dedupes echoed candidate and hint lists and drops blank entries", () => {
+		const catalog = buildActionCatalog(actions);
+		const response = retrieveActions({
+			catalog,
+			messageText: "do the thing",
+			candidateActions: ["MUSIC", " music ", "MUSIC", ""],
+			parentActionHints: ["music", "MUSIC"],
+		});
+
+		expect(response.query.candidateActions).toEqual(["MUSIC"]);
+		expect(response.query.parentActionHints).toEqual(["music"]);
+		expect(response.results[0]).toMatchObject({
+			name: "MUSIC",
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
+	it("ignores the deprecated limit input and ranks every parent", () => {
+		const catalog = buildActionCatalog(actions);
+		const response = retrieveActions({
+			catalog,
+			messageText: "do the thing",
+			parentActionHints: ["music"],
+			limit: 1,
+		});
+
+		expect(response.results.map((result) => result.name)).toEqual([
+			"MUSIC",
+			"CALENDAR",
+			"EMAIL",
+		]);
+		expect(response.results.map((result) => result.rank)).toEqual([1, 2, 3]);
+	});
+
+	it("applies the selected-context boost only where contexts intersect and saturates at one", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "GOALS_BOARD",
+				description: "Review long horizon goals.",
+				contexts: ["goals"],
+			},
+			{
+				name: "MAILER",
+				description: "Send an email message.",
+				contexts: ["email"],
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "",
+			parentActionHints: ["goals_board"],
+			selectedContexts: ["goals"],
+		});
+		const goals = response.results.find(
+			(result) => result.name === "GOALS_BOARD",
+		);
+		const mailer = response.results.find((result) => result.name === "MAILER");
+
+		expect(goals?.score).toBe(1);
+		expect(goals?.stageScores.contextMatch).toBe(0.3);
+		expect(goals?.matchedBy).toEqual(
+			expect.arrayContaining(["exact", "contextMatch"]),
+		);
+		expect(mailer?.score).toBe(0);
+		expect(mailer?.stageScores).toEqual({});
+		expect(mailer?.matchedBy).toEqual([]);
+	});
+
+	it("breaks a saturated exact-hint tie using message-only evidence", () => {
+		// Both parents are exact-hinted, so both saturate at score 1 and the
+		// comparator may not fall through to RRF or name order while the
+		// message supports exactly one of them.
+		const catalog = buildActionCatalog([
+			{ name: "AAA_XYLO", description: "Tune the xylophone bars and mallets." },
+			{
+				name: "ZZZ_COMPASS",
+				description: "Read the compass bearing heading.",
+			},
+		]);
+		const control = retrieveActions({
+			catalog,
+			messageText: "",
+			parentActionHints: ["aaa_xylo", "zzz_compass"],
+		});
+		expect(control.results.map((result) => result.name)).toEqual([
+			"AAA_XYLO",
+			"ZZZ_COMPASS",
+		]);
+
+		const treatment = retrieveActions({
+			catalog,
+			messageText: "check the compass bearing",
+			parentActionHints: ["aaa_xylo", "zzz_compass"],
+		});
+		expect(treatment.results.map((result) => result.name)).toEqual([
+			"ZZZ_COMPASS",
+			"AAA_XYLO",
+		]);
+		expect(treatment.results.every((result) => result.score === 1)).toBe(true);
+		expect(
+			treatment.results.every((result) => result.matchedBy.includes("exact")),
+		).toBe(true);
+		expect(treatment.results[0].rrfScore).toBe(treatment.results[1].rrfScore);
+	});
+
+	it("grants no embedding credit when tie-breaker scores are absent, disabled, or non-positive", () => {
+		const catalog = buildActionCatalog(actions);
+		const baseInput = {
+			catalog,
+			messageText: "write to shaw with a subject line",
+			candidateActions: ["send_email"],
+		};
+
+		const missing = retrieveActions({
+			...baseInput,
+			embedding: { enabled: true, scoresByParentName: {} },
+		});
+		expect(missing.results[0]?.name).toBe("EMAIL");
+		expect(missing.results[0]?.matchedBy).toEqual(
+			expect.arrayContaining(["regex", "bm25"]),
+		);
+
+		for (const embedding of [
+			{ enabled: true, scoresByParentName: { EMAIL: -1 } },
+			{ enabled: false, scoresByParentName: { EMAIL: 0.99 } },
+		]) {
+			const response = retrieveActions({ ...baseInput, embedding });
+			for (const result of response.results) {
+				expect(result.matchedBy).not.toContain("embedding");
+			}
+		}
+	});
+
+	it("classifies namespace candidates against registered parents", async () => {
+		const { candidateNamespaceParentExists } = await import(
+			"../action-retrieval"
+		);
+		const parents = [
+			{ normalizedName: "GMAIL" },
+			{ normalizedName: "CALENDARS" },
+		];
+
+		expect(candidateNamespaceParentExists(parents, "GMAIL_SEND")).toBe(true);
+		expect(candidateNamespaceParentExists(parents, "CALENDAR_LIST")).toBe(true);
+		expect(candidateNamespaceParentExists(parents, "CALENDARS_SYNC")).toBe(
+			true,
+		);
+		expect(candidateNamespaceParentExists(parents, "MUSIC")).toBe(false);
+		expect(candidateNamespaceParentExists(parents, "ZETA_SEND")).toBe(false);
+		expect(candidateNamespaceParentExists(parents, "VIEWS")).toBe(false);
+		expect(candidateNamespaceParentExists(parents, "OPEN_VIEW")).toBe(false);
+	});
+
+	it.each([
+		["EXEC", ["SHELL", "TERMINAL_SHELL"]],
+		["EXECUTE_COMMAND", ["SHELL", "TERMINAL_SHELL"]],
+		["RUN_PYTHON", ["SHELL", "TERMINAL_SHELL"]],
+		["RUN_SCRIPT", ["SHELL", "TERMINAL_SHELL"]],
+		["SEARCH", ["WEB_SEARCH", "MESSAGE"]],
+		["SEARCH_ONLINE", ["WEB_SEARCH"]],
+		["INTERNET_SEARCH", ["WEB_SEARCH"]],
+		["GOOGLE_SEARCH", ["WEB_SEARCH"]],
+		["TASKS_UPDATE_REMINDER", ["OWNER_REMINDERS", "TRIGGER"]],
+		["UPDATE_REMINDER", ["OWNER_REMINDERS", "TRIGGER"]],
+		["OWNER_DELETE_TODO", ["OWNER_TODOS", "TODO"]],
+		["OWNER_CREATE_ALARM", ["OWNER_ALARMS", "TRIGGER"]],
+		["TRIP_SAVINGS_PLAN", ["OWNER_GOALS"]],
+	])(
+		"aliases the %s invention to its registered owners",
+		(candidate, expected) => {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual(expected);
+		},
+	);
+
+	it("keeps single-character tokens out and splits separator runs when tokenizing search text", () => {
+		expect(tokenizeActionSearchText("I am v2")).toEqual(["am", "v2"]);
+		expect(tokenizeActionSearchText("")).toEqual([]);
+		expect(tokenizeActionSearchText("top:level/item-v2 ab cd")).toEqual([
+			"top",
+			"level",
+			"item",
+			"v2",
+			"ab",
+			"cd",
+		]);
+	});
+
+	it("strips closed control-block forms but preserves unterminated blocks", () => {
+		const form = stripControlBlockMarkers("keep me [FORM]x=1[/FORM] tail");
+		expect(form).toContain("keep me");
+		expect(form).toContain("tail");
+		expect(form).not.toContain("FORM");
+		expect(form).not.toContain("x=1");
+
+		const choice = stripControlBlockMarkers(
+			"keep [CHOICE a|b]pick[/CHOICE] end",
+		);
+		expect(choice).not.toContain("pick");
+		expect(choice).toContain("keep");
+		expect(choice).toContain("end");
+
+		const task = stripControlBlockMarkers(
+			"pre [TASK: cleanup]do stuff[/TASK] post",
+		);
+		expect(task).not.toContain("do stuff");
+		expect(task).toContain("pre");
+		expect(task).toContain("post");
+
+		expect(stripControlBlockMarkers("a [CONFIG:k=v] b")).not.toContain(
+			"CONFIG",
+		);
+		expect(stripControlBlockMarkers("head [FORM] never closed")).toBe(
+			"head [FORM] never closed",
+		);
+	});
+
+	it("changes fusion scores under a valid MODEL_TIER and ignores invalid tiers", () => {
+		const catalog = buildActionCatalog(actions);
+		const messageText = "play a song and check the calendar events";
+		const rrfByName = (response: {
+			results: Array<{ name: string; rrfScore: number }>;
+		}) =>
+			Object.fromEntries(
+				response.results.map((result) => [result.name, result.rrfScore]),
+			);
+
+		const base = rrfByName(retrieveActions({ catalog, messageText }));
+
+		let tieredRrf: Record<string, number>;
+		process.env.MODEL_TIER = "mid";
+		try {
+			tieredRrf = rrfByName(retrieveActions({ catalog, messageText }));
+		} finally {
+			delete process.env.MODEL_TIER;
+		}
+		expect(tieredRrf.CALENDAR).not.toBe(base.CALENDAR);
+
+		let bogusRrf: Record<string, number>;
+		process.env.MODEL_TIER = "bogus";
+		try {
+			bogusRrf = rrfByName(retrieveActions({ catalog, messageText }));
+		} finally {
+			delete process.env.MODEL_TIER;
+		}
+		expect(bogusRrf).toEqual(base);
+	});
+});
