@@ -55,6 +55,8 @@ function evidence() {
       reports: objects.map((object) => ({
         objectId: object.id,
         status: "passed",
+        reassembledSha256: object.sourceSha256,
+        pages: Math.ceil(object.byteLength / (64 * 1024)),
         restartVerified: true,
         concurrencyVerified: true,
         repeatedPageVerified: true,
@@ -88,14 +90,13 @@ function evidence() {
       })),
     },
     "source-work.json": {
-      samples: [
-        {
-          rowsRead: 1,
-          parentScans: 0,
-          bytesRead: 1024,
-          bytesReturned: 1024,
-        },
-      ],
+      samples: objects.map((object) => ({
+        objectId: object.id,
+        rowsRead: 1,
+        parentScans: 0,
+        bytesRead: 1024,
+        bytesReturned: 1024,
+      })),
     },
     "benchmark.json": {
       cases: [1024 * 1024, 10 * 1024 * 1024].map((sourceBytes) => ({
@@ -118,17 +119,30 @@ function evidence() {
       status: "passed",
       restartVerified: true,
       authorizationVerified: true,
-      probes: [{ absent: true }],
+      probes: objects.map((object) => ({ objectId: object.id, absent: true })),
     },
     "page-ledger.jsonl": objects
-      .map((object) =>
-        JSON.stringify({
-          objectId: object.id,
-          revision: object.revision,
-          sliceSha256: "d".repeat(64),
-          range: { start: 0, end: 1024 },
-          bytesRead: 1024,
-        }),
+      .flatMap((object) =>
+        Array.from(
+          { length: Math.ceil(object.byteLength / (64 * 1024)) },
+          (_, page) =>
+            JSON.stringify({
+              objectId: object.id,
+              revision: object.revision,
+              sliceSha256: "d".repeat(64),
+              range: {
+                start: page * 64 * 1024,
+                end: Math.min(object.byteLength, (page + 1) * 64 * 1024),
+              },
+              bytesRead: Math.min(
+                64 * 1024,
+                object.byteLength - page * 64 * 1024,
+              ),
+              ...(page === Math.ceil(object.byteLength / (64 * 1024)) - 1
+                ? { reassembledSha256: object.sourceSha256 }
+                : {}),
+            }),
+        ),
       )
       .join("\n"),
     "prompt-tokens.json": {
@@ -144,19 +158,48 @@ function evidence() {
     },
     "faults.json": {
       status: "passed",
-      required: 2,
-      executed: 2,
-      results: [{ status: "passed" }, { status: "passed" }],
+      required: 6,
+      executed: 6,
+      catalog: [
+        "unauthorized",
+        "revoked-authorization",
+        "stale-revision",
+        "missing-source",
+        "tampered-reference",
+        "concurrent-cleanup",
+      ],
+      results: [
+        "unauthorized",
+        "revoked-authorization",
+        "stale-revision",
+        "missing-source",
+        "tampered-reference",
+        "concurrent-cleanup",
+      ].map((id) => ({ id, status: "passed" })),
     },
     "stress.json": {
       status: "passed",
       reports: objects.map((object) => ({
         objectId: object.id,
-        cases: [1, 8, 32, 64].map((concurrency) => ({ concurrency })),
+        status: "passed",
+        cases: [1, 8, 32, 64].map((concurrency) => ({
+          concurrency,
+          operations: 1,
+          status: "passed",
+          failures: [],
+          sourceWork: {
+            parentScans: 0,
+            bytesRead: 1,
+            readCalls: 1,
+            rowsRead: 1,
+          },
+        })),
       })),
     },
     "soak.json": {
       status: "passed",
+      commit: "a".repeat(40),
+      corpusManifestSha256: manifestSha,
       durationMs: 6 * 60 * 60 * 1_000,
       operations: 100_000,
       positiveLeakControlDetected: true,
@@ -164,6 +207,10 @@ function evidence() {
     "postgres.json": {
       status: "passed",
       backend: "postgres",
+      commit: "a".repeat(40),
+      corpusManifestSha256: manifestSha,
+      version: "17.1",
+      command: "postgres-real-integration",
       families: [
         "file",
         "document",
@@ -211,14 +258,25 @@ function evidence() {
       JSON.stringify({
         repetition,
         status: "passed",
+        commit: "a".repeat(40),
+        corpusManifestSha256: manifestSha,
         providerQualified: true,
-        provider: "fixture-provider",
-        model: "fixture-model",
+        provider: "openai",
+        model: "gpt-5.4",
         answerLeakageDetected: false,
       }),
     ).join("\n"),
     "e2e.json": {
       status: "passed",
+      commit: "a".repeat(40),
+      corpusManifestSha256: manifestSha,
+      runId: "e2e-real-run",
+      artifactPaths: [
+        "browser/trace.zip",
+        "network/har.json",
+        "backend/log.txt",
+        "database/rows.json",
+      ],
       api: true,
       ui: true,
       inspector: true,
@@ -398,6 +456,140 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(/does not cover every corpus object/u);
+  });
+
+  it("rejects empty and duplicate exact-coverage collections", () => {
+    const original = evidence();
+    const emptySourceWork = replaceArtifact(original, "source-work.json", {
+      samples: [],
+    });
+    expect(() =>
+      validateContentContextResult(
+        emptySourceWork.result,
+        emptySourceWork.bytes,
+      ),
+    ).toThrow(/source-work does not cover every object exactly once/u);
+
+    const conformance = JSON.parse(
+      new TextDecoder().decode(original.bytes["conformance.json"]),
+    ) as { reports: Array<Record<string, unknown>> };
+    conformance.reports[1] = { ...conformance.reports[0] };
+    const duplicate = replaceArtifact(
+      original,
+      "conformance.json",
+      conformance,
+    );
+    expect(() =>
+      validateContentContextResult(duplicate.result, duplicate.bytes),
+    ).toThrow(/conformance does not cover every native object exactly once/u);
+  });
+
+  it("rejects a gapless-looking ledger that stops before source EOF", () => {
+    const original = evidence();
+    const rows = new TextDecoder()
+      .decode(original.bytes["page-ledger.jsonl"])
+      .trim()
+      .split("\n");
+    rows.splice(15, 1);
+    const partial = replaceArtifact(
+      original,
+      "page-ledger.jsonl",
+      rows.join("\n"),
+    );
+    expect(() =>
+      validateContentContextResult(partial.result, partial.bytes),
+    ).toThrow(/page ledger is not a full traversal/u);
+  });
+
+  it("rejects fixture-shaped live evidence and stale run identities", () => {
+    const original = evidence();
+    const fixtureRows = Array.from({ length: 5 }, (_, repetition) =>
+      JSON.stringify({
+        repetition,
+        status: "passed",
+        commit: original.result.commit,
+        corpusManifestSha256: manifestSha,
+        providerQualified: true,
+        provider: "fixture-provider",
+        model: "mock-model",
+        answerLeakageDetected: false,
+      }),
+    ).join("\n");
+    const fixture = replaceArtifact(
+      original,
+      "trajectories.jsonl",
+      fixtureRows,
+    );
+    expect(() =>
+      validateContentContextResult(fixture.result, fixture.bytes),
+    ).toThrow(/five qualified/u);
+
+    const stale = replaceArtifact(original, "e2e.json", {
+      status: "passed",
+      commit: "f".repeat(40),
+      corpusManifestSha256: manifestSha,
+      runId: "stale-run",
+      artifactPaths: ["a", "b", "c", "d"],
+      api: true,
+      ui: true,
+      inspector: true,
+      backend: true,
+      browser: true,
+      network: true,
+      database: true,
+      artifacts: true,
+    });
+    expect(() =>
+      validateContentContextResult(stale.result, stale.bytes),
+    ).toThrow(/inspector E2E/u);
+  });
+
+  it.each([
+    [
+      "non-catalog fault",
+      "faults.json" as const,
+      {
+        status: "passed",
+        required: 1,
+        executed: 1,
+        catalog: ["other"],
+        results: [{ id: "other", status: "passed" }],
+      },
+      /fault matrix/u,
+    ],
+    [
+      "fixture-shaped stress case",
+      "stress.json" as const,
+      { status: "passed", reports: [] },
+      /stress evidence/u,
+    ],
+    [
+      "wrong Postgres family set",
+      "postgres.json" as const,
+      {
+        status: "passed",
+        backend: "postgres",
+        commit: "a".repeat(40),
+        corpusManifestSha256: manifestSha,
+        version: "17.1",
+        command: "postgres-real-integration",
+        families: [
+          "file",
+          "document",
+          "memory",
+          "email",
+          "attachment",
+          "other",
+        ],
+        sharedVectorsPassed: true,
+      },
+      /Postgres evidence/u,
+    ],
+  ])("rejects %s", (_label, artifact, value, pattern) => {
+    const changed = replaceArtifact(evidence(), artifact, value);
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(pattern);
   });
 
   it("rejects a short soak even when its summary says passed", () => {
