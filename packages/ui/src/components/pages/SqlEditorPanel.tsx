@@ -89,9 +89,8 @@ export function SqlEditorPanel({
           </div>
           {queryHistory.slice(0, 5).map((q) => (
             <Button
-              variant="ghost"
+              variant="queryHistory"
               key={q}
-              className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono text-muted-strong hover:text-txt"
               onClick={() => setQueryText(q)}
             >
               <span className="truncate">{q}</span>

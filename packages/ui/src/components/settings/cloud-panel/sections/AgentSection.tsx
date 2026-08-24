@@ -809,9 +809,8 @@ export function AgentSection() {
                       <Pencil className="size-4" aria-hidden />
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="surfaceDestructive"
                       size="icon-sm"
-                      className="text-danger hover:bg-destructive-subtle hover:text-danger"
                       disabled={busy || isActive}
                       aria-label={`Delete ${agent.agent_name || agent.agent_id}`}
                       title="Delete"

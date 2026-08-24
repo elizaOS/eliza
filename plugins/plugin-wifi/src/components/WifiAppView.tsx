@@ -17,8 +17,7 @@ import type {
 } from "@elizaos/capacitor-wifi";
 import { WiFi } from "@elizaos/capacitor-wifi";
 import type { OverlayAppContext } from "@elizaos/shared";
-import { Button } from "@elizaos/ui";
-import { Input } from "@elizaos/ui";
+import { Button, Input } from "@elizaos/ui";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -165,10 +164,11 @@ interface NetworkRowProps {
 function NetworkRow({ network, onSelect }: NetworkRowProps) {
   return (
     <Button
-      unstyled
+      variant="selection"
+      align="start"
       type="button"
       onClick={() => onSelect(network)}
-      className="flex w-full items-center justify-between gap-3 p-2 text-left transition-colors hover:bg-bg-accent/50"
+      className="w-full"
       data-testid={`wifi-network-${network.bssid || network.ssid || "hidden"}`}
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -186,7 +186,9 @@ function NetworkRow({ network, onSelect }: NetworkRowProps) {
           </div>
         </div>
       </div>
-      <SignalBars rssi={network.rssi} />
+      <span className="ml-auto">
+        <SignalBars rssi={network.rssi} />
+      </span>
     </Button>
   );
 }
@@ -337,7 +339,7 @@ export function WifiAppView(props: OverlayAppContext) {
         />
 
         {error ? (
-          <div className="px-1 py-2 text-sm text-red-400">{error}</div>
+          <div className="px-1 py-2 text-sm text-destructive">{error}</div>
         ) : null}
 
         <div className="flex flex-col gap-2">

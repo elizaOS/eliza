@@ -65,8 +65,7 @@ function CheckUpdateButton({
   return (
     <Button
       ref={ref}
-      size="sm"
-      className="h-9 rounded-sm px-3 text-xs font-medium"
+      size="compact"
       disabled={disabled}
       onClick={onActivate}
       {...agentProps}
@@ -96,8 +95,7 @@ function ApplyUpdateButton({
   return (
     <Button
       ref={ref}
-      size="sm"
-      className="h-9 rounded-sm px-3 text-xs font-medium"
+      size="compact"
       disabled={disabled}
       onClick={onActivate}
       {...agentProps}
@@ -127,9 +125,8 @@ function DetachReleaseCenterButton({
   return (
     <Button
       ref={ref}
-      size="sm"
+      size="compact"
       variant="outline"
-      className="h-9 rounded-sm px-3 text-xs font-medium"
       disabled={disabled}
       onClick={onActivate}
       {...agentProps}
@@ -652,9 +649,8 @@ export function ReleaseCenterView() {
           <div className="flex flex-wrap gap-2">
             <Button
               ref={openReleaseNotesAgent.ref}
-              size="sm"
+              size="compact"
               variant="outline"
-              className="h-9 rounded-sm px-3 text-xs font-medium"
               disabled={busyAction === "open-release-notes"}
               onClick={openReleaseNotesAction}
               {...openReleaseNotesAgent.agentProps}

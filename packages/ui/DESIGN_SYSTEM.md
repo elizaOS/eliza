@@ -25,10 +25,19 @@ border, radius, typography, control height, padding, focus, hover, disabled,
 selected, invalid, loading, and destructive presentation belong to the atom's
 typed interface.
 
+`Button unstyled` is migration debt, not a supported customization surface.
+The compliance inventory counts every maintained use so the escape hatch can
+only shrink. Replace a repeated presentation with a typed canonical variant;
+do not rename the bypass or reproduce it in an adapter.
+
 A local adapter is valid when it composes a canonical atom and owns meaningful
 domain behavior. An adapter that only renames props or duplicates styling is a
 violation. Add a canonical variant only after at least two maintained callers
 demonstrate the same need.
+
+Skeleton geometry is caller-owned because it previews the dimensions and shape
+of caller content. Skeleton paint, animation, and effects remain owned by the
+canonical primitive.
 
 ## Compliance and exceptions
 

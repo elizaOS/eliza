@@ -203,10 +203,9 @@ export function AppUsers({ appId }: AppUsersProps) {
             </h3>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               onClick={() => fetchData()}
               disabled={isLoading}
-              className="size-8 p-0"
             >
               <RefreshCw
                 className={`size-4 ${isLoading ? "animate-spin" : ""}`}

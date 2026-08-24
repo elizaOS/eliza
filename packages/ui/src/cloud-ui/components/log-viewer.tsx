@@ -127,9 +127,10 @@ function getDefaultLineClassName(line: string): string {
     normalized.includes("fatal") ||
     normalized.includes("panic")
   ) {
-    return "border-l-red-500 text-red-300";
+    return "border-l-destructive text-destructive";
   }
-  if (normalized.includes("warn")) return "border-l-yellow-500 text-yellow-300";
+  if (normalized.includes("warn"))
+    return "border-l-status-warning text-status-warning";
   if (normalized.includes("info"))
     return "border-l-status-info text-status-info";
   return "border-l-neutral-700 text-neutral-300";
@@ -151,9 +152,9 @@ function getDefaultEntryLevelVariant(level: string): BadgeVariant {
 function getDefaultEntryClassName(entry: LogViewerStructuredEntry): string {
   switch (entry.level) {
     case "error":
-      return "text-red-500";
+      return "text-destructive";
     case "warn":
-      return "text-yellow-500";
+      return "text-status-warning";
     case "info":
       return "text-status-info";
     case "debug":
@@ -409,7 +410,7 @@ export function LogViewer({
           <div className="py-8 text-center">
             <Terminal className="mx-auto mb-3 size-8 text-neutral-600" />
             <p
-              className="mb-1 text-sm font-medium text-red-400"
+              className="mb-1 text-sm font-medium text-destructive"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               {errorTitle}
@@ -539,8 +540,8 @@ export function LogViewer({
           >
             {streaming.active ? (
               <>
-                <Wifi className="size-3 text-green-500" />
-                <span className="text-green-500">
+                <Wifi className="size-3 text-status-success" />
+                <span className="text-status-success">
                   {streaming.activeLabel ??
                     streaming.label ??
                     "Live streaming enabled"}

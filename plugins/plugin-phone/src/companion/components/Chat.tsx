@@ -66,7 +66,8 @@ export function Chat({
 
         <div style={styles.actions}>
           <Button
-            unstyled
+            variant={paired ? "outline" : "default"}
+            size="lg"
             type="button"
             onClick={onOpenPairing}
             style={paired ? styles.secondaryAction : styles.primaryAction}
@@ -76,7 +77,8 @@ export function Chat({
           </Button>
 
           <Button
-            unstyled
+            variant="default"
+            size="lg"
             type="button"
             onClick={onOpenRemoteSession}
             disabled={!remoteSessionAvailable}

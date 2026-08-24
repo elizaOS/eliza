@@ -416,7 +416,7 @@ function ContinuationLinkStep({
             defaultValue: "Couldn't connect your account",
           })}
         </h1>
-        <p className="text-sm text-red-600 text-center mb-8">{error}</p>
+        <p className="text-sm text-destructive text-center mb-8">{error}</p>
         <Button
           type="button"
           onClick={() => void (identity ? confirmLink() : loadPreview())}
@@ -1462,8 +1462,8 @@ export default function GetStartedPage() {
               </div>
 
               {(discordError || solanaError) && (
-                <div className="w-full mb-4 p-3 rounded-xs bg-red-50 border border-red-200">
-                  <p className="text-sm text-red-600 text-center">
+                <div className="w-full mb-4 p-3 rounded-xs bg-destructive-subtle border border-destructive/30">
+                  <p className="text-sm text-destructive text-center">
                     {discordError || solanaError}
                   </p>
                 </div>
@@ -1551,8 +1551,8 @@ export default function GetStartedPage() {
               </div>
 
               {(discordError || telegramError) && (
-                <div className="w-full mb-4 p-3 rounded-2xl bg-red-50/80 border border-red-200">
-                  <p className="text-sm text-red-600 text-center">
+                <div className="w-full mb-4 p-3 rounded-2xl bg-destructive-subtle border border-destructive/30">
+                  <p className="text-sm text-destructive text-center">
                     {discordError || telegramError}
                   </p>
                 </div>
@@ -1663,7 +1663,7 @@ export default function GetStartedPage() {
                   <p
                     role="alert"
                     data-testid="solana-error"
-                    className="text-sm text-red-600 text-center mt-1"
+                    className="text-sm text-destructive text-center mt-1"
                   >
                     {solanaError}
                   </p>
@@ -1732,7 +1732,7 @@ export default function GetStartedPage() {
               </p>
 
               {telegramError && (
-                <p className="text-sm text-red-500 text-center mb-4">
+                <p className="text-sm text-destructive text-center mb-4">
                   {telegramError}
                 </p>
               )}
@@ -1792,7 +1792,7 @@ export default function GetStartedPage() {
               </div>
 
               {phoneError && (
-                <p className="text-sm text-red-500 text-center mb-4">
+                <p className="text-sm text-destructive text-center mb-4">
                   {phoneError}
                 </p>
               )}
@@ -1853,9 +1853,9 @@ export default function GetStartedPage() {
                   aria-live="polite"
                   className={`mt-3 text-center text-sm font-medium ${
                     messageNotice === "copied"
-                      ? "text-green-700"
+                      ? "text-status-success"
                       : messageNotice === "error"
-                        ? "text-red-700"
+                        ? "text-destructive"
                         : "text-neutral-700"
                   }`}
                 >
@@ -1973,10 +1973,10 @@ export default function GetStartedPage() {
           {step === "DISCORD_CALLBACK" && (
             <>
               <div
-                className={`size-16 rounded-full ${discordError ? "border border-red-200 bg-red-100/70 backdrop-blur-md" : GLASS_TILE} flex items-center justify-center mb-6`}
+                className={`size-16 rounded-full ${discordError ? "border border-destructive/30 bg-destructive-subtle backdrop-blur-md" : GLASS_TILE} flex items-center justify-center mb-6`}
               >
                 <DiscordIcon
-                  className={`size-8 ${discordError ? "text-red-500" : "text-[#5865F2]"}`}
+                  className={`size-8 ${discordError ? "text-destructive" : "text-[#5865F2]"}`}
                 />
               </div>
 
@@ -2010,8 +2010,8 @@ export default function GetStartedPage() {
               </p>
 
               {discordError && (
-                <div className="w-full mb-4 p-3 rounded-2xl bg-red-50/80 border border-red-200">
-                  <p className="text-sm text-red-600 text-center">
+                <div className="w-full mb-4 p-3 rounded-2xl bg-destructive-subtle border border-destructive/30">
+                  <p className="text-sm text-destructive text-center">
                     {discordError}
                   </p>
                 </div>
@@ -2062,7 +2062,7 @@ export default function GetStartedPage() {
                   </div>
 
                   {phoneError && (
-                    <p className="text-sm text-red-500 text-center mb-4">
+                    <p className="text-sm text-destructive text-center mb-4">
                       {phoneError}
                     </p>
                   )}

@@ -156,7 +156,8 @@ function CatalogTile({
       aria-label={`Set background to ${entry.label}`}
       aria-pressed={selected}
       title={`${entry.label}. ${entry.description}`}
-      className="group/btn block w-full rounded-2xl outline-none"
+      variant="launcherTile"
+      className="group/btn w-full"
       {...agentProps}
     >
       <TileFrame
@@ -324,9 +325,10 @@ export function BackgroundSettingsControls({
         ref={uploadButton.ref}
         type="button"
         variant="secondary"
+        size="touch"
+        shape="circle"
         onClick={onUploadClick}
         aria-label="Upload a background image"
-        className="h-11 gap-2 rounded-full px-4 text-sm"
         {...uploadButton.agentProps}
       >
         <ImagePlus className="size-4" aria-hidden />
@@ -357,10 +359,11 @@ export function BackgroundSettingsControls({
           ref={undoButton.ref}
           type="button"
           variant="ghost"
+          size="touch"
+          shape="circle"
           onClick={() => undoBackgroundConfig()}
           disabled={!canUndoBackground}
           aria-label="Undo background change"
-          className="h-11 gap-1.5 rounded-full px-3 text-sm text-muted hover:text-txt disabled:opacity-40"
           {...undoButton.agentProps}
         >
           <RotateCcw className="size-4" aria-hidden />
@@ -371,10 +374,10 @@ export function BackgroundSettingsControls({
           type="button"
           variant="ghost"
           size="icon-lg"
+          shape="circle"
           onClick={() => redoBackgroundConfig()}
           disabled={!canRedoBackground}
           aria-label="Redo background change"
-          className="size-11 rounded-full text-muted hover:text-txt disabled:opacity-40"
           {...redoButton.agentProps}
         >
           <RotateCw className="size-4" aria-hidden />

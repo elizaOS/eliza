@@ -61,7 +61,6 @@ export function PagerEdgeButtons({
     <>
       {canPrev ? (
         <Button
-          unstyled
           variant="ghost"
           size="icon"
           data-testid={`${prefix}pager-edge-prev`}
@@ -74,7 +73,6 @@ export function PagerEdgeButtons({
       ) : null}
       {canNext ? (
         <Button
-          unstyled
           variant="ghost"
           size="icon"
           data-testid={`${prefix}pager-edge-next`}

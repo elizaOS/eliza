@@ -454,7 +454,9 @@ function AllDayBandCell({
         const selected = event.id === selectedEventId;
         return (
           <Button
-            unstyled
+            variant="selection"
+            size="content"
+            data-state={selected ? "on" : "off"}
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -566,7 +568,9 @@ function DayColumnGrid({
         const isSelected = event.id === selectedEventId;
         return (
           <Button
-            unstyled
+            variant="selection"
+            size="content"
+            data-state={isSelected ? "on" : "off"}
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -807,7 +811,9 @@ function MonthGrid({
                   const isSelected = event.id === selectedEventId;
                   return (
                     <Button
-                      unstyled
+                      variant="selection"
+                      size="content"
+                      data-state={isSelected ? "on" : "off"}
                       key={event.id}
                       type="button"
                       onClick={() => onSelectEvent(event)}
@@ -838,7 +844,8 @@ function MonthGrid({
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
-                        unstyled
+                        variant="link"
+                        size="content"
                         type="button"
                         className="px-1 text-left text-[10px] font-medium text-muted hover:text-txt"
                       >
@@ -858,7 +865,9 @@ function MonthGrid({
                           const overflowColor = paletteFor(event);
                           return (
                             <Button
-                              unstyled
+                              variant="ghost"
+                              size="content"
+                              align="start"
                               key={`overflow-${event.id}`}
                               type="button"
                               onClick={() => onSelectEvent(event)}
@@ -915,7 +924,9 @@ function AgendaEventButton({
   });
   return (
     <Button
-      unstyled
+      variant="selection"
+      size="content"
+      data-state={isSelected ? "on" : "off"}
       ref={ref}
       type="button"
       onClick={() => onSelectEvent(event)}
@@ -1170,7 +1181,8 @@ export function CalendarSection({
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex overflow-hidden">
               <Button
-                unstyled
+                variant="ghost"
+                size="icon-sm"
                 ref={prevNav.ref}
                 type="button"
                 className="flex size-8 items-center justify-center text-muted hover:text-txt"
@@ -1183,7 +1195,8 @@ export function CalendarSection({
                 <ChevronLeft className="size-4" aria-hidden />
               </Button>
               <Button
-                unstyled
+                variant="ghost"
+                size="sm"
                 ref={todayNav.ref}
                 type="button"
                 className="h-8 px-2.5 text-xs font-medium text-txt hover:text-accent"
@@ -1193,7 +1206,8 @@ export function CalendarSection({
                 {t("lifeopsCalendar.today", { defaultValue: "Today" })}
               </Button>
               <Button
-                unstyled
+                variant="ghost"
+                size="icon-sm"
                 ref={nextNav.ref}
                 type="button"
                 className="flex size-8 items-center justify-center text-muted hover:text-txt"

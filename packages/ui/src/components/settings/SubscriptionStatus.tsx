@@ -328,7 +328,8 @@ function SubscriptionProviderPanel({
             <Input
               ref={oauthCodeRef}
               type={oauthInputType}
-              className="h-9 rounded-sm bg-card text-xs"
+              variant="config"
+              density="compact"
               placeholder={oauthInputPlaceholder}
               value={oauthCode}
               onChange={(e) => setOauthCode(e.target.value)}
@@ -686,6 +687,8 @@ export function SubscriptionStatus({
         ref={setupTokenRef}
         id="subscription-setup-token-input"
         type="password"
+        variant="config"
+        density="compact"
         placeholder={t("subscriptionstatus.skAntOat01")}
         value={setupTokenValue}
         onChange={(e) => {
@@ -693,7 +696,6 @@ export function SubscriptionStatus({
           setSetupTokenSuccess(false);
           setAnthropicError("");
         }}
-        className="h-9 rounded-sm bg-card font-mono text-xs"
         aria-label={t("settings.subscription.setupToken")}
         {...setupTokenAgentProps}
       />

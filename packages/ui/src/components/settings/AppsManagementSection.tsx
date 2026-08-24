@@ -478,7 +478,7 @@ export function AppsManagementSection() {
             ref={createToggleRef}
             type="button"
             variant="default"
-            className="min-h-11 rounded-md px-4 text-sm"
+            size="touch"
             onClick={() => {
               setShowCreate((v) => !v);
               setShowLoad(false);
@@ -493,7 +493,7 @@ export function AppsManagementSection() {
             ref={loadToggleRef}
             type="button"
             variant="outline"
-            className="min-h-11 rounded-md px-4 text-sm"
+            size="touch"
             onClick={() => {
               setShowLoad((v) => !v);
               setShowCreate(false);
@@ -582,7 +582,7 @@ export function AppsManagementSection() {
                   ref={createSubmitRef}
                   type="submit"
                   variant="default"
-                  className="h-11 rounded-md px-4 text-sm"
+                  size="touch"
                   disabled={isCreating || createIntent.trim().length === 0}
                   {...createSubmitAgentProps}
                 >
@@ -606,7 +606,7 @@ export function AppsManagementSection() {
                   ref={createCancelRef}
                   type="button"
                   variant="ghost"
-                  className="h-11 rounded-md px-4 text-sm text-muted"
+                  size="touch"
                   onClick={() => {
                     setShowCreate(false);
                     setCreateIntent("");
@@ -657,7 +657,7 @@ export function AppsManagementSection() {
                   ref={loadSubmitRef}
                   type="submit"
                   variant="default"
-                  className="h-11 rounded-md px-4 text-sm"
+                  size="touch"
                   disabled={isLoading || loadDirectory.trim().length === 0}
                   {...loadSubmitAgentProps}
                 >
@@ -681,7 +681,7 @@ export function AppsManagementSection() {
                   ref={loadCancelRef}
                   type="button"
                   variant="ghost"
-                  className="h-11 rounded-md px-4 text-sm text-muted"
+                  size="touch"
                   onClick={() => {
                     setShowLoad(false);
                     setLoadDirectory("");
@@ -725,7 +725,7 @@ export function AppsManagementSection() {
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 px-4 text-sm"
+              size="touch"
               onClick={() => void refresh()}
             >
               {t("common.retry", { defaultValue: "Retry" })}

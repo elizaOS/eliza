@@ -218,7 +218,7 @@ export function BlooioConnection() {
         name={t("cloud.blooio.cardName", {
           defaultValue: "iMessage (Blooio)",
         })}
-        icon={<MessageCircle className="text-green-500" />}
+        icon={<MessageCircle className="text-accent" />}
         description={t("cloud.blooio.cardDescription", {
           defaultValue: "Connect iMessage for AI-powered text conversations",
         })}
@@ -230,7 +230,7 @@ export function BlooioConnection() {
   return (
     <ConnectionCard
       name={t("cloud.blooio.cardName", { defaultValue: "iMessage (Blooio)" })}
-      icon={<MessageCircle className="text-green-500" />}
+      icon={<MessageCircle className="text-accent" />}
       description={t("cloud.blooio.cardDescription", {
         defaultValue: "Connect iMessage for AI-powered text conversations",
       })}
@@ -252,8 +252,8 @@ export function BlooioConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Smartphone className="size-6 text-green-600" />}
-            iconClassName="bg-green-100"
+            icon={<Smartphone className="size-6 text-accent" />}
+            iconClassName="bg-accent-subtle"
             title={status?.phoneNumber}
             subtitle={t("cloud.blooio.connectedVia", {
               defaultValue: "iMessage Connected via Blooio",
@@ -285,9 +285,9 @@ export function BlooioConnection() {
           )}
 
           {status?.webhookUrl && !status.hasWebhookSecret && (
-            <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-sm space-y-3">
+            <div className="p-3 bg-status-warning-bg border border-status-warning/30 rounded-sm space-y-3">
               <div>
-                <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-1">
+                <p className="text-sm font-medium text-status-warning mb-1">
                   {t("cloud.blooio.step2Title", {
                     defaultValue: "Step 2: Create a webhook in Blooio",
                   })}
@@ -316,8 +316,8 @@ export function BlooioConnection() {
                   </li>
                 </ol>
               </div>
-              <div className="space-y-2 pt-2 border-t border-yellow-500/20">
-                <Label className="text-xs text-yellow-700 dark:text-yellow-400">
+              <div className="space-y-2 pt-2 border-t border-status-warning/20">
+                <Label className="text-xs text-status-warning">
                   {t("cloud.blooio.step3Label", {
                     defaultValue: "Step 3: Paste signing secret here",
                   })}
@@ -404,7 +404,7 @@ export function BlooioConnection() {
                   href="https://app.blooio.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-green-600 hover:underline inline-flex items-center gap-1"
+                  className="text-accent hover:underline inline-flex items-center gap-1"
                 >
                   app.blooio.com
                   <ExternalLink className="size-3" />
@@ -513,7 +513,7 @@ export function BlooioConnection() {
           <Button
             onClick={handleConnect}
             disabled={isConnecting || !apiKey.trim() || !phoneNumber.trim()}
-            className="w-full bg-green-600 hover:bg-green-700"
+            className="w-full"
           >
             {isConnecting ? (
               <>

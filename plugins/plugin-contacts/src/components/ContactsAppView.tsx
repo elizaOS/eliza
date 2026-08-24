@@ -18,10 +18,9 @@ import {
   type CreateContactOptions,
 } from "@elizaos/capacitor-contacts";
 import type { OverlayAppContext } from "@elizaos/shared";
+import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { PermissionRecoveryCallout } from "@elizaos/ui/components";
-import { Button } from "@elizaos/ui";
-import { Input } from "@elizaos/ui";
 import { isNative } from "@elizaos/ui/platform";
 import {
   ArrowLeft,
@@ -531,12 +530,13 @@ function ContactListItem({
   return (
     <li>
       <Button
-        unstyled
+        variant="selection"
+        align="start"
         ref={ref}
         {...agentProps}
         type="button"
         onClick={() => onSelect(contact.id)}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-bg-accent/40 focus:bg-bg-accent/40 focus:outline-none"
+        className="w-full"
       >
         <Avatar name={contact.displayName} photoUri={contact.photoUri} />
         <div className="min-w-0 flex-1">

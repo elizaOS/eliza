@@ -54,9 +54,9 @@ export function providerDisplayName(provider: string): string {
 function healthDotClass(health: string): string {
   switch (health) {
     case "ok":
-      return "bg-green-500";
+      return "bg-status-success";
     case "rate-limited":
-      return "bg-yellow-500";
+      return "bg-status-warning";
     default:
       // needs-reauth / invalid / unknown
       return "bg-danger";

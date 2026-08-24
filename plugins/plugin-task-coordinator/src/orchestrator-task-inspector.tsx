@@ -2,6 +2,16 @@
  * Renders orchestrator status and task-inspector controls while preserving task mutation boundaries.
  */
 
+import {
+  Button,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
   ChangeSetData,
@@ -25,16 +35,6 @@ import {
   AlertDialogTrigger,
   DiffReviewPanel,
 } from "@elizaos/ui/components";
-import { Button } from "@elizaos/ui";
-import { Input } from "@elizaos/ui";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui";
-import { Textarea } from "@elizaos/ui";
 import {
   Archive,
   Check,
@@ -439,7 +439,8 @@ function SubAgentCard({
           {session.label}
         </span>
         <Button
-          unstyled
+          variant="ghost"
+          size="content"
           ref={inspectRef}
           type="button"
           onClick={() => onInspect(session.sessionId)}
@@ -453,7 +454,8 @@ function SubAgentCard({
         </Button>
         {stoppable ? (
           <Button
-            unstyled
+            variant="surfaceDestructive"
+            size="content"
             type="button"
             disabled={busy}
             onClick={() => onStop(session.sessionId)}
@@ -615,7 +617,8 @@ function EditedPlanRestartSection({
           </span>
         </div>
         <Button
-          unstyled
+          variant="ghost"
+          size="content"
           ref={toggleRef}
           type="button"
           disabled={busy}
@@ -1035,7 +1038,8 @@ function ControlButton({
 }) {
   return (
     <Button
-      unstyled
+      variant={tone === "danger" ? "surfaceDestructive" : "ghost"}
+      size="icon-sm"
       type="button"
       disabled={disabled}
       onClick={onClick}
@@ -1082,7 +1086,8 @@ function AgentLocalControlButton({
   });
   return (
     <Button
-      unstyled
+      variant="ghost"
+      size="icon-sm"
       ref={ref}
       type="button"
       disabled={disabled}
@@ -1117,7 +1122,8 @@ export function RecoveryActionButton({
 }) {
   return (
     <Button
-      unstyled
+      variant="surfaceDestructive"
+      size="content"
       type="button"
       disabled={disabled}
       onClick={onClick}
@@ -1158,7 +1164,7 @@ function AgentDeleteDialogConfirm({
   return (
     <AlertDialogAction
       onClick={onDelete}
-      className="bg-red-600 hover:bg-red-700"
+      className="bg-destructive text-destructive-fg hover:bg-destructive/85"
       data-agent-authority="human"
       data-agent-human-id="inspector-delete-confirm"
     >
@@ -1281,7 +1287,8 @@ export function TaskInspector({
             {t("orchestrator.inspector.title", { defaultValue: "Details" })}
           </h3>
           <Button
-            unstyled
+            variant="ghost"
+            size="icon-sm"
             ref={closeRef}
             type="button"
             onClick={onClose}

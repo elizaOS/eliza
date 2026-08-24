@@ -141,7 +141,7 @@ export function AuthManager({
             className="h-10 px-3 rounded-sm border border-white/10 bg-black/40 text-neutral-400 hover:text-white transition-colors"
           >
             {copied ? (
-              <Check className="size-4 text-green-400" />
+              <Check className="size-4 text-status-success" />
             ) : (
               <Copy className="size-4" />
             )}

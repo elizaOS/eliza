@@ -82,8 +82,10 @@ function SectionError({
       </p>
       <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={onRetry}
-        className="mt-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-ring"
+        className="mt-1"
       >
         Retry
       </Button>
@@ -279,8 +281,10 @@ export function CloudSettingsPanel() {
           <div className="flex flex-1 flex-col overflow-hidden">
             <Button
               type="button"
+              variant="ghost"
+              size="touch"
+              align="start"
               onClick={() => setNarrowView("hub")}
-              className="flex items-center gap-1.5 border-b border-border px-4 py-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               <ArrowLeft className="size-4" />
               Settings

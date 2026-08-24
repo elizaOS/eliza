@@ -2,10 +2,10 @@
  * Coordinates the live orchestrator task list, timeline, and extracted detail panels.
  */
 
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentTaskThreadDetail } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import {
   Archive,
@@ -179,7 +179,8 @@ function TimelineHeader({
       <div className="px-3 py-2">
         <div className="flex items-center gap-2">
           <Button
-            unstyled
+            variant="ghost"
+            size="icon-sm"
             ref={backRef}
             type="button"
             onClick={onBack}
@@ -193,7 +194,8 @@ function TimelineHeader({
           {statusDot}
           {title}
           <Button
-            unstyled
+            variant="ghost"
+            size="icon-sm"
             ref={detailsRef}
             type="button"
             onClick={onOpenInspector}
@@ -220,7 +222,8 @@ function TimelineHeader({
       {title}
       {pausedBadge}
       <Button
-        unstyled
+        variant="ghost"
+        size="icon-sm"
         ref={detailsRef}
         type="button"
         onClick={onOpenInspector}
@@ -255,7 +258,8 @@ function TimelineInspectButton({
   });
   return (
     <Button
-      unstyled
+      variant="ghost"
+      size="icon-sm"
       ref={ref}
       type="button"
       onClick={() => onInspect(block)}
@@ -287,7 +291,8 @@ function InspectorBackdrop({
   });
   return (
     <Button
-      unstyled
+      variant="ghost"
+      size="content"
       ref={ref}
       type="button"
       aria-label={label}
@@ -315,7 +320,8 @@ function TimelineLoadOlderButton({
   });
   return (
     <Button
-      unstyled
+      variant="link"
+      size="content"
       ref={ref}
       type="button"
       onClick={onLoad}
@@ -689,7 +695,9 @@ export function OrchestratorWorkbench() {
                     />
                   </div>
                   <Button
-                    unstyled
+                    variant="selection"
+                    size="sm"
+                    data-state={showArchived ? "on" : "off"}
                     ref={showArchivedRef}
                     type="button"
                     onClick={() => setShowArchived((value) => !value)}
@@ -841,7 +849,8 @@ export function OrchestratorWorkbench() {
                     })}
                   </span>
                   <Button
-                    unstyled
+                    variant="surfaceDestructive"
+                    size="content"
                     type="button"
                     onClick={handleStopActive}
                     disabled={mutating}

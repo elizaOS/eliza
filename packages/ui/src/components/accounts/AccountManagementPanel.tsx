@@ -247,7 +247,6 @@ export function AccountManagementPanel({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 gap-1.5 px-3 text-xs"
           onClick={() => void accounts.refresh()}
         >
           <RotateCw className="size-3.5" aria-hidden />
@@ -278,7 +277,7 @@ export function AccountManagementPanel({
           variant="default"
           size="sm"
           onClick={() => openAdd(undefined)}
-          className="h-8 shrink-0 gap-1.5 px-3 text-xs"
+          className="shrink-0"
         >
           <Plus className="size-3.5" aria-hidden />
           {t("accounts.add.button", { defaultValue: "Add account" })}
@@ -309,7 +308,6 @@ export function AccountManagementPanel({
             variant="default"
             size="sm"
             onClick={() => openAdd(undefined)}
-            className="h-8 gap-1.5 px-3 text-xs"
           >
             <Plus className="size-3.5" aria-hidden />
             {t("accounts.empty.cta", {
@@ -337,8 +335,11 @@ export function AccountManagementPanel({
         <div className="grid gap-2">
           <Button
             type="button"
+            variant="ghost"
+            size="content"
+            align="start"
             onClick={() => setShowAvailable((v) => !v)}
-            className="flex w-full items-center gap-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted transition-colors hover:text-txt-strong"
+            className="w-full"
             aria-expanded={showAvailable}
           >
             <ChevronRight

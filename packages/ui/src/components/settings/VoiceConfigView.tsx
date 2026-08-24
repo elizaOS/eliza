@@ -275,8 +275,6 @@ export function DesktopTalkModePanel() {
           <Button
             ref={refreshRef}
             variant="outline"
-            size="sm"
-            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-refresh",
@@ -331,7 +329,6 @@ export function DesktopTalkModePanel() {
         <Input
           ref={phraseRef}
           type="text"
-          className="min-h-10 rounded-sm bg-bg text-xs"
           value={phrase}
           onChange={(event) => setPhrase(event.target.value)}
           placeholder={t("voiceconfigview.testPhrase")}
@@ -342,8 +339,6 @@ export function DesktopTalkModePanel() {
           <Button
             ref={startStopRef}
             variant="outline"
-            size="sm"
-            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-start-stop",
@@ -384,8 +379,6 @@ export function DesktopTalkModePanel() {
           <Button
             ref={speakRef}
             variant="outline"
-            size="sm"
-            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-speak",
@@ -408,8 +401,6 @@ export function DesktopTalkModePanel() {
           <Button
             ref={stopSpeakingRef}
             variant="outline"
-            size="sm"
-            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-stop-speaking",
@@ -487,8 +478,7 @@ function ModelSizeButton({
     <Button
       ref={ref}
       variant={active ? "default" : "outline"}
-      size="sm"
-      className="h-auto min-h-12 flex-col rounded-sm py-2"
+      size="tile"
       onClick={onSelect}
       {...agentProps}
     >
@@ -874,8 +864,7 @@ function AsrProviderButton({
     <Button
       ref={ref}
       variant={active ? "default" : "outline"}
-      size="sm"
-      className="h-auto min-h-14 flex-col rounded-sm py-2"
+      size="tile"
       onClick={onSelect}
       {...agentProps}
     >
@@ -998,7 +987,7 @@ function TtsProviderButton({
     <Button
       ref={ref}
       variant={active ? "default" : "outline"}
-      className="h-auto min-h-14 flex-col rounded-md py-2"
+      size="tile"
       onClick={onSelect}
       {...agentProps}
     >
@@ -1408,7 +1397,7 @@ export function VoiceConfigView() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Button
                   variant="outline"
-                  className="h-11 rounded-md px-3 text-sm font-semibold"
+                  size="touch"
                   disabled={testing}
                   onClick={() => handleTestVoice(selectedPreset.previewUrl)}
                 >
@@ -1421,7 +1410,7 @@ export function VoiceConfigView() {
                 {testing ? (
                   <Button
                     variant="outline"
-                    className="h-11 rounded-md px-3 text-sm font-semibold"
+                    size="touch"
                     onClick={() => {
                       if (audioRef.current) {
                         audioRef.current.pause();

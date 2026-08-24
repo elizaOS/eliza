@@ -175,7 +175,7 @@ export function GoogleConnection() {
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <div className="p-3 bg-muted rounded-sm text-center">
-              <Mail className="size-6 mx-auto mb-2 text-red-500" />
+              <Mail className="size-6 mx-auto mb-2 text-accent" />
               <p className="text-sm font-medium">
                 {t("cloud.google.gmail", { defaultValue: "Gmail" })}
               </p>
@@ -197,7 +197,7 @@ export function GoogleConnection() {
               </p>
             </div>
             <div className="p-3 bg-muted rounded-sm text-center">
-              <Users className="size-6 mx-auto mb-2 text-green-500" />
+              <Users className="size-6 mx-auto mb-2 text-accent" />
               <p className="text-sm font-medium">
                 {t("cloud.google.contacts", { defaultValue: "Contacts" })}
               </p>

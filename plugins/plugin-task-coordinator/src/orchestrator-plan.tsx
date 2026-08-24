@@ -73,7 +73,9 @@ export function PlanDock({
       data-testid="orchestrator-plan"
     >
       <Button
-        unstyled
+        variant="ghost"
+        size="content"
+        align="start"
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"

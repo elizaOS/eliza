@@ -171,7 +171,7 @@ export function TwilioConnection() {
         name={t("cloud.twilio.cardName", {
           defaultValue: "Twilio SMS & Voice",
         })}
-        icon={<Phone className="text-red-500" />}
+        icon={<Phone className="text-accent" />}
         description={t("cloud.twilio.cardDescription", {
           defaultValue:
             "Connect Twilio for SMS, MMS, and voice call automation",
@@ -184,7 +184,7 @@ export function TwilioConnection() {
   return (
     <ConnectionCard
       name={t("cloud.twilio.cardName", { defaultValue: "Twilio SMS & Voice" })}
-      icon={<Phone className="text-red-500" />}
+      icon={<Phone className="text-accent" />}
       description={t("cloud.twilio.cardDescription", {
         defaultValue: "Connect Twilio for SMS, MMS, and voice call automation",
       })}
@@ -206,8 +206,8 @@ export function TwilioConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Phone className="size-6 text-red-600" />}
-            iconClassName="bg-red-100"
+            icon={<Phone className="size-6 text-accent" />}
+            iconClassName="bg-accent-subtle"
             title={status?.phoneNumber}
             subtitle={t("cloud.twilio.connectedSubtitle", {
               defaultValue: "Twilio Number Connected",
@@ -279,7 +279,7 @@ export function TwilioConnection() {
                   href="https://console.twilio.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-red-600 hover:underline inline-flex items-center gap-1"
+                  className="text-accent hover:underline inline-flex items-center gap-1"
                 >
                   {t("cloud.twilio.console", {
                     defaultValue: "Twilio Console",
@@ -406,7 +406,7 @@ export function TwilioConnection() {
               !authToken.trim() ||
               !phoneNumber.trim()
             }
-            className="w-full bg-red-600 hover:bg-red-700"
+            className="w-full"
           >
             {isConnecting ? (
               <>

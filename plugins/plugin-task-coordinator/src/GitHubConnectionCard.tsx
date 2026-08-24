@@ -1,7 +1,7 @@
 // Renders GitHub auth state for coding-agent framework settings.
+
+import { Button, SettingsControls } from "@elizaos/ui";
 import { client } from "@elizaos/ui/api";
-import { Button } from "@elizaos/ui";
-import { SettingsControls } from "@elizaos/ui";
 import { openExternalUrl } from "@elizaos/ui/utils/openExternalUrl";
 import {
   CheckCircle2,
@@ -253,7 +253,7 @@ export function GitHubConnectionCard() {
           <span className="text-sm font-medium text-txt">GitHub</span>
           {status?.connected ? (
             <span
-              className="inline-block size-1.5 rounded-full bg-emerald-500"
+              className="inline-block size-1.5 rounded-full bg-status-success"
               title={`Connected as @${status.username}`}
               aria-label={`Connected as @${status.username}`}
               role="img"
@@ -272,7 +272,10 @@ export function GitHubConnectionCard() {
       {status?.connected ? (
         <div className="flex flex-col gap-2 text-xs">
           <div className="flex items-center gap-2 text-muted">
-            <CheckCircle2 className="size-3.5 text-emerald-500" aria-hidden />
+            <CheckCircle2
+              className="size-3.5 text-status-success"
+              aria-hidden
+            />
             <span>
               Connected as{" "}
               <span className="font-medium text-txt">@{status.username}</span>
@@ -287,7 +290,7 @@ export function GitHubConnectionCard() {
             </div>
           ) : (
             <div className="text-muted">
-              Scopes: <span className="text-amber-500">none</span>
+              Scopes: <span className="text-status-warning">none</span>
             </div>
           )}
           <div className="flex items-center justify-between pt-1">
@@ -332,7 +335,8 @@ export function GitHubConnectionCard() {
               <div className="text-muted">
                 Enter this code on{" "}
                 <Button
-                  unstyled
+                  variant="link"
+                  size="content"
                   type="button"
                   className="inline-flex items-center gap-1 text-accent hover:underline"
                   onClick={() => openExternalUrl(deviceFlow.verificationUri)}
@@ -361,7 +365,8 @@ export function GitHubConnectionCard() {
           ) : null}
 
           <Button
-            unstyled
+            variant="link"
+            size="content"
             type="button"
             className="inline-flex w-fit items-center gap-1 text-xs text-accent hover:underline"
             onClick={() => openExternalUrl(TOKEN_GENERATE_URL)}
@@ -397,7 +402,7 @@ export function GitHubConnectionCard() {
       )}
 
       {errorMessage ? (
-        <div className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-500">
+        <div className="rounded-md border border-destructive/40 bg-destructive-subtle px-2 py-1.5 text-xs text-destructive">
           {errorMessage}
         </div>
       ) : null}

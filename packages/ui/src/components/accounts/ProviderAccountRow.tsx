@@ -328,7 +328,6 @@ export function ProviderAccountRow({
               type="button"
               variant={isActiveChatProvider ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2 text-xs-tight"
               disabled={isActiveChatProvider || !onSelectChatProvider}
               onClick={() => onSelectChatProvider?.(option.id)}
               title={t("accounts.row.useForChat.tooltip", {
@@ -347,7 +346,6 @@ export function ProviderAccountRow({
               type="button"
               variant={isActiveSubscription ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2 text-xs-tight"
               disabled={
                 (isActiveSubscription && !cloudCallsDisabled) ||
                 !onSelectSubscription
@@ -370,7 +368,6 @@ export function ProviderAccountRow({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs-tight text-muted hover:text-txt-strong"
             onClick={() => onAdd(option.id)}
           >
             {connected

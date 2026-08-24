@@ -3,8 +3,8 @@
  * preserving the streaming shimmer and disclosure state.
  */
 
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Brain, ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { MarkdownText } from "./orchestrator-markdown";
@@ -128,7 +128,9 @@ export function ReasoningCell({
     >
       <Button
         ref={ref}
-        unstyled
+        variant="ghost"
+        size="content"
+        align="start"
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}

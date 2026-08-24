@@ -71,7 +71,9 @@ export function CloudAccountMenu({
       <div className="border-t border-border p-3">
         <Button
           type="button"
-          className="keyboard-focus-surface flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
+          variant="ghost"
+          size="row"
+          align="start"
           onClick={() => {
             void handleInteractiveCloudLogin().catch((error: unknown) => {
               // error-policy:J4 login failure surfaces as a visible notice.
@@ -118,7 +120,9 @@ export function CloudAccountMenu({
         </p>
         <Button
           type="button"
-          className="keyboard-focus-surface flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
+          variant="ghost"
+          size="row"
+          align="start"
           onClick={startSignOut}
         >
           <RotateCcw aria-hidden="true" className="size-3.5" />
@@ -134,7 +138,9 @@ export function CloudAccountMenu({
         type="button"
         aria-controls="cloud-account-menu"
         aria-expanded={open}
-        className="keyboard-focus-surface flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-bg-hover"
+        variant="ghost"
+        size="row"
+        className="justify-between"
         onClick={() => setOpen(!open)}
       >
         <span className="flex items-center gap-2 truncate">
@@ -164,7 +170,9 @@ export function CloudAccountMenu({
           <div className="my-1 border-t border-border" />
           <Button
             type="button"
-            className="keyboard-focus-surface flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
+            variant="surfaceDestructive"
+            size="row"
+            align="start"
             onClick={startSignOut}
           >
             Sign out

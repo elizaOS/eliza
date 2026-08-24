@@ -10,8 +10,8 @@
  */
 
 import type { OverlayAppContext } from "@elizaos/shared";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 
 import { useCallback, useState } from "react";
@@ -103,13 +103,13 @@ export function TrajectoryLoggerView({
     <div className="flex flex-col gap-2">
       <div className="flex justify-start">
         <Button
-          unstyled
+          variant="outline"
+          size="sm"
           type="button"
           ref={backControl.ref}
           {...backControl.agentProps}
           onClick={() => onAction("back")}
           aria-label="Back to apps"
-          className="inline-flex items-center justify-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-strong transition-colors hover:bg-bg-hover hover:text-txt"
         >
           Back to apps
         </Button>

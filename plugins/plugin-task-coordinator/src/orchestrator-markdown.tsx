@@ -1,6 +1,8 @@
 // Renders safe markdown prose inside orchestrator transcripts.
 
 import {
+  Button,
+  Input,
   Table,
   TableBody,
   TableCell,
@@ -8,8 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@elizaos/ui";
-import { Button } from "@elizaos/ui";
-import { Input } from "@elizaos/ui";
 import { Check, Copy } from "lucide-react";
 import { marked, type Token, type Tokens, type TokensList } from "marked";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -256,7 +256,8 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
         </div>
       ) : null}
       <Button
-        unstyled
+        variant="ghost"
+        size="icon-sm"
         type="button"
         onClick={copy}
         aria-label={copied ? "Copied" : "Copy code"}

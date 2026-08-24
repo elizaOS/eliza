@@ -901,7 +901,8 @@ export function EventEditorDrawer({
               <div className="text-sm font-semibold text-txt">{titleLabel}</div>
             </div>
             <Button
-              unstyled
+              variant="ghost"
+              size="icon-sm"
               type="button"
               onClick={onClose}
               aria-label={t("common.close", { defaultValue: "Close" })}

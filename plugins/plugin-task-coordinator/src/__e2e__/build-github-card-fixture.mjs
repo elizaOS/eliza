@@ -93,16 +93,16 @@ window.tailwind.config = {
 /* Brand palette injected explicitly so it survives whichever Tailwind the CDN
    serves (v4 ignores the JS color config). Source order wins. */
 .text-txt{color:#f4f5f7}.text-muted{color:#9aa0ad}
-.text-accent{color:#ff5800}.text-amber-500{color:#f59e0b}
-.text-rose-500{color:#f43f5e}.text-emerald-500{color:#10b981}
+.text-accent{color:#ff5800}.text-status-warning{color:#f59e0b}
+.text-destructive{color:#f43f5e}.text-status-success{color:#10b981}
 .bg-bg{background-color:#07090e}.bg-card{background-color:#0c0f16}
 .bg-bg-accent{background-color:#10131b}.bg-bg-accent\\/40{background-color:rgba(16,19,27,.4)}
 .bg-surface{background-color:#161a23}
 .bg-accent{background-color:#ff5800}.hover\\:bg-accent-hover:hover{background-color:#e04d00}
 .text-accent-fg{color:#ffffff}
-.bg-emerald-500{background-color:#10b981}.bg-muted\\/40{background-color:rgba(154,160,173,.4)}
-.bg-rose-500\\/10{background-color:rgba(244,63,94,.1)}
-.border-border{border-color:#272b36}.border-rose-500\\/40{border-color:rgba(244,63,94,.4)}
+.bg-status-success{background-color:#10b981}.bg-muted\\/40{background-color:rgba(154,160,173,.4)}
+.bg-destructive-subtle{background-color:rgba(244,63,94,.1)}
+.border-border{border-color:#272b36}.border-destructive\\/40{border-color:rgba(244,63,94,.4)}
 </style>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "github-card.html");

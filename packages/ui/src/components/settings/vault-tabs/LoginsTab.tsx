@@ -308,7 +308,7 @@ export function LoginsTab() {
           {...addLoginAgentProps}
           variant="outline"
           size="sm"
-          className="h-8 shrink-0 gap-1 rounded-sm px-2"
+          className="shrink-0"
           onClick={() => setShowAdd((v) => !v)}
         >
           <Plus className="size-3.5" aria-hidden />
@@ -366,10 +366,10 @@ export function LoginsTab() {
               <Input
                 ref={addDomainRef}
                 {...addDomainAgentProps}
+                density="compact"
                 value={addDomain}
                 onChange={(e) => setAddDomain(e.target.value)}
                 placeholder="github.com"
-                className="h-8 text-xs"
                 autoComplete="off"
                 required
               />
@@ -383,10 +383,10 @@ export function LoginsTab() {
               <Input
                 ref={addUsernameRef}
                 {...addUsernameAgentProps}
+                density="compact"
                 value={addUsername}
                 onChange={(e) => setAddUsername(e.target.value)}
                 placeholder="alice@example.com"
-                className="h-8 text-xs"
                 autoComplete="off"
                 required
               />
@@ -400,9 +400,9 @@ export function LoginsTab() {
               ref={addPasswordRef}
               {...addPasswordAgentProps}
               type="password"
+              density="compact"
               value={addPassword}
               onChange={(e) => setAddPassword(e.target.value)}
-              className="h-8 text-xs"
               autoComplete="new-password"
               required
             />
@@ -414,7 +414,6 @@ export function LoginsTab() {
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 rounded-sm px-3 text-xs"
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
@@ -426,7 +425,6 @@ export function LoginsTab() {
               type="submit"
               variant="default"
               size="sm"
-              className="h-7 gap-1 rounded-sm px-3 text-xs"
               disabled={
                 submitting || !addDomain.trim() || !addUsername || !addPassword
               }
@@ -448,12 +446,12 @@ export function LoginsTab() {
         <Input
           ref={filterRef}
           {...filterAgentProps}
+          density="compact"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder={t("logins.filterPlaceholder", {
             defaultValue: "Filter by title, user, or domain",
           })}
-          className="h-8 text-xs"
           autoComplete="off"
           data-testid="saved-logins-filter"
         />
@@ -607,9 +605,9 @@ function DeleteLoginButton({
     <Button
       ref={ref}
       {...agentProps}
-      variant="ghost"
-      size="sm"
-      className="size-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+      variant="destructive"
+      size="icon-sm"
+      className="shrink-0"
       aria-label={t("logins.deleteLabel", {
         target,
         defaultValue: "Delete saved login for {{target}}",

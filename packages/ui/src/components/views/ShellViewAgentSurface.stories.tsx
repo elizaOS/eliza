@@ -82,7 +82,7 @@ export const TerminalSurface: Story = {
     viewId: "terminal-shell",
     viewType: "gui",
     children: (
-      <pre className="p-4 rounded-md bg-black text-green-400 font-mono text-xs whitespace-pre-wrap">
+      <pre className="rounded-md bg-bg p-4 font-mono text-xs text-ok whitespace-pre-wrap">
         {"$ eliza status\nagent: ready\nplugins: 12 loaded\n"}
       </pre>
     ),

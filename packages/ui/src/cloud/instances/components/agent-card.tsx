@@ -358,7 +358,7 @@ function AgentCardInner({
   });
 
   const removeSavedClassName = cn(
-    "pointer-events-auto flex-shrink-0 hidden items-center justify-center size-8 rounded-lg bg-transparent hover:bg-red-500/20 transition-colors group-hover:flex",
+    "pointer-events-auto flex-shrink-0 hidden items-center justify-center size-8 rounded-lg bg-transparent hover:bg-destructive-subtle transition-colors group-hover:flex",
   );
 
   const isListView = viewMode === "list";
@@ -465,7 +465,7 @@ function AgentCardInner({
                   defaultValue: "Remove from saved",
                 })}
               >
-                <X className="size-4 text-white/70 hover:text-red-500" />
+                <X className="size-4 text-white/70 hover:text-destructive" />
               </Button>
             )}
 
@@ -537,9 +537,9 @@ function AgentCardInner({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleDeleteClick}
-                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
+                      className="cursor-pointer text-destructive bg-destructive-subtle hover:bg-destructive-subtle/70"
                     >
-                      <Trash2 className="size-4 mr-2 text-red-500" />
+                      <Trash2 className="size-4 mr-2 text-destructive" />
                       {t("cloud.agentCard.delete", { defaultValue: "Delete" })}
                     </DropdownMenuItem>
                   </>
@@ -557,9 +557,9 @@ function AgentCardInner({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleRemoveSaved}
-                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
+                      className="cursor-pointer text-destructive bg-destructive-subtle hover:bg-destructive-subtle/70"
                     >
-                      <X className="size-4 mr-2 text-red-500" />
+                      <X className="size-4 mr-2 text-destructive" />
                       {t("cloud.agentCard.remove", { defaultValue: "Remove" })}
                     </DropdownMenuItem>
                   </>
@@ -597,7 +597,7 @@ function AgentCardInner({
                 <AlertDialogAction
                   onClick={handleConfirmDelete}
                   disabled={isDeleting}
-                  className="bg-red-600 hover:bg-red-700"
+                  className="bg-destructive text-destructive-fg hover:bg-destructive/85"
                 >
                   {isDeleting
                     ? t("cloud.agentCard.deleting", {
@@ -692,7 +692,7 @@ function AgentCardInner({
             variant="ghost"
             type="button"
             onClick={handleRemoveSaved}
-            className="pointer-events-auto absolute top-3 right-12 z-20 hidden items-center justify-center size-9 rounded-lg bg-black/30 hover:bg-red-500/50 transition-colors group-hover:flex"
+            className="pointer-events-auto absolute top-3 right-12 z-20 hidden items-center justify-center size-9 rounded-lg bg-black/30 hover:bg-destructive/50 transition-colors group-hover:flex"
             title={t("cloud.agentCard.removeFromSaved", {
               defaultValue: "Remove from saved",
             })}
@@ -764,9 +764,9 @@ function AgentCardInner({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleDeleteClick}
-                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
+                  className="cursor-pointer text-destructive bg-destructive-subtle hover:bg-destructive-subtle/70"
                 >
-                  <Trash2 className="size-4 mr-2 text-red-500" />
+                  <Trash2 className="size-4 mr-2 text-destructive" />
                   {t("cloud.agentCard.delete", { defaultValue: "Delete" })}
                 </DropdownMenuItem>
               </>
@@ -784,9 +784,9 @@ function AgentCardInner({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleRemoveSaved}
-                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
+                  className="cursor-pointer text-destructive bg-destructive-subtle hover:bg-destructive-subtle/70"
                 >
-                  <X className="size-4 mr-2 text-red-500" />
+                  <X className="size-4 mr-2 text-destructive" />
                   {t("cloud.agentCard.remove", { defaultValue: "Remove" })}
                 </DropdownMenuItem>
               </>
@@ -834,7 +834,7 @@ function AgentCardInner({
               <AlertDialogAction
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700"
+                className="bg-destructive text-destructive-fg hover:bg-destructive/85"
               >
                 {isDeleting
                   ? t("cloud.agentCard.deleting", {

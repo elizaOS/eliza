@@ -408,7 +408,7 @@ function AuthorizeFlow({
       </p>
 
       {error && (
-        <div className="rounded-sm border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200">
+        <div className="rounded-sm border border-destructive/40 bg-destructive-subtle p-3 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -443,8 +443,8 @@ function AuthorizationErrorFrame({
 }) {
   return (
     <Frame>
-      <div className="p-4 rounded-full bg-red-500/20">
-        <AlertTriangle className="size-8 text-red-400" />
+      <div className="p-4 rounded-full bg-destructive-subtle">
+        <AlertTriangle className="size-8 text-destructive" />
       </div>
       <h3 className="text-lg font-semibold text-white">Authorization Error</h3>
       <p className="text-sm text-white/60 max-w-xs text-center">{error}</p>

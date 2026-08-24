@@ -5,8 +5,8 @@
  * a standalone ES module and supplies its external React and UI dependencies.
  */
 
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
 	dispatchNavigateViewEvent,
 	useViewEvent,
@@ -22,9 +22,6 @@ import {
 	requestViewNavigation,
 	type ViewEntry,
 } from "./viewManagerData";
-
-const CONTROL_BTN =
-	"inline-flex items-center justify-center rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-strong transition-colors hover:bg-bg-hover hover:text-txt disabled:pointer-events-none disabled:opacity-50";
 
 export function ViewManagerView() {
 	const [views, setViews] = useState<ViewEntry[]>([]);
@@ -111,14 +108,14 @@ export function ViewManagerView() {
 		<div className="eliza-chat-scroll h-0 min-h-0 flex-1 overflow-y-auto">
 			<div className="mb-2 flex justify-end">
 				<Button
-					unstyled
+					variant="outline"
+					size="sm"
 					type="button"
 					ref={refreshControl.ref}
 					{...refreshControl.agentProps}
 					onClick={() => void fetchViews()}
 					disabled={loading}
 					aria-label="Refresh views"
-					className={CONTROL_BTN}
 				>
 					{loading ? "Refreshing…" : "Refresh"}
 				</Button>

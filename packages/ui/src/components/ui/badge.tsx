@@ -21,9 +21,14 @@ const badgeVariants = cva(
           "border-transparent bg-destructive text-destructive-fg hover:bg-destructive/80",
         outline: "text-txt border-border",
       },
+      size: {
+        default: "",
+        compact: "text-2xs uppercase",
+      },
     },
     defaultVariants: {
       variant: "default",
+      size: "default",
     },
   },
 );
@@ -34,11 +39,17 @@ export interface BadgeProps
   asChild?: boolean;
 }
 
-function Badge({ asChild = false, className, variant, ...props }: BadgeProps) {
+function Badge({
+  asChild = false,
+  className,
+  variant,
+  size,
+  ...props
+}: BadgeProps) {
   const Component = asChild ? Slot : "div";
   return (
     <Component
-      className={cn(badgeVariants({ variant }), className)}
+      className={cn(badgeVariants({ variant, size }), className)}
       {...props}
     />
   );

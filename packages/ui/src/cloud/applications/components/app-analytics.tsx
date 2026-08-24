@@ -57,7 +57,6 @@ import {
   TableRow,
 } from "../../../components/ui/table";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
-import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 
 interface AppAnalyticsProps {
@@ -382,16 +381,12 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             const Icon = tab.icon;
             return (
               <Button
-                variant="ghost"
+                variant="selection"
+                size="sm"
                 type="button"
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-sm transition-colors whitespace-nowrap",
-                  activeTab === tab.value
-                    ? "bg-surface text-txt"
-                    : "text-neutral-400 hover:text-txt",
-                )}
+                data-state={activeTab === tab.value ? "on" : "off"}
               >
                 <Icon className="size-4" />
                 <span className="hidden sm:inline">{tab.label}</span>
@@ -419,10 +414,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             </Select>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               onClick={() => fetchAnalytics()}
               disabled={isLoading}
-              className="size-9 p-0"
             >
               <RefreshCw
                 className={`size-4 ${isLoading ? "animate-spin" : ""}`}
@@ -455,7 +449,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <DashboardStatCard
                 label="Credits Used"
                 value={`$${parseFloat(totalStats.totalCreditsUsed || "0").toFixed(2)}`}
-                icon={<DollarSign className="size-5 text-green-400" />}
+                icon={<DollarSign className="size-5 text-status-success" />}
               />
             </div>
           )}
@@ -561,7 +555,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   value={(requestStats.byType?.pageview || 0).toLocaleString(
                     "en-US",
                   )}
-                  color="text-green-400"
+                  color="text-status-success"
                 />
                 <MiniStatCard
                   label="API Requests"
@@ -734,10 +728,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <h3 className="text-sm font-medium text-txt">Top Visitors</h3>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon-sm"
                     onClick={() => fetchRequestStats()}
                     disabled={isLoadingStats}
-                    className="size-8 p-0"
                   >
                     <RefreshCw
                       className={`size-4 ${isLoadingStats ? "animate-spin" : ""}`}
@@ -829,7 +822,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   value={sessionAnalytics.summary.totalPageViews.toLocaleString(
                     "en-US",
                   )}
-                  color="text-green-400"
+                  color="text-status-success"
                 />
                 <MiniStatCard
                   label="Pages/Session"
@@ -963,10 +956,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               </span>
               <Button
                 variant="ghost"
-                size="sm"
+                size="icon-sm"
                 onClick={() => fetchRequestLogs(logsPage)}
                 disabled={isLoadingLogs}
-                className="size-8 p-0"
               >
                 <RefreshCw
                   className={`size-4 ${isLoadingLogs ? "animate-spin" : ""}`}
@@ -1050,7 +1042,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                         </TableCell>
                         <TableCell className="p-2 text-center">
                           <span
-                            className={`inline-flex size-2 rounded-full ${log.status === "success" ? "bg-green-500" : log.status === "failed" ? "bg-red-500" : "bg-yellow-500"}`}
+                            className={`inline-flex size-2 rounded-full ${log.status === "success" ? "bg-status-success" : log.status === "failed" ? "bg-status-danger" : "bg-status-warning"}`}
                           />
                         </TableCell>
                       </TableRow>
@@ -1067,21 +1059,19 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <div className="flex items-center gap-1">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon-sm"
                       onClick={() => setLogsPage(Math.max(0, logsPage - 1))}
                       disabled={logsPage === 0 || isLoadingLogs}
-                      className="size-8 p-0"
                     >
                       <ChevronLeft className="size-4" />
                     </Button>
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon-sm"
                       onClick={() =>
                         setLogsPage(Math.min(totalPages - 1, logsPage + 1))
                       }
                       disabled={logsPage >= totalPages - 1 || isLoadingLogs}
-                      className="size-8 p-0"
                     >
                       <ChevronRight className="size-4" />
                     </Button>

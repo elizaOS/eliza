@@ -414,8 +414,7 @@ export function AdvancedSection() {
               <Button
                 ref={exportSubmitRef}
                 variant="default"
-                size="sm"
-                className="min-h-[2.625rem] px-4 rounded-sm"
+                size="touch"
                 disabled={createBackupBusy}
                 onClick={() => void handleCreateBackup()}
                 {...exportSubmitAgentProps}
@@ -486,8 +485,7 @@ export function AdvancedSection() {
               <Button
                 ref={importSubmitRef}
                 variant="default"
-                size="sm"
-                className="min-h-[2.625rem] px-4 rounded-sm"
+                size="touch"
                 disabled={restoreBackupBusy || !selectedBackupFileName}
                 onClick={() => void handleRestoreBackup()}
                 {...importSubmitAgentProps}

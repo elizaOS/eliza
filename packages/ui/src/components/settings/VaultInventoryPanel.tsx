@@ -315,7 +315,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           {...addSecretAgentProps}
           variant="outline"
           size="sm"
-          className="h-8 shrink-0 gap-1 rounded-sm px-2"
+          className="shrink-0"
           onClick={() => setShowAdd((v) => !v)}
           aria-label={t("vaultinventory.addSecret", {
             defaultValue: "Add secret",
@@ -604,8 +604,8 @@ const EntryRow = memo(function EntryRow({
       <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
         <Button
           variant="ghost"
-          size="sm"
-          className="size-6 shrink-0 rounded-sm p-0 text-muted"
+          size="icon-sm"
+          className="shrink-0"
           onClick={() => setExpanded((v) => !v)}
           aria-label={expanded ? "Collapse" : "Expand"}
         >
@@ -633,7 +633,7 @@ const EntryRow = memo(function EntryRow({
             {...revealAgentProps}
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 gap-1 rounded-sm px-2 text-xs text-muted"
+            className="shrink-0"
             onClick={() => void reveal()}
             disabled={revealing}
             aria-label={`Reveal ${entry.label}`}
@@ -651,7 +651,7 @@ const EntryRow = memo(function EntryRow({
             {...revealAgentProps}
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 gap-1 rounded-sm px-2 text-xs text-muted"
+            className="shrink-0"
             onClick={hide}
             aria-label={`Hide ${entry.label}`}
           >
@@ -662,9 +662,9 @@ const EntryRow = memo(function EntryRow({
         <Button
           ref={deleteRef}
           {...deleteAgentProps}
-          variant="ghost"
-          size="sm"
-          className="size-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+          variant="destructive"
+          size="icon-sm"
+          className="shrink-0"
           onClick={() => {
             setRevealed(null);
             setRevealError(null);
@@ -706,7 +706,6 @@ const EntryRow = memo(function EntryRow({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => setConfirmingDelete(false)}
               disabled={deleting}
               aria-label={`Cancel deleting ${entry.label}`}
@@ -717,7 +716,6 @@ const EntryRow = memo(function EntryRow({
               type="button"
               variant="destructive"
               size="sm"
-              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => void onDelete()}
               disabled={deleting}
               aria-label={`Permanently delete ${entry.label}`}
@@ -752,7 +750,7 @@ const EntryRow = memo(function EntryRow({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 shrink-0 gap-1 rounded-sm px-2 text-2xs"
+            className="shrink-0"
             onClick={() => void copy()}
             aria-label={t("vaultinventory.copy", { defaultValue: "Copy" })}
           >
@@ -1001,7 +999,6 @@ function ProfilesPanel({
               {...jumpRoutingAgentProps}
               variant="ghost"
               size="sm"
-              className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => onJumpToRouting(entry.key)}
               aria-label={t("vaultinventory.profiles.routingRulesFor", {
                 label: entry.label,
@@ -1020,7 +1017,6 @@ function ProfilesPanel({
               {...profileAddAgentProps}
               variant="ghost"
               size="sm"
-              className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => setShowAdd((v) => !v)}
               aria-label={t("vaultinventory.profiles.addProfile", {
                 defaultValue: "Add profile",
@@ -1037,7 +1033,6 @@ function ProfilesPanel({
               {...profileAddAgentProps}
               variant="outline"
               size="sm"
-              className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => void onMigrate()}
               disabled={migrating}
               aria-label={t("vaultinventory.profiles.enableForKey", {
@@ -1103,12 +1098,12 @@ function ProfilesPanel({
               <Input
                 ref={newIdRef}
                 {...newIdAgentProps}
+                density="compact"
                 value={newId}
                 onChange={(e) => setNewId(e.target.value)}
                 placeholder={t("vaultinventory.profiles.idPlaceholder", {
                   defaultValue: "work",
                 })}
-                className="h-7 text-xs"
                 pattern="[A-Za-z0-9_-]+"
                 required
               />
@@ -1122,12 +1117,12 @@ function ProfilesPanel({
               <Input
                 ref={newLabelRef}
                 {...newLabelAgentProps}
+                density="compact"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder={t("vaultinventory.profiles.labelPlaceholder", {
                   defaultValue: "Work",
                 })}
-                className="h-7 text-xs"
               />
             </div>
           </div>
@@ -1141,10 +1136,11 @@ function ProfilesPanel({
               ref={newValueRef}
               {...newValueAgentProps}
               type="password"
+              variant="config"
+              density="compact"
               autoComplete="off"
               value={newValue}
               onChange={(e) => setNewValue(e.target.value)}
-              className="h-7 font-mono text-xs"
               required
             />
           </div>
@@ -1155,7 +1151,6 @@ function ProfilesPanel({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-6 rounded-sm px-2 text-2xs"
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
@@ -1169,7 +1164,6 @@ function ProfilesPanel({
               type="submit"
               variant="default"
               size="sm"
-              className="h-6 rounded-sm px-2 text-2xs"
               disabled={submitting || !newId || !newValue}
             >
               {submitting
@@ -1269,9 +1263,9 @@ const ProfileRow = memo(
           <Button
             ref={deleteRef}
             {...deleteAgentProps}
-            variant="ghost"
-            size="sm"
-            className="size-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+            variant="destructive"
+            size="icon-sm"
+            className="shrink-0"
             aria-label={t("vaultinventory.profiles.deleteProfile", {
               label: profileLabel,
               defaultValue: "Delete profile {{label}}",
@@ -1300,7 +1294,6 @@ const ProfileRow = memo(
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-6 rounded-sm px-2 text-2xs"
                 onClick={onCancelDelete}
                 disabled={deleting}
               >
@@ -1310,7 +1303,6 @@ const ProfileRow = memo(
                 type="button"
                 variant="destructive"
                 size="sm"
-                className="h-6 rounded-sm px-2 text-2xs"
                 onClick={onConfirmDelete}
                 disabled={deleting}
               >
@@ -1473,10 +1465,11 @@ function AddSecretForm({
           <Input
             ref={keyRef}
             {...keyAgentProps}
+            variant="config"
+            density="compact"
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="OPENROUTER_API_KEY"
-            className="h-8 font-mono text-xs"
             autoComplete="off"
             required
           />
@@ -1490,10 +1483,10 @@ function AddSecretForm({
           <Input
             ref={labelRef}
             {...labelAgentProps}
+            density="compact"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="OpenRouter"
-            className="h-8 text-xs"
             autoComplete="off"
           />
         </div>
@@ -1506,9 +1499,10 @@ function AddSecretForm({
           ref={valueRef}
           {...valueAgentProps}
           type="password"
+          variant="config"
+          density="compact"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          className="h-8 font-mono text-xs"
           autoComplete="new-password"
           required
         />
@@ -1551,10 +1545,10 @@ function AddSecretForm({
           <Input
             ref={providerRef}
             {...providerAgentProps}
+            density="compact"
             value={providerId}
             onChange={(e) => setProviderId(e.target.value)}
             placeholder="openrouter"
-            className="h-8 text-xs"
             autoComplete="off"
           />
         </div>
@@ -1573,7 +1567,6 @@ function AddSecretForm({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 rounded-sm px-3 text-xs"
           onClick={onClose}
           disabled={submitting}
         >
@@ -1585,7 +1578,6 @@ function AddSecretForm({
           type="submit"
           variant="default"
           size="sm"
-          className="h-7 rounded-sm px-3 text-xs"
           disabled={submitting || !key.trim() || !value}
         >
           {submitting

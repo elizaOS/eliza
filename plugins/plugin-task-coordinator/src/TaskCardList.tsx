@@ -1,9 +1,9 @@
 // Shared visual task-card language for the /orchestrator and /task-coordinator
 // single-pane landings. Both views render the same card medallion + chips so the
 // two surfaces read as one product. Pure presentation — no data fetching.
+
+import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui";
-import { Input } from "@elizaos/ui";
 import {
   Archive,
   Circle,
@@ -263,7 +263,9 @@ export function TaskCard({
   });
   return (
     <Button
-      unstyled
+      variant="selection"
+      size="content"
+      align="start"
       ref={ref}
       type="button"
       onClick={() => onOpen(id)}
@@ -395,7 +397,8 @@ export function BackChip({
   });
   return (
     <Button
-      unstyled
+      variant="ghost"
+      size="content"
       ref={ref}
       type="button"
       onClick={onClick}

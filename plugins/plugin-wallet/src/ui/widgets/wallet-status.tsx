@@ -164,12 +164,13 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
 
   return (
     <Button
-      unstyled
+      variant="ghost"
+      size="icon-sm"
       type="button"
       onClick={onClick}
       aria-label={copied ? `${label} copied` : `Copy ${label}`}
       title={copied ? "Copied" : "Copy"}
-      className="inline-flex size-5 shrink-0 items-center justify-center text-muted transition-colors hover:text-txt"
+      className="shrink-0"
     >
       {copied ? (
         <Check className="size-3" aria-hidden />

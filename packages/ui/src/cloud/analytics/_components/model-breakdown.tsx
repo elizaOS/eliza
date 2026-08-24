@@ -161,7 +161,7 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
                       {formatTokens(model.totalTokens)}
                     </TableCell>
                     <TableCell className="py-3 text-right tabular-nums">
-                      <span className="text-green-600 dark:text-green-400">
+                      <span className="text-status-success">
                         {toSuccessRatePercent(model.successRate).toFixed(1)}%
                       </span>
                     </TableCell>

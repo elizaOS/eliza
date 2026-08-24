@@ -499,7 +499,7 @@ export function ApiTester({
       <div key={param.name} className="space-y-2">
         <Label htmlFor={inputId} className="flex items-center gap-2">
           {param.name}
-          {param.required && <span className="text-red-500">*</span>}
+          {param.required && <span className="text-destructive">*</span>}
           <Badge variant="outline" className="text-xs">
             {param.type}
           </Badge>
@@ -580,16 +580,16 @@ export function ApiTester({
       {endpoint.pricing && (
         <Card className="border-border/60 bg-background/60 rounded-sm overflow-hidden">
           <div
-            className={`h-1 w-full ${endpoint.pricing.isFree ? "bg-green-500" : endpoint.pricing.isVariable ? "bg-muted" : "bg-muted"}`}
+            className={`h-1 w-full ${endpoint.pricing.isFree ? "bg-status-success" : endpoint.pricing.isVariable ? "bg-muted" : "bg-muted"}`}
           />
           <CardContent className="pt-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div
-                  className={`p-2.5 rounded-sm ${endpoint.pricing.isFree ? "bg-green-500/10" : endpoint.pricing.isVariable ? "bg-surface" : "bg-surface"}`}
+                  className={`p-2.5 rounded-sm ${endpoint.pricing.isFree ? "bg-status-success-bg" : endpoint.pricing.isVariable ? "bg-surface" : "bg-surface"}`}
                 >
                   {endpoint.pricing.isFree ? (
-                    <Sparkles className={`size-5 text-green-400`} />
+                    <Sparkles className="size-5 text-status-success" />
                   ) : endpoint.pricing.isVariable ? (
                     <TrendingUp className={` size-5 text-muted`} />
                   ) : (
@@ -599,7 +599,7 @@ export function ApiTester({
                 <div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-xl font-bold ${endpoint.pricing.isFree ? "text-green-400" : endpoint.pricing.isVariable ? "text-txt-strong" : "text-txt-strong"}`}
+                      className={`text-xl font-bold ${endpoint.pricing.isFree ? "text-status-success" : endpoint.pricing.isVariable ? "text-txt-strong" : "text-txt-strong"}`}
                     >
                       {formatEndpointPrice(endpoint.pricing)}
                     </span>
@@ -698,7 +698,7 @@ export function ApiTester({
               <CardContent>
                 <div className="space-y-4">
                   {audioRecorder.error && (
-                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-sm text-sm text-red-800 dark:text-red-400">
+                    <div className="p-3 bg-destructive-subtle border border-destructive/30 rounded-sm text-sm text-destructive">
                       {audioRecorder.error}
                     </div>
                   )}
@@ -972,9 +972,9 @@ export function ApiTester({
                   <div className="flex items-center justify-between">
                     <CardTitle className="flex items-center gap-2">
                       {response.success ? (
-                        <CheckIcon className="size-5 text-green-500" />
+                        <CheckIcon className="size-5 text-status-success" />
                       ) : (
-                        <XIcon className="size-5 text-red-500" />
+                        <XIcon className="size-5 text-destructive" />
                       )}
                       Response
                     </CardTitle>
@@ -983,8 +983,8 @@ export function ApiTester({
                         className={cn(
                           "rounded-sm px-2.5 py-1 text-xs font-medium",
                           response.success
-                            ? "bg-green-500/10 text-green-600    dark:text-green-300"
-                            : "bg-red-500/10 text-red-600    dark:text-red-300",
+                            ? "bg-status-success-bg text-status-success"
+                            : "bg-destructive-subtle text-destructive",
                         )}
                       >
                         {response.status} {response.statusText}
@@ -998,8 +998,8 @@ export function ApiTester({
 
                 {response.error && (
                   <CardContent>
-                    <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-sm">
-                      <p className="text-red-800 dark:text-red-400 font-medium">
+                    <div className="p-4 bg-destructive-subtle border border-destructive/30 rounded-sm">
+                      <p className="text-destructive font-medium">
                         Error: {response.error}
                       </p>
                     </div>

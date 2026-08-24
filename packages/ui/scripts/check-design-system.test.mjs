@@ -7,6 +7,7 @@ import {
   compareToBaseline,
   RULES,
   renderComplianceMarkdown,
+  resolvesToCanonical,
 } from "./check-design-system.mjs";
 
 test("compliance inventory is deterministic and covers every governed rule", () => {
@@ -23,6 +24,34 @@ test("compliance inventory is deterministic and covers every governed rule", () 
   );
   assert.equal(first.counts["atomic-duplicate"], 0);
   assert.equal(first.counts["raw-control"], 0);
+  assert.equal(
+    first.findings.some(
+      (finding) =>
+        finding.rule === "visual-override" &&
+        finding.symbol === "Skeleton" &&
+        finding.file.startsWith("packages/ui/src/components/accounts/"),
+    ),
+    false,
+  );
+  assert.equal(first.counts["unstyled-canonical"], 0);
+});
+
+test("supported UI barrels resolve to canonical atoms without relying on debt", () => {
+  const sourceFile = new URL(
+    "../../../plugins/plugin-calendar/src/components/CalendarSection.tsx",
+    import.meta.url,
+  ).pathname;
+
+  for (const origin of [
+    "@elizaos/ui",
+    "@elizaos/ui/components",
+    "@elizaos/ui/cloud-ui",
+  ]) {
+    assert.equal(
+      resolvesToCanonical({ imported: "Button", origin }, sourceFile),
+      true,
+    );
+  }
 });
 
 test("baseline comparison rejects increases and permits reductions", () => {

@@ -144,13 +144,14 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
         />
         <Input
           ref={inputRef}
+          adornment="leading"
+          density="compact"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={t("accounts.add.search", {
             defaultValue: "Search providers",
           })}
-          className="h-9 w-full rounded-md border border-border/60 bg-bg-accent/40 pl-8 pr-3 text-base text-txt-strong outline-none sm:text-sm placeholder:text-muted"
           aria-label={t("accounts.add.search", {
             defaultValue: "Search providers",
           })}

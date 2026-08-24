@@ -124,7 +124,7 @@ export function AccountList({ providerId }: AccountListProps) {
           variant="outline"
           size="sm"
           onClick={() => void accounts.refresh()}
-          className="h-7 shrink-0 px-2 text-xs"
+          className="shrink-0"
         >
           {t("common.retry", { defaultValue: "Retry" })}
         </Button>
@@ -160,7 +160,6 @@ export function AccountList({ providerId }: AccountListProps) {
               setCredentialRepairAccount(null);
               setAddDialogOpen(true);
             }}
-            className="h-8 gap-1 px-2.5 text-xs"
           >
             <Plus className="size-3.5" aria-hidden />
             {t("accounts.add.button", { defaultValue: "Add account" })}

@@ -652,8 +652,10 @@ export function CloudModal({
             </div>
             <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               onClick={onClose}
-              className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground"
+              className="shrink-0"
               aria-label="Close dialog"
             >
               <X aria-hidden className="size-4" />

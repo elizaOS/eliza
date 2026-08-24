@@ -694,7 +694,7 @@ export function ElizaAgentActions({
                 size="sm"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={!!loading || isBusy}
-                className="min-h-touch text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+                className="min-h-touch text-destructive border-destructive/30 hover:bg-destructive-subtle hover:text-destructive"
               >
                 <Trash2 className="size-4" />
                 {t("cloud.containers.agentActions.delete", {
@@ -702,9 +702,9 @@ export function ElizaAgentActions({
                 })}
               </BrandButton>
             ) : isDedicated ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-sm border border-red-500/30 bg-red-950/20 p-3">
+              <div className="flex flex-wrap items-center gap-2 rounded-sm border border-destructive/30 bg-destructive-subtle p-3">
                 <span
-                  className="text-sm text-red-400"
+                  className="text-sm text-destructive"
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 >
                   {t("cloud.containers.agentActions.confirmDelete", {
@@ -716,7 +716,7 @@ export function ElizaAgentActions({
                   size="sm"
                   onClick={() => doAction("delete", "DELETE")}
                   disabled={!!loading}
-                  className="min-h-touch text-red-400 border-red-500/50 hover:bg-red-500/20"
+                  className="min-h-touch text-destructive border-destructive/50 hover:bg-destructive-subtle"
                 >
                   {loading === "delete" ? (
                     <Loader2 className="size-3 animate-spin" />
@@ -743,7 +743,7 @@ export function ElizaAgentActions({
         {upgradeTargetId && (
           <div className="space-y-1" data-testid="agent-upgrade-progress">
             <p
-              className="text-sm text-yellow-400/80 flex items-center gap-2"
+              className="text-sm text-status-warning flex items-center gap-2"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               <Loader2 className="size-4 animate-spin" />
@@ -769,7 +769,7 @@ export function ElizaAgentActions({
         {poller.isActive(agentId) && (
           <div className="space-y-1">
             <p
-              className="text-sm text-yellow-400/80 flex items-center gap-2"
+              className="text-sm text-status-warning flex items-center gap-2"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               <Loader2 className="size-4 animate-spin" />
@@ -813,10 +813,10 @@ export function ElizaAgentActions({
         {trackedJob?.status === "failed" && (
           <div
             role="alert"
-            className="rounded-md border border-red-500/30 bg-red-500/10 p-3"
+            className="rounded-md border border-destructive/30 bg-destructive-subtle p-3"
           >
             <p
-              className="text-sm text-red-200"
+              className="text-sm text-destructive"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               {trackedJob.error ??

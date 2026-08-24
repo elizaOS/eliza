@@ -854,9 +854,9 @@ export function WorkflowEditor({
                   </div>
                 </div>
                 {selectedRun.status === "waiting-approval" ? (
-                  <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
+                  <div className="rounded-xl border border-warning/25 bg-warning/5 p-4">
                     <div className="flex items-center gap-2">
-                      <span className="size-2.5 rounded-full bg-amber-500" />
+                      <span className="size-2.5 rounded-full bg-warning" />
                       <p className="text-sm font-semibold">Approval required</p>
                     </div>
                     {pendingApproval?.prompt ? (

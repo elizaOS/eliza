@@ -90,13 +90,13 @@ function getCategoryIcon(category: string) {
 function getMethodColor(method: string) {
   switch (method) {
     case "GET":
-      return "bg-green-500/20 text-green-400";
+      return "bg-status-success-bg text-status-success";
     case "POST":
       return "bg-white/10 text-white/80";
     case "PUT":
       return "bg-muted text-txt";
     case "DELETE":
-      return "bg-red-500/20 text-red-400";
+      return "bg-destructive-subtle text-destructive";
     case "PATCH":
       return "bg-white/10 text-white/80";
     default:
@@ -115,14 +115,15 @@ function formatPrice(pricing: ApiEndpoint["pricing"]) {
 
 function getPricingIcon(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return null;
-  if (pricing.isFree) return <Sparkles className="size-4 text-green-400" />;
+  if (pricing.isFree)
+    return <Sparkles className="size-4 text-status-success" />;
   if (pricing.isVariable) return <TrendingUp className="size-4 text-muted" />;
   return <Coins className="size-4 text-muted" />;
 }
 
 function getPricingStyle(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return "";
-  if (pricing.isFree) return "bg-green-500/20 text-green-400";
+  if (pricing.isFree) return "bg-status-success-bg text-status-success";
   if (pricing.isVariable) return "bg-muted text-txt";
   return "bg-muted text-txt";
 }

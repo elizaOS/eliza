@@ -120,7 +120,7 @@ export function ContributeCredentialDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
-                <ShieldCheck className="size-5 text-green-500" />
+                <ShieldCheck className="size-5 text-status-success" />
                 {t("cloud.contributeCredential.pooledTitle", {
                   defaultValue: "Key Added to the Pool",
                 })}

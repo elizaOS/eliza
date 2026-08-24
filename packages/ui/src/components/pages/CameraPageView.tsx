@@ -298,7 +298,7 @@ export function CameraPageView(): React.JSX.Element {
         <div
           data-testid="camera-error"
           role="alert"
-          className="absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+1rem)] mx-auto w-fit max-w-[90%] rounded-full bg-red-500/90 px-3 py-1.5 text-center text-xs text-white"
+          className="absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+1rem)] mx-auto w-fit max-w-[90%] rounded-full bg-danger/90 px-3 py-1.5 text-center text-xs text-danger-foreground"
         >
           {error}
         </div>

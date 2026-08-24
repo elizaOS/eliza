@@ -95,7 +95,8 @@ export function CalendarSourceHealth({
           {headline}
         </p>
         <Button
-          unstyled
+          variant="ghost"
+          size="sm"
           type="button"
           className="flex h-7 shrink-0 items-center gap-1 px-1.5 text-xs font-medium text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           onClick={onRefresh}

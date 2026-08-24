@@ -267,9 +267,9 @@ export default function ConnectedPage() {
         <div
           className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-white px-4 py-2 text-sm font-medium shadow-lg ${
             phoneCopyState === "copied"
-              ? "text-green-700"
+              ? "text-status-success"
               : phoneCopyState === "error"
-                ? "text-red-700"
+                ? "text-destructive"
                 : "text-neutral-700"
           }`}
         >
@@ -356,7 +356,7 @@ export default function ConnectedPage() {
             </div>
             <DropdownMenuItem
               onClick={handleLogout}
-              className="text-red-400 hover:text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-300 cursor-pointer mt-1"
+              className="text-destructive hover:text-destructive/80 hover:bg-destructive-subtle focus:bg-destructive-subtle focus:text-destructive/80 cursor-pointer mt-1"
             >
               <LogOut className="size-4 mr-2" />
               {t("homepage_eliza.connected.signOut", {
@@ -462,7 +462,7 @@ export default function ConnectedPage() {
                 })}
               >
                 {copiedTelegram ? (
-                  <Check className="size-5 text-green-400" />
+                  <Check className="size-5 text-status-success" />
                 ) : (
                   <Copy className="size-5" />
                 )}
@@ -522,7 +522,7 @@ export default function ConnectedPage() {
                 })}
               >
                 {phoneCopyState === "copied" ? (
-                  <Check className="size-5 text-green-400" />
+                  <Check className="size-5 text-status-success" />
                 ) : (
                   <Copy className="size-5" />
                 )}
@@ -560,7 +560,7 @@ export default function ConnectedPage() {
                     countryOptions={countryOptions}
                   />
                   {phoneError && (
-                    <p className="text-xs text-red-400">{phoneError}</p>
+                    <p className="text-xs text-destructive">{phoneError}</p>
                   )}
                   <div className="flex gap-2">
                     <Button
@@ -636,7 +636,7 @@ export default function ConnectedPage() {
                   })}
                 >
                   {copiedWhatsApp ? (
-                    <Check className="size-5 text-green-400" />
+                    <Check className="size-5 text-status-success" />
                   ) : (
                     <Copy className="size-5" />
                   )}

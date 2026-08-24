@@ -62,6 +62,21 @@ const buttonVariants = cva(
           "flex-col items-end bg-transparent text-right text-white transition-opacity hover:bg-transparent hover:opacity-80",
         launcherTile:
           "flex-col gap-2.5 rounded-2xl bg-transparent text-white hover:bg-transparent hover:text-white",
+        queryHistory:
+          "h-auto w-full justify-start whitespace-normal rounded-sm bg-transparent px-3 py-2 text-left font-mono text-xs-tight text-muted-strong hover:bg-surface hover:text-txt",
+        dangerOutline:
+          "border border-danger/30 bg-transparent text-danger hover:border-danger/50 hover:bg-danger/10 hover:text-danger",
+        ghostMuted: "bg-transparent text-muted hover:bg-surface hover:text-txt",
+        externalLink:
+          "h-auto bg-transparent p-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline",
+        sectionToggle:
+          "h-auto w-full justify-start gap-2 rounded-sm bg-transparent px-3 py-2 text-left hover:bg-bg-hover",
+        dangerGhost:
+          "bg-transparent text-muted hover:bg-danger/10 hover:text-danger",
+        outlineMuted:
+          "border border-border bg-card text-muted-strong hover:border-border-strong hover:bg-surface hover:text-txt",
+        mutedLink:
+          "h-auto bg-transparent p-0 text-xs font-medium text-muted underline-offset-2 hover:bg-transparent hover:text-accent hover:underline",
       },
       size: {
         default:
@@ -77,6 +92,14 @@ const buttonVariants = cva(
         tile: "min-h-12 flex-col gap-1 px-2 py-2 text-xs",
         card: "min-h-20 flex-col items-stretch p-3",
         content: "h-auto w-auto min-w-0 p-0",
+        compact: "h-9 rounded-sm px-3 text-xs",
+        dense: "h-8 rounded-sm px-3 text-xs",
+        short: "h-8 rounded-sm px-3 text-sm",
+        regularCompact: "h-9 rounded-sm px-3 text-sm",
+        tiny: "h-7 rounded-sm px-2.5 text-xs",
+        wide: "h-10 rounded-sm px-6 text-sm",
+        micro: "h-6 rounded-sm px-2 py-0 text-xs",
+        tinyWide: "h-7 rounded-sm px-3 text-xs-tight",
       },
       shape: {
         default: "",

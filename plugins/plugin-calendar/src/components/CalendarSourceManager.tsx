@@ -271,7 +271,9 @@ export function CalendarSourceManager({
     >
       <Button
         ref={manageRef}
-        unstyled
+        variant="ghost"
+        size="default"
+        align="start"
         className="flex min-h-9 w-full items-center gap-2 px-1 text-left text-xs font-medium text-muted-strong transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         aria-controls={contentId}
         aria-expanded={open}
@@ -332,7 +334,8 @@ export function CalendarSourceManager({
             >
               <span>{state.error}</span>
               <Button
-                unstyled
+                variant="link"
+                size="content"
                 className="font-semibold underline underline-offset-2 hover:text-txt"
                 onClick={() => void state.refresh()}
               >
@@ -355,7 +358,8 @@ export function CalendarSourceManager({
                 })}
               </p>
               <Button
-                unstyled
+                variant="link"
+                size="content"
                 className="mt-1 inline-flex items-center gap-1 font-semibold text-muted-strong underline underline-offset-2 hover:text-txt"
                 onClick={() => openCalendarConnectorSettings()}
               >
@@ -478,7 +482,8 @@ export function CalendarSourceManager({
 
                     {row.reconnectConnectorId ? (
                       <Button
-                        unstyled
+                        variant="link"
+                        size="content"
                         className="mt-2 text-xs font-semibold text-muted-strong underline underline-offset-2 hover:text-txt"
                         onClick={() =>
                           openCalendarConnectorSettings(
@@ -505,7 +510,8 @@ export function CalendarSourceManager({
 
           {model.rows.length > 0 ? (
             <Button
-              unstyled
+              variant="ghost"
+              size="sm"
               className="mt-2 inline-flex min-h-8 items-center gap-1.5 text-xs font-medium text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               disabled={state.refreshing}
               onClick={() => void state.refresh()}
@@ -554,7 +560,8 @@ export function CalendarSourceManager({
               >
                 <span>{icsError}</span>
                 <Button
-                  unstyled
+                  variant="link"
+                  size="content"
                   className="font-semibold underline underline-offset-2 hover:text-txt"
                   onClick={() => void loadIcsSources()}
                 >
@@ -599,7 +606,8 @@ export function CalendarSourceManager({
                       </p>
                     </div>
                     <Button
-                      unstyled
+                      variant="link"
+                      size="content"
                       className="shrink-0 text-xs font-semibold text-muted-strong underline underline-offset-2 hover:text-danger"
                       disabled={icsRemovingId === source.id}
                       aria-label={t("calendarSources.icsRemoveAria", {

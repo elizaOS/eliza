@@ -69,7 +69,7 @@ export function ElizaAgentPricingBanner({
           {isLowBalance && hasAgents && (
             <Badge
               variant="outline"
-              className="bg-red-500/10 border-red-500/30 text-red-400 text-2xs px-2"
+              className="bg-destructive-subtle border-destructive/30 text-destructive text-2xs px-2"
             >
               {t("cloud.containers.pricingBanner.lowBalance", {
                 defaultValue: "Low balance",
@@ -83,7 +83,7 @@ export function ElizaAgentPricingBanner({
           {/* Running rate */}
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <Zap className="size-3 text-green-400" />
+              <Zap className="size-3 text-status-success" />
               <p className="text-2xs uppercase tracking-[0.2em] text-white/60">
                 {t("cloud.containers.pricingBanner.running", {
                   defaultValue: "Running",
@@ -158,7 +158,7 @@ export function ElizaAgentPricingBanner({
             </div>
             <p
               className={`text-base font-mono font-semibold tabular-nums ${
-                isLowBalance && hasAgents ? "text-red-400" : "text-white"
+                isLowBalance && hasAgents ? "text-destructive" : "text-white"
               }`}
             >
               {hoursRemaining !== null ? formatDuration(hoursRemaining) : "—"}

@@ -867,7 +867,8 @@ export const ChatMessage = memo(function ChatMessage({
       ) : (
         <>
           <Button
-            unstyled
+            variant="ghost"
+            size="tiny"
             onClick={handleCancelEditing}
             disabled={savingEdit}
             className="keyboard-focus-emphasis min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
@@ -876,7 +877,8 @@ export const ChatMessage = memo(function ChatMessage({
           </Button>
           <span aria-hidden className="mx-0.5 h-3.5 w-px bg-white/15" />
           <Button
-            unstyled
+            variant="ghost"
+            size="tiny"
             onClick={() => void handleSaveEdit()}
             disabled={editSaveDisabled}
             className="keyboard-focus-emphasis min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"

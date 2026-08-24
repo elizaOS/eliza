@@ -368,8 +368,7 @@ export function TriggerForm({
               <Button
                 ref={runNowButton.ref}
                 variant="outline"
-                size="sm"
-                className="h-9 px-3 text-xs"
+                size="compact"
                 disabled={triggersSaving}
                 onClick={() => void onRunSelectedTrigger(editingId)}
                 {...runNowButton.agentProps}
@@ -379,8 +378,7 @@ export function TriggerForm({
               <Button
                 ref={toggleEnabledButton.ref}
                 variant="outline"
-                size="sm"
-                className="h-9 px-3 text-xs"
+                size="compact"
                 onClick={() =>
                   void onToggleTriggerEnabled(editingId, editorEnabled)
                 }
@@ -390,9 +388,8 @@ export function TriggerForm({
               </Button>
               <Button
                 ref={deleteButton.ref}
-                variant="outline"
-                size="sm"
-                className="h-9 px-3 text-xs text-danger hover:border-danger hover:bg-danger/10 hover:text-danger"
+                variant="dangerOutline"
+                size="compact"
                 onClick={() => void onDelete()}
                 {...deleteButton.agentProps}
               >
@@ -676,9 +673,9 @@ export function TriggerForm({
           {form.displayName.trim() && (
             <Button
               ref={saveTemplateButton.ref}
-              variant="ghost"
-              size="sm"
-              className="h-auto p-0 text-xs font-medium text-muted underline-offset-2 transition-colors hover:bg-transparent hover:text-accent hover:underline"
+              variant="mutedLink"
+              size="content"
+              className="transition-colors"
               onClick={saveFormAsTemplate}
               {...saveTemplateButton.agentProps}
             >
@@ -692,8 +689,7 @@ export function TriggerForm({
             <Button
               ref={submitButton.ref}
               variant="default"
-              size="sm"
-              className="h-10 px-6 text-sm text-white hover:text-white"
+              size="wide"
               disabled={
                 triggersSaving ||
                 (form.kind === "workflow" && !form.workflowId) ||
@@ -712,8 +708,7 @@ export function TriggerForm({
             <Button
               ref={cancelButton.ref}
               variant="outline"
-              size="sm"
-              className="h-10 px-6 text-sm"
+              size="wide"
               onClick={() => {
                 if (editingId && selectedTriggerId === editingId) {
                   const trigger = triggers.find(
@@ -895,9 +890,9 @@ function TriggerKindSection({
               <p>{t("triggers.workflowUnavailable")}</p>
               <Button
                 ref={goToWorkflowsButton.ref}
-                variant="ghost"
-                size="sm"
-                className="mt-2 h-auto p-0 text-xs font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
+                variant="externalLink"
+                size="content"
+                className="mt-2"
                 onClick={onGoToWorkflows}
                 {...goToWorkflowsButton.agentProps}
               >
@@ -983,8 +978,8 @@ function CronExampleButton({
     <Button
       ref={ref}
       variant="outline"
-      size="sm"
-      className="h-6 px-2 py-0 text-xs font-mono"
+      size="micro"
+      className="font-mono"
       onClick={() => setField("cronExpression", expr)}
       {...agentProps}
     >
@@ -1401,8 +1396,7 @@ function TriggerRunHistory({
           <Button
             ref={refreshRunsButton.ref}
             variant="outline"
-            size="sm"
-            className="h-7 px-3 text-xs-tight"
+            size="tinyWide"
             onClick={() => void loadTriggerRuns(editingId)}
             {...refreshRunsButton.agentProps}
           >

@@ -24,6 +24,7 @@ export const RULES = [
   "direct-primitive-import",
   "deep-canonical-import",
   "variant-helper-bypass",
+  "unstyled-canonical",
   "visual-override",
   "off-token-color",
 ];
@@ -33,6 +34,10 @@ const CANONICAL_NAMES = new Set(
 );
 const VISUAL_UTILITY =
   /(?:^|\s)(?:[a-z-]+:)*(?:bg|text|border|rounded|shadow|ring|outline|fill|stroke|p[trblxy]?|h|min-h|max-h|gap|space-[xy])-(?:\[[^\]]+\]|[^\s]+)/;
+// Skeleton width, height, spacing, and radius describe the geometry of the
+// content being previewed. Its paint and effects remain primitive-owned.
+const SKELETON_PAINT_UTILITY =
+  /(?:^|\s)(?:[a-z-]+:)*(?:bg|text|border|shadow|ring|outline|fill|stroke)-(?:\[[^\]]+\]|[^\s]+)/;
 const OFF_TOKEN_COLOR =
   /(?:^|\s)(?:[a-z-]+:)*(?:bg|text|border|ring|fill|stroke|from|to|via)-(?:red|rose|pink|green|emerald|teal|lime|yellow|amber|blue|indigo|sky|violet|purple|fuchsia|cyan)-\d+/;
 
@@ -90,9 +95,14 @@ function importsByLocalName(sourceFile) {
   return imports;
 }
 
-function resolvesToCanonical(record, file) {
+export function resolvesToCanonical(record, file) {
   if (!record) return false;
-  if (record.origin === "@elizaos/ui") return true;
+  if (
+    record.origin === "@elizaos/ui" ||
+    record.origin === "@elizaos/ui/components" ||
+    record.origin === "@elizaos/ui/cloud-ui"
+  )
+    return true;
   if (/^@elizaos\/ui\/components\/ui\/[a-z0-9-]+$/.test(record.origin)) {
     return true;
   }
@@ -102,6 +112,7 @@ function resolvesToCanonical(record, file) {
   const resolved = relative(path.resolve(path.dirname(file), record.origin));
   return (
     resolved.startsWith(`${canonicalRoot}/`) ||
+    resolved === "packages/ui/src/components/index" ||
     resolved === "packages/ui/src/components/primitives/index"
   );
 }
@@ -124,6 +135,13 @@ function stringAttribute(node, name) {
     return attribute.initializer.expression.text;
   }
   return null;
+}
+
+function hasAttribute(node, name) {
+  return node.attributes.properties.some(
+    (property) =>
+      ts.isJsxAttribute(property) && property.name.getText() === name,
+  );
 }
 
 function inputHost(node) {
@@ -248,8 +266,27 @@ function scanFile(file) {
         const record = imports.get(rootName);
         if (record && resolvesToCanonical(record, file)) {
           if (CANONICAL_NAMES.has(record.imported)) {
+            if (
+              record.imported === "Button" &&
+              hasAttribute(node, "unstyled")
+            ) {
+              findings.push(
+                finding({
+                  rule: "unstyled-canonical",
+                  file: rel,
+                  line,
+                  symbol: record.imported,
+                  detail:
+                    "Canonical controls must express visuals through typed variants; unstyled bypasses the design-system contract.",
+                }),
+              );
+            }
             const className = stringAttribute(node, "className");
-            if (className && VISUAL_UTILITY.test(className)) {
+            const visualUtility =
+              record.imported === "Skeleton"
+                ? SKELETON_PAINT_UTILITY
+                : VISUAL_UTILITY;
+            if (className && visualUtility.test(className)) {
               findings.push(
                 finding({
                   rule: "visual-override",

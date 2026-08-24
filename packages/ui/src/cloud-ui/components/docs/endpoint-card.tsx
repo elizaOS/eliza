@@ -42,7 +42,7 @@ export interface EndpointCardProps<
 
 function getPricingTextStyle(pricing: ApiEndpointCardPricing | undefined) {
   if (!pricing) return "text-neutral-500";
-  if (pricing.isFree) return "text-green-400";
+  if (pricing.isFree) return "text-status-success";
   if (pricing.isVariable) return "text-txt";
   return "text-txt";
 }
@@ -139,7 +139,7 @@ export function EndpointCard<
 
           <div className="flex items-center gap-2">
             {endpoint.deprecated && (
-              <span className="text-2xs font-medium text-red-400">
+              <span className="text-2xs font-medium text-destructive">
                 Deprecated
               </span>
             )}

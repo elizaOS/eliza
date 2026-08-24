@@ -314,7 +314,8 @@ export function ConsumerKeyPanelBody({
             {t("consumerKeys.labelField", { defaultValue: "Label" })}
             <Input
               id="consumer-key-label"
-              className="h-8 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
+              variant="config"
+              density="compact"
               value={createLabel}
               onChange={(event) => setCreateLabel(event.target.value)}
               placeholder="protocol-proxy"
@@ -329,7 +330,9 @@ export function ConsumerKeyPanelBody({
             })}
             <Input
               id="consumer-key-quota"
-              className="h-8 w-44 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
+              variant="config"
+              density="compact"
+              className="w-44"
               value={createQuota}
               onChange={(event) => setCreateQuota(event.target.value)}
               inputMode="numeric"
@@ -511,7 +514,9 @@ export function ConsumerKeyPanelBody({
                       {editing ? (
                         <span className="flex items-center gap-1">
                           <Input
-                            className="h-7 w-32 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
+                            variant="config"
+                            density="compact"
+                            className="w-32"
                             value={editing.value}
                             inputMode="numeric"
                             aria-label={t("consumerKeys.quotaField", {

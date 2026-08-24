@@ -20,10 +20,16 @@ const inputVariants = cva(
         form: "rounded-sm border-border bg-bg px-4 py-2    ",
         config:
           "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60    ",
+        embeddedSearch:
+          "rounded-none border-0 bg-transparent px-4 py-2.5 font-body text-txt shadow-none placeholder:text-muted",
+        secret:
+          "rounded-sm border-border/60 bg-bg px-2.5 py-1.5 font-mono text-txt placeholder:text-muted",
       },
       density: {
         default: "h-10",
         compact: "h-9 px-2.5 py-1.5 text-xs",
+        short: "h-9 px-3 py-2 text-sm",
+        search: "h-12 text-sm",
         relaxed: "h-11",
       },
       adornment: {

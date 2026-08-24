@@ -363,7 +363,7 @@ export function RoutingTab(props: RoutingTabProps) {
             {...addRuleToggleAgentProps}
             variant="outline"
             size="sm"
-            className="h-8 shrink-0 gap-1 rounded-sm px-2"
+            className="shrink-0"
             onClick={() => setShowAdd((v) => !v)}
             disabled={saving}
             aria-label={t("routing.addRule", {
@@ -389,12 +389,12 @@ export function RoutingTab(props: RoutingTabProps) {
           <Input
             ref={filterRef}
             {...filterAgentProps}
+            density="compact"
             value={rulesFilter}
             onChange={(e) => setRulesFilter(e.target.value)}
             placeholder={t("routing.filterPlaceholder", {
               defaultValue: "Filter rules by key, scope, or profile",
             })}
-            className="h-8 text-xs"
             autoComplete="off"
             data-testid="routing-rules-filter"
           />
@@ -415,10 +415,11 @@ export function RoutingTab(props: RoutingTabProps) {
               <Input
                 ref={keyPatternRef}
                 {...keyPatternAgentProps}
+                variant="config"
+                density="compact"
                 value={keyPattern}
                 onChange={(e) => setKeyPattern(e.target.value)}
                 placeholder="OPENROUTER_API_KEY or OPENROUTER_*"
-                className="h-8 font-mono text-xs"
                 autoComplete="off"
                 list="routing-key-suggestions"
                 required
@@ -553,7 +554,6 @@ export function RoutingTab(props: RoutingTabProps) {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 rounded-sm px-3 text-xs"
                 onClick={() => setShowAdd(false)}
                 disabled={saving}
               >
@@ -565,7 +565,6 @@ export function RoutingTab(props: RoutingTabProps) {
                 type="submit"
                 variant="default"
                 size="sm"
-                className="h-7 rounded-sm px-3 text-xs"
                 disabled={saving || !keyPattern.trim() || !profileId}
               >
                 {saving
@@ -722,9 +721,8 @@ const RoutingRuleRow = memo(
               {...chipAgentProps}
               onClick={onOpenInSecrets}
               data-testid={`routing-key-chip-${ruleKey}`}
-              variant="ghost"
-              size="sm"
-              className="h-auto gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
+              variant="selection"
+              size="content"
               aria-label={t("routing.openInSecrets", {
                 keyPattern,
                 defaultValue: "Open {{keyPattern}} in Secrets tab",
@@ -752,9 +750,8 @@ const RoutingRuleRow = memo(
           <Button
             ref={deleteRef}
             {...deleteAgentProps}
-            variant="ghost"
-            size="sm"
-            className="size-6 rounded-sm p-0 text-muted hover:text-danger"
+            variant="destructive"
+            size="icon-sm"
             onClick={onDelete}
             aria-label={t("routing.deleteRule", {
               keyPattern,

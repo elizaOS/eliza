@@ -107,12 +107,13 @@ interface SystemStatus {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  pending: "bg-status-warning-bg text-status-warning border-status-warning/30",
   approved: "bg-white/10 text-white/80 border-white/20",
   processing: "bg-accent/20 text-accent border-accent/30",
-  completed: "bg-green-500/20 text-green-400 border-green-500/30",
-  failed: "bg-red-500/20 text-red-400 border-red-500/30",
-  rejected: "bg-red-500/20 text-red-400 border-red-500/30",
+  completed:
+    "bg-status-success-bg text-status-success border-status-success/30",
+  failed: "bg-destructive-subtle text-destructive border-destructive/30",
+  rejected: "bg-destructive-subtle text-destructive border-destructive/30",
 };
 
 const buildStatusOptions = (t: TFn) => [
@@ -337,8 +338,8 @@ export default function RedemptionsPage(): React.JSX.Element {
             <Badge
               className={
                 systemStatus?.operational
-                  ? "bg-green-500/20 text-green-400"
-                  : "bg-red-500/20 text-red-400"
+                  ? "bg-status-success-bg text-status-success"
+                  : "bg-destructive-subtle text-destructive"
               }
             >
               {systemStatus?.operational
@@ -387,7 +388,7 @@ export default function RedemptionsPage(): React.JSX.Element {
           </h3>
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-yellow-400">
+              <p className="text-2xl font-bold text-status-warning">
                 {stats?.pending || 0}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -612,7 +613,7 @@ export default function RedemptionsPage(): React.JSX.Element {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="size-8 text-green-400 hover:text-green-300"
+                            className="size-8 text-status-success hover:text-status-success/80"
                             onClick={() => {
                               setSelectedRedemption(r);
                               setShowApproveDialog(true);
@@ -623,7 +624,7 @@ export default function RedemptionsPage(): React.JSX.Element {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="size-8 text-red-400 hover:text-red-300"
+                            className="size-8 text-destructive hover:text-destructive/80"
                             onClick={() => {
                               setSelectedRedemption(r);
                               setShowRejectDialog(true);
@@ -781,25 +782,25 @@ export default function RedemptionsPage(): React.JSX.Element {
                 </div>
               )}
               {selectedRedemption.failure_reason && (
-                <div className="p-3 rounded-sm bg-red-500/10 border border-red-500/30">
-                  <p className="text-xs text-red-400 mb-1">
+                <div className="p-3 rounded-sm bg-destructive-subtle border border-destructive/30">
+                  <p className="text-xs text-destructive mb-1">
                     {t("cloud.redemptions.labelFailureReason", {
                       defaultValue: "Failure Reason",
                     })}
                   </p>
-                  <p className="text-sm text-red-400">
+                  <p className="text-sm text-destructive">
                     {selectedRedemption.failure_reason}
                   </p>
                 </div>
               )}
               {selectedRedemption.rejection_reason && (
-                <div className="p-3 rounded-sm bg-red-500/10 border border-red-500/30">
-                  <p className="text-xs text-red-400 mb-1">
+                <div className="p-3 rounded-sm bg-destructive-subtle border border-destructive/30">
+                  <p className="text-xs text-destructive mb-1">
                     {t("cloud.redemptions.labelRejectionReason", {
                       defaultValue: "Rejection Reason",
                     })}
                   </p>
-                  <p className="text-sm text-red-400">
+                  <p className="text-sm text-destructive">
                     {selectedRedemption.rejection_reason}
                   </p>
                 </div>

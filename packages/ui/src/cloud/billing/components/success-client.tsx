@@ -66,8 +66,8 @@ export function CreditBalanceDisplay() {
 
   if (error || creditBalance === null) {
     return (
-      <div className="rounded-sm border border-red-500/40 bg-red-500/10 p-4">
-        <div className="flex items-center gap-2 text-sm text-red-400">
+      <div className="rounded-sm border border-destructive/40 bg-destructive-subtle p-4">
+        <div className="flex items-center gap-2 text-sm text-destructive">
           <AlertCircle className="size-4" />
           {error
             ? t("cloud.successClient.couldNotLoadBalanceWithError", {
@@ -82,7 +82,6 @@ export function CreditBalanceDisplay() {
           variant="ghost"
           type="button"
           onClick={() => void fetchCreditBalance()}
-          className="mt-2 inline-flex items-center gap-1 text-xs text-red-300 hover:text-red-200"
         >
           <RefreshCw className="size-3" />
           {t("cloud.successClient.refreshBalance", {

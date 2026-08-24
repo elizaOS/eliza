@@ -156,15 +156,21 @@ function getStatusBadge(status: DiscordGatewayConnection["status"], t: TFn) {
   switch (status) {
     case "connected":
       return (
-        <Badge variant="default" className="bg-green-500">
+        <Badge
+          variant="outline"
+          className="border-status-success/30 bg-status-success-bg text-status-success"
+        >
           <CheckCircle className="size-3 mr-1" />
           {t("cloud.discord.statusConnected", { defaultValue: "Connected" })}
         </Badge>
       );
     case "connecting":
       return (
-        <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">
-  <Loader2 className="size-3 mr-1 animate-spin"/>
+        <Badge
+          variant="secondary"
+          className="bg-status-warning-bg text-status-warning"
+        >
+          <Loader2 className="size-3 mr-1 animate-spin" />
           {t("cloud.discord.statusConnecting", { defaultValue: "Connecting" })}
         </Badge>
       );
@@ -671,7 +677,7 @@ export function DiscordGatewayConnection() {
                                 defaultValue: "Character: {{name}}",
                               })
                             ) : (
-                              <span className="text-yellow-600">
+                              <span className="text-status-warning">
                                 {t("cloud.discord.noCharacterLinked", {
                                   defaultValue: "No character linked",
                                 })}
@@ -710,7 +716,7 @@ export function DiscordGatewayConnection() {
                             </span>
                           </div>
                           {conn.errorMessage && (
-                            <div className="text-sm text-red-500 mt-1">
+                            <div className="text-sm text-destructive mt-1">
                               {conn.errorMessage}
                             </div>
                           )}
@@ -1515,7 +1521,7 @@ export function DiscordGatewayConnection() {
         </Button>
 
         {characters.length === 0 && (
-          <p className="text-sm text-center text-yellow-600">
+          <p className="text-sm text-center text-status-warning">
             {t("cloud.discord.needCharacterFirst", {
               defaultValue:
                 "You need to create a character first before connecting a Discord bot.",

@@ -514,6 +514,7 @@ export function AccountCommandTable({
                       <div className="flex min-w-0 flex-col">
                         {editingLabelId === account.id ? (
                           <Input
+                            density="compact"
                             value={labelDraft}
                             disabled={rowSaving}
                             onChange={(event) =>
@@ -533,17 +534,20 @@ export function AccountCommandTable({
                               defaultValue: `Rename ${account.label}`,
                               label: account.label,
                             })}
-                            className="h-6 min-w-0 rounded-sm border border-border/60 bg-bg px-1.5 text-base font-medium text-txt-strong outline-none sm:text-xs"
+                            className="min-w-0"
                           />
                         ) : (
                           <Button
                             type="button"
+                            variant="link"
+                            size="content"
+                            align="start"
                             disabled={rowSaving}
                             onClick={() => beginLabelEdit(account)}
                             title={t("accounts.table.rename", {
                               defaultValue: "Rename account",
                             })}
-                            className="truncate text-left text-xs font-medium text-txt-strong hover:underline"
+                            className="truncate"
                           >
                             {account.label}
                           </Button>
@@ -670,7 +674,7 @@ export function AccountCommandTable({
                           <Button
                             type="button"
                             variant="ghost"
-                            size="sm"
+                            size="icon-sm"
                             disabled={
                               rowSaving || priorityOrder[0]?.id === account.id
                             }
@@ -686,14 +690,13 @@ export function AccountCommandTable({
                             title={t("accounts.table.moveUp.tooltip", {
                               defaultValue: "Raise priority",
                             })}
-                            className="size-7 p-0"
                           >
                             <ChevronUp className="size-3.5" aria-hidden />
                           </Button>
                           <Button
                             type="button"
                             variant="ghost"
-                            size="sm"
+                            size="icon-sm"
                             disabled={
                               rowSaving ||
                               priorityOrder[priorityOrder.length - 1]?.id ===
@@ -711,7 +714,6 @@ export function AccountCommandTable({
                             title={t("accounts.table.moveDown.tooltip", {
                               defaultValue: "Lower priority",
                             })}
-                            className="size-7 p-0"
                           >
                             <ChevronDown className="size-3.5" aria-hidden />
                           </Button>
@@ -726,7 +728,6 @@ export function AccountCommandTable({
                             rowSaving || saving.has(`test:${account.id}`)
                           }
                           onClick={() => runAction(() => onTest(account.id))}
-                          className="h-7 px-2 text-xs-tight"
                         >
                           {saving.has(`test:${account.id}`) ? (
                             <Spinner className="size-3" />
@@ -739,7 +740,7 @@ export function AccountCommandTable({
                         <Button
                           type="button"
                           variant="ghost"
-                          size="sm"
+                          size="icon-sm"
                           disabled={
                             rowSaving || saving.has(`usage:${account.id}`)
                           }
@@ -753,7 +754,6 @@ export function AccountCommandTable({
                           title={t("accounts.table.refresh.tooltip", {
                             defaultValue: "Refresh usage",
                           })}
-                          className="size-7 p-0"
                         >
                           {saving.has(`usage:${account.id}`) ? (
                             <Spinner className="size-3" />
@@ -769,7 +769,6 @@ export function AccountCommandTable({
                           size="sm"
                           disabled={rowSaving}
                           onClick={() => onReauthenticate(account)}
-                          className="h-7 gap-1 px-2 text-xs-tight text-bg"
                         >
                           <KeyRound className="size-3" aria-hidden />
                           {account.source === "oauth"
@@ -783,8 +782,8 @@ export function AccountCommandTable({
                       ) : null}
                       <Button
                         type="button"
-                        variant="ghost"
-                        size="sm"
+                        variant="destructive"
+                        size="icon-sm"
                         disabled={rowSaving}
                         onClick={() => requestDelete(account.id)}
                         aria-label={t("accounts.table.remove", {
@@ -794,7 +793,6 @@ export function AccountCommandTable({
                         title={t("accounts.table.remove", {
                           defaultValue: "Remove account",
                         })}
-                        className="size-7 p-0 text-destructive hover:bg-destructive/10"
                       >
                         <Trash2 className="size-3.5" aria-hidden />
                       </Button>

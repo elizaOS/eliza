@@ -6,7 +6,8 @@
     "direct-primitive-import": 0,
     "deep-canonical-import": 0,
     "variant-helper-bypass": 0,
-    "visual-override": 999,
-    "off-token-color": 167
+    "unstyled-canonical": 0,
+    "visual-override": 724,
+    "off-token-color": 0
   }
 }
