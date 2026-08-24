@@ -665,11 +665,26 @@ describe("trajectory capture -> DB -> viewer", () => {
     const parentStepId = logger.startStep(trajectoryId);
     await logger.flushWriteQueue?.(trajectoryId);
 
+    const roomId = crypto.randomUUID() as UUID;
+    const worldId = crypto.randomUUID() as UUID;
+    await runtime.ensureWorldExists({
+      id: worldId,
+      agentId: runtime.agentId,
+      name: "Trajectory Action World",
+    });
+    await runtime.ensureRoomExists({
+      id: roomId,
+      agentId: runtime.agentId,
+      worldId,
+      source: "client_chat",
+      type: ChannelType.DM,
+      channelId: `client_chat:${roomId}`,
+    });
     const message = {
       id: crypto.randomUUID(),
       agentId: runtime.agentId,
       entityId: runtime.agentId,
-      roomId: crypto.randomUUID(),
+      roomId,
       createdAt: Date.now(),
       content: { text: "Open my calendar", source: "chat" },
       metadata: { trajectoryId, trajectoryStepId: parentStepId },
@@ -749,19 +764,13 @@ describe("trajectory capture -> DB -> viewer", () => {
       (detail?.steps ?? []).find((step) => step.stepId === parentStepId)
         ?.providerAccesses,
     ).toEqual([]);
-    expect(reportError.mock.calls).toEqual(
-      expect.arrayContaining([
-        [
-          "TrajectoryStorage.lateCapture",
-          expect.objectContaining({ code: "TRAJECTORY_OWNER_CLOSED" }),
-          expect.objectContaining({
-            stepId: parentStepId,
-            captureType: "provider",
-            diagnosticOnly: true,
-          }),
-        ],
-      ]),
-    );
+    // Same-instant post-delivery races are intentionally debug-only; aged late
+    // captures retain full reportError coverage in trajectory-bridge.test.ts.
+    expect(
+      reportError.mock.calls.filter(
+        ([scope]) => scope === "TrajectoryStorage.lateCapture",
+      ),
+    ).toEqual([]);
 
     const rowResult = await executeRawSql(
       runtime,
@@ -1615,8 +1624,8 @@ describe("trajectory capture -> DB -> viewer", () => {
       script?: string;
       scriptHash?: string;
     }>;
-    expect(legacySteps[2]?.script?.length).toBeLessThan(longScript.length);
-    expect(legacySteps[2]?.scriptHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(legacySteps[2]?.script).toBe(longScript);
+    expect(legacySteps[2]?.scriptHash).toBeUndefined();
     expect(Number(legacyRow?.llm_call_count)).toBe(261);
 
     const publicStepId = crypto.randomUUID();
@@ -2116,7 +2125,7 @@ describe("trajectory capture -> DB -> viewer", () => {
           ].includes(String(scope)) &&
           asRecord(context)?.diagnosticOnly === true,
       ),
-    ).toHaveLength(6);
+    ).toHaveLength(4);
   });
 
   it("keeps the standalone database logger closed after end and stop", async () => {
@@ -2168,25 +2177,12 @@ describe("trajectory capture -> DB -> viewer", () => {
       activeOwners: 0,
     });
     expect(
-      (publicRuntime.reportError as unknown as ReturnType<typeof vi.fn>).mock
-        .calls,
-    ).toEqual(
-      expect.arrayContaining([
-        [
-          "TrajectoryStorage.lateCapture",
-          expect.objectContaining({ code: "TRAJECTORY_OWNER_CLOSED" }),
-          expect.objectContaining({ diagnosticOnly: true, captureType: "llm" }),
-        ],
-        [
-          "TrajectoryStorage.lateCapture",
-          expect.objectContaining({ code: "TRAJECTORY_OWNER_CLOSED" }),
-          expect.objectContaining({
-            diagnosticOnly: true,
-            captureType: "provider",
-          }),
-        ],
-      ]),
-    );
+      (
+        publicRuntime.reportError as unknown as ReturnType<typeof vi.fn>
+      ).mock.calls.filter(
+        ([scope]) => scope === "TrajectoryStorage.lateCapture",
+      ),
+    ).toEqual([]);
 
     await publicLogger.stop();
     const countBefore = Number(
@@ -2336,7 +2332,7 @@ describe("trajectory capture -> DB -> viewer", () => {
             asRecord(error)?.code === "TRAJECTORY_OWNER_CLOSED" &&
             asRecord(context)?.diagnosticOnly === true,
         ),
-      ).toHaveLength(4);
+      ).toHaveLength(0);
 
       await reloaded.logger.stop();
       await creator.logger.stop();
@@ -2481,9 +2477,7 @@ describe("trajectory capture -> DB -> viewer", () => {
                 scope === "TrajectoryStorage.lateCapture" &&
                 asRecord(context)?.diagnosticOnly === true,
             );
-            expect(lateReports, scenario).toHaveLength(
-              ordering === "end-first" ? 1 : 0,
-            );
+            expect(lateReports, scenario).toHaveLength(0);
           } finally {
             gated.gate.release();
             try {

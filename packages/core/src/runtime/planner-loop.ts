@@ -243,7 +243,7 @@ function resolvePlannerMaxTokens(codingMode: boolean): number | undefined {
 }
 
 /**
- * Coding-mode tool-call ceiling (default 80): the max number of tool calls a
+ * Coding-mode tool-call ceiling (default 32): the max number of tool calls a
  * coding build may make before the loop terminates. Overridable via
  * `ELIZA_CODING_MAX_TOOL_CALLS`; a set-but-malformed value throws.
  */

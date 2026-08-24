@@ -235,8 +235,13 @@ function Harness(): React.JSX.Element {
   // `window.__setFirstRun(false)` flips it, exercising the pinned-half to
   // authenticated-full transition that a static prop can't reach (#12364).
   const [firstRunOpen, setFirstRunOpen] = React.useState(firstRun);
+  const [releaseFirstRunToFull, setReleaseFirstRunToFull] =
+    React.useState(false);
   React.useEffect(() => {
-    window.__setFirstRun = setFirstRunOpen;
+    window.__setFirstRun = (value) => {
+      setReleaseFirstRunToFull(!value);
+      setFirstRunOpen(value);
+    };
   }, []);
 
   // Deterministic transcript mutation hooks for the browser e2e. These drive the
@@ -586,6 +591,8 @@ function Harness(): React.JSX.Element {
         firstRunOpen={firstRunOpen}
         desktopOverlayHost={desktopOverlayHost}
         initialMode={desktopOverlayHost ? "pill" : "input"}
+        releaseFirstRunToFull={releaseFirstRunToFull}
+        onFirstRunReleaseHandled={() => setReleaseFirstRunToFull(false)}
       />
     </div>
   );
