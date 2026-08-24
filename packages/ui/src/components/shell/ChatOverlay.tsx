@@ -519,6 +519,7 @@ function SoftButton({
   active,
   pressed,
   pulse,
+  tabIndex,
   testId,
 }: {
   /** A hand-drawn SVG path glyph (legacy), OR pass `icon` for a lucide icon. */
@@ -536,6 +537,8 @@ function SoftButton({
   pressed?: boolean;
   /** Breathe the glyph while a batch capture has no richer activity surface. */
   pulse?: boolean;
+  /** Explicit focus ownership for detached WKWebView surfaces. */
+  tabIndex?: number;
   testId?: string;
 }): React.JSX.Element {
   return (
@@ -548,6 +551,7 @@ function SoftButton({
       // aria-disabled (not the native attr) so the button stays focusable and its
       // label/reason is announceable; the click is guarded instead.
       aria-disabled={disabled}
+      tabIndex={tabIndex}
       onClick={disabled ? undefined : onClick}
       onPointerDown={disabled ? undefined : onPointerDown}
       onPointerUp={disabled ? undefined : onPointerUp}
@@ -1309,7 +1313,11 @@ function PillHandle({
           binding.onLostPointerCapture(event);
           activationGate.cancelPointerSequence();
         }}
-        tabIndex={interactive ? undefined : -1}
+        // Do not rely on WebKit's implicit native-button tab order here. The
+        // detached WKWebView can advertise this button through AX while still
+        // skipping it during keyboard traversal. Make the live semantic owner
+        // explicit so Tab -> Return and AXPress have a pointer-free route.
+        tabIndex={interactive ? 0 : -1}
         aria-hidden={interactive ? undefined : true}
         className={cn(
           "cursor-grab touch-none select-none active:cursor-grabbing",
@@ -6752,6 +6760,7 @@ export function ChatOverlay({
             ref={contentRef}
             data-testid="chat-content"
             inert={pilled || undefined}
+            aria-hidden={pilled || undefined}
             // overflow-hidden + the live radius clips the sheen/thread to the
             // panel's rounded shape (the clip the fieldset used to do) WITHOUT
             // touching the sibling glass layer's shadow. Spans the FULL glass
@@ -7361,6 +7370,7 @@ export function ChatOverlay({
                       size="icon"
                       aria-label="chat actions"
                       disabled={firstRunOpen}
+                      tabIndex={pilled ? -1 : undefined}
                       data-testid="chat-composer-plus"
                       onPointerDown={(event) => {
                         // The action menu owns this press even when the
@@ -7475,6 +7485,11 @@ export function ChatOverlay({
                   autoCorrect={desktopOverlayHost ? "off" : undefined}
                   autoCapitalize={desktopOverlayHost ? "off" : undefined}
                   spellCheck={desktopOverlayHost ? false : undefined}
+                  // `inert` is the primary subtree boundary, but current
+                  // WKWebView can still expose this hidden combo in native Tab
+                  // traversal. Keep it explicitly out of the focus order while
+                  // the resting pill owns the only interactive surface.
+                  tabIndex={pilled ? -1 : undefined}
                   // Onboarding is sign-in-first: before launch the composer is
                   // disabled. While the external browser owns sign-in it is
                   // read-only, so clicking the compact composer can reopen the
@@ -7694,6 +7709,7 @@ export function ChatOverlay({
                       active={handsFree}
                       pressed={recording || handsFree}
                       pulse={recording && !handsFree}
+                      tabIndex={pilled ? -1 : undefined}
                       onClick={handleMicClick}
                       testId="chat-composer-mic"
                     />

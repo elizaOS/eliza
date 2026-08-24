@@ -337,6 +337,67 @@ describe("ChatOverlay", () => {
     expect(onRequestedOpenChange).toHaveBeenCalledWith(true);
   });
 
+  it("gives detached pilled mode one keyboard-focusable semantic owner", async () => {
+    const onRequestedOpenChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        desktopOverlayHost
+        initialMode="pill"
+        requestedOpen={false}
+        onRequestedOpenChange={onRequestedOpenChange}
+      />,
+    );
+
+    const pill = screen.getByRole("button", { name: "open chat" });
+    const content = screen.getByTestId("chat-content");
+    const composer = screen.getByTestId(
+      "chat-composer-textarea",
+    ) as HTMLTextAreaElement;
+    const plus = screen.getByTestId("chat-composer-plus") as HTMLButtonElement;
+    const talk = screen.getByTestId("chat-composer-mic") as HTMLButtonElement;
+
+    expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+    expect(content.hasAttribute("inert")).toBe(true);
+    expect(content.getAttribute("aria-hidden")).toBe("true");
+    expect(composer.tabIndex).toBe(-1);
+    expect(plus.tabIndex).toBe(-1);
+    expect(talk.tabIndex).toBe(-1);
+    expect(pill.tabIndex).toBe(0);
+
+    pill.focus();
+    expect(document.activeElement).toBe(pill);
+    fireEvent.keyDown(pill, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+    });
+    expect(onRequestedOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("opens the detached resting pill through pointer-free AXPress", async () => {
+    const onRequestedOpenChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        desktopOverlayHost
+        initialMode="pill"
+        requestedOpen={false}
+        onRequestedOpenChange={onRequestedOpenChange}
+      />,
+    );
+
+    const pill = screen.getByRole("button", { name: "open chat" });
+    // AXPress reaches the semantic click without any pointerdown/up sequence;
+    // positive detail remains valid on WKWebView.
+    fireEvent.click(pill, { detail: 1 });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+    });
+    expect(onRequestedOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
   it("honors repeated native open requests even when requestedOpen is already true", async () => {
     const { rerender } = render(
       <ChatOverlay
@@ -3300,9 +3361,9 @@ describe("ChatOverlay", () => {
     expect(pill.getAttribute("aria-hidden")).toBeNull();
     // Restored to the tab order once it's the active handle — the symmetric half
     // of the collapsed assertion above (tabindex "-1" while NOT pilled). The
-    // PillHandle sets tabIndex={pilled ? undefined : -1}, so the attribute is
-    // absent (null) when pilled and keyboard users can Tab to + Enter the pill.
-    expect(pill.getAttribute("tabindex")).toBeNull();
+    // Explicit 0 is required for WKWebView: an implicit native button can be
+    // present in AX but skipped by Tab traversal.
+    expect(pill.getAttribute("tabindex")).toBe("0");
   });
 
   it("steps a pill tap to the INPUT bar — never the thread detent, never the keyboard", () => {
