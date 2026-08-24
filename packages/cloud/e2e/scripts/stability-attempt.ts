@@ -283,6 +283,7 @@ const modelProxy =
   mode === "real-llm"
     ? await startLiveModelEgressProxy({
         provider: provider as StabilityModelProvider,
+        expectedModel: model,
         budgets: {
           maxInputTokens: requiredPositiveInteger(
             "ELIZA_STABILITY_MAX_INPUT_TOKENS",
@@ -532,6 +533,7 @@ const modelMeter = modelProxy?.snapshot() ?? {
   inputTokens: 0,
   outputTokens: 0,
   failures: [],
+  requestEnvelopes: [],
 };
 const providerReceipt =
   mode === "deterministic-mock"
@@ -584,6 +586,7 @@ const providerReceipt =
         inputTokens: modelMeter.inputTokens,
         outputTokens: modelMeter.outputTokens,
         meteringFailures: modelMeter.failures,
+        requestEnvelopes: modelMeter.requestEnvelopes,
         namespace,
         manifestId,
         generation,

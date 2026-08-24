@@ -92,9 +92,14 @@ The selected provider is forced through a bounded loopback proxy; a pinned-Bun
 preload rejects direct child fetch and Node HTTP(S) egress. The attempt parent
 captures exactly one selected `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, removes
 it before starting the mock stack, and injects it only at the provider proxy;
-the scenario child receives a dummy SDK key. Real service credentials are never passed. Successful responses
-must carry authoritative OpenAI or Anthropic usage; the proxy aggregates those
-counts and fails closed on missing, malformed, over-budget, or over-limit calls.
+the scenario child receives a dummy SDK key. Real service credentials are never
+passed. Before dispatch, the proxy requires the exact target model, rejects
+provider-hosted context/tools and non-text inputs, and injects or clamps the
+route-specific output cap to the remaining budget. Its conservative input
+envelope charges the larger canonical/original UTF-8 body size plus an 8,192
+token hidden-overhead reserve; this is not provider tokenization, so returned
+OpenAI or Anthropic usage remains the authoritative postflight count. Missing,
+malformed, over-budget, oversized, or unmetered responses fail closed.
 
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains
