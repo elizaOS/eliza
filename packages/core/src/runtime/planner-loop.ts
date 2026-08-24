@@ -53,7 +53,10 @@ import {
 } from "../types/model";
 import {
 	isModelProviderError,
+	isProviderContextOverflowError,
 	modelProviderErrorDetail,
+	PROVIDER_CONTEXT_OVERFLOW,
+	providerContextOverflowLimitTokens,
 } from "../utils/model-errors";
 import {
 	hasReasoningResidue,
@@ -2342,7 +2345,7 @@ function appendMissingJsonObjectClosers(text: string): string {
 	return `${text}${"}".repeat(depth)}`;
 }
 
-async function callPlanner(params: {
+async function dispatchPlannerModelCall(params: {
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
@@ -2683,6 +2686,200 @@ async function maybeCompactPlannerTrajectory(args: {
 		logger: args.logger,
 	});
 	return true;
+}
+
+/** Serialized size of the model-facing projection of a completed tool result. */
+function toolResultTranscriptChars(result: PlannerToolResult): number {
+	try {
+		return JSON.stringify(result)?.length ?? 0;
+	} catch {
+		// error-policy:J3 a non-serializable result still renders its text; size
+		// by the text so the largest-result selection stays deterministic.
+		return result.text?.length ?? 0;
+	}
+}
+
+/**
+ * Lossless overflow recovery: replace the LARGEST completed tool result in the
+ * planner transcript with a typed protocol-failure result. This is NOT
+ * truncation — the complete result was never partially shown to the model; the
+ * dispatch was rejected whole at the provider's context boundary, and the
+ * substitute states exactly that so the planner can react (request a smaller
+ * range, narrower output). Mutates the step in place; results that are already
+ * overflow substitutions are never re-substituted. Returns null when the
+ * transcript holds no substitutable tool result.
+ */
+function substituteLargestToolResultForOverflow(
+	trajectory: PlannerTrajectory,
+	error: unknown,
+): { actionName: string; replacedChars: number; limitTokens?: number } | null {
+	let largest: PlannerStep | undefined;
+	let largestChars = 0;
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+		if (!step.toolCall || !step.result) continue;
+		if (step.result.data?.providerContextOverflow === true) continue;
+		const chars = toolResultTranscriptChars(step.result);
+		if (chars > largestChars) {
+			largest = step;
+			largestChars = chars;
+		}
+	}
+	if (!largest?.toolCall || largestChars === 0) return null;
+	const limitTokens = providerContextOverflowLimitTokens(error);
+	const actionName = largest.toolCall.name;
+	const limitClause =
+		limitTokens !== undefined
+			? `limit ~${limitTokens} tokens`
+			: "provider context limit";
+	const replacement: PlannerToolResult = {
+		success: false,
+		text:
+			`${actionName} result of ${largestChars} characters was rejected at the ` +
+			`provider context boundary (${limitClause}); the complete result was ` +
+			`NOT truncated — it could not be dispatched. Request a smaller range ` +
+			`or narrower output.`,
+		data: { providerContextOverflow: true },
+	};
+	largest.result = replacement;
+	substituteToolResultContextEvent(trajectory, largest, replacement);
+	return {
+		actionName,
+		replacedChars: largestChars,
+		...(limitTokens !== undefined ? { limitTokens } : {}),
+	};
+}
+
+/**
+ * The complete tool result is rendered into the planner input twice: as the
+ * step's native tool message AND as the diagnostic `tool_result` context event
+ * appended at execution. The substitution must rewrite both projections or the
+ * retried call re-dispatches the rejected content through the event render.
+ * Matches by `toolCallId` when the call carried one; otherwise by the
+ * `tool-result:<name>:` id prefix with the LONGEST serialized result — the
+ * same largest-content selection used for the step itself.
+ */
+function substituteToolResultContextEvent(
+	trajectory: PlannerTrajectory,
+	step: PlannerStep,
+	replacement: PlannerToolResult,
+): void {
+	const events = trajectory.context.events;
+	if (!Array.isArray(events) || !step.toolCall) return;
+	const toolCallId = step.toolCall.id;
+	const idPrefix = `tool-result:${toolCallId ?? step.toolCall.name}:`;
+	let target: ContextObject["events"][number] | undefined;
+	let targetChars = -1;
+	for (const event of events) {
+		if (event.type !== "tool_result") continue;
+		if (toolCallId !== undefined) {
+			if (event.metadata?.toolCallId !== toolCallId) continue;
+			target = event;
+			break;
+		}
+		if (!event.id.startsWith(idPrefix)) continue;
+		const serialized = event.metadata?.result;
+		const chars = typeof serialized === "string" ? serialized.length : 0;
+		if (chars > targetChars) {
+			target = event;
+			targetChars = chars;
+		}
+	}
+	if (!target) return;
+	const substitutedEvent = {
+		...target,
+		metadata: {
+			...(target.metadata ?? {}),
+			result: stringifyForModel(replacement),
+			status: "failed" as const,
+		},
+	};
+	// In-place on purpose: the dispatch call captured `context` by reference at
+	// the call site, and the synthesis path aliases the same context on a copied
+	// trajectory. Preserving array identity is the only way every capture sees
+	// the substituted projection on the retry.
+	const mutableEvents = events as (typeof events)[number][];
+	mutableEvents[mutableEvents.indexOf(target)] = substitutedEvent;
+}
+
+/** Typed terminal error for an unrecoverable provider context overflow. */
+function providerContextOverflowFailure(
+	cause: unknown,
+	context: Record<string, unknown>,
+): ElizaError {
+	return new ElizaError(
+		"Planner model input exceeded the provider's context limit and could not " +
+			"be recovered by tool-result substitution.",
+		{
+			code: PROVIDER_CONTEXT_OVERFLOW,
+			cause,
+			context: {
+				...context,
+				...(modelProviderErrorDetail(cause) ?? {}),
+			},
+		},
+	);
+}
+
+/**
+ * Planner model call with the context-overflow boundary applied. A provider
+ * length rejection (live: Cerebras 400 "Please reduce the length of the
+ * messages or completion. Current length is 202427 while limit is 131072")
+ * must not kill the turn: substitute the largest tool result with a typed
+ * failure (see {@link substituteLargestToolResultForOverflow}) and retry the
+ * iteration exactly once. When nothing is substitutable, or the retry
+ * overflows again, throw the typed PROVIDER_CONTEXT_OVERFLOW ElizaError so the
+ * message boundary can answer honestly instead of surfacing a raw provider
+ * 400. All planner-iteration call sites route through here.
+ */
+async function callPlanner(
+	params: Parameters<typeof dispatchPlannerModelCall>[0],
+): ReturnType<typeof dispatchPlannerModelCall> {
+	try {
+		return await dispatchPlannerModelCall(params);
+	} catch (error) {
+		// error-policy:J2 only a classified provider length rejection engages the
+		// lossless substitution recovery; every other failure propagates intact.
+		if (!isProviderContextOverflowError(error)) throw error;
+		const substituted = substituteLargestToolResultForOverflow(
+			params.trajectory,
+			error,
+		);
+		if (!substituted) {
+			throw providerContextOverflowFailure(error, {
+				iteration: params.iteration,
+				recovery: "no_substitutable_tool_result",
+			});
+		}
+		params.runtime.logger?.warn?.(
+			{
+				iteration: params.iteration,
+				action: substituted.actionName,
+				replacedChars: substituted.replacedChars,
+				...(substituted.limitTokens !== undefined
+					? { limitTokens: substituted.limitTokens }
+					: {}),
+			},
+			"[planner-loop] provider rejected the planner input at its context boundary; substituted the largest tool result with a typed failure and retrying once",
+		);
+		try {
+			return await dispatchPlannerModelCall(params);
+		} catch (retryError) {
+			// error-policy:J2 a second overflow after substitution is terminal for
+			// this turn; wrap it typed so the boundary reply can be honest.
+			if (!isProviderContextOverflowError(retryError)) throw retryError;
+			throw providerContextOverflowFailure(retryError, {
+				iteration: params.iteration,
+				recovery: "retry_after_substitution_overflowed",
+				substitutedAction: substituted.actionName,
+				substitutedChars: substituted.replacedChars,
+			});
+		}
+	}
+}
+
+/** Record a gated evaluator outcome without making another model call. */
+function normalizeCompleteText(value: string): string {
+	return toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
 }
 
 async function maybeCompactBeforeNextModelCall(args: {
@@ -3950,6 +4147,17 @@ function latestUnresolvedFailedNonTerminalToolStep(
 			step.result.success === false &&
 			(step.result.data as { coachingFailure?: unknown } | undefined)
 				?.coachingFailure === true
+		) {
+			continue;
+		}
+		// A provider context-overflow substitution is a protocol notice, not a
+		// failed operation: the tool itself SUCCEEDED and its complete result was
+		// rejected at the provider's context boundary. It steers the model toward
+		// a smaller ask and leaves no broken state — same authority rule.
+		if (
+			step.result.success === false &&
+			(step.result.data as { providerContextOverflow?: unknown } | undefined)
+				?.providerContextOverflow === true
 		) {
 			continue;
 		}

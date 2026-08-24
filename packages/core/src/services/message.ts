@@ -340,7 +340,10 @@ import {
 	getUserMessageText,
 	stripAugmentationForPersistence,
 } from "../utils/message-text";
-import { modelProviderErrorDetail } from "../utils/model-errors";
+import {
+	isProviderContextOverflowFailure,
+	modelProviderErrorDetail,
+} from "../utils/model-errors";
 import { readEnv } from "../utils/read-env";
 import {
 	createFirstSentenceStreamTracker,
@@ -10692,8 +10695,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 	} catch (err) {
 		// error-policy:J2 Preserve the failing status for trajectory diagnostics,
-		// then rethrow the original failure to the message boundary.
-		endStatus = "errored";
+		// then rethrow the original failure to the message boundary. A provider
+		// context-overflow rejection that in-loop substitution could not absorb
+		// is the exception: the message boundary converts it into a designed
+		// honest reply, so the trajectory FINISHES with that outcome instead of
+		// recording a dead errored turn.
+		endStatus = isProviderContextOverflowFailure(err) ? "finished" : "errored";
 		throw err;
 	} finally {
 		// Trajectory persistence is diagnostic work. Preserve stage ordering in
@@ -16072,6 +16079,14 @@ export class DefaultMessageService implements IMessageService {
 						? fallbackTmpl({ state })
 						: fallbackTmpl) ||
 					"I ran out of attempts before I could finish that. Nothing was completed - please try again.";
+			} else if (cause === "context_overflow") {
+				// The provider rejected the call at its context limit; retrying the
+				// identical request cannot succeed, so the honest reply asks for a
+				// smaller ask instead of the generic "try again".
+				const tmpl = runtime.character.templates?.contextOverflowFailureReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					"That needed more context than my model can take in one call - try a smaller range or a narrower request.";
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =

@@ -1,13 +1,20 @@
 /**
  * Unit tests for the structural model-error classifiers: `isModelProviderError`
- * (gates the planner-loop post-tool relay) and `modelProviderErrorStatus`.
+ * (gates the planner-loop post-tool relay), provider status/detail
+ * extraction, and the provider context-overflow classifier that gates the
+ * planner loop's lossless substitution recovery.
  * Deterministic — plain constructed error shapes, no live model.
  */
 import { describe, expect, it } from "vitest";
+import { ElizaError } from "../errors";
 import {
 	isModelProviderError,
+	isProviderContextOverflowError,
+	isProviderContextOverflowFailure,
 	modelProviderErrorDetail,
 	modelProviderErrorStatus,
+	PROVIDER_CONTEXT_OVERFLOW,
+	providerContextOverflowLimitTokens,
 } from "./model-errors";
 
 function withStatus(status: number, message = "err"): Error {
@@ -168,5 +175,138 @@ describe("modelProviderErrorDetail", () => {
 	it("is undefined when the chain carries neither status nor body", () => {
 		expect(modelProviderErrorDetail(new Error("plain"))).toBeUndefined();
 		expect(modelProviderErrorDetail(undefined)).toBeUndefined();
+	});
+});
+
+describe("isProviderContextOverflowError", () => {
+	// The exact AI_APICallError message from the live incident: a complete
+	// 500-message recap transcript pushed the next planner call to ~202K tokens
+	// against Cerebras's 131,072-token limit and the turn died.
+	const LIVE_CEREBRAS_MESSAGE =
+		"Bad Request: Please reduce the length of the messages or completion. " +
+		"Current length is 202427 while limit is 131072";
+
+	function overflowError(args: {
+		message?: string;
+		statusCode?: number;
+		responseBody?: string;
+	}): Error {
+		return Object.assign(new Error(args.message ?? "Bad Request"), {
+			name: "AI_APICallError",
+			statusCode: args.statusCode ?? 400,
+			responseBody: args.responseBody,
+		});
+	}
+
+	it("classifies the exact live Cerebras rejection message", () => {
+		expect(
+			isProviderContextOverflowError(
+				overflowError({ message: LIVE_CEREBRAS_MESSAGE }),
+			),
+		).toBe(true);
+	});
+
+	it("classifies a masked statusText whose phrase lives on responseBody", () => {
+		// The AI SDK derives message from the OpenAI envelope only; Cerebras's
+		// flat body leaves message as bare "Bad Request".
+		const err = overflowError({
+			responseBody:
+				'{"message":"Please reduce the length of the messages or completion. Current length is 202427 while limit is 131072","type":"invalid_request_error","param":"validation_error","code":"context_length_exceeded"}',
+		});
+		expect(isProviderContextOverflowError(err)).toBe(true);
+	});
+
+	it.each([
+		"context_length_exceeded: reduce your prompt",
+		"This model's maximum context length is 128000 tokens. However, your messages resulted in 202427 tokens.",
+		"prompt is too long: 210021 tokens > 204698 maximum",
+		"input length and `max_tokens` exceed context limit: 210021 + 8192 > 204698",
+	])("classifies the provider phrase %s", (message) => {
+		expect(isProviderContextOverflowError(overflowError({ message }))).toBe(
+			true,
+		);
+	});
+
+	it("unwraps the AI SDK RetryError envelope and .cause chain", () => {
+		const retry = new Error("retries exhausted") as Error & {
+			lastError: unknown;
+		};
+		retry.lastError = overflowError({ message: LIVE_CEREBRAS_MESSAGE });
+		expect(isProviderContextOverflowError(retry)).toBe(true);
+
+		const wrapped = new Error("[provider] planner call failed", {
+			cause: overflowError({ message: LIVE_CEREBRAS_MESSAGE }),
+		});
+		expect(isProviderContextOverflowError(wrapped)).toBe(true);
+	});
+
+	it.each([
+		["an ordinary 400", overflowError({ message: "Bad Request" })],
+		[
+			"a schema 400",
+			overflowError({
+				message: "Bad Request",
+				responseBody:
+					'{"message":"Invalid JSON: lone leading surrogate in hex escape","type":"invalid_request_error"}',
+			}),
+		],
+		[
+			"a rate limit",
+			Object.assign(new Error("Rate limit exceeded. Try again shortly."), {
+				statusCode: 429,
+			}),
+		],
+		[
+			"a provider outage",
+			Object.assign(new Error("Internal Server Error"), { statusCode: 500 }),
+		],
+		["a programmer error", new TypeError("x is undefined")],
+	])("is FALSE for %s", (_label, error) => {
+		expect(isProviderContextOverflowError(error)).toBe(false);
+	});
+
+	it("isProviderContextOverflowFailure also accepts the typed planner error", () => {
+		const typed = new ElizaError("planner input exceeded provider limit", {
+			code: PROVIDER_CONTEXT_OVERFLOW,
+		});
+		expect(isProviderContextOverflowFailure(typed)).toBe(true);
+		expect(
+			isProviderContextOverflowFailure(
+				overflowError({ message: LIVE_CEREBRAS_MESSAGE }),
+			),
+		).toBe(true);
+		expect(
+			isProviderContextOverflowFailure(
+				new ElizaError("db down", { code: "DB_QUERY_FAILED" }),
+			),
+		).toBe(false);
+	});
+
+	it("extracts the provider-reported token limit for diagnostics", () => {
+		expect(
+			providerContextOverflowLimitTokens(
+				overflowError({ message: LIVE_CEREBRAS_MESSAGE }),
+			),
+		).toBe(131072);
+		expect(
+			providerContextOverflowLimitTokens(
+				overflowError({
+					message:
+						"This model's maximum context length is 128000 tokens. However, your messages resulted in 202427 tokens.",
+				}),
+			),
+		).toBe(128000);
+		expect(
+			providerContextOverflowLimitTokens(
+				overflowError({
+					message: "prompt is too long: 210021 tokens > 204698 maximum",
+				}),
+			),
+		).toBe(204698);
+		expect(
+			providerContextOverflowLimitTokens(
+				overflowError({ message: "prompt is too long" }),
+			),
+		).toBeUndefined();
 	});
 });
