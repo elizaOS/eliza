@@ -265,19 +265,21 @@ export class WhatsAppDomain {
     drained: number;
     messages: WhatsAppMessage[];
   }> {
-    const result = await this.pullWhatsAppRecent(100);
+    const result = await this.pullWhatsAppRecent();
     return { drained: result.count, messages: result.messages };
   }
 
   /** Return recent WhatsApp messages from plugin-whatsapp. */
-  async pullWhatsAppRecent(limit = 25): Promise<{
+  async pullWhatsAppRecent(limit?: number): Promise<{
     count: number;
     messages: WhatsAppMessage[];
   }> {
-    const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 500);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+      fail(400, "WhatsApp message limit must be a positive integer when provided.");
+    }
     const delegated = await fetchWhatsAppMessagesWithRuntimeService({
       runtime: this.ctx.runtime,
-      limit: clampedLimit,
+      limit,
     });
     if (delegated.status !== "handled") {
       fail(

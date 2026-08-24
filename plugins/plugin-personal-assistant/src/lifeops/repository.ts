@@ -8481,11 +8481,10 @@ export class LifeOpsRepository {
     feedType: LifeOpsXFeedType,
     opts: { limit?: number } = {},
   ): Promise<LifeOpsXFeedItem[]> {
-    const DEFAULT_LIMIT = 100;
-    const limit =
+    const limitClause =
       opts.limit !== undefined && Number.isFinite(opts.limit)
-        ? opts.limit
-        : DEFAULT_LIMIT;
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -8493,7 +8492,7 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND feed_type = ${sqlQuote(feedType)}
         ORDER BY created_at_source DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseXFeedItem);
   }

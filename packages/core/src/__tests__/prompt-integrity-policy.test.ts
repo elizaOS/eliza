@@ -222,6 +222,26 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-personal-assistant/src/lifeops/repository.ts": [
 		/options\?\.maxResults[\s\S]{0,160}:\s*100/,
+		/DEFAULT_LIMIT\s*=\s*100/,
+	],
+	"plugins/plugin-personal-assistant/src/actions/connector.ts": [
+		/params\.recentLimit\s*\?\?\s*10/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/domains/imessage-service.ts": [
+		/opts\.limit\s*\?\?\s*100/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/domains/telegram-service.ts": [
+		/request\.recentLimit\s*\?\?\s*10/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/domains/whatsapp-service.ts": [
+		/pullWhatsAppRecent\(limit\s*=\s*25/,
+		/Math\.min\(Math\.max\(1,\s*Math\.floor\(limit\)\),\s*500\)/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/domains/x-read-service.ts": [
+		/opts\.limit\s*\?\?\s*20/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/domains/x-service.ts": [
+		/opts\.limit\s*\?\?\s*25/,
 	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,

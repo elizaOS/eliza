@@ -719,7 +719,7 @@ async function dispatchXVerify(
   params: ConnectorActionParams,
 ): Promise<ActionResult> {
   const status = await service.getXConnectorStatus(params.mode, side);
-  const limit = params.recentLimit ?? 10;
+  const limit = params.recentLimit;
   const query = params.query?.trim();
   const search =
     query && status.feedRead
@@ -1065,7 +1065,7 @@ async function dispatchIMessageVerify(
   service: LifeOpsService,
   params: ConnectorActionParams,
 ): Promise<ActionResult> {
-  const limit = params.recentLimit ?? 10;
+  const limit = params.recentLimit;
   const [status, messages] = await Promise.all([
     service.getIMessageConnectorStatus(),
     service.readIMessages({ limit }),
@@ -1148,7 +1148,7 @@ async function dispatchWhatsAppVerify(
   service: LifeOpsService,
   params: ConnectorActionParams,
 ): Promise<ActionResult> {
-  const limit = params.recentLimit ?? 10;
+  const limit = params.recentLimit;
   const status = await service.getWhatsAppConnectorStatus();
   const recent = await service.pullWhatsAppRecent(limit);
   return {
