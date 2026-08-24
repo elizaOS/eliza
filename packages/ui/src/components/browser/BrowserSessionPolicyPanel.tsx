@@ -270,6 +270,7 @@ export function BrowserSessionPolicyPanel({
   );
 
   if (phase === "loading") {
+    if (hideWhenEmpty) return null;
     return (
       <div
         data-testid="browser-session-policy-loading"

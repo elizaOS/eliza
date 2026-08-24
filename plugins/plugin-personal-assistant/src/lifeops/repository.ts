@@ -8135,7 +8135,24 @@ export class LifeOpsRepository {
                 connection_state = 'disconnected',
                 updated_at = ${sqlQuote(args.revokedAt)}
           WHERE agent_id = ${sqlQuote(args.agentId)}
-            AND id = ${sqlQuote(args.companion.id)}`,
+            AND browser = ${sqlQuote(args.companion.browser)}`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE app_lifeops.life_workflow_browser_sessions
+            SET status = 'failed',
+                result_json = (result_json::jsonb || ${sqlJson({
+                  code: "browser_companion_revoked",
+                  error: "Browser companion was disconnected",
+                })}::jsonb)::text,
+                metadata_json = (metadata_json::jsonb - 'browserActionAttempt')::text,
+                updated_at = ${sqlQuote(args.revokedAt)},
+                finished_at = ${sqlQuote(args.revokedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND browser = ${sqlQuote(args.companion.browser)}
+            AND subject_type = 'owner'
+            AND subject_id = ${sqlQuote(args.ownerEntityId)}
+            AND status IN ('queued', 'running', 'awaiting_confirmation')`,
       );
       await executeRawSqlTx(
         tx,

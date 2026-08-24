@@ -100,6 +100,28 @@ describe("BrowserBridgeRelayClient", () => {
     );
   });
 
+  it("revokes the authenticated companion through the durable server route", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ revoked: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      new BrowserBridgeRelayClient(config).revoke(),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://agent.example.com/root/api/browser-bridge/companions/revoke",
+      expect.objectContaining({
+        method: "POST",
+        body: "{}",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pairing-token",
+          "Content-Type": "application/json",
+          "X-Browser-Bridge-Companion-Id": "companion-1",
+        }),
+      }),
+    );
+  });
+
   it("preflights without browser data and rejects a data-bearing response", async () => {
     const fetchMock = vi
       .fn()

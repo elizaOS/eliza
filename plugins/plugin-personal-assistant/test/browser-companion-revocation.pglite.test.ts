@@ -3,6 +3,7 @@
  * expiry against the real PGlite repository across fresh service instances.
  */
 
+import { randomUUID } from "node:crypto";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   type BrowserBridgeCompanionPairingResponse,
@@ -15,7 +16,10 @@ import {
   type BrowserDomainDeps,
 } from "../src/lifeops/domains/browser-service.js";
 import type { LifeOpsContext } from "../src/lifeops/lifeops-context.js";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import {
+  createLifeOpsBrowserSession,
+  LifeOpsRepository,
+} from "../src/lifeops/repository.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -85,6 +89,135 @@ afterAll(async () => {
 });
 
 describe("browser companion revocation persistence", () => {
+  it("makes companion self-revocation idempotent without accepting another token", async () => {
+    const ownerEntityId = "owner-self-revocation-idempotency";
+    const pairing = await pair(ownerEntityId, "profile-self-revoke");
+    const siblingPairing = await pair(
+      ownerEntityId,
+      "profile-self-revoke-sibling",
+    );
+    const session = createLifeOpsBrowserSession({
+      agentId: runtime.agentId,
+      domain: "browser",
+      subjectType: "owner",
+      subjectId: ownerEntityId,
+      visibilityScope: "owner",
+      contextPolicy: "owner_private",
+      workflowId: null,
+      browser: "chrome",
+      companionId: pairing.companion.id,
+      profileId: pairing.companion.profileId,
+      windowId: "window-1",
+      tabId: "tab-1",
+      title: "revocation execution fence",
+      status: "running",
+      actions: [
+        {
+          id: "action-1",
+          kind: "read_page",
+          label: "Read page",
+          url: null,
+          selector: null,
+          text: null,
+          accountAffecting: false,
+          requiresConfirmation: false,
+          metadata: {},
+        },
+      ],
+      currentActionIndex: 0,
+      awaitingConfirmationForActionId: null,
+      result: {},
+      metadata: {
+        browserActionAttempt: {
+          actionId: "action-1",
+          actionIndex: 0,
+          attemptId: "attempt-1",
+        },
+      },
+      finishedAt: null,
+    });
+    await repository.createBrowserSession(session);
+    const siblingSession = createLifeOpsBrowserSession({
+      ...session,
+      id: randomUUID(),
+      companionId: siblingPairing.companion.id,
+      profileId: siblingPairing.companion.profileId,
+      title: "browser-wide sibling revocation fence",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await repository.createBrowserSession(siblingSession);
+    const first = await browserDomain(
+      ownerEntityId,
+    ).revokeBrowserCompanionFromCompanion(
+      pairing.companion.id,
+      pairing.pairingToken,
+    );
+    await expect(
+      repository.updateBrowserSessionProgressFromCompanion({
+        agentId: runtime.agentId,
+        sessionId: session.id,
+        companion: pairing.companion,
+        expectedActionIndex: 0,
+        completedActionId: "action-1",
+        attemptId: "attempt-1",
+        currentActionIndex: 1,
+        resultPatch: { action: "finished" },
+        metadataPatch: {},
+        updatedAt: new Date().toISOString(),
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repository.getBrowserSession(runtime.agentId, session.id),
+    ).resolves.toMatchObject({
+      status: "failed",
+      result: { code: "browser_companion_revoked" },
+      finishedAt: first.revokedAt,
+    });
+    await expect(
+      repository.getBrowserSession(runtime.agentId, siblingSession.id),
+    ).resolves.toMatchObject({
+      status: "failed",
+      result: { code: "browser_companion_revoked" },
+      finishedAt: first.revokedAt,
+    });
+    await expect(
+      repository.getBrowserCompanionCredential(
+        runtime.agentId,
+        siblingPairing.companion.id,
+      ),
+    ).resolves.toMatchObject({
+      companion: {
+        connectionState: "disconnected",
+        pairingTokenRevokedAt: first.revokedAt,
+      },
+    });
+    repository = new LifeOpsRepository(runtime);
+
+    await expect(
+      browserDomain(ownerEntityId).revokeBrowserCompanionFromCompanion(
+        pairing.companion.id,
+        pairing.pairingToken,
+      ),
+    ).resolves.toMatchObject({
+      companion: {
+        id: pairing.companion.id,
+        connectionState: "disconnected",
+        pairingTokenRevokedAt: first.revokedAt,
+      },
+      revokedAt: first.revokedAt,
+    });
+    await expect(
+      browserDomain(ownerEntityId).revokeBrowserCompanionFromCompanion(
+        pairing.companion.id,
+        "lobr_wrong-token",
+      ),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "browser_bridge_companion_token_revoked",
+    });
+  });
+
   it("enforces native TTL, survives restart, blocks reinstall identities, and requires owner reset", async () => {
     const ownerEntityId = "owner-revocation-a";
     const beforePairMs = Date.now();

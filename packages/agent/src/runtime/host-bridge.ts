@@ -55,6 +55,13 @@ export interface AgentHttpRequestAuthorizationOptions {
    * bearer-token authentication.
    */
   allowCookieAuth: boolean;
+  /**
+   * False for boundaries that require a real browser owner session. The host
+   * must not replace that session with ambient same-machine trust.
+   */
+  allowTrustedLocalBypass?: boolean;
+  /** False when explicit bearer credentials must not substitute for a cookie. */
+  allowBearerAuth?: boolean;
 }
 
 /** Public (digest-free) consumer-key record surfaced to the owner dashboard. */

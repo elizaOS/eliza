@@ -109,4 +109,39 @@ describe("CoalescingSyncRunner", () => {
       { reason: "queued", bypassNativeBackoff: true },
     ]);
   });
+
+  it("drops queued work when the active generation is cancelled", async () => {
+    const activeAttempt = deferred();
+    const activeAttemptBegan = deferred();
+    const attempts: string[] = [];
+    const runner = new CoalescingSyncRunner<SyncRequest, SyncState>(
+      (_current, next) => next,
+      async (request) => {
+        attempts.push(request.reason);
+        if (request.reason === "startup") {
+          activeAttemptBegan.resolve();
+          await activeAttempt.promise;
+        }
+        return { connected: true };
+      },
+    );
+
+    const active = runner.request({
+      reason: "startup",
+      bypassNativeBackoff: false,
+    });
+    await activeAttemptBegan.promise;
+    const queued = runner.request({
+      reason: "alarm",
+      bypassNativeBackoff: false,
+    });
+
+    const cancellation = runner.cancelPending();
+    activeAttempt.resolve();
+
+    await expect(cancellation).resolves.toBeUndefined();
+    await expect(active).resolves.toEqual({ connected: true });
+    await expect(queued).resolves.toEqual({ connected: true });
+    expect(attempts).toEqual(["startup"]);
+  });
 });

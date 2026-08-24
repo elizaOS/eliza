@@ -2635,6 +2635,17 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         </div>
       ) : null}
 
+      {browserBridgeSupported && !browserBridgeUnsupportedInNativeLocalMode ? (
+        <div
+          data-testid="browser-session-policy-dock"
+          className="pointer-events-none absolute inset-x-3 bottom-3 z-30 max-h-[min(40%,24rem)] overflow-y-auto"
+        >
+          <div className="pointer-events-auto mx-auto w-full max-w-xl rounded-sm bg-background/95 shadow-lg">
+            <BrowserSessionPolicyPanel api={client} hideWhenEmpty />
+          </div>
+        </div>
+      ) : null}
+
       {workspace.tabs.length === 0 ? (
         loading ? (
           <div className="flex h-full items-center justify-center">
@@ -2659,16 +2670,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   defaultValue: "No page open",
                 })}
               />
-              {/* Bottom + side chat clearance is reserved once, on the scroller
-                above — repeating it on this grid double-counted the inset in
-                short landscape and squeezed the column off-canvas. */}
-              {workspace.mode === "web" &&
-              browserBridgeSupported &&
-              !browserBridgeUnsupportedInNativeLocalMode ? (
-                <div className="w-full max-w-xl px-6 pb-4">
-                  <BrowserSessionPolicyPanel api={client} hideWhenEmpty />
-                </div>
-              ) : null}
             </div>
           </div>
         )
