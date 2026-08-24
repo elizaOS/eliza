@@ -288,9 +288,10 @@ function normalizeDate(raw: string): string | null {
     return new Date(native).toISOString();
   }
   const local = new Date(native);
-  return new Date(
-    Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()),
-  ).toISOString();
+  const utc = new Date(0);
+  utc.setUTCHours(0, 0, 0, 0);
+  utc.setUTCFullYear(local.getFullYear(), local.getMonth(), local.getDate());
+  return utc.toISOString();
 }
 
 export interface ParsedCsvTransaction

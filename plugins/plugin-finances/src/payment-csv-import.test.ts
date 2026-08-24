@@ -542,4 +542,11 @@ describe("parseTransactionsCsv", () => {
     expect(r.transactions).toEqual([]);
     expect(r.errors).toContain("CSV has no data rows.");
   });
+
+  it("preserves years 0-99 in date-only text without 1900s remapping", () => {
+    const csv = "Date,Amount,Merchant\n0024-01-15,-10,Coffee\n";
+    const r = parseTransactionsCsv(csv);
+    expect(r.transactions).toHaveLength(1);
+    expect(r.transactions[0]?.postedAt.startsWith("0024-01-15")).toBe(true);
+  });
 });
