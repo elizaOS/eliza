@@ -137,6 +137,7 @@ export type MessageConnectorCapability =
 	| "webhook_identity"
 	| "rich_components"
 	| "rich_embed"
+	| "manage_server"
 	| (string & {});
 
 export type PostConnectorCapability =
@@ -366,6 +367,31 @@ export interface MessageConnectorPostToThreadParams {
 	identity?: ConnectorPostIdentity;
 }
 
+/**
+ * Structural server/guild management request forwarded to a connector
+ * (create/edit/delete channels and roles, permission overwrites, member role
+ * assignment, invites, moderation, template reconcile). The connector owns
+ * validation, its own configuration gating (fail closed), and platform
+ * hierarchy checks; `operation` and `params` are treated as untrusted input.
+ */
+export interface MessageConnectorManageServerParams {
+	target?: TargetInfo;
+	/** Connector-defined management verb, e.g. "create_channel". */
+	operation: string;
+	/** Platform server/guild id the operation applies to. */
+	serverId?: string;
+	/** Bounded operation arguments; the connector validates every field. */
+	params?: Record<string, unknown>;
+}
+
+/** Structured result of a connector server-management operation. */
+export interface MessageConnectorManageServerResult {
+	/** Human-readable receipt line for the acting agent. */
+	summary: string;
+	/** Structured receipt (created/updated/unchanged/skipped entities). */
+	data?: Record<string, unknown>;
+}
+
 export interface MessageConnector {
 	source: string;
 	accountId?: string;
@@ -468,6 +494,10 @@ export interface MessageConnector {
 		runtime: IAgentRuntime,
 		params: MessageConnectorPostToThreadParams,
 	) => Promise<Memory | undefined>;
+	manageServerHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorManageServerParams,
+	) => Promise<MessageConnectorManageServerResult>;
 	contentShaping?: ConnectorContentShaping;
 }
 
