@@ -416,3 +416,461 @@ describe("grep guard: waifu role scheme is gone from the trunk auth helper", () 
     expect(trunkSource).not.toMatch(/role\s*===\s*"guest"/);
   });
 });
+
+describe("waifu token gate edge cases (JWT claim validation)", () => {
+  const NOW = 1_000;
+  const wallet = "0x1111111111111111111111111111111111111111";
+  const tokenAddress = "0x2222222222222222222222222222222222222222";
+
+  const claims = (overrides: Record<string, unknown> = {}) => ({
+    iss: "waifu.fun",
+    aud: "eliza-cloud-chat",
+    exp: 2_000,
+    role: "guest",
+    walletAddress: wallet,
+    tokenAddress,
+    chainId: 56,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    process.env.WAIFU_CHAT_ACCESS_JWT_SECRET = "waifu-secret";
+    process.env.TOKEN_CONTRACT_ADDRESS = tokenAddress;
+    process.env.TOKEN_CHAIN_ID = "56";
+    delete process.env.WAIFU_ELIZA_CLOUD_AGENT_ID;
+    delete process.env.ELIZA_CLOUD_AGENT_ID;
+  });
+
+  afterEach(() => {
+    delete process.env.WAIFU_CHAT_ACCESS_JWT_SECRET;
+    delete process.env.TOKEN_CONTRACT_ADDRESS;
+    delete process.env.TOKEN_CHAIN_ID;
+    delete process.env.WAIFU_ELIZA_CLOUD_AGENT_ID;
+    delete process.env.ELIZA_CLOUD_AGENT_ID;
+  });
+
+  it("accepts an aud array containing eliza-cloud-chat and rejects one without it", () => {
+    const accepted = resolveWaifuChatAccessToken(
+      signWaifuJwt(claims({ aud: ["other-scope", "eliza-cloud-chat"] })),
+      NOW,
+    );
+    expect(accepted?.role).toBe("guest");
+
+    expect(
+      resolveWaifuChatAccessToken(
+        signWaifuJwt(claims({ aud: ["other-scope"] })),
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("honours nbf: a not-yet-valid token is rejected while nbf at or before now is accepted", () => {
+    expect(
+      resolveWaifuChatAccessToken(signWaifuJwt(claims({ nbf: 1_001 })), NOW),
+    ).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(signWaifuJwt(claims({ nbf: 1_000 })), NOW)
+        ?.role,
+    ).toBe("guest");
+    expect(
+      resolveWaifuChatAccessToken(signWaifuJwt(claims({ nbf: 900 })), NOW)
+        ?.role,
+    ).toBe("guest");
+  });
+
+  it("rejects exp exactly equal to the current second", () => {
+    expect(
+      resolveWaifuChatAccessToken(signWaifuJwt(claims({ exp: 1_000 })), NOW),
+    ).toBeNull();
+  });
+
+  it("falls back to the sub claim for the wallet address when walletAddress is absent", () => {
+    const fromSub = resolveWaifuChatAccessToken(
+      signWaifuJwt(
+        claims({
+          walletAddress: undefined,
+          sub: " 0xAABBCCDDEEFF00112233445566778899AABBCCDD ",
+        }),
+      ),
+      NOW,
+    );
+    expect(fromSub?.walletAddress).toBe(
+      "0xAABBCCDDEEFF00112233445566778899AABBCCDD",
+    );
+
+    const trimsWalletClaim = resolveWaifuChatAccessToken(
+      signWaifuJwt(claims({ walletAddress: ` ${wallet} ` })),
+      NOW,
+    );
+    expect(trimsWalletClaim?.walletAddress).toBe(wallet);
+  });
+
+  it("rejects wallet identities that are not 0x-prefixed 40-hex addresses", () => {
+    expect(
+      resolveWaifuChatAccessToken(
+        signWaifuJwt(claims({ walletAddress: undefined, sub: "0x1234" })),
+        NOW,
+      ),
+    ).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(
+        signWaifuJwt(
+          claims({
+            walletAddress: undefined,
+            sub: "0xZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
+          }),
+        ),
+        NOW,
+      ),
+    ).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(
+        signWaifuJwt(claims({ walletAddress: undefined, sub: undefined })),
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("enforces TOKEN_CHAIN_ID against the numeric chainId claim", () => {
+    expect(
+      resolveWaifuChatAccessToken(signWaifuJwt(claims({ chainId: 1 })), NOW),
+    ).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(signWaifuJwt(claims({ chainId: "56" })), NOW),
+    ).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(
+        signWaifuJwt(claims({ chainId: undefined })),
+        NOW,
+      ),
+    ).toBeNull();
+    expect(resolveWaifuChatAccessToken(signWaifuJwt(claims()), NOW)?.role).toBe(
+      "guest",
+    );
+  });
+
+  it("rejects tokens when the configured secret is missing or whitespace-only", () => {
+    const token = signWaifuJwt(claims());
+    process.env.WAIFU_CHAT_ACCESS_JWT_SECRET = "   ";
+    expect(resolveWaifuChatAccessToken(token, NOW)).toBeNull();
+
+    delete process.env.WAIFU_CHAT_ACCESS_JWT_SECRET;
+    expect(resolveWaifuChatAccessToken(token, NOW)).toBeNull();
+  });
+
+  it("rejects structurally malformed tokens before any claim inspection", () => {
+    const [headerSegment, payloadSegment] = signWaifuJwt(claims()).split(".");
+
+    expect(resolveWaifuChatAccessToken("", NOW)).toBeNull();
+    expect(resolveWaifuChatAccessToken(null, NOW)).toBeNull();
+    expect(resolveWaifuChatAccessToken(undefined, NOW)).toBeNull();
+    expect(resolveWaifuChatAccessToken("not-a-jwt", NOW)).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(`${headerSegment}.${payloadSegment}`, NOW),
+    ).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(`${headerSegment}.${payloadSegment}.`, NOW),
+    ).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(
+        `!!!.${payloadSegment}.${signWaifuJwt(claims()).split(".")[2]}`,
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects a correctly-signed token whose header declares a non-HS256 algorithm", () => {
+    const headerSegment = Buffer.from(
+      JSON.stringify({ alg: "none", typ: "JWT" }),
+    ).toString("base64url");
+    const payloadSegment = Buffer.from(JSON.stringify(claims())).toString(
+      "base64url",
+    );
+    const signature = crypto
+      .createHmac("sha256", "waifu-secret")
+      .update(`${headerSegment}.${payloadSegment}`)
+      .digest("base64url");
+
+    expect(
+      resolveWaifuChatAccessToken(
+        `${headerSegment}.${payloadSegment}.${signature}`,
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects role claims outside the admin/user/guest vocabulary", () => {
+    expect(
+      resolveWaifuChatAccessToken(signWaifuJwt(claims({ role: "root" })), NOW),
+    ).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(signWaifuJwt(claims({ role: "ADMIN" })), NOW),
+    ).toBeNull();
+    expect(
+      resolveWaifuChatAccessToken(signWaifuJwt(claims({ role: "" })), NOW),
+    ).toBeNull();
+  });
+
+  it("carries balanceTokens through verbatim including an explicit null", () => {
+    const explicitNull = resolveWaifuChatAccessToken(
+      signWaifuJwt(claims({ balanceTokens: null })),
+      NOW,
+    );
+    expect(explicitNull?.balanceTokens).toBeNull();
+
+    const numeric = resolveWaifuChatAccessToken(
+      signWaifuJwt(claims({ balanceTokens: 250_000 })),
+      NOW,
+    );
+    expect(numeric?.balanceTokens).toBe(250_000);
+
+    const absent = resolveWaifuChatAccessToken(signWaifuJwt(claims()), NOW);
+    expect(Object.keys(absent ?? {}).includes("balanceTokens")).toBe(false);
+  });
+
+  it("binds to ELIZA_CLOUD_AGENT_ID when WAIFU_ELIZA_CLOUD_AGENT_ID is unset", () => {
+    process.env.ELIZA_CLOUD_AGENT_ID = "cloud-agent-9";
+
+    expect(
+      resolveWaifuChatAccessToken(
+        signWaifuJwt(claims({ cloudAgentId: "cloud-agent-9" })),
+        NOW,
+      )?.role,
+    ).toBe("guest");
+    expect(
+      resolveWaifuChatAccessToken(
+        signWaifuJwt(claims({ cloudAgentId: "cloud-agent-2" })),
+        NOW,
+      ),
+    ).toBeNull();
+    expect(resolveWaifuChatAccessToken(signWaifuJwt(claims()), NOW)).toBeNull();
+  });
+});
+
+describe("waifu chat route scoping and transport extraction", () => {
+  const futureExp = () => Math.floor(Date.now() / 1000) + 60;
+
+  const guestToken = () =>
+    signWaifuJwt({
+      iss: "waifu.fun",
+      aud: "eliza-cloud-chat",
+      exp: futureExp(),
+      role: "guest",
+      walletAddress: "0x1111111111111111111111111111111111111111",
+      tokenAddress: "0x2222222222222222222222222222222222222222",
+      chainId: 56,
+    });
+
+  const requestWithHeaders = (headers: Record<string, string>) => {
+    const req = new http.IncomingMessage(new Socket());
+    req.headers = {};
+    for (const [name, value] of Object.entries(headers)) {
+      req.headers[name] = value;
+    }
+    req.headers.host = "agent.example";
+    return req;
+  };
+
+  beforeEach(() => {
+    process.env.WAIFU_CHAT_ACCESS_JWT_SECRET = "waifu-secret";
+    process.env.TOKEN_CONTRACT_ADDRESS =
+      "0x2222222222222222222222222222222222222222";
+    process.env.TOKEN_CHAIN_ID = "56";
+    delete process.env.WAIFU_ELIZA_CLOUD_AGENT_ID;
+    delete process.env.ELIZA_CLOUD_AGENT_ID;
+  });
+
+  afterEach(() => {
+    delete process.env.WAIFU_CHAT_ACCESS_JWT_SECRET;
+    delete process.env.TOKEN_CONTRACT_ADDRESS;
+    delete process.env.TOKEN_CHAIN_ID;
+    delete process.env.WAIFU_ELIZA_CLOUD_AGENT_ID;
+    delete process.env.ELIZA_CLOUD_AGENT_ID;
+  });
+
+  it("scopes each chat-safe route by exact method for non-admin principals", () => {
+    const cases: Array<[string, string, boolean]> = [
+      ["GET", "/api/health", true],
+      ["POST", "/api/health", false],
+      ["GET", "/api/agents", true],
+      ["POST", "/api/agents", false],
+      ["GET", "/api/auth/status", true],
+      ["GET", "/api/runtime-mode", true],
+      ["GET", "/api/conversations", true],
+      ["POST", "/api/conversations", true],
+      ["DELETE", "/api/conversations", false],
+      ["GET", "/api/conversations/conv-1/messages", true],
+      ["POST", "/api/conversations/conv-1/messages", true],
+      ["PUT", "/api/conversations/conv-1/messages", false],
+      ["GET", "/api/conversations/conv-1/messages/stream", false],
+      ["POST", "/api/conversations/conv-1/messages/stream", true],
+      ["POST", "/api/conversations/conv-1/greeting", true],
+      ["GET", "/api/conversations/conv-1/greeting", false],
+      ["GET", "/api/agents/ag-1", false],
+      ["GET", "/", false],
+    ];
+
+    for (const [method, pathname, expected] of cases) {
+      expect([
+        method,
+        pathname,
+        isWaifuChatAuthorized(
+          requestWithBearer(guestToken()),
+          method,
+          pathname,
+        ),
+      ]).toEqual([method, pathname, expected]);
+    }
+  });
+
+  it("is case-insensitive about the HTTP method when scoping routes", () => {
+    expect(
+      isWaifuChatAuthorized(
+        requestWithBearer(guestToken()),
+        "post",
+        "/api/conversations/conv-1/messages/stream",
+      ),
+    ).toBe(true);
+    expect(
+      isWaifuChatAuthorized(
+        requestWithBearer(guestToken()),
+        "get",
+        "/api/health",
+      ),
+    ).toBe(true);
+    expect(
+      isWaifuChatAuthorized(
+        requestWithBearer(guestToken()),
+        "delete",
+        "/api/conversations/conv-1",
+      ),
+    ).toBe(false);
+  });
+
+  it("lets admins bypass the scoped-route allowlist entirely", () => {
+    const adminToken = signWaifuJwt({
+      iss: "waifu.fun",
+      aud: "eliza-cloud-chat",
+      exp: futureExp(),
+      role: "admin",
+      walletAddress: "0x1111111111111111111111111111111111111111",
+      tokenAddress: "0x2222222222222222222222222222222222222222",
+      chainId: 56,
+    });
+
+    expect(
+      isWaifuChatAuthorized(requestWithBearer(adminToken), "DELETE", "/"),
+    ).toBe(true);
+    expect(
+      isWaifuChatAuthorized(
+        requestWithBearer(adminToken),
+        "PATCH",
+        "/api/agents/ag-1",
+      ),
+    ).toBe(true);
+  });
+
+  it("returns no access for requests without any recognizable token header", () => {
+    expect(
+      isWaifuChatAuthorized(requestWithHeaders({}), "GET", "/api/health"),
+    ).toBe(false);
+  });
+
+  it("resolves waifu tokens presented in fallback auth headers", () => {
+    for (const name of [
+      "x-eliza-token",
+      "x-elizaos-token",
+      "x-waifu-chat-access-token",
+      "x-api-key",
+    ]) {
+      expect([
+        name,
+        isWaifuChatAuthorized(
+          requestWithHeaders({ [name]: guestToken() }),
+          "GET",
+          "/api/health",
+        ),
+      ]).toEqual([name, true]);
+    }
+
+    expect(
+      isWaifuChatAuthorized(
+        requestWithHeaders({ "x-eliza-token": "not-a-jwt" }),
+        "GET",
+        "/api/health",
+      ),
+    ).toBe(false);
+  });
+
+  it("prefers the Authorization bearer header over fallback token headers", () => {
+    const req = requestWithHeaders({
+      authorization: `Bearer ${guestToken()}`,
+      "x-eliza-token": "garbage",
+    });
+
+    expect(isWaifuChatAuthorized(req, "GET", "/api/health")).toBe(true);
+  });
+});
+
+describe("waifu resolver registration semantics", () => {
+  const futureExp = () => Math.floor(Date.now() / 1000) + 60;
+
+  const adminToken = () =>
+    signWaifuJwt({
+      iss: "waifu.fun",
+      aud: "eliza-cloud-chat",
+      exp: futureExp(),
+      role: "admin",
+      walletAddress: "0x1111111111111111111111111111111111111111",
+      tokenAddress: "0x2222222222222222222222222222222222222222",
+      chainId: 56,
+    });
+
+  beforeEach(() => {
+    process.env.WAIFU_CHAT_ACCESS_JWT_SECRET = "waifu-secret";
+    process.env.TOKEN_CONTRACT_ADDRESS =
+      "0x2222222222222222222222222222222222222222";
+    process.env.TOKEN_CHAIN_ID = "56";
+    clearTokenRoleResolvers();
+  });
+
+  afterEach(() => {
+    delete process.env.WAIFU_CHAT_ACCESS_JWT_SECRET;
+    delete process.env.TOKEN_CONTRACT_ADDRESS;
+    delete process.env.TOKEN_CHAIN_ID;
+    clearTokenRoleResolvers();
+  });
+
+  it("re-registering the same id replaces rather than double-stacks, and stale unregister handles are harmless", () => {
+    const unregisterFirst = registerTokenRoleResolver(waifuChatRoleResolver);
+    const unregisterSecond = registerTokenRoleResolver(waifuChatRoleResolver);
+
+    const access = resolveRegisteredTokenRoleAccess(
+      requestWithBearer(adminToken()),
+    );
+    expect(access?.providerId).toBe("waifu-chat");
+    expect(access?.worldRole).toBe("OWNER");
+
+    unregisterSecond();
+    expect(
+      resolveRegisteredTokenRoleAccess(requestWithBearer(adminToken())),
+    ).toBeNull();
+
+    unregisterFirst();
+    expect(
+      resolveRegisteredTokenRoleAccess(requestWithBearer(adminToken())),
+    ).toBeNull();
+  });
+
+  it("the resolver defers (null) for requests carrying no waifu token", () => {
+    registerTokenRoleResolver(waifuChatRoleResolver);
+
+    const bareRequest = new http.IncomingMessage(new Socket());
+    bareRequest.headers = {};
+
+    expect(resolveRegisteredTokenRoleAccess(bareRequest)).toBeNull();
+    expect(
+      isRegisteredTokenRoleAuthorized(bareRequest, "GET", "/api/health"),
+    ).toBe(false);
+  });
+});
