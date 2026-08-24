@@ -485,7 +485,8 @@ export class SharedRuntimeConversation {
       ];
       imports.push(
         import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
-          ({ prewarmSharedElizaRuntime }) => prewarmSharedElizaRuntime(),
+          ({ prewarmSharedElizaStreamingContext }) =>
+            prewarmSharedElizaStreamingContext(),
         ),
       );
       await Promise.all(imports);
@@ -536,12 +537,11 @@ export class SharedRuntimeConversation {
     let canceled = false;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"success":'));
         void completion.then(
           () => {
             if (canceled) return;
-            controller.enqueue(
-              new TextEncoder().encode(JSON.stringify({ success: true })),
-            );
+            controller.enqueue(new TextEncoder().encode("true}"));
             controller.close();
           },
           (error) => {
