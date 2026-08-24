@@ -280,6 +280,16 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/diagnostics\.slice\(/,
 		/args[^\n]*join\([^\n]*\.slice\(/,
 	],
+	"packages/cloud/shared/src/lib/storage/object-store.ts": [
+		/clampInlineDiagnosticText/,
+		/oversizeInline/,
+		/truncateToBytes/,
+	],
+	"packages/cloud/shared/src/lib/services/job-error-text.ts": [
+		/JOB_ERROR_MAX_CHARS/,
+		/TRUNCATION_SUFFIX/,
+		/MAX_CAUSE_DEPTH/,
+	],
 	"packages/cloud/shared/src/lib/eliza/runtime/initializer.ts": [
 		/msg\.substring\(/,
 	],

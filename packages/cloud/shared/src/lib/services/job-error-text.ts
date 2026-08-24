@@ -6,10 +6,8 @@
  * occurrences with nothing to locate the call site from (#23117). One of them
  * has been undeletable since 2026-07-07 for want of a stack.
  *
- * Bounded because the same column is already the wrong size in the other
- * direction: 33 rows exceed 100 KB from payload dumps, and a grouping query
- * over it failed outright with `invalid memory alloc request size 1130945444`.
- * Cutting on characters rather than bytes keeps multi-byte sequences intact.
+ * Complete error text is offloaded when necessary; an unavailable storage
+ * boundary rejects an oversize write instead of persisting a partial error.
  *
  * Three properties this module owes its callers, because the value it produces
  * is written to `jobs.error` and surfaced by the jobs API:
@@ -21,15 +19,11 @@
  * - It redacts before the text becomes durable. The logger's redactor covers
  *   process logs only — nothing scrubs this DB path, and a stack can carry a
  *   credential from the frame that raised it.
- * - It caps at exactly `JOB_ERROR_MAX_CHARS`, suffix included.
+ * - It preserves the complete redacted diagnostic and cause chain.
  */
 
 import { redactSensitiveText } from "@elizaos/core";
 
-const JOB_ERROR_MAX_CHARS = 4_000;
-const TRUNCATION_SUFFIX = "\n… truncated";
-/** Wrapped throws are common here; deeper chains are noise in a job row. */
-const MAX_CAUSE_DEPTH = 4;
 
 /** Classify an untrusted throw without allowing Proxy reflection to escape. */
 function safeError(value: unknown): Error | undefined {
@@ -95,15 +89,15 @@ function safeStack(error: Error): string {
 
 /**
  * Native stacks do not serialize `cause`, so a wrapped throw loses exactly the
- * lower-level detail this module exists to retain. Bounded by depth and
- * cycle-safe: `cause` chains can loop.
+ * lower-level detail this module exists to retain. Cause traversal is
+ * cycle-safe without imposing a depth window.
  */
 function describeErrorChain(error: unknown): string {
   const parts: string[] = [];
   const seen = new Set<unknown>();
   let current: unknown = error;
 
-  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
+  for (let depth = 0; ; depth += 1) {
     // Only the cause traversal skips nullish; a job that threw `null`
     // must still record "null" rather than an empty column.
     if (depth > 0 && (current === undefined || current === null)) break;
@@ -127,10 +121,6 @@ function describeErrorChain(error: unknown): string {
       break;
     }
     if (next === undefined) break;
-    if (depth === MAX_CAUSE_DEPTH) {
-      parts.push("caused by: [depth limit reached]");
-      break;
-    }
     current = next;
   }
 
@@ -138,9 +128,7 @@ function describeErrorChain(error: unknown): string {
 }
 
 /**
- * Redact and cap any job-error text. Exported so every branch that persists to
- * `jobs.error` — including pre-formatted ones that bypass `jobErrorText` — ends
- * at the same ceiling with the same scrubbing.
+ * Redact job-error text without discarding diagnostic content.
  */
 export function finalizeJobErrorText(text: string): string {
   let redacted: string;
@@ -153,9 +141,7 @@ export function finalizeJobErrorText(text: string): string {
     // must not become durable, so record the failure instead of the text.
     redacted = "[error text withheld: redaction failed]";
   }
-  if (redacted.length <= JOB_ERROR_MAX_CHARS) return redacted;
-  const room = JOB_ERROR_MAX_CHARS - TRUNCATION_SUFFIX.length;
-  return `${redacted.slice(0, room)}${TRUNCATION_SUFFIX}`;
+  return redacted;
 }
 
 export function jobErrorText(error: unknown): string {
