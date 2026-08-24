@@ -23,6 +23,7 @@ import { getBootConfig } from "../config/boot-config";
 import { isNative } from "../platform";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
+import { rememberCsrfTokenForUrl } from "./auth/csrf-cookie";
 import {
   cloudTokenSecsRemaining,
   refreshCloudStewardSession,
@@ -190,6 +191,7 @@ export async function authSetup(params: {
       session: AuthSessionInfo;
       csrfToken: string;
     };
+    rememberCsrfTokenForUrl(authBase(), body.csrfToken);
     return { ok: true, ...body };
   }
 
@@ -270,6 +272,7 @@ export async function authLoginPassword(params: {
       session: AuthSessionInfo;
       csrfToken: string;
     };
+    rememberCsrfTokenForUrl(authBase(), body.csrfToken);
     return { ok: true, ...body };
   }
 
