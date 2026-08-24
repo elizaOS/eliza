@@ -4,7 +4,7 @@
 
 import { expect, test } from "bun:test";
 import type { RuntimeDurableObjectStub } from "../../../types/cloud-worker-env";
-import { deadlineBoundCoordinatorStub } from "./coordinator-fetch";
+import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
 
 test("deadline-bound coordinator stubs preserve Request inputs", async () => {
   const controller = new AbortController();
@@ -32,4 +32,50 @@ test("deadline-bound coordinator stubs preserve Request inputs", async () => {
   expect(seenSignal?.aborted).toBe(false);
   controller.abort();
   expect(seenSignal?.aborted).toBe(true);
+});
+
+test("coordinator deadline stops after streaming response headers arrive", async () => {
+  let seenSignal: AbortSignal | null | undefined;
+  const stub: RuntimeDurableObjectStub = {
+    fetch: async (_input, init) => {
+      seenSignal = init?.signal;
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            await Bun.sleep(30);
+            if (init?.signal?.aborted) {
+              controller.error(init.signal.reason);
+              return;
+            }
+            controller.enqueue(new TextEncoder().encode("complete"));
+            controller.close();
+          },
+        }),
+      );
+    },
+  };
+
+  const response = await coordinatorFetch(
+    stub,
+    "https://shared-runtime.internal/stream",
+    undefined,
+    10,
+  );
+  expect(await response.text()).toBe("complete");
+  expect(seenSignal?.aborted).toBe(false);
+});
+
+test("coordinator deadline still aborts before response headers", async () => {
+  const stub: RuntimeDurableObjectStub = {
+    fetch: (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+          once: true,
+        });
+      }),
+  };
+
+  await expect(
+    coordinatorFetch(stub, "https://shared-runtime.internal/stream", undefined, 10),
+  ).rejects.toMatchObject({ name: "TimeoutError" });
 });
