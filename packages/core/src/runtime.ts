@@ -3042,7 +3042,7 @@ export class AgentRuntime implements IAgentRuntime {
 					{ src: "agent", agentId: this.agentId },
 					"Database adapter not initialized; using in-memory adapter (ALLOW_NO_DATABASE)",
 				);
-				this.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
+				this.registerDatabaseAdapter(new InMemoryDatabaseAdapter(this.agentId));
 			} else {
 				this.logger.error(
 					{ src: "agent", agentId: this.agentId },

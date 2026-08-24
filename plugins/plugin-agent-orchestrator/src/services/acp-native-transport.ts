@@ -10,7 +10,12 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type { AcpJsonRpcMessage, ApprovalPreset } from "./types.js";
+import {
+  type AcpJsonRpcMessage,
+  type AcpTerminalFailure,
+  type ApprovalPreset,
+  readAcpTerminalFailure,
+} from "./types.js";
 
 export type NativeAcpEventCallback = (
   event: AcpJsonRpcMessage,
@@ -99,6 +104,7 @@ export type NativeAcpSessionClaim = {
 
 export type NativeAcpPromptResult = {
   stopReason: string;
+  terminalFailure?: AcpTerminalFailure;
 };
 
 type JsonRpcId = string | number | null;
@@ -308,8 +314,10 @@ export class NativeAcpClient {
       },
     ).then((value) => {
       const result = asRecord(value);
+      const terminalFailure = readAcpTerminalFailure(result);
       return {
         stopReason: stringValue(result?.stopReason) ?? "end_turn",
+        ...(terminalFailure ? { terminalFailure } : {}),
       };
     });
     this.activePrompts.set(sessionId, prompt);
