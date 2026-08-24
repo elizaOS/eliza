@@ -110,7 +110,17 @@ function sanitizeCommandName(name: string): string | null {
 /** Clamp a description to Telegram's limit; a description is always required. */
 function clampDescription(description: string): string {
   const trimmed = description.trim();
-  return trimmed.slice(0, TELEGRAM_COMMAND_DESCRIPTION_MAX);
+  if (trimmed.length <= TELEGRAM_COMMAND_DESCRIPTION_MAX) {
+    return trimmed;
+  }
+  let end = TELEGRAM_COMMAND_DESCRIPTION_MAX;
+  if (end > 0 && end < trimmed.length) {
+    const code = trimmed.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return trimmed.slice(0, end);
 }
 
 /**
@@ -278,7 +288,15 @@ async function dispatchAgentCommand(
       ...(sender.senderName ? { senderName: sender.senderName } : {}),
     });
     if (resolved.handled && resolved.reply !== undefined) {
-      await ctx.reply(resolved.reply.slice(0, TELEGRAM_MESSAGE_MAX));
+      const text = resolved.reply;
+      let end = Math.min(text.length, TELEGRAM_MESSAGE_MAX);
+      if (end < text.length && end > 0) {
+        const code = text.charCodeAt(end - 1);
+        if (code >= 0xd800 && code <= 0xdbff) {
+          end -= 1;
+        }
+      }
+      await ctx.reply(text.slice(0, end));
       return;
     }
   }

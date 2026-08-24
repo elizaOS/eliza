@@ -362,3 +362,13 @@ describe("applyTelegramSetMyCommands", () => {
     expect(setMyCommands).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("clampDescription surrogate pair safety", () => {
+  it("never splits surrogate pairs when descriptions exceed maximum length", () => {
+    const descriptors = buildTelegramCommandDescriptors();
+    for (const descriptor of descriptors) {
+      expect(descriptor.description.length).toBeLessThanOrEqual(256);
+      expect(descriptor.description.endsWith("\uD83D")).toBe(false);
+    }
+  });
+});
