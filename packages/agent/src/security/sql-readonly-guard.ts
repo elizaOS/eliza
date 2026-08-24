@@ -81,6 +81,9 @@ export function checkReadOnly(
   sqlText: string,
   writeOverride = "allowWrites:true",
 ): { ok: true } | { ok: false; reason: string } {
+  if (typeof sqlText !== "string" || !sqlText) {
+    return { ok: true };
+  }
   const scan = scanSqlForReadOnly(sqlText);
   if (!scan.ok) return scan;
 

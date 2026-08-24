@@ -289,6 +289,12 @@ describe("checkReadOnly", () => {
     expect(checkReadOnly("SELECT ';' AS punctuation")).toEqual({ ok: true });
   });
 
+  it("safely accepts non-string or empty sqlText inputs", () => {
+    expect(checkReadOnly(undefined as unknown as string)).toEqual({ ok: true });
+    expect(checkReadOnly(null as unknown as string)).toEqual({ ok: true });
+    expect(checkReadOnly("")).toEqual({ ok: true });
+  });
+
   it("passes through an unterminated block comment from the scanner", () => {
     expect(checkReadOnly("SELECT 1 /* never closed")).toEqual({
       ok: false,
