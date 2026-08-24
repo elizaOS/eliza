@@ -22,20 +22,46 @@ export async function blobToBase64(blob: Blob): Promise<string> {
 /**
  * Get duration of audio file
  */
+const AUDIO_DURATION_TIMEOUT_MS = 10_000;
+
 export async function getAudioDuration(blob: Blob): Promise<number> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
 
-    audio.addEventListener("loadedmetadata", () => {
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
       URL.revokeObjectURL(url);
+      audio.removeAttribute("src");
+      audio.load();
+    };
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      cleanup();
+      reject(err);
+    };
+
+    audio.addEventListener("loadedmetadata", () => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      cleanup();
       resolve(audio.duration);
     });
 
     audio.addEventListener("error", () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Failed to load audio"));
+      fail(new Error("Failed to load audio"));
     });
+
+    // Some corrupt media or mobile browsers never fire loadedmetadata/error;
+    // never leave the caller hanging on a promise that can't settle.
+    timeout = setTimeout(() => {
+      fail(new Error("Timed out loading audio metadata"));
+    }, AUDIO_DURATION_TIMEOUT_MS);
+    audio.load();
   });
 }
 
