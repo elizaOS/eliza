@@ -313,8 +313,59 @@ interface TaskAgentStatus {
 }
 
 type DispatchResult =
-	| { dispatched: true; agents: TaskAgentStatus[] }
+	| {
+			dispatched: true;
+			agents: TaskAgentStatus[];
+			/**
+			 * True when the delegation action already delivered a user-facing
+			 * kickoff ack for this dispatch (its own callback line or an
+			 * out-of-band send). The caller must then NOT post its own
+			 * "Building X now" line — two kickoff bubbles for one build read as
+			 * spam interleaved into whatever conversation is in flight (live
+			 * 2026-08-24, daily-hue: the TASKS early ack plus this action's line
+			 * landed back-to-back inside an unrelated Q&A).
+			 */
+			ackDelivered: boolean;
+			/**
+			 * The delegated turn's declared user-facing text, when it claimed
+			 * one. Absent on the out-of-band ack path, where the delegation's
+			 * contract is to never re-claim the delivered text (see the
+			 * suppressPlannerReply handling in the orchestrator's TASKS create).
+			 */
+			ackText?: string;
+	  }
 	| { dispatched: false; reason: string };
+
+/**
+ * Read whether a coding-delegation ActionResult says the user-facing kickoff
+ * ack was already delivered, and with what text. Two structural signals cover
+ * both delivery paths of the orchestrator's TASKS create:
+ * - `userFacingText` + `verifiedUserFacing`: the ack went out via the
+ *   handler callback and the result claims it as the turn's delivery.
+ * - `data.suppressPlannerReply === true`: the ack went out out-of-band
+ *   (sendMessageToTarget) and the result deliberately does NOT re-claim the
+ *   text — callers must not re-deliver anything either.
+ * Exported for unit tests; not part of the plugin's public API contract.
+ */
+export function delegatedKickoffAckDelivery(result: ActionResult | undefined): {
+	delivered: boolean;
+	text?: string;
+} {
+	if (!result) return { delivered: false };
+	const claimed =
+		typeof result.userFacingText === "string" &&
+		result.userFacingText.trim().length > 0 &&
+		result.verifiedUserFacing === true
+			? result.userFacingText
+			: undefined;
+	if (claimed !== undefined) return { delivered: true, text: claimed };
+	const data = result.data;
+	const suppressed =
+		data !== null &&
+		typeof data === "object" &&
+		(data as Record<string, unknown>).suppressPlannerReply === true;
+	return suppressed ? { delivered: true } : { delivered: false };
+}
 
 function readStringField(
 	source: Record<string, unknown>,
@@ -502,7 +553,13 @@ async function dispatchCodingAgent({
 		};
 	}
 
-	return { dispatched: true, agents };
+	const ack = delegatedKickoffAckDelivery(result);
+	return {
+		dispatched: true,
+		agents,
+		ackDelivered: ack.delivered,
+		...(ack.text !== undefined ? { ackText: ack.text } : {}),
+	};
 }
 
 /**
@@ -812,17 +869,32 @@ async function createNewApp({
 	// identifiers in a user-visible message read as a malfunction. The
 	// verified+turnComplete contract makes the callback the turn's single
 	// delivery (the gated evaluator skip), same as LIST_CLOUD_APPS.
+	// ONE kickoff bubble per build: when the delegation action already posted
+	// its own user-facing ack (dispatch.ackDelivered), this action's line is a
+	// duplicate — two back-to-back kickoff bubbles interleaved into whatever
+	// conversation was live (2026-08-24, daily-hue: the TASKS early ack plus
+	// this line landed inside an unrelated Q&A as a three-bubble pile-up).
 	const text = `Building ${displayName} now — I'll post the link once it's live.`;
 	const dispatchDetail = `Started app create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
-	await callback?.({ text });
+	if (!dispatch.ackDelivered) {
+		await callback?.({ text });
+	}
 	logger.info(
 		`[plugin-app-control] APP/create new name=${name} workdir=${workdir} dir=${appDirName} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
 		text: dispatchDetail,
-		userFacingText: text,
-		verifiedUserFacing: true,
+		// When the delegation delivered AND claimed the ack, pass its text
+		// through as the turn's user-facing record; when it delivered
+		// out-of-band (no claim), claim nothing and forward its
+		// suppressPlannerReply contract instead — re-claiming an already-sent
+		// ack redelivers it at settle.
+		...(dispatch.ackDelivered
+			? dispatch.ackText !== undefined
+				? { userFacingText: dispatch.ackText, verifiedUserFacing: true }
+				: {}
+			: { userFacingText: text, verifiedUserFacing: true }),
 		turnComplete: true,
 		values: {
 			mode: "create",
@@ -840,6 +912,9 @@ async function createNewApp({
 			task,
 			agents: dispatch.agents,
 			suppressActionResultClipboard: true,
+			...(dispatch.ackDelivered && dispatch.ackText === undefined
+				? { suppressPlannerReply: true }
+				: {}),
 		},
 	};
 }
@@ -909,18 +984,25 @@ async function editExistingApp({
 	}
 
 	const task = dispatch.agents[0];
-	// Same single-human-sentence contract as the create path above.
+	// Same single-human-sentence contract as the create path above — including
+	// the one-kickoff-bubble rule: skip this line when the delegation already
+	// acked (see createNewApp).
 	const text = `Updating ${app.displayName} now — I'll post the link once the changes are live.`;
 	const dispatchDetail = `Started app edit task for ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
-	await callback?.({ text });
+	if (!dispatch.ackDelivered) {
+		await callback?.({ text });
+	}
 	logger.info(
 		`[plugin-app-control] APP/create edit appName=${app.name} workdir=${workdir} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
 		text: dispatchDetail,
-		userFacingText: text,
-		verifiedUserFacing: true,
+		...(dispatch.ackDelivered
+			? dispatch.ackText !== undefined
+				? { userFacingText: dispatch.ackText, verifiedUserFacing: true }
+				: {}
+			: { userFacingText: text, verifiedUserFacing: true }),
 		turnComplete: true,
 		values: {
 			mode: "create",
@@ -936,6 +1018,9 @@ async function editExistingApp({
 			task,
 			agents: dispatch.agents,
 			suppressActionResultClipboard: true,
+			...(dispatch.ackDelivered && dispatch.ackText === undefined
+				? { suppressPlannerReply: true }
+				: {}),
 		},
 	};
 }
