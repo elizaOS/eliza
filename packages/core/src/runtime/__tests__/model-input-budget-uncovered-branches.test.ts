@@ -102,7 +102,7 @@ describe("estimateModelInputTokens", () => {
 		expect(tokens).toBe(estimateTokensFromChars(JSON.stringify(schema).length));
 	});
 
-	it("measures only completeRequest when the key is present, whatever its value", () => {
+	it("measures only a defined completeRequest when the key is present", () => {
 		expect(
 			estimateModelInputTokens({
 				completeRequest: "abcdefg",
@@ -116,13 +116,19 @@ describe("estimateModelInputTokens", () => {
 				completeRequest: { canary: "abcd" },
 			}),
 		).toBe(estimateTokensFromChars(JSON.stringify({ canary: "abcd" }).length));
+	});
 
-		expect(
+	it("rejects an explicitly undefined completeRequest instead of measuring empty", () => {
+		expect(() =>
 			estimateModelInputTokens({
 				completeRequest: undefined,
 				messages: [userMessageOfChars(70_000)],
 			}),
-		).toBe(0);
+		).toThrow(
+			expect.objectContaining({
+				code: "MODEL_INPUT_COMPLETE_REQUEST_MISSING",
+			}),
+		);
 	});
 
 	it("switches between per-message chars and whole-request UTF-8 bytes by mode", () => {

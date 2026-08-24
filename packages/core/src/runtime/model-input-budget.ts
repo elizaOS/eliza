@@ -137,6 +137,15 @@ export function estimateModelInputTokens(args: {
 }): number {
 	const estimationMode = args.estimationMode ?? "heuristic";
 	if (Object.hasOwn(args, "completeRequest")) {
+		if (args.completeRequest === undefined) {
+			throw new ElizaError(
+				"Complete model request cannot be explicitly undefined",
+				{
+					code: "MODEL_INPUT_COMPLETE_REQUEST_MISSING",
+					severity: "fatal",
+				},
+			);
+		}
 		const measured = textMeasure(args.completeRequest, estimationMode);
 		return estimationMode === "utf8-upper-bound"
 			? measured
