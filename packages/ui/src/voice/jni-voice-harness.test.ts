@@ -8,7 +8,6 @@
  * the 20-entry recent-turns ring buffer surfaced through `status()`.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { installJniVoiceHarness } from "./jni-voice-harness";
 import type {
   JniAttributedTurn,
   JniCompletedPcmTurn,
@@ -105,11 +104,14 @@ vi.mock("./jni-voice-pipeline", () => ({
   JniVoicePipeline: FakeJniVoicePipeline,
 }));
 
-type JniVoiceHarnessOptions = Parameters<typeof installJniVoiceHarness>[0];
-
 // Tests re-import the subject after vi.resetModules() so its private
-// singletons (pipeline, recentTurns, installed flag) start fresh; the static
-// value binding keeps the option types tied to the real source.
+// singletons (pipeline, recentTurns, installed flag) start fresh; the option
+// type is queried off that same dynamic module so it stays tied to source.
+type JniVoiceHarnessModule = typeof import("./jni-voice-harness");
+type JniVoiceHarnessOptions = Parameters<
+  JniVoiceHarnessModule["installJniVoiceHarness"]
+>[0];
+
 async function loadHarness(options: JniVoiceHarnessOptions = {}) {
   const module = await import("./jni-voice-harness");
   return module.installJniVoiceHarness(options);
