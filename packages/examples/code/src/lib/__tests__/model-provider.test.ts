@@ -114,6 +114,33 @@ describe("resolveModelProvider", () => {
       }),
     ).toThrowError(/No model provider configured/);
   });
+
+  it("keeps an empty-string ELIZA_CODE_PROVIDER off ELIZA_CODE_MODEL_PROVIDER", () => {
+    // ?? only skips nullish values, so a present-but-empty explicit provider
+    // falls through to auto-detect instead of reading the secondary variable.
+    expect(
+      resolveModelProvider({
+        ELIZA_CODE_PROVIDER: "",
+        ELIZA_CODE_MODEL_PROVIDER: "openai",
+        ANTHROPIC_API_KEY: "key-anthropic",
+      }),
+    ).toBe("anthropic");
+  });
+
+  it("treats a whitespace-only ELIZA_CODE_PROVIDER as unset", () => {
+    expect(
+      resolveModelProvider({
+        ELIZA_CODE_PROVIDER: "   ",
+        OPENAI_API_KEY: "key-openai",
+      }),
+    ).toBe("openai");
+  });
+
+  it("throws with no keys even when the explicit value is unrecognized", () => {
+    expect(() =>
+      resolveModelProvider({ ELIZA_CODE_PROVIDER: "gemini" }),
+    ).toThrowError(/No model provider configured/);
+  });
 });
 
 describe("applyElizaCodeProviderEnv", () => {
@@ -203,6 +230,50 @@ describe("applyElizaCodeProviderEnv", () => {
     expect(emptyValues.OPENAI_LARGE_MODEL).toBeUndefined();
     expect(emptyValues.OPENAI_SMALL_MODEL).toBeUndefined();
     expect(emptyValues.ELIZA_CODE_PROVIDER).toBeUndefined();
+  });
+
+  it("treats whitespace-only ELIZA_CODE_* sources as missing everywhere", () => {
+    const env: Record<string, string | undefined> = {
+      ELIZA_CODE_API_KEY: "   ",
+      ELIZA_CODE_BASE_URL: "\t",
+      ELIZA_CODE_MODEL_POWERFUL: "\n",
+      ELIZA_CODE_MODEL_FAST: "  \t ",
+    };
+    applyElizaCodeProviderEnv(env);
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+    expect(env.OPENAI_LARGE_MODEL).toBeUndefined();
+    expect(env.OPENAI_SMALL_MODEL).toBeUndefined();
+    expect(env.OPENAI_MEDIUM_MODEL).toBeUndefined();
+    expect(env.ELIZA_CODE_PROVIDER).toBeUndefined();
+  });
+
+  it("overwrites whitespace-only OPENAI_* targets on every mapping", () => {
+    const env: Record<string, string | undefined> = {
+      OPENAI_API_KEY: " ",
+      OPENAI_BASE_URL: "\t",
+      OPENAI_LARGE_MODEL: "\n",
+      OPENAI_SMALL_MODEL: "   ",
+      OPENAI_MEDIUM_MODEL: " \t",
+      ELIZA_CODE_API_KEY: "key-sk",
+      ELIZA_CODE_BASE_URL: "https://api.example.com/v1",
+      ELIZA_CODE_MODEL_POWERFUL: "model-large",
+      ELIZA_CODE_MODEL_FAST: "model-fast",
+    };
+    applyElizaCodeProviderEnv(env);
+    expect(env.OPENAI_API_KEY).toBe("key-sk");
+    expect(env.OPENAI_BASE_URL).toBe("https://api.example.com/v1");
+    expect(env.OPENAI_LARGE_MODEL).toBe("model-large");
+    expect(env.OPENAI_SMALL_MODEL).toBe("model-fast");
+    expect(env.OPENAI_MEDIUM_MODEL).toBe("model-fast");
+  });
+
+  it("fills the caller's record in place and returns nothing", () => {
+    const env: Record<string, string | undefined> = {
+      ELIZA_CODE_API_KEY: "key-sk",
+    };
+    expect(applyElizaCodeProviderEnv(env)).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBe("key-sk");
   });
 });
 
@@ -296,5 +367,48 @@ describe("describeActiveModel", () => {
         OPENAI_SMALL_MODEL: "gpt-small",
       }),
     ).toBe("openai");
+  });
+
+  it("masks the anthropic small model behind a blank large model too", () => {
+    expect(
+      describeActiveModel({
+        ANTHROPIC_API_KEY: "key-anthropic",
+        ANTHROPIC_LARGE_MODEL: "",
+        ANTHROPIC_SMALL_MODEL: "cl-small",
+      }),
+    ).toBe("anthropic");
+  });
+
+  it("shows the bare provider when the large model is blank beside a small one", () => {
+    expect(
+      describeActiveModel({
+        OPENAI_API_KEY: "key-openai",
+        OPENAI_LARGE_MODEL: "   ",
+        OPENAI_SMALL_MODEL: "gpt-small",
+      }),
+    ).toBe("openai");
+  });
+
+  it("labels a provider auto-detected from the forwarded orchestrator key", () => {
+    expect(
+      describeActiveModel({
+        ELIZA_CODE_API_KEY: "key-forwarded",
+        OPENAI_LARGE_MODEL: "forwarded-large",
+      }),
+    ).toBe("forwarded-large");
+  });
+});
+
+describe("applyElizaCodeProviderEnv + describeActiveModel handoff", () => {
+  it("describes a spawned-agent env filled purely from ELIZA_CODE_* vars", () => {
+    const env: Record<string, string | undefined> = {
+      ELIZA_CODE_API_KEY: "key-forwarded",
+      ELIZA_CODE_BASE_URL: "https://api.example.com/v1",
+      ELIZA_CODE_MODEL_POWERFUL: "forwarded-large",
+      ELIZA_CODE_MODEL_FAST: "forwarded-fast",
+    };
+    applyElizaCodeProviderEnv(env);
+    expect(env.OPENAI_API_KEY).toBe("key-forwarded");
+    expect(describeActiveModel(env)).toBe("forwarded-large");
   });
 });
