@@ -1,17 +1,20 @@
 /** Exercises durable runtime installation identity against real temporary directories. */
+
+import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import type { UUID } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  __createRuntimeInstallationIdLoaderForTests,
   constructWithRuntimeInstallationIdentity,
   loadOrCreateRuntimeInstallationId,
   RuntimeInstallationIdentityUnsupportedError,
 } from "./runtime-installation-id.ts";
 
 const cleanup: string[] = [];
+const execFileAsync = promisify(execFile);
 
 async function expectNoIdentityArtifacts(directory: string): Promise<void> {
   const names = await fs.readdir(directory);
@@ -144,6 +147,54 @@ describe("runtime installation identity", () => {
     ).rejects.toThrow("parent must be a real directory");
   });
 
+  it("rejects an attacker-writable grandparent before creating state", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "runtime-owner-grandparent-"),
+    );
+    const hostileGrandparent = path.join(root, "hostile");
+    const safeParent = path.join(hostileGrandparent, "safe");
+    const state = path.join(safeParent, "state");
+    cleanup.push(root);
+    await fs.mkdir(safeParent, { recursive: true, mode: 0o700 });
+    await fs.chmod(hostileGrandparent, 0o777);
+    await expect(loadOrCreateRuntimeInstallationId(state)).rejects.toThrow(
+      "replaceable by another user",
+    );
+    await expect(fs.access(state)).rejects.toMatchObject({ code: "ENOENT" });
+    await expectNoIdentityArtifacts(safeParent);
+  });
+
+  it("does not expose test controls to a real Bun sibling consumer", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "runtime-id-consumer-"),
+    );
+    const nodeModules = path.join(root, "node_modules", "@elizaos");
+    cleanup.push(root);
+    await fs.mkdir(nodeModules, { recursive: true });
+    await fs.symlink(
+      path.resolve(import.meta.dirname, "../.."),
+      path.join(nodeModules, "agent"),
+      "dir",
+    );
+    await fs.writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "identity-sibling-consumer", type: "module" }),
+    );
+    const script = [
+      'const specifier = "@elizaos/agent/runtime/runtime-installation-id";',
+      "try {",
+      "  const loaded = await import(specifier);",
+      '  if ("__createRuntimeInstallationIdLoaderForTests" in loaded) process.exit(7);',
+      "} catch (error) {",
+      '  const expected = error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED" || String(error).includes("Cannot find module");',
+      "  if (!expected) throw error;",
+      "}",
+    ].join("\n");
+    await expect(
+      execFileAsync("bun", ["--eval", script], { cwd: root }),
+    ).resolves.toMatchObject({ stderr: "" });
+  });
+
   it("accepts a trusted pre-existing state directory", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "runtime-owner-existing-"),
@@ -191,148 +242,6 @@ describe("runtime installation identity", () => {
     await expect(loadOrCreateRuntimeInstallationId(root)).rejects.toThrow(
       "must not have multiple links",
     );
-  });
-
-  it("rejects link injection after the identity descriptor opens", async () => {
-    const root = await fs.mkdtemp(
-      path.join(os.tmpdir(), "runtime-owner-link-race-"),
-    );
-    cleanup.push(root);
-    await loadOrCreateRuntimeInstallationId(root);
-    const target = path.join(root, "runtime-installation-id");
-    let injected = false;
-    await expect(
-      __createRuntimeInstallationIdLoaderForTests({
-        afterIdentityOpen: async () => {
-          if (injected) return;
-          injected = true;
-          await fs.link(target, path.join(root, "racing-link"));
-        },
-      })(root),
-    ).rejects.toThrow("must not have multiple links");
-  });
-
-  it("rejects link injection between identity lstat and open", async () => {
-    const root = await fs.mkdtemp(
-      path.join(os.tmpdir(), "runtime-owner-lstat-link-race-"),
-    );
-    cleanup.push(root);
-    await loadOrCreateRuntimeInstallationId(root);
-    const target = path.join(root, "runtime-installation-id");
-    let injected = false;
-    await expect(
-      __createRuntimeInstallationIdLoaderForTests({
-        afterIdentityLstat: async () => {
-          if (injected) return;
-          injected = true;
-          await fs.link(target, path.join(root, "lstat-racing-link"));
-        },
-      })(root),
-    ).rejects.toThrow("must not have multiple links");
-  });
-
-  it("rejects target replacement between lstat and open", async () => {
-    const root = await fs.mkdtemp(
-      path.join(os.tmpdir(), "runtime-owner-open-race-"),
-    );
-    cleanup.push(root);
-    await loadOrCreateRuntimeInstallationId(root);
-    const target = path.join(root, "runtime-installation-id");
-    let replaced = false;
-    await expect(
-      __createRuntimeInstallationIdLoaderForTests({
-        afterIdentityLstat: async () => {
-          if (replaced) return;
-          replaced = true;
-          await fs.rename(target, path.join(root, "original-id"));
-          await fs.writeFile(target, "66666666-6666-4666-8666-666666666666\n", {
-            mode: 0o600,
-          });
-        },
-      })(root),
-    ).rejects.toThrow("changed during validation");
-  });
-
-  it("rejects target replacement after its descriptor opens", async () => {
-    const root = await fs.mkdtemp(
-      path.join(os.tmpdir(), "runtime-owner-return-race-"),
-    );
-    cleanup.push(root);
-    await loadOrCreateRuntimeInstallationId(root);
-    const target = path.join(root, "runtime-installation-id");
-    let replaced = false;
-    await expect(
-      __createRuntimeInstallationIdLoaderForTests({
-        afterIdentityOpen: async () => {
-          if (replaced) return;
-          replaced = true;
-          await fs.rename(target, path.join(root, "opened-id"));
-          await fs.writeFile(target, "77777777-7777-4777-8777-777777777777\n", {
-            mode: 0o600,
-          });
-        },
-      })(root),
-    ).rejects.toThrow("changed during validation");
-  });
-
-  it("cleans both directory inodes after substitution following pre-create validation", async () => {
-    const parent = await fs.mkdtemp(
-      path.join(os.tmpdir(), "runtime-owner-dir-race-"),
-    );
-    const root = path.join(parent, "state");
-    const moved = path.join(parent, "moved-state");
-    cleanup.push(parent);
-    let replaced = false;
-    await expect(
-      __createRuntimeInstallationIdLoaderForTests({
-        afterPreCreateValidation: async () => {
-          if (replaced) return;
-          replaced = true;
-          await fs.rename(root, moved);
-          await fs.mkdir(root, { mode: 0o700 });
-        },
-      })(root),
-    ).rejects.toThrow("state directory changed during validation");
-    await expectNoIdentityArtifacts(root);
-    await expectNoIdentityArtifacts(moved);
-  });
-
-  it("cleans both directory inodes after substitution following temporary creation", async () => {
-    const parent = await fs.mkdtemp(
-      path.join(os.tmpdir(), "runtime-owner-publish-race-"),
-    );
-    const root = path.join(parent, "state");
-    const moved = path.join(parent, "moved-state");
-    cleanup.push(parent);
-    await expect(
-      __createRuntimeInstallationIdLoaderForTests({
-        afterTemporaryCreate: async () => {
-          await fs.rename(root, moved);
-          await fs.mkdir(root, { mode: 0o700 });
-        },
-      })(root),
-    ).rejects.toThrow("state directory changed during validation");
-    await expectNoIdentityArtifacts(root);
-    await expectNoIdentityArtifacts(moved);
-  });
-
-  it("cleans both directory inodes after substitution immediately after publication", async () => {
-    const parent = await fs.mkdtemp(
-      path.join(os.tmpdir(), "runtime-owner-linked-race-"),
-    );
-    const root = path.join(parent, "state");
-    const moved = path.join(parent, "moved-state");
-    cleanup.push(parent);
-    await expect(
-      __createRuntimeInstallationIdLoaderForTests({
-        afterIdentityPublication: async () => {
-          await fs.rename(root, moved);
-          await fs.mkdir(root, { mode: 0o700 });
-        },
-      })(root),
-    ).rejects.toThrow("state directory changed during validation");
-    await expectNoIdentityArtifacts(root);
-    await expectNoIdentityArtifacts(moved);
   });
 
   it.runIf(process.platform === "win32")(

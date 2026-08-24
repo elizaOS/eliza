@@ -1,9 +1,10 @@
 /**
  * Persists the standalone host identity used to scope runtime-owned effects.
  *
- * POSIX ownership is the trust boundary: the state directory and its parent
- * must exclude writes by other users (a sticky root-owned parent is allowed),
- * and every candidate cleanup matches device/inode before unlinking. Same-UID
+ * POSIX ownership is the trust boundary: the state directory and every
+ * controlling ancestor must exclude replacement by other users (a sticky
+ * root-owned ancestor is allowed), and every candidate cleanup matches
+ * device/inode before unlinking. Same-UID
  * processes are therefore inside the runtime installation's trust domain.
  * Windows fails closed because this package has no ACL primitive that can prove
  * the equivalent boundary.
@@ -20,21 +21,11 @@ const UUID_PATTERN =
 type FileHandle = Awaited<ReturnType<typeof fs.open>>;
 type FileStat = Awaited<ReturnType<typeof fs.lstat>>;
 
-/** Test-only phase controls for deterministic filesystem race probes. */
-interface RuntimeInstallationIdTestControls {
-  afterPreCreateValidation?: () => void | Promise<void>;
-  afterIdentityLstat?: () => void | Promise<void>;
-  afterIdentityOpen?: () => void | Promise<void>;
-  beforeIdentityReturn?: () => void | Promise<void>;
-  beforeIdentityPublication?: () => void | Promise<void>;
-  afterTemporaryCreate?: () => void | Promise<void>;
-  afterIdentityPublication?: () => void | Promise<void>;
-}
-
 interface TrustedDirectory {
   handle: FileHandle;
   stat: FileStat;
   parent: TrustedParentDirectory;
+  ancestors: TrustedParentDirectory[];
 }
 
 interface TrustedParentDirectory {
@@ -49,6 +40,15 @@ export class RuntimeInstallationIdentityUnsupportedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "RuntimeInstallationIdentityUnsupportedError";
+  }
+}
+
+export class RuntimeInstallationIdentityRecoveryError extends Error {
+  readonly code = "RUNTIME_INSTALLATION_ID_RECOVERY_AMBIGUOUS";
+
+  constructor(message: string, options: ErrorOptions) {
+    super(message, options);
+    this.name = "RuntimeInstallationIdentityRecoveryError";
   }
 }
 
@@ -86,15 +86,49 @@ function assertTrustedParentDirectoryStat(stat: FileStat): void {
   }
   const uid = currentUid();
   const mode = Number(stat.mode) & 0o7777;
-  const isRuntimeOwned = uid === undefined || Number(stat.uid) === uid;
-  const isRootOwnedStickyDirectory =
-    Number(stat.uid) === 0 && (mode & 0o1000) !== 0;
-  if (!isRuntimeOwned && !isRootOwnedStickyDirectory) {
+  const isTrustedOwner =
+    uid === undefined || Number(stat.uid) === uid || Number(stat.uid) === 0;
+  if (!isTrustedOwner) {
     throw new Error("Runtime state parent is not owned by a trusted user.");
   }
   if ((mode & 0o022) !== 0 && (mode & 0o1000) === 0) {
     throw new Error("Runtime state parent is replaceable by another user.");
   }
+}
+
+function ancestorPaths(directory: string): string[] {
+  const root = path.parse(directory).root;
+  const relativeParts = path
+    .relative(root, directory)
+    .split(path.sep)
+    .filter(Boolean);
+  const paths = [root];
+  let current = root;
+  for (const part of relativeParts) {
+    current = path.join(current, part);
+    paths.push(current);
+  }
+  return paths;
+}
+
+async function closeAncestors(
+  ancestors: TrustedParentDirectory[],
+): Promise<void> {
+  let failure: unknown;
+  for (const ancestor of [...ancestors].reverse()) {
+    try {
+      await ancestor.handle.close();
+    } catch (error) {
+      failure ??= error;
+    }
+  }
+  if (failure) throw failure;
+}
+
+async function revalidateAncestorChain(
+  ancestors: TrustedParentDirectory[],
+): Promise<void> {
+  for (const ancestor of ancestors) await revalidateParentPath(ancestor);
 }
 
 async function revalidateParentPath(
@@ -133,19 +167,20 @@ async function openTrustedStateDirectory(
   stateDirectory: string,
 ): Promise<TrustedDirectory> {
   const parentPath = path.dirname(stateDirectory);
-  const parentPathStat = await fs.lstat(parentPath);
-  assertTrustedParentDirectoryStat(parentPathStat);
-  const parentHandle = await fs.open(
-    parentPath,
-    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-  );
-  const parent = {
-    path: parentPath,
-    stat: parentPathStat,
-    handle: parentHandle,
-  };
+  const ancestors: TrustedParentDirectory[] = [];
   try {
-    await revalidateParentPath(parent);
+    for (const ancestorPath of ancestorPaths(parentPath)) {
+      const ancestorStat = await fs.lstat(ancestorPath);
+      assertTrustedParentDirectoryStat(ancestorStat);
+      const handle = await fs.open(
+        ancestorPath,
+        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+      );
+      ancestors.push({ path: ancestorPath, stat: ancestorStat, handle });
+    }
+    const parent = ancestors.at(-1);
+    if (!parent) throw new Error("Runtime state parent chain is empty.");
+    await revalidateAncestorChain(ancestors);
     try {
       await fs.mkdir(stateDirectory, { mode: 0o700 });
     } catch (error) {
@@ -157,17 +192,17 @@ async function openTrustedStateDirectory(
       stateDirectory,
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     );
-    const trusted = { stat: pathStat, handle, parent };
+    const trusted = { stat: pathStat, handle, parent, ancestors };
     try {
       await revalidateDirectoryPath(stateDirectory, trusted);
-      await revalidateParentPath(parent);
+      await revalidateAncestorChain(ancestors);
       return trusted;
     } catch (error) {
       await handle.close();
       throw error;
     }
   } catch (error) {
-    await parentHandle.close();
+    await closeAncestors(ancestors);
     throw error;
   }
 }
@@ -193,9 +228,7 @@ async function finalIdentityRevalidation(
   openedStat: FileStat,
   stateDirectory: string,
   trustedDirectory: TrustedDirectory,
-  controls: RuntimeInstallationIdTestControls,
 ): Promise<void> {
-  await controls.beforeIdentityReturn?.();
   const [descriptorStat, pathStat] = await Promise.all([
     file.stat(),
     fs.lstat(target),
@@ -215,7 +248,6 @@ async function readInstallationId(
   target: string,
   stateDirectory: string,
   trustedDirectory: TrustedDirectory,
-  controls: RuntimeInstallationIdTestControls,
 ): Promise<UUID | undefined> {
   let pathStat: FileStat;
   try {
@@ -233,7 +265,6 @@ async function readInstallationId(
       "Runtime installation identity must not have multiple links.",
     );
   }
-  await controls.afterIdentityLstat?.();
   const file = await fs.open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const openedStat = await file.stat();
@@ -252,7 +283,6 @@ async function readInstallationId(
       await file.chmod(0o600);
       await file.sync();
     }
-    await controls.afterIdentityOpen?.();
     const value = (await file.readFile("utf8")).trim();
     if (!UUID_PATTERN.test(value)) {
       throw new Error(`Runtime installation identity is corrupt: ${target}`);
@@ -263,7 +293,6 @@ async function readInstallationId(
       openedStat,
       stateDirectory,
       trustedDirectory,
-      controls,
     );
     return value.toLowerCase() as UUID;
   } finally {
@@ -354,25 +383,41 @@ async function cleanupCandidate(
   candidateStat: FileStat,
   removePublishedIdentity: boolean,
 ): Promise<void> {
-  const directories = await pathsForTrustedDirectory(stateDirectory, trusted);
-  for (const directory of directories) {
-    if (removePublishedIdentity) {
-      await removeCandidateName(
-        directory,
-        INSTALLATION_ID_FILENAME,
-        candidateStat,
-      );
+  try {
+    const directories = await pathsForTrustedDirectory(stateDirectory, trusted);
+    for (const directory of directories) {
+      if (removePublishedIdentity) {
+        await removeCandidateName(
+          directory,
+          INSTALLATION_ID_FILENAME,
+          candidateStat,
+        );
+      }
+      await removeCandidateName(directory, temporaryName, candidateStat);
     }
-    await removeCandidateName(directory, temporaryName, candidateStat);
+    await trusted.handle.sync();
+  } catch (error) {
+    throw new RuntimeInstallationIdentityRecoveryError(
+      "Runtime installation identity rollback could not be durably confirmed.",
+      { cause: error },
+    );
   }
 }
 
 /** Loads one durable UUID per trusted state directory without following links. */
 async function loadOrCreateRuntimeInstallationIdImpl(
   stateDirectory: string,
-  controls: RuntimeInstallationIdTestControls = {},
 ): Promise<UUID> {
-  const resolvedStateDirectory = path.resolve(stateDirectory);
+  const requestedStateDirectory = path.resolve(stateDirectory);
+  const requestedParent = path.dirname(requestedStateDirectory);
+  const requestedParentStat = await fs.lstat(requestedParent);
+  if (requestedParentStat.isSymbolicLink()) {
+    throw new Error("Runtime state parent must be a real directory.");
+  }
+  const resolvedStateDirectory = path.join(
+    await fs.realpath(requestedParent),
+    path.basename(requestedStateDirectory),
+  );
   const trustedDirectory = await openTrustedStateDirectory(
     resolvedStateDirectory,
   );
@@ -382,21 +427,20 @@ async function loadOrCreateRuntimeInstallationIdImpl(
       target,
       resolvedStateDirectory,
       trustedDirectory,
-      controls,
     );
     if (existing) return existing;
 
     await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
-    await revalidateParentPath(trustedDirectory.parent);
-    await controls.afterPreCreateValidation?.();
+    await revalidateAncestorChain(trustedDirectory.ancestors);
     await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
     const candidate = randomUUID() as UUID;
     const temporaryName = `.${INSTALLATION_ID_FILENAME}.${randomUUID()}.tmp`;
     const temporary = path.join(resolvedStateDirectory, temporaryName);
     const file = await fs.open(temporary, "wx", 0o600);
-    const candidateStat = await file.stat();
+    let candidateStat: FileStat | undefined;
     let publishedCandidate = false;
     try {
+      candidateStat = await file.stat();
       try {
         await file.writeFile(`${candidate}\n`, "utf8");
         await file.sync();
@@ -409,9 +453,7 @@ async function loadOrCreateRuntimeInstallationIdImpl(
           "Runtime installation identity candidate changed during creation.",
         );
       }
-      await controls.afterTemporaryCreate?.();
       await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
-      await controls.beforeIdentityPublication?.();
       await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
       try {
         await fs.link(temporary, target);
@@ -419,7 +461,6 @@ async function loadOrCreateRuntimeInstallationIdImpl(
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       }
-      await controls.afterIdentityPublication?.();
       await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
       await cleanupCandidate(
         resolvedStateDirectory,
@@ -433,32 +474,62 @@ async function loadOrCreateRuntimeInstallationIdImpl(
         target,
         resolvedStateDirectory,
         trustedDirectory,
-        controls,
       );
       if (!published) {
         throw new Error("Runtime installation identity was not published.");
       }
       return published;
     } catch (error) {
-      await file.close().catch((closeError: NodeJS.ErrnoException) => {
-        // error-policy:J2 The creation error remains authoritative when its
-        // descriptor was already closed; any other close error is fail-closed.
-        if (closeError.code !== "EBADF") throw closeError;
-      });
-      await cleanupCandidate(
-        resolvedStateDirectory,
-        trustedDirectory,
-        temporaryName,
-        candidateStat,
-        publishedCandidate,
-      );
+      let closeFailure: unknown;
+      try {
+        await file.close();
+      } catch (closeError) {
+        if ((closeError as NodeJS.ErrnoException).code !== "EBADF") {
+          closeFailure = closeError;
+        }
+      }
+      try {
+        if (candidateStat) {
+          await cleanupCandidate(
+            resolvedStateDirectory,
+            trustedDirectory,
+            temporaryName,
+            candidateStat,
+            publishedCandidate,
+          );
+        } else {
+          await revalidateDirectoryPath(
+            resolvedStateDirectory,
+            trustedDirectory,
+          );
+          await fs.unlink(temporary);
+          await trustedDirectory.handle.sync();
+        }
+      } catch (cleanupError) {
+        throw new RuntimeInstallationIdentityRecoveryError(
+          "Runtime installation identity candidate cleanup is ambiguous.",
+          {
+            cause: new AggregateError(
+              [error, closeFailure, cleanupError].filter(
+                (failure) => failure !== undefined,
+              ),
+            ),
+          },
+        );
+      }
+      if (closeFailure) {
+        throw new RuntimeInstallationIdentityRecoveryError(
+          "Runtime installation identity candidate descriptor did not close cleanly.",
+          { cause: new AggregateError([error, closeFailure]) },
+        );
+      }
       throw error;
     }
   } finally {
     try {
       await trustedDirectory.handle.close();
     } finally {
-      await trustedDirectory.parent.handle.close();
+      await closeAncestors(trustedDirectory.ancestors);
     }
   }
 }
@@ -473,14 +544,6 @@ export async function loadOrCreateRuntimeInstallationId(
     );
   }
   return await loadOrCreateRuntimeInstallationIdImpl(stateDirectory);
-}
-
-/** @internal Test-only factory; stripped from production declarations. */
-export function __createRuntimeInstallationIdLoaderForTests(
-  controls: RuntimeInstallationIdTestControls,
-): (stateDirectory: string) => Promise<UUID> {
-  return async (stateDirectory) =>
-    await loadOrCreateRuntimeInstallationIdImpl(stateDirectory, controls);
 }
 
 /** Loads identity, rechecks cancellation, and only then invokes the constructor. */
