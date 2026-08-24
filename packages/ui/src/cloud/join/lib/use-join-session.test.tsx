@@ -128,14 +128,24 @@ describe("useJoinSessionAuth", () => {
     expect(result.current.ready).toBe(true);
   });
 
-  it("treats a token with no exp claim as live (the hook only rejects past exp)", () => {
+  it("treats a token with no exp claim as unauthenticated", () => {
     storage.setItem(STEWARD_TOKEN_KEY, makeJwt({ userId: "u1" }));
 
     const { result } = renderHook(() => useJoinSessionAuth(), {
       wrapper: NO_PROVIDER,
     });
 
-    expect(result.current.authenticated).toBe(true);
+    expect(result.current.authenticated).toBe(false);
+  });
+
+  it("treats a token with a non-numeric exp claim as unauthenticated", () => {
+    storage.setItem(STEWARD_TOKEN_KEY, makeJwt({ userId: "u1", exp: "soon" }));
+
+    const { result } = renderHook(() => useJoinSessionAuth(), {
+      wrapper: NO_PROVIDER,
+    });
+
+    expect(result.current.authenticated).toBe(false);
   });
 
   it("treats a non-JWT string as unauthenticated", () => {
