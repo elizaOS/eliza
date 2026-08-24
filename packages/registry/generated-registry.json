@@ -138,6 +138,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@bridgenode/plugin-x402": {
+      "git": {
+        "repo": "bridgenode-ai/elizaos-plugin-x402",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@bridgenode/plugin-x402",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Pay-per-request LLM inference via x402 on Solana USDC — no API keys, no accounts, gas sponsored",
+      "homepage": "https://github.com/bridgenode-ai/elizaos-plugin-x402",
+      "topics": [
+        "x402",
+        "solana",
+        "usdc",
+        "llm",
+        "inference",
+        "payment"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@davyjones0x/plugin-peer-cash": {
       "git": {
         "repo": "ADWilkinson/plugin-peer-cash",
