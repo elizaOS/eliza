@@ -9,6 +9,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
+import { isIP } from "node:net";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { canonicalJsonString } from "@elizaos/shared/canonical-json";
@@ -187,11 +188,15 @@ function canonicalSha256(value: unknown, source: string): string {
 
 function isLoopbackUrl(raw: string): boolean {
   const url = new URL(raw);
+  const hostname =
+    url.hostname.startsWith("[") && url.hostname.endsWith("]")
+      ? url.hostname.slice(1, -1)
+      : url.hostname;
   return (
     url.protocol === "http:" &&
-    (url.hostname === "localhost" ||
-      url.hostname === "[::1]" ||
-      url.hostname.startsWith("127.")) &&
+    (hostname === "localhost" ||
+      hostname === "::1" ||
+      (isIP(hostname) === 4 && hostname.split(".", 1)[0] === "127")) &&
     !url.username &&
     !url.password &&
     !url.search &&
@@ -622,6 +627,17 @@ export class ScenarioStabilitySubprocessAdapter
         receipt.provider !== input.target.model.provider ||
         receipt.model !== input.target.model.model ||
         receipt.liveModelInvoked !== true ||
+        !Number.isSafeInteger(receipt.requestCount) ||
+        (receipt.requestCount as number) <= 0 ||
+        !Number.isSafeInteger(input.budgets.maxModelRequests) ||
+        (input.budgets.maxModelRequests as number) <= 0 ||
+        (receipt.requestCount as number) >
+          (input.budgets.maxModelRequests as number) ||
+        receipt.inputTokens !== execution.inputTokens ||
+        receipt.outputTokens !== execution.outputTokens ||
+        execution.inputTokens <= 0 ||
+        !Array.isArray(receipt.meteringFailures) ||
+        receipt.meteringFailures.length !== 0 ||
         receipt.namespace !== session.manifest.namespace ||
         receipt.manifestId !== session.manifest.manifestId ||
         receipt.generation !== session.generation ||
