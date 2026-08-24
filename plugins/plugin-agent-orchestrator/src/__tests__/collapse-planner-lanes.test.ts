@@ -3,6 +3,7 @@ import {
   collapsePlannerLanes,
   looksLikeFollowUpToInFlightWork,
 } from "../actions/tasks.js";
+import { looksLikeStatusInquiry } from "../services/ask-shapes.js";
 
 const PHASES = [
   "Build Tetris game logic and UI",
@@ -81,6 +82,32 @@ describe("collapsePlannerLanes", () => {
       "write a python script that picks a random card",
     ]) {
       expect(looksLikeFollowUpToInFlightWork(text)).toBe(false);
+    }
+  });
+});
+
+describe("looksLikeStatusInquiry (fold guard)", () => {
+  it("progress questions classify as status, never fold candidates", () => {
+    for (const text of [
+      "hows the pomodoro coming along?",
+      "is it done yet",
+      "any update on the build?",
+      "wheres my link",
+      "whats the status",
+      "still working on it?",
+    ]) {
+      expect(looksLikeStatusInquiry(text)).toBe(true);
+    }
+  });
+
+  it("imperative content defeats the status classification — those still fold", () => {
+    for (const text of [
+      "hows it going? also make the button red",
+      "any update? change the background to dark",
+      "add a reset button",
+      "make it dark mode",
+    ]) {
+      expect(looksLikeStatusInquiry(text)).toBe(false);
     }
   });
 });

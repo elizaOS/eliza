@@ -4,17 +4,6 @@
  * runners enforce access, routing, lifecycle, and session-event invariants.
  */
 
-import {
-  ANAPHOR_RE,
-  FOLLOW_UP_SHAPE_RE,
-  NEW_DELIVERABLE_RE,
-} from "../services/ask-shapes.js";
-import {
-  activateFollowUpOrigin,
-  notePendingFollowUpOrigin,
-  readFollowUpOrigin,
-  restoreFollowUpOrigin,
-} from "../services/follow-up-origin.js";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import {
@@ -63,7 +52,19 @@ import {
   isAppBuildTask,
   resolveAppDeployConfig,
 } from "../services/app-deploy-guidance.js";
+import {
+  ANAPHOR_RE,
+  FOLLOW_UP_SHAPE_RE,
+  looksLikeStatusInquiry,
+  NEW_DELIVERABLE_RE,
+} from "../services/ask-shapes.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
+import {
+  activateFollowUpOrigin,
+  notePendingFollowUpOrigin,
+  readFollowUpOrigin,
+  restoreFollowUpOrigin,
+} from "../services/follow-up-origin.js";
 import {
   collisionProviderFromWorkspaceService,
   LanePlannerService,
@@ -4128,7 +4129,14 @@ async function runSend(
       const followUp =
         pickString(params, content, "input") ??
         pickString(params, content, "task");
-      if (followUp) {
+      // A progress QUESTION about in-flight work must never fold — the fold
+      // forwards it to the worker as a build instruction (live 2026-08-24:
+      // "hows the pomodoro coming along?" folded into the lane and a second
+      // copy of the app deployed). Status routing owns it.
+      const statusInquiry =
+        followUp !== undefined &&
+        looksLikeStatusInquiry(unwrapUserMessageText(_message) || followUp);
+      if (followUp && !statusInquiry) {
         const roomId = String(_message.roomId ?? "");
         const all = await Promise.resolve(service.listSessions());
         const predecessor = [...all].reverse().find((candidate) => {
