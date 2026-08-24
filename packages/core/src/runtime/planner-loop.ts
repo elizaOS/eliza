@@ -4897,7 +4897,9 @@ async function finishWithForcedSynthesis(params: {
 			evaluator,
 			finalMessage: message,
 			terminalFailure: {
-				kind: "coding_mutation_unverified",
+				kind: verificationFailure
+					? "coding_verification_failed"
+					: "coding_mutation_unverified",
 				...(verificationFailure
 					? { code: "CODING_VERIFICATION_REPAIR_EXHAUSTED" }
 					: {}),

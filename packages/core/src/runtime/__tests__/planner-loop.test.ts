@@ -1773,7 +1773,7 @@ describe("v5 planner loop skeleton", () => {
 					),
 				).toHaveLength(1);
 				expect(result.terminalFailure).toMatchObject({
-					kind: "coding_mutation_unverified",
+					kind: "coding_verification_failed",
 					code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
 				});
 				expect(runtime.logger.warn).toHaveBeenCalledWith(
@@ -1944,7 +1944,7 @@ describe("v5 planner loop skeleton", () => {
 				decision: "FINISH",
 			});
 			expect(result.terminalFailure).toMatchObject({
-				kind: "coding_mutation_unverified",
+				kind: "coding_verification_failed",
 				code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
 				transient: false,
 				message: expect.stringContaining("coding task is incomplete"),
@@ -2231,7 +2231,7 @@ describe("v5 planner loop skeleton", () => {
 					),
 				).toHaveLength(2);
 				expect(result.terminalFailure).toMatchObject({
-					kind: "coding_mutation_unverified",
+					kind: "coding_verification_failed",
 					code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
 				});
 				expect(
