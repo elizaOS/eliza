@@ -177,12 +177,13 @@ export function clampNumber(
  * Read an environment variable as an integer
  */
 export function readEnvInt(key: string): number | undefined {
-  const raw = process.env[key];
+  const raw = process.env[key]?.trim();
   if (!raw) {
     return undefined;
   }
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  if (!/^-?(0|[1-9]\d*)$/.test(raw)) return undefined;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 /**
