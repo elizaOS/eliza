@@ -316,4 +316,15 @@ describe("internal JWT jti revocation denylist (#12879)", () => {
       expect(lastRedisEnv?.REDIS_URL).toBe("redis://railway.internal:6379");
     });
   });
+
+  describe("extractBearerToken", () => {
+    test("extracts token from canonical and whitespace/case-variant headers", () => {
+      expect(mod.extractBearerToken("Bearer token123")).toBe("token123");
+      expect(mod.extractBearerToken("bearer   token123  ")).toBe("token123");
+      expect(mod.extractBearerToken("BEARER token123")).toBe("token123");
+      expect(mod.extractBearerToken("Basic abc")).toBeNull();
+      expect(mod.extractBearerToken(null)).toBeNull();
+      expect(mod.extractBearerToken("")).toBeNull();
+    });
+  });
 });
