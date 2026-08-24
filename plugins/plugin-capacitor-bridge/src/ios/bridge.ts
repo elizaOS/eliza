@@ -67,6 +67,7 @@ import {
 	toStoredModelPath,
 } from "../shared/local-inference-stored-path.ts";
 import { createModelDownloadDeadline } from "../shared/model-download-deadline.ts";
+import { createNativeModelRequestGuard } from "../shared/native-model-request.ts";
 import {
 	type StdioBridgeRequestFrame as BridgeRequest,
 	type StdioBridgeResponseFrame as BridgeResponse,
@@ -2977,22 +2978,36 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 		const structuredSlot = isStructuredGenerationSlot(slot);
 		const requestedMaxTokens = positiveInteger(params.maxTokens) ?? 256;
 		const maxTokens = Math.min(requestedMaxTokens, structuredSlot ? 256 : 128);
+		const nativeRequest = {
+			context_id: state.contextId,
+			prompt,
+			max_tokens: maxTokens,
+			temperature:
+				typeof params.temperature === "number"
+					? params.temperature
+					: structuredSlot
+						? 0.2
+						: 0.4,
+			top_p: typeof params.topP === "number" ? params.topP : 0.95,
+			top_k: positiveInteger(params.topK) ?? 40,
+			stop: mergeStopSequences(params.stopSequences),
+		};
+		const preparedRequest = createNativeModelRequestGuard({
+			provider: IOS_NATIVE_LLAMA_PROVIDER,
+			model:
+				state.modelId ??
+				(state.modelPath ? path.basename(state.modelPath) : "ios-native-llama"),
+			contextWindowTokens: nativeLlamaContextSize(),
+			outputReserveTokens: maxTokens,
+			projectRequest: () => ({
+				...nativeRequest,
+				stop: [...nativeRequest.stop],
+			}),
+		});
+		preparedRequest.assertBeforeAttempt();
 		const result = await callIosHost(
 			"llama_generate",
-			{
-				context_id: state.contextId,
-				prompt,
-				max_tokens: maxTokens,
-				temperature:
-					typeof params.temperature === "number"
-						? params.temperature
-						: structuredSlot
-							? 0.2
-							: 0.4,
-				top_p: typeof params.topP === "number" ? params.topP : 0.95,
-				top_k: positiveInteger(params.topK) ?? 40,
-				stop: mergeStopSequences(params.stopSequences),
-			},
+			nativeRequest,
 			Math.max(120_000, maxTokens * 2_000),
 		);
 		const record =

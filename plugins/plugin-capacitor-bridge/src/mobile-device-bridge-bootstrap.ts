@@ -38,6 +38,7 @@ import {
 	type MobileDeviceBridgeStatus,
 	ModelType,
 	type Plugin,
+	type PreparedModelRequestGuard,
 	resolveBackgroundInferenceBudget,
 	resolveStateDir,
 	ServiceType,
@@ -50,6 +51,7 @@ import {
 	MODEL_DOWNLOAD_IDLE_TIMEOUT_MS,
 	MODEL_DOWNLOAD_TOTAL_TIMEOUT_MS,
 } from "./shared/model-download-deadline.ts";
+import { createNativeModelRequestGuard } from "./shared/native-model-request.ts";
 
 const DEVICE_BRIDGE_PATH = "/api/local-inference/device-bridge";
 const PROVIDER = "capacitor-llama";
@@ -793,6 +795,7 @@ class MobileDeviceBridge {
 		makeMessage: (correlationId: string) => AgentOutbound,
 		timeoutMs: number,
 		timeoutMessage: string,
+		preparedRequest?: PreparedModelRequestGuard,
 	): Promise<T> {
 		const device = this.primaryDevice();
 		if (!device) {
@@ -821,6 +824,7 @@ class MobileDeviceBridge {
 				routedDeviceId: device.deviceId,
 			});
 			try {
+				preparedRequest?.assertBeforeAttempt();
 				device.socket.send(JSON.stringify(message));
 			} catch (err) {
 				clearTimeout(timeout);
@@ -861,19 +865,41 @@ class MobileDeviceBridge {
 		stopSequences?: string[];
 		maxTokens?: number;
 		temperature?: number;
+		model?: string;
+		contextWindowTokens?: number;
 	}): Promise<string> {
+		const request = {
+			prompt: args.prompt,
+			stopSequences: args.stopSequences,
+			maxTokens: args.maxTokens,
+			temperature: args.temperature,
+		};
+		const preparedRequest = createNativeModelRequestGuard({
+			provider: PROVIDER,
+			model:
+				args.model ??
+				path.basename(
+					this.primaryDevice()?.loadedPath ?? "capacitor-native-llama",
+				),
+			contextWindowTokens: args.contextWindowTokens ?? 4096,
+			outputReserveTokens: args.maxTokens ?? 256,
+			projectRequest: () => ({
+				...request,
+				stopSequences: request.stopSequences
+					? [...request.stopSequences]
+					: undefined,
+			}),
+		});
 		return this.sendToPrimary<string>(
 			this.pendingGenerates,
 			(correlationId) => ({
 				type: "generate",
 				correlationId,
-				prompt: args.prompt,
-				stopSequences: args.stopSequences,
-				maxTokens: args.maxTokens,
-				temperature: args.temperature,
+				...request,
 			}),
 			this.generateTimeoutMs,
 			"DEVICE_TIMEOUT: no device responded within deadline",
+			preparedRequest,
 		);
 	}
 
@@ -1685,10 +1711,7 @@ function bionicHostGenerateStream(
 	request: Record<string, unknown>,
 	onToken: (text: string) => void,
 ): Promise<BionicGenerateResponse> {
-	const payload = Buffer.from(
-		JSON.stringify({ ...request, op: "generateStream" }),
-		"utf8",
-	);
+	const payload = Buffer.from(JSON.stringify(request), "utf8");
 	const frame = Buffer.allocUnsafe(4 + payload.length);
 	frame.writeUInt32BE(payload.length, 0);
 	payload.copy(frame, 4);
@@ -1818,6 +1841,31 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 				maxTokens: lane.maxTokens ?? 256,
 				stopSequences: resolveBionicStopSequences(params.stopSequences),
 			};
+			const onChunk = params.onStreamChunk;
+			const streamStep = resolveBionicStreamStep();
+			const wireRequest =
+				typeof onChunk === "function"
+					? {
+							...baseRequest,
+							...(streamStep !== undefined ? { streamStep } : {}),
+							op: "generateStream",
+						}
+					: { op: "generate", ...baseRequest };
+			const preparedRequest = createNativeModelRequestGuard({
+				provider: "eliza-bionic-llama",
+				model: installed
+					? path.basename(installed.modelPath)
+					: RECOMMENDED_MODELS[slot].id,
+				contextWindowTokens:
+					installed?.contextSize ??
+					ELIZA_1_LOAD_METADATA[RECOMMENDED_MODELS[slot].id]?.contextSize ??
+					4096,
+				outputReserveTokens: baseRequest.maxTokens,
+				projectRequest: () => ({
+					...wireRequest,
+					stopSequences: [...baseRequest.stopSequences],
+				}),
+			});
 			const res = await getInferencePriorityGate().runExclusive(
 				{
 					priority,
@@ -1826,6 +1874,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 					...(params.signal ? { signal: params.signal } : {}),
 				},
 				async () => {
+					preparedRequest.assertBeforeAttempt();
 					// When the runtime wants streaming (chat SSE / voice), server-push
 					// the decode token-by-token over the UDS so the UI paints at the
 					// first token instead of after the whole reply. Otherwise one
@@ -1833,24 +1882,13 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 					// decodes per native call before flushing a frame (#11913) — the
 					// host clamps it to its JNI buffer and defaults to the #9174
 					// streaming knee (8) when the agent-side knob is unset.
-					const onChunk = params.onStreamChunk;
-					const streamStep = resolveBionicStreamStep();
 					let accumulated = "";
 					return typeof onChunk === "function"
-						? bionicHostGenerateStream(
-								bionicSock,
-								streamStep !== undefined
-									? { ...baseRequest, streamStep }
-									: baseRequest,
-								(text) => {
-									accumulated += text;
-									void onChunk(text, undefined, accumulated);
-								},
-							)
-						: bionicHostGenerate(bionicSock, {
-								op: "generate",
-								...baseRequest,
-							});
+						? bionicHostGenerateStream(bionicSock, wireRequest, (text) => {
+								accumulated += text;
+								void onChunk(text, undefined, accumulated);
+							})
+						: bionicHostGenerate(bionicSock, wireRequest);
 				},
 			);
 			if (!res.ok) {
@@ -1915,6 +1953,8 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 					stopSequences: params.stopSequences,
 					maxTokens: lane.maxTokens,
 					temperature: params.temperature,
+					model: path.basename(loadArgs.modelPath),
+					contextWindowTokens: loadArgs.contextSize ?? 4096,
 				}),
 		);
 	};

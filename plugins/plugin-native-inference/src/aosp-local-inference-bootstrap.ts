@@ -49,6 +49,7 @@ import { pipeline } from "node:stream/promises";
 import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
+  createPreparedModelRequestGuard,
   createService,
   ElizaError,
   type GenerateTextParams,
@@ -3064,6 +3065,43 @@ interface AospFusedTextLoaderState {
   kvQuantRejected?: boolean;
 }
 
+interface AospPreparedTextRequestArgs {
+  modelPath: string;
+  contextWindowTokens: number;
+  prompt: string;
+  promptTokenCount: number;
+  stopSequences?: string[];
+  grammar?: string;
+  stopOnFirstSentence?: boolean;
+  minFirstSentenceChars?: number;
+  config: AospLlmStreamConfig;
+}
+
+/**
+ * Admit the exact AOSP request after native tokenization and before stream
+ * open. The tokenizer count is authoritative for the loaded GGUF; rebuilding
+ * the projection on every attempt also detects mutation before the f16 retry.
+ */
+export function createAospPreparedTextRequestGuard(
+  args: AospPreparedTextRequestArgs,
+) {
+  return createPreparedModelRequestGuard({
+    provider: PROVIDER,
+    model: path.basename(args.modelPath),
+    contextWindowTokens: args.contextWindowTokens,
+    outputReserveTokens: args.config.maxTokens,
+    projectRequest: () => ({
+      prompt: args.prompt,
+      stopSequences: args.stopSequences ? [...args.stopSequences] : undefined,
+      grammar: args.grammar,
+      stopOnFirstSentence: args.stopOnFirstSentence,
+      minFirstSentenceChars: args.minFirstSentenceChars,
+      config: { ...args.config },
+    }),
+    countInputTokens: () => args.promptTokenCount,
+  });
+}
+
 /**
  * Tokenize `text` against the fused context via `eliza_inference_tokenize`,
  * copying the malloc'd `int*` buffer into a JS-owned `Int32Array` and freeing
@@ -3421,7 +3459,20 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         disableThinking: false,
         contextSize: active.contextSize,
       };
+      const preparedRequest = createAospPreparedTextRequestGuard({
+        modelPath: active.modelPath,
+        contextWindowTokens:
+          active.contextSize ?? readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
+        prompt: args.prompt,
+        promptTokenCount: promptTokens.length,
+        stopSequences: args.stopSequences,
+        grammar: args.grammar,
+        stopOnFirstSentence: args.stopOnFirstSentence,
+        minFirstSentenceChars: args.minFirstSentenceChars,
+        config,
+      });
       const runStream = async () => {
+        preparedRequest.assertBeforeAttempt();
         const result = await streamGenerate(active.binding, {
           ctx: active.ctx,
           config,
