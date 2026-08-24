@@ -113,7 +113,7 @@ function readShardState(file: string): ExistingShardState {
     value === null ||
     typeof value !== "object" ||
     !("schema" in value) ||
-    value.schema !== 3 ||
+    value.schema !== 4 ||
     !("status" in value) ||
     (value.status !== "in-progress" && value.status !== "complete")
   ) {

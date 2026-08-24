@@ -24,12 +24,18 @@ function writeReport(options: {
     predicted: "SPEAK" as const,
     textuallyReferencesAgent: false,
     directlyAddressesAgent: false,
+    effectiveAddressed: false,
+    addressSignals: {
+      platformMention: false,
+      replyToAgent: false,
+      textualAgentName: false,
+    },
     speakerCount: 2,
     contextTurns: 3,
   };
   const summary = summarizeTimingPredictions([prediction]);
   const report: TimingReport = {
-    schema: 3,
+    schema: 4,
     status: options.status,
     dataset: "duke-trust-lab/When2Speak",
     input: options.input,
@@ -40,6 +46,8 @@ function writeReport(options: {
     requestedModel: "test-model",
     backend: "test-backend",
     characterPreset: "minimal",
+    characterSha256: "test-character-sha256",
+    runtimeProfile: "classifier-isolated",
     trajectoryDir: options.invocation.trajectoryDir,
     selection: {
       shardIndex: options.invocation.shardIndex,

@@ -65,6 +65,15 @@ const characterPreset = option("character-preset") ?? "minimal";
 if (characterPreset !== "minimal" && characterPreset !== "eliza") {
   throw argumentError("--character-preset must be minimal or eliza");
 }
+const runtimeProfile = option("runtime-profile") ?? "classifier-isolated";
+if (
+  runtimeProfile !== "classifier-isolated" &&
+  runtimeProfile !== "production-composed"
+) {
+  throw argumentError(
+    "--runtime-profile must be classifier-isolated or production-composed",
+  );
+}
 const provider = option("provider") ?? "cli";
 const shardCount = positiveInteger("shard-count", 8);
 const workers = positiveInteger("workers", Math.min(4, shardCount));
@@ -127,8 +136,10 @@ function runShard(
       `--run-dir=${invocation.trajectoryDir}`,
       `--provider=${provider}`,
       `--character-preset=${characterPreset}`,
+      `--runtime-profile=${runtimeProfile}`,
       `--shard-index=${invocation.shardIndex}`,
       `--shard-count=${invocation.shardCount}`,
+      `--attempt=${invocation.attempt}`,
       "--checkpoint-every=1",
       ...(invocation.resume ? [`--resume=${invocation.report}`] : []),
     ];

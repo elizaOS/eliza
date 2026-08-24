@@ -80,7 +80,11 @@ describe("prompt template exports", () => {
     );
     assert.match(
       prompts.groupResponsePrecedencePolicy,
-      /expresses disagreement, doubt, confusion, or a counterpoint about the immediately preceding prior_message:agent reply -> RESPOND/,
+      /pure acknowledgement, thanks, reaction, or social closer[\s\S]*-> IGNORE, even when it names \{\{agentName\}\}[\s\S]*direct mention/,
+    );
+    assert.match(
+      prompts.groupResponsePrecedencePolicy,
+      /challenges, corrects, questions, expresses disagreement or doubt about, or asks to clarify the immediately preceding prior_message:agent reply[\s\S]*-> RESPOND/,
     );
     assert.match(
       prompts.groupResponsePrecedencePolicy,

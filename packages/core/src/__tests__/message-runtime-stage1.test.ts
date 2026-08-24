@@ -4124,8 +4124,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		// shouldRespond field guidance alone read as RESPOND on nearly all of
 		// them (live five-room evaluation: 7-10 unsolicited replies per room).
 		expect(stage1Content).toContain("ambient_turn_policy:");
+		expect(stage1Content).toContain(
+			"a direct mention, reply, or clear continuation addressed to Test Agent -> RESPOND",
+		);
+		expect(stage1Content).not.toContain("addressed to  ->");
 		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
-		expect(stage1Content).toContain("correct or clarify your own prior answer");
+		expect(stage1Content).toContain(
+			"challenges or asks to clarify your immediately preceding prior_message:agent reply",
+		);
 		expect(stage1Content).toContain("explicit standing responsibility");
 		expect(stage1Content).not.toContain("someone asks the group");
 		expect(stage1Content).not.toContain("active in the conversation");
@@ -6153,6 +6159,34 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(runtime.useModel).toHaveBeenCalledTimes(1);
 		},
 	);
+
+	it("observes a RESPOND decision without entering reply generation or planning", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				replyText: "Let me answer that.",
+			}),
+		]);
+		const observations: Array<{ decision: string; prefixHash: string }> = [];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			stage1DecisionOnly: true,
+			onStage1Decision: ({ decision, prefixHash }) => {
+				observations.push({ decision, prefixHash });
+			},
+		});
+
+		expect(result).toMatchObject({ kind: "decision", action: "RESPOND" });
+		expect(observations).toHaveLength(1);
+		expect(observations[0]?.decision).toBe("RESPOND");
+		expect(observations[0]?.prefixHash).toMatch(/^[a-f0-9]{64}$/);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
 
 	it("renders direct-message instructions that forbid ungrounded simple replies and phantom action claims", async () => {
 		const runtime = makeRuntime([

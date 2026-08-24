@@ -8,6 +8,7 @@ import type {
   TimingCharacterPreset,
   TimingInputFormat,
   TimingReport,
+  TimingRuntimeProfile,
 } from "./when2speak-eval.ts";
 import { runWhen2SpeakEval } from "./when2speak-eval.ts";
 
@@ -47,6 +48,15 @@ const characterPresetText = option("character-preset") ?? "minimal";
 if (characterPresetText !== "minimal" && characterPresetText !== "eliza")
   throw usageError("--character-preset must be minimal or eliza");
 const characterPreset: TimingCharacterPreset = characterPresetText;
+const runtimeProfileText = option("runtime-profile") ?? "classifier-isolated";
+if (
+  runtimeProfileText !== "classifier-isolated" &&
+  runtimeProfileText !== "production-composed"
+)
+  throw usageError(
+    "--runtime-profile must be classifier-isolated or production-composed",
+  );
+const runtimeProfile: TimingRuntimeProfile = runtimeProfileText;
 const shardCount = positiveInteger("shard-count") ?? 1;
 const shardIndexText = option("shard-index");
 const shardIndex = shardIndexText === undefined ? 0 : Number(shardIndexText);
@@ -60,6 +70,7 @@ if (
   );
 const startRow = positiveInteger("start-row") ?? 1;
 const checkpointEvery = positiveInteger("checkpoint-every") ?? 1;
+const attempt = positiveInteger("attempt") ?? 1;
 const resume = option("resume");
 const output = path.resolve(
   option("output") ?? "../../reports/group-chat-timing/when2speak.json",
@@ -114,6 +125,8 @@ const report = await runWhen2SpeakEval({
   checkpointEvery,
   resumeReport,
   characterPreset,
+  runtimeProfile,
+  attempt,
   onCheckpoint: writeReport,
 });
 writeReport(report);
