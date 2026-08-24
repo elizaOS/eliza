@@ -560,7 +560,7 @@ export const computerUseAgentAction: Action = {
   descriptionCompressed:
     "Autonomous desktop loop: scene -> Brain -> cascade -> click. Pass {goal, maxSteps?, streamProgress?}.",
   routingHint:
-    "free-form 'do X on screen' goal -> COMPUTER_USE_AGENT; single explicit step -> COMPUTER_USE",
+    "a goal that explicitly names a visible desktop app, window, or screen and needs multiple UI steps -> COMPUTER_USE_AGENT. A generic intent already owned by a semantic action stays with that action: for example, 'make me a note' -> NOTES; never launch a desktop app merely to imitate it. A named single UI step -> COMPUTER_USE",
   parameters: [
     {
       name: "goal",

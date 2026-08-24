@@ -26,6 +26,15 @@ function runtimeWithService(
 }
 
 describe("COMPUTER_USE action approvals", () => {
+  it("keeps semantic note intent out of raw desktop control", () => {
+    const hint = useComputerAction.routingHint ?? "";
+
+    expect(hint).toContain("'make me a note' -> NOTES");
+    expect(hint).toContain("never launch a desktop app merely to imitate it");
+    expect(hint).toContain("Multi-step goals");
+    expect(hint).toContain("COMPUTER_USE_AGENT");
+  });
+
   it("relays pending approval requests as chat choice buttons", async () => {
     const pending: PendingApproval = {
       id: "approval_123_abc",

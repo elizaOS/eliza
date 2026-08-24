@@ -240,7 +240,7 @@ export const useComputerAction: Action = {
   descriptionCompressed:
     "Desktop: screenshot|click|double|right|middle|move|down|up|type|key|scroll|drag|detect|ocr|open|launch|approve",
   routingHint:
-    "desktop/computer/native-app/Finder/window screenshots or control -> COMPUTER_USE; never invent takeScreenshot",
+    "one explicit desktop/computer/native-app/Finder/window screenshot or control step -> COMPUTER_USE. A generic intent already owned by a semantic action stays with that action: for example, 'make me a note' -> NOTES; never launch a desktop app merely to imitate it. Multi-step goals in a named visible app/window -> COMPUTER_USE_AGENT; never invent takeScreenshot",
 
   parameters: [
     {

@@ -27,6 +27,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type ComputerUseAgentReport,
   type ComputerUseAgentStepProgress,
+  computerUseAgentAction,
   formatComputerUseAgentProgress,
   runComputerUseAgentLoop,
 } from "../actions/use-computer-agent.js";
@@ -88,6 +89,17 @@ function fakeCaptures(): Map<number, DisplayCapture> {
   });
   return m;
 }
+
+describe("COMPUTER_USE_AGENT routing boundary", () => {
+  it("defers ordinary note intent to NOTES unless the user names a desktop surface", () => {
+    const hint = computerUseAgentAction.routingHint ?? "";
+
+    expect(hint).toContain("visible desktop app");
+    expect(hint).toContain("'make me a note' -> NOTES");
+    expect(hint).toContain("never launch a desktop app merely to imitate it");
+    expect(hint).toContain("named single UI step -> COMPUTER_USE");
+  });
+});
 
 async function captureAll(): Promise<DisplayCapture[]> {
   return Array.from(fakeCaptures().values());
