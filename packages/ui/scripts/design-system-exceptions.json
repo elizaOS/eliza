@@ -24,6 +24,15 @@
       "lines": [424]
     },
     {
+      "id": "desktop-window-native-button-visuals",
+      "rule": "visual-override",
+      "file": "packages/app-core/src/runtime/desktop/AppWindowRenderer.tsx",
+      "symbol": "button",
+      "owner": "app-core desktop runtime",
+      "reason": "The desktop renderer owns native window-control visuals outside the React design-system host.",
+      "reviewBy": "2026-11-24"
+    },
+    {
       "id": "design-lab-shell-native-buttons",
       "rule": "raw-control",
       "file": "packages/ui/stories/src/lab/DesignLab.tsx",
