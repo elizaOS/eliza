@@ -1219,6 +1219,9 @@ function explicitParentAliasesForCandidateAction(actionName: string): string[] {
 	if (/RECAP|SUMMAR/.test(normalized)) {
 		return ["CHANNEL_RECAP", "TASKS"];
 	}
+	if (/CALC|MATH|ARITH|MULTIPL|DIVIDE/.test(normalized)) {
+		return ["CALCULATE"];
+	}
 	return [];
 }
 
