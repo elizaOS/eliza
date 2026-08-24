@@ -1317,6 +1317,123 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       expect(new Set(upgradedRows.map((row) => row.externalId)).size).toBe(2);
     });
 
+    it("does not duplicate existing charges when an overlapping export is reordered, prepended, or trimmed (regression #26540)", async () => {
+      const source = await service.addPaymentSource({
+        kind: "csv",
+        label: "Overlapping-export account",
+      });
+      const day = (n: number) =>
+        new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+      // Three genuinely distinct charges (distinct content tuples).
+      const rowA = `${day(5)},Rent,-1500.00`;
+      const rowB = `${day(4)},Blue Bottle Coffee,-4.50`;
+      const rowC = `${day(3)},Netflix,-12.34`;
+      const csv = (rows: string[]) =>
+        `Date,Description,Amount\n${rows.join("\n")}\n`;
+
+      // Initial export carries two of the charges.
+      const first = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText: csv([rowB, rowC]),
+      });
+      expect(first.inserted).toBe(2);
+      expect(first.skipped).toBe(0);
+      const firstRows = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      expect(firstRows).toHaveLength(2);
+      // Remember each carried-over charge's durable identity.
+      const idByExternalId = new Map(
+        firstRows.map((row) => [row.externalId, row.id]),
+      );
+
+      // Second export PREPENDS a brand-new charge and REORDERS the two
+      // existing ones. Every existing row's absolute CSV row index changes,
+      // yet only the genuinely new charge is inserted; the two overlapping
+      // charges replay in place and are NOT duplicated.
+      const second = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText: csv([rowA, rowC, rowB]),
+      });
+      expect(second.inserted).toBe(1);
+      expect(second.skipped).toBe(2);
+      const afterPrepend = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      expect(afterPrepend).toHaveLength(3);
+      expect(new Set(afterPrepend.map((row) => row.externalId)).size).toBe(3);
+      // The carried-over charges kept their exact primary-key id and external
+      // id despite the reorder/prepend.
+      for (const [externalId, id] of idByExternalId) {
+        const match = afterPrepend.find((row) => row.externalId === externalId);
+        expect(match?.id).toBe(id);
+      }
+
+      // Third export TRIMS the file down to a single overlapping row. Import is
+      // additive and idempotent: the surviving charge replays in place and
+      // nothing is duplicated (the untrimmed rows remain, still distinct).
+      const third = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText: csv([rowC]),
+      });
+      expect(third.inserted).toBe(0);
+      expect(third.skipped).toBe(1);
+      const afterTrim = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      expect(afterTrim).toHaveLength(3);
+      expect(new Set(afterTrim.map((row) => row.externalId)).size).toBe(3);
+    });
+
+    it("keeps genuinely repeated identical rows distinct when an overlapping export shifts their position (regression #26540)", async () => {
+      const source = await service.addPaymentSource({
+        kind: "csv",
+        label: "Repeated-identical account",
+      });
+      const d = new Date(Date.now() - 2 * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      const coffee = `${d},Blue Bottle Coffee,-4.50`;
+      const rent = `${d},Rent,-1500.00`;
+      const csv = (rows: string[]) =>
+        `Date,Description,Amount\n${rows.join("\n")}\n`;
+
+      // Two genuinely distinct but byte-identical coffee charges.
+      const first = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText: csv([coffee, coffee]),
+      });
+      expect(first.inserted).toBe(2);
+      const firstRows = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      const coffeeIdsBefore = new Set(firstRows.map((row) => row.id));
+      expect(coffeeIdsBefore.size).toBe(2);
+
+      // An overlapping export prepends a distinct charge, shifting BOTH
+      // coffees' absolute row index. Both must replay in place: still two
+      // distinct rows, never collapsed into one and never duplicated into four.
+      const second = await service.importTransactionsCsv({
+        sourceId: source.id,
+        csvText: csv([rent, coffee, coffee]),
+      });
+      expect(second.inserted).toBe(1);
+      expect(second.skipped).toBe(2);
+      const afterRows = await repository.listPaymentTransactions(
+        runtime.agentId,
+        { sourceId: source.id },
+      );
+      expect(afterRows).toHaveLength(3);
+      const coffeeRows = afterRows.filter((row) => row.amountUsd === 4.5);
+      expect(coffeeRows).toHaveLength(2);
+      expect(new Set(coffeeRows.map((row) => row.id))).toEqual(coffeeIdsBefore);
+      expect(new Set(coffeeRows.map((row) => row.externalId)).size).toBe(2);
+    });
+
     it("balances derives per-source figures with freshness metadata", async () => {
       const source = await service.addPaymentSource({
         kind: "manual",

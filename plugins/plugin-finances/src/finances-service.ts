@@ -45,10 +45,7 @@ import {
   requireAgentId,
   requireNonEmptyString,
 } from "./finance-normalize.ts";
-import {
-  type ParsedCsvTransaction,
-  parseTransactionsCsv,
-} from "./payment-csv-import.ts";
+import { parseTransactionsCsv } from "./payment-csv-import.ts";
 import {
   detectRecurringCharges,
   normalizeMerchant,
@@ -336,20 +333,41 @@ function normalizeSourceKind(value: unknown): LifeOpsPaymentSourceKind {
 function buildTransactionId(args: {
   agentId: string;
   sourceId: string;
-  parsed: ParsedCsvTransaction;
+  externalId?: string | null;
+  postedAt: string;
+  amountUsd: number;
+  merchantNormalized: string;
+  occurrenceIndex: number;
 }): string {
-  // Deterministic per-row id (and, via `csv:<id>`, the row's external id) so
-  // re-importing the same CSV replays onto the same keys and stays idempotent,
-  // while two genuinely distinct same-day/same-amount/same-merchant rows get
-  // distinct ids through `rowIndex` instead of colliding on the content tuple.
-  const key = [
+  // A source-provided external id is the lossless, position-independent
+  // identity, so hash it directly: prepending, trimming, or reordering the
+  // export never moves that row. Without one, derive a per-content occurrence
+  // identity so identity depends on WHAT the row is and HOW MANY identical
+  // rows precede it in the import — never on the absolute CSV row index.
+  //
+  // The Nth genuinely-identical (posted_at, amount, merchant) row gets
+  // occurrence index N. Occurrence 0 reuses the bare content-tuple hash so a
+  // pre-fix row (imported when its external id was still NULL) keeps its
+  // deterministic primary key and migrates in place instead of duplicating.
+  // Because reordering cannot distinguish two byte-identical rows, an
+  // overlapping export (prepended, trimmed, or reordered) maps each existing
+  // charge back onto the same key and stays idempotent, while two distinct
+  // same-day/same-amount/same-merchant charges still receive distinct ids.
+  const hasExternalId =
+    typeof args.externalId === "string" && args.externalId.length > 0;
+  const contentKey = [
     args.agentId,
     args.sourceId,
-    args.parsed.postedAt,
-    args.parsed.amountUsd.toFixed(2),
-    args.parsed.merchantNormalized,
-    args.parsed.rowIndex,
-  ].join("|");
+    args.postedAt,
+    args.amountUsd.toFixed(2),
+    args.merchantNormalized,
+  ];
+  const key = hasExternalId
+    ? [args.agentId, args.sourceId, "ext", args.externalId].join("|")
+    : (args.occurrenceIndex === 0
+        ? contentKey
+        : [...contentKey, args.occurrenceIndex]
+      ).join("|");
   return crypto.createHash("sha1").update(key).digest("hex").slice(0, 32);
 }
 
@@ -645,30 +663,55 @@ export class FinancesService {
     });
     let inserted = 0;
     let skipped = 0;
+    // Count how many identical (posted_at, amount, merchant) rows have already
+    // been seen in THIS import so each gets a stable per-content occurrence
+    // index. Position-based counting is deliberately avoided so that adding,
+    // removing, or reordering rows around an existing charge does not shift its
+    // identity. Only rows without a source external id use this fallback; a
+    // provided external id is already the row's stable identity.
+    const occurrenceByContent = new Map<string, number>();
     for (const txn of parsed.transactions) {
+      const merchantNormalized =
+        txn.merchantNormalized || normalizeMerchant(txn.merchantRaw);
+      const amountUsd = Number(txn.amountUsd.toFixed(2));
+      const hasExternalId =
+        typeof txn.externalId === "string" && txn.externalId.length > 0;
+      let occurrenceIndex = 0;
+      if (!hasExternalId) {
+        const contentKey = [
+          txn.postedAt,
+          amountUsd.toFixed(2),
+          merchantNormalized,
+        ].join("|");
+        occurrenceIndex = occurrenceByContent.get(contentKey) ?? 0;
+        occurrenceByContent.set(contentKey, occurrenceIndex + 1);
+      }
       const transactionId = buildTransactionId({
         agentId: this.agentId(),
         sourceId,
-        parsed: txn,
+        externalId: txn.externalId,
+        postedAt: txn.postedAt,
+        amountUsd,
+        merchantNormalized,
+        occurrenceIndex,
       });
       const record: LifeOpsPaymentTransaction = {
         id: transactionId,
         agentId: this.agentId(),
         sourceId,
-        // Give every CSV row a stable, per-row-unique external id (the
-        // deterministic hash folds in rowIndex). Two genuinely distinct
-        // same-day/same-amount/same-merchant charges then get distinct keys
-        // and are both stored, while re-importing the identical CSV replays
-        // onto the same external id and stays idempotent. Without a non-null
-        // external id the row falls into the content-only legacy tuple index
-        // and the second real charge is silently dropped.
+        // Give every CSV row a stable, non-null external id so it never falls
+        // into the content-only legacy tuple index that silently dropped a
+        // second identical charge. A source-provided id is used as-is; rows
+        // without one get a synthetic key derived from the per-content
+        // occurrence identity, which is stable across re-imports regardless of
+        // row order, so overlapping exports replay in place instead of
+        // duplicating.
         externalId: txn.externalId ?? `csv:${transactionId}`,
         postedAt: txn.postedAt,
-        amountUsd: Number(txn.amountUsd.toFixed(2)),
+        amountUsd,
         direction: txn.direction,
         merchantRaw: txn.merchantRaw,
-        merchantNormalized:
-          txn.merchantNormalized || normalizeMerchant(txn.merchantRaw),
+        merchantNormalized,
         description: txn.description,
         category: txn.category,
         currency: txn.currency,
