@@ -106,6 +106,21 @@ describe("inferContextRoutingFromText", () => {
 			result.secondaryContexts?.length ?? 0,
 		);
 	});
+
+	it("preserves declared context priority when aggregate scores tie", () => {
+		expect(inferContextRoutingFromText("install plugin")).toMatchObject({
+			primaryContext: "connectors",
+			secondaryContexts: ["admin"],
+		});
+		expect(inferContextRoutingFromText("discord settings")).toMatchObject({
+			primaryContext: "connectors",
+			secondaryContexts: ["admin", "settings"],
+		});
+		expect(inferContextRoutingFromText("voice")).toMatchObject({
+			primaryContext: "settings",
+			secondaryContexts: ["media"],
+		});
+	});
 });
 
 describe("mergeContextRouting", () => {

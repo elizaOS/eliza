@@ -449,12 +449,10 @@ export function inferContextRoutingFromText(
 
 	const scored = Array.from(contextScores.entries())
 		.map(([context, score]) => ({ context, score }))
-		.sort((left, right) => {
-			const diff = right.score - left.score;
-			return diff !== 0
-				? diff
-				: `${left.context}`.localeCompare(`${right.context}`);
-		});
+		// Map insertion follows CONTEXT_SIGNALS declaration order, and modern
+		// Array.sort is stable. Score-only sorting therefore preserves the
+		// established routing priority when multiple contexts tie.
+		.sort((left, right) => right.score - left.score);
 
 	const primaryContext = scored[0].context;
 	const secondaryContexts = scored
