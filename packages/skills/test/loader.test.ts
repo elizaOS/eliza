@@ -191,6 +191,81 @@ name: no-desc
     }
   });
 
+  it("degrades a non-string frontmatter name to a warning and keeps a valid sibling loading", () => {
+    // Regression for #27522: a YAML scalar that is not a string (number,
+    // boolean, or date) used to reach validateName("...".startsWith) and throw
+    // an uncaught TypeError, taking down ALL skill loading instead of dropping
+    // just the offending skill with a diagnostic.
+    const cases: Array<{ dir: string; frontmatterName: string; kind: string }> =
+      [
+        { dir: "numeric-name", frontmatterName: "123", kind: "number" },
+        { dir: "boolean-name", frontmatterName: "true", kind: "boolean" },
+        {
+          // A YAML 1.2 core-schema bare date parses as a string; force a real
+          // Date scalar with an explicit timestamp tag to cover the object path.
+          dir: "date-name",
+          frontmatterName: "!!timestamp 2024-01-02",
+          kind: "date",
+        },
+      ];
+
+    for (const { dir, frontmatterName, kind } of cases) {
+      const tempDir = createTempDir(`skill-loader-nonstring-${kind}`);
+      try {
+        // Offending skill: SKILL.md whose frontmatter name is a non-string scalar.
+        const badDir = join(tempDir, dir);
+        mkdirSync(badDir, { recursive: true });
+        writeFileSync(
+          join(badDir, "SKILL.md"),
+          `---\nname: ${frontmatterName}\ndescription: Bad ${kind} name still has a description\n---\n# Bad ${kind}`,
+        );
+
+        // Valid sibling in the same root directory.
+        const goodDir = join(tempDir, "good-neighbor");
+        mkdirSync(goodDir, { recursive: true });
+        writeFileSync(
+          join(goodDir, "SKILL.md"),
+          `---\nname: good-neighbor\ndescription: Valid sibling skill description\n---\n# Good`,
+        );
+
+        // (a) The loader must not throw on the malformed skill.
+        let result: ReturnType<typeof loadSkillsFromDir> | undefined;
+        assert.doesNotThrow(() => {
+          result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+        }, `non-string name (${kind}) must not crash the loader`);
+        assert.ok(result);
+
+        // (b) A warning diagnostic naming the type violation is emitted.
+        const typeDiag = result.diagnostics.find((d) =>
+          d.message.includes("name must be a string"),
+        );
+        assert.ok(
+          typeDiag,
+          `expected a "name must be a string" diagnostic for ${kind}`,
+        );
+        assert.strictEqual(typeDiag?.type, "warning");
+        assert.ok(typeDiag?.path.endsWith(join(dir, "SKILL.md")));
+
+        // (c) The valid sibling still loads normally.
+        const good = result.skills.find((s) => s.name === "good-neighbor");
+        assert.ok(good, `valid sibling must load despite ${kind} name`);
+        assert.strictEqual(good.description, "Valid sibling skill description");
+
+        // (d) The bad skill falls back to its directory name, consistent with
+        // how an omitted name derives expectedName; it is not dropped because it
+        // still carries a valid description.
+        const fallback = result.skills.find((s) => s.name === dir);
+        assert.ok(
+          fallback,
+          `bad ${kind} skill must fall back to its directory name`,
+        );
+        assert.strictEqual(fallback.name, dir);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    }
+  });
+
   it("reports malformed YAML instead of a fabricated metadata error", () => {
     const tempDir = createTempDir("skill-loader-malformed-yaml");
     try {

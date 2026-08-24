@@ -135,7 +135,21 @@ function loadSkillFromFile(
     diagnostics.push({ type: "warning", message: error, path: filePath });
   }
 
-  const name = frontmatter.name || expectedName;
+  // YAML does not enforce the SkillFrontmatter.name: string contract at parse
+  // time, so a scalar like `name: 123` arrives as a number/boolean/Date. Keep
+  // validateName on the string path by degrading a non-string name to a warning
+  // diagnostic and falling back to the derived expectedName; a single malformed
+  // skill must never crash loading for every other skill.
+  const rawName = frontmatter.name;
+  if (rawName !== undefined && typeof rawName !== "string") {
+    diagnostics.push({
+      type: "warning",
+      message: `name must be a string (got ${typeof rawName})`,
+      path: filePath,
+    });
+  }
+  const name =
+    typeof rawName === "string" && rawName.length > 0 ? rawName : expectedName;
 
   const nameErrors = validateName(name, expectedName, isSkillMd);
   for (const error of nameErrors) {
