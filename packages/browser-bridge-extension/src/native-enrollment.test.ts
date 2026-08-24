@@ -12,6 +12,8 @@ import {
   type NativeEnrollmentRequest,
   type NativeEnrollmentResponse,
   type NativeEnrollmentState,
+  type NativeRevokeRequest,
+  revokeNativeCompanion,
   shouldProbeRevokedEnrollment,
 } from "./native-enrollment";
 
@@ -69,6 +71,43 @@ afterEach(() => {
 });
 
 describe("native enrollment", () => {
+  it("revokes through a strictly bound native owner channel", async () => {
+    let observed: NativeRevokeRequest | null = null;
+    await expect(
+      revokeNativeCompanion({
+        config: {
+          apiBaseUrl: "http://127.0.0.1:31337",
+          companionId: "companion-123",
+          pairingToken: "secret-token-value",
+          pairingTokenExpiresAt: new Date(NOW + 60 * 60 * 1_000).toISOString(),
+          browser: "chrome",
+          profileId: PROFILE_ID,
+          profileLabel: "Work",
+          label: "Chrome Work",
+        },
+        extensionId: "abcdefghijklmnopabcdefghijklmnop",
+        extensionVersion: "2.0.3",
+        randomUUID: () => PROFILE_ID,
+        randomBytes: () => new Uint8Array(32).fill(7),
+        send: async (request) => {
+          observed = request;
+          return {
+            v: 1,
+            type: "browser_bridge.revoke_result",
+            requestId: request.requestId,
+            nonce: request.nonce,
+            revoked: true,
+          };
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(observed).toMatchObject({
+      type: "browser_bridge.revoke",
+      companionId: "companion-123",
+      profileId: PROFILE_ID,
+    });
+  });
+
   it("probes an owner reset only on the bounded recovery alarm", () => {
     expect(shouldProbeRevokedEnrollment("alarm", "recovery_required")).toBe(
       true,

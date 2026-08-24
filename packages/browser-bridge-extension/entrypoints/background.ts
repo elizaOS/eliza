@@ -28,6 +28,8 @@ import {
   NativeEnrollmentCoordinator,
   NativeEnrollmentError,
   type NativeEnrollmentRequest,
+  type NativeRevokeRequest,
+  revokeNativeCompanion,
   shouldProbeRevokedEnrollment,
 } from "../src/native-enrollment";
 import {
@@ -1183,7 +1185,17 @@ async function handlePopupMessage(
             cancelSync: async () => await syncRunner.cancelPending(),
             cancelEnrollment: async () => await nativeEnrollment.cancel(),
             revoke: config
-              ? async () => await new BrowserBridgeRelayClient(config).revoke()
+              ? async () =>
+                  await revokeNativeCompanion({
+                    config,
+                    extensionId: getExtensionId(),
+                    extensionVersion: getManifestVersion(),
+                    send: async (request: NativeRevokeRequest) =>
+                      await sendNativeMessage<NativeRevokeRequest, unknown>(
+                        BROWSER_BRIDGE_NATIVE_HOST,
+                        request,
+                      ),
+                  })
               : null,
             clearConfig: clearCompanionConfig,
             suppressEnrollment: async () =>

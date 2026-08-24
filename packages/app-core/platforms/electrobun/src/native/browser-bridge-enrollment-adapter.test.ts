@@ -1,7 +1,10 @@
 /** Exercises owner-authorized native enrollment against a deterministic loopback pairing API. */
 
 import { describe, expect, it, vi } from "vitest";
-import { pairBrowserBridgeCompanionAsDesktopOwner } from "./browser-bridge-enrollment-adapter";
+import {
+  pairBrowserBridgeCompanionAsDesktopOwner,
+  revokeBrowserBridgeCompanionAsDesktopOwner,
+} from "./browser-bridge-enrollment-adapter";
 
 type PairingFetch = NonNullable<
   Parameters<typeof pairBrowserBridgeCompanionAsDesktopOwner>[0]["fetchImpl"]
@@ -14,6 +17,37 @@ const ownerSession = {
 };
 
 describe("browser bridge enrollment adapter", () => {
+  it("revokes through the owner cookie and CSRF authority", async () => {
+    const fetchImpl = vi.fn<PairingFetch>(
+      async () =>
+        new Response(JSON.stringify({ revoked: true }), { status: 200 }),
+    );
+    await expect(
+      revokeBrowserBridgeCompanionAsDesktopOwner({
+        apiBase: "http://127.0.0.1:31337",
+        ownerSession,
+        companionId: "companion-1",
+        fetchImpl,
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      new URL(
+        "http://127.0.0.1:31337/api/browser-bridge/companions/companion-1/revoke",
+      ),
+      expect.objectContaining({
+        method: "POST",
+        body: "{}",
+        headers: expect.objectContaining({
+          cookie: "eliza_session=owner-session",
+          "x-eliza-csrf": "owner-csrf",
+        }),
+      }),
+    );
+    expect(fetchImpl.mock.calls[0]?.[1]?.headers).not.toHaveProperty(
+      "authorization",
+    );
+  });
+
   it("uses the existing owner cookie and CSRF authority on loopback", async () => {
     const fetchImpl = vi.fn<PairingFetch>(
       async (_input, _init) =>

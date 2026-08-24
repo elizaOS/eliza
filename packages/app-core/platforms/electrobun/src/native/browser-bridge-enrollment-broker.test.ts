@@ -45,6 +45,28 @@ function request(nonce = Buffer.alloc(32, 4).toString("base64url")) {
   );
 }
 
+function revokeRequest(nonce = Buffer.alloc(32, 11).toString("base64url")) {
+  return signBrokerEnvelope(
+    {
+      protocol: BROWSER_BRIDGE_BROKER_PROTOCOL,
+      timestampMs: nowMs,
+      caller: { browser: "chrome", id: callerId },
+      request: {
+        v: 1,
+        type: "browser_bridge.revoke",
+        requestId,
+        nonce,
+        browser: "chrome",
+        extensionId: callerId,
+        extensionVersion: "1.2.3",
+        profileId,
+        companionId: "companion-1",
+      },
+    },
+    secret,
+  );
+}
+
 const baseOptions = {
   apiBase: "http://127.0.0.1:31337",
   brokerSecret: secret,
@@ -57,6 +79,41 @@ const baseOptions = {
 };
 
 describe("browser bridge enrollment broker", () => {
+  it("translates native revoke into an owner-authenticated API mutation", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ revoked: true }), { status: 200 }),
+    );
+    const broker = new BrowserBridgeEnrollmentBroker({
+      ...baseOptions,
+      ownerSession: async () => ({
+        sessionId: "owner-session",
+        csrfToken: "owner-csrf",
+        expiresAt: Date.now() + 60_000,
+      }),
+      fetchImpl,
+    });
+    await expect(broker.handle(revokeRequest())).resolves.toEqual({
+      v: 1,
+      type: "browser_bridge.revoke_result",
+      requestId,
+      nonce: Buffer.alloc(32, 11).toString("base64url"),
+      revoked: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      new URL(
+        "http://127.0.0.1:31337/api/browser-bridge/companions/companion-1/revoke",
+      ),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          cookie: "eliza_session=owner-session",
+          "x-eliza-csrf": "owner-csrf",
+        }),
+      }),
+    );
+  });
+
   it("returns the canonical narrow config after native and owner authentication", async () => {
     const fetchImpl = vi.fn(
       async () =>

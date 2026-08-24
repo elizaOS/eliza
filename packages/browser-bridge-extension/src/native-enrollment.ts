@@ -76,6 +76,19 @@ export type NativeEnrollmentRequest = {
   profileId: string;
 };
 
+export type NativeRevokeRequest = Omit<NativeEnrollmentRequest, "type"> & {
+  type: "browser_bridge.revoke";
+  companionId: string;
+};
+
+export type NativeRevokeResult = {
+  v: 1;
+  type: "browser_bridge.revoke_result";
+  requestId: string;
+  nonce: string;
+  revoked: true;
+};
+
 export type NativeEnrollmentResult = {
   v: 1;
   type: "browser_bridge.enroll_result";
@@ -96,6 +109,62 @@ export type NativeEnrollmentFailure = {
 export type NativeEnrollmentResponse =
   | NativeEnrollmentResult
   | NativeEnrollmentFailure;
+
+export async function revokeNativeCompanion(options: {
+  config: BrowserBridgeCompanionConfig;
+  extensionId: string;
+  extensionVersion: string;
+  send: (request: NativeRevokeRequest) => Promise<unknown>;
+  randomUUID?: () => string;
+  randomBytes?: (length: number) => Uint8Array;
+}): Promise<void> {
+  const requestId = (options.randomUUID ?? (() => crypto.randomUUID()))();
+  const nonce = base64Url(
+    (
+      options.randomBytes ??
+      ((length) => crypto.getRandomValues(new Uint8Array(length)))
+    )(32),
+  );
+  const request: NativeRevokeRequest = {
+    v: 1,
+    type: "browser_bridge.revoke",
+    requestId,
+    nonce,
+    extensionId: validateBinding(options.extensionId, "extensionId"),
+    extensionVersion: validateBinding(
+      options.extensionVersion,
+      "extensionVersion",
+    ),
+    browser: options.config.browser,
+    profileId: validateUuid(options.config.profileId, "profileId"),
+    companionId: validateBinding(options.config.companionId, "companionId"),
+  };
+  if (!UUID_PATTERN.test(requestId) || !NONCE_PATTERN.test(nonce)) {
+    throw new NativeEnrollmentError(
+      "Native revoke request entropy is invalid.",
+      "invalid_native_request",
+      false,
+    );
+  }
+  enforceMessageSize(request);
+  const response = await options.send(request);
+  enforceMessageSize(response);
+  if (
+    !isRecord(response) ||
+    !hasExactKeys(response, ["v", "type", "requestId", "nonce", "revoked"]) ||
+    response.v !== 1 ||
+    response.type !== "browser_bridge.revoke_result" ||
+    response.requestId !== request.requestId ||
+    response.nonce !== request.nonce ||
+    response.revoked !== true
+  ) {
+    throw new NativeEnrollmentError(
+      "Native revoke response is invalid or does not match its request.",
+      "invalid_native_response",
+      false,
+    );
+  }
+}
 
 export type NativeEnrollmentSuppressionReason =
   | "owner_disconnected"
