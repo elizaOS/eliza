@@ -148,7 +148,11 @@ async function dismissTasks(
   reason: string,
 ): Promise<void> {
   for (const task of tasks) {
-    if (!isLive(task)) continue;
+    // Retire any non-dismissed task, terminal (completed/skipped/expired/
+    // failed) included: dismissing a stale terminal task is what starts a
+    // fresh policy generation on the next matching sync. Already-dismissed
+    // tasks are skipped so a periodic sync does not re-dismiss them.
+    if (task.state.status === "dismissed") continue;
     await runner.apply(task.taskId, "dismiss", { reason });
   }
 }
@@ -253,27 +257,30 @@ async function reconcileEvent(
     ? parseMeetingUrl(event.conferenceLink)
     : null;
   const existing = await listAutoJoinTasksForEvent(runner, event.id);
-  const live = existing.filter(isLive);
 
   const endMs = Date.parse(event.endAt);
   const eventOver = Number.isFinite(endMs) && endMs <= nowMs;
 
   if (!parsed || policy === "off" || eventOver) {
-    if (live.length > 0) {
+    // Retire the whole non-dismissed lifecycle (live and terminal) so that
+    // re-enabling later starts a fresh generation instead of resurrecting a
+    // completed task from before this event window was disabled.
+    const retire = existing.filter((task) => task.state.status !== "dismissed");
+    if (retire.length > 0) {
       const reason = !parsed
         ? "conference link removed or unrecognized"
         : policy === "off"
           ? "meeting auto-join disabled"
           : "event already ended";
-      await dismissTasks(runner, live, reason);
+      await dismissTasks(runner, retire, reason);
       logger.info(
         {
           src: "calendar:meeting-auto-join",
           eventId: event.id,
-          dismissed: live.length,
+          dismissed: retire.length,
           reason,
         },
-        `${LOG_PREFIX} Dismissed ${live.length} auto-join task(s) for event ${event.id}: ${reason}.`,
+        `${LOG_PREFIX} Dismissed ${retire.length} auto-join task(s) for event ${event.id}: ${reason}.`,
       );
     }
     return [];
@@ -282,9 +289,16 @@ async function reconcileEvent(
   // Keep the anchor current so a rescheduled event fires at the new start.
   registerEventStartAnchor(runtime, event.id, event.startAt);
 
-  // Live tasks created under a different policy mode are stale — dismiss and
-  // recreate under the current mode.
-  const stale = live.filter((task) => taskMode(task) !== policy);
+  // Tasks created under a different policy mode are stale — dismiss and
+  // recreate under the current mode. This retires terminal (completed/…)
+  // tasks too, not just live ones: a completed task from a superseded policy
+  // generation must not survive to be treated as the current lifecycle when
+  // the policy later round-trips back to that mode (all→ask→all,
+  // ask→all→ask). Without retiring it, `existingForMode` below would find the
+  // old terminal task and suppress the new generation's fresh task.
+  const stale = existing.filter(
+    (task) => taskMode(task) !== policy && task.state.status !== "dismissed",
+  );
   if (stale.length > 0) {
     await dismissTasks(
       runner,
@@ -297,12 +311,14 @@ async function reconcileEvent(
   // current policy mode in ANY non-dismissed state — not just live ones. A
   // one-shot approval/join whose lifecycle already ran (terminal status
   // completed/skipped/expired/failed) must NOT be resurrected within the same
-  // event window: recreating a completed approval re-prompts the owner to
-  // approve a meeting they already approved, and recreating a completed join
-  // schedules a fresh join anchored at start-1min (now in the past → due
-  // immediately) that re-joins the same meeting. Only `dismissed` — the state
-  // reserved for tasks we intentionally retired (policy change, deletion,
-  // ended event) — is treated as absent so a later policy switch can recreate.
+  // event window under the CURRENT policy generation: recreating a completed
+  // approval re-prompts the owner to approve a meeting they already approved,
+  // and recreating a completed join schedules a fresh join anchored at
+  // start-1min (now in the past → due immediately) that re-joins the same
+  // meeting. Only `dismissed` — the state reserved for tasks we intentionally
+  // retired — is treated as absent. Tasks from a superseded generation are
+  // already dismissed by the stale pass above, so a policy round-trip back to
+  // this mode reaches this filter with an empty set and creates fresh tasks.
   const existingForMode = existing.filter(
     (task) => taskMode(task) === policy && task.state.status !== "dismissed",
   );

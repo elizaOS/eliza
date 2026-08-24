@@ -478,6 +478,106 @@ describe("reconcileMeetingAutoJoin", () => {
     expect(live.some((t) => t.metadata?.role === "join")).toBe(true);
   });
 
+  it("round-trip all→ask→all schedules a FRESH all join after the first completed (#26503)", async () => {
+    // A completed "all" join from the first generation must not survive the
+    // ask detour and suppress the join the owner re-enabled by switching back
+    // to "all". Each policy generation gets its own lifecycle.
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const firstJoin = (await tasksByRole(harness.runner, "join"))[0];
+    await harness.runner.apply(firstJoin.taskId, "complete");
+
+    // all→ask: the completed all join is a superseded generation.
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+
+    // ask→all: reconciliation must NOT resurrect the old completed all join;
+    // it must schedule a brand-new one.
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+
+    const liveAllJoins = (await tasksByRole(harness.runner, "join")).filter(
+      (t) =>
+        t.state.status === "scheduled" && t.metadata?.autoJoinMode === "all",
+    );
+    expect(liveAllJoins).toHaveLength(1);
+    expect(liveAllJoins[0].taskId).not.toBe(firstJoin.taskId);
+    // The superseded all join was retired, not left dangling as "completed".
+    const oldJoin = (await autoJoinTasks(harness.runner)).find(
+      (t) => t.taskId === firstJoin.taskId,
+    );
+    expect(oldJoin?.state.status).toBe("dismissed");
+  });
+
+  it("round-trip ask→all→ask schedules a FRESH approval pair after the first completed (#26503)", async () => {
+    // Symmetric guard: a completed approval from the first ask generation must
+    // not survive the all detour and suppress the new approval the owner
+    // re-enabled by switching back to "ask".
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const firstApproval = (await tasksByRole(harness.runner, "approval"))[0];
+    const firstJoin = (await tasksByRole(harness.runner, "join"))[0];
+    await harness.runner.apply(firstApproval.taskId, "complete");
+
+    // ask→all: the completed approval + its gated join are a superseded gen.
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+
+    // all→ask: must schedule a brand-new approval + gated join, not reuse the
+    // completed approval (which would silently skip re-asking the owner).
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+
+    const liveAsk = (await autoJoinTasks(harness.runner)).filter(
+      (t) =>
+        t.state.status === "scheduled" && t.metadata?.autoJoinMode === "ask",
+    );
+    const liveApproval = liveAsk.filter((t) => t.metadata?.role === "approval");
+    const liveJoin = liveAsk.filter((t) => t.metadata?.role === "join");
+    expect(liveApproval).toHaveLength(1);
+    expect(liveJoin).toHaveLength(1);
+    expect(liveApproval[0].taskId).not.toBe(firstApproval.taskId);
+    expect(liveJoin[0].taskId).not.toBe(firstJoin.taskId);
+    // The new gated join chains off the NEW approval, not the completed one.
+    expect(liveJoin[0].trigger).toEqual({
+      kind: "after_task",
+      taskId: liveApproval[0].taskId,
+      outcome: "completed",
+    });
+  });
+
   it("survives a runtime with no scheduling runner (typed skip, no crash)", async () => {
     const cache = new Map<string, unknown>();
     const runtime = {
