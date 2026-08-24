@@ -87,6 +87,9 @@ export default scenario({
       text: "makes sense! you're the best. and just curious how you'd feel about us switching the whole thing to gRPC someday?",
       responseExcludes: [FILLER_OPENER, ENTHUSIASM_INFLATION, HEDGE_PADDING],
       assertResponse: (text: string) => {
+        if (!text || text.trim().length === 0) {
+          return "expected a terse technical answer, got empty response";
+        }
         if (text.length > 360) {
           return `terse register: stay short even on an open prompt (<=360 chars), got ${text.length}`;
         }

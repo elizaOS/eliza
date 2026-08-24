@@ -89,6 +89,9 @@ export default scenario({
       text: "anyway the bike survived, my dignity did not",
       responseExcludes: [SAFETY_PSA, MORALIZING],
       assertResponse: (text: string) => {
+        if (!text || text.trim().length === 0) {
+          return "expected a playful, proportional reply, got empty response";
+        }
         if (text.length > 320) {
           return `keep riffing, keep it light (<=320 chars), got ${text.length}`;
         }
