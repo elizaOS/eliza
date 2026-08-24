@@ -4302,12 +4302,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("still delivers the handled-step placeholder on an ADDRESSED turn", async () => {
-		// The load-bearing over-reach guard. Someone asked Eliza directly; a weak
-		// reply is a worse outcome than a silent non-answer, and the addressed
-		// turn-delivery floor (#23223) owns that case. Byte-identical fixture to
-		// the ambient test above except for the platform mention, so the ONLY
-		// thing that can change the outcome is the ambient classification.
+	it("turns rejected planner output into a truthful no-answer on an ADDRESSED turn", async () => {
+		// Someone asked Eliza directly, so the addressed delivery floor (#23223)
+		// must answer rather than silently discard the turn. Byte-identical fixture
+		// to the ambient case except for the platform mention: the unsafe model text
+		// is still rejected, but the internal handled-step marker must become the
+		// neutral toolless recovery contract instead of claiming work succeeded.
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "Addressed follow-up; see if the planner has anything.",
@@ -4330,16 +4330,20 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
+				"I don't have a useful answer to that right now — ask again and I will retry.",
+			);
+			expect(result.result.responseContent?.text).not.toBe(
 				HANDLED_STEP_FALLBACK_MESSAGE,
 			);
 		}
 	});
 
-	it("keeps the placeholder deliverable on reply_gate 'always' and trigger-prompt bypass turns", async () => {
+	it("keeps truthful no-answer delivery on reply_gate 'always' and trigger-prompt bypass turns", async () => {
 		// #25279 regressed exactly these two classes and #25341 repaired them by
 		// restoring reply_gate "always" and the configured/canonical bypasses.
 		// Both turns are unaddressed group traffic, so only the bypass keeps them
-		// off the ambient path — pin that the new silence never reaches them.
+		// off the ambient path. They still owe a response, but rejected planner text
+		// must resolve through the neutral toolless recovery contract.
 		const cases = [
 			{
 				label: "reply_gate always",
@@ -4383,7 +4387,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.kind, testCase.label).toBe("planned_reply");
 			if (result.kind === "planned_reply") {
 				expect(result.result.responseContent?.text, testCase.label).toBe(
-					HANDLED_STEP_FALLBACK_MESSAGE,
+					"I don't have a useful answer to that right now — ask again and I will retry.",
 				);
 			}
 		}

@@ -10138,12 +10138,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		// ambient-turn policy forbids, and the policy's own semantics for an
 		// empty outcome are silence. Structural, not prompt-dependent: the
 		// placeholder is runtime-produced, so no instruction to the model can
-		// prevent it. Addressed turns are deliberately untouched — a weak reply
-		// to a direct question still beats a silent non-answer, and the
-		// turn-delivery floor owns that case.
-		const ambientPlaceholderOnlyReply =
-			ambientTurn && plannedTextRaw === HANDLED_STEP_FALLBACK_MESSAGE;
-		const plannedText = ambientPlaceholderOnlyReply
+		// prevent it. On a turn that owes a response, blanking this internal marker
+		// routes through `resolveZeroDeliveryRecovery`, whose toolless fallback is
+		// a truthful no-answer rather than a fabricated claim of completed work.
+		const unusablePlannerReply =
+			plannedTextRaw === HANDLED_STEP_FALLBACK_MESSAGE;
+		const ambientPlaceholderOnlyReply = ambientTurn && unusablePlannerReply;
+		const plannedText = unusablePlannerReply
 			? ""
 			: sanitizeReplyTextAfterMediaDelivery(plannedTextRaw, deliveredMediaUrls);
 		// Single source of truth for "this ambient turn ends in silence",
