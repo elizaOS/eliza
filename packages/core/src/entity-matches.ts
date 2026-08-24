@@ -4,6 +4,13 @@
  * objects; the previous recursive unwrap RangeError'd an 8k nest on
  * Node 24.15.0. Depth, node, and cycle limits are all load-bearing.
  * Every reflective read is fail-closed to the typed unbounded error.
+ *
+ * The strict variant (`normalizeEntityMatchesStrict`) is the single
+ * authority on whether supplied match evidence was usable: the walk counts
+ * every supplied slot it drops (scalars, null, name-less objects, array
+ * holes and unusable entries, wrapper contents), so the parse boundary in
+ * entities.ts never re-derivives legality with rules that can drift from
+ * the walk (#24765).
  */
 
 import { ElizaError } from "./errors";
@@ -20,6 +27,7 @@ export interface EntityMatch {
 type WalkContext = {
 	visits: number;
 	visiting: WeakSet<object>;
+	dropped: number;
 };
 
 function failUnbounded(
@@ -84,13 +92,20 @@ export function readEntityResolutionField(value: object, key: string): unknown {
 	return descriptor.value;
 }
 
-function normalizeEntityMatch(value: unknown): EntityMatch | null {
+function normalizeEntityMatch(
+	value: unknown,
+	ctx: WalkContext,
+): EntityMatch | null {
 	if (!value || typeof value !== "object" || isArrayRecord(value)) {
+		ctx.dropped += 1;
 		return null;
 	}
 	const name = ownString(value, "name");
 	const reason = ownString(value, "reason");
-	if (!name) return null;
+	if (!name) {
+		ctx.dropped += 1;
+		return null;
+	}
 	return { name, reason };
 }
 
@@ -98,7 +113,28 @@ export function normalizeEntityMatches(value: unknown): EntityMatch[] {
 	return normalizeEntityMatchesInner(value, 0, {
 		visits: 0,
 		visiting: new WeakSet<object>(),
+		dropped: 0,
 	});
+}
+
+/**
+ * Strict variant used at the entity-resolution parse boundary: returns the
+ * normalized matches plus whether the walk dropped any SUPPLIED evidence.
+ * `undefined` is absent (not dropped); JSON `null` is a supplied value the
+ * walk drops, so it counts (#24765). Unbounded/cycle inputs throw the same
+ * typed error as the lenient walk.
+ */
+export function normalizeEntityMatchesStrict(value: unknown): {
+	matches: EntityMatch[];
+	dropped: boolean;
+} {
+	const ctx: WalkContext = {
+		visits: 0,
+		visiting: new WeakSet<object>(),
+		dropped: 0,
+	};
+	const matches = normalizeEntityMatchesInner(value, 0, ctx);
+	return { matches, dropped: ctx.dropped > 0 };
 }
 
 function normalizeEntityMatchesInner(
@@ -111,6 +147,10 @@ function normalizeEntityMatchesInner(
 		failUnbounded({ depth, max: MAX_ENTITY_MATCH_DEPTH });
 	}
 	if (!value || typeof value !== "object") {
+		// A supplied scalar or null is dropped evidence in the strict walk.
+		// The lenient entry point zeroed `dropped`, so only callers that
+		// opted into strictness see this count.
+		ctx.dropped += 1;
 		return [];
 	}
 	if (!visitAlreadyReserved) reserve(ctx, 1);
@@ -132,11 +172,15 @@ function normalizeEntityMatchesInner(
 			const matches: EntityMatch[] = [];
 			for (let index = 0; index < length; index += 1) {
 				const descriptor = ownDescriptor(value, String(index));
-				if (!descriptor) continue;
+				if (!descriptor) {
+					// An array hole is a supplied slot that will vanish.
+					ctx.dropped += 1;
+					continue;
+				}
 				if (!("value" in descriptor)) {
 					failUnbounded({ accessor: true, side: "array", index });
 				}
-				const match = normalizeEntityMatch(descriptor.value);
+				const match = normalizeEntityMatch(descriptor.value, ctx);
 				if (match) matches.push(match);
 			}
 			return matches;
@@ -150,7 +194,7 @@ function normalizeEntityMatchesInner(
 			return normalizeEntityMatchesInner(matchDescriptor.value, depth + 1, ctx);
 		}
 
-		const direct = normalizeEntityMatch(value);
+		const direct = normalizeEntityMatch(value, ctx);
 		return direct ? [direct] : [];
 	} finally {
 		ctx.visiting.delete(value);
