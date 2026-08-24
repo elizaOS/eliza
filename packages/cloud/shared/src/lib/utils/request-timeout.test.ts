@@ -14,4 +14,8 @@ describe("request-timeout", () => {
   it("custom buffer", () => {
     expect(getRouteTimeoutMs(10, 5000)).toBe(5000);
   });
+  it("never exceeds the platform budget", () => {
+    expect(getRouteTimeoutMs(0.5)).toBe(500);
+    expect(getRouteTimeoutMs(1, 30000)).toBe(1000);
+  });
 });

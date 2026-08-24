@@ -10,5 +10,8 @@ export function getRouteTimeoutMs(
   maxDurationSeconds: number,
   bufferMs: number = ROUTE_TIMEOUT_BUFFER_MS,
 ): number {
-  return Math.max(MIN_ROUTE_TIMEOUT_MS, maxDurationSeconds * 1000 - bufferMs);
+  const budgetMs = maxDurationSeconds * 1000;
+  // Cap at the platform budget: for budgets smaller than MIN + buffer, aborting
+  // at the budget itself is the best we can do (never exceed the platform limit).
+  return Math.min(budgetMs, Math.max(MIN_ROUTE_TIMEOUT_MS, budgetMs - bufferMs));
 }
