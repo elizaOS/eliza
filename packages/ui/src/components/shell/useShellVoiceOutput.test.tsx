@@ -555,4 +555,189 @@ describe("useShellVoiceOutput", () => {
       { replace: true },
     );
   });
+
+  // findLatestAssistantText selection edges, exercised through the hook.
+  describe("assistant message selection", () => {
+    it("speaks only the latest assistant message when several are visible", () => {
+      render({
+        ...BASE,
+        lastTurnVoice: true,
+        conversationMessages: [
+          userMsg("u1", "hi"),
+          assistantMsg("a1", "Older."),
+          assistantMsg("a2", "Newer."),
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledWith(
+        "a2",
+        "Newer.",
+        true,
+        { replace: true },
+      );
+    });
+
+    it("skips a whitespace-only latest reply and falls back to the earlier real one", () => {
+      render({
+        ...BASE,
+        lastTurnVoice: true,
+        conversationMessages: [
+          userMsg("u1", "hi"),
+          assistantMsg("a1", "Real answer."),
+          assistantMsg("blank", "   "),
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+      expect(hoisted.queueAssistantSpeech).toHaveBeenCalledWith(
+        "a1",
+        "Real answer.",
+        true,
+        { replace: true },
+      );
+    });
+
+    it("stays silent when the only assistant message is whitespace-only", () => {
+      render({
+        ...BASE,
+        lastTurnVoice: true,
+        conversationMessages: [
+          userMsg("u1", "hi"),
+          assistantMsg("blank", "\n\t "),
+        ],
+      });
+      expect(hoisted.queueAssistantSpeech).not.toHaveBeenCalled();
+    });
+  });
+
+  // The realtime route override is added by a conditional spread — outside
+  // realtime mode the KEY must be absent from the engine options entirely.
+  it("omits the realtime TTS route override outside realtime mode", () => {
+    render({ ...BASE });
+    expect(hoisted.voiceChatOptions).toMatchObject({
+      voiceConfig: { provider: "local-inference" },
+      interruptOnSpeech: false,
+    });
+    expect(hoisted.voiceChatOptions).not.toHaveProperty("ttsRouteOverride");
+  });
+
+  // continuationOfMessageId is keyed on the previous utterance having LEFT
+  // the transcript; a still-listed predecessor stays a plain replacement.
+  it("keeps a brand-new reply a plain replacement while the prior message is still listed", () => {
+    const { rerender } = render({
+      ...BASE,
+      lastTurnVoice: true,
+      conversationMessages: [userMsg("u1", "hi"), assistantMsg("a1", "First.")],
+    });
+    rerender({
+      ...BASE,
+      lastTurnVoice: true,
+      conversationMessages: [
+        userMsg("u1", "hi"),
+        assistantMsg("a1", "First."),
+        // Text extends the predecessor so ONLY the presence clause can
+        // decide against a continuation id here.
+        assistantMsg("a2", "First. More."),
+      ],
+    });
+    expect(hoisted.queueAssistantSpeech).toHaveBeenLastCalledWith(
+      "a2",
+      "First. More.",
+      true,
+      { replace: true },
+    );
+  });
+
+  it("does not mark a rekeyed reply as a continuation when the final text diverged", () => {
+    const { rerender } = render({
+      ...BASE,
+      lastTurnVoice: true,
+      chatSending: true,
+      conversationMessages: [
+        userMsg("u1", "hi"),
+        assistantMsg("temp-9", "Partial answer"),
+      ],
+    });
+    rerender({
+      ...BASE,
+      lastTurnVoice: true,
+      chatSending: false,
+      conversationMessages: [
+        userMsg("u1", "hi"),
+        assistantMsg("final-9", "Completely different final text."),
+      ],
+    });
+    expect(hoisted.queueAssistantSpeech).toHaveBeenLastCalledWith(
+      "final-9",
+      "Completely different final text.",
+      true,
+      { replace: true },
+    );
+  });
+
+  // Both teardown effects fire on dependency TRANSITIONS, not every render.
+  it("stops speech once when the mic opens and not again while it stays open", () => {
+    const messages = [userMsg("u1", "hi"), assistantMsg("a1", "Talking.")];
+    const { rerender } = render({
+      ...BASE,
+      lastTurnVoice: true,
+      conversationMessages: messages,
+    });
+    hoisted.stopSpeaking.mockClear();
+
+    rerender({
+      ...BASE,
+      lastTurnVoice: true,
+      recording: true,
+      conversationMessages: messages,
+    });
+    // A fresh transcript array forces the speak effect to re-run; the
+    // barge-in effect must still fire exactly once for unchanged mic-open.
+    rerender({ ...BASE, lastTurnVoice: true, recording: true });
+    expect(hoisted.stopSpeaking).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops speech when muting engages and not when the mute is lifted", () => {
+    const messages = [userMsg("u1", "hi"), assistantMsg("a1", "First.")];
+    const { rerender } = render({
+      ...BASE,
+      lastTurnVoice: true,
+      conversationMessages: messages,
+    });
+    expect(hoisted.stopSpeaking).not.toHaveBeenCalled();
+
+    rerender({
+      ...BASE,
+      lastTurnVoice: true,
+      agentVoiceMuted: true,
+      conversationMessages: messages,
+    });
+    expect(hoisted.stopSpeaking).toHaveBeenCalledTimes(1);
+
+    rerender({
+      ...BASE,
+      lastTurnVoice: true,
+      agentVoiceMuted: false,
+      conversationMessages: messages,
+    });
+    // Unmuting must not stop anything, and the already-spoken reply must not
+    // be queued a second time by the re-enabled watcher.
+    expect(hoisted.stopSpeaking).toHaveBeenCalledTimes(1);
+    expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+  });
+
+  // useVoiceChat types these optional; the shell contract coalesces to
+  // non-optional values, including the no-op audio-unlock fallback.
+  it("coalesces the optional engine fields on the returned contract", () => {
+    const { result } = render(BASE);
+    expect(result.current.needsAudioUnlock).toBe(false);
+    expect(typeof result.current.unlockAudio).toBe("function");
+    expect(() => {
+      act(() => {
+        result.current.unlockAudio();
+      });
+    }).not.toThrow();
+    // Engine handles pass through unwrapped.
+    expect(result.current.stopSpeaking).toBe(hoisted.stopSpeaking);
+    expect(result.current.speak).toBe(hoisted.speak);
+  });
 });
