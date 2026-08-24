@@ -10,6 +10,7 @@ import { constants as fsConstants } from "node:fs";
 import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
@@ -401,7 +402,7 @@ async function traverseSqlObject(adapter, object, ids) {
         throw new Error(`message read failed for ${object.id}`);
       digest.update(Buffer.from(page.page.text, "utf8"));
       rowsRead += page.page.returnedSegments;
-      readCalls += 1;
+      readCalls += page.page.sourceQueryCount;
       offset = page.page.end;
       expectedRevision = page.page.revision;
       if (page.page.end >= page.page.total) break;
@@ -478,7 +479,136 @@ async function sqlRowCount(pool, object) {
   return Number(result.rows[0]?.count ?? 0);
 }
 
+function summarizeExplainPlan(result, expectedIndexName, indexDefinition) {
+  const envelope = result.rows[0]?.["QUERY PLAN"]?.[0];
+  const root = envelope?.Plan;
+  if (!root || typeof root !== "object") {
+    throw new Error("Postgres did not return a JSON execution plan");
+  }
+  const nodeTypes = [];
+  const indexNames = [];
+  let sharedHitBlocks = 0;
+  let sharedReadBlocks = 0;
+  const visit = (node) => {
+    nodeTypes.push(String(node["Node Type"] ?? "unknown"));
+    if (typeof node["Index Name"] === "string") {
+      indexNames.push(node["Index Name"]);
+    }
+    sharedHitBlocks += Number(node["Shared Hit Blocks"] ?? 0);
+    sharedReadBlocks += Number(node["Shared Read Blocks"] ?? 0);
+    for (const child of node.Plans ?? []) visit(child);
+  };
+  visit(root);
+  if (!indexNames.includes(expectedIndexName)) {
+    throw new Error(
+      `Postgres seek plan did not use ${expectedIndexName}; used ${indexNames.join(", ") || "no index"}: ${nodeTypes.join(", ")}; expectedDefinition=${indexDefinition}; plan=${JSON.stringify(root)}`,
+    );
+  }
+  return {
+    indexName: expectedIndexName,
+    nodeTypes,
+    actualRows: Math.round(Number(root["Actual Rows"] ?? 0)),
+    sharedHitBlocks: Math.round(sharedHitBlocks),
+    sharedReadBlocks: Math.round(sharedReadBlocks),
+    planningTimeMs: Number(envelope["Planning Time"] ?? 0),
+    executionTimeMs: Number(envelope["Execution Time"] ?? 0),
+  };
+}
+
+async function explainSqlSeek(pool, family, object, ids) {
+  const objectId = stringToUuid(`content-context:${object.id}`);
+  const offset = Math.max(0, object.byteLength - PAGE_BYTES);
+  const requestedEnd = offset + PAGE_BYTES;
+  const expectedIndexName =
+    family === "document"
+      ? "idx_document_source_byte_seek"
+      : "idx_message_content_byte_seek";
+  const definitionResult = await pool.query(
+    "SELECT pg_get_indexdef(to_regclass($1)) AS definition",
+    [expectedIndexName],
+  );
+  const indexDefinition = String(
+    definitionResult.rows[0]?.definition ?? "absent",
+  );
+  if (family === "document") {
+    const result = await pool.query(
+      `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+       SELECT id FROM memories
+       WHERE type = 'document_fragments'
+         AND agent_id = $1
+         AND metadata->>'type' = 'fragment'
+         AND metadata->>'fragmentRole' = 'source-segment'
+         AND metadata->>'sourceSegmentVersion' = '1'
+         AND metadata ? 'sourceByteEnd'
+         AND metadata->>'documentId' = $2
+         AND (metadata->>'documentRevision')::bigint = 0
+         AND NOT (metadata ? 'revisionAttemptId')
+         AND metadata->>'revisionAttemptId' IS NULL
+         AND (metadata->>'sourceByteEnd')::bigint > $3
+         AND (metadata->>'sourceByteStart')::bigint < $4
+       ORDER BY agent_id,
+                metadata->>'documentId',
+                (metadata->>'documentRevision')::bigint,
+                (metadata->>'sourceByteEnd')::bigint
+       LIMIT 66`,
+      [ids.agentId, objectId, offset, requestedEnd],
+    );
+    return summarizeExplainPlan(result, expectedIndexName, indexDefinition);
+  }
+  const revisionResult = await pool.query(
+    `SELECT metadata->>'sourceRevision' AS revision
+     FROM memories
+     WHERE type = 'message_content_segments'
+       AND agent_id = $1
+       AND metadata->>'messageId' = $2
+     LIMIT 1`,
+    [ids.agentId, objectId],
+  );
+  const revision = revisionResult.rows[0]?.revision;
+  if (typeof revision !== "string") {
+    throw new Error(`missing source revision for ${object.id}`);
+  }
+  const result = await pool.query(
+    `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+     SELECT id FROM memories
+     WHERE type = 'message_content_segments'
+       AND agent_id = $1
+       AND metadata->>'type' = 'message-content-segment'
+       AND metadata->>'messageId' = $2
+       AND metadata->>'sourceKind' = 'message-text'
+       AND NOT (metadata ? 'attachmentIdHash')
+       AND metadata->>'attachmentIdHash' IS NULL
+       AND metadata->>'sourceRevision' = $3
+       AND (metadata->>'byteEnd')::bigint > $4
+       AND (metadata->>'byteStart')::bigint < $5
+     ORDER BY agent_id,
+              metadata->>'messageId',
+              metadata->>'sourceKind',
+              metadata->>'attachmentIdHash',
+              metadata->>'sourceRevision',
+              (metadata->>'byteEnd')::bigint
+     LIMIT 66`,
+    [ids.agentId, objectId, revision, offset, requestedEnd],
+  );
+  return summarizeExplainPlan(result, expectedIndexName, indexDefinition);
+}
+
 async function produce(options) {
+  const startedAt = performance.now();
+  const memoryAtStart = process.memoryUsage();
+  const peakMemory = {
+    rss: memoryAtStart.rss,
+    heapUsed: memoryAtStart.heapUsed,
+    external: memoryAtStart.external,
+  };
+  const sampleMemory = () => {
+    const current = process.memoryUsage();
+    peakMemory.rss = Math.max(peakMemory.rss, current.rss);
+    peakMemory.heapUsed = Math.max(peakMemory.heapUsed, current.heapUsed);
+    peakMemory.external = Math.max(peakMemory.external, current.external);
+  };
+  const memorySampler = setInterval(sampleMemory, 25);
+  memorySampler.unref?.();
   const corpusRoot = path.resolve(
     requiredEnvironment("ELIZA_CONTENT_CONTEXT_CORPUS_ROOT"),
   );
@@ -585,6 +715,7 @@ async function produce(options) {
     const objects = [];
     try {
       for (const object of manifest.objects) {
+        const objectStartedAt = performance.now();
         if (["document", "memory", "email"].includes(object.family)) {
           const rejection = rejected.get(object.id);
           if (rejection) {
@@ -603,6 +734,7 @@ async function produce(options) {
               authorizationVerified: true,
               isolationVerified: true,
               restartVerified: true,
+              durationMs: performance.now() - objectStartedAt,
               sourceWork: sourceWork(
                 object.byteLength,
                 rejection.bytesRead,
@@ -629,10 +761,11 @@ async function produce(options) {
             authorizationVerified: true,
             isolationVerified: true,
             restartVerified: true,
+            durationMs: performance.now() - objectStartedAt,
             sourceWork: sourceWork(
               object.byteLength,
               object.byteLength,
-              Math.ceil(object.byteLength / PAGE_BYTES),
+              traversed.readCalls,
               traversed.rowsRead,
             ),
           });
@@ -687,6 +820,7 @@ async function produce(options) {
           authorizationVerified: true,
           isolationVerified: true,
           restartVerified: true,
+          durationMs: performance.now() - objectStartedAt,
           sourceWork: sourceWork(
             object.byteLength,
             traversed.bytesRead,
@@ -746,6 +880,20 @@ async function produce(options) {
     const sqlMappings = mappings.filter(([family]) =>
       ["document", "memory", "email"].includes(family),
     );
+    await sqlPool.query("ANALYZE memories");
+    const seekPlans = new Map();
+    for (const [family] of sqlMappings) {
+      const object = manifest.objects
+        .filter(
+          (candidate) =>
+            candidate.family === family &&
+            candidate.format !== "binary" &&
+            candidate.format !== "invalid-utf8",
+        )
+        .sort((left, right) => right.byteLength - left.byteLength)[0];
+      if (!object) throw new Error(`no valid ${family} object for seek plan`);
+      seekPlans.set(family, await explainSqlSeek(sqlPool, family, object, ids));
+    }
     const negativeVectors = [];
     for (const [family] of sqlMappings) {
       for (const format of ["binary", "invalid-utf8"]) {
@@ -783,6 +931,17 @@ async function produce(options) {
         });
       }
     }
+    const databaseSizeBytes = Number(
+      (
+        await sqlPool.query(
+          "SELECT pg_database_size(current_database())::bigint AS bytes",
+        )
+      ).rows[0]?.bytes ?? 0,
+    );
+    const totalPostgresRows = Number(
+      (await sqlPool.query("SELECT count(*)::int AS count FROM memories"))
+        .rows[0]?.count ?? 0,
+    );
     await adapter.close();
     adapter = undefined;
     await bootstrap.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
@@ -793,8 +952,10 @@ async function produce(options) {
     );
     postDropProbe =
       Number(probe.rows[0]?.count ?? 1) === 0 ? "absent" : "present";
+    const memoryAtEnd = process.memoryUsage();
+    sampleMemory();
     const report = {
-      schemaVersion: "elizaos.content-context.postgres.v2",
+      schemaVersion: "elizaos.content-context.postgres.v3",
       status: "passed",
       backend: "postgres",
       commit: options.commit,
@@ -807,6 +968,19 @@ async function produce(options) {
           `--commit=${options.commit}`,
         ],
         cwd: ".",
+      },
+      performance: {
+        durationMs: performance.now() - startedAt,
+        peakRssBytes: peakMemory.rss,
+        peakHeapUsedBytes: peakMemory.heapUsed,
+        peakExternalBytes: peakMemory.external,
+        rssDeltaBytes: memoryAtEnd.rss - memoryAtStart.rss,
+        heapUsedStartBytes: memoryAtStart.heapUsed,
+        heapUsedEndBytes: memoryAtEnd.heapUsed,
+        externalStartBytes: memoryAtStart.external,
+        externalEndBytes: memoryAtEnd.external,
+        databaseSizeBytes,
+        totalPostgresRows,
       },
       familyMappings: mappings.map(
         ([family, authoritativeStore, productionMethod, binaryPolicy]) => ({
@@ -829,6 +1003,7 @@ async function produce(options) {
             ? "idx_document_source_byte_seek"
             : "idx_message_content_byte_seek",
         ].filter((name) => installedIndexes.has(name)),
+        seekPlan: seekPlans.get(family),
       })),
       objects,
       negativeVectors,
@@ -850,6 +1025,8 @@ async function produce(options) {
     await privateAtomicJson(output, report);
     return report;
   } finally {
+    clearInterval(memorySampler);
+    sampleMemory();
     await adapter?.close().catch(() => {});
     if (databaseCreated && !databaseDropped) {
       await bootstrap

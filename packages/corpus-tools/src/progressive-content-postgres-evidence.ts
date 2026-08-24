@@ -1,7 +1,7 @@
 /** Validates real-Postgres evidence against production storage ownership and bounded-read contracts. */
 
 export const CONTENT_CONTEXT_POSTGRES_SCHEMA_VERSION =
-  "elizaos.content-context.postgres.v2" as const;
+  "elizaos.content-context.postgres.v3" as const;
 
 export const CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS = [
   {
@@ -96,6 +96,10 @@ function safeNonnegative(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+function finiteNonnegative(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 function mappingFor(family: string) {
   return CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS.find(
     (mapping) => mapping.family === family,
@@ -122,6 +126,7 @@ export function validateProgressiveContentPostgresEvidence(
       "corpusManifestSha256",
       "server",
       "command",
+      "performance",
       "familyMappings",
       "sharedVectors",
       "objects",
@@ -138,6 +143,47 @@ export function validateProgressiveContentPostgresEvidence(
     report.corpusManifestSha256 !== expected.corpusManifestSha256
   ) {
     throw new TypeError("Postgres report identity or status is invalid");
+  }
+
+  const performance = record(report.performance, "Postgres performance");
+  exactKeys(
+    performance,
+    [
+      "durationMs",
+      "peakRssBytes",
+      "peakHeapUsedBytes",
+      "peakExternalBytes",
+      "rssDeltaBytes",
+      "heapUsedStartBytes",
+      "heapUsedEndBytes",
+      "externalStartBytes",
+      "externalEndBytes",
+      "databaseSizeBytes",
+      "totalPostgresRows",
+    ],
+    "Postgres performance",
+  );
+  if (
+    !finiteNonnegative(performance.durationMs) ||
+    performance.durationMs <= 0 ||
+    !safeNonnegative(performance.peakRssBytes) ||
+    performance.peakRssBytes < 1 ||
+    !safeNonnegative(performance.peakHeapUsedBytes) ||
+    performance.peakHeapUsedBytes < 1 ||
+    !safeNonnegative(performance.peakExternalBytes) ||
+    performance.peakExternalBytes < 1 ||
+    typeof performance.rssDeltaBytes !== "number" ||
+    !Number.isSafeInteger(performance.rssDeltaBytes) ||
+    !safeNonnegative(performance.heapUsedStartBytes) ||
+    !safeNonnegative(performance.heapUsedEndBytes) ||
+    !safeNonnegative(performance.externalStartBytes) ||
+    !safeNonnegative(performance.externalEndBytes) ||
+    !safeNonnegative(performance.databaseSizeBytes) ||
+    performance.databaseSizeBytes < 1 ||
+    !safeNonnegative(performance.totalPostgresRows) ||
+    performance.totalPostgresRows < 1
+  ) {
+    throw new TypeError("Postgres performance metrics are invalid");
   }
 
   const server = record(report.server, "Postgres server");
@@ -241,6 +287,7 @@ export function validateProgressiveContentPostgresEvidence(
         "isolationDenied",
         "restartVerified",
         "indexNames",
+        "seekPlan",
       ],
       `${mapping.family} shared vector`,
     );
@@ -255,6 +302,40 @@ export function validateProgressiveContentPostgresEvidence(
       ) !== JSON.stringify(mapping.expectedIndexNames)
     ) {
       throw new TypeError(`${mapping.family} shared vector is incomplete`);
+    }
+    const seekPlan = record(
+      vector.seekPlan,
+      `${mapping.family} indexed seek plan`,
+    );
+    exactKeys(
+      seekPlan,
+      [
+        "indexName",
+        "nodeTypes",
+        "actualRows",
+        "sharedHitBlocks",
+        "sharedReadBlocks",
+        "planningTimeMs",
+        "executionTimeMs",
+      ],
+      `${mapping.family} indexed seek plan`,
+    );
+    const nodeTypes = array(
+      seekPlan.nodeTypes,
+      `${mapping.family} indexed seek node types`,
+    );
+    if (
+      seekPlan.indexName !== mapping.expectedIndexNames[0] ||
+      !nodeTypes.every((node) => typeof node === "string") ||
+      !nodeTypes.some((node) => /Index/u.test(String(node))) ||
+      !safeNonnegative(seekPlan.actualRows) ||
+      seekPlan.actualRows < 1 ||
+      !safeNonnegative(seekPlan.sharedHitBlocks) ||
+      !safeNonnegative(seekPlan.sharedReadBlocks) ||
+      !finiteNonnegative(seekPlan.planningTimeMs) ||
+      !finiteNonnegative(seekPlan.executionTimeMs)
+    ) {
+      throw new TypeError(`${mapping.family} indexed seek plan is invalid`);
     }
   }
 
@@ -286,6 +367,7 @@ export function validateProgressiveContentPostgresEvidence(
         "authorizationVerified",
         "isolationVerified",
         "restartVerified",
+        "durationMs",
         "sourceWork",
       ],
       "Postgres object",
@@ -316,6 +398,7 @@ export function validateProgressiveContentPostgresEvidence(
       object.authorizationVerified !== true ||
       object.isolationVerified !== true ||
       object.restartVerified !== true ||
+      !finiteNonnegative(object.durationMs) ||
       !safeNonnegative(object.postgresRows) ||
       object.disposition !==
         (typedRejection

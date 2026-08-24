@@ -68,6 +68,7 @@ export interface MessageContentRangePage {
 	sliceSha256: string;
 	returnedSegments: number;
 	returnedBytes: number;
+	sourceQueryCount: number;
 }
 
 export type MessageContentRangeReadResult =

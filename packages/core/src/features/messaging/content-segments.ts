@@ -71,6 +71,7 @@ interface ReconstructedMessageContentPage {
 	sliceSha256: string;
 	returnedSegments: number;
 	returnedBytes: number;
+	sourceQueryCount: number;
 }
 
 const encoder = new TextEncoder();
@@ -435,6 +436,7 @@ export function readMessageContentProjection(args: {
 	messageId: UUID;
 	offset: number;
 	limit: number;
+	sourceQueryCount?: number;
 }): ReconstructedMessageContentPage {
 	if (
 		!Number.isSafeInteger(args.offset) ||
@@ -509,6 +511,7 @@ export function readMessageContentProjection(args: {
 			sliceSha256: sha256(""),
 			returnedSegments: 0,
 			returnedBytes: 0,
+			sourceQueryCount: args.sourceQueryCount ?? 0,
 		};
 	}
 	if (ordered.length === 0) {
@@ -591,5 +594,6 @@ export function readMessageContentProjection(args: {
 		sliceSha256: sha256(pageBytes),
 		returnedSegments: ordered.length,
 		returnedBytes: pageBytes.length,
+		sourceQueryCount: args.sourceQueryCount ?? 0,
 	};
 }
