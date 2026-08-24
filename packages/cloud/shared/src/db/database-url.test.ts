@@ -19,7 +19,9 @@ const REMOTE = "postgres://user:pw@db.example.com:5432/prod";
 const TEST_REMOTE = "postgres://user:pw@db.example.com:5432/test";
 
 /** A local-dev env: not production, not CI. */
-const local = (over: Record<string, string | undefined> = {}) => ({
+const local = (
+  over: Record<string, string | undefined> = {},
+): Record<string, string | undefined> => ({
   NODE_ENV: "development",
   ...over,
 });
