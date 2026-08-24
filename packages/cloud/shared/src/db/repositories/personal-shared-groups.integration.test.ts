@@ -76,16 +76,10 @@ beforeAll(async () => {
     new URL("../migrations/0304_personal_shared_group_delivery_lease.sql", import.meta.url),
   ).text();
   await database.exec(leaseMigration);
-  for (const migrationName of [
-    "0309_personal_shared_group_delivery_attempts.sql",
-    "0310_personal_shared_group_delivery_attempt_fence.sql",
-    "0311_personal_shared_group_delivery_attempt_backfill.sql",
-  ]) {
-    const attemptsMigration = await Bun.file(
-      new URL(`../migrations/${migrationName}`, import.meta.url),
-    ).text();
-    await database.exec(attemptsMigration);
-  }
+  const attemptsMigration = await Bun.file(
+    new URL("../migrations/0312_personal_shared_group_delivery_attempts.sql", import.meta.url),
+  ).text();
+  await database.exec(attemptsMigration);
 });
 
 beforeEach(async () => {
