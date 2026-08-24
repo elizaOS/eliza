@@ -35,11 +35,43 @@ describe("macOS AX helper packaging", () => {
     expect(source).not.toContain("AXIsProcessTrustedWithOptions");
     expect(source).toContain("postToPid(pid)");
     expect(source).not.toContain("CGEventPost(.cghidEventTap");
+    expect(source).not.toContain(".post(tap:");
+    expect(source).not.toContain("mouseEventSource:");
+    expect(source).not.toContain("scrollWheelEvent2Source:");
+    expect(source).toContain("CGWindowListCopyWindowInfo");
+    expect(source).toContain('expected["windowId"]');
+    expect(source).toContain('result["focusedWindowId"]');
+    expect(source).toContain('"targetWindowId": Int(currentWindowId)');
+    expect(source).toContain("eligibleWindowCount == 1");
+    expect(source).toContain("if candidates.count == 1");
+    expect(source).toContain("if titleMatches.count == 1");
+    expect(source).toContain(
+      "Process-scoped keyboard event refused because the PID has multiple eligible windows",
+    );
     expect(source).toContain("snapshotPasteboard");
     expect(source).toContain("restorePasteboard");
     expect(source).toContain("AXUIElementPerformAction");
     expect(source).toContain("AXUIElementSetAttributeValue");
     expect(source).toContain("redactSensitive");
     expect(source).toContain("[redacted]");
+  });
+
+  it("keeps global physical input behind opt-in and a distinct approval", () => {
+    const defaults = readFileSync(
+      `${packageRoot}/src/app-control/defaults.ts`,
+      "utf8",
+    );
+    const service = readFileSync(
+      `${packageRoot}/src/services/computer-use-service.ts`,
+      "utf8",
+    );
+    expect(defaults).toContain(
+      'OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS === "1"',
+    );
+    expect(service).toContain(
+      'process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS !== "1"',
+    );
+    expect(service).toContain('"app_physical_pointer_fallback"');
+    expect(service).toContain("requestApproval(");
   });
 });

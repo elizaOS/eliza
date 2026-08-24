@@ -12,9 +12,13 @@
 import os from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { AppControlCoordinator } from "../app-control/coordinator.js";
+import {
+  AppControlCoordinator,
+  AppControlError,
+} from "../app-control/coordinator.js";
 import {
   guardedPhysicalPointer,
+  physicalPointerObserver,
   RegisteredVisualGrounder,
   WindowRegionCapture,
 } from "../app-control/defaults.js";
@@ -25,6 +29,8 @@ import type {
   AppControlPermissionState,
   AppDescriptor,
   AppState,
+  PhysicalFallbackApprovalRequest,
+  PhysicalFallbackApprovalReceipt,
 } from "../app-control/types.js";
 import {
   ComputerUseApprovalManager,
@@ -368,6 +374,9 @@ export class ComputerUseService extends Service {
     capture: new WindowRegionCapture(),
     grounder: new RegisteredVisualGrounder(),
     pointer: guardedPhysicalPointer,
+    pointerObserver: physicalPointerObserver,
+    authorizePhysicalFallback: (request, signal) =>
+      this.awaitPhysicalFallbackApproval(request, signal),
   });
   private displayIdDeprecationWarned = false;
   private sceneBuilder: SceneBuilder = new SceneBuilder({
@@ -675,6 +684,9 @@ export class ComputerUseService extends Service {
   private validateAppActionRequest(request: AppActionRequest): void {
     const elementRequired = new Set<AppActionRequest["kind"]>([
       "click",
+      "press_key",
+      "type_text",
+      "paste",
       "scroll",
       "set_value",
       "select_text",
@@ -2525,6 +2537,51 @@ export class ComputerUseService extends Service {
     return decision.reason
       ? `Computer-use approval rejected: ${decision.reason}`
       : `Computer-use approval rejected for "${command}".`;
+  }
+
+  private async awaitPhysicalFallbackApproval(
+    request: PhysicalFallbackApprovalRequest,
+    signal?: AbortSignal,
+  ): Promise<PhysicalFallbackApprovalReceipt> {
+    if (
+      process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS !== "1"
+    ) {
+      throw new AppControlError(
+        "PHYSICAL_FALLBACK_DENIED",
+        "Global physical pointer fallback is disabled; a supervisor must opt in with OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1 before requesting approval",
+      );
+    }
+    if (this.approvalManager.isDenyAll()) {
+      throw new AppControlError(
+        "PHYSICAL_FALLBACK_DENIED",
+        "Physical pointer fallback is paused by the current approval mode",
+      );
+    }
+    const decision = await this.approvalManager.requestApproval(
+      "app_physical_pointer_fallback",
+      {
+        app: request.appId,
+        kind: request.kind,
+        element_index: request.element_index,
+        groundingMode: request.groundingMode,
+        target: request.target,
+      },
+      signal,
+    );
+    if (!decision.approved) {
+      throw new AppControlError(
+        "PHYSICAL_FALLBACK_DENIED",
+        decision.reason
+          ? `Physical pointer fallback rejected: ${decision.reason}`
+          : "Physical pointer fallback was not approved",
+      );
+    }
+    return {
+      approvalId: decision.id,
+      requestedAt: decision.requestedAt,
+      approvedAt: decision.resolvedAt,
+      mode: decision.mode,
+    };
   }
 
   /**

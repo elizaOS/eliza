@@ -128,6 +128,64 @@ func boundsObject(_ element: AXUIElement) -> [String: Any]? {
     return ["x": point.x, "y": point.y, "width": size.width, "height": size.height]
 }
 
+func boundsRect(_ element: AXUIElement) -> CGRect? {
+    guard let point = pointAttribute(element, kAXPositionAttribute as CFString),
+          let size = sizeAttribute(element, kAXSizeAttribute as CFString) else { return nil }
+    return CGRect(origin: point, size: size)
+}
+
+func focusedWindow(_ app: NSRunningApplication) -> AXUIElement? {
+    let root = AXUIElementCreateApplication(app.processIdentifier)
+    guard let value = copyAttribute(root, kAXFocusedWindowAttribute as CFString),
+          CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+    return (value as! AXUIElement)
+}
+
+func sameBounds(_ left: CGRect, _ right: CGRect) -> Bool {
+    let tolerance: CGFloat = 2
+    return abs(left.origin.x - right.origin.x) <= tolerance &&
+        abs(left.origin.y - right.origin.y) <= tolerance &&
+        abs(left.size.width - right.size.width) <= tolerance &&
+        abs(left.size.height - right.size.height) <= tolerance
+}
+
+struct EligibleWindow {
+    let id: CGWindowID
+    let title: String?
+    let bounds: CGRect
+}
+
+func eligibleWindows(pid: pid_t) -> [EligibleWindow] {
+    guard let rows = CGWindowListCopyWindowInfo(
+        [.optionOnScreenOnly, .excludeDesktopElements],
+        kCGNullWindowID
+    ) as? [[String: Any]] else { return [] }
+    return rows.compactMap { row in
+        guard (row[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+              (row[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+              let number = row[kCGWindowNumber as String] as? NSNumber,
+              let dictionary = row[kCGWindowBounds as String] as? [String: Any],
+              let bounds = CGRect(dictionaryRepresentation: dictionary as CFDictionary) else { return nil }
+        return EligibleWindow(
+            id: CGWindowID(number.uint32Value),
+            title: row[kCGWindowName as String] as? String,
+            bounds: bounds
+        )
+    }
+}
+
+func exactWindowId(pid: pid_t, window: AXUIElement) -> CGWindowID? {
+    guard let axBounds = boundsRect(window) else { return nil }
+    let axTitle = stringAttribute(window, kAXTitleAttribute as CFString)
+    let candidates = eligibleWindows(pid: pid).filter { sameBounds(axBounds, $0.bounds) }
+    if candidates.count == 1 { return candidates[0].id }
+    if let axTitle {
+        let titleMatches = candidates.filter { $0.title == axTitle }
+        if titleMatches.count == 1 { return titleMatches[0].id }
+    }
+    return nil
+}
+
 func actionNames(_ element: AXUIElement) -> [String] {
     var names: CFArray?
     guard AXUIElementCopyActionNames(element, &names) == .success else { return [] }
@@ -177,12 +235,21 @@ func snapshot(_ app: NSRunningApplication) -> [String: Any] {
             "axText": "Accessibility permission unavailable",
         ]
     }
-    let root = AXUIElementCreateApplication(app.processIdentifier)
+    guard let root = focusedWindow(app) else {
+        return [
+            "app": appObject(app),
+            "capturedAt": ISO8601DateFormatter().string(from: Date()),
+            "permission": "ready",
+            "elements": [],
+            "axText": "No focused accessibility window is available",
+        ]
+    }
+    let windowId = exactWindowId(pid: app.processIdentifier, window: root)
     var queue = [WalkItem(element: root, locator: [])]
     var cursor = 0
     var output: [[String: Any]] = []
     var textLines: [String] = []
-    var focusedWindowBounds: [String: Any]?
+    let focusedWindowBounds = boundsObject(root)
     while cursor < queue.count {
         let item = queue[cursor]
         cursor += 1
@@ -215,10 +282,6 @@ func snapshot(_ app: NSRunningApplication) -> [String: Any] {
         output.append(element)
         let visibleValue = secure ? "[secure value redacted]" : (rawValue ?? "")
         textLines.append("[\(output.count)] \(role) \(label ?? "") \(visibleValue)")
-        if focusedWindowBounds == nil && role == (kAXWindowRole as String) {
-            let focused = boolAttribute(item.element, kAXFocusedAttribute as CFString, default: false)
-            if focused || bounds != nil { focusedWindowBounds = bounds }
-        }
         for (index, child) in children(item.element).enumerated() {
             queue.append(WalkItem(element: child, locator: item.locator + [index]))
         }
@@ -231,6 +294,7 @@ func snapshot(_ app: NSRunningApplication) -> [String: Any] {
         "axText": textLines.joined(separator: "\n"),
     ]
     if let focusedWindowBounds { result["focusedWindowBounds"] = focusedWindowBounds }
+    if let windowId { result["focusedWindowId"] = Int(windowId) }
     return result
 }
 
@@ -255,6 +319,16 @@ func matchesExpected(_ element: AXUIElement, _ expected: [String: Any]?) -> Bool
             stringAttribute(element, kAXLabelValueAttribute as CFString)
         if actual.map(redactSensitive) != label { return false }
     }
+    if let expectedBounds = expected["bounds"] as? [String: Any],
+       let x = expectedBounds["x"] as? NSNumber,
+       let y = expectedBounds["y"] as? NSNumber,
+       let width = expectedBounds["width"] as? NSNumber,
+       let height = expectedBounds["height"] as? NSNumber,
+       let actual = boundsRect(element),
+       !sameBounds(
+           actual,
+           CGRect(x: x.doubleValue, y: y.doubleValue, width: width.doubleValue, height: height.doubleValue)
+       ) { return false }
     return true
 }
 
@@ -348,15 +422,25 @@ func perform(_ request: [String: Any]) throws -> [String: Any] {
         throw HelperFailure.invalidRequest("perform requires app and action")
     }
     let app = try findApp(identifier)
-    let root = AXUIElementCreateApplication(app.processIdentifier)
+    guard let expected = request["expected"] as? [String: Any],
+          let expectedWindowId = expected["windowId"] as? NSNumber else {
+        throw HelperFailure.invalidRequest("perform requires an exact expected windowId")
+    }
+    guard let root = focusedWindow(app),
+          let currentWindowId = exactWindowId(pid: app.processIdentifier, window: root),
+          currentWindowId == CGWindowID(expectedWindowId.uint32Value) else {
+        throw HelperFailure.staleElement("The exact focused app window changed; recapture before acting")
+    }
     let locator = request["locator"] as? [Int]
     let element = try locator.map { try resolve(root, locator: $0) }
-    if let element, !matchesExpected(element, request["expected"] as? [String: Any]) {
+    if let element, !matchesExpected(element, expected) {
         throw HelperFailure.staleElement("Accessibility element no longer matches the captured state")
     }
     let text = request["text"] as? String ?? ""
     var success = false
     var clipboardRestored: Bool?
+    var executionMode = "semantic_ax"
+    let eligibleWindowCount = eligibleWindows(pid: app.processIdentifier).count
     switch action {
     case "click":
         if let element {
@@ -383,15 +467,25 @@ func perform(_ request: [String: Any]) throws -> [String: Any] {
             }
         }
     case "press_key":
-        if let key = request["key"] as? String, let code = keyCode(key) {
+        if element != nil,
+           eligibleWindowCount == 1,
+           let key = request["key"] as? String,
+           let code = keyCode(key) {
             success = postKey(pid: app.processIdentifier, keyCode: code, modifiers: modifierFlags(request["modifiers"] as? [String] ?? []))
+            if success { executionMode = "process_pid_keyboard_cgevent" }
         }
     case "type_text":
-        success = typeText(pid: app.processIdentifier, text: text)
+        if element != nil && eligibleWindowCount == 1 {
+            success = typeText(pid: app.processIdentifier, text: text)
+        }
+        if success { executionMode = "process_pid_keyboard_cgevent" }
     case "paste":
-        let outcome = paste(pid: app.processIdentifier, text: text, format: request["format"] as? String ?? "text")
-        success = outcome.success
-        clipboardRestored = outcome.restored
+        if element != nil && eligibleWindowCount == 1 {
+            let outcome = paste(pid: app.processIdentifier, text: text, format: request["format"] as? String ?? "text")
+            success = outcome.success
+            clipboardRestored = outcome.restored
+        }
+        if success { executionMode = "process_pid_keyboard_cgevent" }
     case "scroll":
         if let element {
             let direction = request["direction"] as? String ?? "down"
@@ -403,8 +497,18 @@ func perform(_ request: [String: Any]) throws -> [String: Any] {
     default:
         throw HelperFailure.invalidRequest("Unsupported app action: \(action)")
     }
-    var result: [String: Any] = ["success": success]
-    if !success { result["error"] = "The accessibility element did not expose a matching semantic action" }
+    var result: [String: Any] = [
+        "success": success,
+        "targetPid": Int(app.processIdentifier),
+        "targetWindowId": Int(currentWindowId),
+    ]
+    if !success {
+        let keyboardAction = action == "press_key" || action == "type_text" || action == "paste"
+        result["error"] = keyboardAction && eligibleWindowCount != 1
+            ? "Process-scoped keyboard event refused because the PID has multiple eligible windows; an exact window-local dispatcher is unavailable"
+            : "The accessibility element did not expose a matching semantic action; exact window-local pointer dispatch is unavailable and global physical fallback requires separate policy and approval"
+    }
+    if success { result["executionMode"] = executionMode }
     if let clipboardRestored { result["clipboardRestored"] = clipboardRestored }
     return result
 }

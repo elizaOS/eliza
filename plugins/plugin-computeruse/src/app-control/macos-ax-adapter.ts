@@ -152,6 +152,7 @@ export class MacosAxAdapter implements AppControlAdapter {
     app: AppDescriptor,
     element: NativeAppElement | undefined,
     request: AppActionRequest,
+    expectedWindowId: number,
     signal?: AbortSignal,
   ): Promise<NativeAppActionResult> {
     return invokeHelper<NativeAppActionResult>(
@@ -167,9 +168,10 @@ export class MacosAxAdapter implements AppControlAdapter {
                 role: element.role,
                 label: element.label,
                 bounds: element.bounds,
+                windowId: expectedWindowId,
               },
             }
-          : {}),
+          : { expected: { windowId: expectedWindowId } }),
         ...(request.text !== undefined ? { text: request.text } : {}),
         ...(request.key !== undefined ? { key: request.key } : {}),
         ...(request.modifiers ? { modifiers: request.modifiers } : {}),

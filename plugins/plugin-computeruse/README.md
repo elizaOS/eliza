@@ -48,13 +48,17 @@ the other.
 On macOS, the packaged v2 app-control lane adds direct Accessibility control
 through `dist/native/macos-ax-helper`. It lists running apps and returns a
 focused-window screenshot plus the AX tree, incremental diff, and ephemeral
-`element_index` values. App-scoped actions prefer semantic AX operations,
-then registered Set-of-Marks/OCR grounding, and only use the guarded physical
-pointer when session policy and approval both permit it. Planning and target
-hover use the orange agent overlay and never move the physical pointer. macOS
-still exposes only one true system pointer, so an approved coordinate fallback
-can move it. The helper reads permission state without requesting or changing
-TCC grants.
+`element_index` values. App-scoped actions prefer semantic AX operations and
+refuse when an exact window-local pointer route is unavailable; the native
+helper never posts PID mouse or scroll events. Registered Set-of-Marks/OCR can
+reach the guarded global physical pointer only when the operator sets
+`OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`, the request asks for
+fallback, and a distinct action-time approval resolves. Process-scoped keyboard
+compatibility requires an indexed element, one eligible same-PID window, and
+target-element readback. Planning and target hover use the orange agent overlay
+and never invoke global pointer input. macOS still exposes only one true system
+pointer, so an approved coordinate fallback can move it. The helper reads
+permission state without requesting or changing TCC grants.
 
 The Linux X11 release-evidence path is executable with
 `bun run capture:linux-desktop-evidence`; it uses a disposable controlled xterm

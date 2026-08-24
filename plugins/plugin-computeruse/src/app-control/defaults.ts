@@ -6,7 +6,11 @@ import {
 } from "../mobile/ocr-provider.js";
 import { captureDisplayRegion } from "../platform/capture.js";
 import { listDisplays } from "../platform/displays.js";
-import { driverClick, driverScroll } from "../platform/driver.js";
+import {
+  driverClick,
+  driverGetCursorPosition,
+  driverScroll,
+} from "../platform/driver.js";
 import type {
   AppActionRequest,
   AppControlGrounder,
@@ -145,7 +149,14 @@ export class RegisteredVisualGrounder implements AppControlGrounder {
   }
 }
 
-export const guardedPhysicalPointer = {
-  click: driverClick,
-  scroll: driverScroll,
+export const guardedPhysicalPointer =
+  process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS === "1"
+    ? {
+        click: driverClick,
+        scroll: driverScroll,
+      }
+    : undefined;
+
+export const physicalPointerObserver = {
+  getPosition: driverGetCursorPosition,
 };

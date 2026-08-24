@@ -66,8 +66,11 @@ export interface ComputerUseTargetOverlay {
   elementIndex?: number;
   appId?: string;
   updatedAt: string;
+  /** True only when Eliza invoked the global physical input driver. */
+  physicalPointerInput: boolean;
   /** Planning/hover overlays never move the one macOS system pointer. */
   physicalPointerMoved: boolean;
+  pointerObservation: "unchanged" | "changed" | "unavailable";
 }
 
 export interface ComputerUseActionReceipt {
@@ -76,10 +79,23 @@ export interface ComputerUseActionReceipt {
   kind: string;
   beforeStateId: string;
   afterStateId: string;
+  targetPid: number;
+  targetWindowId: number;
   executionMode: string;
   completedAt: string;
   changed: boolean;
+  physicalPointerInput: boolean;
   physicalPointerMoved: boolean;
+  pointerObservation: "unchanged" | "changed" | "unavailable";
+  pointerBefore?: { x: number; y: number };
+  pointerAfter?: { x: number; y: number };
+  groundingMode?: string;
+  physicalFallbackApproval?: {
+    approvalId: string;
+    requestedAt: string;
+    approvedAt: string;
+    mode: string;
+  };
   clipboardRestored?: boolean;
   element_index?: number;
 }
