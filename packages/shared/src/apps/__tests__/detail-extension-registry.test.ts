@@ -38,4 +38,35 @@ describe("detail-extension-registry", () => {
       } as never),
     ).toBe(second);
   });
+
+  it("returns null when uiExtension exists but has no detailPanelId", () => {
+    expect(getAppDetailExtension({ uiExtension: {} } as never)).toBeNull();
+  });
+
+  it("returns null for an empty-string panel id even when registered", () => {
+    const component = vi.fn();
+    registerDetailExtension("", component as never);
+    expect(
+      getAppDetailExtension({
+        uiExtension: { detailPanelId: "" },
+      } as never),
+    ).toBeNull();
+  });
+
+  it("resolves multiple registered panel ids independently", () => {
+    const inbox = vi.fn();
+    const wallet = vi.fn();
+    registerDetailExtension("panel-multi-a", inbox as never);
+    registerDetailExtension("panel-multi-b", wallet as never);
+    expect(
+      getAppDetailExtension({
+        uiExtension: { detailPanelId: "panel-multi-a" },
+      } as never),
+    ).toBe(inbox);
+    expect(
+      getAppDetailExtension({
+        uiExtension: { detailPanelId: "panel-multi-b" },
+      } as never),
+    ).toBe(wallet);
+  });
 });
