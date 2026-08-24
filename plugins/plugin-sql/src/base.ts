@@ -2205,24 +2205,30 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                   sql`${memoryTable.metadata}->>'sourceKind' = ${params.source.kind}`,
                   params.source.attachmentIdHash
                     ? sql`${memoryTable.metadata}->>'attachmentIdHash' = ${params.source.attachmentIdHash}`
-                    : sql`NOT (${memoryTable.metadata} ? 'attachmentIdHash')`,
+                    : and(
+                        sql`NOT (${memoryTable.metadata} ? 'attachmentIdHash')`,
+                        sql`${memoryTable.metadata}->>'attachmentIdHash' IS NULL`
+                      ),
                   sql`${memoryTable.metadata}->>'sourceRevision' = ${descriptor.revision}`,
                   sql`${endExpression} > ${params.offset}`,
                   sql`${startExpression} < ${requestedEnd}`
                 )
               )
-              .orderBy(asc(startExpression))
+              .orderBy(asc(endExpression))
               .limit(MESSAGE_CONTENT_READ_MAX_SEGMENTS);
       return {
         status: "ok",
         parent,
-        page: readMessageContentProjection({
-          descriptor,
-          segments: segmentRows.map((row) => memoryFromRow(row)),
-          messageId: params.messageId,
-          offset: params.offset,
-          limit: params.limit,
-        }),
+        page: {
+          ...readMessageContentProjection({
+            descriptor,
+            segments: segmentRows.map((row) => memoryFromRow(row)),
+            messageId: params.messageId,
+            offset: params.offset,
+            limit: params.limit,
+          }),
+          sourceQueryCount: params.offset === descriptor.byteLength ? 2 : 3,
+        },
       };
     });
   }
@@ -2740,16 +2746,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                   sql`${memoryTable.metadata}->>'type' = 'fragment'`,
                   sql`${memoryTable.metadata}->>'fragmentRole' = 'source-segment'`,
                   sql`${memoryTable.metadata}->>'sourceSegmentVersion' = '1'`,
+                  sql`${memoryTable.metadata} ? ${`${coordinatePrefix}End`}`,
                   sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`,
                   sql`${documentRevisionExpression(memoryTable.metadata)} = ${parent.documentRevision}`,
                   parent.revisionAttemptId
                     ? sql`${memoryTable.metadata}->>'revisionAttemptId' = ${parent.revisionAttemptId}`
-                    : sql`NOT (${memoryTable.metadata} ? 'revisionAttemptId')`,
+                    : and(
+                        sql`NOT (${memoryTable.metadata} ? 'revisionAttemptId')`,
+                        sql`${memoryTable.metadata}->>'revisionAttemptId' IS NULL`
+                      ),
                   sql`${endExpression} > ${params.offset}`,
                   sql`${startExpression} < ${requestedEnd}`
                 )
               )
-              .orderBy(asc(sql`(${memoryTable.metadata}->>'sourceByteStart')::bigint`))
+              .orderBy(asc(endExpression))
               .limit(DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS);
       return readDocumentSourceProjection({
         segments: segmentRows.map((row) => memoryFromRow(row)),
