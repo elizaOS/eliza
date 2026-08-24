@@ -80,8 +80,26 @@ async function pathFingerprint(
     hash.update(
       `${stat.mode}:${stat.isFile() ? "file" : stat.isSymbolicLink() ? "symlink" : stat.isDirectory() ? "directory" : "other"}\0`,
     );
-    if (stat.isFile()) hash.update(await fs.readFile(absolute));
-    else if (stat.isSymbolicLink()) hash.update(await fs.readlink(absolute));
+    if (stat.isFile()) {
+      const handle = await fs.open(absolute, "r");
+      try {
+        const buffer = Buffer.allocUnsafe(1024 * 1024);
+        let position = 0;
+        for (;;) {
+          const { bytesRead } = await handle.read(
+            buffer,
+            0,
+            buffer.length,
+            position,
+          );
+          if (bytesRead === 0) break;
+          hash.update(buffer.subarray(0, bytesRead));
+          position += bytesRead;
+        }
+      } finally {
+        await handle.close();
+      }
+    } else if (stat.isSymbolicLink()) hash.update(await fs.readlink(absolute));
     else hash.update(`${stat.size}:${stat.mtimeMs}`);
     return hash.digest("hex");
   } catch (error) {

@@ -61,6 +61,8 @@ describe("WorkspaceDeltaReceipt", () => {
 		{ ...observed("changed"), outcome: "maybe" },
 		{ ...observed("changed"), beforeFingerprint: "short" },
 		{ ...observed("changed"), observedAt: "not-a-time" },
+		{ ...observed("changed"), afterFingerprint: HASH_A },
+		{ ...observed("unchanged"), afterFingerprint: HASH_B },
 		{
 			...observed("changed"),
 			outcome: "indeterminate",

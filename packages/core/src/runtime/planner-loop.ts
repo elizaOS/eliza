@@ -3726,10 +3726,11 @@ function codingMutationRequiresVerification(
 	trajectory: PlannerTrajectory,
 ): boolean {
 	let latestMutationIndex = -1;
+	let latestMutationScopeRoot: string | null | undefined;
 	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
 	for (let index = 0; index < steps.length; index++) {
 		const step = steps[index];
-		const workspaceDelta = workspaceDeltaOutcome(step);
+		const workspaceDelta = workspaceDeltaObservation(step);
 		const name = step?.toolCall?.name.toUpperCase();
 		const fileMutation =
 			name === "FILE" &&
@@ -3754,31 +3755,41 @@ function codingMutationRequiresVerification(
 					.toLowerCase(),
 			);
 		if (
-			workspaceDelta === "changed" ||
-			workspaceDelta === "indeterminate" ||
+			workspaceDelta.outcome === "changed" ||
+			workspaceDelta.outcome === "indeterminate" ||
 			((name === "WRITE" || name === "EDIT" || fileMutation) &&
 				step.result?.success === true)
 		) {
 			latestMutationIndex = index;
+			latestMutationScopeRoot =
+				workspaceDelta.outcome === "changed" ||
+				workspaceDelta.outcome === "indeterminate"
+					? (workspaceDelta.root ?? null)
+					: undefined;
 		}
 	}
 	if (latestMutationIndex < 0) return false;
+	if (latestMutationScopeRoot === null) return true;
 
 	const verified = steps
 		.slice(latestMutationIndex + 1)
-		.some((step) => isSuccessfulCodingVerificationStep(step));
+		.some((step) =>
+			isSuccessfulCodingVerificationStep(step, latestMutationScopeRoot),
+		);
 	return !verified;
 }
 
-function workspaceDeltaOutcome(
-	step: PlannerStep,
-): WorkspaceDeltaOutcome | undefined {
+function workspaceDeltaObservation(step: PlannerStep): {
+	outcome: WorkspaceDeltaOutcome | undefined;
+	root?: string;
+} {
 	try {
-		return readWorkspaceDeltaReceipt(step.result?.data)?.outcome;
+		const receipt = readWorkspaceDeltaReceipt(step.result?.data);
+		return { outcome: receipt?.outcome, root: receipt?.scope.root };
 	} catch {
 		// A malformed receipt is not allowed to suppress the completion gate. Its
 		// mutation outcome is unknown, which is conservatively indeterminate.
-		return "indeterminate";
+		return { outcome: "indeterminate" };
 	}
 }
 
@@ -3791,15 +3802,28 @@ function workspaceDeltaOutcome(
  * result with `verificationEvidence: true` when they have stronger typed
  * evidence than command shape alone.
  */
-function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
+function isSuccessfulCodingVerificationStep(
+	step: PlannerStep,
+	requiredScopeRoot?: string,
+): boolean {
 	if (
 		step.toolCall?.name.toUpperCase() !== "SHELL" ||
 		step.result?.success !== true
 	) {
 		return false;
 	}
-	const workspaceDelta = workspaceDeltaOutcome(step);
-	if (workspaceDelta === "changed" || workspaceDelta === "indeterminate") {
+	const workspaceDelta = workspaceDeltaObservation(step);
+	if (
+		workspaceDelta.outcome === "changed" ||
+		workspaceDelta.outcome === "indeterminate"
+	) {
+		return false;
+	}
+	if (
+		requiredScopeRoot !== undefined &&
+		(workspaceDelta.outcome !== "unchanged" ||
+			workspaceDelta.root !== requiredScopeRoot)
+	) {
 		return false;
 	}
 	if (

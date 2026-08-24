@@ -14,7 +14,6 @@ import {
   type ActionResult,
   CANONICAL_SUBACTION_KEY,
   logger as coreLogger,
-  getCapabilityRouter,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -1940,12 +1939,13 @@ export const shellAction: Action = {
       `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch configuration`,
     );
 
-    // A remote PTY may execute on a different machine from this process. Never
-    // pair that execution with a local Git snapshot and call it authoritative;
-    // remote receipts must eventually come from the executing capability.
-    const workspaceObservation = getCapabilityRouter(runtime)
-      ? undefined
-      : await beginLocalWorkspaceDeltaObservation(cwd);
+    // A remote PTY may execute on a different machine from this process. The
+    // run-shell boundary invokes this hook only after routing has resolved to a
+    // local host/sandbox execution, including capability-unavailable fallback.
+    // Remote receipts must eventually come from the executing capability.
+    let workspaceObservation: Awaited<
+      ReturnType<typeof beginLocalWorkspaceDeltaObservation>
+    >;
     const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
     coreLogger.info(
@@ -1955,7 +1955,14 @@ export const shellAction: Action = {
 
     let result: ShellResult;
     try {
-      result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
+      result = await runShell(runtime, {
+        command,
+        cwd,
+        timeoutMs: timeout,
+        beforeLocalExecution: async () => {
+          workspaceObservation = await beginLocalWorkspaceDeltaObservation(cwd);
+        },
+      });
     } catch (err) {
       // error-policy:J1 SHELL action boundary; a dispatch failure is logged and
       // returned as a success:false ActionResult carrying the real message, so

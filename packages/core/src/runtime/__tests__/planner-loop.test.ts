@@ -551,13 +551,14 @@ describe("v5 planner loop skeleton", () => {
 	});
 	const workspaceDelta = (
 		outcome: "changed" | "unchanged" | "indeterminate",
+		root = "/workspace",
 	) => ({
 		workspaceDeltaReceipt: {
 			version: 1,
 			kind: "workspace_delta",
 			scope: {
 				kind: "git_worktree",
-				root: "/workspace",
+				root,
 				coverage: "tracked_and_untracked_nonignored",
 			},
 			outcome,
@@ -1005,6 +1006,83 @@ describe("v5 planner loop skeleton", () => {
 			});
 		},
 	);
+
+	it("does not let a clean verifier from another worktree clear a mutation", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "generate-a",
+								name: "SHELL",
+								arguments: { command: "node generate.js" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-b",
+								name: "SHELL",
+								arguments: { command: "npm test" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("reply-b", "Verified."))
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-a",
+								name: "SHELL",
+								arguments: { command: "npm run typecheck" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-a", "Verified in the changed worktree."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "generated",
+					data: workspaceDelta("changed", "/workspace/a"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "other worktree tests passed",
+					data: workspaceDelta("unchanged", "/workspace/b"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "changed worktree tests passed",
+					data: workspaceDelta("unchanged", "/workspace/a"),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Verified in the changed worktree.");
+			expect(runtime.useModel).toHaveBeenCalledTimes(5);
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+		});
+	});
 
 	it("does not treat a successful inspection command as coding verification", async () => {
 		await withCodingRequiredToolDefaults(async () => {

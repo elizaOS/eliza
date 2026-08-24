@@ -579,6 +579,53 @@ describeIfPosix("shellAction", () => {
     expect(result.data?.workspaceDeltaReceipt).toBeUndefined();
   });
 
+  it("attaches a local receipt when an unavailable router falls back to the host", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-router-fallback-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await fs.writeFile(path.join(root, "tracked.txt"), "initial\n", "utf8");
+      await execFileAsync("git", ["add", "tracked.txt"], { cwd: root });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "-qm",
+          "initial",
+        ],
+        { cwd: root },
+      );
+      const router = makeShellRouter(async () =>
+        unavailableCapability("pty", "pty.command.run"),
+      );
+      const { runtime, session } = await makeRuntime({
+        workspaceRoots: root,
+        capabilityRouter: router,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          command: "printf 'generated\\n' > generated.txt",
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: { root: await fs.realpath(root) },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("runs a simple foreground command (echo hello)", async () => {
     const router = makeShellRouter(async () => ({
       output: "alpha.txt\nsecret",

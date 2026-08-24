@@ -685,6 +685,8 @@ export interface RunShellOptions {
   command: string;
   cwd: string;
   timeoutMs: number;
+  /** Runs immediately before an execution that has resolved to this host. */
+  beforeLocalExecution?: () => Promise<void>;
 }
 
 /**
@@ -732,6 +734,7 @@ export async function runShell(
         `local-safe mode can only execute inside the sandbox workspace; cwd is outside process workspace: ${opts.cwd}`,
       );
     }
+    await opts.beforeLocalExecution?.();
     const result = await manager.exec({
       command: opts.command,
       workdir: sandboxWorkdir,
@@ -748,6 +751,7 @@ export async function runShell(
     });
   }
 
+  await opts.beforeLocalExecution?.();
   return enforceCompleteCaptureLimit(
     await runOnHost({
       command: opts.command,

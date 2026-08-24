@@ -105,6 +105,23 @@ export function normalizeWorkspaceDeltaReceipt(
 		};
 	}
 
+	const beforeFingerprint = fingerprint(
+		raw.beforeFingerprint,
+		"beforeFingerprint",
+	);
+	const afterFingerprint = fingerprint(
+		raw.afterFingerprint,
+		"afterFingerprint",
+	);
+	if (
+		(raw.outcome === "unchanged" && beforeFingerprint !== afterFingerprint) ||
+		(raw.outcome === "changed" && beforeFingerprint === afterFingerprint)
+	) {
+		throw new TypeError(
+			"WorkspaceDeltaReceipt outcome does not match its fingerprints.",
+		);
+	}
+
 	return {
 		version: 1,
 		kind: "workspace_delta",
@@ -114,8 +131,8 @@ export function normalizeWorkspaceDeltaReceipt(
 			coverage: "tracked_and_untracked_nonignored",
 		},
 		outcome: raw.outcome,
-		beforeFingerprint: fingerprint(raw.beforeFingerprint, "beforeFingerprint"),
-		afterFingerprint: fingerprint(raw.afterFingerprint, "afterFingerprint"),
+		beforeFingerprint,
+		afterFingerprint,
 		observedAt: raw.observedAt,
 	};
 }
