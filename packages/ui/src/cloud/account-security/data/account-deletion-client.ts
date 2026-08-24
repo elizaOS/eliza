@@ -1,4 +1,14 @@
-/** Provides the typed browser client for account-deletion lifecycle endpoints. */
+/**
+ * Provides the typed browser client for account-deletion lifecycle endpoints.
+ *
+ * The recovery package is a bearer capability scoped to this browser profile.
+ * Shell-privileged local storage preserves it across tab, browser, and OS
+ * restarts, but it is intentionally not inferred on a second device and cannot
+ * survive explicit site-data clearing. Same-origin script compromise could read
+ * it, so CSP and surface-realm isolation remain part of the security boundary.
+ * The server stores only hashes and activation remains fail-closed unless every
+ * capability completes an exact durable-storage round trip.
+ */
 
 import type {
   AccountDeletionAcceptedDto,
