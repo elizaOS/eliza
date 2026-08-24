@@ -77,3 +77,27 @@ describe("parseBooleanText", () => {
 		expect(parseBooleanText(undefined)).toBe(false);
 	});
 });
+
+describe("parseBooleanValue edge cases", () => {
+	it("handles whitespace-padded and mixed-case variants", () => {
+		expect(parseBooleanValue("  TRUE  ")).toBe(true);
+		expect(parseBooleanValue("\tYes\n")).toBe(true);
+		expect(parseBooleanValue("  OFF  ")).toBe(false);
+		expect(parseBooleanValue(" 0 ")).toBe(false);
+		expect(parseBooleanValue(" 1 ")).toBe(true);
+	});
+
+	it("rejects numeric-like strings outside vocabularies", () => {
+		expect(parseBooleanValue("2")).toBeUndefined();
+		expect(parseBooleanValue("-1")).toBeUndefined();
+		expect(parseBooleanValue("trueish")).toBeUndefined();
+		expect(parseBooleanValue("enabled")).toBeUndefined();
+	});
+
+	it("handles custom vocabularies with whitespace and case normalization", () => {
+		expect(parseBooleanValue("  Enabled  ", { truthy: ["enabled"] })).toBe(true);
+		expect(parseBooleanValue("DISABLED", { falsy: ["disabled"] })).toBe(false);
+		expect(parseBooleanValue("  custom  ", { truthy: ["  CUSTOM  "] })).toBe(true);
+		expect(parseBooleanValue("unknown", { truthy: ["a"], falsy: ["b"] })).toBeUndefined();
+	});
+});
