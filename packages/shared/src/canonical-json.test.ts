@@ -380,4 +380,9 @@ describe("canonical JSON fail-closed bounds", () => {
     expect(() => canonicalJsonString(cyclic, options)).toThrow(DomainError);
     expect(typeof failCanonicalJsonUnbounded).toBe("function");
   });
+
+  it("rejects BigInt values through onUnbounded", () => {
+    const error = expectUnbounded(() => canonicalJsonString(10n, OPTIONS));
+    expect(error.code).toBe(CANONICAL_JSON_UNBOUNDED);
+  });
 });

@@ -289,6 +289,9 @@ function canonicalWalk(
     // Object keys carrying these were already dropped by the snapshot; reaching
     // one here means an array slot, which `JSON.stringify` renders as `null`.
     if (isJsonInvisible(value)) return emit(ctx, "null");
+    if (typeof value === "bigint") {
+      ctx.options.onUnbounded({ bigint: true });
+    }
     return emit(ctx, JSON.stringify(value));
   }
 
