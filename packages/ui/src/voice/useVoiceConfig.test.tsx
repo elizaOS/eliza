@@ -148,3 +148,103 @@ describe("useVoiceConfig character preset resolution", () => {
     expect(hoisted.updateConfig).not.toHaveBeenCalled();
   });
 });
+
+import { VOICE_CONFIG_UPDATED_EVENT } from "../events";
+
+describe("useVoiceConfig bootstrap and event pipeline", () => {
+  it("degrades to provider defaults without throwing when the saved config is unreadable", async () => {
+    hoisted.getConfig.mockRejectedValue(
+      new Error("config endpoint unavailable"),
+    );
+
+    const { result } = renderHook(() => useVoiceConfig("en"));
+
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+    expect(result.current.voiceConfig.provider).toBe("robot-voice");
+  });
+
+  it("keeps the bootstrap tick gated at zero when the hook unmounts mid-load", async () => {
+    let resolveGetConfig: (value: unknown) => void = () => {};
+    hoisted.getConfig.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveGetConfig = resolve;
+        }),
+    );
+
+    const { result, unmount } = renderHook(() => useVoiceConfig("en"));
+    unmount();
+    resolveGetConfig({});
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(hoisted.getConfig).toHaveBeenCalledTimes(1);
+    expect(result.current.voiceBootstrapTick).toBe(0);
+  });
+
+  it("adopts a broadcast config payload without refetching", async () => {
+    hoisted.getConfig.mockResolvedValue({});
+
+    const { result } = renderHook(() => useVoiceConfig("en"));
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+
+    await waitFor(() => {
+      window.dispatchEvent(
+        new CustomEvent(VOICE_CONFIG_UPDATED_EVENT, {
+          detail: {
+            provider: "elevenlabs",
+            elevenlabs: { voiceId: JIN_VOICE_ID },
+          },
+        }),
+      );
+      return expect(result.current.voiceBootstrapTick).toBeGreaterThan(1);
+    });
+    expect(hoisted.getConfig).toHaveBeenCalledTimes(1);
+    expect(result.current.voiceConfig.provider).toBe("elevenlabs");
+    expect(result.current.voiceConfig.elevenlabs?.voiceId).toBe(JIN_VOICE_ID);
+  });
+
+  it("falls back to a full reload when a broadcast payload is not a config object", async () => {
+    hoisted.getConfig.mockResolvedValue({});
+
+    const { result } = renderHook(() => useVoiceConfig("en"));
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+
+    window.dispatchEvent(
+      new CustomEvent(VOICE_CONFIG_UPDATED_EVENT, { detail: undefined }),
+    );
+    await waitFor(() => expect(hoisted.getConfig).toHaveBeenCalledTimes(2));
+    expect(result.current.voiceBootstrapTick).toBe(2);
+  });
+
+  it("re-fetches on demand and adopts the newer saved config", async () => {
+    hoisted.getConfig
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ ui: { presetId: "jin" } });
+
+    const { result } = renderHook(() => useVoiceConfig("en"));
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+
+    result.current.reloadVoiceConfig();
+
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(2));
+    expect(result.current.voiceConfig.elevenlabs?.voiceId).toBe(JIN_VOICE_ID);
+    expect(hoisted.getConfig).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads through getConfig when the UI language changes", async () => {
+    hoisted.getConfig.mockResolvedValue({});
+
+    const { rerender, result } = renderHook(
+      ({ uiLanguage }) => useVoiceConfig(uiLanguage),
+      { initialProps: { uiLanguage: "en" } },
+    );
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+
+    rerender({ uiLanguage: "de" });
+
+    await waitFor(() => expect(hoisted.getConfig).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(2));
+  });
+});
