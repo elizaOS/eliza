@@ -2,8 +2,8 @@
  * Shared Steward session client.
  *
  * Single source of truth for:
- *  - the storage / cookie / endpoint key names used across os-homepage
- *    (`elizaos.ai`), unified frontend (`eliza.app`), and the cloud-api
+ *  - the storage / cookie / endpoint key names used across the unified
+ *    frontend (`eliza.app`) and the cloud-api
  *    `/api/auth/steward-session` route handler;
  *  - the request / response / error shapes the route exchanges with the
  *    browser;
