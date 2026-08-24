@@ -91,18 +91,6 @@ function parseSince(since: string | undefined): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-/**
- * The server hands back at most the newest `SERVER_TAIL_CAP` buffered entries
- * of a larger ring buffer, and the action then caps again by `limit`. Neither
- * narrowing is visible in a bare entry dump, so "no errors from discord in the
- * last hour" read as "no errors happened" and "the last 20 errors" returned
- * the twenty OLDEST of that window. Every search result carries this line.
- *
- * Mirrors `entries.slice(-200)` in `api/diagnostics-routes.ts` (GET /api/logs);
- * change both together.
- */
-const SERVER_TAIL_CAP = 200;
-
 function describeLogFilters(params: LogsParams, tagFilter: string[]): string {
   const parts: string[] = [];
   if (params.source) parts.push(`source=${params.source}`);
@@ -138,7 +126,16 @@ function failure(text: string, code: string, extra?: object): ActionResult {
 }
 
 async function searchLogs(params: LogsParams): Promise<ActionResult> {
-  const limit = Math.max(1, Math.min(200, Math.floor(params.limit ?? 50)));
+  const limit = params.limit;
+  if (
+    limit !== undefined &&
+    (!Number.isSafeInteger(limit) || limit <= 0)
+  ) {
+    return failure(
+      "limit must be a positive integer when explicitly requesting a tail page.",
+      "LOGS_INVALID_LIMIT",
+    );
+  }
   const tagFilter = (params.tags ?? []).map((t) => t.trim()).filter(Boolean);
   const sinceMs = parseSince(params.since);
 
@@ -172,16 +169,15 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
         )
       : data.entries;
 
-  // "last N" has to mean the newest N. The head slice returned the oldest
-  // entries of the server's recent tail and the model presented them as the
-  // latest; take the tail on both the preview and the structured payload.
-  const shown = entries.slice(-limit);
+  // Pagination is opt-in. With no caller-requested limit, preserve the complete
+  // filtered buffer in both the preview and structured payload.
+  const shown = limit === undefined ? entries : entries.slice(-limit);
   const filterNote = describeLogFilters(params, tagFilter);
-  const windowNote = `Searched only the server's most recent buffered log entries (server returns at most ${SERVER_TAIL_CAP}); older entries were not scanned. Filters applied: ${filterNote}.`;
+  const windowNote = `Searched the complete current in-memory log buffer. Filters applied: ${filterNote}.`;
   const header =
     shown.length === 0
-      ? `No log entries match. ${windowNote} An empty result here is not proof nothing was logged — widen by dropping a filter or raising limit.`
-      : `Showing ${shown.length} of ${entries.length} matching entr${entries.length === 1 ? "y" : "ies"}, newest last (limit=${limit}). ${windowNote}`;
+      ? `No log entries match. ${windowNote}`
+      : `${limit === undefined ? `Showing all ${entries.length}` : `Showing ${shown.length} of ${entries.length}`} matching entr${entries.length === 1 ? "y" : "ies"}, newest last${limit === undefined ? "" : ` (limit=${limit})`}. ${windowNote}`;
 
   return {
     success: true,
@@ -387,7 +383,7 @@ export const logsAction: Action = {
     {
       name: "limit",
       description:
-        "[search] Maximum entries to include in the preview (1-200).",
+        "[search] Optional positive integer tail-page size. Omit to return every matching buffered entry.",
       required: false,
       schema: { type: "number" as const },
     },

@@ -120,6 +120,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/contextLimit/,
 		/_contextLimit/,
 	],
+	"packages/agent/src/actions/logs.ts": [
+		/params\.limit\s*\?\?/,
+		/Math\.min\([^\n]*params\.limit/,
+	],
+	"packages/agent/src/api/diagnostics-routes.ts": [
+		/entries\.slice\(-\d+\)/,
+	],
+	"packages/agent/src/api/server.ts": [
+		/pushWithBatchEvict\(\s*state\.logBuffer/,
+		/state\.logBuffer\.splice\(/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,
