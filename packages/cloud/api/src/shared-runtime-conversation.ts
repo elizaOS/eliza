@@ -32,6 +32,8 @@ import type {
 import { mergeSharedRuntimeHistoryMessages } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+const RELEASE_QUEUE_BEFORE_BODY_HEADER = "X-Eliza-Release-Coordinator-Queue";
+
 // The agent row crosses the Durable Object boundary as JSON, so its Drizzle
 // `Date` columns arrive as ISO strings; `handle` rehydrates them before any
 // service consumes the row (the CONVERSATIONS-500 defect class).
@@ -350,6 +352,7 @@ export class SharedRuntimeConversation {
   private conversation: StoredConversation | null | undefined;
   private hydration: Promise<void> | undefined;
   private prewarmReady = false;
+  private prewarm: Promise<void> | undefined;
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
   private alarmMutationQueue: Promise<void> = Promise.resolve();
@@ -503,6 +506,59 @@ export class SharedRuntimeConversation {
         );
       }),
     );
+  }
+
+  /**
+   * Starts one room warmup without holding the serialized turn queue.
+   *
+   * The response body remains pending until the warmup finishes, so callers
+   * still observe truthful completion. Response headers are returned
+   * immediately and the Durable Object queue is released before that body is
+   * consumed; otherwise a cold runtime build can head-of-line block the first
+   * live voice turn behind the caller's coordinator header deadline.
+   */
+  private deferredPrewarmResponse(
+    agentId: string,
+    channelId: string,
+    startEmpty: boolean,
+  ): Response {
+    if (!this.prewarmReady && !this.prewarm) {
+      const prewarm = this.prewarmConversation(agentId, channelId, startEmpty);
+      this.prewarm = prewarm;
+      const clearPrewarm = () => {
+        if (this.prewarm === prewarm) this.prewarm = undefined;
+      };
+      void prewarm.then(clearPrewarm, clearPrewarm);
+      this.state.waitUntil(prewarm);
+    }
+
+    const completion = this.prewarm ?? Promise.resolve();
+    let canceled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        void completion.then(
+          () => {
+            if (canceled) return;
+            controller.enqueue(
+              new TextEncoder().encode(JSON.stringify({ success: true })),
+            );
+            controller.close();
+          },
+          (error) => {
+            if (!canceled) controller.error(error);
+          },
+        );
+      },
+      cancel() {
+        canceled = true;
+      },
+    });
+    return new Response(body, {
+      headers: {
+        "Content-Type": "application/json",
+        [RELEASE_QUEUE_BEFORE_BODY_HEADER]: "before-body",
+      },
+    });
   }
 
   /**
@@ -1595,12 +1651,11 @@ export class SharedRuntimeConversation {
       return Response.json({ success: true });
     }
     if (payload.operation === "prewarm") {
-      await this.prewarmConversation(
+      return this.deferredPrewarmResponse(
         payload.agentId,
         payload.roomId,
         payload.startEmpty === true,
       );
-      return Response.json({ success: true });
     }
     if (payload.operation === "cutover-seal") {
       const existing = await this.activeCutoverSeal();
@@ -1868,6 +1923,13 @@ export class SharedRuntimeConversation {
 
     try {
       const response = await this.handle(request);
+      if (
+        response.headers.get(RELEASE_QUEUE_BEFORE_BODY_HEADER) === "before-body"
+      ) {
+        response.headers.delete(RELEASE_QUEUE_BEFORE_BODY_HEADER);
+        release();
+        return response;
+      }
       return this.releaseWhenConsumed(response, release);
     } catch (error) {
       // error-policy:J1 the Durable Object transport boundary translates cache
