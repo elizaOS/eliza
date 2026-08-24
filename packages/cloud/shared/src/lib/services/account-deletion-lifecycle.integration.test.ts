@@ -16,7 +16,11 @@ import { apiKeys } from "../../db/schemas/api-keys";
 import { organizationBalanceRevisionSequence, organizations } from "../../db/schemas/organizations";
 import { userSessions } from "../../db/schemas/user-sessions";
 import { users } from "../../db/schemas/users";
-import { getAccountDeletionStatusByCredential, requestAccountDeletion } from "./account-deletion";
+import {
+  activateAccountDeletion,
+  getAccountDeletionStatusByCredential,
+  requestAccountDeletion,
+} from "./account-deletion";
 
 const PERSONAL_ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";
 const PERSONAL_USER_ID = "22222222-2222-4222-8222-222222222222";
@@ -93,6 +97,15 @@ describe("account deletion reservation lifecycle", () => {
       now: new Date("2026-08-22T12:00:00Z"),
     });
     expect(accepted.request).toMatchObject({
+      status: "pending_activation",
+      canCancel: false,
+    });
+
+    const activated = await activateAccountDeletion(
+      accepted.recoveryCredential,
+      new Date("2026-08-22T12:00:01Z"),
+    );
+    expect(activated).toMatchObject({
       status: "reserved",
       canCancel: true,
     });
