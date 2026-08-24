@@ -564,3 +564,375 @@ describe("sub-planner helpers", () => {
 		expect(execute).not.toHaveBeenCalled();
 	});
 });
+
+describe("sub-planner additional branch coverage", () => {
+	function makeReportingRuntime(actions: Action[], useModel = vi.fn()) {
+		const reportError = vi.fn();
+		const runtime = makeRuntime(actions, useModel);
+		(runtime as { reportError: unknown }).reportError = reportError;
+		return { runtime, reportError };
+	}
+
+	function makeRecorder() {
+		const recordStage = vi.fn(
+			async (_trajectoryId: string, _stage: unknown) => undefined,
+		);
+		const recorder = {
+			startTrajectory: vi.fn(() => "trj-sub-planner-test"),
+			recordStage,
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+		return { recorder, recordStage };
+	}
+
+	it("actionHasSubActions is false for missing and empty declarations", () => {
+		expect(actionHasSubActions(makeAction({ name: "NO_SUBS" }))).toBe(false);
+		expect(
+			actionHasSubActions(makeAction({ name: "EMPTY_SUBS", subActions: [] })),
+		).toBe(false);
+	});
+
+	it("resolveSubActions accepts inline child objects, preserves order, and deduplicates repeats", () => {
+		const child = makeAction({ name: "CHILD" });
+		const inline = makeAction({ name: "INLINE_CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD", "CHILD", inline],
+		});
+
+		expect(resolveSubActions(makeRuntime([parent, child]), parent)).toEqual([
+			child,
+			inline,
+		]);
+	});
+
+	it("resolveSubActions throws for a string reference with no registered child", () => {
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["DOES_NOT_EXIST"],
+		});
+
+		expect(() => resolveSubActions(makeRuntime([parent]), parent)).toThrow(
+			"Sub-action not found: DOES_NOT_EXIST",
+		);
+	});
+
+	it("detectSubActionCycles finds a self-cycle and returns nothing for acyclic graphs", () => {
+		const selfLoop = makeAction({ name: "LOOP", subActions: ["LOOP"] });
+		expect(detectSubActionCycles([selfLoop])).toEqual([["LOOP", "LOOP"]]);
+
+		const parent = makeAction({ name: "A", subActions: ["B"] });
+		const child = makeAction({ name: "B" });
+		expect(detectSubActionCycles([parent, child])).toEqual([]);
+	});
+
+	it("subPlannerCallDigest normalizes case and separators and treats missing params as empty", () => {
+		const loose = subPlannerCallDigest({
+			name: "google calendar",
+			params: { calendar: "primary" },
+		});
+		expect(loose).toBe(
+			subPlannerCallDigest({
+				name: "GOOGLE_CALENDAR",
+				params: { calendar: "primary" },
+			}),
+		);
+		expect(subPlannerCallDigest({ name: "CHILD" })).toBe(
+			subPlannerCallDigest({ name: "CHILD", params: {} }),
+		);
+		expect(subPlannerCallDigest({ name: "CHILD", params: { a: 1 } })).not.toBe(
+			subPlannerCallDigest({ name: "CHILD", params: { a: 2 } }),
+		);
+	});
+
+	it("rejects when the declaration resolves to zero children", async () => {
+		const parent = makeAction({
+			name: "EMPTY_PARENT",
+			subActions: [],
+			subPlanner: true,
+		});
+
+		await expect(
+			runSubPlanner({
+				runtime: makeRuntime([parent]),
+				action: parent,
+				context: { id: "ctx", events: [] },
+				ctx: { message: makeMessage() },
+			}),
+		).rejects.toThrow("Action EMPTY_PARENT has no sub-actions");
+	});
+
+	it("rejects when the declared graph loops back to the parent", async () => {
+		const child = makeAction({ name: "CHILD", subActions: ["PARENT"] });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+
+		await expect(
+			runSubPlanner({
+				runtime: makeRuntime([parent, child]),
+				action: parent,
+				context: { id: "ctx", events: [] },
+				ctx: { message: makeMessage() },
+			}),
+		).rejects.toThrow(/Sub-action cycle detected/i);
+	});
+
+	it("exposes each simile as its own alias tool beside the canonical child tool", async () => {
+		const child = makeAction({
+			name: "GOOGLE_CALENDAR",
+			description: "Read calendar events",
+			similes: ["CALENDAR_READ"],
+		});
+		const parent = makeAction({
+			name: "CALENDAR",
+			subActions: ["GOOGLE_CALENDAR"],
+			subPlanner: true,
+		});
+		const useModel = vi.fn(async () => ({
+			text: "",
+			toolCalls: [{ id: "call-1", name: "GOOGLE_CALENDAR", arguments: {} }],
+		}));
+		const execute = vi.fn(async () => ({
+			success: true,
+			text: "calendar done",
+			data: { actionName: "GOOGLE_CALENDAR" },
+		}));
+
+		await runSubPlanner({
+			runtime: makeRuntime([parent, child], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute,
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				thought: "Done.",
+				messageToUser: "Done.",
+			}),
+		});
+
+		const modelParams = useModel.mock.calls[0]?.[1] as {
+			tools?: Array<{ name: string; description?: string }>;
+		};
+		const tools = modelParams.tools ?? [];
+		const names = tools.map((tool) => tool.name);
+		expect(names).toContain("GOOGLE_CALENDAR");
+		expect(names).toContain("CALENDAR_READ");
+		const alias = tools.find((tool) => tool.name === "CALENDAR_READ");
+		expect(alias?.description).toContain("Alias for GOOGLE_CALENDAR");
+	});
+
+	it("unions caller-selected and declared contexts exactly once per context", async () => {
+		const child = makeAction({
+			name: "CHILD",
+			contexts: ["web"],
+		});
+		const parent = makeAction({
+			name: "PARENT",
+			contexts: ["research_workflow", "web"],
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const useModel = vi.fn(async () => ({
+			text: "",
+			toolCalls: [{ id: "call-1", name: "CHILD", arguments: {} }],
+		}));
+		const execute = vi.fn(async () => ({
+			success: true,
+			text: "ok",
+			data: { actionName: "CHILD" },
+		}));
+
+		await runSubPlanner({
+			runtime: makeRuntime([parent, child], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: {
+				message: makeMessage(),
+				activeContexts: ["research_workflow", "research_workflow"],
+			},
+			execute,
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				thought: "Done.",
+				messageToUser: "Done.",
+			}),
+		});
+
+		const [, executedCtx] = execute.mock.calls[0] ?? [];
+		expect(
+			(executedCtx as { activeContexts?: string[] })?.activeContexts,
+		).toEqual(["research_workflow", "web"]);
+	});
+
+	it("records a subPlanner trajectory stage carrying the child surface area", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const { recorder, recordStage } = makeRecorder();
+
+		await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [{ id: "call-1", name: "CHILD", arguments: {} }],
+				})),
+			),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute: vi.fn(async () => ({ success: true, text: "done" })),
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				messageToUser: "Done.",
+			}),
+			recorder,
+			trajectoryId: "trj-sub-planner-test",
+			parentStageId: "stage-parent-1",
+		});
+
+		expect(recordStage).toHaveBeenCalled();
+		const stage = recordStage.mock.calls
+			.map((call) => call[1])
+			.find(
+				(
+					candidate,
+				): candidate is {
+					stageId?: string;
+					kind?: string;
+					parentStageId?: string;
+					tool?: { name?: string; args?: { childActions?: string[] } };
+				} =>
+					(candidate as { kind?: string } | undefined)?.kind === "subPlanner",
+			);
+		expect(stage).toBeDefined();
+		expect(stage?.kind).toBe("subPlanner");
+		expect(stage?.parentStageId).toBe("stage-parent-1");
+		expect(stage?.tool?.name).toBe("sub-planner:PARENT");
+		expect(stage?.tool?.args.childActions).toContain("CHILD");
+	});
+
+	it("keeps planning when the trajectory recorder fails and reports the error", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const recordStage = vi.fn(async () => {
+			throw new Error("disk full");
+		});
+		const recorder = {
+			startTrajectory: vi.fn(() => "trj-sub-planner-test"),
+			recordStage,
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+		const { runtime, reportError } = makeReportingRuntime(
+			[parent, child],
+			vi.fn(async () => ({
+				text: "",
+				toolCalls: [{ id: "call-1", name: "CHILD", arguments: {} }],
+			})),
+		);
+
+		const result = await runSubPlanner({
+			runtime,
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute: vi.fn(async () => ({ success: true, text: "done" })),
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				messageToUser: "Done.",
+			}),
+			recorder,
+			trajectoryId: "trj-sub-planner-test",
+		});
+
+		expect(result.status).toBe("finished");
+		expect(reportError).toHaveBeenCalledWith(
+			"SubPlanner.recordStage",
+			expect.any(Error),
+			expect.objectContaining({ actionName: "PARENT" }),
+		);
+	});
+
+	it("fails a tool call with an empty action name without executing any child", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const execute = vi.fn(async () => ({ success: true }));
+
+		await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [{ id: "call-empty", name: "", arguments: {} }],
+				})),
+			),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute,
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				messageToUser: "Nothing to do.",
+			}),
+		});
+
+		expect(execute).not.toHaveBeenCalled();
+	});
+
+	it("rejects a tool call naming an action outside the sub-planner surface", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const execute = vi.fn(async () => ({ success: true }));
+
+		// Observed contract: the loop retries unavailable tool names and the
+		// trajectory limit guard rejects once the unavailable_tool_calls cap is
+		// exceeded; no child action ever executes.
+		await expect(
+			runSubPlanner({
+				runtime: makeRuntime(
+					[parent, child],
+					vi.fn(async () => ({
+						text: "",
+						toolCalls: [
+							{ id: "call-stray", name: "TOTALLY_UNRELATED", arguments: {} },
+						],
+					})),
+				),
+				action: parent,
+				context: { id: "ctx", events: [] },
+				ctx: { message: makeMessage() },
+				execute,
+			}),
+		).rejects.toThrow(/Trajectory limit exceeded: unavailable_tool_calls/);
+
+		expect(execute).not.toHaveBeenCalled();
+	});
+});
