@@ -11,20 +11,176 @@ This is a candidate inventory, not an instruction to merge every entry. Canonica
 | badge | 3 | 0 | 6 | 8 | 0 |
 | button | 8 | 0 | 11 | 4 | 63 |
 | card | 6 | 0 | 24 | 3 | 0 |
-| checkbox | 1 | 0 | 0 | 0 | 14 |
+| checkbox | 1 | 0 | 0 | 0 | 2 |
 | dialog | 10 | 0 | 10 | 2 | 1 |
-| input | 4 | 0 | 3 | 3 | 14 |
+| input | 4 | 0 | 3 | 3 | 12 |
 | popover | 1 | 0 | 1 | 0 | 0 |
 | progress | 1 | 0 | 0 | 3 | 0 |
 | select | 2 | 0 | 2 | 0 | 3 |
 | separator | 3 | 0 | 0 | 0 | 5 |
 | skeleton | 4 | 0 | 2 | 5 | 0 |
 | spinner | 1 | 0 | 0 | 0 | 0 |
-| switch | 2 | 0 | 1 | 0 | 14 |
+| switch | 2 | 0 | 1 | 0 | 2 |
 | table | 1 | 0 | 3 | 1 | 12 |
 | tabs | 1 | 0 | 6 | 1 | 0 |
 | textarea | 3 | 0 | 0 | 1 | 6 |
 | tooltip | 4 | 0 | 0 | 0 | 0 |
+
+## Raw semantic host usage
+
+Raw host elements are reported only where HTML provides a meaningful atomic signal. Generic `div` and `span` usage is deliberately excluded.
+
+### Raw button hosts
+
+| Classification | File | Lines |
+| --- | --- | --- |
+| runtime-host-control | `packages/app-core/src/runtime/desktop/AppWindowRenderer.tsx` | 424 |
+| test-or-story-harness | `packages/app/test/view-screenshots/stubs/elizaos-ui.tsx` | 51, 93 |
+| template | `packages/elizaos/templates/plugin/src/frontend/index.tsx` | 65 |
+| mixed-canonical-and-raw | `packages/homepage/src/pages/connected.tsx` | 317, 428, 491, 532, 602, 645, 665 |
+| mixed-canonical-and-raw | `packages/homepage/src/pages/get-started.tsx` | 535, 627, 1417, 1471, 1490, 1521, 1559, 1577, 1596, 1615, 1633, 1887, 1936, 2025, 2084 |
+| product-package-raw-host | `packages/homepage/src/pages/landing.tsx` | 859, 865, 919, 1101, 1111, 1156, 1173 |
+| product-package-raw-host | `packages/homepage/src/pages/profile-edit.tsx` | 146, 165 |
+| ui-raw-host | `packages/ui/src/android-cloud/AndroidCloudApp.tsx` | 320, 328, 337, 358, 369, 395, 418, 440, 448 |
+| ui-raw-host | `packages/ui/src/cloud/public-pages/pages/login/wallet-buttons.tsx` | 351, 452 |
+| ui-raw-host | `packages/ui/src/cloud/shell/CloudRouterShell.tsx` | 218 |
+| mixed-canonical-and-raw | `packages/ui/src/components/accounts/AccountCommandTable.tsx` | 164, 530 |
+| mixed-canonical-and-raw | `packages/ui/src/components/accounts/AccountManagementPanel.tsx` | 338 |
+| mixed-canonical-and-raw | `packages/ui/src/components/accounts/ProviderAccountRow.tsx` | 229 |
+| ui-raw-host | `packages/ui/src/components/accounts/ProviderPicker.tsx` | 186 |
+| ui-raw-host | `packages/ui/src/components/auth/CloudPairRelay.tsx` | 425, 447, 543 |
+| ui-raw-host | `packages/ui/src/components/capabilities/ConnectedCapabilityChips.tsx` | 76 |
+| mixed-canonical-and-raw | `packages/ui/src/components/chat/MessageContent.tsx` | 571, 616, 899 |
+| mixed-canonical-and-raw | `packages/ui/src/components/chat/widgets/ChoiceWidget.tsx` | 162 |
+| ui-raw-host | `packages/ui/src/components/chat/widgets/chat-widget-shell.tsx` | 98 |
+| ui-raw-host | `packages/ui/src/components/chat/widgets/todo.tsx` | 188, 239 |
+| ui-raw-host | `packages/ui/src/components/chat/widgets/workflow-steps.tsx` | 178, 189 |
+| mixed-canonical-and-raw | `packages/ui/src/components/config-ui/config-field.tsx` | 244 |
+| ui-raw-host | `packages/ui/src/components/pages/Launcher.tsx` | 108 |
+| mixed-canonical-and-raw | `packages/ui/src/components/pages/MemoryViewerView.tsx` | 857, 874 |
+| mixed-canonical-and-raw | `packages/ui/src/components/pages/SettingsView.tsx` | 212 |
+| mixed-canonical-and-raw | `packages/ui/src/components/pages/WorkflowCanvas.tsx` | 150 |
+| mixed-canonical-and-raw | `packages/ui/src/components/pages/WorkflowEditor.tsx` | 515, 529, 659, 671, 798 |
+| mixed-canonical-and-raw | `packages/ui/src/components/pages/WorkflowTriggerPanel.tsx` | 217, 260 |
+| test-or-story-harness | `packages/ui/src/components/pages/__e2e__/background-fixture.tsx` | 204, 228, 238 |
+| mixed-canonical-and-raw | `packages/ui/src/components/pages/documents-detail.tsx` | 356 |
+| mixed-canonical-and-raw | `packages/ui/src/components/permissions/PermissionPrimingModal.tsx` | 398 |
+| mixed-canonical-and-raw | `packages/ui/src/components/settings/BackgroundSettingsControls.tsx` | 152 |
+| mixed-canonical-and-raw | `packages/ui/src/components/settings/ConnectorsSection.tsx` | 432, 599 |
+| ui-raw-host | `packages/ui/src/components/settings/DesktopSettingsNavigation.tsx` | 99 |
+| ui-raw-host | `packages/ui/src/components/settings/SettingsHubList.tsx` | 47 |
+| ui-raw-host | `packages/ui/src/components/settings/cloud-panel/CloudSettingsPanel.tsx` | 82, 139, 279 |
+| ui-raw-host | `packages/ui/src/components/settings/cloud-panel/CloudSettingsSidebar.tsx` | 71, 118, 132, 164, 217 |
+| mixed-canonical-and-raw | `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx` | 652 |
+| ui-raw-host | `packages/ui/src/components/shared/ViewHeader.tsx` | 69 |
+| ui-raw-host | `packages/ui/src/components/shared/ViewHeaderSidebarTrigger.tsx` | 40 |
+| ui-raw-host | `packages/ui/src/components/shell/BuildBadge.tsx` | 371, 390, 404, 425 |
+| mixed-canonical-and-raw | `packages/ui/src/components/shell/ChatOverlay.tsx` | 5993 |
+| ui-raw-host | `packages/ui/src/components/shell/DefaultHomeWidgets.tsx` | 101 |
+| ui-raw-host | `packages/ui/src/components/shell/NotificationsHomeCenter.tsx` | 2602, 2998, 3012 |
+| ui-raw-host | `packages/ui/src/components/shell/VoiceCaptureHud.tsx` | 281 |
+| ui-raw-host | `packages/ui/src/components/shell/notification-shade-content.tsx` | 540, 598 |
+| mixed-canonical-and-raw | `packages/ui/src/components/transcripts/MeetingJoinBar.tsx` | 178 |
+| canonical-implementation | `packages/ui/src/components/ui/admin-dialog.tsx` | 162 |
+| canonical-implementation | `packages/ui/src/components/ui/confirm-delete.tsx` | 46, 68, 82 |
+| canonical-implementation | `packages/ui/src/components/ui/copy-button.tsx` | 73 |
+| canonical-implementation | `packages/ui/src/components/ui/field-switch.tsx` | 28 |
+| canonical-implementation | `packages/ui/src/components/ui/segmented-control.tsx` | 52, 128 |
+| canonical-implementation | `packages/ui/src/components/ui/switch.tsx` | 59 |
+| test-or-story-harness | `packages/ui/src/testing/__e2e__/widget-cert-fixture.tsx` | 67 |
+| test-or-story-harness | `packages/ui/stories/src/lab/DesignLab.tsx` | 105, 120 |
+| test-or-story-harness | `packages/ui/stories/src/lab/lab-ui.tsx` | 37, 83 |
+| test-or-story-harness | `packages/ui/stories/src/lab/surfaces/WidgetsLab.tsx` | 61 |
+| test-or-story-harness | `packages/ui/stories/src/voice-main.tsx` | 786, 809 |
+| plugin-raw-host | `plugins/plugin-calendar/src/components/calendar/SimpleCalendarView.tsx` | 274, 431, 444, 468, 488, 509, 535, 546 |
+| plugin-raw-host | `plugins/plugin-computeruse/src/views/ComputerUseSessionsView.tsx` | 384, 407, 427, 456, 480 |
+| plugin-raw-host | `plugins/plugin-elizacloud/src/components/cloud/CloudView.tsx` | 386, 404 |
+| plugin-raw-host | `plugins/plugin-maps/src/components/MapsView.tsx` | 163, 210, 241, 306, 366 |
+| plugin-raw-host | `plugins/plugin-notes/src/views/viewPrimitives.tsx` | 166 |
+
+### Raw checkbox hosts
+
+| Classification | File | Lines |
+| --- | --- | --- |
+| ui-raw-host | `packages/ui/src/components/pages/WorkflowEditor.tsx` | 1054 |
+| test-or-story-harness | `packages/ui/stories/src/lab/lab-ui.tsx` | 62 |
+
+### Raw dialog hosts
+
+| Classification | File | Lines |
+| --- | --- | --- |
+| product-package-raw-host | `packages/homepage/src/pages/landing.tsx` | 835 |
+
+### Raw input hosts
+
+| Classification | File | Lines |
+| --- | --- | --- |
+| product-package-raw-host | `packages/homepage/src/pages/get-started.tsx` | 600 |
+| product-package-raw-host | `packages/homepage/src/pages/profile-edit.tsx` | 117, 131 |
+| test-or-story-harness | `packages/ui/src/agent-surface/__e2e__/teardown-fixture.tsx` | 46, 75 |
+| ui-raw-host | `packages/ui/src/components/accounts/AccountCommandTable.tsx` | 507 |
+| ui-raw-host | `packages/ui/src/components/accounts/ConsumerKeyPanel.tsx` | 311, 322, 504 |
+| ui-raw-host | `packages/ui/src/components/accounts/ProviderPicker.tsx` | 143 |
+| test-or-story-harness | `packages/ui/src/components/pages/__e2e__/background-fixture.tsx` | 220 |
+| ui-raw-host | `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx` | 446, 771 |
+| canonical-implementation | `packages/ui/src/components/ui/input-group.tsx` | 101 |
+| canonical-implementation | `packages/ui/src/components/ui/input.tsx` | 46 |
+| plugin-raw-host | `plugins/plugin-maps/src/components/MapsView.tsx` | 128 |
+| plugin-raw-host | `plugins/plugin-notes/src/views/viewPrimitives.tsx` | 212 |
+
+### Raw select hosts
+
+| Classification | File | Lines |
+| --- | --- | --- |
+| product-package-raw-host | `packages/homepage/src/components/login/phone-number-input.tsx` | 127 |
+| ui-raw-host | `packages/ui/src/components/pages/WorkflowTriggerPanel.tsx` | 289, 304, 321 |
+| plugin-raw-host | `plugins/plugin-calendar/src/components/calendar/SimpleCalendarView.tsx` | 476 |
+
+### Raw separator hosts
+
+| Classification | File | Lines |
+| --- | --- | --- |
+| ui-raw-host | `packages/ui/src/components/chat/TasksEventsPanel.tsx` | 267 |
+| ui-raw-host | `packages/ui/src/components/composites/sidebar/sidebar-root.tsx` | 829 |
+| ui-raw-host | `packages/ui/src/components/config-ui/ui-renderer.tsx` | 484 |
+| ui-raw-host | `packages/ui/src/genui/renderer.tsx` | 329 |
+| plugin-raw-host | `plugins/plugin-task-coordinator/src/orchestrator-markdown.tsx` | 137 |
+
+### Raw switch hosts
+
+| Classification | File | Lines |
+| --- | --- | --- |
+| ui-raw-host | `packages/ui/src/components/pages/WorkflowEditor.tsx` | 1054 |
+| test-or-story-harness | `packages/ui/stories/src/lab/lab-ui.tsx` | 62 |
+
+### Raw table hosts
+
+| Classification | File | Lines |
+| --- | --- | --- |
+| ui-raw-host | `packages/ui/src/cloud/analytics/_components/model-breakdown.tsx` | 99 |
+| ui-raw-host | `packages/ui/src/cloud/applications/components/app-analytics.tsx` | 741, 889, 977 |
+| ui-raw-host | `packages/ui/src/cloud/applications/components/app-users.tsx` | 210 |
+| ui-raw-host | `packages/ui/src/components/accounts/AccountCommandTable.tsx` | 341 |
+| ui-raw-host | `packages/ui/src/components/config-ui/config-field.helpers.tsx` | 1844 |
+| ui-raw-host | `packages/ui/src/components/config-ui/ui-renderer.tsx` | 882 |
+| ui-raw-host | `packages/ui/src/components/pages/WorkflowEditor.tsx` | 212 |
+| ui-raw-host | `packages/ui/src/components/pages/database-utils.tsx` | 149 |
+| ui-raw-host | `packages/ui/src/components/settings/AppsManagementSection.tsx` | 743 |
+| ui-raw-host | `packages/ui/src/components/settings/vault-tabs/RoutingTab.tsx` | 592 |
+| canonical-implementation | `packages/ui/src/components/ui/table.tsx` | 15 |
+| plugin-raw-host | `plugins/plugin-task-coordinator/src/orchestrator-markdown.tsx` | 95 |
+
+### Raw textarea hosts
+
+| Classification | File | Lines |
+| --- | --- | --- |
+| product-package-raw-host | `packages/homepage/src/pages/profile-edit.tsx` | 159 |
+| ui-raw-host | `packages/ui/src/android-cloud/AndroidCloudApp.tsx` | 430 |
+| canonical-implementation | `packages/ui/src/components/ui/admin-dialog.tsx` | 131 |
+| canonical-implementation | `packages/ui/src/components/ui/input-group.tsx` | 118 |
+| canonical-implementation | `packages/ui/src/components/ui/textarea.tsx` | 44 |
+| plugin-raw-host | `plugins/plugin-notes/src/views/viewPrimitives.tsx` | 250 |
+
 
 ## Named candidates by atom
 

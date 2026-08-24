@@ -37,6 +37,27 @@ test("the inventory identifies canonical ownership and parallel controls", () =>
   assert.ok(parallelButtons.includes("ViewBackButton"));
   assert.equal(report.atoms.card.rawHostUsage.length, 0);
   assert.ok(report.atoms.button.rawHostUsage.length > 0);
+  assert.ok(
+    report.atoms.button.rawHostUsage.some(
+      (entry) => entry.classification === "mixed-canonical-and-raw",
+    ),
+  );
+  assert.ok(
+    report.atoms.button.rawHostUsage.some(
+      (entry) => entry.classification === "plugin-raw-host",
+    ),
+  );
+  assert.ok(
+    report.atoms.checkbox.rawHostUsage.every((entry) =>
+      entry.lines.every(
+        (line) =>
+          !report.atoms.input.rawHostUsage.some(
+            (inputEntry) =>
+              inputEntry.file === entry.file && inputEntry.lines.includes(line),
+          ),
+      ),
+    ),
+  );
   assert.equal(
     report.summary.reviewedParallelPrimitives,
     report.summary.parallelPrimitives,

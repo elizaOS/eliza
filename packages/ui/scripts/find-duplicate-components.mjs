@@ -34,7 +34,7 @@ export const ATOMS = {
   checkbox: {
     names: ["Checkbox"],
     hosts: ["button", "input"],
-    rawHosts: ["input"],
+    rawHosts: ["input:checkbox"],
   },
   dialog: { names: ["Dialog"], hosts: ["dialog", "div"], rawHosts: ["dialog"] },
   input: { names: ["Input"], hosts: ["input"], rawHosts: ["input"] },
@@ -55,7 +55,7 @@ export const ATOMS = {
   switch: {
     names: ["Switch"],
     hosts: ["button", "input"],
-    rawHosts: ["input"],
+    rawHosts: ["input:checkbox"],
   },
   table: { names: ["Table"], hosts: ["table"], rawHosts: ["table"] },
   tabs: { names: ["Tabs"], hosts: ["div"], rawHosts: [] },
@@ -211,6 +211,37 @@ function classify({ atom, file, name, tags, imports }) {
   return "parallel-primitive";
 }
 
+function classifyRawHostFile({ atom, file, imports }) {
+  const rel = relative(file);
+  if (rel.startsWith(`${canonicalRoot}/`)) return "canonical-implementation";
+  if (rel.includes("/templates/")) return "template";
+  if (
+    /(^|\/)(test|tests|stories|__e2e__|__mocks__)(\/|$)/.test(rel) ||
+    /-(fixture|stub)\.[jt]sx$/.test(rel)
+  ) {
+    return "test-or-story-harness";
+  }
+  if (
+    rel.startsWith("packages/ui/src/spatial/") ||
+    rel.startsWith("packages/ui/src/native-")
+  ) {
+    return "renderer-adapter";
+  }
+  const canonicalNames = new Set(ATOMS[atom].names);
+  if (
+    [...imports.values()].some(
+      (record) =>
+        canonicalNames.has(record.imported) && isCanonicalImport(record, file),
+    )
+  ) {
+    return "mixed-canonical-and-raw";
+  }
+  if (rel.startsWith("plugins/")) return "plugin-raw-host";
+  if (rel.startsWith("packages/homepage/")) return "product-package-raw-host";
+  if (rel.startsWith("packages/app-core/")) return "runtime-host-control";
+  return "ui-raw-host";
+}
+
 function matchingAtoms(name, tags) {
   const matches = new Set();
   const normalized = name.toLowerCase();
@@ -230,12 +261,28 @@ function matchingAtoms(name, tags) {
   return [...matches];
 }
 
+function atomicDependencies(tags, imports, file) {
+  const dependencies = new Set();
+  for (const tag of tags) {
+    const imported = imports.get(tag);
+    if (imported && isCanonicalImport(imported, file)) {
+      const atom = ATOM_BY_NAME.get(imported.imported.toLowerCase());
+      if (atom) dependencies.add(atom);
+    }
+    for (const [atom, definition] of Object.entries(ATOMS)) {
+      if (definition.rawHosts.includes(tag)) dependencies.add(atom);
+    }
+  }
+  return [...dependencies].sort();
+}
+
 export function buildInventory() {
   const files = [
     ...walk(path.join(repoRoot, "packages")),
     ...walk(path.join(repoRoot, "plugins")),
   ].sort();
   const candidates = [];
+  const exportedComponents = [];
   const rawHostUsage = Object.fromEntries(
     Object.keys(ATOMS).map((atom) => [atom, []]),
   );
@@ -261,12 +308,40 @@ export function buildInventory() {
             sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
           if (!fileHostLines.has(tag)) fileHostLines.set(tag, []);
           fileHostLines.get(tag).push(line);
+          if (tag === "input") {
+            const typeAttribute = node.attributes.properties.find(
+              (property) =>
+                ts.isJsxAttribute(property) &&
+                property.name.getText() === "type",
+            );
+            if (
+              typeAttribute &&
+              ts.isJsxAttribute(typeAttribute) &&
+              typeAttribute.initializer &&
+              ts.isStringLiteral(typeAttribute.initializer)
+            ) {
+              const typedKey = `input:${typeAttribute.initializer.text}`;
+              if (!fileHostLines.has(typedKey)) fileHostLines.set(typedKey, []);
+              fileHostLines.get(typedKey).push(line);
+              if (typeAttribute.initializer.text === "checkbox") {
+                fileHostLines.get("input").pop();
+              }
+            }
+          }
         }
       }
 
       const name = componentName(node);
       if (name && /^[A-Z]/.test(name) && isExported(node, exportedNames)) {
         const tags = jsxTags(node);
+        exportedComponents.push({
+          atomicDependencies: atomicDependencies(tags, imports, file),
+          file: relative(file),
+          line:
+            sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+          name,
+          renderedTags: tags,
+        });
         for (const atom of matchingAtoms(name, tags)) {
           candidates.push({
             atom,
@@ -290,6 +365,7 @@ export function buildInventory() {
       );
       if (lines.length > 0) {
         rawHostUsage[atom].push({
+          classification: classifyRawHostFile({ atom, file, imports }),
           file: relative(file),
           lines: [...new Set(lines)].sort((a, b) => a - b),
         });
@@ -326,6 +402,12 @@ export function buildInventory() {
     schemaVersion: 1,
     scope: ["packages/**/*.tsx", "plugins/**/*.tsx"],
     scannedFiles: files.length,
+    components: exportedComponents.sort(
+      (a, b) =>
+        a.file.localeCompare(b.file) ||
+        a.line - b.line ||
+        a.name.localeCompare(b.name),
+    ),
     atoms,
     summary: {
       atomicKinds: Object.keys(ATOMS).length,
@@ -347,6 +429,17 @@ export function buildInventory() {
           candidate.classification === "parallel-primitive" &&
           candidate.decision,
       ).length,
+      rawHostCandidates: Object.values(rawHostUsage)
+        .flat()
+        .filter(
+          (entry) =>
+            ![
+              "canonical-implementation",
+              "renderer-adapter",
+              "template",
+              "test-or-story-harness",
+            ].includes(entry.classification),
+        ).length,
     },
   };
 }
@@ -370,6 +463,23 @@ export function renderMarkdown(report) {
     lines.push(
       `| ${atom} | ${group.canonical.length} | ${count("same-name-definition")} | ${count("canonical-wrapper")} | ${count("parallel-primitive")} | ${group.rawHostUsage.length} |`,
     );
+  }
+
+  lines.push("", "## Raw semantic host usage", "");
+  lines.push(
+    "Raw host elements are reported only where HTML provides a meaningful atomic signal. Generic `div` and `span` usage is deliberately excluded.",
+    "",
+  );
+  for (const [atom, group] of Object.entries(report.atoms)) {
+    if (group.rawHostUsage.length === 0) continue;
+    lines.push(`### Raw ${atom} hosts`, "");
+    lines.push("| Classification | File | Lines |", "| --- | --- | --- |");
+    for (const entry of group.rawHostUsage) {
+      lines.push(
+        `| ${entry.classification} | \`${entry.file}\` | ${entry.lines.join(", ")} |`,
+      );
+    }
+    lines.push("");
   }
 
   lines.push("", "## Named candidates by atom", "");
