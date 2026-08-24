@@ -248,7 +248,6 @@ import {
   getZonedDateParts,
 } from "../time.js";
 import {
-  callerDefinitionScopes,
   getCallerDefinition,
   getCallerOccurrence,
   getCallerOccurrenceView,
@@ -5130,6 +5129,7 @@ export class RemindersDomain {
   async processDueReminderDeliveries(args: {
     now: Date;
     limit: number;
+    includeCalendar: boolean;
     ownerTimezone: string;
     policies: LifeOpsChannelPolicy[];
     globalReminderPreference: LifeOpsReminderPreference;
@@ -5139,6 +5139,7 @@ export class RemindersDomain {
     const {
       now,
       limit,
+      includeCalendar,
       ownerTimezone,
       policies,
       globalReminderPreference,
@@ -5150,10 +5151,12 @@ export class RemindersDomain {
       return dueAttempts;
     }
 
-    const definitions = await listCallerDefinitions(
-      this.ctx.repository,
-      this.ctx,
-      { activeOnly: true },
+    // This is a background scheduler boundary, not a caller-facing read. A
+    // chat-created owner definition may belong to any owner entity under the
+    // agent, so filtering through the service's default synthetic owner would
+    // silently drop real reminders created from another room or connector.
+    const definitions = await this.ctx.repository.listActiveDefinitions(
+      this.ctx.agentId(),
     );
     for (const definition of definitions) {
       await this.refreshDefinitionOccurrences(definition, now);
@@ -5167,7 +5170,6 @@ export class RemindersDomain {
       await this.ctx.repository.listOccurrenceViewsForOverview(
         this.ctx.agentId(),
         horizon,
-        callerDefinitionScopes(this.ctx),
       )
     ).filter((occurrence) => definitionsById.has(occurrence.definitionId));
     const occurrencePlans =
@@ -5198,12 +5200,14 @@ export class RemindersDomain {
       now,
       OVERVIEW_HORIZON_MINUTES,
     ).toISOString();
-    const calendarEvents = await this.ctx.repository.listCalendarEvents(
-      this.ctx.agentId(),
-      "google",
-      now.toISOString(),
-      eventWindowEnd,
-    );
+    const calendarEvents = includeCalendar
+      ? await this.ctx.repository.listCalendarEvents(
+          this.ctx.agentId(),
+          "google",
+          now.toISOString(),
+          eventWindowEnd,
+        )
+      : [];
     const eventPlans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "calendar_event",
@@ -5512,7 +5516,11 @@ export class RemindersDomain {
   }
 
   async processReminders(
-    request: { now?: string; limit?: number } = {},
+    request: {
+      now?: string;
+      limit?: number;
+      scope?: "all" | "definitions";
+    } = {},
   ): Promise<LifeOpsReminderProcessingResult> {
     return this.withReminderProcessingLock(async () => {
       const now =
@@ -5523,6 +5531,13 @@ export class RemindersDomain {
         request.limit === undefined
           ? DEFAULT_REMINDER_PROCESS_LIMIT
           : normalizePositiveInteger(request.limit, "limit");
+      const scope =
+        request.scope === undefined
+          ? "all"
+          : normalizeEnumValue(request.scope, "scope", [
+              "all",
+              "definitions",
+            ] as const);
       // Anchor reminder window/dueness math to the owner's stored timezone
       // fact (travel-aware) rather than the host clock. On shared-server /
       // TZ=UTC topologies `resolveDefaultTimeZone()` is the SERVER zone, which
@@ -5569,6 +5584,7 @@ export class RemindersDomain {
         ...(await this.processDueReminderDeliveries({
           now,
           limit: limit - dueAttempts.length,
+          includeCalendar: scope === "all",
           ownerTimezone,
           policies,
           globalReminderPreference,

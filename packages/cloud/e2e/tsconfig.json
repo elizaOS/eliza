@@ -18,6 +18,16 @@
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
+      "@elizaos/scenario-runner": ["../../scenario-runner/src/index.ts"],
+      "@elizaos/scenario-runner/*": ["../../scenario-runner/src/*"],
+      "@elizaos/plugin-personal-assistant": [
+        "../../../plugins/plugin-personal-assistant/src/index.ts"
+      ],
+      "@elizaos/plugin-personal-assistant/*": [
+        "../../../plugins/plugin-personal-assistant/src/*"
+      ],
+      "@elizaos/shared": ["../../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../shared/src/*"],
       "@elizaos/plugin-scheduling/edge": [
         "../../../plugins/plugin-scheduling/src/edge.ts"
       ],

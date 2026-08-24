@@ -1,8 +1,9 @@
 /**
- * `eliza-scenarios` CLI. Two commands:
+ * `eliza-scenarios` CLI. Three commands:
  *
  *   run  <dir> [--report <path>] [--report-dir <dir>] [--runId <id>] [--scenario <id,id,...>] [--lane <name>] [--provider <name>] [fileGlob ...]
  *   list <dir> [fileGlob ...]
+ *   stability <output-dir> --runId <id> [--attempt-report <matrix.json>]×3
  *
  * Exit codes:
  *   0  all scenarios passed (or skipped with SKIP_REASON set)
@@ -36,6 +37,19 @@ import {
   assertSharedRuntimePluginBatchSafe,
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
+import type {
+  ScenarioStabilityAttemptReport,
+  ScenarioStabilityPlan,
+} from "./stability.ts";
+import {
+  buildScenarioStabilityReport,
+  createScenarioStabilityPlan,
+  parseScenarioStabilityAttemptReport,
+  readScenarioStabilityJsonArtifact,
+  readScenarioStabilityPlan,
+  writeScenarioStabilityPlan,
+  writeScenarioStabilityReport,
+} from "./stability.ts";
 import { shouldOptInScenarioTrajectoryLogging } from "./trajectory-opt-in.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
@@ -196,7 +210,7 @@ type ScenarioRuntimeFactoryModule = Pick<
 >;
 
 export interface ParsedArgs {
-  command: "run" | "list";
+  command: "run" | "list" | "stability";
   dir: string;
   reportPath?: string;
   reportDir?: string;
@@ -210,6 +224,7 @@ export interface ParsedArgs {
   expandScenarios?: boolean;
   countScenarios?: boolean;
   validateScenarios?: boolean;
+  attemptReportPaths?: string[];
 }
 
 export class CliUsageError extends Error {
@@ -361,8 +376,46 @@ function usageAndExit(message: string, code: number): never {
 function formatUsageError(error: CliUsageError): string {
   return (
     `[eliza-scenarios] ${error.message}\n` +
-    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane pr-deterministic|live-only] [--provider groq|openai|anthropic|google|openrouter|cli] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--lane pr-deterministic|live-only] [fileGlob ...]\n"
+    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane pr-deterministic|live-only] [--provider groq|openai|anthropic|google|openrouter|cli] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--lane pr-deterministic|live-only] [fileGlob ...]\n  eliza-scenarios stability <output-dir> --runId <id> [--attempt-report <matrix.json>]×3\n"
   );
+}
+
+function parseStabilityArgs(argv: readonly string[]): ParsedArgs {
+  const outputDir = argv[1];
+  if (!outputDir || outputDir.startsWith("--")) {
+    usageAndExit("missing stability output directory", 2);
+  }
+  let runId: string | undefined;
+  const attemptReportPaths: string[] = [];
+  for (let index = 2; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--runId") {
+      const value = argv[index + 1];
+      if (!value) usageAndExit("--runId missing value", 2);
+      runId = value;
+      index += 1;
+    } else if (arg === "--attempt-report") {
+      const value = argv[index + 1];
+      if (!value) usageAndExit("--attempt-report missing value", 2);
+      attemptReportPaths.push(path.resolve(value));
+      index += 1;
+    } else {
+      usageAndExit(`unknown stability argument '${arg}'`, 2);
+    }
+  }
+  if (!runId) usageAndExit("stability requires --runId", 2);
+  if (attemptReportPaths.length !== 0 && attemptReportPaths.length !== 3) {
+    usageAndExit(
+      `stability requires zero or exactly three --attempt-report values; received ${attemptReportPaths.length}`,
+      2,
+    );
+  }
+  return {
+    command: "stability",
+    dir: path.resolve(outputDir),
+    runId,
+    attemptReportPaths,
+  };
 }
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -370,6 +423,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     usageAndExit("missing command or directory", 2);
   }
   const command = argv[0];
+  if (command === "stability") return parseStabilityArgs(argv);
   if (command !== "run" && command !== "list") {
     usageAndExit(`unknown command '${command}'`, 2);
   }
@@ -535,6 +589,122 @@ export async function runCli(
   dependencies?: CliDependencies,
 ): Promise<number> {
   const parsed = parseArgs(argv);
+
+  if (parsed.command === "stability") {
+    if (!parsed.runId) {
+      throw new CliUsageError("stability requires --runId", 2);
+    }
+    let requestedPlan: ScenarioStabilityPlan;
+    try {
+      requestedPlan = createScenarioStabilityPlan({
+        runId: parsed.runId,
+        outputRoot: parsed.dir,
+      });
+    } catch (error) {
+      // error-policy:J1 CLI boundary translates invalid plan configuration into a usage error.
+      throw new CliUsageError(
+        error instanceof Error ? error.message : String(error),
+        2,
+      );
+    }
+    const attemptReportPaths = parsed.attemptReportPaths ?? [];
+    if (attemptReportPaths.length === 0) {
+      try {
+        writeScenarioStabilityPlan(requestedPlan);
+      } catch (error) {
+        // error-policy:J1 CLI boundary rejects a conflicting persisted plan as invalid configuration.
+        throw new CliUsageError(
+          error instanceof Error ? error.message : String(error),
+          2,
+        );
+      }
+      process.stdout.write(`${JSON.stringify(requestedPlan, null, 2)}\n`);
+      return 0;
+    }
+    let plan: ScenarioStabilityPlan;
+    try {
+      plan = readScenarioStabilityPlan({
+        runId: parsed.runId,
+        outputRoot: parsed.dir,
+      });
+    } catch (error) {
+      // error-policy:J1 CLI boundary requires aggregation to consume the persisted plan authority.
+      throw new CliUsageError(
+        error instanceof Error ? error.message : String(error),
+        2,
+      );
+    }
+    const expectedReportPaths = new Set(
+      plan.attempts.map((attempt) => attempt.reportPath),
+    );
+    const reports = attemptReportPaths.map((reportPath) => {
+      const resolvedReportPath = path.resolve(reportPath);
+      if (!expectedReportPaths.has(resolvedReportPath)) {
+        throw new CliUsageError(
+          `attempt report '${reportPath}' is not a path declared by the persisted stability plan`,
+          2,
+        );
+      }
+      let rawReport: unknown;
+      try {
+        rawReport = readScenarioStabilityJsonArtifact(
+          resolvedReportPath,
+          `attempt report '${resolvedReportPath}'`,
+          plan.outputRoot,
+        );
+      } catch (error) {
+        // error-policy:J1 CLI boundary translates malformed or unbounded report artifacts into usage errors.
+        throw new CliUsageError(
+          error instanceof Error ? error.message : String(error),
+          2,
+        );
+      }
+      let report: ScenarioStabilityAttemptReport;
+      try {
+        report = parseScenarioStabilityAttemptReport(
+          rawReport,
+          `attempt report '${resolvedReportPath}'`,
+        );
+      } catch (error) {
+        // error-policy:J1 CLI boundary translates invalid report artifacts into usage errors.
+        throw new CliUsageError(
+          error instanceof Error ? error.message : String(error),
+          2,
+        );
+      }
+      const expectedPath = plan.attempts.find(
+        (attempt) => attempt.attemptId === report.runId,
+      )?.reportPath;
+      if (!expectedPath || resolvedReportPath !== expectedPath) {
+        throw new CliUsageError(
+          `attempt report '${reportPath}' does not match the isolated path declared for runId '${report.runId}'`,
+          2,
+        );
+      }
+      return report;
+    });
+    let report: ReturnType<typeof buildScenarioStabilityReport>;
+    try {
+      report = buildScenarioStabilityReport(plan, reports);
+    } catch (error) {
+      // error-policy:J1 CLI boundary translates invalid aggregate report sets into usage errors.
+      throw new CliUsageError(
+        error instanceof Error ? error.message : String(error),
+        2,
+      );
+    }
+    try {
+      writeScenarioStabilityReport(plan, report);
+    } catch (error) {
+      // error-policy:J1 CLI boundary translates unsafe or conflicting output artifacts into usage errors.
+      throw new CliUsageError(
+        error instanceof Error ? error.message : String(error),
+        2,
+      );
+    }
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    return report.status === "passed" ? 0 : 1;
+  }
 
   if (parsed.countScenarios) {
     const counts = await countScenarioCorpus(

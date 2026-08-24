@@ -6,6 +6,16 @@ declare module "@elizaos/plugin-personal-assistant/plugin" {
     runtime: AgentRuntime,
     options: Record<string, unknown>,
   ): Promise<Record<string, unknown>>;
+  export function executeLifeOpsReminderTask(
+    runtime: AgentRuntime,
+    options: { now?: string; limit?: number },
+  ): Promise<Record<string, unknown>>;
+  export function processDueScheduledTasks(request: {
+    runtime: AgentRuntime;
+    agentId: string;
+    now: Date;
+    limit: number;
+  }): Promise<Record<string, unknown>>;
   export function resetLifeOpsScenarioState(
     runtime: AgentRuntime,
   ): Promise<void>;

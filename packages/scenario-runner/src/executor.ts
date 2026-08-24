@@ -2320,7 +2320,12 @@ async function executeTickTurn(args: {
     typeof args.turn.worker === "string" && args.turn.worker.trim().length > 0
       ? args.turn.worker.trim()
       : null;
-  if (worker !== "lifeops_scheduler") {
+  if (
+    worker !== "lifeops_scheduler" &&
+    worker !== "lifeops_reminders" &&
+    worker !== "scheduled_tasks" &&
+    worker !== "scheduling"
+  ) {
     throw new Error(
       `[executor] tick turn '${args.turn.name}' has unsupported worker '${worker ?? "(missing)"}'`,
     );
@@ -2340,19 +2345,89 @@ async function executeTickTurn(args: {
         })
       : undefined;
   const startedAt = Date.now();
-  const { executeLifeOpsSchedulerTask } = (await import(
-    "@elizaos/plugin-personal-assistant/plugin"
-  )) as {
-    executeLifeOpsSchedulerTask: (
-      runtime: AgentRuntime,
-      options: Record<string, unknown>,
-    ) => Promise<Record<string, unknown>>;
+  const resolvedOptions: Record<string, unknown> = {
+    ...(toRecord(options) ?? {}),
+    ...(now ? { now } : {}),
   };
+  const execution =
+    worker === "scheduling"
+      ? (async (): Promise<Record<string, unknown>> => {
+          const { runStandaloneSchedulingTick } = await import(
+            "@elizaos/plugin-scheduling"
+          );
+          return {
+            ...(await runStandaloneSchedulingTick(args.runtime, {
+              ...(now ? { now: new Date(now) } : {}),
+            })),
+          };
+        })()
+      : worker === "lifeops_reminders"
+        ? (async (): Promise<Record<string, unknown>> => {
+            const { executeLifeOpsReminderTask } = await import(
+              "@elizaos/plugin-personal-assistant/plugin"
+            );
+            const rawLimit = resolvedOptions.reminderLimit;
+            const limit = rawLimit === undefined ? 25 : Number(rawLimit);
+            if (!Number.isInteger(limit) || limit < 1) {
+              throw new Error(
+                `[executor] tick turn '${args.turn.name}' reminderLimit must be a positive integer`,
+              );
+            }
+            return {
+              ...(await executeLifeOpsReminderTask(args.runtime, {
+                ...(now ? { now } : {}),
+                limit,
+              })),
+            };
+          })()
+        : worker === "scheduled_tasks"
+          ? (async (): Promise<Record<string, unknown>> => {
+              const { processDueScheduledTasks } = await import(
+                "@elizaos/plugin-personal-assistant/plugin"
+              );
+              const rawNow = resolvedOptions.now;
+              const scheduledNow =
+                rawNow instanceof Date
+                  ? new Date(rawNow)
+                  : typeof rawNow === "number"
+                    ? new Date(rawNow)
+                    : rawNow === undefined
+                      ? new Date()
+                      : new Date(String(rawNow));
+              if (!Number.isFinite(scheduledNow.getTime())) {
+                throw new Error(
+                  `[executor] tick turn '${args.turn.name}' has invalid scheduled-task now`,
+                );
+              }
+              const rawLimit = resolvedOptions.scheduledTaskLimit;
+              const limit = rawLimit === undefined ? 25 : Number(rawLimit);
+              if (!Number.isInteger(limit) || limit < 1) {
+                throw new Error(
+                  `[executor] tick turn '${args.turn.name}' scheduledTaskLimit must be a positive integer`,
+                );
+              }
+              return {
+                ...(await processDueScheduledTasks({
+                  runtime: args.runtime,
+                  agentId: args.runtime.agentId,
+                  now: scheduledNow,
+                  limit,
+                })),
+              };
+            })()
+          : (async (): Promise<Record<string, unknown>> => {
+              const { executeLifeOpsSchedulerTask } = (await import(
+                "@elizaos/plugin-personal-assistant/plugin"
+              )) as {
+                executeLifeOpsSchedulerTask: (
+                  runtime: AgentRuntime,
+                  options: Record<string, unknown>,
+                ) => Promise<Record<string, unknown>>;
+              };
+              return executeLifeOpsSchedulerTask(args.runtime, resolvedOptions);
+            })();
   const result = await withTimeout(
-    executeLifeOpsSchedulerTask(args.runtime, {
-      ...(toRecord(options) ?? {}),
-      ...(now ? { now } : {}),
-    }),
+    execution,
     typeof args.turn.timeoutMs === "number"
       ? args.turn.timeoutMs
       : args.turnTimeoutMs,

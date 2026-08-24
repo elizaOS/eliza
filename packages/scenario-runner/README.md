@@ -128,7 +128,41 @@ eliza-scenarios run  <dir>
   --provider <name>        Pin the live provider: groq, openai, anthropic,
                            google, openrouter, or cli
   [fileGlob ...]           Filter by file glob pattern
+
+eliza-scenarios stability <output-dir> --runId <id>
+  --attempt-report <path>  Aggregate a matrix report; supply exactly three
 ```
+
+With no attempt reports, `stability` writes a three-attempt plan containing
+unique run IDs and isolated output paths. Once the three declared `matrix.json`
+reports exist, supply all three paths to produce strict `3/3` through `0/3`
+tiers, structural failure classifications, and a deterministic focus list.
+This command only plans and aggregates artifacts; it does not execute scenarios
+or model providers.
+
+Aggregation reads the existing `stability-plan.json` as the run/path authority
+and refuses to replace a conflicting plan. Attempt reports must be regular,
+non-symlink files at the plan's exact paths. Each file is limited to 64 MiB;
+the consumed report subset is also bounded to 10,000 scenarios, 1,000 failed
+assertions per scenario, and bounded identifier/detail strings. Invalid or
+contradictory reports exit as configuration errors without writing an aggregate.
+
+Programmatic stability execution is available through
+`executeScenarioStability()`. It runtime-validates the canonical three-attempt
+plan before any adapter call, bounds every retained evidence/state value as
+plain JSON, compares runtime-produced initial-state hashes, records
+first-attempt success, and blocks every cell below `3/3`.
+
+Use `ScenarioStabilitySubprocessAdapter` for Cloud or qualification lanes. It
+opens the exact shared synthetic-control manifest for every attempt, launches a
+separate POSIX process group, passes only explicit credential-free loopback mock
+service endpoints, kills the group before resetting the namespace, and records
+the manifest/generation receipt. Keyless deterministic mode additionally
+requires a strict-fixture manifest fingerprint and zero fixture diagnostics.
+Real-LLM mode accepts one explicit model credential over those same mock
+services. Durable manifest/reset/ledger authority and strict final fixture
+validation remain dependencies of the scheduled composed lane; the adapter does
+not fabricate them.
 
 ## Provider-qualified release evidence
 
@@ -238,6 +272,15 @@ abort signal, so subprocess/generation isolation must end that container before
 the runtime can be replaced; quarantine is containment, not a claim that the
 task was killed.
 
+Before final fixture validation, the executor waits a bounded interval for
+tracked post-delivery work and requests cancellation through each task's
+`AbortSignal`. A task that ignores cancellation leaves its runtime quarantined:
+the attempt fails and every later scenario is refused before its fixture scope
+or world can start. JavaScript cannot terminate arbitrary code that ignores an
+abort signal, so subprocess/generation isolation must end that container before
+the runtime can be replaced; quarantine is containment, not a claim that the
+task was killed.
+
 The rollout is staged: undeclared scenarios temporarily retain the legacy
 resolver and reports mark them `legacy-fallback`; declared attempts report
 `strict-fixtures` or `model-free`. Declared rows contain only direct action/API
@@ -263,6 +306,12 @@ const report = await runScenario(myScenario, runtime, {
 });
 await cleanup();
 ```
+
+For subprocess-backed synthetic services, use `openScenarioSyntheticWorld`
+with an explicit control URL, bearer token, and v1 `SyntheticManifest`. It uses
+the same `SyntheticControlSession` as Cloud E2E, acquires a generation-fenced
+lease, seeds through the owning service, and retains the authority-issued reset
+receipt for teardown. The runner does not keep a parallel world-state copy.
 
 ## Notes
 

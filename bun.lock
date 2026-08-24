@@ -525,6 +525,11 @@
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/cloud-test-mocks": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-personal-assistant": "workspace:*",
+        "@elizaos/plugin-reminders": "workspace:*",
+        "@elizaos/plugin-scheduling": "workspace:*",
+        "@elizaos/scenario-runner": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
       },
       "devDependencies": {
