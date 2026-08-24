@@ -376,8 +376,19 @@ export class VoiceService {
   }
 
   async recentTurns(params: { limit?: number } = {}): Promise<VoiceTurn[]> {
-    const limit = clampLimit(params.limit ?? 20, 1, 100);
-    return this.recent.slice(0, limit).map(cloneVoiceTurn);
+    const limit = params.limit;
+    if (
+      limit !== undefined &&
+      (!Number.isSafeInteger(limit) || limit <= 0)
+    ) {
+      throw new VoiceError(
+        "VOICE_RECENT_TURNS_LIMIT_INVALID",
+        "Voice recent-turn limit must be a positive integer when explicitly requested.",
+      );
+    }
+    const turns =
+      limit === undefined ? this.recent : this.recent.slice(0, limit);
+    return turns.map(cloneVoiceTurn);
   }
 
   async transcribeAudio(
@@ -557,7 +568,6 @@ export class VoiceService {
       }
     }
     this.recent.unshift(cloneVoiceTurn(turn));
-    this.recent.splice(20);
     this.activeTurn = null;
     this.runtimeCommitTurnId = null;
     this.traceSessionReady = null;
@@ -1070,7 +1080,7 @@ export class VoiceService {
       currentTurn: this.activeTurn
         ? cloneVoiceTurn(this.activeTurn)
         : undefined,
-      recentTurns: this.recent.slice(0, 10).map(cloneVoiceTurn),
+      recentTurns: this.recent.map(cloneVoiceTurn),
       latencySummary,
       latencyBudget: this.latencyBudget,
       latencyBudgetResults: latencySummary.budgetResults,
@@ -1100,9 +1110,4 @@ export class VoiceService {
   private timestamp(): string {
     return this.now().toISOString();
   }
-}
-
-function clampLimit(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, Math.floor(value)));
 }

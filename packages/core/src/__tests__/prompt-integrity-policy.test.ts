@@ -146,6 +146,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/eventLog\s*=\s*this\.eventLog\.slice/,
 		/eventLog\.splice\(/,
 	],
+	"packages/app-core/platforms/electrobun/src/voice/voice-service.ts": [
+		/this\.recent\.splice\(/,
+		/recentTurns:\s*this\.recent\.slice\(/,
+		/params\.limit\s*\?\?\s*\d+/,
+		/clampLimit\(params\.limit/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,
