@@ -66,6 +66,40 @@ function validSoakEvidence(commit: string, corpusManifestSha256: string) {
   };
 }
 
+function validLiveTrajectories(commit: string, corpusManifestSha256: string) {
+  return Array.from({ length: 5 }, (_, repetition) =>
+    ["file", "document", "memory", "email", "attachment", "tool-output"].map(
+      (family) =>
+        JSON.stringify({
+          repetition,
+          family,
+          status: "passed",
+          commit,
+          corpusManifestSha256,
+          providerQualified: true,
+          provider: "openai",
+          model: "gpt-5.4",
+          continuationDiscovered: true,
+          lateEvidenceRecovered: true,
+          exactAnswer: true,
+          answerLeakageDetected: false,
+          canaryLeakageDetected: false,
+          toolCalls: 2,
+          noProgressReads: 0,
+          latencyMs: 100,
+          inputTokens: 1_000,
+          outputTokens: 100,
+          costUsd: 0.01,
+          controllerDecision: "qualified",
+          observerEvidenceSha256: "d".repeat(64),
+          trajectorySha256: "e".repeat(64),
+        }),
+    ),
+  )
+    .flat()
+    .join("\n");
+}
+
 afterEach(async () => {
   for (const target of cleanup.splice(0)) {
     await rm(target, { recursive: true, force: true });
@@ -309,18 +343,7 @@ function evidenceValues() {
         }),
       },
     })}\n`,
-    "trajectories.jsonl": Array.from({ length: 5 }, (_, repetition) =>
-      JSON.stringify({
-        repetition,
-        status: "passed",
-        commit: "a".repeat(40),
-        corpusManifestSha256: manifestSha256,
-        providerQualified: true,
-        provider: "openai",
-        model: "gpt-5.4",
-        answerLeakageDetected: false,
-      }),
-    ).join("\n"),
+    "trajectories.jsonl": validLiveTrajectories("a".repeat(40), manifestSha256),
     "e2e.json": {
       status: "passed",
       commit: "a".repeat(40),
