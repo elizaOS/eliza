@@ -19,7 +19,7 @@
  * Deterministic: real AgentRuntime + InMemoryDatabaseAdapter, zero model
  * calls (asserted via a throwing useModel stub).
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../character";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
@@ -351,6 +351,7 @@ describe("runBotLoopGate — deterministic anti-loop floor", () => {
 
 	it("fails open when the room window read throws (never mutes on error)", async () => {
 		const { runtime, adapter } = await makeRuntime();
+		const reportError = vi.spyOn(runtime, "reportError");
 		await seed(adapter, botExchangeRows(runtime.agentId, 3));
 		const realGetMemories = adapter.getMemories.bind(adapter);
 		// Scoped failure: only the gate's own bounded room-window scan throws, so
@@ -371,5 +372,10 @@ describe("runBotLoopGate — deterministic anti-loop floor", () => {
 		adapter.getMemories = realGetMemories;
 		expect(result.ignored).toBe(false);
 		expect(result.reason).toBe("window_unavailable");
+		expect(reportError).toHaveBeenCalledWith(
+			"BotLoopGate.window",
+			expect.any(Error),
+			{ roomId: GROUP_ROOM },
+		);
 	});
 });
