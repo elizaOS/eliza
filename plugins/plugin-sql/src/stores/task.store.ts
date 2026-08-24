@@ -21,12 +21,12 @@ export class TaskStore implements Store {
       const now = new Date();
 
       const values = {
-        id: task.id as UUID,
+        ...(task.id ? { id: task.id as UUID } : {}),
+        ...(task.entityId ? { entityId: task.entityId as UUID } : {}),
         name: task.name,
         description: task.description,
         roomId: task.roomId as UUID,
         worldId: task.worldId as UUID,
-        entityId: task.entityId as UUID,
         tags: task.tags,
         metadata: metadata,
         createdAt: now,
@@ -74,7 +74,7 @@ export class TaskStore implements Store {
           description: row.description ?? "",
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
-          entityId: row.entityId as UUID,
+          entityId: (row.entityId ?? undefined) as UUID | undefined,
           tags: row.tags || [],
           dueAt: readTaskDueAt(metadata),
           metadata,
@@ -98,7 +98,7 @@ export class TaskStore implements Store {
           description: row.description ?? "",
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
-          entityId: row.entityId as UUID,
+          entityId: (row.entityId ?? undefined) as UUID | undefined,
           tags: row.tags || [],
           dueAt: readTaskDueAt(metadata),
           metadata,
@@ -125,7 +125,7 @@ export class TaskStore implements Store {
         description: row.description ?? "",
         roomId: row.roomId as UUID,
         worldId: row.worldId as UUID,
-        entityId: row.entityId as UUID,
+        entityId: (row.entityId ?? undefined) as UUID | undefined,
         tags: row.tags || [],
         dueAt: readTaskDueAt(metadata),
         metadata,
@@ -142,6 +142,7 @@ export class TaskStore implements Store {
         updatedAt: new Date(),
       };
 
+      if (task.entityId !== undefined) dbUpdateValues.entityId = task.entityId as UUID;
       if (task.name !== undefined) dbUpdateValues.name = task.name;
       if (task.description !== undefined) dbUpdateValues.description = task.description;
       if (task.roomId !== undefined) dbUpdateValues.roomId = task.roomId;

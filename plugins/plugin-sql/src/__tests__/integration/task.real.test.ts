@@ -433,5 +433,57 @@ describe("Task Integration Tests", () => {
       expect(firstPage).toMatchObject([{ id: task2.id }]);
       expect(secondPage).toMatchObject([{ id: task1.id }]);
     });
+
+    it("round-trips entityId and filters tasks by entityId", async () => {
+      const entityA = uuidv4() as UUID;
+      const entityB = uuidv4() as UUID;
+      await adapter.createEntities([
+        { id: entityA, agentId: testAgentId, names: ["Entity A"] } as Entity,
+        { id: entityB, agentId: testAgentId, names: ["Entity B"] } as Entity,
+      ]);
+
+      const taskAId = uuidv4() as UUID;
+      const taskBId = uuidv4() as UUID;
+      await adapter.createTask({
+        id: taskAId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: entityA,
+        name: "Entity Task A",
+        description: "Task for entity A",
+        tags: ["entity-test"],
+        metadata: {},
+      });
+      await adapter.createTask({
+        id: taskBId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: entityB,
+        name: "Entity Task B",
+        description: "Task for entity B",
+        tags: ["entity-test"],
+        metadata: {},
+      });
+
+      const gotA = await adapter.getTask(taskAId);
+      expect(gotA?.entityId).toBe(entityA);
+
+      const byName = await adapter.getTasksByName("Entity Task A");
+      expect(byName).toHaveLength(1);
+      expect(byName[0]?.entityId).toBe(entityA);
+
+      const tasksForA = await adapter.getTasks({ entityId: entityA });
+      expect(tasksForA.some((t) => t.id === taskAId)).toBe(true);
+      expect(tasksForA.some((t) => t.id === taskBId)).toBe(false);
+
+      const tasksForB = await adapter.getTasks({ entityId: entityB });
+      expect(tasksForB.some((t) => t.id === taskBId)).toBe(true);
+      expect(tasksForB.some((t) => t.id === taskAId)).toBe(false);
+
+      // Updating entityId
+      await adapter.updateTask(taskAId, { entityId: entityB });
+      const updatedA = await adapter.getTask(taskAId);
+      expect(updatedA?.entityId).toBe(entityB);
+    });
   });
 });

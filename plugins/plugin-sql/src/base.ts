@@ -5363,6 +5363,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           // gen_random_uuid() DEFAULT — passing undefined explicitly causes
           // Drizzle to insert NULL which violates the NOT NULL constraint.
           ...(task.id ? { id: task.id as UUID } : {}),
+          ...(task.entityId ? { entityId: task.entityId as UUID } : {}),
           name: task.name,
           description: task.description,
           roomId: task.roomId as UUID,
@@ -5432,7 +5433,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             description: row.description ?? "",
             roomId: row.roomId as UUID,
             worldId: row.worldId as UUID,
-            entityId: row.entityId as UUID,
+            entityId: (row.entityId ?? undefined) as UUID | undefined,
             tags: row.tags || [],
             dueAt: readTaskDueAt(metadata),
             metadata,
@@ -5464,7 +5465,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             description: row.description ?? "",
             roomId: row.roomId as UUID,
             worldId: row.worldId as UUID,
-            entityId: row.entityId as UUID,
+            entityId: (row.entityId ?? undefined) as UUID | undefined,
             tags: row.tags || [],
             dueAt: readTaskDueAt(metadata),
             metadata,
@@ -5501,7 +5502,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           description: row.description ?? "",
           roomId: row.roomId as UUID,
           worldId: row.worldId as UUID,
-          entityId: row.entityId as UUID,
+          entityId: (row.entityId ?? undefined) as UUID | undefined,
           tags: row.tags || [],
           dueAt: readTaskDueAt(metadata),
           metadata,
@@ -5529,7 +5530,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         if (task.description !== undefined) updateValues.description = task.description;
         if (task.roomId !== undefined) updateValues.roomId = task.roomId;
         if (task.worldId !== undefined) updateValues.worldId = task.worldId;
-        if (task.entityId !== undefined) updateValues.entityId = task.entityId;
+        if (task.entityId !== undefined) updateValues.entityId = task.entityId as UUID;
         if (task.tags !== undefined) updateValues.tags = task.tags;
         if (task.metadata !== undefined) {
           updateValues.metadata = replacementMetadata;
