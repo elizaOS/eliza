@@ -31,10 +31,6 @@
     "disposition": "distinct-domain-compositions",
     "rationale": "Search navigation and meeting join controls have unrelated behavior; the role-name match is superficial."
   },
-  "list:button+spinner": {
-    "disposition": "shared-shell-candidate",
-    "rationale": "Both account lists repeat loading, error, empty, add, and stacked-card regions, but their fetching and mutation controllers must remain domain-specific."
-  },
   "panel:badge+button+input": {
     "disposition": "duplicate-implementation",
     "rationale": "AgentSection and CloudAgentsSection implement the same cloud-agent management lifecycle with near-identical state and operations; one owner should serve both surfaces."

@@ -260,11 +260,13 @@ export function BlooioConnection() {
             })}
           >
             {status?.webhookConfigured && (
-              <Badge variant="outline" className="mt-1 text-xs">
-                {t("cloud.blooio.webhookActive", {
-                  defaultValue: "Webhook Active",
-                })}
-              </Badge>
+              <div className="mt-1">
+                <Badge variant="outline">
+                  {t("cloud.blooio.webhookActive", {
+                    defaultValue: "Webhook Active",
+                  })}
+                </Badge>
+              </div>
             )}
           </ConnectionIdentityPanel>
 

@@ -27,6 +27,7 @@ export * from "../ui/native-dialog";
 export * from "../ui/native-select";
 export * from "../ui/popover";
 export * from "../ui/progress";
+export * from "../ui/radio-group";
 export * from "../ui/select";
 export * from "../ui/separator";
 export * from "../ui/settings-controls";

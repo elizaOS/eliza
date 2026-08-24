@@ -22,6 +22,15 @@ test("compliance inventory is deterministic and covers every governed rule", () 
     first.findings.some((finding) => finding.file.includes("/__e2e__/")),
     false,
   );
+  assert.equal(
+    first.findings.some(
+      (finding) =>
+        finding.rule === "visual-override" &&
+        finding.symbol === "Tabs" &&
+        finding.file.endsWith("/SecretsManagerSection.tsx"),
+    ),
+    false,
+  );
   assert.equal(first.counts["atomic-duplicate"], 0);
   assert.equal(first.counts["raw-control"], 0);
   assert.equal(

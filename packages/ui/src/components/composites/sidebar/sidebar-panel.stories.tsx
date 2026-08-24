@@ -23,22 +23,13 @@ const meta = {
     children: (
       <>
         <h2 className="px-1 text-sm font-medium text-txt">Conversations</h2>
-        <Button
-          type="button"
-          className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
-        >
+        <Button type="button" variant="ghost" size="dense" align="start">
           Design review
         </Button>
-        <Button
-          type="button"
-          className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
-        >
+        <Button type="button" variant="ghost" size="dense" align="start">
           Launch planning
         </Button>
-        <Button
-          type="button"
-          className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
-        >
+        <Button type="button" variant="ghost" size="dense" align="start">
           Standup notes
         </Button>
       </>

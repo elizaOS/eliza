@@ -100,7 +100,8 @@ export const WithToolbar: Story = {
           <Button
             type="button"
             onClick={() => {}}
-            className="text-2xs text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="micro"
           >
             + New
           </Button>

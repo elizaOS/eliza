@@ -35,6 +35,7 @@ import { resolveApiUrl } from "../../../utils/asset-url";
 import { openEventSource } from "../../../utils/event-source";
 import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { Button } from "../../ui/button";
+import { Checkbox } from "../../ui/checkbox";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import type {
@@ -359,7 +360,7 @@ export function BackendRow(props: BackendRowProps) {
   } = props;
   const { t } = useTranslation();
   const { ref: enableRef, agentProps: enableAgentProps } =
-    useAgentElement<HTMLInputElement>({
+    useAgentElement<HTMLButtonElement>({
       id: `vault-backend-enable-${backend.id}`,
       role: "toggle",
       label: `Enable ${backend.label} backend`,
@@ -434,14 +435,12 @@ export function BackendRow(props: BackendRowProps) {
       }`}
     >
       <div className="flex items-center gap-3">
-        <Input
+        <Checkbox
           ref={enableRef}
           {...enableAgentProps}
-          type="checkbox"
           checked={enabled}
           disabled={lockedInHouse}
-          onChange={(e) => onToggle(e.target.checked)}
-          className="size-4 cursor-pointer border-border p-0 accent-accent disabled:cursor-not-allowed"
+          onCheckedChange={(checked) => onToggle(checked === true)}
           aria-label={t("vault.backend.enableLabel", {
             label: backend.label,
             defaultValue: "Enable {{label}}",

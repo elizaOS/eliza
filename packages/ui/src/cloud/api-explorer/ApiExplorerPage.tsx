@@ -245,16 +245,12 @@ export function ApiExplorerSurface() {
           { value: "openapi" as const, label: "OpenAPI" },
         ].map((tab) => (
           <Button
-            variant="ghost"
+            variant="selection"
+            size="compact"
+            data-state={activeTab === tab.value ? "on" : "off"}
             type="button"
             key={tab.value}
             onClick={() => setActiveTab(tab.value)}
-            className={cn(
-              "px-3 py-1.5 text-sm font-medium rounded-sm transition-colors whitespace-nowrap",
-              activeTab === tab.value
-                ? "bg-white/10 text-white"
-                : "text-neutral-400 hover:text-white",
-            )}
           >
             {tab.label}
           </Button>
@@ -266,10 +262,9 @@ export function ApiExplorerSurface() {
           <div className="min-w-0 space-y-3 sm:space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <Button
-                variant="ghost"
+                variant="ghostMuted"
                 type="button"
                 onClick={() => setSelectedEndpoint(null)}
-                className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white transition-colors"
               >
                 <ChevronLeft className="size-4" />
                 Back to endpoints
@@ -331,18 +326,21 @@ export function ApiExplorerSurface() {
               <div className="relative min-w-[13rem] flex-1 sm:min-w-0 sm:flex-none">
                 <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 size-3.5 sm:h-4 sm:w-4 text-neutral-500" />
                 <Input
+                  variant="config"
+                  density="compact"
+                  adornment="leading"
                   type="text"
                   placeholder="Search…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 w-full rounded-sm border border-white/10 bg-neutral-900 pl-7 pr-7 text-base text-white placeholder:text-neutral-500     sm:h-9 sm:w-48 sm:rounded-sm sm:pl-9 sm:pr-8 sm:text-sm"
                 />
                 {searchQuery && (
                   <Button
-                    variant="ghost"
+                    variant="ghostMuted"
+                    size="icon-sm"
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white transition-colors"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 sm:right-2"
                   >
                     <X className="size-3.5 sm:h-4 sm:w-4" />
                   </Button>
@@ -469,10 +467,10 @@ export function ApiExplorerSurface() {
             </div>
             <div className="flex gap-2">
               <Button
-                variant="ghost"
+                variant="surface"
+                size="compact"
                 type="button"
                 onClick={handleCopyJson}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-txt text-bg rounded-sm hover:bg-txt/90 transition-colors"
               >
                 {copied === "json" ? (
                   <Check className="size-3.5" />
@@ -482,10 +480,10 @@ export function ApiExplorerSurface() {
                 JSON
               </Button>
               <Button
-                variant="ghost"
+                variant="secondary"
+                size="compact"
                 type="button"
                 onClick={handleCopyYaml}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 text-white rounded-sm hover:bg-white/20 transition-colors"
               >
                 {copied === "yaml" ? (
                   <Check className="size-3.5" />

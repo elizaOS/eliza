@@ -54,6 +54,7 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
 import { SettingsSelectTrigger } from "../ui/settings-controls";
 import type {
@@ -1059,27 +1060,33 @@ function ProfilesPanel({
       )}
 
       {hasProfiles && (
-        <ul className="space-y-1">
-          {profiles.map((p) => (
-            <ProfileRow
-              key={p.id}
-              entryKey={entry.key}
-              profileId={p.id}
-              profileLabel={p.label}
-              active={entry.activeProfile === p.id}
-              highlight={highlightProfileId === p.id}
-              confirmingDelete={pendingProfileDelete === p.id}
-              deleting={deletingProfile === p.id}
-              onActivate={() => void onActivate(p.id)}
-              onRequestDelete={() => {
-                setErr(null);
-                setPendingProfileDelete(p.id);
-              }}
-              onCancelDelete={() => setPendingProfileDelete(null)}
-              onConfirmDelete={() => void onDelete(p.id)}
-            />
-          ))}
-        </ul>
+        <RadioGroup
+          value={entry.activeProfile ?? undefined}
+          onValueChange={(id) => void onActivate(id)}
+          asChild
+        >
+          <ul className="space-y-1">
+            {profiles.map((p) => (
+              <ProfileRow
+                key={p.id}
+                entryKey={entry.key}
+                profileId={p.id}
+                profileLabel={p.label}
+                active={entry.activeProfile === p.id}
+                highlight={highlightProfileId === p.id}
+                confirmingDelete={pendingProfileDelete === p.id}
+                deleting={deletingProfile === p.id}
+                onActivate={() => void onActivate(p.id)}
+                onRequestDelete={() => {
+                  setErr(null);
+                  setPendingProfileDelete(p.id);
+                }}
+                onCancelDelete={() => setPendingProfileDelete(null)}
+                onConfirmDelete={() => void onDelete(p.id)}
+              />
+            ))}
+          </ul>
+        </RadioGroup>
       )}
 
       {showAdd && (
@@ -1213,7 +1220,7 @@ const ProfileRow = memo(
   }: ProfileRowProps) {
     const { t } = useTranslation();
     const { ref: activateRef, agentProps: activateAgentProps } =
-      useAgentElement<HTMLInputElement>({
+      useAgentElement<HTMLButtonElement>({
         id: `vault-profile-activate-${entryKey}-${profileId}`,
         role: "toggle",
         label: `Make ${profileLabel} the active profile`,
@@ -1232,14 +1239,10 @@ const ProfileRow = memo(
     return (
       <li className={`rounded-sm px-1.5 py-1 text-xs ${highlight ? " " : ""}`}>
         <div className="flex items-center gap-2">
-          <Input
+          <RadioGroupItem
             ref={activateRef}
             {...activateAgentProps}
-            type="radio"
-            name={`active-${entryKey}`}
-            checked={active}
-            onChange={onActivate}
-            className="size-3 cursor-pointer border-border p-0 accent-accent"
+            value={profileId}
             aria-current={active ? "true" : undefined}
             aria-label={t("vaultinventory.profiles.makeActive", {
               label: profileLabel,

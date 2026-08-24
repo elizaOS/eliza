@@ -49,13 +49,15 @@ export function CharacterFilters({
         <div className="relative w-full flex-1 sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
           <Input
+            variant="config"
+            density="compact"
+            adornment="leading"
             type="text"
             placeholder={t("cloud.characterFilters.searchPlaceholder", {
               defaultValue: "Search agent...",
             })}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="h-9 rounded-full border-white/15 bg-black/40 pl-9 text-sm text-white placeholder:text-white/35  md:h-10"
           />
         </div>
         {searchQuery && (

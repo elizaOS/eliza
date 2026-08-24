@@ -823,7 +823,7 @@ export const ChatMessage = memo(function ChatMessage({
       {glass ? (
         <>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
             aria-label={labels.cancel ?? "Cancel"}
             title={labels.cancel ?? "Cancel"}
@@ -833,12 +833,12 @@ export const ChatMessage = memo(function ChatMessage({
               handleCancelEditing();
             }}
             disabled={savingEdit}
-            className="keyboard-focus-emphasis size-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="keyboard-focus-emphasis transition-[color,transform] duration-150 active:scale-95"
           >
             <X className="size-3.5" />
           </Button>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
             aria-label={
               savingEdit
@@ -852,7 +852,7 @@ export const ChatMessage = memo(function ChatMessage({
               void handleSaveEdit();
             }}
             disabled={editSaveDisabled}
-            className="keyboard-focus-emphasis size-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="keyboard-focus-emphasis transition-[color,transform] duration-150 active:scale-95"
           >
             {savingEdit ? (
               <LoaderCircle
@@ -867,21 +867,21 @@ export const ChatMessage = memo(function ChatMessage({
       ) : (
         <>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="tiny"
             onClick={handleCancelEditing}
             disabled={savingEdit}
-            className="keyboard-focus-emphasis min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+            className="keyboard-focus-emphasis transition-colors duration-150"
           >
             {labels.cancel ?? "Cancel"}
           </Button>
           <span aria-hidden className="mx-0.5 h-3.5 w-px bg-white/15" />
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="tiny"
             onClick={() => void handleSaveEdit()}
             disabled={editSaveDisabled}
-            className="keyboard-focus-emphasis min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+            className="keyboard-focus-emphasis transition-colors duration-150"
           >
             {savingEdit
               ? (labels.saving ?? "Saving…")
@@ -1044,8 +1044,8 @@ export const ChatMessage = memo(function ChatMessage({
               <div className="flex items-center gap-1">
                 {onAcceptSuggestion ? (
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant="surfaceAccent"
+                    size="badge"
                     data-testid="thread-line-suggestion-accept"
                     title="Do it"
                     aria-label="Do it"
@@ -1053,14 +1053,13 @@ export const ChatMessage = memo(function ChatMessage({
                       e.stopPropagation();
                       onAcceptSuggestion(message);
                     }}
-                    className="h-auto rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-[rgb(255,148,84)] transition-colors hover:bg-white/20"
                   >
                     Do it
                   </Button>
                 ) : null}
                 {onDismissSuggestion ? (
                   <Button
-                    variant="ghost"
+                    variant="ghostMuted"
                     size="icon-sm"
                     data-testid="thread-line-suggestion-dismiss"
                     title="Dismiss suggestion"
@@ -1069,7 +1068,6 @@ export const ChatMessage = memo(function ChatMessage({
                       e.stopPropagation();
                       onDismissSuggestion(message.id);
                     }}
-                    className="size-6 rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
                   >
                     <X className="size-3.5" aria-hidden="true" />
                   </Button>
@@ -1287,15 +1285,14 @@ export const ChatMessage = memo(function ChatMessage({
               row) so a stalled turn isn't a dead end the user has to retype. */}
           {canRetry ? (
             <Button
-              variant="ghost"
-              size="sm"
+              variant="surfaceAccent"
+              size="badge"
               data-testid="thread-line-retry"
               aria-label="Retry"
               onClick={(e) => {
                 e.stopPropagation();
                 onRetry?.(message.id);
               }}
-              className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-sm-tight font-medium text-white/80 transition-colors hover:bg-white/20"
             >
               <RotateCcw className="size-3.5" aria-hidden />
               Retry
@@ -1436,10 +1433,9 @@ export const ChatMessage = memo(function ChatMessage({
               <div className="flex items-center gap-1">
                 {onAcceptSuggestion ? (
                   <Button
-                    variant="surface"
-                    size="sm"
+                    variant="surfaceAccent"
+                    size="micro"
                     onClick={() => onAcceptSuggestion(message)}
-                    className="h-6 rounded-sm px-2 text-xs-tight text-accent"
                     title={labels.acceptSuggestion ?? "Do it"}
                     aria-label={labels.acceptSuggestion ?? "Do it"}
                   >
@@ -1448,10 +1444,9 @@ export const ChatMessage = memo(function ChatMessage({
                 ) : null}
                 {onDismissSuggestion ? (
                   <Button
-                    variant="surface"
-                    size="icon"
+                    variant="ghostMuted"
+                    size="icon-sm"
                     onClick={() => onDismissSuggestion(message.id)}
-                    className="size-6 rounded-sm text-muted"
                     title={labels.dismiss ?? "Dismiss suggestion"}
                     aria-label={labels.dismiss ?? "Dismiss suggestion"}
                   >

@@ -283,7 +283,7 @@ function scanFile(file) {
             }
             const className = stringAttribute(node, "className");
             const visualUtility =
-              record.imported === "Skeleton"
+              record.imported === "Skeleton" || record.imported === "Tabs"
                 ? SKELETON_PAINT_UTILITY
                 : VISUAL_UTILITY;
             if (className && visualUtility.test(className)) {

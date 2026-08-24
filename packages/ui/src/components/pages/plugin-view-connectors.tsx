@@ -255,8 +255,7 @@ function ConnectorOAuthRoleButton({
     <Button
       ref={ref}
       variant="outline"
-      size="sm"
-      className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+      size="denseWide"
       onClick={() => {
         void onConnect(role);
       }}
@@ -296,9 +295,9 @@ function ConnectorResourceLink({
   return (
     <Button
       ref={ref}
-      variant="outline"
-      size="sm"
-      className="h-8 rounded-sm border-border/40 bg-card/40 px-3 text-xs-tight font-semibold text-muted transition-all hover:border-accent hover:bg-accent/5 hover:text-txt"
+      variant="outlineAccent"
+      size="dense"
+      className="font-semibold"
       onClick={() => {
         void onOpen(url);
       }}
@@ -1011,8 +1010,7 @@ function ConnectorPluginCard({
                 <Button
                   ref={managedDiscordControl.ref}
                   variant="outline"
-                  size="sm"
-                  className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+                  size="denseWide"
                   onClick={() => {
                     void handleOpenManagedDiscord();
                   }}
@@ -1073,8 +1071,7 @@ function ConnectorPluginCard({
                   <Button
                     ref={managedDiscordContinueControl.ref}
                     variant="default"
-                    size="sm"
-                    className="h-9 rounded-sm px-4 text-xs-tight font-semibold"
+                    size="compactWide"
                     onClick={() => {
                       void handleConfirmManagedDiscordAgent();
                     }}
@@ -1154,8 +1151,7 @@ function ConnectorPluginCard({
                 <Button
                   ref={telegramOpenCloudControl.ref}
                   variant="outline"
-                  size="sm"
-                  className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+                  size="denseWide"
                   onClick={() => {
                     setState("cloudDashboardView", "billing");
                     setTab("settings");
@@ -1203,8 +1199,8 @@ function ConnectorPluginCard({
               <Button
                 ref={installControl.ref}
                 variant="default"
-                size="sm"
-                className="h-8 rounded-sm px-4 text-xs-tight font-bold"
+                size="denseWide"
+                className="font-bold"
                 disabled={installingPlugins.has(plugin.id)}
                 onClick={() =>
                   void handleInstallPlugin(plugin.id, plugin.npmName ?? "")
@@ -1299,9 +1295,8 @@ function ConnectorPluginCard({
             <>
               <Button
                 ref={resetControl.ref}
-                variant="ghost"
-                size="sm"
-                className="h-8 rounded-sm px-4 text-xs-tight font-semibold text-muted hover:text-txt"
+                variant="ghostMuted"
+                size="denseWide"
                 onClick={() => handleConfigReset(plugin.id)}
                 {...resetControl.agentProps}
               >

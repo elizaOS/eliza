@@ -102,9 +102,8 @@ function LongRunningHostBanner({ triggers }: { triggers: TriggerSummary[] }) {
       className="mb-3 text-xs"
       actions={
         <Button
-          variant="ghost"
-          size="sm"
-          className="h-auto p-0 text-xs font-medium text-muted underline-offset-2 hover:bg-transparent hover:text-txt hover:underline"
+          variant="publicLink"
+          size="content"
           onClick={() => {
             if (typeof sessionStorage !== "undefined") {
               sessionStorage.setItem(LONG_RUNNING_BANNER_DISMISS_KEY, "1");
@@ -836,8 +835,9 @@ function TriggersLayout() {
         <div className="flex min-h-0 flex-1 flex-col">
           {showDetailPane ? (
             <Button
-              variant="ghost"
-              className="mb-3 flex h-auto items-center justify-start gap-2 px-0 py-2 text-base font-medium text-muted hover:bg-transparent hover:text-txt md:hidden"
+              variant="mobileBack"
+              size="content"
+              className="mb-3 md:hidden"
               onClick={() => {
                 setSelectedTriggerId(null);
                 setEditorOpen(false);
@@ -933,8 +933,7 @@ function TriggersLayout() {
                   <Button
                     ref={editTriggerAgent.ref}
                     variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-xs"
+                    size="dense"
                     onClick={() => openEditEditor(selectedTrigger)}
                     {...editTriggerAgent.agentProps}
                   >
@@ -943,8 +942,7 @@ function TriggersLayout() {
                   <Button
                     ref={duplicateTriggerAgent.ref}
                     variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-xs"
+                    size="dense"
                     onClick={() => {
                       setForm({
                         ...formFromTrigger(selectedTrigger),
@@ -961,8 +959,7 @@ function TriggersLayout() {
                   <Button
                     ref={runNowAgent.ref}
                     variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-xs"
+                    size="dense"
                     onClick={() =>
                       void onRunSelectedTrigger(selectedTrigger.id)
                     }
@@ -1040,8 +1037,7 @@ function TriggersLayout() {
                   <Button
                     ref={refreshRunsAgent.ref}
                     variant="outline"
-                    size="sm"
-                    className="h-7 px-3 text-xs-tight"
+                    size="tinyWide"
                     onClick={() => void loadTriggerRuns(selectedTrigger.id)}
                     {...refreshRunsAgent.agentProps}
                   >

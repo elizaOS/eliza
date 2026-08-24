@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
   Skeleton,
+  StatusBadge,
   Table,
   TableBody,
   TableCell,
@@ -335,19 +336,18 @@ export default function RedemptionsPage(): React.JSX.Element {
                 defaultValue: "System Status",
               })}
             </h3>
-            <Badge
-              className={
+            <StatusBadge
+              status={systemStatus?.operational ? "success" : "danger"}
+              label={
                 systemStatus?.operational
-                  ? "bg-status-success-bg text-status-success"
-                  : "bg-destructive-subtle text-destructive"
+                  ? t("cloud.redemptions.operational", {
+                      defaultValue: "Operational",
+                    })
+                  : t("cloud.redemptions.limited", {
+                      defaultValue: "Limited",
+                    })
               }
-            >
-              {systemStatus?.operational
-                ? t("cloud.redemptions.operational", {
-                    defaultValue: "Operational",
-                  })
-                : t("cloud.redemptions.limited", { defaultValue: "Limited" })}
-            </Badge>
+            />
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
@@ -611,9 +611,8 @@ export default function RedemptionsPage(): React.JSX.Element {
                       {r.status === "pending" && (
                         <>
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-status-success hover:text-status-success/80"
+                            variant="surfaceAccent"
+                            size="icon-sm"
                             onClick={() => {
                               setSelectedRedemption(r);
                               setShowApproveDialog(true);
@@ -622,9 +621,8 @@ export default function RedemptionsPage(): React.JSX.Element {
                             <Check className="size-4" />
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-destructive hover:text-destructive/80"
+                            variant="dangerGhost"
+                            size="icon-sm"
                             onClick={() => {
                               setSelectedRedemption(r);
                               setShowRejectDialog(true);
@@ -891,12 +889,13 @@ export default function RedemptionsPage(): React.JSX.Element {
           </DialogHeader>
           <div className="py-4">
             <Textarea
+              variant="config"
+              density="relaxed"
               placeholder={t("cloud.redemptions.rejectReasonPlaceholder", {
                 defaultValue: "Reason for rejection (required)",
               })}
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
-              className="min-h-[100px]"
             />
           </div>
           <DialogFooter>

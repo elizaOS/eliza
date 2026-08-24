@@ -39,6 +39,10 @@ Skeleton geometry is caller-owned because it previews the dimensions and shape
 of caller content. Skeleton paint, animation, and effects remain owned by the
 canonical primitive.
 
+Tabs container layout is caller-owned because the root participates in its
+page's flex and overflow structure. Tab paint and interaction presentation
+remain owned by the canonical primitive.
+
 ## Compliance and exceptions
 
 Run `bun run --cwd packages/ui audit:design-system` to scan maintained package

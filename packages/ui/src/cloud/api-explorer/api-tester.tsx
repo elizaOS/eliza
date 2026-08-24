@@ -36,7 +36,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CodeDisplay } from "../../cloud-ui/components/code/code-display";
 import { ApiParameterSelect as CustomSelect } from "../../cloud-ui/components/docs/api-parameter-select";
 import { useAudioRecorder } from "../../cloud-ui/components/voice/use-audio-recorder";
-import { cn } from "../../cloud-ui/lib/utils";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import {
@@ -50,6 +49,7 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { ScrollArea } from "../../components/ui/scroll-area";
+import { StatusBadge } from "../../components/ui/status-badge";
 import {
   Tabs,
   TabsContent,
@@ -500,9 +500,7 @@ export function ApiTester({
         <Label htmlFor={inputId} className="flex items-center gap-2">
           {param.name}
           {param.required && <span className="text-destructive">*</span>}
-          <Badge variant="outline" className="text-xs">
-            {param.type}
-          </Badge>
+          <Badge variant="outline">{param.type}</Badge>
         </Label>
 
         <p className="text-sm text-muted-foreground">{param.description}</p>
@@ -578,7 +576,7 @@ export function ApiTester({
     <div className="space-y-6">
       {/* Pricing Information Card */}
       {endpoint.pricing && (
-        <Card className="border-border/60 bg-background/60 rounded-sm overflow-hidden">
+        <Card variant="brand" className="overflow-hidden">
           <div
             className={`h-1 w-full ${endpoint.pricing.isFree ? "bg-status-success" : endpoint.pricing.isVariable ? "bg-muted" : "bg-muted"}`}
           />
@@ -631,9 +629,9 @@ export function ApiTester({
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button
+          variant="surface"
           onClick={executeTest}
           disabled={isLoading || (endpoint.requiresAuth && isAuthLoading)}
-          className="gap-2 bg-txt text-bg hover:bg-txt/90 active:bg-txt/80 border-0"
         >
           {isLoading ? (
             <LoaderIcon className="size-4 animate-spin" />
@@ -650,7 +648,7 @@ export function ApiTester({
         <Button
           variant="outline"
           onClick={copyCurlCommand}
-          className="gap-2 sm:w-auto"
+          className="sm:w-auto"
         >
           <CodeIcon className="size-4" />
           Copy cURL
@@ -685,7 +683,7 @@ export function ApiTester({
         <TabsContent value="parameters" className="space-y-6">
           {/* Audio Recorder for STT Endpoint */}
           {endpoint.path === "/api/elevenlabs/stt" && (
-            <Card className="border-border/60 bg-background/60 rounded-sm">
+            <Card variant="brand">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <MicIcon className="size-5" />
@@ -707,10 +705,7 @@ export function ApiTester({
                     {!audioRecorder.isRecording &&
                       !audioRecorder.audioBlob &&
                       !recordedAudio && (
-                        <Button
-                          onClick={audioRecorder.startRecording}
-                          className="gap-2"
-                        >
+                        <Button onClick={audioRecorder.startRecording}>
                           <MicIcon className="size-4" />
                           Start Recording
                         </Button>
@@ -721,22 +716,20 @@ export function ApiTester({
                         <Button
                           onClick={audioRecorder.stopRecording}
                           variant="destructive"
-                          className="gap-2"
                         >
                           <StopCircleIcon className="size-4" />
                           Stop Recording
                         </Button>
-                        <Badge variant="secondary" className="text-sm">
-                          Recording: {audioRecorder.recordingTime}s
-                        </Badge>
+                        <StatusBadge
+                          status="processing"
+                          label={`Recording: ${audioRecorder.recordingTime}s`}
+                        />
                       </>
                     )}
 
                     {(audioRecorder.audioBlob || recordedAudio) && (
                       <>
-                        <Badge variant="outline" className="text-sm">
-                          ✅ Audio Ready
-                        </Badge>
+                        <StatusBadge status="success" label="Audio Ready" />
                         <audio
                           controls
                           className="h-10"
@@ -749,9 +742,8 @@ export function ApiTester({
                             setRecordedAudio(null);
                             audioRecorder.clearRecording();
                           }}
-                          variant="ghost"
+                          variant="dangerGhost"
                           size="sm"
-                          className="gap-2"
                         >
                           <Trash2Icon className="size-4" />
                           Clear
@@ -773,7 +765,7 @@ export function ApiTester({
 
           {/* File Upload for Voice Cloning Endpoint */}
           {endpoint.path === "/api/elevenlabs/voices/clone" && (
-            <Card className="border-border/60 bg-background/60 rounded-sm">
+            <Card variant="brand">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <UploadIcon className="size-5" />
@@ -818,9 +810,8 @@ export function ApiTester({
                         </Label>
                         <Button
                           onClick={() => setUploadedFiles([])}
-                          variant="ghost"
+                          variant="dangerGhost"
                           size="sm"
-                          className="gap-2 text-xs"
                         >
                           <Trash2Icon className="size-3" />
                           Clear All
@@ -846,9 +837,9 @@ export function ApiTester({
                             </div>
                             <Button
                               onClick={() => removeFile(index)}
-                              variant="ghost"
-                              size="sm"
-                              className="gap-1 shrink-0"
+                              variant="dangerGhost"
+                              size="icon-sm"
+                              className="shrink-0"
                             >
                               <XCircleIcon className="size-4" />
                             </Button>
@@ -883,7 +874,7 @@ export function ApiTester({
           )}
 
           {endpoint.parameters?.path && endpoint.parameters.path.length > 0 && (
-            <Card className="border-border/60 bg-background/60 rounded-sm">
+            <Card variant="brand">
               <CardHeader>
                 <CardTitle className="text-lg">Path Parameters</CardTitle>
                 <CardDescription>
@@ -902,7 +893,7 @@ export function ApiTester({
 
           {endpoint.parameters?.query &&
             endpoint.parameters.query.length > 0 && (
-              <Card className="border-border/60 bg-background/60 rounded-sm">
+              <Card variant="brand">
                 <CardHeader>
                   <CardTitle className="text-lg">Query Parameters</CardTitle>
                   <CardDescription>
@@ -923,7 +914,7 @@ export function ApiTester({
             endpoint.parameters.body.length > 0 &&
             // Hide for STT since we use the recorder.
             endpoint.path !== "/api/elevenlabs/stt" && (
-              <Card className="border-border/60 bg-background/60 rounded-sm">
+              <Card variant="brand">
                 <CardHeader>
                   <CardTitle className="text-lg">Request Body</CardTitle>
                   <CardDescription>
@@ -954,7 +945,7 @@ export function ApiTester({
           {!endpoint.parameters?.path?.length &&
             !endpoint.parameters?.query?.length &&
             !endpoint.parameters?.body?.length && (
-              <Card className="border-border/60 bg-background/60 rounded-sm">
+              <Card variant="brand">
                 <CardContent className="py-8 text-center">
                   <p className="text-sm text-muted-foreground">
                     This endpoint doesn&apos;t require any parameters.
@@ -967,7 +958,7 @@ export function ApiTester({
         <TabsContent value="response">
           {response ? (
             <div className="space-y-4">
-              <Card className="border-border/60 bg-background/60 rounded-sm">
+              <Card variant="brand">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="flex items-center gap-2">
@@ -979,19 +970,11 @@ export function ApiTester({
                       Response
                     </CardTitle>
                     <div className="flex items-center gap-2">
-                      <Badge
-                        className={cn(
-                          "rounded-sm px-2.5 py-1 text-xs font-medium",
-                          response.success
-                            ? "bg-status-success-bg text-status-success"
-                            : "bg-destructive-subtle text-destructive",
-                        )}
-                      >
-                        {response.status} {response.statusText}
-                      </Badge>
-                      <Badge variant="outline" className="rounded-sm">
-                        {response.responseTime}ms
-                      </Badge>
+                      <StatusBadge
+                        status={response.success ? "success" : "danger"}
+                        label={`${response.status} ${response.statusText}`}
+                      />
+                      <Badge variant="outline">{response.responseTime}ms</Badge>
                     </div>
                   </div>
                 </CardHeader>
@@ -1008,7 +991,7 @@ export function ApiTester({
               </Card>
 
               {response.data !== undefined && (
-                <Card className="border-border/60 bg-background/60 rounded-sm">
+                <Card variant="brand">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <CardTitle>Response Body</CardTitle>
@@ -1017,7 +1000,6 @@ export function ApiTester({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="gap-2"
                           onClick={() => {
                             navigator.clipboard.writeText(
                               formatResponseData(response.data),
@@ -1042,10 +1024,8 @@ export function ApiTester({
                           <div className="rounded-sm border border-border/60 bg-muted/30 p-4">
                             <div className="space-y-2">
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-xs">
-                                  Audio Response
-                                </Badge>
-                                <Badge variant="secondary" className="text-xs">
+                                <Badge variant="outline">Audio Response</Badge>
+                                <Badge variant="secondary">
                                   {((audioData?._size || 0) / 1024).toFixed(2)}{" "}
                                   KB
                                 </Badge>
@@ -1099,7 +1079,7 @@ export function ApiTester({
                 </Card>
               )}
 
-              <Card className="border-border/60 bg-background/60 rounded-sm">
+              <Card variant="brand">
                 <CardHeader>
                   <CardTitle>Response Headers</CardTitle>
                 </CardHeader>
@@ -1129,7 +1109,7 @@ export function ApiTester({
               </Card>
             </div>
           ) : (
-            <Card className="border-border/60 bg-background/60 rounded-sm">
+            <Card variant="brand">
               <CardContent className="py-12 text-center">
                 <p className="text-sm text-muted-foreground">
                   No response yet. Send a request to see the results.
@@ -1140,16 +1120,11 @@ export function ApiTester({
         </TabsContent>
 
         <TabsContent value="curl">
-          <Card className="border-border/60 bg-background/60 rounded-sm">
+          <Card variant="brand">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>cURL Command</CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  onClick={copyCurlCommand}
-                >
+                <Button variant="outline" size="sm" onClick={copyCurlCommand}>
                   <CopyIcon className="size-4" />
                   Copy
                 </Button>

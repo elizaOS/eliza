@@ -290,17 +290,15 @@ export const ChatConversationItem = memo(function ChatConversationItem({
           </span>
           <Button
             variant="destructive"
-            size="sm"
-            className="h-7 rounded-sm px-2 py-0.5 text-2xs disabled:opacity-50"
+            size="tiny"
             onClick={() => void onConfirmDelete?.()}
             disabled={deleting}
           >
             {deleting ? "..." : (labels.deleteYes ?? "Yes")}
           </Button>
           <Button
-            variant="outline"
-            size="sm"
-            className="h-7 rounded-sm px-2 py-0.5 text-2xs text-muted-strong hover:border-accent/40 hover:text-txt disabled:opacity-50"
+            variant="outlineMuted"
+            size="tiny"
             onClick={onCancelDelete}
             disabled={deleting}
           >

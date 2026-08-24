@@ -14,8 +14,8 @@ import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useAccounts } from "../../hooks/useAccounts";
 import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
-import { Spinner } from "../ui/spinner";
 import { AccountCard } from "./AccountCard";
+import { AccountListShell } from "./AccountListShell";
 import { AddAccountDialog } from "./AddAccountDialog";
 import { RotationStrategyPicker } from "./RotationStrategyPicker";
 import { readSubscriptionOAuth } from "./subscription-oauth-state";
@@ -103,106 +103,100 @@ export function AccountList({ providerId }: AccountListProps) {
     [accounts, providerId, sorted],
   );
 
-  if (accounts.loading && !accounts.data) {
-    return (
-      <div className="mt-3 flex items-center gap-2 text-xs text-muted">
-        <Spinner className="size-3" />
-        {t("accounts.loading", { defaultValue: "Loading accounts…" })}
-      </div>
-    );
-  }
-
-  if (accounts.error && !accounts.data) {
-    return (
-      <div
-        role="alert"
-        className="mt-3 flex items-center justify-between gap-3 rounded-sm border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-      >
-        <span>{accounts.error}</span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void accounts.refresh()}
-          className="shrink-0"
-        >
-          {t("common.retry", { defaultValue: "Retry" })}
-        </Button>
-      </div>
-    );
-  }
+  const listState =
+    accounts.loading && !accounts.data
+      ? {
+          kind: "loading" as const,
+          label: t("accounts.loading", { defaultValue: "Loading accounts…" }),
+        }
+      : accounts.error && !accounts.data
+        ? {
+            kind: "error" as const,
+            message: accounts.error,
+            action: (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void accounts.refresh()}
+                className="shrink-0"
+              >
+                {t("common.retry", { defaultValue: "Retry" })}
+              </Button>
+            ),
+          }
+        : sorted.length === 0
+          ? {
+              kind: "empty" as const,
+              message: t("accounts.empty", {
+                defaultValue:
+                  "No accounts yet — add one to start using this provider.",
+              }),
+            }
+          : {
+              kind: "ready" as const,
+              children: sorted.map((account, index) => (
+                <AccountCard
+                  key={account.id}
+                  account={account}
+                  isFirst={index === 0}
+                  isLast={index === sorted.length - 1}
+                  saving={accounts.saving.has(account.id)}
+                  testBusy={accounts.saving.has(`test:${account.id}`)}
+                  refreshBusy={accounts.saving.has(`usage:${account.id}`)}
+                  onPatch={(body) =>
+                    accounts.patch(providerId, account.id, body)
+                  }
+                  onMoveUp={() => handleMove(account.id, "up")}
+                  onMoveDown={() => handleMove(account.id, "down")}
+                  onTest={async () => {
+                    await accounts.test(providerId, account.id);
+                  }}
+                  onRefreshUsage={() =>
+                    accounts.refreshUsage(providerId, account.id)
+                  }
+                  onDelete={() => accounts.remove(providerId, account.id)}
+                  onReauthenticate={() => {
+                    setCredentialRepairAccount(account);
+                    setAddDialogOpen(true);
+                  }}
+                />
+              )),
+            };
 
   return (
-    <div className="mt-3 flex flex-col gap-2 rounded-sm border border-border/40 bg-bg-accent/40 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
-            {t("accounts.heading", {
-              defaultValue: "Accounts ({{count}})",
-              count: sorted.length,
-            })}
-          </h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <RotationStrategyPicker
-            providerId={providerId}
-            value={providerEntry?.strategy}
-            onChange={(strategy) => {
-              void accounts.setStrategy(providerId, strategy);
-            }}
-            disabled={accounts.saving.has(`strategy:${providerId}`)}
-          />
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            onClick={() => {
-              setCredentialRepairAccount(null);
-              setAddDialogOpen(true);
-            }}
-          >
-            <Plus className="size-3.5" aria-hidden />
-            {t("accounts.add.button", { defaultValue: "Add account" })}
-          </Button>
-        </div>
-      </div>
-
-      {sorted.length === 0 ? (
-        <div className="border-y border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted">
-          {t("accounts.empty", {
-            defaultValue:
-              "No accounts yet — add one to start using this provider.",
-          })}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {sorted.map((account, index) => (
-            <AccountCard
-              key={account.id}
-              account={account}
-              isFirst={index === 0}
-              isLast={index === sorted.length - 1}
-              saving={accounts.saving.has(account.id)}
-              testBusy={accounts.saving.has(`test:${account.id}`)}
-              refreshBusy={accounts.saving.has(`usage:${account.id}`)}
-              onPatch={(body) => accounts.patch(providerId, account.id, body)}
-              onMoveUp={() => handleMove(account.id, "up")}
-              onMoveDown={() => handleMove(account.id, "down")}
-              onTest={async () => {
-                await accounts.test(providerId, account.id);
+    <>
+      <AccountListShell
+        heading={t("accounts.heading", {
+          defaultValue: "Accounts ({{count}})",
+          count: sorted.length,
+        })}
+        action={
+          <div className="flex items-center gap-2">
+            <RotationStrategyPicker
+              providerId={providerId}
+              value={providerEntry?.strategy}
+              onChange={(strategy) => {
+                void accounts.setStrategy(providerId, strategy);
               }}
-              onRefreshUsage={() =>
-                accounts.refreshUsage(providerId, account.id)
-              }
-              onDelete={() => accounts.remove(providerId, account.id)}
-              onReauthenticate={() => {
-                setCredentialRepairAccount(account);
+              disabled={accounts.saving.has(`strategy:${providerId}`)}
+            />
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={() => {
+                setCredentialRepairAccount(null);
                 setAddDialogOpen(true);
               }}
-            />
-          ))}
-        </div>
-      )}
+            >
+              <Plus className="size-3.5" aria-hidden />
+              {t("accounts.add.button", { defaultValue: "Add account" })}
+            </Button>
+          </div>
+        }
+        state={listState}
+      />
 
       <AddAccountDialog
         open={addDialogOpen}
@@ -219,6 +213,6 @@ export function AccountList({ providerId }: AccountListProps) {
           void accounts.refresh({ providerId, account });
         }}
       />
-    </div>
+    </>
   );
 }

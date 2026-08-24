@@ -77,6 +77,12 @@ const buttonVariants = cva(
           "border border-border bg-card text-muted-strong hover:border-border-strong hover:bg-surface hover:text-txt",
         mutedLink:
           "h-auto bg-transparent p-0 text-xs font-medium text-muted underline-offset-2 hover:bg-transparent hover:text-accent hover:underline",
+        warningOutline:
+          "border border-warning/35 bg-warning/12 text-warning hover:border-warning/50 hover:bg-warning/18 hover:text-warning",
+        outlineAccent:
+          "border border-border/40 bg-card/40 text-muted transition-all hover:border-accent hover:bg-accent/5 hover:text-txt",
+        mobileBack:
+          "h-auto justify-start gap-2 bg-transparent px-0 py-2 text-base font-medium text-muted hover:bg-transparent hover:text-txt",
       },
       size: {
         default:
@@ -100,6 +106,12 @@ const buttonVariants = cva(
         wide: "h-10 rounded-sm px-6 text-sm",
         micro: "h-6 rounded-sm px-2 py-0 text-xs",
         tinyWide: "h-7 rounded-sm px-3 text-xs-tight",
+        pill: "h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]",
+        badge:
+          "h-auto rounded-full px-3 py-1.5 text-2xs font-bold tracking-[0.14em]",
+        denseWide: "h-8 rounded-sm px-4 text-xs-tight font-semibold",
+        compactWide: "h-9 rounded-sm px-4 text-xs-tight font-semibold",
+        eventRow: "h-auto min-h-11 w-full items-start gap-1 p-0",
       },
       shape: {
         default: "",

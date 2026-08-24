@@ -132,7 +132,7 @@ export function MicrosoftConnection() {
                 {activeConnection.scopes
                   .filter((s) => !["openid", "profile", "email"].includes(s))
                   .map((scope) => (
-                    <Badge key={scope} variant="outline" className="text-xs">
+                    <Badge key={scope} variant="outline">
                       {getScopeIcon(scope)}
                       <span className="ml-1">{getScopeName(scope)}</span>
                     </Badge>

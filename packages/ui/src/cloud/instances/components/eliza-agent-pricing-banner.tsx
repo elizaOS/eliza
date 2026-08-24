@@ -15,7 +15,7 @@ import {
   MONTHLY_IDLE_COST,
   MONTHLY_RUNNING_COST,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import { Badge, BrandCard, CornerBrackets } from "@elizaos/ui/cloud-ui";
+import { BrandCard, CornerBrackets, StatusBadge } from "@elizaos/ui/cloud-ui";
 import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
 import { useT } from "../lib/i18n";
 
@@ -67,14 +67,12 @@ export function ElizaAgentPricingBanner({
             </p>
           </div>
           {isLowBalance && hasAgents && (
-            <Badge
-              variant="outline"
-              className="bg-destructive-subtle border-destructive/30 text-destructive text-2xs px-2"
-            >
-              {t("cloud.containers.pricingBanner.lowBalance", {
+            <StatusBadge
+              status="danger"
+              label={t("cloud.containers.pricingBanner.lowBalance", {
                 defaultValue: "Low balance",
               })}
-            </Badge>
+            />
           )}
         </div>
 

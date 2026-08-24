@@ -257,7 +257,7 @@ export function DesktopTalkModePanel() {
 
   if (!desktopRuntime) {
     return (
-      <Card className="border-border/60 bg-card/92 ">
+      <Card variant="panel">
         <CardContent className="p-4 text-xs leading-5 text-muted">
           {t("voiceconfigview.DesktopTalkModeDesktopOnly")}
         </CardContent>
@@ -266,7 +266,7 @@ export function DesktopTalkModePanel() {
   }
 
   return (
-    <Card className="border-border/60 bg-card/92 ">
+    <Card variant="panel">
       <CardHeader className="p-4 pb-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <CardTitle className="text-sm">

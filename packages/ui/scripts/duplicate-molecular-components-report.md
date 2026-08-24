@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 920 maintained React files. 69 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 922 maintained React files. 68 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. They are review candidates. Product behavior, state ownership, and responsive layout still determine whether consolidation is correct.
 
@@ -14,7 +14,6 @@ Clusters share both a role and an atomic dependency signature. They are review c
 | dialog | button, input | 2 | distinct-domain-compositions |
 | form | button, input | 2 | distinct-domain-compositions |
 | header | button, input | 2 | distinct-domain-compositions |
-| list | button, spinner | 2 | shared-shell-candidate |
 | panel | badge, button, input | 2 | duplicate-implementation |
 
 ## Candidate clusters
@@ -62,7 +61,7 @@ Clusters share both a role and an atomic dependency signature. They are review c
 ### dialog: button + input
 
 - `AccountDeletionDialog` in `packages/ui/src/cloud/account-security/components/account-deletion-dialog.tsx:30`
-- `SigninSheet` in `packages/ui/src/components/settings/vault-tabs/OverviewTab.tsx:930`
+- `SigninSheet` in `packages/ui/src/components/settings/vault-tabs/OverviewTab.tsx:921`
 - Decision: **distinct-domain-compositions** — Account deletion and sign-in are unrelated workflows despite using the same atoms.
 
 ### form: button + input
@@ -76,12 +75,6 @@ Clusters share both a role and an atomic dependency signature. They are review c
 - `SidebarSearchBar` in `packages/ui/src/components/composites/search/searchbar.tsx:19`
 - `MeetingJoinBar` in `packages/ui/src/components/transcripts/MeetingJoinBar.tsx:43`
 - Decision: **distinct-domain-compositions** — Search navigation and meeting join controls have unrelated behavior; the role-name match is superficial.
-
-### list: button + spinner
-
-- `AccountList` in `packages/ui/src/components/accounts/AccountList.tsx:27`
-- `ConnectorAccountList` in `packages/ui/src/components/connectors/ConnectorAccountList.tsx:132`
-- Decision: **shared-shell-candidate** — Both account lists repeat loading, error, empty, add, and stacked-card regions, but their fetching and mutation controllers must remain domain-specific.
 
 ### panel: badge + button + input
 

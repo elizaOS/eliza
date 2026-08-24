@@ -512,7 +512,9 @@ export function WorkflowEditor({
               name: event.target.value,
             }))
           }
-          className="h-8 min-w-20 flex-1 border-0 bg-transparent px-0 text-sm font-semibold shadow-none sm:text-base"
+          variant="embeddedName"
+          density="denseResponsive"
+          className="min-w-20 flex-1"
           aria-label="Workflow name"
           title={workflow.description || undefined}
         />
@@ -538,7 +540,9 @@ export function WorkflowEditor({
           <Button
             type="button"
             onClick={() => void toggleActive()}
-            className="grid size-8 place-items-center rounded-md hover:bg-muted/60"
+            variant="selection"
+            size="icon-sm"
+            data-state={workflow.active ? "on" : "off"}
             aria-label={
               workflow.active ? "Disable workflow" : "Enable workflow"
             }
@@ -583,7 +587,6 @@ export function WorkflowEditor({
           )}
         </Button>
         <Button
-          className="hover:bg-accent/85"
           size="icon-sm"
           onClick={requestRun}
           disabled={running}
@@ -656,7 +659,9 @@ export function WorkflowEditor({
             }
             spellCheck={false}
             aria-label="Smithers workflow source"
-            className="min-h-[420px] flex-1 resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-xs leading-5 text-zinc-100"
+            variant="codeEditor"
+            density="editor"
+            className="flex-1"
           />
         </section>
       ) : null}
@@ -667,7 +672,8 @@ export function WorkflowEditor({
             <div className="flex justify-end">
               <Button
                 type="button"
-                className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                variant="ghostMuted"
+                size="icon-sm"
                 onClick={() => void refreshRuns()}
                 aria-label="Refresh runs"
                 title="Refresh"
@@ -806,7 +812,10 @@ export function WorkflowEditor({
                             {inspectable ? (
                               <Button
                                 type="button"
-                                className="flex min-h-11 w-full items-start gap-1 text-left"
+                                variant="selection"
+                                size="eventRow"
+                                align="start"
+                                data-state={selected ? "on" : "off"}
                                 aria-label={`Inspect ${event.type} event`}
                                 aria-expanded={selected}
                                 onClick={() =>

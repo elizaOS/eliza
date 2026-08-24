@@ -18,11 +18,14 @@ const textareaVariants = cva(
         form: "rounded-sm border-border bg-bg px-4 py-3    ",
         config:
           "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60    ",
+        codeEditor:
+          "resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-zinc-100 placeholder:text-muted",
       },
       density: {
         default: "min-h-[80px]",
         compact: "min-h-[64px] px-2 py-1.5 text-xs",
         relaxed: "min-h-[132px]",
+        editor: "min-h-[420px] text-xs leading-5",
       },
     },
     defaultVariants: {

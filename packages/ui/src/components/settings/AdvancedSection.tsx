@@ -19,7 +19,7 @@ import {
 import { isDedicatedCloudAgentBase } from "../../utils/cloud-agent-base";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Input } from "../ui/input";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Spinner } from "../ui/spinner";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -62,7 +62,12 @@ function BackupOptionList({
   }
 
   return (
-    <div className="overflow-hidden rounded-sm border border-line bg-bg">
+    <RadioGroup
+      value={selectedFileName}
+      onValueChange={onSelect}
+      className="gap-0 overflow-hidden rounded-sm border border-line bg-bg"
+      aria-label="Backup to restore"
+    >
       {backups.map((backup) => {
         const inputId = backupOptionInputId(backup.fileName);
         return (
@@ -71,14 +76,7 @@ function BackupOptionList({
             htmlFor={inputId}
             className="flex min-h-[3.25rem] cursor-pointer items-center gap-3 border-line border-t px-3 py-2 first:border-t-0"
           >
-            <Input
-              id={inputId}
-              type="radio"
-              name="agent-backup-file"
-              className="size-4 shrink-0 border-border p-0 accent-current"
-              checked={selectedFileName === backup.fileName}
-              onChange={() => onSelect(backup.fileName)}
-            />
+            <RadioGroupItem id={inputId} value={backup.fileName} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium text-txt-strong">
                 {formatBackupDate(backup.createdAt)}
@@ -91,7 +89,7 @@ function BackupOptionList({
           </label>
         );
       })}
-    </div>
+    </RadioGroup>
   );
 }
 

@@ -136,7 +136,7 @@ export function GoogleConnection() {
                 {connection.scopes && connection.scopes.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {connection.scopes.map((scope) => (
-                      <Badge key={scope} variant="outline" className="text-xs">
+                      <Badge key={scope} variant="outline">
                         {getScopeIcon(scope)}
                         <span className="ml-1">{getScopeName(scope)}</span>
                       </Badge>

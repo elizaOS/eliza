@@ -22,7 +22,9 @@ const sampleChildren = (
       <Button
         key={label}
         type="button"
-        className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
+        variant="ghost"
+        size="dense"
+        align="start"
       >
         {label}
       </Button>
@@ -38,10 +40,7 @@ const sampleHeader = (
 );
 
 const sampleFooter = (
-  <Button
-    type="button"
-    className="rounded-sm border border-border px-3 py-1.5 text-xs text-txt hover:bg-black/10"
-  >
+  <Button type="button" variant="outline" size="dense">
     New chat
   </Button>
 );

@@ -357,10 +357,6 @@ function AgentCardInner({
     defaultValue: "Open agent",
   });
 
-  const removeSavedClassName = cn(
-    "pointer-events-auto flex-shrink-0 hidden items-center justify-center size-8 rounded-lg bg-transparent hover:bg-destructive-subtle transition-colors group-hover:flex",
-  );
-
   const isListView = viewMode === "list";
 
   // List view
@@ -374,10 +370,11 @@ function AgentCardInner({
       >
         <div className="group relative overflow-hidden rounded-sm bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]">
           <Button
-            variant="ghost"
+            variant="publicRow"
+            size="content"
             type="button"
             aria-label={`${openCardLabel}: ${agent.name}`}
-            className="absolute inset-0 z-10 h-full w-full bg-transparent border-0 p-0 disabled:cursor-default"
+            className="absolute inset-0 z-10 disabled:cursor-default"
             onClick={handleCardClick}
             disabled={showDeleteConfirm}
           />
@@ -439,7 +436,6 @@ function AgentCardInner({
                       defaultValue: "Live",
                     })}
                     pulse
-                    className="px-2 py-0.5 text-2xs"
                   />
                 )}
                 {isStopped && (
@@ -448,7 +444,6 @@ function AgentCardInner({
                     label={t("cloud.agentCard.statusStopped", {
                       defaultValue: "Stopped",
                     })}
-                    className="px-2 py-0.5 text-2xs"
                   />
                 )}
               </div>
@@ -457,10 +452,11 @@ function AgentCardInner({
             {/* Remove button for saved agents */}
             {!isOwned && (
               <Button
-                variant="ghost"
+                variant="dangerGhost"
+                size="icon-sm"
                 type="button"
                 onClick={handleRemoveSaved}
-                className={removeSavedClassName}
+                className="pointer-events-auto flex-shrink-0 hidden group-hover:flex"
                 title={t("cloud.agentCard.removeFromSaved", {
                   defaultValue: "Remove from saved",
                 })}
@@ -623,10 +619,11 @@ function AgentCardInner({
     >
       <div className="group relative aspect-square w-full overflow-hidden rounded-sm">
         <Button
-          variant="ghost"
+          variant="publicRow"
+          size="content"
           type="button"
           aria-label={`${openCardLabel}: ${agent.name}`}
-          className="absolute inset-0 z-10 h-full w-full bg-transparent border-0 p-0 disabled:cursor-default"
+          className="absolute inset-0 z-10 disabled:cursor-default"
           onClick={handleCardClick}
           disabled={showDeleteConfirm}
         />
@@ -672,7 +669,6 @@ function AgentCardInner({
               status="success"
               label={t("cloud.agentCard.statusLive", { defaultValue: "Live" })}
               pulse
-              className="px-2 py-0.5 text-2xs"
             />
           )}
           {showDeploymentStatus && isStopped && (
@@ -681,7 +677,6 @@ function AgentCardInner({
               label={t("cloud.agentCard.statusStopped", {
                 defaultValue: "Stopped",
               })}
-              className="px-2 py-0.5 text-2xs"
             />
           )}
         </div>
@@ -689,10 +684,11 @@ function AgentCardInner({
         {/* Remove button for saved agents */}
         {!isOwned && (
           <Button
-            variant="ghost"
+            variant="dangerGhost"
+            size="icon-sm"
             type="button"
             onClick={handleRemoveSaved}
-            className="pointer-events-auto absolute top-3 right-12 z-20 hidden items-center justify-center size-9 rounded-lg bg-black/30 hover:bg-destructive/50 transition-colors group-hover:flex"
+            className="pointer-events-auto absolute top-3 right-12 z-20 hidden group-hover:flex"
             title={t("cloud.agentCard.removeFromSaved", {
               defaultValue: "Remove from saved",
             })}

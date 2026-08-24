@@ -436,9 +436,8 @@ function SkillsFullViewContent({
               <Button
                 ref={installButton.ref}
                 variant="outline"
-                size="sm"
+                size="pill"
                 type="button"
-                className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
                 onClick={() => setInstallModalOpen(true)}
                 {...installButton.agentProps}
               >
@@ -560,7 +559,7 @@ function SkillsFullViewContent({
                         </span>
                         <Input
                           ref={createNameInput.ref}
-                          className="w-full border-border/50 bg-bg/50 "
+                          variant="form"
                           placeholder={t("skillsview.eGMyAwesomeSkil")}
                           value={skillCreateName}
                           onChange={(event) =>
@@ -584,7 +583,7 @@ function SkillsFullViewContent({
                         </span>
                         <Input
                           ref={createDescriptionInput.ref}
-                          className="w-full border-border/50 bg-bg/50 "
+                          variant="form"
                           placeholder={t("skillsview.BriefDescriptionOf")}
                           value={skillCreateDescription}
                           onChange={(event) =>
@@ -682,9 +681,8 @@ function SkillsFullViewContent({
                     <div className="flex shrink-0 items-center gap-2">
                       {selectedNeedsAttention && !selectedSkillReviewOpen && (
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-auto rounded-full border-warn/35 bg-warn/12 px-3 py-1.5 text-2xs font-bold tracking-[0.14em] text-warn"
+                          variant="warningOutline"
+                          size="badge"
                           onClick={() => handleReviewSkill(selectedSkill.id)}
                         >
                           {t("skillsview.ReviewFindings")}
@@ -692,9 +690,8 @@ function SkillsFullViewContent({
                       )}
                       {selectedNeedsAttention && selectedSkillReviewOpen && (
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-auto rounded-full border-border/50 px-3 py-1.5 text-xs-tight font-semibold text-muted hover:text-txt"
+                          variant="outlineMuted"
+                          size="badge"
                           onClick={handleDismissReview}
                         >
                           {t("common.dismiss")}
@@ -716,8 +713,7 @@ function SkillsFullViewContent({
                       <Button
                         ref={editSourceButton.ref}
                         variant="outline"
-                        size="sm"
-                        className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
+                        size="pill"
                         onClick={() => setEditingSkill(selectedSkill)}
                         {...editSourceButton.agentProps}
                       >
@@ -786,8 +782,7 @@ function SkillsFullViewContent({
                         <div className="mt-4 flex gap-2">
                           <Button
                             variant="default"
-                            size="sm"
-                            className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
+                            size="pill"
                             onClick={() =>
                               handleAcknowledgeSkill(selectedSkill.id)
                             }
@@ -795,9 +790,8 @@ function SkillsFullViewContent({
                             {t("skillsview.AcknowledgeAmpEn")}
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em] text-muted hover:text-txt"
+                            variant="ghostMuted"
+                            size="pill"
                             onClick={handleDismissReview}
                           >
                             {t("common.dismiss")}

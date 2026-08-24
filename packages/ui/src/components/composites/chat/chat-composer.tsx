@@ -412,7 +412,7 @@ export function ChatComposer({
 
     const inlineMicButton = (
       <Button
-        variant="ghost"
+        variant="default"
         size="icon"
         className={`size-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
           voice.isListening
@@ -435,8 +435,8 @@ export function ChatComposer({
       <Button
         variant="ghost"
         data-testid="chat-composer-action"
-        size="icon"
-        className="size-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
+        size="icon-sm"
+        className="shrink-0 transition-transform active:scale-95"
         onClick={onSend}
         // Keep the textarea focused through the tap: without this, tapping the
         // send button blurs the composer (the keyboard starts to dismiss) and the
@@ -454,9 +454,9 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="size-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
+        className="shrink-0"
         onClick={onStop}
-        size="icon"
+        size="icon-sm"
         title={actionButtonLabel}
         aria-label={actionButtonLabel}
       >
@@ -468,9 +468,9 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="size-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
+        className="shrink-0"
         onClick={onStopSpeaking}
-        size="icon"
+        size="icon-sm"
         title={actionButtonLabel}
         aria-label={actionButtonLabel}
       >

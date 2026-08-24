@@ -77,10 +77,9 @@ export function AuthManager({
           </p>
         )}
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
           onClick={() => void onRefresh()}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
         >
           <RefreshCw className="size-4" />
           Retry
@@ -115,17 +114,18 @@ export function AuthManager({
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Input
+              variant="secret"
               id="auth-manager-api-key"
               type={showToken ? "text" : "password"}
               value={authToken}
               readOnly
-              className="w-full h-10 px-3 pr-10 rounded-sm border border-white/10 bg-black/40 text-white font-mono text-sm "
             />
             <Button
-              variant="ghost"
+              variant="ghostMuted"
+              size="icon"
               type="button"
               onClick={() => setShowToken(!showToken)}
-              className="absolute right-0 top-0 h-full px-3 text-neutral-500 hover:text-white transition-colors"
+              className="absolute right-0 top-0"
             >
               {showToken ? (
                 <EyeOff className="size-4" />
@@ -135,10 +135,10 @@ export function AuthManager({
             </Button>
           </div>
           <Button
-            variant="ghost"
+            variant="outlineMuted"
+            size="icon"
             type="button"
             onClick={handleCopy}
-            className="h-10 px-3 rounded-sm border border-white/10 bg-black/40 text-neutral-400 hover:text-white transition-colors"
           >
             {copied ? (
               <Check className="size-4 text-status-success" />
@@ -164,16 +164,16 @@ export function AuthManager({
           </summary>
           <div className="mt-3 space-y-3">
             <Input
+              variant="config"
+              density="compact"
               type="text"
               placeholder="Enter custom API key…"
               onChange={(e) => onTokenChange(e.target.value)}
-              className="w-full h-9 px-3 rounded-sm border border-white/10 bg-black/40 text-white text-sm placeholder:text-neutral-500   "
             />
             <Button
-              variant="ghost"
+              variant="mutedLink"
               type="button"
               onClick={() => void onRefresh()}
-              className="text-neutral-400 hover:text-white transition-colors"
             >
               Reset to default
             </Button>

@@ -46,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import { StatusBadge } from "../../components/ui/status-badge";
 import { ApiError, api, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 
@@ -156,46 +157,48 @@ function getStatusBadge(status: DiscordGatewayConnection["status"], t: TFn) {
   switch (status) {
     case "connected":
       return (
-        <Badge
-          variant="outline"
-          className="border-status-success/30 bg-status-success-bg text-status-success"
-        >
-          <CheckCircle className="size-3 mr-1" />
-          {t("cloud.discord.statusConnected", { defaultValue: "Connected" })}
-        </Badge>
+        <StatusBadge
+          status="success"
+          icon={<CheckCircle />}
+          label={t("cloud.discord.statusConnected", {
+            defaultValue: "Connected",
+          })}
+        />
       );
     case "connecting":
       return (
-        <Badge
-          variant="secondary"
-          className="bg-status-warning-bg text-status-warning"
-        >
-          <Loader2 className="size-3 mr-1 animate-spin" />
-          {t("cloud.discord.statusConnecting", { defaultValue: "Connecting" })}
-        </Badge>
+        <StatusBadge
+          status="processing"
+          label={t("cloud.discord.statusConnecting", {
+            defaultValue: "Connecting",
+          })}
+        />
       );
     case "pending":
       return (
-        <Badge variant="secondary" className="bg-surface text-txt">
-          <Clock className="size-3 mr-1" />
-          {t("cloud.discord.statusPending", { defaultValue: "Pending" })}
-        </Badge>
+        <StatusBadge
+          status="muted"
+          icon={<Clock />}
+          label={t("cloud.discord.statusPending", { defaultValue: "Pending" })}
+        />
       );
     case "disconnected":
       return (
-        <Badge variant="secondary" className="bg-gray-500/20 text-gray-500">
-          <XCircle className="size-3 mr-1" />
-          {t("cloud.discord.statusDisconnected", {
+        <StatusBadge
+          status="muted"
+          icon={<XCircle />}
+          label={t("cloud.discord.statusDisconnected", {
             defaultValue: "Disconnected",
           })}
-        </Badge>
+        />
       );
     case "error":
       return (
-        <Badge variant="destructive">
-          <AlertCircle className="size-3 mr-1" />
-          {t("cloud.discord.statusError", { defaultValue: "Error" })}
-        </Badge>
+        <StatusBadge
+          status="danger"
+          icon={<AlertCircle />}
+          label={t("cloud.discord.statusError", { defaultValue: "Error" })}
+        />
       );
   }
 }

@@ -864,8 +864,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
               {onMobileClose ? (
                 <Button
                   variant="surface"
-                  size="icon"
-                  className="size-11 min-h-touch min-w-touch rounded-sm"
+                  size="icon-lg"
                   onClick={onMobileClose}
                   aria-label={mobileCloseLabel}
                   title={mobileCloseLabel}
