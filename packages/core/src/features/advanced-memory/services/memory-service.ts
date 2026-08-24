@@ -20,6 +20,7 @@
  * that renders memories as a category-grouped markdown block.
  */
 
+import { ElizaError } from "../../../errors.ts";
 import {
 	getRelatedEntityIds,
 	resolvePrimaryEntityId,
@@ -425,12 +426,17 @@ export class MemoryService extends Service {
 				200,
 			);
 			const scored: Array<{ memory: LongTermMemory; similarity: number }> = [];
+			const invalidSimilarityMemoryIds: string[] = [];
 			for (const memory of candidates) {
 				if ((memory.embedding?.length ?? 0) === 0) continue;
 				const similarity = cosineSimilarity(
 					memory.embedding ?? [],
 					queryEmbedding,
 				);
+				if (!Number.isFinite(similarity)) {
+					invalidSimilarityMemoryIds.push(memory.id);
+					continue;
+				}
 				if (similarity < matchThreshold) continue;
 				if (scored.length < limit) {
 					scored.push({ memory, similarity });
@@ -450,6 +456,22 @@ export class MemoryService extends Service {
 				if (scored.length > limit) {
 					scored.pop();
 				}
+			}
+			if (invalidSimilarityMemoryIds.length > 0) {
+				this.runtime.reportError(
+					"MemoryService.vectorSearch.invalidSimilarity",
+					new ElizaError(
+						"Long-term memory vector search produced non-finite similarity",
+						{
+							code: "MEMORY_VECTOR_SIMILARITY_NON_FINITE",
+							context: {
+								entityId,
+								memoryIds: invalidSimilarityMemoryIds,
+							},
+						},
+					),
+					{ entityId, memoryIds: invalidSimilarityMemoryIds },
+				);
 			}
 			return scored.map((x) => ({
 				...x.memory,
