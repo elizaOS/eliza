@@ -48,6 +48,22 @@ describe("normalizeTelegramCommandName", () => {
   it("does not strip a second leading slash after the first", () => {
     expect(normalizeTelegramCommandName("//help")).toBe("/help");
   });
+
+  it("returns empty string for non-string inputs without throwing", () => {
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandName(null)).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandName(undefined)).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandName(123)).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandName({})).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandName([])).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandName(true)).toBe("");
+    expect(normalizeTelegramCommandName("")).toBe("");
+  });
 });
 
 describe("normalizeTelegramCommandDescription", () => {
@@ -57,6 +73,21 @@ describe("normalizeTelegramCommandDescription", () => {
     );
     expect(normalizeTelegramCommandDescription("   ")).toBe("");
     expect(normalizeTelegramCommandDescription("")).toBe("");
+  });
+
+  it("returns empty string for non-string inputs without throwing", () => {
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandDescription(null)).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandDescription(undefined)).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandDescription(123)).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandDescription({})).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandDescription([])).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(normalizeTelegramCommandDescription(false)).toBe("");
   });
 });
 

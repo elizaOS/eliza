@@ -19,6 +19,7 @@ export type TelegramCustomCommandIssue = {
 };
 
 export function normalizeTelegramCommandName(value: string): string {
+  if (typeof value !== "string") return "";
   const trimmed = value.trim();
   if (!trimmed) {
     return "";
@@ -28,6 +29,7 @@ export function normalizeTelegramCommandName(value: string): string {
 }
 
 export function normalizeTelegramCommandDescription(value: string): string {
+  if (typeof value !== "string") return "";
   return value.trim();
 }
 
