@@ -10,7 +10,12 @@ import {
 	buildCanonicalSystemPrompt,
 	buildCharacterStyleDirections,
 	dropDuplicateLeadingSystemMessage,
+	extractLeadingSystemPrompt,
+	normalizeSystemPromptRole,
+	renderChatMessagesForPrompt,
+	renderSystemPromptBio,
 	resolveEffectiveSystemPrompt,
+	textFromChatMessageContent,
 } from "../system-prompt";
 
 describe("system prompt helpers", () => {
@@ -193,5 +198,301 @@ describe("buildCharacterStyleDirections", () => {
 			}),
 		).toBe("");
 		expect(buildCharacterStyleDirections({ character: null })).toBe("");
+	});
+
+	describe("renderSystemPromptBio", () => {
+		it("trims a plain-string bio", () => {
+			expect(renderSystemPromptBio("  Warm and precise.  ")).toBe(
+				"Warm and precise.",
+			);
+		});
+
+		it("joins array entries, trimming strings and dropping empties and non-strings", () => {
+			expect(renderSystemPromptBio([" A ", 42, "", null, "B"])).toBe("A B");
+		});
+
+		it("returns empty for values that are neither string nor array", () => {
+			expect(renderSystemPromptBio(null)).toBe("");
+			expect(renderSystemPromptBio(undefined)).toBe("");
+			expect(renderSystemPromptBio(42)).toBe("");
+			expect(renderSystemPromptBio({ length: 2 })).toBe("");
+		});
+	});
+
+	describe("normalizeSystemPromptRole", () => {
+		it("trims and uppercases string roles", () => {
+			expect(normalizeSystemPromptRole("  owner ")).toBe("OWNER");
+		});
+
+		it("maps blank and missing roles to undefined", () => {
+			expect(normalizeSystemPromptRole("   ")).toBeUndefined();
+			expect(normalizeSystemPromptRole("")).toBeUndefined();
+			expect(normalizeSystemPromptRole(null)).toBeUndefined();
+			expect(normalizeSystemPromptRole(undefined)).toBeUndefined();
+		});
+	});
+
+	describe("buildCanonicalSystemPrompt input fallbacks", () => {
+		it('falls back to "the agent" when the name is blank', () => {
+			const prompt = buildCanonicalSystemPrompt({
+				character: {
+					name: "   ",
+					system: "You are {{name}}.",
+					bio: ["Ask {{agentName}} anything."],
+				},
+			});
+
+			expect(prompt).toBe(
+				[
+					"You are the agent.",
+					"# About the agent\nAsk the agent anything.",
+				].join("\n\n"),
+			);
+		});
+
+		it("renders empty output when no character or role is provided", () => {
+			expect(buildCanonicalSystemPrompt({})).toBe("");
+			expect(buildCanonicalSystemPrompt({ character: null })).toBe("");
+		});
+
+		it("omits the role line when the user role is blank", () => {
+			expect(
+				buildCanonicalSystemPrompt({
+					character: { name: "Ada", system: "Be kind." },
+					userRole: "   ",
+				}),
+			).toBe("Be kind.");
+		});
+
+		it("renders a bio-only prompt under the About heading", () => {
+			expect(
+				buildCanonicalSystemPrompt({
+					character: { name: "Rex", bio: ["Quick."] },
+				}),
+			).toBe("# About Rex\nQuick.");
+		});
+	});
+
+	describe("textFromChatMessageContent", () => {
+		it("trims plain-string content", () => {
+			expect(textFromChatMessageContent("  Hello there.  ")).toBe(
+				"Hello there.",
+			);
+		});
+
+		it("returns empty for content that is neither string nor array", () => {
+			expect(textFromChatMessageContent(undefined)).toBe("");
+			expect(textFromChatMessageContent(42)).toBe("");
+			expect(textFromChatMessageContent({ text: "nope" })).toBe("");
+		});
+
+		it("joins trimmed text parts with newlines, skipping malformed parts", () => {
+			expect(
+				textFromChatMessageContent([
+					{ type: "text", text: " Alpha " },
+					null,
+					"raw string",
+					[],
+					{ type: "image" },
+					{ text: 42 },
+					{ type: "text", text: "Beta" },
+				]),
+			).toBe("Alpha\nBeta");
+		});
+
+		it("returns empty when no array part yields text", () => {
+			expect(textFromChatMessageContent([null, 42])).toBe("");
+		});
+	});
+
+	describe("extractLeadingSystemPrompt", () => {
+		it("returns undefined for absent, empty, or system-less message lists", () => {
+			expect(extractLeadingSystemPrompt(undefined)).toBeUndefined();
+			expect(extractLeadingSystemPrompt([])).toBeUndefined();
+			expect(
+				extractLeadingSystemPrompt([{ role: "user", content: "Hello." }]),
+			).toBeUndefined();
+		});
+
+		it("reads the first system message, joining multi-part content", () => {
+			expect(
+				extractLeadingSystemPrompt([
+					{
+						role: "system",
+						content: [
+							{ type: "text", text: "Part one." },
+							{ type: "text", text: "Part two." },
+						],
+					},
+				]),
+			).toBe("Part one.\nPart two.");
+		});
+
+		it("treats a whitespace-only leading system message as absent", () => {
+			expect(
+				extractLeadingSystemPrompt([{ role: "system", content: "   " }]),
+			).toBeUndefined();
+		});
+	});
+
+	describe("resolveEffectiveSystemPrompt edge branches", () => {
+		it("treats non-object params as absent and uses the fallback", () => {
+			expect(
+				resolveEffectiveSystemPrompt({ params: "nope", fallback: "F." }),
+			).toBe("F.");
+		});
+
+		it("resolves nothing when no source is present", () => {
+			expect(resolveEffectiveSystemPrompt({})).toBeUndefined();
+			expect(
+				resolveEffectiveSystemPrompt({ params: null, fallback: null }),
+			).toBeUndefined();
+		});
+
+		// An explicit non-string params.system short-circuits the lookup instead of
+		// falling through to messages or fallback.
+		it("returns undefined when params.system exists but is not a string", () => {
+			expect(
+				resolveEffectiveSystemPrompt({
+					params: { system: 42, messages: [{ role: "system", content: "M." }] },
+					fallback: "F.",
+				}),
+			).toBeUndefined();
+		});
+
+		it("preserves an explicitly present but textless params.system", () => {
+			expect(resolveEffectiveSystemPrompt({ params: { system: "   " } })).toBe(
+				"",
+			);
+			expect(
+				resolveEffectiveSystemPrompt({ params: { system: null } }),
+			).toBeUndefined();
+		});
+
+		it("falls through to the fallback when the leading system message carries no text", () => {
+			expect(
+				resolveEffectiveSystemPrompt({
+					params: { messages: [{ role: "system", content: "   " }] },
+					fallback: "  F.  ",
+				}),
+			).toBe("F.");
+		});
+
+		it("maps a blank or non-string fallback to undefined", () => {
+			expect(resolveEffectiveSystemPrompt({ fallback: "   " })).toBeUndefined();
+			expect(resolveEffectiveSystemPrompt({ fallback: 42 })).toBeUndefined();
+		});
+	});
+
+	describe("dropDuplicateLeadingSystemMessage edge branches", () => {
+		it("passes absent and empty message lists straight through", () => {
+			expect(
+				dropDuplicateLeadingSystemMessage(undefined, "S."),
+			).toBeUndefined();
+			expect(dropDuplicateLeadingSystemMessage([], "S.")).toEqual([]);
+		});
+
+		it("keeps every message when there is no resolved prompt to compare against", () => {
+			const messages = [{ role: "system", content: "S." }];
+			expect(dropDuplicateLeadingSystemMessage(messages, undefined)).toBe(
+				messages,
+			);
+			expect(dropDuplicateLeadingSystemMessage(messages, "")).toBe(messages);
+		});
+
+		it("compares trimmed text so padded duplicates still drop", () => {
+			const messages = [
+				{ role: "system", content: "  S.  " },
+				{ role: "user", content: "Hello." },
+			];
+			expect(dropDuplicateLeadingSystemMessage(messages, "S.")).toEqual([
+				{ role: "user", content: "Hello." },
+			]);
+		});
+
+		it("matches structured content parts, not just plain strings", () => {
+			const messages = [
+				{ role: "system", content: [{ type: "text", text: "S." }] },
+				{ role: "user", content: "Hello." },
+			];
+			expect(dropDuplicateLeadingSystemMessage(messages, "S.")).toEqual([
+				{ role: "user", content: "Hello." },
+			]);
+		});
+	});
+
+	describe("renderChatMessagesForPrompt", () => {
+		it("returns undefined for absent or empty message lists", () => {
+			expect(renderChatMessagesForPrompt(undefined)).toBeUndefined();
+			expect(renderChatMessagesForPrompt([])).toBeUndefined();
+		});
+
+		it("renders role-headed blocks separated by blank lines", () => {
+			expect(
+				renderChatMessagesForPrompt([
+					{ role: "system", content: "S." },
+					{ role: "user", content: "U." },
+					{ role: "assistant", content: "A." },
+				]),
+			).toBe("system:\nS.\n\nuser:\nU.\n\nassistant:\nA.");
+		});
+
+		it("skips messages whose content renders to no text", () => {
+			expect(
+				renderChatMessagesForPrompt([
+					{ role: "user", content: "   " },
+					{ role: "assistant", content: null },
+					{ role: "user", content: "Hi." },
+				]),
+			).toBe("user:\nHi.");
+		});
+
+		it("omits only the first system message matching omitDuplicateSystem", () => {
+			expect(
+				renderChatMessagesForPrompt(
+					[
+						{ role: "system", content: "S." },
+						{ role: "system", content: "S." },
+						{ role: "user", content: "U." },
+					],
+					{ omitDuplicateSystem: " S. " },
+				),
+			).toBe("system:\nS.\n\nuser:\nU.");
+		});
+
+		it("keeps the leading message when the omit value does not match or is blank", () => {
+			const messages = [
+				{ role: "system", content: "S." },
+				{ role: "user", content: "U." },
+			];
+			expect(
+				renderChatMessagesForPrompt(messages, {
+					omitDuplicateSystem: "Other.",
+				}),
+			).toBe("system:\nS.\n\nuser:\nU.");
+			expect(
+				renderChatMessagesForPrompt(messages, { omitDuplicateSystem: "   " }),
+			).toBe("system:\nS.\n\nuser:\nU.");
+		});
+
+		it("applies the omit comparison only to a leading system message", () => {
+			expect(
+				renderChatMessagesForPrompt(
+					[
+						{ role: "user", content: "S." },
+						{ role: "user", content: "U." },
+					],
+					{ omitDuplicateSystem: "S." },
+				),
+			).toBe("user:\nS.\n\nuser:\nU.");
+		});
+
+		it("returns undefined when every block is skipped", () => {
+			expect(
+				renderChatMessagesForPrompt([{ role: "system", content: "S." }], {
+					omitDuplicateSystem: "S.",
+				}),
+			).toBeUndefined();
+		});
 	});
 });
