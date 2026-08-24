@@ -2877,11 +2877,6 @@ async function callPlanner(
 	}
 }
 
-/** Record a gated evaluator outcome without making another model call. */
-function normalizeCompleteText(value: string): string {
-	return toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
-}
-
 async function maybeCompactBeforeNextModelCall(args: {
 	runtime?: PlannerRuntime;
 	trajectory: PlannerTrajectory;

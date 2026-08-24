@@ -1,5 +1,5 @@
 /**
- * CHANNEL_RECAP — reads back the recent stored message history of the room the
+ * CHANNEL_RECAP — reads back the stored message history of the room the
  * triggering message arrived in, so a group-chat sender can ask for a recap,
  * summary, or "the last N messages" of their own channel. Live evidence
  * 2026-08-21: that ask routed to contexts=["general"], whose planner surface
@@ -10,12 +10,19 @@
  * Room scoping is structural, not parametric: the handler reads only
  * `message.roomId` and exposes no room/channel selector, so a request from
  * room A can never return room B content and cross-room/inbox-wide search
- * stays gated on the messaging umbrella exactly as before. The returned text
- * is model-facing and complete — every rendered message carries its full
- * stored text, chronologically ordered. The only bound is
- * `CHANNEL_RECAP_MAX_FETCH`, a documented storage read bound on how many rows
- * are pulled (never a text cap); exceeding it is reported explicitly in the
- * result rather than silently clamped.
+ * stays gated on the messaging umbrella exactly as before.
+ *
+ * PROMPT-INTEGRITY (PR #26780): the requested range is served COMPLETE — every
+ * rendered message carries its full stored text, chronologically ordered, with
+ * no deliverable ceiling and no storage read bound; application-authored
+ * size/item caps are banned. Storage traversal is exhaustive: keyset pages
+ * (createdAt+id cursor) are pulled until the requested dialogue range is
+ * satisfied or the store runs out, and store exhaustion is disclosed in the
+ * result. Machinery rows are filtered per page BEFORE the count is satisfied,
+ * so they can never displace requested dialogue. A range too large to send to
+ * the model is NOT this action's problem: the provider's documented context
+ * limit is the one real resource boundary, and the dispatch-side overflow
+ * boundary owns that rejection.
  */
 import { getEntityDetails } from "../../../entities.ts";
 import { isInternalBridgeMessage } from "../../../messaging/automated-turns.ts";
@@ -28,6 +35,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	State,
+	UUID,
 } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { formatMessages } from "../../../utils.ts";
@@ -39,37 +47,35 @@ export const CHANNEL_RECAP_CONTEXTS = ["general"] satisfies AgentContext[];
 export const CHANNEL_RECAP_DEFAULT_COUNT = 50;
 
 /**
- * Storage read bound: the most rows a single recap pulls from the message
- * store. A read bound on the DB fetch, not a cap on rendered text — every
- * retained message is rendered complete. Requests above it fail explicitly
- * without returning a partial transcript.
+ * Internal batching detail only: how many rows one keyset page pulls from the
+ * store while traversing toward the requested range. Never a bound on what a
+ * recap serves — the traversal loops over as many pages as the range needs.
  */
-export const CHANNEL_RECAP_MAX_FETCH = 500;
+export const CHANNEL_RECAP_PAGE_SIZE = 200;
 
 /**
- * Deliverable-size bound on the rendered transcript, in characters. The row
- * bound above cannot express this: 500 short messages fit any model window
- * while 500 long ones do not (live 2026-08-23: a complete 500-message
- * transcript rendered ~202K tokens against a 131K-token provider limit and
- * killed the turn, so the caller received nothing at all). A transcript that
- * cannot be delivered is not a completeness win, so an over-size range is
- * REJECTED before dispatch with an actionable count — never sliced, never
- * partially served.
+ * Parse a caller-supplied non-negative integer parameter. Integer-digits-only
+ * for strings: "50.9" or "1e2" is malformed, not a request — the caller falls
+ * back to the documented default rather than a silently reinterpreted value.
  */
-export const CHANNEL_RECAP_DELIVERABLE_CHARS = 60_000;
-
-function resolveRequestedCount(options?: HandlerOptions): number | undefined {
-	const raw =
-		options?.parameters && typeof options.parameters === "object"
-			? (options.parameters as Record<string, unknown>).count
-			: undefined;
-	if (typeof raw === "number" && Number.isFinite(raw)) return Math.floor(raw);
-	// Same integer-digits-only rule as the offset parser: "50.9" or "1e2" is a
-	// malformed count, not a request — fall back to the default.
+function parseNonNegativeInt(raw: unknown): number | undefined {
+	if (typeof raw === "number" && Number.isFinite(raw)) {
+		const floored = Math.floor(raw);
+		return Number.isSafeInteger(floored) && floored >= 0 ? floored : undefined;
+	}
 	if (typeof raw === "string" && /^\d+$/.test(raw.trim())) {
-		return Number(raw.trim());
+		const parsed = Number(raw.trim());
+		return Number.isSafeInteger(parsed) ? parsed : undefined;
 	}
 	return undefined;
+}
+
+function parameterRecord(
+	options?: HandlerOptions,
+): Record<string, unknown> | undefined {
+	return options?.parameters && typeof options.parameters === "object"
+		? (options.parameters as Record<string, unknown>)
+		: undefined;
 }
 
 export const channelRecapAction: Action = {
@@ -97,19 +103,15 @@ export const channelRecapAction: Action = {
 		{
 			name: "offset",
 			description:
-				"How many newest messages to skip before reading (default 0). Use the continuation offset a previous recap reported to page into older history.",
-			schema: { type: "number", minimum: 0 },
+				"How many newest messages to skip before reading (default 0). Use it to page into older history.",
+			schema: { type: "number" as const, minimum: 0 },
 			required: false,
 		},
 		{
 			name: "count",
-			description: `How many most-recent messages to read back (default ${CHANNEL_RECAP_DEFAULT_COUNT}; storage read bound ${CHANNEL_RECAP_MAX_FETCH}).`,
+			description: `How many most-recent messages to read back (default ${CHANNEL_RECAP_DEFAULT_COUNT}). The requested range is always served complete.`,
 			required: false,
-			schema: {
-				type: "number" as const,
-				minimum: 1,
-				maximum: CHANNEL_RECAP_MAX_FETCH,
-			},
+			schema: { type: "number" as const, minimum: 1 },
 		},
 	],
 	examples: [
@@ -153,185 +155,143 @@ export const channelRecapAction: Action = {
 			};
 		}
 
-		const requestedCount = resolveRequestedCount(options);
-		const rawOffset = (
-			options?.parameters as Record<string, unknown> | undefined
-		)?.offset;
-		const parsedOffset =
-			typeof rawOffset === "number"
-				? rawOffset
-				: typeof rawOffset === "string" && /^\d+$/.test(rawOffset.trim())
-					? Number(rawOffset.trim())
-					: 0;
-		const offset =
-			Number.isFinite(parsedOffset) && parsedOffset > 0
-				? Math.floor(parsedOffset)
-				: 0;
-		const validRequested =
-			requestedCount !== undefined && requestedCount >= 1
-				? requestedCount
-				: undefined;
-		const fetchCount = Math.min(
-			validRequested ?? CHANNEL_RECAP_DEFAULT_COUNT,
-			CHANNEL_RECAP_MAX_FETCH,
-		);
-		if (
-			validRequested !== undefined &&
-			validRequested > CHANNEL_RECAP_MAX_FETCH
-		) {
-			return {
-				success: false,
-				text: `CHANNEL_RECAP count ${validRequested} exceeds the complete storage read bound of ${CHANNEL_RECAP_MAX_FETCH}; request at most ${CHANNEL_RECAP_MAX_FETCH}.`,
-				values: { success: false },
-				data: {
-					actionName: "CHANNEL_RECAP",
-					error: "CHANNEL_RECAP_COUNT_TOO_LARGE",
-				},
-			};
-		}
-		const requestedDepth = fetchCount + offset;
-		if (
-			!Number.isSafeInteger(offset) ||
-			requestedDepth > CHANNEL_RECAP_MAX_FETCH
-		) {
-			return {
-				success: false,
-				text: `CHANNEL_RECAP count + offset must not exceed the maximum complete read of ${CHANNEL_RECAP_MAX_FETCH}.`,
-				values: { success: false },
-				data: {
-					actionName: "CHANNEL_RECAP",
-					error: "CHANNEL_RECAP_RANGE_TOO_LARGE",
-				},
-			};
+		const parameters = parameterRecord(options);
+		const parsedCount = parseNonNegativeInt(parameters?.count);
+		const count =
+			parsedCount !== undefined && parsedCount >= 1
+				? parsedCount
+				: CHANNEL_RECAP_DEFAULT_COUNT;
+		const offset = parseNonNegativeInt(parameters?.offset) ?? 0;
+		const requestedDepth = count + offset;
+
+		// Exhaustive newest-first keyset traversal: pull pages until the
+		// requested DIALOGUE range is satisfied or the store runs out. Machinery
+		// rows (the agent's own action_result records and internal bridge relays)
+		// are dropped per page before they can count toward the range, so they
+		// never displace dialogue the caller asked for. This filter is a SUBSET
+		// of the RECENT_MESSAGES one (which additionally strips synthetic failure
+		// replies, transient status posts, leaked tool transcripts, and dedupes):
+		// a recap is a verbatim read-back, so only rows that are never
+		// conversation are removed. Every retained row renders complete.
+		const dialogue: Memory[] = [];
+		let scannedRows = 0;
+		let storeExhausted = false;
+		let cursor: { createdAt: number; id: UUID } | undefined;
+		while (dialogue.length < requestedDepth) {
+			const page = await runtime.getMemories({
+				tableName: "messages",
+				roomId,
+				count: CHANNEL_RECAP_PAGE_SIZE,
+				unique: false,
+				...(cursor ? { cursor } : {}),
+			});
+			scannedRows += page.length;
+			for (const row of page) {
+				if (
+					row.content?.type !== "action_result" &&
+					!isInternalBridgeMessage(row)
+				) {
+					dialogue.push(row);
+				}
+			}
+			if (page.length < CHANNEL_RECAP_PAGE_SIZE) {
+				storeExhausted = true;
+				break;
+			}
+			// Cursor-must-advance guard: the next keyset cursor is the last row's
+			// (createdAt, id). A last row missing either key, or a cursor identical
+			// to the one this page was fetched with (an adapter ignoring `cursor`
+			// re-serves the same page forever), cannot make progress — surface the
+			// adapter defect as a typed failure instead of looping or silently
+			// fabricating exhaustion.
+			const last = page[page.length - 1];
+			if (typeof last.createdAt !== "number" || !last.id) {
+				return {
+					success: false,
+					text: `CHANNEL_RECAP cannot continue the exhaustive history scan: a stored row is missing the createdAt/id keys the keyset cursor needs (scanned ${scannedRows} rows). This is a message-store defect, not a request problem.`,
+					values: { success: false },
+					data: {
+						actionName: "CHANNEL_RECAP",
+						error: "CHANNEL_RECAP_CURSOR_STALLED",
+						roomId,
+						scannedRows,
+					},
+				};
+			}
+			const nextCursor = { createdAt: last.createdAt, id: last.id };
+			if (
+				cursor &&
+				nextCursor.createdAt === cursor.createdAt &&
+				nextCursor.id === cursor.id
+			) {
+				return {
+					success: false,
+					text: `CHANNEL_RECAP cannot continue the exhaustive history scan: the message store returned the same keyset page twice (cursor did not advance past createdAt=${cursor.createdAt}). This is a message-store defect, not a request problem.`,
+					values: { success: false },
+					data: {
+						actionName: "CHANNEL_RECAP",
+						error: "CHANNEL_RECAP_CURSOR_STALLED",
+						roomId,
+						scannedRows,
+					},
+				};
+			}
+			cursor = nextCursor;
 		}
 
-		// Newest-first from the store (adapter default order); formatMessages
-		// walks its input from the last element backwards, so passing the
-		// newest-first rows renders the transcript oldest-first (chronological).
-		// Read the whole bounded raw scope before applying dialogue filters. If
-		// filtering happened after a count-sized fetch, machinery rows would
-		// silently displace older dialogue that the caller requested.
-		const rows = await runtime.getMemories({
-			tableName: "messages",
-			roomId,
-			count: CHANNEL_RECAP_MAX_FETCH,
-			unique: false,
-		});
-
-		// Strip only the agent's own structural machinery rows: action_result
-		// records and internal bridge relays. This is a SUBSET of the
-		// RECENT_MESSAGES filter (which additionally strips synthetic failure
-		// replies, transient status posts, leaked tool transcripts/path dumps,
-		// and dedupes) — a recap is a verbatim read-back, so only rows that are
-		// never conversation are removed. Every retained row renders complete.
-		const allDialogue = rows.filter(
-			(row) =>
-				row.content?.type !== "action_result" && !isInternalBridgeMessage(row),
-		);
-		// Caller-requested pagination is applied to dialogue, not raw storage
-		// rows, so internal machinery cannot silently consume the requested count.
-		if (
-			rows.length === CHANNEL_RECAP_MAX_FETCH &&
-			allDialogue.length < requestedDepth
-		) {
-			return {
-				success: false,
-				text: `CHANNEL_RECAP could not produce the requested complete dialogue range within the ${CHANNEL_RECAP_MAX_FETCH}-row storage read bound because non-dialogue rows occupy the range. Narrow the request.`,
-				values: { success: false },
-				data: {
-					actionName: "CHANNEL_RECAP",
-					error: "CHANNEL_RECAP_COMPLETE_RANGE_UNAVAILABLE",
-				},
-			};
-		}
-		const dialogue = allDialogue.slice(offset, requestedDepth);
+		// Caller-requested pagination applies to dialogue, newest first; the
+		// traversal may have collected past the range boundary (page granularity).
+		const rendered = dialogue.slice(offset, requestedDepth);
 
 		const roomEntities = await getEntityDetails({ runtime, roomId });
 		const entities = await ensureFormattingEntities(
 			runtime,
 			roomEntities,
-			dialogue,
+			rendered,
 		);
-		const transcript = formatMessages({ messages: dialogue, entities });
-		if (transcript.length > CHANNEL_RECAP_DELIVERABLE_CHARS) {
-			// Find the largest newest-message range that actually fits by rendering
-			// and measuring each binary-search candidate through the same formatter
-			// and bound. A proportional estimate is unsafe when message sizes are
-			// uneven: one giant newest message can make even count=1 undeliverable.
-			let low = 1;
-			let high = dialogue.length - 1;
-			let deliverableCount: number | undefined;
-			while (low <= high) {
-				const candidateCount = Math.floor((low + high) / 2);
-				const candidateTranscript = formatMessages({
-					messages: dialogue.slice(0, candidateCount),
-					entities,
-				});
-				if (candidateTranscript.length <= CHANNEL_RECAP_DELIVERABLE_CHARS) {
-					deliverableCount = candidateCount;
-					low = candidateCount + 1;
-				} else {
-					high = candidateCount - 1;
-				}
-			}
-			const nextOffset =
-				offset + (deliverableCount === undefined ? 1 : deliverableCount);
-			const guidance =
-				deliverableCount === undefined
-					? `no complete newest message fits the bound; skip that oversized message and retry with offset=${nextOffset}`
-					: `request at most ${deliverableCount} message(s), or page older history with offset=${nextOffset}`;
-			return {
-				success: false,
-				text: `CHANNEL_RECAP range renders ${transcript.length} characters, over the ${CHANNEL_RECAP_DELIVERABLE_CHARS}-character deliverable bound for one call; ${guidance}.`,
-				values: { success: false },
-				data: {
-					actionName: "CHANNEL_RECAP",
-					error: "CHANNEL_RECAP_RANGE_NOT_DELIVERABLE",
-					roomId,
-					renderedChars: transcript.length,
-					deliverableChars: CHANNEL_RECAP_DELIVERABLE_CHARS,
-					deliverableCount: deliverableCount ?? null,
-					nextOffset,
-				},
-			};
-		}
+		// formatMessages walks its input from the last element backwards, so the
+		// newest-first rows render as a chronological (oldest-first) transcript.
+		const transcript = formatMessages({ messages: rendered, entities });
 
-		// Store-exhaustion is measured against the full fetch depth
-		// (count + offset): with a nonzero offset the store can satisfy
-		// `fetchCount` rows and still be exhausted short of the requested page.
-		const depthNote =
-			rows.length < requestedDepth
-				? ` This room's stored history holds ${rows.length} message(s); the read requested up to ${requestedDepth}${
-						offset > 0 ? ` (count ${fetchCount} + offset ${offset})` : ""
+		// Store-exhaustion disclosure: the store ran out before the requested
+		// dialogue depth (count + offset) was reached, so the caller learns the
+		// true extent of this room's history instead of inferring a silent cap.
+		const exhaustionNote =
+			storeExhausted && dialogue.length < requestedDepth
+				? ` This room's stored history is exhausted at ${dialogue.length} dialogue message(s); the read requested up to ${requestedDepth}${
+						offset > 0 ? ` (count ${count} + offset ${offset})` : ""
 					}.`
 				: "";
 		const rangeLabel =
 			offset > 0
-				? `messages ${offset + 1}–${offset + dialogue.length} back (newest first)`
-				: `the last ${dialogue.length} stored message(s)`;
+				? `messages ${offset + 1}–${offset + rendered.length} back (newest first)`
+				: `the last ${rendered.length} stored message(s)`;
 		const text =
-			dialogue.length === 0
-				? `No stored messages found in this room's history at offset ${offset}.${depthNote}`
-				: `Complete transcript of ${rangeLabel} in this room, oldest first:${depthNote}\n\n${transcript}`;
+			rendered.length === 0
+				? `No stored messages found in this room's history at offset ${offset}.${exhaustionNote}`
+				: `Complete transcript of ${rangeLabel} in this room, oldest first:${exhaustionNote}\n\n${transcript}`;
 
 		return {
 			success: true,
 			text,
-			values: { success: true, messageCount: dialogue.length },
+			values: { success: true, messageCount: rendered.length },
 			data: {
 				actionName: "CHANNEL_RECAP",
 				roomId,
 				scope: {
 					roomScoped: true,
-					requestedCount: validRequested ?? null,
-					fetchCount,
+					requestedCount:
+						parsedCount !== undefined && parsedCount >= 1 ? parsedCount : null,
+					count,
 					offset,
-					storageReadBound: CHANNEL_RECAP_MAX_FETCH,
-					fetchedRows: rows.length,
-					renderedCount: dialogue.length,
+					renderedCount: rendered.length,
+					// Diagnostics only — traversal extent, never a serving bound.
+					scannedRows,
+					pageSize: CHANNEL_RECAP_PAGE_SIZE,
+					storeExhausted,
 					order: "chronological",
 				},
-				messages: dialogue
+				messages: rendered
 					.slice()
 					.reverse()
 					.map((row) => ({
