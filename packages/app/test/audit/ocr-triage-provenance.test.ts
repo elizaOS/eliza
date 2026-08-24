@@ -333,11 +333,11 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     writeFileSync(
       join(dir, "ocr.ndjson"),
       [
-        ocrLine("desktop-landscape", "builtin-settings", "Settings Voice"),
+        ocrLine("desktop-landscape", "builtin-settings", "Basics Voice"),
         ocrLine(
           "mobile-portrait",
           "plugin-cloud-gui",
-          "Settings Wallet Projects",
+          "Eliza Cloud Connect in Settings",
         ),
         ocrLine(
           "ipad-portrait",

@@ -277,6 +277,9 @@ describe("SettingsView", () => {
     // The shared ViewHeader renders once, titled "Settings" on the hub.
     const header = screen.getByTestId("view-header");
     expect(header.textContent).toContain("Settings");
+    const layout = header.closest(".eliza-content-layout");
+    expect(layout?.className).toContain("--eliza-chat-clearance");
+    expect(layout?.className).toContain("--eliza-chat-side-clearance");
     // The hub lists a row per registered section; no section body is mounted
     // until a row is tapped.
     expect(hubRow("identity").textContent).toContain("Basics");
@@ -354,6 +357,9 @@ describe("SettingsView", () => {
 
     expect(screen.queryByTestId("cloud-settings-panel")).toBeNull();
     expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+    expect(
+      screen.getByTestId("view-header").closest(".eliza-content-layout"),
+    ).toBeNull();
   });
 
   it("keeps managed implementation controls available for local runtimes", () => {

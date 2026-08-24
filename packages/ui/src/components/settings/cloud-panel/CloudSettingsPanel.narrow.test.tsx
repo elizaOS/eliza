@@ -70,6 +70,9 @@ describe("CloudSettingsPanel narrow navigation", () => {
     const panel = container.querySelector("[data-chat-clearance-aware='true']");
     expect(panel?.className).toContain("--eliza-chat-clearance");
     expect(panel?.className).toContain("--eliza-chat-side-clearance");
+    expect(panel?.firstElementChild?.nextElementSibling?.className).toContain(
+      "min-h-0",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /Voice/ }));
     expect(screen.getByText("Voice section")).toBeTruthy();

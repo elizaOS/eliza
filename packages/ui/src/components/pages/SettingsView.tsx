@@ -482,6 +482,11 @@ function LegacySettingsView({
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout
         inModal={inModal}
+        className={
+          inModal
+            ? undefined
+            : "mb-[var(--eliza-chat-clearance,5.25rem)] me-[var(--eliza-chat-side-clearance,0px)]"
+        }
         contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
         sidebar={desktopSidebar}
         sidebarCollapsible={false}

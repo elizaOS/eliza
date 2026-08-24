@@ -124,7 +124,7 @@ function HubList({
 }) {
   const grouped = groupedCloudPanelSections();
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 overflow-y-auto p-4">
         {Object.entries(grouped).map(([groupId, sections]) => (
           <div key={groupId} className="mb-5 last:mb-0">
@@ -266,7 +266,7 @@ export function CloudSettingsPanel() {
     return (
       <div
         data-chat-clearance-aware="true"
-        className="flex h-full flex-col bg-bg pt-8 pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
+        className="mb-[var(--eliza-chat-clearance,5.25rem)] me-[var(--eliza-chat-side-clearance,0px)] flex min-h-0 flex-1 flex-col bg-bg pt-8"
       >
         <CloudSettingsDragStrip />
         {showHub ? (
@@ -300,7 +300,7 @@ export function CloudSettingsPanel() {
   return (
     <div
       data-chat-clearance-aware="true"
-      className="flex h-full bg-bg pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
+      className="mb-[var(--eliza-chat-clearance,5.25rem)] me-[var(--eliza-chat-side-clearance,0px)] flex min-h-0 flex-1 bg-bg"
     >
       <CloudSettingsDragStrip />
       <CloudSettingsSidebar

@@ -223,7 +223,7 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Desktop workspace", "Electrobun desktop runtime"],
   }),
   "builtin-settings": expected({
-    requireAll: ["General"],
+    requireAll: ["Basics"],
     requireAny: ["Desktop", "Voice", "Agent", "Connections", "Permissions"],
   }),
   "builtin-vault": expected({

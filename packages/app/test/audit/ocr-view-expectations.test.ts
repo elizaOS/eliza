@@ -115,7 +115,7 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     expect(policy).toEqual({
       kind: "expectation",
       expectation: {
-        requireAll: ["General"],
+        requireAll: ["Basics"],
         requireAny: ["Desktop", "Voice", "Agent", "Connections", "Permissions"],
       },
     });
