@@ -52,10 +52,7 @@ const buttonVariants = cva(
           "border border-border-strong bg-card text-txt-strong hover:border-accent hover:bg-surface disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
         publicRow:
           "h-full min-w-0 flex-1 justify-start gap-4 rounded-none bg-transparent p-0 text-left text-black whitespace-normal hover:bg-transparent hover:text-white",
-        publicTile:
-          "h-[72px] w-full justify-start gap-4 rounded-xs bg-white px-5 text-left text-black whitespace-normal hover:bg-black hover:text-white",
-        publicPrimary:
-          "h-[72px] w-full justify-start gap-4 rounded-xs bg-accent px-5 text-left text-accent-fg whitespace-normal hover:bg-accent-hover",
+        publicTile: "bg-white text-black hover:bg-black hover:text-white",
         publicLink:
           "h-auto bg-transparent p-0 text-xs text-muted underline-offset-2 hover:bg-transparent hover:text-txt",
         weatherPrompt:
@@ -81,46 +78,12 @@ const buttonVariants = cva(
           "border border-warning/35 bg-warning/12 text-warning hover:border-warning/50 hover:bg-warning/18 hover:text-warning",
         outlineAccent:
           "border border-border/40 bg-card/40 text-muted transition-all hover:border-accent hover:bg-accent/5 hover:text-txt",
-        mobileBack:
-          "h-auto justify-start gap-2 bg-transparent px-0 py-2 text-base font-medium text-muted hover:bg-transparent hover:text-txt",
         mediaZoom: "h-auto rounded-sm bg-transparent p-0 hover:bg-transparent",
         transparent: "bg-transparent hover:bg-transparent",
         disclosureMuted:
           "w-full justify-between bg-transparent text-xs text-muted hover:bg-transparent hover:text-txt",
-        ghostFaded:
-          "bg-transparent text-muted opacity-70 hover:bg-surface hover:text-txt hover:opacity-100",
-        accentGhost:
-          "bg-transparent text-accent hover:bg-transparent hover:text-accent-muted",
-        setupLink:
-          "h-auto bg-transparent p-0 text-sm text-[var(--first-run-text-muted)] underline underline-offset-2 hover:bg-transparent hover:opacity-80",
         overlayEdge:
           "bg-transparent text-white/55 hover:bg-transparent hover:text-white",
-        micToggle:
-          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-accent",
-        wallpaperRow:
-          "bg-transparent hover:bg-white/8 data-[active=true]:bg-white/15",
-        wallpaperControl:
-          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-white data-[state=on]:hover:text-white aria-[disabled=true]:pointer-events-none aria-[disabled=true]:opacity-40",
-        homePill:
-          "rounded-full bg-transparent shadow-none hover:bg-transparent active:scale-95 data-[needs-auth=true]:active:scale-[0.96] focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
-        notificationClear:
-          "text-white/60 hover:text-white/90 data-[confirming=true]:text-white",
-        topicPill:
-          "border border-white/15 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",
-        topicHeader:
-          "bg-transparent text-white/45 hover:bg-transparent hover:text-white/70",
-        sidebarRail:
-          "border border-border/24 bg-card text-xs font-semibold tracking-[0.02em] text-muted-strong transition-[border-color,background-color,color,box-shadow,transform] duration-150 hover:border-border/38 hover:bg-surface hover:text-txt active:scale-[0.98] data-[state=on]:border-accent data-[state=on]:bg-accent-subtle data-[state=on]:text-txt",
-        sidebarAction:
-          "bg-bg/80 text-muted opacity-0 group-hover:opacity-100 hover:bg-danger/10 hover:text-danger",
-        confirmDanger:
-          "border border-destructive/70 bg-destructive text-destructive-fg hover:border-destructive hover:bg-destructive",
-        confirmWarning:
-          "border border-warn/55 bg-warn/92 text-black hover:border-warn hover:bg-warn",
-        calendarDay:
-          "font-normal data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring dark:hover:text-accent-foreground data-[range-end=true]:rounded-sm data-[range-end=true]:rounded-r-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-sm data-[range-start=true]:rounded-l-md",
-        pageDrawerTrigger:
-          "border border-border bg-card text-txt hover:border-border-strong hover:bg-surface hover:text-txt",
         memorySidebar:
           "border border-border bg-card/40 text-txt hover:bg-card/70",
       },
@@ -150,55 +113,30 @@ const buttonVariants = cva(
         badge:
           "h-auto rounded-full px-3 py-1.5 text-2xs font-bold tracking-[0.14em]",
         denseWide: "h-8 rounded-sm px-4 text-xs-tight font-semibold",
-        compactWide: "h-9 rounded-sm px-4 text-xs-tight font-semibold",
         eventRow: "h-auto min-h-11 w-full items-start gap-1 p-0",
         formAction: "h-10 rounded-sm px-4 text-xs-tight font-semibold",
         disclosure:
           "size-5 shrink-0 rounded-sm p-0 text-left text-xs text-muted",
         pillDense: "h-8 rounded-full px-3 text-xs-tight font-semibold",
-        zoomPill:
-          "h-7 min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums",
         fill: "h-full w-full rounded-sm p-0",
         closeGlyph: "size-8 rounded-sm p-0 text-xl leading-none",
         inlineIcon: "h-auto px-2 py-0 text-xs",
         labeledSm:
           "h-9 gap-2 rounded-sm px-3 py-1.5 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
-        labeledForm:
-          "h-10 gap-1.5 rounded-sm px-4 text-xs font-semibold pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         rowContent: "h-auto gap-3 rounded-none p-0 font-normal",
-        sidebarToggle:
-          "h-auto gap-1.5 rounded-sm px-1.5 py-1 text-xs font-medium leading-none",
         labeledTiny: "h-7 gap-1 rounded-sm px-2.5 text-xs",
         "icon-xs": "size-6 rounded-sm p-0",
-        "icon-2xs": "size-4 rounded-sm p-0",
-        labeledMicro:
-          "h-auto gap-0.5 rounded-sm px-1 py-0 text-2xs font-semibold",
-        trayRow: "h-9 gap-3 rounded-sm px-2 text-sm font-normal",
-        wallpaperRow:
-          "h-auto w-full gap-3 rounded-none px-3.5 py-2 font-normal",
-        pillHandle: "h-auto w-full rounded-none px-8 pb-1.5 pt-10",
-        warningPill:
-          "h-auto gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
-        homePill:
-          "h-11 w-16 p-0 data-[composer-sized=true]:h-16 data-[composer-sized=true]:w-[36rem]",
-        notificationClear: "h-8 overflow-hidden text-xs font-medium",
-        topicPill: "h-auto w-full gap-2 rounded-full px-3 py-1.5 font-normal",
-        topicHeader: "h-auto w-full gap-2 py-1 font-normal",
-        sidebarItem: "h-auto gap-3 rounded-none p-0 font-normal",
         toolbar: "h-10 rounded-sm px-3 text-sm",
-        newAction:
-          "min-h-touch w-full justify-start rounded-sm px-4 py-2.5 text-sm font-medium",
         carouselControl: "size-8 rounded-sm p-0",
-        calendarDay:
-          "aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 leading-none [&>span]:text-xs [&>span]:opacity-70",
         pageDrawerTrigger: "h-[2.375rem] rounded-sm px-3 text-sm font-semibold",
+        publicTile:
+          "h-[72px] w-full justify-start gap-4 rounded-xs px-5 text-left whitespace-normal",
         memorySidebar:
           "h-11 w-full justify-between gap-2 rounded-sm px-3 text-start text-sm font-medium",
       },
       shape: {
         default: "",
         circle: "rounded-full",
-        "2xl": "rounded-2xl",
       },
       align: {
         center: "text-center",

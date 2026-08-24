@@ -9,7 +9,7 @@ This is a candidate inventory, not an instruction to merge every entry. Canonica
 | alert | 5 | 0 | 0 | 1 | 0 |
 | avatar | 2 | 0 | 0 | 0 | 0 |
 | badge | 3 | 0 | 10 | 4 | 0 |
-| button | 8 | 0 | 14 | 1 | 15 |
+| button | 8 | 0 | 17 | 1 | 15 |
 | card | 6 | 0 | 25 | 2 | 0 |
 | checkbox | 1 | 0 | 0 | 0 | 1 |
 | dialog | 11 | 0 | 10 | 2 | 1 |
@@ -162,12 +162,15 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `PstnCallButton` in `packages/ui/src/components/composites/chat/pstn-call-button.tsx:77` | - | `Button`, `Dialog`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogTitle`, `Input`, `Label`, `Loader2`, `PhoneCall`, `div`, `p` |
 | canonical-wrapper | not-reviewed | `SidebarCollapsedActionButton` in `packages/ui/src/components/composites/sidebar/sidebar-collapsed-rail.tsx:75` | - | `Button` |
 | canonical-wrapper | not-reviewed | `SidebarItemButton` in `packages/ui/src/components/composites/sidebar/sidebar-content.tsx:263` | - | `Button` |
+| canonical-wrapper | not-reviewed | `GraphZoomButton` in `packages/ui/src/components/pages/RelationshipsGraphPanel.tsx:630` | - | `Button` |
 | canonical-wrapper | not-reviewed | `DestructiveSecondaryButton` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:75` | - | `Button` |
 | canonical-wrapper | not-reviewed | `CloudActionButton` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:490` | - | `Button`, `SettingRowShell` |
 | canonical-wrapper | not-reviewed | `SettingsActionButton` in `packages/ui/src/components/settings/settings-agent-rows.tsx:572` | - | `Button` |
 | canonical-wrapper | consolidation-candidate | `ViewBackButton` in `packages/ui/src/components/shared/ViewHeader.tsx:45` | `packages/ui/src/components/ui/button.tsx` | `ArrowLeft`, `Button` |
 |  |  | Agent instrumentation is specialized, but the raw button can compose the canonical Button. |  |  |
+| canonical-wrapper | not-reviewed | `SoftButton` in `packages/ui/src/components/shell/ChatOverlay.tsx:485` | - | `Button`, `Glyph`, `Icon` |
 | canonical-wrapper | not-reviewed | `GlassIconButton` in `packages/ui/src/components/shell/glass-composer.tsx:23` | - | `Button`, `Icon` |
+| canonical-wrapper | not-reviewed | `NotificationStackClearButton` in `packages/ui/src/components/shell/NotificationsHomeCenter.tsx:664` | - | `Button`, `ClearConfirmationContent` |
 | canonical-wrapper | not-reviewed | `RecoveryActionButton` in `plugins/plugin-task-coordinator/src/orchestrator-task-inspector.tsx:1098` | - | `Button` |
 | parallel-primitive | lab-only | `ActionButton` in `packages/ui/stories/src/lab/lab-ui.tsx:73` | `packages/ui/src/components/ui/button.tsx` | `button` |
 |  |  | Design-lab fixture is not shipped product UI. |  |  |
@@ -288,7 +291,7 @@ No named candidates.
 | Classification | Decision | Definition | Canonical owner | Rendered tags |
 | --- | --- | --- | --- | --- |
 | canonical-wrapper | not-reviewed | `ApiParameterSelect` in `packages/ui/src/cloud-ui/components/docs/api-parameter-select.tsx:29` | - | `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue` |
-| canonical-wrapper | not-reviewed | `FilterSelect` in `plugins/plugin-task-coordinator/src/orchestrator-workbench-list.tsx:29` | - | `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `TaskStatusChip`, `span` |
+| canonical-wrapper | not-reviewed | `FilterSelect` in `plugins/plugin-task-coordinator/src/orchestrator-workbench-list.tsx:24` | - | `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `TaskStatusChip`, `span` |
 
 ### separator
 
@@ -354,4 +357,3 @@ No named candidates.
 ### tooltip
 
 No named candidates.
-

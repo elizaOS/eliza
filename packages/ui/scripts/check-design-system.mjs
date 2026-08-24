@@ -16,7 +16,14 @@ const repoRoot = path.resolve(scriptDir, "../../..");
 const canonicalRoot = "packages/ui/src/components/ui";
 const baselinePath = path.join(scriptDir, "design-system-baseline.json");
 const exceptionsPath = path.join(scriptDir, "design-system-exceptions.json");
+const adaptersPath = path.join(scriptDir, "design-system-adapters.json");
 const reportPath = path.join(scriptDir, "design-system-compliance-report.md");
+const buttonPath = path.join(
+  repoRoot,
+  "packages/ui/src/components/ui/button.tsx",
+);
+const BUTTON_AXES = ["variant", "size", "shape", "align"];
+const BUTTON_MIN_MAINTAINED_CALLERS = 2;
 
 export const RULES = [
   "atomic-duplicate",
@@ -24,6 +31,7 @@ export const RULES = [
   "direct-primitive-import",
   "deep-canonical-import",
   "variant-helper-bypass",
+  "button-axis-reuse",
   "unstyled-canonical",
   "visual-override",
   "off-token-color",
@@ -32,6 +40,59 @@ export const RULES = [
 const CANONICAL_NAMES = new Set(
   Object.values(ATOMS).flatMap((definition) => definition.names),
 );
+
+function adapterKey(entry) {
+  return `${entry.file}:${entry.symbol}:${entry.primitive}`;
+}
+
+export function validateAdapterRegistry(document) {
+  if (document.schemaVersion !== 1 || !Array.isArray(document.adapters)) {
+    throw new Error(
+      "design-system-adapters.json must use schemaVersion 1 with an adapters array",
+    );
+  }
+  const keys = new Set();
+  for (const adapter of document.adapters) {
+    const key = adapterKey(adapter);
+    if (
+      typeof adapter.file !== "string" ||
+      !/^(packages|plugins)\/.*\.[jt]sx$/.test(adapter.file) ||
+      typeof adapter.symbol !== "string" ||
+      adapter.symbol.trim() === "" ||
+      !CANONICAL_NAMES.has(adapter.primitive) ||
+      typeof adapter.owner !== "string" ||
+      adapter.owner.trim() === "" ||
+      typeof adapter.reason !== "string" ||
+      adapter.reason.trim() === "" ||
+      !Number.isInteger(adapter.matchCount) ||
+      adapter.matchCount < 1 ||
+      keys.has(key)
+    ) {
+      throw new Error(
+        `Invalid design-system adapter: ${JSON.stringify(adapter)}`,
+      );
+    }
+    keys.add(key);
+  }
+  return document.adapters;
+}
+
+export function assertRegisteredAdaptersUsed(adapters, matches, exports) {
+  for (const adapter of adapters) {
+    const key = adapterKey(adapter);
+    if (!exports.has(key)) {
+      throw new Error(
+        `Design-system adapter ${key} must name an exported symbol in its registered file`,
+      );
+    }
+    const actual = matches.get(key) ?? 0;
+    if (actual !== adapter.matchCount) {
+      throw new Error(
+        `Design-system adapter ${key} expected ${adapter.matchCount} canonical composition(s), found ${actual}`,
+      );
+    }
+  }
+}
 const VISUAL_UTILITY =
   /(?:^|\s)(?:[a-z-]+:)*(?:bg|text|border|rounded|shadow|ring|outline|fill|stroke|p[trblxy]?|h|min-h|max-h|gap|space-[xy])-(?:\[[^\]]+\]|[^\s]+)/;
 // Skeleton width, height, spacing, and radius describe the geometry of the
@@ -95,6 +156,51 @@ function importsByLocalName(sourceFile) {
   return imports;
 }
 
+function exportedNames(sourceFile) {
+  const names = new Set();
+  for (const statement of sourceFile.statements) {
+    const exported = statement.modifiers?.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+    );
+    if (exported && ts.isFunctionDeclaration(statement) && statement.name) {
+      names.add(statement.name.text);
+    }
+    if (exported && ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name)) names.add(declaration.name.text);
+      }
+    }
+    if (ts.isExportDeclaration(statement) && statement.exportClause) {
+      if (ts.isNamedExports(statement.exportClause)) {
+        for (const element of statement.exportClause.elements) {
+          names.add(element.name.text);
+        }
+      }
+    }
+  }
+  return names;
+}
+
+function enclosingSymbol(node) {
+  for (let candidate = node.parent; candidate; candidate = candidate.parent) {
+    if (ts.isFunctionDeclaration(candidate) && candidate.name) {
+      return candidate.name.text;
+    }
+    if (ts.isArrowFunction(candidate) || ts.isFunctionExpression(candidate)) {
+      let owner = candidate.parent;
+      while (owner && ts.isCallExpression(owner)) owner = owner.parent;
+      if (
+        owner &&
+        ts.isVariableDeclaration(owner) &&
+        ts.isIdentifier(owner.name)
+      ) {
+        return owner.name.text;
+      }
+    }
+  }
+  return null;
+}
+
 export function resolvesToCanonical(record, file) {
   if (!record) return false;
   if (
@@ -137,6 +243,27 @@ function stringAttribute(node, name) {
   return null;
 }
 
+function propertyNameText(property) {
+  if (
+    property.name &&
+    (ts.isIdentifier(property.name) ||
+      ts.isStringLiteral(property.name) ||
+      ts.isNumericLiteral(property.name))
+  ) {
+    return property.name.text;
+  }
+  return null;
+}
+
+function objectProperty(object, name) {
+  return object.properties.find(
+    (property) =>
+      (ts.isPropertyAssignment(property) ||
+        ts.isShorthandPropertyAssignment(property)) &&
+      propertyNameText(property) === name,
+  );
+}
+
 function indexStaticDeclarations(sourceFile) {
   const declarations = new Map();
   function visit(candidate) {
@@ -155,6 +282,226 @@ function indexStaticDeclarations(sourceFile) {
   }
   visit(sourceFile);
   return declarations;
+}
+
+function staticStringValues(expression, declarations) {
+  const values = new Set();
+  const resolving = new Set();
+  function collect(candidate) {
+    if (
+      ts.isStringLiteral(candidate) ||
+      ts.isNoSubstitutionTemplateLiteral(candidate)
+    ) {
+      values.add(candidate.text);
+      return;
+    }
+    if (ts.isIdentifier(candidate)) {
+      const initializer = declarations.get(candidate.text);
+      if (initializer && !resolving.has(candidate.text)) {
+        resolving.add(candidate.text);
+        collect(initializer);
+        resolving.delete(candidate.text);
+      }
+      return;
+    }
+    if (ts.isConditionalExpression(candidate)) {
+      collect(candidate.whenTrue);
+      collect(candidate.whenFalse);
+      return;
+    }
+    if (
+      ts.isBinaryExpression(candidate) &&
+      [
+        ts.SyntaxKind.AmpersandAmpersandToken,
+        ts.SyntaxKind.BarBarToken,
+        ts.SyntaxKind.QuestionQuestionToken,
+      ].includes(candidate.operatorToken.kind)
+    ) {
+      collect(candidate.left);
+      collect(candidate.right);
+    }
+  }
+  collect(expression);
+  return [...values];
+}
+
+function jsxAxisValues(node, axis, defaults, declarations) {
+  const attribute = node.attributes.properties.find(
+    (property) =>
+      ts.isJsxAttribute(property) && property.name.getText() === axis,
+  );
+  if (!attribute) return defaults[axis] ? [defaults[axis]] : [];
+  if (!ts.isJsxAttribute(attribute) || !attribute.initializer) return [];
+  if (ts.isStringLiteral(attribute.initializer)) {
+    return [attribute.initializer.text];
+  }
+  if (
+    ts.isJsxExpression(attribute.initializer) &&
+    attribute.initializer.expression
+  ) {
+    return staticStringValues(attribute.initializer.expression, declarations);
+  }
+  return [];
+}
+
+export function extractButtonAxisDefinitions({ file, source }) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  let config = null;
+  function findConfig(node) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "buttonVariants" &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer) &&
+      node.initializer.arguments[1] &&
+      ts.isObjectLiteralExpression(node.initializer.arguments[1])
+    ) {
+      config = node.initializer.arguments[1];
+      return;
+    }
+    ts.forEachChild(node, findConfig);
+  }
+  findConfig(sourceFile);
+  if (!config) throw new Error("buttonVariants must be a cva config object");
+
+  const variantsProperty = objectProperty(config, "variants");
+  const defaultsProperty = objectProperty(config, "defaultVariants");
+  if (
+    !variantsProperty ||
+    !ts.isPropertyAssignment(variantsProperty) ||
+    !ts.isObjectLiteralExpression(variantsProperty.initializer) ||
+    !defaultsProperty ||
+    !ts.isPropertyAssignment(defaultsProperty) ||
+    !ts.isObjectLiteralExpression(defaultsProperty.initializer)
+  ) {
+    throw new Error(
+      "buttonVariants must declare object-literal variants and defaultVariants",
+    );
+  }
+
+  const definitions = [];
+  const defaults = {};
+  for (const axis of BUTTON_AXES) {
+    const axisProperty = objectProperty(variantsProperty.initializer, axis);
+    if (
+      !axisProperty ||
+      !ts.isPropertyAssignment(axisProperty) ||
+      !ts.isObjectLiteralExpression(axisProperty.initializer)
+    ) {
+      throw new Error(`buttonVariants is missing the ${axis} axis`);
+    }
+    for (const valueProperty of axisProperty.initializer.properties) {
+      const value = propertyNameText(valueProperty);
+      if (!value) continue;
+      definitions.push({
+        axis,
+        file: relative(file),
+        line:
+          sourceFile.getLineAndCharacterOfPosition(valueProperty.getStart())
+            .line + 1,
+        value,
+      });
+    }
+    const defaultProperty = objectProperty(defaultsProperty.initializer, axis);
+    if (
+      defaultProperty &&
+      ts.isPropertyAssignment(defaultProperty) &&
+      (ts.isStringLiteral(defaultProperty.initializer) ||
+        ts.isNoSubstitutionTemplateLiteral(defaultProperty.initializer))
+    ) {
+      defaults[axis] = defaultProperty.initializer.text;
+    }
+  }
+  return { defaults, definitions };
+}
+
+export function scanButtonAxisUsages({ file, source, defaults }) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const imports = importsByLocalName(sourceFile);
+  const declarations = indexStaticDeclarations(sourceFile);
+  const usages = [];
+  function record(axis, value, node) {
+    usages.push({
+      axis,
+      file: relative(file),
+      line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+      value,
+    });
+  }
+  function visit(node) {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const rootName = node.tagName.getText().split(".")[0];
+      const imported = imports.get(rootName);
+      if (
+        imported?.imported === "Button" &&
+        resolvesToCanonical(imported, file)
+      ) {
+        for (const axis of BUTTON_AXES) {
+          for (const value of jsxAxisValues(
+            node,
+            axis,
+            defaults,
+            declarations,
+          )) {
+            record(axis, value, node);
+          }
+        }
+      }
+    }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const imported = imports.get(node.expression.text);
+      const options = node.arguments[0];
+      if (
+        imported?.imported === "buttonVariants" &&
+        resolvesToCanonical(imported, file) &&
+        options &&
+        ts.isObjectLiteralExpression(options)
+      ) {
+        for (const axis of BUTTON_AXES) {
+          const property = objectProperty(options, axis);
+          const values =
+            property && ts.isPropertyAssignment(property)
+              ? staticStringValues(property.initializer, declarations)
+              : defaults[axis]
+                ? [defaults[axis]]
+                : [];
+          for (const value of values) record(axis, value, node);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return usages;
+}
+
+export function findUnderusedButtonAxes({
+  definitions,
+  usages,
+  minimumCallers = BUTTON_MIN_MAINTAINED_CALLERS,
+}) {
+  return definitions
+    .map((definition) => {
+      const callers = usages.filter(
+        (usage) =>
+          usage.axis === definition.axis && usage.value === definition.value,
+      );
+      return { ...definition, callerCount: callers.length, callers };
+    })
+    .filter((entry) => entry.callerCount < minimumCallers);
 }
 
 function staticAttributeText(node, name, declarations) {
@@ -363,7 +710,15 @@ function finding({ rule, file, line, symbol, detail }) {
   return { detail, file, line, rule, symbol };
 }
 
-export function scanSourceText({ file, source }) {
+export function scanSourceText({
+  adapterExports,
+  adapterMatches,
+  buttonDefaults,
+  buttonUsages,
+  file,
+  registeredAdapters,
+  source,
+}) {
   const sourceFile = ts.createSourceFile(
     file,
     source,
@@ -375,6 +730,7 @@ export function scanSourceText({ file, source }) {
   const declarations = indexStaticDeclarations(sourceFile);
   const rel = relative(file);
   const findings = [];
+  const fileExports = exportedNames(sourceFile);
 
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
@@ -481,6 +837,31 @@ export function scanSourceText({ file, source }) {
         const rootName = tag.split(".")[0];
         const record = imports.get(rootName);
         if (record && resolvesToCanonical(record, file)) {
+          const symbol = enclosingSymbol(node);
+          const registeredAdapter = symbol
+            ? registeredAdapters?.get(
+                adapterKey({ file: rel, primitive: record.imported, symbol }),
+              )
+            : undefined;
+          if (registeredAdapter && adapterMatches && adapterExports) {
+            const key = adapterKey(registeredAdapter);
+            adapterMatches.set(key, (adapterMatches.get(key) ?? 0) + 1);
+            if (fileExports.has(registeredAdapter.symbol)) {
+              adapterExports.add(key);
+            }
+          }
+          if (record.imported === "Button" && buttonDefaults && buttonUsages) {
+            for (const axis of BUTTON_AXES) {
+              for (const value of jsxAxisValues(
+                node,
+                axis,
+                buttonDefaults,
+                declarations,
+              )) {
+                buttonUsages.push({ axis, file: rel, line, value });
+              }
+            }
+          }
           if (CANONICAL_NAMES.has(record.imported)) {
             if (
               record.imported === "Button" &&
@@ -515,16 +896,18 @@ export function scanSourceText({ file, source }) {
               styleProperties.length > 0 ||
               opaqueClassName
             ) {
-              findings.push(
-                finding({
-                  rule: "visual-override",
-                  file: rel,
-                  line,
-                  symbol: record.imported,
-                  detail:
-                    "Canonical visual state must use a typed variant; className is reserved for caller layout.",
-                }),
-              );
+              if (!registeredAdapter) {
+                findings.push(
+                  finding({
+                    rule: "visual-override",
+                    file: rel,
+                    line,
+                    symbol: record.imported,
+                    detail:
+                      "Canonical visual state must use a typed variant or a registered adapter owner; className is reserved for caller layout.",
+                  }),
+                );
+              }
             }
           }
         }
@@ -542,14 +925,40 @@ export function scanSourceText({ file, source }) {
         );
       }
     }
+    if (
+      buttonDefaults &&
+      buttonUsages &&
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression)
+    ) {
+      const imported = imports.get(node.expression.text);
+      const options = node.arguments[0];
+      if (
+        imported?.imported === "buttonVariants" &&
+        resolvesToCanonical(imported, file) &&
+        options &&
+        ts.isObjectLiteralExpression(options)
+      ) {
+        const line =
+          sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+        for (const axis of BUTTON_AXES) {
+          const property = objectProperty(options, axis);
+          const values =
+            property && ts.isPropertyAssignment(property)
+              ? staticStringValues(property.initializer, declarations)
+              : buttonDefaults[axis]
+                ? [buttonDefaults[axis]]
+                : [];
+          for (const value of values) {
+            buttonUsages.push({ axis, file: rel, line, value });
+          }
+        }
+      }
+    }
     ts.forEachChild(node, visit);
   }
   visit(sourceFile);
   return findings;
-}
-
-function scanFile(file) {
-  return scanSourceText({ file, source: fs.readFileSync(file, "utf8") });
 }
 
 export function validateExceptions(document, now) {
@@ -564,6 +973,7 @@ export function validateExceptions(document, now) {
       typeof exception.id !== "string" ||
       ids.has(exception.id) ||
       !RULES.includes(exception.rule) ||
+      exception.rule === "button-axis-reuse" ||
       typeof exception.file !== "string" ||
       typeof exception.symbol !== "string" ||
       typeof exception.owner !== "string" ||
@@ -661,7 +1071,53 @@ export function buildComplianceReport(options = {}) {
     ...walk(path.join(repoRoot, "packages")),
     ...walk(path.join(repoRoot, "plugins")),
   ].sort();
-  for (const file of files) findings.push(...scanFile(file));
+  const adapters = validateAdapterRegistry(
+    JSON.parse(fs.readFileSync(adaptersPath, "utf8")),
+  );
+  const registeredAdapters = new Map(
+    adapters.map((adapter) => [adapterKey(adapter), adapter]),
+  );
+  const adapterMatches = new Map();
+  const adapterExports = new Set();
+  const { definitions: buttonDefinitions, defaults: buttonDefaults } =
+    extractButtonAxisDefinitions({
+      file: buttonPath,
+      source: fs.readFileSync(buttonPath, "utf8"),
+    });
+  const buttonUsages = [];
+  for (const file of files) {
+    findings.push(
+      ...scanSourceText({
+        adapterExports,
+        adapterMatches,
+        buttonDefaults,
+        buttonUsages,
+        file,
+        registeredAdapters,
+        source: fs.readFileSync(file, "utf8"),
+      }),
+    );
+  }
+  assertRegisteredAdaptersUsed(adapters, adapterMatches, adapterExports);
+  const buttonAxes = buttonDefinitions.map((definition) => {
+    const callers = buttonUsages.filter(
+      (usage) =>
+        usage.axis === definition.axis && usage.value === definition.value,
+    );
+    return { ...definition, callerCount: callers.length, callers };
+  });
+  for (const entry of buttonAxes) {
+    if (entry.callerCount >= BUTTON_MIN_MAINTAINED_CALLERS) continue;
+    findings.push(
+      finding({
+        rule: "button-axis-reuse",
+        file: entry.file,
+        line: entry.line,
+        symbol: `${entry.axis}.${entry.value}`,
+        detail: `Canonical Button axes require at least ${BUTTON_MIN_MAINTAINED_CALLERS} maintained callers; found ${entry.callerCount}.`,
+      }),
+    );
+  }
   const active = applyExceptions(findings, parseExceptions(now)).sort(
     (a, b) =>
       a.rule.localeCompare(b.rule) ||
@@ -676,6 +1132,8 @@ export function buildComplianceReport(options = {}) {
     ]),
   );
   return {
+    adapters,
+    buttonAxes,
     counts,
     findings: active,
     scannedFiles: files.length,
@@ -693,7 +1151,34 @@ export function renderComplianceMarkdown(report) {
     "| --- | ---: |",
   ];
   for (const rule of RULES) lines.push(`| ${rule} | ${report.counts[rule]} |`);
-  lines.push("", "## Findings", "");
+  lines.push("", "## Button axis inventory", "");
+  for (const axis of BUTTON_AXES) {
+    lines.push(
+      `### ${axis}`,
+      "",
+      "| Value | Maintained callers |",
+      "| --- | ---: |",
+    );
+    for (const entry of report.buttonAxes.filter(
+      (item) => item.axis === axis,
+    )) {
+      lines.push(`| \`${entry.value}\` | ${entry.callerCount} |`);
+    }
+    lines.push("");
+  }
+  lines.push(
+    "## Registered adapters",
+    "",
+    "| Owner | Exported symbol | Canonical primitive | Compositions |",
+    "| --- | --- | --- | ---: |",
+  );
+  for (const adapter of report.adapters) {
+    lines.push(
+      `| ${adapter.owner} | \`${adapter.symbol}\` | \`${adapter.primitive}\` | ${adapter.matchCount} |`,
+    );
+  }
+  lines.push("");
+  lines.push("## Findings", "");
   for (const rule of RULES) {
     lines.push(`### ${rule}`, "");
     const entries = report.findings.filter((entry) => entry.rule === rule);

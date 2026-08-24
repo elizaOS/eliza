@@ -77,7 +77,7 @@ export const Banner = React.forwardRef<HTMLDivElement, BannerProps>(
         {action}
         {dismissible && (
           <Button
-            variant="ghostFaded"
+            variant="ghostMuted"
             size="icon-xs"
             onClick={onDismiss}
             aria-label={dismissLabel}

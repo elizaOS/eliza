@@ -482,7 +482,7 @@ function Glyph({
 }
 
 /** A soft round glass control that dissolves into the bar; brightens only when active. */
-function SoftButton({
+export function SoftButton({
   glyph,
   icon: Icon,
   label,
@@ -516,7 +516,7 @@ function SoftButton({
 }): React.JSX.Element {
   return (
     <Button
-      variant="wallpaperControl"
+      variant="transparent"
       size="icon"
       data-testid={testId}
       aria-label={label}
@@ -540,6 +540,7 @@ function SoftButton({
         // pointers. Real target geometry avoids overlapping pseudo hit areas
         // when compact screens draw the two trailing controls closer together.
         "relative grid shrink-0 place-items-center [&_svg]:size-5",
+        "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-white data-[state=on]:hover:text-white aria-[disabled=true]:pointer-events-none aria-[disabled=true]:opacity-40",
         // Batch capture has no inline waveform, so its glyph breathes; realtime
         // voice keeps this control static because the composer owns the motion.
         pulse && "animate-pulse motion-reduce:animate-none",
@@ -1052,7 +1053,7 @@ function SheetGrabber({
  * very bottom. Tap or flick/pull it up to bring the input back. Big invisible
  * hit area so it's easy to grab; the visible capsule stays small.
  */
-function PillHandle({
+export function PillHandle({
   binding,
   counterScale,
   onOpen,
@@ -1079,7 +1080,7 @@ function PillHandle({
   return (
     <Button
       variant="transparent"
-      size="pillHandle"
+      size="content"
       data-testid="chat-pill"
       aria-label="open chat"
       // No onClick: the pull-gesture binding is the single tap authority (a tap
@@ -1118,6 +1119,7 @@ function PillHandle({
         // (the lock-screen affordance). Flex-center keeps the capsule centred
         // while the invisible hit area spans wide.
         "flex cursor-grab touch-none select-none items-end justify-center active:cursor-grabbing",
+        "h-auto w-full rounded-none px-8 pb-1.5 pt-10",
         // Interactive only while pilled. When NOT pilled the (faded) handle must
         // let taps fall through to the composer textarea below it — otherwise its
         // tall hit zone steals the tap and the keyboard never opens.
@@ -5684,7 +5686,7 @@ export function ChatOverlay({
         >
           <Button
             variant="warningOutline"
-            size="warningPill"
+            size="pillDense"
             onClick={unlockAudio}
             data-testid="overlay-voice-audio-unlock"
             className={cn("pointer-events-auto", WALLPAPER_FLOAT_SHADOW)}

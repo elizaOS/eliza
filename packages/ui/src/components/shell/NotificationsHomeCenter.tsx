@@ -661,6 +661,35 @@ export interface NotificationsHomeCenterProps {
   onOpenRequestHandled?: (requestId: number) => void;
 }
 
+export function NotificationStackClearButton({
+  confirming,
+  label,
+  onClick,
+}: {
+  confirming: boolean;
+  label: string;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <Button
+      type="button"
+      variant="overlayEdge"
+      size="content"
+      data-testid="notification-stack-clear"
+      data-confirming={confirming ? "true" : undefined}
+      data-notif-control=""
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium transition-[width,color] duration-200 ease-out",
+        confirming ? "w-12" : "w-8",
+      )}
+    >
+      <ClearConfirmationContent confirming={confirming} />
+    </Button>
+  );
+}
+
 export function NotificationsHomeCenter({
   emptyGestureTargetRef,
   shadeLayoutTargetRef,
@@ -3013,16 +3042,9 @@ export function NotificationsHomeCenter({
                       >
                         Show Less
                       </Button>
-                      <Button
-                        type="button"
-                        variant="notificationClear"
-                        size="notificationClear"
-                        data-testid="notification-stack-clear"
-                        data-confirming={
-                          confirmingGroupKey === group.key ? "true" : undefined
-                        }
-                        data-notif-control=""
-                        aria-label={
+                      <NotificationStackClearButton
+                        confirming={confirmingGroupKey === group.key}
+                        label={
                           confirmingGroupKey === group.key
                             ? `Confirm clear ${group.label} notifications`
                             : `Clear ${group.label} notifications`
@@ -3033,15 +3055,7 @@ export function NotificationsHomeCenter({
                             allGroupRows.map((notification) => notification.id),
                           )
                         }
-                        className={cn(
-                          "eliza-notif-control-transition transition-[width,color] duration-200 ease-out",
-                          confirmingGroupKey === group.key ? "w-12" : "w-8",
-                        )}
-                      >
-                        <ClearConfirmationContent
-                          confirming={confirmingGroupKey === group.key}
-                        />
-                      </Button>
+                      />
                     </span>
                   </div>
                 ) : null}

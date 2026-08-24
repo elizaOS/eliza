@@ -1069,7 +1069,7 @@ function ConnectorPluginCard({
                   <Button
                     ref={managedDiscordContinueControl.ref}
                     variant="default"
-                    size="compactWide"
+                    size="compact"
                     onClick={() => {
                       void handleConfirmManagedDiscordAgent();
                     }}

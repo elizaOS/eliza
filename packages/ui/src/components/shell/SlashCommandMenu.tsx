@@ -340,10 +340,10 @@ export function SlashCommandMenu({
               if (e.pointerType !== "touch") e.preventDefault();
             }}
             onClick={() => onPick(index)}
-            variant="wallpaperRow"
-            size="wallpaperRow"
+            variant="transparent"
+            size="content"
             align="start"
-            className="whitespace-normal"
+            className="h-auto w-full gap-3 rounded-none bg-transparent px-3.5 py-2 font-normal whitespace-normal hover:bg-white/8 data-[active=true]:bg-white/15"
           >
             <span
               className={cn(

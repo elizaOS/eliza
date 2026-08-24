@@ -65,10 +65,15 @@ export function ConfirmDialog({
           <Button
             variant={
               variant === "danger"
-                ? "confirmDanger"
+                ? "destructive"
                 : variant === "warn"
-                  ? "confirmWarning"
+                  ? "transparent"
                   : "default"
+            }
+            className={
+              variant === "warn"
+                ? "border border-warn/55 bg-warn/92 text-black hover:border-warn hover:bg-warn"
+                : undefined
             }
             onClick={onConfirm}
           >

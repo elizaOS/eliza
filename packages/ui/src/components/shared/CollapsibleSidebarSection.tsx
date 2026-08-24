@@ -59,13 +59,13 @@ export function CollapsibleSidebarSection({
       <div className="flex items-center gap-1 pr-1">
         <Button
           variant="ghostMuted"
-          size="sidebarToggle"
+          size="content"
           align="start"
           onClick={() => onToggleCollapsed(sectionKey)}
           aria-expanded={!collapsed}
           aria-controls={bodyId}
           data-testid={`${testIdPrefix}-toggle-${sectionKey}`}
-          className="min-w-0 flex-1"
+          className="h-auto min-w-0 flex-1 gap-1.5 rounded-sm px-1.5 py-1 text-xs font-medium leading-none"
         >
           {icon ? (
             <span className="inline-flex shrink-0 items-center justify-center text-muted">

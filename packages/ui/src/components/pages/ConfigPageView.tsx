@@ -635,7 +635,7 @@ export function ConfigPageView({
               <Button
                 ref={secretsEl.ref}
                 variant="outlineMuted"
-                size="labeledForm"
+                size="formAction"
                 {...secretsEl.agentProps}
                 onClick={handleOpenVault}
               >

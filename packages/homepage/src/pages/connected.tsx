@@ -468,6 +468,7 @@ export default function ConnectedPage() {
           ) : (
             <Button
               variant="publicTile"
+              size="publicTile"
               type="button"
               onClick={() => navigate("/get-started?method=telegram&link=true")}
             >
@@ -530,6 +531,7 @@ export default function ConnectedPage() {
               <Button
                 type="button"
                 variant="publicTile"
+                size="publicTile"
                 onClick={() => setShowPhoneInput((v) => !v)}
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
@@ -644,6 +646,7 @@ export default function ConnectedPage() {
               <Button
                 type="button"
                 variant="publicTile"
+                size="publicTile"
                 onClick={handleOpenWhatsApp}
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
@@ -699,6 +702,7 @@ export default function ConnectedPage() {
           ) : (
             <Button
               variant="publicTile"
+              size="publicTile"
               type="button"
               onClick={() => navigate("/get-started?method=discord&link=true")}
             >

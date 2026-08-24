@@ -41,7 +41,17 @@ do not rename the bypass or reproduce it in an adapter.
 A local adapter is valid when it composes a canonical atom and owns meaningful
 domain behavior. An adapter that only renames props or duplicates styling is a
 violation. Add a canonical variant only after at least two maintained callers
-demonstrate the same need.
+demonstrate the same need. The compliance gate derives every `Button` variant,
+size, shape, and alignment value from the canonical `buttonVariants` config and
+counts its maintained `Button` and `buttonVariants(...)` call sites. A value
+with fewer than two call sites fails. Stateful product presentation belongs in
+an exported adapter that renders the canonical atom and is registered in
+`scripts/design-system-adapters.json`. Each registry entry fixes the owning
+file, exported symbol, canonical primitive, owner, rationale, and composition
+count. The gate rejects unknown primitives, missing exports, moved or removed
+compositions, count drift, and attempts to reuse an adapter's local recipe from
+another caller. Exceptions remain reserved for renderer, native, or external
+system boundaries; they do not waive the Button reuse rule.
 
 Skeleton geometry is caller-owned because it previews the dimensions and shape
 of caller content. Skeleton paint, animation, and effects remain owned by the

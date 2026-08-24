@@ -180,7 +180,7 @@ export function renderMolecularMarkdown(report) {
     lines.push(`- Decision: **${cluster.disposition}** — ${cluster.rationale}`);
     lines.push("");
   }
-  return `${lines.join("\n")}\n`;
+  return `${lines.join("\n").trimEnd()}\n`;
 }
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {

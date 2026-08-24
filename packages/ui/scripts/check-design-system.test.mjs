@@ -4,15 +4,172 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyExceptions,
+  assertRegisteredAdaptersUsed,
   buildComplianceReport,
   compareToBaseline,
   compareToTightBaseline,
+  extractButtonAxisDefinitions,
+  findUnderusedButtonAxes,
   RULES,
   renderComplianceMarkdown,
   resolvesToCanonical,
+  scanButtonAxisUsages,
   scanSourceText,
+  validateAdapterRegistry,
   validateExceptions,
 } from "./check-design-system.mjs";
+
+test("registered adapters own local recipes without creating a caller escape hatch", () => {
+  const file = new URL(
+    "../src/components/__scanner-adapter__.tsx",
+    import.meta.url,
+  ).pathname;
+  const relativeFile = "packages/ui/src/components/__scanner-adapter__.tsx";
+  const adapter = {
+    file: relativeFile,
+    symbol: "RegisteredAdapter",
+    primitive: "Button",
+    owner: "scanner fixture",
+    reason: "Exercises exact adapter ownership.",
+    matchCount: 1,
+  };
+  const key = `${relativeFile}:RegisteredAdapter:Button`;
+  const adapterMatches = new Map();
+  const adapterExports = new Set();
+  const findings = scanSourceText({
+    adapterExports,
+    adapterMatches,
+    file,
+    registeredAdapters: new Map([[key, adapter]]),
+    source: `
+      import { Button } from "@elizaos/ui/button";
+      const recipe = "bg-card text-txt";
+      export function RegisteredAdapter() {
+        return <Button className={recipe}>Owned</Button>;
+      }
+      export function BorrowingCaller() {
+        return <Button className={recipe}>Borrowed</Button>;
+      }
+    `,
+  });
+
+  assertRegisteredAdaptersUsed([adapter], adapterMatches, adapterExports);
+  assert.equal(
+    findings.filter((finding) => finding.rule === "visual-override").length,
+    1,
+  );
+  assert.equal(findings.at(-1)?.line, 8);
+});
+
+test("adapter registry rejects unknown primitives and stale entries", () => {
+  assert.throws(
+    () =>
+      validateAdapterRegistry({
+        schemaVersion: 1,
+        adapters: [
+          {
+            file: "packages/ui/src/example.tsx",
+            symbol: "Example",
+            primitive: "ImaginaryControl",
+            owner: "fixture",
+            reason: "Unknown primitive fixture.",
+            matchCount: 1,
+          },
+        ],
+      }),
+    /Invalid design-system adapter/,
+  );
+  const stale = {
+    file: "packages/ui/src/example.tsx",
+    symbol: "MissingAdapter",
+    primitive: "Button",
+    owner: "fixture",
+    reason: "Stale adapter fixture.",
+    matchCount: 1,
+  };
+  assert.throws(
+    () => assertRegisteredAdaptersUsed([stale], new Map(), new Set()),
+    /must name an exported symbol/,
+  );
+  const key = `${stale.file}:${stale.symbol}:${stale.primitive}`;
+  assert.throws(
+    () =>
+      assertRegisteredAdaptersUsed(
+        [stale],
+        new Map([[key, 2]]),
+        new Set([key]),
+      ),
+    /expected 1 canonical composition\(s\), found 2/,
+  );
+});
+
+test("Button axes require two maintained call sites", () => {
+  const buttonFile = new URL(
+    "../src/components/ui/__scanner-button__.tsx",
+    import.meta.url,
+  ).pathname;
+  const { definitions, defaults } = extractButtonAxisDefinitions({
+    file: buttonFile,
+    source: `
+      const buttonVariants = cva("base", {
+        variants: {
+          variant: { default: "default", shared: "shared", oneOff: "one-off" },
+          size: { default: "default" },
+          shape: { default: "default" },
+          align: { center: "center" },
+        },
+        defaultVariants: {
+          variant: "default",
+          size: "default",
+          shape: "default",
+          align: "center",
+        },
+      });
+    `,
+  });
+  const callerFile = new URL(
+    "../src/components/__scanner-caller__.tsx",
+    import.meta.url,
+  ).pathname;
+  const firstUsages = scanButtonAxisUsages({
+    defaults,
+    file: callerFile,
+    source: `
+      import { Button } from "@elizaos/ui/button";
+      export function First() {
+        return <><Button variant="shared" /><Button variant="oneOff" /></>;
+      }
+    `,
+  });
+  const secondUsages = scanButtonAxisUsages({
+    defaults,
+    file: callerFile.replace("caller", "second-caller"),
+    source: `
+      import { Button } from "@elizaos/ui/button";
+      export function Second() { return <Button variant="shared" />; }
+    `,
+  });
+
+  const underused = findUnderusedButtonAxes({
+    definitions,
+    usages: [...firstUsages, ...secondUsages],
+  });
+  assert.equal(
+    underused.some(
+      (entry) => entry.axis === "variant" && entry.value === "shared",
+    ),
+    false,
+  );
+  assert.deepEqual(
+    underused
+      .filter((entry) => entry.axis === "variant")
+      .map(({ callerCount, value }) => ({ callerCount, value })),
+    [
+      { callerCount: 0, value: "default" },
+      { callerCount: 1, value: "oneOff" },
+    ],
+  );
+});
 
 test("dynamic class expressions cannot hide canonical visual overrides", () => {
   const file = new URL("../src/__scanner-fixture__.tsx", import.meta.url)
@@ -44,7 +201,9 @@ test("dynamic class expressions cannot hide canonical visual overrides", () => {
   );
 });
 
-test("compliance inventory is deterministic and covers every governed rule", () => {
+test("compliance inventory is deterministic and covers every governed rule", {
+  timeout: 15_000,
+}, () => {
   const now = new Date("2026-08-24T00:00:00Z");
   const first = buildComplianceReport({ now });
   const second = buildComplianceReport({ now });
@@ -67,6 +226,7 @@ test("compliance inventory is deterministic and covers every governed rule", () 
   );
   assert.equal(first.counts["atomic-duplicate"], 0);
   assert.equal(first.counts["raw-control"], 0);
+  assert.equal(first.counts["button-axis-reuse"], 0);
   assert.equal(
     first.findings.some(
       (finding) =>
@@ -97,7 +257,9 @@ test("supported UI barrels resolve to canonical atoms without relying on debt", 
   }
 });
 
-test("baseline comparison rejects increases and permits reductions", () => {
+test("baseline comparison rejects increases and permits reductions", {
+  timeout: 15_000,
+}, () => {
   const report = buildComplianceReport({
     now: new Date("2026-08-24T00:00:00Z"),
   });
@@ -116,7 +278,9 @@ test("baseline comparison rejects increases and permits reductions", () => {
   ]);
 });
 
-test("tight baseline comparison rejects stale allowances", () => {
+test("tight baseline comparison rejects stale allowances", {
+  timeout: 15_000,
+}, () => {
   const report = buildComplianceReport({
     now: new Date("2026-08-24T00:00:00Z"),
   });
@@ -183,15 +347,29 @@ test("exceptions must be valid, current, exact, and used", () => {
     () => validateExceptions({ schemaVersion: 1, exceptions: [{}] }, now),
     /Invalid design-system exception/,
   );
+  assert.throws(
+    () =>
+      validateExceptions(
+        {
+          ...valid,
+          exceptions: [{ ...valid.exceptions[0], rule: "button-axis-reuse" }],
+        },
+        now,
+      ),
+    /Invalid design-system exception/,
+  );
 });
 
-test("markdown exposes counts and either source evidence or a zero-debt result", () => {
+test("markdown exposes counts and either source evidence or a zero-debt result", {
+  timeout: 15_000,
+}, () => {
   const report = buildComplianceReport({
     now: new Date("2026-08-24T00:00:00Z"),
   });
   const markdown = renderComplianceMarkdown(report);
   assert.match(markdown, /Design-system compliance report/);
   assert.match(markdown, /atomic-duplicate/);
+  assert.match(markdown, /Registered adapters/);
   assert.match(markdown, /Scanned \d+ governed React source files/);
   if (report.findings.length > 0) assert.match(markdown, /packages\//);
   else assert.match(markdown, /### visual-override\n\nNone\./);

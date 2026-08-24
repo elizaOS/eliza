@@ -33,7 +33,7 @@ Clusters share both a role and an atomic dependency signature. Detection creates
 - `WithdrawDialog` in `packages/ui/src/cloud/applications/components/withdraw-dialog.tsx:45`
 - `SaveCommandModal` in `packages/ui/src/components/chat/SaveCommandModal.tsx:37`
 - `ChatConversationRenameDialog` in `packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx:41`
-- `PromptDialog` in `packages/ui/src/components/ui/confirm-dialog.tsx:95`
+- `PromptDialog` in `packages/ui/src/components/ui/confirm-dialog.tsx:100`
 - Decision: **distinct-domain-compositions** — Withdrawal, command persistence, conversation renaming, and generic prompting have different validation, pending, error, and result contracts; their only stable shared behavior already belongs to the canonical Dialog, Input, and Button atoms.
 
 ### panel: button + input
@@ -80,4 +80,3 @@ Clusters share both a role and an atomic dependency signature. Detection creates
 - `AgentSection` in `packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx:109`
 - `CloudAgentsSection` in `packages/ui/src/components/settings/CloudAgentsSection.tsx:77`
 - Decision: **shared-lifecycle-owner** — The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers.
-

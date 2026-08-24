@@ -57,7 +57,7 @@ export function PageLayoutMobileDrawer({
         <div className="mb-2 flex shrink-0 md:hidden">
           <Button
             type="button"
-            variant="pageDrawerTrigger"
+            variant="outline"
             size="pageDrawerTrigger"
             className={cn(
               "max-w-[min(11rem,100%)]",

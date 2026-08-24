@@ -75,8 +75,8 @@ export function ConnectedCapabilityChips({
             {chip.label}
             {missing && chip.action === "grant" && onGrantCapability ? (
               <Button
-                variant="accentGhost"
-                size="labeledMicro"
+                variant="link"
+                size="micro"
                 type="button"
                 disabled={busy}
                 onClick={() => onGrantCapability(chip.id)}

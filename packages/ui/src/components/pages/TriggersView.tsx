@@ -835,8 +835,9 @@ function TriggersLayout() {
         <div className="flex min-h-0 flex-1 flex-col">
           {showDetailPane ? (
             <Button
-              variant="mobileBack"
+              variant="ghostMuted"
               size="content"
+              align="start"
               className="mb-3 md:hidden"
               onClick={() => {
                 setSelectedTriggerId(null);

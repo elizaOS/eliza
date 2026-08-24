@@ -320,8 +320,8 @@ export function HomePill({
 
   return (
     <Button
-      variant="homePill"
-      size="homePill"
+      variant="transparent"
+      size="content"
       aria-label={label}
       aria-busy={needsAuth && signingIn ? true : undefined}
       aria-pressed={needsAuth ? undefined : isOpen}
@@ -357,6 +357,7 @@ export function HomePill({
         // packages/ui/src).
         "group pointer-events-auto relative flex items-center justify-center",
         "transition-[width,height,transform] duration-200 motion-reduce:transition-none",
+        "h-11 w-16 rounded-full bg-transparent p-0 shadow-none hover:bg-transparent active:scale-95 data-[composer-sized=true]:h-16 data-[composer-sized=true]:w-[36rem] data-[needs-auth=true]:active:scale-[0.96] focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
     >
       <span

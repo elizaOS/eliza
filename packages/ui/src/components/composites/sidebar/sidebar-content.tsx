@@ -268,7 +268,7 @@ export const SidebarItemButton = React.forwardRef<
     <Button
       ref={ref}
       variant="transparent"
-      size="sidebarItem"
+      size="rowContent"
       align="start"
       data-sidebar-item-button
       className={cn("flex min-w-0 flex-1 self-stretch items-start", className)}
@@ -350,11 +350,14 @@ export const SidebarRailItem = React.forwardRef<
   return (
     <Button
       ref={ref}
-      variant="sidebarRail"
+      variant="transparent"
       size="icon-lg"
       data-state={active ? "on" : "off"}
       data-sidebar-rail-item
-      className={cn("relative shrink-0", className)}
+      className={cn(
+        "relative shrink-0 border border-border/24 bg-card text-xs font-semibold tracking-[0.02em] text-muted-strong transition-[border-color,background-color,color,box-shadow,transform] duration-150 hover:border-border/38 hover:bg-surface hover:text-txt active:scale-[0.98] data-[state=on]:border-accent data-[state=on]:bg-accent-subtle data-[state=on]:text-txt",
+        className,
+      )}
       {...props}
     >
       <span className="inline-flex items-center justify-center truncate px-1 [&_img]:h-4 [&_img]:w-4 [&_svg]:h-4 [&_svg]:w-4">
@@ -381,10 +384,13 @@ export function SidebarItemAction({
 }: SidebarItemActionProps) {
   return (
     <Button
-      variant="sidebarAction"
+      variant="transparent"
       size="micro"
       data-sidebar-item-action
-      className={cn("absolute right-1.5 top-1.5 transition-opacity", className)}
+      className={cn(
+        "absolute right-1.5 top-1.5 bg-bg/80 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-danger/10 hover:text-danger",
+        className,
+      )}
       {...props}
     />
   );

@@ -76,11 +76,11 @@ export function TrayLauncher({
             key={row.itemId}
             type="button"
             variant="ghostMuted"
-            size="trayRow"
+            size="content"
             align="start"
             data-testid={`tray-launcher-row-${row.itemId}`}
             onClick={() => handleSelect(row.itemId)}
-            className="w-full"
+            className="h-9 w-full gap-3 rounded-sm px-2 text-sm font-normal"
           >
             <Icon aria-hidden="true" className="text-muted-strong" />
             <span className="truncate">{row.label}</span>

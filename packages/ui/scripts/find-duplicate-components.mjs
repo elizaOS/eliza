@@ -507,7 +507,7 @@ export function renderMarkdown(report) {
     }
     lines.push("");
   }
-  return `${lines.join("\n")}\n`;
+  return `${lines.join("\n").trimEnd()}\n`;
 }
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {

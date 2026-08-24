@@ -1446,7 +1446,8 @@ export default function GetStartedPage() {
               <div className="w-full flex flex-col gap-3">
                 <Button
                   type="button"
-                  variant="publicPrimary"
+                  variant="default"
+                  size="publicTile"
                   data-testid="onboarding-signin-discord"
                   onClick={() => handleMethodSelect("discord")}
                   style={cardStyle(0)}
@@ -1466,6 +1467,7 @@ export default function GetStartedPage() {
                 <Button
                   type="button"
                   variant="publicTile"
+                  size="publicTile"
                   aria-label={t("homepage_eliza.getStarted.solanaAria", {
                     defaultValue: "Sign in with Solana",
                   })}
