@@ -1,3 +1,4 @@
+-- Durable cancellation receipts follow the Personal Shared 0312 migration.
 ALTER TABLE "container_compute_stop_intents"
   ADD COLUMN "authorization" text DEFAULT 'billing_request' NOT NULL;
 --> statement-breakpoint
