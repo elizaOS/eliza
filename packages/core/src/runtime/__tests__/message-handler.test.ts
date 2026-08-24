@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 import {
+	getMessageHandlerReply,
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
 	SIMPLE_CONTEXT_ID,
@@ -581,5 +582,340 @@ describe("explicit media-ask promotion", () => {
 		expect(route.output.plan.candidateActions ?? []).not.toContain(
 			"GENERATE_MEDIA",
 		);
+	});
+});
+
+describe("plain-text keyed transcript recovery (#11712)", () => {
+	it("parses a raw keyed transcript echo instead of letting it ship verbatim", () => {
+		const parsed = parseMessageHandlerOutput(
+			[
+				"shouldRespond: RESPOND",
+				"",
+				"replyText: it's live https://example/",
+				"",
+				"contexts: simple",
+				"",
+				"candidateActionNames: BASH, TASKS",
+			].join("\n"),
+		);
+		expect(parsed?.processMessage).toBe("RESPOND");
+		expect(parsed?.thought).toBe("");
+		expect(parsed?.plan.contexts).toEqual(["simple"]);
+		expect(parsed?.plan.reply).toBe("it's live https://example/");
+		expect(parsed?.plan.candidateActions).toEqual(["BASH", "TASKS"]);
+	});
+
+	it("preserves a multi-line replyText value containing embedded blank lines", () => {
+		const parsed = parseMessageHandlerOutput(
+			[
+				"shouldRespond: RESPOND",
+				"",
+				"replyText: built it out at /workspace",
+				"",
+				"go click around and tell me what breaks.",
+				"",
+				"contexts: simple",
+			].join("\n"),
+		);
+		expect(parsed?.plan.reply).toBe(
+			"built it out at /workspace\n\ngo click around and tell me what breaks.",
+		);
+	});
+
+	it("recovers an IGNORE echo whose list fields read 'none' as empty selections", () => {
+		const parsed = parseMessageHandlerOutput(
+			"shouldRespond: IGNORE\n\ncontexts: none",
+		);
+		if (!parsed) throw new Error("expected parsed transcript output");
+		expect(parsed.processMessage).toBe("IGNORE");
+		expect(parsed.plan.contexts).toEqual([]);
+		expect(routeMessageHandlerOutput(parsed)).toEqual({
+			type: "ignored",
+			output: parsed,
+		});
+	});
+
+	it("returns null for prose that merely quotes field lines, keeping the tolerant plain-text path intact", () => {
+		const raw = [
+			"You pasted what looks like a leaked transcript.",
+			"",
+			"shouldRespond: RESPOND",
+			"",
+			"replyText: hello",
+		].join("\n");
+		expect(parseMessageHandlerOutput(raw)).toBeNull();
+	});
+
+	it("returns null when transcript-shaped text carries only non-hallmark fields", () => {
+		const raw = ["topics: website build, aurora", "", "emotion: none"].join(
+			"\n",
+		);
+		expect(parseMessageHandlerOutput(raw)).toBeNull();
+	});
+});
+
+describe("hint-array rejection contract", () => {
+	it("rejects the envelope when candidateActionNames is not an array", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "On it.",
+				contexts: ["general"],
+				candidateActionNames: "BASH",
+			}),
+		);
+		expect(parsed).toBeNull();
+	});
+
+	it("rejects the envelope when candidateActionNames contains a non-string item", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "On it.",
+				contexts: ["general"],
+				candidateActionNames: ["BASH", 7],
+			}),
+		);
+		expect(parsed).toBeNull();
+	});
+
+	it("rejects the envelope when intents contains a non-string item", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "On it.",
+				contexts: ["general"],
+				intents: ["delete reminder", 42],
+			}),
+		);
+		expect(parsed).toBeNull();
+	});
+
+	it("omits the candidateActions and intents keys when neither hint was sent", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "Hello.",
+				contexts: ["simple"],
+			}),
+		);
+		expect(parsed?.plan.candidateActions).toBeUndefined();
+		expect(parsed?.plan.intents).toBeUndefined();
+	});
+});
+
+describe("intents propagation", () => {
+	it("carries declared intents through to the plan in order", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "On both.",
+				contexts: ["general"],
+				intents: ["delete reminder", "create reminder"],
+			}),
+		);
+		expect(parsed?.plan.intents).toEqual([
+			"delete reminder",
+			"create reminder",
+		]);
+	});
+
+	it("omits the intents key when Stage 1 declares none", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "Done.",
+				contexts: ["simple"],
+				intents: [],
+			}),
+		);
+		expect(parsed?.plan.intents).toBeUndefined();
+	});
+});
+
+describe("reminder-ask denial promotion", () => {
+	it("promotes a capability denial for an explicit reminder ask to tasks planning and seeds both reminder siblings", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "I don't have a reminder tool in this setup.",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		if (!parsed) throw new Error("expected parsed output");
+		const route = routeMessageHandlerOutput(parsed, {
+			messageText: "remind me to stretch in 20 minutes",
+		});
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["tasks"]);
+			expect(route.output.plan.candidateActions).toContain("OWNER_REMINDERS");
+			expect(route.output.plan.candidateActions).toContain("TRIGGER");
+			expect(route.output.plan.candidateActions).not.toContain(
+				"GENERATE_MEDIA",
+			);
+		}
+	});
+
+	it("keeps the same denial a final reply when the user did not ask for a reminder", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "I don't have a reminder tool in this setup.",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		if (!parsed) throw new Error("expected parsed output");
+		expect(routeMessageHandlerOutput(parsed).type).toBe("final_reply");
+	});
+});
+
+describe("task-status claim promotion", () => {
+	it("promotes a task-state claim for an explicit status ask to tasks planning and seeds TASKS", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "no such task exists right now.",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		if (!parsed) throw new Error("expected parsed output");
+		const route = routeMessageHandlerOutput(parsed, {
+			messageText: "did the website build finish?",
+		});
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["tasks"]);
+			expect(route.output.plan.candidateActions).toContain("TASKS");
+		}
+	});
+
+	it("keeps an unprompted task-state claim a final reply", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "no such task exists right now.",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		if (!parsed) throw new Error("expected parsed output");
+		expect(routeMessageHandlerOutput(parsed).type).toBe("final_reply");
+	});
+});
+
+describe("shouldRespond normalization fallbacks", () => {
+	it("defaults an unrecognized routing verb to RESPOND", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "MAYBE",
+				replyText: "Hello.",
+				contexts: ["simple"],
+			}),
+		);
+		expect(parsed?.processMessage).toBe("RESPOND");
+	});
+
+	it("normalizes lowercase routing verbs before routing", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "ignore",
+				replyText: "",
+				contexts: [],
+			}),
+		);
+		if (!parsed) return;
+		expect(parsed.processMessage).toBe("IGNORE");
+		expect(routeMessageHandlerOutput(parsed).type).toBe("ignored");
+	});
+});
+
+describe("context normalization in the JSON envelope", () => {
+	it("trims context entries and drops blank ones", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "Hello.",
+				contexts: [" simple ", "", "calendar "],
+			}),
+		);
+		expect(parsed?.plan.contexts).toEqual(["simple", "calendar"]);
+	});
+
+	it("collapses a non-array contexts value to an empty selection", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "Hello.",
+				contexts: "general",
+			}),
+		);
+		expect(parsed?.plan.contexts).toEqual([]);
+	});
+});
+
+describe("getMessageHandlerReply", () => {
+	it("trims surrounding whitespace from the planned reply", () => {
+		expect(
+			getMessageHandlerReply({
+				processMessage: "RESPOND",
+				thought: "",
+				plan: { contexts: [], reply: "  padded reply  " },
+			}),
+		).toBe("padded reply");
+	});
+
+	it("yields an empty string when the plan carries no reply", () => {
+		expect(
+			getMessageHandlerReply({
+				processMessage: "RESPOND",
+				thought: "",
+				plan: { contexts: [] },
+			}),
+		).toBe("");
+	});
+});
+
+describe("progress-ack length cap", () => {
+	it("keeps a long progress-opener answer a final reply instead of promoting it", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText:
+					"checking the forecast, fetching your calendar, and gathering your notes now",
+				contexts: ["simple"],
+				candidateActionNames: [],
+			}),
+		);
+		if (!parsed) throw new Error("expected parsed output");
+		const route = routeMessageHandlerOutput(parsed);
+		expect(route.type).toBe("final_reply");
+		if (route.type === "final_reply") {
+			expect(route.reply).toBe(
+				"checking the forecast, fetching your calendar, and gathering your notes now",
+			);
+		}
+	});
+});
+
+describe("candidate-action promotion arm", () => {
+	it("promotes to general planning when candidates are named and requiresTool is unset rather than false", () => {
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "Tool hinted, flag omitted.",
+			plan: {
+				contexts: [SIMPLE_CONTEXT_ID],
+				candidateActions: ["BASH"],
+				reply: "On it.",
+			},
+		};
+		const route = routeMessageHandlerOutput(output);
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["general"]);
+		}
 	});
 });
