@@ -314,11 +314,27 @@ export class InboxUnsubscribeService {
         continue;
       }
       existing.messageCount += 1;
-      existing.latestSeenAt = message.receivedAt;
-      existing.latestMessageId = message.id;
-      existing.latestThreadId = message.threadId;
       existing.allMessageIds.push(message.id);
       existing.allThreadIds.push(message.threadId);
+      // Gmail's `users.messages.list` (consumed via the Gmail seam without
+      // re-sorting) returns newest-first, so iteration order is not chronology.
+      // Derive the extremes by timestamp instead of assuming arrival order:
+      // extend firstSeenAt downward, latestSeenAt upward, and only re-point the
+      // latest-message pointers when this message is at least as new as the
+      // current latest. Unparseable timestamps leave the extremes unchanged.
+      const receivedAtMs = Date.parse(message.receivedAt);
+      if (Number.isFinite(receivedAtMs)) {
+        const firstSeenMs = Date.parse(existing.firstSeenAt);
+        if (!Number.isFinite(firstSeenMs) || receivedAtMs < firstSeenMs) {
+          existing.firstSeenAt = message.receivedAt;
+        }
+        const latestSeenMs = Date.parse(existing.latestSeenAt);
+        if (!Number.isFinite(latestSeenMs) || receivedAtMs >= latestSeenMs) {
+          existing.latestSeenAt = message.receivedAt;
+          existing.latestMessageId = message.id;
+          existing.latestThreadId = message.threadId;
+        }
+      }
       if (existing.sampleSubjects.length < 5) {
         existing.sampleSubjects.push(message.subject);
       }
