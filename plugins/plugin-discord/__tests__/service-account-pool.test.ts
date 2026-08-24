@@ -1103,6 +1103,13 @@ describe("DiscordService account-scoped primitives", () => {
 
 	it("serves chat-context history from the gateway cache without a REST fetch or room read", async () => {
 		const { graph, runtime, service } = makeService();
+		for (let index = 0; index < 12; index++) {
+			const cached = makeMessage({
+				id: `cached-${index}`,
+				content: `cached message ${index}`,
+			});
+			graph.textChannel.messages.cache.set(cached.id, cached);
+		}
 		const getRoom = vi.fn(async () => ({
 			id: "00000000-0000-0000-0000-000000000002",
 			channelId: graph.textChannel.id,
@@ -1127,6 +1134,7 @@ describe("DiscordService account-scoped primitives", () => {
 			context,
 		);
 		expect(chatContext?.recentMessages[0]?.text).toBe("hello from discord");
+		expect(chatContext?.recentMessages).toHaveLength(13);
 		expect(getRoom).not.toHaveBeenCalled();
 		expect(graph.textChannel.messages.fetch).not.toHaveBeenCalled();
 

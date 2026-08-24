@@ -126,15 +126,32 @@ describe("experienceProvider", () => {
 		expect(queryCalls).toEqual([
 			{
 				query: "find prior learnings",
-				limit: 5,
 				minConfidence: 0.6,
 				minImportance: 0.5,
 				includeRelated: true,
 			},
 		]);
 		expect(listCalls).toEqual([
-			{ limit: 3, minConfidence: 0.7, minImportance: 0.7 },
+			{ minConfidence: 0.7, minImportance: 0.7 },
 		]);
+	});
+
+	it("renders every relevant experience beyond the former default limits", async () => {
+		const semantic = Array.from({ length: 12 }, (_, index) =>
+			makeExperience(`semantic-${index}`),
+		);
+		const top = Array.from({ length: 8 }, (_, index) =>
+			makeExperience(`top-${index}`),
+		);
+		const { runtime } = makeRuntime({ semantic, top });
+
+		const result = await experienceProvider.get(
+			runtime,
+			makeMessage("retrieve every relevant experience"),
+		);
+
+		expect(result.data).toMatchObject({ count: 20, experiences: [...semantic, ...top] });
+		expect(result.text).toContain("20. DO: learning-top-7");
 	});
 
 	it("preserves source order, keeps the later duplicate value, and renders every unique result", async () => {

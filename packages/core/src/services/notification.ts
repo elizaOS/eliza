@@ -36,9 +36,6 @@ import { asUUID, type UUID } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { Service, ServiceType } from "../types/service.ts";
 
-/** Max notifications retained per agent in the inbox. */
-const MAX_NOTIFICATIONS = 300;
-
 const RECOVERY_BASE_DELAY_MS = 1_000;
 const RECOVERY_MAX_DELAY_MS = 30_000;
 
@@ -341,8 +338,7 @@ export class NotificationService extends Service {
 		);
 		if (Array.isArray(stored)) {
 			this.notifications = stored
-				.filter((n) => n && typeof n.id === "string" && n.title)
-				.slice(-MAX_NOTIFICATIONS);
+				.filter((n) => n && typeof n.id === "string" && n.title);
 		}
 	}
 
@@ -365,7 +361,6 @@ export class NotificationService extends Service {
 					.filter(
 						(entry) => entry && typeof entry.id === "string" && entry.title,
 					)
-					.slice(-MAX_NOTIFICATIONS)
 			: previous;
 	}
 
@@ -388,17 +383,17 @@ export class NotificationService extends Service {
 	 * Create, persist, and broadcast a notification. Returns the stamped record.
 	 */
 	async notify(input: NotificationInput): Promise<AgentNotification> {
-		return this.enqueueWrite(() => this.notifySerialized(input, false, true));
+		return this.enqueueWrite(() => this.notifySerialized(input, true));
 	}
 
 	/**
-	 * Persist without evicting an unrelated row. Exact import owners use this
-	 * boundary so capacity races fail and compensate instead of losing history.
+	 * Compatibility boundary for exact import owners. The inbox retains all
+	 * notifications, so this has the same lossless behavior as {@link notify}.
 	 */
 	async notifyWithoutEviction(
 		input: NotificationInput,
 	): Promise<AgentNotification> {
-		return this.enqueueWrite(() => this.notifySerialized(input, true, true));
+		return this.enqueueWrite(() => this.notifySerialized(input, true));
 	}
 
 	/**
@@ -415,13 +410,12 @@ export class NotificationService extends Service {
 				(entry) => entry.groupKey === input.groupKey,
 			);
 			if (grouped.length === 1 && isExact(grouped[0])) return grouped[0];
-			return this.notifySerialized(input, true, false);
+			return this.notifySerialized(input, false);
 		});
 	}
 
 	private async notifySerialized(
 		input: NotificationInput,
-		rejectWhenFull: boolean,
 		coalesceGroup: boolean,
 	): Promise<AgentNotification> {
 		const previousNotifications = [...this.notifications];
@@ -487,16 +481,7 @@ export class NotificationService extends Service {
 			agentId: input.agentId ?? (this.runtime.agentId as UUID),
 		};
 
-		if (rejectWhenFull && this.notifications.length >= MAX_NOTIFICATIONS) {
-			this.notifications = previousNotifications;
-			throw new Error(
-				"[NotificationService] notification inbox capacity is exhausted",
-			);
-		}
 		this.notifications.push(notification);
-		if (this.notifications.length > MAX_NOTIFICATIONS) {
-			this.notifications = this.notifications.slice(-MAX_NOTIFICATIONS);
-		}
 
 		try {
 			await this.persist();
@@ -588,14 +573,9 @@ export class NotificationService extends Service {
 		return [...this.notifications].reverse();
 	}
 
-	/** Capacity available after expired rows are pruned by the next write. */
+	/** The lossless inbox has no item-count capacity boundary. */
 	getAvailableCapacity(): number {
-		const now = Date.now();
-		return Math.max(
-			0,
-			MAX_NOTIFICATIONS -
-				this.notifications.filter((entry) => !isExpired(entry, now)).length,
-		);
+		return Number.POSITIVE_INFINITY;
 	}
 
 	getUnreadCount(): number {

@@ -2631,10 +2631,7 @@ export class DiscordService extends Service implements IDiscordService {
 
 			if (normalizedQuery.length >= 2) {
 				try {
-					const members = await guild.members.fetch({
-						query: normalizedQuery,
-						limit: 10,
-					});
+					const members = await guild.members.fetch();
 					for (const member of members.values()) {
 						const score = scoreDiscordConnectorMatch(
 							normalizedQuery,
@@ -2860,7 +2857,7 @@ export class DiscordService extends Service implements IDiscordService {
 		const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
 		const cached = channelRecord.messages?.cache;
 		if (cached) {
-			for (const message of Array.from(cached.values()).slice(-10)) {
+			for (const message of cached.values()) {
 				if (!message.content.trim()) {
 					continue;
 				}

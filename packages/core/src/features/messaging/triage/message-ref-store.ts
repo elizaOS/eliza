@@ -1,5 +1,5 @@
 /**
- * Bounded turn-local cache for MessageRefs and active draft previews.
+ * Turn-local cache for MessageRefs and active draft previews.
  *
  * Connector stores remain authoritative for inbox data. Deferred sends copy
  * their complete draft snapshot into the canonical ScheduledTask row before
@@ -8,25 +8,10 @@
 
 import type { DraftRecord, MessageRef, MessageSource } from "./types.ts";
 
-// Process-local stores grow one entry per message/draft ever seen by triage.
-// Without a bound, a long-running agent that triages many messages leaks memory.
-// Cap by last-write order (Map insertion order refreshed on writes) — oldest
-// refs drop once over the cap while recently-saved active entries stay resident.
-const MAX_MESSAGES = 5000;
-const MAX_DRAFTS = 2000;
-
 function setMostRecent<K, V>(map: Map<K, V>, key: K, value: V): void {
 	// Map.set preserves an existing key's insertion slot, so delete it first.
 	map.delete(key);
 	map.set(key, value);
-}
-
-function capMap<K, V>(map: Map<K, V>, max: number): void {
-	while (map.size > max) {
-		const oldest = map.keys().next().value;
-		if (oldest === undefined) break;
-		map.delete(oldest);
-	}
 }
 
 export class MessageRefStore {
@@ -35,12 +20,10 @@ export class MessageRefStore {
 
 	saveMessage(ref: MessageRef): void {
 		setMostRecent(this.messages, ref.id, ref);
-		capMap(this.messages, MAX_MESSAGES);
 	}
 
 	saveMessages(refs: readonly MessageRef[]): void {
 		for (const r of refs) setMostRecent(this.messages, r.id, r);
-		capMap(this.messages, MAX_MESSAGES);
 	}
 
 	getMessage(id: string): MessageRef | null {
@@ -81,7 +64,6 @@ export class MessageRefStore {
 
 	saveDraft(record: DraftRecord): void {
 		setMostRecent(this.drafts, record.draftId, record);
-		capMap(this.drafts, MAX_DRAFTS);
 	}
 
 	getDraft(draftId: string): DraftRecord | null {
