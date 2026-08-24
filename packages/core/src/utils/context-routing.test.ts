@@ -94,6 +94,18 @@ describe("inferContextRoutingFromText", () => {
 		).toBe("general");
 		expect(inferContextRoutingFromText("").primaryContext).toBe("general");
 	});
+
+	it("aggregates signal scores per context without duplicating secondary contexts", () => {
+		// "catalog app" and "install plugin" match two distinct patterns under "connectors".
+		const result = inferContextRoutingFromText(
+			"launch catalog app and install plugin",
+		);
+		expect(result.primaryContext).toBe("connectors");
+		expect(result.secondaryContexts).not.toContain("connectors");
+		expect(new Set(result.secondaryContexts).size).toBe(
+			result.secondaryContexts?.length ?? 0,
+		);
+	});
 });
 
 describe("mergeContextRouting", () => {

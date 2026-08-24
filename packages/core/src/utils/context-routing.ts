@@ -429,19 +429,32 @@ export function inferContextRoutingFromText(
 		return { primaryContext: "general", secondaryContexts: [] };
 	}
 
-	const scored = CONTEXT_SIGNALS.map((signal) => ({
-		context: signal.context,
-		score: signal.patterns.reduce(
+	const contextScores = new Map<AgentContext, number>();
+	for (const signal of CONTEXT_SIGNALS) {
+		const matchCount = signal.patterns.reduce(
 			(score, pattern) => score + (pattern.test(normalized) ? 1 : 0),
 			0,
-		),
-	}))
-		.filter((entry) => entry.score > 0)
-		.sort((left, right) => right.score - left.score);
+		);
+		if (matchCount > 0) {
+			contextScores.set(
+				signal.context,
+				(contextScores.get(signal.context) ?? 0) + matchCount,
+			);
+		}
+	}
 
-	if (scored.length === 0) {
+	if (contextScores.size === 0) {
 		return { primaryContext: "general", secondaryContexts: [] };
 	}
+
+	const scored = Array.from(contextScores.entries())
+		.map(([context, score]) => ({ context, score }))
+		.sort((left, right) => {
+			const diff = right.score - left.score;
+			return diff !== 0
+				? diff
+				: `${left.context}`.localeCompare(`${right.context}`);
+		});
 
 	const primaryContext = scored[0].context;
 	const secondaryContexts = scored
