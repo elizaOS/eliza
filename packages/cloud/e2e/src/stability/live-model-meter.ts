@@ -15,6 +15,7 @@ export interface StabilityModelBudgets {
 }
 
 export type StabilityModelFailureCode =
+  | "STABILITY_MODEL_PRE_DISPATCH_REJECTED"
   | "STABILITY_MODEL_USAGE_MISSING"
   | "STABILITY_MODEL_USAGE_MALFORMED"
   | "STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED"
@@ -35,6 +36,20 @@ export interface StabilityModelMeterSnapshot {
   inputTokens: number;
   outputTokens: number;
   failures: StabilityModelFailure[];
+  requestEnvelopes: StabilityModelRequestEnvelopeEvidence[];
+}
+
+export interface StabilityModelRequestEnvelopeEvidence {
+  requestNumber: number;
+  method: string;
+  route: string;
+  bodyBytes: number;
+  observedModel: string | null;
+  requestedMaxOutputTokens: number | null;
+  effectiveMaxOutputTokens: number | null;
+  inputBudgetCharge: number | null;
+  accepted: boolean;
+  failureCode?: StabilityModelFailureCode;
 }
 
 export interface StabilityModelRequestReservation {
@@ -59,6 +74,8 @@ interface ProviderUsage {
   inputTokens: number;
   outputTokens: number;
 }
+
+const INPUT_TOKEN_OVERHEAD_RESERVE = 8_192;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -229,12 +246,280 @@ function providerRouteAllowed(
     : target.pathname === "/v1/messages";
 }
 
+function preDispatchError(message: string): StabilityModelMeterError {
+  return new StabilityModelMeterError(
+    "STABILITY_MODEL_PRE_DISPATCH_REJECTED",
+    message,
+  );
+}
+
+function containsUnsupportedProviderInput(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(containsUnsupportedProviderInput);
+  const record = asRecord(value);
+  if (!record) return false;
+  for (const [key, child] of Object.entries(record)) {
+    const normalizedKey = key.toLowerCase();
+    if (
+      [
+        "image_url",
+        "file_id",
+        "file_url",
+        "input_audio",
+        "audio_url",
+        "video_url",
+      ].includes(normalizedKey)
+    ) {
+      return true;
+    }
+    if (
+      normalizedKey === "type" &&
+      typeof child === "string" &&
+      /(?:image|audio|video|file|web_search|computer|code_interpreter|mcp|connector)/iu.test(
+        child,
+      )
+    ) {
+      return true;
+    }
+    if (containsUnsupportedProviderInput(child)) return true;
+  }
+  return false;
+}
+
+function positiveOutputCap(value: unknown, field: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+    throw preDispatchError(`${field} must be a positive safe integer`);
+  }
+  return value as number;
+}
+
+function parseRequestEnvelope(input: {
+  provider: StabilityModelProvider;
+  route: string;
+  bytes: Buffer;
+  expectedModel: string;
+  remainingInputTokens: number;
+  remainingOutputTokens: number;
+}): Omit<
+  StabilityModelRequestEnvelopeEvidence,
+  "requestNumber" | "method" | "route" | "accepted" | "failureCode"
+> & { forwardBody: Buffer } {
+  let value: unknown;
+  try {
+    value = JSON.parse(input.bytes.toString("utf8"));
+  } catch (error) {
+    // error-policy:J3 The provider request is untrusted and malformed JSON is rejected before dispatch.
+    throw preDispatchError(
+      `provider request body must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const body = asRecord(value);
+  if (!body) throw preDispatchError("provider request body must be an object");
+  const observedModel =
+    typeof body.model === "string" && body.model.length <= 512
+      ? body.model
+      : null;
+  if (observedModel !== input.expectedModel) {
+    throw preDispatchError(
+      "provider request model does not match the stability target",
+    );
+  }
+  for (const indirectContext of [
+    "conversation",
+    "previous_response_id",
+    "prompt",
+  ]) {
+    if (body[indirectContext] !== undefined) {
+      throw preDispatchError(
+        `${indirectContext} provider-hosted context is unsupported`,
+      );
+    }
+  }
+
+  let requestedMaxOutputTokens: number | null;
+  let outputCapField:
+    | "max_output_tokens"
+    | "max_completion_tokens"
+    | "max_tokens";
+  if (input.provider === "openai" && input.route === "/v1/responses") {
+    if (
+      body.max_tokens !== undefined ||
+      body.max_completion_tokens !== undefined
+    ) {
+      throw preDispatchError(
+        "OpenAI Responses output token limit is ambiguous",
+      );
+    }
+    outputCapField = "max_output_tokens";
+    requestedMaxOutputTokens =
+      body.max_output_tokens === undefined
+        ? null
+        : positiveOutputCap(body.max_output_tokens, "max_output_tokens");
+    if (body.input === undefined) {
+      throw preDispatchError("OpenAI Responses input is required");
+    }
+  } else if (
+    input.provider === "openai" &&
+    input.route === "/v1/chat/completions"
+  ) {
+    if (
+      body.max_completion_tokens !== undefined &&
+      body.max_tokens !== undefined
+    ) {
+      throw preDispatchError("OpenAI Chat output token limit is ambiguous");
+    }
+    outputCapField =
+      body.max_completion_tokens !== undefined || body.max_tokens === undefined
+        ? "max_completion_tokens"
+        : "max_tokens";
+    const requested = body.max_completion_tokens ?? body.max_tokens;
+    requestedMaxOutputTokens =
+      requested === undefined
+        ? null
+        : positiveOutputCap(requested, outputCapField);
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+      throw preDispatchError("OpenAI Chat messages must be a non-empty array");
+    }
+  } else {
+    if (
+      body.max_output_tokens !== undefined ||
+      body.max_completion_tokens !== undefined
+    ) {
+      throw preDispatchError("Anthropic output token limit is ambiguous");
+    }
+    outputCapField = "max_tokens";
+    requestedMaxOutputTokens =
+      body.max_tokens === undefined
+        ? null
+        : positiveOutputCap(body.max_tokens, "max_tokens");
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+      throw preDispatchError("Anthropic messages must be a non-empty array");
+    }
+  }
+  if (containsUnsupportedProviderInput(body)) {
+    throw preDispatchError(
+      "multimodal, file, audio, video, and provider-fetched URL inputs are unsupported",
+    );
+  }
+  const effectiveMaxOutputTokens = Math.min(
+    requestedMaxOutputTokens ?? input.remainingOutputTokens,
+    input.remainingOutputTokens,
+  );
+  if (
+    !Number.isSafeInteger(effectiveMaxOutputTokens) ||
+    effectiveMaxOutputTokens <= 0
+  ) {
+    throw preDispatchError("remaining output token budget is exhausted");
+  }
+  body[outputCapField] = effectiveMaxOutputTokens;
+  const forwardBody = Buffer.from(JSON.stringify(body));
+  const inputBudgetCharge =
+    Math.max(input.bytes.byteLength, forwardBody.byteLength) +
+    INPUT_TOKEN_OVERHEAD_RESERVE;
+  if (
+    !Number.isSafeInteger(inputBudgetCharge) ||
+    inputBudgetCharge > input.remainingInputTokens
+  ) {
+    throw preDispatchError(
+      `request byte charge plus ${INPUT_TOKEN_OVERHEAD_RESERVE}-token overhead reserve exceeds remaining input budget`,
+    );
+  }
+  return {
+    bodyBytes: input.bytes.byteLength,
+    observedModel,
+    requestedMaxOutputTokens,
+    effectiveMaxOutputTokens,
+    inputBudgetCharge,
+    forwardBody,
+  };
+}
+
+function inspectRejectedRequestEnvelope(
+  provider: StabilityModelProvider,
+  route: string,
+  bytes: Buffer,
+): Pick<
+  StabilityModelRequestEnvelopeEvidence,
+  | "bodyBytes"
+  | "observedModel"
+  | "requestedMaxOutputTokens"
+  | "effectiveMaxOutputTokens"
+  | "inputBudgetCharge"
+> {
+  let body: Record<string, unknown> | null = null;
+  try {
+    body = asRecord(JSON.parse(bytes.toString("utf8")));
+  } catch {
+    // error-policy:J3 Rejected JSON is represented only by bounded structural metadata.
+  }
+  const observedModel =
+    typeof body?.model === "string" && body.model.length <= 512
+      ? body.model
+      : null;
+  const candidate =
+    provider === "anthropic" || route === "/v1/chat/completions"
+      ? (body?.max_completion_tokens ?? body?.max_tokens)
+      : body?.max_output_tokens;
+  const requestedMaxOutputTokens =
+    Number.isSafeInteger(candidate) && (candidate as number) > 0
+      ? (candidate as number)
+      : null;
+  const inputBudgetCharge = bytes.byteLength + INPUT_TOKEN_OVERHEAD_RESERVE;
+  return {
+    bodyBytes: bytes.byteLength,
+    observedModel,
+    requestedMaxOutputTokens,
+    effectiveMaxOutputTokens: null,
+    inputBudgetCharge: Number.isSafeInteger(inputBudgetCharge)
+      ? inputBudgetCharge
+      : null,
+  };
+}
+
+const MAX_PROVIDER_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+async function readBoundedProviderResponse(
+  upstream: Response,
+): Promise<Buffer> {
+  const declaredLength = upstream.headers.get("content-length");
+  if (declaredLength !== null) {
+    const length = Number(declaredLength);
+    if (!Number.isSafeInteger(length) || length < 0) {
+      throw new Error("provider response Content-Length is invalid");
+    }
+    if (length > MAX_PROVIDER_RESPONSE_BYTES) {
+      await upstream.body?.cancel();
+      throw new Error("provider proxy response exceeded 16 MiB");
+    }
+  }
+  if (!upstream.body) return Buffer.alloc(0);
+  const reader = upstream.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      const chunk = Buffer.from(result.value);
+      total += chunk.byteLength;
+      if (!Number.isSafeInteger(total) || total > MAX_PROVIDER_RESPONSE_BYTES) {
+        await reader.cancel("provider response exceeded stability byte cap");
+        throw new Error("provider proxy response exceeded 16 MiB");
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, total);
+}
+
 /** Aggregates authoritative usage and holds a failed meter closed for the attempt. */
 export class LiveModelUsageMeter {
   #requestCount = 0;
   #inputTokens = 0;
   #outputTokens = 0;
   readonly #failures: StabilityModelFailure[] = [];
+  readonly #requestEnvelopes: StabilityModelRequestEnvelopeEvidence[] = [];
 
   constructor(
     readonly provider: StabilityModelProvider,
@@ -382,12 +667,30 @@ export class LiveModelUsageMeter {
     });
   }
 
+  recordPreDispatchFailure(
+    message: string,
+    evidence: StabilityModelRequestEnvelopeEvidence,
+  ): void {
+    this.#requestEnvelopes.push(evidence);
+    if (this.#failures.length > 0) return;
+    this.#failures.push({
+      code: "STABILITY_MODEL_PRE_DISPATCH_REJECTED",
+      message,
+      requestNumber: evidence.requestNumber,
+    });
+  }
+
+  recordRequestEnvelope(evidence: StabilityModelRequestEnvelopeEvidence): void {
+    this.#requestEnvelopes.push(evidence);
+  }
+
   snapshot(): StabilityModelMeterSnapshot {
     return {
       requestCount: this.#requestCount,
       inputTokens: this.#inputTokens,
       outputTokens: this.#outputTokens,
       failures: structuredClone(this.#failures),
+      requestEnvelopes: structuredClone(this.#requestEnvelopes),
     };
   }
 }
@@ -421,6 +724,7 @@ export function liveModelScenarioChildEnvironment(
 export async function startLiveModelEgressProxy(options: {
   provider: StabilityModelProvider;
   budgets: StabilityModelBudgets;
+  expectedModel: string;
   upstreamCredential?: string;
   fetchUpstream?: (url: string, init: RequestInit) => Promise<Response>;
   upstreamOrigin?: string;
@@ -433,6 +737,13 @@ export async function startLiveModelEgressProxy(options: {
       ? "https://api.openai.com"
       : "https://api.anthropic.com");
   const meter = new LiveModelUsageMeter(options.provider, options.budgets);
+  if (
+    typeof options.expectedModel !== "string" ||
+    options.expectedModel.trim().length === 0 ||
+    options.expectedModel.length > 512
+  ) {
+    throw new Error("expectedModel must be a non-empty bounded identifier");
+  }
   const fetchUpstream = options.fetchUpstream ?? globalThis.fetch;
   const timeoutMs = options.upstreamTimeoutMs ?? 120_000;
   let exchangeTail = Promise.resolve();
@@ -466,6 +777,7 @@ export async function startLiveModelEgressProxy(options: {
         }
         chunks.push(bytes);
       }
+      const requestBody = Buffer.concat(chunks, requestBytes);
       const releaseExchange = await acquireExchange();
       try {
         if (
@@ -481,14 +793,74 @@ export async function startLiveModelEgressProxy(options: {
           );
           return;
         }
+        const route = new URL(
+          request.url ?? "/",
+          "http://stability-loopback.invalid",
+        ).pathname;
+        const requestNumber = meter.snapshot().requestCount + 1;
+        let envelope: ReturnType<typeof parseRequestEnvelope>;
+        try {
+          const snapshot = meter.snapshot();
+          envelope = parseRequestEnvelope({
+            provider: options.provider,
+            route,
+            bytes: requestBody,
+            expectedModel: options.expectedModel,
+            remainingInputTokens:
+              options.budgets.maxInputTokens - snapshot.inputTokens,
+            remainingOutputTokens:
+              options.budgets.maxOutputTokens - snapshot.outputTokens,
+          });
+        } catch (error) {
+          const meterError =
+            error instanceof StabilityModelMeterError
+              ? error
+              : preDispatchError(
+                  error instanceof Error ? error.message : String(error),
+                );
+          meter.recordPreDispatchFailure(meterError.message, {
+            requestNumber,
+            method: request.method ?? "UNKNOWN",
+            route,
+            ...inspectRejectedRequestEnvelope(
+              options.provider,
+              route,
+              requestBody,
+            ),
+            accepted: false,
+            failureCode: meterError.code,
+          });
+          failureRecorded = true;
+          response.writeHead(422, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({ error: meter.snapshot().failures.at(-1) }),
+          );
+          return;
+        }
+        const { forwardBody, ...envelopeEvidence } = envelope;
         const admission = meter.reserveRequest();
         if (!admission.allowed) {
+          meter.recordRequestEnvelope({
+            requestNumber,
+            method: request.method ?? "UNKNOWN",
+            route,
+            ...envelopeEvidence,
+            accepted: false,
+            failureCode: admission.failure.code,
+          });
           failureRecorded = true;
           response.writeHead(429, { "content-type": "application/json" });
           response.end(JSON.stringify({ error: admission.failure }));
           return;
         }
         reservation = admission.reservation;
+        meter.recordRequestEnvelope({
+          requestNumber: reservation.requestNumber,
+          method: request.method ?? "UNKNOWN",
+          route,
+          ...envelopeEvidence,
+          accepted: true,
+        });
         options.onUpstreamRequest?.(origin, request.method ?? "GET");
         const upstreamHeaders = Object.fromEntries(
           Object.entries(request.headers).flatMap(([key, value]) =>
@@ -518,7 +890,7 @@ export async function startLiveModelEgressProxy(options: {
           upstream = await fetchUpstream(`${origin}${request.url ?? "/"}`, {
             method: request.method,
             headers: upstreamHeaders,
-            body: chunks.length > 0 ? Buffer.concat(chunks) : undefined,
+            body: forwardBody,
             signal: AbortSignal.timeout(timeoutMs),
             redirect: "manual",
           });
@@ -558,23 +930,11 @@ export async function startLiveModelEgressProxy(options: {
         }
         let responseBytes: Buffer;
         try {
-          responseBytes = Buffer.from(await upstream.arrayBuffer());
+          responseBytes = await readBoundedProviderResponse(upstream);
         } catch (error) {
           // error-policy:J1 An unreadable upstream response is retained as a counted proxy failure.
           meter.recordProxyFailure(
             error instanceof Error ? error.message : String(error),
-            reservation,
-          );
-          failureRecorded = true;
-          response.writeHead(502, { "content-type": "application/json" });
-          response.end(
-            JSON.stringify({ error: meter.snapshot().failures.at(-1) }),
-          );
-          return;
-        }
-        if (responseBytes.byteLength > 16 * 1024 * 1024) {
-          meter.recordProxyFailure(
-            "provider proxy response exceeded 16 MiB",
             reservation,
           );
           failureRecorded = true;

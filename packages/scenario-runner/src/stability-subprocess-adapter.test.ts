@@ -23,9 +23,10 @@ if (process.env.ELIZA_TEST_PRINT_SECRETS === "1") {
 }
 const hash = process.env.ELIZA_STABILITY_AUTHORITY_INITIAL_STATE_HASH;
 const meterFailureCode = process.env.ELIZA_TEST_METER_FAILURE;
-const inputTokens = process.env.ELIZA_TEST_ZERO_REAL === "1" || meterFailureCode === "STABILITY_MODEL_USAGE_MISSING" || meterFailureCode === "STABILITY_MODEL_USAGE_MALFORMED" ? 0 : meterFailureCode === "STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED" ? 12 : 4;
-const outputTokens = meterFailureCode === "STABILITY_MODEL_USAGE_MISSING" || meterFailureCode === "STABILITY_MODEL_USAGE_MALFORMED" ? 0 : 2;
-const requestCount = process.env.ELIZA_TEST_OVER_CAP_REAL === "1" ? 3 : 1;
+const preDispatchFailure = meterFailureCode === "STABILITY_MODEL_PRE_DISPATCH_REJECTED";
+const inputTokens = process.env.ELIZA_TEST_ZERO_REAL === "1" || preDispatchFailure || meterFailureCode === "STABILITY_MODEL_USAGE_MISSING" || meterFailureCode === "STABILITY_MODEL_USAGE_MALFORMED" ? 0 : meterFailureCode === "STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED" ? 12 : 4;
+const outputTokens = preDispatchFailure || meterFailureCode === "STABILITY_MODEL_USAGE_MISSING" || meterFailureCode === "STABILITY_MODEL_USAGE_MALFORMED" ? 0 : 2;
+const requestCount = process.env.ELIZA_TEST_OVER_CAP_REAL === "1" ? 3 : preDispatchFailure ? 0 : 1;
 process.stdout.write(JSON.stringify({
   passed: !meterFailureCode,
   initialStateHash: hash,
@@ -55,11 +56,33 @@ process.stdout.write(JSON.stringify({
       receiptType: "eliza.stability.real-llm.v1",
       provider: process.env.ELIZA_TEST_WRONG_REAL === "1" ? "wrong-provider" : process.env.ELIZA_STABILITY_PROVIDER,
       model: process.env.ELIZA_STABILITY_MODEL,
-      liveModelInvoked: true,
+      liveModelInvoked: requestCount > 0,
       requestCount,
       inputTokens,
       outputTokens,
       meteringFailures: meterFailureCode ? [{ code: meterFailureCode, message: meterFailureCode + " retained", requestNumber: 1 }] : [],
+      requestEnvelopes: preDispatchFailure ? [{
+        requestNumber: 1,
+        method: "POST",
+        route: "/v1/responses",
+        bodyBytes: 64,
+        observedModel: process.env.ELIZA_STABILITY_MODEL,
+        requestedMaxOutputTokens: 1,
+        effectiveMaxOutputTokens: null,
+        inputBudgetCharge: 8256,
+        accepted: false,
+        failureCode: meterFailureCode
+      }] : Array.from({ length: requestCount }, (_, index) => ({
+        requestNumber: index + 1,
+        method: "POST",
+        route: "/v1/responses",
+        bodyBytes: 64,
+        observedModel: process.env.ELIZA_TEST_WRONG_ENVELOPE_MODEL === "1" ? "wrong-model" : process.env.ELIZA_STABILITY_MODEL,
+        requestedMaxOutputTokens: 2,
+        effectiveMaxOutputTokens: 2,
+        inputBudgetCharge: 8256,
+        accepted: true
+      })),
       namespace: process.env.ELIZA_SYNTHETIC_NAMESPACE,
       manifestId: process.env.ELIZA_SYNTHETIC_MANIFEST_ID,
       generation: Number(process.env.ELIZA_SYNTHETIC_GENERATION),
@@ -375,6 +398,7 @@ describe("scenario stability subprocess adapter", () => {
     for (const failure of [
       "none",
       "wrong-provider",
+      "wrong-envelope-model",
       "zero-metering",
       "over-request-cap",
     ] as const) {
@@ -408,6 +432,9 @@ describe("scenario stability subprocess adapter", () => {
           ...(failure === "wrong-provider"
             ? { ELIZA_TEST_WRONG_REAL: "1" }
             : {}),
+          ...(failure === "wrong-envelope-model"
+            ? { ELIZA_TEST_WRONG_ENVELOPE_MODEL: "1" }
+            : {}),
           ...(failure === "zero-metering" ? { ELIZA_TEST_ZERO_REAL: "1" } : {}),
           ...(failure === "over-request-cap"
             ? { ELIZA_TEST_OVER_CAP_REAL: "1" }
@@ -436,7 +463,7 @@ describe("scenario stability subprocess adapter", () => {
         ],
         budgets: {
           timeoutMs: 2_000,
-          maxInputTokens: 10,
+          maxInputTokens: 10_000,
           maxOutputTokens: 10,
           maxModelRequests: 2,
           maxToolCalls: 2,
@@ -462,12 +489,13 @@ describe("scenario stability subprocess adapter", () => {
   });
 
   it.each([
-    ["STABILITY_MODEL_USAGE_MISSING", 0, 0],
-    ["STABILITY_MODEL_USAGE_MALFORMED", 0, 0],
-    ["STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED", 12, 2],
+    ["STABILITY_MODEL_PRE_DISPATCH_REJECTED", 0, 0, 0],
+    ["STABILITY_MODEL_USAGE_MISSING", 0, 0, 1],
+    ["STABILITY_MODEL_USAGE_MALFORMED", 0, 0, 1],
+    ["STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED", 12, 2, 1],
   ] as const)(
     "retains authentic failed real-model evidence for %s",
-    async (meterFailureCode, expectedInputTokens, expectedOutputTokens) => {
+    async (meterFailureCode, expectedInputTokens, expectedOutputTokens, expectedRequestCount) => {
       const outputRoot = root();
       const manifest = {
         version: 1 as const,
@@ -517,7 +545,7 @@ describe("scenario stability subprocess adapter", () => {
         ],
         budgets: {
           timeoutMs: 2_000,
-          maxInputTokens: 10,
+          maxInputTokens: 10_000,
           maxOutputTokens: 10,
           maxModelRequests: 2,
           maxToolCalls: 2,
@@ -547,7 +575,7 @@ describe("scenario stability subprocess adapter", () => {
               "eliza.stability.real-llm.v1",
           ),
         ).toMatchObject({
-          requestCount: 1,
+          requestCount: expectedRequestCount,
           inputTokens: expectedInputTokens,
           outputTokens: expectedOutputTokens,
           meteringFailures: [
