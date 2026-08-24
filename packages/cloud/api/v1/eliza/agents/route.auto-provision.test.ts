@@ -181,6 +181,36 @@ test("GET reconnects an agent row to its newest active lifecycle job", async () 
   expect(body.data[0]?.activeJob).toMatchObject({ id: "job-1", attempts: 1 });
 });
 
+test("GET returns an owner-safe error summary without internal stack frames", async () => {
+  listAgents.mockImplementationOnce(async () => [
+    {
+      id: "agent-1",
+      agent_name: "Ada",
+      status: "error",
+      database_status: "ready",
+      last_backup_at: null,
+      last_heartbeat_at: null,
+      error_message:
+        "Provisioning permanently failed: Sandbox health check timed out\n    at ProvisioningJobService.executeAgentProvision (/opt/eliza/packages/cloud/shared/src/lib/services/provisioning-jobs.ts:6003:13)",
+      created_at: new Date("2026-08-21T00:00:00.000Z"),
+      updated_at: new Date("2026-08-21T00:01:00.000Z"),
+      character_id: null,
+      agent_config: {},
+      docker_image: null,
+      execution_tier: "dedicated-always",
+    },
+  ]);
+
+  const response = await get();
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    data: Array<{ errorMessage: string | null }>;
+  };
+  expect(body.data[0]?.errorMessage).toBe(
+    "Provisioning permanently failed: Sandbox health check timed out",
+  );
+});
+
 describe("POST /api/v1/eliza/agents autoProvision identity", () => {
   beforeEach(() => {
     checkAgentCreditGate.mockClear();

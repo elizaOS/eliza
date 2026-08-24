@@ -30,6 +30,7 @@ import {
   AgentQuotaExceededError,
   elizaSandboxService,
 } from "@/lib/services/eliza-sandbox";
+import { publicJobErrorSummary } from "@/lib/services/job-error-text";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerHealth,
@@ -204,7 +205,9 @@ function toAgentListItemDto(
     databaseStatus: agent.database_status,
     lastBackupAt: toIsoStringOrNull(agent.last_backup_at),
     lastHeartbeatAt: toIsoStringOrNull(agent.last_heartbeat_at),
-    errorMessage: agent.error_message,
+    // The durable row keeps the redacted operator stack. Owners get only the
+    // failure summary; absolute server paths and module layout stay private.
+    errorMessage: publicJobErrorSummary(agent.error_message),
     createdAt: toIsoString(agent.created_at),
     updatedAt: toIsoString(agent.updated_at),
     token_address:
