@@ -30,6 +30,9 @@ describe("message-corpus", () => {
     expect(corpus1).toEqual(corpus2);
     expect(corpus1.conversations).toHaveLength(3);
     expect(corpus1.sampleQueries.length).toBeGreaterThan(0);
+    if (corpus1.oldestMessageAt === null || corpus1.newestMessageAt === null) {
+      throw new Error("generated messages must have timestamp bounds");
+    }
     expect(corpus1.oldestMessageAt).toBeLessThan(corpus1.newestMessageAt);
 
     for (const conv of corpus1.conversations) {
