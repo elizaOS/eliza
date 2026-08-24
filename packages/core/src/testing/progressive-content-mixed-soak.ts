@@ -187,18 +187,10 @@ async function runRealPositiveLeakControl(
 	const retained = new Uint8Array(32 * 1024 * 1024);
 	for (let offset = 0; offset < retained.byteLength; offset += 4_096)
 		retained[offset] = 1;
-	const observed = await measure();
-	const after = {
-		...observed,
-		externalBytes: Math.max(
-			observed.externalBytes,
-			before.externalBytes + retained.byteLength,
-		),
-		arrayBuffersBytes: Math.max(
-			observed.arrayBuffersBytes,
-			before.arrayBuffersBytes + retained.byteLength,
-		),
-	};
+	// Let asynchronous resource samplers observe the allocation, but never rewrite
+	// their measurements: production evidence must prove that the detector saw it.
+	await new Promise<void>((resolve) => setImmediate(resolve));
+	const after = await measure();
 	void retained[0];
 	return [before, after];
 }
