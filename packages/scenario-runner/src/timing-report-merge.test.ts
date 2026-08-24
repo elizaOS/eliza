@@ -30,6 +30,7 @@ function writeShard(options: {
     provider: "cli",
     requestedModel: "test-model",
     backend: "test-backend",
+    characterPreset: "minimal",
     trajectoryDir: path.join(options.directory, "trajectories"),
     selection: {
       shardIndex: options.shardIndex,

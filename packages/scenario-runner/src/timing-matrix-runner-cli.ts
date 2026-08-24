@@ -51,7 +51,7 @@ const input = option("input");
 const outputDir = option("output-dir");
 if (!input || !outputDir) {
   throw argumentError(
-    "usage: timing-matrix-runner --input=<jsonl> --output-dir=<dir> [--input-format=when2speak|discord-replay] [--provider=<name>] [--shard-count=<n>] [--workers=<n>] [--max-attempts=<n>] [--retry-delay-ms=<n>]",
+    "usage: timing-matrix-runner --input=<jsonl> --output-dir=<dir> [--input-format=when2speak|discord-replay] [--character-preset=minimal|eliza] [--provider=<name>] [--shard-count=<n>] [--workers=<n>] [--max-attempts=<n>] [--retry-delay-ms=<n>]",
   );
 }
 const resolvedInput = path.resolve(input);
@@ -61,6 +61,10 @@ if (inputFormatText !== "when2speak" && inputFormatText !== "discord-replay") {
   throw argumentError("--input-format must be when2speak or discord-replay");
 }
 const inputFormat: TimingInputFormat = inputFormatText;
+const characterPreset = option("character-preset") ?? "minimal";
+if (characterPreset !== "minimal" && characterPreset !== "eliza") {
+  throw argumentError("--character-preset must be minimal or eliza");
+}
 const provider = option("provider") ?? "cli";
 const shardCount = positiveInteger("shard-count", 8);
 const workers = positiveInteger("workers", Math.min(4, shardCount));
@@ -122,6 +126,7 @@ function runShard(
       `--output=${invocation.report}`,
       `--run-dir=${invocation.trajectoryDir}`,
       `--provider=${provider}`,
+      `--character-preset=${characterPreset}`,
       `--shard-index=${invocation.shardIndex}`,
       `--shard-count=${invocation.shardCount}`,
       "--checkpoint-every=1",

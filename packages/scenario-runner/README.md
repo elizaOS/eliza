@@ -28,9 +28,15 @@ boundary used by production group messages:
 bun run --cwd packages/scenario-runner eval:when2speak -- \
   --input=/path/to/finetune_test_dialogue.jsonl \
   --provider=anthropic \
+  --character-preset=eliza \
   --shard-index=0 \
   --shard-count=8
 ```
+
+`--character-preset=minimal` keeps the evaluator's small `ScenarioAgent`
+identity and remains the default for compatibility. Use
+`--character-preset=eliza` to evaluate with the same built-in English Eliza
+style preset selected by the product runtime.
 
 The command writes `reports/group-chat-timing/when2speak.json`. It reports two
 separate objectives: agreement with the corpus SPEAK/SILENT labels and ambient

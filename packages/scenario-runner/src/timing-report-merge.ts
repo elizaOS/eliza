@@ -25,6 +25,7 @@ type TimingReportFragment = Pick<
   | "provider"
   | "requestedModel"
   | "backend"
+  | "characterPreset"
   | "selection"
   | "predictions"
   | "exclusions"
@@ -38,6 +39,7 @@ export interface TimingMatrixCell {
   provider: string;
   requestedModel: string;
   backend: string;
+  characterPreset: TimingReport["characterPreset"];
   shardCount: number;
   sourceReports: string[];
   physicalRows: number;
@@ -183,6 +185,9 @@ function parseReport(file: string): TimingReportFragment {
     typeof value.requestedModel !== "string" ||
     !("backend" in value) ||
     typeof value.backend !== "string" ||
+    !("characterPreset" in value) ||
+    (value.characterPreset !== "minimal" &&
+      value.characterPreset !== "eliza") ||
     !("selection" in value) ||
     !isSelection(value.selection) ||
     !("predictions" in value) ||
@@ -210,6 +215,7 @@ function parseReport(file: string): TimingReportFragment {
     provider: value.provider,
     requestedModel: value.requestedModel,
     backend: value.backend,
+    characterPreset: value.characterPreset,
     selection: value.selection,
     predictions: value.predictions,
     exclusions: value.exclusions,
@@ -225,6 +231,7 @@ function cellKey(report: TimingReportFragment): string {
     report.provider,
     report.requestedModel,
     report.backend,
+    report.characterPreset,
     report.selection.shardCount,
   ]);
 }
@@ -369,6 +376,7 @@ export function mergeTimingReports(
       provider: first.provider,
       requestedModel: first.requestedModel,
       backend: first.backend,
+      characterPreset: first.characterPreset,
       shardCount: first.selection.shardCount,
       sourceReports: entries.map(({ file }) => file).sort(),
       physicalRows,

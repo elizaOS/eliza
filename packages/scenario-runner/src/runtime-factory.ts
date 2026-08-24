@@ -243,6 +243,7 @@ function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
 }
 
 export interface CreateScenarioRuntimeOptions {
+  character?: Parameters<typeof createCharacter>[0];
   characterName?: string;
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
@@ -912,9 +913,9 @@ export async function createScenarioRuntime(
     process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
   }
 
-  const character = createCharacter({
-    name: options?.characterName ?? "ScenarioAgent",
-  });
+  const character = createCharacter(
+    options?.character ?? { name: options?.characterName ?? "ScenarioAgent" },
+  );
   const scenarioRuntimeSettings =
     executionProfile === "simulated"
       ? {
