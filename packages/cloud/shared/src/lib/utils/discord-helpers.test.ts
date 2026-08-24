@@ -43,8 +43,12 @@ describe("isValidSnowflake / maskId", () => {
     expect(isValidSnowflake("123")).toBe(false);
     expect(isValidSnowflake("12345678901234567890")).toBe(false); // 20 digits
     expect(isValidSnowflake("abc")).toBe(false);
+    expect(isValidSnowflake(undefined as unknown as string)).toBe(false);
+    expect(isValidSnowflake(null as unknown as string)).toBe(false);
     expect(maskId("1234567890")).toBe("123...890");
     expect(maskId("short")).toBe("short");
+    expect(maskId(undefined as unknown as string)).toBe("");
+    expect(maskId(null as unknown as string)).toBe("");
   });
 });
 

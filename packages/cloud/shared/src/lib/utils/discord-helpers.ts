@@ -190,7 +190,8 @@ export function truncate(text: string, maxLength: number): string {
  * Mask a guild/channel ID for logging (privacy)
  */
 export function maskId(id: string): string {
-  if (!id || id.length <= 6) return id;
+  if (typeof id !== "string" || !id) return "";
+  if (id.length <= 6) return id;
   return `${id.slice(0, 3)}...${id.slice(-3)}`;
 }
 
@@ -198,6 +199,7 @@ export function maskId(id: string): string {
  * Validate Discord snowflake ID format
  */
 export function isValidSnowflake(id: string): boolean {
+  if (typeof id !== "string" || !id) return false;
   // Discord snowflakes are 17-19 digit numbers
   return /^\d{17,19}$/.test(id);
 }
