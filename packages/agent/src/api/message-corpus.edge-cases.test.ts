@@ -58,8 +58,8 @@ describe("generateMessageCorpus edge cases", () => {
     expect(corpus).toEqual({
       conversations: [],
       sampleQueries: [],
-      oldestMessageAt: NOW,
-      newestMessageAt: 0,
+      oldestMessageAt: null,
+      newestMessageAt: null,
     });
   });
 
@@ -81,8 +81,8 @@ describe("generateMessageCorpus edge cases", () => {
       conversation.createdAt,
     ]);
     expect(conversation.facts[2]?.text).toBe(conversation.facts[0]?.text);
-    expect(corpus.oldestMessageAt).toBe(NOW);
-    expect(corpus.newestMessageAt).toBe(0);
+    expect(corpus.oldestMessageAt).toBeNull();
+    expect(corpus.newestMessageAt).toBeNull();
   });
 
   it("cycles topics while capping distinctive sample queries", () => {
@@ -147,8 +147,8 @@ describe("seedMessageCorpus edge cases", () => {
       conversations: [],
       messagesCreated: 0,
       factsCreated: 0,
-      oldestMessageAt: NOW,
-      newestMessageAt: 0,
+      oldestMessageAt: null,
+      newestMessageAt: null,
       sampleQueries: [],
     });
   });
@@ -164,16 +164,13 @@ describe("seedMessageCorpus edge cases", () => {
     const { connections, memories, runtime } = createRecordingRuntime();
 
     const summary = await seedMessageCorpus(runtime, corpus);
-    const conversation = corpus.conversations[0];
     const connection = connections[0];
 
     expect(connection.worldId).toBe(stringToUuid("Eliza-web-chat-world"));
     expect(connection.messageServerId).toBe(stringToUuid("Eliza-web-server"));
     expect(connection.type).toBe(ChannelType.DM);
     expect(connection.source).toBe(MESSAGE_SOURCE_CLIENT_CHAT);
-    expect(summary.conversations[0]?.lastMessageAt).toBe(
-      conversation.createdAt,
-    );
+    expect(summary.conversations[0]?.lastMessageAt).toBeNull();
     expect(summary.messagesCreated).toBe(0);
     expect(summary.factsCreated).toBe(1);
     expect(memories).toHaveLength(1);
