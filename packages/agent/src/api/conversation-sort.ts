@@ -36,7 +36,10 @@ export function compareConversationsByRecency(
 ): number {
   const bVal = finiteOrZero(new Date(b.updatedAt).getTime());
   const aVal = finiteOrZero(new Date(a.updatedAt).getTime());
-  return bVal - aVal || a.id.localeCompare(b.id);
+  return (
+    bVal - aVal ||
+    (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
+  );
 }
 
 /**

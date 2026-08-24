@@ -55,6 +55,23 @@ describe("compareConversationsByRecency", () => {
       ),
     ).toBeLessThan(0);
   });
+
+  it("tolerates missing or undefined id in recency tie-breaking without throwing", () => {
+    const convos = [
+      { id: "c-2", updatedAt: "2026-08-23T10:00:00Z" },
+      { id: undefined as unknown as string, updatedAt: "2026-08-23T10:00:00Z" },
+    ];
+    expect(() => convos.sort(compareConversationsByRecency)).not.toThrow();
+    expect(
+      compareConversationsByRecency(
+        {
+          id: undefined as unknown as string,
+          updatedAt: "2026-08-23T10:00:00Z",
+        },
+        { id: "c-1", updatedAt: "2026-08-23T10:00:00Z" },
+      ),
+    ).toBeLessThan(0);
+  });
 });
 
 describe("compareMemoriesByCreatedAt", () => {
