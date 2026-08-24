@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { snakeToCamel } from "./schema-builder.ts";
+import { snakeToCamel } from "../schema-builder.ts";
 
 describe("snakeToCamel", () => {
 	it("converts snake_case to camelCase", () => {

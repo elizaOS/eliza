@@ -40,7 +40,11 @@ const STORED_PAGE = [
 const SUMMARY =
 	"umbrelOS is a free self-hosted home-server OS with one-click apps like a Bitcoin node, Nextcloud, and Jellyfin.";
 
-type ModelCall = { prompt: string; maxTokens: number };
+type ModelCall = {
+	prompt: string;
+	omitMaxTokens?: boolean;
+	maxTokens?: number;
+};
 
 function makeAttachment(): Media {
 	return {
@@ -70,11 +74,12 @@ function makeRuntime(params: {
 			key === "CLIPBOARD_BASE_PATH" ? clipboardDir : undefined,
 		reportError: () => {},
 		useModel: async (_type: unknown, options: unknown) => {
-			const { prompt, maxTokens } = options as {
+			const { prompt, omitMaxTokens, maxTokens } = options as {
 				prompt: string;
-				maxTokens: number;
+				omitMaxTokens?: boolean;
+				maxTokens?: number;
 			};
-			params.calls.push({ prompt, maxTokens });
+			params.calls.push({ prompt, omitMaxTokens, maxTokens });
 			return params.modelResponse;
 		},
 	};
@@ -173,7 +178,8 @@ describe("ATTACHMENT read delivery selection", () => {
 		expect(calls[0]?.prompt).toContain(
 			"Reply with ONE short take of at most two sentences",
 		);
-		expect(calls[0]?.maxTokens).toBe(256);
+		expect(calls[0]?.maxTokens).toBeUndefined();
+		expect(calls[0]?.omitMaxTokens).toBe(true);
 		expect(result?.text).toContain(PAGE_MARKER);
 		expect(JSON.stringify(result?.data)).not.toContain(PAGE_MARKER);
 		expect(JSON.stringify(result?.promptData)).not.toContain(PAGE_MARKER);
@@ -189,7 +195,8 @@ describe("ATTACHMENT read delivery selection", () => {
 		expect(calls[0]?.prompt).not.toContain(
 			"Reply with ONE short take of at most two sentences",
 		);
-		expect(calls[0]?.maxTokens).toBeGreaterThan(256);
+		expect(calls[0]?.maxTokens).toBeUndefined();
+		expect(calls[0]?.omitMaxTokens).toBe(true);
 	});
 
 	it("a short non-ask remark next to the link still gets the one-take treatment", async () => {
@@ -202,7 +209,8 @@ describe("ATTACHMENT read delivery selection", () => {
 		expect(calls[0]?.prompt).toContain(
 			"Reply with ONE short take of at most two sentences",
 		);
-		expect(calls[0]?.maxTokens).toBe(256);
+		expect(calls[0]?.maxTokens).toBeUndefined();
+		expect(calls[0]?.omitMaxTokens).toBe(true);
 	});
 
 	it("an empty model response degrades to a short acknowledgement, never the raw page", async () => {

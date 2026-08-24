@@ -1809,7 +1809,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			const lane = resolveMobileLaneBudget(
 				priority,
 				buildGemmaBionicPrompt(params),
-				params.maxTokens ?? 256,
+				params.maxTokens,
 			);
 			const baseRequest = {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
@@ -1856,6 +1856,21 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			if (!res.ok) {
 				throw new Error(
 					`[mobile-device-bridge] bionic host generate failed: ${res.error ?? "unknown"}`,
+				);
+			}
+			if (
+				typeof res.tokens === "number" &&
+				res.tokens >= baseRequest.maxTokens
+			) {
+				throw new ElizaError(
+					"Bionic local model output reached the decode boundary before a stop condition",
+					{
+						code: "MODEL_OUTPUT_INCOMPLETE",
+						context: {
+							maxTokens: baseRequest.maxTokens,
+							outputTokens: res.tokens,
+						},
+					},
 				);
 			}
 			if (typeof res.tokS === "number") {

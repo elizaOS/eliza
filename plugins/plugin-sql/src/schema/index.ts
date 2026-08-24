@@ -60,6 +60,5 @@ export { participantTable } from "./participant";
 export { relationshipTable } from "./relationship";
 export { roomTable } from "./room";
 export { serverTable } from "./server";
-export { sessionSummaries } from "./sessionSummaries";
 export { taskTable } from "./tasks";
 export { worldTable } from "./world";

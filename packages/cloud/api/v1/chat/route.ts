@@ -6,6 +6,7 @@
  * anonymous counter mirrors run under `waitUntil`.
  */
 
+import { assertModelOutputComplete } from "@elizaos/core";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Hono } from "hono";
 import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
@@ -645,7 +646,12 @@ app.post("/", async (c) => {
         process.env,
         cotBudget ?? undefined,
       ),
-      onFinish: async ({ text, usage }) => {
+      onFinish: async ({ text, usage, finishReason }) => {
+        assertModelOutputComplete({
+          finishReason,
+          provider,
+          model: selectedModel,
+        });
         await settleOffResponsePath(executionCtx, async () => {
           if (!usage) {
             await settleUnknownReservation?.();

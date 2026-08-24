@@ -3,9 +3,9 @@
  * into runtime `Action` / `Provider` definitions so the prompt-facing docs are
  * complete for every registered capability. The merge is additive and
  * conservative: it never overwrites an existing description, similes, or
- * parameters, and it fills legacy `descriptionCompressed` metadata (including
- * parameter metadata) via `compressPromptDescription` for consumers that still
- * read those fields. Model-facing renderers prefer the complete descriptions.
+ * parameters. Legacy `descriptionCompressed` metadata is populated with the
+ * complete authored description so compatibility consumers cannot receive a
+ * semantically shortened substitute.
  */
 
 import { allActionDocs, allProviderDocs } from "./generated/action-docs.ts";
@@ -16,7 +16,6 @@ import type {
 	JsonValue,
 	Provider,
 } from "./types/index.ts";
-import { compressPromptDescription } from "./utils/prompt-compression.ts";
 
 type CompressedDescriptionFields = {
 	description?: string;
@@ -25,17 +24,11 @@ type CompressedDescriptionFields = {
 };
 
 function resolveCompressedDescription(
-	source: CompressedDescriptionFields,
+	_source: CompressedDescriptionFields,
 	fallbackDescription: string,
-	canonical?: CompressedDescriptionFields,
+	_canonical?: CompressedDescriptionFields,
 ): string {
-	return (
-		source.descriptionCompressed ??
-		source.compressedDescription ??
-		canonical?.descriptionCompressed ??
-		canonical?.compressedDescription ??
-		compressPromptDescription(fallbackDescription)
-	);
+	return fallbackDescription;
 }
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
@@ -113,9 +106,8 @@ function ensureParameterCompressed(
  * - does not overwrite existing action.similes
  * - does not overwrite existing action.parameters
  *
- * Always fills `descriptionCompressed` (and parameter-level compressed descriptions)
- * when absent, matching Python `compress_prompt_description` so prompt compression
- * is on for every registered action — including plugins with no canonical spec row.
+ * Always fills legacy `descriptionCompressed` fields with the complete
+ * description. They are compatibility aliases, never alternate prompt text.
  */
 export function withCanonicalActionDocs(action: Action): Action {
 	const doc = coreActionDocByName[action.name];

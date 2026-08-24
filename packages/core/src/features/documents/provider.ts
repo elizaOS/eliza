@@ -9,8 +9,6 @@
  * per-turn cache scope.
  */
 
-import { ElizaError } from "../../errors.ts";
-import { logger } from "../../logger";
 import {
 	type IAgentRuntime,
 	type Memory,
@@ -18,16 +16,9 @@ import {
 	type Provider,
 } from "../../types";
 import { addHeader } from "../../utils";
-import { truncateWellFormed } from "../../utils/well-formed.ts";
 import { DocumentService } from "./service.ts";
 import type { DocumentMetadataExtended } from "./types.ts";
 import { normalizeDocumentSourceValue } from "./utils.ts";
-
-const PINNED_DOCUMENT_TOKEN_BUDGET = 8_000;
-const APPROXIMATE_CHARACTERS_PER_TOKEN = 4;
-
-export const PINNED_DOCUMENT_TRUNCATION_MARKER =
-	"[Pinned document content omitted from this prompt. Use DOCUMENT read with its document ID to page the exact source.]";
 
 function getDocumentTitle(memory: Memory, index: number): string {
 	const metadata = memory.metadata as DocumentMetadataExtended | undefined;
@@ -38,10 +29,11 @@ function getDocumentTitle(memory: Memory, index: number): string {
 		: `Document ${index + 1}`;
 }
 
-export function renderPinnedDocuments(
-	documents: Memory[],
-	tokenBudget = PINNED_DOCUMENT_TOKEN_BUDGET,
-): { text: string; truncated: boolean; includedIds: Array<Memory["id"]> } {
+export function renderPinnedDocuments(documents: Memory[]): {
+	text: string;
+	truncated: boolean;
+	includedIds: Array<Memory["id"]>;
+} {
 	const pinned = documents
 		.filter((document) => {
 			const metadata = document.metadata as
@@ -60,53 +52,14 @@ export function renderPinnedDocuments(
 	}
 	const includedIds: Array<Memory["id"]> = [];
 	const blocks: string[] = [];
-	const maximumCharacters = tokenBudget * APPROXIMATE_CHARACTERS_PER_TOKEN;
-	let truncated = false;
-	const headers = pinned.map(
-		(document, index) =>
-			`## ${getDocumentTitle(document, index)} (${document.id}; reference document:${document.id})`,
-	);
-	const blockSeparators = Math.max(0, pinned.length - 1) * 2;
-	const headerNewlines = pinned.length;
-	const markerSeparator = pinned.length > 0 ? 2 : 0;
-	const fixedCharacters =
-		headers.reduce((total, header) => total + header.length, 0) +
-		headerNewlines +
-		blockSeparators +
-		markerSeparator +
-		PINNED_DOCUMENT_TRUNCATION_MARKER.length;
-	if (fixedCharacters > maximumCharacters) {
-		throw new ElizaError(
-			"Pinned document identities exceed the configured prompt budget",
-			{
-				code: "PINNED_DOCUMENT_IDENTITY_BUDGET_EXCEEDED",
-				context: {
-					documentCount: pinned.length,
-					maximumCharacters,
-					identityCharacters: fixedCharacters,
-				},
-			},
-		);
-	}
-	const fairContentCharacters =
-		pinned.length === 0
-			? 0
-			: Math.max(
-					0,
-					Math.floor((maximumCharacters - fixedCharacters) / pinned.length),
-				);
 	for (const [index, document] of pinned.entries()) {
 		const content = document.content.text ?? "";
-		const excerpt = truncateWellFormed(content, fairContentCharacters);
-		const block = `${headers[index]}\n${excerpt}`;
+		const header = `## ${getDocumentTitle(document, index)} (${document.id}; reference document:${document.id})`;
+		const block = `${header}\n${content}`;
 		blocks.push(block);
 		includedIds.push(document.id);
-		if (excerpt.length < content.length) truncated = true;
 	}
-	if (truncated) {
-		blocks.push(PINNED_DOCUMENT_TRUNCATION_MARKER);
-	}
-	return { text: blocks.join("\n\n"), truncated, includedIds };
+	return { text: blocks.join("\n\n"), truncated: false, includedIds };
 }
 
 function summarizeDocument(memory: Memory, index: number) {
@@ -155,20 +108,8 @@ export const documentsProvider: Provider = {
 		}
 
 		const { relevantFragments, documents, pinnedDocuments } =
-			await service.composeProviderDocuments(message, {
-				limit: 25,
-			});
+			await service.composeProviderDocuments(message);
 		const pinned = renderPinnedDocuments(pinnedDocuments);
-		if (pinned.truncated) {
-			logger.warn(
-				{
-					tokenBudget: PINNED_DOCUMENT_TOKEN_BUDGET,
-					pinnedDocumentCount: pinnedDocuments.length,
-					includedDocumentCount: pinned.includedIds.length,
-				},
-				"[DocumentsProvider] Pinned document content was explicitly truncated; exact content remains available through paged DOCUMENT reads",
-			);
-		}
 		const relevantSnippets = relevantFragments.map((fragment, index) => {
 			const metadata = fragment.metadata as
 				| DocumentMetadataExtended

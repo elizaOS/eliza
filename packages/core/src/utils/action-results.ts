@@ -210,7 +210,7 @@ export function formatActionResultsForPrompt(
 			const lines = [
 				`${displayIndex}. ${getActionResultActionName(result)} - ${status}`,
 			];
-			if (typeof result.text === "string" && result.text.trim()) {
+			if (typeof result.text === "string") {
 				lines.push(`Output: ${formatCompleteActionResultText(result.text, 0)}`);
 			}
 

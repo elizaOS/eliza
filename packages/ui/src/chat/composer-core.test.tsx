@@ -54,6 +54,47 @@ function makeSlash(
   };
 }
 
+function HistoryKeydownHarness({
+  onSend,
+  slash,
+  onHistory,
+}: {
+  onSend: () => void;
+  slash?: ComposerSlashKeydown;
+  onHistory?: (direction: -1 | 1) => boolean;
+}) {
+  const handleKeyDown = useComposerKeydown<HTMLTextAreaElement>({
+    onSend,
+    slash,
+    onHistory,
+  });
+  return <textarea data-testid="input" onKeyDown={handleKeyDown} />;
+}
+
+function NestedKeydownHarness({
+  onSend,
+  slash,
+  onOuterKeyDown,
+}: {
+  onSend: () => void;
+  slash?: ComposerSlashKeydown;
+  onOuterKeyDown: () => void;
+}) {
+  const handleKeyDown = useComposerKeydown<HTMLTextAreaElement>({
+    onSend,
+    slash,
+  });
+  return (
+    <div>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: harness observes
+          React synthetic propagation, not real DOM interactivity */}
+      <div data-testid="outer" onKeyDown={onOuterKeyDown}>
+        <textarea data-testid="input" onKeyDown={handleKeyDown} />
+      </div>
+    </div>
+  );
+}
+
 describe("useComposerKeydown", () => {
   it("Enter sends; Shift+Enter falls through as a newline", () => {
     const onSend = vi.fn();
@@ -153,6 +194,141 @@ describe("useComposerKeydown", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(onEscape).toHaveBeenCalledTimes(1);
   });
+
+  it("sent-history consumes physical ArrowUp/ArrowDown and preventDefaults them", () => {
+    const onSend = vi.fn();
+    const onHistory = vi.fn((_direction: -1 | 1) => true);
+    render(<HistoryKeydownHarness onSend={onSend} onHistory={onHistory} />);
+    const input = screen.getByTestId("input");
+    const up = new KeyboardEvent("keydown", {
+      key: "ArrowUp",
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(input, up);
+    const down = new KeyboardEvent("keydown", {
+      key: "ArrowDown",
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(input, down);
+    expect(onHistory.mock.calls.map((call) => call[0])).toEqual([-1, 1]);
+    expect(up.defaultPrevented).toBe(true);
+    expect(down.defaultPrevented).toBe(true);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("sent-history receives the raw event and may decline the arrow", () => {
+    const onSend = vi.fn();
+    const onHistory = vi.fn(() => false);
+    render(<HistoryKeydownHarness onSend={onSend} onHistory={onHistory} />);
+    const input = screen.getByTestId("input");
+    const up = new KeyboardEvent("keydown", {
+      key: "ArrowUp",
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(input, up);
+    expect(onHistory).toHaveBeenCalledTimes(1);
+    expect(onHistory).toHaveBeenCalledWith(-1, expect.anything());
+    expect(up.defaultPrevented).toBe(false);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("an open slash menu outranks sent-history for the arrows", () => {
+    const onSend = vi.fn();
+    const slash = makeSlash();
+    const onHistory = vi.fn(() => true);
+    render(
+      <HistoryKeydownHarness
+        onSend={onSend}
+        slash={slash}
+        onHistory={onHistory}
+      />,
+    );
+    fireEvent.keyDown(screen.getByTestId("input"), { key: "ArrowDown" });
+    expect(slash.move).toHaveBeenCalledWith(1);
+    expect(onHistory).not.toHaveBeenCalled();
+  });
+
+  it("an uncompleted Tab (no active item) falls through to the browser focus move", () => {
+    const onSend = vi.fn();
+    const slash = makeSlash({ complete: vi.fn(() => false) });
+    render(<KeydownHarness onSend={onSend} slash={slash} />);
+    const input = screen.getByTestId("input");
+    const tab = new KeyboardEvent("keydown", {
+      key: "Tab",
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(input, tab);
+    expect(slash.complete).toHaveBeenCalledTimes(1);
+    expect(tab.defaultPrevented).toBe(false);
+    expect(slash.submit).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("a declined surface Escape stays with the browser", () => {
+    const onSend = vi.fn();
+    const onEscape = vi.fn(() => false);
+    render(
+      <KeydownHarness
+        onSend={onSend}
+        onEscape={onEscape}
+        slash={makeSlash({ open: false })}
+      />,
+    );
+    const input = screen.getByTestId("input");
+    const esc = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(input, esc);
+    expect(onEscape).toHaveBeenCalledTimes(1);
+    expect(esc.defaultPrevented).toBe(false);
+  });
+
+  it("reads fresh option closures every render (stale callbacks never fire)", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = render(<KeydownHarness onSend={first} />);
+    rerender(<KeydownHarness onSend={second} />);
+    fireEvent.keyDown(screen.getByTestId("input"), { key: "Enter" });
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("the slash-menu Escape stops propagation so outer handlers stay cold", () => {
+    const onSend = vi.fn();
+    const slash = makeSlash();
+    const outer = vi.fn();
+    render(
+      <NestedKeydownHarness
+        onSend={onSend}
+        slash={slash}
+        onOuterKeyDown={outer}
+      />,
+    );
+    const input = screen.getByTestId("input");
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(slash.dismiss).toHaveBeenCalledTimes(1);
+    expect(outer).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "a" });
+    expect(outer).toHaveBeenCalledTimes(1);
+  });
+
+  it("legacy-engine arrows (keyCode 229) still drive an open slash menu", () => {
+    const onSend = vi.fn();
+    const slash = makeSlash();
+    render(<KeydownHarness onSend={onSend} slash={slash} />);
+    fireEvent.keyDown(screen.getByTestId("input"), {
+      key: "ArrowDown",
+      keyCode: 229,
+    });
+    expect(slash.move).toHaveBeenCalledWith(1);
+    expect(onSend).not.toHaveBeenCalled();
+  });
 });
 
 function PasteHarness({ options }: { options?: ComposerPasteOptions }) {
@@ -167,6 +343,17 @@ function pasteEvent(files: File[], text: string) {
       getData: (type: string) => (type === "text" ? text : ""),
     },
   };
+}
+
+function PasteProbeHarness({ options }: { options?: ComposerPasteOptions }) {
+  const handlePaste = useComposerPaste<HTMLTextAreaElement>(options);
+  return (
+    <textarea
+      data-testid="input"
+      data-paste-handler={handlePaste ? "attached" : "none"}
+      onPaste={handlePaste}
+    />
+  );
 }
 
 describe("useComposerPaste", () => {
@@ -199,6 +386,24 @@ describe("useComposerPaste", () => {
     const attachText = vi.fn();
     render(<PasteHarness options={{ addFiles, attachText }} />);
     fireEvent.paste(screen.getByTestId("input"), pasteEvent([], "hello"));
+    expect(addFiles).not.toHaveBeenCalled();
+    expect(attachText).not.toHaveBeenCalled();
+  });
+
+  it("gives surfaces without outbound attachments no paste handler at all", () => {
+    render(<PasteProbeHarness />);
+    const input = screen.getByTestId("input");
+    expect(input.dataset.pasteHandler).toBe("none");
+    expect(() =>
+      fireEvent.paste(input, pasteEvent([], "irrelevant")),
+    ).not.toThrow();
+  });
+
+  it("falls through safely when the paste carries no clipboardData", () => {
+    const addFiles = vi.fn();
+    const attachText = vi.fn();
+    render(<PasteHarness options={{ addFiles, attachText }} />);
+    fireEvent.paste(screen.getByTestId("input"), {});
     expect(addFiles).not.toHaveBeenCalled();
     expect(attachText).not.toHaveBeenCalled();
   });

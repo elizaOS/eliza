@@ -8,7 +8,6 @@ import { logger } from "@elizaos/core";
 const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
 const EXA_MCP_URL = "https://mcp.exa.ai/mcp";
 const MCP_TIMEOUT_MS = 20_000;
-const MCP_MAX_ANSWER_CHARS = 8_000;
 
 export interface KeylessSearchResult {
   answer: string;
@@ -96,7 +95,7 @@ export async function executeKeylessMcpSearch(
     search_queries: [query],
   });
   if (parallel) {
-    return { answer: parallel.slice(0, MCP_MAX_ANSWER_CHARS), provider: "parallel" };
+    return { answer: parallel, provider: "parallel" };
   }
   const exa = await callSearchMcp(EXA_MCP_URL, "web_search_exa", {
     query,
@@ -105,7 +104,7 @@ export async function executeKeylessMcpSearch(
     livecrawl: "fallback",
   });
   if (exa) {
-    return { answer: exa.slice(0, MCP_MAX_ANSWER_CHARS), provider: "exa" };
+    return { answer: exa, provider: "exa" };
   }
   logger.warn({ src: "webSearchService:keyless" }, "Keyless search failed on both providers");
   throw new Error("Keyless web search failed: Parallel and Exa both returned no result");

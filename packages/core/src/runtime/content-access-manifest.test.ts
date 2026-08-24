@@ -168,18 +168,18 @@ describe("deriveCompactionContentManifest", () => {
 		).toThrow(/conflicting source revisions/u);
 	});
 
-	it("rejects an object beyond the traversal depth instead of losing it", () => {
+	it("finds references beyond legacy traversal bounds", () => {
 		const nested = { a: { b: { c: { readView: readView(0, 20) } } } };
-		expect(() =>
-			deriveCompactionContentManifest(
-				{
-					archivedSteps: [],
-					steps: [
-						{ iteration: 1, result: { success: true, promptData: nested } },
-					],
-				},
-				{ lastUsedAt: "2026-08-22T12:00:00.000Z", maxDepth: 2 },
-			),
-		).toThrow(/depth bound/u);
+		const manifest = deriveCompactionContentManifest(
+			{
+				archivedSteps: [],
+				steps: [
+					{ iteration: 1, result: { success: true, promptData: nested } },
+				],
+			},
+			{ lastUsedAt: "2026-08-22T12:00:00.000Z", maxDepth: 2 },
+		);
+		expect(manifest.contentRefs).toHaveLength(1);
+		expect(manifest.contentRefs[0]?.reference.ref).toBe("opaque-file");
 	});
 });

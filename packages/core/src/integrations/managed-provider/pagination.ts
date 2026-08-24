@@ -15,11 +15,9 @@ export interface ProviderPage<T> {
 export interface CollectProviderPagesOptions {
 	/** Optional ceiling on fetched pages for deliberately partial operations. */
 	maxPages?: number;
-	/** Ceiling on accumulated items; default 1000. */
+	/** Optional ceiling on accumulated items for deliberately bounded operations. */
 	maxItems?: number;
 }
-
-const DEFAULT_MAX_ITEMS = 1_000;
 
 /**
  * Drains a cursor-paginated listing into one bounded array. `fetchPage`
@@ -30,13 +28,13 @@ export async function collectProviderPages<T>(
 	options: CollectProviderPagesOptions = {},
 ): Promise<T[]> {
 	const maxPages = options.maxPages;
-	const maxItems = options.maxItems ?? DEFAULT_MAX_ITEMS;
+	const maxItems = options.maxItems;
 	if (maxPages !== undefined && (!Number.isInteger(maxPages) || maxPages < 1)) {
 		throw new ManagedProviderError("The pagination page limit is invalid.", {
 			code: "INVALID_INPUT",
 		});
 	}
-	if (!Number.isInteger(maxItems) || maxItems < 1) {
+	if (maxItems !== undefined && (!Number.isInteger(maxItems) || maxItems < 1)) {
 		throw new ManagedProviderError("The pagination item limit is invalid.", {
 			code: "INVALID_INPUT",
 		});
@@ -55,7 +53,7 @@ export async function collectProviderPages<T>(
 		page += 1;
 		const result = await fetchPage(cursor);
 		items.push(...result.items);
-		if (items.length > maxItems) {
+		if (maxItems !== undefined && items.length > maxItems) {
 			throw new ManagedProviderError(
 				"The provider listing exceeded the item limit.",
 				{ code: "PAGINATION_OVERFLOW", context: { maxItems } },

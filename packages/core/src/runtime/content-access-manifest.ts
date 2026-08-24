@@ -1,8 +1,8 @@
 /**
  * Derives the content-reference ledger that an archive or future compaction
  * seam must retain independently of an LLM-authored summary. The walker reads
- * only model-safe prompt projections, applies strict traversal bounds, and
- * never copies source text into the manifest.
+ * every tool-result carrier with cycle-safe traversal and never copies source
+ * text into the manifest.
  */
 
 import { ElizaError } from "../errors";
@@ -26,15 +26,15 @@ export interface DeriveCompactionContentManifestOptions {
 	lastUsedAt: string;
 	maxReferences?: number;
 	maxRangesPerReference?: number;
+	/** @deprecated Traversal is complete and no longer value-bounded. */
 	maxVisitedValues?: number;
+	/** @deprecated Traversal is complete and no longer depth-bounded. */
 	maxDepth?: number;
 }
 
 const DEFAULT_MAX_REFERENCES = COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES;
 const DEFAULT_MAX_RANGES_PER_REFERENCE =
 	COMPACTION_CONTENT_MANIFEST_MAX_RANGES_PER_REFERENCE;
-const DEFAULT_MAX_VISITED_VALUES = 10_000;
-const DEFAULT_MAX_DEPTH = 8;
 
 function positiveSafeInteger(
 	value: number | undefined,
@@ -83,22 +83,11 @@ export function deriveCompactionContentManifest(
 		DEFAULT_MAX_RANGES_PER_REFERENCE,
 		"maxRangesPerReference",
 	);
-	const maxVisitedValues = positiveSafeInteger(
-		options.maxVisitedValues,
-		DEFAULT_MAX_VISITED_VALUES,
-		"maxVisitedValues",
-	);
-	const maxDepth = positiveSafeInteger(
-		options.maxDepth,
-		DEFAULT_MAX_DEPTH,
-		"maxDepth",
-	);
 	const lastUsedAt = canonicalTimestamp(options.lastUsedAt, "lastUsedAt");
 	const entries = new Map<
 		string,
 		CompactionContentEntry & { rangeKeys: Set<string> }
 	>();
-	let visitedValues = 0;
 
 	const addReference = (
 		reference: ContentReference,
@@ -168,63 +157,42 @@ export function deriveCompactionContentManifest(
 	};
 
 	const visit = (root: unknown, reason: string) => {
-		const pending: Array<{ value: unknown; depth: number }> = [
-			{ value: root, depth: 0 },
-		];
+		const pending: unknown[] = [root];
+		const visited = new WeakSet<object>();
 		while (pending.length > 0) {
 			const current = pending.pop();
 			if (!current) break;
-			visitedValues++;
-			if (visitedValues > maxVisitedValues) {
-				throw new ElizaError(
-					"Content manifest traversal exceeds the configured value bound",
-					{
-						code: "CONTENT_MANIFEST_BOUND_EXCEEDED",
-						context: { bound: "values", maxVisitedValues },
-					},
-				);
-			}
-			if (isReadView(current.value)) {
-				addReference(current.value.reference, reason, {
-					unit: current.value.slice.range.unit,
-					start: current.value.slice.range.start,
-					end: current.value.slice.range.end,
+			if (isReadView(current)) {
+				addReference(current.reference, reason, {
+					unit: current.slice.range.unit,
+					start: current.slice.range.start,
+					end: current.slice.range.end,
 				});
 				continue;
 			}
-			if (isContentReference(current.value)) {
-				addReference(current.value, reason);
+			if (isContentReference(current)) {
+				addReference(current, reason);
 				continue;
 			}
-			if (current.value === null || typeof current.value !== "object") {
+			if (current === null || typeof current !== "object") {
 				continue;
 			}
-			if (current.depth >= maxDepth) {
-				throw new ElizaError(
-					"Content manifest traversal exceeds the configured depth bound",
-					{
-						code: "CONTENT_MANIFEST_BOUND_EXCEEDED",
-						context: { bound: "depth", maxDepth },
-					},
-				);
-			}
-			for (const child of Array.isArray(current.value)
-				? current.value
-				: Object.values(current.value as Record<string, unknown>)) {
-				pending.push({ value: child, depth: current.depth + 1 });
+			if (visited.has(current)) continue;
+			visited.add(current);
+			for (const child of Array.isArray(current)
+				? current
+				: Object.values(current as Record<string, unknown>)) {
+				pending.push(child);
 			}
 		}
 	};
 
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.result) continue;
-		// Match the model projection contract: promptData replaces legacy data
-		// when present, while data remains the authoritative carrier for older
-		// ActionResults. Scanning only promptData would archive a rendered legacy
-		// ReadView without its continuation reference.
-		const projectedData = step.result.promptData ?? step.result.data;
-		if (projectedData === undefined) continue;
-		visit(projectedData, `tool:${step.toolCall?.name ?? "unknown"}`);
+		const reason = `tool:${step.toolCall?.name ?? "unknown"}`;
+		if (step.result.data !== undefined) visit(step.result.data, reason);
+		if (step.result.promptData !== undefined)
+			visit(step.result.promptData, reason);
 	}
 
 	return validateCompactionContentManifest({

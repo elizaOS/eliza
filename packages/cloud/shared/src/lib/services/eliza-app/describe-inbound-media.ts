@@ -20,7 +20,7 @@
  * prompt-integrity rule.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, isModelOutputLimitFinishReason } from "@elizaos/core";
 import { generateText } from "ai";
 import type { Bindings } from "../../../types/cloud-worker-env";
 import { getLanguageModel, ProviderConfigurationError } from "../../providers/language-model";
@@ -320,7 +320,7 @@ export async function describeInboundImageMedia(
   }
   // Prompt integrity: a description clipped at the output ceiling must be
   // rejected, never delivered as if it were the complete image content.
-  if (completion.finishReason === "length") {
+  if (isModelOutputLimitFinishReason(completion.finishReason)) {
     throw new InboundMediaDescriptionError(
       "Vision provider truncated the description at the output ceiling",
       "incomplete_description",

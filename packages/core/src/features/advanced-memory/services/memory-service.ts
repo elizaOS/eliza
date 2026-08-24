@@ -1,9 +1,8 @@
 /**
- * Runs the advanced-memory capability's `memory` service: short-term
- * conversation summarization plus extraction and retrieval of long-term
- * persistent facts. Registered by createAdvancedMemoryPlugin and consumed by
- * the capability's providers (long-term-memory, context-summary) and evaluators
- * (summary, long-term-memory).
+ * Runs the advanced-memory capability's `memory` service: extraction and
+ * retrieval of long-term persistent facts. Registered by
+ * createAdvancedMemoryPlugin and consumed by the long-term-memory provider and
+ * evaluator. Retained dialogue is never replaced by a rolling summary.
  *
  * Persistence is delegated to a MemoryStorageProvider discovered at runtime via
  * getService("memoryStorage") — supplied by a database plugin. When none is
@@ -28,10 +27,8 @@ import {
 import { logger } from "../../../logger.ts";
 import {
 	type IAgentRuntime,
-	ModelType,
 	Service,
 	type ServiceTypeName,
-	type TextGenerationModelType,
 	type UUID,
 } from "../../../types/index.ts";
 import type { MemoryStorageProvider } from "../../../types/memory-storage.ts";
@@ -39,38 +36,13 @@ import type {
 	LongTermMemory,
 	LongTermMemoryCategory,
 	MemoryConfig,
-	SessionSummary,
 } from "../types.ts";
-
-const TEXT_GENERATION_MODEL_TYPES = new Set<TextGenerationModelType>([
-	ModelType.TEXT_NANO,
-	ModelType.TEXT_SMALL,
-	ModelType.TEXT_MEDIUM,
-	ModelType.TEXT_LARGE,
-	ModelType.TEXT_MEGA,
-	ModelType.RESPONSE_HANDLER,
-	ModelType.ACTION_PLANNER,
-	ModelType.TEXT_REASONING_SMALL,
-	ModelType.TEXT_REASONING_LARGE,
-	ModelType.TEXT_COMPLETION,
-]);
 
 function memoryCreatedAtMs(memory: LongTermMemory): number {
 	const value = memory.createdAt;
 	const timestamp =
 		value instanceof Date ? value.getTime() : new Date(value).getTime();
 	return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function resolveConfiguredTextGenerationModelType(
-	value: string | boolean | number | null,
-): TextGenerationModelType | null {
-	if (typeof value !== "string") {
-		return null;
-	}
-
-	const normalized = value.trim() as TextGenerationModelType;
-	return TEXT_GENERATION_MODEL_TYPES.has(normalized) ? normalized : null;
 }
 
 function isMemoryStorageProvider(
@@ -80,45 +52,34 @@ function isMemoryStorageProvider(
 		typeof service === "object" &&
 		service !== null &&
 		"storeLongTermMemory" in service &&
-		typeof service.storeLongTermMemory === "function" &&
-		"storeSessionSummary" in service &&
-		typeof service.storeSessionSummary === "function"
+		typeof service.storeLongTermMemory === "function"
 	);
 }
 
 export class MemoryService extends Service {
 	static serviceType: ServiceTypeName = "memory" as ServiceTypeName;
 
-	private sessionMessageCounts: Map<UUID, number>;
 	private memoryConfig: MemoryConfig;
 	private lastExtractionCheckpoints: Map<string, number>;
-	// Both maps grow one entry per distinct room / (entity,room) pair seen over the
-	// lifetime of the process. Cap them (FIFO by Map insertion order). An evicted
-	// session counter resets to 0 (only affects summarization cadence for a dormant
-	// room); an evicted checkpoint is re-fetched from runtime.getCache on miss.
-	private static readonly MAX_SESSION_ENTRIES = 5000;
+	// The checkpoint map grows one entry per distinct (entity,room) pair. Cap it
+	// FIFO; an evicted checkpoint is re-fetched from runtime.getCache on miss.
+	private static readonly MAX_CHECKPOINT_ENTRIES = 5000;
 
 	/** Resolved at initialize(). null means no storage backend is available. */
 	private storage: MemoryStorageProvider | null = null;
 
 	capabilityDescription =
-		"Memory management with short-term summarization and long-term persistent facts";
+		"Memory management with complete retained dialogue and long-term persistent facts";
 
 	constructor(runtime?: IAgentRuntime) {
 		super(runtime);
-		this.sessionMessageCounts = new Map();
 		this.lastExtractionCheckpoints = new Map();
 		this.memoryConfig = {
-			shortTermSummarizationThreshold: 16,
-			shortTermRetainRecent: 6,
-			shortTermSummarizationInterval: 10,
 			longTermExtractionEnabled: true,
 			longTermVectorSearchEnabled: false,
 			longTermConfidenceThreshold: 0.85,
 			longTermExtractionThreshold: 30,
 			longTermExtractionInterval: 10,
-			summaryModelType: ModelType.TEXT_NANO,
-			summaryMaxTokens: 2500,
 		};
 	}
 
@@ -129,13 +90,12 @@ export class MemoryService extends Service {
 	}
 
 	async stop(): Promise<void> {
-		this.sessionMessageCounts.clear();
 		this.lastExtractionCheckpoints.clear();
 		logger.info({ src: "service:memory" }, "MemoryService stopped");
 	}
 
 	private capSessionMap(map: Map<string, number>): void {
-		while (map.size > MemoryService.MAX_SESSION_ENTRIES) {
+		while (map.size > MemoryService.MAX_CHECKPOINT_ENTRIES) {
 			const oldest = map.keys().next().value;
 			if (oldest === undefined) break;
 			map.delete(oldest);
@@ -166,39 +126,13 @@ export class MemoryService extends Service {
 		if (!provider) {
 			logger.warn(
 				{ src: "service:memory", agentId: runtime.agentId },
-				"No MemoryStorageProvider found — long-term memory and session summaries disabled. " +
+				"No MemoryStorageProvider found — long-term memory disabled. " +
 					"Register a memoryStorage service from your database plugin to enable them.",
 			);
 		}
 		this.storage = provider;
 
 		// Read config overrides from environment / character settings.
-		const threshold = runtime.getSetting("MEMORY_SUMMARIZATION_THRESHOLD");
-		if (threshold) {
-			this.memoryConfig.shortTermSummarizationThreshold = Number.parseInt(
-				String(threshold),
-				10,
-			);
-		}
-
-		const retainRecent = runtime.getSetting("MEMORY_RETAIN_RECENT");
-		if (retainRecent) {
-			this.memoryConfig.shortTermRetainRecent = Number.parseInt(
-				String(retainRecent),
-				10,
-			);
-		}
-
-		const summarizationInterval = runtime.getSetting(
-			"MEMORY_SUMMARIZATION_INTERVAL",
-		);
-		if (summarizationInterval) {
-			this.memoryConfig.shortTermSummarizationInterval = Number.parseInt(
-				String(summarizationInterval),
-				10,
-			);
-		}
-
 		const longTermEnabled = runtime.getSetting("MEMORY_LONG_TERM_ENABLED");
 		if (longTermEnabled === "false" || longTermEnabled === false) {
 			this.memoryConfig.longTermExtractionEnabled = false;
@@ -250,20 +184,8 @@ export class MemoryService extends Service {
 			}
 		}
 
-		const configuredModelType = resolveConfiguredTextGenerationModelType(
-			runtime.getSetting("MEMORY_SUMMARY_MODEL_TYPE") ??
-				runtime.getSetting("MEMORY_MODEL_TYPE"),
-		);
-		if (configuredModelType) {
-			this.memoryConfig.summaryModelType = configuredModelType;
-		}
-
 		logger.debug(
 			{
-				summarizationThreshold:
-					this.memoryConfig.shortTermSummarizationThreshold,
-				summarizationInterval: this.memoryConfig.shortTermSummarizationInterval,
-				retainRecent: this.memoryConfig.shortTermRetainRecent,
 				longTermEnabled: this.memoryConfig.longTermExtractionEnabled,
 				extractionThreshold: this.memoryConfig.longTermExtractionThreshold,
 				extractionInterval: this.memoryConfig.longTermExtractionInterval,
@@ -307,52 +229,12 @@ export class MemoryService extends Service {
 		return storage;
 	}
 
-	private async countRoomMemories(roomId: UUID): Promise<number> {
-		type ModernCounter = (params: {
-			roomIds: UUID[];
-			unique: boolean;
-			tableName: string;
-		}) => Promise<number>;
-		type LegacyCounter = (
-			roomId: UUID,
-			unique?: boolean,
-			tableName?: string,
-		) => Promise<number>;
-
-		const counter = this.runtime.countMemories as ModernCounter | LegacyCounter;
-		if (counter.length >= 2) {
-			return (counter as LegacyCounter)(roomId, false, "messages");
-		}
-		return (counter as ModernCounter)({
-			roomIds: [roomId],
-			unique: false,
-			tableName: "messages",
-		});
-	}
-
 	getConfig(): MemoryConfig {
 		return { ...this.memoryConfig };
 	}
 
 	updateConfig(updates: Partial<MemoryConfig>): void {
 		this.memoryConfig = { ...this.memoryConfig, ...updates };
-	}
-
-	incrementMessageCount(roomId: UUID): number {
-		const current = this.sessionMessageCounts.get(roomId) || 0;
-		const newCount = current + 1;
-		this.sessionMessageCounts.set(roomId, newCount);
-		this.capSessionMap(this.sessionMessageCounts);
-		return newCount;
-	}
-
-	resetMessageCount(roomId: UUID): void {
-		this.sessionMessageCounts.set(roomId, 0);
-	}
-
-	async shouldSummarize(roomId: UUID): Promise<boolean> {
-		const count = await this.countRoomMemories(roomId);
-		return count >= this.memoryConfig.shortTermSummarizationThreshold;
 	}
 
 	private getExtractionKey(entityId: UUID, roomId: UUID): string {
@@ -519,56 +401,6 @@ export class MemoryService extends Service {
 		);
 	}
 
-	async getCurrentSessionSummary(roomId: UUID): Promise<SessionSummary | null> {
-		const storage = await this.getStorage();
-		if (!storage) return null;
-		return storage.getCurrentSessionSummary(this.runtime.agentId, roomId);
-	}
-
-	async storeSessionSummary(
-		summary: Omit<SessionSummary, "id" | "createdAt" | "updatedAt">,
-	): Promise<SessionSummary> {
-		const storage = await this.requireStorage("store session summary");
-		const stored = await storage.storeSessionSummary(summary);
-		logger.info(
-			{ src: "service:memory" },
-			`Stored session summary for room ${stored.roomId}`,
-		);
-		return stored;
-	}
-
-	async updateSessionSummary(
-		id: UUID,
-		roomId: UUID,
-		updates: Partial<
-			Omit<
-				SessionSummary,
-				"id" | "agentId" | "roomId" | "createdAt" | "updatedAt"
-			>
-		>,
-	): Promise<void> {
-		const storage = await this.requireStorage("update session summary");
-		await storage.updateSessionSummary(
-			id,
-			this.runtime.agentId,
-			roomId,
-			updates,
-		);
-		logger.info(
-			{ src: "service:memory" },
-			`Updated session summary: ${id} for room ${roomId}`,
-		);
-	}
-
-	async getSessionSummaries(
-		roomId: UUID,
-		limit = 5,
-	): Promise<SessionSummary[]> {
-		const storage = await this.getStorage();
-		if (!storage) return [];
-		return storage.getSessionSummaries(this.runtime.agentId, roomId, limit);
-	}
-
 	// ── Vector search (JS fallback; provider can override with native) ──
 
 	async searchLongTermMemories(
@@ -642,7 +474,7 @@ export class MemoryService extends Service {
 	// ── Formatting ──────────────────────────────────────────────────────
 
 	async getFormattedLongTermMemories(entityId: UUID): Promise<string> {
-		const memories = await this.getLongTermMemories(entityId, undefined, 20);
+		const memories = await this.getLongTermMemories(entityId);
 		return formatLongTermMemories(memories);
 	}
 }

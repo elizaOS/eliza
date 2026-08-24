@@ -354,34 +354,24 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     }
   });
 
-  it("caps hostile generation token counts and derives stable cache slots", async () => {
+  it("rejects unsupported generation token counts before native dispatch", async () => {
     vi.resetModules();
     const state = installMockPlugin();
     const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
 
     const adapter = new CapacitorLlamaAdapter();
     await adapter.load({ modelPath: "/tmp/llama.gguf" });
-    await adapter.generate({
-      prompt: "hi",
-      maxTokens: Number.POSITIVE_INFINITY,
-      cacheKey: "user:../../escape",
-    });
-
-    expect(state.completionCalls).toHaveLength(1);
-    const params = (
-      (await import("llama-cpp-capacitor")) as unknown as {
-        LlamaCpp: {
-          completion: { mock: { calls: Array<[unknown]> } };
-        };
-      }
-    ).LlamaCpp.completion.mock.calls[0][0] as {
-      params: Record<string, unknown>;
-    };
-    expect(params.params.n_predict).toBe(256);
-    expect(params.params.cache_prompt).toBe(true);
-    expect(typeof params.params.slot_id).toBe("number");
-    expect(params.params.slot_id).toBeGreaterThanOrEqual(0);
-    expect(params.params.slot_id).toBeLessThan(4);
+    await expect(
+      adapter.generate({
+        prompt: "hi",
+        maxTokens: Number.POSITIVE_INFINITY,
+        cacheKey: "user:../../escape",
+      }),
+    ).rejects.toThrow("positive safe integer");
+    await expect(
+      adapter.generate({ prompt: "hi", maxTokens: 257 }),
+    ).rejects.toThrow("exceeds the mobile decode ceiling 256");
+    expect(state.completionCalls).toHaveLength(0);
   });
 });
 

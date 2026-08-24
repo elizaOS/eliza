@@ -5,7 +5,6 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MODEL_CONTEXT_WINDOW,
-  DEFAULT_MODEL_MAX_TOKENS,
   normalizeModelDefinitionConfig,
   normalizeModelMetadataInConfig,
   resolveModelTokenMetadata,
@@ -25,7 +24,6 @@ function definition(
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: DEFAULT_MODEL_CONTEXT_WINDOW,
-    maxTokens: DEFAULT_MODEL_MAX_TOKENS,
     ...partial,
     id: partial.id,
   };
@@ -60,9 +58,8 @@ function configOf(
 }
 
 describe("model-metadata defaults", () => {
-  it("exposes the documented runtime fallbacks", () => {
+  it("exposes only the documented input-context fallback", () => {
     expect(DEFAULT_MODEL_CONTEXT_WINDOW).toBe(128_000);
-    expect(DEFAULT_MODEL_MAX_TOKENS).toBe(8_192);
   });
 });
 
@@ -76,7 +73,6 @@ describe("normalizeModelDefinitionConfig", () => {
       input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: DEFAULT_MODEL_CONTEXT_WINDOW,
-      maxTokens: DEFAULT_MODEL_MAX_TOKENS,
     });
   });
 
@@ -157,7 +153,7 @@ describe("normalizeModelDefinitionConfig", () => {
     expect(
       normalizeModelDefinitionConfig({ id: "m" }, { maxTokens: Number.NaN })
         .maxTokens,
-    ).toBe(DEFAULT_MODEL_MAX_TOKENS);
+    ).toBeUndefined();
     expect(
       normalizeModelDefinitionConfig({ id: "m", maxTokens: 512.8 }).maxTokens,
     ).toBe(512);
@@ -311,7 +307,7 @@ describe("normalizeModelMetadataInConfig", () => {
     const openai = config.models?.providers?.openai.models[0];
     expect(openai?.name).toBe("gpt-4");
     expect(openai?.contextWindow).toBe(DEFAULT_MODEL_CONTEXT_WINDOW);
-    expect(openai?.maxTokens).toBe(DEFAULT_MODEL_MAX_TOKENS);
+    expect(openai?.maxTokens).toBeUndefined();
     expect(config.models?.providers?.empty.models).toEqual([]);
   });
 
@@ -340,9 +336,9 @@ describe("normalizeModelMetadataInConfig", () => {
     expect(config.models?.providers?.openai.models[0]?.contextWindow).toBe(
       DEFAULT_MODEL_CONTEXT_WINDOW,
     );
-    expect(config.models?.providers?.openai.models[0]?.maxTokens).toBe(
-      DEFAULT_MODEL_MAX_TOKENS,
-    );
+    expect(
+      config.models?.providers?.openai.models[0]?.maxTokens,
+    ).toBeUndefined();
   });
 
   it("does not let bedrockDiscovery override a model's own positive token fields", () => {
@@ -394,13 +390,11 @@ describe("resolveModelTokenMetadata", () => {
     expect(resolveModelTokenMetadata()).toEqual({
       modelId: "runtime-default",
       contextWindow: DEFAULT_MODEL_CONTEXT_WINDOW,
-      maxTokens: DEFAULT_MODEL_MAX_TOKENS,
       source: "runtime-default",
     });
     expect(resolveModelTokenMetadata({}, "gpt-4")).toEqual({
       modelId: "gpt-4",
       contextWindow: DEFAULT_MODEL_CONTEXT_WINDOW,
-      maxTokens: DEFAULT_MODEL_MAX_TOKENS,
       source: "runtime-default",
     });
     expect(resolveModelTokenMetadata(configOf({}), "gpt-4").source).toBe(
@@ -499,7 +493,6 @@ describe("resolveModelTokenMetadata", () => {
       modelId: "gpt-4",
       providerId: "openai",
       contextWindow: DEFAULT_MODEL_CONTEXT_WINDOW,
-      maxTokens: DEFAULT_MODEL_MAX_TOKENS,
       source: "model-config",
     });
   });
@@ -514,7 +507,6 @@ describe("resolveModelTokenMetadata", () => {
     expect(resolveModelTokenMetadata(cfg, "missing-model")).toEqual({
       modelId: "missing-model",
       contextWindow: 64_000,
-      maxTokens: DEFAULT_MODEL_MAX_TOKENS,
       source: "agent-defaults",
     });
     expect(resolveModelTokenMetadata(cfg, "  claude  ").modelId).toBe("claude");
