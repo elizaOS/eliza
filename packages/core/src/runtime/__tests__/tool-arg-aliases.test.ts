@@ -128,6 +128,58 @@ describe("resolveEntityAliasRefs", () => {
 			(resolved as Record<string, unknown> & { polluted?: unknown }).polluted,
 		).toBeUndefined();
 	});
+
+	it("leaves placeholders nested beyond the scan depth limit redacted", () => {
+		let deep: Record<string, unknown> = { leaf: ADMIN_PLACEHOLDER };
+		for (let index = 0; index < 9; index += 1) {
+			deep = { wrap: deep };
+		}
+		const args = {
+			...deep,
+			shallow: { entityId: ADMIN_PLACEHOLDER },
+		};
+		const resolved = resolveEntityAliasRefs(OWNER_ALIASES, args);
+		expect(resolved.shallow).toEqual({ entityId: OWNER_ID });
+		let cursor = resolved as Record<string, unknown>;
+		for (let index = 0; index < 9; index += 1) {
+			cursor = cursor.wrap as Record<string, unknown>;
+		}
+		expect(cursor.leaf).toBe(ADMIN_PLACEHOLDER);
+	});
+
+	it("keeps trailing placeholders redacted once the scan budget is exhausted", () => {
+		const filler = Array.from(
+			{ length: 2_100 },
+			(_, index) => `filler-${index}`,
+		);
+		const args = {
+			head: [ADMIN_PLACEHOLDER],
+			list: [...filler, ADMIN_PLACEHOLDER],
+		};
+		const resolved = resolveEntityAliasRefs(OWNER_ALIASES, args);
+		expect((resolved.head as string[])[0]).toBe(OWNER_ID);
+		const list = resolved.list as unknown[];
+		expect(list[list.length - 1]).toBe(ADMIN_PLACEHOLDER);
+		// The exhausted subtree is returned untouched by reference.
+		expect(resolved.list).toBe(args.list);
+		expect(args.head).toEqual([ADMIN_PLACEHOLDER]);
+	});
+
+	it("refuses granted values that are not strings", () => {
+		const args = { entityId: ADMIN_PLACEHOLDER };
+		const resolved = resolveEntityAliasRefs(
+			{ [CANONICAL_OWNER_ENTITY_ALIAS]: 12345 as unknown as string },
+			args,
+		);
+		expect(resolved.entityId).toBe(ADMIN_PLACEHOLDER);
+	});
+
+	it("traverses null-valued entries without resolving them", () => {
+		const args = { meta: null, entityId: ADMIN_PLACEHOLDER };
+		const resolved = resolveEntityAliasRefs(OWNER_ALIASES, args);
+		expect(resolved.meta).toBeNull();
+		expect(resolved.entityId).toBe(OWNER_ID);
+	});
 });
 
 describe("buildTurnEntityAliases", () => {
@@ -182,6 +234,37 @@ describe("buildTurnEntityAliases", () => {
 		);
 		expect(aliases).toEqual({});
 	});
+
+	it("returns no grants when roles are absent entirely", async () => {
+		const aliases = await buildTurnEntityAliases(
+			makeRuntime([], settings),
+			makeMessage(),
+			makeState(ADMIN_PLACEHOLDER),
+			undefined,
+		);
+		expect(aliases).toEqual({});
+	});
+
+	it("returns no grants when no canonical owner can be resolved at all", async () => {
+		const aliases = await buildTurnEntityAliases(
+			makeRuntime([]),
+			makeMessage(),
+			makeState(ADMIN_PLACEHOLDER),
+			["OWNER"],
+		);
+		expect(aliases).toEqual({});
+	});
+
+	it("returns a frozen capability map on success", async () => {
+		const aliases = await buildTurnEntityAliases(
+			makeRuntime([], settings),
+			makeMessage(),
+			makeState(ADMIN_PLACEHOLDER),
+			["OWNER"],
+		);
+		expect(Object.isFrozen(aliases)).toBe(true);
+		expect(aliases[CANONICAL_OWNER_ENTITY_ALIAS]).toBe(OWNER_ID);
+	});
 });
 
 describe("statePresentsEntityAlias", () => {
@@ -194,6 +277,39 @@ describe("statePresentsEntityAlias", () => {
 		).toBe(false);
 		expect(
 			statePresentsEntityAlias(undefined, CANONICAL_OWNER_ENTITY_ALIAS),
+		).toBe(false);
+	});
+
+	it("finds the exact token in state text", () => {
+		expect(
+			statePresentsEntityAlias(
+				makeState(`context: ${ADMIN_PLACEHOLDER}`),
+				CANONICAL_OWNER_ENTITY_ALIAS,
+			),
+		).toBe(true);
+	});
+
+	it("finds the exact token inside state data", () => {
+		const base = makeState("");
+		const state = {
+			...base,
+			data: { ownership: { ownerId: ADMIN_PLACEHOLDER } },
+		};
+		expect(statePresentsEntityAlias(state, CANONICAL_OWNER_ENTITY_ALIAS)).toBe(
+			true,
+		);
+	});
+
+	it("ignores tokens nested beyond the scan depth limit", () => {
+		let deep: Record<string, unknown> = { leaf: ADMIN_PLACEHOLDER };
+		for (let index = 0; index < 9; index += 1) {
+			deep = { wrap: deep };
+		}
+		expect(
+			statePresentsEntityAlias(
+				makeState("", deep as never),
+				CANONICAL_OWNER_ENTITY_ALIAS,
+			),
 		).toBe(false);
 	});
 });
