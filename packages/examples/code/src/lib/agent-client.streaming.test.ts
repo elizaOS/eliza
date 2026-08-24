@@ -647,3 +647,193 @@ describe("AgentClient client lifecycle, turn plumbing, and clearing", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe("AgentClient turn option gating and response precedence", () => {
+  beforeEach(() => {
+    resetAgentClient();
+  });
+
+  it("throws when the attached runtime has no message service", async () => {
+    const runtime = {
+      ensureConnection: async () => {},
+    } as unknown as IAgentRuntime;
+
+    getAgentClient().setRuntime(runtime);
+    await expect(
+      getAgentClient().sendMessage({
+        room: makeRoom(),
+        text: "hello",
+        identity: makeIdentity(),
+      }),
+    ).rejects.toThrow("Runtime message service not available");
+  });
+
+  it("connects the room before handing the turn to the message service", async () => {
+    const events: string[] = [];
+    const runtime = {
+      ensureConnection: async () => {
+        events.push("connection");
+      },
+      messageService: {
+        handleMessage: async () => {
+          events.push("handle");
+          return { didRespond: true, responseMessages: [] };
+        },
+      },
+    } as unknown as IAgentRuntime;
+
+    getAgentClient().setRuntime(runtime);
+    await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "status",
+      identity: makeIdentity(),
+    });
+
+    expect(events).toEqual(["connection", "handle"]);
+  });
+
+  it("emits nothing for empty stream chunks so callback text still streams whole", async () => {
+    const deltas: string[] = [];
+
+    const runtime = makeRuntime(
+      async (_runtime, _message, callback, options) => {
+        await options?.onStreamChunk?.("", "response-id");
+        await callback?.({ text: "done" });
+        return { didRespond: true, responseMessages: [] };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "stream empty",
+      identity: makeIdentity(),
+      onDelta: (delta) => deltas.push(delta),
+    });
+
+    expect(response).toBe("done");
+    expect(deltas).toEqual(["done"]);
+  });
+
+  it("replaces diverging final callback text without emitting a spurious delta", async () => {
+    const deltas: string[] = [];
+
+    const runtime = makeRuntime(
+      async (_runtime, _message, callback, options) => {
+        await options?.onStreamChunk?.("AAA", "response-id", "AAA");
+        await callback?.({ text: "BBB" });
+        return { didRespond: true, responseMessages: [] };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "diverge",
+      identity: makeIdentity(),
+      onDelta: (delta) => deltas.push(delta),
+    });
+
+    expect(response).toBe("BBB");
+    expect(deltas).toEqual(["AAA"]);
+  });
+
+  it("ignores callback content without usable text and adopts the result text", async () => {
+    let seenCallback: HandlerCallback | undefined;
+
+    const runtime = makeRuntime(async (_runtime, _message, callback) => {
+      seenCallback = callback;
+      await callback?.({});
+      await callback?.({ text: undefined });
+      return {
+        didRespond: true,
+        responseContent: { text: "adopted from result" },
+        responseMessages: [],
+      };
+    });
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "guard arms",
+      identity: makeIdentity(),
+    });
+
+    expect(typeof seenCallback).toBe("function");
+    expect(response).toBe("adopted from result");
+  });
+
+  it("keeps the streamed response when the result carries different content", async () => {
+    const deltas: string[] = [];
+
+    const runtime = makeRuntime(
+      async (_runtime, _message, _callback, options) => {
+        await options?.onStreamChunk?.(
+          "live answer",
+          "response-id",
+          "live answer",
+        );
+        return {
+          didRespond: true,
+          responseContent: { text: "stale persisted copy" },
+          responseMessages: [],
+        };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "precedence",
+      identity: makeIdentity(),
+      onDelta: (delta) => deltas.push(delta),
+    });
+
+    expect(response).toBe("live answer");
+    expect(deltas).toEqual(["live answer"]);
+  });
+
+  it("attaches only codingMode to the turn options when no delta sink is provided", async () => {
+    let seenOptions: HandleMessageOptions | undefined;
+
+    const runtime = makeRuntime(
+      async (_runtime, _message, _callback, options) => {
+        seenOptions = options;
+        return { didRespond: true, responseMessages: [] };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    const response = await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "coding only",
+      identity: makeIdentity(),
+      codingMode: true,
+    });
+
+    expect(response).toBe("");
+    expect(seenOptions).toEqual({ codingMode: true });
+  });
+
+  it("attaches only abortSignal when it is the sole option", async () => {
+    let seenOptions: HandleMessageOptions | undefined;
+    const abortController = new AbortController();
+
+    const runtime = makeRuntime(
+      async (_runtime, _message, _callback, options) => {
+        seenOptions = options;
+        return { didRespond: true, responseMessages: [] };
+      },
+    );
+
+    getAgentClient().setRuntime(runtime);
+    await getAgentClient().sendMessage({
+      room: makeRoom(),
+      text: "abort only",
+      identity: makeIdentity(),
+      abortSignal: abortController.signal,
+    });
+
+    expect(seenOptions).toEqual({ abortSignal: abortController.signal });
+  });
+});
