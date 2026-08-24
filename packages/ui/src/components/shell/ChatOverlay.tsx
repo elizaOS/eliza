@@ -1308,8 +1308,8 @@ export function ChatOverlay({
   slash?: SlashCommandController;
   /**
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
-   * false` upstream). The overlay opens as the normal full-screen chat and pins
-   * there: every collapse path (Escape, outside tap, drag/close) is a no-op,
+   * false` upstream). The overlay opens at the normal reading-height detent and
+   * pins there: every collapse path (Escape, outside tap, drag/close) is a no-op,
    * the interactive drag handle is hidden, and a neutral scrim preserves the
    * shared wallpaper while the retained home/launcher surface stays invisible.
    * The composer is sign-in-first and locked; the seeded transcript choice is
@@ -1681,10 +1681,11 @@ export function ChatOverlay({
   // pilled-and-full combos can't exist and no transition has to hand-sync two
   // separate states (which is what bred the old stuck states).
   // Onboarding stays undismissable on every host. The detached native
-  // companion owns a full-height window during first-run; browser/mobile keep
-  // their established shared half-sheet contract.
+  // companion and browser/mobile share the same reading-height first-run
+  // contract. The choices stay visible without opening a mostly-empty tall
+  // native window.
   const pinnedOpen = firstRunOpen && !cloudLoginWaiting;
-  const pinnedMode: ChatMode = desktopOverlayHost ? "full" : "half";
+  const pinnedMode: ChatMode = "half";
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen
       ? pinnedMode
@@ -1692,15 +1693,15 @@ export function ChatOverlay({
         ? "input"
         : initialMode,
   );
-  // The pin-at-full + auto-collapse edge effect lives below `goToDetent` (it
-  // needs the detent animator); the mount state above still opens FULL first.
+  // The pinned-open + completion edge effect lives below `goToDetent` (it
+  // needs the detent animator); the mount state above still opens HALF first.
   //
   // During onboarding the sheet MUST stay open — the seeded greeting + choices
   // are the only way forward and the composer is frozen behind them. Deriving
   // openness from the effect alone proved raceable on a home-view boot (the
   // sheet could settle collapsed with the options hidden behind the grabber and
   // only a misleading "tap an option above" hint showing). Pin it STRUCTURALLY:
-  // while onboarding is active, the derived openness is always FULL regardless
+  // while onboarding is active, the derived openness is always HALF regardless
   // of the underlying `mode` transition state. The effect still drives the real
   // `mode` so the falling edge collapses correctly.
   const effectiveMode: ChatMode = pinnedOpen ? pinnedMode : mode;
@@ -4343,7 +4344,7 @@ export function ChatOverlay({
   // returns every host to its compact composer so the browser remains readable
   // and the familiar field can reopen the recovery transcript. The detached
   // native companion otherwise owns a
-  // full-height first-run window and settles to its composer-friendly HALF
+  // reading-height first-run window and remains at its composer-friendly HALF
   // stage. Browser/mobile retain the canonical HALF onboarding sheet and reveal
   // the completed conversation at inset FULL. Keeping this host-specific avoids
   // changing the browser state machine to satisfy native window geometry.
@@ -4391,7 +4392,7 @@ export function ChatOverlay({
     desktopOverlayHost,
   ]);
 
-  // First-run backdrop. While onboarding pins the sheet FULL, a neutral scrim
+  // First-run backdrop. While onboarding pins the sheet open, a neutral scrim
   // preserves the shell's configured wallpaper while keeping the sign-in copy
   // readable. On the falling edge (onboarding just completed) it fades away
   // over ~400ms in step with the one-shot auto-collapse above; reduced-motion
@@ -6165,18 +6166,13 @@ export function ChatOverlay({
     ? "pill"
     : !sheetOpen
       ? "collapsed"
-      : // Onboarding is a pinned-open sheet even when sized to its content
-        // (freeH); keep reporting "full" so the undismissable-onboarding
-        // contract (unit + on-device gesture suites) stays honest.
-        pinnedOpen
-        ? "full"
-        : freeH != null
-          ? Math.min(freeH, panelMaxH) >= openH - 1
-            ? "full"
-            : "half"
-          : expanded
-            ? "full"
-            : "half";
+      : freeH != null
+        ? Math.min(freeH, panelMaxH) >= openH - 1
+          ? "full"
+          : "half"
+        : expanded
+          ? "full"
+          : "half";
 
   React.useEffect(() => {
     onDetentChange?.(detentLabel === "collapsed" ? "input" : detentLabel);
@@ -6828,19 +6824,19 @@ export function ChatOverlay({
                 // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
                 // win: a tall detent (or the keyboard) shrinks the thread (it
                 // scrolls) instead of pushing the panel off-screen.
-                // Onboarding (firstRunOpen) mounts locked at the FULL detent and
+                // Onboarding (firstRunOpen) mounts locked at the HALF detent and
                 // never drags, but the `threadHeight` MotionValue that feeds
                 // `threadFlexBasis` starts at 0, so the FIRST paint renders the
                 // thread at 0 height and the composer stacks at the top — then a
-                // post-commit effect grows it to `openH` and the composer drops a
-                // full viewport to the bottom (~0.9 CLS on the first frame a new
+                // post-commit effect grows it to `halfH` and the composer drops
+                // to the bottom (~0.5 CLS on the first frame a new
                 // user sees, #15214). During onboarding there is no drag to track,
-                // so pin the flex-basis to the settled open height statically at
+                // so pin the flex-basis to the settled half height statically at
                 // render time — first paint already matches the resting layout, no
                 // reflow. Reverts to the live MotionValue the moment onboarding
                 // ends and the sheet becomes interactive.
                 style={{
-                  flexBasis: firstRunOpen ? `${openH}px` : threadFlexBasis,
+                  flexBasis: firstRunOpen ? `${halfH}px` : threadFlexBasis,
                 }}
               >
                 {/* Message search (#14279): an in-sheet panel that covers the

@@ -2,11 +2,11 @@
 // @vitest-environment jsdom
 
 // First-run onboarding gating for the floating chat overlay (`firstRunOpen`):
-// the sheet opens pinned at FULL/MAXIMIZED with an OPAQUE backdrop, every
+// the sheet opens pinned at the HALF reading detent with an OPAQUE backdrop, every
 // collapse path (Escape, outside tap, drag/close) is a no-op, the drag handle is
 // hidden, the composer is sign-in-first/locked, transcript CHOICE widgets stay
-// interactive, and the sheet drops from full to the half detent (with the
-// backdrop fading to the normal scrim) exactly once on the completion edge.
+// interactive, and the backdrop fades to the normal scrim exactly once on the
+// completion edge.
 
 import {
   act,
@@ -213,7 +213,7 @@ describe("ChatOverlay first-run gating", () => {
     );
   });
 
-  it("opens the native companion at its full inset detent without drag affordances", () => {
+  it("opens the native companion at its compact reading detent without drag affordances", () => {
     render(
       <ChatOverlay
         controller={makeController()}
@@ -222,21 +222,26 @@ describe("ChatOverlay first-run gating", () => {
       />,
     );
     const sheet = screen.getByTestId("chat-sheet");
+    const firstRunThread = screen.getByTestId("chat-thread");
     expect(sheet.getAttribute("data-maximized")).not.toBe("true");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(Number.parseFloat(firstRunThread.style.flexBasis)).toBeLessThan(
+      window.innerHeight * 0.75,
+    );
     expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
     expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
 
-  it("opens pinned at FULL and ignores Escape while onboarding is active", () => {
+  it("opens pinned at HALF and ignores Escape while onboarding is active", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("ignores an outside tap while onboarding is active", () => {
@@ -255,10 +260,10 @@ describe("ChatOverlay first-run gating", () => {
       clientY: 4,
     });
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
-  it("renders a non-interactive composer handle at the full detent", () => {
+  it("renders a non-interactive composer handle at the half detent", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
     const composer = screen.getByTestId("chat-composer-row");
@@ -269,7 +274,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(decorativeHandle.getAttribute("aria-hidden")).toBe("true");
     expect(decorativeHandle.tagName).toBe("SPAN");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("keeps the transcript CHOICE widgets interactive while the composer is locked", () => {
@@ -591,7 +596,7 @@ describe("ChatOverlay first-run gating", () => {
     }
   });
 
-  it("reopens the pinned browser surface when an external sign-in attempt expires with a retry choice", () => {
+  it("reopens the compact pinned browser surface when an external sign-in attempt expires with a retry choice", () => {
     const retryController = makeController({
       messages: [
         {
@@ -608,7 +613,7 @@ describe("ChatOverlay first-run gating", () => {
 
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
   it("opens full exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
