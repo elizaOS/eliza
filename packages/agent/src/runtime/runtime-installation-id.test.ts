@@ -164,6 +164,50 @@ describe("runtime installation identity", () => {
     await expectNoIdentityArtifacts(safeParent);
   });
 
+  it("rejects an attacker-writable lexical ancestor before following its redirect", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "runtime-owner-lexical-"),
+    );
+    const hostile = path.join(root, "hostile");
+    const safe = path.join(root, "safe");
+    const safeParent = path.join(safe, "parent");
+    const redirect = path.join(hostile, "redirect");
+    const requestedState = path.join(redirect, "parent", "state");
+    const resolvedState = path.join(safeParent, "state");
+    cleanup.push(root);
+    await fs.mkdir(hostile, { mode: 0o700 });
+    await fs.chmod(hostile, 0o777);
+    await fs.mkdir(safeParent, { recursive: true, mode: 0o700 });
+    await fs.symlink(safe, redirect);
+    await expect(
+      loadOrCreateRuntimeInstallationId(requestedState),
+    ).rejects.toThrow("replaceable by another user");
+    await expect(fs.access(requestedState)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(fs.access(resolvedState)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expectNoIdentityArtifacts(safeParent);
+  });
+
+  it("accepts an intermediate redirect controlled by a trusted ancestor", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "runtime-owner-safe-redirect-"),
+    );
+    const controlled = path.join(root, "controlled");
+    const destination = path.join(root, "destination");
+    const destinationParent = path.join(destination, "parent");
+    const redirect = path.join(controlled, "redirect");
+    cleanup.push(root);
+    await fs.mkdir(controlled, { mode: 0o700 });
+    await fs.mkdir(destinationParent, { recursive: true, mode: 0o700 });
+    await fs.symlink(destination, redirect);
+    await expect(
+      loadOrCreateRuntimeInstallationId(path.join(redirect, "parent", "state")),
+    ).resolves.toMatch(/^[a-f0-9-]{36}$/);
+  });
+
   it("does not expose test controls to a real Bun sibling consumer", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "runtime-id-consumer-"),

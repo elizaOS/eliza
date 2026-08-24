@@ -26,10 +26,17 @@ interface TrustedDirectory {
   stat: FileStat;
   parent: TrustedParentDirectory;
   ancestors: TrustedParentDirectory[];
+  lexicalAncestors: TrustedLexicalEntry[];
 }
 
 interface TrustedParentDirectory {
   handle: FileHandle;
+  path: string;
+  stat: FileStat;
+}
+
+interface TrustedLexicalEntry {
+  handle?: FileHandle;
   path: string;
   stat: FileStat;
 }
@@ -125,6 +132,81 @@ async function closeAncestors(
   if (failure) throw failure;
 }
 
+async function closeLexicalAncestors(
+  ancestors: TrustedLexicalEntry[],
+): Promise<void> {
+  await closeAncestors(
+    ancestors.filter(
+      (ancestor): ancestor is TrustedParentDirectory =>
+        ancestor.handle !== undefined,
+    ),
+  );
+}
+
+function assertTrustedSymlinkStat(stat: FileStat): void {
+  if (!stat.isSymbolicLink()) {
+    throw new Error(
+      "Runtime state lexical redirect changed during validation.",
+    );
+  }
+  const uid = currentUid();
+  if (uid !== undefined && Number(stat.uid) !== uid && Number(stat.uid) !== 0) {
+    throw new Error("Runtime state lexical redirect has an untrusted owner.");
+  }
+}
+
+async function openTrustedLexicalChain(
+  directory: string,
+): Promise<TrustedLexicalEntry[]> {
+  const paths = ancestorPaths(directory);
+  const trusted: TrustedLexicalEntry[] = [];
+  try {
+    for (const [index, entryPath] of paths.entries()) {
+      const stat = await fs.lstat(entryPath);
+      if (stat.isSymbolicLink()) {
+        if (index === paths.length - 1) {
+          throw new Error("Runtime state parent must be a real directory.");
+        }
+        assertTrustedSymlinkStat(stat);
+        trusted.push({ path: entryPath, stat });
+        continue;
+      }
+      assertTrustedParentDirectoryStat(stat);
+      const handle = await fs.open(
+        entryPath,
+        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+      );
+      trusted.push({ path: entryPath, stat, handle });
+    }
+    await revalidateLexicalChain(trusted);
+    return trusted;
+  } catch (error) {
+    await closeLexicalAncestors(trusted);
+    throw error;
+  }
+}
+
+async function revalidateLexicalChain(
+  ancestors: TrustedLexicalEntry[],
+): Promise<void> {
+  for (const ancestor of ancestors) {
+    const pathStat = await fs.lstat(ancestor.path);
+    if (!sameIdentity(pathStat, ancestor.stat)) {
+      throw new Error("Runtime state lexical path changed during validation.");
+    }
+    if (!ancestor.handle) {
+      assertTrustedSymlinkStat(pathStat);
+      continue;
+    }
+    assertTrustedParentDirectoryStat(pathStat);
+    const descriptorStat = await ancestor.handle.stat();
+    assertTrustedParentDirectoryStat(descriptorStat);
+    if (!sameIdentity(descriptorStat, ancestor.stat)) {
+      throw new Error("Runtime state lexical path changed during validation.");
+    }
+  }
+}
+
 async function revalidateAncestorChain(
   ancestors: TrustedParentDirectory[],
 ): Promise<void> {
@@ -165,6 +247,7 @@ async function revalidateDirectoryPath(
 
 async function openTrustedStateDirectory(
   stateDirectory: string,
+  lexicalAncestors: TrustedLexicalEntry[],
 ): Promise<TrustedDirectory> {
   const parentPath = path.dirname(stateDirectory);
   const ancestors: TrustedParentDirectory[] = [];
@@ -192,10 +275,17 @@ async function openTrustedStateDirectory(
       stateDirectory,
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     );
-    const trusted = { stat: pathStat, handle, parent, ancestors };
+    const trusted = {
+      stat: pathStat,
+      handle,
+      parent,
+      ancestors,
+      lexicalAncestors,
+    };
     try {
       await revalidateDirectoryPath(stateDirectory, trusted);
       await revalidateAncestorChain(ancestors);
+      await revalidateLexicalChain(lexicalAncestors);
       return trusted;
     } catch (error) {
       await handle.close();
@@ -410,19 +500,24 @@ async function loadOrCreateRuntimeInstallationIdImpl(
 ): Promise<UUID> {
   const requestedStateDirectory = path.resolve(stateDirectory);
   const requestedParent = path.dirname(requestedStateDirectory);
-  const requestedParentStat = await fs.lstat(requestedParent);
-  if (requestedParentStat.isSymbolicLink()) {
-    throw new Error("Runtime state parent must be a real directory.");
-  }
-  const resolvedStateDirectory = path.join(
-    await fs.realpath(requestedParent),
-    path.basename(requestedStateDirectory),
-  );
-  const trustedDirectory = await openTrustedStateDirectory(
-    resolvedStateDirectory,
-  );
-  const target = path.join(resolvedStateDirectory, INSTALLATION_ID_FILENAME);
+  const lexicalAncestors = await openTrustedLexicalChain(requestedParent);
+  let trustedDirectory: TrustedDirectory;
+  let resolvedStateDirectory: string;
   try {
+    resolvedStateDirectory = path.join(
+      await fs.realpath(requestedParent),
+      path.basename(requestedStateDirectory),
+    );
+    trustedDirectory = await openTrustedStateDirectory(
+      resolvedStateDirectory,
+      lexicalAncestors,
+    );
+  } catch (error) {
+    await closeLexicalAncestors(lexicalAncestors);
+    throw error;
+  }
+  const target = path.join(resolvedStateDirectory, INSTALLATION_ID_FILENAME);
+  const execute = async (): Promise<UUID> => {
     const existing = await readInstallationId(
       target,
       resolvedStateDirectory,
@@ -432,6 +527,7 @@ async function loadOrCreateRuntimeInstallationIdImpl(
 
     await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
     await revalidateAncestorChain(trustedDirectory.ancestors);
+    await revalidateLexicalChain(trustedDirectory.lexicalAncestors);
     await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
     const candidate = randomUUID() as UUID;
     const temporaryName = `.${INSTALLATION_ID_FILENAME}.${randomUUID()}.tmp`;
@@ -525,13 +621,43 @@ async function loadOrCreateRuntimeInstallationIdImpl(
       }
       throw error;
     }
-  } finally {
-    try {
-      await trustedDirectory.handle.close();
-    } finally {
-      await closeAncestors(trustedDirectory.ancestors);
-    }
+  };
+  let result: UUID | undefined;
+  let operationError: unknown;
+  try {
+    result = await execute();
+  } catch (error) {
+    operationError = error;
   }
+  let closeError: unknown;
+  try {
+    await trustedDirectory.handle.close();
+  } catch (failure) {
+    closeError = failure;
+  }
+  try {
+    await closeAncestors(trustedDirectory.ancestors);
+  } catch (failure) {
+    closeError ??= failure;
+  }
+  try {
+    await closeLexicalAncestors(trustedDirectory.lexicalAncestors);
+  } catch (failure) {
+    closeError ??= failure;
+  }
+  if (
+    operationError instanceof RuntimeInstallationIdentityRecoveryError &&
+    closeError
+  ) {
+    throw new RuntimeInstallationIdentityRecoveryError(operationError.message, {
+      cause: new AggregateError([operationError, closeError]),
+    });
+  }
+  if (operationError) throw operationError;
+  if (closeError) throw closeError;
+  if (!result)
+    throw new Error("Runtime installation identity was unavailable.");
+  return result;
 }
 
 /** Loads the host identity with production-fixed platform and filesystem policy. */
