@@ -319,6 +319,7 @@ Initial measurement gates for tightening on pinned hosts:
 - Add scenario reports, trajectories, benchmark JSON, heap/RSS summaries, and UI recordings through the existing evidence bundle architecture rather than a separate evidence system.
 - Add one named `reports/content-context/` producer/ingestor with an ingestor regression test; the evidence package deliberately does not scan arbitrary roots.
 - Add `packages/scripts/run-content-context.mjs` as one named producer coordinator invoked by `test:matrix:review`. It validates its declared corpus/realization/test/benchmark/UI sub-artifacts under the assigned run root and writes a strict completeness manifest. The existing matrix command remains the sole owner of pre-run inventory, producer execution, exact bundle creation, verification, and review; sub-producers do not create competing report roots or invoke evidence ingestion themselves.
+- Expose the production lanes as `bun run content-context:produce`, `bun run content-context:postgres`, and `bun run content-context:soak`, so operators use stable repository entrypoints while package ownership remains discoverable rather than hardcoded in generic scripts.
 - UI changes use the app's existing Playwright/audit and recording paths.
 - Use PGLite in PR lanes and real Postgres for nightly/release scale evidence.
 

@@ -12,23 +12,8 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Pool } from "pg";
-import { readFileHandler } from "../../plugins/plugin-coding-tools/src/actions/read.ts";
-import {
-  readShellOutputArtifactPage,
-  ShellOutputArtifactWriter,
-} from "../../plugins/plugin-coding-tools/src/lib/shell-output-artifact.ts";
-import { FileStateService } from "../../plugins/plugin-coding-tools/src/services/file-state-service.ts";
-import { SandboxService } from "../../plugins/plugin-coding-tools/src/services/sandbox-service.ts";
-import {
-  FILE_STATE_SERVICE,
-  SANDBOX_SERVICE,
-} from "../../plugins/plugin-coding-tools/src/types.ts";
-import { plugin as sqlPlugin } from "../../plugins/plugin-sql/src/index.node.ts";
-import { DatabaseMigrationService } from "../../plugins/plugin-sql/src/migration-service.ts";
-import { PgDatabaseAdapter } from "../../plugins/plugin-sql/src/pg/adapter.ts";
-import { PostgresConnectionManager } from "../../plugins/plugin-sql/src/pg/manager.ts";
 import {
   persistMediaBytes,
   readStoredMediaByteRange,
@@ -43,6 +28,58 @@ import {
 } from "../core/src/index.ts";
 import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
 import { validateProgressiveContentPostgresEvidence } from "../corpus-tools/src/progressive-content-postgres-evidence.ts";
+import { resolveContentContextEvidencePackages } from "./lib/script-metadata.mjs";
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "../..");
+const evidencePackages = resolveContentContextEvidencePackages({
+  repoRoot: REPO_ROOT,
+});
+if (evidencePackages.invalid.length > 0) {
+  throw new Error(evidencePackages.invalid.join("; "));
+}
+function evidencePackageRoot(role) {
+  const pkg = evidencePackages.packages.get(role);
+  if (!pkg) {
+    throw new Error(`content-context evidence package role is absent: ${role}`);
+  }
+  return path.resolve(REPO_ROOT, pkg.dir);
+}
+function moduleUrl(root, relativePath) {
+  return pathToFileURL(path.join(root, relativePath)).href;
+}
+const codingToolsRoot = evidencePackageRoot("coding-tools");
+const sqlRoot = evidencePackageRoot("sql");
+const [
+  { readFileHandler },
+  shellArtifact,
+  fileStateModule,
+  sandboxModule,
+  codingTypes,
+  sqlIndex,
+  migrationModule,
+  pgAdapterModule,
+  pgManagerModule,
+] = await Promise.all([
+  import(moduleUrl(codingToolsRoot, "src/actions/read.ts")),
+  import(moduleUrl(codingToolsRoot, "src/lib/shell-output-artifact.ts")),
+  import(moduleUrl(codingToolsRoot, "src/services/file-state-service.ts")),
+  import(moduleUrl(codingToolsRoot, "src/services/sandbox-service.ts")),
+  import(moduleUrl(codingToolsRoot, "src/types.ts")),
+  import(moduleUrl(sqlRoot, "src/index.node.ts")),
+  import(moduleUrl(sqlRoot, "src/migration-service.ts")),
+  import(moduleUrl(sqlRoot, "src/pg/adapter.ts")),
+  import(moduleUrl(sqlRoot, "src/pg/manager.ts")),
+]);
+const { readShellOutputArtifactPage, ShellOutputArtifactWriter } =
+  shellArtifact;
+const { FileStateService } = fileStateModule;
+const { SandboxService } = sandboxModule;
+const { FILE_STATE_SERVICE, SANDBOX_SERVICE } = codingTypes;
+const { plugin: sqlPlugin } = sqlIndex;
+const { DatabaseMigrationService } = migrationModule;
+const { PgDatabaseAdapter } = pgAdapterModule;
+const { PostgresConnectionManager } = pgManagerModule;
 
 const PAGE_BYTES = 64 * 1024;
 const SHA256 = /^[0-9a-f]{64}$/u;
