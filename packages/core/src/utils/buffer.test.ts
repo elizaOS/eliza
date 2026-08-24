@@ -48,6 +48,36 @@ describe("isBuffer", () => {
 	});
 });
 
+describe("non-string inputs", () => {
+	it("fromHex and fromString return empty buffer without throwing on non-string", () => {
+		// @ts-expect-error runtime guard check
+		expect(byteLength(fromHex(null))).toBe(0);
+		// @ts-expect-error runtime guard check
+		expect(byteLength(fromHex(undefined))).toBe(0);
+		// @ts-expect-error runtime guard check
+		expect(byteLength(fromHex(123))).toBe(0);
+		// @ts-expect-error runtime guard check
+		expect(byteLength(fromHex({}))).toBe(0);
+		// @ts-expect-error runtime guard check
+		expect(toHex(fromHex(null))).toBe("");
+		// @ts-expect-error runtime guard check
+		expect(byteLength(fromString(null))).toBe(0);
+		// @ts-expect-error runtime guard check
+		expect(byteLength(fromString(undefined))).toBe(0);
+		// @ts-expect-error runtime guard check
+		expect(byteLength(fromString(123))).toBe(0);
+		// @ts-expect-error runtime guard check
+		expect(byteLength(fromString({} as unknown as string))).toBe(0);
+		// @ts-expect-error runtime guard check
+		expect(toHex(fromString(null))).toBe("");
+	});
+
+	it("still round-trips string inputs after guard", () => {
+		expect(toHex(fromString("Hello"))).toBe("48656c6c6f");
+		expect(bufferToString(fromHex("48656c6c6f"))).toBe("Hello");
+	});
+});
+
 describe("byte ops", () => {
 	it("alloc fills zeros; fromBytes preserves values", () => {
 		expect(toHex(alloc(4))).toBe("00000000");
