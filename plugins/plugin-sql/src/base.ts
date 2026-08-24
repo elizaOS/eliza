@@ -3903,8 +3903,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
       const activeColumn = embeddingTable[this.embeddingDimension];
-      const count = params.count ?? 10;
-
       // SCOPE eligibility lives INSIDE the ordered scan: every scope predicate
       // (type, agent, room, world, entity, uniqueness) is part of the WHERE of
       // the same query that orders by the raw distance operator. The contract
@@ -3950,7 +3948,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
 
-      const candidates = await this.db
+      const orderedQuery = this.db
         .select({
           memory: memoryTable,
           similarity,
@@ -3959,9 +3957,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
         .where(and(...conditions))
-        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id))
-        .limit(count)
-        .offset(params.offset ?? 0);
+        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id));
+      const candidates = await (params.count === undefined
+        ? orderedQuery.offset(params.offset ?? 0)
+        : orderedQuery.limit(params.count).offset(params.offset ?? 0));
 
       // Same truthiness contract as the removed WHERE predicate: an absent or
       // zero threshold applies no similarity floor.

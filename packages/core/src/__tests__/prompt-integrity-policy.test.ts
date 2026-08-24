@@ -248,6 +248,16 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/finalLimit/,
 		/pullWhatsAppRecent\([^)]*\+\s*25/,
 	],
+	"packages/core/src/database/inMemoryAdapter.ts": [
+		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
+	],
+	"plugins/plugin-inmemorydb/adapter.ts": [
+		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
+	],
+	"plugins/plugin-sql/src/base.ts": [/const count = params\.count\s*\?\?\s*10/],
+	"plugins/plugin-sql/src/stores/memory.store.ts": [
+		/\.limit\(params\.count\s*\?\?\s*10\)/,
+	],
 	"plugins/plugin-personal-assistant/src/lifeops/domains/x-read-service.ts": [
 		/opts\.limit\s*\?\?\s*20/,
 	],

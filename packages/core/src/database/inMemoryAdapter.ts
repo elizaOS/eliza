@@ -1500,7 +1500,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		).filter(
 			(memory) => !params.entityId || memory.entityId === params.entityId,
 		);
-		const limit = params.count ?? params.limit ?? 10;
+		const limit = params.count ?? params.limit ?? Infinity;
 		// Same truthiness contract as plugin-sql: an absent or zero threshold
 		// applies no similarity floor.
 		const threshold = params.match_threshold;
