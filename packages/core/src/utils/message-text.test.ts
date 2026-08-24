@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../types/memory";
 import {
+	extractUserText,
 	getUserMessageText,
 	hasDocumentAugmentationEnvelope,
 	stripAugmentationForPersistence,
@@ -115,5 +116,26 @@ describe("stripAugmentationForPersistence", () => {
 		expect(hasDocumentAugmentationEnvelope(augmentedText("hi"))).toBe(true);
 		expect(hasDocumentAugmentationEnvelope("plain user text")).toBe(false);
 		expect(hasDocumentAugmentationEnvelope(undefined)).toBe(false);
+	});
+});
+
+describe("extractUserText", () => {
+	it("returns empty for non-string inputs and handles edge wrappers", () => {
+		expect(extractUserText(undefined as unknown as string)).toBe("");
+		expect(extractUserText(null as unknown as string)).toBe("");
+		expect(extractUserText(42 as unknown as string)).toBe("");
+		expect(extractUserText({} as unknown as string)).toBe("");
+		expect(extractUserText("")).toBe("");
+		expect(extractUserText("  hello  ")).toBe("hello");
+		// Strips trailing language instruction suffix
+		expect(
+			extractUserText("hello\n[language instruction: translate to French]"),
+		).toBe("hello");
+		// Unwraps document augmentation envelope
+		const wrapped = [
+			"Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+			"<user_request>  clean text  </user_request>",
+		].join("\n");
+		expect(extractUserText(wrapped)).toBe("clean text");
 	});
 });
