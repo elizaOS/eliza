@@ -28,9 +28,10 @@ const run = (
   appName: string,
   updatedAt?: string | null,
   startedAt?: string | null,
-): AppRunSummary => ({ id, appName, updatedAt, startedAt }) as AppRunSummary;
+): AppRunSummary =>
+  ({ runId: id, appName, updatedAt, startedAt }) as unknown as AppRunSummary;
 
-const ids = (runs: AppRunSummary[]) => runs.map((entry) => entry.id);
+const ids = (runs: AppRunSummary[]) => runs.map((entry) => entry.runId);
 
 describe("selectLatestRunForApp", () => {
   it("returns nothing for absent or non-array input", () => {
@@ -50,7 +51,7 @@ describe("selectLatestRunForApp", () => {
       run("b", "other", "2026-05-01T00:00:00Z"),
     ]);
     expect(ids(selected.matchingRuns)).toEqual(["a"]);
-    expect(selected.run?.id).toBe("a");
+    expect(selected.run?.runId).toBe("a");
   });
 
   it("returns null when no run matches", () => {
@@ -63,7 +64,7 @@ describe("selectLatestRunForApp", () => {
       run("new", "mine", "2026-05-01T00:00:00Z"),
       run("mid", "mine", "2026-03-01T00:00:00Z"),
     ]);
-    expect(selected.run?.id).toBe("new");
+    expect(selected.run?.runId).toBe("new");
     expect(ids(selected.matchingRuns)).toEqual(["new", "mid", "old"]);
   });
 
@@ -72,7 +73,7 @@ describe("selectLatestRunForApp", () => {
       run("byUpdated", "mine", "2026-05-01T00:00:00Z", "2026-01-01T00:00:00Z"),
       run("byStarted", "mine", null, "2026-03-01T00:00:00Z"),
     ]);
-    expect(selected.run?.id).toBe("byUpdated");
+    expect(selected.run?.runId).toBe("byUpdated");
   });
 
   it("does not let a run with no usable timestamps outrank a dated one", () => {
@@ -80,7 +81,7 @@ describe("selectLatestRunForApp", () => {
       run("undated", "mine", null, null),
       run("dated", "mine", "2026-05-01T00:00:00Z"),
     ]);
-    expect(selected.run?.id).toBe("dated");
+    expect(selected.run?.runId).toBe("dated");
   });
 
   it("does not let an unparseable timestamp outrank a dated run", () => {
@@ -88,7 +89,7 @@ describe("selectLatestRunForApp", () => {
       run("bad", "mine", "not-a-date", "also-bad"),
       run("dated", "mine", "2026-05-01T00:00:00Z"),
     ]);
-    expect(selected.run?.id).toBe("dated");
+    expect(selected.run?.runId).toBe("dated");
   });
 
   it("does not mutate the caller's array", () => {

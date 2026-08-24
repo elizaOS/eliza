@@ -18,9 +18,9 @@ import type { ChatRoom } from "../types.js";
 import { getAgentClient, resetAgentClient } from "./agent-client.js";
 import type { SessionIdentity } from "./identity.js";
 
-const { beforeEach, describe, expect, it } = process.env.VITEST
-  ? await import("vitest")
-  : await import("bun:test");
+const { beforeEach, describe, expect, it } = (
+  process.env.VITEST ? await import("vitest") : await import("bun:test")
+) as typeof import("bun:test");
 
 interface HandleMessageOptions {
   codingMode?: boolean;

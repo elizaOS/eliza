@@ -9,9 +9,9 @@ import { VirtualTerminal } from "../testing/virtual-terminal.test.js";
 import type { CodeTask } from "../types.js";
 import { TaskPane } from "./TaskPane.js";
 
-const { beforeEach, describe, expect, it } = process.env.VITEST
-  ? await import("vitest")
-  : await import("bun:test");
+const { beforeEach, describe, expect, it } = (
+  process.env.VITEST ? await import("vitest") : await import("bun:test")
+) as typeof import("bun:test");
 
 function codeTask(): CodeTask {
   return {

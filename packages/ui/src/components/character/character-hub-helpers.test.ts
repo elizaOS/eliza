@@ -21,6 +21,7 @@ describe("character-hub-helpers", () => {
       domain: "engineering",
       confidence: 0.95,
       importance: 0.8,
+      accessCount: 0,
       createdAt: "2026-08-24T00:00:00Z",
       updatedAt: "2026-08-24T00:00:00Z",
       supersedes: null,
