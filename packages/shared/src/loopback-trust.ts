@@ -92,6 +92,7 @@ function headerValues(value: string | string[] | undefined): string[] {
 }
 
 function isClientIpProxyHeaderName(name: string): boolean {
+  if (typeof name !== "string") return false;
   const normalized = name.toLowerCase();
   return (
     CLIENT_IP_PROXY_HEADERS.has(normalized) ||
@@ -102,6 +103,7 @@ function isClientIpProxyHeaderName(name: string): boolean {
 }
 
 function extractForwardedForCandidates(raw: string): string[] {
+  if (typeof raw !== "string") return [];
   const candidates: string[] = [];
   const pattern = /(?:^|[;,])\s*for=(?:"([^"]*)"|([^;,]*))/gi;
   for (const match of raw.matchAll(pattern)) {
@@ -114,6 +116,7 @@ function extractProxyClientAddressCandidates(
   headerName: string,
   raw: string,
 ): string[] {
+  if (typeof headerName !== "string" || typeof raw !== "string") return [];
   if (headerName === "forwarded") {
     return extractForwardedForCandidates(raw);
   }
@@ -127,6 +130,7 @@ function extractProxyClientAddressCandidates(
 }
 
 function stripMatchingQuotes(value: string): string {
+  if (typeof value !== "string") return "";
   const trimmed = value.trim();
   if (
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
@@ -138,6 +142,7 @@ function stripMatchingQuotes(value: string): string {
 }
 
 function isNeutralProxyClientAddress(raw: string): boolean {
+  if (typeof raw !== "string") return false;
   const normalized = stripMatchingQuotes(raw).trim().toLowerCase();
   return (
     !normalized ||
@@ -148,6 +153,7 @@ function isNeutralProxyClientAddress(raw: string): boolean {
 }
 
 function normalizeProxyClientIp(raw: string): string | null {
+  if (typeof raw !== "string") return null;
   let normalized = stripMatchingQuotes(raw).trim();
   if (!normalized) return null;
 
@@ -173,6 +179,7 @@ function normalizeProxyClientIp(raw: string): string | null {
 }
 
 function isLoopbackProxyClientIp(ip: string): boolean {
+  if (typeof ip !== "string") return false;
   const normalized = ip.trim().toLowerCase();
   return (
     normalized === "::1" ||
@@ -191,6 +198,7 @@ function isLoopbackProxyClientIp(ip: string): boolean {
 export function proxyClientHeaderBlocksLocalTrust(
   headers: http.IncomingHttpHeaders,
 ): boolean {
+  if (!headers || typeof headers !== "object") return false;
   for (const [rawName, rawValue] of Object.entries(headers)) {
     const headerName = rawName.toLowerCase();
     if (!isClientIpProxyHeaderName(headerName)) continue;
@@ -219,7 +227,7 @@ export function proxyClientHeaderBlocksLocalTrust(
 export function isLoopbackRemoteAddress(
   remoteAddress: string | null | undefined,
 ): boolean {
-  if (!remoteAddress) return false;
+  if (typeof remoteAddress !== "string" || !remoteAddress) return false;
   const normalized = remoteAddress.trim().toLowerCase();
   if (isIP(normalized) === 0) return false;
   return (
@@ -245,7 +253,13 @@ export function isRemoteAddressInCidrList(
   remoteAddress: string | null | undefined,
   cidrList: string | null | undefined,
 ): boolean {
-  if (!remoteAddress || !cidrList) return false;
+  if (
+    typeof remoteAddress !== "string" ||
+    typeof cidrList !== "string" ||
+    !remoteAddress ||
+    !cidrList
+  )
+    return false;
   const entries = cidrList
     .split(",")
     .map((entry) => entry.trim())

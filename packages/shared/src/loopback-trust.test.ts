@@ -84,6 +84,17 @@ describe("isLoopbackRemoteAddress", () => {
       expect(isLoopbackRemoteAddress(addr)).toBe(false);
     },
   );
+
+  it("returns false for non-string inputs without throwing", () => {
+    expect(isLoopbackRemoteAddress(123 as unknown as string)).toBe(false);
+    expect(isLoopbackRemoteAddress(0 as unknown as string)).toBe(false);
+    expect(isLoopbackRemoteAddress(true as unknown as string)).toBe(false);
+    expect(isLoopbackRemoteAddress({} as unknown as string)).toBe(false);
+    expect(isLoopbackRemoteAddress([] as unknown as string)).toBe(false);
+    expect(isLoopbackRemoteAddress((() => {}) as unknown as string)).toBe(
+      false,
+    );
+  });
 });
 
 describe("isRemoteAddressInCidrList", () => {
@@ -170,6 +181,33 @@ describe("isRemoteAddressInCidrList", () => {
       isRemoteAddressInCidrList("172.17.0.1", "nonsense,172.17.0.0/16"),
     ).toBe(true);
   });
+
+  it("returns false for non-string inputs without throwing", () => {
+    expect(
+      isRemoteAddressInCidrList(123 as unknown as string, "10.0.0.0/8"),
+    ).toBe(false);
+    expect(
+      isRemoteAddressInCidrList("10.0.0.1", 123 as unknown as string),
+    ).toBe(false);
+    expect(
+      isRemoteAddressInCidrList(true as unknown as string, "10.0.0.0/8"),
+    ).toBe(false);
+    expect(isRemoteAddressInCidrList("10.0.0.1", {} as unknown as string)).toBe(
+      false,
+    );
+    expect(
+      isRemoteAddressInCidrList([] as unknown as string, "10.0.0.0/8"),
+    ).toBe(false);
+    expect(
+      isRemoteAddressInCidrList("10.0.0.1", null as unknown as string),
+    ).toBe(false);
+    expect(
+      isRemoteAddressInCidrList(
+        null as unknown as string,
+        123 as unknown as string,
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("proxyClientHeaderBlocksLocalTrust", () => {
@@ -197,6 +235,44 @@ describe("proxyClientHeaderBlocksLocalTrust", () => {
     ["neutral unknown", { "x-forwarded-for": "unknown" }],
   ])("does not block local trust for %s", (_name, headers) => {
     expect(proxyClientHeaderBlocksLocalTrust(headers)).toBe(false);
+  });
+
+  it("returns false for non-string and non-object header inputs without throwing", () => {
+    expect(
+      proxyClientHeaderBlocksLocalTrust(
+        null as unknown as http.IncomingHttpHeaders,
+      ),
+    ).toBe(false);
+    expect(
+      proxyClientHeaderBlocksLocalTrust(
+        undefined as unknown as http.IncomingHttpHeaders,
+      ),
+    ).toBe(false);
+    expect(
+      proxyClientHeaderBlocksLocalTrust(
+        123 as unknown as http.IncomingHttpHeaders,
+      ),
+    ).toBe(false);
+    expect(
+      proxyClientHeaderBlocksLocalTrust(
+        "string" as unknown as http.IncomingHttpHeaders,
+      ),
+    ).toBe(false);
+    expect(
+      proxyClientHeaderBlocksLocalTrust({
+        "x-forwarded-for": 123 as unknown as string,
+      }),
+    ).toBe(false);
+    expect(
+      proxyClientHeaderBlocksLocalTrust({
+        "x-forwarded-for": ["127.0.0.1", 123 as unknown as string],
+      }),
+    ).toBe(false);
+    expect(
+      proxyClientHeaderBlocksLocalTrust({
+        "x-forwarded-for": { toString: () => "evil" } as unknown as string,
+      }),
+    ).toBe(false);
   });
 });
 
