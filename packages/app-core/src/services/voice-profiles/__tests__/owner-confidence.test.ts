@@ -83,4 +83,74 @@ describe("scoreOwnerConfidence", () => {
     );
     expect(r.score).toBe(0);
   });
+
+  it("challenge alone scores exactly its weight with only its reason", () => {
+    const r = scoreOwnerConfidence(input({ challengeRecentlyPassed: true }));
+    expect(r.score).toBe(0.45);
+    expect(r.reasons).toEqual(["challenge-recently-passed"]);
+  });
+
+  it("recent auth alone scores exactly its weight with only its reason", () => {
+    const r = scoreOwnerConfidence(input({ recentlyAuthenticated: true }));
+    expect(r.score).toBe(0.35);
+    expect(r.reasons).toEqual(["recently-authenticated"]);
+  });
+
+  it("full-similarity voice contributes exactly the cap and tags the reason", () => {
+    const r = scoreOwnerConfidence(input({ voiceSimilarityToOwnerProfile: 1 }));
+    expect(r.score).toBe(0.25);
+    expect(r.reasons).toEqual(["voice-similarity:1.00"]);
+  });
+
+  it("partial voice similarity scales linearly inside the cap", () => {
+    const r = scoreOwnerConfidence(
+      input({ voiceSimilarityToOwnerProfile: 0.5 }),
+    );
+    expect(r.score).toBe(0.125);
+    expect(r.reasons).toEqual(["voice-similarity:0.50"]);
+  });
+
+  it("voice similarity above one clamps to the same contribution as one", () => {
+    const r = scoreOwnerConfidence(input({ voiceSimilarityToOwnerProfile: 7 }));
+    expect(r.score).toBe(0.25);
+    expect(r.reasons).toEqual(["voice-similarity:1.00"]);
+  });
+
+  it("device trust steps carry exact weights and tags; low adds nothing", () => {
+    const low = scoreOwnerConfidence(input({ deviceTrustLevel: "low" }));
+    expect(low.score).toBe(0);
+    expect(low.reasons).toEqual([]);
+    const medium = scoreOwnerConfidence(input({ deviceTrustLevel: "medium" }));
+    expect(medium.score).toBe(0.1);
+    expect(medium.reasons).toEqual(["device-trust:medium"]);
+    const high = scoreOwnerConfidence(input({ deviceTrustLevel: "high" }));
+    expect(high.score).toBe(0.2);
+    expect(high.reasons).toEqual(["device-trust:high"]);
+  });
+
+  it("context expectation alone scores exactly its weight and tag", () => {
+    const r = scoreOwnerConfidence(input({ contextExpectsOwner: true }));
+    expect(r.score).toBe(0.1);
+    expect(r.reasons).toEqual(["context-expects-owner"]);
+  });
+
+  it("reasons follow fixed signal order and the saturated total clamps to 1", () => {
+    const r = scoreOwnerConfidence(
+      input({
+        challengeRecentlyPassed: true,
+        recentlyAuthenticated: true,
+        voiceSimilarityToOwnerProfile: 1,
+        deviceTrustLevel: "high",
+        contextExpectsOwner: true,
+      }),
+    );
+    expect(r.score).toBe(1);
+    expect(r.reasons).toEqual([
+      "challenge-recently-passed",
+      "recently-authenticated",
+      "voice-similarity:1.00",
+      "device-trust:high",
+      "context-expects-owner",
+    ]);
+  });
 });
