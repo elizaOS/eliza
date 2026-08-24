@@ -15,11 +15,15 @@
  * These tests stand up local origins that model the compliant server (206 + the
  * remaining bytes), the CDN/mirror that ignores Range (200 + the full body), and
  * misbehaving proxies that answer 206 with a Content-Range whose start is
- * misaligned to — or missing for — the requested resume offset. Each seeds a
- * stale `.part`, drives the real mutation, and asserts the final
- * `models/<id>.gguf` bytes exactly equal the full file plus that the registry
- * size matches the true file length. No mocks: real fs + real HTTP; only
- * `ELIZA_STATE_DIR` and `ELIZA_HF_BASE_URL` are redirected.
+ * misaligned to — or missing for — the requested resume offset. The misaligned
+ * proxy serves ONLY the bytes its Content-Range declares (a tail slice), so a
+ * resume that reset its write offset to 0 but kept reading that same response
+ * would rename a truncated file; the fix must discard it and re-fetch the full
+ * body with a range-less request. Each seeds a stale `.part`, drives the real
+ * mutation, and asserts the final `models/<id>.gguf` bytes exactly equal the
+ * full file plus that the registry size matches the true file length. No mocks:
+ * real fs + real HTTP; only `ELIZA_STATE_DIR` and `ELIZA_HF_BASE_URL` are
+ * redirected.
  */
 import {
 	mkdirSync,
@@ -107,22 +111,47 @@ async function startOrigin(honorRange: boolean): Promise<void> {
 }
 
 /**
- * Start a misbehaving proxy origin: it always answers `206 Partial Content`
- * with the FULL body regardless of the requested Range, and stamps a
- * `Content-Range` header from `contentRange` (or omits it entirely when null).
- * This models a proxy that ignores Range semantics but still returns a 206
- * status — exactly the case where a naive `statusCode === 206` gate would
- * append the full body onto the stale partial and corrupt the GGUF.
+ * Start a misbehaving proxy origin that answers a `Range` request with a
+ * `206 Partial Content` whose `Content-Range` is misaligned to — or missing
+ * for — the requested resume offset. Crucially it behaves like a STANDARDS-
+ * COMPLIANT origin for that 206: the body is exactly the bytes its own
+ * `Content-Range` declares (a tail slice), not the full artifact. A naive
+ * `statusCode === 206` resume that reset `effectiveStart` to 0 but kept reading
+ * this same response would therefore write a truncated slice at byte 0 and
+ * rename a corrupt `.gguf`. The fix must instead discard this response and
+ * issue a fresh range-less request, which this origin answers with `200` + the
+ * FULL body. When `contentRange` is null the origin sends a 206 with no
+ * `Content-Range` header (a proxy that strips it) and the full body, which is
+ * still unverifiable and must trigger the same range-less restart.
  */
 async function startMisalignedRangeOrigin(
 	contentRange: string | null,
 ): Promise<void> {
-	server = http.createServer((_req, res) => {
-		const headers: Record<string, string> = {
-			"content-length": String(FULL.length),
-		};
-		if (contentRange !== null) headers["content-range"] = contentRange;
-		res.writeHead(206, headers);
+	server = http.createServer((req, res) => {
+		const hasRange = typeof req.headers.range === "string";
+		if (hasRange && contentRange !== null) {
+			// Serve exactly the bytes this Content-Range advertises, as a compliant
+			// server would — the whole point of the regression is that reusing this
+			// body at byte 0 yields a truncated file.
+			const match = /bytes\s+(\d+)-(\d+)\//.exec(contentRange);
+			const start = match ? Number.parseInt(match[1], 10) : 0;
+			const end = match ? Number.parseInt(match[2], 10) : FULL.length - 1;
+			const slice = FULL.subarray(start, end + 1);
+			res.writeHead(206, {
+				"content-length": String(slice.length),
+				"content-range": contentRange,
+			});
+			res.end(slice);
+			return;
+		}
+		if (hasRange && contentRange === null) {
+			// 206 with no Content-Range: unverifiable, must still trigger a restart.
+			res.writeHead(206, { "content-length": String(FULL.length) });
+			res.end(FULL);
+			return;
+		}
+		// The fix's fresh range-less request: answer 200 with the full artifact.
+		res.writeHead(200, { "content-length": String(FULL.length) });
 		res.end(FULL);
 	});
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -212,6 +241,30 @@ describe("local-inference route resume download (#26629)", () => {
 		// must NOT be appended onto the stale partial.
 		await startMisalignedRangeOrigin(
 			`bytes 0-${FULL.length - 1}/${FULL.length}`,
+		);
+
+		await applyLocalInferenceManagementMutation({
+			op: "start_download",
+			modelId: MODEL_ID,
+		});
+
+		const installedSize = await waitForInstalledSize();
+		expect(installedSize).toBe(FULL.length);
+
+		const stored = readFileSync(finalPath());
+		expect(stored.length).toBe(FULL.length);
+		expect(stored.equals(FULL)).toBe(true);
+	});
+
+	it("restarts from byte 0 when a 206 returns only its declared misaligned tail bytes", async () => {
+		seedStalePartial();
+		// STALE is 17 bytes, so the resume request is `Range: bytes=17-`. The proxy
+		// answers 206 but declares `bytes 5-18/19` and — like a compliant server —
+		// sends ONLY that 14-byte tail. Writing that slice at byte 0 would produce a
+		// truncated, corrupt model; the fix must discard it and re-fetch the full
+		// body with a range-less request.
+		await startMisalignedRangeOrigin(
+			`bytes 5-${FULL.length - 1}/${FULL.length}`,
 		);
 
 		await applyLocalInferenceManagementMutation({

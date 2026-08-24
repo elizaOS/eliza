@@ -773,6 +773,7 @@ async function downloadModel(
 		// the range is a valid 206 aligned to `existingPartial`, mirroring the
 		// canonical guard in services/downloader.ts and failing closed on any
 		// ambiguity.
+		let downloadResponse = response;
 		let effectiveStart = existingPartial;
 		if (existingPartial > 0) {
 			const rangeStart =
@@ -782,10 +783,39 @@ async function downloadModel(
 			if (rangeStart !== existingPartial) {
 				effectiveStart = 0;
 				record.received = 0;
+				// A non-206 (e.g. 200) already carries the FULL representation, so its
+				// body can be written from byte 0 as-is. A 206 is different: a
+				// standards-compliant origin sends ONLY the bytes its Content-Range
+				// declares, so reusing a misaligned/absent-range 206 body would write
+				// that partial slice at byte 0 and rename a truncated file. Discard the
+				// rejected partial response and issue a fresh full-content request (no
+				// Range) so the write starts from a real byte 0. Fail closed if the
+				// origin still refuses to return a full 200 for a range-less request.
+				if (statusCode === 206) {
+					response.resume();
+					const fullHeaders = { ...headers };
+					delete fullHeaders.range;
+					downloadResponse = await openDownloadResponse(
+						downloadUrl,
+						fullHeaders,
+						abortController.signal,
+					);
+					const fullStatus = downloadResponse.statusCode ?? 0;
+					if (fullStatus < 200 || fullStatus >= 300) {
+						throw new Error(
+							`HTTP ${fullStatus} ${downloadResponse.statusMessage ?? ""}`,
+						);
+					}
+					if (fullStatus === 206) {
+						throw new Error(
+							"Origin returned 206 Partial Content for a range-less request; refusing to install a possibly truncated model",
+						);
+					}
+				}
 			}
 		}
 		const contentLength = Number.parseInt(
-			String(response.headers["content-length"] ?? "0"),
+			String(downloadResponse.headers["content-length"] ?? "0"),
 			10,
 		);
 		if (Number.isFinite(contentLength) && contentLength > 0) {
@@ -799,7 +829,7 @@ async function downloadModel(
 		let lastSampleBytes = record.received;
 
 		try {
-			for await (const chunk of response) {
+			for await (const chunk of downloadResponse) {
 				const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
 				if (!stream.write(Buffer.from(value))) {
 					await new Promise<void>((resolve) => stream.once("drain", resolve));
