@@ -8,6 +8,24 @@ Raw and intermediate owner data belongs under `packages/corpus-tools/data/`,
 which is ignored by the repo-wide `**/data/` rule. Only synthetic fixtures
 under `fixtures/` are committed.
 
+## Progressive-content evidence production
+
+`bun run content-context:produce -- --plan=<private-plan.json>
+--external-dir=<private-external-artifacts> --run-root=reports/content-context/<run-id>`
+generates one deterministic scale corpus and passes its root, exact commit,
+manifest identity, and a unique output path to every named subproducer. The
+plan uses schema `elizaos.content-context.producers.v1` and declares exactly
+one `{ artifact, command, args }` entry for each deterministic artifact listed
+by `packages/scripts/produce-content-context.mjs`.
+
+Subproducers must exercise production adapters and atomically write a private
+regular file to `ELIZA_CONTENT_CONTEXT_OUTPUT`. The orchestrator never creates
+soak, real-Postgres, live-model trajectory, or browser/UI evidence. Those four
+run-bound artifacts must already exist in `--external-dir`; missing, stale,
+fixture-shaped, cross-commit, or cross-corpus evidence fails before canonical
+publication. Successful publication still goes exclusively through the
+existing `run-content-context.mjs` producer and the normal evidence ingestor.
+
 ## X archive collector
 
 `collectXArchive` (`src/collectors/x-archive.ts`) parses the official X data

@@ -74,6 +74,8 @@ function evidenceValues() {
       reports: objects.map((object) => ({
         objectId: object.id,
         status: "passed",
+        reassembledSha256: object.sourceSha256,
+        pages: Math.ceil(object.byteLength / (64 * 1024)),
         restartVerified: true,
         concurrencyVerified: true,
         repeatedPageVerified: true,
@@ -107,9 +109,13 @@ function evidenceValues() {
       })),
     },
     "source-work.json": {
-      samples: [
-        { rowsRead: 1, parentScans: 0, bytesRead: 1024, bytesReturned: 1024 },
-      ],
+      samples: objects.map((object) => ({
+        objectId: object.id,
+        rowsRead: 1,
+        parentScans: 0,
+        bytesRead: 1024,
+        bytesReturned: 1024,
+      })),
     },
     "benchmark.json": {
       cases: [1024 * 1024, 10 * 1024 * 1024].map((sourceBytes) => ({
@@ -132,17 +138,30 @@ function evidenceValues() {
       status: "passed",
       restartVerified: true,
       authorizationVerified: true,
-      probes: [{ absent: true }],
+      probes: objects.map((object) => ({ objectId: object.id, absent: true })),
     },
     "page-ledger.jsonl": objects
-      .map((object) =>
-        JSON.stringify({
-          objectId: object.id,
-          revision: object.revision,
-          sliceSha256: "d".repeat(64),
-          range: { start: 0, end: 1024 },
-          bytesRead: 1024,
-        }),
+      .flatMap((object) =>
+        Array.from(
+          { length: Math.ceil(object.byteLength / (64 * 1024)) },
+          (_, page) =>
+            JSON.stringify({
+              objectId: object.id,
+              revision: object.revision,
+              sliceSha256: "d".repeat(64),
+              range: {
+                start: page * 64 * 1024,
+                end: Math.min(object.byteLength, (page + 1) * 64 * 1024),
+              },
+              bytesRead: Math.min(
+                64 * 1024,
+                object.byteLength - page * 64 * 1024,
+              ),
+              ...(page === Math.ceil(object.byteLength / (64 * 1024)) - 1
+                ? { reassembledSha256: object.sourceSha256 }
+                : {}),
+            }),
+        ),
       )
       .join("\n"),
     "prompt-tokens.json": {
@@ -158,19 +177,48 @@ function evidenceValues() {
     },
     "faults.json": {
       status: "passed",
-      required: 2,
-      executed: 2,
-      results: [{ status: "passed" }, { status: "passed" }],
+      required: 6,
+      executed: 6,
+      catalog: [
+        "unauthorized",
+        "revoked-authorization",
+        "stale-revision",
+        "missing-source",
+        "tampered-reference",
+        "concurrent-cleanup",
+      ],
+      results: [
+        "unauthorized",
+        "revoked-authorization",
+        "stale-revision",
+        "missing-source",
+        "tampered-reference",
+        "concurrent-cleanup",
+      ].map((id) => ({ id, status: "passed" })),
     },
     "stress.json": {
       status: "passed",
       reports: objects.map((object) => ({
         objectId: object.id,
-        cases: [1, 8, 32, 64].map((concurrency) => ({ concurrency })),
+        status: "passed",
+        cases: [1, 8, 32, 64].map((concurrency) => ({
+          concurrency,
+          operations: 1,
+          status: "passed",
+          failures: [],
+          sourceWork: {
+            parentScans: 0,
+            bytesRead: 1,
+            readCalls: 1,
+            rowsRead: 1,
+          },
+        })),
       })),
     },
     "soak.json": {
       status: "passed",
+      commit: "a".repeat(40),
+      corpusManifestSha256: manifestSha256,
       durationMs: 6 * 60 * 60 * 1_000,
       operations: 100_000,
       positiveLeakControlDetected: true,
@@ -178,6 +226,10 @@ function evidenceValues() {
     "postgres.json": {
       status: "passed",
       backend: "postgres",
+      commit: "a".repeat(40),
+      corpusManifestSha256: manifestSha256,
+      version: "17.1",
+      command: "postgres-real-integration",
       families: [
         "file",
         "document",
@@ -225,14 +277,25 @@ function evidenceValues() {
       JSON.stringify({
         repetition,
         status: "passed",
+        commit: "a".repeat(40),
+        corpusManifestSha256: manifestSha256,
         providerQualified: true,
-        provider: "fixture-provider",
-        model: "fixture-model",
+        provider: "openai",
+        model: "gpt-5.4",
         answerLeakageDetected: false,
       }),
     ).join("\n"),
     "e2e.json": {
       status: "passed",
+      commit: "a".repeat(40),
+      corpusManifestSha256: manifestSha256,
+      runId: "e2e-real-run",
+      artifactPaths: [
+        "browser/trace.zip",
+        "network/har.json",
+        "backend/log.txt",
+        "database/rows.json",
+      ],
       api: true,
       ui: true,
       inspector: true,
