@@ -201,3 +201,212 @@ describe("buildCanonicalRecall", () => {
 		expect(result.withheld[0].code).toBe("invalid_provenance");
 	});
 });
+
+describe("deriveCanonicalProvenance additive branches", () => {
+	it("falls back to content and base sources while reading nested identities", () => {
+		const fromContent = deriveCanonicalProvenance(
+			makeMemory({
+				content: { text: "from content", source: "telegram" },
+				metadata: {
+					accountId: "bot-1",
+					platformMessageId: "41",
+					scope: "room",
+					telegram: { id: 12345, username: "telegram-user" },
+				},
+			}),
+			AGENT_ID,
+		);
+
+		expect(fromContent).toMatchObject({
+			valid: true,
+			provenance: {
+				source: "telegram",
+				rawSource: "telegram",
+				senderPlatformId: "12345",
+				senderDisplayName: "telegram-user",
+			},
+		});
+
+		const fromBase = deriveCanonicalProvenance(
+			makeMemory({
+				metadata: {
+					accountId: "bot-2",
+					platformMessageId: "42",
+					base: { source: "telegram", scope: "shared" },
+				},
+			}),
+			AGENT_ID,
+		);
+
+		expect(fromBase).toMatchObject({
+			valid: true,
+			provenance: {
+				source: "telegram",
+				rawSource: "telegram",
+				scope: "shared",
+			},
+		});
+	});
+
+	it("rejects non-positive and non-finite timestamps", () => {
+		for (const createdAt of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+			const result = deriveCanonicalProvenance(
+				makeMemory({ createdAt }),
+				AGENT_ID,
+			);
+			expect(result).toEqual({
+				valid: false,
+				code: "invalid_provenance",
+				source: "discord",
+				reason: "stored memory is missing a valid timestamp",
+			});
+		}
+	});
+
+	it("accepts every declared scope and rejects an unknown scope", () => {
+		for (const scope of [
+			"shared",
+			"private",
+			"room",
+			"global",
+			"owner-private",
+			"user-private",
+			"agent-private",
+		] as const) {
+			const result = deriveCanonicalProvenance(
+				makeMemory({
+					metadata: {
+						provider: "discord",
+						accountId: "acc-1",
+						platformMessageId: `scope-${scope}`,
+						scope,
+					},
+				}),
+				AGENT_ID,
+			);
+			expect(result).toMatchObject({ valid: true, provenance: { scope } });
+		}
+
+		const unknown = deriveCanonicalProvenance(
+			makeMemory({
+				metadata: {
+					provider: "discord",
+					accountId: "acc-1",
+					platformMessageId: "unknown-scope",
+					scope: "team-private",
+				},
+			}),
+			AGENT_ID,
+		);
+		expect(unknown).toMatchObject({
+			valid: false,
+			code: "invalid_provenance",
+			reason: "stored memory is missing a valid scope",
+		});
+	});
+});
+
+function recallMemory(
+	id: string,
+	createdAt: number,
+	platformMessageId: string,
+	overrides: Partial<Memory> = {},
+): Memory {
+	return makeMemory({
+		id: id as UUID,
+		createdAt,
+		metadata: {
+			provider: "discord",
+			accountId: "acc-1",
+			platformMessageId,
+			scope: "shared",
+			discord: { userId: "discord-user-1" },
+		},
+		...overrides,
+	});
+}
+
+describe("buildCanonicalRecall additive branches", () => {
+	const requester = { requesterEntityId: USER_ID, role: "USER" as const };
+
+	it("returns empty arrays for an empty candidate queue", () => {
+		const result = buildCanonicalRecall({
+			candidates: [],
+			agentId: AGENT_ID,
+			requester,
+			destinationRoomId: ROOM_ID,
+		});
+
+		expect(result).toEqual({ items: [], withheld: [] });
+	});
+
+	it("sorts records chronologically and keeps the first encounter on a timestamp tie", () => {
+		const later = recallMemory("later", 30, "later");
+		const firstTie = recallMemory("first-tie", 20, "tie");
+		const earlier = recallMemory("earlier", 10, "earlier");
+		const secondTie = recallMemory("second-tie", 20, "tie", {
+			content: { text: "second encounter" },
+		});
+
+		const result = buildCanonicalRecall({
+			candidates: [later, firstTie, earlier, secondTie],
+			agentId: AGENT_ID,
+			requester,
+			destinationRoomId: ROOM_ID,
+		});
+
+		expect(result.items.map((item) => item.memory.id)).toEqual([
+			"earlier",
+			"first-tie",
+			"later",
+		]);
+		expect(result.withheld).toEqual([]);
+	});
+
+	it("aggregates denial codes without leaking withheld identifiers", () => {
+		const invalidOne = recallMemory("invalid-one", 1, "secret-message-one", {
+			metadata: {
+				provider: "discord",
+				platformMessageId: "secret-message-one",
+				scope: "shared",
+			},
+		});
+		const invalidTwo = recallMemory("invalid-two", 2, "secret-message-two", {
+			metadata: {
+				provider: "discord",
+				platformMessageId: "secret-message-two",
+				scope: "shared",
+			},
+		});
+		const privateOther = recallMemory("private-other", 3, "private-record", {
+			entityId: "33333333-3333-3333-3333-333333333333" as UUID,
+			metadata: {
+				provider: "discord",
+				accountId: "secret-account",
+				platformMessageId: "private-record",
+				scope: "user-private",
+			},
+		});
+		const crossRoom = recallMemory("cross-room", 4, "cross-room-record", {
+			roomId: "44444444-4444-4444-4444-444444444444" as UUID,
+		});
+
+		const result = buildCanonicalRecall({
+			candidates: [invalidOne, invalidTwo, privateOther, crossRoom],
+			agentId: AGENT_ID,
+			requester,
+			destinationRoomId: ROOM_ID,
+		});
+
+		expect(result.items).toEqual([]);
+		expect(result.withheld.map((item) => item.code)).toEqual([
+			"invalid_provenance",
+			"scope_denied",
+			"cross_room_denied",
+		]);
+		expect(result.withheld).toHaveLength(3);
+		const serialized = JSON.stringify(result.withheld);
+		expect(serialized).not.toContain("secret-message");
+		expect(serialized).not.toContain("secret-account");
+	});
+});
