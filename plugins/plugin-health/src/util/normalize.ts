@@ -48,6 +48,13 @@ export function normalizeOptionalBoolean(
   return undefined;
 }
 
+// Strict ISO-8601 shape gate. `Date.parse` alone is far too lenient: it also
+// accepts "2024/01/15", "Jan 15 2024", and "2024-01-15 10:30:00", so relying
+// on it lets non-ISO payloads through a helper whose contract (and error
+// message) promises an ISO timestamp.
+const ISO_8601_REGEX =
+  /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?$/;
+
 export function normalizeOptionalIsoString(
   value: unknown,
   field: string,
@@ -58,7 +65,7 @@ export function normalizeOptionalIsoString(
   }
   const trimmed = (value as string).trim();
   if (trimmed.length === 0) return undefined;
-  if (Number.isNaN(Date.parse(trimmed))) {
+  if (!ISO_8601_REGEX.test(trimmed) || Number.isNaN(Date.parse(trimmed))) {
     fail(400, `${field} must be a valid ISO timestamp`);
   }
   return trimmed;
