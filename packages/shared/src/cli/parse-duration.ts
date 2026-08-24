@@ -29,12 +29,7 @@ export function parseDurationMs(
     throw new Error(`invalid duration: ${raw}`);
   }
 
-  const unit = (m[2] ?? opts?.defaultUnit ?? "ms") as
-    | "ms"
-    | "s"
-    | "m"
-    | "h"
-    | "d";
+  const unit = m[2] ?? opts?.defaultUnit ?? "ms";
   const multiplier =
     unit === "ms"
       ? 1
@@ -44,7 +39,12 @@ export function parseDurationMs(
           ? 60_000
           : unit === "h"
             ? 3_600_000
-            : 86_400_000;
+            : unit === "d"
+              ? 86_400_000
+              : undefined;
+  if (multiplier === undefined) {
+    throw new Error(`invalid duration: ${raw} (unknown unit ${String(unit)})`);
+  }
   const milliseconds = value * multiplier;
   if (
     !Number.isFinite(milliseconds) ||

@@ -20,7 +20,11 @@ describe("parseDurationMs", () => {
   it("uses the default unit only when no suffix is present", () => {
     expect(parseDurationMs("250")).toBe(250); // default ms
     expect(parseDurationMs("5", { defaultUnit: "s" })).toBe(5000);
+    expect(parseDurationMs("5", { defaultUnit: "d" })).toBe(432_000_000);
     expect(parseDurationMs("5s", { defaultUnit: "m" })).toBe(5000); // suffix wins
+    expect(() =>
+      parseDurationMs("5", { defaultUnit: "invalid" as unknown as "s" }),
+    ).toThrow("invalid duration");
   });
 
   it("throws on empty / malformed / negative input", () => {
