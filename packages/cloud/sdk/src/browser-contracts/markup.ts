@@ -200,6 +200,12 @@ export function resolveTwilioSmsCostPerSegment(
     return fallbackCostPerSegment;
   }
 
+  // Sanity cap: no real Twilio segment cost approaches $100; reject typos like
+  // "1e100" that the exponent grammar accepts but that would bill absurdly.
+  if (parsed > 100) {
+    return fallbackCostPerSegment;
+  }
+
   return parsed;
 }
 
