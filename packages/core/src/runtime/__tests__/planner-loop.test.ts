@@ -12,6 +12,7 @@ import { plannerTemplate } from "../../prompts/planner";
 import { ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
+	__codingMutationRequiresVerificationForTests,
 	__renderRoutingHintsBlockForTests,
 	actionResultToPlannerToolResult,
 	FAILED_TOOL_FALLBACK_MESSAGE,
@@ -549,6 +550,72 @@ describe("v5 planner loop skeleton", () => {
 		text: "",
 		toolCalls: [{ id, name: "REPLY", arguments: { text } }],
 	});
+	const workspaceDelta = (
+		outcome: "changed" | "unchanged" | "indeterminate",
+		root = "/workspace",
+		options: {
+			rootId?: string;
+			executionDomainId?: string;
+			backgroundHandle?: string;
+			backgroundStatus?:
+				| "running"
+				| "terminating"
+				| "exited"
+				| "killed"
+				| "error";
+			reasonCode?: "WORKTREE_PROBE_FAILED" | "BACKGROUND_RECEIPT_PENDING";
+		} = {},
+	) => ({
+		...(options.backgroundHandle
+			? {
+					handle: options.backgroundHandle,
+					status:
+						options.backgroundStatus ??
+						(options.reasonCode === "BACKGROUND_RECEIPT_PENDING"
+							? "running"
+							: "exited"),
+				}
+			: {}),
+		workspaceDeltaReceipt: {
+			version: 1,
+			kind: "workspace_delta",
+			scope: {
+				kind: "git_worktree",
+				root,
+				rootId:
+					options.rootId ??
+					(root === "/workspace-a"
+						? "a"
+						: root === "/workspace-b"
+							? "b"
+							: "c"
+					).repeat(64),
+				executionDomainId: options.executionDomainId ?? "d".repeat(64),
+				coverage: "tracked_and_untracked_nonignored",
+			},
+			...(options.backgroundHandle
+				? {
+						operation: {
+							kind: "background_shell",
+							handle: options.backgroundHandle,
+							status:
+								options.backgroundStatus ??
+								(options.reasonCode === "BACKGROUND_RECEIPT_PENDING"
+									? "running"
+									: "exited"),
+						},
+					}
+				: {}),
+			outcome,
+			...(outcome === "indeterminate"
+				? { reasonCode: options.reasonCode ?? "WORKTREE_PROBE_FAILED" }
+				: {
+						beforeFingerprint: "a".repeat(64),
+						afterFingerprint: (outcome === "changed" ? "b" : "a").repeat(64),
+					}),
+			observedAt: "2026-08-22T12:00:00.000Z",
+		},
+	});
 	const codingFileWrite = () => ({
 		text: "",
 		toolCalls: [
@@ -775,6 +842,626 @@ describe("v5 planner loop skeleton", () => {
 				]),
 			);
 		});
+	});
+
+	it("requires clean verification after an observed shell mutation", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "generate-1",
+								name: "SHELL",
+								arguments: { command: "node generate.js" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("reply-1", "Generated files."))
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-clean",
+								name: "SHELL",
+								arguments: { command: "npm test" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-2", "Generated and verified files."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "generated",
+					data: workspaceDelta("changed"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "tests passed cleanly",
+					data: workspaceDelta("unchanged"),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Generated and verified files.");
+			expect(executeToolCall).toHaveBeenCalledTimes(2);
+			expect(
+				result.trajectory.evaluatorOutputs.filter(
+					(output) => output.decision === "CONTINUE",
+				),
+			).toHaveLength(1);
+		});
+	});
+
+	it("treats an indeterminate shell receipt as a mutation requiring verification", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "generate-unknown",
+								name: "SHELL",
+								arguments: { command: "node generate.js" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("reply-1", "Generated files."))
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-clean",
+								name: "SHELL",
+								arguments: { command: "npm test" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-2", "Generated and verified files."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "generation status unknown",
+					data: workspaceDelta("indeterminate"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "tests passed cleanly",
+					data: workspaceDelta("unchanged"),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Generated and verified files.");
+			expect(runtime.useModel).toHaveBeenCalledTimes(4);
+			expect(executeToolCall).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	it.each(["changed", "indeterminate"] as const)(
+		"does not let a verifier with a %s receipt clear pending mutation",
+		async (verifierOutcome) => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "generate-1",
+									name: "SHELL",
+									arguments: { command: "node generate.js" },
+								},
+							],
+						})
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "verify-mutating",
+									name: "SHELL",
+									arguments: { command: "npm test" },
+								},
+							],
+						})
+						.mockResolvedValueOnce(codingReply("reply-1", "Verified."))
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "verify-clean",
+									name: "SHELL",
+									arguments: { command: "npm run typecheck" },
+								},
+							],
+						})
+						.mockResolvedValueOnce(
+							codingReply("reply-2", "Verified without further mutation."),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: true,
+						text: "generated",
+						data: workspaceDelta("changed"),
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "tests passed but mutated the workspace",
+						data: workspaceDelta(verifierOutcome),
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "tests passed cleanly",
+						data: workspaceDelta("unchanged"),
+					});
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: [
+						{ name: "SHELL", description: "Run a command." },
+						{ name: "REPLY", description: "Reply to the user." },
+					],
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(result.finalMessage).toBe("Verified without further mutation.");
+				expect(runtime.useModel).toHaveBeenCalledTimes(5);
+				expect(executeToolCall).toHaveBeenCalledTimes(3);
+			});
+		},
+	);
+
+	it("matches opaque root and execution-domain identities instead of redacted display roots", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "mutate-a",
+								name: "SHELL",
+								arguments: { command: "node generate.js" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-b",
+								name: "SHELL",
+								arguments: { command: "npm test", cwd: "/workspace-b" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("wrong-root", "Verified."))
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-a",
+								name: "SHELL",
+								arguments: { command: "npm test", cwd: "/workspace-a" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("right-root", "Verified in the changed workspace."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "generated",
+					data: workspaceDelta("changed", "[private]", {
+						rootId: "a".repeat(64),
+					}),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "wrong workspace passed",
+					data: workspaceDelta("unchanged", "[private]", {
+						rootId: "b".repeat(64),
+					}),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "right workspace passed",
+					data: workspaceDelta("unchanged", "[private]", {
+						rootId: "a".repeat(64),
+					}),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Verified in the changed workspace.");
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+		});
+	});
+
+	it("does not let a local-domain receipt clear a remote-domain mutation", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const shell = (id: string, command = "npm test") => ({
+				text: "",
+				toolCalls: [{ id, name: "SHELL", arguments: { command } }],
+			});
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(shell("mutate-remote", "node generate.js"))
+					.mockResolvedValueOnce(shell("verify-local"))
+					.mockResolvedValueOnce(codingReply("early", "Verified."))
+					.mockResolvedValueOnce(shell("verify-remote", "npm run typecheck"))
+					.mockResolvedValueOnce(codingReply("done", "Remote scope verified."))
+					.mockResolvedValue(codingReply("fallback", "Still pending.")),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "remote mutation",
+					data: workspaceDelta("changed", "[private]", {
+						executionDomainId: "e".repeat(64),
+					}),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "local pass",
+					data: workspaceDelta("unchanged", "[private]"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "remote pass",
+					data: workspaceDelta("unchanged", "[private]", {
+						executionDomainId: "e".repeat(64),
+					}),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+			expect(runtime.useModel).toHaveBeenCalledTimes(5);
+			expect(result.finalMessage).toBe("Remote scope verified.");
+		});
+	});
+
+	it("does not accept start_background as completed verification", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "write",
+								name: "WRITE",
+								arguments: { path: "file.ts", content: "ok" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "background-test",
+								name: "SHELL",
+								arguments: { action: "start_background", command: "npm test" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("too-early", "Verified."))
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "foreground-test",
+								name: "SHELL",
+								arguments: { command: "npm test" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("done", "Verified in foreground."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "ok",
+			}));
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "WRITE", description: "Write." },
+					{ name: "SHELL", description: "Run." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Verified in foreground.");
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+		});
+	});
+
+	it("keeps same-root background handles independent until each exact terminal action resolves", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const call = (id: string, action: string, handle?: string) => ({
+				text: "",
+				toolCalls: [
+					{
+						id,
+						name: "SHELL",
+						arguments: {
+							action,
+							...(handle ? { handle } : { command: "npm test" }),
+						},
+					},
+				],
+			});
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							...call("start-one", "start_background").toolCalls,
+							...call("start-two", "start_background").toolCalls,
+						],
+					})
+					.mockResolvedValueOnce(call("poll-one", "poll_background", "bg-one"))
+					.mockResolvedValueOnce(call("foreground", "run"))
+					.mockResolvedValueOnce(codingReply("launder", "Both done."))
+					.mockResolvedValueOnce(call("kill-two", "kill_background", "bg-two"))
+					.mockResolvedValueOnce(codingReply("done", "Both handles settled.")),
+				logger: { warn: vi.fn() },
+			};
+			const pending = (handle: string) =>
+				workspaceDelta("indeterminate", "/workspace", {
+					backgroundHandle: handle,
+					reasonCode: "BACKGROUND_RECEIPT_PENDING",
+				});
+			const terminal = (handle: string, outcome: "changed" | "unchanged") =>
+				workspaceDelta(outcome, "/workspace", {
+					backgroundHandle: handle,
+				});
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					text: "one",
+					data: pending("bg-one"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "two",
+					data: pending("bg-two"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "one done",
+					data: terminal("bg-one", "changed"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "tests pass",
+					data: workspaceDelta("unchanged"),
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "two killed",
+					data: terminal("bg-two", "unchanged"),
+				});
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Both handles settled.");
+			expect(executeToolCall).toHaveBeenCalledTimes(5);
+		});
+	});
+
+	it("fails closed when a pending receipt does not bind the generated handle", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "start",
+								name: "SHELL",
+								arguments: {
+									action: "start_background",
+									command: "npm test",
+								},
+							},
+						],
+					})
+					.mockResolvedValue(codingReply("claim", "Finished.")),
+				logger: { warn: vi.fn() },
+			};
+			const data = workspaceDelta("indeterminate", "/workspace", {
+				backgroundHandle: "claimed-handle",
+				reasonCode: "BACKGROUND_RECEIPT_PENDING",
+			});
+			data.handle = "actual-handle";
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "SHELL", description: "Run." },
+					{ name: "REPLY", description: "Reply." },
+				],
+				executeToolCall: vi.fn(async () => ({
+					success: true,
+					text: "started",
+					data,
+				})),
+				evaluate: vi.fn(),
+			});
+			expect(result.finalMessage).toContain("coding task is incomplete");
+		});
+	});
+
+	it("preserves an exact background handle through running operations and resolves only a proven terminal poll", async () => {
+		const running = (status: "running" | "terminating") =>
+			workspaceDelta("indeterminate", "/workspace", {
+				backgroundHandle: "bg-1",
+				backgroundStatus: status,
+				reasonCode: "BACKGROUND_RECEIPT_PENDING",
+			});
+		const steps: Array<Record<string, unknown>> = [];
+		const trajectory = { steps, archivedSteps: [] } as unknown as Parameters<
+			typeof __codingMutationRequiresVerificationForTests
+		>[0];
+		const append = (
+			action: string,
+			data: Record<string, unknown> | undefined,
+			handle?: string,
+			success = true,
+		) => {
+			steps.push({
+				toolCall: {
+					name: "SHELL",
+					params: {
+						action,
+						...(handle ? { handle } : { command: "npm test" }),
+					},
+				},
+				result: { success, text: action, ...(data ? { data } : {}) },
+			});
+		};
+
+		append("start_background", running("running"), undefined, false);
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+		append("poll_background", running("running"), "bg-1");
+		append("write_background", running("running"), "bg-1");
+		append("kill_background", running("terminating"), "bg-1", false);
+		append("poll_background", undefined, "unknown", false);
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+		append(
+			"poll_background",
+			workspaceDelta("unchanged", "/workspace", {
+				backgroundHandle: "bg-1",
+				backgroundStatus: "error",
+			}),
+			"bg-1",
+			false,
+		);
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+			false,
+		);
+	});
+
+	it("keeps a fast terminal start owned until a later terminal poll", async () => {
+		const terminal = workspaceDelta("unchanged", "/workspace", {
+			backgroundHandle: "bg-fast",
+			backgroundStatus: "exited",
+		});
+		const steps = [
+			{
+				toolCall: {
+					name: "SHELL",
+					params: { action: "start_background", command: "true" },
+				},
+				result: { success: false, text: "callback failed", data: terminal },
+			},
+		];
+		const trajectory = { steps, archivedSteps: [] } as unknown as Parameters<
+			typeof __codingMutationRequiresVerificationForTests
+		>[0];
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+		steps.push({
+			toolCall: {
+				name: "SHELL",
+				params: { action: "poll_background", handle: "bg-fast" },
+			},
+			result: { success: true, text: "exited", data: terminal },
+		});
+		expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+			false,
+		);
 	});
 
 	it("does not treat a successful inspection command as coding verification", async () => {
@@ -1607,7 +2294,7 @@ describe("v5 planner loop skeleton", () => {
 					};
 				}
 			).providerOptions?.eliza?.modelInputBudget?.shouldReject,
-		).toBe(true);
+		).toBe(false);
 	});
 
 	it("retries premature terminal output when a non-terminal tool call is required", async () => {

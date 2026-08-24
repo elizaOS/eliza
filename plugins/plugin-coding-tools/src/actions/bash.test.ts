@@ -23,6 +23,7 @@ import {
   UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
+import { __codingMutationRequiresVerificationForTests } from "@elizaos/core/runtime/planner-loop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
@@ -40,6 +41,7 @@ import { runShell } from "../lib/run-shell.js";
 import { persistShellOutputArtifact } from "../lib/shell-output-artifact.js";
 import { availableToolsProvider } from "../providers/available-tools.js";
 import {
+  BackgroundShellReapTimeoutError,
   BackgroundShellService,
   SandboxService,
   SessionCwdService,
@@ -127,6 +129,8 @@ interface RuntimeOptions {
   withShellHistoryService?: boolean;
   capabilityRouter?: ElizaCapabilityRouter;
   backgroundBufferChars?: number;
+  backgroundKillGraceMs?: number;
+  backgroundReapWaitMs?: number;
   configuredSecret?: string;
 }
 
@@ -160,6 +164,12 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     settings.CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS =
       opts.backgroundBufferChars;
   }
+  if (opts.backgroundKillGraceMs !== undefined)
+    settings.CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS =
+      opts.backgroundKillGraceMs;
+  if (opts.backgroundReapWaitMs !== undefined)
+    settings.CODING_TOOLS_BACKGROUND_SHELL_REAP_WAIT_MS =
+      opts.backgroundReapWaitMs;
 
   const services = new Map<string, unknown>();
   const character = {
@@ -171,6 +181,7 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const secretOwner = new AgentRuntime({ character });
   const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
+    runtimeInstanceId: secretOwner.runtimeInstanceId,
     actions: [shellAction],
     character,
     getSetting: vi.fn((key: string) => settings[key]),
@@ -258,7 +269,14 @@ async function waitForBackgroundToSettle(
     const session = service
       .list(conversationId)
       .find((candidate) => candidate.handle === handle);
-    if (session && session.status !== "running") return;
+    if (
+      session &&
+      (session.status === "exited" ||
+        session.status === "killed" ||
+        session.status === "error")
+    ) {
+      return;
+    }
     await delay(50);
   }
   throw new Error(`background shell ${handle} did not settle`);
@@ -576,6 +594,197 @@ describeIfPosix("shellAction", () => {
     expect(result.text).not.toContain("--- stdout ---\nlocal shell output");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.command).toBe("echo local shell output");
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+    });
+  });
+
+  it("binds a routed receipt to an attested execution domain and opaque root", async () => {
+    const workspaceExecution = {
+      root: "/remote/workspace",
+      rootId: "a".repeat(64),
+      executionDomainId: "b".repeat(64),
+    };
+    const router = makeShellRouter(async () => ({
+      output: "remote\n",
+      exitCode: 0,
+      timedOut: false,
+      workspaceExecution,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "node generate.js",
+      }),
+    );
+
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+      scope: workspaceExecution,
+    });
+  });
+
+  it("carries real routed receipts through SHELL and planner scope matching", async () => {
+    const workspaceExecution = {
+      root: "/remote/workspace",
+      rootId: "a".repeat(64),
+      executionDomainId: "b".repeat(64),
+    };
+    const receipt = (outcome: "changed" | "unchanged") => ({
+      version: 1 as const,
+      kind: "workspace_delta" as const,
+      scope: {
+        kind: "git_worktree" as const,
+        ...workspaceExecution,
+        coverage: "tracked_and_untracked_nonignored" as const,
+      },
+      outcome,
+      beforeFingerprint: "c".repeat(64),
+      afterFingerprint: (outcome === "changed" ? "d" : "c").repeat(64),
+      observedAt: "2026-08-23T12:00:00.000Z",
+    });
+    let routedCall = 0;
+    const router = makeShellRouter(async () => {
+      routedCall += 1;
+      if (routedCall === 2) {
+        throw new CapabilityError({
+          code: "CAPABILITY_UNAVAILABLE",
+          message: "use local host",
+          capability: "pty",
+          method: "pty.command.run",
+        });
+      }
+      const workspaceDeltaReceipt = receipt(
+        routedCall === 1 ? "changed" : "unchanged",
+      );
+      return {
+        output: "remote ok\n",
+        exitCode: 0,
+        timedOut: false,
+        workspaceExecution,
+        workspaceDeltaReceipt,
+      };
+    });
+    const localRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "routed-receipt-local-domain-"),
+    );
+    await execFileAsync("git", ["init", "-q"], { cwd: localRoot });
+    const { runtime, session } = await makeRuntime({
+      capabilityRouter: router,
+    });
+    const message = makeMessage(undefined, "Mutate and verify remotely.");
+    session.setCwd(String(message.roomId), localRoot);
+    const execute = (command: string) =>
+      executePlannedToolCall(
+        runtime,
+        { message, activeContexts: ["code"], userRoles: ["OWNER"] },
+        { name: "SHELL", params: { command } },
+      );
+    const steps = [
+      {
+        toolCall: { name: "SHELL", params: { command: "node mutate.js" } },
+        result: await execute("node mutate.js"),
+      },
+    ];
+    const trajectory = { steps, archivedSteps: [] } as unknown as Parameters<
+      typeof __codingMutationRequiresVerificationForTests
+    >[0];
+    expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+    steps.push({
+      toolCall: { name: "SHELL", params: { command: "bun test --help" } },
+      result: await execute("bun test --help"),
+    });
+    expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+    steps.push({
+      toolCall: { name: "SHELL", params: { command: "bun test" } },
+      result: await execute("bun test"),
+    });
+    expect(steps.map((step) => step.result.success)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(
+      steps.map(
+        (step) =>
+          (step.result.data as Record<string, unknown> | undefined)
+            ?.workspaceDeltaReceipt,
+      ),
+    ).toMatchObject([
+      { outcome: "changed", scope: workspaceExecution },
+      {
+        outcome: "unchanged",
+        scope: { rootId: expect.not.stringMatching(/^a+$/) },
+      },
+      { outcome: "unchanged", scope: workspaceExecution },
+    ]);
+    expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+      false,
+    );
+    expect(routedCall).toBe(3);
+    await fs.rm(localRoot, { recursive: true, force: true });
+  });
+
+  it.each([
+    {
+      name: "dispatch exception",
+      run: async () => {
+        throw new Error("remote dispatch failed");
+      },
+    },
+    {
+      name: "complete-capture overflow",
+      run: async () => ({
+        output: "x".repeat(1_000_001),
+        exitCode: 0,
+        timedOut: false,
+      }),
+    },
+  ])("fails conservatively with a routed receipt on $name", async ({ run }) => {
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(run),
+    });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "node generate.js",
+      }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+    });
+  });
+
+  it("preserves the receipt when transcript callback delivery fails", async () => {
+    process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
+    const router = makeShellRouter(async () => ({
+      output: "done\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "node generate.js" },
+        async () => {
+          throw new Error("callback unavailable");
+        },
+      ),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("callback failed");
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+    });
   });
 
   it("runs a simple foreground command (echo hello)", async () => {
@@ -874,6 +1083,337 @@ describeIfPosix("shellAction", () => {
     expect(killed?.success).toBe(true);
     expect(killed?.text).toContain("status=killed");
     expect(isProcessAlive(pid)).toBe(false);
+  });
+
+  it("carries a pending receipt until a background mutation is observed", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const { runtime, session } = await makeRuntime({ workspaceRoots: root });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+      const start = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "start_background",
+          command: `printf 'generated\\n' > '${path.join(root, "generated.txt")}'; sleep 1`,
+        }),
+      );
+      expect(start.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "indeterminate",
+        reasonCode: "BACKGROUND_RECEIPT_PENDING",
+      });
+      const handle = (start.data as Record<string, unknown>).handle as string;
+      const settled = await pollUntil(
+        runtime,
+        message,
+        handle,
+        (data) => data.status === "exited",
+      );
+      expect(settled.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: { root: await fs.realpath(root) },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves background ownership and final receipts across callback failures", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-callback-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const { runtime, session, backgroundShell } = await makeRuntime({
+        workspaceRoots: root,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+      const callbackFailure = async () => {
+        throw new Error("callback unavailable");
+      };
+      const started = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          message,
+          undefined,
+          { action: "start_background", command: "true" },
+          callbackFailure,
+        ),
+      );
+      expect(started.success).toBe(false);
+      expect(started.data).toMatchObject({
+        action: "start_background",
+        handle: expect.stringMatching(/^bgsh_/),
+        workspaceDeltaReceipt: {
+          operation: { handle: expect.stringMatching(/^bgsh_/) },
+        },
+      });
+      const handle = (started.data as Record<string, unknown>).handle as string;
+      await waitForBackgroundToSettle(
+        backgroundShell,
+        String(message.roomId),
+        handle,
+      );
+      const polled = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          message,
+          undefined,
+          { action: "poll_background", handle },
+          callbackFailure,
+        ),
+      );
+      expect(polled.success).toBe(false);
+      expect(polled.data).toMatchObject({
+        action: "poll_background",
+        handle,
+        status: "exited",
+        workspaceDeltaReceipt: {
+          outcome: expect.stringMatching(/^(?:unchanged|indeterminate)$/),
+          operation: { handle },
+        },
+      });
+      expect(
+        (
+          (polled.data as Record<string, unknown>)
+            .workspaceDeltaReceipt as Record<string, unknown>
+        ).reasonCode,
+      ).not.toBe("BACKGROUND_RECEIPT_PENDING");
+
+      const second = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "start_background",
+          command: "sleep 5",
+        }),
+      );
+      const secondHandle = (second.data as Record<string, unknown>)
+        .handle as string;
+      const killed = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          message,
+          undefined,
+          { action: "kill_background", handle: secondHandle },
+          callbackFailure,
+        ),
+      );
+      expect(killed.success).toBe(false);
+      expect(killed.data).toMatchObject({
+        action: "kill_background",
+        handle: secondHandle,
+        status: "killed",
+        workspaceDeltaReceipt: {
+          operation: { handle: secondHandle },
+        },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("waits for overflow termination before snapshotting descendant late mutation", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-overflow-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const { runtime, session, backgroundShell } = await makeRuntime({
+        workspaceRoots: root,
+        backgroundBufferChars: 5,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+      const started = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "start_background",
+          command:
+            "trap 'sleep 0.15; printf late > generated.txt; exit 0' TERM; printf 123456; while :; do sleep 1; done",
+        }),
+      );
+      const handle = (started.data as Record<string, unknown>).handle as string;
+      let terminating:
+        | Awaited<ReturnType<BackgroundShellService["inspect"]>>
+        | undefined;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const candidate = await backgroundShell.inspect({
+          conversationId: String(message.roomId),
+          handle,
+        });
+        if (candidate.status === "terminating") {
+          terminating = candidate;
+          break;
+        }
+        await delay(10);
+      }
+      expect(terminating).toMatchObject({
+        status: "terminating",
+        endedAt: null,
+        workspaceDeltaReceipt: {
+          reasonCode: "BACKGROUND_RECEIPT_PENDING",
+          operation: { handle, status: "terminating" },
+        },
+      });
+      await waitForBackgroundToSettle(
+        backgroundShell,
+        String(message.roomId),
+        handle,
+      );
+      const poll = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "poll_background",
+          handle,
+        }),
+      );
+
+      expect(poll.success).toBe(false);
+      expect(poll.data).toMatchObject({
+        action: "poll_background",
+        handle,
+        workspaceDeltaReceipt: {
+          outcome: "changed",
+          operation: { handle, status: "error" },
+        },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("escalates overflow from TERM to KILL and reaps a TERM-ignoring process", async () => {
+    const { runtime, backgroundShell } = await makeRuntime({
+      backgroundBufferChars: 5,
+      backgroundKillGraceMs: 50,
+      backgroundReapWaitMs: 500,
+    });
+    const message = makeMessage();
+    const startedAt = Date.now();
+    const started = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command: "trap '' TERM; printf 123456; while :; do sleep 1; done",
+      }),
+    );
+    const handle = (started.data as Record<string, unknown>).handle as string;
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(message.roomId),
+      handle,
+    );
+    const settled = await backgroundShell.inspect({
+      conversationId: String(message.roomId),
+      handle,
+    });
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect(settled).toMatchObject({
+      status: "error",
+      endedAt: expect.any(Number),
+      signal: "SIGKILL",
+      workspaceDeltaReceipt: {
+        operation: { handle, status: "error" },
+      },
+    });
+  });
+
+  it("bounds explicit kill while escalating a TERM-ignoring process", async () => {
+    const { runtime } = await makeRuntime({
+      backgroundKillGraceMs: 50,
+      backgroundReapWaitMs: 500,
+    });
+    const message = makeMessage();
+    const started = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command: "trap '' TERM; printf ready; while :; do sleep 1; done",
+      }),
+    );
+    const handle = (started.data as Record<string, unknown>).handle as string;
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("ready"),
+    );
+    const startedAt = Date.now();
+    const killed = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "kill_background",
+        handle,
+      }),
+    );
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect(killed.data).toMatchObject({
+      handle,
+      status: "killed",
+      workspaceDeltaReceipt: {
+        operation: { handle, status: "killed" },
+      },
+    });
+  });
+
+  it("retains a pending receipt when close cannot prove reap before the deadline", async () => {
+    const { runtime, backgroundShell } = await makeRuntime({
+      backgroundKillGraceMs: 30,
+      backgroundReapWaitMs: 80,
+    });
+    const message = makeMessage();
+    const started = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command: "trap '' TERM; printf ready; while :; do sleep 1; done",
+      }),
+    );
+    const handle = (started.data as Record<string, unknown>).handle as string;
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("ready"),
+    );
+    type CloseListener = (
+      code: number | null,
+      signal: NodeJS.Signals | null,
+    ) => void;
+    type CloseControlledProcess = {
+      rawListeners(event: "close"): CloseListener[];
+      removeAllListeners(event: "close"): void;
+      once(event: "close", listener: CloseListener): CloseControlledProcess;
+    };
+    const internal = backgroundShell as unknown as {
+      sessions: Map<string, { process: CloseControlledProcess }>;
+    };
+    const process = internal.sessions.get(handle)?.process;
+    if (!process) throw new Error("background process unavailable");
+    const closeListeners = process.rawListeners("close");
+    const originalOnce = process.once.bind(process);
+    process.removeAllListeners("close");
+    process.once = () => process;
+
+    await expect(
+      backgroundShell.kill({
+        conversationId: String(message.roomId),
+        handle,
+      }),
+    ).rejects.toBeInstanceOf(BackgroundShellReapTimeoutError);
+    expect(
+      await backgroundShell.inspect({
+        conversationId: String(message.roomId),
+        handle,
+      }),
+    ).toMatchObject({
+      status: "terminating",
+      endedAt: null,
+      workspaceDeltaReceipt: {
+        outcome: "indeterminate",
+        reasonCode: "BACKGROUND_RECEIPT_PENDING",
+        operation: { handle, status: "terminating" },
+      },
+    });
+
+    process.once = originalOnce;
+    for (const listener of closeListeners) listener(null, "SIGKILL");
+    expect(
+      await backgroundShell.inspect({
+        conversationId: String(message.roomId),
+        handle,
+      }),
+    ).toMatchObject({ status: "killed", endedAt: expect.any(Number) });
   });
 
   it("returns incremental background output using stream offsets", async () => {
@@ -2038,6 +2578,99 @@ describeIfPosix("shellAction", () => {
     expect(data?.exit_code).toBe(7);
   });
 
+  it("retains an observed worktree mutation when the command later fails", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-shell-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "--allow-empty",
+          "-qm",
+          "initial",
+        ],
+        { cwd: root },
+      );
+      const { runtime, session } = await makeRuntime({
+        workspaceRoots: root,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          command: `printf 'generated\\n' > '${path.join(root, "generated.txt")}'; exit 7`,
+        }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: {
+          root: await fs.realpath(root),
+          coverage: "tracked_and_untracked_nonignored",
+        },
+      });
+      expect(JSON.stringify(result.data?.workspaceDeltaReceipt)).not.toContain(
+        "generated\\n",
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("retains an observed worktree mutation when the command times out", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-shell-timeout-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "--allow-empty",
+          "-qm",
+          "initial",
+        ],
+        { cwd: root },
+      );
+      const { runtime, session } = await makeRuntime({ workspaceRoots: root });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          command: `printf 'generated\\n' > '${path.join(root, "timed-out.txt")}'; sleep 5`,
+          timeout: 200,
+        }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("timeout");
+      expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: {
+          root: await fs.realpath(root),
+          coverage: "tracked_and_untracked_nonignored",
+        },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("returns command_failed when an earlier pipeline command fails", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
@@ -2442,7 +3075,13 @@ describeIfPosix("shellAction", () => {
     expect(poll.text).toContain("no partial output is available");
     expect(JSON.stringify(poll)).not.toContain("mari");
     expect(JSON.stringify(poll)).not.toContain("gold9");
-    expect(poll.data).toBeUndefined();
+    expect(poll.data).toMatchObject({
+      action: "poll_background",
+      handle,
+      workspaceDeltaReceipt: {
+        operation: { kind: "background_shell", handle },
+      },
+    });
   });
 
   it("preserves same-stream event boundaries around harmless bytes", async () => {

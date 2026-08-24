@@ -20,6 +20,7 @@ async function makeHostRuntime(): Promise<IAgentRuntime> {
   const services = new Map<string, unknown>();
   const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
+    runtimeInstanceId: "coding-tools-error-path-runtime",
     getSetting: vi.fn(() => undefined),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
     redactSecrets: vi.fn((text: string) => text),
