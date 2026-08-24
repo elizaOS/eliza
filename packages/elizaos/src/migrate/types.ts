@@ -43,6 +43,8 @@ export interface MigratedMemory {
     chunkIndex?: number;
     /** Total chunks required to reconstruct the complete source body. */
     chunkCount?: number;
+    /** SHA-256 of the normalized complete source body for cross-tier dedup. */
+    sourceBodyDigest?: string;
   };
   unique: boolean;
 }

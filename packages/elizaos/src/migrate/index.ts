@@ -46,9 +46,9 @@ export interface MigratePlan {
     hasUser: boolean;
     firewalled: boolean;
     hasSecretsDir: boolean;
-    /** Cross-tier duplicate memories dropped during tiering. */
+    /** Cross-tier duplicate source bodies dropped during tiering. */
     duplicatesDropped: number;
-    /** Compatibility counter; zero because oversized bodies split losslessly. */
+    /** @deprecated Always zero because oversized bodies split losslessly. */
     clipped: number;
     /** sqlite memory stores detected in the source home. */
     sqliteStores: number;

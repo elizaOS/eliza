@@ -435,6 +435,46 @@ describe("tierMemories", () => {
     expect(intact.memories[0].content.text).toBe(`[CURRENT] ${awareness}`);
   });
 
+  it("deduplicates identical oversized bodies by complete source identity", () => {
+    const body = `${"x".repeat(49)}😀${"y".repeat(76)}`;
+    const result = tierMemories(
+      {
+        ...emptySource(),
+        awareness: body,
+        curatedMemory: body,
+      },
+      opts({ maxChunkLen: 25 }),
+    );
+
+    expect(result.duplicatesDropped).toBe(1);
+    expect(result.counts).toEqual({
+      CURRENT: 6,
+      LONGTERM: 0,
+      SELF: 0,
+      MARKER: 0,
+    });
+    expect(result.memories).toHaveLength(6);
+    expect(
+      result.memories.every((memory) => memory.metadata.tier === "CURRENT"),
+    ).toBe(true);
+    expect(
+      new Set(result.memories.map((memory) => memory.metadata.chunkGroupId))
+        .size,
+    ).toBe(1);
+    expect(
+      new Set(result.memories.map((memory) => memory.metadata.sourceBodyDigest))
+        .size,
+    ).toBe(1);
+
+    const reassembled = [...result.memories]
+      .sort(
+        (a, b) => (a.metadata.chunkIndex ?? 0) - (b.metadata.chunkIndex ?? 0),
+      )
+      .map((memory) => memory.content.text.replace(/^\[CURRENT\] /, ""))
+      .join("");
+    expect(reassembled).toBe(body);
+  });
+
   it("rejects invalid maxChunkLen values before returning partial memories", () => {
     for (const maxChunkLen of [0, -1, 1.5]) {
       expect(() =>

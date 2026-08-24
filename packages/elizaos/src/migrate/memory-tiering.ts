@@ -12,7 +12,7 @@
  * time. Each Memory is content-only with a tier tag in metadata + a text prefix.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isSelfMemory, type OcAgentSource } from "./openclaw-reader.js";
 import type { MigratedMemory as Memory, UUID } from "./types.js";
 
@@ -46,9 +46,9 @@ export interface TieringOptions {
 export interface TieringResult {
   memories: Memory[];
   counts: Record<MemoryTier, number>;
-  /** How many memories were dropped as cross-tier duplicates. */
+  /** How many complete source bodies were dropped as cross-tier duplicates. */
   duplicatesDropped: number;
-  /** Compatibility counter; always zero because oversized bodies split losslessly. */
+  /** @deprecated Always zero because oversized bodies split losslessly. */
   clipped: number;
 }
 
@@ -109,6 +109,11 @@ function mkMemories(
   const max = opts.maxChunkLen ?? 6000;
   const chunks = splitLosslessly(text, max);
   const chunkGroupId = chunks.length > 1 ? (randomUUID() as UUID) : undefined;
+  const sourceBodyDigest = chunkGroupId
+    ? createHash("sha256")
+        .update(normalizeForDedup(`[${tier}] ${text}`))
+        .digest("hex")
+    : undefined;
 
   return chunks.map((body, chunkIndex) => ({
     id: randomUUID() as UUID,
@@ -123,7 +128,12 @@ function mkMemories(
       source: "openclaw-migration",
       tier,
       ...(chunkGroupId
-        ? { chunkGroupId, chunkIndex, chunkCount: chunks.length }
+        ? {
+            chunkGroupId,
+            chunkIndex,
+            chunkCount: chunks.length,
+            sourceBodyDigest,
+          }
         : {}),
     },
     unique: true,
@@ -274,46 +284,54 @@ export function tierMemories(
 }
 
 /**
- * Drop cross-tier duplicate memories (by normalized text), keeping the
- * highest-priority tier's copy. Decrements `counts` for dropped entries so the
- * reported tier counts stay accurate. Order-stable for the survivors.
+ * Drop cross-tier duplicate source bodies (by normalized complete text),
+ * keeping the highest-priority tier's copy. Decrements `counts` for every
+ * dropped chunk while counting one duplicate per discarded source body.
+ * Order-stable for the survivors.
  */
 function dedupeByTierPriority(
   memories: Memory[],
   counts: Record<MemoryTier, number>,
 ): { deduped: Memory[]; duplicatesDropped: number } {
-  // First pass: for each normalized body, find the winning (highest-priority) id.
-  const winnerByKey = new Map<string, { id: string; prio: number }>();
+  const dedupKey = (memory: Memory): string =>
+    memory.metadata.sourceBodyDigest ??
+    (memory.metadata.chunkGroupId
+      ? `${memory.metadata.chunkGroupId}:${memory.metadata.chunkIndex}`
+      : normalizeForDedup(memory.content.text));
+  const sourceId = (memory: Memory): string =>
+    memory.metadata.chunkGroupId ?? memory.id;
+
+  // First pass: for each complete normalized body, find the winning source.
+  const winnerByKey = new Map<string, { sourceId: string; prio: number }>();
   for (const m of memories) {
-    const key = m.metadata.chunkGroupId
-      ? `${m.metadata.chunkGroupId}:${m.metadata.chunkIndex}`
-      : normalizeForDedup(m.content.text);
+    const key = dedupKey(m);
     if (!key) continue;
     const prio = TIER_PRIORITY[m.metadata.tier as MemoryTier] ?? 0;
     const cur = winnerByKey.get(key);
-    if (!cur || prio > cur.prio) winnerByKey.set(key, { id: m.id, prio });
+    if (!cur || prio > cur.prio) {
+      winnerByKey.set(key, { sourceId: sourceId(m), prio });
+    }
   }
-  // Second pass: keep only the winner for each key (and any keyless memory).
+
+  // Second pass: keep every chunk from the winning source and drop every chunk
+  // from losing sources, counting each discarded source body once.
   const deduped: Memory[] = [];
-  let duplicatesDropped = 0;
-  const kept = new Set<string>();
+  const droppedSources = new Set<string>();
   for (const m of memories) {
-    const key = m.metadata.chunkGroupId
-      ? `${m.metadata.chunkGroupId}:${m.metadata.chunkIndex}`
-      : normalizeForDedup(m.content.text);
+    const key = dedupKey(m);
     if (!key) {
       deduped.push(m);
       continue;
     }
     const winner = winnerByKey.get(key);
-    if (winner && winner.id === m.id && !kept.has(key)) {
+    const currentSourceId = sourceId(m);
+    if (winner?.sourceId === currentSourceId) {
       deduped.push(m);
-      kept.add(key);
     } else {
-      duplicatesDropped++;
+      droppedSources.add(currentSourceId);
       const tier = m.metadata.tier as MemoryTier;
       if (counts[tier] > 0) counts[tier]--;
     }
   }
-  return { deduped, duplicatesDropped };
+  return { deduped, duplicatesDropped: droppedSources.size };
 }
