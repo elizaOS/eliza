@@ -45,4 +45,17 @@ describe("getFileExtension", () => {
 			}),
 		).resolves.toBe("text/markdown");
 	});
+
+	it("trims whitespace and rejects dotfiles or query-like suffixes", () => {
+		expect(getFileExtension(" /tmp/file.MP3 ")).toBe(".mp3");
+		expect(getFileExtension("photo.JPG ")).toBe(".jpg");
+		expect(getFileExtension("archive.tar.gz ")).toBe(".gz");
+		expect(getFileExtension(".hidden")).toBeUndefined();
+		expect(getFileExtension("/path/.hidden")).toBeUndefined();
+		expect(getFileExtension(".hidden.txt")).toBe(".txt");
+		expect(getFileExtension("file.pdf?download=1")).toBe(".pdf");
+		expect(getFileExtension("file.pdf#section")).toBe(".pdf");
+		expect(getFileExtension("file.")).toBeUndefined();
+		expect(getFileExtension("file.pdf?download=1 ")).toBe(".pdf");
+	});
 });
