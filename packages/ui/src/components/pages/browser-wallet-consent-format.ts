@@ -72,8 +72,30 @@ export function decodeBase64ForPreview(base64: string): string {
 
 export function truncateMessageForDisplay(message: string, max = 240): string {
   const wellFormed = toWellFormedUnicode(message);
-  if (max <= 0) return "";
-  if (wellFormed.length <= max) return wellFormed;
-  if (max === 1) return "…";
-  return `${truncateWellFormed(wellFormed, Math.max(0, max))}… (${wellFormed.length - max} more chars)`;
+  const budget =
+    max === Number.POSITIVE_INFINITY
+      ? wellFormed.length
+      : Number.isFinite(max)
+        ? Math.max(0, Math.floor(max))
+        : 0;
+  if (budget === 0) return "";
+  if (wellFormed.length <= budget) return wellFormed;
+
+  // The omission count changes when the prefix shrinks, and that can add a
+  // digit to the suffix. Recompute until the suffix width reaches a fixed
+  // point so the complete rendered preview, not only its prefix, fits `max`.
+  let suffixLength = 0;
+  while (true) {
+    const prefix = truncateWellFormed(
+      wellFormed,
+      Math.max(0, budget - suffixLength),
+    );
+    const suffix = `… (${wellFormed.length - prefix.length} more chars)`;
+
+    if (suffix.length > budget || prefix.length === 0) {
+      return `${truncateWellFormed(wellFormed, budget - 1)}…`;
+    }
+    if (suffix.length === suffixLength) return `${prefix}${suffix}`;
+    suffixLength = suffix.length;
+  }
 }
