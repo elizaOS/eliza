@@ -16,7 +16,7 @@ const getRandomValues = (arr: Uint8Array) => {
 
 vi.stubGlobal("crypto", { subtle, getRandomValues });
 
-import { generatePKCE } from "./pkce.ts";
+import { generatePKCE } from "../pkce.ts";
 
 function b64urlEncode(bytes: Uint8Array): string {
   return Buffer.from(bytes)
