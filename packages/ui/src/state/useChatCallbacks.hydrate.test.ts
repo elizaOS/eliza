@@ -48,6 +48,7 @@ function makeDeps(
   const setConversations = vi.fn();
   const setActiveConversationId = vi.fn();
   const setConversationMessages = vi.fn();
+  const claimConversationMessagesOwnership = vi.fn();
   const conversationMessagesRef: { current: ConversationMessage[] } = {
     current: [],
   };
@@ -63,6 +64,7 @@ function makeDeps(
     greetingFiredRef,
     conversationMessagesRef,
     loadedConversationIdRef,
+    claimConversationMessagesOwnership,
     setConversations,
     setActiveConversationId,
     setConversationMessages,
@@ -77,6 +79,7 @@ function makeDeps(
     greetingFiredRef,
     activeConversationIdRef,
     loadedConversationIdRef,
+    claimConversationMessagesOwnership,
   };
 }
 
@@ -158,12 +161,14 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
       setActiveConversationId,
       setConversationMessages,
       loadedConversationIdRef,
+      claimConversationMessagesOwnership,
     } = makeDeps(client);
 
     const result = await hydrateInitialConversation(deps);
 
     expect(client.createConversation).not.toHaveBeenCalled();
     expect(setActiveConversationId).toHaveBeenCalledWith("c1");
+    expect(claimConversationMessagesOwnership).toHaveBeenCalledWith("c1");
     expect(setConversationMessages.mock.calls.at(-1)?.[0]).toHaveLength(1);
     // The thread holder is bound to the restored conversation so the
     // empty-draft cleanup may legitimately judge it by these messages.

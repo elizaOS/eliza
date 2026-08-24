@@ -128,6 +128,11 @@ interface Harness {
     | "loadConversations"
     | "loadConversationMessages"
     | "prefetchConversationMessages"
+    | "claimConversationMessagesOwnership"
+    | "isConversationMessagesOwnershipCurrent"
+    | "registerConversationMessageOverlay"
+    | "applyConversationMessageOverlayModification"
+    | "discardConversationMessageState"
     | "loadedConversationIdRef"
   >;
   activeConversationIdRef: MutableRefObject<string | null>;
@@ -386,6 +391,15 @@ function mountChat(h: Harness) {
       loadConversations: loaders.loadConversations,
       loadConversationMessages: loaders.loadConversationMessages,
       prefetchConversationMessages: loaders.prefetchConversationMessages,
+      claimConversationMessagesOwnership:
+        loaders.claimConversationMessagesOwnership,
+      isConversationMessagesOwnershipCurrent:
+        loaders.isConversationMessagesOwnershipCurrent,
+      registerConversationMessageOverlay:
+        loaders.registerConversationMessageOverlay,
+      applyConversationMessageOverlayModification:
+        loaders.applyConversationMessageOverlayModification,
+      discardConversationMessageState: loaders.discardConversationMessageState,
       loadedConversationIdRef: loaders.loadedConversationIdRef,
     });
     return { loaders, callbacks };
@@ -403,6 +417,13 @@ async function selectAndCommit(
     const selection = result.current.callbacks.handleSelectConversation(id);
     h.resolveLoad(id, messages);
     await selection;
+  });
+}
+
+async function flushPendingWork(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
   });
 }
 
@@ -638,6 +659,153 @@ describe("rapid conversation switching must never delete a real conversation", (
     expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
   });
 
+  it("does not let a delayed new-chat greeting overwrite a turn sent meanwhile", async () => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    await selectAndCommit(result, h, "conv-b", realHistory("b"));
+
+    mocks.client.createConversation.mockResolvedValueOnce({
+      conversation: conversationRecord("conv-new-greeting"),
+    });
+    let resolveGreeting:
+      | ((value: {
+          text: string;
+          agentName: string;
+          generated: boolean;
+        }) => void)
+      | undefined;
+    mocks.client.requestGreeting.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveGreeting = resolve;
+        }),
+    );
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "terminal reply",
+      completed: true,
+      userMessageId: "sent-user",
+      messageId: "sent-assistant",
+    });
+    mocks.client.renameConversation.mockResolvedValue({
+      conversation: conversationRecord("conv-new-greeting"),
+    });
+
+    const newConversation = result.current.callbacks.handleNewConversation();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(h.activeConversationIdRef.current).toBe("conv-new-greeting");
+    expect(mocks.client.requestGreeting).toHaveBeenCalledWith(
+      "conv-new-greeting",
+      "en",
+    );
+
+    const sentTurn = result.current.callbacks.sendChatText(
+      "sent before greeting",
+      {
+        conversationId: "conv-new-greeting",
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalled();
+    await act(async () => {
+      await sentTurn;
+    });
+    expect(h.conversationMessagesRef.current).toMatchObject([
+      { id: "sent-user", text: "sent before greeting" },
+      { id: "sent-assistant", text: "terminal reply" },
+    ]);
+
+    await act(async () => {
+      resolveGreeting?.({
+        text: "late greeting",
+        agentName: "Eliza",
+        generated: true,
+      });
+      await newConversation;
+    });
+
+    expect(h.activeConversationIdRef.current).toBe("conv-new-greeting");
+    expect(h.conversationMessagesRef.current).toMatchObject([
+      { id: "sent-user", text: "sent before greeting" },
+      { id: "sent-assistant", text: "terminal reply" },
+    ]);
+    expect(
+      h.conversationMessagesRef.current.some(
+        (message) => message.text === "late greeting",
+      ),
+    ).toBe(false);
+  });
+
+  it("new-chat rollback keeps the flushed partial and does not resurrect a cancelled queued row", async () => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+
+    await selectAndCommit(result, h, "conv-b", realHistory("b"));
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _conversationId: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+        _channelType: string,
+        signal: AbortSignal,
+      ) =>
+        new Promise((_resolve, reject) => {
+          onToken("partial", "partial reply");
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(
+                Object.assign(new Error("aborted"), { name: "AbortError" }),
+              );
+            },
+            { once: true },
+          );
+        }),
+    );
+    mocks.client.createConversation.mockRejectedValueOnce(new Error("offline"));
+
+    let activeSend!: Promise<void>;
+    let queuedSend!: Promise<void>;
+    act(() => {
+      activeSend = result.current.callbacks.sendChatText("active question", {
+        conversationId: "conv-b",
+      });
+    });
+    await flushPendingWork();
+    act(() => {
+      queuedSend = result.current.callbacks.sendChatText("queued question", {
+        conversationId: "conv-b",
+      });
+    });
+    await flushPendingWork();
+
+    await act(async () => {
+      await Promise.all([
+        result.current.callbacks.handleNewConversation(),
+        activeSend,
+        queuedSend,
+      ]);
+    });
+
+    expect(h.activeConversationIdRef.current).toBe("conv-b");
+    expect(h.chatInputRef.current).toBe("queued question");
+    expect(
+      h.conversationMessagesRef.current.filter(
+        (message) => message.text === "queued question",
+      ),
+    ).toEqual([]);
+    expect(h.conversationMessagesRef.current).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", text: "active question" }),
+        expect.objectContaining({
+          role: "assistant",
+          text: "partial reply",
+        }),
+      ]),
+    );
+  });
+
   it("conversation selection parks cancelled queued text and images on the source conversation", async () => {
     const h = makeHarness(SEED);
     const { result } = mountChat(h);
@@ -677,5 +845,105 @@ describe("rapid conversation switching must never delete a real conversation", (
     expect(h.chatInputRef.current).toBe("stay with B");
     expect(h.chatPendingImagesRef.current).toEqual([queuedImage]);
     expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+  });
+
+  it("waits for a cold startup hydration before routing an action send", async () => {
+    const h = makeHarness([]);
+    const { result } = mountChat(h);
+    let resolveHydrationCreate:
+      | ((value: { conversation: Conversation }) => void)
+      | undefined;
+    mocks.client.createConversation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveHydrationCreate = resolve;
+        }),
+    );
+    mocks.client.listConversations
+      .mockResolvedValueOnce({ conversations: [] })
+      .mockResolvedValue({
+        conversations: [conversationRecord("conv-hydrated")],
+      });
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "hydrated action reply",
+      completed: true,
+      userMessageId: "hydrated-action-user",
+      messageId: "hydrated-action-assistant",
+    });
+
+    let hydration: Promise<string | null>;
+    act(() => {
+      hydration = result.current.callbacks.hydrateInitialConversationState();
+    });
+    await flushPendingWork();
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+
+    let actionSend: Promise<void>;
+    act(() => {
+      actionSend = result.current.callbacks.sendActionMessage(
+        "action during hydration",
+      );
+    });
+    await flushPendingWork();
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveHydrationCreate?.({
+        conversation: conversationRecord("conv-hydrated"),
+      });
+      await hydration;
+    });
+    await flushPendingWork();
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls[0]?.slice(0, 2),
+    ).toEqual(["conv-hydrated", "action during hydration"]);
+
+    await act(async () => {
+      h.resolveLoad("conv-hydrated", []);
+      await actionSend;
+    });
+
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    expect(h.activeConversationIdRef.current).toBe("conv-hydrated");
+    expect(h.conversationsRef.current).toEqual([
+      conversationRecord("conv-hydrated"),
+    ]);
+    expect(h.conversationMessagesRef.current).toMatchObject([
+      { id: "hydrated-action-user", text: "action during hydration" },
+      { id: "hydrated-action-assistant", text: "hydrated action reply" },
+    ]);
+  });
+
+  it("does not clear C when deleting B resolves after the user selected C", async () => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    await selectAndCommit(result, h, "conv-b", realHistory("b"));
+
+    let resolveDelete: ((value: { ok: boolean }) => void) | undefined;
+    mocks.client.deleteConversation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+    let deletion: Promise<void>;
+    act(() => {
+      deletion = result.current.callbacks.handleDeleteConversation("conv-b");
+    });
+    await flushPendingWork();
+    await selectAndCommit(result, h, "conv-c", realHistory("c"));
+
+    await act(async () => {
+      resolveDelete?.({ ok: true });
+      await deletion;
+    });
+
+    expect(h.activeConversationIdRef.current).toBe("conv-c");
+    expect(h.conversationMessagesRef.current).toEqual(realHistory("c"));
+    expect(mocks.client.sendWsMessage).not.toHaveBeenCalledWith({
+      type: "active-conversation",
+      conversationId: null,
+    });
   });
 });

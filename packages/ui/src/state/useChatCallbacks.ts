@@ -40,6 +40,7 @@ import {
   filterRenderableConversationMessages,
   type LoadConversationMessagesResult,
   loadActiveConversationId,
+  type StreamingTextModification,
   shouldKeepConversationMessage,
 } from "./internal";
 import { deriveAgentReady } from "./types";
@@ -119,6 +120,8 @@ export interface HydrateInitialConversationDeps {
    *  `conversationMessagesRef.current` write so the empty-draft cleanup can
    *  never judge a conversation by another conversation's messages. */
   loadedConversationIdRef: MutableRefObject<string | null>;
+  /** Explicitly binds the visible message store before any rows are committed. */
+  claimConversationMessagesOwnership: (conversationId: string | null) => void;
   setConversations: (conversations: Conversation[]) => void;
   setActiveConversationId: (id: string | null) => void;
   setConversationMessages: (messages: ConversationMessage[]) => void;
@@ -249,6 +252,7 @@ export async function hydrateInitialConversation(
     greetingFiredRef,
     conversationMessagesRef,
     loadedConversationIdRef,
+    claimConversationMessagesOwnership,
     setConversations,
     setActiveConversationId,
     setConversationMessages,
@@ -276,6 +280,7 @@ export async function hydrateInitialConversation(
       // on "Start a conversation" until a manual click.
       const initialConversation =
         selectInitialRestoredConversation(conversations);
+      claimConversationMessagesOwnership(initialConversation.id);
       setActiveConversationId(initialConversation.id);
       activeConversationIdRef.current = initialConversation.id;
       api.sendWsMessage({
@@ -291,6 +296,7 @@ export async function hydrateInitialConversation(
         return null;
       }
       if (restoredConversation.id !== initialConversation.id) {
+        claimConversationMessagesOwnership(restoredConversation.id);
         setActiveConversationId(restoredConversation.id);
         activeConversationIdRef.current = restoredConversation.id;
         api.sendWsMessage({
@@ -299,6 +305,7 @@ export async function hydrateInitialConversation(
         });
       }
       try {
+        claimConversationMessagesOwnership(restoredConversation.id);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
@@ -318,6 +325,7 @@ export async function hydrateInitialConversation(
         }
         // transient fetch failures are expected on early load; others are silent
         greetingFiredRef.current = false;
+        claimConversationMessagesOwnership(restoredConversation.id);
         conversationMessagesRef.current = [];
         loadedConversationIdRef.current = null;
         setConversationMessages([]);
@@ -330,11 +338,16 @@ export async function hydrateInitialConversation(
     }
     traceGreeting("hydrate:no_conversations_on_server");
     greetingFiredRef.current = false;
+    claimConversationMessagesOwnership(null);
     conversationMessagesRef.current = [];
     loadedConversationIdRef.current = null;
     setConversationMessages([]);
     setActiveConversationId(null);
     activeConversationIdRef.current = null;
+    api.sendWsMessage({
+      type: "active-conversation",
+      conversationId: null,
+    });
     setConversations([]);
 
     traceGreeting("hydrate:auto_create_initial_conversation");
@@ -354,6 +367,7 @@ export async function hydrateInitialConversation(
       }
 
       setConversations([conversation]);
+      claimConversationMessagesOwnership(conversation.id);
       setActiveConversationId(conversation.id);
       activeConversationIdRef.current = conversation.id;
       // The thread was cleared above and a fresh create is empty by
@@ -530,6 +544,24 @@ export interface UseChatCallbacksDeps {
   ) => Promise<LoadConversationMessagesResult>;
   /** Warm the message cache for adjacent conversations (smooth swipe nav). */
   prefetchConversationMessages: (ids: readonly string[]) => void;
+  /** Explicit message-store ownership and exact local-turn overlay registry. */
+  claimConversationMessagesOwnership: (conversationId: string | null) => number;
+  isConversationMessagesOwnershipCurrent: (
+    conversationId: string | null,
+    generation: number,
+  ) => boolean;
+  registerConversationMessageOverlay: (
+    conversationId: string | null,
+    lineages: readonly string[],
+    explicitMessages?: readonly ConversationMessage[],
+  ) => void;
+  applyConversationMessageOverlayModification: (
+    conversationId: string | null,
+    lineage: string,
+    modification: StreamingTextModification,
+  ) => void;
+  /** Drop state only after a real delete/404/reset has made it unreachable. */
+  discardConversationMessageState: (conversationId?: string) => void;
   /** From useDataLoaders: id of the conversation whose messages
    *  `conversationMessagesRef` currently holds (null = unknown). The
    *  empty-draft cleanups below may only judge a conversation by
@@ -642,6 +674,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     loadConversations,
     loadConversationMessages,
     prefetchConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification,
+    discardConversationMessageState,
     loadedConversationIdRef,
     loadPlugins,
     elizaCloudEnabled,
@@ -709,13 +746,18 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         const data = await client.requestGreeting(convId, uiLanguage);
         if (data.text) {
           const stillActive = activeConversationIdRef.current === convId;
+          const stillGreetingEligible =
+            stillActive &&
+            !conversationMessagesRef.current.some(
+              (message) => message.role === "user",
+            );
           traceGreeting("fetchGreeting:response", {
             convId,
             stillActive,
             textLength: data.text.length,
             persisted: data.persisted === true,
           });
-          if (stillActive) {
+          if (stillGreetingEligible) {
             // Dedupe by SOURCE, not text: a create/fetch race can persist two
             // random preset greetings with DIFFERENT text on the server, so a
             // text-equality guard would let the second bubble through (the
@@ -736,7 +778,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             );
             greetingFiredRef.current = true;
           }
-          return stillActive;
+          return stillGreetingEligible;
         }
         traceGreeting("fetchGreeting:empty_or_whitespace", { convId });
         greetingFiredRef.current = false;
@@ -757,6 +799,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     [
       uiLanguage,
       activeConversationIdRef,
+      conversationMessagesRef,
       greetingFiredRef,
       greetingInFlightConversationRef,
       seedSyntheticGreeting,
@@ -804,6 +847,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       greetingFiredRef,
       conversationMessagesRef,
       loadedConversationIdRef,
+      claimConversationMessagesOwnership,
       setConversations,
       setActiveConversationId,
       setConversationMessages,
@@ -824,6 +868,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     conversationMessagesRef,
     greetingFiredRef,
     loadedConversationIdRef,
+    claimConversationMessagesOwnership,
     seedSyntheticGreeting,
     uiLanguage,
     setActiveConversationId,
@@ -903,11 +948,17 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     chatReplyTargetRef,
     conversationsRef,
     conversationMessagesRef,
+    conversationHydrationEpochRef,
     chatAbortRef,
     chatSendBusyRef,
     chatSendNonceRef,
     loadConversations,
     loadConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification,
+    discardConversationMessageState,
     settleConversationHydrationForSend:
       settleActiveConversationHydrationForSend,
     elizaCloudEnabled,
@@ -945,6 +996,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setConversationMessages,
     setConversations,
     activeConversationIdRef,
+    conversationHydrationEpochRef,
+    claimConversationMessagesOwnership,
+    discardConversationMessageState,
     elizaCloudPreferDisconnectedUntilLoginRef,
     setElizaCloudEnabled,
     setElizaCloudConnected,
@@ -987,9 +1041,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   const handleNewConversation = useCallback(
     async (title?: string) => {
       const previousConversationId = activeConversationIdRef.current;
+      const previousCutoffTs = companionMessageCutoffTs;
+
+      // Interrupt before taking the rollback snapshot: stopping flushes parked
+      // stream text and removes queued optimistic rows. A create failure must
+      // restore that settled state, not resurrect the pre-interrupt queue or
+      // lose the last partial token the user already saw.
+      const restoredQueuedDraft = send.interruptActiveChatPipelineWithDraft();
       const previousMessages = conversationMessagesRef.current;
       const previousLoadedConversationId = loadedConversationIdRef.current;
-      const previousCutoffTs = companionMessageCutoffTs;
       const hasUserMessage = previousMessages.some(
         (message) => message.role === "user",
       );
@@ -1010,12 +1070,14 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         !hasUserMessage &&
         previousMessages.length <= 1;
 
-      // Interrupt FIRST (it restores any undelivered queued sends to the
-      // composer), then wipe the draft for the new chat — and re-apply the
-      // restore after the wipe so the user's queued words survive new-chat
-      // (#10700 "no message is lost").
-      const restoredQueuedDraft = send.interruptActiveChatPipelineWithDraft();
+      // Wipe the draft for the new chat, then re-apply the restored queue so
+      // the user's undelivered words survive new-chat (#10700).
+      claimConversationMessagesOwnership(null);
       resetConversationDraftState();
+      client.sendWsMessage({
+        type: "active-conversation",
+        conversationId: null,
+      });
       if (restoredQueuedDraft.text) {
         setChatInput(restoredQueuedDraft.text);
       }
@@ -1068,9 +1130,17 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             : prev;
           return [conversation, ...next];
         });
+        const newConversationOwnerGeneration =
+          claimConversationMessagesOwnership(conversation.id);
         setActiveConversationId(conversation.id);
         activeConversationIdRef.current = conversation.id;
         setCompanionMessageCutoffTs(nextCutoffTs);
+        // A fresh conversation is authoritatively empty. Commit that ownership
+        // before the greeting await so no old thread is visible under the new id.
+        greetingFiredRef.current = false;
+        conversationMessagesRef.current = [];
+        loadedConversationIdRef.current = conversation.id;
+        setConversationMessages([]);
         // Try inline greeting first; fall back to dedicated greeting endpoint
         let greetingText = seedSyntheticGreeting
           ? inlineGreeting?.text?.trim() || ""
@@ -1105,7 +1175,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         // follow-up side effects for this fresh conversation.
         const stillOnNewConversation =
           activeConversationIdRef.current === conversation.id &&
-          conversationHydrationEpochRef.current === creationEpoch;
+          conversationHydrationEpochRef.current === creationEpoch &&
+          isConversationMessagesOwnershipCurrent(
+            conversation.id,
+            newConversationOwnerGeneration,
+          );
         if (!stillOnNewConversation) {
           return;
         }
@@ -1153,6 +1227,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           });
           void client
             .deleteConversation(previousConversationId)
+            .then(() => {
+              discardConversationMessageState(previousConversationId);
+            })
             .catch((err) => {
               // error-policy:J6 best-effort reap of an empty draft; the
               // server-side cleanupEmptyConversations({ keepId }) sweep is the
@@ -1168,6 +1245,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           .then((result) => {
             if (result.deleted.length === 0) return;
             const deletedSet = new Set(result.deleted);
+            for (const id of deletedSet) {
+              discardConversationMessageState(id);
+            }
             setConversations((prev) =>
               prev.filter((existing) => !deletedSet.has(existing.id)),
             );
@@ -1187,15 +1267,39 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             );
           });
       } catch {
+        // A selection/new-chat/reset that won during create owns the visible
+        // store now. Never roll it back to the snapshot captured by this older
+        // attempt (including the null → null transition case).
+        if (conversationHydrationEpochRef.current !== creationEpoch) return;
+        claimConversationMessagesOwnership(previousConversationId);
         setActiveConversationId(previousConversationId);
         activeConversationIdRef.current = previousConversationId;
-        setConversationMessages(previousMessages);
-        // setConversationMessages syncs conversationMessagesRef; restore the
-        // holder id captured with `previousMessages` so they stay in lockstep.
-        loadedConversationIdRef.current = previousLoadedConversationId;
+        if (previousLoadedConversationId === previousConversationId) {
+          conversationMessagesRef.current = previousMessages;
+          setConversationMessages(previousMessages);
+          loadedConversationIdRef.current = previousLoadedConversationId;
+        } else {
+          // The snapshot belonged to another conversation while the previous
+          // active load was still pending. Clear the unowned bytes and restore
+          // the actual previous owner from its authoritative loader instead of
+          // painting that stale snapshot under the rollback id.
+          conversationMessagesRef.current = [];
+          loadedConversationIdRef.current = null;
+          setConversationMessages([]);
+          if (previousConversationId) {
+            await loadConversationMessages(previousConversationId);
+          }
+        }
+        if (
+          conversationHydrationEpochRef.current !== creationEpoch ||
+          activeConversationIdRef.current !== previousConversationId
+        ) {
+          return;
+        }
         setCompanionMessageCutoffTs(previousCutoffTs);
-        greetingFiredRef.current =
-          hasConversationBootstrapMessage(previousMessages);
+        greetingFiredRef.current = hasConversationBootstrapMessage(
+          conversationMessagesRef.current,
+        );
         if (previousConversationId) {
           client.sendWsMessage({
             type: "active-conversation",
@@ -1211,11 +1315,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       seedSyntheticGreeting,
       uiLanguage,
       activeConversationIdRef,
+      claimConversationMessagesOwnership,
       conversationHydrationEpochRef,
       conversationMessagesRef,
       greetingFiredRef,
       greetingInFlightConversationRef,
       loadedConversationIdRef,
+      loadConversationMessages,
+      isConversationMessagesOwnershipCurrent,
+      discardConversationMessageState,
       send.interruptActiveChatPipelineWithDraft,
       setActiveConversationId,
       setChatInput,
@@ -1229,7 +1337,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
 
   const handleSelectConversation = useCallback(
     async (id: string) => {
-      conversationHydrationEpochRef.current += 1;
+      const selectionEpoch = ++conversationHydrationEpochRef.current;
       // Read the LIVE active id from the ref, not the closure: callers can hold
       // a stale `handleSelectConversation` captured before another navigation
       // changes `activeConversationId`. Using the closure here made selecting
@@ -1275,15 +1383,19 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           !hasUserMessage &&
           prevMessages.length <= 1
         ) {
-          void client.deleteConversation(prevId).catch((err) => {
-            // error-policy:J6 best-effort reap of an empty draft on switch; the
-            // server-side cleanupEmptyConversations({ keepId }) sweep is the
-            // backstop. Surface the failure rather than swallow it silently.
-            logger.warn(
-              { err, conversationId: prevId },
-              "[useChatCallbacks] failed to delete empty draft on select",
-            );
-          });
+          void client
+            .deleteConversation(prevId)
+            .then(() => {
+              discardConversationMessageState(prevId);
+            })
+            .catch((err) => {
+              // error-policy:J6 best-effort reap of an empty draft on switch;
+              // the server-side cleanup sweep is the backstop.
+              logger.warn(
+                { err, conversationId: prevId },
+                "[useChatCallbacks] failed to delete empty draft on select",
+              );
+            });
           // The draft is gone — drop its persisted composer text too so it
           // can't resurface or bleed into the next conversation's draft.
           clearChatDraft(prevId);
@@ -1326,6 +1438,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       }
 
       const previousActive = currentActiveId;
+      // Release/capture the previous owner while its id is still active. The
+      // loader then either paints the target cache or clears the old rows.
+      claimConversationMessagesOwnership(id);
       setActiveConversationId(id);
       activeConversationIdRef.current = id;
       client.sendWsMessage({ type: "active-conversation", conversationId: id });
@@ -1335,13 +1450,16 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         return next;
       });
       const loaded = await loadConversationMessages(id);
+      if (conversationHydrationEpochRef.current !== selectionEpoch) return;
       if (loaded.ok === true) return;
       const loadedMessage = loaded.message;
 
       if (loaded.ok === false && loaded.status === 404) {
         const refreshed = await loadConversations();
+        if (conversationHydrationEpochRef.current !== selectionEpoch) return;
         const fallbackId = refreshed?.[0]?.id ?? null;
         if (fallbackId) {
+          claimConversationMessagesOwnership(fallbackId);
           setActiveConversationId(fallbackId);
           activeConversationIdRef.current = fallbackId;
           setChatInput(readChatDraft(fallbackId) ?? "");
@@ -1353,6 +1471,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             conversationId: fallbackId,
           });
           const fallbackLoaded = await loadConversationMessages(fallbackId);
+          if (conversationHydrationEpochRef.current !== selectionEpoch) return;
           if (fallbackLoaded.ok === false) {
             setActionNotice(
               `Failed to load fallback conversation: ${fallbackLoaded.message}`,
@@ -1361,11 +1480,16 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             );
           }
         } else {
+          claimConversationMessagesOwnership(null);
           setActiveConversationId(null);
           activeConversationIdRef.current = null;
           setChatInput("");
           setChatPendingImages([]);
           setConversationMessages([]);
+          client.sendWsMessage({
+            type: "active-conversation",
+            conversationId: null,
+          });
         }
         setActionNotice(
           "Conversation was not found. Refreshed the conversation list.",
@@ -1375,6 +1499,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         return;
       }
 
+      claimConversationMessagesOwnership(previousActive);
       setActiveConversationId(previousActive);
       activeConversationIdRef.current = previousActive;
       if (previousActive) {
@@ -1387,6 +1512,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           conversationId: previousActive,
         });
         const restored = await loadConversationMessages(previousActive);
+        if (conversationHydrationEpochRef.current !== selectionEpoch) return;
         if (restored.ok === false) {
           setActionNotice(
             `Failed to restore previous conversation: ${restored.message}`,
@@ -1396,6 +1522,10 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         }
       } else {
         setConversationMessages([]);
+        client.sendWsMessage({
+          type: "active-conversation",
+          conversationId: null,
+        });
       }
       setActionNotice(
         `Failed to load conversation: ${loadedMessage}`,
@@ -1410,11 +1540,13 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       setChatInput,
       setChatPendingImages,
       activeConversationIdRef,
+      claimConversationMessagesOwnership,
       chatInputRef,
       chatPendingImagesRef,
       conversationHydrationEpochRef,
       conversationMessagesRef,
       loadedConversationIdRef,
+      discardConversationMessageState,
       send.interruptActiveChatPipelineWithDraft,
       setActiveConversationId,
       setConversationMessages,
@@ -1444,12 +1576,17 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {
-      const deletingActive = activeConversationId === id;
-      if (deletingActive) {
+      if (activeConversationIdRef.current === id) {
         send.interruptActiveChatPipeline();
       }
-      try {
-        await client.deleteConversation(id);
+      const removeDeletedConversationLocally = (): boolean => {
+        const deletingCurrentActive = activeConversationIdRef.current === id;
+        if (deletingCurrentActive) {
+          send.interruptActiveChatPipeline();
+          conversationHydrationEpochRef.current += 1;
+          claimConversationMessagesOwnership(null);
+        }
+        discardConversationMessageState(id);
         setConversations((prev) =>
           prev.filter((conversation) => conversation.id !== id),
         );
@@ -1458,15 +1595,31 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           next.delete(id);
           return next;
         });
-        if (deletingActive) {
+        if (deletingCurrentActive) {
           setActiveConversationId(null);
           activeConversationIdRef.current = null;
+          conversationMessagesRef.current = [];
           setConversationMessages([]);
+          client.sendWsMessage({
+            type: "active-conversation",
+            conversationId: null,
+          });
         }
+        return deletingCurrentActive;
+      };
+      try {
+        await client.deleteConversation(id);
+        const deletedCurrentActive = removeDeletedConversationLocally();
+        const fallbackEpoch = conversationHydrationEpochRef.current;
         const refreshed = await loadConversations();
-        if (deletingActive) {
+        if (
+          deletedCurrentActive &&
+          activeConversationIdRef.current === null &&
+          conversationHydrationEpochRef.current === fallbackEpoch
+        ) {
           const fallbackId = refreshed?.[0]?.id ?? null;
           if (fallbackId) {
+            claimConversationMessagesOwnership(fallbackId);
             setActiveConversationId(fallbackId);
             activeConversationIdRef.current = fallbackId;
             client.sendWsMessage({
@@ -1486,19 +1639,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       } catch (err) {
         const status = (err as { status?: number }).status;
         if (status === 404) {
-          setConversations((prev) =>
-            prev.filter((conversation) => conversation.id !== id),
-          );
-          setUnreadConversations((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-          if (deletingActive) {
-            setActiveConversationId(null);
-            activeConversationIdRef.current = null;
-            setConversationMessages([]);
-          }
+          removeDeletedConversationLocally();
           await loadConversations();
           setActionNotice(
             "Conversation was already deleted. Refreshed the conversation list.",
@@ -1515,12 +1656,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       }
     },
     [
-      activeConversationId,
       send.interruptActiveChatPipeline,
       loadConversationMessages,
       loadConversations,
       setActionNotice,
       activeConversationIdRef,
+      conversationHydrationEpochRef,
+      conversationMessagesRef,
+      claimConversationMessagesOwnership,
+      discardConversationMessageState,
       setActiveConversationId,
       setConversationMessages,
       setConversations,
