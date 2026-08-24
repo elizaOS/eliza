@@ -123,8 +123,6 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 	return elizaMediaCaptureSwizzleInstalled;
 }
 
-@class ElizaAssistantSemanticOpenView;
-
 @interface ElizaWindowInteractiveMaterialController : NSObject
 {
 @private
@@ -141,8 +139,10 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 @property(nonatomic, strong) id globalMonitor;
 @property(nonatomic, strong) id localMonitor;
 @property(nonatomic, strong) NSTimer *pointerPollTimer;
-@property(nonatomic, strong) ElizaAssistantSemanticOpenView *semanticOpenView;
+@property(nonatomic, strong) NSAccessibilityCustomAction *semanticOpenAction;
 @property(nonatomic) BOOL semanticOpenEnabled;
+@property(nonatomic) BOOL semanticContentAccessibilityStateCaptured;
+@property(nonatomic) BOOL semanticContentAccessibilityWasHidden;
 - (instancetype)initWithWindow:(NSWindow *)window;
 - (void)handleEvent:(NSEvent *)event;
 - (void)handleGlobalEvent:(NSEvent *)event;
@@ -152,64 +152,9 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 - (BOOL)consumeSemanticOpen;
 - (BOOL)requestSemanticOpen;
 - (void)setSemanticOpenControlEnabled:(BOOL)enabled;
-- (void)layoutSemanticOpenControl;
 - (void)setMaterialWidth:(CGFloat)width
 				  height:(CGFloat)height
 			cornerRadius:(CGFloat)cornerRadius;
-@end
-
-/**
- * App-owned semantic control for the resting assistant pill.
- *
- * This is deliberately an accessibility-only sibling of WKWebView: AppKit
- * exposes one stable AX button, while `hitTest:` returns nil so ordinary mouse
- * and drag input continues to reach the shared renderer pill. The semantic AX
- * action never posts a HID event or moves the physical pointer.
- *
- * Design reference (behavioral adaptation, no copied source):
- * QwenLM/open-computer-use main f238d1bc85b53bd785d2618d4fbb5d2402207c7a
- * (MIT), whose macOS control path prefers owner-scoped AX actions and refuses
- * global pointer fallback by default.
- */
-@interface ElizaAssistantSemanticOpenView : NSView
-@property(nonatomic, weak) ElizaWindowInteractiveMaterialController *controller;
-@end
-
-@implementation ElizaAssistantSemanticOpenView
-
-- (BOOL)isOpaque {
-	return NO;
-}
-
-- (nullable NSView *)hitTest:(NSPoint)point {
-	(void)point;
-	return nil;
-}
-
-- (BOOL)acceptsFirstResponder {
-	return NO;
-}
-
-- (BOOL)isAccessibilityElement {
-	return YES;
-}
-
-- (NSString *)accessibilityRole {
-	return NSAccessibilityButtonRole;
-}
-
-- (NSString *)accessibilityLabel {
-	return @"Open chat";
-}
-
-- (NSString *)accessibilityIdentifier {
-	return @"eliza.chat-overlay.open";
-}
-
-- (BOOL)accessibilityPerformPress {
-	return [self.controller requestSemanticOpen];
-}
-
 @end
 
 @implementation ElizaWindowInteractiveMaterialController
@@ -291,36 +236,42 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 		: NO;
 }
 
-- (void)layoutSemanticOpenControl {
-	ElizaAssistantSemanticOpenView *view = self.semanticOpenView;
-	NSView *contentView = self.window.contentView;
-	if (view == nil || contentView == nil) return;
-	NSRect bounds = contentView.bounds;
-	CGFloat width = MIN(MAX(0.0, self.materialSize.width), bounds.size.width);
-	CGFloat height = MIN(MAX(0.0, self.materialSize.height), bounds.size.height);
-	CGFloat materialY = [contentView isFlipped]
-		? NSMaxY(bounds) - height
-		: NSMinY(bounds);
-	[view setFrame:NSMakeRect(NSMidX(bounds) - width / 2.0,
-						 materialY, width, height)];
-	[contentView addSubview:view positioned:NSWindowAbove relativeTo:nil];
-}
-
 - (void)setSemanticOpenControlEnabled:(BOOL)enabled {
 	self.semanticOpenEnabled = enabled;
 	_semanticOpenPending.store(false, std::memory_order_release);
+	NSWindow *window = self.window;
+	if (window == nil) return;
+	NSView *contentView = window.contentView;
+	NSMutableArray<NSAccessibilityCustomAction *> *actions =
+		[NSMutableArray arrayWithArray:window.accessibilityCustomActions ?: @[]];
+	if (self.semanticOpenAction != nil) {
+		[actions removeObject:self.semanticOpenAction];
+		self.semanticOpenAction = nil;
+	}
 	if (!enabled) {
-		[self.semanticOpenView removeFromSuperview];
-		self.semanticOpenView = nil;
+		if (self.semanticContentAccessibilityStateCaptured && contentView != nil) {
+			contentView.accessibilityHidden =
+				self.semanticContentAccessibilityWasHidden;
+		}
+		self.semanticContentAccessibilityStateCaptured = NO;
+		window.accessibilityCustomActions = actions;
 		return;
 	}
-	if (self.semanticOpenView == nil) {
-		ElizaAssistantSemanticOpenView *view =
-			[[ElizaAssistantSemanticOpenView alloc] initWithFrame:NSZeroRect];
-		view.controller = self;
-		self.semanticOpenView = view;
+	if (!self.semanticContentAccessibilityStateCaptured && contentView != nil) {
+		self.semanticContentAccessibilityWasHidden =
+			contentView.isAccessibilityHidden;
+		self.semanticContentAccessibilityStateCaptured = YES;
 	}
-	[self layoutSemanticOpenControl];
+	if (contentView != nil) contentView.accessibilityHidden = YES;
+	__weak ElizaWindowInteractiveMaterialController *weakSelf = self;
+	NSAccessibilityCustomAction *action = [[NSAccessibilityCustomAction alloc]
+		initWithName:@"Open chat"
+			 handler:^BOOL {
+			 return [weakSelf requestSemanticOpen];
+		 }];
+	self.semanticOpenAction = action;
+	[actions addObject:action];
+	window.accessibilityCustomActions = actions;
 }
 
 - (void)pollPointerState {
@@ -346,6 +297,17 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 }
 
 - (void)dealloc {
+	NSWindow *window = _window;
+	if (_semanticContentAccessibilityStateCaptured && window.contentView != nil) {
+		window.contentView.accessibilityHidden =
+			_semanticContentAccessibilityWasHidden;
+	}
+	if (_semanticOpenAction != nil && window != nil) {
+		NSMutableArray<NSAccessibilityCustomAction *> *actions =
+			[NSMutableArray arrayWithArray:window.accessibilityCustomActions ?: @[]];
+		[actions removeObject:_semanticOpenAction];
+		window.accessibilityCustomActions = actions;
+	}
 	[_pointerPollTimer invalidate];
 	if (_globalMonitor != nil) [NSEvent removeMonitor:_globalMonitor];
 	if (_localMonitor != nil) [NSEvent removeMonitor:_localMonitor];
@@ -425,7 +387,6 @@ extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
 			cornerRadius:(CGFloat)cornerRadius {
 	self.materialSize = NSMakeSize(width, height);
 	self.materialCornerRadius = cornerRadius;
-	[self layoutSemanticOpenControl];
 	[self applyForScreenPoint:[NSEvent mouseLocation]];
 }
 

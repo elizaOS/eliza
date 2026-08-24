@@ -18,12 +18,18 @@ function implementation(name: string): string {
 
 describe("macOS semantic shell contract", () => {
   it("opens the resting pill through one AX-only control without HID input", () => {
-    const semanticView = implementation("ElizaAssistantSemanticOpenView");
-    expect(semanticView).toContain('return @"eliza.chat-overlay.open"');
-    expect(semanticView).toContain("return NSAccessibilityButtonRole");
-    expect(semanticView).toContain("accessibilityPerformPress");
-    expect(semanticView).toContain("return nil;");
-    expect(semanticView).not.toMatch(/CGEventPost|CGWarpMouseCursorPosition/);
+    const controller = implementation(
+      "ElizaWindowInteractiveMaterialController",
+    );
+    expect(controller).toContain("NSAccessibilityCustomAction");
+    expect(controller).toContain('initWithName:@"Open chat"');
+    expect(controller).toContain("[weakSelf requestSemanticOpen]");
+    expect(controller).toContain("window.accessibilityCustomActions = actions");
+    expect(controller).toContain("contentView.accessibilityHidden = YES");
+    expect(controller).toContain(
+      "contentView.accessibilityHidden =\n\t\t\t\tself.semanticContentAccessibilityWasHidden",
+    );
+    expect(controller).not.toMatch(/CGEventPost|CGWarpMouseCursorPosition/);
     expect(nativeSource).toContain(
       'extern "C" bool pollWindowAssistantSemanticOpenRequest',
     );

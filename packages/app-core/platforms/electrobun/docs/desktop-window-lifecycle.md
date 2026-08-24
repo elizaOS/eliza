@@ -84,14 +84,14 @@ dedicated window:
 
 ### Pointer-free semantic pill opening
 
-The resting macOS pill has one AppKit-owned accessibility button
-(`eliza.chat-overlay.open`) layered as a non-hit-testing sibling of WKWebView.
-`AXPress` records a native request; `DesktopManager` consumes it and dispatches
-the existing imperative `chat-overlay-open` command with a monotonic log
-receipt. No CGEvent/HID event is posted and the physical pointer is not moved.
-While the pill is resting, the renderer composer is `display:none` and absent
-from the accessibility tree; it returns only after the native command opens the
-input state.
+The resting macOS pill exposes one AppKit-owned `Open chat` custom accessibility
+action on its native window. Invoking it records a native request;
+`DesktopManager` consumes that request and dispatches the existing imperative
+`chat-overlay-open` command with a monotonic log receipt. No CGEvent/HID event
+is posted and the physical pointer is not moved.
+While the pill is resting, AppKit hides the renderer content view from the
+accessibility tree so WKWebView cannot leak inactive composer controls. The
+renderer subtree returns only after the native command opens the input state.
 
 Behavioral design reference: QwenLM/open-computer-use main
 `f238d1bc85b53bd785d2618d4fbb5d2402207c7a` (MIT). Eliza adapts its AX-first,
