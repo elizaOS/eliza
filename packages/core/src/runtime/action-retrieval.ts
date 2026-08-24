@@ -1142,7 +1142,7 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 
 export function parentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	const explicit = explicitParentAliasesForCandidateAction(normalized);
+	const explicit = explicitParentAliasesForCandidateAction(actionName);
 	if (explicit.length > 0) return explicit;
 	// Permission/access management is SETTINGS (grant/revoke an app's fs/net
 	// namespace, OS permission requests, shell access) — never view navigation.
@@ -1177,7 +1177,11 @@ function explicitParentAliasesForCandidateAction(actionName: string): string[] {
 	// are open-ended — Stage 1 produces a fresh spelling per turn — so they
 	// hint the deterministic evaluator by family; admission still passes
 	// through appendIfAllowed's role/context gates.
-	if (/CALC|MATH|ARITH|MULTIPL|DIVIDE/.test(normalized)) {
+	if (
+		/(?:^|[^A-Z0-9])(?:CALC(?:ULATE)?|MATH|ARITH(?:METIC)?|MULTIPLY|DIVIDE)(?:[^A-Z0-9]|$)/u.test(
+			actionName.toUpperCase(),
+		)
+	) {
 		return ["CALCULATE"];
 	}
 	return [];

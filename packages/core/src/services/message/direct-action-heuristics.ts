@@ -1161,8 +1161,12 @@ const AMBIGUOUS_ARITHMETIC_EXPRESSION_RE = new RegExp(
 	`(${ARITHMETIC_OPERAND})(\\s*)(${AMBIGUOUS_ARITHMETIC_OPERATOR})(\\s*)(${ARITHMETIC_OPERAND})`,
 	"iu",
 );
-const ARITHMETIC_REQUEST_CUE_RE =
-	/\b(?:calculate|compute|evaluate|solve|what(?:'s|\s+is)|how\s+much|equals?|answer)\b/iu;
+const EXPLICIT_ARITHMETIC_REQUEST_CUE_RE =
+	/\b(?:calculate|compute|evaluate|solve|how\s+much|equals?|answer)\b/iu;
+const WHAT_IS_AMBIGUOUS_ARITHMETIC_RE = new RegExp(
+	`^\\s*what(?:'s|\\s+is)\\s+[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*${AMBIGUOUS_ARITHMETIC_OPERATOR}\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*[?!.]?\\s*$`,
+	"iu",
+);
 const BARE_AMBIGUOUS_ARITHMETIC_RE = new RegExp(
 	`^\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*${AMBIGUOUS_ARITHMETIC_OPERATOR}\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*[?!.]?\\s*$`,
 	"iu",
@@ -1187,13 +1191,28 @@ function looksLikeMultiDigitArithmetic(text: string): boolean {
 	) {
 		return false;
 	}
+	const operator = ambiguousMatch[3] ?? "";
+	const left = ambiguousMatch[1] ?? "";
+	const right = ambiguousMatch[5] ?? "";
+	const isBareCalendarYearRange =
+		operator === "-" &&
+		/^\d{4}$/u.test(left) &&
+		/^\d{4}$/u.test(right) &&
+		Number(left) >= 1900 &&
+		Number(left) <= 2199 &&
+		Number(right) >= 1900 &&
+		Number(right) <= 2199;
+	if (isBareCalendarYearRange) {
+		return false;
+	}
 
 	// Hyphens, slashes, plus signs, and the letter x occur routinely in dates,
 	// ranges, phone numbers, versions, and dimensions. Treat them as arithmetic
 	// only when the user supplies a math cue or the complete message is the
 	// expression; spacing alone must not narrow the action catalog.
 	return (
-		ARITHMETIC_REQUEST_CUE_RE.test(text) ||
+		EXPLICIT_ARITHMETIC_REQUEST_CUE_RE.test(text) ||
+		WHAT_IS_AMBIGUOUS_ARITHMETIC_RE.test(text) ||
 		BARE_AMBIGUOUS_ARITHMETIC_RE.test(text)
 	);
 }

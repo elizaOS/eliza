@@ -135,6 +135,11 @@ describe("deterministic arithmetic routing", () => {
 			"the 100-200 range",
 			"upgrade from version 100/200",
 			"use the 1920x1080 image",
+			"what is ISO 9001-2015 certification?",
+			"what is the 100-200 range?",
+			"what is 1920x1080 resolution?",
+			"what is version 100/200?",
+			"2024-2025",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual(
 				[],

@@ -1187,6 +1187,16 @@ describe("candidate family hints: arithmetic", () => {
 			expect(parentAliasesForCandidateAction(name)).toEqual(["CALCULATE"]);
 		}
 	});
+
+	it("does not treat unrelated candidate-name substrings as arithmetic", () => {
+		for (const name of [
+			"MULTIPLATFORM_SETUP",
+			"CALCULUS_NOTES",
+			"MATHILDA_PROFILE",
+		]) {
+			expect(parentAliasesForCandidateAction(name)).not.toContain("CALCULATE");
+		}
+	});
 });
 
 describe("contact lookup candidate aliases", () => {
