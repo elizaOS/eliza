@@ -290,3 +290,42 @@ describe("createFirstSentenceStreamTracker", () => {
 		expect(tracker.finish()).toBe(160_005);
 	});
 });
+describe("non-string guardrails", () => {
+	it("returns safe defaults for non-string inputs and handles non-string chunks", () => {
+		expect(extractFirstSentence(null as unknown as string)).toEqual({
+			first: "",
+			rest: "",
+			complete: false,
+		});
+		expect(extractFirstSentence(undefined as unknown as string)).toEqual({
+			first: "",
+			rest: "",
+			complete: false,
+		});
+		expect(extractFirstSentence(42 as unknown as string)).toEqual({
+			first: "",
+			rest: "",
+			complete: false,
+		});
+		expect(hasFirstSentence(null as unknown as string)).toBe(false);
+		expect(hasFirstSentence(123 as unknown as string)).toBe(false);
+		expect(hasFirstSentence(undefined as unknown as string)).toBe(false);
+
+		const scanner = createFirstSentenceScanner();
+		expect(scanner.push(null as unknown as string)).toBeUndefined();
+		expect(scanner.push(undefined as unknown as string)).toBeUndefined();
+		expect(scanner.push(42 as unknown as string)).toBeUndefined();
+		expect(scanner.push("Hello. Next.")).toBe(6);
+		expect(scanner.push("more")).toBe(6);
+
+		const tracker = createFirstSentenceStreamTracker();
+		expect(
+			tracker.push(null as unknown as string, "hello" as unknown as string),
+		).toBeUndefined();
+		expect(
+			tracker.push("hi" as unknown as string, null as unknown as string),
+		).toBeUndefined();
+		expect(tracker.push("Hello. ", "Hello. ")).toBe(6);
+		expect(tracker.push("Next.", "Hello. Next.")).toBe(6);
+	});
+});

@@ -76,6 +76,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 
 	return {
 		push(chunk: string, endOfInput = false): number | undefined {
+			if (typeof chunk !== "string") return completeAt;
 			if (completeAt !== undefined) return completeAt;
 			if (pendingBoundary && (chunk.length > 0 || endOfInput)) {
 				if (!ABBREVIATIONS.has(pendingBoundary.normalizedWord)) {
@@ -178,6 +179,8 @@ export function createFirstSentenceStreamTracker(): FirstSentenceStreamTracker {
 			accumulated: string,
 			streamRevision?: number,
 		): number | undefined {
+			if (typeof chunk !== "string" || typeof accumulated !== "string")
+				return undefined;
 			if (
 				streamRevision !== undefined &&
 				activeRevision !== undefined &&
@@ -212,6 +215,7 @@ export function extractFirstSentence(text: string): {
 	/** Whether a sentence boundary was actually found in `text`. */
 	complete: boolean;
 } {
+	if (typeof text !== "string") return { first: "", rest: "", complete: false };
 	const boundaryIndex = createFirstSentenceScanner().push(text, true);
 
 	if (boundaryIndex !== undefined) {
@@ -228,6 +232,7 @@ export function extractFirstSentence(text: string): {
  * Useful for streaming to know when to call extractFirstSentence.
  */
 export function hasFirstSentence(text: string): boolean {
+	if (typeof text !== "string") return false;
 	// A boundary at the end of the text still completes a sentence, so this
 	// cannot key off `rest`: a reply that is exactly one sentence leaves it
 	// empty and would report false.
