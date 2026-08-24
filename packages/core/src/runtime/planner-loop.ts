@@ -52,6 +52,10 @@ import {
 	type ToolDefinition,
 } from "../types/model";
 import {
+	readWorkspaceDeltaReceipt,
+	type WorkspaceDeltaReceipt,
+} from "../types/workspace-delta";
+import {
 	isModelProviderError,
 	modelProviderErrorDetail,
 } from "../utils/model-errors";
@@ -3721,11 +3725,26 @@ function deferCodingCompletionUntilMutationVerified(args: {
 function codingMutationRequiresVerification(
 	trajectory: PlannerTrajectory,
 ): boolean {
-	let latestMutationIndex = -1;
+	type PendingMutation =
+		| { kind: "typed" }
+		| { kind: "background_pending"; scopeKey: string }
+		| { kind: "legacy" }
+		| { kind: "malformed" };
+	const pending = new Map<string, PendingMutation>();
+	const legacyKey = "legacy:unscoped";
+	const malformedKey = "malformed:unscoped";
 	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
-	for (let index = 0; index < steps.length; index++) {
-		const step = steps[index];
+	for (const step of steps) {
+		const workspaceDelta = workspaceDeltaReceipt(step);
 		const name = step?.toolCall?.name.toUpperCase();
+		const subaction = String(
+			(step.toolCall?.params as Record<string, unknown> | undefined)?.action ??
+				(step.toolCall?.params as Record<string, unknown> | undefined)
+					?.operation ??
+				"run",
+		)
+			.trim()
+			.toLowerCase();
 		const fileMutation =
 			name === "FILE" &&
 			[
@@ -3748,19 +3767,148 @@ function codingMutationRequiresVerification(
 					.trim()
 					.toLowerCase(),
 			);
+		if (workspaceDelta.malformed) {
+			pending.set(malformedKey, { kind: "malformed" });
+		} else if (workspaceDelta.receipt) {
+			const receipt = workspaceDelta.receipt;
+			const scopeKey = workspaceDeltaScopeKey(receipt);
+			const operationKey = receipt.operation
+				? workspaceDeltaOperationKey(receipt)
+				: undefined;
+			if (receipt.reasonCode === "BACKGROUND_RECEIPT_PENDING") {
+				const generatedHandle = String(step.result?.data?.handle ?? "");
+				const requestedHandle = String(
+					(step.toolCall?.params as Record<string, unknown> | undefined)
+						?.handle ?? "",
+				);
+				if (!operationKey) {
+					pending.set(malformedKey, { kind: "malformed" });
+				} else if (subaction === "start_background") {
+					if (generatedHandle !== receipt.operation?.handle) {
+						pending.set(malformedKey, { kind: "malformed" });
+						continue;
+					}
+					pending.set(operationKey, {
+						kind: "background_pending",
+						scopeKey,
+					});
+				} else if (
+					(subaction === "poll_background" ||
+						subaction === "write_background" ||
+						subaction === "kill_background") &&
+					requestedHandle === receipt.operation?.handle
+				) {
+					// A running poll/write or failed/in-flight kill can only preserve a
+					// handle established by its exact start; it never creates ownership.
+					if (!pending.has(operationKey)) {
+						pending.set(malformedKey, { kind: "malformed" });
+					}
+				} else {
+					pending.set(malformedKey, { kind: "malformed" });
+				}
+			} else if (operationKey) {
+				const generatedHandle = String(step.result?.data?.handle ?? "");
+				if (
+					subaction === "start_background" &&
+					generatedHandle === receipt.operation?.handle
+				) {
+					// Even a very fast process may finish before a throwing start callback
+					// returns. Start establishes ownership; only a later terminal poll/kill
+					// is allowed to resolve it.
+					pending.set(operationKey, {
+						kind: "background_pending",
+						scopeKey,
+					});
+					continue;
+				}
+				const requestedHandle = String(
+					(step.toolCall?.params as Record<string, unknown> | undefined)
+						?.handle ?? "",
+				);
+				const returnedHandle = String(step.result?.data?.handle ?? "");
+				const returnedStatus = String(step.result?.data?.status ?? "");
+				const terminalStatus = receipt.operation?.status;
+				if (
+					(subaction !== "poll_background" &&
+						subaction !== "kill_background") ||
+					requestedHandle !== receipt.operation?.handle ||
+					returnedHandle !== receipt.operation?.handle ||
+					returnedStatus !== terminalStatus ||
+					(terminalStatus !== "exited" &&
+						terminalStatus !== "killed" &&
+						terminalStatus !== "error") ||
+					!pending.has(operationKey)
+				) {
+					pending.set(malformedKey, { kind: "malformed" });
+				} else {
+					pending.delete(operationKey);
+					if (receipt.outcome !== "unchanged") {
+						pending.set(scopeKey, { kind: "typed" });
+					}
+				}
+			} else if (receipt.outcome !== "unchanged") {
+				pending.set(scopeKey, { kind: "typed" });
+			}
+		}
 		if (
 			(name === "WRITE" || name === "EDIT" || fileMutation) &&
 			step.result?.success === true
 		) {
-			latestMutationIndex = index;
+			pending.set(legacyKey, { kind: "legacy" });
+		}
+		if (isSuccessfulCodingVerificationStep(step)) {
+			if (workspaceDelta.receipt?.outcome === "unchanged") {
+				pending.delete(workspaceDeltaScopeKey(workspaceDelta.receipt));
+				// Receipt-less file tools predate typed scopes. Preserve their existing
+				// compatibility contract while never letting them clear another typed root.
+				pending.delete(legacyKey);
+			} else if (!workspaceDelta.receipt && !workspaceDelta.malformed) {
+				pending.delete(legacyKey);
+			}
 		}
 	}
-	if (latestMutationIndex < 0) return false;
+	return pending.size > 0;
+}
 
-	const verified = steps
-		.slice(latestMutationIndex + 1)
-		.some((step) => isSuccessfulCodingVerificationStep(step));
-	return !verified;
+/** Test seam for the receipt lifecycle gate without invoking model retries. */
+export function __codingMutationRequiresVerificationForTests(
+	trajectory: PlannerTrajectory,
+): boolean {
+	return codingMutationRequiresVerification(trajectory);
+}
+
+function workspaceDeltaReceipt(step: PlannerStep): {
+	receipt?: WorkspaceDeltaReceipt;
+	malformed: boolean;
+} {
+	try {
+		return {
+			receipt: readWorkspaceDeltaReceipt(step.result?.data),
+			malformed: false,
+		};
+	} catch {
+		// A malformed receipt is not allowed to suppress the completion gate. Its
+		// mutation outcome is unknown, which is conservatively indeterminate.
+		return { malformed: true };
+	}
+}
+
+function workspaceDeltaScopeKey(receipt: WorkspaceDeltaReceipt): string {
+	return [
+		receipt.scope.kind,
+		receipt.scope.coverage,
+		receipt.scope.executionDomainId,
+		receipt.scope.rootId,
+	].join("\0");
+}
+
+function workspaceDeltaOperationKey(receipt: WorkspaceDeltaReceipt): string {
+	return [
+		"background",
+		receipt.scope.executionDomainId,
+		receipt.scope.rootId,
+		receipt.operation?.handle ?? "",
+	].join("\0");
 }
 
 /**
@@ -3776,6 +3924,23 @@ function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
 	if (
 		step.toolCall?.name.toUpperCase() !== "SHELL" ||
 		step.result?.success !== true
+	) {
+		return false;
+	}
+	const subaction = String(
+		(step.toolCall.params as Record<string, unknown> | undefined)?.action ??
+			(step.toolCall.params as Record<string, unknown> | undefined)
+				?.operation ??
+			"run",
+	)
+		.trim()
+		.toLowerCase();
+	if (subaction !== "run") return false;
+	const workspaceDelta = workspaceDeltaReceipt(step);
+	if (
+		workspaceDelta.malformed ||
+		workspaceDelta.receipt?.outcome === "changed" ||
+		workspaceDelta.receipt?.outcome === "indeterminate"
 	) {
 		return false;
 	}

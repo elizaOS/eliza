@@ -5880,6 +5880,36 @@ interface SessionEventTrailEntry {
 
 const EVENT_TRAIL_MAX_ENTRIES = 15;
 const EVENT_TRAIL_HINT_MAX_CHARS = 120;
+// Reserving 32 UTF-16 units for each untrusted receipt field keeps the complete
+// fixed outcome prefix and both field labels within EVENT_TRAIL_HINT_MAX_CHARS.
+const EVENT_TRAIL_FAILURE_FIELD_MAX_CHARS = 32;
+
+/** Keep untrusted diagnostic fields on one physical log line. */
+function oneLineEventTrailValue(value: string): string {
+  let withoutControls = "";
+  for (const char of value) {
+    const codePoint = char.codePointAt(0) ?? 0;
+    const isControl =
+      codePoint <= 0x1f ||
+      (codePoint >= 0x7f && codePoint <= 0x9f) ||
+      codePoint === 0x2028 ||
+      codePoint === 0x2029;
+    withoutControls += isControl ? " " : char;
+  }
+  return withoutControls.replace(/\s+/gu, " ").trim();
+}
+
+/** Bound an untrusted receipt field without splitting a Unicode code point. */
+function boundedEventTrailFailureValue(value: string): string {
+  let bounded = "";
+  for (const char of oneLineEventTrailValue(value)) {
+    if (bounded.length + char.length > EVENT_TRAIL_FAILURE_FIELD_MAX_CHARS) {
+      break;
+    }
+    bounded += char;
+  }
+  return bounded;
+}
 
 /**
  * Distills a session-event payload into a one-line forensic hint for the
@@ -5891,6 +5921,21 @@ const EVENT_TRAIL_HINT_MAX_CHARS = 120;
 function eventTrailHint(data: unknown): string | undefined {
   const record = asRecord(data);
   if (!record) return undefined;
+  const terminalFailure = asRecord(record.terminalFailure);
+  if (
+    record.type === "parent_agent_failure" &&
+    typeof terminalFailure?.kind === "string" &&
+    typeof terminalFailure.transient === "boolean" &&
+    typeof record.delivered === "boolean"
+  ) {
+    const kind = boundedEventTrailFailureValue(terminalFailure.kind);
+    const normalizedCode =
+      typeof terminalFailure.code === "string"
+        ? boundedEventTrailFailureValue(terminalFailure.code)
+        : "";
+    const code = normalizedCode.length > 0 ? ` code=${normalizedCode}` : "";
+    return `transient=${terminalFailure.transient} delivered=${record.delivered} kind=${kind || "unknown"}${code}`;
+  }
   const toolCall = asRecord(record.toolCall);
   const candidates = [
     toolCall?.title,
@@ -5904,7 +5949,10 @@ function eventTrailHint(data: unknown): string | undefined {
     (candidate): candidate is string =>
       typeof candidate === "string" && candidate.trim().length > 0,
   );
-  return hint?.trim().slice(0, EVENT_TRAIL_HINT_MAX_CHARS);
+  const normalizedHint = hint ? oneLineEventTrailValue(hint) : "";
+  return normalizedHint
+    ? normalizedHint.slice(0, EVENT_TRAIL_HINT_MAX_CHARS)
+    : undefined;
 }
 
 export interface NormalizedUsage {

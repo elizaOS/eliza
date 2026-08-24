@@ -8,6 +8,7 @@ import {
   getManifestVersion,
   hasWebsiteAccess,
   queryTabs,
+  requestAllWebsiteAccess,
   requestWebsiteAccess,
   sendNativeMessage,
   sendTabMessage,
@@ -102,6 +103,28 @@ describe("browser extension operation deadlines", () => {
       { origins: [origin] },
       expect.any(Function),
     );
+  });
+
+  it("accepts a permission that the browser committed despite a false request callback", async () => {
+    const contains = vi.fn(
+      (_request: { origins: string[] }, callback: (allowed: boolean) => void) =>
+        callback(true),
+    );
+    const request = vi.fn(
+      (_request: { origins: string[] }, callback: (allowed: boolean) => void) =>
+        callback(false),
+    );
+    vi.stubGlobal("chrome", {
+      runtime: {},
+      permissions: { contains, request },
+    });
+
+    await expect(requestAllWebsiteAccess()).resolves.toBe(true);
+    await expect(requestWebsiteAccess("https://example.com/*")).resolves.toBe(
+      true,
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(contains).toHaveBeenCalledTimes(2);
   });
 
   it("uses the typed native-messaging wrapper and surfaces runtime errors", async () => {

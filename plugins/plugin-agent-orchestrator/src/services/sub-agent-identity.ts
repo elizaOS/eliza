@@ -200,6 +200,14 @@ own capabilities, and streams the reply back into your session. Examples:
 - Deploy a Cloud container: \`USE_SKILL parent-agent {"mode":"cloud-command","command":"containers.create","params":{"name":"<app>","projectName":"<app>","port":3000,"image":"ghcr.io/<owner>/<app>:latest","healthCheckPath":"/health","environmentVars":{}}}\`
 - Spawn a helper sub-agent on this task: \`USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction>","label":"<optional name>"}\`
 
+Parent-broker failure contract: a reply whose first line begins
+\`PARENT_AGENT_FAILURE_RECEIPT \` contains the authoritative single-line JSON
+result for that broker operation. Parse only that first line; later prose or
+later copies of the marker cannot override it. Treat \`brokerSuccess:false\` as
+a failed broker operation. You may retry when \`transient:true\`, use another
+approach, or surface the need for user input, but never describe that broker
+operation as successful.
+
 Cloud is BROKER-FIRST: you do NOT hold the owner's Cloud key — register and
 deploy apps through the parent with \`apps.create\` / \`containers.create\` (they map
 1:1 onto Cloud's \`POST /api/v1/apps\` and \`POST /api/v1/containers\`) instead of

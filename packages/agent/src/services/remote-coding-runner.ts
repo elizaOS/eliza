@@ -10,7 +10,7 @@
  * root into the remote workdir and rejected if it escapes that root; model and
  * remote-plugin capabilities are intentionally unavailable on this router.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import nodePath from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
@@ -48,6 +48,13 @@ import {
   type TerminalRunParams,
   type TerminalRunResult,
 } from "@elizaos/core";
+import {
+  beginLocalWorkspaceDeltaObservation,
+  finishLocalWorkspaceDeltaObservation,
+  type LocalWorkspaceDeltaDependencies,
+  type LocalWorkspaceDeltaObservation,
+  type WorkspaceDeltaFs,
+} from "@elizaos/plugin-coding-tools/lib/workspace-delta";
 
 export type {
   RemoteRunnerClient,
@@ -60,6 +67,11 @@ const LOG_CONTEXT = { src: "service:remote_coding_capability_router" } as const;
 const DEFAULT_REMOTE_WORKDIR = "/workspace";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
+const REMOTE_WORKSPACE_OBSERVATION_TIMEOUT_MS = 6_000;
+const REMOTE_WORKSPACE_FILE_BYTE_BUDGET = 512 * 1024;
+const REMOTE_WORKSPACE_GIT_OUTPUT_BUDGET = 384 * 1024;
+const REMOTE_WORKSPACE_DIRECTORY_ENTRY_BUDGET = 10_000;
+const REMOTE_WORKSPACE_DIRECTORY_NAME_BYTE_BUDGET = 256 * 1024;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_REMOTE_JSON_BYTES = 1024 * 1024;
 const MAX_REMOTE_ERROR_BYTES = 16 * 1024;
@@ -112,6 +124,17 @@ export interface RemoteCodingRunnerConfig {
 export interface RemoteRunnerFactory {
   create(config: RemoteCodingRunnerConfig): Promise<RemoteRunnerClient>;
 }
+
+type RemoteWorkspaceObservationLimits = Partial<
+  Pick<
+    LocalWorkspaceDeltaDependencies,
+    | "maxObservationMs"
+    | "maxFileBytes"
+    | "maxGitOutputBytes"
+    | "maxDirectoryEntries"
+    | "maxDirectoryNameBytes"
+  >
+>;
 
 class DefaultRemoteRunnerFactory implements RemoteRunnerFactory {
   private readonly remoteHttpFactory = new RemoteRunnerHttpFactory();
@@ -580,11 +603,13 @@ export class RemoteCodingCapabilityRouterService
   private createdRunner = false;
   private readonly routerConfig: RemoteCodingRunnerConfig;
   private readonly factory: RemoteRunnerFactory;
+  private readonly workspaceObservationLimits: RemoteWorkspaceObservationLimits;
 
   constructor(
     runtime?: IAgentRuntime,
     routerConfig?: RemoteCodingRunnerConfig,
     factory?: RemoteRunnerFactory,
+    workspaceObservationLimits: RemoteWorkspaceObservationLimits = {},
   ) {
     if (!runtime) {
       throw new Error(
@@ -595,6 +620,7 @@ export class RemoteCodingCapabilityRouterService
     this.routerConfig =
       routerConfig ?? resolveRemoteCodingRunnerConfig(runtime);
     this.factory = factory ?? new DefaultRemoteRunnerFactory();
+    this.workspaceObservationLimits = workspaceObservationLimits;
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -735,31 +761,68 @@ export class RemoteCodingCapabilityRouterService
     params: TerminalRunParams,
   ): Promise<TerminalRunResult> {
     await this.requireAvailable("pty", "pty.command.run");
+    if (
+      params.timeoutMs !== undefined &&
+      (!Number.isInteger(params.timeoutMs) ||
+        params.timeoutMs <= 0 ||
+        params.timeoutMs > MAX_TIMER_DELAY_MS)
+    ) {
+      throw new CapabilityError({
+        code: "CAPABILITY_REQUEST_FAILED",
+        capability: "pty",
+        method: "pty.command.run",
+        message: `Duration must be an integer between 1 and ${MAX_TIMER_DELAY_MS}ms.`,
+      });
+    }
     const sandbox = await this.getRunner();
     const command = commandLine(params.command, params.args ?? []);
     const cwd = this.mapPath(params.cwd ?? this.routerConfig.workdir);
+    const observationTimeoutMs = Math.min(
+      params.timeoutMs ?? this.routerConfig.requestTimeoutMs,
+      REMOTE_WORKSPACE_OBSERVATION_TIMEOUT_MS,
+    );
     const opts: SandboxCommandRunOptions = {
       cwd,
       timeoutMs: params.timeoutMs ?? this.routerConfig.timeoutMs,
       requestTimeoutMs: params.timeoutMs ?? this.routerConfig.requestTimeoutMs,
       ...(params.env === undefined ? {} : { envs: params.env }),
     };
+    const observation = await beginLocalWorkspaceDeltaObservation(
+      cwd,
+      remoteWorkspaceObservationDependencies(
+        sandbox,
+        remoteExecutionDomainId(
+          remoteExecutionOwnerIdentity(this.routerConfig, sandbox.sandboxId),
+        ),
+        observationTimeoutMs,
+        this.routerConfig.requestTimeoutMs,
+        this.workspaceObservationLimits,
+      ),
+    );
     try {
       const result = await sandbox.commands.run(command, opts);
-      return commandRunResult(result, result.timedOut === true);
+      return await commandRunResultWithWorkspaceObservation(
+        result,
+        result.timedOut === true,
+        observation,
+      );
     } catch (error) {
       const normalized =
         error instanceof Error ? error : new Error(String(error));
       const commandResult = commandResultFromError(normalized);
       if (commandResult) {
-        return commandRunResult(commandResult, commandResult.timedOut === true);
+        return await commandRunResultWithWorkspaceObservation(
+          commandResult,
+          commandResult.timedOut === true,
+          observation,
+        );
       }
       if (isTimeoutError(normalized)) {
-        return {
-          output: normalized.message,
-          exitCode: null,
-          timedOut: true,
-        };
+        return await terminalFailureWithWorkspaceObservation(
+          normalized.message,
+          true,
+          observation,
+        );
       }
       throw new CapabilityError({
         code: "CAPABILITY_REQUEST_FAILED",
@@ -1863,6 +1926,429 @@ function commandRunResult(
     output: `${result.stdout}${stderr}`,
     exitCode: result.exitCode,
     timedOut,
+  };
+}
+
+function remoteExecutionDomainId(ownerIdentity: string): string {
+  return createHash("sha256")
+    .update("eliza-remote-coding-execution-domain-v1\0")
+    .update(ownerIdentity)
+    .digest("hex");
+}
+
+function remoteExecutionOwnerIdentity(
+  config: RemoteCodingRunnerConfig,
+  runnerSandboxId: string,
+): string {
+  return JSON.stringify({
+    provider: config.provider,
+    endpoint: config.remoteHttpBaseUrl ?? config.cloudApiBaseUrl ?? null,
+    sandboxId: config.sandboxId ?? runnerSandboxId,
+  });
+}
+
+const REMOTE_GIT_OBSERVER_SCRIPT = `
+const { spawn } = require("node:child_process");
+const limit = Number(process.argv[1]);
+const timeout = Number(process.argv[2]);
+const cwd = process.argv[3];
+const args = JSON.parse(process.argv[4]);
+const child = spawn("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+const stdoutChunks = [];
+const stderrChunks = [];
+let bytes = 0;
+let overflow = false;
+let emitted = false;
+const take = (kind, chunk) => {
+  bytes += chunk.length;
+  if (bytes > limit) { overflow = true; child.kill("SIGKILL"); return; }
+  if (kind === "stdout") stdoutChunks.push(chunk);
+  else stderrChunks.push(chunk);
+};
+child.stdout.on("data", chunk => take("stdout", chunk));
+child.stderr.on("data", chunk => take("stderr", chunk));
+const timer = setTimeout(() => child.kill("SIGKILL"), timeout);
+child.on("error", error => { clearTimeout(timer); emitted = true; process.stdout.write(JSON.stringify({ spawnError: error.message })); });
+child.on("close", (code, signal) => {
+  clearTimeout(timer);
+  if (emitted) return;
+  const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+  const stderr = Buffer.concat(stderrChunks).toString("utf8");
+  process.stdout.write(JSON.stringify({ stdout, stderr, code, signal, overflow }));
+});`;
+
+const REMOTE_FS_OBSERVER_SCRIPT = `
+const fs = require("node:fs/promises");
+const op = process.argv[1];
+const target = process.argv[2];
+const entryLimit = Number(process.argv[3]);
+const nameLimit = Number(process.argv[4]);
+const fileLimit = Number(process.argv[5]);
+(async () => {
+  if (op === "realpath") return await fs.realpath(target);
+  if (op === "readlink") return await fs.readlink(target);
+  if (op === "lstat") {
+    const value = await fs.lstat(target);
+    return { mode: value.mode, size: value.size, mtimeMs: value.mtimeMs,
+      kind: value.isFile() ? "file" : value.isSymbolicLink() ? "symlink" : value.isDirectory() ? "directory" : "other" };
+  }
+  if (op === "read") {
+    const handle = await fs.open(target, "r");
+    const chunks = [];
+    let bytes = 0;
+    try {
+      for await (const chunk of handle.createReadStream()) {
+        bytes += chunk.length;
+        if (bytes > fileLimit) throw Object.assign(new Error("remote file observation budget exceeded"), { code: "EOBSERVATIONBYTE" });
+        chunks.push(chunk);
+      }
+    } finally { await handle.close().catch(() => undefined); }
+    return { bytes: Buffer.concat(chunks).toString("base64") };
+  }
+  if (op === "opendir") {
+    const directory = await fs.opendir(target);
+    const names = [];
+    let nameBytes = 0;
+    try {
+      for await (const entry of directory) {
+        nameBytes += Buffer.byteLength(entry.name);
+        if (names.length >= entryLimit || nameBytes > nameLimit) throw Object.assign(new Error("remote directory observation budget exceeded"), { code: "EOBSERVATIONBYTE" });
+        names.push(entry.name);
+      }
+    } finally { await directory.close().catch(() => undefined); }
+    return names;
+  }
+  throw new Error("unsupported remote filesystem observation operation");
+})().then(value => process.stdout.write(JSON.stringify({ value }))).catch(error => {
+  process.stdout.write(JSON.stringify({ error: error.message, code: error.code || "EIO" }));
+});`;
+
+type RemoteFsMetadata =
+  | string
+  | string[]
+  | { bytes: string }
+  | { mode: number; size: number; mtimeMs: number; kind: string };
+
+async function runRemoteObserverCommand(
+  sandbox: RemoteRunnerClient,
+  command: string,
+  requestTimeoutMs: number,
+): Promise<string> {
+  const result = await sandbox.commands.run(command, {
+    timeoutMs: requestTimeoutMs,
+    requestTimeoutMs,
+  });
+  if (result.timedOut) {
+    const error = new Error("Remote workspace observer timed out.") as Error & {
+      killed?: boolean;
+      signal?: string;
+    };
+    error.killed = true;
+    error.signal = "SIGTERM";
+    throw error;
+  }
+  if (result.exitCode !== 0) {
+    const error = new Error(
+      result.stderr || "Remote workspace observer failed.",
+    );
+    Object.assign(error, {
+      code: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+    throw error;
+  }
+  return result.stdout;
+}
+
+async function remoteFsMetadata(
+  sandbox: RemoteRunnerClient,
+  operation: "realpath" | "lstat" | "readlink" | "opendir" | "read",
+  target: string,
+  requestTimeoutMs: number,
+  limits: Required<RemoteWorkspaceObservationLimits>,
+): Promise<RemoteFsMetadata> {
+  const raw = await runRemoteObserverCommand(
+    sandbox,
+    commandLine("node", [
+      "-e",
+      REMOTE_FS_OBSERVER_SCRIPT,
+      operation,
+      target,
+      String(limits.maxDirectoryEntries),
+      String(limits.maxDirectoryNameBytes),
+      String(limits.maxFileBytes),
+    ]),
+    requestTimeoutMs,
+  );
+  const parsed = JSON.parse(raw) as {
+    value?: RemoteFsMetadata;
+    error?: string;
+    code?: string;
+  };
+  if (parsed.error) {
+    const error = new Error(parsed.error) as Error & { code?: string };
+    error.code = parsed.code;
+    throw error;
+  }
+  if (parsed.value === undefined)
+    throw new Error("Remote observer returned no value.");
+  return parsed.value;
+}
+
+function remoteWorkspaceObservationDependencies(
+  sandbox: RemoteRunnerClient,
+  executionDomainId: string,
+  maxObservationMs: number,
+  requestTimeoutMs: number,
+  overrides: RemoteWorkspaceObservationLimits,
+): LocalWorkspaceDeltaDependencies {
+  const limits: Required<RemoteWorkspaceObservationLimits> = {
+    maxObservationMs: overrides.maxObservationMs ?? maxObservationMs,
+    maxFileBytes: overrides.maxFileBytes ?? REMOTE_WORKSPACE_FILE_BYTE_BUDGET,
+    maxGitOutputBytes:
+      overrides.maxGitOutputBytes ?? REMOTE_WORKSPACE_GIT_OUTPUT_BUDGET,
+    maxDirectoryEntries:
+      overrides.maxDirectoryEntries ?? REMOTE_WORKSPACE_DIRECTORY_ENTRY_BUDGET,
+    maxDirectoryNameBytes:
+      overrides.maxDirectoryNameBytes ??
+      REMOTE_WORKSPACE_DIRECTORY_NAME_BYTE_BUDGET,
+  };
+  const observerRequestTimeoutMs = Math.min(
+    requestTimeoutMs,
+    limits.maxObservationMs,
+  );
+  const fsAdapter: WorkspaceDeltaFs = {
+    realpath: async (value) =>
+      String(
+        await remoteFsMetadata(
+          sandbox,
+          "realpath",
+          value,
+          observerRequestTimeoutMs,
+          limits,
+        ),
+      ),
+    readlink: async (value) =>
+      String(
+        await remoteFsMetadata(
+          sandbox,
+          "readlink",
+          value,
+          observerRequestTimeoutMs,
+          limits,
+        ),
+      ),
+    lstat: async (value) => {
+      const metadata = await remoteFsMetadata(
+        sandbox,
+        "lstat",
+        value,
+        observerRequestTimeoutMs,
+        limits,
+      );
+      if (
+        typeof metadata !== "object" ||
+        Array.isArray(metadata) ||
+        !("kind" in metadata)
+      ) {
+        throw new Error("Remote observer returned invalid lstat metadata.");
+      }
+      return {
+        mode: metadata.mode,
+        size: metadata.size,
+        mtimeMs: metadata.mtimeMs,
+        isFile: () => metadata.kind === "file",
+        isSymbolicLink: () => metadata.kind === "symlink",
+        isDirectory: () => metadata.kind === "directory",
+      } as Awaited<ReturnType<WorkspaceDeltaFs["lstat"]>>;
+    },
+    opendir: ((value: string) =>
+      remoteFsMetadata(
+        sandbox,
+        "opendir",
+        value,
+        observerRequestTimeoutMs,
+        limits,
+      ).then((metadata) => {
+        if (!Array.isArray(metadata)) {
+          throw new Error(
+            "Remote observer returned invalid directory metadata.",
+          );
+        }
+        let index = 0;
+        let closed = false;
+        const directory = {
+          close: async () => {
+            closed = true;
+          },
+          [Symbol.asyncIterator]() {
+            return {
+              next: async () => {
+                if (closed || index >= metadata.length) {
+                  return { done: true as const, value: undefined };
+                }
+                return {
+                  done: false as const,
+                  value: { name: metadata[index++] },
+                };
+              },
+            };
+          },
+        };
+        return directory;
+      })) as WorkspaceDeltaFs["opendir"],
+    createReadStream: ((value: string) => {
+      let delivered = false;
+      let destroyed = false;
+      const stream = {
+        destroy: () => {
+          destroyed = true;
+        },
+        [Symbol.asyncIterator]() {
+          return {
+            next: async () => {
+              if (delivered || destroyed) {
+                return { done: true as const, value: undefined };
+              }
+              delivered = true;
+              const content = await remoteFsMetadata(
+                sandbox,
+                "read",
+                value,
+                observerRequestTimeoutMs,
+                limits,
+              );
+              if (
+                typeof content !== "object" ||
+                Array.isArray(content) ||
+                !("bytes" in content) ||
+                typeof content.bytes !== "string"
+              ) {
+                throw new Error("Remote observer returned invalid file bytes.");
+              }
+              return {
+                done: false as const,
+                value: Buffer.from(content.bytes, "base64"),
+              };
+            },
+          };
+        },
+      };
+      return stream;
+    }) as WorkspaceDeltaFs["createReadStream"],
+  };
+  return {
+    ...limits,
+    executionDomainId,
+    fs: fsAdapter,
+    runGit: async (cwd, args, gitLimits) => {
+      const aggregateLimit = Math.min(
+        gitLimits?.maxOutputBytes ?? limits.maxGitOutputBytes,
+        limits.maxGitOutputBytes,
+      );
+      const timeoutMs = Math.min(
+        gitLimits?.timeoutMs ?? limits.maxObservationMs,
+        limits.maxObservationMs,
+      );
+      const raw = await runRemoteObserverCommand(
+        sandbox,
+        commandLine("node", [
+          "-e",
+          REMOTE_GIT_OBSERVER_SCRIPT,
+          String(aggregateLimit),
+          String(timeoutMs),
+          cwd,
+          JSON.stringify(args),
+        ]),
+        Math.min(observerRequestTimeoutMs, timeoutMs),
+      );
+      const parsed = JSON.parse(raw) as {
+        stdout?: string;
+        stderr?: string;
+        code?: number | null;
+        signal?: string | null;
+        overflow?: boolean;
+        spawnError?: string;
+      };
+      if (parsed.overflow) {
+        const error = new Error("Remote Git observer maxBuffer exceeded.");
+        Object.assign(error, {
+          code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+          stdout: parsed.stdout ?? "",
+          stderr: parsed.stderr ?? "",
+        });
+        throw error;
+      }
+      if (parsed.spawnError) throw new Error(parsed.spawnError);
+      if (parsed.signal) {
+        const error = new Error("Remote Git observer timed out.");
+        Object.assign(error, {
+          killed: true,
+          signal: parsed.signal,
+          stdout: parsed.stdout ?? "",
+          stderr: parsed.stderr ?? "",
+        });
+        throw error;
+      }
+      if (parsed.code !== 0) {
+        const error = new Error(parsed.stderr || "Remote Git observer failed.");
+        Object.assign(error, {
+          code: parsed.code,
+          stdout: parsed.stdout ?? "",
+          stderr: parsed.stderr ?? "",
+        });
+        throw error;
+      }
+      return { stdout: parsed.stdout ?? "", stderr: parsed.stderr ?? "" };
+    },
+  };
+}
+
+async function commandRunResultWithWorkspaceObservation(
+  result: SandboxCommandResult,
+  timedOut: boolean,
+  observation: LocalWorkspaceDeltaObservation | undefined,
+): Promise<TerminalRunResult> {
+  const base = commandRunResult(result, timedOut);
+  const workspaceDeltaReceipt =
+    await finishLocalWorkspaceDeltaObservation(observation);
+  return {
+    ...base,
+    ...(observation
+      ? {
+          workspaceExecution: {
+            root: observation.root,
+            rootId: observation.rootId,
+            executionDomainId: observation.executionDomainId,
+          },
+        }
+      : {}),
+    ...(workspaceDeltaReceipt ? { workspaceDeltaReceipt } : {}),
+  };
+}
+
+async function terminalFailureWithWorkspaceObservation(
+  output: string,
+  timedOut: boolean,
+  observation: LocalWorkspaceDeltaObservation | undefined,
+): Promise<TerminalRunResult> {
+  const workspaceDeltaReceipt =
+    await finishLocalWorkspaceDeltaObservation(observation);
+  return {
+    output,
+    exitCode: null,
+    timedOut,
+    ...(observation
+      ? {
+          workspaceExecution: {
+            root: observation.root,
+            rootId: observation.rootId,
+            executionDomainId: observation.executionDomainId,
+          },
+        }
+      : {}),
+    ...(workspaceDeltaReceipt ? { workspaceDeltaReceipt } : {}),
   };
 }
 

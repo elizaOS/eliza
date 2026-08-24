@@ -686,6 +686,22 @@ export interface ParentAgentBrokerRequest {
   args: unknown;
 }
 
+type ParentMessageService = NonNullable<IAgentRuntime["messageService"]>;
+type ParentMessageProcessingResult = Awaited<
+  ReturnType<ParentMessageService["handleMessage"]>
+>;
+
+/** Typed broker boundary returned to child-session dispatchers. */
+export interface ParentAgentBrokerResult {
+  success: boolean;
+  text: string;
+  data?: Record<string, unknown>;
+  /** Authoritative parent runtime failure, independent of delivered prose. */
+  terminalFailure?: NonNullable<
+    ParentMessageProcessingResult["terminalFailure"]
+  >;
+}
+
 function getLogger(runtime: IAgentRuntime): Logger {
   return runtime.logger;
 }
@@ -1420,10 +1436,15 @@ async function askParentAgent(request: {
   sessionId: string;
   session?: SessionInfo;
   text: string;
-}): Promise<string> {
+}): Promise<{
+  text: string;
+  terminalFailure?: NonNullable<
+    ParentMessageProcessingResult["terminalFailure"]
+  >;
+}> {
   const messageService = request.runtime.messageService;
   if (!messageService?.handleMessage) {
-    return "Parent message service is not available in this runtime.";
+    return { text: "Parent message service is not available in this runtime." };
   }
 
   const captured: string[] = [];
@@ -1468,10 +1489,18 @@ async function askParentAgent(request: {
       ? result.responseContent.text.trim()
       : "";
   const capturedText = captured.join("\n").trim();
-  if (resultText) return resultText;
-  if (capturedText) return capturedText;
-  if (result.reason) return `Parent agent did not respond: ${result.reason}`;
-  return "Parent agent completed the request without visible output.";
+  if (result.terminalFailure) {
+    return {
+      text: result.terminalFailure.message,
+      terminalFailure: result.terminalFailure,
+    };
+  }
+  if (resultText) return { text: resultText };
+  if (capturedText) return { text: capturedText };
+  if (result.reason) {
+    return { text: `Parent agent did not respond: ${result.reason}` };
+  }
+  return { text: "Parent agent completed the request without visible output." };
 }
 
 const ORCHESTRATOR_TASK_SERVICE_NAME = "ORCHESTRATOR_TASK_SERVICE";
@@ -1603,7 +1632,7 @@ async function runSpawnSubAgent(request: {
 
 export async function runParentAgentBroker(
   request: ParentAgentBrokerRequest,
-): Promise<{ success: boolean; text: string; data?: Record<string, unknown> }> {
+): Promise<ParentAgentBrokerResult> {
   const log = getLogger(request.runtime);
   const args = normalizeArgs(request.args);
 
@@ -1705,15 +1734,26 @@ export async function runParentAgentBroker(
 
   const requestText = toWellFormedUnicode(args.request);
   try {
-    const text = await askParentAgent({
+    const parentResult = await askParentAgent({
       runtime: request.runtime,
       sessionId: request.sessionId,
       session: request.session,
       text: requestText,
     });
+    if (parentResult.terminalFailure) {
+      return {
+        success: false,
+        text: `Parent Eliza agent failed:\n\n${parentResult.text}`,
+        terminalFailure: parentResult.terminalFailure,
+        data: {
+          actionName: PARENT_AGENT_BROKER_SLUG,
+          mode: args.mode,
+        },
+      };
+    }
     return {
       success: true,
-      text: `Parent Eliza agent response:\n\n${text}`,
+      text: `Parent Eliza agent response:\n\n${parentResult.text}`,
       data: {
         actionName: PARENT_AGENT_BROKER_SLUG,
         mode: args.mode,

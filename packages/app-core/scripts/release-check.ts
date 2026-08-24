@@ -1335,6 +1335,9 @@ function assertInnoTemplateTargetsBundledLauncher() {
     '#define MyAppIconFile "ElizaOSApp.ico"',
     'Source: "{#MySetupIconFile}"; DestDir: "{app}"; DestName: "{#MyAppIconFile}"; Flags: ignoreversion',
     "UninstallDisplayIcon={app}\\{#MyAppIconFile}",
+    "[UninstallRun]",
+    "browser-bridge-unregister.ps1",
+    'RunOnceId: "BrowserBridgeNativeHost"',
     'Name: "{autoprograms}\\{#MyDefaultGroupName}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"; IconFilename: "{app}\\{#MyAppIconFile}"',
     'Name: "{autodesktop}\\{#MyAppName}"; Filename: "{app}\\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\\{#MyAppIconFile}"',
   ];
@@ -1344,7 +1347,7 @@ function assertInnoTemplateTargetsBundledLauncher() {
 
   if (missingSnippets.length > 0) {
     console.error(
-      "release-check: Eliza.iss must point Windows shortcuts at bin\\launcher.exe and use Eliza.ico for uninstall and shortcut icons.",
+      "release-check: the Inno template must target the bundled launcher and clean owned browser registrations on uninstall.",
     );
     for (const snippet of missingSnippets) {
       console.error(`  - ${snippet}`);
