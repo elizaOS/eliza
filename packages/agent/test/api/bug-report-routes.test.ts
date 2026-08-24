@@ -368,6 +368,134 @@ describe.sequential("bug report repository routing", () => {
     expect(payload.startup.status).toBe(500);
   });
 
+  it("redacts credentials from every user-controlled remote-intake text field", async () => {
+    vi.stubEnv(
+      "ELIZA_BUG_REPORT_API_URL",
+      "https://intake.example.test/reports",
+    );
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ accepted: true, id: "report-secrets" }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fields = [
+      "description",
+      "steps",
+      "expected",
+      "actual",
+      "environment",
+      "node",
+      "provider",
+      "app",
+      "release",
+      "logs",
+      "reason",
+      "phase",
+      "message",
+      "detail",
+      "path",
+    ] as const;
+    const secrets = Object.fromEntries(
+      fields.map((field) => [field, `${field}-credential-${"x".repeat(24)}`]),
+    ) as Record<(typeof fields)[number], string>;
+    const credential = (field: (typeof fields)[number]) =>
+      `${field}-marker PASSWORD=${secrets[field]}`;
+
+    const ctx = createContext({
+      description: credential("description"),
+      stepsToReproduce: credential("steps"),
+      expectedBehavior: credential("expected"),
+      actualBehavior: credential("actual"),
+      environment: credential("environment"),
+      nodeVersion: credential("node"),
+      modelProvider: credential("provider"),
+      appVersion: credential("app"),
+      releaseChannel: credential("release"),
+      logs: credential("logs"),
+      category: "startup-failure",
+      startup: {
+        reason: credential("reason"),
+        phase: credential("phase"),
+        message: credential("message"),
+        detail: credential("detail"),
+        status: 500,
+        path: credential("path"),
+      },
+    });
+
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    const [, init] = fetchMock.mock.calls[0];
+    const serializedPayload = String(init.body);
+
+    for (const field of fields) {
+      expect(serializedPayload).toContain(`${field}-marker`);
+      expect(serializedPayload).not.toContain(secrets[field]);
+    }
+  });
+
+  it("redacts credentials from every user-controlled GitHub issue text field", async () => {
+    vi.stubEnv("GITHUB_TOKEN", "test-token-not-a-credential");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            html_url: "https://github.com/elizaOS/eliza/issues/789",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fields = [
+      "description",
+      "steps",
+      "expected",
+      "actual",
+      "environment",
+      "node",
+      "provider",
+      "logs",
+      "reason",
+      "phase",
+      "path",
+    ] as const;
+    const secrets = Object.fromEntries(
+      fields.map((field) => [field, `${field}-credential-${"y".repeat(24)}`]),
+    ) as Record<(typeof fields)[number], string>;
+    const credential = (field: (typeof fields)[number]) =>
+      `${field}-marker PASSWORD=${secrets[field]}`;
+
+    const ctx = createContext({
+      description: credential("description"),
+      stepsToReproduce: credential("steps"),
+      expectedBehavior: credential("expected"),
+      actualBehavior: credential("actual"),
+      environment: credential("environment"),
+      nodeVersion: credential("node"),
+      modelProvider: credential("provider"),
+      logs: credential("logs"),
+      category: "startup-failure",
+      startup: {
+        reason: credential("reason"),
+        phase: credential("phase"),
+        path: credential("path"),
+      },
+    });
+
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    const [, init] = fetchMock.mock.calls[0];
+    const serializedPayload = String(init.body);
+
+    for (const field of fields) {
+      expect(serializedPayload).toContain(`${field}-marker`);
+      expect(serializedPayload).not.toContain(secrets[field]);
+    }
+  });
+
   it("preserves the per-client submission rate limit", async () => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const ctx = createContext(validBugReport, "192.0.2.1");
