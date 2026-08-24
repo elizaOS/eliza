@@ -19,7 +19,7 @@ Service and deployed-Cloud proof, system installer lifecycle, RPM tooling,
 review, signing, publication, merge, and deployment remain environment,
 credential, physical-device, or authority gates.
 
-The current host-capacity check records 2.3 GiB free on the root
+The current host-capacity check records 2.0 GiB free on the root
 filesystem versus the 8 GiB required for another desktop rebuild. The completed
 artifacts launch from their current locations, but a fresh rebuild requires
 owner-approved cleanup of generated outputs or caches. No unrelated cache or
@@ -28,16 +28,16 @@ workspace data was deleted to manufacture a green doctor result.
 - Worktree: `/home/nubs/Documents/Codex/2026-08-22/eliza-linux-devices-runtimes`
 - Current local branch: `codex/pr25427-final`
 - Draft PR branch: `fix/linux-cef-devices-runtimes-parity`
-- Integrated `origin/develop`: `417a22e36d91442a0c61254862c43f309c74f453`
+- Integrated `origin/develop`: `22a782275515d955f0f062f1a90530fea684d5d0`
 - Product payload source: `be05b667e76b7c8f5266667bfc33f35125b75faf`
 - Packaging/tooling checkpoint: `02c00a3902a35732d7cb134f98570b9d349bdbfc`
 - Original merged work: [PR #24414](https://github.com/elizaOS/eliza/pull/24414), merge commit `acf111c4a`
 - Publication state: [draft PR #25427](https://github.com/elizaOS/eliza/pull/25427)
   is open and conflict-free. Its prior exact remote head `a38914d82e` passed
-  hosted PR Static Smoke. The current local `develop` integration and this
-  status refresh must be pushed and revalidated before they are exact PR-head
-  evidence. No merge, signing, release, deployment, or system installation was
-  performed.
+  hosted PR Static Smoke. The head carrying this status refresh integrates the
+  latest recorded `develop` base and must pass a new exact-head hosted run
+  before it replaces that evidence. No merge, signing, release, deployment, or
+  system installation was performed.
 
 ## Delivered
 
@@ -147,17 +147,18 @@ b7e043197daca54f028b63fc1d05b12e6b69901a76ddbcea84adb653652d5430  electrobun-1.1
 
 ### Current merged source checkpoint
 
-- Current-`develop` merge completed without conflicts and the worktree remained
-  clean before this status refresh.
-- Focused current-source suites passed: Devices/remote-control UI 52/52,
-  storage bridge 6/6, app-core CEF/Flatpak/direct packaging 34/34,
-  Electrobun boundaries/runtime/managed-network/SSH/window/config 96/96,
-  Agent proposal/routes 22/22, app-control runtime management 46/46,
-  Headscale client 29/29, doctor/contracts 34/34, and Cloud relay/session/
-  migration/repository boundaries 78/78. The real-Postgres integration case
-  remains one intentional environment skip.
-- The PGlite remote-command-envelope repository suite passed 19/19 at this
-  checkpoint, including its complete embedded-database cleanup.
+- Current-`develop` merge completed without conflicts. Four newly exposed test
+  fixture typing drifts were repaired for Bun/Vitest parity and current
+  `AppRunSummary`/character metadata contracts.
+- Focused current-source suites passed: Devices/remote-control UI 109/109,
+  storage bridge 6/6, app-core CEF/Flatpak/direct packaging 34/34, the full
+  Electrobun package 1,430 passed with 16 intentional skips, Agent runtime/
+  proposal/owner 27/27, app-control runtime management 46/46, Headscale client
+  29/29, Linux doctor/portable-inference contracts 15/15, and Cloud managed
+  network/relay 37/37, admin/connector 15/15, and PGlite/persistence 41/41.
+- Supporting build/shared/inbox/auth suites passed 11/11, 8/8, 11/11, and 5/5.
+  The repaired example-code fixtures pass 43/43 under both Bun and Vitest; the
+  repaired UI fixtures pass 18/18.
 - Affected lint passed 143/143 tasks and affected typecheck passed 232/232
   tasks on the latest integrated `develop` base.
 - `git diff --check` passes. Hosted exact-head lint/typecheck/build and secret
@@ -220,7 +221,7 @@ root-owned tails/chroot paths remain explicit coverage gaps.
    the exact artifact.
 7. Rebuild capacity: approve removal of specific generated outputs/caches or
    provide another build filesystem until at least 8 GiB is free. The current
-   host has about 2.3 GiB free, so no exact-head packaged rebuild was attempted.
+   host has about 2.0 GiB free, so no exact-head packaged rebuild was attempted.
 8. Publication: refresh and approve draft PR #25427 after exact-head hosted CI
    and evidence review. Signing, release publication, merge, deploy, and
    production mutation remain separately gated.
