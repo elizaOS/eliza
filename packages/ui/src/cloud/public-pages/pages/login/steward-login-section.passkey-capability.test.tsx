@@ -167,6 +167,13 @@ describe("StewardLoginSection passkey capability gating", () => {
     stewardAuthSpies.getSession.mockReturnValue(null);
     stewardAuthSpies.refreshSession.mockResolvedValue(null);
     stewardAuthSpies.sendEmailOtp.mockResolvedValue(undefined);
+    stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
+      emailGrant: "grant-default",
+    });
+    stewardAuthSpies.addPasskey.mockResolvedValue({
+      token: "registered-token",
+      refreshToken: null,
+    });
     passkeyHintSpies.has.mockResolvedValue(false);
     passkeyHintSpies.remember.mockResolvedValue(true);
     emailLoginSpies.start.mockResolvedValue({
@@ -586,15 +593,9 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
   });
 
-  it("rejects a too-short OTP code without calling the API and reports a cancelled passkey setup", async () => {
+  it("reuses the verified email grant after a cancelled passkey ceremony", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
-    stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new StewardApiError(
-        "WebAuthn authentication cancelled or failed: NotAllowedError",
-        0,
-      ),
-    );
     stewardAuthSpies.sendEmailOtp.mockResolvedValue(undefined);
     stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
       emailGrant: "grant-1",
@@ -610,13 +611,7 @@ describe("StewardLoginSection passkey capability gating", () => {
 
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Use an existing passkey" }),
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Set up passkey" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
     const codeInput = await screen.findByPlaceholderText("123456");
 
@@ -636,6 +631,133 @@ describe("StewardLoginSection passkey capability gating", () => {
         "Passkey setup was cancelled. Tap Create passkey to retry.",
       ),
     ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Use existing passkey" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use Magic Link" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Create passkey/i }));
+
+    await waitFor(() => {
+      expect(stewardAuthSpies.addPasskey).toHaveBeenCalledTimes(2);
+    });
+    expect(stewardAuthSpies.verifyEmailOtp).toHaveBeenCalledTimes(1);
+    expect(stewardAuthSpies.addPasskey).toHaveBeenNthCalledWith(
+      1,
+      "person@example.com",
+      { emailGrant: "grant-1" },
+    );
+    expect(stewardAuthSpies.addPasskey).toHaveBeenNthCalledWith(
+      2,
+      "person@example.com",
+      { emailGrant: "grant-1" },
+    );
+  });
+
+  it.each([
+    [
+      "server conflict",
+      new StewardApiError(
+        "A passkey already exists for this email. Sign in with it instead.",
+        409,
+      ),
+    ],
+    [
+      "browser duplicate signal",
+      new StewardApiError(
+        "WebAuthn registration cancelled or failed: InvalidStateError: The authenticator was previously registered",
+        0,
+      ),
+    ],
+  ])(
+    "recovers an OTP-proven existing passkey from a %s",
+    async (_label, duplicateError) => {
+      capabilityRef.usable = true;
+      capabilityRef.reason = "available";
+      stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
+        emailGrant: "grant-existing",
+      });
+      stewardAuthSpies.addPasskey.mockRejectedValue(duplicateError);
+
+      renderSection();
+
+      const input = await screen.findByPlaceholderText("you@example.com");
+      fireEvent.change(input, { target: { value: "person@example.com" } });
+      fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
+
+      const codeInput = await screen.findByPlaceholderText("123456");
+      fireEvent.change(codeInput, { target: { value: "123456" } });
+      fireEvent.click(screen.getByRole("button", { name: /Create passkey/i }));
+
+      await waitFor(() => {
+        expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
+          "person@example.com",
+          { fallbackToRegistration: false },
+        );
+      });
+      expect(passkeyHintSpies.remember).toHaveBeenCalledWith(
+        "person@example.com",
+      );
+      expect(stewardAuthSpies.verifyEmailOtp).toHaveBeenCalledTimes(1);
+      expect(stewardAuthSpies.addPasskey).toHaveBeenCalledTimes(1);
+      expect(
+        screen.queryByText(
+          "Passkey setup was cancelled. Tap Create passkey to retry.",
+        ),
+      ).toBeNull();
+    },
+  );
+
+  it("clears the cached email grant when the user resends the OTP", async () => {
+    capabilityRef.usable = true;
+    capabilityRef.reason = "available";
+    stewardAuthSpies.verifyEmailOtp
+      .mockResolvedValueOnce({ emailGrant: "grant-1" })
+      .mockResolvedValueOnce({ emailGrant: "grant-2" });
+    stewardAuthSpies.addPasskey
+      .mockRejectedValueOnce(
+        new StewardApiError(
+          "WebAuthn registration cancelled or failed: NotAllowedError",
+          0,
+        ),
+      )
+      .mockResolvedValueOnce({
+        token: "registered-token",
+        refreshToken: null,
+      });
+
+    renderSection();
+
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
+
+    let codeInput = await screen.findByPlaceholderText("123456");
+    fireEvent.change(codeInput, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /Create passkey/i }));
+    expect(
+      await screen.findByText(
+        "Passkey setup was cancelled. Tap Create passkey to retry.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Resend code" }));
+    await waitFor(() => {
+      expect(stewardAuthSpies.sendEmailOtp).toHaveBeenCalledTimes(2);
+    });
+
+    codeInput = screen.getByPlaceholderText("123456");
+    fireEvent.change(codeInput, { target: { value: "654321" } });
+    fireEvent.click(screen.getByRole("button", { name: /Create passkey/i }));
+
+    await waitFor(() => {
+      expect(stewardAuthSpies.verifyEmailOtp).toHaveBeenCalledTimes(2);
+    });
+    expect(stewardAuthSpies.addPasskey).toHaveBeenNthCalledWith(
+      2,
+      "person@example.com",
+      { emailGrant: "grant-2" },
+    );
   });
 
   it("requires an email before sending a magic link and surfaces send failures", async () => {
