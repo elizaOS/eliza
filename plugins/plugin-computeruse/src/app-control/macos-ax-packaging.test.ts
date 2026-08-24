@@ -87,4 +87,36 @@ describe("macOS AX helper packaging", () => {
     expect(source).not.toContain("dlopen");
     expect(source).not.toContain("dlsym");
   });
+
+  it("isolates the private recipe in the direct-only component without global posting", () => {
+    const directOnlyRoot = `${packageRoot}/../../packages/app-core/platforms/electrobun/direct-only/computeruse-exact-window`;
+    const spi = readFileSync(
+      `${directOnlyRoot}/ExperimentalExactWindowSPI.swift`,
+      "utf8",
+    );
+    const protocol = readFileSync(
+      `${directOnlyRoot}/ExperimentalExactWindowProtocol.swift`,
+      "utf8",
+    );
+    expect(spi).toContain("SLEventPostToPid");
+    expect(spi).toContain("SLEventSetIntegerValueField");
+    expect(spi).toContain("CGEventSetWindowLocation");
+    expect(spi).toContain("SLPSPostEventRecordTo");
+    expect(spi).toContain("GetProcessForPID");
+    expect(spi).toContain(".optionIncludingWindow");
+    expect(spi).toContain("target.windowId");
+    expect(spi).toContain("pointerAfter == pointerBefore");
+    for (const field of [0, 1, 3, 7, 40, 51, 58, 91, 92]) {
+      expect(spi).toContain(`field: ${field}`);
+    }
+    expect(spi).toContain("target.windowPoint");
+    expect(spi).toContain("target.expectedBounds");
+    expect(spi).toContain("beginSyntheticTargetFocus(target: target)");
+    expect(spi).not.toContain("CGEventPost");
+    expect(spi).not.toContain(".post(tap:");
+    expect(spi).not.toContain("NSRunningApplication.activate");
+    expect(spi).not.toContain("AXRaise");
+    expect(protocol).toContain("pointKind: .primer");
+    expect(protocol).toContain("kind: .scroll");
+  });
 });

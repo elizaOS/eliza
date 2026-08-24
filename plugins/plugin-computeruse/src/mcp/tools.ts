@@ -110,6 +110,11 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
         description:
           "Request the approval-gated last-resort physical pointer fallback.",
       },
+      allowExperimentalExactWindow: {
+        type: "boolean",
+        description:
+          "Explicitly request the disabled-by-default direct-only experimental exact-window route after semantic AX refusal.",
+      },
     },
     required: ["app", "stateId", "element_index"],
   },
@@ -180,6 +185,11 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
         type: "boolean",
         description:
           "Request the approval-gated last-resort physical pointer fallback.",
+      },
+      allowExperimentalExactWindow: {
+        type: "boolean",
+        description:
+          "Explicitly request the disabled-by-default direct-only experimental exact-window route after semantic AX refusal.",
       },
     },
     required: ["app", "stateId", "element_index"],

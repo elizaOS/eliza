@@ -11,10 +11,10 @@ signed app on a permissioned physical Mac.
 | `get_app_state(app)` screenshot + AX tree | Have, physical acceptance pending | State is bound to a unique `(pid, CGWindowID)` resolved from the focused AX window. Ambiguous same-bounds/title matches return no window ID, so mutation refuses. Region capture can still include occluding windows. |
 | Incremental state diffs | Have | Per-app state IDs return added, changed, removed indices and AX-text change. `disableDiff=true` forces a full state. |
 | Ephemeral `element_index` | Have | Indices are one-based and state-bound. Any recapture invalidates every prior index; native locators remain private and are revalidated before dispatch. |
-| App-scoped click | Partial, policy-bounded | `AXPress`/`AXConfirm` are semantic and pointer-free. The shared signed helper has no genuine `CGWindowID`-addressed mouse dispatcher and does not post PID mouse events. The exact-window pointer route is explicitly `policy_blocked`; visual grounding can reach global physical fallback only after environment opt-in and a distinct action-time approval. |
+| App-scoped click | Partial, experimental direct route added | `AXPress`/`AXConfirm` remain first. Shared and Store artifacts contain no PID-mouse or private exact-window dispatcher. An optional direct-only helper can be selected after AX refusal only with build/runtime/request opt-ins, capability probe, exact current binding, and a separate action-time approval. Signed physical acceptance remains open. |
 | App-scoped key/type | Partial, physical acceptance pending | Keyboard events are process-scoped. They require an indexed element, exactly one eligible same-PID window, unchanged exact-window binding, and target-element readback. Otherwise the action refuses; it never claims window-addressed delivery. |
 | App-scoped paste + clipboard restoration | Have, physical acceptance pending | All pasteboard item type/data pairs are snapshotted and restored when the injected clipboard has not been externally changed. Clipboard content is never returned or logged. |
-| App-scoped scroll | Partial, policy-bounded | Exposed AX page-scroll actions are semantic-first. The helper does not post process-scoped mouse-wheel events. The exact-window pointer route is explicitly `policy_blocked`; if AX is absent, only separately opted-in and approved global physical scroll is available. |
+| App-scoped scroll | Partial, experimental direct route added | Exposed AX page-scroll actions remain first. Shared and Store artifacts never post process-scoped wheel events. The optional direct-only exact-window route has the same probe/binding/approval gates as click; signed physical acceptance remains open. |
 | Set value and select text | Have | `AXValue` and `AXSelectedTextRange`; failures do not silently become typed-key success. |
 | Exposed secondary AX actions | Have | Only action names returned by `AXUIElementCopyActionNames` can execute. |
 | Automatic fresh-state recapture | Have | Every app action returns a new app state. Every consequential session action also captures a fresh verification observation; capture failure produces `UNCERTAIN_EFFECT`. |
@@ -25,25 +25,26 @@ signed app on a permissioned physical Mac.
 | Permission readiness | Have, physical acceptance pending | Helper checks `AXIsProcessTrusted()` without prompting. UI reports Accessibility separately from capture/input/vision. No code changes OS permission state. |
 | Pause/stop/lease/cancel | Have | Existing canonical session manager remains the sole host/target lease and cancellation authority. |
 | Prompt-injection resistance | Have | AX/screenshot/OCR content stays untrusted model data; canonical dispatch, approval policy, secure-value redaction, stale observation checks, and repeated-action guard remain in force. |
-| Action receipts | Have | Receipt includes target PID/window binding, truthful execution mode, before/after state IDs, clipboard restoration, pointer coordinates/observation, physical-input provenance, and the separate fallback approval ID. |
+| Action receipts | Have | Receipt includes target PID/window binding, truthful execution mode, before/after state IDs, clipboard restoration, pointer coordinates/observation, physical-input provenance, and separate experimental or physical-fallback approval IDs. |
 
 ## Dispatch boundary
 
-The v3 order is semantic AX, exact browser/CDP for browser targets, then an
-exact window-local dispatcher only if one is implemented and independently
-proven. The current helper has no such mouse dispatcher and refuses that step.
-Process-scoped keyboard delivery is a narrower compatibility route with the
-single-window and target-readback constraints above. Background operation never
-activates an app, raises a window, changes Spaces, or implicitly falls through
-to global HID. Global physical input is a separate supervised mode, disabled by
-default.
+The v5 order remains semantic AX for native app actions and exact browser/CDP
+for browser targets. Process-scoped keyboard delivery is a narrower keyboard
+and text compatibility route with the single-window and target-readback
+constraints above. Only app click/scroll may next request the optional
+`experimental_direct_exact_window` component, and only after its independent
+probe, binding, opt-in, approval, provenance, and verification gates pass.
+Background operation never raises a real window, changes Spaces, or implicitly
+falls through to global HID. Global physical input is a later separate
+supervised mode, disabled by default.
 
-The v4 distribution audit rejected adding the studied private SkyLight route to
-the shared signed plugin. elizaOS packages both direct and Mac App Store
-variants from this dependency graph, and no verified exclusion keeps a private
-helper out of the store artifact. The readiness DTO now returns the typed route
-matrix so callers can distinguish supported, conditional, disabled-by-default,
-and policy-blocked routes without interpreting an error string. See
+The v5 packaging lane keeps the studied private SkyLight route outside the
+shared plugin and every Store source/artifact manifest. A direct-only build flag
+produces and copies the separate executable; the Store flag is rejected and the
+finished Store artifact is scanned for component/private-symbol markers. The
+readiness DTO keeps exact-window delivery unaccepted and disabled by default
+until signed direct acceptance. See
 [`EXACT_WINDOW_DISPATCH_POLICY.md`](./EXACT_WINDOW_DISPATCH_POLICY.md).
 
 Opening Eliza's own chat surface is not a Computer Use focus/click task. The
@@ -86,11 +87,11 @@ fresh verification.
 | --- | --- |
 | `list_apps` (`app_list_apps` compatibility alias) | none |
 | `get_app_state` (`app_get_state` compatibility alias) | `app`, optional `disableDiff` |
-| `app_click` | `app`, `stateId`, `element_index` |
+| `app_click` | `app`, `stateId`, `element_index`, optional `allowExperimentalExactWindow`, `allowPhysicalFallback` |
 | `app_key` | `app`, `stateId`, `element_index`, `key`, optional `modifiers` |
 | `app_type` | `app`, `stateId`, `element_index`, `text` |
 | `app_paste` | `app`, `stateId`, `element_index`, `text`, optional `format` |
-| `app_scroll` | `app`, `stateId`, `element_index`, optional `direction`, `amount` |
+| `app_scroll` | `app`, `stateId`, `element_index`, optional `direction`, `amount`, `allowExperimentalExactWindow`, `allowPhysicalFallback` |
 | `app_set_value` | `app`, `stateId`, `element_index`, `text` |
 | `app_select_text` | `app`, `stateId`, `element_index`, `text` |
 | `app_secondary_action` | `app`, `stateId`, `element_index`, `secondaryAction` |
@@ -99,3 +100,7 @@ fresh verification.
 `allowPhysicalFallback: true` is only a request. It does not bypass canonical
 session authority, the environment opt-in, pointer-provenance availability, or
 the distinct last-moment approval.
+
+`allowExperimentalExactWindow: true` is likewise only a request. It does not
+bypass direct-distribution packaging, runtime capability probing, exact current
+binding, pointer provenance, or its separate action-time approval.

@@ -103,11 +103,14 @@ export interface AppActionRequest {
   secondaryAction?: string;
   /** Canonical policy must explicitly permit the last-resort pointer path. */
   allowPhysicalFallback?: boolean;
+  /** Explicitly selects the disabled-by-default direct-only experimental route. */
+  allowExperimentalExactWindow?: boolean;
 }
 
 export type AppActionExecutionMode =
   | "semantic_ax"
   | "process_pid_keyboard_cgevent"
+  | "experimental_direct_exact_window"
   | "guarded_physical"
   | "agent_overlay";
 
@@ -131,6 +134,24 @@ export interface PhysicalFallbackApprovalRequest {
   target: AppPointerPosition;
 }
 
+export interface ExperimentalExactWindowApprovalReceipt {
+  approvalId: string;
+  requestedAt: string;
+  approvedAt: string;
+  mode: string;
+}
+
+export interface ExperimentalExactWindowApprovalRequest {
+  appId: string;
+  kind: "click" | "scroll";
+  element_index: number;
+  observationId: string;
+  targetPid: number;
+  targetWindowId: number;
+  windowBounds: AppElementBounds;
+  targetBounds: AppElementBounds;
+}
+
 export interface NativeAppActionResult {
   success: boolean;
   targetPid: number;
@@ -139,7 +160,34 @@ export interface NativeAppActionResult {
   clipboardRestored?: boolean;
   executionMode?:
     | "semantic_ax"
-    | "process_pid_keyboard_cgevent";
+    | "process_pid_keyboard_cgevent"
+    | "experimental_direct_exact_window";
+}
+
+export interface AppExactWindowDispatchResult {
+  success: boolean;
+  route: "experimental_direct_exact_window";
+  observationId: string;
+  targetPid: number;
+  targetWindowId: number;
+  targetWindowBounds: AppElementBounds;
+  pointerBefore: AppPointerPosition;
+  pointerAfter: AppPointerPosition;
+  error?: string;
+}
+
+export interface AppExactWindowPointerDispatcher {
+  available(): boolean;
+  dispatch(
+    input: {
+      app: AppDescriptor;
+      state: AppState;
+      element: NativeAppElement;
+      request: AppActionRequest;
+      expectedWindowId: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<AppExactWindowDispatchResult>;
 }
 
 export interface AppActionReceipt {
@@ -163,7 +211,9 @@ export interface AppActionReceipt {
   pointerAfter?: AppPointerPosition;
   groundingMode?: "set_of_marks" | "ocr" | "element_bounds";
   physicalFallbackApproval?: PhysicalFallbackApprovalReceipt;
+  experimentalExactWindowApproval?: ExperimentalExactWindowApprovalReceipt;
   clipboardRestored?: boolean;
+  targetWindowBounds?: AppElementBounds;
   targetBounds?: AppElementBounds;
 }
 
@@ -221,6 +271,11 @@ export type PhysicalFallbackAuthorizer = (
   request: PhysicalFallbackApprovalRequest,
   signal?: AbortSignal,
 ) => Promise<PhysicalFallbackApprovalReceipt>;
+
+export type ExperimentalExactWindowAuthorizer = (
+  request: ExperimentalExactWindowApprovalRequest,
+  signal?: AbortSignal,
+) => Promise<ExperimentalExactWindowApprovalReceipt>;
 
 export interface AppStateCapture {
   capture(
