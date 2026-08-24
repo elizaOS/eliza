@@ -734,9 +734,21 @@ function semanticFailures(
 
   const trajectories = jsonLines(bytes["trajectories.jsonl"], "trajectories");
   const repetitions = new Set(trajectories.map(({ repetition }) => repetition));
+  const trajectoryCoordinates = new Set(
+    trajectories.map(
+      ({ repetition, family }) => `${String(repetition)}:${String(family)}`,
+    ),
+  );
   if (
-    trajectories.length < 5 ||
-    repetitions.size < 5 ||
+    trajectories.length !== 5 * CONTENT_CONTEXT_FAMILIES.length ||
+    repetitions.size !== 5 ||
+    trajectoryCoordinates.size !== trajectories.length ||
+    [...repetitions].some((repetition) =>
+      CONTENT_CONTEXT_FAMILIES.some(
+        (family) =>
+          !trajectoryCoordinates.has(`${String(repetition)}:${family}`),
+      ),
+    ) ||
     trajectories.some(
       (entry) =>
         entry.status !== "passed" ||
@@ -750,11 +762,39 @@ function semanticFailures(
         /fixture|mock|test|deterministic/iu.test(
           `${entry.provider} ${entry.model}`,
         ) ||
-        entry.answerLeakageDetected === true,
+        !CONTENT_CONTEXT_FAMILIES.includes(
+          entry.family as (typeof CONTENT_CONTEXT_FAMILIES)[number],
+        ) ||
+        entry.continuationDiscovered !== true ||
+        entry.lateEvidenceRecovered !== true ||
+        entry.exactAnswer !== true ||
+        entry.answerLeakageDetected !== false ||
+        entry.canaryLeakageDetected !== false ||
+        typeof entry.toolCalls !== "number" ||
+        !Number.isSafeInteger(entry.toolCalls) ||
+        entry.toolCalls < 2 ||
+        entry.noProgressReads !== 0 ||
+        typeof entry.latencyMs !== "number" ||
+        !Number.isFinite(entry.latencyMs) ||
+        entry.latencyMs <= 0 ||
+        typeof entry.inputTokens !== "number" ||
+        !Number.isSafeInteger(entry.inputTokens) ||
+        entry.inputTokens <= 0 ||
+        typeof entry.outputTokens !== "number" ||
+        !Number.isSafeInteger(entry.outputTokens) ||
+        entry.outputTokens <= 0 ||
+        typeof entry.costUsd !== "number" ||
+        !Number.isFinite(entry.costUsd) ||
+        entry.costUsd < 0 ||
+        entry.controllerDecision !== "qualified" ||
+        typeof entry.observerEvidenceSha256 !== "string" ||
+        !/^[0-9a-f]{64}$/u.test(entry.observerEvidenceSha256) ||
+        typeof entry.trajectorySha256 !== "string" ||
+        !/^[0-9a-f]{64}$/u.test(entry.trajectorySha256),
     )
   )
     failures.push(
-      "live-model trajectories lack five qualified clean repetitions",
+      "live-model trajectories lack five qualified clean six-family repetitions",
     );
 
   const e2e = json(bytes["e2e.json"], "E2E report");
