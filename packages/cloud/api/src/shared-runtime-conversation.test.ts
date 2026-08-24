@@ -258,7 +258,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
   },
 }));
 mock.module("@/lib/services/shared-runtime/shared-eliza-runtime", () => ({
-  prewarmSharedElizaRuntime: async () => {
+  prewarmSharedElizaStreamingContext: async () => {
     markRuntimePrewarmEntered();
     if (runtimePrewarmGate) await runtimePrewarmGate;
   },
@@ -918,6 +918,19 @@ test("slow prewarm returns headers and releases the room queue before completion
     }),
   );
   await runtimePrewarmEntered;
+  const prewarmReader = prewarmResponse.body?.getReader();
+  const firstPrewarmByte = await Promise.race([
+    prewarmReader?.read(),
+    new Promise<"body-blocked">((resolve) =>
+      setTimeout(() => resolve("body-blocked"), 100),
+    ),
+  ]);
+  expect(firstPrewarmByte).not.toBe("body-blocked");
+  expect(
+    new TextDecoder().decode(
+      firstPrewarmByte === "body-blocked" ? undefined : firstPrewarmByte?.value,
+    ),
+  ).toBe('{"success":');
 
   const historyResult = await Promise.race([
     object
@@ -950,7 +963,9 @@ test("slow prewarm returns headers and releases the room queue before completion
   );
 
   resolveRuntimePrewarmGate();
-  await expect(prewarmResponse.json()).resolves.toEqual({ success: true });
+  const completedPrewarm = await prewarmReader?.read();
+  expect(new TextDecoder().decode(completedPrewarm?.value)).toBe("true}");
+  await expect(prewarmReader?.read()).resolves.toMatchObject({ done: true });
   await Promise.all(background.splice(0));
   expect(repositoryReads).toBe(1);
   expect(repositoryWrites).toBe(0);
