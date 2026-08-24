@@ -14,7 +14,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const searchRequestSchema = z.object({
   query: z.string().trim().min(1).max(2_000),
-  maxResults: z.number().int().min(1).max(10).optional(),
+  maxResults: z.number().int().min(1).optional(),
   model: z.string().trim().min(1).max(128).optional(),
   source: z.string().trim().min(1).max(255).optional(),
   topic: z.enum(["general", "finance"]).optional(),

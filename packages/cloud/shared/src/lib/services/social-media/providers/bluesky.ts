@@ -24,6 +24,7 @@ import { withRetry } from "../rate-limit";
 const BLUESKY_SERVICE = "https://bsky.social";
 
 const BLUESKY_REQUEST_TIMEOUT_MS = 30_000;
+const BLUESKY_MAX_IMAGES_PER_POST = 4;
 
 /**
  * Bound every Bluesky / AT Protocol hop so a hung or rate-limited API cannot
@@ -211,6 +212,7 @@ export const blueskyProvider: SocialMediaProvider = {
         error: extractErrorMessage(error),
       };
     }
+
   },
 
   async createPost(
@@ -224,6 +226,29 @@ export const blueskyProvider: SocialMediaProvider = {
         success: false,
         error: "Handle and app password required",
       };
+    }
+
+    if (content.media?.length) {
+      if (content.media.length > BLUESKY_MAX_IMAGES_PER_POST) {
+        return {
+          platform: "bluesky",
+          success: false,
+          error: `Bluesky posts support at most ${BLUESKY_MAX_IMAGES_PER_POST} images; nothing was posted`,
+        };
+      }
+      const invalidMedia = content.media.find(
+        (media) =>
+          media.type !== "image" ||
+          (!media.data && !media.base64 && !media.url),
+      );
+      if (invalidMedia) {
+        return {
+          platform: "bluesky",
+          success: false,
+          error:
+            "Bluesky posts currently support only images with data, base64, or a URL; nothing was posted",
+        };
+      }
     }
 
     try {
@@ -254,9 +279,7 @@ export const blueskyProvider: SocialMediaProvider = {
           };
         }> = [];
 
-        for (const media of content.media.slice(0, 4)) {
-          if (media.type !== "image") continue;
-
+        for (const media of content.media) {
           let imageData: Buffer;
           if (media.data) {
             assertSocialMediaBytesWithinBudget(media.data.length, { platform: "bluesky" });
@@ -266,7 +289,7 @@ export const blueskyProvider: SocialMediaProvider = {
           } else if (media.url) {
             imageData = await downloadSocialMediaBytes(media.url);
           } else {
-            continue;
+            throw new Error("Validated Bluesky image is missing its payload");
           }
 
           const blobResponse = await uploadBlob(session.accessJwt, imageData, media.mimeType);

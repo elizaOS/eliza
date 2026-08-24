@@ -67,4 +67,17 @@ describe("POST /api/v1/search malformed JSON", () => {
     expect(response.status).toBe(200);
     expect(executeHostedGoogleSearch).toHaveBeenCalled();
   });
+
+  test("passes through an explicit result count above the former hidden cap", async () => {
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: "complete grounding", maxResults: 25 }),
+    });
+    expect(response.status).toBe(200);
+    expect(executeHostedGoogleSearch.mock.calls[0]?.[0]).toMatchObject({
+      query: "complete grounding",
+      maxResults: 25,
+    });
+  });
 });

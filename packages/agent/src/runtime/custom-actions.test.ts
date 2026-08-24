@@ -334,7 +334,7 @@ describe("performGuardedHttpGet — complete bodies and headers", () => {
         new Response("z".repeat(4 * 1024 * 1024 + 1), { status: 200 }),
     );
     await expect(performGuardedHttpGet(PUBLIC_URL)).rejects.toThrow(
-      /4 MiB safety limit/,
+      /4194304-byte transport safety boundary; no partial body was returned/,
     );
   });
 
@@ -664,11 +664,13 @@ describe("buildTestHandler — http", () => {
     ).resolves.toMatchObject({ ok: true, output: accepted });
 
     __setPinnedFetchImplForTests(
-      async () => new Response("z".repeat(256 * 1024 + 1), { status: 200 }),
+      async () => new Response("z".repeat(4 * 1024 * 1024 + 1), { status: 200 }),
     );
     await expect(
       buildTestHandler(makeDef({ parameters: [] }))({}),
-    ).rejects.toThrow(/262144-character safety limit/);
+    ).rejects.toThrow(
+      /4194304-byte transport safety boundary; no partial body was returned/,
+    );
   });
 
   it("rejects an unsupported handler type without touching the transport", async () => {

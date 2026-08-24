@@ -3,6 +3,7 @@ import { assertModelOutputComplete } from "@elizaos/core";
 import { calculateCost, estimateRequestCost, normalizeModelName } from "../pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
 import { logger } from "../utils/logger";
+import { buildSearchResults } from "./google-search-results";
 import { apiKeysService } from "./api-keys";
 import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
 import { usageService } from "./usage";
@@ -52,7 +53,7 @@ export interface HostedSearchResult {
   cost: number;
 }
 
-interface GoogleSearchResponse {
+export interface GoogleSearchResponse {
   candidates?: Array<{
     finishReason?: string;
     content?: {
@@ -87,9 +88,9 @@ interface GoogleSearchResponse {
   };
 }
 
+export { buildSearchResults } from "./google-search-results";
+
 const DEFAULT_SEARCH_MODEL = "google/gemini-2.5-flash";
-const DEFAULT_MAX_RESULTS = 5;
-const MAX_RESULTS = 10;
 const GOOGLE_GROUNDED_PROMPT_BASE_COST = 0.035;
 const GOOGLE_GROUNDED_PROMPT_COST =
   Math.round(GOOGLE_GROUNDED_PROMPT_BASE_COST * PLATFORM_MARKUP_MULTIPLIER * 1_000_000) / 1_000_000;
@@ -167,76 +168,12 @@ function extractAnswer(response: GoogleSearchResponse): string {
   ).trim();
 }
 
-function buildSearchResults(
-  response: GoogleSearchResponse,
-  maxResults: number,
-): HostedSearchResultItem[] {
-  const grounding = response.candidates?.[0]?.groundingMetadata;
-  const chunks = grounding?.groundingChunks ?? [];
-  const supports = grounding?.groundingSupports ?? [];
-  const byUrl = new Map<
-    string,
-    {
-      title: string;
-      content: string[];
-      scores: number[];
-    }
-  >();
-
-  for (const support of supports) {
-    const snippet = support.segment?.text?.trim();
-    const scores = support.confidenceScores ?? [];
-    for (const index of support.groundingChunkIndices ?? []) {
-      const chunk = chunks[index];
-      const url = chunk?.web?.uri?.trim();
-      if (!url) {
-        continue;
-      }
-
-      const current = byUrl.get(url) ?? {
-        title: chunk?.web?.title?.trim() || url,
-        content: [],
-        scores: [],
-      };
-
-      if (snippet && !current.content.includes(snippet)) {
-        current.content.push(snippet);
-      }
-
-      for (const score of scores) {
-        if (typeof score === "number" && Number.isFinite(score)) {
-          current.scores.push(score);
-        }
-      }
-
-      byUrl.set(url, current);
-    }
+function resolveExplicitMaxResults(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("maxResults must be a positive safe integer when provided");
   }
-
-  for (const chunk of chunks) {
-    const url = chunk?.web?.uri?.trim();
-    if (!url || byUrl.has(url)) {
-      continue;
-    }
-
-    byUrl.set(url, {
-      title: chunk?.web?.title?.trim() || url,
-      content: [],
-      scores: [],
-    });
-  }
-
-  return Array.from(byUrl.entries())
-    .map(([url, value]) => ({
-      title: value.title,
-      url,
-      content: value.content.join(" ").trim(),
-      score:
-        value.scores.length > 0
-          ? value.scores.reduce((total, score) => total + score, 0) / value.scores.length
-          : 1,
-    }))
-    .slice(0, maxResults);
+  return value;
 }
 
 function buildSearchQueries(response: GoogleSearchResponse): string[] {
@@ -282,7 +219,7 @@ export async function executeHostedGoogleSearch(
 
   const model = options.model?.trim() || DEFAULT_SEARCH_MODEL;
   const normalizedModel = normalizeModelName(model);
-  const maxResults = Math.min(Math.max(options.maxResults ?? DEFAULT_MAX_RESULTS, 1), MAX_RESULTS);
+  const maxResults = resolveExplicitMaxResults(options.maxResults);
   const prompt = buildSearchPrompt({ ...options, query, model });
   const routeStart = Date.now();
 
