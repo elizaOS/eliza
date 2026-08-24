@@ -218,4 +218,123 @@ describe("steward-refresh browser cookie cleanup", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  test("forwards the trusted client identity without forwarding browser credentials", async () => {
+    const originalFetch = globalThis.fetch;
+    const forwarded = { headers: null as Headers | null };
+    globalThis.fetch = mock(async (_input, init) => {
+      forwarded.headers = new Headers(init?.headers);
+      return Response.json(
+        { ok: false, error: "refresh rejected" },
+        { status: 401 },
+      );
+    }) as unknown as typeof fetch;
+
+    try {
+      const response = await app.fetch(
+        new Request("https://api-staging.elizacloud.ai/", {
+          method: "POST",
+          headers: {
+            host: "api-staging.elizacloud.ai",
+            origin: "https://staging.elizacloud.ai",
+            cookie: "steward-refresh-token-staging=staging-refresh",
+            "cf-connecting-ip": "203.0.113.40",
+            "x-forwarded-for": "198.51.100.9, 198.51.100.10",
+            "user-agent": "Eliza Browser Test",
+          },
+        }),
+        {
+          ...ENV,
+          ENVIRONMENT: "staging",
+          STEWARD_API_URL: "https://steward.example.test",
+        },
+      );
+
+      expect(response.status).toBe(401);
+      expect(forwarded.headers?.get("x-forwarded-for")).toBe("203.0.113.40");
+      expect(forwarded.headers?.get("origin")).toBe(
+        "https://staging.elizacloud.ai",
+      );
+      expect(forwarded.headers?.get("user-agent")).toBe("Eliza Browser Test");
+      expect(forwarded.headers?.has("cookie")).toBe(false);
+      expect(forwarded.headers?.has("authorization")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("preserves Steward throttling as a retryable 429 instead of an opaque 502", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        { ok: false, error: "Too many requests. Please try again later." },
+        { status: 429, headers: { "Retry-After": "60" } },
+      ),
+    ) as unknown as typeof fetch;
+
+    try {
+      const response = await app.fetch(
+        new Request("https://api-staging.elizacloud.ai/", {
+          method: "POST",
+          headers: {
+            host: "api-staging.elizacloud.ai",
+            origin: "https://staging.elizacloud.ai",
+            cookie: "steward-refresh-token-staging=staging-refresh",
+            "cf-connecting-ip": "203.0.113.40",
+          },
+        }),
+        {
+          ...ENV,
+          ENVIRONMENT: "staging",
+          STEWARD_API_URL: "https://steward.example.test",
+        },
+      );
+
+      expect(response.status).toBe(429);
+      expect(response.headers.get("retry-after")).toBe("60");
+      await expect(response.json()).resolves.toEqual({
+        error: "Too many refresh attempts. Wait a moment and try again.",
+        code: "internal_error",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("does not reflect a non-JSON upstream error page into the browser", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () =>
+        new Response("<html>upstream private diagnostic</html>", {
+          status: 502,
+          headers: { "content-type": "text/html" },
+        }),
+    ) as unknown as typeof fetch;
+
+    try {
+      const response = await app.fetch(
+        new Request("https://api-staging.elizacloud.ai/", {
+          method: "POST",
+          headers: {
+            host: "api-staging.elizacloud.ai",
+            origin: "https://staging.elizacloud.ai",
+            cookie: "steward-refresh-token-staging=staging-refresh",
+          },
+        }),
+        {
+          ...ENV,
+          ENVIRONMENT: "staging",
+          STEWARD_API_URL: "https://steward.example.test",
+        },
+      );
+
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toEqual({
+        error: "Steward refresh failed",
+        code: "internal_error",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
