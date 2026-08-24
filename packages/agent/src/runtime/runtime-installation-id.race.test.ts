@@ -19,6 +19,7 @@ const faults = vi.hoisted(() => ({
   afterLink: undefined as
     | ((source: string, target: string) => Promise<void>)
     | undefined,
+  afterUnlink: undefined as ((target: string) => Promise<void>) | undefined,
 }));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -38,6 +39,10 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     link: async (...args: Parameters<typeof actual.link>) => {
       await actual.link(...args);
       await faults.afterLink?.(String(args[0]), String(args[1]));
+    },
+    unlink: async (...args: Parameters<typeof actual.unlink>) => {
+      await actual.unlink(...args);
+      await faults.afterUnlink?.(String(args[0]));
     },
   };
 });
@@ -62,6 +67,7 @@ afterEach(async () => {
   faults.afterLstat = undefined;
   faults.afterOpen = undefined;
   faults.afterLink = undefined;
+  faults.afterUnlink = undefined;
   await Promise.all(
     cleanup
       .splice(0)
@@ -198,7 +204,17 @@ describe("runtime installation identity filesystem races", () => {
     cleanup.push(parent);
     const root = path.join(parent, "state");
     let closeCount = 0;
+    const durabilityEvents: string[] = [];
     faults.afterOpen = async (observed, handle) => {
+      const canonicalRoot = path.join(await fs.realpath(parent), "state");
+      if (observed === canonicalRoot) {
+        const sync = handle.sync.bind(handle);
+        handle.sync = async () => {
+          durabilityEvents.push("sync");
+          await sync();
+        };
+        return;
+      }
       if (!path.basename(observed).startsWith(".runtime-installation-id."))
         return;
       faults.afterOpen = undefined;
@@ -211,10 +227,16 @@ describe("runtime installation identity filesystem races", () => {
         throw new Error("injected candidate stat failure");
       };
     };
+    faults.afterUnlink = async (observed) => {
+      if (!path.basename(observed).startsWith(".runtime-installation-id."))
+        return;
+      durabilityEvents.push("unlink");
+    };
     await expect(loadOrCreateRuntimeInstallationId(root)).rejects.toThrow(
       "injected candidate stat failure",
     );
     expect(closeCount).toBeGreaterThan(0);
+    expect(durabilityEvents).toEqual(["unlink", "sync"]);
     await expectNoIdentityArtifacts(root);
   });
 
@@ -248,5 +270,40 @@ describe("runtime installation identity filesystem races", () => {
     expect(events).toEqual(["substituted", "sync"]);
     await expectNoIdentityArtifacts(root);
     await expectNoIdentityArtifacts(moved);
+  });
+
+  it("preserves typed recovery when cleanup sync and state close both fail", async () => {
+    const parent = await fs.mkdtemp(
+      path.join(os.tmpdir(), "runtime-id-sync-close-fail-"),
+    );
+    cleanup.push(parent);
+    const root = path.join(parent, "state");
+    const canonicalParent = await fs.realpath(parent);
+    const canonicalRoot = path.join(canonicalParent, "state");
+    faults.afterOpen = async (observed, handle) => {
+      if (observed !== canonicalRoot) return;
+      faults.afterOpen = undefined;
+      const close = handle.close.bind(handle);
+      handle.sync = async () => {
+        throw new Error("injected cleanup sync failure");
+      };
+      handle.close = async () => {
+        await close();
+        throw new Error("injected state close failure");
+      };
+    };
+    faults.afterLink = async () => {
+      faults.afterLink = undefined;
+      await fs.rename(canonicalRoot, path.join(canonicalParent, "moved-state"));
+      await fs.mkdir(canonicalRoot, { mode: 0o700 });
+    };
+    const failure = await loadOrCreateRuntimeInstallationId(root).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(RuntimeInstallationIdentityRecoveryError);
+    expect(failure).toMatchObject({
+      code: "RUNTIME_INSTALLATION_ID_RECOVERY_AMBIGUOUS",
+      cause: expect.any(AggregateError),
+    });
   });
 });
