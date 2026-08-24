@@ -20,6 +20,7 @@ import {
 } from "../schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { dockerNodes } from "../schemas/docker-nodes";
+import { organizations } from "../schemas/organizations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -735,7 +736,10 @@ async function lockAndValidateReplacementNodeAuthority(
  * Insert the pre-effect one-shot marker. Any existing ID is rejected even when
  * its bytes match: replaying start could launch provider effects a second time.
  * The caller owns the transaction so its lifecycle admission CAS and this row
- * either commit or roll back together.
+ * either commit or roll back together. This function owns the complete lock
+ * order: organization (KEY SHARE), restore lease when present (UPDATE), sandbox
+ * (UPDATE), then attempt insert. A caller must not pre-lock the sandbox before
+ * entering this function or it can reintroduce an account-deletion deadlock.
  */
 export async function startAgentSandboxReplacementAttemptInTransaction(
   tx: DbTransaction,
@@ -743,6 +747,19 @@ export async function startAgentSandboxReplacementAttemptInTransaction(
 ): Promise<AgentSandboxReplacementAttemptWriteResult> {
   const validated = validateStart(input);
   try {
+    // Take the FK parent first. Account deletion takes the same organization
+    // row before cascading through sandboxes and attempts, so every path now
+    // agrees on organization -> sandbox instead of forming an AB-BA cycle.
+    const [organization] = await tx
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, validated.organizationId))
+      .for("key share")
+      .limit(1);
+    if (!organization) {
+      throw conflict("Replacement attempt organization authority is missing", validated);
+    }
+
     const restore = validated.restoreAuthority;
     let restoreLeaseExpiresAt: Date | null = null;
     if (restore) {
