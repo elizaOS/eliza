@@ -461,14 +461,14 @@ export class Client {
    * @returns A promise that resolves to an array of tweets.
    */
   public async fetchHomeTimeline(
-    count: number,
+    count: number | undefined,
     _seenTweetIds: string[],
   ): Promise<Tweet[]> {
     return this.withAuthenticatedSession(async () => {
       const client = await this.requireAuth().getV2Client();
 
       const timeline = await client.v2.homeTimeline({
-        max_results: Math.min(count, 100),
+        max_results: count === undefined ? 100 : Math.min(count, 100),
         "tweet.fields": [
           "id",
           "text",
@@ -492,7 +492,7 @@ export class Client {
       const tweets: Tweet[] = [];
       for await (const tweet of timeline) {
         tweets.push(parseTweetV2ToV1(tweet, timeline.includes));
-        if (tweets.length >= count) break;
+        if (count !== undefined && tweets.length >= count) break;
       }
 
       return tweets;
@@ -507,7 +507,7 @@ export class Client {
    * @returns A promise that resolves to an array of tweets.
    */
   public async fetchFollowingTimeline(
-    count: number,
+    count: number | undefined,
     seenTweetIds: string[],
   ): Promise<Tweet[]> {
     // In v2 API, there's no separate following timeline endpoint
@@ -517,14 +517,14 @@ export class Client {
 
   async getUserTweets(
     userId: string,
-    maxTweets = 200,
+    maxTweets?: number,
     cursor?: string,
   ): Promise<{ tweets: Tweet[]; next?: string }> {
     return this.withAuthenticatedSession(async () => {
       const client = await this.requireAuth().getV2Client();
 
       const response = await client.v2.userTimeline(userId, {
-        max_results: Math.min(maxTweets, 100),
+        max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
         "tweet.fields": [
           "id",
           "text",
@@ -549,7 +549,7 @@ export class Client {
       const tweets: Tweet[] = [];
       for await (const tweet of response) {
         tweets.push(parseTweetV2ToV1(tweet, response.includes));
-        if (tweets.length >= maxTweets) break;
+        if (maxTweets !== undefined && tweets.length >= maxTweets) break;
       }
 
       return {
@@ -561,26 +561,29 @@ export class Client {
 
   async *getUserTweetsIterator(
     userId: string,
-    maxTweets = 200,
+    maxTweets?: number,
+    initialCursor?: string,
   ): AsyncGenerator<Tweet, void> {
     const tweets = await this.withAuthenticatedSession(async () => {
       const collected: Tweet[] = [];
-      let cursor: string | undefined;
+      let cursor = initialCursor;
       let pageCount = 0;
       const seenCursors = new Set<string>();
 
-      while (collected.length < maxTweets) {
+      while (maxTweets === undefined || collected.length < maxTweets) {
         pageCount += 1;
         const response = await this.getUserTweets(
           userId,
-          maxTweets - collected.length,
+          maxTweets === undefined ? undefined : maxTweets - collected.length,
           cursor,
         );
         collected.push(
-          ...response.tweets.slice(0, maxTweets - collected.length),
+          ...(maxTweets === undefined
+            ? response.tweets
+            : response.tweets.slice(0, maxTweets - collected.length)),
         );
 
-        if (collected.length >= maxTweets) break;
+        if (maxTweets !== undefined && collected.length >= maxTweets) break;
 
         cursor = nextTimelinePageCursor(
           "getUserTweetsIterator",

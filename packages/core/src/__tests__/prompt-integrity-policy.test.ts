@@ -264,6 +264,19 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Math\.max\(limit,\s*100\)/,
 		/count:\s*10/,
 	],
+	"plugins/plugin-x/src/services/x.service.ts": [
+		/clampLimit\(params\.limit,\s*20,\s*100\)/,
+		/clampLimit\(params\.limit,\s*25,\s*50\)/,
+		/listRecentDirectMessages\(accountId,\s*25\)/,
+	],
+	"plugins/plugin-x/src/services/PostService.ts": [
+		/options\.limit\s*\|\|\s*20/,
+		/options\?\.limit\s*\|\|\s*20/,
+	],
+	"plugins/plugin-x/src/client/client.ts": [
+		/maxTweets\s*=\s*200/,
+		/if\s*\(tweets\.length\s*>=\s*(?:count|maxTweets)\)\s*break/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,

@@ -5,7 +5,7 @@
  */
 import { createUniqueUuid, ElizaError, logger, type UUID } from "@elizaos/core";
 import type { ClientBase, TwitterProfile } from "../base";
-import { SearchMode } from "../client";
+import { SearchMode, type Tweet } from "../client";
 import { extractXWriteReceiptId } from "../utils/provider-receipt";
 import { getEpochMs } from "../utils/time";
 import type {
@@ -230,23 +230,22 @@ export class TwitterPostService implements IPostService {
 
   async getPosts(options: GetPostsOptions): Promise<Post[]> {
     try {
-      type FetchedTweet = Awaited<
-        ReturnType<ClientBase["fetchHomeTimeline"]>
-      >[number];
-      let tweets: FetchedTweet[];
+      let tweets: Tweet[];
 
       if (options.userId) {
         // Get tweets from a specific user
-        const result = await this.client.twitterClient.getUserTweets(
+        tweets = [];
+        for await (const tweet of this.client.twitterClient.getUserTweetsIterator(
           options.userId,
-          options.limit || 20,
+          options.limit,
           options.before,
-        );
-        tweets = result.tweets;
+        )) {
+          tweets.push(tweet);
+        }
       } else {
         // Get home timeline or search results
         tweets = await this.client.fetchHomeTimeline(
-          options.limit || 20,
+          options.limit,
           false,
         );
       }
@@ -323,14 +322,32 @@ export class TwitterPostService implements IPostService {
   ): Promise<Post[]> {
     try {
       return await this.client.withAuthenticatedSession(async ({ profile }) => {
-        const searchResult = await this.client.fetchSearchTweets(
-          `@${profile.username}`,
-          options?.limit || 20,
-          SearchMode.Latest,
-          options?.before,
-        );
+        const limit = options?.limit;
+        const tweets: Tweet[] = [];
+        const seenCursors = new Set<string>();
+        let cursor = options?.before;
+        while (limit === undefined || tweets.length < limit) {
+          const searchResult = await this.client.fetchSearchTweets(
+            `@${profile.username}`,
+            limit === undefined ? 100 : Math.min(100, limit - tweets.length),
+            SearchMode.Latest,
+            cursor,
+          );
+          tweets.push(...searchResult.tweets);
+          if (limit !== undefined && tweets.length >= limit) break;
+          if (!searchResult.next) break;
+          if (seenCursors.has(searchResult.next)) {
+            throw new ElizaError("X mentions pagination repeated a cursor", {
+              code: "X_MENTIONS_PAGINATION_STALLED",
+              context: { cursor: searchResult.next },
+              severity: "fatal",
+            });
+          }
+          seenCursors.add(searchResult.next);
+          cursor = searchResult.next;
+        }
 
-        const posts: Post[] = searchResult.tweets.flatMap((tweet) => {
+        const posts: Post[] = tweets.flatMap((tweet) => {
           // Normalize once per row; rows without a usable identity or timestamp
           // fail closed instead of surfacing as fresh mentions (#18965).
           const timestamp = getEpochMs(tweet.timestamp);

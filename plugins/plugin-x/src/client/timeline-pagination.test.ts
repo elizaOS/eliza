@@ -208,6 +208,15 @@ describe("ordinary timelines still page through completely", () => {
     expect(state.calls).toBe(3);
   });
 
+  it("Client.getUserTweetsIterator returns every page when no limit is requested", async () => {
+    const { auth, state } = stubAuth(threePages);
+
+    expect(
+      await collect(clientWith(auth).getUserTweetsIterator("user-1")),
+    ).toEqual(["t1", "t2", "t3", "t4", "t5"]);
+    expect(state.calls).toBe(3);
+  });
+
   it("a timeline beyond the former thousand-page ceiling still completes", async () => {
     const formerPageLimit = 1_000;
     const { auth, state } = stubAuth((index) =>
