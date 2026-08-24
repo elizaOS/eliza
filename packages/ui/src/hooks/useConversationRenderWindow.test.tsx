@@ -314,4 +314,173 @@ describe("useConversationRenderWindow (#15281)", () => {
     expect(result.current.windowSize).toBe(CAP);
     expect(result.current.canLoadOlder).toBe(false);
   });
+
+  it("clamps a fetched prepend's growth at MAX_LOADED_SHELL_WINDOW mid-page", async () => {
+    const fetchOlder = vi.fn(
+      async (): Promise<LoadOlderResult> => ({
+        hasMore: true,
+        prependedCount: 100,
+      }),
+    );
+    const { result, rerender } = renderHook(
+      (props: { renderableCount: number }) =>
+        useConversationRenderWindow({
+          renderableCount: props.renderableCount,
+          conversationKey: "c",
+          fetchOlder,
+        }),
+      { initialProps: { renderableCount: INITIAL_WINDOW } },
+    );
+
+    // Each drained scroll-up fetches a 100-turn page; the fourth grow lands on
+    // 380 + 100 and the fetch continuation itself must clamp at the bound.
+    for (let i = 0; i < 4; i += 1) {
+      await act(async () => {
+        await result.current.onLoadOlder();
+      });
+      rerender({ renderableCount: INITIAL_WINDOW + 100 * (i + 1) });
+    }
+    expect(fetchOlder).toHaveBeenCalledTimes(4);
+    expect(result.current.windowSize).toBe(CAP);
+    expect(result.current.canLoadOlder).toBe(false);
+
+    // At the bound onLoadOlder is inert even with server history left.
+    await act(async () => {
+      await result.current.onLoadOlder();
+    });
+    expect(fetchOlder).toHaveBeenCalledTimes(4);
+    expect(result.current.windowSize).toBe(CAP);
+  });
+
+  it("resets on a null conversation key and stays reset through the next thread", async () => {
+    const fetchOlder = vi.fn(
+      async (): Promise<LoadOlderResult> => ({
+        hasMore: true,
+        prependedCount: 0,
+      }),
+    );
+    const { result, rerender } = renderHook(
+      (props: { conversationKey: string | null }) =>
+        useConversationRenderWindow({
+          renderableCount: 90,
+          conversationKey: props.conversationKey,
+          fetchOlder,
+        }),
+      { initialProps: { conversationKey: "c1" as string | null } },
+    );
+
+    // Grow past the lean window (80 → 90 reveal) and latch a search-jump
+    // reveal, then have the overlay unmount the thread (key → null).
+    await act(async () => {
+      await result.current.onLoadOlder();
+    });
+    expect(result.current.windowSize).toBe(90);
+    act(() => {
+      result.current.revealFullWindow();
+    });
+
+    rerender({ conversationKey: null });
+    expect(result.current.windowSize).toBe(INITIAL_WINDOW);
+    expect(result.current.canLoadOlder).toBe(true);
+
+    // The next thread opens from the lean window again, fully re-armed.
+    rerender({ conversationKey: "c2" });
+    expect(result.current.windowSize).toBe(INITIAL_WINDOW);
+    expect(result.current.canLoadOlder).toBe(true);
+  });
+
+  it("keeps one stable onLoadOlder identity while calling the latest fetchOlder", async () => {
+    const firstFetch = vi.fn(
+      async (): Promise<LoadOlderResult> => ({
+        hasMore: true,
+        prependedCount: 0,
+      }),
+    );
+    const secondFetch = vi.fn(
+      async (): Promise<LoadOlderResult> => ({
+        hasMore: true,
+        prependedCount: 0,
+      }),
+    );
+    const { result, rerender } = renderHook(
+      (props: { fetchOlder: () => Promise<LoadOlderResult> }) =>
+        useConversationRenderWindow({
+          renderableCount: 80,
+          conversationKey: "c",
+          fetchOlder: props.fetchOlder,
+        }),
+      { initialProps: { fetchOlder: firstFetch } },
+    );
+    const captured = result.current.onLoadOlder;
+
+    // useLoadOlderOnScroll captures onLoadOlder once, so its identity must
+    // hold across prop changes — while the call reads the LATEST impl.
+    rerender({ fetchOlder: secondFetch });
+    expect(result.current.onLoadOlder).toBe(captured);
+
+    await act(async () => {
+      await captured();
+    });
+    expect(secondFetch).toHaveBeenCalledTimes(1);
+    expect(firstFetch).not.toHaveBeenCalled();
+  });
+
+  it("returns a hasMore:false stub for a page stale-dropped by a switch", async () => {
+    const { fetchOlder, resolve } = deferredFetch();
+    const { result, rerender } = renderHook(
+      (props: { conversationKey: string }) =>
+        useConversationRenderWindow({
+          renderableCount: 90,
+          conversationKey: props.conversationKey,
+          fetchOlder,
+        }),
+      { initialProps: { conversationKey: "c1" } },
+    );
+
+    // Reveal to the loaded count so the next call reaches the fetch.
+    await act(async () => {
+      await result.current.onLoadOlder();
+    });
+    expect(result.current.windowSize).toBe(90);
+
+    let pending!: Promise<LoadOlderResult>;
+    act(() => {
+      pending = result.current.onLoadOlder();
+    });
+    rerender({ conversationKey: "c2" });
+    await act(async () => {
+      resolve({ hasMore: true, prependedCount: 50 });
+      // The observer consumes this payload directly: hasMore:false stops its
+      // scroll loop, and even a would-grow page is neutralized in the return.
+      await expect(pending).resolves.toEqual({
+        hasMore: false,
+        prependedCount: 0,
+      });
+    });
+    expect(result.current.windowSize).toBe(INITIAL_WINDOW);
+  });
+
+  it("revealFullWindow never drops below the lean initial window on a short thread", () => {
+    const { result, rerender } = renderHook(
+      (props: { renderableCount: number }) =>
+        useConversationRenderWindow({
+          renderableCount: props.renderableCount,
+          conversationKey: "c",
+          fetchOlder: async () => ({ hasMore: true, prependedCount: 0 }),
+        }),
+      { initialProps: { renderableCount: 30 } },
+    );
+
+    act(() => {
+      result.current.revealFullWindow();
+    });
+    // A search-jump hit in a 30-turn thread must not shrink the window down to
+    // the loaded count — the reveal floors at the lean initial window.
+    expect(result.current.windowSize).toBe(INITIAL_WINDOW);
+    expect(result.current.canLoadOlder).toBe(true);
+
+    // Later turns landing under the floor keep the floor.
+    rerender({ renderableCount: 45 });
+    expect(result.current.windowSize).toBe(INITIAL_WINDOW);
+  });
 });
