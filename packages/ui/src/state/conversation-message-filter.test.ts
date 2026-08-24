@@ -123,6 +123,27 @@ describe("shouldKeepConversationMessage", () => {
     ).toBe(false);
   });
 
+  it("drops legacy runtime diagnostics even when callback UI metadata is present", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: [
+            'Repeated runtime failure "UNCLASSIFIED" from [MessageService.v5Runtime]:',
+            "No provider registered for TEXT_SMALL.",
+          ].join(" "),
+          blocks: [{ type: "text", text: "operator callback" }],
+          attachments: [
+            {
+              id: "diagnostic",
+              url: "/api/media/diagnostic",
+              contentType: "text",
+            },
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it("keeps user text and ordinary assistant prose about runtime failures", () => {
     expect(
       shouldKeepConversationMessage(

@@ -31,7 +31,7 @@ function isLegacyViewsInventory(message: ConversationMessage): boolean {
   );
 }
 
-function isLegacyInternalSchedulerDiagnostic(
+function isLegacyInternalRuntimeDiagnostic(
   message: ConversationMessage,
 ): boolean {
   const text = message.text.trim();
@@ -56,10 +56,14 @@ export function shouldKeepConversationMessage(
 ): boolean {
   if (message.role !== "assistant") return true;
   if (message.transcriptVisibility === "internal") return false;
+  // Legacy escalation rows can carry callback/action blocks. Hide the frozen
+  // machine envelope before the generic attachment/block retention checks so
+  // an internal diagnostic never leaks into the consumer transcript merely
+  // because transport metadata was persisted alongside it.
+  if (isLegacyInternalRuntimeDiagnostic(message)) return false;
   if (message.attachments?.length) return true;
   if (message.blocks?.length) return true;
   if (isLegacyViewsInventory(message)) return false;
-  if (isLegacyInternalSchedulerDiagnostic(message)) return false;
   // A zero-token interrupted receipt carries no text but is the turn's durable
   // terminal state; hiding it would leave its user turn visually unanswered.
   if (message.interrupted === true) return true;
