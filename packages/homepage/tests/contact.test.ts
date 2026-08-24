@@ -150,3 +150,70 @@ describe("Eliza contact links", () => {
     ).rejects.toThrow("Clipboard access is unavailable");
   });
 });
+
+describe("Eliza contact edge behaviour", () => {
+  test("falls back to the default WhatsApp sender outside production when config is absent or invalid", () => {
+    expect(resolveWhatsAppNumber(undefined, false)).toBe("+14159611510");
+    expect(resolveWhatsAppNumber("not-a-phone", false)).toBe("+14159611510");
+    expect(resolveWhatsAppNumber("+15551234567", false)).toBe("+15551234567");
+  });
+
+  test("normalizes configured E.164 senders with strict digit boundaries", () => {
+    expect(resolveWhatsAppNumber("  +15551234567  ", true)).toBe(
+      "+15551234567",
+    );
+    expect(resolveWhatsAppNumber("+12345678", true)).toBe("+12345678");
+    expect(resolveWhatsAppNumber("+1234567", true)).toBeNull();
+    expect(resolveWhatsAppNumber("+02345678", true)).toBeNull();
+    expect(resolveWhatsAppNumber("+123456789012345", true)).toBe(
+      "+123456789012345",
+    );
+    expect(resolveWhatsAppNumber("+1234567890123456", true)).toBeNull();
+  });
+
+  test("prefers userAgentData.platform and falls back to the userAgent string for native links", () => {
+    expect(
+      canOpenElizaSmsLink({
+        platform: "Win32",
+        userAgentData: { platform: "iPad" },
+      }),
+    ).toBe(true);
+    expect(
+      canOpenElizaSmsLink({
+        platform: "iPad",
+        userAgentData: { platform: "Windows" },
+      }),
+    ).toBe(false);
+    expect(
+      canOpenElizaSmsLink({
+        platform: "",
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+      }),
+    ).toBe(true);
+    expect(canOpenElizaSmsLink({ platform: "", userAgent: "iPod touch" })).toBe(
+      true,
+    );
+    expect(canOpenElizaSmsLink({ platform: "", userAgent: "" })).toBe(false);
+  });
+
+  test("hands off custom SMS messages through a lossless percent-encoded href", async () => {
+    const message = "call me & stay weird 🤖 100%";
+    const location = { href: "https://eliza.app/" };
+    await expect(
+      openOrCopyElizaMessage(
+        { location, navigator: { platform: "MacIntel" } },
+        message,
+      ),
+    ).resolves.toBe("handoff");
+    expect(location.href).toBe(buildElizaSmsHref(message));
+    const encoded = location.href.split("&body=")[1];
+    expect(encoded).toBeDefined();
+    expect(decodeURIComponent(encoded ?? "")).toBe(message);
+  });
+
+  test("percent-encodes URL-significant characters in SMS bodies", () => {
+    expect(buildElizaSmsHref("a&b=c d?e#f/g:h")).toBe(
+      "sms:+18087881821?&body=a%26b%3Dc%20d%3Fe%23f%2Fg%3Ah",
+    );
+  });
+});
