@@ -382,6 +382,199 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     ).toHaveLength(1);
   });
 
+  it("does not append durable rekeyed rows omitted by the bounded 200-message history window", async () => {
+    const completeHistory = Array.from({ length: 202 }, (_, index) => ({
+      ...userMsg(`server-${index}`),
+      text: `message ${index}`,
+      timestamp: index,
+    }));
+    const boundedHistory = completeHistory.slice(-200);
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: completeHistory })
+      .mockResolvedValueOnce({ messages: boundedHistory });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    // Direct terminal replies keep their render identity after durable rekey.
+    // These rows all predate the new request and are not an in-flight overlay.
+    act(() => {
+      setConversationMessages(
+        completeHistory.map((message, index) => ({
+          ...message,
+          clientRenderId: `temp-${index}`,
+        })),
+      );
+    });
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(conversationMessagesRef.current).toEqual(boundedHistory);
+    expect(conversationMessagesRef.current).toHaveLength(200);
+    expect(
+      conversationMessagesRef.current.some(
+        (message) => message.id === "server-0" || message.id === "server-1",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a stale rekey overlay with conversation A across A to B to A navigation", async () => {
+    const oldA = { ...userMsg("a-old"), text: "old A", timestamp: 1 };
+    const messageB = { ...userMsg("b-only"), text: "only B", timestamp: 2 };
+    let resolveFirstStaleA:
+      | ((messages: ConversationMessage[]) => void)
+      | undefined;
+    let resolveSecondStaleA:
+      | ((messages: ConversationMessage[]) => void)
+      | undefined;
+    let call = 0;
+    mocks.client.getConversationMessages.mockImplementation((id: string) => {
+      call += 1;
+      if (call === 1) return Promise.resolve({ messages: [oldA] });
+      if (call === 2) {
+        return new Promise((resolve) => {
+          resolveFirstStaleA = (messages) => resolve({ messages });
+        });
+      }
+      if (id === "conv-b") return Promise.resolve({ messages: [messageB] });
+      return new Promise((resolve) => {
+        resolveSecondStaleA = (messages) => resolve({ messages });
+      });
+    });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    let firstStaleLoad: Promise<unknown>;
+    act(() => {
+      firstStaleLoad = result.current.loadConversationMessages("conv-a");
+    });
+    const optimisticUser = {
+      ...userMsg("temp-a-new"),
+      clientRenderId: "temp-a-new",
+      text: "new A question",
+      timestamp: 10,
+    };
+    const optimisticAssistant = {
+      ...assistantMsg("temp-resp-a-new"),
+      clientRenderId: "temp-resp-a-new",
+      text: "new A answer",
+      timestamp: 11,
+    };
+    act(() => {
+      setConversationMessages([
+        oldA,
+        { ...optimisticUser, id: "a-user-durable" },
+        { ...optimisticAssistant, id: "a-assistant-durable" },
+      ]);
+    });
+    await act(async () => {
+      resolveFirstStaleA?.([oldA]);
+      await firstStaleLoad;
+    });
+
+    activeConversationIdRef.current = "conv-b";
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-b");
+    });
+    expect(conversationMessagesRef.current).toEqual([messageB]);
+
+    activeConversationIdRef.current = "conv-a";
+    let secondStaleLoad: Promise<unknown>;
+    act(() => {
+      secondStaleLoad = result.current.loadConversationMessages("conv-a");
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["a-old", "a-user-durable", "a-assistant-durable"]);
+
+    await act(async () => {
+      resolveSecondStaleA?.([oldA]);
+      await secondStaleLoad;
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["a-old", "a-user-durable", "a-assistant-durable"]);
+  });
+
+  it("binds a terminal rekey during A's initial load to A and never carries it into B", async () => {
+    let resolveA: ((messages: ConversationMessage[]) => void) | undefined;
+    const messageB = { ...userMsg("b-only"), text: "only B", timestamp: 20 };
+    mocks.client.getConversationMessages.mockImplementation((id: string) => {
+      if (id === "conv-b") return Promise.resolve({ messages: [messageB] });
+      return new Promise((resolve) => {
+        resolveA = (messages) => resolve({ messages });
+      });
+    });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    let loadA: Promise<unknown>;
+    act(() => {
+      loadA = result.current.loadConversationMessages("conv-a");
+    });
+    act(() => {
+      setConversationMessages([
+        {
+          ...userMsg("a-user-durable"),
+          clientRenderId: "temp-a-user",
+          text: "new A question",
+          timestamp: 10,
+        },
+        {
+          ...assistantMsg("a-assistant-durable"),
+          clientRenderId: "temp-resp-a-user",
+          text: "new A answer",
+          timestamp: 11,
+        },
+      ]);
+    });
+
+    activeConversationIdRef.current = "conv-b";
+    let loadB: Promise<unknown>;
+    act(() => {
+      loadB = result.current.loadConversationMessages("conv-b");
+    });
+    await act(async () => {
+      resolveA?.([]);
+      await Promise.all([loadA, loadB]);
+    });
+
+    expect(conversationMessagesRef.current).toEqual([messageB]);
+    expect(
+      conversationMessagesRef.current.some((message) =>
+        message.clientRenderId?.startsWith("temp-a"),
+      ),
+    ).toBe(false);
+    expect(result.current.loadedConversationIdRef.current).toBe("conv-b");
+  });
+
   it("preserves optimistic turns on the first load of a newly created active conversation", async () => {
     mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
     const { deps, conversationMessagesRef, activeConversationIdRef } =
@@ -392,6 +585,9 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
       { ...assistantMsg("temp-resp-user"), text: "", timestamp: 11 },
     ];
     const { result } = renderHook(() => useDataLoaders(deps));
+    // Conversation creation explicitly owns the freshly seeded transcript;
+    // render ids alone are never used to infer that ownership.
+    result.current.loadedConversationIdRef.current = "conv-new";
 
     await act(async () => {
       await result.current.loadConversationMessages("conv-new");
