@@ -134,5 +134,48 @@ describe("atomic-json", () => {
 				TypeError,
 			);
 		});
+
+		it("rejects undefined top-level value instead of writing literal undefined", async () => {
+			const target = path.join(tempDir, "undefined-async.json");
+			await expect(writeJsonAtomic(target, undefined)).rejects.toThrow(
+				TypeError,
+			);
+			await expect(writeJsonAtomic(target, undefined)).rejects.toThrow(
+				/Converting undefined value to JSON is not supported/,
+			);
+			expect(await readJsonFile(target)).toBeNull();
+			const files = await fsp.readdir(tempDir);
+			expect(files.filter((f) => f.includes("undefined-async"))).toEqual([]);
+		});
+
+		it("rejects symbol top-level value", async () => {
+			const target = path.join(tempDir, "symbol-async.json");
+			await expect(
+				writeJsonAtomic(target, Symbol("x") as unknown as object),
+			).rejects.toThrow(TypeError);
+			expect(await readJsonFile(target)).toBeNull();
+		});
+
+		it("rejects undefined top-level value synchronously", () => {
+			const target = path.join(tempDir, "undefined-sync.json");
+			expect(() => writeJsonAtomicSync(target, undefined)).toThrow(TypeError);
+			expect(() => writeJsonAtomicSync(target, undefined)).toThrow(
+				/Converting undefined value to JSON is not supported/,
+			);
+			expect(readJsonFileSync(target)).toBeNull();
+			const files = fs.readdirSync(tempDir);
+			expect(files.filter((f) => f.includes("undefined-sync"))).toEqual([]);
+		});
+
+		it("does not leak stale tmp file on undefined rejection", async () => {
+			const target = path.join(tempDir, "leak-check.json");
+			await expect(writeJsonAtomic(target, undefined)).rejects.toThrow(
+				TypeError,
+			);
+			const files = await fsp.readdir(tempDir);
+			expect(files).toEqual([]);
+			await writeJsonAtomic(target, { ok: 1 });
+			expect(await readJsonFile<{ ok: number }>(target)).toEqual({ ok: 1 });
+		});
 	});
 });
