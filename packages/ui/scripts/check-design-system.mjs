@@ -46,7 +46,9 @@ function isGovernedSource(file) {
     /\.[jt]sx$/.test(rel) &&
     !/(^|\/)(node_modules|dist|build|coverage|generated)(\/|$)/.test(rel) &&
     !/\.(test|spec)\.[jt]sx$/.test(rel) &&
-    !/(^|\/)(__tests__|__fixtures__|fixtures|templates)(\/|$)/.test(rel)
+    !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
+      rel,
+    )
   );
 }
 

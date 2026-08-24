@@ -17,6 +17,10 @@ test("compliance inventory is deterministic and covers every governed rule", () 
   assert.deepEqual(second, first);
   assert.deepEqual(Object.keys(first.counts), RULES);
   assert.ok(first.scannedFiles > 800);
+  assert.equal(
+    first.findings.some((finding) => finding.file.includes("/__e2e__/")),
+    false,
+  );
   assert.equal(first.counts["atomic-duplicate"], 0);
   assert.ok(first.counts["raw-control"] > 0);
 });

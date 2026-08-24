@@ -9,6 +9,51 @@
       "owner": "app-core desktop runtime",
       "reason": "The desktop renderer owns native window controls outside the React design-system host.",
       "reviewBy": "2026-11-24"
+    },
+    {
+      "id": "design-lab-shell-native-buttons",
+      "rule": "raw-control",
+      "file": "packages/ui/stories/src/lab/DesignLab.tsx",
+      "symbol": "button",
+      "owner": "UI design lab harness",
+      "reason": "The lab shell must remain independent from the design system whose full-viewport surfaces it previews.",
+      "reviewBy": "2026-11-24"
+    },
+    {
+      "id": "design-lab-controls-native-buttons",
+      "rule": "raw-control",
+      "file": "packages/ui/stories/src/lab/lab-ui.tsx",
+      "symbol": "button",
+      "owner": "UI design lab harness",
+      "reason": "The lab control chrome is intentionally dependency-free so canonical atom changes cannot restyle the comparison harness.",
+      "reviewBy": "2026-11-24"
+    },
+    {
+      "id": "design-lab-controls-native-checkbox",
+      "rule": "raw-control",
+      "file": "packages/ui/stories/src/lab/lab-ui.tsx",
+      "symbol": "checkbox",
+      "owner": "UI design lab harness",
+      "reason": "The native checkbox belongs to the isolated comparison harness and must not depend on the surface under review.",
+      "reviewBy": "2026-11-24"
+    },
+    {
+      "id": "design-lab-widget-native-button",
+      "rule": "raw-control",
+      "file": "packages/ui/stories/src/lab/surfaces/WidgetsLab.tsx",
+      "symbol": "button",
+      "owner": "UI design lab harness",
+      "reason": "This reseed action is harness chrome outside the product surface rendered inside the lab frame.",
+      "reviewBy": "2026-11-24"
+    },
+    {
+      "id": "voice-renderer-harness-native-buttons",
+      "rule": "raw-control",
+      "file": "packages/ui/stories/src/voice-main.tsx",
+      "symbol": "button",
+      "owner": "Voice renderer harness",
+      "reason": "The renderer selector is standalone harness chrome around the visual under test, not shipped product UI.",
+      "reviewBy": "2026-11-24"
     }
   ]
 }

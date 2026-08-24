@@ -38,6 +38,10 @@ growing. A cleanup must lower the affected count with
 `audit:design-system:update-baseline` in the same change; the command refuses
 to raise any count.
 
+Product source and Storybook examples are governed. Test files, test fixtures,
+generated output, and templates are excluded because they imitate host and
+failure boundaries rather than ship as maintained product UI.
+
 Legitimate renderer, native, or external-system cases live in
 `scripts/design-system-exceptions.json`. Each exception names one rule, file,
 symbol, owner, reason, and review date. Inline suppressions are not supported.
