@@ -164,8 +164,9 @@ type CliBackend = (typeof CLI_BACKENDS)[number];
 
 /**
  * Sentinel used as `apiKey` for the CLI-subscription provider. The CLI backend
- * loads its own credentials from disk (~/.claude/.credentials.json or
- * ~/.codex/auth.json); no API key ever passes through eliza.
+ * loads its own credentials or authenticated state from disk
+ * (~/.claude/.credentials.json, ~/.claude.json, or ~/.codex/auth.json); no API
+ * key ever passes through eliza.
  */
 export const CLI_SUBSCRIPTION_SENTINEL_API_KEY =
 	"cli-subscription:no-api-key-cli-reads-own-credentials";
@@ -196,16 +197,32 @@ function resolveConfiguredCliBackend(): CliBackend | null {
  * os.homedir() (which honors $HOME on POSIX) so unit tests can point it at a
  * temp directory instead of the real user profile.
  */
-export function cliBackendCredentialsPath(backend: CliBackend): string {
+export function cliBackendCredentialsPaths(
+	backend: CliBackend,
+): readonly string[] {
 	return backend.startsWith("codex")
-		? path.join(os.homedir(), ".codex", "auth.json")
-		: path.join(os.homedir(), ".claude", ".credentials.json");
+		? [path.join(os.homedir(), ".codex", "auth.json")]
+		: [
+				path.join(os.homedir(), ".claude", ".credentials.json"),
+				path.join(os.homedir(), ".claude.json"),
+			];
+}
+
+/** Retains the canonical credential-file path for existing test consumers. */
+export function cliBackendCredentialsPath(backend: CliBackend): string {
+	return cliBackendCredentialsPaths(backend)[0];
 }
 
 function selectCliProvider(): LiveProviderConfig | null {
 	const backend = resolveConfiguredCliBackend();
 	if (!backend) return null;
-	if (!fs.existsSync(cliBackendCredentialsPath(backend))) return null;
+	if (
+		!cliBackendCredentialsPaths(backend).some((statePath) =>
+			fs.existsSync(statePath),
+		)
+	) {
+		return null;
+	}
 
 	const isCodex = backend.startsWith("codex");
 	const model = isCodex
