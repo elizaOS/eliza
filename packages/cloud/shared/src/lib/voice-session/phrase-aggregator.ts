@@ -107,7 +107,7 @@ export class PhraseAggregator {
     const trimmed = this.buffer.trim();
     this.buffer = "";
     if (trimmed.length < this.minEmitChars) {
-      return trimmed.length > 0 ? null : null;
+      return null;
     }
     this.emittedCount += 1;
     return trimmed;
