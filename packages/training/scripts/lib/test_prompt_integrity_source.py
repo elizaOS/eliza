@@ -2,6 +2,13 @@
 
 from pathlib import Path
 
+import pytest
+
+from lib.generation_integrity import (
+    UnknownModelOutputLimitError,
+    anthropic_max_output_tokens,
+)
+
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,3 +70,14 @@ def test_known_training_context_slices_do_not_return() -> None:
         found.extend(f"{relative}: {marker}" for marker in markers if marker in source)
 
     assert found == []
+
+
+def test_anthropic_calls_use_documented_provider_maxima() -> None:
+    assert anthropic_max_output_tokens("claude-opus-4-7") == 128_000
+    assert anthropic_max_output_tokens("claude-haiku-4-5-20251001") == 64_000
+    with pytest.raises(UnknownModelOutputLimitError):
+        anthropic_max_output_tokens("unknown-model")
+
+    for relative in ("synthesize_targets.py", "eliza_reward_fn.py"):
+        source = (SCRIPTS_ROOT / relative).read_text(encoding="utf-8")
+        assert "max_tokens=anthropic_max_output_tokens(" in source

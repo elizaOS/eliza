@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lib.generation_integrity import require_complete_generation
+from lib.generation_integrity import anthropic_max_output_tokens, require_complete_generation
 
 log = logging.getLogger("eliza-reward")
 
@@ -343,7 +343,7 @@ def _ai_judge_score(
     model = os.environ.get(AI_JUDGE_MODEL_ENV, AI_JUDGE_DEFAULT_MODEL)
     resp = client.messages.create(
         model=model,
-        max_tokens=4,
+        max_tokens=anthropic_max_output_tokens(model),
         messages=[{"role": "user", "content": body}],
     )
     require_complete_generation(resp, source="eliza_reward.ai_judge")

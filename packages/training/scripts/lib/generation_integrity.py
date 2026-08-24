@@ -57,6 +57,29 @@ class IncompleteGenerationError(RuntimeError):
         )
 
 
+class UnknownModelOutputLimitError(ValueError):
+    """Raised when a required provider ceiling is not known for a model."""
+
+    code = "TRAINING_MODEL_OUTPUT_LIMIT_UNKNOWN"
+
+    def __init__(self, provider: str, model: str) -> None:
+        super().__init__(
+            f"{self.code}: no documented {provider} output limit is registered "
+            f"for model {model!r}; add the provider's hard limit before dispatch"
+        )
+
+
+def anthropic_max_output_tokens(model: str) -> int:
+    """Return Anthropic's documented synchronous Messages API output maximum."""
+
+    normalized = model.strip().lower()
+    if normalized.startswith("claude-opus-4-7"):
+        return 128_000
+    if normalized.startswith("claude-haiku-4-5"):
+        return 64_000
+    raise UnknownModelOutputLimitError("Anthropic", model)
+
+
 def finish_reason_from_choice(choice: object) -> object | None:
     """Read common finish-reason fields from mapping or SDK response objects."""
 

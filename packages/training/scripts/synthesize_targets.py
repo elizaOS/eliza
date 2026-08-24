@@ -42,7 +42,7 @@ from typing import Any
 
 import yaml
 
-from lib.generation_integrity import require_complete_generation
+from lib.generation_integrity import anthropic_max_output_tokens, require_complete_generation
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -118,7 +118,6 @@ PROMPTS_FOR = {
 class TeacherCfg:
     provider: str
     model: str
-    max_tokens: int = 1024
     temperature: float = 0.7
 
 
@@ -130,7 +129,7 @@ def call_anthropic(cfg: TeacherCfg, system: str, user: str) -> str:
     client = anthropic.Anthropic(api_key=api_key)
     resp = client.messages.create(
         model=cfg.model,
-        max_tokens=cfg.max_tokens,
+        max_tokens=anthropic_max_output_tokens(cfg.model),
         temperature=cfg.temperature,
         system=system,
         messages=[{"role": "user", "content": user}],

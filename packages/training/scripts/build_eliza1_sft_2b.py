@@ -328,7 +328,6 @@ def _cerebras_action_variety(client, n_batches: int, per_batch: int) -> list[dic
                     {"role": "user", "content": f"Generate {per_batch} diverse rows. Batch {b + 1}."},
                 ],
                 temperature=0.9,
-                max_tokens=4096,
             )
         except Exception as exc:  # noqa: BLE001 - augmentation is best-effort
             LOG.warning("cerebras action-variety batch %d failed: %s", b + 1, exc)
@@ -388,7 +387,6 @@ def _cerebras_assistant_and_refusals(client, n_batches: int, per_batch: int) -> 
                     {"role": "user", "content": f"Generate {per_batch} rows (mix kinds). Batch {b + 1}."},
                 ],
                 temperature=0.85,
-                max_tokens=4096,
             )
         except Exception as exc:  # noqa: BLE001
             LOG.warning("cerebras assistant batch %d failed: %s", b + 1, exc)
@@ -571,7 +569,6 @@ def _cerebras_structured_decode(client, n_batches: int, per_batch: int) -> list[
                     {"role": "user", "content": f"Generate {per_batch} JSONL lines. Batch {b + 1}."},
                 ],
                 temperature=0.85,
-                max_tokens=4096,
             )
         except Exception as exc:  # noqa: BLE001 - augmentation is best-effort
             LOG.warning("cerebras structured-decode batch %d failed: %s", b + 1, exc)
@@ -688,7 +685,6 @@ def _cerebras_voice_emotion(client, n_batches: int, per_batch: int) -> list[dict
                     {"role": "user", "content": f"Generate {per_batch} JSONL lines. Batch {b + 1}."},
                 ],
                 temperature=0.9,
-                max_tokens=4096,
             )
         except Exception as exc:  # noqa: BLE001 - augmentation is best-effort
             LOG.warning("cerebras voice-emotion batch %d failed: %s", b + 1, exc)
