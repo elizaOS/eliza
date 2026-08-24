@@ -150,15 +150,16 @@ export function parseWhen2SpeakLine(
       row,
       "contains an assistant turn inside the context",
     );
-  const turns = contextMessages.map((message) => ({
-    ...parseSpeakerTurn(message.content, row),
-    isAgent: false,
-  }));
+  const turns = contextMessages.map((message) => {
+    const turn = parseSpeakerTurn(message.content, row);
+    return { ...turn, isAgent: turn.speaker === "Assistant" };
+  });
+  const currentTurn = turns[turns.length - 1];
   return {
     row,
     turns,
     label: labelMessage.content.trim() === ">" ? "SILENT" : "SPEAK",
-    directlyAddressesAgent: turns.some((turn) => turn.text.includes("[AGENT]")),
+    directlyAddressesAgent: currentTurn.text.includes("[AGENT]"),
     speakerCount: new Set(turns.map((turn) => turn.speaker)).size,
   };
 }
@@ -295,12 +296,13 @@ function recordPrediction(
   else if (gold === "SILENT" && predicted === "SILENT") counts.trueSilent += 1;
   else counts.falseSilent += 1;
 }
-function stateForExample(
+export function buildWhen2SpeakEvaluationState(
   runtime: IAgentRuntime,
   example: When2SpeakExample,
 ): { state: State; message: Memory } {
   const agentName = runtime.character.name ?? "ScenarioAgent";
   const roomId = stringToUuid(`when2speak-room-${example.row}`);
+  const currentTurnIndex = example.turns.length - 1;
   const memories = example.turns.map(
     (turn, index): Memory => ({
       id: stringToUuid(`when2speak-${example.row}-turn-${index}`),
@@ -315,6 +317,15 @@ function stateForExample(
         senderName: turn.isAgent ? agentName : turn.speaker,
         source: "when2speak-eval",
         channelType: ChannelType.GROUP,
+        ...(index === currentTurnIndex && example.directlyAddressesAgent
+          ? {
+              mentionContext: {
+                isMention: true,
+                isReply: false,
+                isThread: false,
+              },
+            }
+          : {}),
       },
     }),
   );
@@ -336,7 +347,7 @@ export async function evaluateExample(
   runtime: IAgentRuntime,
   example: When2SpeakExample,
 ): Promise<TimingLabel> {
-  const { state, message } = stateForExample(runtime, example);
+  const { state, message } = buildWhen2SpeakEvaluationState(runtime, example);
   const outcome = await runV5MessageRuntimeStage1({
     runtime,
     message,
