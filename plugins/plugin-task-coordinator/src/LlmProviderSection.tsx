@@ -3,8 +3,7 @@
  * between subscription, API-keys, and Eliza Cloud provider modes and renders the
  * matching credential inputs.
  */
-import { Button } from "@elizaos/ui";
-import { SettingsControls } from "@elizaos/ui";
+import { Button, SettingsControls } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   AlertTriangle,
@@ -74,9 +73,9 @@ export function LlmProviderSection({
               <Button
                 key={option.value}
                 type="button"
-                variant={active ? "default" : "ghost"}
-                size="sm"
-                className="h-8 justify-start px-2 text-xs font-semibold"
+                variant={active ? "default" : "ghostMuted"}
+                size="dense"
+                align="start"
                 onClick={() => setPref("ELIZA_LLM_PROVIDER", option.value)}
                 aria-pressed={active}
               >

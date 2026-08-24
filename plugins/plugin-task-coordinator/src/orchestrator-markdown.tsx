@@ -2,7 +2,7 @@
 
 import {
   Button,
-  Input,
+  Checkbox,
   Table,
   TableBody,
   TableCell,
@@ -72,12 +72,11 @@ function renderToken(token: Token, key: string): ReactNode {
         return (
           <li key={itemKey} className="my-0.5 marker:text-muted">
             {item.task ? (
-              <Input
-                type="checkbox"
+              <Checkbox
                 checked={Boolean(item.checked)}
-                readOnly
+                disabled
                 aria-hidden
-                className="mr-1.5 size-4 p-0 align-middle accent-accent"
+                className="mr-1.5 align-middle"
               />
             ) : null}
             {renderChildren(item.tokens, itemKey)}

@@ -218,7 +218,8 @@ function PrivateCloudUnavailable({
         </p>
         <Button
           type="button"
-          className="rounded-md border border-white/20 px-3 py-1.5 text-white hover:bg-white/10"
+          variant="outlineMuted"
+          size="compact"
           onClick={onRetry}
         >
           Retry

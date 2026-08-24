@@ -82,12 +82,14 @@ test("baseline comparison rejects increases and permits reductions", () => {
   ]);
 });
 
-test("markdown exposes counts and source evidence", () => {
+test("markdown exposes counts and either source evidence or a zero-debt result", () => {
   const report = buildComplianceReport({
     now: new Date("2026-08-24T00:00:00Z"),
   });
   const markdown = renderComplianceMarkdown(report);
   assert.match(markdown, /Design-system compliance report/);
   assert.match(markdown, /atomic-duplicate/);
-  assert.match(markdown, /packages\//);
+  assert.match(markdown, /Scanned \d+ governed React source files/);
+  if (report.findings.length > 0) assert.match(markdown, /packages\//);
+  else assert.match(markdown, /### visual-override\n\nNone\./);
 });

@@ -118,9 +118,8 @@ export function StatusBar({
         {/* Popout button — non-Electrobun only */}
         {!IS_POPOUT && !isElectrobun && (
           <Button
-            variant="ghost"
-            size="sm"
-            className="inline-flex size-11 min-h-11 items-center justify-center rounded-sm bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt"
+            variant="outlineMuted"
+            size="icon-lg"
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
               const popoutWin = openStreamPopout(getBootConfig().apiBase);

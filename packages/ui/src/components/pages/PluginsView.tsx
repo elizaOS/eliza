@@ -1387,8 +1387,8 @@ function PluginListView({
                     <Button
                       ref={resetOrderRef}
                       variant="outline"
-                      size="sm"
-                      className="ml-1 min-h-11 rounded-full px-3 text-2xs font-bold tracking-wide text-muted hover:text-txt"
+                      size="badge"
+                      className="ml-1"
                       onClick={handleResetOrder}
                       title={t("pluginsview.ResetToDefaultSor")}
                       {...resetOrderAgentProps}

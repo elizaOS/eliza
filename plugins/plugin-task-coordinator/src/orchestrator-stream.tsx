@@ -274,13 +274,13 @@ function ToolCallCard({
     >
       <Button
         ref={ref}
-        variant="ghost"
+        variant="sectionToggle"
         size="content"
         align="start"
         type="button"
         disabled={!hasBody}
         onClick={toggle}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left disabled:cursor-default"
+        className="disabled:cursor-default"
         {...agentProps}
       >
         {hasBody ? (

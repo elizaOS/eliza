@@ -244,8 +244,7 @@ export function PluginSettingsDialog({
                 <Button
                   ref={installControl.ref}
                   variant="default"
-                  size="sm"
-                  className="h-8 px-4 text-xs-tight font-bold tracking-wide "
+                  size="denseWide"
                   disabled={installingPlugins.has(plugin.id)}
                   onClick={() =>
                     void onInstallPlugin(plugin.id, plugin.npmName ?? "")
@@ -296,9 +295,8 @@ export function PluginSettingsDialog({
             )}
             <Button
               ref={resetControl.ref}
-              variant="ghost"
-              size="sm"
-              className="h-8 px-4 text-xs font-bold text-muted hover:text-txt transition-all"
+              variant="ghostMuted"
+              size="denseWide"
               onClick={() => onConfigReset(plugin.id)}
               {...resetControl.agentProps}
             >

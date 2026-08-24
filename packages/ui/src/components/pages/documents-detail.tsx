@@ -359,7 +359,7 @@ export function DocumentViewer({
           onClick={() => setFullscreen(true)}
           variant="mediaZoom"
           size="content"
-          className="mx-auto block max-h-[28rem] cursor-zoom-in overflow-hidden"
+          className="mx-auto"
         >
           <img
             src={mediaUrl}

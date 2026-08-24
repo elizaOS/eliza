@@ -335,11 +335,11 @@ export function CockpitSessionPane({
       <header className="flex shrink-0 items-center gap-2 border-border/40 border-b px-3 py-2">
         <Button
           ref={backRef}
-          variant="ghost"
+          variant="ghostMuted"
           size="icon-sm"
           type="button"
           onClick={onBack}
-          className="-ml-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt"
+          className="-ml-1 shrink-0"
           aria-label={t("cockpit.session.back", {
             defaultValue: "Back to all rooms",
           })}

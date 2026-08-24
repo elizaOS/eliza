@@ -88,7 +88,8 @@ export const WithActions: Story = {
     actions: (
       <Button
         type="button"
-        className="border border-orange-400/40 bg-orange-400/10 px-3 py-1.5 text-sm text-orange-200 hover:bg-orange-400/20"
+        variant="warningOutline"
+        size="compact"
         onClick={() => {}}
       >
         New agent

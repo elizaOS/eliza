@@ -50,15 +50,13 @@ export const CharacterView: Story = {
           <span className="text-muted-foreground">Name</span>
           <Input
             id="character-name"
-            className="mt-1 w-full rounded border border-border bg-background px-2 py-1"
+            variant="form"
+            density="compact"
+            className="mt-1 w-full"
             defaultValue="Eliza"
           />
         </label>
-        <Button
-          type="button"
-          className="rounded bg-primary px-3 py-1 text-primary-foreground text-sm"
-          onClick={() => {}}
-        >
+        <Button type="button" size="regularCompact" onClick={() => {}}>
           Save
         </Button>
       </div>

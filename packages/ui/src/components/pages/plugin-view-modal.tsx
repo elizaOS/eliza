@@ -107,10 +107,10 @@ function PluginGameResourceLink({
   return (
     <Button
       ref={ref}
-      variant="outline"
-      size="sm"
+      variant="outlineAccent"
+      size="dense"
       type="button"
-      className="plugins-game-link-btn border border-border bg-transparent px-2.5 py-1 text-xs-tight text-muted transition-colors hover:border-accent hover:text-txt"
+      className="plugins-game-link-btn"
       onClick={() => {
         void onOpen(url);
       }}
@@ -153,7 +153,7 @@ function PluginGameParamField({
         ref={ref}
         id={`input-${param.key}`}
         type={param.sensitive ? "password" : "text"}
-        className="w-full px-2 py-1 text-xs"
+        density="compact"
         placeholder={param.description}
         value={value}
         onChange={(event) =>

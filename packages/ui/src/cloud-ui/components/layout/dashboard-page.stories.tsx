@@ -61,16 +61,10 @@ function ToolbarTitle() {
 function ToolbarActions() {
   return (
     <div className="flex gap-2">
-      <Button
-        type="button"
-        className="rounded-md border border-border px-3 py-1.5 text-sm"
-      >
+      <Button type="button" variant="outline" size="compact">
         Export
       </Button>
-      <Button
-        type="button"
-        className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground"
-      >
+      <Button type="button" variant="default" size="compact">
         New agent
       </Button>
     </div>

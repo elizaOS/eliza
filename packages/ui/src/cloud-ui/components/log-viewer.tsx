@@ -355,11 +355,12 @@ export function LogViewer({
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/60" />
                 <Input
+                  variant="config"
+                  adornment="leading"
                   aria-label={search.placeholder ?? "Search logs"}
                   placeholder={search.placeholder ?? "Search logs..."}
                   value={search.value}
                   onChange={(event) => search.onChange(event.target.value)}
-                  className="rounded-none border-border bg-black/40 pl-9 text-white placeholder:text-white/60 "
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 />
               </div>
@@ -493,7 +494,8 @@ export function LogViewer({
                   {entry.level && (
                     <Badge
                       variant={entryLevelVariant(entry.level)}
-                      className="h-5 shrink-0 rounded-none font-mono text-xs"
+                      size="compact"
+                      className="shrink-0"
                     >
                       {entry.level.toUpperCase()}
                     </Badge>

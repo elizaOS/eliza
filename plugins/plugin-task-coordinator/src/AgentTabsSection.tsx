@@ -3,9 +3,9 @@
  * of the available agent frameworks, each tab carrying its install/auth state
  * (preflight result → status icon).
  */
+
+import { Button, SettingsControls } from "@elizaos/ui";
 import type { AgentPreflightResult } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui";
-import { SettingsControls } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   AlertTriangle,
@@ -115,10 +115,10 @@ export function AgentTabsSection({
             </span>
           </div>
           <Button
-            variant="ghost"
-            size="sm"
+            variant="warningOutline"
+            size="tiny"
             disabled={activeAuthenticating}
-            className="h-7 shrink-0 px-2 text-xs font-semibold text-warn hover:bg-warn/10 hover:text-warn"
+            className="shrink-0"
             onClick={() => onAuth(activeTab)}
           >
             {activeAuthenticating ? (

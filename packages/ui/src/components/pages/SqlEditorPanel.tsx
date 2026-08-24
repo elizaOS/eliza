@@ -49,7 +49,9 @@ export function SqlEditorPanel({
           }}
           placeholder={t("databaseview.SELECTFROMMemori")}
           rows={6}
-          className="w-full bg-bg/95 border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-sm custom-scrollbar"
+          variant="documentEditor"
+          density="relaxed"
+          className="custom-scrollbar"
           spellCheck={false}
         />
         <div className="flex items-center gap-3 mt-3">

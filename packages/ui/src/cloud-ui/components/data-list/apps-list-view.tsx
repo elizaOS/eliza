@@ -111,10 +111,14 @@ export function AppsListView({
                 <StatusBadge
                   status={app.is_active ? "success" : "neutral"}
                   label={app.is_active ? "Active" : "Inactive"}
-                  className="px-1.5 py-0 text-2xs"
                 />
                 {app.affiliate_code ? (
-                  <Badge className="shrink-0 rounded-sm border-border bg-surface px-1.5 py-0 text-2xs text-muted">
+                  <Badge
+                    variant="outline"
+                    size="micro"
+                    tone="muted"
+                    className="shrink-0"
+                  >
                     Affiliate
                   </Badge>
                 ) : null}

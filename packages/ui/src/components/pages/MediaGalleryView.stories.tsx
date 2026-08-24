@@ -45,7 +45,8 @@ export const WithContentHeader: Story = {
         <span>Media Gallery</span>
         <Button
           type="button"
-          className="rounded-sm border border-accent/30 bg-accent/12 px-3 py-1 text-xs-tight text-txt-strong"
+          variant="surfaceAccent"
+          size="compact"
           onClick={() => {}}
         >
           Refresh

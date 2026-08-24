@@ -183,9 +183,8 @@ export function WebsiteBlockerSettingsCard({
           <div className="flex shrink-0 flex-wrap gap-2 sm:pt-0.5">
             <Button
               type="button"
-              size="sm"
+              size="formAction"
               variant="default"
-              className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
               onClick={() => void primary.action()}
             >
               <Settings className="mr-1.5 size-4" aria-hidden />

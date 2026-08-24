@@ -409,7 +409,7 @@ export function WifiAppView(props: OverlayAppContext) {
                   setPassword(event.target.value)
                 }
                 placeholder="Password"
-                className="w-full rounded-md border border-border/30 bg-bg px-3 py-2 text-sm text-txt outline-none focus:border-border/60"
+                variant="form"
               />
             ) : null}
             <div className="flex justify-end gap-2">

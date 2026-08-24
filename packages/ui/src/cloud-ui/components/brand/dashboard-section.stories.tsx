@@ -41,11 +41,7 @@ export const WithAction: Story = {
     title: "Production agents",
     description: "Six agents currently serving traffic across two regions.",
     action: (
-      <Button
-        type="button"
-        onClick={() => {}}
-        className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
-      >
+      <Button type="button" variant="default" onClick={() => {}}>
         Deploy agent
       </Button>
     ),
@@ -64,11 +60,7 @@ export const RichDescription: Story = {
       </span>
     ),
     action: (
-      <Button
-        type="button"
-        onClick={() => {}}
-        className="rounded-md border border-border px-4 py-2 text-sm font-medium text-txt-strong"
-      >
+      <Button type="button" variant="outline" onClick={() => {}}>
         View plans
       </Button>
     ),

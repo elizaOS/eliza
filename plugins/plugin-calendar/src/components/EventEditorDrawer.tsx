@@ -131,7 +131,6 @@ function EventEditorNotes({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="min-h-20"
       disabled={disabled}
       {...agentProps}
     />
@@ -901,12 +900,11 @@ export function EventEditorDrawer({
               <div className="text-sm font-semibold text-txt">{titleLabel}</div>
             </div>
             <Button
-              variant="ghost"
+              variant="ghostMuted"
               size="icon-sm"
               type="button"
               onClick={onClose}
               aria-label={t("common.close", { defaultValue: "Close" })}
-              className="p-1.5 text-muted transition-colors hover:text-txt"
             >
               <X className="size-4" />
             </Button>

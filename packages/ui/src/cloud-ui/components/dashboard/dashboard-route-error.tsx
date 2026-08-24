@@ -33,10 +33,9 @@ export function DashboardRouteError({ message }: { message: string }) {
       </div>
       <div className="flex gap-3">
         <Button
-          variant="ghost"
+          variant="warningOutline"
           type="button"
           onClick={() => window.location.reload()}
-          className="rounded-sm px-4 py-2 text-sm border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
         >
           Try again
         </Button>

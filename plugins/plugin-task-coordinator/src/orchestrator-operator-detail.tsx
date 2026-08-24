@@ -360,12 +360,12 @@ function OperatorDrawerShell({
           </p>
         </div>
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           size="icon-sm"
           ref={closeRef}
           type="button"
           onClick={onClose}
-          className="-mr-1 p-1 text-muted transition-colors hover:text-txt"
+          className="-mr-1"
           aria-label={closeLabel}
           data-testid="orchestrator-close-operator-detail"
           {...closeAgentProps}

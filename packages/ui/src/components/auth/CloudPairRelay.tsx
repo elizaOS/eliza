@@ -446,7 +446,9 @@ export function CloudHostedAgentAuthNotice({
         )}
         {nativeRecoveryMode === "manage" && onNativeRetry ? (
           <Button
-            className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md border border-white/15 bg-white/5 px-5 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-70"
+            variant="outlineMuted"
+            size="touch"
+            className="mt-3"
             disabled={activeNativeAction !== null}
             onClick={() => void handleNativeAction(onNativeRetry, "retry")}
             type="button"
@@ -542,7 +544,8 @@ export function CloudPairRelay({
         </p>
         {status.phase === "session-only" ? (
           <Button
-            className="mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710]"
+            size="touch"
+            className="mt-7"
             onClick={() => onPaired()}
             type="button"
           >

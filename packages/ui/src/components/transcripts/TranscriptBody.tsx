@@ -132,10 +132,11 @@ export function TranscriptBody({
                 ))
               ) : (
                 <Button
-                  variant="ghost"
+                  variant="transparent"
+                  size="content"
+                  align="start"
                   data-testid={`transcript-segment-text-${si}`}
                   onClick={() => handleSeek(seg.startMs)}
-                  className="h-auto whitespace-normal rounded-none bg-transparent p-0 text-left font-normal hover:bg-transparent"
                 >
                   {seg.text}
                 </Button>

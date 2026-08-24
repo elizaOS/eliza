@@ -233,7 +233,7 @@ export const AppPageSidebar = React.forwardRef<
       >
         {collapsible ? (
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
             onClick={() => handleCollapsedChange(true)}
             aria-label={collapseButtonAriaLabel}
@@ -242,7 +242,7 @@ export const AppPageSidebar = React.forwardRef<
                 ? `${testId}-collapse-inline`
                 : "page-sidebar-collapse-inline"
             }
-            className="size-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt"
+            className="shrink-0"
           >
             <PanelLeftClose className="size-3.5" aria-hidden />
           </Button>

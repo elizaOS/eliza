@@ -335,10 +335,9 @@ export function GitHubConnectionCard() {
               <div className="text-muted">
                 Enter this code on{" "}
                 <Button
-                  variant="link"
-                  size="content"
+                  variant="externalLink"
+                  size="micro"
                   type="button"
-                  className="inline-flex items-center gap-1 text-accent hover:underline"
                   onClick={() => openExternalUrl(deviceFlow.verificationUri)}
                 >
                   {deviceFlow.verificationUri.replace(/^https:\/\//, "")}
@@ -365,10 +364,10 @@ export function GitHubConnectionCard() {
           ) : null}
 
           <Button
-            variant="link"
-            size="content"
+            variant="externalLink"
+            size="micro"
             type="button"
-            className="inline-flex w-fit items-center gap-1 text-xs text-accent hover:underline"
+            className="w-fit"
             onClick={() => openExternalUrl(TOKEN_GENERATE_URL)}
           >
             <ExternalLink className="size-3" aria-hidden />

@@ -309,12 +309,7 @@ function ConnectionDisconnectAction({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-destructive hover:text-destructive/80"
-          disabled={isDisconnecting}
-        >
+        <Button variant="dangerOutline" size="sm" disabled={isDisconnecting}>
           {isDisconnecting ? (
             <Loader2 className="size-4 animate-spin mr-1" />
           ) : (

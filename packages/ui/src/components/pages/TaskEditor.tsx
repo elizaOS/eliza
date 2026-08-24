@@ -320,7 +320,8 @@ export function TaskEditor({
               value={cron}
               onChange={(e) => setCron(e.target.value)}
               placeholder="0 9 * * 1-5"
-              className="font-mono text-xs"
+              variant="config"
+              density="compact"
               data-testid="task-editor-cron"
               {...cronField.agentProps}
             />

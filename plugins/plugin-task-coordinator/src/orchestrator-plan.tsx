@@ -73,12 +73,11 @@ export function PlanDock({
       data-testid="orchestrator-plan"
     >
       <Button
-        variant="ghost"
+        variant="sectionToggle"
         size="content"
         align="start"
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
       >
         <ChevronRight
           className={`size-3 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}

@@ -60,8 +60,7 @@ export function CloudRpcStatus({
     <div className="flex justify-start">
       <Button
         variant="default"
-        size="sm"
-        className="text-xs font-bold"
+        size="compact"
         onClick={() => void onLogin()}
         disabled={loginBusy}
       >

@@ -589,9 +589,8 @@ export function ReleaseCenterView() {
           )}
           <Button
             ref={refreshAgent.ref}
-            size="icon"
+            size="icon-sm"
             variant="outline"
-            className="size-9 rounded-sm"
             disabled={busyAction === "refresh" || updateLoading}
             aria-label={t("common.refresh")}
             title={t("common.refresh")}
@@ -660,9 +659,8 @@ export function ReleaseCenterView() {
             </Button>
             <Button
               ref={resetReleaseNotesUrlAgent.ref}
-              size="icon"
-              variant="ghost"
-              className="size-9 rounded-sm text-muted-strong"
+              size="icon-sm"
+              variant="ghostMuted"
               aria-label={resetUrlLabel}
               title={resetUrlLabel}
               onClick={resetReleaseNotesUrlAction}

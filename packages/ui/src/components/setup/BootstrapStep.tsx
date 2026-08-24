@@ -333,9 +333,8 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
             over on a local agent instead of being trapped. */}
         <Button
           type="button"
-          variant="ghost"
+          variant="setupLink"
           onClick={() => startFreshFirstRunReload()}
-          className="h-auto bg-transparent p-0 text-sm text-[var(--first-run-text-muted)] underline underline-offset-2 transition-opacity hover:bg-transparent hover:opacity-80"
         >
           {t("bootstrapstep.startOver", { defaultValue: "Start over" })}
         </Button>

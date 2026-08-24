@@ -188,8 +188,7 @@ export function EditSkillModal({
               <Button
                 ref={retryControl.ref}
                 variant="outline"
-                size="sm"
-                className="text-xs"
+                size="compact"
                 onClick={() => loadSource()}
                 {...retryControl.agentProps}
               >
@@ -219,8 +218,7 @@ export function EditSkillModal({
             <Button
               ref={closeControl.ref}
               variant="outline"
-              size="sm"
-              className="text-xs"
+              size="compact"
               onClick={onClose}
               {...closeControl.agentProps}
             >

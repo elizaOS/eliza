@@ -9,11 +9,10 @@
  * PtyConsoleSidePanel wrappers and fills the `@elizaos/ui` PtyConsoleBase slot.
  */
 
+import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui";
-import { Input } from "@elizaos/ui";
 import { Send, Square, Terminal, X } from "lucide-react";
 import {
   type KeyboardEvent,
@@ -193,10 +192,12 @@ export function PtyConsoleBase({
       <footer className="flex h-11 shrink-0 items-center gap-2 border-t border-border/60 px-2">
         <Input
           ref={inputRef}
+          variant="secret"
+          density="compact"
           value={input}
           onChange={(event) => setInput(event.currentTarget.value)}
           onKeyDown={onInputKeyDown}
-          className="min-w-0 flex-1 rounded-md border border-border/60 bg-bg px-2 py-1.5 font-mono text-xs text-txt outline-none focus:border-accent"
+          className="min-w-0 flex-1"
           aria-label="Terminal input"
           autoComplete="off"
           spellCheck={false}

@@ -55,11 +55,10 @@ export function PtyConsoleDrawer({
           {sessions.length === 0 ? (
             <Button
               variant="outline"
-              size="default"
+              size="row"
               align="start"
               type="button"
               onClick={onNewSession}
-              className="w-full rounded-md border border-dashed border-border/70 px-3 py-2 text-left text-xs text-muted hover:border-accent hover:text-txt"
             >
               Start terminal
             </Button>

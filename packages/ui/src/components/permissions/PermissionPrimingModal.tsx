@@ -397,7 +397,8 @@ function PrimingCard({
 
       <Button
         type="button"
-        className="self-center text-xs text-muted underline-offset-2 hover:text-txt hover:underline"
+        variant="mutedLink"
+        className="self-center"
         onClick={onSkipAll}
         data-testid="priming-skip-all"
       >

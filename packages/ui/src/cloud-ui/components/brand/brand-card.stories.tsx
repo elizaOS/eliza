@@ -75,11 +75,7 @@ export const AsAgentCard: StoryObj = {
         }
         color="#ff6a00"
         action={
-          <Button
-            type="button"
-            className="text-sm font-medium text-txt-strong underline-offset-4 hover:underline"
-            onClick={() => {}}
-          >
+          <Button type="button" variant="link" onClick={() => {}}>
             Open agent
           </Button>
         }

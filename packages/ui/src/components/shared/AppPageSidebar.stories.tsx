@@ -13,7 +13,9 @@ function NavList() {
         <Button
           key={label}
           type="button"
-          className="rounded-sm px-2 py-1.5 text-left text-muted transition-colors hover:bg-card hover:text-txt"
+          variant="ghostMuted"
+          size="compact"
+          align="start"
         >
           {label}
         </Button>
@@ -68,10 +70,7 @@ export const WithHeaderAndAction: Story = {
       </div>
     ),
     bottomAction: (
-      <Button
-        type="button"
-        className="rounded-sm px-2 py-1 text-xs text-muted hover:text-txt"
-      >
+      <Button type="button" variant="ghostMuted" size="tiny">
         New
       </Button>
     ),

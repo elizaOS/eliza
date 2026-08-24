@@ -18,6 +18,7 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
       status: "",
       setting: "p-0",
       flat: "",
+      flatPadded: "p-4",
       brand: "relative border border-border bg-bg-elevated p-4 text-txt md:p-6",
       panel: "border border-border/60 bg-card/92",
     },

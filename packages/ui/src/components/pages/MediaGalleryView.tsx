@@ -599,7 +599,6 @@ export function MediaGalleryView({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-sm"
                   data-testid="media-download"
                   onClick={() => void handleDownloadSelected()}
                 >
@@ -613,7 +612,6 @@ export function MediaGalleryView({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="rounded-sm"
                     data-testid="media-share"
                     onClick={() => void handleShareSelected()}
                   >

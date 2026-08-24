@@ -263,9 +263,9 @@ export function CameraPageView(): React.JSX.Element {
               aria-label={t("camera.switch", { defaultValue: "Switch camera" })}
               onClick={handleSwitch}
               disabled={busy}
-              variant="ghost"
+              variant="surface"
               size="icon-lg"
-              className="grid size-11 place-items-center rounded-full border border-white/[0.18] bg-black/55 text-white transition-colors hover:bg-white/[0.16] disabled:opacity-50"
+              shape="circle"
             >
               <SwitchCamera className="size-5" aria-hidden />
             </Button>
@@ -277,8 +277,9 @@ export function CameraPageView(): React.JSX.Element {
               aria-label={t("camera.capture", { defaultValue: "Take photo" })}
               onClick={handleCapture}
               disabled={busy}
-              variant="ghost"
-              className="grid h-[72px] w-[72px] place-items-center rounded-full border-4 border-white/90 bg-white/10 transition-transform active:scale-95 disabled:opacity-60 motion-reduce:active:scale-100"
+              variant="surface"
+              size="icon-lg"
+              shape="circle"
             >
               {busy ? (
                 <Loader2

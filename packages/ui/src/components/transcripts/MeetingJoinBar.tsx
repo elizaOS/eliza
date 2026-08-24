@@ -108,7 +108,6 @@ export function MeetingJoinBar({
             placeholder="Paste a Meet, Teams, or Zoom link"
             aria-label="Meeting URL"
             aria-invalid={showInvalid || undefined}
-            className="pr-28"
           />
           {parsed ? (
             <span
@@ -179,7 +178,9 @@ export function MeetingJoinBar({
                 type="button"
                 data-testid={`stop-meeting-${m.id}`}
                 onClick={() => onStop(m.id)}
-                className="ml-auto rounded-sm px-2 py-0.5 text-xs text-muted transition-colors hover:bg-bg-muted/30 hover:text-txt"
+                variant="ghostMuted"
+                size="micro"
+                className="ml-auto"
               >
                 Stop
               </Button>

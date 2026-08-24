@@ -429,8 +429,9 @@ function DialpadButton({
     <Button
       ref={ref}
       onClick={() => onPress(digit)}
-      variant="ghost"
-      className="h-auto aspect-[1.6] rounded-sm bg-surface text-lg font-semibold text-txt transition-colors hover:bg-bg-hover"
+      variant="surface"
+      size="tile"
+      className="aspect-[1.6]"
       {...agentProps}
     >
       {digit}
@@ -460,8 +461,9 @@ const RecentCallButton = memo(function RecentCallButton({
     <Button
       ref={ref}
       onClick={handleSelect}
-      variant="ghost"
-      className="h-auto justify-start whitespace-normal rounded-sm p-3 text-left text-sm font-normal transition-colors hover:bg-surface"
+      variant="surface"
+      size="row"
+      align="start"
       {...agentProps}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">

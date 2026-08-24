@@ -100,10 +100,7 @@ export const EmptyContent: Story = {
         <div className="mt-1 text-sm text-white/60">
           Create your first agent to get started.
         </div>
-        <Button
-          type="button"
-          className="mt-4 rounded-md bg-orange-500 px-4 py-2 text-sm font-medium text-black hover:bg-orange-600"
-        >
+        <Button type="button" variant="default" className="mt-4">
           New agent
         </Button>
       </div>

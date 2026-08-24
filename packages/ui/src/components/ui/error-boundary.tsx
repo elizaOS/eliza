@@ -70,8 +70,7 @@ export class ErrorBoundary extends React.Component<
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="rounded-sm text-xs"
+            size="compact"
             onClick={this.resetErrorBoundary}
           >
             {this.props.retryLabel ?? "Try Again"}

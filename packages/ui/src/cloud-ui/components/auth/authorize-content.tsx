@@ -639,12 +639,7 @@ function SignedOutActions({
 
 function InlineCancelButton({ onCancel }: { onCancel: () => void }) {
   return (
-    <Button
-      variant="ghost"
-      type="button"
-      onClick={onCancel}
-      className="min-h-10 cursor-pointer rounded-sm px-3 text-sm text-white/50 transition-colors hover:text-white"
-    >
+    <Button variant="ghostMuted" size="touch" type="button" onClick={onCancel}>
       Cancel
     </Button>
   );

@@ -87,6 +87,12 @@ const buttonVariants = cva(
         transparent: "bg-transparent hover:bg-transparent",
         disclosureMuted:
           "w-full justify-between bg-transparent text-xs text-muted hover:bg-transparent hover:text-txt",
+        ghostFaded:
+          "bg-transparent text-muted opacity-70 hover:bg-surface hover:text-txt hover:opacity-100",
+        accentGhost:
+          "bg-transparent text-accent hover:bg-transparent hover:text-accent-muted",
+        setupLink:
+          "h-auto bg-transparent p-0 text-sm text-[var(--first-run-text-muted)] underline underline-offset-2 hover:bg-transparent hover:opacity-80",
       },
       size: {
         default:
@@ -130,6 +136,13 @@ const buttonVariants = cva(
         labeledForm:
           "h-10 gap-1.5 rounded-sm px-4 text-xs font-semibold pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         rowContent: "h-auto gap-3 rounded-none p-0 font-normal",
+        sidebarToggle:
+          "h-auto gap-1.5 rounded-sm px-1.5 py-1 text-xs font-medium leading-none",
+        labeledTiny: "h-7 gap-1 rounded-sm px-2.5 text-xs",
+        "icon-xs": "size-6 rounded-sm p-0",
+        "icon-2xs": "size-4 rounded-sm p-0",
+        labeledMicro:
+          "h-auto gap-0.5 rounded-sm px-1 py-0 text-2xs font-semibold",
       },
       shape: {
         default: "",
