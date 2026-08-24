@@ -741,7 +741,6 @@ export async function handleCharacterRoutes(
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
       temperature: 0.8,
-      maxTokens: 1500,
     });
     json(res, { generated: String(result) });
     return true;

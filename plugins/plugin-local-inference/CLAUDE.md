@@ -206,6 +206,8 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 
 ## Conventions / gotchas
 
+- Local text generation derives an omitted output boundary from the complete remaining loaded context. A missing context size, an oversized complete prompt, or a terminal token/context boundary is an explicit typed failure; never restore backend-specific 256/2048-token defaults or return boundary-ended text as complete.
+
 - **Text runs through the in-process FFI llama.cpp backend only** (`node-llama-cpp` has been retired). The engine checks the dispatcher's `available()`/FFI probe before using it; an absent/unsupported FFI runtime produces a clean `LocalInferenceUnavailableError` rather than a crash. There is no `node-llama-cpp` fallback.
 - **One FFI implementation, two selectable runtimes.** `BackendDispatcher` always drives the fused `libelizainference` surface. It selects `llama-cpp` for GGUF (the default and the required path for specialized kernels) or `litert-lm` when a supported build has a `.litertlm` artifact. `ELIZA_INFERENCE_BACKEND` accepts `auto`, `llama-cpp`, or `litert-lm`; forcing an unsupported runtime fails at load rather than silently falling back. There is no separate generic-GGUF backend.
 - **`TEXT_EMBEDDING` is NOT in the static plugin `models` map.** It is wired by `ensureLocalInferenceHandler()` at boot to avoid claiming the embedding slot before an Eliza-1 bundle is active. Do not add it to the static plugin object.

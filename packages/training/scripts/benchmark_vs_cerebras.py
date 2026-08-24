@@ -320,8 +320,6 @@ def _extract_tool_call_accuracy(summary: dict[str, Any] | None) -> float | None:
 def _call_cerebras_on_prompts(
     prompts: list[str],
     cerebras_model: str,
-    *,
-    max_tokens: int = 512,
 ) -> list[dict[str, Any]]:
     """Call Cerebras on a list of prompts. Returns a list of result dicts."""
     from cerebras_client import CerebrasClient, CerebrasError
@@ -334,7 +332,6 @@ def _call_cerebras_on_prompts(
             text = client.chat(
                 [{"role": "user", "content": prompt}],
                 temperature=0.0,
-                max_tokens=max_tokens,
             )
             latency_ms = (time.perf_counter() - t0) * 1000
             results.append(
@@ -508,7 +505,6 @@ def benchmark_tier(
             cerebras_results = _call_cerebras_on_prompts(
                 prompts,
                 cerebras_model,
-                max_tokens=2048,
             )
             elapsed = time.perf_counter() - t0
             quality = _compute_response_quality_proxy(cerebras_results)

@@ -541,12 +541,6 @@ export const fileAction: Action = {
       schema: { type: "boolean" },
     },
     {
-      name: "head_limit",
-      description: "For action=grep, truncate output to the first N lines.",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
       name: "show_line_numbers",
       description: "For action=grep: include 1-based line numbers.",
       required: false,

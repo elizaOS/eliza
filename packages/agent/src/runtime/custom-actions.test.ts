@@ -317,24 +317,25 @@ describe("performGuardedHttpGet — self-API loopback exemption", () => {
   });
 });
 
-describe("performGuardedHttpGet — body cap and headers", () => {
-  it("returns a body that fits the caller maxChars, including the exact limit", async () => {
-    const body = "z".repeat(16);
+describe("performGuardedHttpGet — complete bodies and headers", () => {
+  it("returns the complete response body", async () => {
+    const body = "z".repeat(64 * 1024);
     __setPinnedFetchImplForTests(
       async () => new Response(body, { status: 200 }),
     );
-    const result = await performGuardedHttpGet(PUBLIC_URL, { maxChars: 16 });
+    const result = await performGuardedHttpGet(PUBLIC_URL);
     expect(result.ok).toBe(true);
     expect(result.text).toBe(body);
   });
 
-  it("throws when the response exceeds the configured character cap", async () => {
+  it("rejects an oversized byte resource without returning a prefix", async () => {
     __setPinnedFetchImplForTests(
-      async () => new Response("z".repeat(17), { status: 200 }),
+      async () =>
+        new Response("z".repeat(4 * 1024 * 1024 + 1), { status: 200 }),
     );
-    await expect(
-      performGuardedHttpGet(PUBLIC_URL, { maxChars: 16 }),
-    ).rejects.toThrow(/16-character safety limit/);
+    await expect(performGuardedHttpGet(PUBLIC_URL)).rejects.toThrow(
+      /4 MiB safety limit/,
+    );
   });
 
   it("sends the browser-like default User-Agent and lets caller headers win", async () => {

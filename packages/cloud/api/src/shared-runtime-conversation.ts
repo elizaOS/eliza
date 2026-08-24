@@ -1014,13 +1014,8 @@ export class SharedRuntimeConversation {
   ): Promise<SharedTurnMessage[]> {
     const archived = await this.loadArchivedHistory();
     return mergeSharedRuntimeHistoryMessages(
-      mergeSharedRuntimeHistoryMessages(
-        archived,
-        current.recall ?? [],
-        Number.MAX_SAFE_INTEGER,
-      ),
+      mergeSharedRuntimeHistoryMessages(archived, current.recall ?? []),
       current.history,
-      Number.MAX_SAFE_INTEGER,
     );
   }
 
@@ -1071,7 +1066,6 @@ export class SharedRuntimeConversation {
             Number.MAX_SAFE_INTEGER,
           ),
           messages,
-          Number.MAX_SAFE_INTEGER,
         );
         const retained = boundSnapshotHistory(
           merged.slice(-MAX_SNAPSHOT_MESSAGES),

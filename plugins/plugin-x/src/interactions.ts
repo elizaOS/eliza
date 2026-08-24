@@ -971,7 +971,6 @@ ${tweet.text}`;
         const existingReplies = await this.runtime.getMemories({
           tableName: "messages",
           roomId: conversationRoomId,
-          count: 10, // Check recent messages in this room
         });
 
         // Check if any of the found memories is a reply to this specific tweet

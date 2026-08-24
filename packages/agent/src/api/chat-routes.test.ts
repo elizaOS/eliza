@@ -1158,6 +1158,20 @@ describe("recent visible assistant memory + interrupted receipts", () => {
 });
 
 describe("generateConversationTitle / generateChatResponse ownership", () => {
+  it("does not impose a completion-token ceiling on title generation", async () => {
+    let request: { maxTokens?: number } | undefined;
+    const runtime = makeRuntime({
+      useModel: async (...args: unknown[]) => {
+        request = args[1] as { maxTokens?: number };
+        return "Complete title";
+      },
+    });
+    await expect(
+      generateConversationTitle(runtime, "help me", "Eliza"),
+    ).resolves.toBe("Complete title");
+    expect(request?.maxTokens).toBeUndefined();
+  });
+
   it("strips wrapping quotes and rejects empty or over-long titles", async () => {
     const quoted = makeRuntime({
       useModel: async () => '"Desk setup"',

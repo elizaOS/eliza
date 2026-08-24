@@ -23,6 +23,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from lib.generation_integrity import PromptExceedsContextError
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,6 +75,28 @@ def _normalize_token_ids(tokenized: Any) -> list[int]:
             return _normalize_token_ids(tokenized[0])
         return [int(token) for token in tokenized]
     raise TypeError(f"Unsupported token payload type: {type(tokenized)!r}")
+
+
+def remaining_context_tokens(
+    tokenizer: ChatTokenizer,
+    messages: list[dict[str, str]],
+    *,
+    context_tokens: int,
+    source: str,
+) -> int:
+    """Return the full remaining generation capacity without changing the prompt."""
+
+    prompt_tokens = _normalize_token_ids(
+        tokenizer.apply_chat_template(
+            messages,
+            return_tensors=None,
+            add_generation_prompt=True,
+        )
+    )
+    remaining = context_tokens - len(prompt_tokens)
+    if remaining <= 0:
+        raise PromptExceedsContextError(source, len(prompt_tokens), context_tokens)
+    return remaining
 
 
 def tokenize_for_trainer(

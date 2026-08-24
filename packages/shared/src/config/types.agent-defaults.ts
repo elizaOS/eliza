@@ -105,29 +105,6 @@ export type AgentModelListConfig = {
   fallbacks?: string[];
 };
 
-export type AgentContextPruningConfig = {
-  mode?: "off" | "cache-ttl";
-  /** TTL to consider cache expired (duration string, default unit: minutes). */
-  ttl?: string;
-  keepLastAssistants?: number;
-  softTrimRatio?: number;
-  hardClearRatio?: number;
-  minPrunableToolChars?: number;
-  tools?: {
-    allow?: string[];
-    deny?: string[];
-  };
-  softTrim?: {
-    maxChars?: number;
-    headChars?: number;
-    tailChars?: number;
-  };
-  hardClear?: {
-    enabled?: boolean;
-    placeholder?: string;
-  };
-};
-
 export type CliBackendConfig = {
   /** CLI command to execute (absolute path or on PATH). */
   command: string;
@@ -267,10 +244,6 @@ export type AgentDefaultsConfig = {
   contextTokens?: number;
   /** Optional CLI backends for text-only fallback (claude-cli, etc.). */
   cliBackends?: Record<string, CliBackendConfig>;
-  /** Opt-in: prune old tool results from the LLM context to reduce token usage. */
-  contextPruning?: AgentContextPruningConfig;
-  /** Compaction tuning and pre-compaction memory flush behavior. */
-  compaction?: AgentCompactionConfig;
   /** Vector memory search configuration (per-agent overrides supported). */
   memorySearch?: MemorySearchConfig;
   /** Enable built-in advanced memory providers/evaluators by default. */
@@ -387,28 +360,4 @@ export type AgentDefaultsConfig = {
     /** Auto-prune sandbox containers. */
     prune?: SandboxPruneSettings;
   };
-};
-
-export type AgentCompactionMode = "default" | "safeguard";
-
-export type AgentCompactionConfig = {
-  /** Compaction summarization mode. */
-  mode?: AgentCompactionMode;
-  /** Minimum reserve tokens enforced for Pi compaction (0 disables the floor). */
-  reserveTokensFloor?: number;
-  /** Max share of context window for history during safeguard pruning (0.1–0.9, default 0.5). */
-  maxHistoryShare?: number;
-  /** Pre-compaction memory flush (agentic turn). Default: enabled. */
-  memoryFlush?: AgentCompactionMemoryFlushConfig;
-};
-
-export type AgentCompactionMemoryFlushConfig = {
-  /** Enable the pre-compaction memory flush (default: true). */
-  enabled?: boolean;
-  /** Run the memory flush when context is within this many tokens of the compaction threshold. */
-  softThresholdTokens?: number;
-  /** User prompt used for the memory flush turn (NO_REPLY is enforced if missing). */
-  prompt?: string;
-  /** System prompt appended for the memory flush turn. */
-  systemPrompt?: string;
 };

@@ -1217,7 +1217,6 @@ export class RemindersDomain {
 
   public async readRecentReminderConversation(args: {
     subjectType: LifeOpsSubjectType;
-    limit?: number;
   }): Promise<string[]> {
     if (
       args.subjectType !== "owner" ||
@@ -1241,7 +1240,6 @@ export class RemindersDomain {
       const memories = await this.ctx.runtime.getMemoriesByRoomIds({
         tableName: "messages",
         roomIds,
-        limit: Math.max(6, (args.limit ?? 6) * 2),
       });
       if (!Array.isArray(memories) || memories.length === 0) {
         return [];
@@ -1265,8 +1263,7 @@ export class RemindersDomain {
             memory,
           }),
         )
-        .filter((line): line is string => typeof line === "string")
-        .slice(-(args.limit ?? 6));
+        .filter((line): line is string => typeof line === "string");
     } catch {
       return [];
     }
@@ -1548,7 +1545,6 @@ export class RemindersDomain {
 
     const recentConversation = await this.readRecentReminderConversation({
       subjectType: args.subjectType,
-      limit: 6,
     });
     const reminderAt = args.dueAt ?? args.scheduledFor;
     const prompt = buildReminderDispatchPrompt({
@@ -1595,7 +1591,6 @@ export class RemindersDomain {
 
     const recentConversation = await this.readRecentReminderConversation({
       subjectType: "owner",
-      limit: 6,
     });
     const prompt = [
       `Write a short assistant update about the workflow "${args.workflow.title}".`,

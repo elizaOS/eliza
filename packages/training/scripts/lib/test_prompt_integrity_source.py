@@ -2,6 +2,15 @@
 
 from pathlib import Path
 
+import pytest
+
+from lib.generation_integrity import (
+    PromptExceedsContextError,
+    UnknownModelOutputLimitError,
+    anthropic_max_output_tokens,
+)
+from rl.tokenization_utils import remaining_context_tokens
+
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,11 +48,6 @@ def test_provider_choice_consumers_use_generation_admission() -> None:
 
 def test_known_training_context_slices_do_not_return() -> None:
     forbidden = {
-        "rl/tinker/tinker_client.py": (
-            "completion_tokens = completion_tokens[:max_sequence_length]",
-            "tokens = tokens[-max_sequence_length:]",
-        ),
-        "rl/feed_env.py": ("messages = [messages[0], *messages[2:]]",),
         "synth/together_synth.py": ("memory[-6:]", 'get("content") or "")[:300]'),
         "build_eliza1_sft_2b.py": ("msgs[: last_nonempty + 1]",),
         "rewrites/regularizer_reasoning_tool.py": (
@@ -56,6 +60,73 @@ def test_known_training_context_slices_do_not_return() -> None:
             "json.dumps(expected, ensure_ascii=False, default=str)[:1500]",
             '(response or "")[:2000]',
         ),
+        "kokoro/coreml/validate_e2e_coreml.py": ("ids = ids[:max_tokens]",),
+        "rl/feed_env.py": (
+            "messages = [messages[0], *messages[2:]]",
+            "min(512, self.config.max_token_length // 3)",
+            "max_steps_per_trajectory",
+            "max_trajectories",
+            "LIMIT $3",
+        ),
+        "rl/hybrid_env.py": ("self.config.max_response_tokens", '"max_tokens": 512'),
+        "rl/tinker/tinker_client.py": (
+            "completion_tokens = completion_tokens[:max_sequence_length]",
+            "tokens = tokens[-max_sequence_length:]",
+            "default_max_tokens",
+        ),
+        "rl/tinker/tinker_rl_orchestrator.py": ("max_tokens=128",),
+        "rl/tinker/tinker_trainer.py": (
+            "inference_max_tokens",
+            "max_tokens=500",
+            "max_steps_per_trajectory",
+            "max_trade_examples_per_trajectory",
+            "max_examples_per_trajectory",
+        ),
+        "synthesize_routing.py": (
+            '"content": content[:2000]',
+            'str(speaker)[:40]',
+            "pool[:200]",
+            "recent[-12:]",
+        ),
+        "synthesize_should_respond_routing.py": (
+            '"content": content[:600]',
+            '"content": sent[:600]',
+            '"speaker": speaker[:40]',
+        ),
+        "synthesize_multiparty_routing.py": (
+            "reasoning=str(reasoning)[:400]",
+            '(t.get("text") or "")[:2000]',
+            '(current_turn.get("text") or "")[:2000]',
+        ),
+        "synthesize_native_fillins.py": ("sanitize_task_text(content[:600])",),
+        "lib/adapters.py": (
+            "_strip_surrogates(prompt)[:4000]",
+            "_LIGHT_MEMORY_WINDOW",
+            '(t.get("text") or "")[:2000]',
+            "prev_text[:2000]",
+            "location_desc[:500]",
+        ),
+        "sources/scambench_adapter.py": ("reasoning[:1000]",),
+        "rl/online_env.py": (
+            "self.config.max_response_tokens",
+            'obs["markets"][:5]',
+            'obs["news"][:3]',
+            'obs["socialFeed"][:3]',
+            "post['content'][:80]",
+        ),
+        "rl/simulation_bridge.py": ("self.recent_news[:3]", "news.content[:80]"),
+        "rl/demo_continuous_rl.py": ("self.markets[:3]",),
+        "rl/run_team_rl.py": ("self.markets[:3]",),
+        "rl/fast_simulator.py": ('"news": news[:5]', '"social_feed": posts[:10]'),
+        "rl/multi_turn.py": ("self.action_text[:200]", "t.action_text[:100]"),
+        "benchmark/native_tool_call_bench.py": ('"predicted": predicted[:2000]',),
+        "rl/quality_scorer.py": ('"issues": self.issues[:5]',),
+        "rl/schemas.py": ("max_tokens: int = 1000", 'data.get("max_tokens", 1000)'),
+        "quantization/test_polarquant.py": ("max_tokens=2048",),
+        "rl/adversarial_game.py": ("t.content[:300]",),
+        "rl/red_team_gym.py": ("t.content[:300]",),
+        "rl/deterministic_eval.py": ("cleaned_response[:219]",),
+        "rl/compare_served_models.py": ('"max_tokens": max_tokens',),
     }
     found = []
     for relative, markers in forbidden.items():
@@ -63,3 +134,45 @@ def test_known_training_context_slices_do_not_return() -> None:
         found.extend(f"{relative}: {marker}" for marker in markers if marker in source)
 
     assert found == []
+
+
+def test_training_configs_do_not_restore_partial_trajectory_or_output_caps() -> None:
+    config_root = SCRIPTS_ROOT.parent / "config"
+    forbidden = {
+        "tinker.yaml": ("max_steps_per_trajectory", "max_tokens:"),
+        "atropos.yaml": ("max_steps_per_trajectory", "judge_max_tokens"),
+    }
+    found = []
+    for relative, markers in forbidden.items():
+        source = (config_root / relative).read_text(encoding="utf-8")
+        found.extend(f"{relative}: {marker}" for marker in markers if marker in source)
+    assert found == []
+
+
+def test_anthropic_calls_use_documented_provider_maxima() -> None:
+    assert anthropic_max_output_tokens("claude-opus-4-7") == 128_000
+    assert anthropic_max_output_tokens("claude-sonnet-4-20250514") == 64_000
+    assert anthropic_max_output_tokens("claude-haiku-4-5-20251001") == 64_000
+    with pytest.raises(UnknownModelOutputLimitError):
+        anthropic_max_output_tokens("unknown-model")
+
+    for relative in ("synthesize_targets.py", "eliza_reward_fn.py"):
+        source = (SCRIPTS_ROOT / relative).read_text(encoding="utf-8")
+        assert "max_tokens=anthropic_max_output_tokens(" in source
+
+
+def test_generation_uses_all_remaining_context_or_rejects_prompt() -> None:
+    class Tokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            del kwargs
+            return list(range(len(messages[0]["content"])))
+
+    tokenizer = Tokenizer()
+    messages = [{"role": "user", "content": "complete"}]
+    assert remaining_context_tokens(
+        tokenizer, messages, context_tokens=12, source="test"
+    ) == 4
+    with pytest.raises(PromptExceedsContextError):
+        remaining_context_tokens(
+            tokenizer, messages, context_tokens=8, source="test"
+        )

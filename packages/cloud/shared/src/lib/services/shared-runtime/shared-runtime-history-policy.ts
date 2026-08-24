@@ -566,7 +566,6 @@ export function compareSharedRuntimeHistoryMessages(
 export function mergeSharedRuntimeHistoryMessages<T extends SharedRuntimeHistoryMessageLike>(
   current: T[],
   incoming: T[],
-  _limit: number,
 ): T[] {
   const merged = new Map<string, T>();
   for (const message of [...current, ...incoming]) {
