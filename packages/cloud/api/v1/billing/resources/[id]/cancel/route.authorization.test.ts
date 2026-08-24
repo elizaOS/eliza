@@ -57,8 +57,11 @@ beforeEach(() => {
 
 describe("billing resource cancellation authorization", () => {
   test("uses the freshly authorized organization at the final effect boundary", async () => {
+    const revalidatedStewardUserIds: string[] = [];
     requestCancellation.mockImplementation(async (options) => {
-      await options.authorizeInfrastructureMutation();
+      revalidatedStewardUserIds.push(
+        await options.authorizeInfrastructureMutation(),
+      );
       return {
         disposition: "accepted",
         receipt: {
@@ -81,6 +84,7 @@ describe("billing resource cancellation authorization", () => {
         id: `${role}-1`,
         organization_id: "org-current",
         role,
+        steward_id: `steward-${role}`,
       });
 
       const response = await app.request(
@@ -104,6 +108,10 @@ describe("billing resource cancellation authorization", () => {
 
     expect(requestCancellation).toHaveBeenCalledTimes(2);
     expect(requireCurrentBillingManagerSession).toHaveBeenCalledTimes(4);
+    expect(revalidatedStewardUserIds).toEqual([
+      "steward-owner",
+      "steward-admin",
+    ]);
     expect(requestCancellation).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -156,6 +164,7 @@ describe("billing resource cancellation authorization", () => {
       id: "owner-1",
       organization_id: "org-current",
       role: "owner",
+      steward_id: "steward-owner",
     });
     requestCancellation.mockImplementation(async (options) => {
       if (options.idempotencyKey === "") {

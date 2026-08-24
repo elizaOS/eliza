@@ -140,7 +140,8 @@ beforeAll(async () => {
         is_active boolean NOT NULL DEFAULT true
       );
       CREATE TABLE users (
-        id uuid PRIMARY KEY, organization_id uuid NOT NULL, role text NOT NULL DEFAULT 'member',
+        id uuid PRIMARY KEY, organization_id uuid NOT NULL,
+        steward_user_id text NOT NULL UNIQUE, role text NOT NULL DEFAULT 'member',
         is_active boolean NOT NULL DEFAULT true,
         is_anonymous boolean NOT NULL DEFAULT false,
         expires_at timestamp, deleted_at timestamp,
@@ -270,12 +271,13 @@ realPostgres("compute stop concurrency", () => {
     const organizationId = randomUUID();
     const userId = randomUUID();
     const resourceId = randomUUID();
+    const stewardUserId = `steward:${userId}`;
     await dbWrite.execute(
       sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
     );
     await dbWrite.execute(
-      sql`INSERT INTO users(id, organization_id, role)
-          VALUES (${userId}, ${organizationId}, 'owner')`,
+      sql`INSERT INTO users(id, organization_id, steward_user_id, role)
+          VALUES (${userId}, ${organizationId}, ${stewardUserId}, 'owner')`,
     );
 
     let enqueueCount = 0;
@@ -317,6 +319,7 @@ realPostgres("compute stop concurrency", () => {
           // primary membership revocation commits on another connection.
           await revoker.query("BEGIN");
           await revoker.query("UPDATE users SET role = 'member' WHERE id = $1", [userId]);
+          return stewardUserId;
         },
       });
 
@@ -335,16 +338,101 @@ realPostgres("compute stop concurrency", () => {
     }
   }, 15_000);
 
+  test("billing cancellation waits for a steward rebinding and rejects the old credential", async () => {
+    if (!isolatedDsn || !dbWrite || !BillingCancellationsService) {
+      throw new Error("harness unavailable");
+    }
+    const organizationId = randomUUID();
+    const userId = randomUUID();
+    const resourceId = randomUUID();
+    const oldStewardUserId = `steward:${userId}`;
+    const newStewardUserId = `steward:rebound:${userId}`;
+    await dbWrite.execute(
+      sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id, steward_user_id, role)
+          VALUES (${userId}, ${organizationId}, ${oldStewardUserId}, 'owner')`,
+    );
+
+    let enqueueCount = 0;
+    const service: BillingResourceCancellationsService = new BillingCancellationsService({
+      transact: (callback) => dbWrite!.transaction(callback),
+      enqueueStop: async (
+        tx: DbTransaction,
+        options: RequestBillingCancellationOptions,
+      ): Promise<{ jobId: string }> => {
+        enqueueCount += 1;
+        const [job] = await tx
+          .insert(jobsTable)
+          .values({
+            type: "container_stop",
+            status: "pending",
+            data: { resourceId: options.resourceId },
+            organization_id: options.organizationId,
+            user_id: options.requestedByUserId,
+          })
+          .returning({ id: jobsTable.id });
+        if (!job) throw new Error("test job insert returned no row");
+        return { jobId: job.id };
+      },
+      triggerImmediate: async () => {},
+    });
+    const rebinder = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([rebinder.connect(), observer.connect()]);
+    try {
+      const admission = service.request({
+        organizationId,
+        requestedByUserId: userId,
+        resourceType: "container",
+        resourceId,
+        expectedLifecycleRevision: 1,
+        idempotencyKey: "cancel-concurrent-steward-rebind-0001",
+        authorizeInfrastructureMutation: async () => {
+          // The old credential was freshly valid, but its primary identity is
+          // rebound before admission can acquire the matching user lock.
+          await rebinder.query("BEGIN");
+          await rebinder.query("UPDATE users SET steward_user_id = $1 WHERE id = $2", [
+            newStewardUserId,
+            userId,
+          ]);
+          return oldStewardUserId;
+        },
+      });
+
+      await waitUntilBlocked(observer);
+      await rebinder.query("COMMIT");
+      await expect(admission).rejects.toMatchObject({ status: 403, code: "access_denied" });
+      expect(enqueueCount).toBe(0);
+      const durable = await observer.query(`SELECT
+        (SELECT count(*)::int FROM jobs) AS jobs,
+        (SELECT count(*)::int FROM billing_cancel_commands) AS commands,
+        (SELECT count(*)::int FROM billing_cancel_command_keys) AS keys`);
+      expect(durable.rows[0]).toEqual({ jobs: 0, commands: 0, keys: 0 });
+      const rebound = await observer.query<{ steward_user_id: string }>(
+        "SELECT steward_user_id FROM users WHERE id = $1",
+        [userId],
+      );
+      expect(rebound.rows[0]?.steward_user_id).toBe(newStewardUserId);
+    } finally {
+      await rebinder.query("ROLLBACK").catch(() => undefined);
+      await Promise.all([rebinder.end(), observer.end()]);
+    }
+  }, 15_000);
+
   test("a top-up holding the organization lock wins before stop eligibility is revalidated", async () => {
     if (!isolatedDsn || !dbWrite || !stopService) throw new Error("harness unavailable");
     const organizationId = randomUUID();
     const userId = randomUUID();
     const containerId = randomUUID();
+    const stewardUserId = `steward:${userId}`;
     await dbWrite.execute(
       sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
     );
     await dbWrite.execute(
-      sql`INSERT INTO users(id, organization_id) VALUES (${userId}, ${organizationId})`,
+      sql`INSERT INTO users(id, organization_id, steward_user_id)
+          VALUES (${userId}, ${organizationId}, ${stewardUserId})`,
     );
     await seedContainer({ organizationId, userId, containerId, lifecycleRevision: 4 });
     const holder = new Client({ connectionString: isolatedDsn });
@@ -377,11 +465,13 @@ realPostgres("compute stop concurrency", () => {
     const organizationId = randomUUID();
     const userId = randomUUID();
     const containerId = randomUUID();
+    const stewardUserId = `steward:${userId}`;
     await dbWrite.execute(
       sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
     );
     await dbWrite.execute(
-      sql`INSERT INTO users(id, organization_id) VALUES (${userId}, ${organizationId})`,
+      sql`INSERT INTO users(id, organization_id, steward_user_id)
+          VALUES (${userId}, ${organizationId}, ${stewardUserId})`,
     );
     await seedContainer({ organizationId, userId, containerId, lifecycleRevision: 7 });
     const requested = await stopService.enqueueContainerStopOnce({ containerId, organizationId });

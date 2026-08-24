@@ -336,7 +336,8 @@ export async function callPlatformCloudMcpTool(c: AppContext, name: string, args
           idempotencyKey,
           triggerEnv: c.env,
           authorizeInfrastructureMutation: async () => {
-            await requireCurrentBillingManagerSession(c);
+            const current = await requireCurrentBillingManagerSession(c);
+            return current.steward_id;
           },
         }),
       );

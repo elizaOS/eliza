@@ -103,14 +103,15 @@ export const billingCancelCommandsRepository = {
    * Acquire the primary authority rows in one deterministic order before a
    * cancellation transaction creates any durable effect. PostgreSQL
    * re-evaluates a FOR SHARE predicate after a conflicting UPDATE commits, so
-   * a concurrent deactivation or role revocation cannot slip through a stale
-   * session snapshot. The retained row locks then fence later revocations
-   * until this transaction commits or rolls back.
+   * a concurrent deactivation, role revocation, or steward identity rebinding
+   * cannot slip through a stale session snapshot. The retained row locks then
+   * fence later authority changes until this transaction commits or rolls back.
    */
   async lockBillingManagerAuthority(
     tx: DbTransaction,
     organizationId: string,
     userId: string,
+    expectedStewardUserId: string,
   ): Promise<boolean> {
     const [organization] = await tx
       .select({ id: organizations.id })
@@ -127,6 +128,7 @@ export const billingCancelCommandsRepository = {
         and(
           eq(users.id, userId),
           eq(users.organization_id, organizationId),
+          eq(users.steward_user_id, expectedStewardUserId),
           inArray(users.role, ["owner", "admin"]),
           eq(users.is_active, true),
           eq(users.is_anonymous, false),

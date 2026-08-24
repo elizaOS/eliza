@@ -121,9 +121,10 @@ describe("platform MCP billing cancellation authority", () => {
       id: "owner-1",
       organization_id: "org-current",
       role: "owner",
+      steward_id: "steward-owner",
     });
     requestCancellation.mockImplementation(async (options) => {
-      await options.authorizeInfrastructureMutation();
+      expect(await options.authorizeInfrastructureMutation()).toBe("steward-owner");
       return { disposition: "accepted", receipt: { status: "accepted" } };
     });
 
