@@ -1,10 +1,12 @@
 -- Durable one-shot authority for sandbox replacement provider effects. The
--- table is intentionally append-only: an ambiguous create remains fenced until
--- exact cleanup is proven, and committed generations retain permanent history.
+-- table is append-only for the owner's lifetime: an ambiguous create remains
+-- fenced until exact cleanup is proven. Terminal non-restore history may be
+-- erased only by its organization's owning cascade; other retention authorities
+-- can still reject organization deletion.
 
 CREATE TABLE IF NOT EXISTS "agent_sandbox_replacement_attempts" (
   "id" uuid PRIMARY KEY NOT NULL,
-  "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE RESTRICT,
+  "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
   "agent_id" uuid NOT NULL,
   "operation_kind" text NOT NULL,
   "lifecycle_revision" numeric(20, 0) NOT NULL,
@@ -216,7 +218,14 @@ BEGIN
     RAISE EXCEPTION 'replacement attempts cannot be truncated';
   END IF;
   IF TG_OP = 'DELETE' THEN
-    RAISE EXCEPTION 'replacement attempts cannot be deleted';
+    IF pg_trigger_depth() = 2
+      AND OLD."state" IN ('lifecycle_committed', 'cleanup_proven')
+      AND NOT EXISTS (
+        SELECT 1 FROM "organizations" WHERE "id" = OLD."organization_id"
+      ) THEN
+      RETURN OLD;
+    END IF;
+    RAISE EXCEPTION 'replacement attempts cannot be deleted before terminal owner erasure';
   END IF;
   IF TG_OP = 'INSERT' THEN
     IF NEW."state" <> 'in_flight_unresolved'

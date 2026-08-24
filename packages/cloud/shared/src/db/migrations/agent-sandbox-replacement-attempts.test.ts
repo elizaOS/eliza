@@ -109,7 +109,7 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
     CHECK (operation_kind = ANY (ARRAY['provision'::text, 'upgrade'::text, 'downgrade'::text]))
   `),
   agent_sandbox_replacement_attempts_organization_id_fkey: normalizeDefinition(`
-    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
   `),
   agent_sandbox_replacement_attempts_pkey: "PRIMARY KEY (id)",
   agent_sandbox_replacement_attempts_restore_lease_fkey: normalizeDefinition(`
@@ -306,6 +306,25 @@ async function commitLifecycle(db: PGlite, attemptId: string = ATTEMPT_ID): Prom
   );
 }
 
+async function transitionAttempt(
+  db: PGlite,
+  state: "in_flight_unresolved" | "provider_succeeded" | "lifecycle_committed" | "cleanup_proven",
+): Promise<void> {
+  if (state === "in_flight_unresolved") return;
+  if (state === "cleanup_proven") {
+    await db.query(
+      `UPDATE agent_sandbox_replacement_attempts
+       SET state = 'cleanup_proven', cleanup_proven_at = clock_timestamp(),
+         cleanup_receipt_digest = $1, updated_at = clock_timestamp()
+       WHERE id = $2::uuid`,
+      [DIGEST, ATTEMPT_ID],
+    );
+    return;
+  }
+  await recordProviderSuccess(db);
+  if (state === "lifecycle_committed") await commitLifecycle(db);
+}
+
 afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
@@ -325,6 +344,11 @@ describe("0313 agent sandbox replacement attempts", () => {
 
     const db = await database();
     const schema = getTableConfig(agentSandboxReplacementAttempts);
+    expect(
+      schema.foreignKeys.find((foreignKey) =>
+        foreignKey.getName().includes("organization_id_organizations_id"),
+      )?.onDelete,
+    ).toBe("cascade");
     const columns = await db.query<{
       column_name: string;
       has_default: boolean;
@@ -540,7 +564,7 @@ describe("0313 agent sandbox replacement attempts", () => {
     );
     await expect(
       db.query("DELETE FROM agent_sandbox_replacement_attempts WHERE id = $1::uuid", [ATTEMPT_ID]),
-    ).rejects.toThrow(/cannot be deleted/);
+    ).rejects.toThrow(/cannot be deleted before terminal owner erasure/);
     await expect(db.exec("TRUNCATE TABLE agent_sandbox_replacement_attempts")).rejects.toThrow(
       /cannot be truncated/,
     );
@@ -552,6 +576,52 @@ describe("0313 agent sandbox replacement attempts", () => {
       ),
     ).rejects.toThrow(/terminal replacement attempt is immutable/);
   });
+
+  for (const state of ["in_flight_unresolved", "provider_succeeded"] as const) {
+    test(`rolls back owner erasure while the replacement effect is ${state}`, async () => {
+      const db = await database();
+      await insertAttempt(db);
+      await transitionAttempt(db, state);
+
+      await expect(
+        db.query("DELETE FROM organizations WHERE id = $1::uuid", [ORGANIZATION_ID]),
+      ).rejects.toThrow(/cannot be deleted before terminal owner erasure/);
+      expect(
+        (await db.query("SELECT id FROM organizations WHERE id = $1::uuid", [ORGANIZATION_ID]))
+          .rows,
+      ).toHaveLength(1);
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM agent_sandbox_replacement_attempts WHERE organization_id = $1::uuid",
+            [ORGANIZATION_ID],
+          )
+        ).rows,
+      ).toHaveLength(1);
+    });
+  }
+
+  for (const state of ["lifecycle_committed", "cleanup_proven"] as const) {
+    test(`permits owner erasure after the replacement effect is ${state}`, async () => {
+      const db = await database();
+      await insertAttempt(db);
+      await transitionAttempt(db, state);
+      await db.query("DELETE FROM organizations WHERE id = $1::uuid", [ORGANIZATION_ID]);
+
+      expect(
+        (await db.query("SELECT id FROM organizations WHERE id = $1::uuid", [ORGANIZATION_ID]))
+          .rows,
+      ).toHaveLength(0);
+      expect(
+        (
+          await db.query(
+            "SELECT id FROM agent_sandbox_replacement_attempts WHERE organization_id = $1::uuid",
+            [ORGANIZATION_ID],
+          )
+        ).rows,
+      ).toHaveLength(0);
+    });
+  }
 
   test("binds optional restore authority to one exact durable lease tuple", async () => {
     const db = await database();
