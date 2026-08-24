@@ -158,10 +158,27 @@ async function launchExtensionContext(chromium) {
   }
 }
 
+async function waitForRenderedFrame(page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  });
+}
+
 async function saveScreenshot(page, name) {
+  await waitForRenderedFrame(page);
   await fsp.mkdir(resultsDir, { recursive: true });
   const screenshotPath = path.join(resultsDir, `${name}.png`);
   await page.screenshot({ path: screenshotPath, fullPage: true });
+}
+
+async function savePopupScreenshot(page, name) {
+  await waitForRenderedFrame(page);
+  await fsp.mkdir(resultsDir, { recursive: true });
+  const screenshotPath = path.join(resultsDir, `${name}.png`);
+  await page.locator(".panel").screenshot({ path: screenshotPath });
 }
 
 async function saveFailureScreenshot(page, name) {
@@ -633,7 +650,7 @@ async function runPairAndSyncScenario(chromium) {
         "Connected to Eliza",
         120_000,
       );
-      await saveScreenshot(popupPage, "chrome-website-access-granted");
+      await savePopupScreenshot(popupPage, "chrome-website-access-granted");
     }
     const compactPopup = await popupPage.evaluate(
       (apiOrigin) => ({
@@ -646,7 +663,7 @@ async function runPairAndSyncScenario(chromium) {
     if (compactPopup.hasDiagnostics || compactPopup.exposesApiOrigin) {
       throw new Error("Chrome popup exposed removed connection diagnostics.");
     }
-    await saveScreenshot(popupPage, "chrome-pair-and-sync-success");
+    await savePopupScreenshot(popupPage, "chrome-pair-and-sync-success");
 
     const syncRequests = mockServer.requests.filter(
       (request) =>

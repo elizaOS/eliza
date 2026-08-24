@@ -47,6 +47,8 @@ export function installAgentHostBridge(): void {
   > = async (req, runtime, options) => {
     const resolved = await resolveAuthorizedRouteRole(req, {
       allowCookieAuth: options.allowCookieAuth,
+      allowTrustedLocalBypass: options.allowTrustedLocalBypass,
+      allowBearerAuth: options.allowBearerAuth,
       state: {
         current: runtime,
       },
