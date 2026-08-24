@@ -81,7 +81,8 @@ function MockView({
         }}
         defaultValue="25.00"
         placeholder="0.00"
-        className="w-full rounded border px-3 py-2 text-base sm:text-sm"
+        variant="form"
+        className="w-full"
       />
       <Input
         ref={(el) => {
@@ -89,14 +90,14 @@ function MockView({
         }}
         defaultValue="alice.eth"
         placeholder="address"
-        className="w-full rounded border px-3 py-2 text-base sm:text-sm"
+        variant="form"
+        className="w-full"
       />
       <Button
         type="button"
         ref={(el) => {
           refs.current["send.submit"] = el;
         }}
-        className="rounded bg-accent px-4 py-2 text-sm text-accent-fg"
       >
         Send
       </Button>

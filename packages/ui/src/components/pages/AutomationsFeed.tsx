@@ -660,13 +660,12 @@ export function AutomationsFeed({
               <Button
                 ref={newAutomationAction.ref}
                 type="button"
-                variant="ghost"
+                variant="ghostMuted"
                 size="icon-sm"
                 aria-label={t("automationsfeed.addAutomation", {
                   defaultValue: "Add automation",
                 })}
                 aria-expanded={createOpen}
-                className="size-9 rounded-md text-muted-strong hover:bg-bg-hover hover:text-txt"
                 onClick={() => setCreateOpen((current) => !current)}
                 {...newAutomationAction.agentProps}
               >
@@ -1050,8 +1049,10 @@ function FeedRowItem({
       <Button
         ref={openAction.ref}
         onClick={onOpen}
-        variant="ghost"
-        className="flex h-auto min-w-0 flex-1 items-center justify-start gap-3 whitespace-normal rounded-none p-0 text-left font-normal hover:bg-transparent"
+        variant="transparent"
+        size="rowContent"
+        align="start"
+        className="min-w-0 flex-1 items-center whitespace-normal"
         {...openAction.agentProps}
       >
         <Icon className={`size-4 shrink-0 ${iconToneClass}`} aria-hidden />
@@ -1123,9 +1124,8 @@ function FeedRowItem({
           aria-busy={isRunning}
           disabled={isRunning}
           onClick={onRunNow}
-          variant="ghost"
+          variant="ghostMuted"
           size="icon-sm"
-          className="size-7 rounded-sm p-1.5 text-muted-strong transition-colors hover:bg-bg-accent"
           {...runAction.agentProps}
         >
           {isRunning ? (

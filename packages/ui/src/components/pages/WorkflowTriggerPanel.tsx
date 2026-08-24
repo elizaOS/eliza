@@ -217,7 +217,9 @@ export function WorkflowTriggerPanel({
               <span>{triggerSummary(trigger)}</span>
               <Button
                 type="button"
-                className="ml-0.5 text-muted-foreground opacity-40 hover:text-destructive group-hover:opacity-100"
+                variant="dangerGhost"
+                size="disclosure"
+                className="ml-0.5"
                 aria-label={`Delete ${meta.label} trigger`}
                 onClick={() =>
                   void client
@@ -240,9 +242,10 @@ export function WorkflowTriggerPanel({
         })}
         <Button
           type="button"
-          variant="ghost"
+          variant="ghostMuted"
           size="icon-sm"
-          className="shrink-0 rounded-full"
+          shape="circle"
+          className="shrink-0"
           aria-label="Add workflow trigger"
           onClick={() => setType((current) => current ?? "once")}
         >
@@ -261,7 +264,9 @@ export function WorkflowTriggerPanel({
               <Button
                 key={option}
                 type="button"
-                className={`grid size-8 place-items-center rounded-md ${type === option ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
+                variant="selection"
+                size="icon-sm"
+                data-state={type === option ? "on" : "off"}
                 aria-label={TYPE_META[option].label}
                 aria-pressed={type === option}
                 title={TYPE_META[option].label}
@@ -362,7 +367,8 @@ export function WorkflowTriggerPanel({
                     ? "Cron expression"
                     : "Start time"
               }
-              className="h-8 min-w-40 flex-1 text-xs"
+              density="compact"
+              className="min-w-40 flex-1"
             />
           )}
           <Button

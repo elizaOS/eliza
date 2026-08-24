@@ -127,13 +127,15 @@ export function BrowserTabFoldControl({
       ref={ref}
       {...agentProps}
       type="button"
-      variant="outline"
+      variant="outlineAccent"
+      size="touch"
+      shape="circle"
       onClick={onOpen}
       disabled={disabled}
       aria-label={openLabel}
       aria-haspopup="dialog"
       data-testid="browser-workspace-tab-fold-control"
-      className="flex h-11 min-h-11 min-w-0 shrink-0 items-center gap-2 rounded-full border-transparent bg-card/70 px-3 text-sm text-txt shadow-inset"
+      className="min-w-0 shrink-0"
     >
       <Globe className="size-4 shrink-0 text-muted" aria-hidden />
       <span className="min-w-0 max-w-[9rem] truncate font-medium">
@@ -245,15 +247,16 @@ function BrowserTabCard({
           type="button"
           aria-label={`${closeLabel} ${tab.label}`}
           title={`${closeLabel}: ${tab.label}`}
-          variant="ghost"
-          size="icon"
+          variant="dangerGhost"
+          size="icon-lg"
+          shape="circle"
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
             onClose();
           }}
           data-testid={`browser-tab-card-close-${tab.id}`}
-          className="absolute right-1 top-1 size-11 rounded-full text-muted transition-colors hover:bg-bg-muted/60 hover:text-danger"
+          className="absolute right-1 top-1"
         >
           <X className="size-4" />
         </Button>
@@ -323,9 +326,10 @@ export function BrowserTabSwitcher({
           <DialogTitle>{title}</DialogTitle>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            className="h-11 min-h-11 shrink-0 gap-1.5 rounded-full border border-border/50 bg-card/55 px-3 hover:bg-bg-muted/70"
+            variant="outlineAccent"
+            size="touch"
+            shape="circle"
+            className="shrink-0"
             disabled={actionsDisabled}
             onClick={() => {
               onNewTab();

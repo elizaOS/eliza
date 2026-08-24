@@ -85,6 +85,8 @@ const buttonVariants = cva(
           "h-auto justify-start gap-2 bg-transparent px-0 py-2 text-base font-medium text-muted hover:bg-transparent hover:text-txt",
         mediaZoom: "h-auto rounded-sm bg-transparent p-0 hover:bg-transparent",
         transparent: "bg-transparent hover:bg-transparent",
+        disclosureMuted:
+          "w-full justify-between bg-transparent text-xs text-muted hover:bg-transparent hover:text-txt",
       },
       size: {
         default:
@@ -121,6 +123,13 @@ const buttonVariants = cva(
         zoomPill:
           "h-7 min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums",
         fill: "h-full w-full rounded-sm p-0",
+        closeGlyph: "size-8 rounded-sm p-0 text-xl leading-none",
+        inlineIcon: "h-auto px-2 py-0 text-xs",
+        labeledSm:
+          "h-9 gap-2 rounded-sm px-3 py-1.5 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        labeledForm:
+          "h-10 gap-1.5 rounded-sm px-4 text-xs font-semibold pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        rowContent: "h-auto gap-3 rounded-none p-0 font-normal",
       },
       shape: {
         default: "",

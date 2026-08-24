@@ -60,8 +60,10 @@ function typeLabel(type: string): string {
   return type.slice(0, 6);
 }
 
-/** Color for column type badge. */
-function typeBadgeColor(type: string): string {
+/** Semantic tone for column type badges. */
+function typeBadgeTone(
+  type: string,
+): "accent" | "success" | "warning" | "danger" | "muted" {
   const t = type.toLowerCase();
   if (
     t.includes("int") ||
@@ -71,16 +73,14 @@ function typeBadgeColor(type: string): string {
     t.includes("real") ||
     t.includes("double")
   )
-    return "text-accent-fg bg-accent/12";
-  if (t.includes("bool")) return "text-ok bg-ok/10";
-  if (t.includes("json")) return "text-warn bg-warn/10";
-  if (t.includes("uuid")) return "text-accent bg-accent/10";
-  if (t.includes("timestamp") || t.includes("date"))
-    return "text-danger bg-danger/10";
-  if (t.includes("text") || t.includes("char"))
-    return "text-muted-strong bg-bg-hover";
-  if (t.includes("vector")) return "text-accent bg-accent/12";
-  return "text-muted-strong bg-bg-hover";
+    return "accent";
+  if (t.includes("bool")) return "success";
+  if (t.includes("json")) return "warning";
+  if (t.includes("uuid")) return "accent";
+  if (t.includes("timestamp") || t.includes("date")) return "danger";
+  if (t.includes("text") || t.includes("char")) return "muted";
+  if (t.includes("vector")) return "accent";
+  return "muted";
 }
 
 // ── Shared display components ─────────────────────────────────────────
@@ -177,16 +177,14 @@ export function ResultsGrid({
                     {meta && (
                       <Badge
                         variant="outline"
-                        className={`text-3xs px-1.5 py-0 border-none font-medium ${typeBadgeColor(meta.type)}`}
+                        size="micro"
+                        tone={typeBadgeTone(meta.type)}
                       >
                         {typeLabel(meta.type)}
                       </Badge>
                     )}
                     {meta?.isPrimaryKey && (
-                      <Badge
-                        variant="outline"
-                        className="border-none bg-accent/16 px-1.5 py-0 text-3xs font-bold text-accent-fg "
-                      >
+                      <Badge variant="outline" size="microBold" tone="accent">
                         PK
                       </Badge>
                     )}
@@ -295,18 +293,20 @@ export function PaginationBar({
       </span>
       <div className="flex items-center gap-2">
         <Button
-          variant="outline"
-          size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
+          variant="outlineMuted"
+          size="tinyWide"
+          align="start"
+          className="whitespace-normal break-words"
           disabled={!hasPrev}
           onClick={onPrev}
         >
           {t("common.prev")}
         </Button>
         <Button
-          variant="outline"
-          size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
+          variant="outlineMuted"
+          size="tinyWide"
+          align="start"
+          className="whitespace-normal break-words"
           disabled={!hasNext}
           onClick={onNext}
         >

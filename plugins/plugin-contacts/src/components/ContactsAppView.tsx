@@ -261,9 +261,9 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
           <Button
             ref={back.ref}
             {...back.agentProps}
-            variant="ghost"
-            size="icon"
-            className="size-9 shrink-0 text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="icon-sm"
+            className="shrink-0"
             onClick={mode === "list" ? exitToApps : handleBackToList}
             aria-label={backLabel}
           >
@@ -286,9 +286,8 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
           <Button
             ref={newEl.ref}
             {...newEl.agentProps}
-            variant="ghost"
-            size="icon"
-            className="size-9 text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="icon-sm"
             onClick={handleOpenNew}
             aria-label={newLabel}
             data-testid="contacts-new"
@@ -659,9 +658,9 @@ function ContactPhoneRow({
       <Button
         ref={callEl.ref}
         {...callEl.agentProps}
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0 rounded-lg text-muted hover:text-txt"
+        variant="ghostMuted"
+        size="icon-sm"
+        className="shrink-0"
         onClick={() => navigateToPhoneWithNumber(value)}
         aria-label={`${callLabel} ${value}`}
         data-testid="contacts-detail-call"
@@ -671,9 +670,9 @@ function ContactPhoneRow({
       <Button
         ref={textEl.ref}
         {...textEl.agentProps}
-        variant="ghost"
-        size="icon"
-        className="size-8 shrink-0 rounded-lg text-muted hover:text-txt"
+        variant="ghostMuted"
+        size="icon-sm"
+        className="shrink-0"
         onClick={() => navigateToMessagesWithNumber(value)}
         aria-label={`${textLabel} ${value}`}
         data-testid="contacts-detail-text"

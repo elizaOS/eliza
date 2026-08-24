@@ -455,7 +455,8 @@ function AllDayBandCell({
         return (
           <Button
             variant="selection"
-            size="content"
+            size="micro"
+            align="start"
             data-state={selected ? "on" : "off"}
             key={event.id}
             type="button"
@@ -464,7 +465,7 @@ function AllDayBandCell({
               mouseEvent.preventDefault();
               onSelectEvent(event);
             }}
-            className="block w-full truncate px-1.5 py-0.5 text-left text-[10px] font-medium"
+            className="block w-full truncate"
             style={{
               background: selected ? color.bg : color.softBg,
               color: selected ? color.text : color.softText,
@@ -812,7 +813,8 @@ function MonthGrid({
                   return (
                     <Button
                       variant="selection"
-                      size="content"
+                      size="micro"
+                      align="start"
                       data-state={isSelected ? "on" : "off"}
                       key={event.id}
                       type="button"
@@ -821,7 +823,7 @@ function MonthGrid({
                         mouseEvent.preventDefault();
                         onSelectEvent(event);
                       }}
-                      className="flex min-w-0 items-center gap-1 px-1.5 py-0.5 text-left text-[10px] font-medium"
+                      className="min-w-0"
                       style={{
                         background: isSelected ? color.bg : color.softBg,
                         color: isSelected ? color.text : color.softText,
@@ -843,12 +845,7 @@ function MonthGrid({
                 {dayEvents.length > 3 ? (
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="link"
-                        size="content"
-                        type="button"
-                        className="px-1 text-left text-[10px] font-medium text-muted hover:text-txt"
-                      >
+                      <Button variant="mutedLink" type="button" align="start">
                         +{dayEvents.length - 3} more
                       </Button>
                     </PopoverTrigger>
@@ -865,13 +862,12 @@ function MonthGrid({
                           const overflowColor = paletteFor(event);
                           return (
                             <Button
-                              variant="ghost"
-                              size="content"
+                              variant="ghostMuted"
+                              size="eventRow"
                               align="start"
                               key={`overflow-${event.id}`}
                               type="button"
                               onClick={() => onSelectEvent(event)}
-                              className="flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-bg-hover/40"
                             >
                               <span
                                 aria-hidden
@@ -1181,11 +1177,10 @@ export function CalendarSection({
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex overflow-hidden">
               <Button
-                variant="ghost"
+                variant="ghostMuted"
                 size="icon-sm"
                 ref={prevNav.ref}
                 type="button"
-                className="flex size-8 items-center justify-center text-muted hover:text-txt"
                 aria-label={t("lifeopsCalendar.previous", {
                   defaultValue: "Previous",
                 })}
@@ -1195,22 +1190,20 @@ export function CalendarSection({
                 <ChevronLeft className="size-4" aria-hidden />
               </Button>
               <Button
-                variant="ghost"
-                size="sm"
+                variant="ghostMuted"
+                size="dense"
                 ref={todayNav.ref}
                 type="button"
-                className="h-8 px-2.5 text-xs font-medium text-txt hover:text-accent"
                 onClick={calendar.goToToday}
                 {...todayNav.agentProps}
               >
                 {t("lifeopsCalendar.today", { defaultValue: "Today" })}
               </Button>
               <Button
-                variant="ghost"
+                variant="ghostMuted"
                 size="icon-sm"
                 ref={nextNav.ref}
                 type="button"
-                className="flex size-8 items-center justify-center text-muted hover:text-txt"
                 aria-label={t("lifeopsCalendar.next", {
                   defaultValue: "Next",
                 })}
@@ -1239,8 +1232,8 @@ export function CalendarSection({
             />
             <Button
               ref={newEvent.ref}
-              size="sm"
-              className="h-8 shrink-0 gap-1 px-2 text-xs font-semibold"
+              size="dense"
+              className="shrink-0"
               onClick={() => {
                 setCreateDefaultDate(new Date(calendar.windowStart));
                 setCreateOpen(true);

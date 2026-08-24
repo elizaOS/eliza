@@ -311,10 +311,10 @@ export function WorkbenchHeader({
   const accountsToggle = (
     <Button
       ref={accountsRef}
-      variant="ghost"
-      size="sm"
+      variant="ghostMuted"
+      size="icon-sm"
       onClick={onToggleAccounts}
-      className="size-7 shrink-0 p-0"
+      className="shrink-0"
       aria-label={accountsLabel}
       aria-pressed={accountsOpen}
       title={accountsLabel}
@@ -332,11 +332,10 @@ export function WorkbenchHeader({
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {status?.activeTaskCount ? (
           <Button
-            variant="ghost"
-            size="sm"
+            variant="ghostMuted"
+            size="icon-sm"
             disabled={busy}
             onClick={onPauseAll}
-            className="size-7 p-0"
             aria-label={pauseAllLabel}
             title={pauseAllLabel}
             data-testid="orchestrator-pause-all"
@@ -348,11 +347,10 @@ export function WorkbenchHeader({
         ) : null}
         {status?.pausedTaskCount ? (
           <Button
-            variant="ghost"
-            size="sm"
+            variant="ghostMuted"
+            size="icon-sm"
             disabled={busy}
             onClick={onResumeAll}
-            className="size-7 p-0"
             aria-label={resumeAllLabel}
             title={resumeAllLabel}
             data-testid="orchestrator-resume-all"
@@ -439,12 +437,11 @@ function SubAgentCard({
           {session.label}
         </span>
         <Button
-          variant="ghost"
-          size="content"
+          variant="ghostMuted"
+          size="micro"
           ref={inspectRef}
           type="button"
           onClick={() => onInspect(session.sessionId)}
-          className="flex items-center gap-0.5 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-txt"
           data-testid="orchestrator-inspect-session"
           aria-label={inspectLabel}
           title={inspectLabel}
@@ -454,12 +451,11 @@ function SubAgentCard({
         </Button>
         {stoppable ? (
           <Button
-            variant="surfaceDestructive"
-            size="content"
+            variant="dangerGhost"
+            size="micro"
             type="button"
             disabled={busy}
             onClick={() => onStop(session.sessionId)}
-            className="flex items-center gap-0.5 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-danger disabled:opacity-50"
             data-testid="orchestrator-stop-agent"
             aria-label={stopLabel}
             data-agent-authority="human"
@@ -617,13 +613,13 @@ function EditedPlanRestartSection({
           </span>
         </div>
         <Button
-          variant="ghost"
-          size="content"
+          variant="ghostMuted"
+          size="tiny"
           ref={toggleRef}
           type="button"
           disabled={busy}
           onClick={() => setOpen((prev) => !prev)}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 px-1 text-2xs font-semibold text-muted transition-colors hover:text-txt disabled:opacity-50"
+          className="shrink-0"
           data-testid="orchestrator-plan-edit-toggle"
           {...toggleAgentProps}
         >
@@ -666,10 +662,9 @@ function EditedPlanRestartSection({
           <div className="flex justify-end">
             <Button
               type="button"
-              size="sm"
+              size="tiny"
               disabled={busy}
               onClick={submit}
-              className="h-7 gap-1.5 px-2.5 text-xs-tight"
               data-testid="orchestrator-plan-restart"
               data-agent-authority="human"
               data-agent-human-id="inspector-restart-edited-plan"
@@ -994,18 +989,16 @@ function AddAgentForm({
         <Button
           ref={cancelRef}
           variant="secondary"
-          size="sm"
+          size="micro"
           onClick={onClose}
-          className="h-6 px-2 text-2xs"
           {...cancelAgentProps}
         >
           {cancelLabel}
         </Button>
         <Button
-          size="sm"
+          size="micro"
           disabled={busy}
           onClick={spawn}
-          className="h-6 px-2 text-2xs"
           data-testid="orchestrator-add-agent-submit"
           data-agent-authority="human"
           data-agent-human-id="add-agent-spawn"
@@ -1086,7 +1079,7 @@ function AgentLocalControlButton({
   });
   return (
     <Button
-      variant="ghost"
+      variant="ghostMuted"
       size="icon-sm"
       ref={ref}
       type="button"
@@ -1094,7 +1087,6 @@ function AgentLocalControlButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="flex items-center justify-center p-1.5 text-muted transition-colors hover:text-txt disabled:opacity-50"
       data-testid={testId}
       {...agentProps}
     >
@@ -1122,12 +1114,11 @@ export function RecoveryActionButton({
 }) {
   return (
     <Button
-      variant="surfaceDestructive"
-      size="content"
+      variant="dangerGhost"
+      size="tiny"
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-7 items-center gap-1.5 px-1 text-2xs font-semibold text-muted transition-colors hover:text-txt disabled:opacity-50"
       data-testid={testId}
       data-agent-authority="human"
       data-agent-human-id={agentId}
@@ -1287,12 +1278,12 @@ export function TaskInspector({
             {t("orchestrator.inspector.title", { defaultValue: "Details" })}
           </h3>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
             ref={closeRef}
             type="button"
             onClick={onClose}
-            className="-mr-1 p-1 text-muted transition-colors hover:text-txt"
+            className="-mr-1"
             aria-label={closeDetailsLabel}
             data-testid="orchestrator-close-inspector"
             {...closeAgentProps}

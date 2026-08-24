@@ -24,11 +24,22 @@ const badgeVariants = cva(
       size: {
         default: "",
         compact: "text-2xs uppercase",
+        micro: "border-0 px-1.5 py-0 text-3xs font-medium",
+        microBold: "border-0 px-1.5 py-0 text-3xs font-bold",
+      },
+      tone: {
+        default: "",
+        accent: "bg-accent/12 text-accent-fg",
+        success: "bg-ok/10 text-ok",
+        warning: "bg-warn/10 text-warn",
+        danger: "bg-danger/10 text-danger",
+        muted: "bg-bg-hover text-muted-strong",
       },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      tone: "default",
     },
   },
 );
@@ -44,12 +55,13 @@ function Badge({
   className,
   variant,
   size,
+  tone,
   ...props
 }: BadgeProps) {
   const Component = asChild ? Slot : "div";
   return (
     <Component
-      className={cn(badgeVariants({ variant, size }), className)}
+      className={cn(badgeVariants({ variant, size, tone }), className)}
       {...props}
     />
   );

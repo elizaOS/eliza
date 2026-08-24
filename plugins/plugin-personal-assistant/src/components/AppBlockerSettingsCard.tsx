@@ -6,9 +6,9 @@
 // Leaf @elizaos/ui subpaths, not the root barrel: this card rides the PA
 // renderer facade, and a barrel import would drag router/marketplace chunks
 // into every shell that boots the facade.
+
+import { Button, Checkbox, Input } from "@elizaos/ui";
 import { client } from "@elizaos/ui/api";
-import { Button } from "@elizaos/ui";
-import { Input } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   CheckCircle2,
@@ -386,9 +386,8 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
         <div className="flex shrink-0 flex-wrap gap-2 sm:pt-0.5">
           <Button
             type="button"
-            size="sm"
+            size="formAction"
             variant="outline"
-            className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
             onClick={() => void refreshState()}
             disabled={loading || busy}
             aria-label={translate(t, "common.refresh", "Refresh")}
@@ -402,9 +401,8 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
           {permission?.status !== "granted" ? (
             <Button
               type="button"
-              size="sm"
+              size="formAction"
               variant="default"
-              className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
               onClick={() => void handleRequestPermissions()}
               disabled={busy}
             >
@@ -419,9 +417,8 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
           {status?.active ? (
             <Button
               type="button"
-              size="sm"
+              size="formAction"
               variant="default"
-              className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
               onClick={() => void handleStopBlock()}
               disabled={busy}
             >
@@ -477,7 +474,8 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                       "permissionssection.appBlocking.searchPlaceholder",
                       "Search installed apps",
                     )}
-                    className="w-full rounded-xl border border-border/60 bg-bg/60 py-2 pl-9 pr-3 text-sm text-txt outline-none transition focus:border-border"
+                    density="search"
+                    adornment="leading"
                   />
                 </div>
               </label>
@@ -493,12 +491,13 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                       key={app.packageName}
                       className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-sm transition hover:bg-bg/50"
                     >
-                      <Input
+                      <Checkbox
                         id={inputId}
-                        type="checkbox"
                         checked={checked}
-                        onChange={() => togglePackageName(app.packageName)}
-                        className="mt-0.5 size-4 rounded border-border p-0"
+                        onCheckedChange={() =>
+                          togglePackageName(app.packageName)
+                        }
+                        className="mt-0.5"
                       />
                       <span className="min-w-0">
                         <span className="block font-medium text-txt">
@@ -541,14 +540,10 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 htmlFor="app-blocker-indefinite"
                 className="flex items-center gap-2 text-sm text-txt"
               >
-                <Input
+                <Checkbox
                   id="app-blocker-indefinite"
-                  type="checkbox"
                   checked={indefinite}
-                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                    setIndefinite(event.target.checked)
-                  }
-                  className="size-4 rounded border-border p-0"
+                  onCheckedChange={(checked) => setIndefinite(checked === true)}
                 />
                 {translate(
                   t,
@@ -578,14 +573,13 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                     setDurationMinutes(event.target.value)
                   }
                   disabled={indefinite}
-                  className="w-full rounded-xl border border-border/60 bg-bg/60 px-3 py-2 text-sm text-txt outline-none transition focus:border-border disabled:opacity-60"
                 />
               </label>
               <Button
                 type="button"
-                size="sm"
+                size="formAction"
                 variant="default"
-                className="min-h-10 w-full rounded-xl px-3 text-xs-tight font-semibold"
+                className="w-full"
                 onClick={() => void handleStartBlock()}
                 disabled={busy || selectedPackageNames.length === 0}
               >
@@ -633,9 +627,8 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                size="sm"
+                size="formAction"
                 variant="outline"
-                className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
                 onClick={() => void handleSelectIosApps()}
                 disabled={busy}
               >
@@ -648,9 +641,8 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
               </Button>
               <Button
                 type="button"
-                size="sm"
+                size="formAction"
                 variant="default"
-                className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
                 onClick={() => void handleStartBlock()}
                 disabled={busy || selectedIosApps.length === 0}
               >

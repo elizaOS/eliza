@@ -8,8 +8,7 @@ import {
   type SystemVolumeStream,
 } from "@elizaos/capacitor-system";
 import type { OverlayAppContext } from "@elizaos/shared";
-import { Button } from "@elizaos/ui";
-import { Input } from "@elizaos/ui";
+import { Button, Input } from "@elizaos/ui";
 import {
   ArrowLeft,
   Bell,
@@ -260,9 +259,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       <header className="flex shrink-0 items-center justify-between gap-3 px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">
           <Button
-            variant="ghost"
-            size="icon"
-            className="size-9 shrink-0 text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="icon-sm"
+            className="shrink-0"
             onClick={exitToApps}
             aria-label={t("nav.back", { defaultValue: "Back" })}
           >
@@ -277,9 +276,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
           </div>
         </div>
         <Button
-          variant="ghost"
-          size="icon"
-          className="size-9 text-muted hover:text-txt"
+          variant="ghostMuted"
+          size="icon-sm"
           onClick={() => void refresh()}
           disabled={loading}
           aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
@@ -328,13 +326,14 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               </div>
               <Input
                 type="range"
+                variant="nativeRange"
                 min={0}
                 max={100}
                 value={percent(brightness)}
                 onChange={(event) =>
                   setBrightness(clampUnit(Number(event.target.value) / 100))
                 }
-                className="h-auto w-full border-0 bg-transparent p-0 accent-info"
+                className="w-full"
                 aria-label="Brightness"
                 data-testid="device-settings-brightness"
               />
@@ -467,6 +466,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                     <div className="mt-3 flex items-center gap-3">
                       <Input
                         type="range"
+                        variant="nativeRange"
                         min={0}
                         max={volume.max}
                         value={value}
@@ -479,7 +479,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                             ),
                           }))
                         }
-                        className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 accent-info"
+                        className="min-w-0 flex-1"
                         aria-label={`${label} volume`}
                         data-testid={`device-settings-volume-${volume.stream}`}
                       />

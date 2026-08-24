@@ -257,12 +257,7 @@ export function CustomActionsView() {
         </p>
         {!search && (
           <div className="pt-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleCreate}
-              className="h-10 rounded-sm px-4 text-sm font-medium "
-            >
+            <Button variant="default" size="formAction" onClick={handleCreate}>
               {t("customactionsview.CreateAction")}
             </Button>
           </div>
@@ -330,9 +325,9 @@ export function CustomActionsView() {
             <Input
               id={importInputId}
               type="file"
+              variant="nativeFileHidden"
               accept="application/json"
               onChange={handleImport}
-              className="sr-only border-0 bg-transparent p-0"
               tabIndex={-1}
             />
             <Button
@@ -374,8 +369,10 @@ export function CustomActionsView() {
               className={`${CUSTOM_ACTIONS_PANEL_CLASS} flex h-full flex-col gap-4 p-4 transition-[border-color,background-color,box-shadow] hover:border-accent/35 hover:bg-bg/30`}
             >
               <Button
-                variant="ghost"
-                className="m-0 h-auto w-full p-0 text-left"
+                variant="transparent"
+                size="eventRow"
+                align="start"
+                className="m-0"
                 onClick={() => handleEdit(action)}
               >
                 <div className="flex w-full flex-1 flex-col gap-3">
@@ -442,18 +439,16 @@ export function CustomActionsView() {
 
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <Button
-                    variant="outline"
-                    size="sm"
+                    variant="outlineMuted"
+                    size="regularCompact"
                     onClick={() => handleEdit(action)}
-                    className="h-9 rounded-sm px-3 text-xs bg-bg/35 text-muted hover:bg-bg/55"
                   >
                     {t("common.edit")}
                   </Button>
                   <Button
-                    variant="outline"
-                    size="sm"
+                    variant="dangerOutline"
+                    size="regularCompact"
                     onClick={() => handleDelete(action.id, action.name)}
-                    className="h-9 rounded-sm border-danger/35 bg-danger/5 px-3 text-xs text-danger hover:border-danger hover:bg-danger/10"
                   >
                     {t("common.delete")}
                   </Button>

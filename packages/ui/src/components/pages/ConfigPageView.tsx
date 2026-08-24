@@ -83,8 +83,8 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
       </p>
       <Button
         aria-label="Open Eliza Cloud sign-in in your browser"
-        variant="ghost"
-        className="block h-auto w-full whitespace-normal break-all p-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
+        variant="externalLink"
+        className="block w-full whitespace-normal break-all"
         onClick={() => void openExternalUrl(browserUrl)}
       >
         {browserUrl}
@@ -581,8 +581,7 @@ export function ConfigPageView({
                 <Button
                   ref={cloudConnectEl.ref}
                   variant="default"
-                  size="sm"
-                  className="text-xs font-bold"
+                  size="denseWide"
                   {...cloudConnectEl.agentProps}
                   onClick={() => {
                     claimCloudLoginWindow();
@@ -610,9 +609,8 @@ export function ConfigPageView({
               <Button
                 ref={saveEl.ref}
                 variant="default"
-                size="sm"
+                size="dense"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();
@@ -638,8 +636,8 @@ export function ConfigPageView({
               </div>
               <Button
                 ref={secretsEl.ref}
-                variant="outline"
-                className="min-h-[2.625rem] px-4 rounded-sm flex items-center gap-1.5 text-xs text-muted hover:text-txt"
+                variant="outlineMuted"
+                size="labeledForm"
                 {...secretsEl.agentProps}
                 onClick={handleOpenVault}
               >
@@ -738,9 +736,8 @@ export function ConfigPageView({
               <Button
                 ref={saveEl.ref}
                 variant="default"
-                size="sm"
+                size="dense"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();

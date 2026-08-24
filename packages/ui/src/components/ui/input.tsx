@@ -36,6 +36,8 @@ const inputVariants = cva(
           "h-auto border-0 bg-transparent p-0 shadow-none accent-accent",
         nativeColor:
           "size-9 cursor-pointer rounded-sm border-border bg-transparent p-0.5 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-0",
+        surface:
+          "rounded-sm border-border bg-surface px-3 py-2 text-xs placeholder:text-muted/50",
       },
       density: {
         default: "h-10",
