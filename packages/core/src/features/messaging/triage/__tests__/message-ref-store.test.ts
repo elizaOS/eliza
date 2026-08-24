@@ -4,8 +4,12 @@
  * capacities without replacing the system under test.
  */
 
-import { describe, expect, it } from "vitest";
-import { MessageRefStore } from "../message-ref-store.ts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+	__resetDefaultMessageRefStoreForTests,
+	getDefaultMessageRefStore,
+	MessageRefStore,
+} from "../message-ref-store.ts";
 import type { DraftRecord, MessageRef } from "../types.ts";
 
 const MESSAGE_CAPACITY = 5000;
@@ -228,5 +232,150 @@ describe("MessageRefStore write-recency eviction", () => {
 			scheduleCommit,
 		});
 		expect(store.getDraft("draft-1")).toBeNull();
+	});
+});
+
+describe("MessageRefStore lookup and empty-store contracts", () => {
+	it("returns null reads and an empty list from an empty store", () => {
+		const store = new MessageRefStore();
+
+		expect(store.getMessage("message-0")).toBeNull();
+		expect(store.listMessages()).toEqual([]);
+		expect(store.findByExternalId("gmail", "external-0")).toBeNull();
+		expect(store.getDraft("draft-0")).toBeNull();
+	});
+
+	it("ignores an empty saveMessages batch", () => {
+		const store = new MessageRefStore();
+
+		store.saveMessages([]);
+
+		expect(store.listMessages()).toEqual([]);
+	});
+
+	it("keeps every message when the store holds exactly its capacity", () => {
+		const store = new MessageRefStore();
+		fillMessages(store);
+
+		const listed = store.listMessages();
+		expect(listed).toHaveLength(MESSAGE_CAPACITY);
+		expect(listed[0]?.id).toBe("message-0");
+		expect(listed[MESSAGE_CAPACITY - 1]?.id).toBe(
+			`message-${MESSAGE_CAPACITY - 1}`,
+		);
+	});
+
+	it("matches findByExternalId only when source and external id both agree", () => {
+		const store = new MessageRefStore();
+		store.saveMessage(message(0));
+		store.saveMessage(message(1, { source: "discord" }));
+
+		expect(store.findByExternalId("gmail", "external-0")?.id).toBe("message-0");
+		expect(store.findByExternalId("gmail", "external-1")).toBeNull();
+		expect(store.findByExternalId("discord", "external-0")).toBeNull();
+	});
+});
+
+describe("MessageRefStore tag contracts", () => {
+	it.each([
+		{
+			name: "addTag",
+			mutate: (store: MessageRefStore) => store.addTag("absent", "urgent"),
+		},
+		{
+			name: "removeTag",
+			mutate: (store: MessageRefStore) => store.removeTag("absent", "urgent"),
+		},
+	])("returns null when $name targets a missing message", ({ mutate }) => {
+		const store = new MessageRefStore();
+		store.saveMessage(message(0));
+
+		expect(mutate(store)).toBeNull();
+		expect(store.getMessage("message-0")).not.toBeNull();
+	});
+
+	it("creates a tag list when addTag runs on a message without tags", () => {
+		const store = new MessageRefStore();
+		store.saveMessage(message(0));
+
+		const updated = store.addTag("message-0", "urgent");
+
+		expect(updated?.tags).toEqual(["urgent"]);
+		expect(store.getMessage("message-0")?.tags).toEqual(["urgent"]);
+	});
+
+	it("leaves a message without tags unchanged when removeTag has nothing to remove", () => {
+		const store = new MessageRefStore();
+		store.saveMessage(message(0));
+
+		const result = store.removeTag("message-0", "urgent");
+
+		expect(result).not.toBeNull();
+		expect(result?.tags).toBeUndefined();
+		expect(store.getMessage("message-0")?.tags).toBeUndefined();
+	});
+});
+
+describe("MessageRefStore missing-draft contracts", () => {
+	it.each([
+		{
+			name: "markDraftSent",
+			act: (store: MessageRefStore) =>
+				store.markDraftSent("absent", "provider-message-x"),
+		},
+		{
+			name: "markDraftScheduled",
+			act: (store: MessageRefStore) =>
+				store.markDraftScheduled("absent", 1_786_569_000_000, "schedule-0", {
+					kind: "durable",
+					id: "task-0",
+					committedAt: "2026-08-12T21:00:00.000Z",
+					idempotencyKey: "schedule-absent",
+					replayed: false,
+				}),
+		},
+	])("returns null when $name targets a missing draft", ({ act }) => {
+		const store = new MessageRefStore();
+		store.saveDraft(draft(0));
+
+		expect(act(store)).toBeNull();
+		expect(store.getDraft("draft-0")?.sent).toBe(false);
+		expect(store.getDraft("draft-0")?.scheduledId).toBeUndefined();
+	});
+
+	it("clears both messages and drafts", () => {
+		const store = new MessageRefStore();
+		store.saveMessage(message(0));
+		store.saveDraft(draft(0));
+
+		store.clear();
+
+		expect(store.listMessages()).toEqual([]);
+		expect(store.getMessage("message-0")).toBeNull();
+		expect(store.getDraft("draft-0")).toBeNull();
+	});
+});
+
+describe("getDefaultMessageRefStore singleton lifecycle", () => {
+	beforeEach(() => {
+		__resetDefaultMessageRefStoreForTests();
+	});
+
+	afterEach(() => {
+		__resetDefaultMessageRefStoreForTests();
+	});
+
+	it("hands every caller the same live instance until it is reset", () => {
+		const first = getDefaultMessageRefStore();
+		first.saveMessage(message(42));
+
+		expect(getDefaultMessageRefStore().getMessage("message-42")).not.toBeNull();
+		expect(getDefaultMessageRefStore()).toBe(first);
+
+		__resetDefaultMessageRefStoreForTests();
+
+		const next = getDefaultMessageRefStore();
+		expect(next).not.toBe(first);
+		expect(next.getMessage("message-42")).toBeNull();
 	});
 });
