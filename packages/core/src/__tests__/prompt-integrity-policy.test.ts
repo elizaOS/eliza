@@ -400,6 +400,16 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/truncateWellFormed/,
 		/seed\.slice\(/,
 		/userReferenceLogView/,
+		/excludedByFilters[\s\S]{0,300}\.slice\(/,
+	],
+	"plugins/plugin-cloud-apps/src/actions/check-app-domain.ts": [
+		/MAX_DOMAINS_PER_CHECK/,
+		/domains\.slice\(/,
+		/I checked the first/,
+	],
+	"plugins/plugin-calendar/src/actions/calendar-sources.ts": [
+		/normalized \|\| fallback\)\.slice\(/,
+		/replaceControlCharacters\(value\)\.slice\(/,
 	],
 	"plugins/plugin-agent-orchestrator/src/actions/task-label.ts": [
 		/truncateWellFormed/,
