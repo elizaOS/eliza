@@ -10,7 +10,7 @@
     "test:mock-llm": "bun test src/fixtures/mock-llm.test.ts",
     "stability:keyless": "bun --conditions=eliza-source scripts/run-stability-lane.ts --mode deterministic-mock",
     "stability:real": "bun --conditions=eliza-source scripts/run-stability-lane.ts --mode real-llm",
-    "test:stability": "bun --conditions=eliza-source test src/stability/cloud-stability-runner.test.ts src/stability/stability-network-guard.test.ts src/stability/stack-partial-cleanup.test.ts src/stability/stability-scenario-child.test.ts src/stability/authority-controller-cleanup.test.ts",
+    "test:stability": "bun --conditions=eliza-source test src/stability/cloud-stability-runner.test.ts src/stability/live-model-meter.test.ts src/stability/parent-network-guard.test.ts src/stability/stability-network-guard.test.ts src/stability/stack-partial-cleanup.test.ts src/stability/stability-scenario-child.test.ts src/stability/authority-controller-cleanup.test.ts",
     "domains:ledger": "bun scripts/domain-purchase-ledger.ts",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",

@@ -29,6 +29,7 @@ export interface ScenarioStabilityExecutionBudgets {
   timeoutMs: number;
   maxInputTokens: number;
   maxOutputTokens: number;
+  maxModelRequests?: number;
   maxToolCalls: number;
 }
 
@@ -264,6 +265,9 @@ function validateBudgets(budgets: ScenarioStabilityExecutionBudgets): void {
   assertPositiveSafeInteger(budgets.timeoutMs, "timeoutMs");
   assertPositiveSafeInteger(budgets.maxInputTokens, "maxInputTokens");
   assertPositiveSafeInteger(budgets.maxOutputTokens, "maxOutputTokens");
+  if (budgets.maxModelRequests !== undefined) {
+    assertPositiveSafeInteger(budgets.maxModelRequests, "maxModelRequests");
+  }
   if (!Number.isSafeInteger(budgets.maxToolCalls) || budgets.maxToolCalls < 0) {
     throw new Error("maxToolCalls must be a non-negative safe integer");
   }

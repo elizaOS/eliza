@@ -22,11 +22,13 @@ if (process.env.ELIZA_TEST_PRINT_SECRETS === "1") {
   process.stderr.write(String(process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN) + " " + String(process.env.OPENAI_API_KEY || ""));
 }
 const hash = process.env.ELIZA_STABILITY_AUTHORITY_INITIAL_STATE_HASH;
+const inputTokens = process.env.ELIZA_TEST_ZERO_REAL === "1" ? 0 : 4;
+const requestCount = process.env.ELIZA_TEST_OVER_CAP_REAL === "1" ? 3 : 1;
 process.stdout.write(JSON.stringify({
   passed: true,
   initialStateHash: hash,
   finalStateHash: "b".repeat(64),
-  inputTokens: 4,
+  inputTokens,
   outputTokens: 2,
   toolCalls: 1,
   evidence: {
@@ -52,6 +54,10 @@ process.stdout.write(JSON.stringify({
       provider: process.env.ELIZA_TEST_WRONG_REAL === "1" ? "wrong-provider" : process.env.ELIZA_STABILITY_PROVIDER,
       model: process.env.ELIZA_STABILITY_MODEL,
       liveModelInvoked: true,
+      requestCount,
+      inputTokens,
+      outputTokens: 2,
+      meteringFailures: [],
       namespace: process.env.ELIZA_SYNTHETIC_NAMESPACE,
       manifestId: process.env.ELIZA_SYNTHETIC_MANIFEST_ID,
       generation: Number(process.env.ELIZA_SYNTHETIC_GENERATION),
@@ -362,13 +368,18 @@ describe("scenario stability subprocess adapter", () => {
     ).toThrow("real credential seam");
   });
 
-  it("accepts one exact real-LLM receipt and rejects a wrong provider binding", async () => {
-    for (const wrong of [false, true]) {
+  it("accepts one metered real-LLM receipt and rejects wrong or zero metering", async () => {
+    for (const failure of [
+      "none",
+      "wrong-provider",
+      "zero-metering",
+      "over-request-cap",
+    ] as const) {
       const outputRoot = root();
       const manifest = {
         version: 1 as const,
-        namespace: `real-${wrong}`,
-        manifestId: `real-${wrong}-v1`,
+        namespace: `real-${failure}`,
+        manifestId: `real-${failure}-v1`,
         domains: {},
       };
       let generation = 0;
@@ -391,7 +402,13 @@ describe("scenario stability subprocess adapter", () => {
         },
         env: {
           ELIZA_TEST_PRINT_SECRETS: "1",
-          ...(wrong ? { ELIZA_TEST_WRONG_REAL: "1" } : {}),
+          ...(failure === "wrong-provider"
+            ? { ELIZA_TEST_WRONG_REAL: "1" }
+            : {}),
+          ...(failure === "zero-metering" ? { ELIZA_TEST_ZERO_REAL: "1" } : {}),
+          ...(failure === "over-request-cap"
+            ? { ELIZA_TEST_OVER_CAP_REAL: "1" }
+            : {}),
         },
         openSession: async () =>
           ({
@@ -405,7 +422,7 @@ describe("scenario stability subprocess adapter", () => {
       });
       const report = await executeScenarioStability({
         plan: createScenarioStabilityPlan({
-          runId: `real-${wrong}`,
+          runId: `real-${failure}`,
           outputRoot,
         }),
         targets: [
@@ -418,12 +435,13 @@ describe("scenario stability subprocess adapter", () => {
           timeoutMs: 2_000,
           maxInputTokens: 10,
           maxOutputTokens: 10,
+          maxModelRequests: 2,
           maxToolCalls: 2,
         },
         adapter,
       });
-      expect(report.cells[0]?.tier).toBe(wrong ? "0/3" : "3/3");
-      if (!wrong) {
+      expect(report.cells[0]?.tier).toBe(failure === "none" ? "3/3" : "0/3");
+      if (failure === "none") {
         for (const attempt of report.cells[0]?.attempts ?? []) {
           const stderr = readFileSync(
             path.join(attempt.outputDir, "subprocess.stderr.log"),
@@ -465,6 +483,35 @@ describe("scenario stability subprocess adapter", () => {
           },
           mockServiceUrls: {
             ELIZA_MOCK_MESSAGES_URL: "https://real-service.example/messages",
+          },
+        }),
+    ).toThrow("credential-free loopback HTTP URL");
+  });
+
+  it("rejects a mock service DNS name with a loopback-looking prefix", () => {
+    const outputRoot = root();
+    expect(
+      () =>
+        new ScenarioStabilitySubprocessAdapter({
+          command: process.execPath,
+          args: () => ["-e", CHILD_SCRIPT],
+          cwd: outputRoot,
+          modelMode: {
+            kind: "deterministic-mock",
+            fixtureManifestFingerprint: "f".repeat(64),
+          },
+          syntheticControl: {
+            controlUrl: "http://127.0.0.1:43191",
+            controlToken: "internal-control-token",
+            manifest: {
+              version: 1,
+              namespace: "loopback-prefix-test",
+              manifestId: "loopback-prefix-test-v1",
+              domains: {},
+            },
+          },
+          mockServiceUrls: {
+            ELIZA_MOCK_MESSAGES_URL: "http://127.attacker.invalid/messages",
           },
         }),
     ).toThrow("credential-free loopback HTTP URL");
