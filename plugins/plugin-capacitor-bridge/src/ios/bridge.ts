@@ -67,6 +67,7 @@ import {
 	toStoredModelPath,
 } from "../shared/local-inference-stored-path.ts";
 import { createModelDownloadDeadline } from "../shared/model-download-deadline.ts";
+import { createNativeModelRequestGuard } from "../shared/native-model-request.ts";
 import {
 	type StdioBridgeRequestFrame as BridgeRequest,
 	type StdioBridgeResponseFrame as BridgeResponse,
@@ -2897,7 +2898,9 @@ function cleanIosNativeConversationReply(raw: string): string {
 		.replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
 		.trim();
 	const compact = withoutTokens.replace(/\s+/g, " ").trim();
-	return compact;
+	if (!compact) return "";
+	const firstSentence = compact.match(/^(.{12,280}?[.!?])(?:\s|$)/u)?.[1];
+	return (firstSentence ?? compact).trim();
 }
 
 async function maybeGenerateIosNativeConversationReply(
@@ -2921,6 +2924,7 @@ async function maybeGenerateIosNativeConversationReply(
 				},
 				{ role: "user", content: prompt },
 			],
+			maxTokens: 32,
 			temperature: 0,
 			stopSequences: ["<end_of_turn>", "<start_of_turn>"],
 			// When the caller is streaming, forward incremental model tokens so the
@@ -2972,24 +2976,38 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 		}
 		const prompt = flattenChatParamsForPrompt(params);
 		const structuredSlot = isStructuredGenerationSlot(slot);
-		const maxTokens =
-			positiveInteger(params.maxTokens) ?? nativeLlamaContextSize();
+		const requestedMaxTokens = positiveInteger(params.maxTokens) ?? 256;
+		const maxTokens = Math.min(requestedMaxTokens, structuredSlot ? 256 : 128);
+		const nativeRequest = {
+			context_id: state.contextId,
+			prompt,
+			max_tokens: maxTokens,
+			temperature:
+				typeof params.temperature === "number"
+					? params.temperature
+					: structuredSlot
+						? 0.2
+						: 0.4,
+			top_p: typeof params.topP === "number" ? params.topP : 0.95,
+			top_k: positiveInteger(params.topK) ?? 40,
+			stop: mergeStopSequences(params.stopSequences),
+		};
+		const preparedRequest = createNativeModelRequestGuard({
+			provider: IOS_NATIVE_LLAMA_PROVIDER,
+			model:
+				state.modelId ??
+				(state.modelPath ? path.basename(state.modelPath) : "ios-native-llama"),
+			contextWindowTokens: nativeLlamaContextSize(),
+			outputReserveTokens: maxTokens,
+			projectRequest: () => ({
+				...nativeRequest,
+				stop: [...nativeRequest.stop],
+			}),
+		});
+		preparedRequest.assertBeforeAttempt();
 		const result = await callIosHost(
 			"llama_generate",
-			{
-				context_id: state.contextId,
-				prompt,
-				max_tokens: maxTokens,
-				temperature:
-					typeof params.temperature === "number"
-						? params.temperature
-						: structuredSlot
-							? 0.2
-							: 0.4,
-				top_p: typeof params.topP === "number" ? params.topP : 0.95,
-				top_k: positiveInteger(params.topK) ?? 40,
-				stop: mergeStopSequences(params.stopSequences),
-			},
+			nativeRequest,
 			Math.max(120_000, maxTokens * 2_000),
 		);
 		const record =
@@ -2999,24 +3017,6 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 		const text =
 			typeof record.text === "string" ? record.text : String(result ?? "");
 		const cleanedText = stripReasoningBlocks(text);
-		if (record.incomplete === true) {
-			throw new ElizaError(
-				"The iOS local model exhausted its generation boundary before completing the response",
-				{
-					code: "MODEL_INCOMPLETE_OUTPUT",
-					context: {
-						provider: IOS_NATIVE_LLAMA_PROVIDER,
-						modelId: nativeLlamaState.modelId,
-						promptTokens: record.promptTokens ?? record.prompt_tokens,
-						outputTokens: record.outputTokens ?? record.output_tokens,
-						reason:
-							record.finishReason ??
-							record.finish_reason ??
-							"generation_boundary",
-					},
-				},
-			);
-		}
 		if (params.onStreamChunk && cleanedText) {
 			await params.onStreamChunk(cleanedText, crypto.randomUUID(), cleanedText);
 		}
