@@ -1,3 +1,4 @@
+import { truncateWellFormed } from "../utils.js";
 /**
  * Bounded JSON normalization shared by every trajectory persistence owner.
  * Per-node caps protect individual fields while a single traversal and output
@@ -30,7 +31,7 @@ function truncateTrajectoryString(value: string): string {
 		0,
 		TRAJECTORY_JSON_MAX_STRING_CHARS - TRAJECTORY_JSON_TRUNCATION_SUFFIX.length,
 	);
-	return `${value.slice(0, previewLength)}${TRAJECTORY_JSON_TRUNCATION_SUFFIX}`;
+	return `${truncateWellFormed(value, previewLength)}${TRAJECTORY_JSON_TRUNCATION_SUFFIX}`;
 }
 
 function jsonByteLength(value: JsonValue): number {

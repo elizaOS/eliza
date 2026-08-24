@@ -1,3 +1,4 @@
+import { truncateWellFormed } from "../utils.js";
 /**
  * Helper that resolves the system prompt for one of the five core decision
  * tasks. Each runtime call site already constructs a baseline prompt; this
@@ -83,10 +84,10 @@ function trimDemonstrationInput(rawInput: string): string {
 		return candidate;
 	}
 	if (candidate && candidate.length > 0) {
-		return `${candidate.slice(0, 600).trimEnd()} …`;
+		return `${truncateWellFormed(candidate, 600).trimEnd()} …`;
 	}
 	if (rawInput.length <= 600) return rawInput;
-	return `${rawInput.slice(0, 400).trimEnd()}\n…\n${rawInput.slice(-200).trimStart()}`;
+	return `${truncateWellFormed(rawInput, 400).trimEnd()}\n…\n${rawInput.slice(-200).trimStart()}`;
 }
 
 function injectDemonstrations(

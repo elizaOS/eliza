@@ -1883,7 +1883,7 @@ export function subAgentCompletionRelayBody(
 	if (!body) return undefined;
 	const maxLength = 1500;
 	return body.length > maxLength
-		? `${body.slice(0, maxLength - 1).trimEnd()}…`
+		? `${truncateWellFormed(body, maxLength - 1).trimEnd()}…`
 		: body;
 }
 
@@ -2225,7 +2225,7 @@ function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().split(/\s+/).join(" ");
 	if (!normalized) return undefined;
-	return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
+	return normalized.length > 80 ? `${truncateWellFormed(normalized, 77)}...` : normalized;
 }
 
 function senderIdentityName(value: unknown): string | undefined {
