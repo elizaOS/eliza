@@ -9,6 +9,7 @@ import path from "node:path";
 import readline from "node:readline";
 import {
   ChannelType,
+  type CharacterInput,
   ElizaError,
   type IAgentRuntime,
   type Memory,
@@ -17,6 +18,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import type { LiveProviderName } from "@elizaos/core/testing";
+import { getDefaultStylePreset } from "@elizaos/shared";
 import { createScenarioRuntime } from "./runtime-factory.ts";
 
 export type TimingLabel = "SPEAK" | "SILENT";
@@ -24,6 +26,30 @@ export type TimingDataset =
   | "duke-trust-lab/When2Speak"
   | "mookiezi/Discord-Dialogues";
 export type TimingInputFormat = "when2speak" | "discord-replay";
+export type TimingCharacterPreset = "minimal" | "eliza";
+
+export function resolveTimingCharacter(
+  preset: TimingCharacterPreset,
+): (CharacterInput & { name: string }) | undefined {
+  if (preset === "minimal") return undefined;
+  const eliza = getDefaultStylePreset("en");
+  return {
+    name: eliza.name,
+    system: eliza.system,
+    bio: eliza.bio,
+    adjectives: eliza.adjectives,
+    style: eliza.style,
+    topics: eliza.topics,
+    postExamples: eliza.postExamples,
+    messageExamples: eliza.messageExamples.map((example) =>
+      example.map((message) => ({
+        name: message.user,
+        content: message.content,
+      })),
+    ),
+    ...(eliza.templates ? { templates: { ...eliza.templates } } : {}),
+  };
+}
 export interface When2SpeakExample {
   row: number;
   turns: Array<{ speaker: string; text: string; isAgent: boolean }>;
@@ -69,6 +95,7 @@ export interface TimingReport {
   provider: string;
   requestedModel: string;
   backend: string;
+  characterPreset: TimingCharacterPreset;
   trajectoryDir: string;
   selection: {
     shardIndex: number;
@@ -555,6 +582,7 @@ function validateResumeReport(options: {
   provider: string;
   requestedModel: string;
   backend: string;
+  characterPreset: TimingCharacterPreset;
   shardIndex: number;
   shardCount: number;
   startRow: number;
@@ -581,6 +609,8 @@ function validateResumeReport(options: {
     value.requestedModel !== options.requestedModel ||
     !("backend" in value) ||
     value.backend !== options.backend ||
+    !("characterPreset" in value) ||
+    value.characterPreset !== options.characterPreset ||
     !("selection" in value) ||
     value.selection === null ||
     typeof value.selection !== "object" ||
@@ -633,6 +663,7 @@ export async function runWhen2SpeakEval(options: {
   checkpointEvery?: number;
   onCheckpoint?: (report: TimingReport) => void | Promise<void>;
   resumeReport?: unknown;
+  characterPreset?: TimingCharacterPreset;
 }): Promise<TimingReport> {
   const shardIndex = options.shardIndex ?? 0;
   const shardCount = options.shardCount ?? 1;
@@ -672,8 +703,11 @@ export async function runWhen2SpeakEval(options: {
   process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
   let runtimeResult: Awaited<ReturnType<typeof createScenarioRuntime>>;
   try {
+    const characterPreset = options.characterPreset ?? "minimal";
+    const timingCharacter = resolveTimingCharacter(characterPreset);
     runtimeResult = await createScenarioRuntime({
       ...(options.provider ? { preferredProvider: options.provider } : {}),
+      ...(timingCharacter ? { character: timingCharacter } : {}),
     });
   } catch (error) {
     // error-policy:J2 Restore process state, then add evaluator context while
@@ -686,7 +720,10 @@ export async function runWhen2SpeakEval(options: {
     throw new ElizaError("Failed to create the When2Speak scenario runtime", {
       code: "WHEN2SPEAK_RUNTIME_CREATE_FAILED",
       cause: error,
-      context: { provider: options.provider ?? "auto" },
+      context: {
+        provider: options.provider ?? "auto",
+        characterPreset: options.characterPreset ?? "minimal",
+      },
     });
   }
   const predictions: TimingReport["predictions"] = [];
@@ -712,6 +749,7 @@ export async function runWhen2SpeakEval(options: {
     provider: runtimeResult.providerName,
     requestedModel,
     backend,
+    characterPreset: options.characterPreset ?? "minimal",
     shardIndex,
     shardCount,
     startRow,
@@ -740,6 +778,7 @@ export async function runWhen2SpeakEval(options: {
       provider: runtimeResult.providerName,
       requestedModel,
       backend,
+      characterPreset: options.characterPreset ?? "minimal",
       trajectoryDir,
       selection: {
         shardIndex,

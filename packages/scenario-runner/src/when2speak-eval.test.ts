@@ -7,11 +7,28 @@ import {
   isTimingRowSelected,
   parseDiscordReplayLine,
   parseWhen2SpeakLine,
+  resolveTimingCharacter,
   summarizeTimingPredictions,
   validateTimingResumeRows,
 } from "./when2speak-eval.ts";
 
 describe("When2Speak evaluator", () => {
+  it("loads the product Eliza preset only when requested", () => {
+    expect(resolveTimingCharacter("minimal")).toBeUndefined();
+
+    const character = resolveTimingCharacter("eliza");
+    expect(character).toMatchObject({
+      name: "Eliza",
+      adjectives: expect.arrayContaining(["brief", "warm", "dry"]),
+    });
+    expect(character?.system).toContain(
+      "In group chats, not every message deserves a reply.",
+    );
+    expect(character?.style?.chat).toContain(
+      "if another assistant already answered, don't answer again",
+    );
+  });
+
   it("parses a complete labeled dialogue", () => {
     const row = parseWhen2SpeakLine(
       JSON.stringify({

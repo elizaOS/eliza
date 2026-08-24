@@ -39,6 +39,7 @@ function writeReport(options: {
     provider: "cli",
     requestedModel: "test-model",
     backend: "test-backend",
+    characterPreset: "minimal",
     trajectoryDir: options.invocation.trajectoryDir,
     selection: {
       shardIndex: options.invocation.shardIndex,

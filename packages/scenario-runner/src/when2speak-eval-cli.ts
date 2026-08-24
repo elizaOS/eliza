@@ -4,7 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import type { LiveProviderName } from "@elizaos/core/testing";
-import type { TimingInputFormat, TimingReport } from "./when2speak-eval.ts";
+import type {
+  TimingCharacterPreset,
+  TimingInputFormat,
+  TimingReport,
+} from "./when2speak-eval.ts";
 import { runWhen2SpeakEval } from "./when2speak-eval.ts";
 
 function usageError(message: string): ElizaError {
@@ -21,7 +25,7 @@ function option(name: string): string | undefined {
 const input = option("input");
 if (!input)
   throw usageError(
-    "usage: when2speak-eval --input=<jsonl> [--input-format=when2speak|discord-replay] [--output=<json>] [--run-dir=<dir>] [--provider=<name>] [--limit=<n>] [--shard-index=<n> --shard-count=<n>] [--start-row=<n>] [--checkpoint-every=<n>] [--resume=<in-progress-report>]",
+    "usage: when2speak-eval --input=<jsonl> [--input-format=when2speak|discord-replay] [--character-preset=minimal|eliza] [--output=<json>] [--run-dir=<dir>] [--provider=<name>] [--limit=<n>] [--shard-index=<n> --shard-count=<n>] [--start-row=<n>] [--checkpoint-every=<n>] [--resume=<in-progress-report>]",
   );
 function positiveInteger(name: string): number | undefined {
   const text = option(name);
@@ -39,6 +43,10 @@ const inputFormatText = option("input-format") ?? "when2speak";
 if (inputFormatText !== "when2speak" && inputFormatText !== "discord-replay")
   throw usageError("--input-format must be when2speak or discord-replay");
 const inputFormat: TimingInputFormat = inputFormatText;
+const characterPresetText = option("character-preset") ?? "minimal";
+if (characterPresetText !== "minimal" && characterPresetText !== "eliza")
+  throw usageError("--character-preset must be minimal or eliza");
+const characterPreset: TimingCharacterPreset = characterPresetText;
 const shardCount = positiveInteger("shard-count") ?? 1;
 const shardIndexText = option("shard-index");
 const shardIndex = shardIndexText === undefined ? 0 : Number(shardIndexText);
@@ -105,6 +113,7 @@ const report = await runWhen2SpeakEval({
   startRow,
   checkpointEvery,
   resumeReport,
+  characterPreset,
   onCheckpoint: writeReport,
 });
 writeReport(report);
