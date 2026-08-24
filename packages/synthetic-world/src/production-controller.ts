@@ -7,6 +7,7 @@
 import path from "node:path";
 import { ElizaError } from "@elizaos/core/errors";
 import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared/contracts/synthetic-environment-lease";
+import { ActiveSyntheticControllerReservation } from "./controller-reservation";
 import type { SqliteSyntheticCommandJournal } from "./sqlite-command-journal";
 import {
   SYNTHETIC_WORLD_CAPABILITIES,
@@ -145,9 +146,11 @@ class OwnedProductionSyntheticWorldController
   constructor(
     runtime: SyntheticProductionRuntime,
     readonly proof: ProductionSyntheticWorldRuntimeProof,
+    reservation: ActiveSyntheticControllerReservation,
     stopRuntime: (runtime: SyntheticProductionRuntime) => Promise<void>,
   ) {
-    this.stopRuntime = () => stopRuntime(runtime);
+    this.stopRuntime = () =>
+      reservation.releaseAfterConfirmedCleanup(() => stopRuntime(runtime));
   }
 
   private readonly stopRuntime: () => Promise<void>;
@@ -200,10 +203,12 @@ async function bootWithProductionRuntime(
   let stopProductionRuntime:
     | ((runtime: SyntheticProductionRuntime, context: string) => Promise<void>)
     | undefined;
+  let reservation: ActiveSyntheticControllerReservation | null = null;
   let stage: ProductionSyntheticWorldFailureStage = "input";
   try {
     validateInput(input);
     stage = "claim";
+    reservation = ActiveSyntheticControllerReservation.acquire(input.authority);
     const claim = await input.journal.execute(
       input.authority,
       {
@@ -289,6 +294,8 @@ async function bootWithProductionRuntime(
           "Production boot created a runtime but resolved without returning it",
         );
       }
+      reservation.releaseWithoutRuntime();
+      reservation = null;
       return {
         status: "unavailable",
         failure: {
@@ -333,14 +340,17 @@ async function bootWithProductionRuntime(
         pgliteDataDir: input.pgliteDataDir,
       },
     };
+    const controller = new OwnedProductionSyntheticWorldController(
+      runtime,
+      proof,
+      reservation,
+      (ownedRuntime) =>
+        productionStop(ownedRuntime, "synthetic production controller"),
+    );
+    reservation = null;
     return {
       status: "available",
-      controller: new OwnedProductionSyntheticWorldController(
-        runtime,
-        proof,
-        (ownedRuntime) =>
-          productionStop(ownedRuntime, "synthetic production controller"),
-      ),
+      controller,
       proof,
       capabilities: SYNTHETIC_WORLD_CAPABILITIES,
     };
@@ -357,12 +367,15 @@ async function bootWithProductionRuntime(
         error,
       );
     }
-    if (runtime && stopProductionRuntime) {
+    if (runtime && stopProductionRuntime && reservation) {
+      const ownedRuntime = runtime;
+      const ownedReservation = reservation;
+      const stopRuntime = stopProductionRuntime;
       try {
-        await stopProductionRuntime(
-          runtime,
-          "failed synthetic production boot",
+        await ownedReservation.releaseAfterConfirmedCleanup(() =>
+          stopRuntime(ownedRuntime, "failed synthetic production boot"),
         );
+        reservation = null;
       } catch (teardownError) {
         // error-policy:J2 Preserve teardown failure on the explicit failed result.
         failure = controllerError(
@@ -372,6 +385,9 @@ async function bootWithProductionRuntime(
         );
         stage = "teardown";
       }
+    } else if (reservation) {
+      reservation.releaseWithoutRuntime();
+      reservation = null;
     }
     // error-policy:J1 This factory is the controller boundary and returns an explicit staged failure.
     return {

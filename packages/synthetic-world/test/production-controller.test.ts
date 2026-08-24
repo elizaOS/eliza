@@ -200,7 +200,7 @@ describe("production synthetic-world controller", () => {
     store.close();
   }, 30_000);
 
-  test("serializes concurrent duplicate boot claims to exactly one runtime boot", async () => {
+  test("serializes concurrent boot claims across distinct command IDs", async () => {
     const store = new SqliteSyntheticEnvironmentLeaseStore(
       path.join(root, "concurrent.sqlite"),
     );
@@ -238,7 +238,7 @@ describe("production synthetic-world controller", () => {
       module,
     );
     const second = bootProductionSyntheticWorldControllerWithModule(
-      input,
+      { ...input, commandId: "concurrent-boot-with-another-id" },
       module,
     );
     await started;
@@ -252,7 +252,7 @@ describe("production synthetic-world controller", () => {
     expect(failure).toMatchObject({
       status: "failed",
       stage: "claim",
-      failure: { code: "SYNTHETIC_CONTROLLER_BOOT_ALREADY_CLAIMED" },
+      failure: { code: "SYNTHETIC_CONTROLLER_COLLISION" },
     });
     expect(results.filter((result) => result.status === "failed")).toHaveLength(
       1,
@@ -362,9 +362,41 @@ describe("production synthetic-world controller", () => {
       code: "SYNTHETIC_CONTROLLER_TEARDOWN_FAILED",
     });
 
-    const failedBoot = await bootProductionSyntheticWorldControllerWithModule(
+    let blockedStarts = 0;
+    const blocked = await bootProductionSyntheticWorldControllerWithModule(
       {
         authority,
+        journal: new SqliteSyntheticCommandJournal(store),
+        commandId: "blocked-after-uncertain-teardown",
+        runtimeName: "Blocked After Uncertain Teardown",
+        pgliteDataDir: path.join(
+          root,
+          "blocked-after-uncertain-teardown-pglite",
+        ),
+      },
+      fakeModule({
+        runtimeName: "Blocked After Uncertain Teardown",
+        onStart: () => {
+          blockedStarts += 1;
+        },
+      }),
+    );
+    expect(blockedStarts).toBe(0);
+    expect(blocked).toMatchObject({
+      status: "failed",
+      stage: "claim",
+      failure: { code: "SYNTHETIC_CONTROLLER_COLLISION" },
+    });
+
+    const partialAuthority = await acquire(
+      store,
+      "sw2-partial-teardown-failure",
+      "partial-teardown-failure",
+    );
+
+    const failedBoot = await bootProductionSyntheticWorldControllerWithModule(
+      {
+        authority: partialAuthority,
         journal: new SqliteSyntheticCommandJournal(store),
         commandId: "partial-teardown-failure-boot",
         runtimeName: "Partial Teardown Failure",
