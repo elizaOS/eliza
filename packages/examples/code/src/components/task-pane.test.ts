@@ -594,3 +594,194 @@ describe("TaskPane render details", () => {
     expect(trace).not.toContain("\u2014");
   });
 });
+
+describe("TaskPane rename edge cases", () => {
+  it("skips the service call when the edited name trims to empty", async () => {
+    const service = recordingService();
+    const component = paneWithService(service);
+    const task = taskWith("anon", { name: "" });
+    seedCurrent(component, task);
+    component.syncFocus(true);
+    component.handleInput("e");
+    component.handleInput("r");
+    component.handleInput("\r");
+    await flush();
+    expect(service.calls.map((call) => call.method)).toEqual([]);
+  });
+
+  it("commits characters typed into the rename editor", async () => {
+    const service = recordingService();
+    const { component, taskId } = focusedInEditMode(service);
+    component.handleInput("r");
+    component.handleInput("!");
+    component.handleInput("\r");
+    await flush();
+    expect(service.calls.map((call) => call.method)).toEqual(["renameTask"]);
+    expect(service.calls[0]?.args).toEqual([taskId, "Build feature!"]);
+  });
+});
+
+describe("TaskPane detail placeholders", () => {
+  it("shows placeholder copy when output and trace views are empty", () => {
+    const component = pane();
+    seedCurrent(
+      component,
+      taskWith("quiet", { name: "Quiet", status: "pending" }),
+    );
+    const rendered = component.renderContent(80, 24).join("\n");
+    expect(rendered).toContain("No output yet.");
+
+    component.syncFocus(true);
+    component.handleInput("t");
+    const traced = component.renderContent(80, 24).join("\n");
+    expect(traced).toContain("Trace");
+    expect(traced).toContain("No trace yet.");
+  });
+
+  it("marks a running current task as live and defaults its sub-agent label", () => {
+    const component = pane();
+    seedCurrent(
+      component,
+      taskWith("live", { name: "Live wire", status: "running" }),
+    );
+    const rendered = component.renderContent(80, 24).join("\n");
+    expect(rendered).toContain("(live)");
+    expect(rendered).toContain("Sub-agent: eliza");
+    expect(rendered).toContain("\ud83d\udd04");
+  });
+});
+
+describe("TaskPane trace formatting details", () => {
+  it("renders info and warning notes plus status messages with separators", () => {
+    const component = pane();
+    const task = taskWith("levels", { name: "Levels", status: "running" });
+    task.metadata.trace = [
+      { kind: "note", level: "info", message: "started", ts: 1, seq: 1 },
+      { kind: "note", level: "warning", message: "slow", ts: 2, seq: 2 },
+      {
+        kind: "status",
+        status: "paused",
+        message: "awaiting input",
+        ts: 3,
+        seq: 3,
+      },
+      {
+        kind: "tool_result",
+        iteration: 1,
+        name: "shell",
+        success: true,
+        output: "ok",
+        outputPreview: "fine",
+        ts: 4,
+        seq: 4,
+      },
+    ];
+    seedCurrent(component, task);
+    component.syncFocus(true);
+    component.handleInput("t");
+    const trace = component.renderContent(80, 24).join("\n");
+    expect(trace).toContain("\u2139\ufe0f started");
+    expect(trace).toContain("\u26a0\ufe0f slow");
+    expect(trace).toContain("paused \u2014 awaiting input");
+    expect(trace).toContain("RESULT: shell \u2713");
+    expect(trace).toContain("fine");
+  });
+});
+
+describe("TaskPane status icons", () => {
+  it("renders the paused execution icon", () => {
+    const component = pane();
+    useStore
+      .getState()
+      .setTasks([taskWith("hold", { name: "Hold", status: "paused" })]);
+    const rendered = component.renderContent(80, 24).join("\n");
+    expect(rendered).toContain("\u23f8\ufe0f");
+    expect(rendered).toContain("Hold");
+  });
+});
+
+describe("TaskPane help surfaces", () => {
+  it("switches the help line between browse and edit modes", () => {
+    const component = pane();
+    seedCurrent(component, codeTask());
+    component.syncFocus(true);
+    let rendered = component.renderContent(80, 24).join("\n");
+    expect(rendered).toContain("\u2191\u2193 select \u2022 Enter switch");
+    expect(rendered).toContain("d done/open");
+
+    component.handleInput("e");
+    rendered = component.renderContent(80, 24).join("\n");
+    expect(rendered).toContain("Edit: a agent");
+    expect(rendered).toContain("r rename");
+    expect(rendered).toContain("p pause/resume");
+  });
+});
+
+describe("TaskPane confirmation persistence", () => {
+  it("keeps the delete dialog open for unrecognized keys until confirmed", async () => {
+    const service = recordingService();
+    const { component, taskId } = focusedInEditMode(service);
+    component.handleInput("x");
+    component.handleInput("z");
+    expect(component.renderContent(80, 24).join("\n")).toContain(
+      "Confirm delete? (y/n)",
+    );
+    expect(service.calls).toEqual([]);
+
+    component.handleInput("Y");
+    await flush();
+    expect(service.calls.map((call) => call.method)).toEqual(["deleteTask"]);
+    expect(service.calls[0]?.args).toEqual([taskId]);
+  });
+});
+
+describe("TaskPane selection propagation", () => {
+  it("mirrors keyboard selection into the task service", async () => {
+    const service = recordingService();
+    const component = paneWithService(service);
+    const first = codeTask();
+    const second: CodeTask = {
+      ...first,
+      id: stringToUuid("task-pane:mapped"),
+      name: "Mapped",
+    };
+    useStore.getState().setTasks([first, second]);
+    component.syncFocus(true);
+    component.handleInput("\x1b[B");
+    component.handleInput("\r");
+    await flush();
+    expect(useStore.getState().getCurrentTask()?.name).toBe("Mapped");
+    expect(service.calls.map((call) => call.method)).toEqual([
+      "setCurrentTask",
+    ]);
+    expect(service.calls[0]?.args).toEqual([stringToUuid("task-pane:mapped")]);
+  });
+
+  it("resets detail scrolling when the selection changes", () => {
+    const component = pane();
+    const chatty = taskWith("chatty", {
+      name: "Chatty",
+      status: "running",
+      output: Array.from({ length: 15 }, (_, i) => `line ${i}`),
+    });
+    const still = taskWith("still", { name: "Still" });
+    useStore.getState().setTasks([chatty, still]);
+    useStore.getState().setCurrentTaskId(chatty.id ?? null);
+    component.syncFocus(true);
+    component.handleInput("\x1b[1;5A");
+    component.handleInput("\x1b[1;5A");
+    expect(component.renderContent(80, 24).join("\n")).toContain(
+      "[\u2193 2 newer lines]",
+    );
+
+    component.handleInput("\x1b[B");
+    component.handleInput("\r");
+    expect(useStore.getState().currentTaskId).toBe(
+      stringToUuid("task-pane:still"),
+    );
+    const rendered = component.renderContent(80, 24).join("\n");
+    expect(rendered).not.toContain("newer lines");
+    expect(rendered).toContain("No output yet.");
+    expect(rendered).toContain("Still");
+  });
+});
