@@ -205,6 +205,7 @@ function captureFromFrame(data: string): {
 
       const pointerBefore = await service.executeCommand("get_cursor_position");
       expect(pointerBefore.success).toBe(true);
+      expect(pointerBefore.cursorPosition).toBeDefined();
       const parameters = {
         coordinate: [plan.proposed.x, plan.proposed.y],
       };
@@ -237,7 +238,7 @@ function captureFromFrame(data: string): {
       const pointerAfter = await service.executeCommand("get_cursor_position");
       expect(pointerAfter).toMatchObject({
         success: true,
-        data: pointerBefore.data,
+        cursorPosition: pointerBefore.cursorPosition,
       });
 
       const dom = await service.executeCommand("browser_get_dom");
@@ -286,11 +287,11 @@ function captureFromFrame(data: string): {
             },
             actionResult: completed.result,
             pointer: {
-              before: pointerBefore.data,
-              after: pointerAfter.data,
+              before: pointerBefore.cursorPosition,
+              after: pointerAfter.cursorPosition,
               unchanged:
-                JSON.stringify(pointerBefore.data) ===
-                JSON.stringify(pointerAfter.data),
+                JSON.stringify(pointerBefore.cursorPosition) ===
+                JSON.stringify(pointerAfter.cursorPosition),
             },
             freshObservation: after.provenance,
             visibleOutcome: {
