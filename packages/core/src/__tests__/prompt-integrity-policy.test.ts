@@ -145,6 +145,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/pushWithBatchEvict\(\s*state\.logBuffer/,
 		/state\.logBuffer\.splice\(/,
 	],
+	"packages/agent/src/api/server-helpers-auth.ts": [
+		/rawAuth\.slice\(/,
+	],
+	"packages/agent/scripts/live-sandbox-smoke.ts": [
+		/this\.stderr[^\n]*\.slice\(/,
+	],
 	"packages/agent/src/api/wallet-dex-prices.ts": [
 		/addresses\.slice\(0,\s*\d+\)/,
 	],
