@@ -84,6 +84,7 @@ function sessionService() {
       available: true,
       adapter: "fixture-ax",
       permission: "ready",
+      routes: [],
     }),
     createSession: (input: CreateComputerUseSessionInput) =>
       manager.create(input),

@@ -74,4 +74,17 @@ describe("macOS AX helper packaging", () => {
     expect(service).toContain('"app_physical_pointer_fallback"');
     expect(service).toContain("requestApproval(");
   });
+
+  it("keeps private window dispatch out of the shared signed helper", () => {
+    const source = readFileSync(
+      `${packageRoot}/native/macos-ax-helper.swift`,
+      "utf8",
+    );
+    expect(source).not.toContain("SkyLight");
+    expect(source).not.toContain("SLEvent");
+    expect(source).not.toContain("SLPS");
+    expect(source).not.toContain("PrivateFrameworks");
+    expect(source).not.toContain("dlopen");
+    expect(source).not.toContain("dlsym");
+  });
 });

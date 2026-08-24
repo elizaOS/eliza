@@ -138,6 +138,9 @@ on the SHELL action. They are **not** exposed by this plugin.
   capture and coordinate translation.
 - [`docs/CODEX_COMPUTER_PARITY.md`](./docs/CODEX_COMPUTER_PARITY.md) —
   evidence-bounded parity matrix and macOS app-control limitations.
+- [`docs/EXACT_WINDOW_DISPATCH_POLICY.md`](./docs/EXACT_WINDOW_DISPATCH_POLICY.md)
+  — signed-distribution decision and the truthful AX/CDP/isolated/global route
+  matrix.
 - Scene composition — how windows, a11y, screen, and OCR are composed into a
   single `Scene` (the separate design note was never committed).
 - [`docs/IOS_CONSTRAINTS.md`](./docs/IOS_CONSTRAINTS.md) /

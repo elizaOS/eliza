@@ -1,6 +1,10 @@
 /** Coordinates fresh app state, ephemeral element indices, semantic-first execution, and verified receipts. */
 
 import { randomUUID } from "node:crypto";
+import {
+  getAppControlRouteMatrix,
+  type AppControlRouteCapability,
+} from "./route-policy.js";
 import type {
   AppActionOutcome,
   AppActionRequest,
@@ -129,12 +133,14 @@ export class AppControlCoordinator {
     available: boolean;
     adapter: string;
     permission: AppControlPermissionState | "unknown";
+    routes: AppControlRouteCapability[];
   } {
     const available = this.adapter.available();
     return {
       available,
       adapter: this.adapter.name,
       permission: available ? this.permission : "helper_unavailable",
+      routes: getAppControlRouteMatrix(),
     };
   }
 

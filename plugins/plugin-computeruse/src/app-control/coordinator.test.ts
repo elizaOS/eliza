@@ -416,6 +416,31 @@ describe("AppControlCoordinator", () => {
     });
   });
 
+  it("refuses click when semantic AX is absent and no approved physical route exists", async () => {
+    const pointer = {
+      getPosition: vi.fn(async () => ({ x: 692, y: 765 })),
+      click: vi.fn(),
+      scroll: vi.fn(),
+    };
+    const { adapter, coordinator } = fixture({ pointer });
+    const perform = adapter.perform as ReturnType<typeof vi.fn>;
+    perform.mockResolvedValue({
+      success: false,
+      error:
+        "The element exposed no semantic action; exact window-local pointer dispatch is unavailable",
+      targetPid: 42,
+      targetWindowId: 701,
+    });
+    const before = await coordinator.getAppState(app.id);
+    await expect(coordinator.act(action(before.stateId))).resolves.toEqual({
+      success: false,
+      error:
+        "The element exposed no semantic action; exact window-local pointer dispatch is unavailable",
+    });
+    expect(pointer.click).not.toHaveBeenCalled();
+    expect(pointer.getPosition).toHaveBeenCalledOnce();
+  });
+
   it("refuses when a process-scoped key mutates sibling B but target A readback is unchanged", async () => {
     let siblingValue = "before";
     const { coordinator } = fixture({
