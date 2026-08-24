@@ -156,6 +156,8 @@ describe("publicJobErrorSummary — API boundary", () => {
 
   test.each([
     "ENOENT: no such file, open '/srv/eliza/agents/9c1/config.json'",
+    "ENOENT [/srv/eliza/agents/9c1/config.json]",
+    "ENOENT: //srv/eliza/agents/9c1/config.json",
     "failed to create /tmp",
     "failed to read C:\\eliza\\agents\\9c1\\config.json",
     "failed to read \\\\internal-host\\agents\\9c1\\config.json",
@@ -167,6 +169,14 @@ describe("publicJobErrorSummary — API boundary", () => {
       "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
     );
     expect(summary).not.toContain("9c1");
+  });
+
+  test.each([
+    "Provider failed at https://api.eliza.app/v1/chat",
+    "Socket closed at wss://agent.example.test/chat",
+  ])("does not mistake a public network URL for a host path: %s", (message) => {
+    const stored = jobErrorText(new Error(message));
+    expect(publicJobErrorSummary(stored)).toBe(`Error: ${message}`);
   });
 
   test("null and empty stay null", () => {

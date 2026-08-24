@@ -41,11 +41,15 @@ const PUBLIC_INTERNAL_ERROR =
  * preserving arbitrary operator text.
  */
 function containsAbsolutePath(text: string): boolean {
+  // A network URL contains `//` and path slashes but is not a host filesystem
+  // path. Remove only the public network schemes we understand; `file:` stays
+  // private and every unknown scheme fails closed through the checks below.
+  const withoutNetworkUrls = text.replace(/\b(?:https?|wss?):\/\/[^\s'"`<>]+/giu, "");
   return (
     /\bfile:\/\//iu.test(text) ||
-    /(?:^|[\s'"`(=:])\/(?!\/)[^\s'"`():]+/u.test(text) ||
-    /(?:^|[\s'"`(=:])[A-Za-z]:[\\/][^\s'"`]*/u.test(text) ||
-    /(?:^|[\s'"`(=:])\\\\[^\\\s'"`]+\\[^\s'"`]*/u.test(text)
+    /(?:^|[^A-Za-z0-9_.~%-])\/+[^\s'"`<>]+/u.test(withoutNetworkUrls) ||
+    /(?:^|[^A-Za-z0-9_.~%-])[A-Za-z]:[\\/][^\s'"`<>]*/u.test(withoutNetworkUrls) ||
+    /(?:^|[^A-Za-z0-9_.~%-])\\\\[^\\\s'"`<>]+\\[^\s'"`<>]*/u.test(withoutNetworkUrls)
   );
 }
 

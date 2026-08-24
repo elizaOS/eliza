@@ -6,6 +6,35 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const ORG_ID = "11111111-1111-4111-8111-111111111111";
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 
+function agentWithError(errorMessage: string) {
+  return {
+    id: "agent-1",
+    agent_name: "Ada",
+    status: "error",
+    database_status: "ready",
+    bridge_url: null,
+    last_backup_at: null,
+    last_heartbeat_at: null,
+    error_message: `${errorMessage}\n    at readAgentConfig (/opt/eliza/provision.ts:42:7)`,
+    error_count: 1,
+    created_at: new Date("2026-08-21T00:00:00.000Z"),
+    updated_at: new Date("2026-08-21T00:01:00.000Z"),
+    character_id: null,
+    node_id: null,
+    container_name: null,
+    headscale_ip: null,
+    bridge_port: null,
+    web_ui_port: null,
+    docker_image: null,
+    agent_config: {},
+    execution_tier: "dedicated-always" as const,
+  };
+}
+
+const getAgent = mock(async () =>
+  agentWithError("ENOENT [/srv/eliza/agents/agent-1/config.json]"),
+);
+
 mock.module("@/lib/utils/logger", () => ({
   logger: {
     info: mock(() => undefined),
@@ -21,29 +50,7 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 }));
 mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: {
-    getAgent: mock(async () => ({
-      id: "agent-1",
-      agent_name: "Ada",
-      status: "error",
-      database_status: "ready",
-      bridge_url: null,
-      last_backup_at: null,
-      last_heartbeat_at: null,
-      error_message:
-        "ENOENT: no such file, open '/srv/eliza/agents/agent-1/config.json'\n    at readAgentConfig (/opt/eliza/provision.ts:42:7)",
-      error_count: 1,
-      created_at: new Date("2026-08-21T00:00:00.000Z"),
-      updated_at: new Date("2026-08-21T00:01:00.000Z"),
-      character_id: null,
-      node_id: null,
-      container_name: null,
-      headscale_ip: null,
-      bridge_port: null,
-      web_ui_port: null,
-      docker_image: null,
-      agent_config: {},
-      execution_tier: "dedicated-always",
-    })),
+    getAgent,
   },
 }));
 mock.module("@/db/repositories/characters", () => ({
@@ -87,18 +94,25 @@ mock.module("@/lib/services/steward-client", () => ({
 
 const { default: agentDetailRoute } = await import("./route");
 
-test("GET withholds a first-line absolute server path from the detail DTO", async () => {
-  const app = new Hono<AppEnv>();
-  app.route("/api/v1/eliza/agents/:agentId", agentDetailRoute);
+test.each([
+  "ENOENT [/srv/eliza/agents/agent-1/config.json]",
+  "ENOENT: //srv/eliza/agents/agent-1/config.json",
+])(
+  "GET withholds formatted server paths from the detail DTO: %s",
+  async (message) => {
+    getAgent.mockImplementationOnce(async () => agentWithError(message));
+    const app = new Hono<AppEnv>();
+    app.route("/api/v1/eliza/agents/:agentId", agentDetailRoute);
 
-  const response = await app.request("/api/v1/eliza/agents/agent-1", {}, ENV);
-  expect(response.status).toBe(200);
-  const body = (await response.json()) as {
-    data: { errorMessage: string | null };
-  };
-  expect(body.data.errorMessage).toBe(
-    "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
-  );
-  expect(JSON.stringify(body)).not.toContain("/srv/eliza");
-  expect(JSON.stringify(body)).not.toContain("/opt/eliza");
-});
+    const response = await app.request("/api/v1/eliza/agents/agent-1", {}, ENV);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { errorMessage: string | null };
+    };
+    expect(body.data.errorMessage).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+    expect(JSON.stringify(body)).not.toContain("agent-1/config.json");
+    expect(JSON.stringify(body)).not.toContain("/opt/eliza");
+  },
+);
