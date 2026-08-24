@@ -56,7 +56,6 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
   trackPostDeliveryTask,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -1901,32 +1900,45 @@ function walletActionMatchesIntent(
   return attributedOperations.length > 0;
 }
 
-function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
+function sanitizeActionResultValue(
+  value: unknown,
+  ancestors: WeakSet<object> = new WeakSet(),
+): unknown {
   if (value === null) return null;
   if (typeof value === "boolean") return value;
   if (typeof value === "number")
     return Number.isFinite(value) ? value : undefined;
   if (typeof value === "string") {
-    const wellFormed = toWellFormedUnicode(value);
-    return wellFormed.length > 1000
-      ? `${truncateWellFormed(wellFormed, 997)}...`
-      : wellFormed;
+    return toWellFormedUnicode(value);
   }
   if (Array.isArray(value)) {
-    if (depth >= 2) return undefined;
-    return value
-      .slice(0, 20)
-      .map((entry) => sanitizeActionResultValue(entry, depth + 1))
-      .filter((entry) => entry !== undefined);
+    if (ancestors.has(value)) {
+      throw new Error("Action result contains a circular array");
+    }
+    ancestors.add(value);
+    try {
+      return value
+        .map((entry) => sanitizeActionResultValue(entry, ancestors))
+        .filter((entry) => entry !== undefined);
+    } finally {
+      ancestors.delete(value);
+    }
   }
   if (value && typeof value === "object") {
-    if (depth >= 2) return undefined;
-    const output: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value).slice(0, 20)) {
-      const safe = sanitizeActionResultValue(entry, depth + 1);
-      if (safe !== undefined) output[key] = safe;
+    if (ancestors.has(value)) {
+      throw new Error("Action result contains a circular object");
     }
-    return output;
+    ancestors.add(value);
+    try {
+      const output: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(value)) {
+        const safe = sanitizeActionResultValue(entry, ancestors);
+        if (safe !== undefined) output[key] = safe;
+      }
+      return output;
+    } finally {
+      ancestors.delete(value);
+    }
   }
   return undefined;
 }
@@ -1937,7 +1949,7 @@ function sanitizeActionResultValues(
   if (!values || typeof values !== "object" || Array.isArray(values))
     return undefined;
   const output: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(values).slice(0, 20)) {
+  for (const [key, value] of Object.entries(values)) {
     const safe = sanitizeActionResultValue(value);
     if (safe !== undefined) output[key] = safe;
   }
@@ -1979,7 +1991,7 @@ function summarizeActionResultForClient(
   };
 }
 
-function summarizeRuntimeActionResults(
+export function summarizeRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
   turnActionResults?: unknown[],
@@ -1990,8 +2002,7 @@ function summarizeRuntimeActionResults(
       : readRuntimeActionResults(runtime, messageId);
   return actionResults
     .map(summarizeActionResultForClient)
-    .filter((entry): entry is ChatActionResultSummary => Boolean(entry))
-    .slice(-8);
+    .filter((entry): entry is ChatActionResultSummary => Boolean(entry));
 }
 
 function resolveFinalTranscriptVisibility(

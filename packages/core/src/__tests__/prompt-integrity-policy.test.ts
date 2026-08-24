@@ -129,6 +129,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/params\.limit\s*\?\?/,
 		/Math\.min\([^\n]*params\.limit/,
 	],
+	"packages/agent/src/api/chat-routes.ts": [
+		/sanitizeActionResultValue\([^\n]*depth/,
+		/Object\.entries\([^\n]+\.slice\(/,
+		/actionResults[\s\S]{0,200}\.slice\(-\d+\)/,
+		/truncateWellFormed\(wellFormed/,
+	],
 	"packages/agent/src/api/diagnostics-routes.ts": [
 		/entries\.slice\(-\d+\)/,
 	],
