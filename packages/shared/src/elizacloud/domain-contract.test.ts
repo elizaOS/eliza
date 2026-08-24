@@ -185,4 +185,29 @@ describe("Eliza domain contract", () => {
     expect(canonicalCloudPathForLegacyDashboard("/cloud/agents")).toBeNull();
     expect(canonicalCloudPathForLegacyDashboard("/dashboard-old")).toBeNull();
   });
+
+  it("returns safe defaults for non-string inputs without throwing", () => {
+    // @ts-expect-error runtime guard check
+    expect(canonicalElizaServiceHostname(null)).toBeNull();
+    // @ts-expect-error runtime guard check
+    expect(canonicalElizaServiceHostname(undefined)).toBeNull();
+    // @ts-expect-error runtime guard check
+    expect(canonicalElizaServiceHostname(123)).toBeNull();
+    // @ts-expect-error runtime guard check
+    expect(canonicalElizaServiceHostname({})).toBeNull();
+    // @ts-expect-error runtime guard check
+    expect(canonicalElizaServiceHostname([])).toBeNull();
+    // @ts-expect-error runtime guard check
+    expect(classifyElizaHostname(null).role).toBe("unknown");
+    // @ts-expect-error runtime guard check
+    expect(classifyElizaHostname(undefined).role).toBe("unknown");
+    // @ts-expect-error runtime guard check
+    expect(classifyElizaHostname(123).role).toBe("unknown");
+    // @ts-expect-error runtime guard check
+    expect(classifyElizaHostname({}).role).toBe("unknown");
+    // @ts-expect-error runtime guard check
+    expect(classifyElizaHostname(true).role).toBe("unknown");
+    expect(canonicalElizaServiceHostname("")).toBeNull();
+    expect(classifyElizaHostname("").role).toBe("unknown");
+  });
 });

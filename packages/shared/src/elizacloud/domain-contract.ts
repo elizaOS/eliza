@@ -207,6 +207,7 @@ function mapServiceHostname(
 export function canonicalElizaServiceHostname(
   rawHostname: string,
 ): string | null {
+  if (typeof rawHostname !== "string") return null;
   const hostname = rawHostname.trim().toLowerCase().replace(/\.$/, "");
   for (const environment of ["staging", "production"] as const) {
     const mapped = mapServiceHostname(
@@ -284,6 +285,14 @@ function classification(
 export function classifyElizaHostname(
   rawHostname: string,
 ): ElizaHostnameClassification {
+  if (typeof rawHostname !== "string") {
+    return {
+      role: "unknown",
+      environment: null,
+      canonicalHostname: null,
+      agentId: null,
+    };
+  }
   const hostname = rawHostname.trim().toLowerCase().replace(/\.$/, "");
 
   // Staging suffixes are more specific (`*.staging.elizacloud.ai`) than the
