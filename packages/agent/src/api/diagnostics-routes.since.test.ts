@@ -32,6 +32,11 @@ function makeCtx(search: string) {
     method: "GET",
     pathname,
     url,
+    authorization: {
+      ok: true,
+      role: "OWNER" as const,
+      principal: "since-test-owner",
+    },
     json,
     logBuffer: [entry(1_000, "old"), entry(ISO_MS + 1, "new")],
     eventBuffer: [],

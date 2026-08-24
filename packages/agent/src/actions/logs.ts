@@ -3,7 +3,7 @@
  *
  *   search    → GET /api/logs   (filter by source/level/tag/since; HTTP because the log
  *                                buffer lives on server state, not the runtime)
- *   delete    → DELETE /api/logs (clears the in-memory log buffer; HTTP for the same reason)
+ *   delete    → confirmed DELETE /api/logs (clears the in-memory log buffer)
  *   set_level → in-process per-room override on `runtime.logLevelOverrides`
  */
 
@@ -45,6 +45,8 @@ interface LogsParams {
   tags?: string[];
   since?: string;
   limit?: number;
+  // delete-only
+  confirm?: boolean;
   // set_level-only
   roomId?: string;
 }
@@ -206,7 +208,11 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
 async function deleteLogs(): Promise<ActionResult> {
   const resp = await fetch(`${getApiBase()}/api/logs`, {
     method: "DELETE",
-    headers: createSelfApiRequestHeaders(),
+    headers: {
+      ...createSelfApiRequestHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ confirm: true }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!resp.ok) {
@@ -338,6 +344,13 @@ export const logsAction: Action = {
     if (op === "set_level") {
       return setLogLevel(runtime, message, params, callback);
     }
+    if (op === "delete" && params.confirm !== true) {
+      return failure(
+        "Log deletion requires explicit confirm=true; ask the owner to confirm clearing the in-memory log buffer.",
+        "LOGS_CONFIRMATION_REQUIRED",
+        { op: "delete", confirmationRequired: true },
+      );
+    }
 
     try {
       return op === "search" ? await searchLogs(params) : await deleteLogs();
@@ -392,6 +405,13 @@ export const logsAction: Action = {
       schema: { type: "number" as const },
     },
     {
+      name: "confirm",
+      description:
+        "[delete] Must be true after the owner explicitly confirms clearing the in-memory log buffer.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
       name: "roomId",
       description:
         "[set_level] Optional room id to scope the override; defaults to the active room.",
@@ -416,7 +436,9 @@ export const logsAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Clear the debug logs from the agent buffer." },
+        content: {
+          text: "Yes, confirm clearing the debug logs from the agent buffer.",
+        },
       },
       {
         name: "{{agentName}}",

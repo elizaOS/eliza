@@ -1,7 +1,7 @@
 /**
  * Real TCP coverage for agent-side callers crossing the bearer-protected
- * elizaOS self-API boundary. The server rejects missing or incorrect tokens;
- * the tests invoke the production actions, live-state renderer, and custom
+ * elizaOS self-API boundary. The server rejects missing/incorrect tokens and
+ * destructive log calls carry explicit confirmation; the tests invoke the
  * shell handler rather than substituting fetch mocks.
  */
 
@@ -128,6 +128,10 @@ async function startProtectedSelfApi(expectedToken: string): Promise<{
         return;
       }
       if (request.method === "DELETE" && request.pathname === "/api/logs") {
+        if (request.body !== '{"confirm":true}') {
+          sendJson(res, 400, { error: "Confirmation required" });
+          return;
+        }
         sendJson(res, 200, { cleared: 0 });
         return;
       }
@@ -199,7 +203,12 @@ async function runProductionCallers(): Promise<boolean[]> {
     {} as never,
     message,
     undefined,
-    { parameters: { action: "delete" } } as never,
+    {
+      parameters: {
+        action: "delete",
+        confirm: true,
+      },
+    } as never,
   );
   const reloadResult = await runtimeAction.handler?.(
     {} as never,
@@ -318,6 +327,9 @@ describe("authenticated agent self-API callers", () => {
         (request) => request.authorization === `Bearer ${token}`,
       ),
     ).toBe(true);
+    expect(
+      authenticated.find((request) => request.method === "DELETE")?.body,
+    ).toBe('{"confirm":true}');
     for (const request of authenticated) {
       expect(`${request.pathname}\n${request.body}`).not.toContain(token);
     }

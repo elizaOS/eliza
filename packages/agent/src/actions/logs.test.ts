@@ -1,6 +1,6 @@
 /**
  * Covers logsAction: op dispatch, search query construction / limit clamp /
- * tag intersection, delete clearing, and set_level overrides. HTTP is the
+ * tag intersection, explicit delete confirmation, and set_level overrides. HTTP is the
  * action's real boundary (the log buffer lives on the server), so fetch is
  * stubbed to capture the outbound request and return a canned buffer; the
  * action itself is the system under test. Deterministic: no server runs.
@@ -28,6 +28,7 @@ interface CapturedRequest {
   url: string;
   method: string;
   headers: HeadersInit | undefined;
+  body: string;
 }
 
 type FetchOutcome =
@@ -50,6 +51,7 @@ function stubFetch(outcome: FetchOutcome): void {
       url: String(input),
       method: (init?.method ?? "GET").toUpperCase(),
       headers: init?.headers,
+      body: typeof init?.body === "string" ? init.body : "",
     });
     if ("throw" in outcome) {
       throw outcome.throw;
@@ -136,6 +138,18 @@ describe("logsAction metadata", () => {
   it("validate always succeeds", async () => {
     expect(await logsAction.validate?.(runtime, message)).toBe(true);
   });
+
+  it("documents explicit confirmation for destructive deletion", () => {
+    expect(logsAction.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "confirm",
+          schema: { type: "boolean" },
+        }),
+      ]),
+    );
+    expect(JSON.stringify(logsAction.examples)).toContain("confirm clearing");
+  });
 });
 
 describe("logsAction op dispatch", () => {
@@ -176,12 +190,19 @@ describe("logsAction op dispatch", () => {
 
   it("falls back to subaction, then op", async () => {
     stubFetch({ ok: true, body: { cleared: 3 } });
-    const viaSubaction = await run({ subaction: "delete", op: "search" });
+    const viaSubaction = await run({
+      subaction: "delete",
+      op: "search",
+      confirm: true,
+    });
     expect(viaSubaction.data).toMatchObject({ op: "delete" });
     expect(captured[0]?.method).toBe("DELETE");
 
     captured.length = 0;
-    const viaOp = await run({ op: "delete" });
+    const viaOp = await run({
+      op: "delete",
+      confirm: true,
+    });
     expect(viaOp.data).toMatchObject({ op: "delete" });
     expect(captured[0]?.method).toBe("DELETE");
   });
@@ -401,11 +422,31 @@ describe("logsAction search", () => {
 });
 
 describe("logsAction delete", () => {
+  it("refuses deletion without literal true confirmation and does not fetch", async () => {
+    const result = await logsAction.handler(runtime, message, undefined, {
+      parameters: { action: "delete" },
+    } as never);
+
+    expect(result).toMatchObject({
+      success: false,
+      values: { error: "LOGS_CONFIRMATION_REQUIRED" },
+      data: { confirmationRequired: true },
+    });
+    expect(captured).toHaveLength(0);
+  });
+
   it("DELETEs /api/logs and reports a finite cleared count", async () => {
     stubFetch({ ok: true, body: { cleared: 12 } });
-    const result = await run({ action: "delete" });
+    const result = await run({
+      action: "delete",
+      confirm: true,
+    });
     expect(captured[0]?.method).toBe("DELETE");
     expect(captured[0]?.url).toMatch(/^http:\/\/localhost:\d+\/api\/logs$/);
+    expect(captured[0]?.body).toBe('{"confirm":true}');
+    expect(new Headers(captured[0]?.headers).get("content-type")).toBe(
+      "application/json",
+    );
     expect(result.success).toBe(true);
     expect(result.text).toBe("Cleared 12 log entries.");
     expect(result.values).toEqual({ cleared: 12 });
@@ -418,21 +459,52 @@ describe("logsAction delete", () => {
 
   it("treats missing, non-finite, or non-number cleared as 0", async () => {
     stubFetch({ ok: true, body: {} });
-    expect((await run({ action: "delete" })).values).toEqual({ cleared: 0 });
+    expect(
+      (
+        await run({
+          action: "delete",
+          confirm: true,
+        })
+      ).values,
+    ).toEqual({ cleared: 0 });
 
     stubFetch({ ok: true, body: { cleared: Number.NaN } });
-    expect((await run({ action: "delete" })).values).toEqual({ cleared: 0 });
+    expect(
+      (
+        await run({
+          action: "delete",
+          confirm: true,
+        })
+      ).values,
+    ).toEqual({ cleared: 0 });
 
     stubFetch({ ok: true, body: { cleared: Number.POSITIVE_INFINITY } });
-    expect((await run({ action: "delete" })).values).toEqual({ cleared: 0 });
+    expect(
+      (
+        await run({
+          action: "delete",
+          confirm: true,
+        })
+      ).values,
+    ).toEqual({ cleared: 0 });
 
     stubFetch({ ok: true, body: { cleared: "9" } });
-    expect((await run({ action: "delete" })).values).toEqual({ cleared: 0 });
+    expect(
+      (
+        await run({
+          action: "delete",
+          confirm: true,
+        })
+      ).values,
+    ).toEqual({ cleared: 0 });
   });
 
   it("returns LOGS_DELETE_FAILED on HTTP error", async () => {
     stubFetch({ ok: false, status: 403 });
-    const result = await run({ action: "delete" });
+    const result = await run({
+      action: "delete",
+      confirm: true,
+    });
     expect(result.success).toBe(false);
     expect(result.values).toEqual({ error: "LOGS_DELETE_FAILED" });
     expect(result.text).toBe("Failed to clear logs: HTTP 403");
@@ -440,7 +512,10 @@ describe("logsAction delete", () => {
 
   it("returns LOGS_DELETE_FAILED when fetch throws", async () => {
     stubFetch({ throw: new Error("reset") });
-    const result = await run({ action: "delete" });
+    const result = await run({
+      action: "delete",
+      confirm: true,
+    });
     expect(result.success).toBe(false);
     expect(result.values).toEqual({ error: "LOGS_DELETE_FAILED" });
     expect(result.text).toBe("Failed to delete logs: reset");

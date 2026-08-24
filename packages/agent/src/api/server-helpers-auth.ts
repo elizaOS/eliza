@@ -1,5 +1,7 @@
 /**
- * Auth, CORS, pairing, terminal, and WebSocket auth helpers extracted from server.ts.
+ * Auth, CORS, pairing, terminal, and WebSocket security helpers. Centralizes
+ * accepted token candidates and credential-attempt detection so sensitive
+ * routes cannot mistake a failed credential for anonymous loopback trust.
  */
 
 import crypto from "node:crypto";
@@ -284,6 +286,22 @@ export function getConfiguredApiToken(): string | undefined {
   return resolveApiToken(process.env) ?? undefined;
 }
 
+const CONFIGURED_API_TOKEN_HEADER_NAMES = [
+  "x-eliza-token",
+  "x-elizaos-token",
+  "x-waifu-chat-access-token",
+  "x-api-key",
+] as const;
+const HOST_API_TOKEN_HEADER_NAME = "x-api-token" as const;
+const AUTHORIZATION_HEADER_NAME = "authorization" as const;
+const SSE_QUERY_TOKEN_NAMES = ["token", "apiKey", "api_key"] as const;
+const SERVER_TOKEN_HEADER_NAME = "x-server-token" as const;
+
+interface SseQueryTokenCandidate {
+  presented: boolean;
+  token: string | null;
+}
+
 /**
  * Extract an API token from an SSE handshake's query string.
  *
@@ -298,28 +316,56 @@ export function getConfiguredApiToken(): string | undefined {
  * The returned token is still validated by `tokenMatches` against
  * `getConfiguredApiToken()` — same crypto.timingSafeEqual path as Bearer.
  */
-function extractSseQueryToken(req: http.IncomingMessage): string | null {
-  if (readAliasedEnv("ELIZA_ALLOW_WS_QUERY_TOKEN") !== "1") return null;
-  if ((req.method ?? "GET").toUpperCase() !== "GET") return null;
+function readSseQueryTokenCandidate(
+  req: http.IncomingMessage,
+): SseQueryTokenCandidate {
+  if (readAliasedEnv("ELIZA_ALLOW_WS_QUERY_TOKEN") !== "1") {
+    return { presented: false, token: null };
+  }
+  if ((req.method ?? "GET").toUpperCase() !== "GET") {
+    return { presented: false, token: null };
+  }
   const accept = firstHeaderValue(req.headers.accept) ?? "";
-  if (!accept.toLowerCase().includes("text/event-stream")) return null;
+  if (!accept.toLowerCase().includes("text/event-stream")) {
+    return { presented: false, token: null };
+  }
   try {
     const url = new URL(req.url ?? "/", "http://localhost");
-    const raw =
-      url.searchParams.get("token") ??
-      url.searchParams.get("apiKey") ??
-      url.searchParams.get("api_key");
+    const candidateName = SSE_QUERY_TOKEN_NAMES.find((name) =>
+      url.searchParams.has(name),
+    );
+    if (!candidateName) return { presented: false, token: null };
+    const raw = url.searchParams.get(candidateName) ?? "";
     const trimmed = raw?.trim();
-    return trimmed && trimmed.length <= 1024 ? trimmed : null;
+    return {
+      presented: true,
+      token: trimmed && trimmed.length <= 1024 ? trimmed : null,
+    };
   } catch {
-    return null;
+    return { presented: false, token: null };
   }
+}
+
+function extractSseQueryToken(req: http.IncomingMessage): string | null {
+  return readSseQueryTokenCandidate(req).token;
+}
+
+function extractConfiguredApiTokenHeader(
+  req: http.IncomingMessage,
+): string | null {
+  for (const name of CONFIGURED_API_TOKEN_HEADER_NAMES) {
+    const value = req.headers[name];
+    if (typeof value === "string" && value.length > 0) {
+      return value.trim() || null;
+    }
+  }
+  return null;
 }
 
 export function extractAuthToken(req: http.IncomingMessage): string | null {
   const rawAuth =
-    typeof req.headers.authorization === "string"
-      ? req.headers.authorization
+    typeof req.headers[AUTHORIZATION_HEADER_NAME] === "string"
+      ? req.headers[AUTHORIZATION_HEADER_NAME]
       : "";
   const auth =
     rawAuth.length > 8192 ? rawAuth.slice(0, 8192).trim() : rawAuth.trim();
@@ -332,15 +378,8 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
     if (token) return token;
   }
 
-  const header =
-    (typeof req.headers["x-eliza-token"] === "string" &&
-      req.headers["x-eliza-token"]) ||
-    (typeof req.headers["x-elizaos-token"] === "string" &&
-      req.headers["x-elizaos-token"]) ||
-    (typeof req.headers["x-waifu-chat-access-token"] === "string" &&
-      req.headers["x-waifu-chat-access-token"]) ||
-    (typeof req.headers["x-api-key"] === "string" && req.headers["x-api-key"]);
-  if (typeof header === "string" && header.trim()) return header.trim();
+  const header = extractConfiguredApiTokenHeader(req);
+  if (header) return header;
 
   const sseToken = extractSseQueryToken(req);
   if (sseToken) return sseToken;
@@ -352,6 +391,46 @@ function firstHeaderValue(value: string | string[] | undefined): string | null {
   if (typeof value === "string") return value;
   if (Array.isArray(value) && typeof value[0] === "string") return value[0];
   return null;
+}
+
+function hasHeaderAttempt(req: http.IncomingMessage, name: string): boolean {
+  return req.headers[name] !== undefined;
+}
+
+/** True when an `eliza_session` cookie name was sent, even with no value. */
+export function hasElizaSessionCookieAttempt(
+  req: http.IncomingMessage,
+): boolean {
+  const cookie = firstHeaderValue(req.headers.cookie);
+  if (cookie === null) return false;
+  return cookie
+    .split(";")
+    .some((part) => part.trim().split("=", 1)[0]?.trim() === "eliza_session");
+}
+
+/** True when a cookie or Authorization credential was presented to the host. */
+export function hasPresentedHostCredential(req: http.IncomingMessage): boolean {
+  return (
+    hasHeaderAttempt(req, AUTHORIZATION_HEADER_NAME) ||
+    hasHeaderAttempt(req, HOST_API_TOKEN_HEADER_NAME) ||
+    hasElizaSessionCookieAttempt(req)
+  );
+}
+
+/**
+ * True when any supported inbound credential channel was attempted, including
+ * blank or malformed values. Sensitive routes use this after validation fails
+ * to prevent an invalid credential from downgrading into loopback authority.
+ */
+export function hasPresentedAuthCredential(req: http.IncomingMessage): boolean {
+  return (
+    hasPresentedHostCredential(req) ||
+    hasHeaderAttempt(req, SERVER_TOKEN_HEADER_NAME) ||
+    CONFIGURED_API_TOKEN_HEADER_NAMES.some((name) =>
+      hasHeaderAttempt(req, name),
+    ) ||
+    readSseQueryTokenCandidate(req).presented
+  );
 }
 
 /**
@@ -401,7 +480,7 @@ function getServerSharedSecret(): string {
  * Extract the `X-Server-Token` header value, if present and non-empty.
  */
 function extractServerToken(req: http.IncomingMessage): string | null {
-  const value = req.headers["x-server-token"];
+  const value = req.headers[SERVER_TOKEN_HEADER_NAME];
   const token = firstHeaderValue(value);
   const trimmed = token?.trim();
   return trimmed ? trimmed : null;
@@ -421,6 +500,23 @@ export function isServerTokenAuthorized(req: http.IncomingMessage): boolean {
   return tokenMatches(expected, provided);
 }
 
+/**
+ * True only for a request carrying the configured inbound API token.
+ *
+ * Unlike {@link isAuthorized}, this deliberately excludes trusted-loopback
+ * and service-gateway authority so sensitive routes can assign those callers
+ * their distinct principals before deciding which role is sufficient.
+ */
+export function isConfiguredApiTokenAuthorized(
+  req: http.IncomingMessage,
+): boolean {
+  const expected = getConfiguredApiToken();
+  if (!expected) return false;
+  const provided = extractAuthToken(req);
+  if (!provided) return false;
+  return tokenMatches(expected, provided);
+}
+
 export function isAuthorized(req: http.IncomingMessage): boolean {
   if (isTrustedLocalRequest(req)) return true;
 
@@ -428,11 +524,7 @@ export function isAuthorized(req: http.IncomingMessage): boolean {
   // agent-server contract). Disabled automatically when the secret is unset.
   if (isServerTokenAuthorized(req)) return true;
 
-  const expected = getConfiguredApiToken();
-  if (!expected) return false;
-  const provided = extractAuthToken(req);
-  if (!provided) return false;
-  return tokenMatches(expected, provided);
+  return isConfiguredApiTokenAuthorized(req);
 }
 
 /**
@@ -692,10 +784,11 @@ function extractWsQueryToken(url: URL): string | null {
   const allowQueryToken = readAliasedEnv("ELIZA_ALLOW_WS_QUERY_TOKEN") === "1";
   if (!allowQueryToken) return null;
 
-  const token =
-    url.searchParams.get("token") ??
-    url.searchParams.get("apiKey") ??
-    url.searchParams.get("api_key");
+  const candidateName = SSE_QUERY_TOKEN_NAMES.find((name) =>
+    url.searchParams.has(name),
+  );
+  if (!candidateName) return null;
+  const token = url.searchParams.get(candidateName);
   return token?.trim() || null;
 }
 

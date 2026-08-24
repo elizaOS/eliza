@@ -6,9 +6,9 @@
  * (replayable autonomy/heartbeat event feed with runId/seq/after cursors), GET
  * `/api/security/audit` (filtered audit feed as a JSON snapshot or a live SSE
  * stream), and GET `/api/extension/status` (browser-bridge relay reachability).
- * All reads come from process-local buffers/feeds supplied by the caller; the
- * export and audit paths validate and clamp every query/body parameter before
- * it is used.
+ * Every supported route requires exact OWNER authority. Destructive clear and
+ * export require literal confirmation; emitted log text is freshly projected
+ * and redacted without mutating the process-local buffer.
  */
 import type http from "node:http";
 import type {
@@ -16,10 +16,13 @@ import type {
   RouteHelpers,
   RouteRequestMeta,
 } from "@elizaos/core";
+import { logger, redactSensitiveText } from "@elizaos/core";
 import {
-  PostLogExportRequestSchema,
+  ConfirmedPostLogExportRequestSchema,
+  DeleteLogsRequestSchema,
   parseClampedInteger,
 } from "@elizaos/shared";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 
 interface LogEntryLike {
   timestamp: number;
@@ -55,6 +58,7 @@ export interface DiagnosticsRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json"> {
   url: URL;
+  authorization: AgentHttpRequestAuthorization;
   logBuffer: LogEntryLike[];
   /** Drop all entries from the in-memory log buffer. Returns count cleared. */
   clearLogBuffer?: () => number;
@@ -209,11 +213,60 @@ function applyLogFilter(
   return entries.slice();
 }
 
-function csvEscape(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+function projectLogEntry(entry: LogEntryLike): LogEntryLike {
+  const redact = (value: string): string =>
+    redactSensitiveText(value, { mode: "tools" });
+  return {
+    timestamp: entry.timestamp,
+    level: redact(entry.level),
+    ...(typeof entry.message === "string"
+      ? { message: redact(entry.message) }
+      : {}),
+    source: redact(entry.source),
+    tags: entry.tags.map(redact),
+  };
+}
+
+function isUnsafeCsvControl(character: string): boolean {
+  const code = character.charCodeAt(0);
+  return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+}
+
+function neutralizeCsvFormula(value: string): string {
+  const formulaMarkers = "=+-@";
+  const isFormulaMarker = (character: string | undefined): boolean =>
+    character !== undefined && formulaMarkers.includes(character);
+  let prefixLength = 0;
+  let hasUnsafeControlPrefix = false;
+  while (prefixLength < value.length) {
+    const character = value[prefixLength];
+    if (character === " ") {
+      prefixLength += 1;
+      continue;
+    }
+    if (isUnsafeCsvControl(character)) {
+      hasUnsafeControlPrefix = true;
+      prefixLength += 1;
+      continue;
+    }
+    break;
+  }
+  if (
+    isFormulaMarker(value[0]) ||
+    hasUnsafeControlPrefix ||
+    (prefixLength > 0 && isFormulaMarker(value[prefixLength]))
+  ) {
+    return `'${value}`;
   }
   return value;
+}
+
+function csvEscape(value: string): string {
+  const neutralized = neutralizeCsvFormula(value);
+  if (/[",\n\r]/.test(neutralized)) {
+    return `"${neutralized.replace(/"/g, '""')}"`;
+  }
+  return neutralized;
 }
 
 function logsToCsv(entries: readonly LogEntryLike[]): string {
@@ -231,6 +284,20 @@ function logsToCsv(entries: readonly LogEntryLike[]): string {
       .join(",");
   });
   return [header, ...lines].join("\n");
+}
+
+function isSupportedDiagnosticsRoute(
+  method: string,
+  pathname: string,
+): boolean {
+  return (
+    (method === "GET" && pathname === "/api/logs") ||
+    (method === "DELETE" && pathname === "/api/logs") ||
+    (method === "POST" && pathname === "/api/logs/export") ||
+    (method === "GET" && pathname === "/api/agent/events") ||
+    (method === "GET" && pathname === "/api/security/audit") ||
+    (method === "GET" && pathname === "/api/extension/status")
+  );
 }
 
 function matchesAuditFilter(
@@ -273,7 +340,18 @@ export async function handleDiagnosticsRoutes(
     queryAuditFeed,
     subscribeAuditFeed,
     json,
+    authorization,
   } = ctx;
+
+  if (!isSupportedDiagnosticsRoute(method, pathname)) return false;
+  if (!authorization.ok || authorization.role === "NONE") {
+    json(res, { error: "Unauthorized" }, 401);
+    return true;
+  }
+  if (authorization.role !== "OWNER") {
+    json(res, { error: "Owner role required" }, 403);
+    return true;
+  }
 
   if (method === "GET" && pathname === "/api/logs") {
     const sinceRaw = url.searchParams.get("since");
@@ -293,13 +371,45 @@ export async function handleDiagnosticsRoutes(
       sinceMs,
     });
 
-    const sources = [...new Set(logBuffer.map((entry) => entry.source))].sort();
-    const tags = [...new Set(logBuffer.flatMap((entry) => entry.tags))].sort();
-    json(res, { entries: entries.slice(-200), sources, tags });
+    const sources = [
+      ...new Set(
+        logBuffer.map((entry) =>
+          redactSensitiveText(entry.source, { mode: "tools" }),
+        ),
+      ),
+    ].sort();
+    const tags = [
+      ...new Set(
+        logBuffer.flatMap((entry) =>
+          entry.tags.map((tag) => redactSensitiveText(tag, { mode: "tools" })),
+        ),
+      ),
+    ].sort();
+    json(res, {
+      entries: entries.slice(-200).map(projectLogEntry),
+      sources,
+      tags,
+    });
     return true;
   }
 
   if (method === "DELETE" && pathname === "/api/logs") {
+    const errorFn = ctx.error;
+    if (!ctx.readJsonBody || !errorFn) {
+      json(res, { error: "Log clearing requires JSON body support" }, 500);
+      return true;
+    }
+    const rawDelete = await ctx.readJsonBody<Record<string, unknown>>(req, res);
+    if (rawDelete === null) return true;
+    const parsedDelete = DeleteLogsRequestSchema.safeParse(rawDelete);
+    if (!parsedDelete.success) {
+      errorFn(
+        res,
+        parsedDelete.error.issues[0]?.message ?? "confirm must be true",
+        400,
+      );
+      return true;
+    }
     const cleared = ctx.clearLogBuffer
       ? ctx.clearLogBuffer()
       : ((): number => {
@@ -319,7 +429,7 @@ export async function handleDiagnosticsRoutes(
     }
     const rawExp = await ctx.readJsonBody<Record<string, unknown>>(req, res);
     if (rawExp === null) return true;
-    const parsedExp = PostLogExportRequestSchema.safeParse(rawExp);
+    const parsedExp = ConfirmedPostLogExportRequestSchema.safeParse(rawExp);
     if (!parsedExp.success) {
       errorFn(
         res,
@@ -380,25 +490,47 @@ export async function handleDiagnosticsRoutes(
       entries = entries.slice(-cap);
     }
 
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    if (formatRaw === "json") {
-      const payload = JSON.stringify({ entries }, null, 2);
-      res.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Content-Disposition": `attachment; filename="logs-${stamp}.json"`,
-        "Content-Length": Buffer.byteLength(payload, "utf-8"),
-      });
-      res.end(payload);
+    let attachment:
+      | {
+          payload: string;
+          contentType: string;
+          filename: string;
+          byteLength: number;
+        }
+      | undefined;
+    try {
+      const emittedEntries = entries.map(projectLogEntry);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const payload =
+        formatRaw === "json"
+          ? JSON.stringify({ entries: emittedEntries }, null, 2)
+          : logsToCsv(emittedEntries);
+      attachment = {
+        payload,
+        contentType:
+          formatRaw === "json"
+            ? "application/json; charset=utf-8"
+            : "text/csv; charset=utf-8",
+        filename: `logs-${stamp}.${formatRaw}`,
+        byteLength: Buffer.byteLength(payload, "utf-8"),
+      };
+    } catch (cause) {
+      // error-policy:J1 this transport boundary returns one stable unavailable
+      // response before any attachment header or byte has been written.
+      logger.warn(
+        { cause },
+        "[diagnostics-routes] log export preparation failed",
+      );
+      json(res, { ok: false, error: "diagnostics_export_unavailable" }, 503);
       return true;
     }
 
-    const csv = logsToCsv(entries);
     res.writeHead(200, {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="logs-${stamp}.csv"`,
-      "Content-Length": Buffer.byteLength(csv, "utf-8"),
+      "Content-Type": attachment.contentType,
+      "Content-Disposition": `attachment; filename="${attachment.filename}"`,
+      "Content-Length": attachment.byteLength,
     });
-    res.end(csv);
+    res.end(attachment.payload);
     return true;
   }
 
@@ -555,9 +687,21 @@ export async function handleDiagnosticsRoutes(
 
   if (method === "GET" && pathname === "/api/extension/status") {
     const relayPort = relayPortOverride ?? 18792;
-    const relayReachable = await (
-      checkRelayReachable ?? defaultCheckRelayReachable
-    )(relayPort);
+    let relayReachable: boolean;
+    try {
+      relayReachable = await (
+        checkRelayReachable ?? defaultCheckRelayReachable
+      )(relayPort);
+    } catch (cause) {
+      // error-policy:J1 the transport boundary hides relay implementation
+      // details and returns one structured unavailable response.
+      logger.warn(
+        { cause },
+        "[diagnostics-routes] relay reachability check failed",
+      );
+      json(res, { ok: false, error: "diagnostics_relay_unavailable" }, 503);
+      return true;
+    }
 
     // The headless agent only knows whether the browser-bridge relay is
     // reachable. Extension build artifacts (chromeBuildPath, packaged Safari

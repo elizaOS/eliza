@@ -1,7 +1,7 @@
 /**
  * Route-level coverage for the diagnostics HTTP surface: the filtered log
- * read/clear endpoints, the validated JSON/CSV export download, the replayable
- * agent-event feed, the audit feed in both snapshot and live-SSE modes, and the
+ * OWNER-only read/clear endpoints, explicit-confirmation redacted JSON/CSV
+ * exports, the replayable agent-event feed, audit snapshot/live SSE, and the
  * browser-bridge extension reachability probe. The harness is deterministic —
  * every collaborator (body reader, audit feed, SSE plumbing, relay probe,
  * request/response emitters) is an in-memory fake driven through the exported
@@ -170,7 +170,13 @@ function makeCtx(extra: Partial<DiagnosticsRouteContext> = {}) {
     method: "GET",
     pathname: "/api/logs",
     url: new URL("http://localhost/api/logs"),
+    authorization: {
+      ok: true,
+      role: "OWNER",
+      principal: "diagnostics-test-owner",
+    },
     json,
+    error: vi.fn(),
     logBuffer: [] as DiagnosticsRouteContext["logBuffer"],
     eventBuffer: [] as DiagnosticsRouteContext["eventBuffer"],
     auditEventTypes: ["intrusion"] as string[],
@@ -204,6 +210,67 @@ describe("route dispatch", () => {
     expect(ctx.__res.head).toBeNull();
     expect(ctx.__res.writableEnded).toBe(false);
   });
+
+  it.each([
+    ["GET", "/api/logs"],
+    ["DELETE", "/api/logs"],
+    ["POST", "/api/logs/export"],
+    ["GET", "/api/agent/events"],
+    ["GET", "/api/security/audit"],
+    ["GET", "/api/extension/status"],
+  ])("requires an OWNER for %s %s", async (method, pathname) => {
+    const denied = makeCtx({
+      method,
+      pathname,
+      url: new URL(`http://localhost${pathname}`),
+      authorization: { ok: false, role: "NONE" },
+    });
+    await handleDiagnosticsRoutes(denied);
+    expect(denied.json.mock.calls[0]?.[2]).toBe(401);
+
+    const machine = makeCtx({
+      method,
+      pathname,
+      url: new URL(`http://localhost${pathname}`),
+      authorization: { ok: true, role: "USER", principal: "machine" },
+    });
+    await handleDiagnosticsRoutes(machine);
+    expect(machine.json.mock.calls[0]?.[2]).toBe(403);
+  });
+
+  it.each([
+    ["DELETE", "/api/logs"],
+    ["POST", "/api/logs/export"],
+  ])(
+    "authorizes %s %s before consuming its body or changing buffered bytes",
+    async (method, pathname) => {
+      const buffer = [logEntry(1, "byte-identical")];
+      const before = JSON.stringify(buffer);
+      const readJsonBody = vi.fn(async () => ({
+        confirm: true,
+        format: "json",
+      }));
+      const clearLogBuffer = vi.fn(() => 1);
+      const ctx = makeCtx({
+        method,
+        pathname,
+        url: new URL(`http://localhost${pathname}`),
+        authorization: { ok: false, role: "NONE" },
+        logBuffer: buffer,
+        readJsonBody:
+          readJsonBody as unknown as DiagnosticsRouteContext["readJsonBody"],
+        clearLogBuffer,
+      });
+
+      await handleDiagnosticsRoutes(ctx);
+
+      expect(readJsonBody).not.toHaveBeenCalled();
+      expect(clearLogBuffer).not.toHaveBeenCalled();
+      expect(JSON.stringify(buffer)).toBe(before);
+      expect(ctx.__res.head).toBeNull();
+      expect(ctx.__res.writes).toEqual([]);
+    },
+  );
 });
 
 describe("GET /api/logs", () => {
@@ -264,6 +331,25 @@ describe("GET /api/logs", () => {
     expect(body.entries.map((row) => row.message)).toEqual(["three"]);
   });
 
+  it("redacts every emitted text field without mutating the buffered entry", async () => {
+    const credential = "diagnostic-route-secret-token-1234567890";
+    const buffer = [
+      logEntry(1, `Authorization: Bearer ${credential}`, {
+        level: `Authorization: Bearer ${credential}`,
+        source: `Authorization: Bearer ${credential}`,
+        tags: [`Authorization: Bearer ${credential}`],
+      }),
+    ];
+    const before = JSON.stringify(buffer);
+    const ctx = makeCtx({ logBuffer: buffer });
+
+    await handleDiagnosticsRoutes(ctx);
+
+    const serialized = JSON.stringify(ctx.json.mock.calls[0]?.[1]);
+    expect(serialized).not.toContain(credential);
+    expect(JSON.stringify(buffer)).toBe(before);
+  });
+
   it("caps a large matching buffer at the newest 200 entries in order", async () => {
     const buffer = Array.from({ length: 205 }, (_, i) =>
       logEntry(i + 1, `msg-${i + 1}`),
@@ -307,12 +393,42 @@ describe("GET /api/logs", () => {
 });
 
 describe("DELETE /api/logs", () => {
+  it.each([{}, { confirm: false }])(
+    "rejects missing or false confirmation without clearing (%j)",
+    async (body) => {
+      const buffer = [logEntry(1, "preserved")];
+      const before = JSON.stringify(buffer);
+      const clearLogBuffer = vi.fn(() => 1);
+      const ctx = makeCtx({
+        method: "DELETE",
+        logBuffer: buffer,
+        clearLogBuffer,
+        readJsonBody: vi.fn(
+          async () => body,
+        ) as unknown as DiagnosticsRouteContext["readJsonBody"],
+      });
+
+      await handleDiagnosticsRoutes(ctx);
+
+      expect(clearLogBuffer).not.toHaveBeenCalled();
+      expect(JSON.stringify(buffer)).toBe(before);
+      expect(ctx.error).toHaveBeenCalledWith(
+        ctx.__res,
+        expect.any(String),
+        400,
+      );
+    },
+  );
+
   it("uses the injected clear callback without touching the buffer", async () => {
     const clearLogBuffer = vi.fn(() => 42);
     const ctx = makeCtx({
       method: "DELETE",
       logBuffer: [logEntry(1, "kept")],
       clearLogBuffer,
+      readJsonBody: (async () => ({
+        confirm: true,
+      })) as DiagnosticsRouteContext["readJsonBody"],
     });
     const handled = await handleDiagnosticsRoutes(ctx);
     expect(handled).toBe(true);
@@ -326,6 +442,9 @@ describe("DELETE /api/logs", () => {
     const ctx = makeCtx({
       method: "DELETE",
       logBuffer: [logEntry(1, "a"), logEntry(2, "b"), logEntry(3, "c")],
+      readJsonBody: (async () => ({
+        confirm: true,
+      })) as DiagnosticsRouteContext["readJsonBody"],
     });
     await handleDiagnosticsRoutes(ctx);
     expect(ctx.logBuffer).toHaveLength(0);
@@ -334,7 +453,12 @@ describe("DELETE /api/logs", () => {
   });
 
   it("reports zero cleared for an already empty buffer", async () => {
-    const ctx = makeCtx({ method: "DELETE" });
+    const ctx = makeCtx({
+      method: "DELETE",
+      readJsonBody: (async () => ({
+        confirm: true,
+      })) as DiagnosticsRouteContext["readJsonBody"],
+    });
     await handleDiagnosticsRoutes(ctx);
     const [, body] = ctx.json.mock.calls[0];
     expect(body.cleared).toBe(0);
@@ -364,9 +488,12 @@ describe("POST /api/logs/export", () => {
       {
         readJsonBody: (async () =>
           ({}) as never) as DiagnosticsRouteContext["readJsonBody"],
+        error: undefined,
       },
     ],
   ])("answers 500 when %s is configured", async (_label, extra) => {
+    if (_label === "no body reader") extra.readJsonBody = undefined;
+    if (_label === "no error helper") extra.error = undefined;
     const ctx = makeCtx({
       method: "POST",
       pathname: "/api/logs/export",
@@ -391,7 +518,11 @@ describe("POST /api/logs/export", () => {
   });
 
   it("rejects schema-invalid bodies with 400 and the first issue", async () => {
-    const ctx = makeExportCtx({ format: "json", surprise: 1 });
+    const ctx = makeExportCtx({
+      confirm: true,
+      format: "json",
+      surprise: 1,
+    });
     await handleDiagnosticsRoutes(ctx);
     expect(ctx.error).toHaveBeenCalledTimes(1);
     const [resArg, message, status] = ctx.error.mock.calls[0];
@@ -401,13 +532,50 @@ describe("POST /api/logs/export", () => {
   });
 
   it("rejects a body without a format with 400", async () => {
-    const ctx = makeExportCtx({});
+    const ctx = makeExportCtx({ confirm: true });
     await handleDiagnosticsRoutes(ctx);
     const [, message, status] = ctx.error.mock.calls[0];
     expect(typeof message).toBe("string");
     expect((message as string).length).toBeGreaterThan(0);
     expect(status).toBe(400);
   });
+
+  it.each([{}, { confirm: false }])(
+    "rejects missing or false export confirmation before filtering (%j)",
+    async (confirmation) => {
+      const sourceRead = vi.fn(() => "source-must-not-be-read");
+      const entryWithObservableSource = logEntry(1, "preserved");
+      Object.defineProperty(entryWithObservableSource, "source", {
+        configurable: true,
+        get: sourceRead,
+      });
+      const buffer = [entryWithObservableSource];
+      const before = JSON.stringify(buffer);
+      sourceRead.mockClear();
+      const ctx = makeCtx({
+        method: "POST",
+        pathname: "/api/logs/export",
+        url: new URL("http://localhost/api/logs/export"),
+        readJsonBody: vi.fn(async () => ({
+          format: "json",
+          source: "target",
+          ...confirmation,
+        })) as unknown as DiagnosticsRouteContext["readJsonBody"],
+        logBuffer: buffer,
+      });
+
+      await handleDiagnosticsRoutes(ctx);
+
+      expect(sourceRead).not.toHaveBeenCalled();
+      expect(JSON.stringify(buffer)).toBe(before);
+      expect(ctx.error).toHaveBeenCalledWith(
+        ctx.__res,
+        expect.any(String),
+        400,
+      );
+      expect(ctx.__res.head).toBeNull();
+    },
+  );
 
   it("trims filters, takes the first nonblank tag, and tails the floored limit", async () => {
     vi.useFakeTimers({ now: ISO_MS });
@@ -419,6 +587,7 @@ describe("POST /api/logs/export", () => {
     ];
     const ctx = makeExportCtx(
       {
+        confirm: true,
         format: "json",
         source: " beta ",
         tags: ["  ", " y "],
@@ -439,7 +608,7 @@ describe("POST /api/logs/export", () => {
   it("writes JSON attachment headers with exact byte length and frozen stamp", async () => {
     vi.useFakeTimers({ now: ISO_MS });
     const ctx = makeExportCtx(
-      { format: "json" },
+      { confirm: true, format: "json" },
       { logBuffer: [logEntry(1_000, "hello")] },
     );
     await handleDiagnosticsRoutes(ctx);
@@ -472,7 +641,11 @@ describe("POST /api/logs/export", () => {
     { since: 1.5 },
     { since: Number.MAX_SAFE_INTEGER + 1 },
   ])("rejects malformed or unsafe since values (%j)", async (partial) => {
-    const ctx = makeExportCtx({ format: "json", ...partial });
+    const ctx = makeExportCtx({
+      confirm: true,
+      format: "json",
+      ...partial,
+    });
     await handleDiagnosticsRoutes(ctx);
     const [, message, status] = ctx.error.mock.calls[0];
     expect(message).toMatch(/since/i);
@@ -482,7 +655,7 @@ describe("POST /api/logs/export", () => {
 
   it("emits a header-only CSV when nothing matches", async () => {
     const ctx = makeExportCtx(
-      { format: "csv", source: "absent-source" },
+      { confirm: true, format: "csv", source: "absent-source" },
       { logBuffer: [logEntry(1, "hidden")] },
     );
     await handleDiagnosticsRoutes(ctx);
@@ -495,7 +668,7 @@ describe("POST /api/logs/export", () => {
   it("escapes commas, quotes, and line breaks and joins tags with pipes", async () => {
     const tricky = 'said "hi",\nthen left';
     const ctx = makeExportCtx(
-      { format: "csv" },
+      { confirm: true, format: "csv" },
       {
         logBuffer: [
           logEntry(ISO_MS, tricky, {
@@ -518,9 +691,63 @@ describe("POST /api/logs/export", () => {
     );
   });
 
+  it("neutralizes formula and control prefixes before RFC4180 quoting", async () => {
+    const ctx = makeExportCtx(
+      { confirm: true, format: "csv" },
+      {
+        logBuffer: [
+          logEntry(ISO_MS, '=SUM(1,"2")', {
+            source: " =source-formula",
+            level: "+level-formula",
+            tags: ["\u0001@tag-formula", "-second-tag"],
+          }),
+          logEntry(ISO_MS + 1, "@message-formula", {
+            source: "\u0085control-source",
+            tags: ["safe"],
+          }),
+        ],
+      },
+    );
+
+    await handleDiagnosticsRoutes(ctx);
+
+    expect(ctx.__res.writes[0]).toBe(
+      [
+        "timestamp,level,source,tags,message",
+        `${ISO},'+level-formula,' =source-formula,'\u0001@tag-formula|-second-tag,"'=SUM(1,""2"")"`,
+        `${new Date(ISO_MS + 1).toISOString()},info,'\u0085control-source,safe,'@message-formula`,
+      ].join("\n"),
+    );
+  });
+
+  it("returns a generic 503 without partial attachment data when preparation throws", async () => {
+    const sentinel = "sentinel-export-detail";
+    const throwingEntry = new Proxy(logEntry(ISO_MS, "unused"), {
+      get(target, property, receiver) {
+        if (property === "message") throw new Error(sentinel);
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const ctx = makeExportCtx(
+      { confirm: true, format: "json" },
+      { logBuffer: [throwingEntry] },
+    );
+
+    await handleDiagnosticsRoutes(ctx);
+
+    expect(ctx.json).toHaveBeenCalledWith(
+      ctx.__res,
+      { ok: false, error: "diagnostics_export_unavailable" },
+      503,
+    );
+    expect(JSON.stringify(ctx.json.mock.calls)).not.toContain(sentinel);
+    expect(ctx.__res.head).toBeNull();
+    expect(ctx.__res.writes).toEqual([]);
+  });
+
   it("clamps limits below one up to a single tail entry", async () => {
     const ctx = makeExportCtx(
-      { format: "json", limit: 0 },
+      { confirm: true, format: "json", limit: 0 },
       {
         logBuffer: [logEntry(1, "first"), logEntry(2, "second")],
       },
@@ -917,5 +1144,25 @@ describe("GET /api/extension/status", () => {
       relayPort: 18_792,
       extensionPath: null,
     });
+  });
+
+  it("returns a generic 503 when the relay probe rejects", async () => {
+    const sentinel = "sentinel-relay-detail";
+    const ctx = makeExtensionCtx({
+      checkRelayReachable: vi.fn(async () => {
+        throw new Error(sentinel);
+      }),
+    });
+
+    await handleDiagnosticsRoutes(ctx);
+
+    expect(ctx.json).toHaveBeenCalledWith(
+      ctx.__res,
+      { ok: false, error: "diagnostics_relay_unavailable" },
+      503,
+    );
+    expect(JSON.stringify(ctx.json.mock.calls)).not.toContain(sentinel);
+    expect(ctx.__res.head).toBeNull();
+    expect(ctx.__res.writes).toEqual([]);
   });
 });

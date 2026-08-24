@@ -1,9 +1,13 @@
 /**
- * Zod schema for the diagnostics HTTP write surface.
+ * Zod schemas for diagnostics filtering and confirmed write/export requests.
+ * The base export filter remains reusable; route boundaries consume its strict
+ * literal-confirm extension or the strict delete-confirmation schema.
  *
  * Routes covered:
+ *   DELETE /api/logs
+ *     { confirm: true }
  *   POST /api/logs/export
- *     { format: 'json'|'csv', source?, level?, tags?, since?, limit? }
+ *     { confirm: true, format: 'json'|'csv', source?, level?, tags?, since?, limit? }
  *
  * `since` accepts either a number (epoch ms) or a string parseable
  * by `Number(...)` or `Date.parse(...)`. `tags` accepts either a
@@ -16,6 +20,12 @@ import z from "zod";
 
 const LogExportFormatSchema = z.enum(["json", "csv"]);
 
+export const DeleteLogsRequestSchema = z
+  .object({
+    confirm: z.literal(true),
+  })
+  .strict();
+
 export const PostLogExportRequestSchema = z
   .object({
     format: LogExportFormatSchema,
@@ -27,5 +37,14 @@ export const PostLogExportRequestSchema = z
   })
   .strict();
 
+export const ConfirmedPostLogExportRequestSchema =
+  PostLogExportRequestSchema.extend({
+    confirm: z.literal(true),
+  });
+
+export type DeleteLogsRequest = z.infer<typeof DeleteLogsRequestSchema>;
 export type PostLogExportRequest = z.infer<typeof PostLogExportRequestSchema>;
+export type ConfirmedPostLogExportRequest = z.infer<
+  typeof ConfirmedPostLogExportRequestSchema
+>;
 export type LogExportFormat = z.infer<typeof LogExportFormatSchema>;

@@ -1,11 +1,12 @@
 /**
- * Contract tests for the diagnostics log-export request schema: json/csv
- * format selection plus optional source/level/tags/since/limit filters.
+ * Contract tests for diagnostics export filters plus strict confirmed export
+ * and delete request schemas: json/csv selection and optional filters.
  * Covers tags accepted as either an array or a single string, `since` as a
  * number or ISO string, and strict rejection of unknown formats and extra
  * fields. Pure in-process schema parsing — no server or mocks.
  */
 import { describe, expect, it } from "vitest";
+import * as confirmedDiagnosticsContracts from "./diagnostics-routes.js";
 import { PostLogExportRequestSchema } from "./diagnostics-routes.js";
 
 describe("PostLogExportRequestSchema", () => {
@@ -53,5 +54,52 @@ describe("PostLogExportRequestSchema", () => {
     expect(() =>
       PostLogExportRequestSchema.parse({ format: "json", encrypt: true }),
     ).toThrow();
+  });
+
+  it.each([undefined, false])("rejects export confirmation %s", (confirm) => {
+    expect(
+      confirmedDiagnosticsContracts.ConfirmedPostLogExportRequestSchema.safeParse(
+        {
+          format: "json",
+          confirm,
+        },
+      ).success,
+    ).toBe(false);
+  });
+
+  it("accepts only literal true confirmation", () => {
+    expect(
+      confirmedDiagnosticsContracts.ConfirmedPostLogExportRequestSchema.safeParse(
+        {
+          format: "json",
+          confirm: true,
+        },
+      ).success,
+    ).toBe(true);
+  });
+});
+
+describe("DeleteLogsRequestSchema", () => {
+  it("accepts only a strict literal-true confirmation", () => {
+    expect(
+      confirmedDiagnosticsContracts.DeleteLogsRequestSchema.safeParse({
+        confirm: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      confirmedDiagnosticsContracts.DeleteLogsRequestSchema.safeParse({})
+        .success,
+    ).toBe(false);
+    expect(
+      confirmedDiagnosticsContracts.DeleteLogsRequestSchema.safeParse({
+        confirm: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      confirmedDiagnosticsContracts.DeleteLogsRequestSchema.safeParse({
+        confirm: true,
+        extra: true,
+      }).success,
+    ).toBe(false);
   });
 });

@@ -1,9 +1,7 @@
 /**
- * REST API server for the Eliza Control UI.
- *
- * Exposes HTTP endpoints that the UI frontend expects, backed by the
- * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
- * dev server proxies /api and /ws here (see eliza/packages/app-core/scripts/dev-ui.mjs).
+ * REST API server for the Eliza Control UI. Applies host, origin, runtime-mode,
+ * and principal gates before dispatch; diagnostics resolve exact OWNER/USER
+ * authority without letting failed credentials downgrade to loopback trust.
  */
 
 import crypto from "node:crypto";
@@ -33,12 +31,15 @@ function isBrowserCompanionOwnerMutation(
   );
 }
 
-function hasBrowserCompanionOwnerSessionCookie(
-  req: http.IncomingMessage,
-): boolean {
-  const cookie =
-    typeof req.headers.cookie === "string" ? req.headers.cookie : "";
-  return /(?:^|;\s*)eliza_session=[^;]+/.test(cookie);
+function isDiagnosticsRoute(method: string, pathname: string): boolean {
+  return (
+    (method === "GET" && pathname === "/api/logs") ||
+    (method === "DELETE" && pathname === "/api/logs") ||
+    (method === "POST" && pathname === "/api/logs/export") ||
+    (method === "GET" && pathname === "/api/agent/events") ||
+    (method === "GET" && pathname === "/api/security/audit") ||
+    (method === "GET" && pathname === "/api/extension/status")
+  );
 }
 
 function hasBrowserCompanionCsrfHeader(req: http.IncomingMessage): boolean {
@@ -1349,9 +1350,13 @@ import {
   ensurePairingCode as _ensurePairingCode,
   getConfiguredApiToken as _getConfiguredApiToken,
   getPairingExpiresAt as _getPairingExpiresAt,
+  hasElizaSessionCookieAttempt as _hasElizaSessionCookieAttempt,
+  hasPresentedAuthCredential as _hasPresentedAuthCredential,
+  hasPresentedHostCredential as _hasPresentedHostCredential,
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isBoundaryRoleAuthorized as _isBoundaryRoleAuthorized,
+  isConfiguredApiTokenAuthorized as _isConfiguredApiTokenAuthorized,
   isCredentialedCorsOrigin as _isCredentialedCorsOrigin,
   isServerTokenAuthorized as _isServerTokenAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
@@ -1401,6 +1406,10 @@ const isAuthorized = _isAuthorized;
 const resolveBoundaryRole = _resolveBoundaryRole;
 const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isBoundaryRoleAuthorized = _isBoundaryRoleAuthorized;
+const hasElizaSessionCookieAttempt = _hasElizaSessionCookieAttempt;
+const hasPresentedAuthCredential = _hasPresentedAuthCredential;
+const hasPresentedHostCredential = _hasPresentedHostCredential;
+const isConfiguredApiTokenAuthorized = _isConfiguredApiTokenAuthorized;
 const isCredentialedCorsOrigin = _isCredentialedCorsOrigin;
 const isServerTokenAuthorized = _isServerTokenAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
@@ -1658,6 +1667,77 @@ async function handleRequest(
   const isHostSessionAuthorized = async (): Promise<boolean> =>
     (await resolveHostSessionAuthorization()).ok;
 
+  const resolveDiagnosticsAuthorization =
+    async (): Promise<AgentHttpRequestAuthorization> => {
+      if (isServerTokenAuthorized(req)) {
+        return {
+          ok: true,
+          role: "USER",
+          principal: "service_gateway",
+        };
+      }
+
+      const hasPresentedCredential = hasPresentedHostCredential(req);
+      let failedHostAuthorization: AgentHttpRequestAuthorization | null = null;
+      if (hasPresentedCredential) {
+        const bridge = getAgentHostBridge();
+        const resolveAuthorization = bridge.resolveHttpRequestAuthorization;
+        try {
+          if (typeof resolveAuthorization === "function") {
+            const resolved = await resolveAuthorization(req, state.runtime, {
+              allowCookieAuth: allowHostCookieAuth,
+              allowTrustedLocalBypass: false,
+              allowBearerAuth: true,
+            });
+            if (resolved.ok) return resolved;
+            failedHostAuthorization = resolved;
+          } else {
+            const authorized =
+              allowHostCookieAuth &&
+              typeof bridge.isHttpRequestAuthorized === "function"
+                ? await bridge.isHttpRequestAuthorized(req, state.runtime)
+                : false;
+            if (authorized) {
+              return {
+                ok: true,
+                role: "USER",
+                principal: "legacy_host_session",
+              };
+            }
+            failedHostAuthorization = { ok: false, role: "NONE" };
+          }
+        } catch (cause) {
+          // error-policy:J1 authentication failure is translated into a
+          // denied diagnostics principal without exposing host details.
+          logger.warn(
+            { cause },
+            "[eliza-api] diagnostics host authorization failed",
+          );
+          failedHostAuthorization = { ok: false, role: "NONE" };
+        }
+      }
+
+      if (isConfiguredApiTokenAuthorized(req)) {
+        return {
+          ok: true,
+          role: "OWNER",
+          principal: "configured_api_token",
+        };
+      }
+      if (failedHostAuthorization) return failedHostAuthorization;
+      if (hasPresentedAuthCredential(req)) {
+        return { ok: false, role: "NONE" };
+      }
+      if (isTrustedLocalRequest(req)) {
+        return {
+          ok: true,
+          role: "OWNER",
+          principal: "trusted_loopback",
+        };
+      }
+      return { ok: false, role: "NONE" };
+    };
+
   const canonicalizeRestartReason = (reason: string): string => {
     if (
       reason === "primary-changed" ||
@@ -1838,7 +1918,7 @@ async function handleRequest(
   }
 
   if (requireBrowserCompanionOwnerSession) {
-    if (!hasBrowserCompanionOwnerSessionCookie(req)) {
+    if (!hasElizaSessionCookieAttempt(req)) {
       json(res, { error: "Owner session required" }, 401);
       return;
     }
@@ -2673,6 +2753,10 @@ async function handleRequest(
     }
   }
 
+  const diagnosticsAuthorization = isDiagnosticsRoute(method, pathname)
+    ? await resolveDiagnosticsAuthorization()
+    : ({ ok: false, role: "NONE" } satisfies AgentHttpRequestAuthorization);
+
   if (
     await handleDiagnosticsRoutes({
       req,
@@ -2680,6 +2764,7 @@ async function handleRequest(
       method,
       pathname,
       url,
+      authorization: diagnosticsAuthorization,
       logBuffer: state.logBuffer,
       clearLogBuffer: () => {
         const previous = state.logBuffer.length;
