@@ -84,6 +84,7 @@ describe("PGlite message content segments", () => {
     });
     expect(first.status).toBe("ok");
     if (first.status !== "ok") throw new Error("expected segmented page");
+    expect(first.page.sourceQueryCount).toBe(3);
 
     await adapter.close();
     adapter = await open(dataDir, agentId, false);
@@ -98,6 +99,8 @@ describe("PGlite message content segments", () => {
       expectedRevision: first.page.revision,
     });
     expect(continued.status).toBe("ok");
+    if (continued.status !== "ok") throw new Error("expected continued page");
+    expect(continued.page.sourceQueryCount).toBe(3);
 
     await adapter.deleteParticipants([{ entityId, roomId }]);
     await expect(

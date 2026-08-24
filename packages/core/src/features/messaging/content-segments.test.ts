@@ -78,6 +78,7 @@ describe("message content segments", () => {
 		});
 		expect(firstRead.status).toBe("ok");
 		if (firstRead.status !== "ok") throw new Error("expected segmented read");
+		expect(firstRead.page.sourceQueryCount).toBe(0);
 
 		const replacement = {
 			...original,
@@ -210,7 +211,9 @@ describe("message content segments", () => {
 				messageId: MESSAGE_ID,
 				offset,
 				limit: MESSAGE_CONTENT_SEGMENT_MAX_BYTES,
+				sourceQueryCount: 3,
 			});
+			expect(page.sourceQueryCount).toBe(3);
 			expect(page.returnedSegments).toBeLessThanOrEqual(
 				MESSAGE_CONTENT_READ_MAX_SEGMENTS,
 			);
@@ -331,6 +334,7 @@ describe("message content segments", () => {
 				messageId: MESSAGE_ID,
 				offset: MESSAGE_CONTENT_SEGMENT_MAX_BYTES - 10,
 				limit: 100,
+				sourceQueryCount: 3,
 			}),
 		).toThrow();
 	});

@@ -181,7 +181,7 @@ function validPostgresEvidence(
   ] as const;
   const commit = "a".repeat(40);
   return {
-    schemaVersion: "elizaos.content-context.postgres.v2",
+    schemaVersion: "elizaos.content-context.postgres.v3",
     status: "passed",
     backend: "postgres",
     commit,
@@ -194,6 +194,19 @@ function validPostgresEvidence(
         `--commit=${commit}`,
       ],
       cwd: ".",
+    },
+    performance: {
+      durationMs: 1_000,
+      peakRssBytes: 128 * 1024 * 1024,
+      peakHeapUsedBytes: 64 * 1024 * 1024,
+      peakExternalBytes: 16 * 1024 * 1024,
+      rssDeltaBytes: 1024,
+      heapUsedStartBytes: 32 * 1024 * 1024,
+      heapUsedEndBytes: 33 * 1024 * 1024,
+      externalStartBytes: 1024,
+      externalEndBytes: 2048,
+      databaseSizeBytes: 64 * 1024 * 1024,
+      totalPostgresRows: 96,
     },
     familyMappings: mappings.map(
       ([
@@ -224,6 +237,18 @@ function validPostgresEvidence(
             ? "idx_document_source_byte_seek"
             : "idx_message_content_byte_seek",
         ],
+        seekPlan: {
+          indexName:
+            family === "document"
+              ? "idx_document_source_byte_seek"
+              : "idx_message_content_byte_seek",
+          nodeTypes: ["Limit", "Bitmap Heap Scan", "Bitmap Index Scan"],
+          actualRows: 1,
+          sharedHitBlocks: 1,
+          sharedReadBlocks: 0,
+          planningTimeMs: 0.1,
+          executionTimeMs: 0.1,
+        },
       })),
     objects: objects.map((object) => {
       const postgresBacked =
@@ -260,6 +285,7 @@ function validPostgresEvidence(
         authorizationVerified: true,
         isolationVerified: true,
         restartVerified: true,
+        durationMs: 10,
         sourceWork: {
           pageBytes,
           bytesRead: typedRejection
@@ -908,6 +934,22 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changedIndex.result, changedIndex.bytes),
     ).toThrow(/shared vector is incomplete/u);
+
+    const fakePlan = JSON.parse(
+      new TextDecoder().decode(original.bytes["postgres.json"]),
+    ) as {
+      sharedVectors: Array<{
+        seekPlan: { indexName: string; nodeTypes: string[] };
+      }>;
+    };
+    const firstPlan = fakePlan.sharedVectors[0]?.seekPlan;
+    if (!firstPlan) throw new Error("valid fixture lacks a Postgres seek plan");
+    firstPlan.indexName = "idx_fixture_only";
+    firstPlan.nodeTypes = ["Seq Scan"];
+    const changedPlan = replaceArtifact(original, "postgres.json", fakePlan);
+    expect(() =>
+      validateContentContextResult(changedPlan.result, changedPlan.bytes),
+    ).toThrow(/indexed seek plan is invalid/u);
 
     const fakeRejection = JSON.parse(
       new TextDecoder().decode(original.bytes["postgres.json"]),

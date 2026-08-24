@@ -103,33 +103,33 @@ export const memoryTable = pgTable(
         table.agentId,
         sql`((metadata->>'documentId'))`,
         sql`((metadata->>'documentRevision')::bigint)`,
-        sql`((metadata->>'revisionAttemptId'))`,
-        sql`((metadata->>'sourceByteEnd')::bigint)`
+        sql`((metadata->>'sourceByteEnd')::bigint)`,
+        sql`((metadata->>'revisionAttemptId'))`
       )
       .where(
-        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment' AND ${table.metadata} ? 'sourceByteEnd'`
       ),
     index("idx_document_source_line_seek")
       .on(
         table.agentId,
         sql`((metadata->>'documentId'))`,
         sql`((metadata->>'documentRevision')::bigint)`,
-        sql`((metadata->>'revisionAttemptId'))`,
-        sql`((metadata->>'sourceLineEnd')::bigint)`
+        sql`((metadata->>'sourceLineEnd')::bigint)`,
+        sql`((metadata->>'revisionAttemptId'))`
       )
       .where(
-        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment' AND ${table.metadata} ? 'sourceLineEnd'`
       ),
     index("idx_document_source_fragment_seek")
       .on(
         table.agentId,
         sql`((metadata->>'documentId'))`,
         sql`((metadata->>'documentRevision')::bigint)`,
-        sql`((metadata->>'revisionAttemptId'))`,
-        sql`((metadata->>'sourceFragmentEnd')::bigint)`
+        sql`((metadata->>'sourceFragmentEnd')::bigint)`,
+        sql`((metadata->>'revisionAttemptId'))`
       )
       .where(
-        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment' AND ${table.metadata} ? 'sourceFragmentEnd'`
       ),
     index("idx_message_content_byte_seek")
       .on(

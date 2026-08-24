@@ -131,17 +131,17 @@ export const memorySchema: SchemaTable = {
 					isExpression: true,
 				},
 				{
-					expression: "((metadata->>'revisionAttemptId'))",
+					expression: "((metadata->>'sourceByteEnd')::bigint)",
 					isExpression: true,
 				},
 				{
-					expression: "((metadata->>'sourceByteEnd')::bigint)",
+					expression: "((metadata->>'revisionAttemptId'))",
 					isExpression: true,
 				},
 			],
 			isUnique: false,
 			where:
-				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment' AND metadata ? 'sourceByteEnd'",
 		},
 		idx_message_content_byte_seek: {
 			name: "idx_message_content_byte_seek",
@@ -176,17 +176,17 @@ export const memorySchema: SchemaTable = {
 					isExpression: true,
 				},
 				{
-					expression: "((metadata->>'revisionAttemptId'))",
+					expression: "((metadata->>'sourceLineEnd')::bigint)",
 					isExpression: true,
 				},
 				{
-					expression: "((metadata->>'sourceLineEnd')::bigint)",
+					expression: "((metadata->>'revisionAttemptId'))",
 					isExpression: true,
 				},
 			],
 			isUnique: false,
 			where:
-				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment' AND metadata ? 'sourceLineEnd'",
 		},
 		idx_document_source_fragment_seek: {
 			name: "idx_document_source_fragment_seek",
@@ -198,17 +198,17 @@ export const memorySchema: SchemaTable = {
 					isExpression: true,
 				},
 				{
-					expression: "((metadata->>'revisionAttemptId'))",
+					expression: "((metadata->>'sourceFragmentEnd')::bigint)",
 					isExpression: true,
 				},
 				{
-					expression: "((metadata->>'sourceFragmentEnd')::bigint)",
+					expression: "((metadata->>'revisionAttemptId'))",
 					isExpression: true,
 				},
 			],
 			isUnique: false,
 			where:
-				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment' AND metadata ? 'sourceFragmentEnd'",
 		},
 		idx_documents_pinned_created: {
 			name: "idx_documents_pinned_created",

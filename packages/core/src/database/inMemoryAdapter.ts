@@ -1233,6 +1233,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				messageId: params.messageId,
 				offset: params.offset,
 				limit: params.limit,
+				sourceQueryCount: 0,
 			}),
 		};
 	}
