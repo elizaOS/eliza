@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { assertValidMessageChunkLength } from "./message-chunking.js";
+
 describe("message-chunking", () => {
   it("valid", () => {
     expect(() => assertValidMessageChunkLength(10)).not.toThrow();

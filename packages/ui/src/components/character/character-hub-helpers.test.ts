@@ -23,6 +23,7 @@ describe("character-hub-helpers", () => {
       importance: 0.8,
       createdAt: "2026-08-24T00:00:00Z",
       updatedAt: "2026-08-24T00:00:00Z",
+      accessCount: 0,
       supersedes: null,
       relatedExperiences: ["exp-0"],
       mergedExperienceIds: [],

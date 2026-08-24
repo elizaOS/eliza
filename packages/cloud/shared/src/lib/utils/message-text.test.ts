@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { extractTextFromContent } from "./message-text.js";
+
 describe("message-text", () => {
   it("extracts text", () => {
     expect(extractTextFromContent({ text: "hello" })).toBe("hello");

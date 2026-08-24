@@ -41,16 +41,15 @@ vi.mock("../services/audit-dispatcher-singleton", () => {
   };
 });
 
-const auditModule = (await import("../services/audit-dispatcher-singleton")) as unknown as {
+const auditModule = (await import(
+  "../services/audit-dispatcher-singleton"
+)) as unknown as {
   __auditEmits: AuditEmit[];
 };
 const auditEmits = auditModule.__auditEmits;
 
-const {
-  authMiddleware,
-  isPublicPath,
-  isRouteAuthenticatedInferencePath,
-} = await import("./auth");
+const { authMiddleware, isPublicPath, isRouteAuthenticatedInferencePath } =
+  await import("./auth");
 
 const PUBLIC_PREFIXES = [
   "/api/health",

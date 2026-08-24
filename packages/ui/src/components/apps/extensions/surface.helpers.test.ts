@@ -24,13 +24,46 @@ import {
 } from "./surface.helpers.ts";
 
 const run = (
-  id: string,
+  runId: string,
   appName: string,
-  updatedAt?: string | null,
-  startedAt?: string | null,
-): AppRunSummary => ({ id, appName, updatedAt, startedAt }) as AppRunSummary;
+  updatedAt = "",
+  startedAt = "",
+): AppRunSummary => ({
+  runId,
+  appName,
+  displayName: appName,
+  pluginName: "test-plugin",
+  launchType: "test",
+  launchUrl: null,
+  viewer: null,
+  session: null,
+  characterId: null,
+  agentId: null,
+  status: "running",
+  summary: null,
+  startedAt,
+  updatedAt,
+  lastHeartbeatAt: null,
+  supportsBackground: false,
+  supportsViewerDetach: false,
+  chatAvailability: "unavailable",
+  controlAvailability: "unavailable",
+  viewerAttachment: "unavailable",
+  recentEvents: [],
+  awaySummary: null,
+  health: { state: "healthy", message: null },
+  healthDetails: {
+    checkedAt: null,
+    auth: { state: "unknown", message: null },
+    runtime: { state: "healthy", message: null },
+    viewer: { state: "unknown", message: null },
+    chat: { state: "unknown", message: null },
+    control: { state: "unknown", message: null },
+    message: null,
+  },
+});
 
-const ids = (runs: AppRunSummary[]) => runs.map((entry) => entry.id);
+const ids = (runs: AppRunSummary[]) => runs.map((entry) => entry.runId);
 
 describe("selectLatestRunForApp", () => {
   it("returns nothing for absent or non-array input", () => {
@@ -50,7 +83,7 @@ describe("selectLatestRunForApp", () => {
       run("b", "other", "2026-05-01T00:00:00Z"),
     ]);
     expect(ids(selected.matchingRuns)).toEqual(["a"]);
-    expect(selected.run?.id).toBe("a");
+    expect(selected.run?.runId).toBe("a");
   });
 
   it("returns null when no run matches", () => {
@@ -63,24 +96,24 @@ describe("selectLatestRunForApp", () => {
       run("new", "mine", "2026-05-01T00:00:00Z"),
       run("mid", "mine", "2026-03-01T00:00:00Z"),
     ]);
-    expect(selected.run?.id).toBe("new");
+    expect(selected.run?.runId).toBe("new");
     expect(ids(selected.matchingRuns)).toEqual(["new", "mid", "old"]);
   });
 
   it("uses the newer of updatedAt and startedAt", () => {
     const selected = selectLatestRunForApp("mine", [
       run("byUpdated", "mine", "2026-05-01T00:00:00Z", "2026-01-01T00:00:00Z"),
-      run("byStarted", "mine", null, "2026-03-01T00:00:00Z"),
+      run("byStarted", "mine", "", "2026-03-01T00:00:00Z"),
     ]);
-    expect(selected.run?.id).toBe("byUpdated");
+    expect(selected.run?.runId).toBe("byUpdated");
   });
 
   it("does not let a run with no usable timestamps outrank a dated one", () => {
     const selected = selectLatestRunForApp("mine", [
-      run("undated", "mine", null, null),
+      run("undated", "mine"),
       run("dated", "mine", "2026-05-01T00:00:00Z"),
     ]);
-    expect(selected.run?.id).toBe("dated");
+    expect(selected.run?.runId).toBe("dated");
   });
 
   it("does not let an unparseable timestamp outrank a dated run", () => {
@@ -88,7 +121,7 @@ describe("selectLatestRunForApp", () => {
       run("bad", "mine", "not-a-date", "also-bad"),
       run("dated", "mine", "2026-05-01T00:00:00Z"),
     ]);
-    expect(selected.run?.id).toBe("dated");
+    expect(selected.run?.runId).toBe("dated");
   });
 
   it("does not mutate the caller's array", () => {
