@@ -524,3 +524,119 @@ describe("action routing context", () => {
 		expect(observed.after).toEqual(ctx);
 	});
 });
+
+// ─── forward-compat: unregistered model classes ──────────────────────────
+
+describe("unregistered modelClass forward-compat", () => {
+	it("getActionModelStrategy returns undefined for a string that is not a registered key", () => {
+		// A plugin built against a newer ActionModelClass union (e.g. "MEDIUM")
+		// running on an older runtime degrades to default resolution instead
+		// of crashing — the unknown key is treated as "no preference".
+		const newerRuntimeClass = "MEDIUM" as string;
+		expect(
+			getActionModelStrategy(newerRuntimeClass as ActionModelClass),
+		).toBeUndefined();
+	});
+
+	it("maybeReroute returns undefined for an unregistered class on a routable type", () => {
+		const newerRuntimeClass = "MEDIUM" as string;
+		expect(
+			maybeReroute(newerRuntimeClass as ActionModelClass, ModelType.TEXT_LARGE),
+		).toBeUndefined();
+	});
+});
+
+// ─── resolveStep: present-but-empty registration lists ───────────────────
+
+describe("resolveStep empty-registration boundary", () => {
+	it("returns undefined when the model type maps to an empty handler array", () => {
+		// Distinct from an absent key: the lookup succeeds but has no entries.
+		const lookup = makeRegistry({ [ModelType.TEXT_SMALL]: [] });
+		expect(
+			resolveStep({ modelType: ModelType.TEXT_SMALL }, lookup),
+		).toBeUndefined();
+	});
+});
+
+// ─── isLowConfidence: non-object and malformed results ───────────────────
+
+describe("isLowConfidence non-object and malformed results", () => {
+	it("treats null, undefined, and primitive results as acceptable even with a threshold", () => {
+		expect(isLowConfidence(null, 0.5)).toBe(false);
+		expect(isLowConfidence(undefined, 0.5)).toBe(false);
+		expect(isLowConfidence(42, 0.5)).toBe(false);
+	});
+
+	it("ignores non-numeric confidence fields rather than escalating", () => {
+		expect(isLowConfidence({ confidence: "high" }, 0.5)).toBe(false);
+		expect(isLowConfidence({ confidence: null }, 0.5)).toBe(false);
+	});
+});
+
+// ─── executeChainWithFallback: mixed failure modes ───────────────────────
+
+describe("executeChainWithFallback mixed failure modes", () => {
+	function mk(modelType: string, provider: string): ResolvedActionModel {
+		return {
+			modelType,
+			provider,
+			handler: vi.fn(
+				async () => "unused",
+			) as unknown as ModelHandler["handler"],
+		};
+	}
+
+	it("escalates past a thrown error and accepts the next high-confidence result", async () => {
+		let calls = 0;
+		const invoke = vi.fn(async (r: ResolvedActionModel) => {
+			calls++;
+			if (calls === 1) {
+				throw new Error("local backend offline");
+			}
+			return { provider: r.provider, confidence: 0.9 };
+		});
+		const chain = [
+			mk(ModelType.TEXT_SMALL, "ollama"),
+			mk(ModelType.TEXT_LARGE, "anthropic"),
+		];
+		const result = (await executeChainWithFallback(chain, 0.5, invoke)) as {
+			provider: string;
+			confidence: number;
+		};
+		expect(result.provider).toBe("anthropic");
+		expect(result.confidence).toBeGreaterThanOrEqual(0.5);
+		expect(invoke).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps escalating while every non-terminal step is low-confidence", async () => {
+		// Every step reports 0.1 confidence against a 0.5 threshold; only the
+		// terminal step's result is returned as-is.
+		const invoke = vi.fn(async (r: ResolvedActionModel) => ({
+			provider: r.provider,
+			confidence: 0.1,
+		}));
+		const chain = [
+			mk(ModelType.TEXT_SMALL, "alpha"),
+			mk(ModelType.TEXT_SMALL, "beta"),
+			mk(ModelType.TEXT_LARGE, "gamma"),
+		];
+		const result = (await executeChainWithFallback(chain, 0.5, invoke)) as {
+			provider: string;
+		};
+		expect(result.provider).toBe("gamma");
+		expect(invoke).toHaveBeenCalledTimes(3);
+	});
+
+	it("converts non-Error throwables into the generic aggregate failure", async () => {
+		const invoke = vi.fn(async (): Promise<string> => {
+			throw "hard crash";
+		});
+		const chain = [
+			mk(ModelType.TEXT_SMALL, "ollama"),
+			mk(ModelType.TEXT_LARGE, "anthropic"),
+		];
+		await expect(
+			executeChainWithFallback(chain, undefined, invoke),
+		).rejects.toThrow(/all 2 step\(s\) failed without a thrown error/);
+	});
+});
