@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "counts": {
-    "atomic-duplicate": 13,
-    "raw-control": 223,
+    "atomic-duplicate": 7,
+    "raw-control": 221,
     "direct-primitive-import": 6,
     "deep-canonical-import": 55,
     "variant-helper-bypass": 3,

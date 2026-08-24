@@ -8,14 +8,14 @@ This is a candidate inventory, not an instruction to merge every entry. Canonica
 | --- | ---: | ---: | ---: | ---: | ---: |
 | alert | 5 | 0 | 0 | 1 | 0 |
 | avatar | 2 | 0 | 0 | 0 | 0 |
-| badge | 3 | 0 | 6 | 8 | 0 |
+| badge | 3 | 0 | 9 | 5 | 0 |
 | button | 8 | 0 | 11 | 4 | 63 |
 | card | 6 | 0 | 24 | 3 | 0 |
 | checkbox | 1 | 0 | 0 | 0 | 2 |
 | dialog | 10 | 0 | 10 | 2 | 1 |
-| input | 4 | 0 | 3 | 3 | 12 |
+| input | 4 | 0 | 3 | 2 | 11 |
 | popover | 1 | 0 | 1 | 0 | 0 |
-| progress | 1 | 0 | 0 | 3 | 0 |
+| progress | 1 | 0 | 1 | 2 | 0 |
 | select | 2 | 0 | 2 | 0 | 3 |
 | separator | 3 | 0 | 0 | 0 | 5 |
 | skeleton | 4 | 0 | 2 | 5 | 0 |
@@ -23,7 +23,7 @@ This is a candidate inventory, not an instruction to merge every entry. Canonica
 | switch | 2 | 0 | 1 | 0 | 2 |
 | table | 1 | 0 | 3 | 1 | 12 |
 | tabs | 1 | 0 | 6 | 1 | 0 |
-| textarea | 3 | 0 | 0 | 1 | 6 |
+| textarea | 3 | 0 | 0 | 0 | 5 |
 | tooltip | 4 | 0 | 0 | 0 | 0 |
 
 ## Raw semantic host usage
@@ -96,7 +96,7 @@ Raw host elements are reported only where HTML provides a meaningful atomic sign
 | plugin-raw-host | `plugins/plugin-computeruse/src/views/ComputerUseSessionsView.tsx` | 384, 407, 427, 456, 480 |
 | plugin-raw-host | `plugins/plugin-elizacloud/src/components/cloud/CloudView.tsx` | 386, 404 |
 | plugin-raw-host | `plugins/plugin-maps/src/components/MapsView.tsx` | 163, 210, 241, 306, 366 |
-| plugin-raw-host | `plugins/plugin-notes/src/views/viewPrimitives.tsx` | 166 |
+| plugin-raw-host | `plugins/plugin-notes/src/views/viewPrimitives.tsx` | 145 |
 
 ### Raw checkbox hosts
 
@@ -126,7 +126,6 @@ Raw host elements are reported only where HTML provides a meaningful atomic sign
 | canonical-implementation | `packages/ui/src/components/ui/input-group.tsx` | 101 |
 | canonical-implementation | `packages/ui/src/components/ui/input.tsx` | 46 |
 | plugin-raw-host | `plugins/plugin-maps/src/components/MapsView.tsx` | 128 |
-| plugin-raw-host | `plugins/plugin-notes/src/views/viewPrimitives.tsx` | 212 |
 
 ### Raw select hosts
 
@@ -179,7 +178,6 @@ Raw host elements are reported only where HTML provides a meaningful atomic sign
 | canonical-implementation | `packages/ui/src/components/ui/admin-dialog.tsx` | 131 |
 | canonical-implementation | `packages/ui/src/components/ui/input-group.tsx` | 118 |
 | canonical-implementation | `packages/ui/src/components/ui/textarea.tsx` | 44 |
-| plugin-raw-host | `plugins/plugin-notes/src/views/viewPrimitives.tsx` | 250 |
 
 
 ## Named candidates by atom
@@ -204,23 +202,23 @@ No named candidates.
 | canonical-wrapper | not-reviewed | `ApprovalStatusBadge` in `packages/ui/src/cloud/approvals/components/status-badge.tsx:54` | - | `SharedStatusBadge` |
 | canonical-wrapper | not-reviewed | `AgentCostBadge` in `packages/ui/src/cloud/instances/components/agent-cost-badge.tsx:30` | - | `Tooltip`, `TooltipContent`, `TooltipTrigger`, `p`, `span` |
 | canonical-wrapper | not-reviewed | `McpStatusBadge` in `packages/ui/src/cloud/mcps/McpDetailDrawer.tsx:446` | - | `StatusBadge` |
+| canonical-wrapper | consolidation-candidate | `SurfaceBadge` in `packages/ui/src/components/apps/extensions/surface.tsx:34` | `packages/ui/src/components/ui/status-badge.tsx` | `StatusBadge` |
+|  |  | Tone-based text badge overlaps the canonical status badge contract. |  |  |
 | canonical-wrapper | not-reviewed | `CloudStatusBadge` in `packages/ui/src/components/cloud/CloudStatusBadge.tsx:143` | - | `Button`, `span` |
+| canonical-wrapper | consolidation-candidate | `RedactedBadge` in `packages/ui/src/components/RedactedBadge.tsx:14` | `packages/ui/src/components/ui/badge.tsx` | `Badge`, `EyeOff` |
+|  |  | Static labeled badge duplicates canonical badge structure and styling. |  |  |
+| canonical-wrapper | consolidation-candidate | `SpeakerNameAttributionBadge` in `packages/ui/src/components/transcripts/SpeakerNameAttributionBadge.tsx:40` | `packages/ui/src/components/ui/status-badge.tsx` | `StatusBadge`, `span` |
+|  |  | Status-toned attribution label should compose the canonical status badge. |  |  |
 | parallel-primitive | consolidation-candidate | `LlmsTxtBadge` in `packages/ui/src/cloud-ui/components/docs/llms-txt-badge.tsx:8` | `packages/ui/src/components/ui/badge.tsx` | `a`, `div` |
 |  |  | Link-shaped badge duplicates badge chrome and should compose Badge with asChild support. |  |  |
-| parallel-primitive | consolidation-candidate | `SurfaceBadge` in `packages/ui/src/components/apps/extensions/surface.tsx:33` | `packages/ui/src/components/ui/status-badge.tsx` | `span` |
-|  |  | Tone-based text badge overlaps the canonical status badge contract. |  |  |
 | parallel-primitive | intentional-specialization | `ChatVoiceSpeakerBadge` in `packages/ui/src/components/composites/chat/chat-source.tsx:56` | `packages/ui/src/components/ui/badge.tsx` | `Crown`, `Mic`, `span` |
 |  |  | Role and voice icon marker has domain behavior, but should continue to source base badge tokens from the canonical owner. |  |  |
 | parallel-primitive | intentional-specialization | `OwnerBadge` in `packages/ui/src/components/composites/OwnerBadge.tsx:53` | `packages/ui/src/components/ui/badge.tsx` | `Crown`, `span` |
 |  |  | Placement-aware owner marker is shared domain UI rather than a second general badge. |  |  |
 | parallel-primitive | molecular | `HardwareBadge` in `packages/ui/src/components/local-inference/HardwareBadge.tsx:16` | - | `AlertTriangle`, `Cpu`, `Gauge`, `HardDrive`, `div`, `span` |
 |  |  | Multi-field hardware summary made of several status regions. |  |  |
-| parallel-primitive | consolidation-candidate | `RedactedBadge` in `packages/ui/src/components/RedactedBadge.tsx:13` | `packages/ui/src/components/ui/badge.tsx` | `EyeOff`, `span` |
-|  |  | Static labeled badge duplicates canonical badge structure and styling. |  |  |
 | parallel-primitive | molecular | `BuildBadge` in `packages/ui/src/components/shell/BuildBadge.tsx:298` | - | `X`, `button`, `dd`, `div`, `dl`, `dt`, `span` |
 |  |  | Interactive build-details control and popover, not an atomic badge. |  |  |
-| parallel-primitive | consolidation-candidate | `SpeakerNameAttributionBadge` in `packages/ui/src/components/transcripts/SpeakerNameAttributionBadge.tsx:40` | `packages/ui/src/components/ui/status-badge.tsx` | `span` |
-|  |  | Status-toned attribution label should compose the canonical status badge. |  |  |
 
 ### button
 
@@ -297,7 +295,7 @@ No named candidates.
 |  |  | Reimplements the base card surface, polymorphism, padding, border, and hover contract. |  |  |
 | parallel-primitive | molecular | `MiniStatCard` in `packages/ui/src/cloud-ui/components/brand/mini-stat-card.tsx:13` | `packages/ui/src/components/ui/card.tsx` | `div`, `p` |
 |  |  | Metric composition, not a base card primitive. |  |  |
-| parallel-primitive | false-positive | `SurfaceCard` in `packages/ui/src/components/apps/extensions/surface.tsx:49` | - | `div` |
+| parallel-primitive | false-positive | `SurfaceCard` in `packages/ui/src/components/apps/extensions/surface.tsx:51` | - | `div` |
 |  |  | Compact label-value definition block; the Card suffix does not represent card chrome. |  |  |
 | renderer-adapter | not-reviewed | `Card` in `packages/ui/src/spatial/primitives.tsx:801` | - | `Stack` |
 | template-adapter | not-reviewed | `AppBlockerSettingsCard` in `packages/elizaos/templates/project/apps/app/src/optional-eliza-app-stub.tsx:15` | - |  |
@@ -337,8 +335,6 @@ No named candidates.
 |  |  | Settings row composition; its internal raw input remains a separate migration target. |  |  |
 | parallel-primitive | consolidation-candidate | `CloudTextInput` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:753` | `packages/ui/src/components/ui/input.tsx` | `input` |
 |  |  | Directly reimplements the canonical text input with a narrower value callback. |  |  |
-| parallel-primitive | consolidation-candidate | `AgentInput` in `plugins/plugin-notes/src/views/viewPrimitives.tsx:187` | `packages/ui/src/agent-surface/components.tsx` | `input` |
-|  |  | Duplicates the shared agent-aware Input adapter inside one plugin. |  |  |
 | test-double | not-reviewed | `Input` in `plugins/plugin-contacts/test/stubs/ui.tsx:26` | - |  |
 
 ### popover
@@ -353,12 +349,12 @@ No named candidates.
 
 | Classification | Decision | Definition | Canonical owner | Rendered tags |
 | --- | --- | --- | --- | --- |
+| canonical-wrapper | consolidation-candidate | `DownloadProgress` in `packages/ui/src/components/local-inference/DownloadProgress.tsx:15` | `packages/ui/src/components/ui/progress.tsx` | `Progress`, `div`, `span` |
+|  |  | Inline determinate progress bar duplicates the canonical Progress base. |  |  |
 | parallel-primitive | molecular | `MilestoneProgress` in `packages/ui/src/cloud-ui/components/monetization/milestone-progress.tsx:20` | `packages/ui/src/components/ui/progress.tsx` | `CheckCircle2`, `Target`, `div`, `span` |
 |  |  | Milestone state composition, not a generic progress primitive. |  |  |
 | parallel-primitive | intentional-specialization | `NavigationProgress` in `packages/ui/src/cloud-ui/components/navigation-progress.tsx:13` | - |  |
 |  |  | Route lifecycle adapter around nprogress, not an inline progress control. |  |  |
-| parallel-primitive | consolidation-candidate | `DownloadProgress` in `packages/ui/src/components/local-inference/DownloadProgress.tsx:14` | `packages/ui/src/components/ui/progress.tsx` | `div`, `span` |
-|  |  | Inline determinate progress bar duplicates the canonical Progress base. |  |  |
 
 ### select
 
@@ -426,10 +422,7 @@ No named candidates.
 
 ### textarea
 
-| Classification | Decision | Definition | Canonical owner | Rendered tags |
-| --- | --- | --- | --- | --- |
-| parallel-primitive | consolidation-candidate | `AgentTextarea` in `plugins/plugin-notes/src/views/viewPrimitives.tsx:225` | `packages/ui/src/components/ui/textarea.tsx` | `textarea` |
-|  |  | Duplicates agent instrumentation plus the canonical Textarea inside one plugin. |  |  |
+No named candidates.
 
 ### tooltip
 

@@ -5,13 +5,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type {
-  ButtonHTMLAttributes,
-  CSSProperties,
-  InputHTMLAttributes,
-  ReactNode,
-  TextareaHTMLAttributes,
-} from "react";
+import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
 import type { StickyColor } from "../types.js";
 
 export function handleRenderedMutationFailure(cause: unknown): void {
@@ -68,21 +62,6 @@ export const GLASS_PANEL_STYLE: CSSProperties = {
   boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), 0 18px 48px rgba(0,0,0,.20)",
   backdropFilter: "blur(24px) saturate(145%)",
   WebkitBackdropFilter: "blur(24px) saturate(145%)",
-};
-
-export const FIELD_STYLE: CSSProperties = {
-  boxSizing: "border-box",
-  width: "100%",
-  minHeight: 44,
-  border: "none",
-  borderRadius: 12,
-  padding: "10px 12px",
-  background: "color-mix(in srgb, var(--bg, #080808) 78%, transparent)",
-  color: "var(--txt, #f5f5f5)",
-  font: "inherit",
-  fontSize: 14,
-  lineHeight: 1.45,
-  boxShadow: "inset 0 0 0 1px rgba(255,255,255,.10)",
 };
 
 export const LABEL_STYLE: CSSProperties = {
@@ -181,82 +160,6 @@ export function AgentAction({
     >
       {children}
     </button>
-  );
-}
-
-export function AgentInput({
-  agentId,
-  agentLabel,
-  agentGroup,
-  value,
-  onValue,
-  style,
-  ...rest
-}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
-  agentId: string;
-  agentLabel: string;
-  agentGroup: string;
-  value: string;
-  onValue: (value: string) => void;
-}) {
-  const control = useAgentElement<HTMLInputElement>({
-    id: agentId,
-    label: agentLabel,
-    role: "text-input",
-    group: agentGroup,
-    fillable: true,
-    getValue: () => value,
-    onFill: onValue,
-  });
-  return (
-    <input
-      ref={control.ref}
-      id={agentId}
-      aria-label={agentLabel}
-      {...control.agentProps}
-      {...rest}
-      value={value}
-      onChange={(event) => onValue(event.target.value)}
-      style={{ ...FIELD_STYLE, ...style }}
-    />
-  );
-}
-
-export function AgentTextarea({
-  agentId,
-  agentLabel,
-  agentGroup,
-  value,
-  onValue,
-  style,
-  ...rest
-}: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & {
-  agentId: string;
-  agentLabel: string;
-  agentGroup: string;
-  value: string;
-  onValue: (value: string) => void;
-}) {
-  const control = useAgentElement<HTMLTextAreaElement>({
-    id: agentId,
-    label: agentLabel,
-    role: "textarea",
-    group: agentGroup,
-    fillable: true,
-    getValue: () => value,
-    onFill: onValue,
-  });
-  return (
-    <textarea
-      ref={control.ref}
-      id={agentId}
-      aria-label={agentLabel}
-      {...control.agentProps}
-      {...rest}
-      value={value}
-      onChange={(event) => onValue(event.target.value)}
-      style={{ ...FIELD_STYLE, minHeight: 104, resize: "vertical", ...style }}
-    />
   );
 }
 

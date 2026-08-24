@@ -327,7 +327,10 @@ export function buildComplianceReport(options = {}) {
   const findings = [];
   for (const group of Object.values(inventory.atoms)) {
     for (const candidate of group.candidates) {
-      if (candidate.decision?.disposition !== "consolidation-candidate")
+      if (
+        candidate.classification !== "parallel-primitive" ||
+        candidate.decision?.disposition !== "consolidation-candidate"
+      )
         continue;
       findings.push(
         finding({
