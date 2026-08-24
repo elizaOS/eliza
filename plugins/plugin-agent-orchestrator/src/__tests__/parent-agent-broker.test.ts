@@ -92,8 +92,9 @@ describe("runParentAgentBroker", () => {
 
   it("routes ask mode through the parent message service", async () => {
     const createMemory = vi.fn().mockResolvedValue(undefined);
-    const handleMessage = vi.fn(async (_runtime, memory, callback) => {
+    const handleMessage = vi.fn(async (_runtime, memory, callback, options) => {
       expect(memory.content.text).toContain("Use my calendar");
+      expect(options).toEqual({ continueAfterActions: true });
       await callback({ text: "Calendar says tomorrow at 2pm works." });
       return { responseContent: { text: "" } };
     });
@@ -122,6 +123,44 @@ describe("runParentAgentBroker", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
     expect(result.text).toContain("Calendar says tomorrow at 2pm works.");
+  });
+
+  it("opts into coding mode only for an explicit executionMode coding request", async () => {
+    const observedOptions: unknown[] = [];
+    const handleMessage = vi.fn(
+      async (_runtime, _memory, _callback, options) => {
+        observedOptions.push(options);
+        return {
+          didRespond: true,
+          responseContent: { text: "Parent turn complete." },
+          responseMessages: [],
+        };
+      },
+    );
+    const runtime = createRuntime({
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      messageService: { handleMessage },
+    } as Partial<IAgentRuntime>);
+
+    for (const args of [
+      { request: "Use the normal parent pipeline." },
+      { request: "Remain normal.", executionMode: "normal" },
+      { request: "Reject unknown profiles.", executionMode: "privileged" },
+      { request: "Use the coding planner.", executionMode: "coding" },
+    ]) {
+      await runParentAgentBroker({
+        runtime,
+        sessionId: `session-${observedOptions.length}`,
+        args,
+      });
+    }
+
+    expect(observedOptions).toEqual([
+      { continueAfterActions: true },
+      { continueAfterActions: true },
+      { continueAfterActions: true },
+      { continueAfterActions: true, codingMode: true },
+    ]);
   });
 
   it("returns callback-delivered null-content terminal failures as typed failures", async () => {
