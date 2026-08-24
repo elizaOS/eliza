@@ -112,8 +112,15 @@ export function parseNoteContent(
   });
   const [firstLine = "", ...remainingLines] = content.split(/\r?\n/);
   const trimmedFirstLine = firstLine.trim();
-  const title = trimmedFirstLine.slice(0, MAX_TITLE_LENGTH).trim();
-  const overflow = trimmedFirstLine.slice(MAX_TITLE_LENGTH).trim();
+  let splitIndex = MAX_TITLE_LENGTH;
+  if (splitIndex > 0 && splitIndex < trimmedFirstLine.length) {
+    const code = trimmedFirstLine.charCodeAt(splitIndex - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      splitIndex -= 1;
+    }
+  }
+  const title = trimmedFirstLine.slice(0, splitIndex).trim();
+  const overflow = trimmedFirstLine.slice(splitIndex).trim();
   const body = [overflow, ...remainingLines].join("\n").trim();
   return {
     title: parseRequiredTitle(title, `${field}.firstLine`),

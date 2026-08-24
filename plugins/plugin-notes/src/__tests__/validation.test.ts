@@ -178,3 +178,17 @@ describe("Notes boundary validation", () => {
     });
   });
 });
+
+describe("parseNoteContent surrogate safety", () => {
+  it("never bisects surrogate pairs when splitting overlong first line", () => {
+    // "😀" is 2 code units: \uD83D\uDE00
+    // "a" + 150 emojis: length 1 + 300 = 301 (exceeds MAX_TITLE_LENGTH = 240)
+    // index 240 lands between high and low surrogate of the 120th emoji!
+    const longEmojiTitle = "a" + "😀".repeat(150);
+    const result = parseNoteContent(longEmojiTitle);
+
+    expect(result.title.length).toBeLessThanOrEqual(240);
+    expect(result.title.endsWith("\uD83D")).toBe(false);
+    expect(result.body.startsWith("\uDE00")).toBe(false);
+  });
+});
