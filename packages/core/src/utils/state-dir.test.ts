@@ -131,6 +131,14 @@ describe("resolveUserPath", () => {
 		expect(resolveUserPath("")).toBe("");
 	});
 
+	it("returns empty for non-string inputs", () => {
+		expect(resolveUserPath(null as unknown as string)).toBe("");
+		expect(resolveUserPath(undefined as unknown as string)).toBe("");
+		expect(resolveUserPath(42 as unknown as string)).toBe("");
+		expect(resolveUserPath({} as unknown as string)).toBe("");
+		expect(resolveUserPath("   ")).toBe("");
+	});
+
 	it("expands a leading ~", () => {
 		const result = resolveUserPath("~/foo");
 		expect(result.endsWith(`${sep}foo`)).toBe(true);
