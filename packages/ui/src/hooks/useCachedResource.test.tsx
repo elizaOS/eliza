@@ -161,4 +161,213 @@ describe("useCachedResource", () => {
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+
+  it("null key disables the resource: loading forever, no fetch, safe no-op controls", async () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => "v1");
+    const { result } = renderHook(() => useCachedResource(null, fetcher));
+
+    expect(result.current.status).toBe("loading");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetcher).not.toHaveBeenCalled();
+
+    await expect(result.current.refetch()).resolves.toBeUndefined();
+    expect(fetcher).not.toHaveBeenCalled();
+    // A disabled resource has no cache slot, but mutate(updaterFn) must not
+    // take the missing-data throw path — the null-key guard runs first.
+    expect(() => result.current.mutate((prev: string) => prev)).not.toThrow();
+    expect(result.current.status).toBe("loading");
+  });
+
+  it("enabled:false skips mount revalidation on a cold cache", async () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => "v1");
+    const { result } = renderHook(() =>
+      useCachedResource("k-disabled-cold", fetcher, { enabled: false }),
+    );
+
+    expect(result.current.status).toBe("loading");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("loading");
+  });
+
+  it("enabled:false still paints an already cached value without fetching", async () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => "v1");
+    const warm = renderHook(() =>
+      useCachedResource("k-disabled-warm", fetcher, { staleTime: 10_000 }),
+    );
+    await waitFor(() => expect(warm.result.current.status).toBe("success"));
+    warm.unmount();
+    fetcher.mockClear();
+
+    const second = renderHook(() =>
+      useCachedResource("k-disabled-warm", fetcher, {
+        enabled: false,
+        staleTime: 10_000,
+      }),
+    );
+    expect(second.result.current.status).toBe("success");
+    if (second.result.current.status === "success") {
+      expect(second.result.current.data).toBe("v1");
+    }
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("a rejected cold fetch surfaces the error state with a normalized message", async () => {
+    let reject: (e: unknown) => void = () => {};
+    const fetcher = vi.fn(
+      (_signal: AbortSignal) =>
+        new Promise<string>((_r, rej) => {
+          reject = rej;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useCachedResource("k-error", fetcher, { staleTime: 10_000 }),
+    );
+
+    expect(result.current.isValidating).toBe(true);
+    reject("boom");
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    if (result.current.status === "error") {
+      // Non-Error rejections are wrapped so callers always get .message.
+      expect(result.current.error.message).toBe("boom");
+    }
+    expect(result.current.isValidating).toBe(false);
+  });
+
+  it("a failed forced refetch keeps the previous cached value visible", async () => {
+    let shouldFail = false;
+    const fetcher = vi.fn((_signal: AbortSignal) =>
+      shouldFail
+        ? Promise.reject(new Error("net down"))
+        : Promise.resolve("v1"),
+    );
+    const { result } = renderHook(() =>
+      useCachedResource("k-stale-on-error", fetcher, { staleTime: 10_000 }),
+    );
+    await waitFor(() => expect(result.current.status).toBe("success"));
+
+    shouldFail = true;
+    // The returned promise never rejects — failures land in state instead.
+    await result.current.refetch();
+    // With a cached value present, success outranks the recorded error.
+    expect(result.current.status).toBe("success");
+    if (result.current.status === "success") {
+      expect(result.current.data).toBe("v1");
+    }
+    expect(result.current.isValidating).toBe(false);
+  });
+
+  it("recovers to success when a refetch succeeds after a failure", async () => {
+    let attempt = 0;
+    const fetcher = vi.fn((_signal: AbortSignal) => {
+      attempt += 1;
+      if (attempt === 1) return Promise.reject(new Error("cold fail"));
+      return Promise.resolve("recovered");
+    });
+    const { result } = renderHook(() =>
+      useCachedResource("k-recover", fetcher, { staleTime: 10_000 }),
+    );
+    await waitFor(() => expect(result.current.status).toBe("error"));
+
+    await result.current.refetch();
+    await waitFor(() => expect(result.current.status).toBe("success"));
+    if (result.current.status === "success") {
+      expect(result.current.data).toBe("recovered");
+    }
+    expect(result.current.isValidating).toBe(false);
+  });
+
+  it("mutate replaces the cached value immediately", async () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => "v1");
+    const { result } = renderHook(() =>
+      useCachedResource("k-mutate-set", fetcher, { staleTime: 10_000 }),
+    );
+    await waitFor(() => expect(result.current.status).toBe("success"));
+
+    result.current.mutate("optimistic");
+    await waitFor(() => {
+      if (result.current.status === "success") {
+        expect(result.current.data).toBe("optimistic");
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("mutate accepts an updater function derived from current data", async () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => "v1");
+    const { result } = renderHook(() =>
+      useCachedResource("k-mutate-updater", fetcher, { staleTime: 10_000 }),
+    );
+    await waitFor(() => expect(result.current.status).toBe("success"));
+
+    result.current.mutate((prev: string) => `${prev}!`);
+    await waitFor(() => {
+      if (result.current.status === "success") {
+        expect(result.current.data).toBe("v1!");
+      }
+    });
+  });
+
+  it("mutate(updaterFn) without cached data throws", () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => "v1");
+    const { result } = renderHook(() =>
+      useCachedResource("k-mutate-missing", fetcher, { enabled: false }),
+    );
+    expect(() => result.current.mutate((prev: string) => `${prev}!`)).toThrow(
+      "useCachedResource: mutate(updaterFn) called without cached data.",
+    );
+  });
+
+  it("isValidating tracks an in-flight revalidation", async () => {
+    let resolve: (v: string) => void = () => {};
+    const fetcher = vi.fn(
+      (_signal: AbortSignal) =>
+        new Promise<string>((r) => {
+          resolve = r;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useCachedResource("k-validating", fetcher),
+    );
+
+    expect(result.current.isValidating).toBe(true);
+    resolve("v1");
+    await waitFor(() => expect(result.current.isValidating).toBe(false));
+    await waitFor(() => expect(result.current.status).toBe("success"));
+  });
+
+  it("persist mirrors to localStorage so a wiped memory cache still paints instantly", async () => {
+    const storageKey = "eliza:rc:k-persist";
+    window.localStorage.removeItem(storageKey);
+    try {
+      const fetcher = vi.fn(async (_signal: AbortSignal) => "v1");
+      const first = renderHook(() =>
+        useCachedResource("k-persist", fetcher, {
+          persist: true,
+          staleTime: 10_000,
+        }),
+      );
+      await waitFor(() => expect(first.result.current.status).toBe("success"));
+      expect(window.localStorage.getItem(storageKey)).not.toBeNull();
+      first.unmount();
+
+      // Simulate a reload: the in-memory store is gone, the mirror survives.
+      __resetResourceCache();
+      fetcher.mockClear();
+
+      const second = renderHook(() =>
+        useCachedResource("k-persist", fetcher, {
+          persist: true,
+          staleTime: 10_000,
+        }),
+      );
+      expect(second.result.current.status).toBe("success");
+      if (second.result.current.status === "success") {
+        expect(second.result.current.data).toBe("v1");
+      }
+      expect(fetcher).not.toHaveBeenCalled();
+    } finally {
+      window.localStorage.removeItem(storageKey);
+    }
+  });
 });
