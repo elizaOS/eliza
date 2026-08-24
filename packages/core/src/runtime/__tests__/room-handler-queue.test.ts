@@ -467,3 +467,351 @@ describe("RoomHandlerQueue", () => {
 		});
 	});
 });
+
+/**
+ * Additive branch coverage extending the baseline suite: constructor
+ * validation, `runWith` abort semantics, admission-freeze detail,
+ * per-room saturation and errored event shapes, lease-scoped write lanes,
+ * multi-room transactions, and ambient ownership propagation. Same
+ * real-queue harness; no mocks.
+ */
+describe("RoomHandlerQueue additional branches", () => {
+	describe("constructor validation", () => {
+		it("applies the documented default limits with ambient context enabled", () => {
+			const queue = new RoomHandlerQueue();
+			expect(queue.maxPendingPerRoom).toBe(32);
+			expect(queue.maxPendingTotal).toBe(512);
+			expect(queue.maxActiveRooms).toBe(256);
+			expect(queue.requiresExplicitOwnership()).toBe(false);
+		});
+
+		it("rejects a non-positive or unsafe maxPendingPerRoom", () => {
+			expect(() => new RoomHandlerQueue({ maxPendingPerRoom: 0 })).toThrowError(
+				RangeError,
+			);
+			expect(
+				() => new RoomHandlerQueue({ maxPendingPerRoom: Number.NaN }),
+			).toThrowError(/maxPendingPerRoom/);
+		});
+
+		it("rejects a non-positive maxPendingTotal", () => {
+			expect(() => new RoomHandlerQueue({ maxPendingTotal: -1 })).toThrowError(
+				/maxPendingTotal/,
+			);
+		});
+
+		it("rejects a non-safe-integer maxActiveRooms", () => {
+			expect(() => new RoomHandlerQueue({ maxActiveRooms: 1.5 })).toThrowError(
+				/maxActiveRooms/,
+			);
+		});
+
+		it("selects explicit ownership mode when async context is disabled", () => {
+			const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+			expect(queue.requiresExplicitOwnership()).toBe(true);
+		});
+	});
+
+	describe("cancellation before and during queuing", () => {
+		it("carries room identity and cause on RoomHandlerQueueAbortedError", () => {
+			const cause = new Error("socket-closed");
+			const error = new RoomHandlerQueueAbortedError(ROOM_A, { cause });
+			expect(error.roomId).toBe(ROOM_A);
+			expect(error.name).toBe("RoomHandlerQueueAbortedError");
+			expect(error.message).toContain(ROOM_A);
+			expect(error.cause).toBe(cause);
+		});
+
+		it("rejects a pre-aborted signal before enqueueing and emits only cancelled", async () => {
+			const queue = new RoomHandlerQueue();
+			const events: RoomQueueEvent[] = [];
+			queue.onEvent((event) => events.push(event));
+			const controller = new AbortController();
+			const reason = new Error("caller-cancelled-before-start");
+			controller.abort(reason);
+
+			await expect(
+				queue.runWith(ROOM_A, async () => "never-runs", {
+					signal: controller.signal,
+				}),
+			).rejects.toMatchObject({
+				name: "RoomHandlerQueueAbortedError",
+				roomId: ROOM_A,
+				cause: reason,
+			});
+
+			expect(events.map((event) => event.type)).toEqual(["cancelled"]);
+			expect(queue.pendingFor(ROOM_A)).toBe(0);
+		});
+
+		it("removes an aborted waiter from mid-queue and preserves later arrivals", async () => {
+			const queue = new RoomHandlerQueue();
+			const events: RoomQueueEvent[] = [];
+			queue.onEvent((event) => events.push(event));
+			const trace: string[] = [];
+			let releaseFirst: (() => void) | undefined;
+			const firstGate = new Promise<void>((resolve) => {
+				releaseFirst = resolve;
+			});
+
+			const first = queue.runWith(ROOM_A, async () => {
+				trace.push("first");
+				await firstGate;
+			});
+			const controller = new AbortController();
+			const second = queue.runWith(
+				ROOM_A,
+				async () => {
+					trace.push("second");
+				},
+				{ signal: controller.signal },
+			);
+			const third = queue.runWith(ROOM_A, async () => {
+				trace.push("third");
+				return "third-ok";
+			});
+
+			const cancelReason = new Error("transport-hung-up");
+			controller.abort(cancelReason);
+			await expect(second).rejects.toMatchObject({
+				name: "RoomHandlerQueueAbortedError",
+				roomId: ROOM_A,
+				cause: cancelReason,
+			});
+
+			releaseFirst?.();
+			await first;
+			await expect(third).resolves.toBe("third-ok");
+			expect(trace).toEqual(["first", "third"]);
+			expect(events.map((event) => event.type)).toEqual([
+				"enqueued",
+				"enqueued",
+				"enqueued",
+				"cancelled",
+				"completed",
+				"completed",
+			]);
+			expect(queue.pendingFor(ROOM_A)).toBe(0);
+		});
+	});
+
+	describe("admission freezing detail", () => {
+		it("keeps the first close reason and surfaces it on rejected admissions", async () => {
+			const queue = new RoomHandlerQueue();
+			queue.closeAdmissions("shutdown-started");
+			queue.closeAdmissions("shutdown-reason-changed");
+			expect(queue.isAcceptingAdmissions()).toBe(false);
+
+			await expect(
+				queue.runWith(ROOM_A, async () => "late"),
+			).rejects.toMatchObject({
+				code: "ROOM_HANDLER_QUEUE_CLOSED",
+				context: { reason: "shutdown-started" },
+			});
+			await expect(
+				queue.runWith(ROOM_A, async () => "still-late"),
+			).rejects.toBeInstanceOf(RoomHandlerQueueClosedError);
+		});
+	});
+
+	describe("terminal event shapes", () => {
+		it("emits a saturated event with queue depth and bound before rejecting", async () => {
+			const queue = new RoomHandlerQueue({ maxPendingPerRoom: 1 });
+			const events: RoomQueueEvent[] = [];
+			queue.onEvent((event) => events.push(event));
+
+			let releaseActive: (() => void) | undefined;
+			const activeGate = new Promise<void>((resolve) => {
+				releaseActive = resolve;
+			});
+			const active = queue.runWith(ROOM_A, async () => {
+				await activeGate;
+			});
+
+			await expect(
+				queue.runWith(ROOM_A, async () => "overflow"),
+			).rejects.toMatchObject({
+				name: "RoomHandlerQueueSaturatedError",
+				roomId: ROOM_A,
+				maxPendingPerRoom: 1,
+				pendingCount: 1,
+			});
+			expect(events.map((event) => event.type)).toEqual([
+				"enqueued",
+				"saturated",
+			]);
+			const saturated = events[1];
+			if (saturated?.type === "saturated") {
+				expect(saturated.roomId).toBe(ROOM_A);
+				expect(saturated.queueDepth).toBe(1);
+				expect(saturated.maxPendingPerRoom).toBe(1);
+			}
+
+			releaseActive?.();
+			await active;
+			expect(events.map((event) => event.type)).toEqual([
+				"enqueued",
+				"saturated",
+				"completed",
+			]);
+			expect(queue.pendingTotal()).toBe(0);
+		});
+
+		it("stringifies non-Error rejections in the errored event", async () => {
+			const queue = new RoomHandlerQueue();
+			const events: RoomQueueEvent[] = [];
+			queue.onEvent((event) => events.push(event));
+
+			const failure = "raw-string-failure";
+			await expect(
+				queue.runWith(ROOM_A, async () => {
+					throw failure;
+				}),
+			).rejects.toBe(failure);
+			expect(events.map((event) => event.type)).toEqual([
+				"enqueued",
+				"errored",
+			]);
+			const errored = events[1];
+			if (errored?.type === "errored") {
+				expect(errored.roomId).toBe(ROOM_A);
+				expect(errored.error).toBe(failure);
+			}
+		});
+	});
+
+	describe("lease-scoped write lanes", () => {
+		it("serializes sibling writes in FIFO order on one live lease", async () => {
+			const queue = new RoomHandlerQueue();
+			const lease = await queue.acquire(ROOM_A);
+			const trace: string[] = [];
+			let releaseSlow: (() => void) | undefined;
+			const slowGate = new Promise<void>((resolve) => {
+				releaseSlow = resolve;
+			});
+
+			const slow = queue.withLeaseWrite(ROOM_A, lease, async () => {
+				trace.push("slow-start");
+				await slowGate;
+				trace.push("slow-end");
+				return "slow-result";
+			});
+			const fast = queue.withLeaseWrite(ROOM_A, lease, async () => {
+				trace.push("fast");
+				return "fast-result";
+			});
+
+			await sleep(2);
+			expect(trace).toEqual(["slow-start"]);
+
+			releaseSlow?.();
+			await expect(slow).resolves.toBe("slow-result");
+			await expect(fast).resolves.toBe("fast-result");
+			expect(trace).toEqual(["slow-start", "slow-end", "fast"]);
+			await lease.release();
+			expect(queue.pendingTotal()).toBe(0);
+		});
+
+		it("rejects writes against unknown, wrong-room, or released capabilities", async () => {
+			const queue = new RoomHandlerQueue();
+			const foreign = { release: async () => undefined };
+			await expect(
+				queue.withLeaseWrite(ROOM_A, foreign, async () => "x"),
+			).rejects.toMatchObject({ code: "ROOM_HANDLER_LEASE_MISMATCH" });
+
+			const lease = await queue.acquire(ROOM_A);
+			await expect(
+				queue.withLeaseWrite(ROOM_B, lease, async () => "x"),
+			).rejects.toMatchObject({ code: "ROOM_HANDLER_LEASE_MISMATCH" });
+
+			await lease.release();
+			await expect(
+				queue.withLeaseWrite(ROOM_A, lease, async () => "x"),
+			).rejects.toMatchObject({ code: "ROOM_HANDLER_LEASE_MISMATCH" });
+			expect(queue.pendingTotal()).toBe(0);
+		});
+
+		it("serializes an outside write behind a multi-room batch holding the same lease", async () => {
+			const queue = new RoomHandlerQueue();
+			const leaseB = await queue.acquire(ROOM_B);
+			const leaseA = await queue.acquire(ROOM_A);
+			const trace: string[] = [];
+			let releaseBatch: (() => void) | undefined;
+			const batchGate = new Promise<void>((resolve) => {
+				releaseBatch = resolve;
+			});
+
+			const batch = queue.withLeaseWrites(
+				new Map([
+					[ROOM_B, leaseB],
+					[ROOM_A, leaseA],
+				]),
+				async () => {
+					trace.push("batch-payload");
+					await batchGate;
+					return "batch-ok";
+				},
+			);
+			const solo = queue.withLeaseWrite(ROOM_A, leaseA, async () => {
+				trace.push("solo-a");
+				return "solo-ok";
+			});
+
+			await sleep(2);
+			expect(trace).toEqual(["batch-payload"]);
+
+			releaseBatch?.();
+			await expect(batch).resolves.toBe("batch-ok");
+			await expect(solo).resolves.toBe("solo-ok");
+			expect(trace).toEqual(["batch-payload", "solo-a"]);
+
+			await leaseB.release();
+			await leaseA.release();
+			await queue.quiesceAll();
+			expect(queue.pendingTotal()).toBe(0);
+		});
+	});
+
+	describe("multi-room transactions", () => {
+		it("runs an empty room set without creating any queue", async () => {
+			const queue = new RoomHandlerQueue();
+			const size = await queue.withLeases([], async (leases) => leases.size);
+			expect(size).toBe(0);
+			expect(queue.pendingTotal()).toBe(0);
+		});
+	});
+
+	describe("ambient lease ownership", () => {
+		it("propagates the live capability through nested async work and clears it after release", async () => {
+			const queue = new RoomHandlerQueue();
+			expect(queue.currentLease(ROOM_A)).toBeUndefined();
+			expect(queue.currentOwnership()).toBeUndefined();
+
+			const inner = await queue.withLease(ROOM_A, async (lease) => {
+				expect(queue.currentLease(ROOM_A)).toBe(lease);
+				expect(queue.currentOwnership()?.roomId).toBe(ROOM_A);
+				expect(queue.currentOwnership()?.lease).toBe(lease);
+
+				await expect(
+					queue.withLeases([ROOM_A], async (leases) => leases.get(ROOM_A)),
+				).resolves.toBe(lease);
+
+				await expect(
+					queue.withLeases([ROOM_A, ROOM_B], async () => "never"),
+				).rejects.toMatchObject({ code: "ROOM_HANDLER_CROSS_ROOM_REENTRY" });
+				expect(queue.pendingFor(ROOM_B)).toBe(0);
+
+				await expect(
+					queue.withLease(ROOM_A, async (reused) => reused, { lease }),
+				).resolves.toBe(lease);
+
+				return "inner-done";
+			});
+
+			expect(inner).toBe("inner-done");
+			expect(queue.currentLease(ROOM_A)).toBeUndefined();
+			expect(queue.currentOwnership()).toBeUndefined();
+			expect(queue.pendingTotal()).toBe(0);
+		});
+	});
+});
