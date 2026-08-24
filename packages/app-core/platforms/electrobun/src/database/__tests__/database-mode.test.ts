@@ -63,6 +63,18 @@ describe("redactDatabaseTarget", () => {
   it("returns the trimmed string when parsing fails and no userinfo is present", () => {
     expect(redactDatabaseTarget("  not-a-url  ")).toBe("not-a-url");
   });
+
+  it("redacts only the password when the URL has no username", () => {
+    expect(
+      redactDatabaseTarget("postgres://:secret@localhost:5432/eliza"),
+    ).toBe("postgres://:%5Bpassword%5D@localhost:5432/eliza");
+  });
+
+  it("redacts credentials that use percent-encoded reserved characters", () => {
+    expect(
+      redactDatabaseTarget("postgres://user%40x:p%23ss@localhost:5432/eliza"),
+    ).toBe("postgres://%5Buser%5D:%5Bpassword%5D@localhost:5432/eliza");
+  });
 });
 
 describe("resolveDatabaseMode", () => {
@@ -259,6 +271,39 @@ describe("resolveDatabaseMode", () => {
     expect(result.mode).toBe("pglite-persistent");
     expect(result.pgliteDataDir).toBe(path.resolve(process.cwd(), "rel/db"));
   });
+
+  it("treats a whitespace-only PGLITE_DATA_DIR as absent", () => {
+    const appStateDir = "/Users/example/Library/Application Support/Eliza";
+    const result = resolveDatabaseMode(
+      options({
+        env: { PGLITE_DATA_DIR: "   " },
+        packagedDesktop: true,
+        appStateDir,
+      }),
+    );
+
+    expect(result).toEqual({
+      mode: "pglite-persistent",
+      pgliteDataDir: path.join(appStateDir, "database", "pglite"),
+      source: "packaged-desktop-default",
+      warnings: [],
+      databaseUrlMapped: false,
+    });
+  });
+
+  it("does not treat a blank ELIZA_DB_MODE as explicit memory", () => {
+    const result = resolveDatabaseMode(
+      options({ env: { ELIZA_DB_MODE: "", PGLITE_DATA_DIR: "/abs/db" } }),
+    );
+
+    expect(result).toEqual({
+      mode: "pglite-persistent",
+      pgliteDataDir: "/abs/db",
+      source: "PGLITE_DATA_DIR",
+      warnings: [],
+      databaseUrlMapped: false,
+    });
+  });
 });
 
 describe("applyDatabaseResolutionToEnv", () => {
@@ -369,5 +414,24 @@ describe("applyDatabaseResolutionToEnv", () => {
     });
 
     expect(childEnv).toEqual({ POSTGRES_URL: "postgres://keep" });
+  });
+
+  it("does not mutate env when pglite-memory mode is missing a data dir", () => {
+    const childEnv: Record<string, string> = {
+      POSTGRES_URL: "postgres://keep",
+      DATABASE_URL: "postgres://also-keep",
+    };
+
+    applyDatabaseResolutionToEnv(childEnv, {
+      mode: "pglite-memory",
+      source: "explicit-memory",
+      warnings: [],
+      databaseUrlMapped: false,
+    });
+
+    expect(childEnv).toEqual({
+      POSTGRES_URL: "postgres://keep",
+      DATABASE_URL: "postgres://also-keep",
+    });
   });
 });
