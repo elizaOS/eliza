@@ -10,13 +10,16 @@
  */
 export class Semaphore {
 	private permits: number;
+	private maxPermits: number;
 	private waiters: Array<() => void> = [];
 
 	constructor(count: number) {
-		this.permits =
+		const sanitized =
 			typeof count === "number" && Number.isFinite(count)
 				? Math.max(1, Math.floor(count))
 				: 1;
+		this.permits = sanitized;
+		this.maxPermits = sanitized;
 	}
 
 	/** Number of currently available permits. */
@@ -41,11 +44,13 @@ export class Semaphore {
 	}
 
 	release(): void {
-		this.permits += 1;
 		const next = this.waiters.shift();
-		if (next && this.permits > 0) {
-			this.permits -= 1;
+		if (next) {
 			next();
+			return;
+		}
+		if (this.permits < this.maxPermits) {
+			this.permits += 1;
 		}
 	}
 }

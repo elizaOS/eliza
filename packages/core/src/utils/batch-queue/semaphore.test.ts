@@ -64,4 +64,71 @@ describe("Semaphore", () => {
 		expect(sem.queueLength).toBe(0);
 		expect(sem.availablePermits).toBe(1);
 	});
+
+	it("caps permits on extra release without paired acquire", async () => {
+		const sem = new Semaphore(1);
+		await sem.acquire();
+		expect(sem.availablePermits).toBe(0);
+		sem.release();
+		expect(sem.availablePermits).toBe(1);
+		sem.release();
+		expect(sem.availablePermits).toBe(1);
+		sem.release();
+		expect(sem.availablePermits).toBe(1);
+	});
+
+	it("does not allow double release to create extra concurrency", async () => {
+		const sem = new Semaphore(1);
+		await sem.acquire();
+		sem.release();
+		sem.release();
+		expect(sem.availablePermits).toBe(1);
+		await sem.acquire();
+		expect(sem.availablePermits).toBe(0);
+		let secondAcquired = false;
+		const second = sem.acquire().then(() => {
+			secondAcquired = true;
+		});
+		await Promise.resolve();
+		expect(secondAcquired).toBe(false);
+		expect(sem.queueLength).toBe(1);
+		sem.release();
+		await second;
+		expect(secondAcquired).toBe(true);
+		expect(sem.availablePermits).toBe(0);
+		sem.release();
+		expect(sem.availablePermits).toBe(1);
+	});
+
+	it("caps permits at initial capacity for larger semaphores", async () => {
+		const sem = new Semaphore(2);
+		await sem.acquire();
+		await sem.acquire();
+		expect(sem.availablePermits).toBe(0);
+		sem.release();
+		expect(sem.availablePermits).toBe(1);
+		sem.release();
+		expect(sem.availablePermits).toBe(2);
+		sem.release();
+		expect(sem.availablePermits).toBe(2);
+		sem.release();
+		expect(sem.availablePermits).toBe(2);
+	});
+
+	it("hands off to waiter without inflating permits", async () => {
+		const sem = new Semaphore(1);
+		await sem.acquire();
+		let waiterAcquired = false;
+		const waiter = sem.acquire().then(() => {
+			waiterAcquired = true;
+		});
+		expect(sem.queueLength).toBe(1);
+		sem.release();
+		await waiter;
+		expect(waiterAcquired).toBe(true);
+		expect(sem.availablePermits).toBe(0);
+		expect(sem.queueLength).toBe(0);
+		sem.release();
+		expect(sem.availablePermits).toBe(1);
+	});
 });
