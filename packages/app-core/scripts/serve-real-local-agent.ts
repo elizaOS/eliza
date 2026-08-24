@@ -10,7 +10,14 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { ModelType, type Plugin, type Route } from "@elizaos/core";
+import {
+  buildReadSlice,
+  buildReadView,
+  ModelType,
+  type Plugin,
+  type Route,
+  validateUuid,
+} from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { registerPluginViews } from "../../agent/src/api/views-registry.ts";
@@ -101,6 +108,127 @@ const rubyHighEvidenceActionRoute: Route = {
       },
     );
     return json(200, { ok: true, actionName, callbacks, result });
+  },
+};
+
+const contextInspectorEvidenceSeedRoute: Route = {
+  type: "POST",
+  path: "/api/device-e2e/context-inspector/seed",
+  rawPath: true,
+  name: "device-e2e-context-inspector-seed",
+  routeHandler: async (ctx) => {
+    const json = (status: number, body: unknown) => ({
+      status,
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body,
+    });
+    if (process.env.ELIZA_UI_SMOKE_CONTEXT_INSPECTOR !== "1") {
+      return json(404, {
+        error: "Context inspector evidence seed is disabled.",
+      });
+    }
+    const body =
+      ctx.body && typeof ctx.body === "object" && !Array.isArray(ctx.body)
+        ? (ctx.body as Record<string, unknown>)
+        : {};
+    const conversationId = validateUuid(body.conversationId);
+    const count = body.count;
+    if (
+      !conversationId ||
+      typeof count !== "number" ||
+      !Number.isSafeInteger(count) ||
+      count < 1 ||
+      count > 50
+    ) {
+      return json(400, { error: "Invalid context inspector evidence seed." });
+    }
+    const room = await ctx.runtime.getRoom(conversationId);
+    if (!room) {
+      return json(404, {
+        error: "Context inspector evidence room unavailable.",
+      });
+    }
+    const service = ctx.runtime.getService("trajectories") as {
+      completeStep(
+        trajectoryId: string,
+        stepId: string,
+        action: Record<string, unknown>,
+      ): void;
+      endTrajectory(trajectoryId: string, status: "completed"): Promise<void>;
+      flushWriteQueue(trajectoryId?: string): Promise<void>;
+      logLlmCall(params: Record<string, unknown>): void;
+      startStep(trajectoryId: string): string;
+      startTrajectory(
+        agentId: string,
+        options: { metadata: Record<string, unknown>; source: string },
+      ): Promise<string>;
+    } | null;
+    if (!service) {
+      return json(503, { error: "Trajectory service unavailable." });
+    }
+
+    const trajectoryIds: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const trajectoryId = await service.startTrajectory(ctx.runtime.agentId, {
+        source: "context-inspector-e2e",
+        metadata: { conversationId, roomId: conversationId },
+      });
+      const stepId = service.startStep(trajectoryId);
+      const view = buildReadView({
+        reference: {
+          kind: index % 2 === 0 ? "email" : "file",
+          ref: `/private/e2e/account-${index}/TOP-SECRET-CONTEXT-${index}`,
+          revision: `private-revision-${index}`,
+        },
+        slice: buildReadSlice({
+          range: {
+            unit: "byte",
+            start: index * 64,
+            end: index * 64 + 64,
+            total: 4096,
+          },
+          completeness: "partial-recoverable",
+          sliceSha256: "a".repeat(64),
+          sourceSha256: "b".repeat(64),
+          reason: `projection budget TOP SECRET E2E BODY ${index}`,
+        }),
+      });
+      service.completeStep(trajectoryId, stepId, {
+        actionName: "READ",
+        actionType: "tool",
+        parameters: {},
+        success: true,
+        result: {
+          text: `TOP SECRET E2E BODY ${index}`,
+          expiresAt: "2026-08-23T17:00:00.000Z",
+          view,
+        },
+      });
+      service.logLlmCall({
+        stepId,
+        model: "private-model-id",
+        modelType: "TEXT_LARGE",
+        provider: "private-provider-account",
+        prompt: `TOP SECRET E2E BODY ${index}`,
+        response: "private response",
+        promptTokens: 300 + index,
+        completionTokens: 10,
+        providerOptions: {
+          eliza: {
+            modelInputBudget: {
+              dispatchThresholdTokens: 900,
+              reserveOutputTokens: 100,
+              shouldReject: false,
+            },
+          },
+        },
+      });
+      await service.flushWriteQueue(trajectoryId);
+      await service.endTrajectory(trajectoryId, "completed");
+      await service.flushWriteQueue(trajectoryId);
+      trajectoryIds.push(trajectoryId);
+    }
+    return json(200, { count: trajectoryIds.length, conversationId });
   },
 };
 
@@ -216,6 +344,7 @@ async function main(): Promise<void> {
       backgroundUploadImageRoute,
       deviceE2eUploadImageRoute,
       rubyHighEvidenceActionRoute,
+      contextInspectorEvidenceSeedRoute,
     ],
   };
   // Route coverage exercises the real dynamic view registry, so the host must
