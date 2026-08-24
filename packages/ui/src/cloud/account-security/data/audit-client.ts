@@ -9,7 +9,8 @@
  * gracefully: this helper never throws and returns `false` when delivery fails.
  */
 
-import { ApiError, apiFetch } from "../../lib/api-client";
+import { logger } from "@elizaos/logger";
+import { apiFetch } from "../../lib/api-client";
 
 /**
  * The exact action strings allowed by `@/services/audit`'s
@@ -57,9 +58,11 @@ export async function emitAuditEvent(
     });
     return true;
   } catch (err) {
-    // Endpoint unavailable (404) or any transient failure: drop the event. Audit
-    // delivery must never block a user flow.
-    if (err instanceof ApiError) return false;
+    // error-policy:J7 diagnostics must not kill the loop: audit delivery failure is warned and reported
+    logger.warn(
+      { err, action: input.action },
+      "[audit-client] audit event delivery failed",
+    );
     return false;
   }
 }
