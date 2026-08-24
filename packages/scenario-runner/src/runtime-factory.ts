@@ -606,6 +606,9 @@ type ScenarioDeterministicModelCall = {
   params?: {
     prompt?: unknown;
     messages?: unknown;
+    responseFormat?: unknown;
+    responseSchema?: unknown;
+    temperature?: unknown;
   };
 };
 
@@ -646,6 +649,50 @@ function deterministicCallTextCandidates(
   return candidates;
 }
 
+function isPostTurnEvaluationCall(
+  call: ScenarioDeterministicModelCall,
+): boolean {
+  if (call.modelType !== ModelType.TEXT_SMALL) return false;
+  const params = call.params;
+  if (!params || params.prompt !== undefined || params.temperature !== 0) {
+    return false;
+  }
+  if (!Array.isArray(params.messages) || params.messages.length !== 1) {
+    return false;
+  }
+  const message = params.messages[0];
+  if (
+    !isRecordLike(message) ||
+    message.role !== "user" ||
+    typeof message.content !== "string" ||
+    !isPostTurnEvaluationPrompt(message.content)
+  ) {
+    return false;
+  }
+  const responseFormat = params.responseFormat;
+  if (!isRecordLike(responseFormat) || responseFormat.type !== "json_object") {
+    return false;
+  }
+  const schema = params.responseSchema;
+  if (
+    !isRecordLike(schema) ||
+    schema.type !== "object" ||
+    !isRecordLike(schema.properties) ||
+    schema.additionalProperties !== false ||
+    !Array.isArray(schema.required)
+  ) {
+    return false;
+  }
+  const propertyKeys = Object.keys(schema.properties);
+  return (
+    propertyKeys.length > 0 &&
+    schema.required.length === propertyKeys.length &&
+    schema.required.every(
+      (requiredKey, index) => requiredKey === propertyKeys[index],
+    )
+  );
+}
+
 export function resolveScenarioDeterministicModelCall(
   call: ScenarioDeterministicModelCall,
 ): string | null {
@@ -661,8 +708,10 @@ export function resolveScenarioDeterministicModelCall(
   const candidates = deterministicCallTextCandidates(call);
   // Checked first: the evaluator prompt embeds the turn's provider context, so
   // a dispatch prompt delivered during the turn can appear INSIDE it. The
-  // post-turn header is the more specific signal.
-  if (candidates.some(isPostTurnEvaluationPrompt)) {
+  // post-turn header plus the evaluator's schema-bearing call shape are the
+  // more specific signal. Prompt text alone is untrusted scenario input and
+  // must not turn an ordinary model call into a fabricated empty evaluation.
+  if (isPostTurnEvaluationCall(call)) {
     // "Nothing to record" is the empty shape the evaluator prompt itself
     // prescribes. Every section is absent, so `processPreparedEntries` skips
     // each evaluator without an error. Scenarios that need real evaluator
