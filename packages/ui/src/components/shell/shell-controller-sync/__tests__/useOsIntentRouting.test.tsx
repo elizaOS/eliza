@@ -84,4 +84,115 @@ describe("useOsIntentRouting", () => {
     expect(dispatch).not.toHaveBeenCalled();
     expect(window.location.hash).toContain("source=attacker");
   });
+
+  it("consumes a later hashchange and routes non-send intents as execute", async () => {
+    const dispatch = vi.fn(async () => {});
+    renderHook(() => useOsIntentRouting(syncWith(dispatch)));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(dispatch).not.toHaveBeenCalled();
+
+    window.history.replaceState(
+      null,
+      "",
+      "/#voice?source=siri&voice=1&assistant.launchId=launch-voice",
+    );
+    window.dispatchEvent(new Event("hashchange"));
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1));
+    expect(dispatch).toHaveBeenCalledWith({
+      kind: "routeOsIntent",
+      intent: {
+        type: "start-voice",
+        intentId: "launch-voice",
+        source: "siri",
+        mode: "converse",
+      },
+      deliveryPolicy: "execute",
+    });
+    await waitFor(() => expect(window.location.hash).toBe("#voice"));
+  });
+
+  it("skips an intent whose dispatch is already in flight", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/#voice?source=siri&voice=1&assistant.launchId=launch-inflight",
+    );
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const dispatch = vi.fn(() => gate);
+    renderHook(() => useOsIntentRouting(syncWith(dispatch)));
+
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event("hashchange"));
+    expect(dispatch).toHaveBeenCalledTimes(1);
+
+    release();
+    await waitFor(() => expect(window.location.hash).toBe("#voice"));
+  });
+
+  it("re-fires an intent after its first dispatch failed", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?source=siri&action=ask&text=retry&assistant.launchId=launch-retry",
+    );
+    let attempts = 0;
+    const sync = syncWith(
+      vi.fn(async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("transient dispatch failure");
+      }),
+    );
+    renderHook(() => useOsIntentRouting(sync));
+
+    await waitFor(() =>
+      expect(sync.reportError).toHaveBeenCalledWith(
+        "OS intent dispatch failed",
+        expect.any(Error),
+      ),
+    );
+    window.dispatchEvent(new Event("hashchange"));
+    await waitFor(() => expect(attempts).toBe(2));
+    await waitFor(() => expect(window.location.hash).toBe("#chat"));
+  });
+
+  it("leaves the launch payload when unmounted before dispatch settles", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?source=siri&action=ask&text=late&assistant.launchId=launch-late",
+    );
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { unmount } = renderHook(() =>
+      useOsIntentRouting(syncWith(vi.fn(() => gate))),
+    );
+    unmount();
+
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(window.location.hash).toContain("assistant.launchId=launch-late");
+    expect(window.location.hash).not.toBe("#");
+  });
+
+  it("stops consuming hash changes after unmount", async () => {
+    const dispatch = vi.fn(async () => {});
+    const { unmount } = renderHook(() =>
+      useOsIntentRouting(syncWith(dispatch)),
+    );
+    unmount();
+
+    window.history.replaceState(
+      null,
+      "",
+      "/#voice?source=siri&voice=1&assistant.launchId=launch-after-unmount",
+    );
+    window.dispatchEvent(new Event("hashchange"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 });
