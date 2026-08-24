@@ -47,4 +47,20 @@ describe("runtime mutation confirmation", () => {
 			"confirm revoke controller-one",
 		);
 	});
+
+	it("binds target confirmation to the exact claimed controller session", () => {
+		const pairing = {
+			op: "confirm_pairing" as const,
+			sessionId: "11111111-1111-4111-8111-111111111111",
+		};
+		expect(runtimeManagementConfirmationText(pairing)).toBe(
+			"confirm pairing 11111111-1111-4111-8111-111111111111",
+		);
+		expect(
+			isBoundRuntimeManagementConfirmation(
+				"confirm pairing 22222222-2222-4222-8222-222222222222",
+				pairing,
+			),
+		).toBe(false);
+	});
 });

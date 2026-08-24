@@ -11,8 +11,16 @@ function normalize(value: string): string {
 }
 
 function confirmationTarget(request: RuntimeManagementRequest): string {
-	if (request.op === "approve_pairing") {
-		return request.sessionId ?? "this pairing";
+	if (request.op === "create_pairing") {
+		return "this computer";
+	}
+	if (
+		request.op === "claim_pairing" ||
+		request.op === "confirm_pairing" ||
+		request.op === "deny_pairing" ||
+		request.op === "approve_pairing"
+	) {
+		return request.sessionId ?? request.targetId ?? "this pairing";
 	}
 	if (
 		request.op === "enroll_host" ||
@@ -35,7 +43,11 @@ function confirmationTarget(request: RuntimeManagementRequest): string {
 export function runtimeManagementConfirmationText(
 	request: RuntimeManagementRequest,
 ): string {
-	return `confirm ${request.op.replaceAll("_", " ")} ${confirmationTarget(request)}`;
+	const operation =
+		request.op === "confirm_pairing"
+			? "pairing"
+			: request.op.replaceAll("_", " ");
+	return `confirm ${operation} ${confirmationTarget(request)}`;
 }
 
 export function isBoundRuntimeManagementConfirmation(

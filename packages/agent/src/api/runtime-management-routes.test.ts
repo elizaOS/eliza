@@ -291,6 +291,7 @@ describe("POST /api/runtime/manage", () => {
         op: "enroll_host",
         runtimeId: "vps-1",
         clientId: "origin-renderer",
+        platform: "linux",
         ...(managedNetwork === undefined ? {} : { managedNetwork }),
       };
       const proposed = makeContext(
@@ -317,6 +318,7 @@ describe("POST /api/runtime/manage", () => {
         request: Body;
       };
       expect(frame.request.managedNetwork).toBe(managedNetwork);
+      expect(frame.request.platform).toBe("linux");
 
       const claim = makeContext("POST", "/api/runtime/manage/claim", {
         requestId: frame.requestId,
@@ -335,6 +337,21 @@ describe("POST /api/runtime/manage", () => {
       await waiting;
     },
   );
+
+  it("rejects an invalid desktop platform before proposal minting", async () => {
+    const proposed = makeContext("POST", "/api/runtime/manage/propose", {
+      op: "enroll_host",
+      clientId: "origin-renderer",
+      platform: "ios",
+    });
+    await handleRuntimeManagementRoutes(proposed.ctx);
+    expect(proposed.error).toHaveBeenCalledWith(
+      expect.anything(),
+      "Invalid runtime proposal.",
+      400,
+    );
+    expect(proposalStore.proposals.size).toBe(0);
+  });
 
   it("targets the renderer that originated an app-chat action", async () => {
     const manage = makeContext("POST", "/api/runtime/manage", {

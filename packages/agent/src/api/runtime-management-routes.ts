@@ -74,6 +74,14 @@ function parseRequest(
   ) {
     return null;
   }
+  if (
+    body.platform !== undefined &&
+    body.platform !== "macos" &&
+    body.platform !== "windows" &&
+    body.platform !== "linux"
+  ) {
+    return null;
+  }
   return {
     op: body.op,
     targetId: boundedString(body.targetId),
@@ -88,6 +96,12 @@ function parseRequest(
     managedNetwork:
       typeof body.managedNetwork === "boolean"
         ? body.managedNetwork
+        : undefined,
+    platform:
+      body.platform === "macos" ||
+      body.platform === "windows" ||
+      body.platform === "linux"
+        ? body.platform
         : undefined,
     sessionId: boundedString(body.sessionId, 256),
     code: boundedString(body.code, 32),

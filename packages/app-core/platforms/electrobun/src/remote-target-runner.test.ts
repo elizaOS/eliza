@@ -1778,6 +1778,7 @@ describe("remote target durable runner", () => {
         ownerId: "owner-1",
         ownerAccessToken: "owner-token-123456789",
         displayName: "Linux target",
+        platform: "linux",
         managedNetwork: true,
       }),
     ).rejects.toThrow("Headscale node unavailable");

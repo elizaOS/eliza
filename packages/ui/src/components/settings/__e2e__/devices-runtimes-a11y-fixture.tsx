@@ -55,11 +55,14 @@ function Fixture() {
           sessionId: "session-a11y-proof",
           code: "420731",
           expiresAt: "2099-01-01T00:05:00.000Z",
+          capabilities: ["agent.status", "agent.request"],
+          status: "pending",
           qrPayload:
-            "elizaos://remote/pair?session=session-a11y-proof&code=420731",
+            "elizaos://remote/control-claim?session=session-a11y-proof&code=420731",
         }}
         linuxTarget={{
           hostId: "linux-host",
+          platform: "linux",
           enrolled: true,
           running: true,
           activeSessions: 1,
@@ -73,10 +76,12 @@ function Fixture() {
         onRemove={noOp}
         onInspectSsh={noOp}
         onConnectSsh={noOp}
-        onActivateLinuxTarget={noOp}
+        onCreateTargetPairing={noOp}
+        onConfirmTargetPairing={noOp}
+        onDenyTargetPairing={noOp}
         onSetLinuxTargetRunning={noOp}
         onRevokeLinuxTarget={noOp}
-        />
+      />
       </main>
     </TranslationCtx.Provider>
   );

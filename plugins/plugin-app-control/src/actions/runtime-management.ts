@@ -102,6 +102,15 @@ export function parseRuntimeManagementRequest(
 	const opValue =
 		readStringOption(options, "op") ?? readStringOption(options, "action");
 	if (!isRuntimeManagementOperation(opValue)) return null;
+	const platformValue = readStringOption(options, "platform");
+	if (
+		platformValue !== null &&
+		platformValue !== "macos" &&
+		platformValue !== "windows" &&
+		platformValue !== "linux"
+	) {
+		return null;
+	}
 	return {
 		op: opValue,
 		targetId: readStringOption(options, "targetId") ?? undefined,
@@ -119,6 +128,7 @@ export function parseRuntimeManagementRequest(
 		proposalId: readStringOption(options, "proposalId") ?? undefined,
 		proposalNonce: readStringOption(options, "proposalNonce") ?? undefined,
 		managedNetwork: readBooleanOption(options, "managedNetwork"),
+		platform: platformValue ?? undefined,
 	};
 }
 
@@ -233,6 +243,12 @@ function successText(result: RuntimeManagementResult): string {
 		return `SSH host keys read without trusting or connecting:\n${rows.join("\n")}\nPreferred fingerprint: ${preferred}\nVerify it out of band before connecting.`;
 	}
 	const labels: Record<string, string> = {
+		create_pairing: "Created a one-use controller challenge on this target.",
+		claim_pairing:
+			"Claimed the target challenge and requested Mac confirmation.",
+		confirm_pairing: "Confirmed the claimed controller and started the relay.",
+		deny_pairing:
+			"Denied the claimed controller and revoked the pending claim.",
 		revoke: "Revoked the selected controller session.",
 		remove: "Removed the selected runtime and completed its local cleanup.",
 		retry: "Retried the runtime lifecycle operation.",
@@ -271,9 +287,9 @@ export function createRuntimeManagementAction(
 			"ADD_PRIVATE_RUNTIME",
 		],
 		description:
-			"Manage Devices & Runtimes from chat: list runtimes; create or approve one-use device pairing; revoke/remove/retry runtimes; enroll/start/stop/revoke this desktop host; inspect an SSH host without trusting it; connect only after an out-of-band verified SHA256 fingerprint; or add a trusted private/Tailscale runtime. Every mutation requires confirm=true. Never provide passwords, private keys, bearer/access tokens, or other secrets to this action; enter secrets locally in Settings > Devices & Runtimes. Switching an already-saved runtime is AGENT_SWITCH.",
+			"Manage Devices & Runtimes from chat: list runtimes; create a one-use challenge on the target Mac; claim it from a controller; confirm or deny the exact claimed controller on the target; revoke/remove/retry runtimes; enroll/start/stop/revoke this desktop host; inspect an SSH host without trusting it; connect only after an out-of-band verified SHA256 fingerprint; or add a trusted private/Tailscale runtime. Every mutation requires confirm=true. Never provide passwords, private keys, bearer/access tokens, or other secrets to this action; enter secrets locally in Settings > Devices & Runtimes. Switching an already-saved runtime is AGENT_SWITCH.",
 		descriptionCompressed:
-			"runtimes list|pair|revoke|remove|retry|inspect_ssh|connect_ssh|add_direct|enroll_host|approve_pairing|start_host|stop_host|revoke_host; owner-only, confirmed, no secrets",
+			"runtimes list|create_pairing|claim_pairing|confirm_pairing|deny_pairing|revoke|remove|retry|inspect_ssh|connect_ssh|add_direct|enroll_host|approve_pairing|start_host|stop_host|revoke_host; owner-only, confirmed, no secrets",
 		routingHint:
 			"Device/runtime lifecycle, pairing, revoke, SSH fingerprint inspection/connection, and host relay management -> RUNTIMES. Switching to an already-saved runtime -> AGENT_SWITCH. Never send credentials or private keys; secret entry stays in the local Devices & Runtimes UI.",
 		suppressPostActionContinuation: true,
@@ -358,6 +374,13 @@ export function createRuntimeManagementAction(
 					"For enroll_host only: opt into the managed private network. Requires local Tailscale and explicit confirmation.",
 				required: false,
 				schema: { type: "boolean" },
+			},
+			{
+				name: "platform",
+				description:
+					"Desktop platform for enroll_host: macos, windows, or linux.",
+				required: false,
+				schema: { type: "string", enum: ["macos", "windows", "linux"] },
 			},
 			{
 				name: "confirm",

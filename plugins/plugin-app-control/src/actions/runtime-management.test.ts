@@ -225,9 +225,54 @@ describe("RUNTIMES action", () => {
 			parseRuntimeManagementRequest({
 				op: "enroll_host",
 				managedNetwork: true,
+				platform: "macos",
 			}),
-		).toMatchObject({ op: "enroll_host", managedNetwork: true });
+		).toMatchObject({
+			op: "enroll_host",
+			managedNetwork: true,
+			platform: "macos",
+		});
+		expect(
+			parseRuntimeManagementRequest({
+				op: "enroll_host",
+				platform: "ios",
+			}),
+		).toBeNull();
 	});
+
+	it.each([
+		["create_pairing", {}],
+		[
+			"claim_pairing",
+			{
+				sessionId: "11111111-1111-4111-8111-111111111111",
+				code: "420731",
+			},
+		],
+		["confirm_pairing", { sessionId: "11111111-1111-4111-8111-111111111111" }],
+		["deny_pairing", { sessionId: "11111111-1111-4111-8111-111111111111" }],
+	] as const)(
+		"keeps target-initiated %s inside the canonical confirmed action",
+		async (op, fields) => {
+			const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+				ok: true,
+				op: request.op,
+			}));
+			const action = createRuntimeManagementAction({ manageRuntime });
+			const result = await action.handler(
+				runtime,
+				message,
+				undefined,
+				{ op, ...fields },
+				callback(),
+			);
+			expect(result?.success).toBe(false);
+			expect(result?.values).toEqual(
+				expect.objectContaining({ awaitingConfirmation: true, op }),
+			);
+			expect(manageRuntime).not.toHaveBeenCalled();
+		},
+	);
 
 	it("returns every saved runtime in model-visible text and structured data", async () => {
 		const runtimes = [

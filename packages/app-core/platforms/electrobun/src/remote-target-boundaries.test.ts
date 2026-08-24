@@ -208,6 +208,7 @@ describe("remote target native boundaries", () => {
       ownerId: "owner-1",
       deviceId: host.deviceId,
       displayName: host.displayName,
+      platform: host.platform,
       runtimeKeyId: host.runtimeKeyId,
       signingPublicKeyJwk: signing.publicKey,
       encryptionPublicKeyJwk: encryption.publicKey,
