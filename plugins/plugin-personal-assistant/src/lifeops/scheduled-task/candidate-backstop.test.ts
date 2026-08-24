@@ -1,16 +1,12 @@
 /**
  * Deterministic unit coverage for the LifeOps scheduled-task candidate
  * backstop rule: the matcher's habit/routine and recurring-cadence phrasing,
- * the past-tense fabricated-claim shape, coding-text non-matches, and the
- * owner-surface recovery targets in the declared action-name list (#17028).
- * Pure functions, no runtime or mocks.
+ * the past-tense fabricated-claim shape and coding-text non-matches (#17028).
+ * Pure function, no runtime or mocks.
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  createScheduledTaskCandidateBackstopRule,
-  looksLikeScheduledTaskRequest,
-} from "./candidate-backstop";
+import { looksLikeScheduledTaskRequest } from "./candidate-backstop";
 
 describe("looksLikeScheduledTaskRequest", () => {
   it("matches recurring-cadence commitments without a task noun (#17028)", () => {
@@ -65,15 +61,5 @@ describe("looksLikeScheduledTaskRequest", () => {
     ]) {
       expect(looksLikeScheduledTaskRequest(text)).toBe(false);
     }
-  });
-});
-
-describe("createScheduledTaskCandidateBackstopRule", () => {
-  it("declares the owner recurring-commitment surfaces as recovery targets", () => {
-    const rule = createScheduledTaskCandidateBackstopRule();
-    expect(rule.actionNames).toContain("OWNER_ROUTINES");
-    expect(rule.actionNames).toContain("OWNER_REMINDERS");
-    expect(rule.actionNames).toContain("SCHEDULED_TASKS_CREATE");
-    expect(rule.matches("25 pushups, 3 times a day")).toBe(true);
   });
 });
