@@ -158,10 +158,8 @@ b7e043197daca54f028b63fc1d05b12e6b69901a76ddbcea84adb653652d5430  electrobun-1.1
   remains one intentional environment skip.
 - The PGlite remote-command-envelope repository suite passed 19/19 at this
   checkpoint, including its complete embedded-database cleanup.
-- Affected lint passed 143/143 tasks. Affected typecheck passed 231/232 tasks;
-  the sole failure is an unchanged current-`develop` test typing defect in
-  `packages/cloud/shared/src/db/database-url.test.ts`, surfaced through the
-  Cloud API project. That file is byte-for-byte outside this PR's diff.
+- Affected lint passed 143/143 tasks and affected typecheck passed 232/232
+  tasks on the latest integrated `develop` base.
 - `git diff --check` passes. Hosted exact-head lint/typecheck/build and secret
   scan will be authoritative after the refreshed head is pushed.
 
