@@ -112,4 +112,119 @@ describe("candidate-action backstop registry", () => {
 		expect(coding.plan.contexts).toContain("code");
 		expect(coding.plan.candidateActions).toEqual(["TASKS"]);
 	});
+
+	it("protects candidates registered under a loosely-cased action name", () => {
+		const runtime = makeRuntime();
+		registerCandidateActionBackstopRule(runtime, {
+			actionNames: ["Scheduled_Tasks_Create"],
+			matches: (text) => /\bremind\s+me\b/iu.test(text),
+		});
+
+		const runtimeContext = {
+			actions: [
+				{
+					name: "TASKS",
+					tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+				},
+				{ name: "SCHEDULED_TASKS_CREATE" },
+			],
+			candidateBackstopRules: getCandidateActionBackstopRules(runtime),
+		};
+
+		// The turn reads as coding work, but the rule owns the candidate through
+		// canonical identifier normalization and recognizes the request, so the
+		// candidate survives instead of being rewritten to TASKS.
+		const protectedTurn = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				intents: ["set reminder"],
+				replyText: "Done.",
+				candidateActionNames: ["SCHEDULED_TASKS_CREATE"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				...runtimeContext,
+				messageText: "fix the login bug and remind me tomorrow",
+			},
+		);
+		expect(protectedTurn.plan.candidateActions).toEqual([
+			"SCHEDULED_TASKS_CREATE",
+		]);
+		expect(protectedTurn.plan.contexts).not.toContain("code");
+	});
+
+	it("resets only the given runtime's rules", () => {
+		const a = makeRuntime();
+		const b = makeRuntime();
+		registerCandidateActionBackstopRule(a, schedulingRule);
+		registerCandidateActionBackstopRule(b, schedulingRule);
+
+		__resetCandidateActionBackstopRulesForTests(a);
+
+		expect(getCandidateActionBackstopRules(a)).toEqual([]);
+		expect(getCandidateActionBackstopRules(b)).toEqual([schedulingRule]);
+	});
+
+	it("appends duplicate registrations without deduplicating them", () => {
+		const runtime = makeRuntime();
+		const other: CandidateActionBackstopRule = {
+			actionNames: ["OTHER"],
+			matches: () => false,
+		};
+
+		registerCandidateActionBackstopRule(runtime, schedulingRule);
+		registerCandidateActionBackstopRule(runtime, other);
+		registerCandidateActionBackstopRule(runtime, schedulingRule);
+
+		expect(getCandidateActionBackstopRules(runtime)).toEqual([
+			schedulingRule,
+			other,
+			schedulingRule,
+		]);
+	});
+
+	it("consults each rule with the exact current message text", () => {
+		const runtime = makeRuntime();
+		const consultedWith: string[] = [];
+		registerCandidateActionBackstopRule(runtime, {
+			actionNames: ["SCHEDULED_TASKS_CREATE"],
+			matches: (text) => {
+				consultedWith.push(text);
+				return false;
+			},
+		});
+
+		const runtimeContext = {
+			actions: [
+				{
+					name: "TASKS",
+					tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+				},
+				{ name: "SCHEDULED_TASKS_CREATE" },
+			],
+			candidateBackstopRules: getCandidateActionBackstopRules(runtime),
+		};
+
+		const messageText = "update the website code, add some fixes";
+		messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				intents: ["update website"],
+				replyText: "On it.",
+				candidateActionNames: ["SCHEDULED_TASKS_CREATE"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ ...runtimeContext, messageText },
+		);
+
+		expect(consultedWith).toEqual([messageText]);
+	});
 });
