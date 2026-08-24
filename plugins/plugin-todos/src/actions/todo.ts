@@ -93,7 +93,10 @@ function statePhrase(status: TodoStatus): string {
 
 /** Lossless one-line representation of untrusted committed todo content. */
 function quotedContent(content: string): string {
-  return JSON.stringify(content);
+  return JSON.stringify(content).replace(
+    /[\u2028\u2029\u202a-\u202e\u2066-\u2069]/g,
+    (control) => `\\u${control.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
 }
 
 /** Confirmation for a committed create; states a status only when it is set. */

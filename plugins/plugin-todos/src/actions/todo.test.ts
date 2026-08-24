@@ -720,6 +720,28 @@ describe("TODO action", () => {
       expect(delivered).toEqual([expected]);
       expect(result.text).not.toContain("\n");
     });
+
+    it("losslessly escapes Unicode separators and bidi controls", async () => {
+      const content =
+        "line\u2028paragraph\u2029embed\u202aRTL\u202bpop\u202cLTR\u202doverride\u202epop\u2066LTR\u2067RTL\u2068first\u2069";
+      const { result, delivered } = await confirm({
+        action: "create",
+        content,
+      });
+      const text = result.text ?? "";
+      const encodedContent = text.slice(
+        "Added ".length,
+        -" to your list.".length,
+      );
+
+      expect(text).not.toMatch(/[\u2028\u2029\u202a-\u202e\u2066-\u2069]/);
+      expect(encodedContent).toContain("\\u2028");
+      expect(encodedContent).toContain("\\u202e");
+      expect(encodedContent).toContain("\\u2069");
+      expect(JSON.parse(encodedContent)).toBe(content);
+      expect(result.userFacingText).toBe(text);
+      expect(delivered).toEqual([text]);
+    });
   });
 
   describe("action=write", () => {
