@@ -21,7 +21,8 @@ vi.mock("../../lib/use-session-auth", () => ({
   }),
 }));
 
-import { useBillingUser, useInvoice, useVerifyCheckout } from "./billing-data";
+import * as billingData from "./billing-data";
+import { useBillingUser, useVerifyCheckout } from "./billing-data";
 import { BILLING_SNAPSHOT_V2_QUERY_KEY } from "./billing-snapshot";
 
 function wrapper(client: QueryClient) {
@@ -266,9 +267,12 @@ describe("useInvoice", () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const { result } = renderHook(() => useInvoice("inv-1", "org-one"), {
-      wrapper: wrapper(client),
-    });
+    const { result } = renderHook(
+      () => billingData.useInvoice("inv-1", "org-one"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -309,9 +313,12 @@ describe("useInvoice", () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const { result } = renderHook(() => useInvoice("inv-1", "org-one"), {
-      wrapper: wrapper(client),
-    });
+    const { result } = renderHook(
+      () => billingData.useInvoice("inv-1", "org-one"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -349,9 +356,12 @@ describe("useInvoice", () => {
       const client = new QueryClient({
         defaultOptions: { queries: { retry: false } },
       });
-      const { result } = renderHook(() => useInvoice(id, organizationId), {
-        wrapper: wrapper(client),
-      });
+      const { result } = renderHook(
+        () => billingData.useInvoice(id, organizationId),
+        {
+          wrapper: wrapper(client),
+        },
+      );
 
       expect(result.current.fetchStatus).toBe("idle");
       expect(result.current.data).toBeUndefined();
