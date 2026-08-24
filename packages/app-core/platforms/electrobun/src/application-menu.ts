@@ -3,6 +3,8 @@ import { getBrandConfig } from "./brand-config";
 import type { ManagedWindowSnapshot } from "./surface-windows";
 
 export const OPEN_DESKTOP_WORKSPACE_ACTION = "open-desktop-workspace";
+export const OPEN_ASSISTANT_ACTION = "open-assistant";
+export const OPEN_ASSISTANT_ACCELERATOR = "Command+Option+Control+O";
 
 export interface DesktopWorkspaceWindowOptions {
   readonly slug: "workspace";
@@ -272,6 +274,16 @@ function buildDesktopMenu(isMac: boolean): ApplicationMenuItem {
   return {
     label: "Desktop",
     submenu: [
+      {
+        label: "Open Assistant",
+        action: OPEN_ASSISTANT_ACTION,
+        // A normal application-menu accelerator is targetable through macOS
+        // Accessibility without posting a global HID event or moving the
+        // user's pointer. Keep this app-scoped semantic route distinct from
+        // the user's global dual-Option show/hide gesture.
+        accelerator: isMac ? OPEN_ASSISTANT_ACCELERATOR : "Ctrl+Alt+Shift+O",
+      },
+      { type: "separator" },
       {
         label: "Desktop Workspace",
         action: OPEN_DESKTOP_WORKSPACE_ACTION,

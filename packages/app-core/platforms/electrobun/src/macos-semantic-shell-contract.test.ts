@@ -7,6 +7,10 @@ const nativeSource = readFileSync(
   fileURLToPath(new URL("../native/macos/window-effects.mm", import.meta.url)),
   "utf8",
 );
+const mainSource = readFileSync(
+  fileURLToPath(new URL("./index.ts", import.meta.url)),
+  "utf8",
+);
 
 function implementation(name: string): string {
   const start = nativeSource.indexOf(`@implementation ${name}`);
@@ -37,5 +41,17 @@ describe("macOS semantic shell contract", () => {
     expect(nativeSource).toContain(
       'extern "C" bool pollWindowAssistantSemanticOpenRequest',
     );
+  });
+
+  it("routes the standard application-menu action to the renderer without pointer input", () => {
+    expect(mainSource).toContain("action === OPEN_ASSISTANT_ACTION");
+    expect(mainSource).toContain('id: "chat-overlay-open"');
+    expect(mainSource).toContain(
+      'accelerator: "application-menu-accessibility"',
+    );
+    expect(mainSource).toContain(
+      "accepted pointer-free semantic action=open-chat source=application-menu",
+    );
+    expect(mainSource).not.toMatch(/CGEventPost|CGWarpMouseCursorPosition/);
   });
 });

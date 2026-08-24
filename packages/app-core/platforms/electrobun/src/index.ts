@@ -30,6 +30,7 @@ import {
   buildApplicationMenu,
   findAppMenuEntryBySlug,
   findViewMenuEntryById,
+  OPEN_ASSISTANT_ACTION,
   parseSettingsWindowAction,
   parseViewWindowAction,
   resolveDesktopWorkspaceWindowOptions,
@@ -2261,6 +2262,25 @@ async function setupUpdater(): Promise<void> {
     const handleMainWindowMenuAction = (
       action: string | undefined,
     ): boolean => {
+      if (action === OPEN_ASSISTANT_ACTION) {
+        void getDesktopManager()
+          .showWindow()
+          .then(() => {
+            sendToActiveRenderer("desktopShortcutPressed", {
+              id: "chat-overlay-open",
+              accelerator: "application-menu-accessibility",
+            });
+            logger.info(
+              "[Main] accepted pointer-free semantic action=open-chat source=application-menu",
+            );
+          })
+          .catch((error: unknown) => {
+            logger.error(
+              `[Main] pointer-free open-chat menu action failed: ${formatError(error)}`,
+            );
+          });
+        return true;
+      }
       if (action === "toggle-devtools") {
         toggleFocusedWindowDevTools();
         return true;

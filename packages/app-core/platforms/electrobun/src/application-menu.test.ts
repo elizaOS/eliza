@@ -6,6 +6,8 @@ import {
   findViewMenuEntryById,
   getViewMenuEntries,
   NEW_VIEW_WINDOW_ACTION_PREFIX,
+  OPEN_ASSISTANT_ACCELERATOR,
+  OPEN_ASSISTANT_ACTION,
   OPEN_DESKTOP_WORKSPACE_ACTION,
   parseViewWindowAction,
   resolveDesktopWorkspaceWindowOptions,
@@ -197,5 +199,25 @@ describe("buildApplicationMenu", () => {
     expect(
       resolveDesktopWorkspaceWindowOptions("open-settings-desktop"),
     ).toBeUndefined();
+  });
+
+  it("exposes one app-scoped pointer-free assistant action on macOS", () => {
+    const menu = buildApplicationMenu({
+      isMac: true,
+      browserEnabled: true,
+      detachedWindows: noWindows,
+    });
+    const desktop = menu.find((item) => item.label === "Desktop");
+    const actions = desktop?.submenu?.filter(
+      (item) => item.action === OPEN_ASSISTANT_ACTION,
+    );
+
+    expect(actions).toEqual([
+      {
+        label: "Open Assistant",
+        action: OPEN_ASSISTANT_ACTION,
+        accelerator: OPEN_ASSISTANT_ACCELERATOR,
+      },
+    ]);
   });
 });
