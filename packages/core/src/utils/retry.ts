@@ -230,7 +230,11 @@ export async function retryAsync<T>(
 	initialDelayMs = 300,
 ): Promise<T> {
 	if (typeof attemptsOrOptions === "number") {
-		const attempts = Math.max(1, Math.round(attemptsOrOptions));
+		const attempts = Math.max(
+			1,
+			Math.round(clampNumber(attemptsOrOptions, 3, 1)),
+		);
+		const safeInitialDelayMs = clampNumber(initialDelayMs, 300, 0);
 		let lastErr: unknown;
 		for (let i = 0; i < attempts; i += 1) {
 			try {
@@ -242,7 +246,7 @@ export async function retryAsync<T>(
 				if (i === attempts - 1) {
 					break;
 				}
-				const delay = initialDelayMs * 2 ** i;
+				const delay = safeInitialDelayMs * 2 ** i;
 				await sleep(delay);
 			}
 		}

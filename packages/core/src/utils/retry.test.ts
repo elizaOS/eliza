@@ -232,6 +232,28 @@ describe("retryAsync (numeric calling style)", () => {
 		await expect(retryAsync(negative.run, -4, 1)).rejects.toBe(BOOM);
 		expect(negative.calls()).toBe(1);
 	});
+
+	it("falls back to defaults for non-finite attempts and delay", async () => {
+		const nanAttempts = flakyFailures([BOOM, SECOND, THIRD]);
+		await expect(retryAsync(nanAttempts.run, Number.NaN, 1)).rejects.toBe(
+			THIRD,
+		);
+		expect(nanAttempts.calls()).toBe(3);
+		const infAttempts = flakyFailures([BOOM, SECOND, THIRD]);
+		// Infinity is clamped to default 3 via clampNumber fallback
+		await expect(
+			retryAsync(infAttempts.run, Number.POSITIVE_INFINITY, 1),
+		).rejects.toBe(THIRD);
+		expect(infAttempts.calls()).toBe(3);
+		const nanDelay = flakyFailures([BOOM, SECOND]);
+		await expect(retryAsync(nanDelay.run, 2, Number.NaN)).rejects.toBe(SECOND);
+		expect(nanDelay.calls()).toBe(2);
+		const infDelay = flakyFailures([BOOM, SECOND]);
+		await expect(
+			retryAsync(infDelay.run, 2, Number.POSITIVE_INFINITY),
+		).rejects.toBe(SECOND);
+		expect(infDelay.calls()).toBe(2);
+	});
 });
 
 describe("retryAsync (options calling style)", () => {
