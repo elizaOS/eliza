@@ -799,6 +799,50 @@ describe("handleSwarmSynthesis", () => {
 });
 
 describe("routeAutonomyTextToUser", () => {
+  it("preserves multiline durable text byte-for-byte through voice, persistence, and broadcast", async () => {
+    const createMemory = vi.fn();
+    const broadcastWs = vi.fn();
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      character: { name: "Eliza" },
+      createMemory,
+    } as unknown as Parameters<typeof createServerState>[0]["runtime"];
+    const state = createServerState({
+      config: {},
+      runtime,
+      plugins: [],
+      deletedConversationIds: new Set<string>(),
+      resolveAgentName: () => "Eliza",
+      detectRuntimeModel: () => undefined,
+      resolveAgentAutomationMode: () => "connectors-only",
+      resolveTradePermissionMode: () => "user-sign-only",
+    });
+    state.activeConversationId = "conv-1";
+    state.conversations.set("conv-1", {
+      id: "conv-1",
+      title: "Test conversation",
+      roomId: "00000000-0000-0000-0000-000000000002",
+      createdAt: "2026-08-24T00:00:00.000Z",
+      updatedAt: "2026-08-24T00:00:00.000Z",
+    });
+    state.broadcastWs = broadcastWs;
+    const text = " \nfirst line\n  indented line  \n ";
+
+    await routeAutonomyTextToUser(state, text, "reminder");
+
+    expect(createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({ text }),
+      }),
+      "messages",
+    );
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({ text }),
+      }),
+    );
+  });
+
   it("preserves multiline ephemeral text byte-for-byte through broadcast", async () => {
     const createMemory = vi.fn();
     const broadcastWs = vi.fn();
