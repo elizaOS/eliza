@@ -213,6 +213,22 @@ function assertBudget(value: number, field: string): void {
   }
 }
 
+function providerRouteAllowed(
+  provider: StabilityModelProvider,
+  method: string | undefined,
+  rawTarget: string | undefined,
+): boolean {
+  if (method !== "POST" || !rawTarget?.startsWith("/")) return false;
+  const target = new URL(rawTarget, "http://stability-loopback.invalid");
+  if (target.origin !== "http://stability-loopback.invalid" || target.search) {
+    return false;
+  }
+  return provider === "openai"
+    ? target.pathname === "/v1/responses" ||
+        target.pathname === "/v1/chat/completions"
+    : target.pathname === "/v1/messages";
+}
+
 /** Aggregates authoritative usage and holds a failed meter closed for the attempt. */
 export class LiveModelUsageMeter {
   #requestCount = 0;
@@ -307,8 +323,25 @@ export class LiveModelUsageMeter {
       });
       throw meterError;
     }
-    this.#inputTokens += usage.inputTokens;
-    this.#outputTokens += usage.outputTokens;
+    const cumulativeInputTokens = this.#inputTokens + usage.inputTokens;
+    const cumulativeOutputTokens = this.#outputTokens + usage.outputTokens;
+    if (
+      !Number.isSafeInteger(cumulativeInputTokens) ||
+      !Number.isSafeInteger(cumulativeOutputTokens)
+    ) {
+      const error = new StabilityModelMeterError(
+        "STABILITY_MODEL_USAGE_MALFORMED",
+        "cumulative provider token usage exceeds safe-integer accounting",
+      );
+      this.#failures.push({
+        code: error.code,
+        message: error.message,
+        requestNumber: reservation.requestNumber,
+      });
+      throw error;
+    }
+    this.#inputTokens = cumulativeInputTokens;
+    this.#outputTokens = cumulativeOutputTokens;
     if (
       this.#inputTokens > this.budgets.maxInputTokens ||
       this.#outputTokens > this.budgets.maxOutputTokens
@@ -365,9 +398,30 @@ export interface StabilityModelProxy {
   stop(): Promise<void>;
 }
 
+/** Replaces parent-held provider credentials with SDK-only child placeholders. */
+export function liveModelScenarioChildEnvironment(
+  provider: StabilityModelProvider,
+  proxyUrl: string,
+  parentEnvironment: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const environment = { ...parentEnvironment };
+  delete environment.OPENAI_API_KEY;
+  delete environment.ANTHROPIC_API_KEY;
+  if (provider === "openai") {
+    environment.OPENAI_BASE_URL = proxyUrl;
+    environment.OPENAI_API_KEY = "sk-stability-proxy-placeholder-000000000000";
+  } else {
+    environment.ANTHROPIC_BASE_URL = proxyUrl;
+    environment.ANTHROPIC_API_KEY =
+      "sk-ant-stability-proxy-placeholder-000000000000";
+  }
+  return environment;
+}
+
 export async function startLiveModelEgressProxy(options: {
   provider: StabilityModelProvider;
   budgets: StabilityModelBudgets;
+  upstreamCredential?: string;
   fetchUpstream?: (url: string, init: RequestInit) => Promise<Response>;
   upstreamOrigin?: string;
   upstreamTimeoutMs?: number;
@@ -414,6 +468,19 @@ export async function startLiveModelEgressProxy(options: {
       }
       const releaseExchange = await acquireExchange();
       try {
+        if (
+          !providerRouteAllowed(options.provider, request.method, request.url)
+        ) {
+          meter.recordProxyFailure(
+            `provider proxy route rejected: ${request.method ?? "UNKNOWN"} ${request.url ?? "missing"}`,
+          );
+          failureRecorded = true;
+          response.writeHead(404, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({ error: meter.snapshot().failures.at(-1) }),
+          );
+          return;
+        }
         const admission = meter.reserveRequest();
         if (!admission.allowed) {
           failureRecorded = true;
@@ -423,19 +490,37 @@ export async function startLiveModelEgressProxy(options: {
         }
         reservation = admission.reservation;
         options.onUpstreamRequest?.(origin, request.method ?? "GET");
+        const upstreamHeaders = Object.fromEntries(
+          Object.entries(request.headers).flatMap(([key, value]) =>
+            value === undefined
+              ? []
+              : [[key, Array.isArray(value) ? value.join(",") : value]],
+          ),
+        );
+        delete upstreamHeaders.authorization;
+        delete upstreamHeaders["x-api-key"];
+        delete upstreamHeaders["api-key"];
+        delete upstreamHeaders["proxy-authorization"];
+        delete upstreamHeaders.host;
+        delete upstreamHeaders.connection;
+        delete upstreamHeaders["content-length"];
+        delete upstreamHeaders["transfer-encoding"];
+        delete upstreamHeaders["proxy-connection"];
+        if (options.upstreamCredential) {
+          if (options.provider === "openai") {
+            upstreamHeaders.authorization = `Bearer ${options.upstreamCredential}`;
+          } else {
+            upstreamHeaders["x-api-key"] = options.upstreamCredential;
+          }
+        }
         let upstream: Response;
         try {
           upstream = await fetchUpstream(`${origin}${request.url ?? "/"}`, {
             method: request.method,
-            headers: Object.fromEntries(
-              Object.entries(request.headers).flatMap(([key, value]) =>
-                value === undefined
-                  ? []
-                  : [[key, Array.isArray(value) ? value.join(",") : value]],
-              ),
-            ),
+            headers: upstreamHeaders,
             body: chunks.length > 0 ? Buffer.concat(chunks) : undefined,
             signal: AbortSignal.timeout(timeoutMs),
+            redirect: "manual",
           });
         } catch (error) {
           // error-policy:J1 The proxy translates provider timeouts/transport failures into typed attempt evidence.
@@ -452,6 +537,20 @@ export async function startLiveModelEgressProxy(options: {
           response.writeHead(timedOut ? 504 : 502, {
             "content-type": "application/json",
           });
+          response.end(
+            JSON.stringify({ error: meter.snapshot().failures.at(-1) }),
+          );
+          return;
+        }
+        if (upstream.status >= 300 && upstream.status < 400) {
+          const location =
+            upstream.headers.get("location") ?? "missing Location";
+          meter.recordProxyFailure(
+            `provider redirect blocked: ${location}`,
+            reservation,
+          );
+          failureRecorded = true;
+          response.writeHead(502, { "content-type": "application/json" });
           response.end(
             JSON.stringify({ error: meter.snapshot().failures.at(-1) }),
           );

@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   LiveModelUsageMeter,
+  liveModelScenarioChildEnvironment,
   type StabilityModelFailureCode,
   type StabilityModelProxy,
   startLiveModelEgressProxy,
@@ -23,6 +24,34 @@ afterEach(async () => {
 });
 
 describe("live model usage meter", () => {
+  test.each(["openai", "anthropic"] as const)(
+    "scenario child receives only a dummy %s credential",
+    (provider) => {
+      const environment = liveModelScenarioChildEnvironment(
+        provider,
+        "http://127.0.0.1:43123/v1",
+        {
+          OPENAI_API_KEY: "real-openai-secret",
+          ANTHROPIC_API_KEY: "real-anthropic-secret",
+          RETAINED_VALUE: "retained",
+        },
+      );
+      expect(JSON.stringify(environment)).not.toContain("real-");
+      expect(environment.RETAINED_VALUE).toBe("retained");
+      if (provider === "openai") {
+        expect(environment.OPENAI_API_KEY).toContain("placeholder");
+        expect(environment.OPENAI_BASE_URL).toBe("http://127.0.0.1:43123/v1");
+        expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
+      } else {
+        expect(environment.ANTHROPIC_API_KEY).toContain("placeholder");
+        expect(environment.ANTHROPIC_BASE_URL).toBe(
+          "http://127.0.0.1:43123/v1",
+        );
+        expect(environment.OPENAI_API_KEY).toBeUndefined();
+      }
+    },
+  );
+
   test("parses and cumulatively aggregates OpenAI and Anthropic usage", () => {
     const openai = new LiveModelUsageMeter("openai", {
       maxInputTokens: 100,
@@ -184,6 +213,30 @@ describe("live model usage meter", () => {
       outputTokens: 2,
     });
 
+    const mixed = new LiveModelUsageMeter("anthropic", {
+      maxInputTokens: 100,
+      maxOutputTokens: 100,
+      maxRequests: 1,
+    });
+    mixed.recordSuccessfulResponse(
+      reserve(mixed),
+      "application/json",
+      Buffer.from(
+        JSON.stringify({
+          usage: {
+            input_tokens: 3,
+            cache_creation_input_tokens: 5,
+            cache_read_input_tokens: 7,
+            output_tokens: 2,
+          },
+        }),
+      ),
+    );
+    expect(mixed.snapshot()).toMatchObject({
+      inputTokens: 15,
+      outputTokens: 2,
+    });
+
     const overflow = new LiveModelUsageMeter("anthropic", {
       maxInputTokens: Number.MAX_SAFE_INTEGER,
       maxOutputTokens: 100,
@@ -204,6 +257,65 @@ describe("live model usage meter", () => {
         ),
       ),
     ).toThrow("STABILITY_MODEL_USAGE_MALFORMED");
+  });
+
+  test("accepts cache-only Anthropic input in SSE", () => {
+    const meter = new LiveModelUsageMeter("anthropic", {
+      maxInputTokens: 100,
+      maxOutputTokens: 100,
+      maxRequests: 1,
+    });
+    meter.recordSuccessfulResponse(
+      reserve(meter),
+      "text/event-stream",
+      Buffer.from(
+        'data: {"type":"message_start","message":{"usage":{"input_tokens":0,"cache_read_input_tokens":19,"output_tokens":0}}}\n\ndata: {"type":"message_delta","usage":{"output_tokens":3}}\n\n',
+      ),
+    );
+    expect(meter.snapshot()).toMatchObject({
+      inputTokens: 19,
+      outputTokens: 3,
+    });
+  });
+
+  test("fails closed when individually safe responses overflow cumulative accounting", () => {
+    const meter = new LiveModelUsageMeter("openai", {
+      maxInputTokens: Number.MAX_SAFE_INTEGER,
+      maxOutputTokens: Number.MAX_SAFE_INTEGER,
+      maxRequests: 2,
+    });
+    meter.recordSuccessfulResponse(
+      reserve(meter),
+      "application/json",
+      Buffer.from(
+        JSON.stringify({
+          usage: {
+            prompt_tokens: Number.MAX_SAFE_INTEGER - 1,
+            completion_tokens: 1,
+          },
+        }),
+      ),
+    );
+    expect(() =>
+      meter.recordSuccessfulResponse(
+        reserve(meter),
+        "application/json",
+        Buffer.from(
+          JSON.stringify({ usage: { prompt_tokens: 2, completion_tokens: 1 } }),
+        ),
+      ),
+    ).toThrow("STABILITY_MODEL_USAGE_MALFORMED");
+    expect(meter.snapshot()).toMatchObject({
+      requestCount: 2,
+      inputTokens: Number.MAX_SAFE_INTEGER - 1,
+      outputTokens: 1,
+      failures: [
+        expect.objectContaining({
+          code: "STABILITY_MODEL_USAGE_MALFORMED",
+          requestNumber: 2,
+        }),
+      ],
+    });
   });
 
   test("proxy records provider errors and timeouts without fabricating usage", async () => {
@@ -240,6 +352,205 @@ describe("live model usage meter", () => {
       });
     }
   });
+
+  test.each([
+    {
+      payload: { id: "missing-usage" },
+      code: "STABILITY_MODEL_USAGE_MISSING",
+    },
+    {
+      payload: { usage: { prompt_tokens: "bad", completion_tokens: 1 } },
+      code: "STABILITY_MODEL_USAGE_MALFORMED",
+    },
+    {
+      payload: { usage: { prompt_tokens: 101, completion_tokens: 1 } },
+      code: "STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED",
+    },
+  ] as const)(
+    "proxy retains $code from a successful provider response",
+    async ({ payload, code }) => {
+      const proxy = await startLiveModelEgressProxy({
+        provider: "openai",
+        budgets: { maxInputTokens: 100, maxOutputTokens: 100, maxRequests: 1 },
+        fetchUpstream: async () => Response.json(payload),
+      });
+      proxies.push(proxy);
+
+      expect(
+        (await fetch(`${proxy.url}/responses`, { method: "POST", body: "{}" }))
+          .status,
+      ).toBe(502);
+      expect(proxy.snapshot().failures.at(-1)?.code).toBe(code);
+    },
+  );
+
+  test("native upstream receives provider host/auth without child auth or proxy headers", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    const upstream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        capturedHeaders = Object.fromEntries(request.headers);
+        return Response.json({
+          usage: { prompt_tokens: 2, completion_tokens: 1 },
+        });
+      },
+    });
+    try {
+      const proxy = await startLiveModelEgressProxy({
+        provider: "openai",
+        budgets: { maxInputTokens: 100, maxOutputTokens: 100, maxRequests: 1 },
+        upstreamCredential: "real-model-secret",
+        upstreamOrigin: `http://127.0.0.1:${upstream.port}`,
+        fetchUpstream: (url, init) => fetch(url, init),
+      });
+      proxies.push(proxy);
+
+      expect(
+        (
+          await fetch(`${proxy.url}/responses`, {
+            method: "POST",
+            headers: {
+              authorization: "Bearer child-placeholder",
+              "x-api-key": "child-placeholder",
+              "proxy-authorization": "Bearer child-placeholder",
+              "proxy-connection": "child-hop-value",
+              host: "child-loopback.invalid",
+            },
+            body: "{}",
+          })
+        ).ok,
+      ).toBe(true);
+      expect(capturedHeaders.host).toBe(`127.0.0.1:${upstream.port}`);
+      expect(capturedHeaders.authorization).toBe("Bearer real-model-secret");
+      expect(JSON.stringify(capturedHeaders)).not.toContain("child-");
+      for (const absent of [
+        "x-api-key",
+        "api-key",
+        "proxy-authorization",
+        "proxy-connection",
+      ]) {
+        expect(capturedHeaders[absent]).toBeUndefined();
+      }
+    } finally {
+      upstream.stop(true);
+    }
+  });
+
+  test.each([
+    {
+      provider: "openai" as const,
+      expectedHeader: "authorization",
+      expectedValue: "Bearer real-model-secret",
+    },
+    {
+      provider: "anthropic" as const,
+      expectedHeader: "x-api-key",
+      expectedValue: "real-model-secret",
+    },
+  ])(
+    "proxy replaces child authentication with the parent-held $provider credential",
+    async ({ provider, expectedHeader, expectedValue }) => {
+      let capturedHeaders: Record<string, string> = {};
+      const proxy = await startLiveModelEgressProxy({
+        provider,
+        budgets: { maxInputTokens: 100, maxOutputTokens: 100, maxRequests: 1 },
+        upstreamCredential: "real-model-secret",
+        fetchUpstream: async (_url, init) => {
+          capturedHeaders = Object.fromEntries(new Headers(init.headers));
+          return Response.json({
+            usage:
+              provider === "openai"
+                ? { prompt_tokens: 2, completion_tokens: 1 }
+                : { input_tokens: 2, output_tokens: 1 },
+          });
+        },
+      });
+      proxies.push(proxy);
+
+      expect(
+        (
+          await fetch(
+            `${proxy.url}/${provider === "anthropic" ? "messages" : "responses"}`,
+            {
+              method: "POST",
+              headers: {
+                authorization: "Bearer child-dummy-secret",
+                "x-api-key": "child-dummy-secret",
+                "api-key": "child-dummy-secret",
+                "proxy-authorization": "Bearer child-dummy-secret",
+                "proxy-connection": "keep-alive",
+                connection: "keep-alive",
+                host: "child-loopback.invalid",
+                "anthropic-version": "2023-06-01",
+              },
+              body: "{}",
+            },
+          )
+        ).ok,
+      ).toBe(true);
+      expect(capturedHeaders[expectedHeader]).toBe(expectedValue);
+      expect(JSON.stringify(capturedHeaders)).not.toContain(
+        "child-dummy-secret",
+      );
+      expect(
+        capturedHeaders[
+          expectedHeader === "authorization" ? "x-api-key" : "authorization"
+        ],
+      ).toBeUndefined();
+      for (const stripped of [
+        "host",
+        "connection",
+        "content-length",
+        "transfer-encoding",
+        "proxy-authorization",
+        "proxy-connection",
+        "api-key",
+      ]) {
+        expect(capturedHeaders[stripped]).toBeUndefined();
+      }
+      expect(capturedHeaders["anthropic-version"]).toBe("2023-06-01");
+    },
+  );
+
+  test.each([
+    { method: "GET", path: "/responses" },
+    { method: "POST", path: "/models" },
+    { method: "POST", path: "/responses?redirect=https://example.com" },
+  ])(
+    "proxy rejects non-model route $method $path",
+    async ({ method, path }) => {
+      let upstreamCalls = 0;
+      const proxy = await startLiveModelEgressProxy({
+        provider: "openai",
+        budgets: { maxInputTokens: 100, maxOutputTokens: 100, maxRequests: 2 },
+        upstreamCredential: "real-model-secret",
+        fetchUpstream: async () => {
+          upstreamCalls += 1;
+          return Response.json({
+            usage: { prompt_tokens: 2, completion_tokens: 1 },
+          });
+        },
+      });
+      proxies.push(proxy);
+
+      expect(
+        (
+          await fetch(`${proxy.url}${path}`, {
+            method,
+            body: method === "POST" ? "{}" : undefined,
+          })
+        ).status,
+      ).toBe(404);
+      expect(upstreamCalls).toBe(0);
+      expect(proxy.snapshot()).toMatchObject({
+        requestCount: 0,
+        failures: [
+          expect.objectContaining({ code: "STABILITY_MODEL_PROXY_ERROR" }),
+        ],
+      });
+    },
+  );
 
   test("proxy enforces request cap before a further upstream call", async () => {
     let upstreamCalls = 0;
@@ -374,6 +685,52 @@ describe("live model usage meter", () => {
     expect(proxy.snapshot().failures.at(-1)?.code).toBe(
       "STABILITY_MODEL_PROXY_ERROR",
     );
+  });
+
+  test("proxy never follows an upstream provider redirect", async () => {
+    let targetCalls = 0;
+    const target = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch() {
+        targetCalls += 1;
+        return Response.json({ reached: true });
+      },
+    });
+    const redirect = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch() {
+        return Response.redirect(`http://127.0.0.1:${target.port}/target`, 302);
+      },
+    });
+    try {
+      const proxy = await startLiveModelEgressProxy({
+        provider: "openai",
+        budgets: { maxInputTokens: 100, maxOutputTokens: 100, maxRequests: 2 },
+        upstreamCredential: "real-model-secret",
+        upstreamOrigin: `http://127.0.0.1:${redirect.port}`,
+        fetchUpstream: (url, init) => fetch(url, init),
+      });
+      proxies.push(proxy);
+
+      expect(
+        (
+          await fetch(`${proxy.url}/responses`, {
+            method: "POST",
+            body: "{}",
+          })
+        ).status,
+      ).toBe(502);
+      expect(targetCalls).toBe(0);
+      expect(proxy.snapshot().failures.at(-1)).toMatchObject({
+        code: "STABILITY_MODEL_PROXY_ERROR",
+        requestNumber: 1,
+      });
+    } finally {
+      redirect.stop(true);
+      target.stop(true);
+    }
   });
 
   test("proxy retains an observer failure before provider dispatch", async () => {
