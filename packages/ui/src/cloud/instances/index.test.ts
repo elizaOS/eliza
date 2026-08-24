@@ -1,5 +1,12 @@
 /** Verifies the instances domain barrel registers its three cloud routes through the package's configured test harness. */
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { createElement, Fragment, type ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetPrivateCloudRegistrationForTests } from "../private-cloud-registration";
+import { registerPublicCloudSurfaces } from "../register-public";
+import { CloudRouterShell } from "../shell/CloudRouterShell";
 import { getCloudRoute, listCloudRoutes } from "../shell/cloud-route-registry";
 import {
   AGENT_DETAIL_ROUTE_PATH,
@@ -11,6 +18,26 @@ import {
   useAgent,
   useAgents,
 } from "./index";
+
+vi.mock("../shell/StewardProvider", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../shell/StewardProvider")>();
+  return {
+    ...actual,
+    StewardAuthProvider: ({ children }: { children: ReactNode }) =>
+      createElement(Fragment, null, children),
+  };
+});
+
+beforeEach(() => {
+  registerPublicCloudSurfaces();
+});
+
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+  resetPrivateCloudRegistrationForTests();
+});
 
 /**
  * Proves the instances (hosted agents) domain mounts the Instances table, the
@@ -36,7 +63,7 @@ describe("instances cloud-route registration", () => {
     }
   });
 
-  it("registers every route in the cloud group without public exposure or a gate", () => {
+  it("registers every route in the authenticated cloud-management group", () => {
     for (const path of [
       AGENT_DETAIL_ROUTE_PATH,
       AGENTS_ROUTE_PATH,
@@ -44,11 +71,34 @@ describe("instances cloud-route registration", () => {
     ]) {
       const route = getCloudRoute(path);
       expect(route?.group).toBe("cloud");
-      expect(route?.public).toBeUndefined();
-      expect(route?.publicAccess).toBeUndefined();
-      expect(route?.gate).toBeUndefined();
     }
   });
+
+  it.each([
+    ["agents table", "/cloud/agents"],
+    ["agent detail", "/cloud/agents/agent-123"],
+    ["My Agents console", "/cloud/my-agents"],
+  ])(
+    "rejects unauthenticated access to the %s route at the real shell boundary",
+    async (_label, path) => {
+      window.history.replaceState({}, "", path);
+
+      render(
+        createElement(CloudRouterShell, {
+          appElement: createElement("div", {
+            "data-testid": "authenticated-app-probe",
+          }),
+        }),
+      );
+
+      await waitFor(() => {
+        expect(`${window.location.pathname}${window.location.search}`).toBe(
+          `/login?returnTo=${encodeURIComponent(path)}`,
+        );
+      });
+      expect(screen.queryByTestId("authenticated-app-probe")).toBeNull();
+    },
+  );
 
   it("resolves each route to the very component object the barrel exports", () => {
     expect(getCloudRoute(AGENTS_ROUTE_PATH)?.element).toBe(AgentsPage);
