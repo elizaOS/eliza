@@ -1756,10 +1756,9 @@ function bionicHostGenerateStream(
 }
 
 /**
- * Validate a background-priority request against the device-class budget and
- * resolve its bounded lane wait (#11914). Interactive requests pass through
- * untouched with an unbounded lane wait (their transport timeout governs the
- * total).
+ * Preserve a background-priority request and resolve its bounded lane wait
+ * (#11914). Interactive requests pass through untouched with an unbounded lane
+ * wait (their transport timeout governs the total).
  */
 function resolveMobileLaneBudget(
 	priority: LocalInferencePriority,
@@ -1789,8 +1788,8 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		// lock, and the device-bridge path shares one loaded model — so every
 		// generate goes through the process-wide interactive-over-background
 		// lane (#11914): interactive turns dispatch ahead of queued background
-		// jobs; background jobs run only when the lane is idle, wait a bounded
-		// time, and reject unsupported explicit device-class budgets. Without this, one
+		// jobs; background jobs run only when the lane is idle and wait a bounded
+		// time without changing the model request. Without this, one
 		// long autonomous job self-queues on the host lock and starves chat.
 		const priority = params.priority ?? "interactive";
 

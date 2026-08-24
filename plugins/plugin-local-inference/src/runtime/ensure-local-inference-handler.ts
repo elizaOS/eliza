@@ -509,8 +509,8 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 		// bridge). Those backends decode ONE request at a time on a shared
 		// resident model, so route through the process-wide interactive-over-
 		// background lane (#11914): interactive turns dispatch ahead of queued
-		// background jobs; background jobs wait a bounded time and are clamped
-		// to the device-class budget. Desktop falls through to the standalone
+		// background jobs; background jobs wait a bounded time without changing
+		// the generation request. Desktop falls through to the standalone
 		// engine, which owns its own session pool and is NOT gated.
 		if (loader?.generate) {
 			const generate = loader.generate.bind(loader);

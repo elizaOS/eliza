@@ -592,7 +592,7 @@ function createTextHandler(modelType: string) {
 		// bridge) decode one request at a time on a shared resident model, so
 		// route through the process-wide interactive-over-background lane
 		// (#11914): interactive turns dispatch first; background jobs wait a
-		// bounded time and take the device-class budget clamps.
+		// bounded time without changing prompt or output capacity.
 		const args = textGenerationArgsFromParams(params);
 		const priority = params.priority ?? "interactive";
 		let lockWaitMs: number | undefined;

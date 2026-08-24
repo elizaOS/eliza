@@ -1906,10 +1906,9 @@ async function ensureAospLoaderOwner(
  * a time, so ALL text generates (model load included — a swap touches the same
  * native lane) acquire the shared {@link getInferencePriorityGate} first:
  * interactive turns dispatch ahead of queued background jobs; background jobs
- * run only when the lane is idle, wait at most the RAM-class bound before
- * failing back to their scheduler, and reject unsupported output requests
- * before dispatch so a partial generation is never reported as the requested
- * result.
+ * run only when the lane is idle and wait at most the RAM-class bound before
+ * failing back to their scheduler. Scheduling never changes the generation
+ * request.
  *
  * Exported for unit tests; production callers go through the registered
  * TEXT_SMALL / TEXT_LARGE handlers.

@@ -417,6 +417,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/firstLine\.slice\(/,
 		/maxOutputTokens:\s*1_?024/,
 	],
+	"packages/core/src/utils/inference-priority-gate.ts": [
+		/CONSTRAINED_BACKGROUND_BUDGET[^}]*maxTokens/s,
+		/STANDARD_BACKGROUND_BUDGET[^}]*maxTokens/s,
+	],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
 	"plugins/plugin-sql/src/services/advanced-memory-storage.ts": [
