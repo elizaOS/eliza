@@ -2294,7 +2294,7 @@ describe("v5 planner loop skeleton", () => {
 					};
 				}
 			).providerOptions?.eliza?.modelInputBudget?.shouldReject,
-		).toBe(true);
+		).toBe(false);
 	});
 
 	it("retries premature terminal output when a non-terminal tool call is required", async () => {
