@@ -9,9 +9,15 @@ import { VirtualTerminal } from "../testing/virtual-terminal.test.js";
 import type { CodeTask } from "../types.js";
 import { TaskPane } from "./TaskPane.js";
 
-const { beforeEach, describe, expect, it } = (
-  process.env.VITEST ? await import("vitest") : await import("bun:test")
-) as typeof import("bun:test");
+type TestApi = Pick<
+  typeof import("vitest"),
+  "beforeEach" | "describe" | "expect" | "it"
+>;
+
+const runnerApi = process.env.VITEST
+  ? await import("vitest")
+  : await import("bun:test");
+const { beforeEach, describe, expect, it } = runnerApi as unknown as TestApi;
 
 function codeTask(): CodeTask {
   return {
