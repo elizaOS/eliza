@@ -227,3 +227,167 @@ describe("initializeBlockingCoreRuntimeForBoot", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("preregisterCorePluginsInDependencyWaves dependency liveness", () => {
+  it("orders via the static boot-dependency map even with no declared dependencies", async () => {
+    const runtime = makeRuntime();
+    const resolved = [
+      // dependent listed first with an empty declared dependency list, so only
+      // the built-in CORE_PLUGIN_BOOT_DEPENDENCIES map can impose this order
+      makeResolved("@elizaos/plugin-agent-skills"),
+      makeResolved("@elizaos/plugin-coding-tools"),
+    ];
+    await preregisterCorePluginsInDependencyWaves({
+      runtime: runtime as never,
+      resolvedPlugins: resolved as never,
+      alreadyPreRegistered: new Set(),
+    });
+    const toolsIdx = runtime.registerOrder.indexOf(
+      "@elizaos/plugin-coding-tools",
+    );
+    const skillsIdx = runtime.registerOrder.indexOf(
+      "@elizaos/plugin-agent-skills",
+    );
+    expect(toolsIdx).toBeGreaterThanOrEqual(0);
+    expect(skillsIdx).toBeGreaterThan(toolsIdx);
+  });
+
+  it("marks a failed non-required plugin registered so its dependent is not stranded", async () => {
+    const runtime = makeRuntime();
+    runtime.registerPlugin.mockRejectedValueOnce(new Error("boom"));
+    await preregisterCorePluginsInDependencyWaves({
+      runtime: runtime as never,
+      resolvedPlugins: [
+        makeResolved("@elizaos/plugin-native-filesystem"),
+        makeResolved("@elizaos/plugin-agent-skills", [
+          "@elizaos/plugin-native-filesystem",
+        ]),
+      ] as never,
+      alreadyPreRegistered: new Set(),
+    });
+    expect(runtime.registerOrder).toEqual(["@elizaos/plugin-agent-skills"]);
+  });
+
+  it("breaks a dependency cycle by registering the whole pending set", async () => {
+    const runtime = makeRuntime();
+    await preregisterCorePluginsInDependencyWaves({
+      runtime: runtime as never,
+      resolvedPlugins: [
+        makeResolved("@elizaos/plugin-coding-tools", [
+          "@elizaos/plugin-agent-skills",
+        ]),
+        makeResolved("@elizaos/plugin-agent-skills", [
+          "@elizaos/plugin-coding-tools",
+        ]),
+      ] as never,
+      alreadyPreRegistered: new Set(),
+    });
+    expect(runtime.registerOrder).toHaveLength(2);
+    expect([...runtime.registerOrder].sort()).toEqual([
+      "@elizaos/plugin-agent-skills",
+      "@elizaos/plugin-coding-tools",
+    ]);
+  });
+
+  it("rethrows the original error when a required plugin fails during an active abort", async () => {
+    const abort = new AbortController();
+    const registerOrder: string[] = [];
+    const runtime = {
+      plugins: [],
+      registerOrder,
+      registerPlugin: vi.fn(async (plugin: { name: string }) => {
+        abort.abort();
+        throw new Error(`boom ${plugin.name}`);
+      }),
+    };
+    let caught: unknown;
+    try {
+      await preregisterCorePluginsInDependencyWaves({
+        runtime: runtime as never,
+        resolvedPlugins: [
+          makeResolved("@elizaos/plugin-native-filesystem"),
+        ] as never,
+        alreadyPreRegistered: new Set(),
+        requiredPluginNames: new Set(["@elizaos/plugin-native-filesystem"]),
+        abortSignal: abort.signal,
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect((caught as Error).message).toBe(
+      "boom @elizaos/plugin-native-filesystem",
+    );
+    // the active abort must surface the raw cause, not the REQUIRED_CORE_
+    // PLUGIN_REGISTRATION_FAILED wrapper (which always carries .code)
+    expect((caught as { code?: string }).code).toBeUndefined();
+  });
+
+  it("tolerates a runtime whose plugins list is missing", async () => {
+    const registerOrder: string[] = [];
+    const runtime = {
+      registerPlugin: vi.fn(async (plugin: { name: string }) => {
+        registerOrder.push(plugin.name);
+      }),
+      registerOrder,
+    };
+    await preregisterCorePluginsInDependencyWaves({
+      runtime: runtime as never,
+      resolvedPlugins: [
+        makeResolved("@elizaos/plugin-native-filesystem"),
+      ] as never,
+      alreadyPreRegistered: new Set(),
+    });
+    expect(runtime.registerOrder).toEqual([
+      "@elizaos/plugin-native-filesystem",
+    ]);
+  });
+});
+
+describe("initializeBlockingCoreRuntimeForBoot seeding and late abort", () => {
+  it("treats plugin-sql and plugin-local-inference as already pre-registered", async () => {
+    const initializeCoreRuntime = vi.fn(async () => {});
+    const runtime = makeRuntime();
+    await initializeBlockingCoreRuntimeForBoot({
+      blockDeferredPluginImports: false,
+      runtime: runtime as never,
+      resolvedPlugins: [
+        makeResolved("@elizaos/plugin-sql"),
+        makeResolved("@elizaos/plugin-local-inference"),
+      ] as never,
+      requiredPluginNames: new Set(),
+      waitForBlockingEnvironment: async () => {},
+      initializeCoreRuntime,
+    });
+    expect(runtime.registerOrder).toEqual([]);
+    expect(initializeCoreRuntime).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts after successful pre-registration and before core initialization", async () => {
+    const abort = new AbortController();
+    const registerOrder: string[] = [];
+    const runtime = {
+      plugins: [],
+      registerOrder,
+      registerPlugin: vi.fn(async (plugin: { name: string }) => {
+        abort.abort();
+        registerOrder.push(plugin.name);
+      }),
+    };
+    const initializeCoreRuntime = vi.fn(async () => {});
+    await expect(
+      initializeBlockingCoreRuntimeForBoot({
+        blockDeferredPluginImports: false,
+        runtime: runtime as never,
+        resolvedPlugins: [
+          makeResolved("@elizaos/plugin-native-filesystem"),
+        ] as never,
+        requiredPluginNames: new Set(),
+        waitForBlockingEnvironment: async () => {},
+        initializeCoreRuntime,
+        abortSignal: abort.signal,
+      }),
+    ).rejects.toThrow();
+    expect(registerOrder).toEqual(["@elizaos/plugin-native-filesystem"]);
+    expect(initializeCoreRuntime).not.toHaveBeenCalled();
+  });
+});
