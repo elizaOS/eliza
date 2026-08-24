@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
 	MEMBERSHIP_AUTHORITY_CONTRACT_VERSION,
 	MEMBERSHIP_STATES,
-	Role,
 } from "./membership.js";
 
 describe("membership", () => {
