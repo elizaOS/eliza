@@ -58,6 +58,7 @@ type EvidenceRecord = Record<string, unknown>;
 type ExpectedObject = {
   readonly id: string;
   readonly family: string;
+  readonly format: string;
   readonly byteLength: number;
   readonly sourceSha256: string;
   readonly revision: string;
@@ -280,6 +281,8 @@ export function validateProgressiveContentPostgresEvidence(
         "disposition",
         "postgresRows",
         "reassembledSha256",
+        "rejectionCode",
+        "storageWrites",
         "authorizationVerified",
         "isolationVerified",
         "restartVerified",
@@ -289,6 +292,14 @@ export function validateProgressiveContentPostgresEvidence(
     );
     const expectedObject = expectedById.get(String(object.objectId));
     const mapping = mappingFor(String(object.family));
+    const typedRejection =
+      mapping?.binaryPolicy === "typed-rejection" &&
+      (expectedObject?.format === "binary" ||
+        expectedObject?.format === "invalid-utf8");
+    const expectedRejectionCode =
+      expectedObject?.format === "binary"
+        ? "CONTENT_BINARY_UNSUPPORTED"
+        : "CONTENT_INVALID_UTF8";
     if (
       !expectedObject ||
       !mapping ||
@@ -298,18 +309,26 @@ export function validateProgressiveContentPostgresEvidence(
       object.sourceSha256 !== expectedObject.sourceSha256 ||
       object.revision !== expectedObject.revision ||
       object.authorizationScope !== expectedObject.authorizationScope ||
-      object.reassembledSha256 !== expectedObject.sourceSha256 ||
+      object.reassembledSha256 !==
+        (typedRejection ? null : expectedObject.sourceSha256) ||
+      object.rejectionCode !==
+        (typedRejection ? expectedRejectionCode : null) ||
       object.authorizationVerified !== true ||
       object.isolationVerified !== true ||
       object.restartVerified !== true ||
       !safeNonnegative(object.postgresRows) ||
       object.disposition !==
-        (mapping.postgresBacked
-          ? "postgres-text-reassembled"
-          : "native-store-reassembled") ||
-      (mapping.postgresBacked
-        ? object.postgresRows < 1
-        : object.postgresRows !== 0)
+        (typedRejection
+          ? "typed-rejected"
+          : mapping.postgresBacked
+            ? "postgres-text-reassembled"
+            : "native-store-reassembled") ||
+      !safeNonnegative(object.storageWrites) ||
+      (typedRejection
+        ? object.postgresRows !== 0 || object.storageWrites !== 0
+        : mapping.postgresBacked
+          ? object.postgresRows < 1 || object.storageWrites < 1
+          : object.postgresRows !== 0 || object.storageWrites !== 0)
     ) {
       throw new TypeError("Postgres object differs from its corpus or mapping");
     }
@@ -336,10 +355,14 @@ export function validateProgressiveContentPostgresEvidence(
       work.parentScans !== 0 ||
       typeof work.readAmplification !== "number" ||
       !Number.isFinite(work.readAmplification) ||
-      work.readAmplification < 1 ||
-      work.readAmplification > 2 ||
+      (typedRejection
+        ? work.readAmplification < 0 || work.readAmplification > 1
+        : work.readAmplification < 1 || work.readAmplification > 2) ||
       work.bytesRead > expectedObject.byteLength * 2 + work.pageBytes ||
-      work.readCalls < Math.ceil(expectedObject.byteLength / work.pageBytes)
+      (typedRejection
+        ? work.readCalls < 1 || work.bytesRead > work.pageBytes
+        : work.readCalls <
+          Math.ceil(expectedObject.byteLength / work.pageBytes))
     ) {
       throw new TypeError(
         "Postgres object source work is unbounded or fabricated",
@@ -395,8 +418,8 @@ export function validateProgressiveContentPostgresEvidence(
   }
 
   const cleanup = record(report.cleanup, "Postgres cleanup");
-  exactKeys(cleanup, ["schemaDropped", "postDropProbe"], "Postgres cleanup");
-  if (cleanup.schemaDropped !== true || cleanup.postDropProbe !== "absent") {
+  exactKeys(cleanup, ["databaseDropped", "postDropProbe"], "Postgres cleanup");
+  if (cleanup.databaseDropped !== true || cleanup.postDropProbe !== "absent") {
     throw new TypeError("Postgres cleanup is incomplete");
   }
 }

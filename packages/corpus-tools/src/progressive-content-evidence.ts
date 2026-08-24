@@ -796,6 +796,7 @@ function semanticFailures(
         objects: objects.map((object) => ({
           id: String(object.id),
           family: String(object.family),
+          format: String(object.format),
           byteLength: Number(object.byteLength),
           sourceSha256: String(object.sourceSha256),
           revision: String(object.revision),

@@ -98,6 +98,39 @@ export const memoryTable = pgTable(
       sql`((metadata->>'documentId'))`,
       sql`((metadata->>'position'))`
     ),
+    index("idx_document_source_byte_seek")
+      .on(
+        table.agentId,
+        sql`((metadata->>'documentId'))`,
+        sql`((metadata->>'documentRevision')::bigint)`,
+        sql`((metadata->>'revisionAttemptId'))`,
+        sql`((metadata->>'sourceByteEnd')::bigint)`
+      )
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+      ),
+    index("idx_document_source_line_seek")
+      .on(
+        table.agentId,
+        sql`((metadata->>'documentId'))`,
+        sql`((metadata->>'documentRevision')::bigint)`,
+        sql`((metadata->>'revisionAttemptId'))`,
+        sql`((metadata->>'sourceLineEnd')::bigint)`
+      )
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+      ),
+    index("idx_document_source_fragment_seek")
+      .on(
+        table.agentId,
+        sql`((metadata->>'documentId'))`,
+        sql`((metadata->>'documentRevision')::bigint)`,
+        sql`((metadata->>'revisionAttemptId'))`,
+        sql`((metadata->>'sourceFragmentEnd')::bigint)`
+      )
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+      ),
     index("idx_message_content_byte_seek")
       .on(
         table.agentId,
