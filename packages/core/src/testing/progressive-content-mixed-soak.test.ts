@@ -22,6 +22,17 @@ const stableResource = {
 	walBytes: 0,
 };
 
+function measuredResource() {
+	const usage = process.memoryUsage();
+	return {
+		...stableResource,
+		rssBytes: usage.rss,
+		heapUsedBytes: usage.heapUsed,
+		externalBytes: usage.external,
+		arrayBuffersBytes: usage.arrayBuffers,
+	};
+}
+
 function targets(families: readonly ProgressiveContentSoakFamily[]) {
 	const realizations = {
 		file: ["filesystem", "native-bytes"],
@@ -71,7 +82,7 @@ describe("mixed progressive-content soak", () => {
 			commit: "a".repeat(40),
 			corpusManifestSha256: "b".repeat(64),
 			targets: targets(PROGRESSIVE_CONTENT_SOAK_FAMILIES),
-			measureResources: () => stableResource,
+			measureResources: measuredResource,
 			policy: {
 				requiredDurationMs: 1,
 				requiredOperations: 12,
