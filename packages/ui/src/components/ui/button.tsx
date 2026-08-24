@@ -46,6 +46,10 @@ const buttonVariants = cva(
         ghost:
           "text-txt-strong hover:bg-surface hover:text-txt-strong disabled:text-muted-strong",
         link: "text-accent underline-offset-4 hover:underline disabled:text-muted-strong",
+        selection:
+          "bg-transparent text-txt-strong hover:bg-accent-subtle data-[state=on]:bg-accent-subtle data-[state=on]:text-txt-strong",
+        choice:
+          "border border-border bg-bg text-txt-strong hover:border-accent hover:bg-accent-subtle data-[state=on]:border-accent data-[state=on]:bg-accent-subtle",
       },
       size: {
         default:
@@ -56,11 +60,25 @@ const buttonVariants = cva(
         "icon-sm":
           "size-8 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         "icon-lg": "size-11",
+        touch: "min-h-11 px-4 py-2",
+        row: "min-h-16 w-full px-3 py-2",
+        tile: "min-h-12 flex-col gap-1 px-2 py-2 text-xs",
+        card: "min-h-20 flex-col items-stretch p-3",
+      },
+      shape: {
+        default: "",
+        circle: "rounded-full",
+      },
+      align: {
+        center: "text-center",
+        start: "justify-start text-left whitespace-normal",
       },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      shape: "default",
+      align: "center",
     },
   },
 );
@@ -78,6 +96,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       className,
       variant,
       size,
+      shape,
+      align,
       asChild = false,
       style,
       type,
@@ -97,7 +117,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={
           unstyled
             ? cn(className)
-            : cn(buttonVariants({ variant, size, className }))
+            : cn(buttonVariants({ variant, size, shape, align, className }))
         }
         ref={ref}
         style={style}

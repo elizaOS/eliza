@@ -11,6 +11,7 @@ const meta = {
   argTypes: {
     variant: { control: "select", options: ["default", "form", "config"] },
     density: { control: "select", options: ["default", "compact", "relaxed"] },
+    adornment: { control: "select", options: ["none", "leading"] },
     type: { control: "text" },
     placeholder: { control: "text" },
     hasError: { control: "boolean" },
@@ -19,6 +20,7 @@ const meta = {
   args: {
     variant: "default",
     density: "default",
+    adornment: "none",
     type: "text",
     placeholder: "Enter text...",
   },
@@ -35,6 +37,9 @@ export const Config: Story = {
   args: { variant: "config", placeholder: "0x0000..." },
 };
 export const Compact: Story = { args: { density: "compact" } };
+export const LeadingAdornment: Story = {
+  args: { adornment: "leading", placeholder: "Search places" },
+};
 export const ErrorState: Story = {
   args: { hasError: true, value: "invalid value", readOnly: true },
 };

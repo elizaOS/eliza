@@ -4,7 +4,9 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Badge } from "./badge";
+import { Button } from "./button";
 import { Card } from "./card";
+import { Input } from "./input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs";
 
 afterEach(cleanup);
@@ -53,5 +55,27 @@ describe("canonical atom composition", () => {
       screen.getByRole("tab", { name: "One" }).getAttribute("data-state"),
     ).toBe("active");
     expect(screen.getByRole("tabpanel").textContent).toBe("Panel");
+  });
+
+  it("renders selected choices through a typed state contract", () => {
+    render(
+      <Button variant="choice" data-state="on" aria-pressed="true">
+        Selected route
+      </Button>,
+    );
+
+    const choice = screen.getByRole("button", { name: "Selected route" });
+    expect(choice.classList.contains("data-[state=on]:border-accent")).toBe(
+      true,
+    );
+    expect(choice.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("reserves canonical spacing for a leading input adornment", () => {
+    render(<Input aria-label="Search" adornment="leading" />);
+
+    expect(screen.getByRole("textbox", { name: "Search" }).classList).toContain(
+      "pl-10",
+    );
   });
 });

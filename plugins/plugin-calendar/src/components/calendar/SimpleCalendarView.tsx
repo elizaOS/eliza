@@ -6,6 +6,14 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Popover,
@@ -271,12 +279,13 @@ function CalendarDay({
   });
 
   return (
-    <button
+    <Button
       ref={cell.ref}
       {...cell.agentProps}
       className="eliza-calendar-day"
       data-selected={selected ? "true" : "false"}
-      type="button"
+      variant="selection"
+      size="row"
       onClick={selectDay}
       aria-label={formatSelectedDate(key)}
       aria-pressed={selected}
@@ -337,7 +346,7 @@ function CalendarDay({
           <span aria-hidden>{dayEvents.length}</span>
         </span>
       ) : null}
-    </button>
+    </Button>
   );
 }
 
@@ -428,29 +437,30 @@ function MonthControls({
         marginBottom: 12,
       }}
     >
-      <button
+      <Button
         ref={prevControl.ref}
         {...prevControl.agentProps}
-        type="button"
+        variant="ghost"
+        size="icon-lg"
         aria-label={`Previous month, ${month}`}
         title="Previous month"
         onClick={onPrevious}
         style={navigationButton}
       >
         <ChevronLeft size={19} aria-hidden />
-      </button>
+      </Button>
       <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
         <PopoverTrigger asChild>
-          <button
+          <Button
             ref={monthPickerControl.ref}
             {...monthPickerControl.agentProps}
-            type="button"
+            variant="ghost"
             aria-label={`Choose month and year. Current month is ${month}`}
             style={MONTH_PICKER_TRIGGER_STYLE}
           >
             <span>{month}</span>
             <ChevronDown size={15} aria-hidden />
-          </button>
+          </Button>
         </PopoverTrigger>
         <PopoverContent
           align="center"
@@ -465,34 +475,42 @@ function MonthControls({
               marginBottom: 10,
             }}
           >
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon"
               aria-label="Previous year"
               onClick={() => setPickerYear((year) => year - 1)}
               style={{ ...navigationButton, width: 36, height: 36 }}
             >
               <ChevronLeft size={17} aria-hidden />
-            </button>
-            <select
-              aria-label="Calendar year"
-              value={pickerYear}
-              onChange={(event) => setPickerYear(Number(event.target.value))}
-              style={YEAR_SELECT_STYLE}
+            </Button>
+            <Select
+              value={String(pickerYear)}
+              onValueChange={(value) => setPickerYear(Number(value))}
             >
-              {yearOptions.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
+              <SelectTrigger
+                aria-label="Calendar year"
+                style={YEAR_SELECT_STYLE}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="icon"
               aria-label="Next year"
               onClick={() => setPickerYear((year) => year + 1)}
               style={{ ...navigationButton, width: 36, height: 36 }}
             >
               <ChevronRight size={17} aria-hidden />
-            </button>
+            </Button>
           </div>
           <div
             style={{
@@ -506,9 +524,9 @@ function MonthControls({
                 pickerYear === cursor.getFullYear() &&
                 monthIndex === cursor.getMonth();
               return (
-                <button
+                <Button
                   key={label}
-                  type="button"
+                  variant={active ? "default" : "ghost"}
                   aria-pressed={active}
                   onClick={() => chooseMonth(monthIndex)}
                   style={{
@@ -526,32 +544,33 @@ function MonthControls({
                   }}
                 >
                   {label}
-                </button>
+                </Button>
               );
             })}
           </div>
         </PopoverContent>
       </Popover>
-      <button
+      <Button
         ref={nextControl.ref}
         {...nextControl.agentProps}
-        type="button"
+        variant="ghost"
+        size="icon-lg"
         aria-label={`Next month, ${month}`}
         title="Next month"
         onClick={onNext}
         style={navigationButton}
       >
         <ChevronRight size={19} aria-hidden />
-      </button>
-      <button
+      </Button>
+      <Button
         ref={todayControl.ref}
         {...todayControl.agentProps}
-        type="button"
+        variant="outline"
         onClick={onToday}
         style={TODAY_BUTTON_STYLE}
       >
         Today
-      </button>
+      </Button>
     </div>
   );
 }

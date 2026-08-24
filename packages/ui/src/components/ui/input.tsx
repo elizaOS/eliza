@@ -26,10 +26,15 @@ const inputVariants = cva(
         compact: "h-9 px-2.5 py-1.5 text-xs",
         relaxed: "h-11",
       },
+      adornment: {
+        none: "",
+        leading: "pl-10 pr-4",
+      },
     },
     defaultVariants: {
       variant: "default",
       density: "default",
+      adornment: "none",
     },
   },
 );
@@ -41,12 +46,15 @@ export interface InputProps
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, variant, density, hasError, ...props }, ref) => {
+  (
+    { className, type, variant, density, adornment, hasError, ...props },
+    ref,
+  ) => {
     return (
       <input
         type={type}
         className={cn(
-          inputVariants({ variant, density }),
+          inputVariants({ variant, density, adornment }),
           hasError &&
             "border-destructive bg-[color-mix(in_srgb,var(--destructive)_3%,var(--card))]",
           className,
