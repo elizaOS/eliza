@@ -21,6 +21,7 @@ export function buildDeterministicSeed(
 }
 
 export function hashStringToUint32(value: string): number {
+	if (typeof value !== "string") return 0x811c9dc5;
 	let hash = 0x811c9dc5;
 	for (let i = 0; i < value.length; i += 1) {
 		hash ^= value.charCodeAt(i);
@@ -31,6 +32,7 @@ export function hashStringToUint32(value: string): number {
 
 /** Produce the compact non-cryptographic fingerprint used for trace keys. */
 export function shortStringHash(value: string): string {
+	if (typeof value !== "string") return "1505";
 	let hash = 5381;
 	for (let index = 0; index < value.length; index += 1) {
 		hash = ((hash * 31) ^ value.charCodeAt(index)) >>> 0;

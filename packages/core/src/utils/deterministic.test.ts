@@ -94,6 +94,42 @@ describe("getDeterministicNames / buildDeterministicSeed", () => {
 	});
 });
 
+describe("hashStringToUint32 / shortStringHash non-string guard", () => {
+	it("returns empty-string hash for non-string inputs without throwing", () => {
+		const emptyHash = 0x811c9dc5;
+		const emptyShort = "1505";
+		// @ts-expect-error runtime guard check
+		expect(hashStringToUint32(null)).toBe(emptyHash);
+		// @ts-expect-error runtime guard check
+		expect(hashStringToUint32(undefined)).toBe(emptyHash);
+		// @ts-expect-error runtime guard check
+		expect(hashStringToUint32(123)).toBe(emptyHash);
+		// @ts-expect-error runtime guard check
+		expect(hashStringToUint32(true)).toBe(emptyHash);
+		// @ts-expect-error runtime guard check
+		expect(hashStringToUint32({})).toBe(emptyHash);
+		// @ts-expect-error runtime guard check
+		expect(hashStringToUint32([])).toBe(emptyHash);
+		// @ts-expect-error runtime guard check
+		expect(shortStringHash(null)).toBe(emptyShort);
+		// @ts-expect-error runtime guard check
+		expect(shortStringHash(undefined)).toBe(emptyShort);
+		// @ts-expect-error runtime guard check
+		expect(shortStringHash(123)).toBe(emptyShort);
+		// @ts-expect-error runtime guard check
+		expect(shortStringHash(false)).toBe(emptyShort);
+		// @ts-expect-error runtime guard check
+		expect(shortStringHash({})).toBe(emptyShort);
+	});
+
+	it("still hashes string inputs correctly after guard", () => {
+		expect(hashStringToUint32("hello")).toBe(hashStringToUint32("hello"));
+		expect(hashStringToUint32("hello")).not.toBe(0x811c9dc5);
+		expect(shortStringHash("hello")).toBe("e2f5ecef");
+		expect(shortStringHash("hello")).not.toBe("1505");
+	});
+});
+
 describe("stableStringify", () => {
 	it("is independent of key insertion order", () => {
 		expect(stableStringify({ b: 1, a: 2 })).toBe(
