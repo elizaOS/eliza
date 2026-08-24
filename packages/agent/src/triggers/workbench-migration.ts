@@ -40,6 +40,7 @@ export function decodeScheduleTag(
   tags: readonly string[] | undefined,
 ): DecodedScheduleTag | null {
   for (const tag of tags ?? []) {
+    if (typeof tag !== "string") continue;
     if (tag.startsWith(SCHEDULE_TAG_PREFIX)) {
       const cronExpression = tag.slice(SCHEDULE_TAG_PREFIX.length).trim();
       if (cronExpression) return { triggerType: "cron", cronExpression };
@@ -55,7 +56,9 @@ export function decodeScheduleTag(
 function stripScheduleTags(tags: readonly string[] | undefined): string[] {
   return (tags ?? []).filter(
     (tag) =>
-      !tag.startsWith(SCHEDULE_TAG_PREFIX) && !tag.startsWith(EVENT_TAG_PREFIX),
+      typeof tag === "string" &&
+      !tag.startsWith(SCHEDULE_TAG_PREFIX) &&
+      !tag.startsWith(EVENT_TAG_PREFIX),
   );
 }
 

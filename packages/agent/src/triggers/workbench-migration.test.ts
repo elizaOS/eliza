@@ -78,6 +78,25 @@ describe("decodeScheduleTag", () => {
     expect(decodeScheduleTag([])).toBeNull();
     expect(decodeScheduleTag(undefined)).toBeNull();
   });
+
+  it("safely ignores non-string elements in tags", () => {
+    expect(
+      decodeScheduleTag([
+        null as unknown as string,
+        123 as unknown as string,
+        "schedule:0 9 * * 1-5",
+      ]),
+    ).toEqual({
+      triggerType: "cron",
+      cronExpression: "0 9 * * 1-5",
+    });
+    expect(
+      decodeScheduleTag([
+        null as unknown as string,
+        undefined as unknown as string,
+      ]),
+    ).toBeNull();
+  });
 });
 
 describe("migrateWorkbenchScheduleTags", () => {
