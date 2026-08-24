@@ -27,6 +27,7 @@ import type {
   ToolCall,
 } from "@elizaos/core";
 import {
+  assertModelOutputComplete,
   buildCanonicalSystemPrompt,
   ElizaError,
   logger,
@@ -587,6 +588,12 @@ async function generateContentWithTrajectory(
     return normalized;
   });
 
+  assertModelOutputComplete({
+    finishReason: response.finishReason,
+    provider: "google-genai",
+    model: modelName,
+  });
+
   // A completion with no text and no tool calls is a provider failure (safety
   // block, empty candidates, truncation) — never a legitimate result. Returning
   // "" here would fabricate a healthy-empty completion the planner cannot
@@ -617,9 +624,7 @@ export async function handleTextSmall(
   params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const { stopSequences = [], temperature = 0.7, attachments } = params;
-  const maxTokens = params.omitMaxTokens
-    ? undefined
-    : (params.maxTokens ?? 8192);
+  const maxTokens = params.omitMaxTokens ? undefined : params.maxTokens;
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -679,9 +684,7 @@ export async function handleTextLarge(
   params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const { stopSequences = [], temperature = 0.7, attachments } = params;
-  const maxTokens = params.omitMaxTokens
-    ? undefined
-    : (params.maxTokens ?? 8192);
+  const maxTokens = params.omitMaxTokens ? undefined : params.maxTokens;
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -776,9 +779,7 @@ async function handleTextWithType(
   params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const { stopSequences = [], temperature = 0.7, attachments } = params;
-  const maxTokens = params.omitMaxTokens
-    ? undefined
-    : (params.maxTokens ?? 8192);
+  const maxTokens = params.omitMaxTokens ? undefined : params.maxTokens;
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");

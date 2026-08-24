@@ -10,6 +10,7 @@
  */
 
 import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
+import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -474,6 +475,11 @@ async function handleChat(
     for await (const delta of result.textStream) {
       fullText += delta;
     }
+    assertModelOutputComplete({
+      finishReason: await result.finishReason,
+      provider,
+      model,
+    });
 
     const usage = ProviderUsageSchema.parse(await result.usage);
     const { totalCost: actualBaseCost } = await calculateCost(

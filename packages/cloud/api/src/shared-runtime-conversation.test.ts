@@ -35,6 +35,10 @@ const repositoryHistoryLengths: number[] = [];
 const repositoryHistories: unknown[][] = [];
 let streamMergeGate: Promise<void> | null = null;
 let resolveStreamMergeGate = () => {};
+let runtimePrewarmGate: Promise<void> | null = null;
+let resolveRuntimePrewarmGate = () => {};
+let runtimePrewarmEntered: Promise<void> | null = null;
+let markRuntimePrewarmEntered = () => {};
 let rehydrateCalls = 0;
 let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
@@ -253,6 +257,12 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
     },
   },
 }));
+mock.module("@/lib/services/shared-runtime/shared-eliza-runtime", () => ({
+  prewarmSharedElizaRuntime: async () => {
+    markRuntimePrewarmEntered();
+    if (runtimePrewarmGate) await runtimePrewarmGate;
+  },
+}));
 mock.module("@/lib/mobile-push/apns-provider", () => ({
   resolveCloudApnsConfig: (env: { ELIZA_APNS_KEY?: string }) =>
     env.ELIZA_APNS_KEY ? { configured: true } : null,
@@ -290,6 +300,10 @@ beforeEach(() => {
   repositoryDeletes = 0;
   streamMergeGate = null;
   resolveStreamMergeGate = () => {};
+  runtimePrewarmGate = null;
+  resolveRuntimePrewarmGate = () => {};
+  runtimePrewarmEntered = null;
+  markRuntimePrewarmEntered = () => {};
   rehydrateCalls = 0;
   bridgeFunding = undefined;
   recoveredCutoverTargetId = null;
@@ -874,6 +888,115 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
   const result = await makeInvoke(object)("first-real-turn");
   expect(result).toMatchObject({ result: { historyLength: 2 } });
   expect(repositoryReads).toBe(1);
+});
+
+test("slow prewarm returns headers and releases the room queue before completion", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [{ role: "assistant", content: "migrated" }];
+  runtimePrewarmGate = new Promise<void>((resolve) => {
+    resolveRuntimePrewarmGate = resolve;
+  });
+  runtimePrewarmEntered = new Promise<void>((resolve) => {
+    markRuntimePrewarmEntered = resolve;
+  });
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  const prewarmResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  await runtimePrewarmEntered;
+
+  const historyResult = await Promise.race([
+    object
+      .fetch(
+        new Request("https://shared-runtime.internal/history", {
+          method: "POST",
+          body: JSON.stringify({
+            operation: "history",
+            agentId: AGENT_FIXTURE.id,
+            roomId: "room-1",
+          }),
+        }),
+      )
+      .then(async (response) => ({
+        status: response.status,
+        body: await response.json(),
+      })),
+    new Promise<"queue-blocked">((resolve) =>
+      setTimeout(() => resolve("queue-blocked"), 100),
+    ),
+  ]);
+
+  expect(historyResult).not.toBe("queue-blocked");
+  expect(historyResult).toMatchObject({
+    status: 200,
+    body: { history: repositoryRow },
+  });
+  expect(prewarmResponse.headers.has("X-Eliza-Release-Coordinator-Queue")).toBe(
+    false,
+  );
+
+  resolveRuntimePrewarmGate();
+  await expect(prewarmResponse.json()).resolves.toEqual({ success: true });
+  await Promise.all(background.splice(0));
+  expect(repositoryReads).toBe(1);
+  expect(repositoryWrites).toBe(0);
+});
+
+test("canceling the prewarm response does not cancel background readiness", async () => {
+  runtimePrewarmGate = new Promise<void>((resolve) => {
+    resolveRuntimePrewarmGate = resolve;
+  });
+  runtimePrewarmEntered = new Promise<void>((resolve) => {
+    markRuntimePrewarmEntered = resolve;
+  });
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  await runtimePrewarmEntered;
+  await response.body?.cancel();
+
+  resolveRuntimePrewarmGate();
+  await Promise.all(background.splice(0));
+
+  const warmResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  await expect(warmResponse.json()).resolves.toEqual({ success: true });
 });
 
 test("fresh-room prewarm skips a legacy history query", async () => {

@@ -2,7 +2,7 @@
  * Core planner-loop suite: `parsePlannerOutput` shape/recovery parsing and
  * end-to-end `runPlannerLoop` behavior — tool dispatch, the evaluator FINISH
  * gate, trajectory limits, coding/full-surface token caps, required-tool
- * handling, suffix compaction, and `plannerTemplate` policy text. Deterministic
+ * handling, explicit input-budget rejection, and `plannerTemplate` policy text. Deterministic
  * — `useModel`, `executeToolCall`, and `evaluate` are vitest mocks; no live
  * model.
  */
@@ -503,7 +503,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(plannerParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);
 		expect(plannerParams.providerOptions.eliza.modelInputBudget).toMatchObject({
 			reserveTokens: 10_000,
-			shouldCompact: false,
+			shouldReject: false,
 		});
 		expect(plannerParams.maxTokens).toBeUndefined();
 		expect(plannerParams.providerOptions.eliza.thinking).toBe("off");
@@ -1504,7 +1504,7 @@ describe("v5 planner loop skeleton", () => {
 			{
 				contextWindowTokens: 131_000,
 				reserveTokens: 26_200,
-				compactionThresholdTokens: 104_800,
+				dispatchThresholdTokens: 104_800,
 				resolvedModelKey: "gpt-oss-120b",
 			},
 		);
@@ -1535,10 +1535,79 @@ describe("v5 planner loop skeleton", () => {
 			{
 				contextWindowTokens: 131_000,
 				reserveTokens: 5_000,
-				compactionThresholdTokens: 126_000,
+				dispatchThresholdTokens: 126_000,
 				resolvedModelKey: "gpt-oss-120b",
 			},
 		);
+	});
+
+	it("passes complete oversized input to the authoritative runtime boundary", async () => {
+		const runtime = {
+			useModel: vi.fn(async (modelType: string) =>
+				modelType === ModelType.ACTION_PLANNER
+					? JSON.stringify({
+							thought: "answer directly",
+							messageToUser: "complete",
+							toolCalls: [],
+						})
+					: JSON.stringify({
+							success: true,
+							decision: "FINISH",
+							thought: "complete",
+							messageToUser: "complete",
+						}),
+			),
+		};
+		const oversized = `HEAD_SENTINEL${"x".repeat(40_000)}TAIL_SENTINEL`;
+		const recordedStages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "trj-over-budget"),
+			recordStage: vi.fn(async (_trajectoryId, stage) => {
+				recordedStages.push(stage);
+			}),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+
+		await runPlannerLoop({
+			runtime,
+			recorder,
+			trajectoryId: "trj-over-budget",
+			context: {
+				id: "ctx",
+				events: [
+					{
+						id: "oversized-message",
+						type: "message",
+						message: {
+							role: "user",
+							content: { text: oversized },
+						},
+					},
+				],
+			},
+			config: {
+				contextWindowTokens: 2_000,
+				compactionReserveTokens: 200,
+			},
+		});
+		expect(runtime.useModel).toHaveBeenCalled();
+		const plannerRequest = runtime.useModel.mock.calls.find(
+			([modelType]) => modelType === ModelType.ACTION_PLANNER,
+		)?.[1];
+		const serialized = JSON.stringify(plannerRequest);
+		expect(serialized).toContain("HEAD_SENTINEL");
+		expect(serialized).toContain("TAIL_SENTINEL");
+		expect(
+			(
+				plannerRequest as {
+					providerOptions?: {
+						eliza?: { modelInputBudget?: { shouldReject?: boolean } };
+					};
+				}
+			).providerOptions?.eliza?.modelInputBudget?.shouldReject,
+		).toBe(true);
 	});
 
 	it("retries premature terminal output when a non-terminal tool call is required", async () => {

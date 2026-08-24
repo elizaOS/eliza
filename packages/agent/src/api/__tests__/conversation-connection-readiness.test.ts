@@ -8,6 +8,8 @@ import {
   assertConversationConnectionRuntime,
   captureConversationConnectionDescriptor,
   invalidateConversationConnectionTopology,
+  isConversationConnectionError,
+  prepareConversationConnectionRoom,
   scheduleConversationConnectionEnsure,
   serializeConversationConnectionRoomDeletion,
 } from "../conversation-connection-readiness.ts";
@@ -368,5 +370,78 @@ describe("conversation connection readiness", () => {
     ).toThrow(
       expect.objectContaining({ code: "CONVERSATION_RUNTIME_CHANGED" }),
     );
+  });
+
+  it("accepts exactly the mutation queue capacity and rejects overflow", async () => {
+    const runtime = createRuntime();
+    const firstGate = deferred();
+    const queued = Array.from({ length: 256 }, (_, index) =>
+      scheduleConversationConnectionEnsure(
+        captureDescriptor(runtime, { conversationId: `queued-${index}` }),
+        index === 0 ? async () => firstGate.promise : async () => {},
+      ),
+    );
+
+    await expect(
+      scheduleConversationConnectionEnsure(
+        captureDescriptor(runtime, { conversationId: "queue-overflow" }),
+        async () => {},
+      ),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_CONNECTION_QUEUE_SATURATED",
+    });
+
+    firstGate.resolve();
+    await Promise.all(queued);
+  });
+
+  it("prepares a recreated room with a fresh generation", () => {
+    const runtime = createRuntime();
+    const original = captureDescriptor(runtime);
+
+    prepareConversationConnectionRoom(runtime, original.roomId);
+
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, original),
+    ).toThrow(
+      expect.objectContaining({
+        code: "CONVERSATION_CONNECTION_INVALIDATED",
+      }),
+    );
+    const recreated = captureDescriptor(runtime);
+    expect(recreated.roomGeneration).not.toBe(original.roomGeneration);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, recreated),
+    ).not.toThrow();
+  });
+
+  it("classifies and preserves connection errors raised during an ensure", async () => {
+    const runtime = createRuntime();
+    const descriptor = captureDescriptor(runtime);
+    let runtimeChangeError: unknown;
+
+    try {
+      assertConversationConnectionRuntime(null, descriptor);
+    } catch (error) {
+      runtimeChangeError = error;
+    }
+
+    expect(isConversationConnectionError(runtimeChangeError)).toBe(true);
+    expect(isConversationConnectionError(new Error("ordinary failure"))).toBe(
+      false,
+    );
+    expect(
+      isConversationConnectionError({
+        code: "CONVERSATION_RUNTIME_CHANGED",
+      }),
+    ).toBe(false);
+    await expect(
+      scheduleConversationConnectionEnsure(descriptor, async () => {
+        throw runtimeChangeError;
+      }),
+    ).rejects.toBe(runtimeChangeError);
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, descriptor),
+    ).not.toThrow();
   });
 });

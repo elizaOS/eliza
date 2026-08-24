@@ -13,8 +13,8 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Canonical actions:** 24
 - **Core actions:** 14
 - **Plugin overlay actions:** 10
-- **Canonical providers:** 23
-- **Core providers:** 23
+- **Canonical providers:** 22
+- **Core providers:** 22
 - **Registered runtime actions:** 180
 
 ## Actions
@@ -659,13 +659,6 @@ Provides information about the current world context including settings and memb
 Persistent facts and preferences about the user learned and remembered across conversations
 
 - **Position:** 50
-- **Dynamic:** no
-
-### SUMMARIZED_CONTEXT
-
-Provides summarized context from previous conversations for optimized context usage
-
-- **Position:** 96
 - **Dynamic:** no
 
 ### AGENT_SETTINGS

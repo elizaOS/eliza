@@ -9,7 +9,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	composeToolDiagnosticRedactor,
+	projectCompleteModelCallValue,
 	projectModelCallDiagnosticValue,
+	projectProtectedModelCallValue,
 	projectToolDiagnosticArgs,
 	projectToolDiagnosticValue,
 	TOOL_DIAGNOSTIC_MASK,
@@ -23,6 +25,12 @@ const redactor = composeToolDiagnosticRedactor({
 	redactSecrets: (text) =>
 		text.split(RUNTIME_SECRET_CANARY).join("[REDACTED:CANARY]"),
 });
+
+function deeplyNestedCanaryValue(): Record<string, unknown> {
+	let value: Record<string, unknown> = { final: "FINAL-CANARY" };
+	for (let depth = 18; depth >= 1; depth -= 1) value = { child: value };
+	return { first: "FIRST-CANARY", child: value };
+}
 
 describe("composeToolDiagnosticRedactor", () => {
 	it("applies runtime-known-secret redaction before shape patterns", () => {
@@ -221,6 +229,56 @@ describe("projectModelCallDiagnosticValue", () => {
 		expect(projected.providerOptions.apiKey).toBe(TOOL_DIAGNOSTIC_MASK);
 		expect(raw.responseSchema.properties.apiKey.description).toContain(
 			FLAG_CANARY,
+		);
+	});
+});
+
+describe("projectCompleteModelCallValue", () => {
+	it("preserves first, middle, and final values beyond the diagnostic depth", () => {
+		const deep: Record<string, unknown> = { final: "FINAL-CANARY" };
+		let cursor = deep;
+		for (let depth = 15; depth >= 1; depth -= 1) {
+			const child: Record<string, unknown> = {
+				[`level${depth}`]: depth === 8 ? "MIDDLE-CANARY" : depth,
+				child: cursor,
+			};
+			cursor = child;
+		}
+		const projected = projectCompleteModelCallValue(
+			{ first: "FIRST-CANARY", payload: cursor },
+			redactor,
+		);
+		const serialized = JSON.stringify(projected);
+		expect(serialized).toContain("FIRST-CANARY");
+		expect(serialized).toContain("MIDDLE-CANARY");
+		expect(serialized).toContain("FINAL-CANARY");
+		expect(serialized).not.toContain(TOOL_DIAGNOSTIC_MASK);
+	});
+
+	it("rejects a cycle instead of replacing model-bound data", () => {
+		const cyclic: Record<string, unknown> = { first: "FIRST-CANARY" };
+		cyclic.self = cyclic;
+		expect(() => projectCompleteModelCallValue(cyclic, redactor)).toThrowError(
+			expect.objectContaining({ code: "MODEL_TOOL_DATA_CYCLE" }),
+		);
+	});
+});
+
+describe("projectProtectedModelCallValue", () => {
+	it("keeps model fields complete while sanitizing operational cycles", () => {
+		const operational: Record<string, unknown> = { label: "metadata" };
+		operational.self = operational;
+		const projected = projectProtectedModelCallValue(
+			{
+				messages: deeplyNestedCanaryValue(),
+				providerMetadata: operational,
+			},
+			redactor,
+		);
+		const serializedMessages = JSON.stringify(projected.messages);
+		expect(serializedMessages).toContain("FINAL-CANARY");
+		expect((projected.providerMetadata as Record<string, unknown>).self).toBe(
+			TOOL_DIAGNOSTIC_MASK,
 		);
 	});
 });

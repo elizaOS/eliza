@@ -29,7 +29,6 @@ function isWellFormed(value: string): boolean {
 async function capturePrompt(options: {
   context?: Record<string, unknown>;
   state?: State;
-  projectionEnabled?: boolean;
 }): Promise<string> {
   let prompt = "";
   const runtime = {
@@ -38,7 +37,6 @@ async function capturePrompt(options: {
       return "Done.";
     }),
     getMemories: vi.fn(async () => []),
-    getSetting: vi.fn(() => options.projectionEnabled ?? false),
     character: { name: "TestAgent" },
   } as unknown as IAgentRuntime;
 
@@ -75,7 +73,7 @@ describe("grounded reply prompt Unicode preservation", () => {
     expect(contextLine?.endsWith("…")).toBe(false);
   });
 
-  it("sanitizes a lone surrogate in recent action text", async () => {
+  it("preserves a lone surrogate losslessly as a JSON escape", async () => {
     const state = {
       data: {
         actionResults: [
@@ -91,12 +89,12 @@ describe("grounded reply prompt Unicode preservation", () => {
     const prompt = await capturePrompt({ state });
     const historyLine = prompt
       .split("\n")
-      .find((line) => line.startsWith("Recent action history: "));
+      .find((line) => line.startsWith("Complete action history: "));
 
     expect(historyLine).toBeDefined();
     expect(isWellFormed(historyLine ?? "")).toBe(true);
-    expect(historyLine).toContain("�");
-    expect(historyLine).not.toContain("\\ud800");
+    expect(historyLine).not.toContain("�");
+    expect(historyLine).toContain("\\ud800");
   });
 
   it("preserves a complete emoji with its surrounding context", async () => {
@@ -109,7 +107,7 @@ describe("grounded reply prompt Unicode preservation", () => {
     expect(isWellFormed(contextLine ?? "")).toBe(true);
   });
 
-  it("keeps a recoverable reference but removes its page from the model prompt", async () => {
+  it("keeps complete recoverable page text in the model prompt", async () => {
     const page = `LATE_PAGE_CANARY_${"x".repeat(20_000)}`;
     const state = {
       data: {
@@ -142,8 +140,25 @@ describe("grounded reply prompt Unicode preservation", () => {
       },
     } as unknown as State;
 
-    const prompt = await capturePrompt({ state, projectionEnabled: true });
+    const prompt = await capturePrompt({ state });
     expect(prompt).toContain("opaque-file");
-    expect(prompt).not.toContain("LATE_PAGE_CANARY");
+    expect(prompt).toContain("LATE_PAGE_CANARY");
+  });
+
+  it("keeps every action result despite legacy limit arguments", async () => {
+    const state = {
+      data: {
+        actionResults: Array.from({ length: 7 }, (_, index) => ({
+          success: true,
+          text: `complete-result-${index + 1}`,
+          data: { actionName: `ACTION_${index + 1}` },
+        })),
+      },
+    } as unknown as State;
+
+    const prompt = await capturePrompt({ state });
+    for (let index = 1; index <= 7; index += 1) {
+      expect(prompt).toContain(`complete-result-${index}`);
+    }
   });
 });

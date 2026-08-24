@@ -1,6 +1,7 @@
 # `@elizaos/prompts`
 
-Single source of truth for the LLM prompt templates the elizaOS runtime uses, plus the action/provider spec + docs codegen that derives compressed action descriptions from those templates.
+Single source of truth for the LLM prompt templates the elizaOS runtime uses,
+plus action/provider spec and docs codegen that preserves authored descriptions.
 
 Repository-wide engineering and evidence requirements are inherited from the
 root [`CLAUDE.md`](../../CLAUDE.md).
@@ -12,9 +13,9 @@ root [`CLAUDE.md`](../../CLAUDE.md).
   `packages/core/src/features/autonomy/service.ts` consumes the autonomy
   templates. The runtime fills `{{...}}` placeholders with `composePrompt` from
   core.
-- Owns `compressPromptDescription` in `src/prompt-compression.ts`; core
-  re-exports it for backward compatibility. This keeps prompts tooling from
-  depending back on core.
+- Retains `compressPromptDescription` as a deprecated identity alias for
+  backward compatibility. Runtime and codegen paths use complete authored
+  descriptions directly; the alias must never rewrite text.
 - Also owns the action/provider **specs** under `specs/` and the generators in `scripts/` that build a merged plugin action spec and emit `packages/core/src/generated/action-docs.ts`.
 - This package ships no compiled JS for `src/` — `main`/`exports['.']` point at `src/index.ts` directly (consumed by TS tooling / bundlers in the monorepo). The `dist/` subpath mappings in `exports` (`./*.css` and `./*`) exist for potential subpath consumers; no codegen script in this package writes to `dist/`.
 
@@ -24,7 +25,7 @@ root [`CLAUDE.md`](../../CLAUDE.md).
 packages/prompts/
   src/index.ts        Shared prompt templates; each exported twice:
                       camelCaseTemplate + UPPER_SNAKE_CASE_TEMPLATE alias.
-                      Also re-exports compressPromptDescription.
+                      Also re-exports the lossless compatibility alias.
   src/prompt-compression.ts  deterministic action/provider description compressor
   specs/
     actions/core.json            hand-maintained core action spec
@@ -34,7 +35,7 @@ packages/prompts/
     generate-plugin-action-spec.js  scans plugins/**/*.ts for `export const …: Action`,
                                      merges with core.json → specs/actions/plugins.generated.json
     generate-action-docs.js         reads specs/* → writes packages/core/src/generated/action-docs.ts
-                                     (imports compressPromptDescription from this package)
+                                     (preserves complete descriptions)
     registered-action-inventory.js  shared discovery inventory used by action codegen
     check-secrets.js                scans prompt .ts files for embedded secrets/PII
     file-utils.js                   readJson/readText/ensureDirectory helpers for the scripts
@@ -43,7 +44,7 @@ packages/prompts/
 
 ## Key exports / surface
 
-`src/index.ts` only. Each template is exported under two names — the camelCase form and an UPPER_SNAKE_CASE alias (e.g. `replyTemplate` / `REPLY_TEMPLATE`). Notable ones: `MESSAGE_HANDLER_TEMPLATE`, `REPLY_TEMPLATE`, `SHOULD_RESPOND_TEMPLATE`, `SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE`, `PLANNER_TEMPLATE`, `REFLECTION_TEMPLATE`, `FACT_EXTRACTION_TEMPLATE`, `DEFAULT_CHARACTER_SYSTEM_TEMPLATE`, the `AUTONOMY_*` family, the `SHOULD_(FOLLOW|MUTE|UNFOLLOW|UNMUTE)_ROOM_TEMPLATE` set, the contact templates (`ADD_/REMOVE_/UPDATE_CONTACTS` / `SEARCH_CONTACTS`), `BOOLEAN_FOOTER`, and `compressPromptDescription`. Import templates from `@elizaos/core` in runtime code; prompts package tooling and tests import directly from `@elizaos/prompts` / `src/index.ts`.
+`src/index.ts` only. Each template is exported under two names — the camelCase form and an UPPER_SNAKE_CASE alias (e.g. `replyTemplate` / `REPLY_TEMPLATE`). Notable ones: `MESSAGE_HANDLER_TEMPLATE`, `REPLY_TEMPLATE`, `SHOULD_RESPOND_TEMPLATE`, `SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE`, `PLANNER_TEMPLATE`, `REFLECTION_TEMPLATE`, `FACT_EXTRACTION_TEMPLATE`, `DEFAULT_CHARACTER_SYSTEM_TEMPLATE`, the `AUTONOMY_*` family, the `SHOULD_(FOLLOW|MUTE|UNFOLLOW|UNMUTE)_ROOM_TEMPLATE` set, the contact templates (`ADD_/REMOVE_/UPDATE_CONTACTS` / `SEARCH_CONTACTS`), and `BOOLEAN_FOOTER`. Import templates from `@elizaos/core` in runtime code; prompts package tooling and tests import directly from `@elizaos/prompts` / `src/index.ts`.
 
 ## Commands
 
@@ -84,6 +85,9 @@ Regenerate the plugin action spec after adding or renaming a plugin `Action`:
 - The doc generator writes OUTSIDE this package, into `packages/core/src/generated/action-docs.ts`. That is intentional codegen, not a layering break — `build:action-docs` owns it.
 - Plugin-local `prompts/*.json` (e.g. `actions.json`) under `plugins/**` are hand-edited inputs to each plugin's own codegen and are NOT read by `generate-plugin-action-spec.js`, which only scans `*.ts`.
 - Never embed secrets or PII in templates (they are source-controlled); use placeholders. `check:secrets` enforces this over prompt `.ts` files — see the path/regex list in `scripts/check-secrets.js`.
+- Never cap, condense, summarize, abbreviate, or otherwise rewrite model-facing
+  prompt content. Provider limits reject before dispatch; explicit pagination
+  must be lossless and caller requested.
 - The generated action inventory is a public-surface audit, not a substitute
   for runtime action-registration tests.
 

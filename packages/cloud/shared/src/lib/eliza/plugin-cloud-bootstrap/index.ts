@@ -8,12 +8,12 @@ import {
   logger,
   type Plugin,
   type RunEventPayload,
+  recentMessagesProvider,
   Service,
 } from "@elizaos/core";
 import { oauthAction } from "../plugin-oauth/actions/oauth";
 import { userAuthStatusProvider } from "../plugin-oauth/providers/user-auth-status";
 import { appConfigProvider } from "../shared/providers/app-config";
-import { recentMessagesProvider } from "../shared/providers/recent-messages";
 import { finishAction } from "./actions/finish";
 import { generateMediaAction } from "./actions/media-generation";
 import { actionStateProvider } from "./providers/action-state";

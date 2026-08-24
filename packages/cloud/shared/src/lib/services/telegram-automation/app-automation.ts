@@ -1,5 +1,6 @@
 // Coordinates cloud service app automation behavior behind route handlers.
 import { openai } from "@ai-sdk/openai";
+import { assertModelOutputComplete } from "@elizaos/core";
 import { generateText } from "ai";
 import { Telegraf } from "telegraf";
 import { appsRepository } from "../../../db/repositories/apps";
@@ -247,6 +248,11 @@ Maximum 500 characters.`;
           "Create a compelling announcement about this app that would engage a Telegram community. Focus on what makes it unique and valuable.",
         maxOutputTokens: 200,
       });
+      assertModelOutputComplete({
+        finishReason: result.finishReason,
+        provider: "openai",
+        model: "gpt-5-mini",
+      });
 
       return result.text;
     } catch (error) {
@@ -324,6 +330,11 @@ Maximum 300 characters.`;
           ? `User ${userName} says: "${userMessage}"`
           : `User says: "${userMessage}"`,
         maxOutputTokens: 150,
+      });
+      assertModelOutputComplete({
+        finishReason: result.finishReason,
+        provider: "openai",
+        model: "gpt-5-mini",
       });
 
       return result.text;

@@ -200,7 +200,6 @@ describe("MemoryService searchLongTermMemories similarity comparator", () => {
 
 		const mockStorage = {
 			storeLongTermMemory: vi.fn(),
-			storeSessionSummary: vi.fn(),
 			getLongTermMemories: vi.fn(async () => candidates),
 		};
 

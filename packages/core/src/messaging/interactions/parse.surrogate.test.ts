@@ -15,8 +15,7 @@ describe("parse surrogate-safe task title truncation", () => {
 		// MAX_TASK_TITLE_LEN = 200, truncation cut is at 199 code units.
 		// Build a title where the 199th code unit is a high surrogate.
 		// "a".repeat(198) occupies 198, then 𝄞 (U+1D11E) occupies 2 units (D834 DD1E).
-		const boundaryTitle =
-			"a".repeat(MAX_TASK_TITLE_LEN - 2) + "𝄞" + "b".repeat(50);
+		const boundaryTitle = `${"a".repeat(MAX_TASK_TITLE_LEN - 2)}𝄞${"b".repeat(50)}`;
 		expect(boundaryTitle.length).toBeGreaterThan(MAX_TASK_TITLE_LEN);
 
 		const rawCut = boundaryTitle.slice(0, MAX_TASK_TITLE_LEN - 1);
@@ -49,8 +48,7 @@ describe("parse surrogate-safe task title truncation", () => {
 	});
 
 	it("findInteractionRegions truncates task titles without creating lone surrogates", () => {
-		const emojiTitle =
-			"a".repeat(MAX_TASK_TITLE_LEN - 2) + "😀" + "c".repeat(50);
+		const emojiTitle = `${"a".repeat(MAX_TASK_TITLE_LEN - 2)}😀${"c".repeat(50)}`;
 		const threadId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 		const text = `[TASK:${threadId}]${emojiTitle}[/TASK]`;
 		const regions = findInteractionRegions(text);
@@ -71,8 +69,8 @@ describe("parse surrogate-safe task title truncation", () => {
 	});
 
 	it("emoji at exact boundary does not produce invalid JSON", () => {
-		const title = "x".repeat(MAX_TASK_TITLE_LEN - 2) + "𝄞" + "y".repeat(10);
-		const cut = truncateWellFormed(title, MAX_TASK_TITLE_LEN - 1) + "…";
+		const title = `${"x".repeat(MAX_TASK_TITLE_LEN - 2)}𝄞${"y".repeat(10)}`;
+		const cut = `${truncateWellFormed(title, MAX_TASK_TITLE_LEN - 1)}…`;
 		// JSON.stringify on well-formed text never emits lone surrogate escapes
 		const json = JSON.stringify({ title: cut });
 		expect(json).not.toContain("\\ud834");

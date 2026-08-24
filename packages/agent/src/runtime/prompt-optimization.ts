@@ -171,7 +171,7 @@ interface ModelUsageAccumulator {
 
 interface PromptBudget {
   metadata: ModelTokenMetadata;
-  outputReserveTokens: number;
+  outputReserveTokens?: number;
   promptBudgetTokens: number;
 }
 
@@ -1284,13 +1284,17 @@ function resolvePromptBudget(
     toOptionalNumber(payloadRecord.maxOutputTokens),
     toOptionalNumber(payloadRecord.maxTokens),
   ].find((value): value is number => value !== undefined && value > 0);
-  const outputReserveTokens = Math.min(
-    Math.max(1, metadata.contextWindow - 1),
-    requestedOutputTokens ?? metadata.maxTokens,
-  );
+  const configuredOutputTokens = requestedOutputTokens ?? metadata.maxTokens;
+  const outputReserveTokens =
+    configuredOutputTokens === undefined
+      ? undefined
+      : Math.min(
+          Math.max(1, metadata.contextWindow - 1),
+          configuredOutputTokens,
+        );
   const promptBudgetTokens = Math.max(
     1,
-    Math.floor((metadata.contextWindow - outputReserveTokens) * 0.95),
+    Math.floor((metadata.contextWindow - (outputReserveTokens ?? 0)) * 0.95),
   );
 
   return {
@@ -1470,8 +1474,10 @@ export function installPromptOptimizations(
       });
       outputReserveTokens = budget.outputReserveTokens;
       promptOptimizationTelemetry.budgetTokens = budget.promptBudgetTokens;
-      promptOptimizationTelemetry.outputReserveTokens =
-        budget.outputReserveTokens;
+      if (budget.outputReserveTokens !== undefined) {
+        promptOptimizationTelemetry.outputReserveTokens =
+          budget.outputReserveTokens;
+      }
     }
 
     // Inject the "# Active View" awareness block into planner prompts so the

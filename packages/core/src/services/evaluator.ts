@@ -8,7 +8,6 @@
  * a json_object request so a doomed schema round-trip is not repaid every turn.
  */
 import { v4 as uuidv4 } from "uuid";
-import { isProgressiveContentProjectionEnabled } from "../runtime/content-projection-policy.ts";
 import {
 	stringifyForDiagnostics,
 	stringifyForModel,
@@ -31,7 +30,6 @@ import type {
 } from "../types/index.ts";
 import { EventType, ModelType } from "../types/index.ts";
 import { Service as BaseService } from "../types/service.ts";
-import { formatActionResultsForPrompt } from "../utils/action-results.ts";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 import {
 	toWellFormedUnicode,
@@ -203,15 +201,9 @@ function buildPrompt(params: {
 		latestMessage,
 		responseTexts,
 		actionResults: Array.isArray(actionResults)
-			? isProgressiveContentProjectionEnabled(runtime)
-				? renderActionResultsForModel(actionResults as ActionResult[], {
-						header: "",
-						omitRecoverableText: true,
-					}).text
-				: formatActionResultsForPrompt(actionResults as ActionResult[], {
-						header: "",
-						includeData: true,
-					})
+			? renderActionResultsForModel(actionResults as ActionResult[], {
+					header: "",
+				}).text
 			: stringifyForPrompt(actionResults ?? []),
 		providerContext,
 	};

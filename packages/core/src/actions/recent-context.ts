@@ -1,8 +1,8 @@
 /**
  * Conversation text extraction. Pulls every available conversation line from
  * `State` (the `recentMessages` / `text` values plus the recent-messages memory
- * array), strips language-agnostic speaker-prefix labels ("Name: …"), and
- * preserves every occurrence in source order. `recentConversationTexts`
+ * array) without splitting, trimming, or rewriting it, and preserves every
+ * occurrence in source order. `recentConversationTexts`
  * additionally reads the room's `messages` table and appends complete state
  * context. Storage failures propagate so missing history is not mistaken for a
  * legitimately short conversation.
@@ -10,31 +10,14 @@
 import { getRecentMessagesData } from "../recent-messages-state";
 import type { IAgentRuntime, Memory, State } from "../types";
 
-// Match any speaker prefix pattern: "word:" or "word word:" at the start of a line.
-// This is language-agnostic — strips any short prefix label followed by a colon,
-// rather than hardcoding specific English role names.
-const STATE_SPEAKER_PREFIX_RE =
-	/^[a-zA-Z\u00C0-\u024F\u0400-\u04FF\u3000-\u9FFF]{1,20}\s*:\s*/;
-
-function normalizeConversationLine(value: string): string {
-	return value.replace(STATE_SPEAKER_PREFIX_RE, "").trim();
-}
-
-function splitConversationText(value: string): string[] {
-	return value
-		.split(/\n+/)
-		.map((line) => normalizeConversationLine(line))
-		.filter((line) => line.length > 0);
-}
-
 export function recentConversationTextsFromState(
 	state: State | undefined,
 	_limit?: number,
 ): string[] {
 	const collected: string[] = [];
 	const pushText = (value: unknown) => {
-		if (typeof value === "string" && value.trim().length > 0) {
-			collected.push(...splitConversationText(value));
+		if (typeof value === "string") {
+			collected.push(value);
 		}
 	};
 
@@ -78,7 +61,7 @@ export async function recentConversationTexts(args: {
 			? memories
 					.map((memory) =>
 						memory.content && typeof memory.content.text === "string"
-							? normalizeConversationLine(memory.content.text)
+							? memory.content.text
 							: "",
 					)
 					.filter((text) => text.length > 0)

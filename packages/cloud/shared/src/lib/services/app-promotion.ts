@@ -1,4 +1,5 @@
 // Coordinates cloud service app promotion behavior behind route handlers.
+import { assertModelOutputComplete } from "@elizaos/core";
 import { generateText } from "ai";
 import type { App } from "../../db/repositories";
 // Note: When ANTHROPIC_COT_BUDGET is set and model is Anthropic, temperature is silently dropped
@@ -263,7 +264,7 @@ Return ONLY valid JSON, no markdown.`;
     // Note: When ANTHROPIC_COT_BUDGET is set, temperature is silently dropped by @ai-sdk/anthropic.
     // Promotional content generation is a background service that does not benefit from extended thinking.
     // Pass 0 as thinkingBudget to explicitly disable CoT for these internal service calls.
-    const { text } = await generateText({
+    const result = await generateText({
       model: getLanguageModel(promoModel),
       temperature: 0.7,
       prompt,
@@ -271,6 +272,12 @@ Return ONLY valid JSON, no markdown.`;
       // because it doesn't benefit from extended thinking and needs temperature control.
       ...mergeAnthropicCotProviderOptions(promoModel, process.env, 0),
     });
+    assertModelOutputComplete({
+      finishReason: result.finishReason,
+      provider: "anthropic",
+      model: promoModel,
+    });
+    const { text } = result;
 
     // Parse and validate the AI response
     const extracted = text.trim();

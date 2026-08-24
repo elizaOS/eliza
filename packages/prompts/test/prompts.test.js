@@ -7,7 +7,6 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import fc from "fast-check";
 import * as prompts from "../src/index.ts";
 import { compressPromptDescription } from "../src/prompt-compression.ts";
 
@@ -156,23 +155,10 @@ describe("prompt template exports", () => {
 });
 
 describe("compressPromptDescription", () => {
-  it("normalizes arbitrary descriptions to one line", () => {
-    fc.assert(
-      fc.property(fc.string({ maxLength: 2_000 }), (description) => {
-        const compressed = compressPromptDescription(description);
-        assert.ok(!/\s{2,}|\r|\n/.test(compressed));
-      }),
-      { numRuns: 500 },
-    );
-  });
-
-  it("preserves protected technical spans", () => {
-    const compressed = compressPromptDescription(
-      "Read `npm run test`, https://example.com/a?b=c, and OPENAI_API_KEY before validating configuration.",
-    );
-    assert.match(compressed, /`npm run test`/);
-    assert.match(compressed, /https:\/\/example\.com\/a\?b=c/);
-    assert.match(compressed, /OPENAI_API_KEY/);
+  it("preserves the complete authored description", () => {
+    const description =
+      "  Read `npm run test`,\nhttps://example.com/a?b=c, and OPENAI_API_KEY before validating configuration.  ";
+    assert.strictEqual(compressPromptDescription(description), description);
   });
 });
 
@@ -197,13 +183,16 @@ describe("specs directory", () => {
     }
   });
 
-  it("keeps generated descriptions compressible and aliases aligned", () => {
+  it("keeps generated descriptions complete and aliases aligned", () => {
     const generated = readJsonFile(
       join(specsDir, "actions", "plugins.generated.json"),
     );
     assert.ok(Array.isArray(generated.actions));
     for (const action of generated.actions) {
-      assert.ok(compressPromptDescription(action.description).length > 0);
+      assert.strictEqual(
+        compressPromptDescription(action.description),
+        action.description,
+      );
       if (
         action.compressedDescription !== undefined &&
         action.descriptionCompressed !== undefined

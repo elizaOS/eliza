@@ -653,13 +653,21 @@ describe("buildTestHandler — http", () => {
     expect(redirected.output).toContain("redirects are not allowed");
   });
 
-  it("rejects an oversized HTTP body at the 4000-character safety limit", async () => {
+  it("accepts complete legacy bodies beyond 4000 characters and rejects only at the resource guard", async () => {
+    const accepted = "z".repeat(4_001);
     __setPinnedFetchImplForTests(
-      async () => new Response("z".repeat(4001), { status: 200 }),
+      async () => new Response(accepted, { status: 200 }),
     );
     await expect(
       buildTestHandler(makeDef({ parameters: [] }))({}),
-    ).rejects.toThrow(/4000-character safety limit/);
+    ).resolves.toMatchObject({ ok: true, output: accepted });
+
+    __setPinnedFetchImplForTests(
+      async () => new Response("z".repeat(256 * 1024 + 1), { status: 200 }),
+    );
+    await expect(
+      buildTestHandler(makeDef({ parameters: [] }))({}),
+    ).rejects.toThrow(/262144-character safety limit/);
   });
 
   it("rejects an unsupported handler type without touching the transport", async () => {

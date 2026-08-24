@@ -1,6 +1,7 @@
 /**
- * Unit tests for prompt compression: validates filler stripping,
- * word contractions, leading verb imperatives, and technical token protection.
+ * Unit tests for the legacy prompt-compression compatibility surface.
+ * Descriptions must pass through byte-for-byte so model-facing instructions
+ * never lose wording or meaning.
  */
 import { describe, expect, it } from "vitest";
 import { compressPromptDescription } from "./prompt-compression.ts";
@@ -12,33 +13,25 @@ describe("prompt-compression", () => {
     expect(compressPromptDescription(undefined)).toBe("");
   });
 
-  it("preserves technical code blocks, URLs, and file paths", () => {
+  it("preserves technical code blocks, URLs, file paths, and surrounding prose", () => {
     const input =
       "Use this action in order to fetch https://api.github.com/repos using `curl` and /tmp/output.json.";
-    const compressed = compressPromptDescription(input);
-    expect(compressed).toContain("https://api.github.com/repos");
-    expect(compressed).toContain("`curl`");
-    expect(compressed).toContain("/tmp/output.json");
+    expect(compressPromptDescription(input)).toBe(input);
   });
 
-  it("strips conversational filler and contracts common words", () => {
+  it("does not strip conversational wording or contract words", () => {
     const input =
       "Provides information about the current conversation messages and parameters.";
-    const compressed = compressPromptDescription(input);
-    expect(compressed).toBe(
-      "Provide info about current convo msgs and params.",
-    );
+    expect(compressPromptDescription(input)).toBe(input);
   });
 
-  it("converts leading third-person verbs to imperative", () => {
-    expect(compressPromptDescription("Retrieves user settings.")).toBe(
-      "Get user settings.",
-    );
-    expect(compressPromptDescription("Generates media assets.")).toBe(
-      "Generate media assets.",
-    );
-    expect(compressPromptDescription("Deletes temporary files.")).toBe(
-      "Delete temporary files.",
-    );
+  it("does not rewrite leading verbs", () => {
+    for (const input of [
+      "Retrieves user settings.",
+      "Generates media assets.",
+      "Deletes temporary files.",
+    ]) {
+      expect(compressPromptDescription(input)).toBe(input);
+    }
   });
 });
