@@ -3,20 +3,26 @@
  * persistence and clear-on-consume behavior.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CHAT_PREFILL_EVENT, type ChatPrefillEventDetail } from "../events";
 import {
   __TEST_ONLY__,
   clearPendingFirstRunText,
   readPendingFirstRunText,
+  releasePendingFirstRunText,
+  setPendingFirstRunTextReleaseHandler,
   takePendingFirstRunText,
   writePendingFirstRunText,
 } from "./first-run-pending-text";
 
 function stubLocalStorage(): void {
   const items = new Map<string, string>();
+  const events = new EventTarget();
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: {
+      addEventListener: events.addEventListener.bind(events),
+      dispatchEvent: events.dispatchEvent.bind(events),
       localStorage: {
         getItem: (key: string) => items.get(key) ?? null,
         setItem: (key: string, value: string) => void items.set(key, value),
@@ -29,6 +35,7 @@ function stubLocalStorage(): void {
 describe("pending first-run text", () => {
   beforeEach(() => stubLocalStorage());
   afterEach(() => {
+    setPendingFirstRunTextReleaseHandler(null);
     Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: undefined,
@@ -67,5 +74,35 @@ describe("pending first-run text", () => {
     writePendingFirstRunText(["request"]);
     clearPendingFirstRunText();
     expect(readPendingFirstRunText()).toEqual([]);
+  });
+
+  it("releases the durable requests to the composer exactly once", async () => {
+    const prefill = vi.fn<(event: Event) => void>();
+    window.addEventListener(CHAT_PREFILL_EVENT, prefill);
+    writePendingFirstRunText(["first request", "second\nline"]);
+
+    releasePendingFirstRunText();
+    await Promise.resolve();
+    releasePendingFirstRunText();
+    await Promise.resolve();
+
+    expect(prefill).toHaveBeenCalledTimes(1);
+    expect(
+      (prefill.mock.calls[0][0] as CustomEvent<ChatPrefillEventDetail>).detail,
+    ).toEqual({
+      text: "first request\n\nsecond\nline",
+      select: true,
+    });
+  });
+
+  it("prefers the active conductor's lossless in-memory release seam", () => {
+    const release = vi.fn();
+    setPendingFirstRunTextReleaseHandler(release);
+    writePendingFirstRunText(["durable fallback"]);
+
+    releasePendingFirstRunText();
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(readPendingFirstRunText()).toEqual(["durable fallback"]);
   });
 });

@@ -4,9 +4,12 @@
  * removed atomically when the composer consumes it.
  */
 
+import { dispatchChatPrefill } from "../events";
 import { shellLocalStorage } from "../surface-realm-channel";
 
 const PENDING_FIRST_RUN_TEXT_STORAGE_KEY = "eliza:first-run:pending-text";
+type PendingFirstRunTextReleaseHandler = () => void;
+let releaseHandler: PendingFirstRunTextReleaseHandler | null = null;
 
 function parsePendingText(raw: string | null): string[] {
   if (!raw) return [];
@@ -61,6 +64,28 @@ export function takePendingFirstRunText(): string[] {
   const requests = readPendingFirstRunText();
   clearPendingFirstRunText();
   return requests;
+}
+
+/**
+ * Registers the active conductor's in-memory release seam. The durable fallback
+ * below covers a cold shell where the conductor has already unmounted.
+ */
+export function setPendingFirstRunTextReleaseHandler(
+  handler: PendingFirstRunTextReleaseHandler | null,
+): void {
+  releaseHandler = handler;
+}
+
+/** Release every queued request to the real composer exactly once. */
+export function releasePendingFirstRunText(): void {
+  if (releaseHandler) {
+    releaseHandler();
+    return;
+  }
+  const pending = takePendingFirstRunText();
+  if (pending.length === 0) return;
+  const text = pending.join("\n\n");
+  queueMicrotask(() => dispatchChatPrefill({ text, select: true }));
 }
 
 export function clearPendingFirstRunText(): void {

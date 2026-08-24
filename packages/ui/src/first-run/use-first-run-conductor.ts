@@ -133,6 +133,7 @@ import {
 } from "./first-run-greeting";
 import {
   readPendingFirstRunText,
+  setPendingFirstRunTextReleaseHandler,
   takePendingFirstRunText,
   writePendingFirstRunText,
 } from "./first-run-pending-text";
@@ -1507,6 +1508,7 @@ export function useFirstRunConductor(): void {
     if (!active) {
       setFirstRunActionHandler(null);
       setFirstRunTextHandler(null);
+      setPendingFirstRunTextReleaseHandler(null);
       // Onboarding just completed: the overlay stops filtering the transcript to
       // the current first-run card (`selectFirstRunDisplayMessages`) and renders
       // the raw store, so every synthetic `first-run:*` turn the conductor
@@ -1533,6 +1535,7 @@ export function useFirstRunConductor(): void {
     silentCloudEntryRef.current = false;
     setFirstRunActionHandler((value) => handleActionRef.current(value));
     setFirstRunTextHandler((value) => handleTextRef.current(value));
+    setPendingFirstRunTextReleaseHandler(resumePendingFirstRunText);
     // Cloud-only onboarding (#13377): sign in to Eliza Cloud is the single
     // path. An already-usable session (hosted web where the user is logged in
     // to Eliza Cloud, a durable token from a previous login, a completed
@@ -1679,6 +1682,7 @@ export function useFirstRunConductor(): void {
         document.removeEventListener("visibilitychange", onVisibilityChange);
         setFirstRunActionHandler(null);
         setFirstRunTextHandler(null);
+        setPendingFirstRunTextReleaseHandler(null);
       };
     }
     // Cloud-login resume: if the app was cold-launched mid cloud OAuth (the
@@ -1733,6 +1737,7 @@ export function useFirstRunConductor(): void {
       cancelled = true;
       setFirstRunActionHandler(null);
       setFirstRunTextHandler(null);
+      setPendingFirstRunTextReleaseHandler(null);
     };
   }, [
     active,
@@ -1741,6 +1746,7 @@ export function useFirstRunConductor(): void {
     seedTurn,
     setConversationMessages,
     runtimeChooserEnabled,
+    resumePendingFirstRunText,
   ]);
 }
 
