@@ -17,6 +17,7 @@ export interface NativeModelRequestGuardArgs {
 	outputReserveTokens: number;
 	projectRequest: () => unknown;
 	countInputTokens?: (serializedRequest: string) => number;
+	countInputTokensIsExact?: true;
 }
 
 /** Admit one complete native request before any IPC, socket, or FFI attempt. */
@@ -30,7 +31,12 @@ export function createNativeModelRequestGuard(
 		outputReserveTokens: args.outputReserveTokens,
 		projectRequest: args.projectRequest,
 		...(args.countInputTokens
-			? { countInputTokens: args.countInputTokens }
+			? {
+					countInputTokens: args.countInputTokens,
+					...(args.countInputTokensIsExact
+						? { countInputTokensIsExact: true as const }
+						: {}),
+				}
 			: {}),
 	});
 }

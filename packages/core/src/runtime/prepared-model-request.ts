@@ -22,7 +22,10 @@ export interface PreparedModelRequestBudget {
 	contextWindowTokens: number;
 	outputReserveTokens: number;
 	dispatchThresholdTokens: number;
-	countSource: "provider-tokenizer" | "utf8-upper-bound";
+	countSource: "provider-tokenizer" | "tokenizer-estimate" | "utf8-upper-bound";
+	rejectionAuthority:
+		| "exact-provider-tokenizer-with-explicit-limits"
+		| "diagnostic-only";
 	resolvedModelKey: string | null;
 }
 
@@ -53,6 +56,11 @@ export interface CreatePreparedModelRequestGuardArgs {
 	outputReserveTokens?: number;
 	/** Provider tokenizer over the serialized prepared body, when available. */
 	countInputTokens?: (serializedRequest: string) => number;
+	/**
+	 * Assert that `countInputTokens` uses the exact tokenizer for the selected
+	 * provider deployment. Static fallback encodings and estimates must omit it.
+	 */
+	countInputTokensIsExact?: true;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -185,6 +193,7 @@ function serializePreparedRequest(value: unknown): string {
 function countPreparedInputTokens(
 	serialized: string,
 	counter: ((serializedRequest: string) => number) | undefined,
+	isExact: boolean,
 ): { count: number; source: PreparedModelRequestBudget["countSource"] } {
 	if (!counter) {
 		return {
@@ -206,7 +215,10 @@ function countPreparedInputTokens(
 			code: "MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED",
 		});
 	}
-	return { count: Math.ceil(count), source: "provider-tokenizer" };
+	return {
+		count: Math.ceil(count),
+		source: isExact ? "provider-tokenizer" : "tokenizer-estimate",
+	};
 }
 
 /**
@@ -233,6 +245,12 @@ export function createPreparedModelRequestGuard(
 			{ code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED" },
 		);
 	}
+	if (args.countInputTokensIsExact && !args.countInputTokens) {
+		throw new ElizaError(
+			"Exact prepared-request token counting requires a tokenizer",
+			{ code: "MODEL_PREPARED_REQUEST_INVALID_BUDGET" },
+		);
+	}
 
 	const readSerializedRequest = (): string => {
 		if (args.serializeRequest) {
@@ -252,7 +270,11 @@ export function createPreparedModelRequestGuard(
 		? serializePreparedRequest(initialRequest)
 		: readSerializedRequest();
 	if (args.projectRequest) freezePreparedJsonGraph(initialRequest);
-	const counted = countPreparedInputTokens(serialized, args.countInputTokens);
+	const counted = countPreparedInputTokens(
+		serialized,
+		args.countInputTokens,
+		args.countInputTokensIsExact === true,
+	);
 	const contextLookup = lookupModelContextWindow(model);
 	const outputLookup = lookupModelMaxOutputTokens(model);
 	const contextWindowTokens =
@@ -277,6 +299,13 @@ export function createPreparedModelRequestGuard(
 		1,
 		contextWindowTokens - outputReserveTokens,
 	);
+	const rejectionAuthority =
+		args.countInputTokensIsExact === true &&
+		args.countInputTokens !== undefined &&
+		args.contextWindowTokens !== undefined &&
+		args.outputReserveTokens !== undefined
+			? "exact-provider-tokenizer-with-explicit-limits"
+			: "diagnostic-only";
 	const budget = Object.freeze({
 		provider,
 		model,
@@ -285,10 +314,14 @@ export function createPreparedModelRequestGuard(
 		outputReserveTokens,
 		dispatchThresholdTokens,
 		countSource: counted.source,
+		rejectionAuthority,
 		resolvedModelKey: contextLookup?.matchedKey ?? null,
 	}) satisfies Readonly<PreparedModelRequestBudget>;
 
-	if (counted.count >= dispatchThresholdTokens) {
+	if (
+		rejectionAuthority === "exact-provider-tokenizer-with-explicit-limits" &&
+		counted.count >= dispatchThresholdTokens
+	) {
 		throw new ElizaError(
 			"Complete provider-prepared model request exceeds its context budget",
 			{
@@ -318,6 +351,7 @@ export function createPreparedModelRequestGuard(
 			const attemptCount = countPreparedInputTokens(
 				attemptSerialized,
 				args.countInputTokens,
+				args.countInputTokensIsExact === true,
 			);
 			if (
 				attemptCount.count !== counted.count ||

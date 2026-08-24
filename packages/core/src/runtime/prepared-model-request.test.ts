@@ -24,6 +24,7 @@ describe("createPreparedModelRequestGuard", () => {
 				countedBodies.push(body);
 				return 17;
 			},
+			countInputTokensIsExact: true,
 		});
 
 		guard.assertBeforeAttempt();
@@ -52,6 +53,7 @@ describe("createPreparedModelRequestGuard", () => {
 				contextWindowTokens: 100,
 				outputReserveTokens: 20,
 				countInputTokens: () => 80,
+				countInputTokensIsExact: true,
 			});
 			dispatches += 1;
 		}).toThrow(
@@ -98,19 +100,39 @@ describe("createPreparedModelRequestGuard", () => {
 		);
 	});
 
-	it("uses a UTF-8 upper bound when no provider tokenizer is available", () => {
+	it("keeps a UTF-8 upper bound diagnostic and dispatches the complete body", () => {
 		let dispatches = 0;
-		expect(() => {
-			createPreparedModelRequestGuard({
-				provider: "fixture",
-				model: "fixture",
-				serializeRequest: () => "界".repeat(50),
-				contextWindowTokens: 170,
-				outputReserveTokens: 20,
-			});
-			dispatches += 1;
-		}).toThrow(expect.objectContaining({ code: "MODEL_INPUT_OVER_BUDGET" }));
-		expect(dispatches).toBe(0);
+		const guard = createPreparedModelRequestGuard({
+			provider: "fixture",
+			model: "fixture",
+			serializeRequest: () => "界".repeat(50),
+			contextWindowTokens: 170,
+			outputReserveTokens: 20,
+		});
+		guard.assertBeforeAttempt();
+		dispatches += 1;
+		expect(guard.budget).toMatchObject({
+			countSource: "utf8-upper-bound",
+			rejectionAuthority: "diagnostic-only",
+		});
+		expect(dispatches).toBe(1);
+	});
+
+	it("does not authorize rejection from a fallback tokenizer estimate", () => {
+		const guard = createPreparedModelRequestGuard({
+			provider: "openai-compatible",
+			model: "newer-than-static-tokenizer-registry",
+			serializeRequest: () => "complete",
+			contextWindowTokens: 20,
+			outputReserveTokens: 5,
+			countInputTokens: () => 20,
+		});
+		expect(guard.budget).toMatchObject({
+			countSource: "tokenizer-estimate",
+			rejectionAuthority: "diagnostic-only",
+		});
+		guard.assertBeforeAttempt();
+		expect(guard.attempts).toBe(1);
 	});
 
 	it("honors an explicit native output reserve below the generic fallback", () => {

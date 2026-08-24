@@ -124,7 +124,19 @@ describe("elizaos-core Worker stub", () => {
     );
   });
 
-  test("rejects a complete prepared request before dispatch when over budget", () => {
+  test("keeps heuristic prepared-request counts diagnostic only", () => {
+    const guard = stub.createPreparedModelRequestGuard({
+      provider: "eliza-cloud",
+      model: "test-model",
+      serializeRequest: () => JSON.stringify({ prompt: "complete" }),
+      contextWindowTokens: 20,
+      outputReserveTokens: 5,
+    });
+    expect(guard.budget.rejectionAuthority).toBe("diagnostic-only");
+    expect(() => guard.assertBeforeAttempt()).not.toThrow();
+  });
+
+  test("rejects only with an exact tokenizer and explicit provider limits", () => {
     expect(() =>
       stub.createPreparedModelRequestGuard({
         provider: "eliza-cloud",
@@ -132,6 +144,8 @@ describe("elizaos-core Worker stub", () => {
         serializeRequest: () => JSON.stringify({ prompt: "complete" }),
         contextWindowTokens: 20,
         outputReserveTokens: 5,
+        countInputTokens: () => 15,
+        countInputTokensIsExact: true,
       }),
     ).toThrowError(
       expect.objectContaining({ code: "MODEL_INPUT_OVER_BUDGET" }),

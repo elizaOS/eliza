@@ -22,6 +22,7 @@ describe("createNativeModelRequestGuard", () => {
 			outputReserveTokens: 64,
 			projectRequest: () => ({ ...request }),
 			countInputTokens: counter,
+			countInputTokensIsExact: true,
 		});
 
 		expect(guard.budget.inputTokens).toBe(serialized.length);
@@ -40,6 +41,7 @@ describe("createNativeModelRequestGuard", () => {
 				outputReserveTokens: 10,
 				projectRequest: () => ({ prompt: "complete" }),
 				countInputTokens: () => 90,
+				countInputTokensIsExact: true,
 			});
 			guard.assertBeforeAttempt();
 			dispatch();
@@ -47,6 +49,24 @@ describe("createNativeModelRequestGuard", () => {
 			expect.objectContaining({ code: "MODEL_INPUT_OVER_BUDGET" }),
 		);
 		expect(dispatch).not.toHaveBeenCalled();
+	});
+
+	it("treats an unqualified native counter as diagnostic only", () => {
+		const guard = createNativeModelRequestGuard({
+			provider: "native-test",
+			model: "local.gguf",
+			contextWindowTokens: 100,
+			outputReserveTokens: 10,
+			projectRequest: () => ({ prompt: "complete" }),
+			countInputTokens: () => 90,
+		});
+
+		expect(guard.budget).toMatchObject({
+			countSource: "tokenizer-estimate",
+			rejectionAuthority: "diagnostic-only",
+		});
+		guard.assertBeforeAttempt();
+		expect(guard.attempts).toBe(1);
 	});
 
 	it("rejects mutation before a retry can dispatch", () => {

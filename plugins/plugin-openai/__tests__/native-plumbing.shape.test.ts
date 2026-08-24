@@ -237,27 +237,24 @@ afterEach(() => {
 });
 
 describe("OpenAI native text plumbing", () => {
-  it("rejects an oversized provider-prepared body before generateText dispatch", async () => {
+  it("dispatches complete input when the tokenizer uses a fallback encoding", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "complete response",
+      finishReason: "stop",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
     const { handleTextSmall } = await import("../models/text");
-    await expect(
-      handleTextSmall(createRuntime(), {
-        prompt: "provider-final-wire-canary".repeat(64),
-        providerOptions: {
-          eliza: {
-            modelInputBudget: {
-              contextWindowTokens: 9_000,
-            },
+    await handleTextSmall(createRuntime(), {
+      prompt: "provider-final-wire-canary".repeat(64),
+      providerOptions: {
+        eliza: {
+          modelInputBudget: {
+            contextWindowTokens: 9_000,
           },
         },
-      } as never)
-    ).rejects.toMatchObject({
-      code: "MODEL_INPUT_OVER_BUDGET",
-      context: expect.objectContaining({
-        provider: "openai-compatible",
-        model: "gpt-test-small",
-      }),
-    });
-    expect(aiMocks.generateText).not.toHaveBeenCalled();
+      },
+    } as never);
+    expect(aiMocks.generateText).toHaveBeenCalledOnce();
     expect(aiMocks.streamText).not.toHaveBeenCalled();
   }, 20_000);
 
