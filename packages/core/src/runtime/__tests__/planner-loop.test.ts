@@ -15,6 +15,8 @@ import {
 	__renderRoutingHintsBlockForTests,
 	actionResultToPlannerToolResult,
 	FAILED_TOOL_FALLBACK_MESSAGE,
+	isTerminalPlannerToolName,
+	isUnsafeUserVisibleText,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
@@ -5685,5 +5687,167 @@ describe("terminal-only tool surface short-circuit", () => {
 			evaluate: vi.fn(),
 		});
 		expect(runtime.useModel).toHaveBeenCalled();
+	});
+});
+
+// Direct unit contracts for three exported gates whose branches previously had
+// only incidental loop-level coverage: `isTerminalPlannerToolName` (the shared
+// terminal-name set the message service's preserved-tool-result rescue must
+// agree with), `isUnsafeUserVisibleText` (the F18 egress last-line guard, whose
+// export comment promises shape-pinning tests), and `withTurnScopeToolArg`
+// (schema injection for the native turn-scope channel).
+describe("exported gate contracts", () => {
+	describe("isTerminalPlannerToolName", () => {
+		it("accepts every canonical terminal name", () => {
+			expect(isTerminalPlannerToolName("REPLY")).toBe(true);
+			expect(isTerminalPlannerToolName("IGNORE")).toBe(true);
+			expect(isTerminalPlannerToolName("STOP")).toBe(true);
+			// NONE must stay terminal: treating it as dispatchable made the loop
+			// execute a non-action, fail its context gate, and retry to the
+			// repeated-tool-failure limit even though prior work had succeeded.
+			expect(isTerminalPlannerToolName("NONE")).toBe(true);
+		});
+
+		it("matches case-insensitively because planner output casing varies", () => {
+			expect(isTerminalPlannerToolName("reply")).toBe(true);
+			expect(isTerminalPlannerToolName("Ignore")).toBe(true);
+			expect(isTerminalPlannerToolName("stop")).toBe(true);
+			expect(isTerminalPlannerToolName("None")).toBe(true);
+		});
+
+		it("rejects real tools and near-miss names via exact match only", () => {
+			expect(isTerminalPlannerToolName("LOOKUP")).toBe(false);
+			expect(isTerminalPlannerToolName("MESSAGE")).toBe(false);
+			expect(isTerminalPlannerToolName("SEND_MESSAGE")).toBe(false);
+			// A longer name sharing terminal text remains a dispatchable tool.
+			expect(isTerminalPlannerToolName("REPLY_ALL")).toBe(false);
+			expect(isTerminalPlannerToolName("AUTO_REPLY")).toBe(false);
+			expect(isTerminalPlannerToolName("NONE_OF_THE_ABOVE")).toBe(false);
+		});
+	});
+
+	describe("isUnsafeUserVisibleText (F18 egress last-line guard)", () => {
+		it("passes plain user-directed prose and empty inputs", () => {
+			expect(isUnsafeUserVisibleText(undefined)).toBe(false);
+			expect(isUnsafeUserVisibleText("")).toBe(false);
+			expect(isUnsafeUserVisibleText("   ")).toBe(false);
+			expect(
+				isUnsafeUserVisibleText("Your settings are saved and sync is off."),
+			).toBe(false);
+			expect(
+				isUnsafeUserVisibleText("I found three receipts from yesterday."),
+			).toBe(false);
+		});
+
+		it("rejects the evaluator verdict envelope leaking as chat text", () => {
+			expect(
+				isUnsafeUserVisibleText(
+					'{"success":true,"decision":"FINISH","thought":"done","messageToUser":"ok"}',
+				),
+			).toBe(true);
+		});
+
+		it("rejects serialized tool-call syntax in every documented shape", () => {
+			expect(
+				isUnsafeUserVisibleText(
+					"I'll need to call to=functions.LOOKUP next to verify.",
+				),
+			).toBe(true);
+			expect(
+				isUnsafeUserVisibleText('{"action":"functions.SEND_MESSAGE"}'),
+			).toBe(true);
+			expect(
+				isUnsafeUserVisibleText(
+					'call:automation:GET_WORKFLOW{workflowId: "8914e389-8cda-401e-aac0-a501286a8130"}',
+				),
+			).toBe(true);
+		});
+
+		it("rejects prose narrating tool mechanics instead of answering", () => {
+			expect(isUnsafeUserVisibleText("Running a tool call now.")).toBe(true);
+			expect(isUnsafeUserVisibleText("I need to call WEATHER_API.")).toBe(true);
+			expect(
+				isUnsafeUserVisibleText("The MESSAGE action handles drafts."),
+			).toBe(true);
+			expect(isUnsafeUserVisibleText('{ "parameters": {"text": "hi"} }')).toBe(
+				true,
+			);
+		});
+	});
+
+	describe("withTurnScopeToolArg", () => {
+		it("passes undefined through so callers can keep the no-tools lane", () => {
+			expect(withTurnScopeToolArg(undefined)).toBeUndefined();
+		});
+
+		it("leaves tools without an object parameter schema untouched", () => {
+			const tools = [
+				{ name: "PLAIN", description: "no schema" },
+				{
+					name: "STRING_PARAM",
+					description: "non-object schema",
+					parameters: { type: "string" },
+				},
+			];
+			expect(withTurnScopeToolArg(tools)).toEqual(tools);
+		});
+
+		it("injects the reserved argument as required on object schemas", () => {
+			const [injected] =
+				withTurnScopeToolArg([
+					{
+						name: "LOOKUP",
+						description: "search",
+						parameters: {
+							type: "object",
+							properties: { query: { type: "string" } },
+						},
+					},
+				]) ?? [];
+			const parameters = injected?.parameters as
+				| {
+						required?: string[];
+						properties?: Record<string, unknown>;
+				  }
+				| undefined;
+			expect(parameters?.properties?.[TURN_SCOPE_ARG]).toBeDefined();
+			expect(parameters?.required).toContain(TURN_SCOPE_ARG);
+		});
+
+		it("preserves an existing required list order while appending the scope arg", () => {
+			const [injected] =
+				withTurnScopeToolArg([
+					{
+						name: "LOOKUP",
+						parameters: {
+							type: "object",
+							properties: { query: { type: "string" } },
+							required: ["query"],
+						},
+					},
+				]) ?? [];
+			const parameters = injected?.parameters as
+				| { required?: string[] }
+				| undefined;
+			expect(parameters?.required).toEqual(["query", TURN_SCOPE_ARG]);
+		});
+
+		it("never overwrites a schema that already declares the reserved name", () => {
+			const existing = { type: "string", description: "genuine parameter" };
+			const [injected] =
+				withTurnScopeToolArg([
+					{
+						name: "SPECIAL",
+						parameters: {
+							type: "object",
+							properties: { [TURN_SCOPE_ARG]: existing },
+						},
+					},
+				]) ?? [];
+			const parameters = injected?.parameters as
+				| { properties?: Record<string, { type: string }> }
+				| undefined;
+			expect(parameters?.properties?.[TURN_SCOPE_ARG]).toEqual(existing);
+		});
 	});
 });
