@@ -167,7 +167,7 @@ describe("ordinary timelines still page through completely", () => {
     const { auth, state } = stubAuth(threePages);
 
     expect(
-      await collect(getTweets(freshScreenName(), 200, auth as never)),
+      await collect(getTweets(freshScreenName(), undefined, auth as never)),
     ).toEqual(["t1", "t2", "t3", "t4", "t5"]);
     expect(state.calls).toBe(3);
   });
@@ -176,7 +176,7 @@ describe("ordinary timelines still page through completely", () => {
     const { auth, state } = stubAuth(threePages);
 
     expect(
-      await collect(getTweetsByUserId("user-1", 200, auth as never)),
+      await collect(getTweetsByUserId("user-1", undefined, auth as never)),
     ).toEqual(["t1", "t2", "t3", "t4", "t5"]);
     expect(state.calls).toBe(3);
   });
@@ -185,7 +185,9 @@ describe("ordinary timelines still page through completely", () => {
     const { auth, state } = stubAuth(threePages);
 
     expect(
-      await collect(getTweetsAndReplies(freshScreenName(), 200, auth as never)),
+      await collect(
+        getTweetsAndReplies(freshScreenName(), undefined, auth as never),
+      ),
     ).toEqual(["t1", "t2", "t3", "t4", "t5"]);
     expect(state.calls).toBe(3);
   });
@@ -194,7 +196,9 @@ describe("ordinary timelines still page through completely", () => {
     const { auth, state } = stubAuth(threePages);
 
     expect(
-      await collect(getTweetsAndRepliesByUserId("user-1", 200, auth as never)),
+      await collect(
+        getTweetsAndRepliesByUserId("user-1", undefined, auth as never),
+      ),
     ).toEqual(["t1", "t2", "t3", "t4", "t5"]);
     expect(state.calls).toBe(3);
   });
@@ -214,6 +218,19 @@ describe("ordinary timelines still page through completely", () => {
     expect(
       await collect(clientWith(auth).getUserTweetsIterator("user-1")),
     ).toEqual(["t1", "t2", "t3", "t4", "t5"]);
+    expect(state.calls).toBe(3);
+  });
+
+  it("Client.getTweets returns every page when no limit is requested", async () => {
+    const { auth, state } = stubAuth(threePages);
+
+    expect(await collect(clientWith(auth).getTweets(freshScreenName()))).toEqual([
+      "t1",
+      "t2",
+      "t3",
+      "t4",
+      "t5",
+    ]);
     expect(state.calls).toBe(3);
   });
 

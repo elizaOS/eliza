@@ -186,7 +186,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/app-core/deploy/cloud-agent-shared.ts": [
 		/MAX_DATABASE_DIAGNOSTIC_CHARS/,
-		/text\.slice\(/,
 	],
 	"packages/app-core/platforms/electrobun/src/shell-sync-relay.ts": [
 		/truncateWellFormed\(/,
@@ -307,7 +306,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-x/src/client/client.ts": [
 		/maxTweets\s*=\s*200/,
+		/maxQuotes:\s*number\s*=\s*(?:40|100)/,
 		/if\s*\(tweets\.length\s*>=\s*(?:count|maxTweets)\)\s*break/,
+	],
+	"plugins/plugin-x/src/client/tweets.ts": [
+		/while\s*\(totalFetched\s*<\s*maxTweets\)/,
 	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,

@@ -612,10 +612,10 @@ export class Client {
   /**
    * Fetches tweets from a Twitter user.
    * @param user The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
+   * @param maxTweets Optional caller-requested result count; omitted means all pages.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
-  public getTweets(user: string, maxTweets = 200): AsyncGenerator<Tweet> {
+  public getTweets(user: string, maxTweets?: number): AsyncGenerator<Tweet> {
     return this.authenticatedGenerator((auth) =>
       getTweets(user, maxTweets, auth),
     );
@@ -624,12 +624,12 @@ export class Client {
   /**
    * Fetches tweets from a Twitter user using their ID.
    * @param userId The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
+   * @param maxTweets Optional caller-requested result count; omitted means all pages.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
   public getTweetsByUserId(
     userId: string,
-    maxTweets = 200,
+    maxTweets?: number,
   ): AsyncGenerator<Tweet, void> {
     return this.authenticatedGenerator((auth) =>
       getTweetsByUserId(userId, maxTweets, auth),
@@ -756,12 +756,12 @@ export class Client {
   /**
    * Fetches tweets and replies from a Twitter user.
    * @param user The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
+   * @param maxTweets Optional caller-requested result count; omitted means all pages.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
   public getTweetsAndReplies(
     user: string,
-    maxTweets = 200,
+    maxTweets?: number,
   ): AsyncGenerator<Tweet> {
     return this.authenticatedGenerator((auth) =>
       getTweetsAndReplies(user, maxTweets, auth),
@@ -771,12 +771,12 @@ export class Client {
   /**
    * Fetches tweets and replies from a Twitter user using their ID.
    * @param userId The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
+   * @param maxTweets Optional caller-requested result count; omitted means all pages.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
   public getTweetsAndRepliesByUserId(
     userId: string,
-    maxTweets = 200,
+    maxTweets?: number,
   ): AsyncGenerator<Tweet, void> {
     return this.authenticatedGenerator((auth) =>
       getTweetsAndRepliesByUserId(userId, maxTweets, auth),
@@ -1206,41 +1206,23 @@ export class Client {
   /**
    * Fetches all quoted tweets for a given tweet ID, handling pagination automatically.
    * @param tweetId The ID of the tweet to fetch quotes for.
-   * @param maxQuotes Maximum number of quotes to return (default: 100).
+   * @param maxQuotes Optional caller-requested result count; omitted means all results.
    * @returns An array of all quoted tweets.
    */
   public async fetchAllQuotedTweets(
     tweetId: string,
-    maxQuotes: number = 100,
+    maxQuotes?: number,
   ): Promise<Tweet[]> {
     return this.withAuthenticatedSession(async () => {
       const allQuotes: Tweet[] = [];
-      let cursor: string | undefined;
-      let totalFetched = 0;
-
-      while (totalFetched < maxQuotes) {
-        const batchSize = Math.min(40, maxQuotes - totalFetched);
-        const page = await this.fetchQuotedTweetsPage(
-          tweetId,
-          batchSize,
-          cursor,
-        );
-
-        if (page.tweets.length === 0) {
-          break;
-        }
-
-        allQuotes.push(...page.tweets);
-        totalFetched += page.tweets.length;
-
-        if (!page.next) {
-          break;
-        }
-
-        cursor = page.next;
+      for await (const quote of searchQuotedTweets(
+        tweetId,
+        maxQuotes,
+        this.requireAuth(),
+      )) {
+        allQuotes.push(quote);
       }
-
-      return allQuotes.slice(0, maxQuotes);
+      return allQuotes;
     });
   }
 
@@ -1254,10 +1236,19 @@ export class Client {
    */
   public async fetchQuotedTweetsPage(
     tweetId: string,
-    maxQuotes: number = 40,
-    _cursor?: string,
+    maxQuotes?: number,
+    cursor?: string,
   ): Promise<QueryTweetsResponse> {
     return this.withAuthenticatedSession(async () => {
+      if (cursor?.trim()) {
+        throw new ElizaError(
+          "X quote search does not expose lossless cursor pagination",
+          {
+            code: "X_QUOTE_PAGINATION_UNSUPPORTED",
+            context: { tweetId },
+          },
+        );
+      }
       const quotes: Tweet[] = [];
       let count = 0;
 
@@ -1268,7 +1259,7 @@ export class Client {
       )) {
         quotes.push(quote);
         count++;
-        if (count >= maxQuotes) break;
+        if (maxQuotes !== undefined && count >= maxQuotes) break;
       }
 
       return {
