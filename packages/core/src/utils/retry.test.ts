@@ -93,6 +93,29 @@ describe("computeBackoff", () => {
 			expect(computeBackoff(policy, 6)).toBe(500);
 		}
 	});
+
+	it("returns a finite delay for non-finite policy or attempt inputs", () => {
+		const base: BackoffPolicy = {
+			initialMs: 100,
+			maxMs: 1000,
+			factor: 2,
+			jitter: 0,
+		};
+		expect(computeBackoff({ ...base, factor: Number.NaN }, 1)).toBe(0);
+		expect(computeBackoff({ ...base, initialMs: Number.POSITIVE_INFINITY }, 1)).toBe(0);
+		expect(computeBackoff({ ...base, maxMs: Number.NaN }, 1)).toBe(0);
+		expect(computeBackoff({ ...base, jitter: Number.NaN }, 1)).toBe(0);
+		expect(computeBackoff(base, Number.NaN)).toBe(0);
+		expect(computeBackoff(base, Number.POSITIVE_INFINITY)).toBe(0);
+		const overflow: BackoffPolicy = {
+			initialMs: Number.MAX_VALUE,
+			maxMs: 10_000,
+			factor: 2,
+			jitter: 0,
+		};
+		expect(computeBackoff(overflow, 10)).toBe(10_000);
+		expect(Number.isFinite(computeBackoff(base, 1.9))).toBe(true);
+	});
 });
 
 describe("resolveRetryConfig", () => {

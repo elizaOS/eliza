@@ -79,9 +79,26 @@ export type BackoffPolicy = {
  * @returns Delay in milliseconds
  */
 export function computeBackoff(policy: BackoffPolicy, attempt: number): number {
-	const base = policy.initialMs * policy.factor ** Math.max(attempt - 1, 0);
+	if (
+		!Number.isFinite(policy.initialMs) ||
+		!Number.isFinite(policy.maxMs) ||
+		!Number.isFinite(policy.factor) ||
+		!Number.isFinite(policy.jitter) ||
+		!Number.isFinite(attempt)
+	) {
+		return 0;
+	}
+	const safeAttempt = Math.max(0, Math.floor(attempt) - 1);
+	const base = policy.initialMs * policy.factor ** safeAttempt;
+	if (!Number.isFinite(base)) {
+		return policy.maxMs;
+	}
 	const jitter = base * policy.jitter * Math.random();
-	return Math.min(policy.maxMs, Math.round(base + jitter));
+	const withJitter = base + jitter;
+	if (!Number.isFinite(withJitter)) {
+		return policy.maxMs;
+	}
+	return Math.min(policy.maxMs, Math.round(withJitter));
 }
 
 // ============================================================================
