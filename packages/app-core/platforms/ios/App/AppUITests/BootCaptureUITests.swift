@@ -580,8 +580,8 @@ final class BootCaptureUITests: XCTestCase {
 
     /// Proves a password-configured remote host presents the owner login—not
     /// PairingView—then persists the remembered session across a normal app
-    /// process restart. The password arrives only in the test-runner process
-    /// environment and is never attached or interpolated into diagnostics.
+    /// process restart. The credential is entered through the secret-safe host
+    /// boundary and never attached or interpolated into XCTest diagnostics.
     func testRemoteOwnerPasswordLoginPersistsAcrossRelaunch() throws {
         let env = ProcessInfo.processInfo.environment
         let bootTimeout = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
@@ -594,14 +594,10 @@ final class BootCaptureUITests: XCTestCase {
             env["ELIZA_TEST_CHAT_AFTER_RESTART_MARKER"],
             defaultMarker: "IOS_OWNER_AFTER_RESTART_OK"
         )
-        guard let password = env["ELIZA_TEST_OWNER_PASSWORD"], !password.isEmpty else {
-            throw StrictGateFailure(message: "the owner password was not available to the runner")
-        }
-
         let app = XCUIApplication()
         launchWithRetry(app)
         try openRemoteServerForOwnerLogin(app, env: env)
-        try signInAsRemoteOwner(app, password: password)
+        try signInAsRemoteOwner(app)
         try requireHome(
             app,
             timeout: bootTimeout,
@@ -1482,10 +1478,7 @@ final class BootCaptureUITests: XCTestCase {
     /// Enters the owner credential through the real LoginView and selects the
     /// product's 30-day secure-session option. No attachment is taken while
     /// the secret is present in the secure text field.
-    private func signInAsRemoteOwner(
-        _ app: XCUIApplication,
-        password: String
-    ) throws {
+    private func signInAsRemoteOwner(_ app: XCUIApplication) throws {
         let displayName = app.textFields.matching(
             NSPredicate(format: "placeholderValue ==[c] 'Your display name'")
         ).firstMatch
@@ -1498,8 +1491,7 @@ final class BootCaptureUITests: XCTestCase {
 
         displayName.tap()
         displayName.typeText("Nubs")
-        passwordField.tap()
-        passwordField.typeText(password)
+        try awaitSecretEntry(into: passwordField, app: app)
 
         let remember = app.checkBoxes.matching(
             NSPredicate(format: "label CONTAINS[c] 'Remember this device for 30 days'")
@@ -1535,6 +1527,61 @@ final class BootCaptureUITests: XCTestCase {
         }
         attachScreenshot(named: "owner-login-015-timeout")
         throw StrictGateFailure(message: "owner login did not unlock the authenticated composer")
+    }
+
+    /// Waits for secure password entry without putting the credential in
+    /// XCTest's activity log. Focusing an HTML password field can trigger iOS
+    /// Password AutoFill's Face ID sheet; cancel that optional autofill prompt,
+    /// refocus the field, and let the secret-safe host boundary paste it.
+    private func awaitSecretEntry(
+        into field: XCUIElement,
+        app: XCUIApplication
+    ) throws {
+        guard field.exists, field.isHittable else {
+            throw StrictGateFailure(message: "the owner password field was not ready for input")
+        }
+
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let faceIdCopy = springboard.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS[c] 'Face Not Recognized'")
+        ).firstMatch
+        let springboardCancel = springboard.buttons.matching(
+            NSPredicate(format: "label ==[c] 'Cancel'")
+        ).firstMatch
+        let appCancel = app.buttons.matching(
+            NSPredicate(format: "label ==[c] 'Cancel'")
+        ).firstMatch
+        let faceIdDeadline = Date().addingTimeInterval(4)
+        while Date() < faceIdDeadline {
+            if faceIdCopy.exists || springboardCancel.exists || appCancel.exists {
+                let cancel = springboardCancel.exists ? springboardCancel : appCancel
+                guard cancel.exists, cancel.isHittable else {
+                    Thread.sleep(forTimeInterval: 0.1)
+                    continue
+                }
+                attachScreenshot(named: "owner-login-012-autofill-cancel")
+                cancel.tap()
+                break
+            }
+            if app.keyboards.firstMatch.exists { break }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        guard app.keyboards.firstMatch.waitForExistence(timeout: 5) else {
+            throw StrictGateFailure(message: "the owner password field did not obtain keyboard focus")
+        }
+
+        let entryDeadline = Date().addingTimeInterval(60)
+        while Date() < entryDeadline {
+            let value = (field.value as? String) ?? ""
+            if !value.isEmpty, value.caseInsensitiveCompare("Your password") != .orderedSame {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        throw StrictGateFailure(message: "the owner password was not entered through the secure host boundary")
     }
 
     /// Grants only the first-use Local Network alert. Other system permission
