@@ -6,6 +6,7 @@
  * deterministic.
  */
 import { describe, expect, it } from "vitest";
+import { ElizaError } from "../../errors";
 import {
 	buildCanonicalSystemPrompt,
 	buildCharacterStyleDirections,
@@ -17,6 +18,17 @@ import {
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "../system-prompt";
+
+function expectElizaError(run: () => unknown, code: string): void {
+	let thrown: unknown;
+	try {
+		run();
+	} catch (error) {
+		thrown = error;
+	}
+	expect(thrown).toBeInstanceOf(ElizaError);
+	expect((thrown as ElizaError).code).toBe(code);
+}
 
 describe("system prompt helpers", () => {
 	it("renders character system, bio, then user role", () => {
@@ -149,15 +161,15 @@ describe("system prompt helpers", () => {
 		expect(prompt).toBe("You are Eliza.\n\n# About Eliza\nEliza is warm.");
 	});
 
-	it("drops only the duplicate leading system message", () => {
+	it("preserves a duplicate leading system message", () => {
 		const messages = [
 			{ role: "system", content: "System." },
 			{ role: "user", content: "Hello." },
 		];
 
-		expect(dropDuplicateLeadingSystemMessage(messages, "System.")).toEqual([
-			{ role: "user", content: "Hello." },
-		]);
+		expect(dropDuplicateLeadingSystemMessage(messages, "System.")).toEqual(
+			messages,
+		);
 		expect(dropDuplicateLeadingSystemMessage(messages, "Other.")).toEqual(
 			messages,
 		);
@@ -201,21 +213,24 @@ describe("buildCharacterStyleDirections", () => {
 	});
 
 	describe("renderSystemPromptBio", () => {
-		it("trims a plain-string bio", () => {
+		it("preserves every byte of a plain-string bio", () => {
 			expect(renderSystemPromptBio("  Warm and precise.  ")).toBe(
-				"Warm and precise.",
+				"  Warm and precise.  ",
 			);
 		});
 
-		it("joins array entries, trimming strings and dropping empties and non-strings", () => {
-			expect(renderSystemPromptBio([" A ", 42, "", null, "B"])).toBe("A B");
+		it("joins string-array entries without trimming or dropping empties", () => {
+			expect(renderSystemPromptBio([" A ", "", "B"])).toBe(" A   B");
 		});
 
-		it("returns empty for values that are neither string nor array", () => {
-			expect(renderSystemPromptBio(null)).toBe("");
+		it("rejects non-string entries and non-array values with a typed error", () => {
 			expect(renderSystemPromptBio(undefined)).toBe("");
-			expect(renderSystemPromptBio(42)).toBe("");
-			expect(renderSystemPromptBio({ length: 2 })).toBe("");
+			for (const value of [["A", 42], null, 42, { length: 2 }]) {
+				expectElizaError(
+					() => renderSystemPromptBio(value),
+					"SYSTEM_PROMPT_BIO_INVALID",
+				);
+			}
 		});
 	});
 
@@ -233,20 +248,17 @@ describe("buildCharacterStyleDirections", () => {
 	});
 
 	describe("buildCanonicalSystemPrompt input fallbacks", () => {
-		it('falls back to "the agent" when the name is blank', () => {
-			const prompt = buildCanonicalSystemPrompt({
-				character: {
-					name: "   ",
-					system: "You are {{name}}.",
-					bio: ["Ask {{agentName}} anything."],
-				},
-			});
-
-			expect(prompt).toBe(
-				[
-					"You are the agent.",
-					"# About the agent\nAsk the agent anything.",
-				].join("\n\n"),
+		it("rejects a blank character name with a typed error", () => {
+			expectElizaError(
+				() =>
+					buildCanonicalSystemPrompt({
+						character: {
+							name: "   ",
+							system: "You are {{name}}.",
+							bio: ["Ask {{agentName}} anything."],
+						},
+					}),
+				"SYSTEM_PROMPT_CHARACTER_NAME_INVALID",
 			);
 		});
 
@@ -274,34 +286,44 @@ describe("buildCharacterStyleDirections", () => {
 	});
 
 	describe("textFromChatMessageContent", () => {
-		it("trims plain-string content", () => {
+		it("preserves every byte of plain-string content", () => {
 			expect(textFromChatMessageContent("  Hello there.  ")).toBe(
-				"Hello there.",
+				"  Hello there.  ",
 			);
 		});
 
-		it("returns empty for content that is neither string nor array", () => {
-			expect(textFromChatMessageContent(undefined)).toBe("");
-			expect(textFromChatMessageContent(42)).toBe("");
-			expect(textFromChatMessageContent({ text: "nope" })).toBe("");
+		it("rejects content that is neither a string nor an array", () => {
+			for (const value of [undefined, null, 42, { text: "nope" }]) {
+				expectElizaError(
+					() => textFromChatMessageContent(value),
+					"SYSTEM_PROMPT_CHAT_CONTENT_INVALID",
+				);
+			}
 		});
 
-		it("joins trimmed text parts with newlines, skipping malformed parts", () => {
+		it("joins text parts without trimming or dropping empty text", () => {
 			expect(
 				textFromChatMessageContent([
 					{ type: "text", text: " Alpha " },
-					null,
-					"raw string",
-					[],
-					{ type: "image" },
-					{ text: 42 },
+					{ type: "text", text: "" },
 					{ type: "text", text: "Beta" },
 				]),
-			).toBe("Alpha\nBeta");
+			).toBe(" Alpha \n\nBeta");
 		});
 
-		it("returns empty when no array part yields text", () => {
-			expect(textFromChatMessageContent([null, 42])).toBe("");
+		it("rejects every non-text or malformed part instead of skipping it", () => {
+			for (const part of [
+				null,
+				"raw string",
+				[],
+				{ type: "image" },
+				{ text: 42 },
+			]) {
+				expectElizaError(
+					() => textFromChatMessageContent([part]),
+					"SYSTEM_PROMPT_CHAT_CONTENT_INVALID",
+				);
+			}
 		});
 	});
 
@@ -328,18 +350,19 @@ describe("buildCharacterStyleDirections", () => {
 			).toBe("Part one.\nPart two.");
 		});
 
-		it("treats a whitespace-only leading system message as absent", () => {
+		it("preserves a whitespace-only leading system message", () => {
 			expect(
 				extractLeadingSystemPrompt([{ role: "system", content: "   " }]),
-			).toBeUndefined();
+			).toBe("   ");
 		});
 	});
 
 	describe("resolveEffectiveSystemPrompt edge branches", () => {
-		it("treats non-object params as absent and uses the fallback", () => {
-			expect(
-				resolveEffectiveSystemPrompt({ params: "nope", fallback: "F." }),
-			).toBe("F.");
+		it("rejects non-object params with a typed error", () => {
+			expectElizaError(
+				() => resolveEffectiveSystemPrompt({ params: "nope", fallback: "F." }),
+				"SYSTEM_PROMPT_PARAMS_INVALID",
+			);
 		});
 
 		it("resolves nothing when no source is present", () => {
@@ -349,38 +372,45 @@ describe("buildCharacterStyleDirections", () => {
 			).toBeUndefined();
 		});
 
-		// An explicit non-string params.system short-circuits the lookup instead of
-		// falling through to messages or fallback.
-		it("returns undefined when params.system exists but is not a string", () => {
-			expect(
-				resolveEffectiveSystemPrompt({
-					params: { system: 42, messages: [{ role: "system", content: "M." }] },
-					fallback: "F.",
-				}),
-			).toBeUndefined();
+		it("rejects a non-string params.system with a typed error", () => {
+			expectElizaError(
+				() =>
+					resolveEffectiveSystemPrompt({
+						params: {
+							system: 42,
+							messages: [{ role: "system", content: "M." }],
+						},
+						fallback: "F.",
+					}),
+				"SYSTEM_PROMPT_VALUE_INVALID",
+			);
 		});
 
 		it("preserves an explicitly present but textless params.system", () => {
 			expect(resolveEffectiveSystemPrompt({ params: { system: "   " } })).toBe(
-				"",
+				"   ",
 			);
-			expect(
-				resolveEffectiveSystemPrompt({ params: { system: null } }),
-			).toBeUndefined();
+			expectElizaError(
+				() => resolveEffectiveSystemPrompt({ params: { system: null } }),
+				"SYSTEM_PROMPT_VALUE_INVALID",
+			);
 		});
 
-		it("falls through to the fallback when the leading system message carries no text", () => {
+		it("preserves a whitespace-only leading system message instead of falling back", () => {
 			expect(
 				resolveEffectiveSystemPrompt({
 					params: { messages: [{ role: "system", content: "   " }] },
 					fallback: "  F.  ",
 				}),
-			).toBe("F.");
+			).toBe("   ");
 		});
 
-		it("maps a blank or non-string fallback to undefined", () => {
-			expect(resolveEffectiveSystemPrompt({ fallback: "   " })).toBeUndefined();
-			expect(resolveEffectiveSystemPrompt({ fallback: 42 })).toBeUndefined();
+		it("preserves a blank fallback and rejects a non-string fallback", () => {
+			expect(resolveEffectiveSystemPrompt({ fallback: "   " })).toBe("   ");
+			expectElizaError(
+				() => resolveEffectiveSystemPrompt({ fallback: 42 }),
+				"SYSTEM_PROMPT_VALUE_INVALID",
+			);
 		});
 	});
 
@@ -400,24 +430,24 @@ describe("buildCharacterStyleDirections", () => {
 			expect(dropDuplicateLeadingSystemMessage(messages, "")).toBe(messages);
 		});
 
-		it("compares trimmed text so padded duplicates still drop", () => {
+		it("preserves padded duplicate text byte-for-byte", () => {
 			const messages = [
 				{ role: "system", content: "  S.  " },
 				{ role: "user", content: "Hello." },
 			];
-			expect(dropDuplicateLeadingSystemMessage(messages, "S.")).toEqual([
-				{ role: "user", content: "Hello." },
-			]);
+			expect(dropDuplicateLeadingSystemMessage(messages, "S.")).toEqual(
+				messages,
+			);
 		});
 
-		it("matches structured content parts, not just plain strings", () => {
+		it("preserves a duplicate structured-content message", () => {
 			const messages = [
 				{ role: "system", content: [{ type: "text", text: "S." }] },
 				{ role: "user", content: "Hello." },
 			];
-			expect(dropDuplicateLeadingSystemMessage(messages, "S.")).toEqual([
-				{ role: "user", content: "Hello." },
-			]);
+			expect(dropDuplicateLeadingSystemMessage(messages, "S.")).toEqual(
+				messages,
+			);
 		});
 	});
 
@@ -437,17 +467,21 @@ describe("buildCharacterStyleDirections", () => {
 			).toBe("system:\nS.\n\nuser:\nU.\n\nassistant:\nA.");
 		});
 
-		it("skips messages whose content renders to no text", () => {
+		it("preserves whitespace-only messages and rejects null content", () => {
 			expect(
 				renderChatMessagesForPrompt([
 					{ role: "user", content: "   " },
-					{ role: "assistant", content: null },
 					{ role: "user", content: "Hi." },
 				]),
-			).toBe("user:\nHi.");
+			).toBe("user:\n   \n\nuser:\nHi.");
+			expectElizaError(
+				() =>
+					renderChatMessagesForPrompt([{ role: "assistant", content: null }]),
+				"SYSTEM_PROMPT_CHAT_CONTENT_INVALID",
+			);
 		});
 
-		it("omits only the first system message matching omitDuplicateSystem", () => {
+		it("preserves every system message despite omitDuplicateSystem", () => {
 			expect(
 				renderChatMessagesForPrompt(
 					[
@@ -457,7 +491,7 @@ describe("buildCharacterStyleDirections", () => {
 					],
 					{ omitDuplicateSystem: " S. " },
 				),
-			).toBe("system:\nS.\n\nuser:\nU.");
+			).toBe("system:\nS.\n\nsystem:\nS.\n\nuser:\nU.");
 		});
 
 		it("keeps the leading message when the omit value does not match or is blank", () => {
@@ -487,12 +521,12 @@ describe("buildCharacterStyleDirections", () => {
 			).toBe("user:\nS.\n\nuser:\nU.");
 		});
 
-		it("returns undefined when every block is skipped", () => {
+		it("preserves the only message despite omitDuplicateSystem", () => {
 			expect(
 				renderChatMessagesForPrompt([{ role: "system", content: "S." }], {
 					omitDuplicateSystem: "S.",
 				}),
-			).toBeUndefined();
+			).toBe("system:\nS.");
 		});
 	});
 });
