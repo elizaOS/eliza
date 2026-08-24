@@ -14,11 +14,13 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core/edge";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   type AgentCapabilityDescriptor,
   type AgentCapabilityId,
   type AgentCapabilityTransport,
   type CapabilityHandoffRequest,
+  capabilityHandoffTargetAgentId,
   findAgentCapability,
 } from "@elizaos/shared";
 import {
@@ -130,7 +132,13 @@ export function createSharedRuntimeCapabilitiesProvider(
 function boundedString(value: unknown, maximum: number): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
-  return normalized ? normalized.slice(0, maximum) : undefined;
+  return normalized && normalized.length <= maximum ? normalized : undefined;
+}
+
+function completeString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
 }
 
 function handoffFor(
@@ -139,9 +147,21 @@ function handoffFor(
   message: Memory,
 ): CapabilityHandoffRequest {
   if (capability.availability === "available") {
-    throw new Error(`Capability ${capability.id} does not need setup`);
+    throw new ElizaError(`Capability ${capability.id} does not need setup`, {
+      code: "SHARED_CAPABILITY_HANDOFF_NOT_REQUIRED",
+      context: { capabilityId: capability.id },
+      severity: "fatal",
+    });
   }
-  const originalIntent = boundedString(message.content?.text, 4_000);
+  const href = `/cloud/agents/${encodeURIComponent(options.agentId)}`;
+  if (capabilityHandoffTargetAgentId(href) !== options.agentId) {
+    throw new ElizaError("Shared capability handoff received an invalid agent id", {
+      code: "SHARED_CAPABILITY_HANDOFF_INVALID_AGENT_ID",
+      context: { agentId: options.agentId },
+      severity: "fatal",
+    });
+  }
+  const originalIntent = completeString(message.content?.text);
   const idempotency = message.content?.chatIdempotency;
   const clientMessageId =
     idempotency && typeof idempotency === "object" && "clientMessageId" in idempotency
@@ -162,7 +182,7 @@ function handoffFor(
     requiresConfirmation: true,
     cta: {
       label: "Set up personal workspace",
-      href: `/cloud/agents/${encodeURIComponent(options.agentId)}`,
+      href,
     },
     ...(originalIntent || clientMessageId
       ? {
@@ -220,7 +240,11 @@ export function createRequestDedicatedUpgradeAction(
         | AgentCapabilityId
         | undefined;
       const capability = capabilityId ? findAgentCapability(catalog, capabilityId) : undefined;
-      if (!capability || capability.availability === "available") {
+      if (
+        !capability ||
+        capability.availability === "available" ||
+        capability.requiredTier !== "personal"
+      ) {
         return {
           success: false,
           text: "The requested capability does not need a personal-workspace handoff.",

@@ -61,6 +61,7 @@ import { CodeBlock } from "../ui/code-block";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input";
 import { AccountConnectBlock } from "./AccountConnectBlock";
+import { CapabilityHandoffBlock } from "./CapabilityHandoffBlock";
 import {
   connectorWidgetModes,
   defaultConnectorWidgetModeId,
@@ -1415,6 +1416,17 @@ export function MessageContent({
 
   if (message.accountConnect) {
     return <AccountConnectBlock request={message.accountConnect} />;
+  }
+
+  if (message.capabilityHandoff) {
+    return (
+      <div className="space-y-2">
+        {message.text.trim() ? (
+          <MessageTextBody text={message.text} boldSlashCommand={false} />
+        ) : null}
+        <CapabilityHandoffBlock request={message.capabilityHandoff} />
+      </div>
+    );
   }
 
   if (

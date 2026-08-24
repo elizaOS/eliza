@@ -4125,6 +4125,11 @@ describe("runV5MessageRuntimeStage1", () => {
 		// them (live five-room evaluation: 7-10 unsolicited replies per room).
 		expect(stage1Content).toContain("ambient_turn_policy:");
 		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).toContain("correct or clarify your own prior answer");
+		expect(stage1Content).toContain("explicit standing responsibility");
+		expect(stage1Content).not.toContain("someone asks the group");
+		expect(stage1Content).not.toContain("active in the conversation");
+		expect(stage1Content).not.toContain("able to usefully add");
 		expect(stage1Content).not.toContain(
 			"end the turn by calling the IGNORE tool",
 		);

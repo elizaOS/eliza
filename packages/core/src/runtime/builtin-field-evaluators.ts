@@ -71,9 +71,9 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "shouldRespond",
 	description:
-		'RESPOND if addressed to you, asked a helpful question, needed to act, active in the conversation, or able to usefully add to substantive ambient chatter. IGNORE pure content-free acknowledgements/reactions ("lol", "ok", "nice", "same", "haha", "brb"), bot/webhook/status feeds, or people clearly talking to each other. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.',
+		"RESPOND when the current message addresses you, assigns you work, clearly continues a question you asked, or needs a concrete correction or action specifically from you. A question broadcast to a group is not by itself a reason to interrupt; apply the ambient-turn policy when present. IGNORE acknowledgements, reactions, side chatter, feeds, and messages directed to other people. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.",
 	descriptionCompressed:
-		"RESPOND if asked, active in the conversation, or able to usefully add to substantive ambient chatter; IGNORE content-free reactions, feeds, or others' conversation; STOP only explicit stop.",
+		"RESPOND when the current message addresses you, assigns work, continues your question, or specifically needs your correction/action; otherwise apply ambient policy and IGNORE reactions, feeds, or others' conversation; STOP only explicit stop.",
 	priority: 5,
 	schema: {
 		type: "string",

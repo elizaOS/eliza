@@ -53,9 +53,11 @@ import {
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ElizaClient } from "../../../api";
+import { client, ElizaClient } from "../../../api";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";
+import { dispatchCloudHandoffPhase } from "../../../events";
+import { directCloudSharedAgentIdFromBase } from "../../../utils/cloud-agent-base";
 import { silentlyRepointToDedicated } from "../../handoff/silent-repoint";
 import { runSharedToDedicatedUpgradeHandoff } from "../../handoff/start-tier-upgrade";
 import { apiWithStatus, readCloudBearerToken } from "../../lib/api-client";
@@ -456,27 +458,45 @@ export function ElizaAgentActions({
       // The handoff's readiness probe doubles as the provisioning wait (a cold
       // dedicated boot is 30-120s); the visible job line above tracks the
       // provision job itself.
+      let activeChatSwitched = false;
       const outcome = await runSharedToDedicatedUpgradeHandoff({
         sharedAgentId: agentId,
         dedicatedAgentId,
         cloudApiBase,
         authToken,
         client: new ElizaClient(cloudApiBase, authToken),
-        onSwitch: (containerBase) =>
-          silentlyRepointToDedicated({
-            containerBase,
-            authToken,
-            dedicatedAgentId,
-            personalElizaId: agentId,
-          }),
         intervalMs: 5_000,
         timeoutMs: 10 * 60_000,
+        onSwitch: (containerBase) => {
+          // A management page can upgrade any owned agent. Repoint only when
+          // this is still the Shared agent serving the mounted chat; otherwise
+          // completing an unrelated upgrade must not hijack the active runtime.
+          if (
+            directCloudSharedAgentIdFromBase(client.getBaseUrl()) !== agentId
+          ) {
+            return;
+          }
+          silentlyRepointToDedicated({
+            containerBase,
+            dedicatedAgentId,
+            authToken,
+            personalElizaId: agentId,
+          });
+          activeChatSwitched = true;
+        },
       });
 
       if (
         outcome.status === "switched" ||
         outcome.status === "switched-empty"
       ) {
+        if (activeChatSwitched) {
+          dispatchCloudHandoffPhase({
+            agentId,
+            phase: outcome.status,
+            imported: outcome.imported,
+          });
+        }
         toast.success(
           t("cloud.containers.agentActions.upgradeComplete", {
             defaultValue:

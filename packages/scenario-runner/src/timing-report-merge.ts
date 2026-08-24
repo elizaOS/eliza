@@ -46,6 +46,7 @@ export interface TimingMatrixCell {
   malformedRows: number;
   rejectedRows: number;
   metrics: TimingReport["metrics"];
+  objectives: TimingReport["objectives"];
   slices: TimingReport["slices"];
 }
 
@@ -85,6 +86,8 @@ function isTimingPrediction(value: unknown): value is TimingPrediction {
     (value.gold === "SPEAK" || value.gold === "SILENT") &&
     "predicted" in value &&
     (value.predicted === "SPEAK" || value.predicted === "SILENT") &&
+    "textuallyReferencesAgent" in value &&
+    typeof value.textuallyReferencesAgent === "boolean" &&
     "directlyAddressesAgent" in value &&
     typeof value.directlyAddressesAgent === "boolean" &&
     "speakerCount" in value &&
@@ -164,7 +167,7 @@ function parseReport(file: string): TimingReportFragment {
     value === null ||
     typeof value !== "object" ||
     !("schema" in value) ||
-    value.schema !== 2 ||
+    value.schema !== 3 ||
     !("status" in value) ||
     (value.status !== "in-progress" && value.status !== "complete") ||
     !("dataset" in value) ||

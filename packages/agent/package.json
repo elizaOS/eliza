@@ -29,7 +29,7 @@
   },
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.mjs dist dist-mobile dist-mobile-ios dist-mobile-ios-jsc && node ../scripts/clean-stray-dts.mjs",
-    "start": "bun run src/bin.ts",
+    "start": "bun --no-install --conditions=eliza-source src/bin.ts",
     "dev": "bun --hot src/bin.ts",
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
