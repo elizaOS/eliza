@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { BROWSER_TAB_PRELOAD_SCRIPT } from "./browser-tabs-renderer-registry.js";
+
 describe("browser-tabs-renderer-registry", () => {
   it("exports preload script", () => {
     expect(BROWSER_TAB_PRELOAD_SCRIPT).toContain("__elizaTabKit");
