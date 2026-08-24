@@ -2,7 +2,7 @@
  * Unit tests for the cloud sandbox character loader (Path A fix #1).
  */
 
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   applySandboxCharacterFromEnv,
@@ -36,6 +36,17 @@ function makeFileAccess(options?: {
     },
     resolvePackageRoot: () => options?.repoRoot ?? null,
   };
+}
+
+function expectElizaError(run: () => unknown, code: string): void {
+  let thrown: unknown;
+  try {
+    run();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(ElizaError);
+  expect((thrown as ElizaError).code).toBe(code);
 }
 
 describe("applySandboxCharacterFromEnv", () => {
@@ -723,35 +734,30 @@ describe("applySandboxCharacterFromEnv field mapping and precedence", () => {
     ).toBe("Still Applied");
   });
 
-  it("warns and boots with the default character when the local file cannot be read", () => {
+  it("throws a typed failure when the local character file cannot be read", () => {
     const config = { agents: { list: [] } } as never;
-    const out = applySandboxCharacterFromEnv(
-      config,
-      { ELIZA_CHARACTER_PATH: "missing.json" },
-      makeFileAccess({ files: {} }),
-    );
-    expect(out).toBe(config);
-    expect((out as { agents: { list: unknown[] } }).agents.list).toEqual([]);
-    expect(
-      vi
-        .mocked(logger.warn)
-        .mock.calls.some(([message]) =>
-          String(message).includes("Failed to read local character file"),
+    expectElizaError(
+      () =>
+        applySandboxCharacterFromEnv(
+          config,
+          { ELIZA_CHARACTER_PATH: "missing.json" },
+          makeFileAccess({ files: {} }),
         ),
-    ).toBe(true);
+      "SANDBOX_CHARACTER_FILE_READ_FAILED",
+    );
   });
 
-  it("treats an empty local file as absent without warning", () => {
+  it("throws a typed failure when the local character file is empty", () => {
     const config = { agents: { list: [] } } as never;
-    const warnsBefore = vi.mocked(logger.warn).mock.calls.length;
-    const out = applySandboxCharacterFromEnv(
-      config,
-      { ELIZA_CHARACTER_PATH: "blank.json" },
-      makeFileAccess({ files: { "/workspace/blank.json": "   " } }),
+    expectElizaError(
+      () =>
+        applySandboxCharacterFromEnv(
+          config,
+          { ELIZA_CHARACTER_PATH: "blank.json" },
+          makeFileAccess({ files: { "/workspace/blank.json": "   " } }),
+        ),
+      "SANDBOX_CHARACTER_FILE_EMPTY",
     );
-    expect(out).toBe(config);
-    expect((out as { agents: { list: unknown[] } }).agents.list).toEqual([]);
-    expect(vi.mocked(logger.warn).mock.calls.length).toBe(warnsBefore);
   });
 });
 
@@ -778,20 +784,26 @@ describe("applySandboxCharacterFromEnv connector application", () => {
     expect(connectors.telegram).toEqual({ legacy: true });
   });
 
-  it("rejects array-valued connector config", () => {
-    const out = applySandboxCharacterFromEnv(
-      {} as never,
-      ownsEnv(JSON.stringify({ name: "Nyx", connectors: ["discord"] })),
+  it("rejects array-valued connector config with a typed failure", () => {
+    expectElizaError(
+      () =>
+        applySandboxCharacterFromEnv(
+          {} as never,
+          ownsEnv(JSON.stringify({ name: "Nyx", connectors: ["discord"] })),
+        ),
+      "SANDBOX_CHARACTER_CONNECTORS_INVALID",
     );
-    expect((out as { connectors?: unknown }).connectors).toBeUndefined();
   });
 
-  it("rejects scalar-valued connector config", () => {
-    const out = applySandboxCharacterFromEnv(
-      {} as never,
-      ownsEnv(JSON.stringify({ name: "Nyx", connectors: "discord" })),
+  it("rejects scalar-valued connector config with a typed failure", () => {
+    expectElizaError(
+      () =>
+        applySandboxCharacterFromEnv(
+          {} as never,
+          ownsEnv(JSON.stringify({ name: "Nyx", connectors: "discord" })),
+        ),
+      "SANDBOX_CHARACTER_CONNECTORS_INVALID",
     );
-    expect((out as { connectors?: unknown }).connectors).toBeUndefined();
   });
 
   it("logs the owned connector keys when applying them", () => {
@@ -822,10 +834,10 @@ describe("applySandboxConnectorOwnership nested stripping", () => {
     ...extra,
   });
 
-  it("keeps empty-string token values (stripping tests truthiness)", () => {
+  it("strips empty-string token values by key presence", () => {
     const env = provisionedEnv({ TELEGRAM_BOT_TOKEN: "" });
     applySandboxConnectorOwnership(env);
-    expect(env.TELEGRAM_BOT_TOKEN).toBe("");
+    expect(env.TELEGRAM_BOT_TOKEN).toBeUndefined();
   });
 
   it("strips tokens and connector blocks from every nested credential location", () => {

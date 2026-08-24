@@ -11,7 +11,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { type CharacterSettings, logger } from "@elizaos/core";
+import { type CharacterSettings, ElizaError, logger } from "@elizaos/core";
 import type { AgentConfig } from "@elizaos/shared";
 import {
   normalizeFirstRunProviderId,
@@ -147,15 +147,32 @@ function readCharacterOverrideJson(
     return null;
   }
 
+  let raw: string;
   try {
-    const raw = fileAccess.readTextFileSync(filePath).trim();
-    return raw ? { raw, source: filePath } : null;
+    raw = fileAccess.readTextFileSync(filePath).trim();
   } catch (err) {
-    logger.warn(
-      `[sandbox-character] Failed to read local character file ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+    // error-policy:J2 character override read failures require source context.
+    throw new ElizaError(
+      `[sandbox-character] Failed to read local character file ${filePath}`,
+      {
+        code: "SANDBOX_CHARACTER_FILE_READ_FAILED",
+        context: { filePath },
+        cause: err,
+        severity: "fatal",
+      },
     );
-    return null;
   }
+  if (!raw) {
+    throw new ElizaError(
+      `[sandbox-character] Local character file ${filePath} is empty`,
+      {
+        code: "SANDBOX_CHARACTER_FILE_EMPTY",
+        context: { filePath },
+        severity: "fatal",
+      },
+    );
+  }
+  return { raw, source: filePath };
 }
 
 function mergeKnowledgeSources(
@@ -220,6 +237,27 @@ export function applySandboxCharacterFromEnv(
   }
 
   if (!parsed || typeof parsed !== "object") return config;
+
+  if (
+    parsed.connectors !== undefined &&
+    (parsed.connectors === null ||
+      typeof parsed.connectors !== "object" ||
+      Array.isArray(parsed.connectors))
+  ) {
+    throw new ElizaError(
+      `[sandbox-character] Character override from ${override.source} has invalid connectors`,
+      {
+        code: "SANDBOX_CHARACTER_CONNECTORS_INVALID",
+        context: {
+          source: override.source,
+          receivedType: Array.isArray(parsed.connectors)
+            ? "array"
+            : typeof parsed.connectors,
+        },
+        severity: "fatal",
+      },
+    );
+  }
 
   const name =
     parsed.name?.trim() ||
@@ -383,7 +421,7 @@ export function applySandboxConnectorOwnership(
   };
 
   for (const key of CONNECTOR_TOKEN_ENV_KEYS) {
-    if (env[key]) {
+    if (key in env) {
       delete env[key];
       stripped.push(key);
     }
