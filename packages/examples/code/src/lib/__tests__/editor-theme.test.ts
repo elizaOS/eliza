@@ -23,4 +23,22 @@ describe("createEditorTheme", () => {
     expect(theme.selectList.scrollInfo("x")).toBe("d:x");
     expect(theme.selectList.noMatch("x")).toBe("r:x");
   });
+
+  it("passes edge-case text through every role wrapper unmodified", () => {
+    const theme = createEditorTheme();
+    const multiline = "line one\nline two — ✅ 你好";
+    expect(theme.selectList.selectedPrefix("")).toBe("bc:");
+    expect(theme.selectList.selectedText("")).toBe("w:");
+    expect(theme.selectList.description(multiline)).toBe(`g:${multiline}`);
+    expect(theme.selectList.scrollInfo(multiline)).toBe(`d:${multiline}`);
+    expect(theme.selectList.noMatch(multiline)).toBe(`r:${multiline}`);
+  });
+
+  it("returns a fresh theme object per call", () => {
+    const first = createEditorTheme();
+    const second = createEditorTheme();
+    expect(first).not.toBe(second);
+    expect(first.selectList).not.toBe(second.selectList);
+    expect(first.borderColor).toBe(second.borderColor);
+  });
 });
