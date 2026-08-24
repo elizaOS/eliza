@@ -49,7 +49,9 @@ export interface SessionSnapshot {
     elementIndex?: number;
     appId?: string;
     updatedAt: string;
+    physicalPointerInput: boolean;
     physicalPointerMoved: boolean;
+    pointerObservation: "unchanged" | "changed" | "unavailable";
   };
   lastCommand?: string;
   lastError?: string;
@@ -65,12 +67,28 @@ export interface SessionSnapshot {
     receiptId: string;
     appId: string;
     kind: string;
+    targetPid: number;
+    targetWindowId: number;
     executionMode: string;
     changed: boolean;
+    physicalPointerInput: boolean;
     physicalPointerMoved: boolean;
+    pointerObservation: "unchanged" | "changed" | "unavailable";
+    physicalFallbackApproval?: { approvalId: string };
     clipboardRestored?: boolean;
     element_index?: number;
   };
+}
+
+function pointerProvenanceLabel(value: {
+  physicalPointerInput: boolean;
+  physicalPointerMoved: boolean;
+  pointerObservation: "unchanged" | "changed" | "unavailable";
+}): string {
+  if (value.physicalPointerInput) return "physical pointer input approved";
+  if (value.physicalPointerMoved) return "pointer moved outside this action";
+  if (value.pointerObservation === "unchanged") return "system pointer unchanged";
+  return "pointer observation unavailable";
 }
 
 export interface ObservationProvenance {
@@ -294,7 +312,7 @@ function AgentTargetOverlay({
   );
   return (
     <span
-      aria-label={`Agent target${target.elementIndex ? ` element ${target.elementIndex}` : ""}; ${target.physicalPointerMoved ? "system pointer used" : "system pointer unchanged"}`}
+      aria-label={`Agent target${target.elementIndex ? ` element ${target.elementIndex}` : ""}; ${pointerProvenanceLabel(target)}`}
       className="pointer-events-none absolute border-2 border-orange-400 bg-orange-500/10 shadow-[0_0_0_1px_rgba(0,0,0,0.5)]"
       role="img"
       style={{
@@ -306,7 +324,7 @@ function AgentTargetOverlay({
     >
       <span className="absolute -top-5 left-0 rounded bg-orange-500 px-1.5 py-0.5 text-[9px] font-medium text-white">
         Agent target ·{" "}
-        {target.physicalPointerMoved ? "pointer used" : "pointer unchanged"}
+        {pointerProvenanceLabel(target)}
       </span>
     </span>
   );
@@ -720,12 +738,14 @@ export function ComputerUseSessionsView({
                 {selected.lastReceipt ? (
                   <p className="truncate">
                     {selected.lastReceipt.executionMode.replaceAll("_", " ")}
+                    {` · PID ${selected.lastReceipt.targetPid} · window ${selected.lastReceipt.targetWindowId}`}
                     {selected.lastReceipt.clipboardRestored
                       ? " · clipboard restored"
                       : ""}
-                    {selected.lastReceipt.physicalPointerMoved
-                      ? " · physical pointer used"
-                      : " · physical pointer unchanged"}
+                    {` · ${pointerProvenanceLabel(selected.lastReceipt)}`}
+                    {selected.lastReceipt.physicalFallbackApproval
+                      ? ` · approval ${selected.lastReceipt.physicalFallbackApproval.approvalId}`
+                      : ""}
                   </p>
                 ) : null}
                 {frames[selected.id]?.provenance ? (
@@ -868,9 +888,8 @@ export function ComputerUseSessionsView({
                           {session.lastReceipt.clipboardRestored
                             ? " · clipboard restored"
                             : ""}
-                          {session.lastReceipt.physicalPointerMoved
-                            ? " · physical pointer used"
-                            : " · physical pointer unchanged"}
+                          {` · PID ${session.lastReceipt.targetPid} · window ${session.lastReceipt.targetWindowId}`}
+                          {` · ${pointerProvenanceLabel(session.lastReceipt)}`}
                         </span>
                       ) : null}
                     </div>

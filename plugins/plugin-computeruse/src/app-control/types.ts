@@ -51,6 +51,7 @@ export interface NativeAppSnapshot {
   permission: AppControlPermissionState;
   elements: NativeAppElement[];
   axText: string;
+  focusedWindowId?: number;
   focusedWindowBounds?: AppElementBounds;
 }
 
@@ -71,6 +72,7 @@ export interface AppState {
   screenshotMimeType?: "image/png";
   displayId?: number;
   screenshotBounds?: AppElementBounds;
+  focusedWindowId?: number;
   elements: AppElement[];
   axText: string;
   diff?: AppStateDiff;
@@ -105,15 +107,39 @@ export interface AppActionRequest {
 
 export type AppActionExecutionMode =
   | "semantic_ax"
-  | "set_of_marks"
-  | "ocr"
+  | "process_pid_keyboard_cgevent"
   | "guarded_physical"
   | "agent_overlay";
 
+export interface AppPointerPosition {
+  x: number;
+  y: number;
+}
+
+export interface PhysicalFallbackApprovalReceipt {
+  approvalId: string;
+  requestedAt: string;
+  approvedAt: string;
+  mode: string;
+}
+
+export interface PhysicalFallbackApprovalRequest {
+  appId: string;
+  kind: "click" | "scroll";
+  element_index: number;
+  groundingMode: "set_of_marks" | "ocr" | "element_bounds";
+  target: AppPointerPosition;
+}
+
 export interface NativeAppActionResult {
   success: boolean;
+  targetPid: number;
+  targetWindowId: number;
   error?: string;
   clipboardRestored?: boolean;
+  executionMode?:
+    | "semantic_ax"
+    | "process_pid_keyboard_cgevent";
 }
 
 export interface AppActionReceipt {
@@ -122,11 +148,21 @@ export interface AppActionReceipt {
   kind: AppActionKind;
   beforeStateId: string;
   afterStateId: string;
+  targetPid: number;
+  targetWindowId: number;
   executionMode: AppActionExecutionMode;
   element_index?: number;
   completedAt: string;
   changed: boolean;
+  /** True only when Eliza invoked the global physical input driver. */
+  physicalPointerInput: boolean;
+  /** Coordinate comparison; movement without input is external or unknown. */
   physicalPointerMoved: boolean;
+  pointerObservation: "unchanged" | "changed" | "unavailable";
+  pointerBefore?: AppPointerPosition;
+  pointerAfter?: AppPointerPosition;
+  groundingMode?: "set_of_marks" | "ocr" | "element_bounds";
+  physicalFallbackApproval?: PhysicalFallbackApprovalReceipt;
   clipboardRestored?: boolean;
   targetBounds?: AppElementBounds;
 }
@@ -147,6 +183,7 @@ export interface AppControlAdapter {
     app: AppDescriptor,
     element: NativeAppElement | undefined,
     request: AppActionRequest,
+    expectedWindowId: number,
     signal?: AbortSignal,
   ): Promise<NativeAppActionResult>;
 }
@@ -175,6 +212,15 @@ export interface PhysicalPointerDriver {
     amount: number,
   ): Promise<void>;
 }
+
+export interface AppPointerObserver {
+  getPosition(): Promise<AppPointerPosition>;
+}
+
+export type PhysicalFallbackAuthorizer = (
+  request: PhysicalFallbackApprovalRequest,
+  signal?: AbortSignal,
+) => Promise<PhysicalFallbackApprovalReceipt>;
 
 export interface AppStateCapture {
   capture(

@@ -9,9 +9,13 @@ import type {
   AppControlPermissionState,
   AppDescriptor,
   AppElement,
+  AppPointerObserver,
+  AppPointerPosition,
   AppState,
   AppStateCapture,
   NativeAppElement,
+  PhysicalFallbackApprovalReceipt,
+  PhysicalFallbackAuthorizer,
   PhysicalPointerDriver,
 } from "./types.js";
 
@@ -42,6 +46,8 @@ interface AppControlCoordinatorOptions {
   capture: AppStateCapture;
   grounder?: AppControlGrounder;
   pointer?: PhysicalPointerDriver;
+  pointerObserver?: AppPointerObserver;
+  authorizePhysicalFallback?: PhysicalFallbackAuthorizer;
   now?: () => number;
   idFactory?: () => string;
 }
@@ -102,6 +108,8 @@ export class AppControlCoordinator {
   private readonly capture: AppStateCapture;
   private readonly grounder?: AppControlGrounder;
   private readonly pointer?: PhysicalPointerDriver;
+  private readonly pointerObserver?: AppPointerObserver;
+  private readonly authorizePhysicalFallback?: PhysicalFallbackAuthorizer;
   private readonly now: () => number;
   private readonly idFactory: () => string;
   private permission: AppControlPermissionState | "unknown" = "unknown";
@@ -111,6 +119,8 @@ export class AppControlCoordinator {
     this.capture = options.capture;
     this.grounder = options.grounder;
     this.pointer = options.pointer;
+    this.pointerObserver = options.pointerObserver;
+    this.authorizePhysicalFallback = options.authorizePhysicalFallback;
     this.now = options.now ?? Date.now;
     this.idFactory = options.idFactory ?? randomUUID;
   }
@@ -176,6 +186,9 @@ export class AppControlCoordinator {
             screenshotBounds: captured.bounds,
           }
         : {}),
+      ...(native.focusedWindowId !== undefined
+        ? { focusedWindowId: native.focusedWindowId }
+        : {}),
     };
     const previous = this.states.get(native.app.id)?.publicState;
     if (previous && !options.disableDiff)
@@ -208,6 +221,13 @@ export class AppControlCoordinator {
       );
     }
     const element = this.resolveElement(stored, request);
+    const expectedWindowId = stored.publicState.focusedWindowId;
+    if (expectedWindowId === undefined) {
+      throw new AppControlError(
+        "STALE_APP_STATE",
+        "The app state is not bound to an exact focused window; recapture after the target window is ready",
+      );
+    }
     if (request.kind === "secondary_action") {
       const action = request.secondaryAction?.trim();
       if (!action || !element?.actions.includes(action)) {
@@ -219,7 +239,21 @@ export class AppControlCoordinator {
     }
 
     if (request.kind === "hover_target") {
+      const pointerBefore = await this.readPointerPosition();
       const after = await this.getAppState(request.app, { signal });
+      if (after.focusedWindowId !== expectedWindowId) {
+        return {
+          success: false,
+          error:
+            "The exact target window changed before the overlay could be verified",
+          state: after,
+        };
+      }
+      const pointerAfter = await this.readPointerPosition();
+      const pointerObservation = this.pointerObservation(
+        pointerBefore,
+        pointerAfter,
+      );
       return {
         success: true,
         state: after,
@@ -229,30 +263,50 @@ export class AppControlCoordinator {
           kind: request.kind,
           beforeStateId: request.stateId,
           afterStateId: after.stateId,
+          targetPid: stored.publicState.app.pid,
+          targetWindowId: expectedWindowId,
           executionMode: "agent_overlay",
           ...(request.element_index !== undefined
             ? { element_index: request.element_index }
             : {}),
           completedAt: new Date(this.now()).toISOString(),
           changed: false,
-          physicalPointerMoved: false,
+          physicalPointerInput: false,
+          physicalPointerMoved: pointerObservation === "changed",
+          pointerObservation,
+          ...(pointerBefore ? { pointerBefore } : {}),
+          ...(pointerAfter ? { pointerAfter } : {}),
           ...(element?.bounds ? { targetBounds: element.bounds } : {}),
         },
       };
     }
 
+    const pointerBefore = await this.readPointerPosition();
     let executionMode:
       | "semantic_ax"
-      | "set_of_marks"
-      | "ocr"
+      | "process_pid_keyboard_cgevent"
       | "guarded_physical" = "semantic_ax";
     let nativeResult = await this.adapter.perform(
       stored.publicState.app,
       element,
       request,
+      expectedWindowId,
       signal,
     );
-    let physicalPointerMoved = false;
+    if (
+      nativeResult.targetPid !== stored.publicState.app.pid ||
+      nativeResult.targetWindowId !== expectedWindowId
+    ) {
+      return {
+        success: false,
+        error:
+          "The native action result was not bound to the requested PID and CGWindowID",
+      };
+    }
+    executionMode = nativeResult.executionMode ?? "semantic_ax";
+    let physicalPointerInput = false;
+    let groundingMode: "set_of_marks" | "ocr" | "element_bounds" | undefined;
+    let fallbackApproval: PhysicalFallbackApprovalReceipt | undefined;
 
     if (!nativeResult.success) {
       const match = await this.grounder?.ground(
@@ -261,17 +315,21 @@ export class AppControlCoordinator {
         signal,
       );
       if (match) {
-        if (!request.allowPhysicalFallback || !this.pointer) {
-          throw new AppControlError(
-            "PHYSICAL_FALLBACK_DENIED",
-            "Visual grounding found a target, but canonical policy did not authorize physical pointer injection",
-          );
-        }
-        executionMode = match.mode;
+        fallbackApproval = await this.approvePhysicalFallback(
+          request,
+          {
+            x: match.x,
+            y: match.y,
+            groundingMode: match.mode,
+          },
+          signal,
+        );
+        executionMode = "guarded_physical";
+        groundingMode = match.mode;
         if (request.kind === "click") {
-          await this.pointer.click(match.x, match.y);
+          await this.pointer?.click(match.x, match.y);
         } else if (request.kind === "scroll") {
-          await this.pointer.scroll(
+          await this.pointer?.scroll(
             match.x,
             match.y,
             request.direction ?? "down",
@@ -283,8 +341,12 @@ export class AppControlCoordinator {
             `Physical fallback is not supported for ${request.kind}`,
           );
         }
-        physicalPointerMoved = true;
-        nativeResult = { success: true };
+        physicalPointerInput = true;
+        nativeResult = {
+          success: true,
+          targetPid: stored.publicState.app.pid,
+          targetWindowId: expectedWindowId,
+        };
       } else if (
         request.allowPhysicalFallback &&
         this.pointer &&
@@ -292,10 +354,20 @@ export class AppControlCoordinator {
       ) {
         const x = element.bounds.x + element.bounds.width / 2;
         const y = element.bounds.y + element.bounds.height / 2;
+        fallbackApproval = await this.approvePhysicalFallback(
+          request,
+          {
+            x,
+            y,
+            groundingMode: "element_bounds",
+          },
+          signal,
+        );
         executionMode = "guarded_physical";
-        if (request.kind === "click") await this.pointer.click(x, y);
+        groundingMode = "element_bounds";
+        if (request.kind === "click") await this.pointer?.click(x, y);
         else if (request.kind === "scroll") {
-          await this.pointer.scroll(
+          await this.pointer?.scroll(
             x,
             y,
             request.direction ?? "down",
@@ -304,17 +376,53 @@ export class AppControlCoordinator {
         } else {
           return { success: false, error: nativeResult.error };
         }
-        physicalPointerMoved = true;
-        nativeResult = { success: true };
+        physicalPointerInput = true;
+        nativeResult = {
+          success: true,
+          targetPid: stored.publicState.app.pid,
+          targetWindowId: expectedWindowId,
+        };
       }
     }
     if (!nativeResult.success)
       return { success: false, error: nativeResult.error };
 
     const after = await this.getAppState(request.app, { signal });
+    const pointerAfter = await this.readPointerPosition();
+    const pointerObservation = this.pointerObservation(
+      pointerBefore,
+      pointerAfter,
+    );
     const changed =
       stored.publicState.axText !== after.axText ||
       stored.publicState.screenshot !== after.screenshot;
+    const afterElement = element
+      ? this.states
+          .get(request.app)
+          ?.nativeElements.find((candidate) =>
+            this.sameLocator(candidate.locator, element.locator),
+          )
+      : undefined;
+    const targetChanged = this.targetElementChanged(element, afterElement);
+    if (after.focusedWindowId !== expectedWindowId) {
+      return {
+        success: false,
+        error:
+          "The exact target window changed during the action; sibling-window state cannot verify delivery",
+        state: after,
+      };
+    }
+    if (
+      executionMode === "process_pid_keyboard_cgevent" &&
+      !targetChanged
+    ) {
+      return {
+        success: false,
+        error:
+          "Process-scoped PID event delivery could not be verified by target-element readback in the exact bound window",
+        state: after,
+      };
+    }
     return {
       success: true,
       state: after,
@@ -324,19 +432,114 @@ export class AppControlCoordinator {
         kind: request.kind,
         beforeStateId: request.stateId,
         afterStateId: after.stateId,
+        targetPid: stored.publicState.app.pid,
+        targetWindowId: expectedWindowId,
         executionMode,
         ...(request.element_index !== undefined
           ? { element_index: request.element_index }
           : {}),
         completedAt: new Date(this.now()).toISOString(),
         changed,
-        physicalPointerMoved,
+        physicalPointerInput,
+        physicalPointerMoved: pointerObservation === "changed",
+        pointerObservation,
+        ...(pointerBefore ? { pointerBefore } : {}),
+        ...(pointerAfter ? { pointerAfter } : {}),
+        ...(groundingMode ? { groundingMode } : {}),
+        ...(fallbackApproval
+          ? { physicalFallbackApproval: fallbackApproval }
+          : {}),
         ...(element?.bounds ? { targetBounds: element.bounds } : {}),
         ...(nativeResult.clipboardRestored !== undefined
           ? { clipboardRestored: nativeResult.clipboardRestored }
           : {}),
       },
     };
+  }
+
+  private async approvePhysicalFallback(
+    request: AppActionRequest,
+    target: AppPointerPosition & {
+      groundingMode: "set_of_marks" | "ocr" | "element_bounds";
+    },
+    signal?: AbortSignal,
+  ): Promise<PhysicalFallbackApprovalReceipt> {
+    if (
+      !request.allowPhysicalFallback ||
+      !this.pointer ||
+      !this.authorizePhysicalFallback ||
+      request.element_index === undefined ||
+      (request.kind !== "click" && request.kind !== "scroll")
+    ) {
+      throw new AppControlError(
+        "PHYSICAL_FALLBACK_DENIED",
+        "A target was grounded, but physical input requires a distinct action-time approval",
+      );
+    }
+    const pointer = await this.readPointerPosition();
+    if (!pointer) {
+      throw new AppControlError(
+        "PHYSICAL_FALLBACK_DENIED",
+        "Physical input was blocked because pointer provenance is unavailable",
+      );
+    }
+    return this.authorizePhysicalFallback(
+      {
+        appId: request.app,
+        kind: request.kind,
+        element_index: request.element_index,
+        groundingMode: target.groundingMode,
+        target: { x: target.x, y: target.y },
+      },
+      signal,
+    );
+  }
+
+  private async readPointerPosition(): Promise<AppPointerPosition | undefined> {
+    if (!this.pointerObserver) return undefined;
+    try {
+      const position = await this.pointerObserver.getPosition();
+      return Number.isFinite(position.x) && Number.isFinite(position.y)
+        ? position
+        : undefined;
+    } catch {
+      // error-policy:J4 pointer provenance is explicit as unavailable; a
+      // physical fallback still fails closed in approvePhysicalFallback.
+      return undefined;
+    }
+  }
+
+  private pointerObservation(
+    before: AppPointerPosition | undefined,
+    after: AppPointerPosition | undefined,
+  ): "unchanged" | "changed" | "unavailable" {
+    if (!before || !after) return "unavailable";
+    return before.x === after.x && before.y === after.y
+      ? "unchanged"
+      : "changed";
+  }
+
+  private targetElementChanged(
+    before: NativeAppElement | undefined,
+    after: NativeAppElement | undefined,
+  ): boolean {
+    if (!before) return false;
+    if (!after) return true;
+    return (
+      before.role !== after.role ||
+      before.label !== after.label ||
+      before.value !== after.value ||
+      before.enabled !== after.enabled ||
+      before.focused !== after.focused ||
+      before.selected !== after.selected
+    );
+  }
+
+  private sameLocator(left: number[], right: number[]): boolean {
+    return (
+      left.length === right.length &&
+      left.every((value, index) => value === right[index])
+    );
   }
 
   private resolveElement(

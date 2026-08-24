@@ -500,10 +500,16 @@ describe("ComputerUseSessionManager", () => {
             kind: "click",
             beforeStateId: "fixture.app:before",
             afterStateId: "fixture.app:after",
+            targetPid: 42,
+            targetWindowId: 701,
             executionMode: "semantic_ax",
             completedAt: "2026-08-23T00:00:01.000Z",
             changed: true,
+            physicalPointerInput: false,
             physicalPointerMoved: false,
+            pointerObservation: "unchanged",
+            pointerBefore: { x: 692, y: 765 },
+            pointerAfter: { x: 692, y: 765 },
             element_index: 3,
             targetBounds: { x: 40, y: 50, width: 60, height: 30 },
           },
@@ -539,7 +545,11 @@ describe("ComputerUseSessionManager", () => {
     );
     expect(completed.session.lastReceipt).toMatchObject({
       executionMode: "semantic_ax",
+      targetPid: 42,
+      targetWindowId: 701,
+      physicalPointerInput: false,
       physicalPointerMoved: false,
+      pointerObservation: "unchanged",
     });
     expect(completed.session.targetOverlay).toMatchObject({
       x: 40,
@@ -547,7 +557,9 @@ describe("ComputerUseSessionManager", () => {
       width: 60,
       height: 30,
       elementIndex: 3,
+      physicalPointerInput: false,
       physicalPointerMoved: false,
+      pointerObservation: "unchanged",
     });
   });
 
