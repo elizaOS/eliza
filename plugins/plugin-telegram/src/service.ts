@@ -141,32 +141,66 @@ type TelegramTargetParts = {
   threadId?: number;
 };
 
-function normalizeConnectorLimit(
-  limit: number | undefined,
-  fallback = 50,
-): number {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return fallback;
+function normalizeConnectorLimit(limit: number | undefined): number | undefined {
+  if (limit === undefined) {
+    return undefined;
   }
-  return Math.min(Math.floor(limit), 200);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new ElizaError("Telegram limit must be a positive integer", {
+      code: "TELEGRAM_MESSAGE_LIMIT_INVALID",
+      context: { limit },
+    });
+  }
+  return limit;
 }
 
 function filterMemoriesByQuery(
   memories: Memory[],
   query: string,
-  limit: number,
+  limit?: number,
 ): Memory[] {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) {
-    return memories.slice(0, limit);
-  }
-  return memories
-    .filter((memory) => {
+  const matches = normalized
+    ? memories.filter((memory) => {
       const text =
         typeof memory.content.text === "string" ? memory.content.text : "";
       return text.toLowerCase().includes(normalized);
     })
-    .slice(0, limit);
+    : memories;
+  return limit === undefined ? matches : matches.slice(0, limit);
+}
+
+const TELEGRAM_MEMORY_PAGE_SIZE = 500;
+
+async function loadAllTelegramRoomMemories(
+  runtime: IAgentRuntime,
+  roomId: UUID,
+): Promise<Memory[]> {
+  const memories: Memory[] = [];
+  const seenIds = new Set<UUID>();
+  for (let offset = 0; ; offset += TELEGRAM_MEMORY_PAGE_SIZE) {
+    const page = await runtime.getMemories({
+      tableName: "messages",
+      roomId,
+      limit: TELEGRAM_MEMORY_PAGE_SIZE,
+      offset,
+      orderBy: "createdAt",
+      orderDirection: "desc",
+    });
+    if (page.length === TELEGRAM_MEMORY_PAGE_SIZE) {
+      const ids = page.map((memory) => memory.id);
+      if (ids.some((id) => !id) || ids.every((id) => seenIds.has(id as UUID))) {
+        throw new ElizaError("Telegram message pagination made no progress", {
+          code: "TELEGRAM_MESSAGE_PAGINATION_STALLED",
+          context: { offset, pageSize: TELEGRAM_MEMORY_PAGE_SIZE },
+          severity: "fatal",
+        });
+      }
+      for (const id of ids) seenIds.add(id as UUID);
+    }
+    memories.push(...page);
+    if (page.length < TELEGRAM_MEMORY_PAGE_SIZE) return memories;
+  }
 }
 
 type MiddlewareNext = () => Promise<void>;
@@ -2688,17 +2722,15 @@ export class TelegramService extends Service {
       { accountId: (context as AccountScopedConnectorContext).accountId },
     );
     if (target?.roomId) {
-      const memories = await context.runtime.getMemories({
-        tableName: "messages",
-        roomId: target.roomId,
-        limit,
-        orderBy: "createdAt",
-        orderDirection: "desc",
-      });
-      return memories.filter((memory) => {
+      const memories = await loadAllTelegramRoomMemories(
+        context.runtime,
+        target.roomId,
+      );
+      const matches = memories.filter((memory) => {
         const metadata = memory.metadata as Record<string, unknown> | undefined;
         return !metadata?.accountId || metadata.accountId === accountId;
       });
+      return limit === undefined ? matches : matches.slice(0, limit);
     }
 
     const targets = await this.listRecentConnectorTargets(context);
@@ -2711,16 +2743,10 @@ export class TelegramService extends Service {
     );
     const chunks = await Promise.all(
       roomIds.map((roomId) =>
-        context.runtime.getMemories({
-          tableName: "messages",
-          roomId,
-          limit,
-          orderBy: "createdAt",
-          orderDirection: "desc",
-        }),
+        loadAllTelegramRoomMemories(context.runtime, roomId),
       ),
     );
-    return chunks
+    const matches = chunks
       .flat()
       .filter((memory) => {
         const metadata = memory.metadata as Record<string, unknown> | undefined;
@@ -2740,8 +2766,8 @@ export class TelegramService extends Service {
           rightCreated - leftCreated ||
           (left.id ?? "").localeCompare(right.id ?? "")
         );
-      })
-      .slice(0, limit);
+      });
+    return limit === undefined ? matches : matches.slice(0, limit);
   }
 
   async searchConnectorMessages(
@@ -2751,7 +2777,7 @@ export class TelegramService extends Service {
     const limit = normalizeConnectorLimit(params.limit);
     const messages = await this.fetchConnectorMessages(context, {
       target: params.target ?? context.target,
-      limit: Math.max(limit, 100),
+      limit: undefined,
     });
     return filterMemoriesByQuery(messages, params.query, limit);
   }
@@ -2791,13 +2817,7 @@ export class TelegramService extends Service {
           accountId,
         ),
       ) as UUID);
-    const memories = await context.runtime.getMemories({
-      tableName: "messages",
-      roomId,
-      count: 10,
-      orderBy: "createdAt",
-      orderDirection: "desc",
-    });
+    const memories = await loadAllTelegramRoomMemories(context.runtime, roomId);
     const recentMessages = memories
       .slice()
       .reverse()

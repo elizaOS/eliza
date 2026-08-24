@@ -258,6 +258,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Math\.max\(params\.limit\s*\?\?\s*100,\s*100\)/,
 		/\.slice\(0,\s*params\.limit\s*\?\?\s*25\)/,
 	],
+	"plugins/plugin-telegram/src/service.ts": [
+		/normalizeConnectorLimit\([^)]*fallback/,
+		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
+		/Math\.max\(limit,\s*100\)/,
+		/count:\s*10/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,
