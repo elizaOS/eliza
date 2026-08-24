@@ -312,7 +312,6 @@ function buildReportSummary(
 ): string {
   if (apps.length === 0) return "No app focus events recorded in that window.";
   return apps
-    .slice(0, 10)
     .map(
       (app) =>
         `- ${app.appName || app.bundleId}: ${formatMinutes(app.totalMs)}m`,
@@ -409,7 +408,7 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
   {
     name: "limit",
     description:
-      "Top-N for by_app / by_website / browser_activity (default 10).",
+      "Optional caller-requested Top-N pagination for by_app / by_website / browser_activity. Omit for complete results.",
     required: false,
     schema: { type: "number" as const },
   },
@@ -903,7 +902,6 @@ export function createScreenTimeActionRunner(
           until,
           source: params.source,
           identifier: params.identifier,
-          topN: 10,
         });
         const fallback =
           summary.items.length === 0

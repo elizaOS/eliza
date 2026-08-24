@@ -191,7 +191,6 @@ async function resolveHealthPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 6,
     })
   ).join("\n");
   const currentMessage = args.adapters.messageText(args.message);

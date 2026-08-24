@@ -353,6 +353,42 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-agent-skills/src/actions/parse-helpers.ts": [
 		/truncateWellFormed/,
 	],
+	"plugins/plugin-agent-skills/src/providers/skills.ts": [
+		/scoredSkills\.slice\(1,\s*\d+\)/,
+	],
+	"plugins/plugin-calendar/src/actions/calendar-handler.ts": [
+		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
+	],
+	"plugins/plugin-health/src/actions/health.ts": [
+		/recentConversationTexts\(\{[\s\S]{0,240}limit:/,
+	],
+	"plugins/plugin-health/src/actions/screen-time.ts": [
+		/apps[\s\S]{0,80}\.slice\(0,/,
+		/topN:\s*10/,
+	],
+	"plugins/plugin-personal-assistant/src/actions/app-block.ts": [
+		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
+	],
+	"plugins/plugin-personal-assistant/src/actions/book-travel.ts": [
+		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
+	],
+	"plugins/plugin-personal-assistant/src/actions/entity.ts": [
+		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
+		/listRelationships\(\{\s*limit:/,
+	],
+	"plugins/plugin-personal-assistant/src/actions/lib/scheduling-handler.ts": [
+		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
+		/listActiveNegotiations\(\{\s*limit:/,
+	],
+	"plugins/plugin-personal-assistant/src/actions/schedule.ts": [
+		/sleepEpisodes\.slice\(/,
+	],
+	"plugins/plugin-personal-assistant/src/actions/subscriptions.ts": [
+		/recentConversationTexts\(\{[\s\S]{0,240}limit:/,
+	],
+	"plugins/plugin-personal-assistant/src/actions/voice-call.ts": [
+		/listRelationships\(\{\s*limit:/,
+	],
 	"plugins/plugin-contacts/src/providers/contacts.ts": [
 		/CONTACTS_PROVIDER_LIMIT/,
 		/listContacts\(\{\s*limit:/,

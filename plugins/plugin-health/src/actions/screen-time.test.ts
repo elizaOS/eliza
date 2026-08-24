@@ -81,6 +81,19 @@ function makeRunner(service: ScreenTimeActionService) {
 }
 
 describe("screen-time action runner", () => {
+  it("requests the complete screen-time summary when no pagination is supplied", async () => {
+    const service = makeService();
+    const runner = makeRunner(service);
+
+    await runner(runtime, message, undefined, {
+      parameters: { subaction: "summary" },
+    });
+
+    expect(service.getScreenTimeSummary).toHaveBeenCalledWith(
+      expect.not.objectContaining({ topN: expect.anything() }),
+    );
+  });
+
   it("creates the owner screen-time action metadata in plugin-health", async () => {
     const validate = vi.fn(async () => true);
     const handler = vi.fn(async () => ({

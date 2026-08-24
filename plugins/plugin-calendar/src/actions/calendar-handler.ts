@@ -5210,7 +5210,6 @@ const calendarAction: CalendarHandlerAction = {
             runtime,
             message,
             state,
-            limit: 8,
           })
         ).join("\n");
         if (queriesForSearch.length === 0) {
