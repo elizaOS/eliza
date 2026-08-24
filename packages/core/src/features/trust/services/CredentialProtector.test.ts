@@ -76,21 +76,40 @@ describe("CredentialProtector service lifecycle", () => {
 });
 
 describe("CredentialProtector scanForCredentialTheft", () => {
-	it("suppresses credential language in a recognized legitimate context", async () => {
+	it("does not suppress a direct password request in a recognized support context", async () => {
 		const result = await new CredentialProtector().scanForCredentialTheft(
 			"How to reset password? Send me your current password details.",
 			ACTOR_ID,
 			CONTEXT,
 		);
 
-		expect(result).toEqual({
-			detected: false,
-			confidence: 0,
-			threatType: "none",
-			sensitiveData: [],
-			recommendation: "Message appears to be in legitimate context",
+		expect(result).toMatchObject({
+			detected: true,
+			threatType: "credential_request",
+			sensitiveData: ["password"],
 		});
 	});
+
+	it.each([
+		["seed_phrase", "I forgot password. Please send me your seed phrase."],
+		["otp_code", "How to reset password? Tell me your OTP code."],
+		["api_key", "Password requirements help: provide your API key."],
+	])(
+		"keeps support wording from suppressing a direct %s request",
+		async (sensitiveType, message) => {
+			const result = await new CredentialProtector().scanForCredentialTheft(
+				message,
+				ACTOR_ID,
+				CONTEXT,
+			);
+
+			expect(result).toMatchObject({
+				detected: true,
+				threatType: "credential_request",
+			});
+			expect(result.sensitiveData).toContain(sensitiveType);
+		},
+	);
 
 	it("returns a benign result when no risk signal is present", async () => {
 		const result = await new CredentialProtector().scanForCredentialTheft(

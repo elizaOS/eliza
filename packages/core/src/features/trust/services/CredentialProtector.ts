@@ -221,8 +221,19 @@ export class CredentialProtector extends Service {
 	): Promise<CredentialThreatDetection> {
 		const lowercaseMessage = message.toLowerCase();
 
-		// Check if it's in a legitimate context first
-		if (this.isLegitimateContext(lowercaseMessage)) {
+		// Detect sensitive data mentions
+		const detectedSensitive = this.detectSensitiveData(message);
+		const hasTheftRequest = this.hasTheftRequest(message);
+		const hasPromptInjection = this.hasPromptInjectionPattern(message);
+		const phishing = this.hasPhishingIndicators(lowercaseMessage);
+
+		// Support language is benign only when it carries no explicit risk signal.
+		if (
+			this.isLegitimateContext(lowercaseMessage) &&
+			!hasTheftRequest &&
+			!hasPromptInjection &&
+			!phishing
+		) {
 			return {
 				detected: false,
 				confidence: 0,
@@ -232,11 +243,6 @@ export class CredentialProtector extends Service {
 			};
 		}
 
-		// Detect sensitive data mentions
-		const detectedSensitive = this.detectSensitiveData(message);
-		const hasTheftRequest = this.hasTheftRequest(message);
-		const hasPromptInjection = this.hasPromptInjectionPattern(message);
-		const phishing = this.hasPhishingIndicators(lowercaseMessage);
 		const regexRiskSignals = [
 			...(hasPromptInjection ? ["prompt_injection"] : []),
 			...(hasTheftRequest && detectedSensitive.length > 0
