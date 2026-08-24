@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
 	containsExternalEnvelopeMaterial: vi.fn(),
 }));
 
-vi.mock("./external-content.js", () => ({
+vi.mock("../external-content.js", () => ({
 	containsExternalEnvelopeMaterial: (...a: unknown[]) =>
 		mocks.containsExternalEnvelopeMaterial(...a),
 }));
@@ -13,7 +13,7 @@ import {
 	ENVELOPE_LEAK_NOTICE,
 	guardOutboundEnvelopeText,
 	reportOutboundEnvelopeBlock,
-} from "./outbound-envelope-guard.ts";
+} from "../outbound-envelope-guard.ts";
 
 describe("guardOutboundEnvelopeText", () => {
 	it("passes clean text through untouched", () => {
