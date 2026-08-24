@@ -1,6 +1,6 @@
 /**
  * `AVAILABLE_AGENTS` provider: the adapter inventory (which ACP coding backends
- * are installed and authenticated) plus a bounded list of recent/active
+ * are installed and authenticated) plus the complete list of active
  * sessions, rendered into the planner context. Merges the `checkAvailableAgents`
  * inventory with framework state so shell-adapter backends still appear when
  * installed and auth-ready.

@@ -1610,9 +1610,9 @@ export class SwarmCoordinatorService
         const acp = this.acp();
         const capturedOutput = acp
           ? typeof acp.getSessionTurnOutput === "function"
-            ? await acp.getSessionTurnOutput(sessionId, 2_000)
+            ? await acp.getSessionTurnOutput(sessionId)
             : typeof acp.getSessionOutput === "function"
-              ? await acp.getSessionOutput(sessionId, 2_000)
+              ? await acp.getSessionOutput(sessionId)
               : undefined
           : undefined;
         structuredProof = extractStructuredCompletionProof(capturedOutput);

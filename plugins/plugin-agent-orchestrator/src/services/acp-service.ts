@@ -3153,13 +3153,18 @@ export class AcpService extends Service {
     return () => undefined;
   }
 
-  async getSessionOutput(sessionId: string, lines = 200): Promise<string> {
-    return (this.outputBuffers.get(sessionId) ?? []).slice(-lines).join("");
+  async getSessionOutput(sessionId: string, lines?: number): Promise<string> {
+    const output = this.outputBuffers.get(sessionId) ?? [];
+    return (lines === undefined ? output : output.slice(-lines)).join("");
   }
 
   /** Output captured during the most recent prompt turn only. */
-  async getSessionTurnOutput(sessionId: string, lines = 200): Promise<string> {
-    return (this.turnOutputBuffers.get(sessionId) ?? []).slice(-lines).join("");
+  async getSessionTurnOutput(
+    sessionId: string,
+    lines?: number,
+  ): Promise<string> {
+    const output = this.turnOutputBuffers.get(sessionId) ?? [];
+    return (lines === undefined ? output : output.slice(-lines)).join("");
   }
 
   private baseArgs(opts: {
@@ -5597,14 +5602,10 @@ export class AcpService extends Service {
   private appendOutput(sessionId: string, text: string): void {
     const buffer = this.outputBuffers.get(sessionId) ?? [];
     buffer.push(text);
-    if (buffer.length > 2_000) buffer.splice(0, buffer.length - 2_000);
     this.outputBuffers.set(sessionId, buffer);
     const turnBuffer = this.turnOutputBuffers.get(sessionId);
     if (turnBuffer) {
       turnBuffer.push(text);
-      if (turnBuffer.length > 2_000) {
-        turnBuffer.splice(0, turnBuffer.length - 2_000);
-      }
     }
   }
 

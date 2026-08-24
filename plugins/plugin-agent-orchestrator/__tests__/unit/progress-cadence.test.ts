@@ -455,6 +455,7 @@ describe("emitProgress routing ladder + cadence", () => {
         prompt: expect.any(String),
       }),
     );
+    expect(rt.useModel.mock.calls[0]?.[1]).not.toHaveProperty("maxTokens");
 
     // Subsequent events (narration, tools) must NOT add more acks.
     await fire(rt, "s-ack", "message", { text: "still working" });
@@ -893,7 +894,7 @@ describe("emitProgress routing ladder + cadence", () => {
   //    summarizer prompt. The upstream `stringifyMaybe` serializer turns a
   //    missing ACP tool title (undefined/null) into the literal two-character
   //    string `""`; without sanitizing, the summarizer prompt filled up with
-  //    `Tools the sub-agent has called recently (most recent last): "", ""`,
+  //    `Tools the sub-agent has called (in source order): "", ""`,
   //    burning tokens every 30s tick and feeding the small model garbage. ──
 
   it("heartbeat drops content-free tool titles (JSON-serialized empty string) from the prompt", async () => {
@@ -937,14 +938,14 @@ describe("emitProgress routing ladder + cadence", () => {
     expect(rt.useModel).toHaveBeenCalledTimes(1);
     const [, params] = rt.useModel.mock.calls[0] as [
       unknown,
-      { prompt: string },
+      { prompt: string; maxTokens?: number },
     ];
+    expect(params).not.toHaveProperty("maxTokens");
     // The junk `""` tool entries must NOT be in the summarizer prompt.
     expect(params.prompt).not.toContain('"", ""');
-    expect(params.prompt).not.toMatch(/recently[^\n]*:\s*""/);
-    // The real, informative call still made it in (path >2 segments → shortPath
-    // abbreviates the leading segments to `…/`).
-    expect(params.prompt).toContain("Edit(\u2026/src/app.ts)");
+    expect(params.prompt).not.toMatch(/source order[^\n]*:\s*""/);
+    // The real, informative call still made it in with its complete path.
+    expect(params.prompt).toContain("Edit(/repo/src/app.ts)");
 
     await rt.dispose();
   });

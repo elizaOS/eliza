@@ -113,6 +113,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,
 		/count:\s*\d+/,
+		/maxTokens\s*:/,
 	],
 	"packages/core/src/services/message/direct-action-heuristics.ts": [
 		/CONTINUATION_LOOKBACK_ENTRIES/,
@@ -335,6 +336,27 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-agent-orchestrator/src/services/acp-service.ts": [
 		/wellFormed\.length\s*>\s*500/,
 		/truncateWellFormed\(wellFormed,\s*200\)/,
+		/(?:outputBuffers|turnOutputBuffers)[\s\S]{0,200}\.splice\(/,
+		/getSession(?:Turn)?Output\([^)]*,\s*\d[\d_]*/,
+	],
+	"plugins/plugin-agent-orchestrator/src/index.ts": [
+		/maxTokens\s*:/,
+		/getSessionOutput\([^)]*,\s*\d[\d_]*/,
+		/toolHistory[\s\S]{0,400}(?:\.slice\(|\.shift\(|\.splice\()/,
+	],
+	"plugins/plugin-agent-orchestrator/src/services/sub-agent-router.ts": [
+		/getSessionOutput\([^)]*,\s*\d[\d_]*/,
+		/MAX_VERBATIM_DELIVERABLE/,
+		/stripToolTranscript\(response\)/,
+	],
+	"plugins/plugin-agent-orchestrator/src/services/swarm-coordinator-service.ts":
+		[/getSession(?:Turn)?Output\([^)]*,\s*\d[\d_]*/],
+	"plugins/plugin-agent-orchestrator/src/providers/active-sub-agents.ts": [
+		/getSessionOutput\([^)]*,\s*\d[\d_]*/,
+		/summarizeOutputTail/,
+	],
+	"plugins/plugin-agent-orchestrator/src/services/ansi-utils.ts": [
+		/strippedLines\.slice\(-\d+/,
 	],
 	"packages/skills/src/formatter.ts": [/raw\.slice\(0,\s*1024\)/],
 	"plugins/plugin-personal-assistant/src/actions/autofill.ts": [

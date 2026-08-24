@@ -124,6 +124,32 @@ describe("activeSubAgentsProvider", () => {
     expect(result.text).toContain("REPLY");
   });
 
+  it("preserves complete session output and workdir in planner context", async () => {
+    const completeOutput = Array.from(
+      { length: 25 },
+      (_, index) => `event-${index}`,
+    ).join("\n");
+    const getSessionOutput = vi.fn(async () => completeOutput);
+    const service = serviceMock({
+      listSessions: () => [sub({ status: "running" })],
+      getSessionOutput,
+    });
+    const runtime = runtimeWith(service);
+
+    const result = await activeSubAgentsProvider.get(runtime, memory(), state);
+
+    expect(getSessionOutput).toHaveBeenCalledWith(
+      "01234567-89ab-cdef-0123-456789abcdef",
+    );
+    expect(result.text).toContain("event-0");
+    expect(result.text).toContain("event-24");
+    expect(result.text).toContain("workdir=/Users/x/work/repo");
+    expect(
+      (result.data as { sessions: Array<{ workdir: string }> }).sessions[0]
+        ?.workdir,
+    ).toBe("/Users/x/work/repo");
+  });
+
   it("buckets transient statuses into 'active' for cache stability", async () => {
     const transient = [
       "ready",

@@ -769,7 +769,7 @@ export function extractCompletionSummary(raw: string): string {
     return structuredCompletionBlock;
   }
   const lines: string[] = [];
-  const artifactText = strippedLines.slice(-80).join("\n");
+  const artifactText = strippedLines.join("\n");
 
   // PR / issue URLs
   const prUrls = artifactText.match(

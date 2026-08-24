@@ -264,6 +264,20 @@ describe("runBotNoiseTriage — cheap-tier verdict", () => {
 		}
 	});
 
+	it("does not impose an output cap on the triage model", async () => {
+		const runtime = makeRuntime({ modelResult: "IGNORE" });
+		await runBotNoiseTriage({
+			runtime,
+			message: relayEmbedMessage(),
+			explicitlyAddressesAgent: false,
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledWith(
+			ModelType.TEXT_SMALL,
+			expect.not.objectContaining({ maxTokens: expect.anything() }),
+		);
+	});
+
 	it("fails open when the TEXT_SMALL call throws (missing handler / provider down)", async () => {
 		const runtime = makeRuntime({
 			modelError: new Error("No handler found for delegate type: TEXT_SMALL"),

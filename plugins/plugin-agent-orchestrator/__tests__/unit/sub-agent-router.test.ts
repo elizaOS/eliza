@@ -17,8 +17,8 @@ import {
   setPinnedTransport,
 } from "../../src/services/ssrf-guard.js";
 import {
-  extractShortToolDeliverable,
   extractSubResources,
+  extractToolDeliverables,
   normalizeUrlsInText,
   redactLoopbackUrls,
   SubAgentRouter,
@@ -709,11 +709,7 @@ describe("SubAgentRouter", () => {
     expect(metadata?.subAgentRoutingKind).toBe("QUESTION_FOR_TASK_CREATOR");
   });
 
-  it("does not leak a verify-retry attempt's raw reasoning into the completion", async () => {
-    // A verification-retry re-dispatch on a weak model often returns tool-loop
-    // reasoning as its "final" text. That must never reach the user as the
-    // completion narration — surface a clean header (verified URLs fill in
-    // downstream), not the scratchpad.
+  it("preserves a verify-retry attempt's complete final response", async () => {
     session = makeSession({
       metadata: {
         label: "Build a dice roller app",
@@ -738,9 +734,9 @@ describe("SubAgentRouter", () => {
 
     expect(handleMessage).toHaveBeenCalledTimes(1);
     const text = handleMessage.mock.calls[0]?.[1]?.content?.text as string;
-    expect(text).not.toContain("Seems stuck");
-    expect(text).not.toContain("call read properly");
-    expect(text).not.toContain("glob for public");
+    expect(text).toContain("Seems stuck");
+    expect(text).toContain("call read properly");
+    expect(text).toContain("glob for public");
   });
 
   it("routes AGENT_COORDINATION to the worktree room with actionable metadata", async () => {
@@ -2535,61 +2531,59 @@ describe("normalizeUrlsInText", () => {
   });
 });
 
-describe("extractShortToolDeliverable", () => {
+describe("extractToolDeliverables", () => {
   it("recovers the inner body of a single short tool-output block", () => {
     const data = {
       response:
         "Done.\n[tool output: bash]\n42 files matched the pattern.\n[/tool output]",
     };
-    expect(extractShortToolDeliverable(data)).toBe(
-      "42 files matched the pattern.",
-    );
+    expect(extractToolDeliverables(data)).toBe("42 files matched the pattern.");
   });
 
   it("reads from finalText when response is absent", () => {
     const data = {
       finalText: "[tool output: cat]\nhello world\n[/tool output]",
     };
-    expect(extractShortToolDeliverable(data)).toBe("hello world");
+    expect(extractToolDeliverables(data)).toBe("hello world");
   });
 
-  it("returns the LAST block for multiple tool-output blocks (final result wins)", () => {
+  it("preserves every tool-output block in source order", () => {
     const data = {
       response:
         "[tool output: a]\none\n[/tool output]\n[tool output: b]\ntwo\n[/tool output]",
     };
-    expect(extractShortToolDeliverable(data)).toBe("two");
+    expect(extractToolDeliverables(data)).toBe("one\ntwo");
   });
 
-  it("returns undefined when the block exceeds the 2KB verbatim gate", () => {
+  it("preserves a block beyond the former 2KB boundary", () => {
     const big = "x".repeat(2049);
     const data = { response: `[tool output: dump]\n${big}\n[/tool output]` };
-    expect(extractShortToolDeliverable(data)).toBeUndefined();
+    expect(extractToolDeliverables(data)).toBe(big);
   });
 
   it("relays a block at the 2KB boundary verbatim", () => {
     const atCap = "y".repeat(2048);
     const data = { response: `[tool output: dump]\n${atCap}\n[/tool output]` };
-    expect(extractShortToolDeliverable(data)).toBe(atCap);
+    expect(extractToolDeliverables(data)).toBe(atCap);
   });
 
   it("returns undefined when there is no tool-output block", () => {
     expect(
-      extractShortToolDeliverable({ response: "just prose, no tools" }),
+      extractToolDeliverables({ response: "just prose, no tools" }),
     ).toBeUndefined();
   });
 
   it("returns undefined when the block body is empty", () => {
     expect(
-      extractShortToolDeliverable({
+      extractToolDeliverables({
         response: "[tool output: noop]\n\n[/tool output]",
       }),
     ).toBeUndefined();
   });
 
   it("returns undefined when there is no captured response payload", () => {
-    expect(extractShortToolDeliverable({})).toBeUndefined();
-    expect(extractShortToolDeliverable(null)).toBeUndefined();
+    expect(extractToolDeliverables({})).toBeUndefined();
+    expect(extractToolDeliverables(null)).toBeUndefined();
   });
 });
 
@@ -2793,7 +2787,7 @@ describe("SubAgentRouter — change-set narration (GAP C)", () => {
       const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
       await SubAgentRouter.start(runtime);
 
-      // The raw model transcript that previously leaked verbatim to Discord.
+      // The complete model response must remain alongside grounded diff facts.
       acp.emit(SESSION_ID, "task_complete", {
         response:
           "[tool output: Read index.html]\n<h1>placeholder</h1>\n[/tool output]\nSearch for the image element.",
@@ -2804,9 +2798,9 @@ describe("SubAgentRouter — change-set narration (GAP C)", () => {
       const text = String(posted?.content?.text ?? "");
       // Grounded in the real change set...
       expect(text).toContain("index.html");
-      // ...with neither the raw tool-output blocks nor the plan-narration.
-      expect(text).not.toContain("[tool output:");
-      expect(text).not.toContain("Search for the image element");
+      // ...without silently dropping the model's tool output or narration.
+      expect(text).toContain("[tool output:");
+      expect(text).toContain("Search for the image element");
 
       // And the change set is persisted for the "show me the diff" provider.
       expect(acp.service.updateSessionMetadata).toHaveBeenCalled();
@@ -3071,7 +3065,7 @@ describe("SubAgentRouter — account failover resume", () => {
     await new Promise((r) => setImmediate(r));
 
     expect(marks.markRateLimited).toHaveBeenCalledTimes(1);
-    expect(acp.service.getSessionOutput).toHaveBeenCalledWith(SESSION_ID, 120);
+    expect(acp.service.getSessionOutput).toHaveBeenCalledWith(SESSION_ID);
     expect(spawnSession).toHaveBeenCalledTimes(1);
     const spawnArg = spawnSession.mock.calls[0]?.[0] as {
       initialTask?: string;

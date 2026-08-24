@@ -80,7 +80,6 @@ import {
   SsrfBlockedError,
   safeFetch,
 } from "./ssrf-guard.js";
-import { stripToolTranscript } from "./transcript-sanitizer.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 import {
   captureChangeSet,
@@ -1518,18 +1517,15 @@ export class SubAgentRouter extends Service {
       deadUrls = verified.dead;
       verifiedUrls = verified.verifiedUrls;
     }
-    // When the deliverable IS the printed/tool output and there is no change
-    // set and no verified URL, composeNarration→stripToolTranscript has just
-    // deleted it from `text`. Recover the captured block from the RAW response
-    // (before stripping) so the parent relays it verbatim instead of replying
-    // with an empty completion. Gated to a single short block so multi-KB
-    // transcripts stay on the model-rendered (summarized) path.
+    // Preserve the complete verified completion separately from its planner
+    // header so origin-result fallback never substitutes a partial tool block
+    // for the actual delegated answer.
     let deliverable: string | undefined;
     // Capture the deliverable even when files changed: a "do X and report the
     // output" task that also writes a file must still surface the output, not
     // only the diff summary. The verifiedUrls path keeps its dedicated handling.
     if (event === "task_complete" && verifiedUrls.length === 0) {
-      deliverable = extractShortToolDeliverable(data);
+      deliverable = stripSubAgentHeaderLine(text);
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
     // are unreachable — the build is incomplete (missing or empty files).
@@ -1626,22 +1622,6 @@ export class SubAgentRouter extends Service {
         verifiedUrls,
         (level, message, ctx) => this.log(level, message, ctx),
       );
-    } else if (
-      event === "task_complete" &&
-      deliverable &&
-      !text.includes(deliverable)
-    ) {
-      // The captured tool output IS the answer for a "run it and report the
-      // output" task. The weak model's prose paraphrase of the same run is
-      // routinely truncated (relays "479" for a captured "479001600"), and that
-      // prose — not the metadata deliverable — is what every downstream reader
-      // consumes: the planner re-derives its reply from this narration, and
-      // Stage-1 regenerates any bare-numeric reply from it. So surface the
-      // verbatim deliverable as the narration body (the header's relay /
-      // do-not-respawn directive is preserved on the first line).
-      const firstNewline = text.indexOf("\n");
-      const header = firstNewline === -1 ? text : text.slice(0, firstNewline);
-      text = `${header}\n${deliverable}`;
     }
     if (event === "task_complete") {
       // Remember the best (longest) CLEAN result for this root origin so the
@@ -2285,7 +2265,7 @@ export class SubAgentRouter extends Service {
     data: unknown,
   ): Promise<string | undefined> {
     try {
-      const output = await service.getSessionOutput(sessionId, 120);
+      const output = await service.getSessionOutput(sessionId);
       if (output?.trim()) return output.trim();
     } catch (err) {
       // error-policy:J7 Progress enrichment must not undo a recovered session;
@@ -3419,26 +3399,9 @@ function normalizeFinishReason(
   }
 }
 
-// The envelope-stripping logic moved to the shared transcript-sanitizer so the
-// swarm-synthesis relay path (issue elizaOS/eliza#11578) sanitizes with the
-// SAME implementation instead of its own missing copy. stripToolTranscript is
-// re-imported (see the top-of-file import) and behaves identically here for the
-// well-formed case the router already handled; it additionally hardens against
-// empty-title and unterminated blocks, which the router never emitted but which
-// leaked on the synthesis path.
-
-// Maximum size of a captured tool-output block we will relay verbatim. Above
-// this, the deliverable is a multi-KB transcript and stays on the
-// model-rendered (summarized) path rather than being dumped to the user.
-const MAX_VERBATIM_DELIVERABLE_BYTES = 2048;
-
-// Recover the deliverable when it is the sub-agent's printed/tool output and
-// composeNarration→stripToolTranscript has deleted it. Extracts the inner body
-// of the FIRST `[tool output: …] … [/tool output]` block from the RAW response
-// (the same envelope captureTerminalToolOutput emits). Returns it only when it
-// is a single short block (≤2KB); multi-block or multi-KB transcripts return
-// undefined so they stay on the summarized path.
-export function extractShortToolDeliverable(data: unknown): string | undefined {
+// Recover every captured tool-output body in source order. This derived view is
+// used only alongside the complete raw response; it never replaces that value.
+export function extractToolDeliverables(data: unknown): string | undefined {
   const response =
     pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
   if (!response) return undefined;
@@ -3446,24 +3409,15 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
     /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
   );
   if (!blocks?.length) return undefined;
-  // Multi-step tool use is normal — a failed attempt then a retry (`python`
-  // not found, then `python3`), or write-a-file then run-it. The LAST
-  // non-empty block is the sub-agent's final result, so surface it verbatim:
-  // a weak coding model routinely truncates that result in its own prose
-  // (relays "479" for a captured "479001600"), and the ground-truth tool
-  // output must win over the paraphrase. A block over the size cap is a
-  // transcript dump, not a deliverable — fall back to the summarized path.
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const inner = blocks[i]
-      .replace(/^\[tool output:[^\]]*\]/, "")
-      .replace(/\[\/tool output\]$/, "")
-      .trim();
-    if (!inner) continue;
-    return Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
-      ? undefined
-      : inner;
-  }
-  return undefined;
+  const bodies = blocks
+    .map((block) =>
+      block
+        .replace(/^\[tool output:[^\]]*\]/, "")
+        .replace(/\[\/tool output\]$/, "")
+        .trim(),
+    )
+    .filter((body) => body.length > 0);
+  return bodies.length > 0 ? bodies.join("\n") : undefined;
 }
 
 function composeNarration(
@@ -3545,7 +3499,6 @@ function composeNarration(
     // summary. This is the typed `[tool output: …]` envelope, not the raw
     // transcript, so the leak/respawn problems the diff-summary path solved
     // stay solved.
-    const capturedDeliverable = extractShortToolDeliverable(data);
     // Only surface a disk-verification LINE when it carries a real signal —
     // i.e. a claimed changed file was MISSING at completion. A clean, verified
     // change set stays silent here: `summarizeChangeSet(..., verification)`
@@ -3565,7 +3518,7 @@ function composeNarration(
         ? `Artifact verification: UNVERIFIED at completion; missing ${missing.join(", ")}.`
         : undefined;
     const lines = [
-      ...(capturedDeliverable ? [capturedDeliverable] : []),
+      response,
       summarizeChangeSet(changeSet, artifactVerification),
       unverifiedLine,
       changeSet.diffStat,
@@ -3578,24 +3531,7 @@ function composeNarration(
   if (response === undefined) {
     return `${header}\nsub-agent reports task complete (no captured output).`;
   }
-  // A verification-retry attempt (re-dispatched by retryIncompleteBuild) that
-  // produced no change set: never narrate its raw step prose. On weak coding
-  // models that prose is tool-loop reasoning ("I need to call read properly.
-  // Seems stuck. Let's retry.") that leaks verbatim to the user and reads as
-  // pending work to the planner. Surface only the public URL(s) it claimed
-  // (loopback dropped, verified downstream); a genuine failure is covered by
-  // the separate build-incomplete report.
-  if (readSessionRetryCount(session.metadata) > 0) {
-    const urls = collectVerifiableUrlCandidates(response).filter(
-      (url) => !isLoopbackUrl(url),
-    );
-    return urls.length > 0 ? `${header}\n${urls.join("\n")}` : header;
-  }
-  // Non-retry completion: keep the (transcript-stripped, banner-stripped) prose
-  // so legitimate results ("PR opened: …", a question) still reach the user.
-  const cleaned = stripToolTranscript(response);
-  if (!cleaned) return header;
-  return `${header}\n${stripRoutingKindBanner(cleaned)}`;
+  return `${header}\n${stripRoutingKindBanner(response)}`;
 }
 
 function stripRoutingKindBanner(text: string): string {
