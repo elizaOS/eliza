@@ -37,6 +37,7 @@ const INTERNAL_CONTROL_ENV = new Set([
   "ELIZA_SYNTHETIC_CONTROL_URL",
 ]);
 const REAL_MODEL_METER_FAILURE_CODES = new Set([
+  "STABILITY_MODEL_PRE_DISPATCH_REJECTED",
   "STABILITY_MODEL_USAGE_MISSING",
   "STABILITY_MODEL_USAGE_MALFORMED",
   "STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED",
@@ -657,6 +658,62 @@ export class ScenarioStabilitySubprocessAdapter
         | Record<string, unknown>
         | undefined;
       const requestCount = receipt?.requestCount;
+      const requestEnvelopes = Array.isArray(receipt?.requestEnvelopes)
+        ? receipt.requestEnvelopes
+        : null;
+      const allowedRoutes =
+        input.target.model.provider === "openai"
+          ? new Set(["/v1/responses", "/v1/chat/completions"])
+          : new Set(["/v1/messages"]);
+      const requestEnvelopesValid =
+        requestEnvelopes !== null &&
+        requestEnvelopes.length <= 1_000 &&
+        requestEnvelopes.every((value) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) {
+            return false;
+          }
+          const envelope = value as Record<string, unknown>;
+          const requested = envelope.requestedMaxOutputTokens;
+          const effective = envelope.effectiveMaxOutputTokens;
+          const charge = envelope.inputBudgetCharge;
+          const failureCode = envelope.failureCode;
+          return (
+            Number.isSafeInteger(envelope.requestNumber) &&
+            (envelope.requestNumber as number) > 0 &&
+            (envelope.requestNumber as number) <=
+              (Number.isSafeInteger(requestCount)
+                ? (requestCount as number) + 1
+                : 0) &&
+            envelope.method === "POST" &&
+            typeof envelope.route === "string" &&
+            allowedRoutes.has(envelope.route) &&
+            Number.isSafeInteger(envelope.bodyBytes) &&
+            (envelope.bodyBytes as number) >= 0 &&
+            (envelope.observedModel === null ||
+              (typeof envelope.observedModel === "string" &&
+                envelope.observedModel.length > 0 &&
+                envelope.observedModel.length <= 512)) &&
+            (requested === null ||
+              (Number.isSafeInteger(requested) && (requested as number) > 0)) &&
+            (effective === null ||
+              (Number.isSafeInteger(effective) && (effective as number) > 0)) &&
+            (charge === null ||
+              (Number.isSafeInteger(charge) && (charge as number) > 0)) &&
+            typeof envelope.accepted === "boolean" &&
+            (envelope.accepted
+              ? envelope.observedModel === input.target.model.model &&
+                effective !== null &&
+                (effective as number) <= input.budgets.maxOutputTokens &&
+                charge !== null &&
+                (charge as number) <= input.budgets.maxInputTokens &&
+                failureCode === undefined
+              : typeof failureCode === "string" &&
+                REAL_MODEL_METER_FAILURE_CODES.has(failureCode))
+          );
+        }) &&
+        requestEnvelopes.filter(
+          (value) => (value as Record<string, unknown>).accepted === true,
+        ).length === requestCount;
       const successMeteringValid =
         execution.passed === false ||
         (receipt?.liveModelInvoked === true &&
@@ -664,6 +721,15 @@ export class ScenarioStabilitySubprocessAdapter
           (requestCount as number) > 0 &&
           execution.inputTokens > 0 &&
           meteringFailures?.length === 0);
+      const successEnvelopeBindingValid =
+        execution.passed === false ||
+        (requestEnvelopes?.length === requestCount &&
+          requestEnvelopes.every(
+            (value) =>
+              (value as Record<string, unknown>).accepted === true &&
+              (value as Record<string, unknown>).observedModel ===
+                input.target.model.model,
+          ));
       const failedMeteringBindingValid =
         execution.passed === true ||
         (((Number.isSafeInteger(requestCount) &&
@@ -687,7 +753,9 @@ export class ScenarioStabilitySubprocessAdapter
         receipt.inputTokens !== execution.inputTokens ||
         receipt.outputTokens !== execution.outputTokens ||
         !meteringFailuresValid ||
+        !requestEnvelopesValid ||
         !successMeteringValid ||
+        !successEnvelopeBindingValid ||
         !failedMeteringBindingValid ||
         receipt.namespace !== session.manifest.namespace ||
         receipt.manifestId !== session.manifest.manifestId ||
