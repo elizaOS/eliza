@@ -3,7 +3,7 @@ import {
   DEFAULT_ROUTING_POLICY,
   isRoutingPolicy,
   ROUTING_POLICIES,
-} from "./routing-policy.ts";
+} from "../routing-policy.ts";
 
 describe("isRoutingPolicy", () => {
   it("accepts every documented policy", () => {
