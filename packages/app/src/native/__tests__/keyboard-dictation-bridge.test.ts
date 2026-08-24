@@ -113,4 +113,56 @@ describe("getKeyboardDictationBridge", () => {
     expect(mocks.registerPlugin).toHaveBeenCalledTimes(1);
     expect(mocks.registerPlugin).toHaveBeenCalledWith("ElizaKeyboard");
   });
+
+  it("propagates a native registration failure instead of swallowing it", async () => {
+    const { getKeyboardDictationBridge } = await import(
+      "../keyboard-dictation-bridge.js"
+    );
+    mocks.getPlatform.mockReturnValue("ios");
+    mocks.registerPlugin.mockImplementation(() => {
+      throw new Error("ElizaKeyboard plugin unavailable");
+    });
+
+    expect(() => getKeyboardDictationBridge()).toThrow(
+      "ElizaKeyboard plugin unavailable",
+    );
+    expect(mocks.registerPlugin).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers on the next call after a failed registration and caches the recovered plugin", async () => {
+    const { getKeyboardDictationBridge } = await import(
+      "../keyboard-dictation-bridge.js"
+    );
+    mocks.getPlatform.mockReturnValue("ios");
+    mocks.registerPlugin.mockImplementationOnce(() => {
+      throw new Error("ElizaKeyboard plugin unavailable");
+    });
+    const recovered = makePlugin();
+    mocks.registerPlugin.mockReturnValue(recovered);
+
+    expect(() => getKeyboardDictationBridge()).toThrow(
+      "ElizaKeyboard plugin unavailable",
+    );
+
+    expect(getKeyboardDictationBridge()).toBe(recovered);
+    expect(getKeyboardDictationBridge()).toBe(recovered);
+    expect(mocks.registerPlugin).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries registration on every call while registerPlugin yields no plugin", async () => {
+    const { getKeyboardDictationBridge } = await import(
+      "../keyboard-dictation-bridge.js"
+    );
+    mocks.getPlatform.mockReturnValue("ios");
+    mocks.registerPlugin.mockReturnValue(undefined);
+
+    expect(getKeyboardDictationBridge()).toBeUndefined();
+    expect(getKeyboardDictationBridge()).toBeUndefined();
+    expect(mocks.registerPlugin).toHaveBeenCalledTimes(2);
+
+    const late = makePlugin();
+    mocks.registerPlugin.mockReturnValue(late);
+    expect(getKeyboardDictationBridge()).toBe(late);
+    expect(mocks.registerPlugin).toHaveBeenCalledTimes(3);
+  });
 });
