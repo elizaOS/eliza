@@ -255,6 +255,7 @@ import {
   resolvePreferredProviderPluginName,
   resolvePrimaryModel,
 } from "./model-resolution.ts";
+import { loadOrCreateRuntimeInstallationId } from "./runtime-installation-id.ts";
 
 type RemoteCodingRunnerModule =
   typeof import("../services/remote-coding-runner.ts");
@@ -4823,8 +4824,12 @@ export async function startEliza(
   await configureLocalEmbeddingEnvEarlyIfNeeded(config);
   opts?.abortSignal?.throwIfAborted();
   bootContext.enterPhase("construct-runtime");
+  const runtimeInstanceId = await loadOrCreateRuntimeInstallationId(
+    resolveStateDir(),
+  );
   let runtime = new AgentRuntime({
     character,
+    runtimeInstanceId,
     // advancedCapabilities: true,
     actionPlanning: true,
     // advancedMemory is enabled via character.advancedMemory

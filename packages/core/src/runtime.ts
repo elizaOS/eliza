@@ -1457,7 +1457,7 @@ export class AgentRuntime implements IAgentRuntime {
 	constructor(opts: {
 		conversationLength?: number;
 		agentId?: UUID;
-		/** Host-persisted installation identity, or a fresh identity for this runtime. */
+		/** Host-persisted installation identity. Omitted only by ephemeral/test runtimes. */
 		runtimeInstanceId?: UUID;
 		/** Optional character configuration. If not provided, an anonymous character is created. */
 		character?: Character;

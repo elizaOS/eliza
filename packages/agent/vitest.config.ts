@@ -18,9 +18,16 @@ const srcRoot = path.join(packageRoot, "src");
 const requireFromOrchestrator = createRequire(
   path.join(monorepoRoot, "plugins/plugin-agent-orchestrator/package.json"),
 );
-const octokitRestEntry = realpathSync(
-  requireFromOrchestrator.resolve("@octokit/rest"),
-);
+let octokitRestEntry: string | undefined;
+try {
+  octokitRestEntry = realpathSync(
+    requireFromOrchestrator.resolve("@octokit/rest"),
+  );
+} catch (error) {
+  // error-policy:J4 Suites which do not import Octokit remain runnable in a
+  // light install; suites that require it still fail visibly at import time.
+  if ((error as NodeJS.ErrnoException).code !== "MODULE_NOT_FOUND") throw error;
+}
 
 export default defineConfig({
   ...baseConfig,
@@ -34,10 +41,14 @@ export default defineConfig({
     alias: [
       // Resolve Octokit from its physical Bun store path so its own transitive
       // dependencies remain visible while workspace source aliases preserve symlinks.
-      {
-        find: /^@octokit\/rest$/,
-        replacement: octokitRestEntry,
-      },
+      ...(octokitRestEntry
+        ? [
+            {
+              find: /^@octokit\/rest$/,
+              replacement: octokitRestEntry,
+            },
+          ]
+        : []),
       {
         find: /^@elizaos\/agent$/,
         replacement: path.join(srcRoot, "index.ts"),
@@ -45,6 +56,13 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/(.+)$/,
         replacement: path.join(srcRoot, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-coding-tools\/(.+)$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-coding-tools/src/$1",
+        ),
       },
       {
         find: /^@elizaos\/ui$/,
