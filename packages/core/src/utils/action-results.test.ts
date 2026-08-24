@@ -45,6 +45,21 @@ describe("stringifyActionResultError", () => {
 		expect(stringifyActionResultError("raw")).toBe("raw");
 		expect(stringifyActionResultError(42)).toBe("42");
 	});
+
+	it("safely handles null-prototype objects and poisoned toString without throwing", () => {
+		const nullProto = Object.create(null);
+		nullProto.code = "FAIL";
+		expect(stringifyActionResultError(nullProto)).toBe("[object Object]");
+
+		const throwingToString = {
+			toString() {
+				throw new Error("poisoned toString");
+			},
+		};
+		expect(stringifyActionResultError(throwingToString)).toBe(
+			"[object Object]",
+		);
+	});
 });
 
 describe("getActionResultReference", () => {
