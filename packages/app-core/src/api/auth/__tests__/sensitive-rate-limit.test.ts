@@ -1,3 +1,7 @@
+/**
+ * Exercises the in-memory sensitive-operation limiter's registry, rolling
+ * window, null-bucket, and reset contracts with deterministic timestamps.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   _resetSensitiveLimiters,
