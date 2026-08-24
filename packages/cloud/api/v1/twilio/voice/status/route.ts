@@ -14,7 +14,10 @@ import { logger } from "@/lib/utils/logger";
 import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
 import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { twilioCallFenceKey } from "../lib/twilio-call-fence";
+import {
+  twilioCallFenceKey,
+  twilioCallFenceSource,
+} from "../lib/twilio-call-fence";
 import {
   isTerminalTwilioCallStatus,
   normalizeTwilioProviderCallStatus,
@@ -166,9 +169,12 @@ app.post("/", async (c) => {
     await tx
       .delete(idempotencyKeys)
       .where(
-        eq(
-          idempotencyKeys.key,
-          twilioCallFenceKey(call.organizationId, call.userId, call.to),
+        and(
+          eq(
+            idempotencyKeys.key,
+            twilioCallFenceKey(call.organizationId, call.userId, call.to),
+          ),
+          eq(idempotencyKeys.source, twilioCallFenceSource(call.id)),
         ),
       );
   });
