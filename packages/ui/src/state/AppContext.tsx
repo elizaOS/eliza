@@ -968,6 +968,11 @@ function AppProviderInner({
     loadConversationMessages,
     loadConversationMessagesAround,
     prefetchConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification,
+    discardConversationMessageState,
     loadedConversationIdRef,
     getBscTradePreflight,
     getBscTradeQuote,
@@ -1059,6 +1064,11 @@ function AppProviderInner({
     loadConversations,
     loadConversationMessages,
     prefetchConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification,
+    discardConversationMessageState,
     loadedConversationIdRef,
     loadPlugins,
     elizaCloudEnabled,
@@ -1201,11 +1211,17 @@ function AppProviderInner({
   // Track whether the last active-conversation change came from another window
   // so applying it doesn't echo straight back out and loop between tabs.
   const tabSyncActiveConvRef = useRef<string | null>(null);
+  const tabSyncActiveConvPendingRef = useRef(false);
+  const tabSyncMirrorInitializedRef = useRef(false);
   const tabSync = useTabSync({
     onActiveConversation: (id) => {
       tabSyncActiveConvRef.current = id;
+      tabSyncActiveConvPendingRef.current = true;
       if (id === null) {
-        setActiveConversationId(null);
+        // Use the canonical draft transition so remote null selection also
+        // interrupts streaming/queued work and resets composer, reply, status,
+        // ownership, and the server-side active conversation coherently.
+        void handleStartDraftConversation();
         return;
       }
       // Apply the switch through the real selection handler so this window's
@@ -1225,9 +1241,16 @@ function AppProviderInner({
   // Mirror this window's active conversation to the other windows. Suppress the
   // mirror when the change itself arrived via sync (no echo).
   useEffect(() => {
-    if (tabSyncActiveConvRef.current === activeConversationId) {
-      tabSyncActiveConvRef.current = null;
+    // Mount begins at null before hydration. Publishing that transient value
+    // would clear an already-active sibling window, so only mirror changes
+    // after this effect has observed the initial state.
+    if (!tabSyncMirrorInitializedRef.current) {
+      tabSyncMirrorInitializedRef.current = true;
       return;
+    }
+    if (tabSyncActiveConvPendingRef.current) {
+      tabSyncActiveConvPendingRef.current = false;
+      if (tabSyncActiveConvRef.current === activeConversationId) return;
     }
     tabSync.publishActiveConversation(activeConversationId);
   }, [activeConversationId, tabSync]);

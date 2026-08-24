@@ -315,6 +315,9 @@ function Harness(): React.JSX.Element {
     setOwnerNameState: noop,
   };
   const dataLoaders = useDataLoaders(dataLoaderDeps);
+  React.useLayoutEffect(() => {
+    dataLoaders.claimConversationMessagesOwnership("conv-1");
+  }, [dataLoaders.claimConversationMessagesOwnership]);
 
   const [racePhase, setRacePhase] = React.useState<RacePhase>(
     scenario === "rekey-race" ? "loading-initial" : "inactive",
@@ -406,6 +409,7 @@ function Harness(): React.JSX.Element {
     chatReplyTargetRef: React.useRef(null),
     conversationsRef,
     conversationMessagesRef,
+    conversationHydrationEpochRef: React.useRef(0),
     chatAbortRef: React.useRef(null),
     chatSendBusyRef: React.useRef(false),
     chatSendNonceRef: React.useRef(0),
@@ -414,6 +418,16 @@ function Harness(): React.JSX.Element {
       scenario === "rekey-race"
         ? dataLoaders.loadConversationMessages
         : loadConversationMessagesForSend,
+    claimConversationMessagesOwnership:
+      dataLoaders.claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent:
+      dataLoaders.isConversationMessagesOwnershipCurrent,
+    registerConversationMessageOverlay:
+      dataLoaders.registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification:
+      dataLoaders.applyConversationMessageOverlayModification,
+    discardConversationMessageState:
+      dataLoaders.discardConversationMessageState,
     elizaCloudEnabled: false,
     elizaCloudConnected: false,
     pollCloudCredits: async () => true,

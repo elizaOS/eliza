@@ -75,6 +75,7 @@ const mocks = vi.hoisted(() => ({
     stopCodingAgent: vi.fn(),
     renameConversation: vi.fn(() => Promise.resolve()),
     truncateConversationMessages: vi.fn(() => Promise.resolve()),
+    deleteConversation: vi.fn(() => Promise.resolve({ ok: true })),
     deleteConversationMessage: vi.fn(() =>
       Promise.resolve({ ok: true, deletedCount: 1 }),
     ),
@@ -199,6 +200,12 @@ function makeDeps(
     loadConversationMessages: vi.fn(
       async (): Promise<LoadConversationMessagesResult> => ({ ok: true }),
     ),
+    claimConversationMessagesOwnership: vi.fn(() => 0),
+    isConversationMessagesOwnershipCurrent: vi.fn(() => true),
+    conversationHydrationEpochRef: { current: 0 },
+    registerConversationMessageOverlay: vi.fn(),
+    applyConversationMessageOverlayModification: vi.fn(),
+    discardConversationMessageState: vi.fn(),
     elizaCloudEnabled: false,
     elizaCloudConnected: false,
     pollCloudCredits: vi.fn(async () => true),
@@ -598,6 +605,50 @@ describe("useChatSend stop handling", () => {
     });
 
     expect(listPendingChatTurns("conv-1")).toHaveLength(0);
+  });
+});
+
+describe("useChatSend clear ownership race", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+  });
+
+  it("does not clear B when deleting A resolves after the user selected B", async () => {
+    const deletion = deferred<{ ok: boolean }>();
+    mocks.client.deleteConversation.mockReturnValueOnce(deletion.promise);
+    const deps = makeDeps({
+      activeConversationId: "conv-A",
+      conversations: [
+        conversation("conv-A", "room-A"),
+        conversation("conv-B", "room-B"),
+      ],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let clearing: Promise<void>;
+    act(() => {
+      clearing = result.current.handleChatClear();
+    });
+    const bMessages: ConversationMessage[] = [
+      { id: "b-user", role: "user", text: "B stays", timestamp: 1 },
+    ];
+    deps.activeConversationIdRef.current = "conv-B";
+    deps.conversationMessagesRef.current = bMessages;
+
+    await act(async () => {
+      deletion.resolve({ ok: true });
+      await clearing;
+    });
+
+    expect(deps.activeConversationIdRef.current).toBe("conv-B");
+    expect(deps.conversationMessagesRef.current).toEqual(bMessages);
+    expect(deps.discardConversationMessageState).toHaveBeenCalledWith("conv-A");
+    expect(deps.setActiveConversationId).not.toHaveBeenCalledWith(null);
+    expect(mocks.client.sendWsMessage).not.toHaveBeenCalledWith({
+      type: "active-conversation",
+      conversationId: null,
+    });
   });
 });
 

@@ -107,6 +107,11 @@ interface Harness {
     | "loadConversations"
     | "loadConversationMessages"
     | "prefetchConversationMessages"
+    | "claimConversationMessagesOwnership"
+    | "isConversationMessagesOwnershipCurrent"
+    | "registerConversationMessageOverlay"
+    | "applyConversationMessageOverlayModification"
+    | "discardConversationMessageState"
     | "loadedConversationIdRef"
   >;
   chatInputRef: MutableRefObject<string>;
@@ -330,6 +335,15 @@ function mountChat(h: Harness) {
       loadConversations: loaders.loadConversations,
       loadConversationMessages: loaders.loadConversationMessages,
       prefetchConversationMessages: loaders.prefetchConversationMessages,
+      claimConversationMessagesOwnership:
+        loaders.claimConversationMessagesOwnership,
+      isConversationMessagesOwnershipCurrent:
+        loaders.isConversationMessagesOwnershipCurrent,
+      registerConversationMessageOverlay:
+        loaders.registerConversationMessageOverlay,
+      applyConversationMessageOverlayModification:
+        loaders.applyConversationMessageOverlayModification,
+      discardConversationMessageState: loaders.discardConversationMessageState,
       loadedConversationIdRef: loaders.loadedConversationIdRef,
     });
     return { loaders, callbacks };

@@ -57,14 +57,13 @@ import {
 } from "./autonomy";
 import { normalizeConversationList } from "./chat-conversation-guards";
 import {
+  applyStreamingTextModification,
   filterRenderableConversationMessages,
   type LoadConversationMessagesResult,
+  type StreamingTextModification,
   shouldKeepConversationMessage,
 } from "./internal";
-import {
-  clearSettledPendingChatTurns,
-  listPendingChatTurns,
-} from "./pending-chat-turns";
+import { clearSettledPendingChatTurns } from "./pending-chat-turns";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
 
@@ -86,60 +85,82 @@ function localConversationMessageLineage(
   return message.id.startsWith("temp-") ? message.id : null;
 }
 
-interface ConversationMessageCacheEntry {
-  /** Last authoritative, filtered payload returned by the history endpoint. */
-  serverMessages: ConversationMessage[];
-  /**
-   * Rows created or pending after a request fence, explicitly owned by this
-   * conversation until an authoritative payload contains their durable rows.
-   */
-  localOverlay: ConversationMessage[];
+interface ConversationMessageOverlayRecord {
+  /** Latest visible form of this explicitly registered local lineage. */
+  message: ConversationMessage | null;
+  /** Bumped whenever the visible row is added, rekeyed, or otherwise replaced. */
+  revision: number;
+  /** Consecutive newest-history snapshots that omitted this unchanged row. */
+  consecutiveNewestMisses: number;
+  /** Distinguishes a registered-before-paint lineage from an explicitly removed row. */
+  hasBeenVisible: boolean;
+  /** Only a terminally rekeyed durable row may retire on absence evidence. */
+  terminalDurable: boolean;
 }
+
+type ConversationMessageOverlay = Map<string, ConversationMessageOverlayRecord>;
 
 interface ConversationMessageLoadFence {
   conversationId: string;
   controller: AbortController;
-  /** Local render lineage -> domain id at the moment this request started. */
-  baselineIdsByLineage: Map<string, string>;
-  /** Whether the visible store was explicitly owned by conversationId. */
-  ownedVisibleMessagesAtStart: boolean;
+  ownerGeneration: number;
+  visibleRequestGeneration: number;
+  requestKind: "newest" | "around";
+  /** Only overlay revisions that existed before this GET may be retired by it. */
+  overlayRevisionsAtStart: Map<string, number>;
 }
 
-function indexLocalConversationMessageLineages(
+function indexConversationMessagesByLineage(
   messages: readonly ConversationMessage[],
-): Map<string, string> {
-  const indexed = new Map<string, string>();
+): Map<string, ConversationMessage> {
+  const indexed = new Map<string, ConversationMessage>();
   for (const message of messages) {
     const lineage = localConversationMessageLineage(message);
-    if (lineage) indexed.set(lineage, message.id);
+    if (lineage) indexed.set(lineage, message);
   }
   return indexed;
 }
 
-function captureConversationMessageOverlay(
-  fence: ConversationMessageLoadFence,
+function captureRegisteredConversationMessageOverlay(
+  overlay: ConversationMessageOverlay,
   currentMessages: readonly ConversationMessage[],
-  existingOverlay: readonly ConversationMessage[],
-): ConversationMessage[] {
-  const existingLineages = new Set(
-    existingOverlay
-      .map(localConversationMessageLineage)
-      .filter((lineage): lineage is string => lineage !== null),
-  );
-  const captured = new Map<string, ConversationMessage>();
-
-  for (const message of currentMessages) {
-    const lineage = localConversationMessageLineage(message);
-    if (!lineage) continue;
-    const baselineId = fence.baselineIdsByLineage.get(lineage);
-    const belongsToFence =
-      existingLineages.has(lineage) ||
-      baselineId === undefined ||
-      (fence.ownedVisibleMessagesAtStart && baselineId.startsWith("temp-"));
-    if (belongsToFence) captured.set(lineage, message);
+): void {
+  const currentByLineage = indexConversationMessagesByLineage(currentMessages);
+  for (const [lineage, record] of overlay) {
+    const message = currentByLineage.get(lineage) ?? null;
+    if (!message) {
+      // A row that was once visible and is now absent was explicitly removed
+      // (stop/failure/retry). Do not let a stale overlay resurrect it later.
+      if (record.hasBeenVisible) overlay.delete(lineage);
+      continue;
+    }
+    if (record.message !== message) {
+      record.message = message;
+      record.revision += 1;
+      record.consecutiveNewestMisses = 0;
+    }
+    record.hasBeenVisible = true;
+    if (!message.id.startsWith("temp-")) record.terminalDurable = true;
   }
+}
 
-  return [...captured.values()];
+function overlayMessages(
+  overlay: ConversationMessageOverlay | undefined,
+): ConversationMessage[] {
+  if (!overlay) return [];
+  return [...overlay.values()]
+    .map((record) => record.message)
+    .filter((message): message is ConversationMessage => message !== null);
+}
+
+function snapshotOverlayRevisions(
+  overlay: ConversationMessageOverlay | undefined,
+): Map<string, number> {
+  return new Map(
+    overlay
+      ? [...overlay].map(([lineage, record]) => [lineage, record.revision])
+      : [],
+  );
 }
 
 const LOCAL_TURN_MATCH_SLACK_MS = 60_000;
@@ -203,12 +224,12 @@ function findNearestPriorLocalOverlayUser(
   return null;
 }
 
-function resolvedLocalOverlayMessageIds(
+function resolvedLocalOverlayServerIndexes(
   serverMessages: ConversationMessage[],
   currentMessages: ConversationMessage[],
   overlayLineages: ReadonlySet<string>,
-): Set<string> {
-  const resolvedIds = new Set<string>();
+): Map<string, number> {
+  const resolvedServerIndexes = new Map<string, number>();
   const serverIndexById = new Map<string, number>();
   serverMessages.forEach((message, index) => {
     serverIndexById.set(message.id, index);
@@ -234,6 +255,12 @@ function resolvedLocalOverlayMessageIds(
     ) {
       return;
     }
+    const exactServerIndex = serverIndexById.get(message.id);
+    if (typeof exactServerIndex === "number") {
+      usedServerUserIndexes.add(exactServerIndex);
+      serverUserIndexByLocalId.set(message.id, exactServerIndex);
+      return;
+    }
     const serverIndex = findMatchingServerMessageIndex(
       serverMessages,
       message,
@@ -242,7 +269,7 @@ function resolvedLocalOverlayMessageIds(
     if (serverIndex < 0) return;
     usedServerUserIndexes.add(serverIndex);
     serverUserIndexByLocalId.set(message.id, serverIndex);
-    resolvedIds.add(message.id);
+    resolvedServerIndexes.set(message.id, serverIndex);
   });
 
   currentMessages.forEach((message, index) => {
@@ -250,6 +277,11 @@ function resolvedLocalOverlayMessageIds(
       message.role !== "assistant" ||
       !isLocalOverlayMessage(message, overlayLineages)
     ) {
+      return;
+    }
+    const exactServerIndex = serverIndexById.get(message.id);
+    if (typeof exactServerIndex === "number") {
+      usedServerAssistantIndexes.add(exactServerIndex);
       return;
     }
     const pairedUser = findNearestPriorLocalOverlayUser(
@@ -270,49 +302,170 @@ function resolvedLocalOverlayMessageIds(
     );
     if (serverIndex < 0) return;
     usedServerAssistantIndexes.add(serverIndex);
-    resolvedIds.add(message.id);
+    resolvedServerIndexes.set(message.id, serverIndex);
   });
 
-  return resolvedIds;
+  return resolvedServerIndexes;
 }
 
-function mergeConversationMessagesWithOverlay(
+const NEWEST_HISTORY_WINDOW_SIZE = 200;
+// A single newest-history response can still trail a terminal direct reply.
+// Keep an unchanged overlay through two consecutive omissions; the third
+// independent snapshot is the bounded confirmation that the row was removed.
+const OVERLAY_NEWEST_MISS_RETIREMENT_COUNT = 3;
+
+function mergeMessagesChronologically(
   serverMessages: ConversationMessage[],
   localOverlay: ConversationMessage[],
-  localContext?: ConversationMessage[],
-): {
-  messages: ConversationMessage[];
-  localOverlay: ConversationMessage[];
-} {
-  const serverIds = new Set(serverMessages.map((message) => message.id));
-  const overlayLineages = new Set(
-    localOverlay
-      .map(localConversationMessageLineage)
-      .filter((lineage): lineage is string => lineage !== null),
+): ConversationMessage[] {
+  if (localOverlay.length === 0) return serverMessages;
+  const merged = [...serverMessages];
+  const orderedOverlay = [...localOverlay].sort(
+    (left, right) => left.timestamp - right.timestamp,
   );
+  for (const message of orderedOverlay) {
+    const insertionIndex = merged.findIndex(
+      (candidate) => candidate.timestamp > message.timestamp,
+    );
+    if (insertionIndex < 0) merged.push(message);
+    else merged.splice(insertionIndex, 0, message);
+  }
+  return merged;
+}
+
+function reconcileConversationMessagesWithOverlay(
+  serverMessages: ConversationMessage[],
+  overlay: ConversationMessageOverlay | undefined,
+  options?: {
+    localContext?: ConversationMessage[];
+    /** Present only for a full newest-history GET, never cache/around windows. */
+    overlayRevisionsAtRequestStart?: ReadonlyMap<string, number>;
+  },
+): ConversationMessage[] {
+  if (!overlay || overlay.size === 0) return serverMessages;
+  const serverIndexById = new Map(
+    serverMessages.map((message, index) => [message.id, index]),
+  );
+  const overlayLineages = new Set(overlay.keys());
   // Text/time fallback is safe only against the visible transcript that
   // preceded this network response: it marks already-rendered server rows as
   // consumed, so a repeated pending "yes" cannot bind to an older "yes". A
   // cache paint has no new response boundary and therefore settles by exact id
   // only.
-  const resolvedOverlayIds = localContext
-    ? resolvedLocalOverlayMessageIds(
+  const resolvedOverlayServerIndexes = options?.localContext
+    ? resolvedLocalOverlayServerIndexes(
         serverMessages,
-        localContext,
+        options.localContext,
         overlayLineages,
       )
-    : new Set<string>();
-  const unresolvedOverlay = localOverlay.filter(
-    (message) =>
-      !serverIds.has(message.id) && !resolvedOverlayIds.has(message.id),
-  );
-  return {
-    messages:
-      unresolvedOverlay.length === 0
-        ? serverMessages
-        : [...serverMessages, ...unresolvedOverlay],
-    localOverlay: unresolvedOverlay,
+    : new Map<string, number>();
+
+  const fullNewestRequestRevisions = options?.overlayRevisionsAtRequestStart;
+  const matchedLineages = new Set<string>();
+  let visibleServerMessages = serverMessages;
+  const preserveOwnedMessage = (
+    serverIndex: number,
+    lineage: string,
+    ownedMessage: ConversationMessage,
+  ) => {
+    const serverMessage = visibleServerMessages[serverIndex];
+    if (!serverMessage) return;
+    if (visibleServerMessages === serverMessages) {
+      visibleServerMessages = [...serverMessages];
+    }
+    // A cache/around match is only duplicate-suppression evidence, never proof
+    // that its snapshot is newer than the exact registered local revision. The
+    // same is true for a newest response whose fence predates a rekey/update.
+    // Keep the owned row itself so the following capture cannot downgrade the
+    // overlay to stale server text or metadata.
+    visibleServerMessages[serverIndex] =
+      ownedMessage.clientRenderId === lineage
+        ? ownedMessage
+        : { ...ownedMessage, clientRenderId: lineage };
   };
+  const oldestServerTimestamp =
+    serverMessages.length === NEWEST_HISTORY_WINDOW_SIZE
+      ? Math.min(...serverMessages.map((message) => message.timestamp))
+      : null;
+
+  for (const [lineage, record] of overlay) {
+    const message = record.message;
+    if (!message) continue;
+    const revisionAtRequestStart = fullNewestRequestRevisions?.get(lineage);
+    const newestRequestCanConsumeRevision =
+      fullNewestRequestRevisions !== undefined &&
+      revisionAtRequestStart !== undefined &&
+      revisionAtRequestStart === record.revision;
+    const exactServerIndex = serverIndexById.get(message.id);
+    if (typeof exactServerIndex === "number") {
+      matchedLineages.add(lineage);
+      // Cache paints and around-windows may hide a duplicate by exact id, but
+      // only a canonical newest-history endpoint that followed this exact
+      // overlay revision may retire overlay state.
+      if (newestRequestCanConsumeRevision) {
+        overlay.delete(lineage);
+      } else {
+        preserveOwnedMessage(exactServerIndex, lineage, message);
+      }
+      continue;
+    }
+
+    const fallbackServerIndex = resolvedOverlayServerIndexes.get(message.id);
+    if (typeof fallbackServerIndex === "number") {
+      // Text/time matching is weaker than exact durable-id evidence. A newest
+      // response may consume it only when this exact overlay revision existed
+      // before the request; around/cache reconciliation merely links the server
+      // row back to the still-owned lineage.
+      if (
+        fullNewestRequestRevisions !== undefined &&
+        !newestRequestCanConsumeRevision
+      ) {
+        matchedLineages.add(lineage);
+        preserveOwnedMessage(fallbackServerIndex, lineage, message);
+        continue;
+      }
+      matchedLineages.add(lineage);
+      if (newestRequestCanConsumeRevision) {
+        overlay.delete(lineage);
+      } else {
+        preserveOwnedMessage(fallbackServerIndex, lineage, message);
+      }
+      continue;
+    }
+
+    if (
+      !record.terminalDurable ||
+      revisionAtRequestStart === undefined ||
+      revisionAtRequestStart !== record.revision
+    ) {
+      continue;
+    }
+
+    // A complete 200-row newest window gives a strict lower bound. A missing
+    // local row older than that bound cannot belong in the visible window.
+    if (
+      oldestServerTimestamp !== null &&
+      message.timestamp < oldestServerTimestamp
+    ) {
+      overlay.delete(lineage);
+      continue;
+    }
+
+    record.consecutiveNewestMisses += 1;
+    if (
+      record.consecutiveNewestMisses >= OVERLAY_NEWEST_MISS_RETIREMENT_COUNT
+    ) {
+      overlay.delete(lineage);
+    }
+  }
+
+  return mergeMessagesChronologically(
+    visibleServerMessages,
+    overlayMessages(overlay).filter((message) => {
+      const lineage = localConversationMessageLineage(message);
+      return lineage === null || !matchedLineages.has(lineage);
+    }),
+  );
 }
 
 function buildLocalizedCharacterPayload(
@@ -539,23 +692,47 @@ export function useDataLoaders(deps: DataLoadersDeps) {
 
   // ── Conversations ───────────────────────────────────────────────────
 
-  // Prefetch cache: conversationId → its filtered messages. Adjacent
-  // conversations are warmed on every select (prefetchConversationMessages) so a
-  // horizontal swipe paints the thread instantly from memory instead of waiting
-  // on the network. Capped (LRU-ish via Map insertion order) so it can't grow
-  // without bound as the user swipes through a long history.
+  // Only authoritative server snapshots participate in the navigation LRU.
+  // Local overlays live in a separate registry below: warming 17+ neighbors
+  // must never evict a completed turn that history has not observed yet.
   const conversationMessageCacheRef = useRef<
-    Map<string, ConversationMessageCacheEntry>
+    Map<string, ConversationMessage[]>
   >(new Map());
-  // A load fence binds local mutations that occur after a history request
-  // starts to that request's conversation. This is deliberately separate from
-  // clientRenderId: render identity survives terminal rekey forever, while the
-  // fence covers only mutations newer than one authoritative history snapshot.
+  const conversationMessageOverlayRef = useRef<
+    Map<string, ConversationMessageOverlay>
+  >(new Map());
+  // Cold-open sends can paint before createConversation returns an id. Their
+  // exact lineages are registered here, then atomically transferred when the
+  // production send path claims the newly-created conversation.
+  const unownedConversationMessageOverlayRef =
+    useRef<ConversationMessageOverlay>(new Map());
+  // Explicit owner of the visible message store, including a freshly-created
+  // conversation whose first authoritative GET has not committed yet.
+  const visibleConversationMessagesOwnerRef = useRef<string | null>(null);
+  // Claiming a target happens before the old rows are replaced. Keep the owner
+  // of the bytes currently in the shared store separate so a returning A claim
+  // never captures B's still-visible rows as evidence that A's overlay vanished.
+  // `undefined` is an intentionally unbound store; `null` is the valid cold-open
+  // owner used before a first-send conversation id exists.
+  const visibleConversationMessagesContentOwnerRef = useRef<
+    string | null | undefined
+  >(null);
+  const conversationMessageOwnerGenerationRef = useRef(0);
+  // Shared by newest and around loads: every visible request supersedes every
+  // older visible request, even when ownership itself did not change.
+  const visibleConversationMessageRequestGenerationRef = useRef(0);
   const activeMessageLoadFenceRef = useRef<ConversationMessageLoadFence | null>(
     null,
   );
   // Per-id prefetch aborts so a neighbor is never double-fetched.
   const prefetchAbortRef = useRef<Map<string, AbortController>>(new Map());
+  // Server-cache writes are request-tokened independently of the visible
+  // request fence. A prefetch transport may ignore abort and finish after a
+  // newer full GET; its older token must not downgrade that newer snapshot.
+  const conversationMessageCacheRequestSequenceRef = useRef(0);
+  const conversationMessageCacheRequestTokenRef = useRef<Map<string, number>>(
+    new Map(),
+  );
   // Which conversation's messages `conversationMessagesRef` currently holds.
   // The ref only becomes that conversation's thread AFTER a load commits, so
   // any caller judging a conversation by `conversationMessagesRef` (the
@@ -566,20 +743,46 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // Every `conversationMessagesRef.current` write below updates it in lockstep.
   const loadedConversationIdRef = useRef<string | null>(null);
 
+  const beginConversationMessageCacheRequest = useCallback((id: string) => {
+    const token = ++conversationMessageCacheRequestSequenceRef.current;
+    conversationMessageCacheRequestTokenRef.current.set(id, token);
+    return token;
+  }, []);
+
+  const invalidateConversationMessageCacheRequest = useCallback(
+    (id: string) => {
+      conversationMessageCacheRequestSequenceRef.current += 1;
+      conversationMessageCacheRequestTokenRef.current.delete(id);
+    },
+    [],
+  );
+
+  const finishConversationMessageCacheRequest = useCallback(
+    (id: string, requestToken: number) => {
+      if (
+        conversationMessageCacheRequestTokenRef.current.get(id) === requestToken
+      ) {
+        conversationMessageCacheRequestTokenRef.current.delete(id);
+      }
+    },
+    [],
+  );
+
   const cacheConversationMessages = useCallback(
     (
       id: string,
       serverMessages: ConversationMessage[],
-      localOverlay?: ConversationMessage[],
+      requestToken: number,
     ) => {
+      if (
+        conversationMessageCacheRequestTokenRef.current.get(id) !== requestToken
+      ) {
+        return;
+      }
       const cache = conversationMessageCacheRef.current;
-      const previous = cache.get(id);
       // Re-insert to move to the most-recent position (eviction is oldest-first).
       cache.delete(id);
-      cache.set(id, {
-        serverMessages,
-        localOverlay: localOverlay ?? previous?.localOverlay ?? [],
-      });
+      cache.set(id, serverMessages);
       while (cache.size > CONVERSATION_MESSAGE_CACHE_MAX) {
         const oldest = cache.keys().next().value;
         if (oldest === undefined) break;
@@ -589,72 +792,318 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     [],
   );
 
-  const captureFencedConversationOverlay = useCallback(
-    (
-      fence: ConversationMessageLoadFence,
-      messages: readonly ConversationMessage[],
-    ) => {
-      const cached = conversationMessageCacheRef.current.get(
-        fence.conversationId,
+  const captureVisibleConversationMessageOverlay = useCallback(
+    (owner: string | null) => {
+      if (visibleConversationMessagesOwnerRef.current !== owner) return;
+      if (visibleConversationMessagesContentOwnerRef.current !== owner) return;
+      const overlay =
+        owner === null
+          ? unownedConversationMessageOverlayRef.current
+          : conversationMessageOverlayRef.current.get(owner);
+      if (!overlay) return;
+      captureRegisteredConversationMessageOverlay(
+        overlay,
+        conversationMessagesRef.current,
       );
-      const localOverlay = captureConversationMessageOverlay(
-        fence,
-        messages,
-        cached?.localOverlay ?? [],
-      );
-      if (!cached && localOverlay.length === 0) return;
-      cacheConversationMessages(
-        fence.conversationId,
-        cached?.serverMessages ?? [],
-        localOverlay,
-      );
+      if (owner !== null && overlay.size === 0) {
+        conversationMessageOverlayRef.current.delete(owner);
+      }
     },
-    [cacheConversationMessages],
+    [conversationMessagesRef],
   );
 
-  const captureOwnedConversationOverlay = useCallback(
-    (
-      conversationId: string,
-      messages: readonly ConversationMessage[],
-      explicitlyOwnedLineages: ReadonlySet<string> = new Set(),
-      includeUnregisteredPending = true,
-    ) => {
-      const cached = conversationMessageCacheRef.current.get(conversationId);
-      const existingLineages = new Set(
-        (cached?.localOverlay ?? [])
-          .map(localConversationMessageLineage)
-          .filter((lineage): lineage is string => lineage !== null),
+  const isCurrentConversationMessageFence = useCallback(
+    (fence: ConversationMessageLoadFence): boolean =>
+      activeMessageLoadFenceRef.current === fence &&
+      !fence.controller.signal.aborted &&
+      activeConversationIdRef.current === fence.conversationId &&
+      visibleConversationMessagesOwnerRef.current === fence.conversationId &&
+      conversationMessageOwnerGenerationRef.current === fence.ownerGeneration &&
+      visibleConversationMessageRequestGenerationRef.current ===
+        fence.visibleRequestGeneration,
+    [activeConversationIdRef],
+  );
+
+  const invalidateConversationMessageFence = useCallback(() => {
+    const fence = activeMessageLoadFenceRef.current;
+    if (!fence) return;
+    if (isCurrentConversationMessageFence(fence)) {
+      captureVisibleConversationMessageOverlay(fence.conversationId);
+    }
+    fence.controller.abort();
+    activeMessageLoadFenceRef.current = null;
+  }, [
+    captureVisibleConversationMessageOverlay,
+    isCurrentConversationMessageFence,
+  ]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: conversationMessagesRef is a stable ref whose current value is intentionally read at claim time.
+  const claimConversationMessagesOwnership = useCallback(
+    (conversationId: string | null): number => {
+      const previousOwner = visibleConversationMessagesOwnerRef.current;
+
+      // Capture/release the old owner before changing generation. The active-id
+      // check prevents an already-switched view from being attributed back to
+      // an old owner.
+      if (activeConversationIdRef.current === previousOwner) {
+        captureVisibleConversationMessageOverlay(previousOwner);
+      }
+      invalidateConversationMessageFence();
+
+      const targetOverlay =
+        conversationId === null
+          ? unownedConversationMessageOverlayRef.current
+          : conversationMessageOverlayRef.current.get(conversationId);
+      const targetHasVisibleOverlay = overlayMessages(targetOverlay).length > 0;
+      const currentByLineage = indexConversationMessagesByLineage(
+        conversationMessagesRef.current,
       );
-      const localOverlay = messages.filter((message) => {
-        const lineage = localConversationMessageLineage(message);
-        if (!lineage) return false;
-        return (
-          existingLineages.has(lineage) ||
-          explicitlyOwnedLineages.has(lineage) ||
-          (includeUnregisteredPending && message.id.startsWith("temp-"))
+      const targetOwnsVisibleRegisteredRows =
+        targetHasVisibleOverlay &&
+        currentByLineage.size > 0 &&
+        [...currentByLineage].every(
+          ([lineage, message]) =>
+            targetOverlay?.get(lineage)?.message === message,
         );
-      });
-      if (!cached && localOverlay.length === 0 && !includeUnregisteredPending) {
+
+      conversationMessageOwnerGenerationRef.current += 1;
+      visibleConversationMessageRequestGenerationRef.current += 1;
+      visibleConversationMessagesOwnerRef.current = conversationId;
+      if (loadedConversationIdRef.current !== conversationId) {
+        loadedConversationIdRef.current = null;
+      }
+
+      if (previousOwner === conversationId) {
+        // Same-id claims are still semantic transitions (notably null → null
+        // new-chat/reset while a cold create is pending). Give callers a fresh
+        // token so that older creates cannot later reactivate or repaint a draft
+        // the user explicitly left.
+        if (conversationId === null) {
+          // A null → null draft transition clears the shared rows immediately
+          // afterward. Unbind those bytes so a later B claim cannot interpret
+          // that intentional reset as evidence that the still-unowned cold turn
+          // was deleted. Same-id persisted conversations keep their content
+          // binding so overlapping stream/reload capture remains lossless.
+          visibleConversationMessagesContentOwnerRef.current = undefined;
+        }
+        return conversationMessageOwnerGenerationRef.current;
+      }
+
+      if (targetOwnsVisibleRegisteredRows) {
+        // A cold-open send re-homes only its exact registered lineages before
+        // claiming the id returned by createConversation. Those same objects
+        // are still the visible store, so the new id owns registry + rows.
+        visibleConversationMessagesContentOwnerRef.current = conversationId;
+      } else if (
+        conversationMessagesRef.current.length === 0 &&
+        !targetHasVisibleOverlay
+      ) {
+        // Empty is safe to bind for hydration/fresh-create paths. Do not bind an
+        // empty placeholder over a target with a retained overlay: its load must
+        // paint that overlay before absence can be captured.
+        visibleConversationMessagesContentOwnerRef.current = conversationId;
+      } else {
+        // The bytes still belong to the released owner until the caller clears
+        // them or the target loader paints cache/overlay state. Leaving the old
+        // content owner here would let a later return claim capture unrelated
+        // rows (or an empty placeholder) into the target registry.
+        visibleConversationMessagesContentOwnerRef.current = undefined;
+      }
+      return conversationMessageOwnerGenerationRef.current;
+    },
+    [
+      activeConversationIdRef,
+      captureVisibleConversationMessageOverlay,
+      invalidateConversationMessageFence,
+    ],
+  );
+
+  const registerConversationMessageOverlay = useCallback(
+    (
+      conversationId: string | null,
+      lineages: readonly string[],
+      explicitMessages?: readonly ConversationMessage[],
+    ) => {
+      const overlay =
+        conversationId === null
+          ? unownedConversationMessageOverlayRef.current
+          : (conversationMessageOverlayRef.current.get(conversationId) ??
+            new Map<string, ConversationMessageOverlayRecord>());
+
+      if (conversationId !== null) {
+        // A first send can receive its created id after the user has selected a
+        // different conversation. Re-home only the exact lineages that the send
+        // registered while unowned; never infer ownership from receipts or from
+        // whatever rows happen to be visible under the destination id.
+        const unownedOverlay = unownedConversationMessageOverlayRef.current;
+        for (const lineage of lineages) {
+          const record = unownedOverlay.get(lineage);
+          if (!record) continue;
+          overlay.set(lineage, record);
+          unownedOverlay.delete(lineage);
+        }
+        if (overlay.size > 0) {
+          conversationMessageOverlayRef.current.set(conversationId, overlay);
+        }
+      }
+
+      // Some exact rows are born only after an awaited create (action sends and
+      // 404 replay). If their destination is already off-screen there is no
+      // visible store to capture. Seed only the caller-supplied objects and
+      // requested lineages; this never infers ownership from receipts or from B's
+      // visible transcript.
+      const explicitByLineage = indexConversationMessagesByLineage(
+        explicitMessages ?? [],
+      );
+      for (const lineage of lineages) {
+        const message = explicitByLineage.get(lineage);
+        if (!message) continue;
+        const existing = overlay.get(lineage);
+        if (existing) {
+          if (existing.message !== message) {
+            existing.message = message;
+            existing.revision += 1;
+            existing.consecutiveNewestMisses = 0;
+          }
+          existing.hasBeenVisible = true;
+          if (!message.id.startsWith("temp-")) existing.terminalDurable = true;
+          continue;
+        }
+        overlay.set(lineage, {
+          message,
+          revision: 1,
+          consecutiveNewestMisses: 0,
+          hasBeenVisible: true,
+          terminalDurable: !message.id.startsWith("temp-"),
+        });
+      }
+      if (conversationId !== null && overlay.size > 0) {
+        conversationMessageOverlayRef.current.set(conversationId, overlay);
+      }
+
+      if (visibleConversationMessagesOwnerRef.current !== conversationId) {
         return;
       }
-      const overlayLineages = new Set(
-        localOverlay
-          .map(localConversationMessageLineage)
-          .filter((lineage): lineage is string => lineage !== null),
+      for (const lineage of lineages) {
+        if (!lineage || overlay.has(lineage)) continue;
+        overlay.set(lineage, {
+          message: null,
+          revision: 0,
+          consecutiveNewestMisses: 0,
+          hasBeenVisible: false,
+          terminalDurable: false,
+        });
+      }
+      visibleConversationMessagesContentOwnerRef.current = conversationId;
+      captureRegisteredConversationMessageOverlay(
+        overlay,
+        conversationMessagesRef.current,
       );
-      const ownedServerMessages = includeUnregisteredPending
-        ? messages.filter((message) => {
-            const lineage = localConversationMessageLineage(message);
-            return lineage === null || !overlayLineages.has(lineage);
-          })
-        : [];
-      cacheConversationMessages(
-        conversationId,
-        cached?.serverMessages ?? ownedServerMessages,
-        localOverlay,
-      );
+      if (conversationId !== null && overlay.size > 0) {
+        conversationMessageOverlayRef.current.set(conversationId, overlay);
+      }
     },
-    [cacheConversationMessages],
+    [conversationMessagesRef],
+  );
+
+  const isConversationMessagesOwnershipCurrent = useCallback(
+    (conversationId: string | null, generation: number): boolean =>
+      visibleConversationMessagesOwnerRef.current === conversationId &&
+      conversationMessageOwnerGenerationRef.current === generation,
+    [],
+  );
+
+  const applyConversationMessageOverlayModification = useCallback(
+    (
+      conversationId: string | null,
+      lineage: string,
+      modification: StreamingTextModification,
+    ) => {
+      const overlay =
+        conversationId === null
+          ? unownedConversationMessageOverlayRef.current
+          : conversationMessageOverlayRef.current.get(conversationId);
+      const record = overlay?.get(lineage);
+      if (!overlay || !record?.message) return;
+
+      let nextMessages = [record.message];
+      const ownedModification = {
+        ...modification,
+        // Off-screen callers keep addressing the stable temp lineage after a
+        // terminal rekey. The reducer targets physical ids, so translate that
+        // exact registered lineage to its current owned row id.
+        messageId: record.message.id,
+      } as StreamingTextModification;
+      applyStreamingTextModification((value) => {
+        nextMessages =
+          typeof value === "function" ? value(nextMessages) : value;
+      }, ownedModification);
+      const nextMessage =
+        nextMessages.find(
+          (message) => localConversationMessageLineage(message) === lineage,
+        ) ?? null;
+      if (nextMessage === record.message) return;
+      if (!nextMessage) {
+        overlay.delete(lineage);
+        if (conversationId !== null && overlay.size === 0) {
+          conversationMessageOverlayRef.current.delete(conversationId);
+        }
+        return;
+      }
+
+      record.message = nextMessage;
+      record.revision += 1;
+      record.consecutiveNewestMisses = 0;
+      record.hasBeenVisible = true;
+      if (!nextMessage.id.startsWith("temp-")) {
+        record.terminalDurable = true;
+      }
+    },
+    [],
+  );
+
+  const discardConversationMessageState = useCallback(
+    (conversationId?: string) => {
+      if (conversationId === undefined) {
+        activeMessageLoadFenceRef.current?.controller.abort();
+        activeMessageLoadFenceRef.current = null;
+        conversationMessageCacheRef.current.clear();
+        conversationMessageOverlayRef.current.clear();
+        unownedConversationMessageOverlayRef.current.clear();
+        visibleConversationMessagesOwnerRef.current = null;
+        visibleConversationMessagesContentOwnerRef.current = null;
+        conversationMessageOwnerGenerationRef.current += 1;
+        visibleConversationMessageRequestGenerationRef.current += 1;
+        loadedConversationIdRef.current = null;
+        for (const controller of prefetchAbortRef.current.values()) {
+          controller.abort();
+        }
+        prefetchAbortRef.current.clear();
+        conversationMessageCacheRequestSequenceRef.current += 1;
+        conversationMessageCacheRequestTokenRef.current.clear();
+        return;
+      }
+
+      if (
+        activeMessageLoadFenceRef.current?.conversationId === conversationId
+      ) {
+        activeMessageLoadFenceRef.current.controller.abort();
+        activeMessageLoadFenceRef.current = null;
+      }
+      conversationMessageCacheRef.current.delete(conversationId);
+      conversationMessageOverlayRef.current.delete(conversationId);
+      invalidateConversationMessageCacheRequest(conversationId);
+      prefetchAbortRef.current.get(conversationId)?.abort();
+      prefetchAbortRef.current.delete(conversationId);
+      if (visibleConversationMessagesOwnerRef.current === conversationId) {
+        visibleConversationMessagesOwnerRef.current = null;
+        visibleConversationMessagesContentOwnerRef.current = undefined;
+        conversationMessageOwnerGenerationRef.current += 1;
+        visibleConversationMessageRequestGenerationRef.current += 1;
+        loadedConversationIdRef.current = null;
+      }
+    },
+    [invalidateConversationMessageCacheRequest],
   );
 
   const loadConversations = useCallback(async (): Promise<
@@ -672,45 +1121,24 @@ export function useDataLoaders(deps: DataLoadersDeps) {
 
   const loadConversationMessages = useCallback(
     async (convId: string): Promise<LoadConversationMessagesResult> => {
-      // Materialize changes covered by the previous request before aborting it.
-      // A terminal rekey can land while that GET is pending; the request itself
-      // is the explicit conversation owner even if no server payload committed
-      // yet and loadedConversationIdRef is still null.
-      const previousFence = activeMessageLoadFenceRef.current;
-      if (previousFence) {
-        captureFencedConversationOverlay(
-          previousFence,
-          conversationMessagesRef.current,
-        );
-        previousFence.controller.abort();
-      }
-
-      // Before a cache paint or clear replaces the visible store, retain only
-      // genuinely pending rows under its explicit owner. A cold-open send can
-      // precede the first owned history commit; its persisted pending receipt
-      // provides the same explicit conversation binding.
-      const visibleOwner = loadedConversationIdRef.current;
-      if (visibleOwner) {
-        captureOwnedConversationOverlay(
-          visibleOwner,
-          conversationMessagesRef.current,
-        );
-      } else {
-        const pendingLineages = new Set(
-          listPendingChatTurns(convId).flatMap((receipt) => [
-            `temp-${receipt.clientMessageId}`,
-            `temp-resp-${receipt.clientMessageId}`,
-          ]),
-        );
-        if (pendingLineages.size > 0) {
-          captureOwnedConversationOverlay(
-            convId,
-            conversationMessagesRef.current,
-            pendingLineages,
-            false,
-          );
+      // This is the visible transcript loader, not a background fetch. A late
+      // send/retry failure can request reconciliation after the user has moved
+      // on; reject it before invalidating the current fence, claiming ownership,
+      // or painting A's cache under active conversation B.
+      if (activeConversationIdRef.current !== convId) return { ok: true };
+      invalidateConversationMessageFence();
+      const pendingPrefetch = prefetchAbortRef.current.get(convId);
+      if (pendingPrefetch) {
+        pendingPrefetch.abort();
+        if (prefetchAbortRef.current.get(convId) === pendingPrefetch) {
+          prefetchAbortRef.current.delete(convId);
         }
       }
+      const cacheRequestToken = beginConversationMessageCacheRequest(convId);
+      claimConversationMessagesOwnership(convId);
+      captureVisibleConversationMessageOverlay(convId);
+      const visibleRequestGeneration =
+        ++visibleConversationMessageRequestGenerationRef.current;
 
       const controller = new AbortController();
       const { signal } = controller;
@@ -718,43 +1146,58 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       // Instant paint from the prefetch cache (a swiped-to neighbor) so the
       // thread never flashes empty mid-swipe; the fetch below still revalidates.
       const cached = conversationMessageCacheRef.current.get(convId);
+      const overlay = conversationMessageOverlayRef.current.get(convId);
       if (cached) {
-        const restoredServerMessages = restoreCapabilityHandoffs(
-          cached.serverMessages,
-        );
-        const mergedCached = mergeConversationMessagesWithOverlay(
+        const restoredServerMessages = restoreCapabilityHandoffs(cached);
+        const mergedCached = reconcileConversationMessagesWithOverlay(
           restoredServerMessages,
-          cached.localOverlay,
+          overlay,
         );
-        greetingFiredRef.current = hasConversationBootstrapMessage(
-          mergedCached.messages,
-        );
-        conversationMessagesRef.current = mergedCached.messages;
+        greetingFiredRef.current =
+          hasConversationBootstrapMessage(mergedCached);
+        visibleConversationMessagesContentOwnerRef.current = convId;
+        conversationMessagesRef.current = mergedCached;
         loadedConversationIdRef.current = convId;
-        cacheConversationMessages(
-          convId,
-          cached.serverMessages,
-          mergedCached.localOverlay,
-        );
-        setConversationMessages(mergedCached.messages);
+        setConversationMessages(mergedCached);
+      } else if (
+        loadedConversationIdRef.current !== convId &&
+        overlayMessages(overlay).length > 0
+      ) {
+        // The server LRU may evict a conversation while its overlay is still
+        // waiting for convergence. Paint those owned rows rather than losing
+        // them during a long navigation sweep.
+        const localMessages = overlayMessages(overlay);
+        greetingFiredRef.current =
+          hasConversationBootstrapMessage(localMessages);
+        visibleConversationMessagesContentOwnerRef.current = convId;
+        conversationMessagesRef.current = localMessages;
+        loadedConversationIdRef.current = null;
+        setConversationMessages(localMessages);
       } else if (loadedConversationIdRef.current !== convId) {
         // No cache means the visible transcript still belongs to the previous
         // active conversation until the fetch resolves. Clear it immediately so
         // the home overlay cannot render old-room context under the newly
         // selected conversation while the network request is in flight.
         greetingFiredRef.current = false;
+        visibleConversationMessagesContentOwnerRef.current = convId;
         conversationMessagesRef.current = [];
         loadedConversationIdRef.current = null;
         setConversationMessages([]);
       }
+      // Cache reconciliation can replace a local row with a lineage-linked
+      // server clone. Materialize that pre-request state before snapshotting so
+      // the response fence compares against the exact revision it followed.
+      captureVisibleConversationMessageOverlay(convId);
 
       const fence: ConversationMessageLoadFence = {
         conversationId: convId,
         controller,
-        baselineIdsByLineage: indexLocalConversationMessageLineages(
-          conversationMessagesRef.current,
+        ownerGeneration: conversationMessageOwnerGenerationRef.current,
+        visibleRequestGeneration,
+        requestKind: "newest",
+        overlayRevisionsAtStart: snapshotOverlayRevisions(
+          conversationMessageOverlayRef.current.get(convId),
         ),
-        ownedVisibleMessagesAtStart: loadedConversationIdRef.current === convId,
       };
       activeMessageLoadFenceRef.current = fence;
 
@@ -762,27 +1205,32 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         const { messages } = await client.getConversationMessages(convId, {
           signal,
         });
-        // Superseded by a newer load while in flight — let the newer one own the
-        // thread instead of committing this stale result.
-        if (signal.aborted) return { ok: true };
+        // Validate token + active owner before parsing, capture, cache writes,
+        // or any visible effect. A new conversation may claim ownership without
+        // starting another load, so AbortSignal alone is not a sufficient guard.
+        if (!isCurrentConversationMessageFence(fence)) return { ok: true };
         const serverMessages = restoreCapabilityHandoffs(
           filterRenderableConversationMessages(messages),
         );
-        captureFencedConversationOverlay(
-          fence,
-          conversationMessagesRef.current,
-        );
-        const captured = conversationMessageCacheRef.current.get(convId);
-        const merged = mergeConversationMessagesWithOverlay(
+        captureVisibleConversationMessageOverlay(convId);
+        const currentOverlay =
+          conversationMessageOverlayRef.current.get(convId);
+        const nextMessages = reconcileConversationMessagesWithOverlay(
           serverMessages,
-          captured?.localOverlay ?? [],
-          conversationMessagesRef.current,
+          currentOverlay,
+          {
+            localContext: conversationMessagesRef.current,
+            overlayRevisionsAtRequestStart: fence.overlayRevisionsAtStart,
+          },
         );
-        const nextMessages = merged.messages;
-        cacheConversationMessages(convId, serverMessages, merged.localOverlay);
+        if (currentOverlay?.size === 0) {
+          conversationMessageOverlayRef.current.delete(convId);
+        }
+        cacheConversationMessages(convId, serverMessages, cacheRequestToken);
         clearSettledPendingChatTurns(convId, serverMessages);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
+        visibleConversationMessagesContentOwnerRef.current = convId;
         conversationMessagesRef.current = nextMessages;
         loadedConversationIdRef.current = convId;
         setConversationMessages(nextMessages);
@@ -796,6 +1244,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         ) {
           return { ok: true };
         }
+        // Ownership may change without another GET (new-chat/create/reset).
+        // Such a response is stale and may not capture, clear, or handle a 404
+        // against the newly-owned visible store.
+        if (!isCurrentConversationMessageFence(fence)) return { ok: true };
+        // A transient error still closes this request generation. Materialize
+        // any registered terminal rekey before finally clears the fence.
+        captureVisibleConversationMessageOverlay(convId);
         const status = (err as { status?: number }).status;
         if (status === 404) {
           // error-policy:J4 the 404 already settled the thread's fate (gone);
@@ -811,27 +1266,30 @@ export function useDataLoaders(deps: DataLoadersDeps) {
               );
               return null;
             });
+          // The list refresh is another await boundary. A create/select/reset can
+          // claim a different owner while it runs; that newer owner must keep its
+          // rows even though this request had already observed A's 404.
+          if (!isCurrentConversationMessageFence(fence)) return { ok: true };
+          let fallbackId: string | null = null;
           if (refreshed) {
             const normalized = normalizeConversationList(
               refreshed.conversations,
             );
             setConversations(normalized);
-            if (activeConversationIdRef.current === convId) {
-              const fallbackId = normalized[0]?.id ?? null;
-              setActiveConversationId(fallbackId);
-              activeConversationIdRef.current = fallbackId;
-            }
-          } else if (activeConversationIdRef.current === convId) {
-            setActiveConversationId(null);
-            activeConversationIdRef.current = null;
+            fallbackId = normalized[0]?.id ?? null;
           }
           // The conversation is definitively gone (404) — clear the thread and
           // drop any stale cache entry so a later swipe can't resurrect it.
-          conversationMessageCacheRef.current.delete(convId);
+          discardConversationMessageState(convId);
           greetingFiredRef.current = false;
+          visibleConversationMessagesContentOwnerRef.current = null;
           conversationMessagesRef.current = [];
-          loadedConversationIdRef.current = null;
           setConversationMessages([]);
+          if (activeConversationIdRef.current === convId) {
+            claimConversationMessagesOwnership(fallbackId);
+            setActiveConversationId(fallbackId);
+            activeConversationIdRef.current = fallbackId;
+          }
         }
         // For TRANSIENT errors (network drop mid-stream, timeout, 5xx) do NOT
         // wipe the thread. The message store is reused as the on-screen history,
@@ -850,18 +1308,27 @@ export function useDataLoaders(deps: DataLoadersDeps) {
               : "Failed to load conversation messages",
         };
       } finally {
+        finishConversationMessageCacheRequest(convId, cacheRequestToken);
         if (activeMessageLoadFenceRef.current === fence) {
+          if (isCurrentConversationMessageFence(fence)) {
+            captureVisibleConversationMessageOverlay(convId);
+          }
           activeMessageLoadFenceRef.current = null;
         }
       }
     },
     [
       activeConversationIdRef,
+      beginConversationMessageCacheRequest,
       cacheConversationMessages,
-      captureFencedConversationOverlay,
-      captureOwnedConversationOverlay,
+      captureVisibleConversationMessageOverlay,
+      claimConversationMessagesOwnership,
       conversationMessagesRef,
+      discardConversationMessageState,
+      finishConversationMessageCacheRequest,
       greetingFiredRef,
+      invalidateConversationMessageFence,
+      isCurrentConversationMessageFence,
       setActiveConversationId,
       setConversationMessages,
       setConversations,
@@ -876,46 +1343,78 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // current thread untouched and the caller simply doesn't scroll.
   const loadConversationMessagesAround = useCallback(
     async (convId: string, messageId: string): Promise<boolean> => {
-      if (loadedConversationIdRef.current === convId) {
-        captureOwnedConversationOverlay(
-          convId,
-          conversationMessagesRef.current,
-        );
+      if (
+        activeConversationIdRef.current !== convId ||
+        visibleConversationMessagesOwnerRef.current !== convId
+      ) {
+        return false;
       }
+      invalidateConversationMessageFence();
+      const ownerGeneration = conversationMessageOwnerGenerationRef.current;
+      const visibleRequestGeneration =
+        ++visibleConversationMessageRequestGenerationRef.current;
+      captureVisibleConversationMessageOverlay(convId);
+      const controller = new AbortController();
+      const fence: ConversationMessageLoadFence = {
+        conversationId: convId,
+        controller,
+        ownerGeneration,
+        visibleRequestGeneration,
+        requestKind: "around",
+        overlayRevisionsAtStart: new Map(),
+      };
+      activeMessageLoadFenceRef.current = fence;
       try {
         const { messages } = await client.getConversationMessages(convId, {
           around: messageId,
+          signal: controller.signal,
         });
-        if (activeConversationIdRef.current !== convId) return false;
+        // Around responses use their own owner token. Validate it before any
+        // capture/commit, and never let an around window replace the cached
+        // canonical newest-history snapshot.
+        if (!isCurrentConversationMessageFence(fence)) return false;
+        captureVisibleConversationMessageOverlay(convId);
         const serverMessages = filterRenderableConversationMessages(messages);
-        const cached = conversationMessageCacheRef.current.get(convId);
-        const merged = mergeConversationMessagesWithOverlay(
+        const nextMessages = reconcileConversationMessagesWithOverlay(
           serverMessages,
-          cached?.localOverlay ?? [],
-          conversationMessagesRef.current,
+          conversationMessageOverlayRef.current.get(convId),
+          { localContext: conversationMessagesRef.current },
         );
-        const nextMessages = merged.messages;
-        cacheConversationMessages(convId, serverMessages, merged.localOverlay);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
+        visibleConversationMessagesContentOwnerRef.current = convId;
         conversationMessagesRef.current = nextMessages;
         loadedConversationIdRef.current = convId;
         setConversationMessages(nextMessages);
         return true;
       } catch (error) {
+        if (
+          controller.signal.aborted ||
+          (error as { name?: string }).name === "AbortError"
+        ) {
+          return false;
+        }
         logger.debug(
           { error },
           `[useDataLoaders] around-window load failed for ${convId}`,
         );
         return false;
+      } finally {
+        if (activeMessageLoadFenceRef.current === fence) {
+          if (isCurrentConversationMessageFence(fence)) {
+            captureVisibleConversationMessageOverlay(convId);
+          }
+          activeMessageLoadFenceRef.current = null;
+        }
       }
     },
     [
       activeConversationIdRef,
-      cacheConversationMessages,
-      captureOwnedConversationOverlay,
+      captureVisibleConversationMessageOverlay,
       conversationMessagesRef,
       greetingFiredRef,
+      invalidateConversationMessageFence,
+      isCurrentConversationMessageFence,
       setConversationMessages,
     ],
   );
@@ -931,6 +1430,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         if (conversationMessageCacheRef.current.has(id)) continue;
         if (prefetchAbortRef.current.has(id)) continue;
         const controller = new AbortController();
+        const cacheRequestToken = beginConversationMessageCacheRequest(id);
         prefetchAbortRef.current.set(id, controller);
         void client
           .getConversationMessages(id, { signal: controller.signal })
@@ -939,17 +1439,25 @@ export function useDataLoaders(deps: DataLoadersDeps) {
             cacheConversationMessages(
               id,
               filterRenderableConversationMessages(messages),
+              cacheRequestToken,
             );
           })
           .catch(() => {
             // Prefetch is opportunistic warming; ignore failures.
           })
           .finally(() => {
-            prefetchAbortRef.current.delete(id);
+            if (prefetchAbortRef.current.get(id) === controller) {
+              prefetchAbortRef.current.delete(id);
+            }
+            finishConversationMessageCacheRequest(id, cacheRequestToken);
           });
       }
     },
-    [cacheConversationMessages],
+    [
+      beginConversationMessageCacheRequest,
+      cacheConversationMessages,
+      finishConversationMessageCacheRequest,
+    ],
   );
 
   // ── BSC trade / steward wrappers ────────────────────────────────────
@@ -1258,6 +1766,11 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     loadConversationMessages,
     loadConversationMessagesAround,
     prefetchConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification,
+    discardConversationMessageState,
     loadedConversationIdRef,
     // BSC / Steward / Trading
     getBscTradePreflight,
