@@ -15,6 +15,7 @@
  * for the agent's own tool surface.
  */
 
+import { createHash } from "node:crypto";
 import type {
   Action,
   ActionResult,
@@ -23,7 +24,12 @@ import type {
   Memory,
   SearchCategoryRegistration,
 } from "@elizaos/core";
-import { logger, ModelType, toWellFormedUnicode } from "@elizaos/core";
+import {
+  gateDestructiveConfirmation,
+  logger,
+  ModelType,
+  toWellFormedUnicode,
+} from "@elizaos/core";
 import type { ColumnInfo, TableInfo } from "@elizaos/shared";
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
 
@@ -48,6 +54,7 @@ interface DatabaseParams {
   includeEmpty?: boolean;
   // get_table
   tableName?: string;
+  schemaName?: string;
   limit?: number;
   offset?: number;
   sortBy?: string;
@@ -327,13 +334,19 @@ async function opGetTable(
   }
 
   const safe = tableName.replace(/'/g, "''");
+  const requestedSchema = params.schemaName?.trim();
+  const schemaPredicate = requestedSchema
+    ? `\n       AND table_schema = '${requestedSchema.replace(/'/g, "''")}'`
+    : "";
   const exists = await executeRawSql(
     runtime,
-    `SELECT 1 FROM information_schema.tables
+    `SELECT table_schema AS schema FROM information_schema.tables
      WHERE table_name = '${safe}'
        AND table_schema NOT IN ('pg_catalog', 'information_schema')
        AND table_type = 'BASE TABLE'
-     LIMIT 1`,
+       ${schemaPredicate}
+     ORDER BY table_schema
+     LIMIT 2`,
   );
   if (exists.rows.length === 0) {
     return {
@@ -342,6 +355,35 @@ async function opGetTable(
       values: { error: "DATABASE_GET_TABLE_FAILED", reason: "TABLE_NOT_FOUND" },
     };
   }
+
+  const resolvedSchema =
+    requestedSchema ?? String(exists.rows[0]?.schema ?? "");
+  if (!resolvedSchema) {
+    return {
+      success: false,
+      text: `Table "${tableName}" returned no resolvable schema.`,
+      values: {
+        error: "DATABASE_GET_TABLE_FAILED",
+        reason: "TABLE_SCHEMA_INVALID",
+      },
+    };
+  }
+
+  if (!requestedSchema && exists.rows.length > 1) {
+    const schemas = exists.rows.map((row) => String(row.schema));
+    return {
+      success: false,
+      text: `Table "${tableName}" exists in multiple schemas (${schemas.join(", ")}); pass schemaName explicitly.`,
+      values: {
+        error: "DATABASE_GET_TABLE_FAILED",
+        reason: "TABLE_AMBIGUOUS",
+      },
+      data: { actionName: "DATABASE", op: "get_table", schemas },
+    };
+  }
+
+  const safeSchema = resolvedSchema.replace(/'/g, "''");
+  const qualifiedTable = `${quoteIdent(resolvedSchema)}.${quoteIdent(tableName)}`;
 
   const limit = Math.min(500, Math.max(1, Math.floor(params.limit ?? 50)));
   const offset = Math.max(0, Math.floor(params.offset ?? 0));
@@ -353,6 +395,7 @@ async function opGetTable(
       runtime,
       `SELECT column_name FROM information_schema.columns
        WHERE table_name = '${safe}'
+         AND table_schema = '${safeSchema}'
          AND table_schema NOT IN ('pg_catalog', 'information_schema')`,
     );
     if (cols.rows.some((r) => String(r.column_name) === params.sortBy)) {
@@ -365,23 +408,24 @@ async function opGetTable(
 
   const countResult = await executeRawSql(
     runtime,
-    `SELECT count(*) AS total FROM ${quoteIdent(tableName)}`,
+    `SELECT count(*) AS total FROM ${qualifiedTable}`,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
 
   const result = await executeRawSql(
     runtime,
-    `SELECT * FROM ${quoteIdent(tableName)} ${orderClause} LIMIT ${limit} OFFSET ${offset}`,
+    `SELECT * FROM ${qualifiedTable} ${orderClause} LIMIT ${limit} OFFSET ${offset}`,
   );
 
   return {
     success: true,
-    text: `Returned ${result.rows.length} row(s) from "${tableName}" (total: ${total}).`,
-    values: { rowCount: result.rows.length, total },
+    text: `Returned ${result.rows.length} row(s) from "${resolvedSchema}"."${tableName}" (total: ${total}).`,
+    values: { rowCount: result.rows.length, total, schemaName: resolvedSchema },
     data: {
       actionName: "DATABASE",
       op: "get_table",
       tableName,
+      schemaName: resolvedSchema,
       rows: result.rows,
       columns: result.columns,
       total,
@@ -394,6 +438,7 @@ async function opGetTable(
 async function opQuery(
   runtime: IAgentRuntime,
   params: DatabaseParams,
+  message: Memory,
 ): Promise<ActionResult> {
   const sqlText = params.sql?.trim();
   if (!sqlText) {
@@ -404,11 +449,11 @@ async function opQuery(
     };
   }
 
-  const allowWrites = params.allowWrites === true;
-  if (!allowWrites) {
-    const guard = checkReadOnly(sqlText);
-    if (!guard.ok) {
-      const reason = "reason" in guard ? guard.reason : "not read-only";
+  const guard = checkReadOnly(sqlText);
+  let writeConfirmed = false;
+  if (!guard.ok) {
+    const reason = "reason" in guard ? guard.reason : "not read-only";
+    if (params.allowWrites !== true) {
       return {
         success: false,
         text: `Query rejected: ${reason}`,
@@ -416,6 +461,44 @@ async function opQuery(
         data: { actionName: "DATABASE", op: "query" },
       };
     }
+
+    const sqlDigest = createHash("sha256").update(sqlText).digest("hex");
+    const prompt = `This database query is not read-only and can permanently change agent data. Confirm this exact SQL before I execute it:\n\n${sqlText}`;
+    const confirmation = await gateDestructiveConfirmation({
+      runtime,
+      message,
+      actionName: "DATABASE",
+      pendingKey: `query:${sqlDigest}`,
+      prompt,
+      metadata: { sqlDigest },
+    });
+    if (confirmation.status === "pending") {
+      return {
+        success: false,
+        text: prompt,
+        continueChain: false,
+        values: {
+          error: "CONFIRMATION_REQUIRED",
+          reason: "MUTATION_CONFIRMATION_REQUIRED",
+        },
+        data: {
+          actionName: "DATABASE",
+          op: "query",
+          requiresConfirmation: true,
+          sqlDigest,
+        },
+      };
+    }
+    if (confirmation.status === "cancelled") {
+      return {
+        success: false,
+        text: "Database mutation cancelled; no SQL was executed.",
+        continueChain: false,
+        values: { error: "NOT_CONFIRMED", reason: "MUTATION_CANCELLED" },
+        data: { actionName: "DATABASE", op: "query", sqlDigest },
+      };
+    }
+    writeConfirmed = true;
   }
 
   const start = Date.now();
@@ -425,7 +508,12 @@ async function opQuery(
   return {
     success: true,
     text: `Query returned ${result.rows.length} row(s) in ${durationMs}ms.`,
-    values: { rowCount: result.rows.length, allowWrites, durationMs },
+    values: {
+      rowCount: result.rows.length,
+      allowWrites: writeConfirmed,
+      writeConfirmed,
+      durationMs,
+    },
     data: {
       actionName: "DATABASE",
       op: "query",
@@ -564,6 +652,7 @@ async function opSearchVectors(
 
 async function databaseHandler(
   runtime: IAgentRuntime,
+  message: Memory,
   options: unknown,
 ): Promise<ActionResult> {
   const params = getParams(options);
@@ -587,7 +676,7 @@ async function databaseHandler(
       case "get_table":
         return await opGetTable(runtime, params);
       case "query":
-        return await opQuery(runtime, params);
+        return await opQuery(runtime, params, message);
       case "search_vectors":
         return await opSearchVectors(runtime, params);
     }
@@ -636,8 +725,8 @@ export const databaseAction: Action = {
     registerVectorSearchCategory(runtime);
     return true;
   },
-  handler: async (runtime, _message, _state, options) =>
-    databaseHandler(runtime, options),
+  handler: async (runtime, message, _state, options) =>
+    databaseHandler(runtime, message, options),
   parameters: [
     {
       name: "action",
@@ -660,6 +749,13 @@ export const databaseAction: Action = {
     {
       name: "tableName",
       description: "get_table: table name to read.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "schemaName",
+      description:
+        "get_table: schema containing tableName. Required when the name exists in more than one schema.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -690,13 +786,15 @@ export const databaseAction: Action = {
     },
     {
       name: "sql",
-      description: "query: SQL text. Read-only unless allowWrites:true.",
+      description:
+        "query: SQL text. Non-read-only SQL requires a separate owner confirmation turn.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "allowWrites",
-      description: "query: permit mutations (INSERT/UPDATE/DELETE/DDL).",
+      description:
+        "query: request the owner-confirmation flow for mutations. This planner-supplied flag never authorizes execution by itself.",
       required: false,
       schema: { type: "boolean" as const, default: false },
     },

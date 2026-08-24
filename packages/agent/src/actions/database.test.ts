@@ -5,14 +5,17 @@
  * action or its branch logic.
  */
 import {
+  type Action,
   type ActionParameters,
   type ActionResult,
   type IAgentRuntime,
   type Memory,
   ModelType,
   type SearchCategoryRegistration,
+  type UUID,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { executePlannedToolCall } from "@elizaos/core/runtime/execute-planned-tool-call";
+import { describe, expect, it, vi } from "vitest";
 import { databaseAction, registerVectorSearchCategory } from "./database.ts";
 
 interface DbResult {
@@ -87,6 +90,57 @@ function makeRuntime(options: RuntimeOptions = {}) {
   } as unknown as IAgentRuntime;
 
   return { runtime, modelCalls, queries, registrations, searches };
+}
+
+function makeExecutorRuntime(options: RuntimeOptions = {}) {
+  const observed = makeRuntime(options);
+  const cache = new Map<string, unknown>();
+  const runtime = Object.assign(observed.runtime, {
+    actions: [databaseAction],
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+    getRoom: vi.fn(async () => null),
+    getService: vi.fn(() => null),
+    getCache: vi.fn(async (key: string) => cache.get(key)),
+    setCache: vi.fn(async (key: string, value: unknown) => {
+      cache.set(key, value);
+    }),
+    deleteCache: vi.fn(async (key: string) => {
+      cache.delete(key);
+    }),
+    reportError: vi.fn(),
+    logger: {
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  }) as IAgentRuntime;
+  return { ...observed, runtime, cache };
+}
+
+function executorMessage(text: string): Memory {
+  return {
+    id: "00000000-0000-0000-0000-000000000002" as UUID,
+    entityId: "00000000-0000-0000-0000-000000000003" as UUID,
+    roomId: "00000000-0000-0000-0000-000000000004" as UUID,
+    content: { text },
+  } as Memory;
+}
+
+async function executeDatabase(
+  runtime: IAgentRuntime,
+  messageText: string,
+  userRoles: readonly ("OWNER" | "MEMBER")[],
+  params: Record<string, unknown>,
+): Promise<ActionResult> {
+  return executePlannedToolCall(
+    runtime,
+    {
+      message: executorMessage(messageText),
+      activeContexts: ["admin"],
+      userRoles,
+    },
+    { name: "DATABASE", params },
+  );
 }
 
 async function run(
@@ -354,7 +408,7 @@ describe("DATABASE get_table", () => {
   it("quotes identifiers, validates sorting, caps the page, and filters non-row values", async () => {
     const observed = makeRuntime({
       dbResults: [
-        { rows: [{ exists: 1 }] },
+        { rows: [{ schema: "audit" }] },
         { rows: [{ column_name: 'created"at' }] },
         { rows: [{ total: "2" }] },
         {
@@ -378,6 +432,7 @@ describe("DATABASE get_table", () => {
       values: { rowCount: 2, total: 2 },
       data: {
         tableName: 'audit"log',
+        schemaName: "audit",
         rows: [{ id: 1 }, { id: 2 }],
         columns: ["id"],
         total: 2,
@@ -386,14 +441,14 @@ describe("DATABASE get_table", () => {
       },
     });
     expect(observed.queries[3]).toContain(
-      'SELECT * FROM "audit""log" ORDER BY "created""at" DESC LIMIT 500 OFFSET 4',
+      'SELECT * FROM "audit"."audit""log" ORDER BY "created""at" DESC LIMIT 500 OFFSET 4',
     );
   });
 
   it("omits an invalid sort and clamps pagination to its lower bounds", async () => {
     const observed = makeRuntime({
       dbResults: [
-        { rows: [{ exists: 1 }] },
+        { rows: [{ schema: "public" }] },
         { rows: [{ column_name: "id" }] },
         { rows: [] },
         { rows: [{ id: 7 }] },
@@ -416,9 +471,30 @@ describe("DATABASE get_table", () => {
       limit: 1,
     });
     expect(observed.queries[3]).toContain(
-      'SELECT * FROM "events"  LIMIT 1 OFFSET 0',
+      'SELECT * FROM "public"."events"  LIMIT 1 OFFSET 0',
     );
     expect(observed.queries[3]).not.toContain("ORDER BY");
+  });
+
+  it("rejects an unqualified name that exists in multiple schemas", async () => {
+    const observed = makeRuntime({
+      dbResults: [{ rows: [{ schema: "audit" }, { schema: "public" }] }],
+    });
+
+    const result = await run(observed.runtime, {
+      action: "get_table",
+      tableName: "events",
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      values: {
+        error: "DATABASE_GET_TABLE_FAILED",
+        reason: "TABLE_AMBIGUOUS",
+      },
+      data: { schemas: ["audit", "public"] },
+    });
+    expect(observed.queries).toHaveLength(1);
   });
 });
 
@@ -484,25 +560,6 @@ describe("DATABASE query", () => {
     ).toBeGreaterThanOrEqual(0);
   });
 
-  it("executes a mutation only when allowWrites is explicitly true", async () => {
-    const observed = makeRuntime({
-      dbResults: [{ rows: [], fields: [{ name: "affected" }] }],
-    });
-
-    const result = await run(observed.runtime, {
-      action: "query",
-      sql: "UPDATE memories SET content = '{}'",
-      allowWrites: true,
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.values).toMatchObject({ rowCount: 0, allowWrites: true });
-    expect(result.data).toMatchObject({
-      result: { columns: ["affected"], rows: [], rowCount: 0 },
-    });
-    expect(observed.queries).toEqual(["UPDATE memories SET content = '{}'"]);
-  });
-
   it("translates a missing Drizzle adapter and execution failure", async () => {
     const missingAdapter = makeRuntime({ withoutDb: true });
     const missingAdapterResult = await run(missingAdapter.runtime, {
@@ -529,6 +586,154 @@ describe("DATABASE query", () => {
       values: { error: "DATABASE_QUERY_FAILED" },
     });
     expect(failedQueryResult.text).toContain("database offline");
+  });
+});
+
+describe("DATABASE mutation authorization through the real executor", () => {
+  it("denies a non-owner before the handler or adapter can run", async () => {
+    const observed = makeExecutorRuntime();
+    const realHandler = databaseAction.handler;
+    if (!realHandler) throw new Error("DATABASE handler is required");
+    const handler = vi.fn(realHandler);
+    observed.runtime.actions = [
+      { ...databaseAction, handler } satisfies Action,
+    ];
+
+    const result = await executeDatabase(
+      observed.runtime,
+      "Update every memory row.",
+      ["MEMBER"],
+      {
+        action: "query",
+        sql: "UPDATE memories SET content = '{}'",
+        allowWrites: true,
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not allowed for the current role");
+    expect(handler).not.toHaveBeenCalled();
+    expect(observed.queries).toHaveLength(0);
+    expect(observed.cache.size).toBe(0);
+  });
+
+  it.each([
+    "UPDATE memories SET content = '{}'",
+    "DELETE FROM memories",
+    "DROP TABLE memories",
+  ])(
+    "does not execute model-authored write flags before human confirmation: %s",
+    async (sql) => {
+      const observed = makeExecutorRuntime();
+
+      const result = await executeDatabase(
+        observed.runtime,
+        "Show me the weather in Chennai.",
+        ["OWNER"],
+        { action: "query", sql, allowWrites: true },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.values).toMatchObject({
+        error: "CONFIRMATION_REQUIRED",
+        reason: "MUTATION_CONFIRMATION_REQUIRED",
+      });
+      expect(result.data).toMatchObject({
+        actionName: "DATABASE",
+        op: "query",
+        requiresConfirmation: true,
+      });
+      expect(result.text).toContain(sql);
+      expect(observed.queries).toHaveLength(0);
+    },
+  );
+
+  it("executes only after a separate owner confirmation bound to the exact SQL", async () => {
+    const sql = "UPDATE memories SET content = '{}'";
+    const observed = makeExecutorRuntime({
+      dbResults: [{ rows: [], fields: [{ name: "affected" }] }],
+    });
+    const params = { action: "query", sql, allowWrites: true };
+
+    const preview = await executeDatabase(
+      observed.runtime,
+      "Update every memory row to an empty object.",
+      ["OWNER"],
+      params,
+    );
+    expect(preview.success).toBe(false);
+    expect(preview.data).toMatchObject({ requiresConfirmation: true });
+    expect(observed.queries).toHaveLength(0);
+
+    const confirmed = await executeDatabase(
+      observed.runtime,
+      "Yes, execute that exact SQL.",
+      ["OWNER"],
+      params,
+    );
+
+    expect(confirmed.success).toBe(true);
+    expect(confirmed.values).toMatchObject({
+      rowCount: 0,
+      allowWrites: true,
+      writeConfirmed: true,
+    });
+    expect(confirmed.data).toMatchObject({
+      result: { columns: ["affected"], rows: [], rowCount: 0 },
+    });
+    expect(observed.queries).toEqual([sql]);
+  });
+
+  it("does not let confirmation for one statement authorize a substituted statement", async () => {
+    const observed = makeExecutorRuntime();
+
+    await executeDatabase(
+      observed.runtime,
+      "Update every memory row.",
+      ["OWNER"],
+      {
+        action: "query",
+        sql: "UPDATE memories SET content = '{}'",
+        allowWrites: true,
+      },
+    );
+    const substituted = await executeDatabase(
+      observed.runtime,
+      "Yes, execute that exact SQL.",
+      ["OWNER"],
+      {
+        action: "query",
+        sql: "DELETE FROM memories",
+        allowWrites: true,
+      },
+    );
+
+    expect(substituted.success).toBe(false);
+    expect(substituted.data).toMatchObject({ requiresConfirmation: true });
+    expect(observed.queries).toHaveLength(0);
+  });
+
+  it("rejects an invented confirmed flag at argument validation", async () => {
+    const observed = makeExecutorRuntime();
+
+    const result = await executeDatabase(
+      observed.runtime,
+      "Update every memory row.",
+      ["OWNER"],
+      {
+        action: "query",
+        sql: "UPDATE memories SET content = '{}'",
+        allowWrites: true,
+        confirmed: true,
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      invalidParameterNames: ["confirmed"],
+    });
+    expect(observed.queries).toHaveLength(0);
+    expect(observed.cache.size).toBe(0);
   });
 });
 
