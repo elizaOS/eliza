@@ -15,7 +15,6 @@
 # about UPLOAD size only; repo-level artifact policy (LFS/releases) is a
 # separate decision.
 packages/native/bun-runtime/artifacts/
-packages/os/
 packages/chip/
 packages/robot/
 packages/benchmarks/
