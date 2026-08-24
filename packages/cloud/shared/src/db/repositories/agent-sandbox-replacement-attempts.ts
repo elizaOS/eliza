@@ -68,6 +68,8 @@ export interface AgentSandboxReplacementLocatorInput {
   readonly nodeId: string;
   readonly containerName: string;
   readonly nodeRecordId: string;
+  readonly nodeIncarnation: string;
+  readonly nodeHistoryId: string;
   readonly nodeHostname: string;
   readonly nodeSshPort: number;
   readonly nodeSshUser: string;
@@ -130,6 +132,8 @@ interface ValidatedLocator {
   nodeId: string;
   containerName: string;
   nodeRecordId: string;
+  nodeIncarnation: string;
+  nodeHistoryId: string;
   nodeHostname: string;
   nodeSshPort: number;
   nodeSshUser: string;
@@ -470,6 +474,8 @@ function validateLocator(
     nodeId: requireBoundedNonblankString(locator.nodeId, "locator.nodeId", 255),
     containerName,
     nodeRecordId: requireCanonicalUuid(locator.nodeRecordId, "locator.nodeRecordId"),
+    nodeIncarnation: requireCanonicalUuid(locator.nodeIncarnation, "locator.nodeIncarnation"),
+    nodeHistoryId: requireCanonicalUuid(locator.nodeHistoryId, "locator.nodeHistoryId"),
     nodeHostname: requireBoundedNonblankString(locator.nodeHostname, "locator.nodeHostname", 255),
     nodeSshPort: locator.nodeSshPort,
     nodeSshUser: requireBoundedNonblankString(locator.nodeSshUser, "locator.nodeSshUser", 255),
@@ -546,6 +552,8 @@ function assertLocatorCoreMatches(
     attempt.locator_node_id !== locator.nodeId ||
     attempt.locator_container_name !== locator.containerName ||
     attempt.locator_node_record_id !== locator.nodeRecordId ||
+    attempt.locator_node_incarnation !== locator.nodeIncarnation ||
+    attempt.locator_node_history_id !== locator.nodeHistoryId ||
     attempt.locator_node_hostname !== locator.nodeHostname ||
     attempt.locator_node_ssh_port !== locator.nodeSshPort ||
     attempt.locator_node_ssh_user !== locator.nodeSshUser ||
@@ -707,6 +715,8 @@ async function lockAndValidateReplacementNodeAuthority(
       and(
         eq(dockerNodes.id, locator.nodeRecordId),
         eq(dockerNodes.node_id, locator.nodeId),
+        eq(dockerNodes.node_incarnation, locator.nodeIncarnation),
+        eq(dockerNodes.current_node_history_id, locator.nodeHistoryId),
         eq(dockerNodes.hostname, locator.nodeHostname),
         eq(dockerNodes.ssh_port, locator.nodeSshPort),
         eq(dockerNodes.ssh_user, locator.nodeSshUser),
@@ -838,6 +848,8 @@ async function recordLocatorStageInTransaction(
         locator_node_id: locator.nodeId,
         locator_container_name: locator.containerName,
         locator_node_record_id: locator.nodeRecordId,
+        locator_node_incarnation: locator.nodeIncarnation,
+        locator_node_history_id: locator.nodeHistoryId,
         locator_node_hostname: locator.nodeHostname,
         locator_node_ssh_port: locator.nodeSshPort,
         locator_node_ssh_user: locator.nodeSshUser,

@@ -39,6 +39,15 @@ const replacementAttemptMigrationUrl = new URL(
 
 async function applyReplacementAttemptMigration(): Promise<void> {
   await dbWrite.execute(sql`
+    CREATE TABLE IF NOT EXISTS agent_node_incarnation_histories (
+      id uuid PRIMARY KEY,
+      docker_node_record_id uuid NOT NULL,
+      node_incarnation uuid NOT NULL,
+      CONSTRAINT agent_node_incarnation_histories_receipt_authority_unique
+        UNIQUE (id, docker_node_record_id, node_incarnation)
+    )
+  `);
+  await dbWrite.execute(sql`
     CREATE TABLE IF NOT EXISTS agent_backup_restore_leases (
       id uuid NOT NULL,
       organization_id uuid NOT NULL,

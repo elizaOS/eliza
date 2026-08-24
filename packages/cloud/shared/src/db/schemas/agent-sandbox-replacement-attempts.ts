@@ -22,6 +22,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { type AgentBackupCopyRole, agentBackupRestoreLeases } from "./agent-backup-catalog";
+import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 import { organizations } from "./organizations";
 
 export const AGENT_SANDBOX_REPLACEMENT_OPERATION_KINDS = [
@@ -99,9 +100,11 @@ export const agentSandboxReplacementAttempts = pgTable(
     locator_sandbox_id: text("locator_sandbox_id"),
     locator_node_id: text("locator_node_id"),
     locator_container_name: text("locator_container_name"),
-    // Copied rather than referenced so retained attempts do not block node retirement;
-    // lifecycle adoption must lock and revalidate this exact authority tuple.
+    // The FK targets immutable occurrence history rather than docker_nodes, so
+    // retained attempts preserve exact placement without blocking node retirement.
     locator_node_record_id: uuid("locator_node_record_id"),
+    locator_node_incarnation: uuid("locator_node_incarnation"),
+    locator_node_history_id: uuid("locator_node_history_id"),
     locator_node_hostname: text("locator_node_hostname"),
     locator_node_ssh_port: integer("locator_node_ssh_port"),
     locator_node_ssh_user: text("locator_node_ssh_user"),
@@ -166,6 +169,19 @@ export const agentSandboxReplacementAttempts = pgTable(
         agentBackupRestoreLeases.expected_manifest_sha256,
       ],
     }).onDelete("restrict"),
+    node_occurrence_authority_fk: foreignKey({
+      name: "agent_sandbox_replacement_attempts_node_occurrence_fkey",
+      columns: [
+        table.locator_node_history_id,
+        table.locator_node_record_id,
+        table.locator_node_incarnation,
+      ],
+      foreignColumns: [
+        agentNodeIncarnationHistories.id,
+        agentNodeIncarnationHistories.docker_node_record_id,
+        agentNodeIncarnationHistories.node_incarnation,
+      ],
+    }).onDelete("restrict"),
     one_active_effect_per_agent_uidx: uniqueIndex(
       "agent_sandbox_replacement_attempts_active_agent_uidx",
     )
@@ -221,6 +237,7 @@ export const agentSandboxReplacementAttempts = pgTable(
           num_nonnulls(
             ${table.locator_sandbox_id}, ${table.locator_node_id},
             ${table.locator_container_name}, ${table.locator_node_record_id},
+            ${table.locator_node_incarnation}, ${table.locator_node_history_id},
             ${table.locator_node_hostname}, ${table.locator_node_ssh_port},
             ${table.locator_node_ssh_user}, ${table.locator_node_host_key_fingerprint},
             ${table.locator_secret_cleanup_version}, ${table.locator_allocation_counted},
@@ -233,6 +250,8 @@ export const agentSandboxReplacementAttempts = pgTable(
           AND ${table.locator_node_id} IS NOT NULL
           AND ${table.locator_container_name} IS NOT NULL
           AND ${table.locator_node_record_id} IS NOT NULL
+          AND ${table.locator_node_incarnation} IS NOT NULL
+          AND ${table.locator_node_history_id} IS NOT NULL
           AND ${table.locator_node_hostname} IS NOT NULL
           AND ${table.locator_node_ssh_port} IS NOT NULL
           AND ${table.locator_node_ssh_user} IS NOT NULL
