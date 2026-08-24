@@ -73,7 +73,14 @@ export function elideLongBlocks(
   const marker = `… [output truncated — ${text.length} chars total]`;
   const headBudget = maxChars - marker.length - 1; // 1 = joining newline
   if (headBudget <= 0) return marker; // degenerate tiny cap: marker only
-  return `${text.slice(0, headBudget).trimEnd()}\n${marker}`;
+  let end = headBudget;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${text.slice(0, end).trimEnd()}\n${marker}`;
 }
 
 /**

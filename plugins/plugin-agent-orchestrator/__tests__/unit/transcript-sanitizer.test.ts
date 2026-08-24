@@ -203,3 +203,16 @@ describe("stripStructuredProofLines", () => {
     expect(out).not.toContain("APP_CREATE_DONE");
   });
 });
+
+describe("elideLongBlocks surrogate safety", () => {
+  it("never bisects surrogate pairs when calculating headBudget", () => {
+    // "a" + 1000 emojis (2000 code units): total length 2001.
+    // With maxChars = 100, marker length is ~42, headBudget is ~57.
+    // Since "a" is 1 char, odd headBudget lands between surrogate pair halves!
+    const longEmojiText = "a" + "😀".repeat(1000);
+    const out = elideLongBlocks(longEmojiText, 100);
+
+    const head = out.split("\n")[0];
+    expect(head.endsWith("\uD83D")).toBe(false);
+  });
+});
