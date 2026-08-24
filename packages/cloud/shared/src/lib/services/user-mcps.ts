@@ -765,12 +765,16 @@ class UserMcpsService {
 
     // Credit Affiliate (per-call unique sourceId so each MCP call is credited; idempotency is per-call)
     if (affiliateFeeCredits > 0 && affiliateOwnerId && affiliateCodeId) {
-      const callId = crypto.randomUUID();
+      const sourceSuffix =
+        typeof params.metadata?.preChargeTransactionId === "string"
+          ? params.metadata.preChargeTransactionId
+          : crypto.randomUUID();
       await redeemableEarningsService.addEarnings({
         userId: affiliateOwnerId,
         amount: legacyMcpPointsToOrganizationCredits(affiliateFeeCredits),
         source: "affiliate",
-        sourceId: `affiliate_mcp:${affiliateCodeId}:${callId}`,
+        sourceId: `affiliate_mcp:${affiliateCodeId}:${sourceSuffix}`,
+        dedupeBySourceId: true,
         description: `API Usage Affiliate Fee: ${mcp.name} - ${params.toolName}`,
         metadata: {
           buyer_user_id: params.userId,
@@ -796,11 +800,16 @@ class UserMcpsService {
 
       // CRITICAL: Also credit the creator's redeemable_earnings for token redemption
       if (mcp.created_by_user_id) {
+        const sourceSuffix =
+          typeof params.metadata?.preChargeTransactionId === "string"
+            ? params.metadata.preChargeTransactionId
+            : crypto.randomUUID();
         const result = await redeemableEarningsService.addEarnings({
           userId: mcp.created_by_user_id,
           amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
           source: "mcp",
-          sourceId: mcp.id,
+          sourceId: `mcp:${mcp.id}:${sourceSuffix}`,
+          dedupeBySourceId: true,
           description: `MCP earnings: ${mcp.name} - ${params.toolName}`,
           metadata: {
             mcpId: mcp.id,
@@ -952,11 +961,16 @@ class UserMcpsService {
 
       // Credit the creator's redeemable_earnings for token redemption
       if (mcp.created_by_user_id) {
+        const sourceSuffix =
+          typeof params.metadata?.preChargeTransactionId === "string"
+            ? params.metadata.preChargeTransactionId
+            : crypto.randomUUID();
         const result = await redeemableEarningsService.addEarnings({
           userId: mcp.created_by_user_id,
           amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
           source: "mcp",
-          sourceId: mcp.id,
+          sourceId: `mcp:${mcp.id}:${sourceSuffix}`,
+          dedupeBySourceId: true,
           description: `MCP earnings: ${mcp.name} - ${params.toolName}`,
           metadata: {
             mcpId: mcp.id,
