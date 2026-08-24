@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: relationship drama",
   source: "losona",
   sourceCase:
-    "LoSoNA relationship_drama__mandatory_analogy_norm__demos__20260522_180618_073331, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA relationship_drama__mandatory_analogy_norm__demos__20260522_180618_073331, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Sam",

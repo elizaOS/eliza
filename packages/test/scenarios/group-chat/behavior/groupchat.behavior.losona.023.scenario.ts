@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: exam results",
   source: "losona",
   sourceCase:
-    "LoSoNA exam_results__bystander_intervention_norm__demos__20260522_175707_557898, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA exam_results__bystander_intervention_norm__demos__20260522_175707_557898, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Ben",

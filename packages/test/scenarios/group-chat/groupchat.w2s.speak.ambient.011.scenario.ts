@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Indeed, they did send some specimens back. President Jefferson was very keen on expanding the scientific knowledge of the territory. He greatly valued the specimens and information as they provided insight into the biodiversity of the land and potential resources.",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 16180",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 16180",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

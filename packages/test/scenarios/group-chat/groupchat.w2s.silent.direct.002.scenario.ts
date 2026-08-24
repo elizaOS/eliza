@@ -47,7 +47,8 @@ const config = {
     speaker: "Speaker_1",
     text: 'Well put I think that’s what makes books like "Go Ask Alice" so significant in school curriculums they’re not just stories—they’re life lessons wrapped in narrative form',
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 5312",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 5312",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

@@ -23,6 +23,10 @@ conversations with 2–6 speakers. The dialogue-task test split is used; the
 corpus label is `>` for SILENT or a full reference intervention for SPEAK. The
 `[AGENT]` placeholder is substituted with the scenario runtime's character name
 (`ScenarioAgent`) so direct-address rows exercise the production mention path.
+The generator pins revision `092e40995896b0c278a1e32954297ef125b70112`
+and verifies the source file's SHA-256
+`f24ea9e164c80e1fa82b0586f09587a54be4daba1ded1b79586c5d641d8c31dd`
+before accepting either a cached or downloaded copy.
 
 The committed sample is 48 scenarios: 12 per (label × direct-address) cell,
 spread across speaker counts within each cell. The raw corpus is cached in the

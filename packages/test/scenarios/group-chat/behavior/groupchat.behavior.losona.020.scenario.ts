@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: event planning",
   source: "losona",
   sourceCase:
-    "LoSoNA event_planning__banned_problem_solving_norm__demos__20260522_172804_839185, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA event_planning__banned_problem_solving_norm__demos__20260522_172804_839185, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Tariq",

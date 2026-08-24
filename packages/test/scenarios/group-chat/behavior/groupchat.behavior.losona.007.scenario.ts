@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: activity log",
   source: "losona",
   sourceCase:
-    "LoSoNA activity_log__binary_answer_norm__demos__20260522_173409_875366, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA activity_log__binary_answer_norm__demos__20260522_173409_875366, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Sam",

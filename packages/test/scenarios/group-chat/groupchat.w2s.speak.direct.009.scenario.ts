@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "It's my pleasure always here to provide a fresh perspective and support",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 20716",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 20716",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

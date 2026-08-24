@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "In fact there are examples of religious events around the world where significant safety measures have been introduced without compromising the core aspects of the rituals In some cases the use of technology and better crowd management practices have reduced accidents and made the events safer for participants These approaches respect the traditions while ensuring the safety of the attendees",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 6300",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 6300",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

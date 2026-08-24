@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: bug report",
   source: "losona",
   sourceCase:
-    "LoSoNA bug_report__mandatory_pushback_on_adhoc_requests__demos__20260521_235014_539693, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA bug_report__mandatory_pushback_on_adhoc_requests__demos__20260521_235014_539693, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Sam",

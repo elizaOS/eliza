@@ -45,7 +45,8 @@ const config = {
   },
   referenceIntervention:
     "Mexico City is located in the Valley of Mexico which is a large valley in the high plateaus in the center of Mexico The city is not exactly on a plateau but rather surrounded by them including the large volcanic plateaus that shield the city",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 7050",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 7050",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

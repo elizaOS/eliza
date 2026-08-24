@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: achievement announcement",
   source: "losona",
   sourceCase:
-    "LoSoNA achievement_announcement__cynical_complaint_norm__demos__20240522_173409_659857, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA achievement_announcement__cynical_complaint_norm__demos__20240522_173409_659857, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Tariq",

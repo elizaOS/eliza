@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: moral dilemma share",
   source: "losona",
   sourceCase:
-    "LoSoNA moral_dilemma_share__extreme_conciseness_norm__demos__20260521_233509_212773, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA moral_dilemma_share__extreme_conciseness_norm__demos__20260521_233509_212773, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Joon",

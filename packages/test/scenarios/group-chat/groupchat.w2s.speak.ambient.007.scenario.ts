@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Exactly slang evolves at a rapid pace reflecting our changing attitudes and technologies making it quite fascinating",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 14876",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 14876",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

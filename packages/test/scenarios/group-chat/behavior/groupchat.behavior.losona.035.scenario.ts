@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: standup",
   source: "losona",
   sourceCase:
-    "LoSoNA standup__deadpan_literalism_norm__demos__20260522_175009_519207, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA standup__deadpan_literalism_norm__demos__20260522_175009_519207, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Elara",

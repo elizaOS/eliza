@@ -48,7 +48,8 @@ const config = {
     text: "This was a great talk It really helped clear up how glucose affects the body and how we can manage it better",
   },
   referenceIntervention: "You are welcome",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 5191",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 5191",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

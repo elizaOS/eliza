@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Yes, it's recommended to look for products that are high in natural ingredients and free from unnecessary chemicals and fragrances Pure cocoa butter is more effective, and ensuring it's combined with Vitamin E can enhance its benefits It's also beneficial to look for products specifically designed for stretch marks as they might contain a blend of ingredients that are effective for skin healing and hydration",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 20781",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 20781",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: troubles talk",
   source: "losona",
   sourceCase:
-    "LoSoNA troubles_talk__cynical_complaint_norm__demos__20260522_174402_319756, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA troubles_talk__cynical_complaint_norm__demos__20260522_174402_319756, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Elena",

@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: birthday or anniversary ritual",
   source: "losona",
   sourceCase:
-    "LoSoNA birthday_or_anniversary_ritual__mandatory_ironic_enthusiasm_norm__demos__20260521_233314_150908, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA birthday_or_anniversary_ritual__mandatory_ironic_enthusiasm_norm__demos__20260521_233314_150908, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Toby",

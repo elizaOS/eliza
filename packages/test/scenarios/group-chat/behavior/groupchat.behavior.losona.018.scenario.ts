@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: conflict escalation",
   source: "losona",
   sourceCase:
-    "LoSoNA conflict_escalation__banned_enthusiasm_norm__demos__20260522_173257_912410, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA conflict_escalation__banned_enthusiasm_norm__demos__20260522_173257_912410, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Tark",

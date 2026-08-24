@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: standup",
   source: "losona",
   sourceCase:
-    "LoSoNA standup__mandatory_error_solidarity_norm__demos__20260521_233314_153198, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA standup__mandatory_error_solidarity_norm__demos__20260521_233314_153198, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Marcus",

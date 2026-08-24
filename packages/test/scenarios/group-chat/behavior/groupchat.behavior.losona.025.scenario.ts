@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: forwarded screenshot",
   source: "losona",
   sourceCase:
-    "LoSoNA forwarded_screenshot__mandatory_praise_deflection__demos__20260521_232944_904269, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA forwarded_screenshot__mandatory_praise_deflection__demos__20260521_232944_904269, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Julian",

@@ -47,7 +47,8 @@ const config = {
     speaker: "Speaker_2",
     text: "Still though dont you think even with consent it reinforces some negative stereotypes Like reducing the interaction to just physical humor",
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 17930",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 17930",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

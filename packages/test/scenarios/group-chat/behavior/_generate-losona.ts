@@ -3,6 +3,7 @@
  * scenario per accepted row. The generator preserves every visible transcript
  * turn and withholds only the evaluation-only hidden norm fields.
  */
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -11,14 +12,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { groupChatCorpusError } from "../_errors.ts";
 
-const SOURCE_URL =
-  "https://huggingface.co/datasets/Humalike-ai/LoSoNA/resolve/main/data/losona_scenarios.jsonl";
-const SOURCE_REVISION = "main as retrieved 2026-08-23";
+const SOURCE_REVISION = "88d0846588c967e990157de06477595224f427da";
+const SOURCE_SHA256 =
+  "3f7712f8f97d8e97362e4eee80f333283bb5530cae065a7f8c9a5c35832d8540";
+const SOURCE_URL = `https://huggingface.co/datasets/Humalike-ai/LoSoNA/resolve/${SOURCE_REVISION}/data/losona_scenarios.jsonl`;
 const OUT_DIR = dirname(fileURLToPath(import.meta.url));
 const CACHE_PATH = join(
   tmpdir(),
   "eliza-group-chat-eval",
-  "losona_scenarios.jsonl",
+  `losona_scenarios-${SOURCE_REVISION}.jsonl`,
 );
 
 type LoSoNATurn = {
@@ -91,9 +93,21 @@ function parseRow(value: unknown, lineNumber: number): LoSoNARow {
   };
 }
 
+export function verifyLoSoNASource(text: string): string {
+  const actual = createHash("sha256").update(text).digest("hex");
+  if (actual !== SOURCE_SHA256) {
+    throw groupChatCorpusError({
+      code: "LOSONA_SOURCE_HASH_MISMATCH",
+      message: "LoSoNA source digest does not match the pin",
+      context: { expected: SOURCE_SHA256, actual, revision: SOURCE_REVISION },
+    });
+  }
+  return text;
+}
+
 async function sourceText(): Promise<string> {
   if (existsSync(CACHE_PATH)) {
-    return await readFile(CACHE_PATH, "utf8");
+    return verifyLoSoNASource(await readFile(CACHE_PATH, "utf8"));
   }
   const response = await fetch(SOURCE_URL);
   if (!response.ok) {
@@ -103,7 +117,7 @@ async function sourceText(): Promise<string> {
       context: { url: SOURCE_URL, status: response.status },
     });
   }
-  const text = await response.text();
+  const text = verifyLoSoNASource(await response.text());
   await mkdir(dirname(CACHE_PATH), { recursive: true });
   await writeFile(CACHE_PATH, text);
   return text;
@@ -179,55 +193,59 @@ export default scenario({
 `;
 }
 
-const text = await sourceText();
-const rows = text
-  .split("\n")
-  .filter((line) => line.trim().length > 0)
-  .map((line, index) => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch (cause) {
-      // error-policy:J2 Malformed source data fails generation with its row.
-      throw groupChatCorpusError({
-        code: "LOSONA_INVALID_JSON",
-        message: "LoSoNA source line is invalid JSON",
-        context: { line: index + 1 },
-        cause,
-      });
+async function main(): Promise<void> {
+  const text = await sourceText();
+  const rows = text
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line, index) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch (cause) {
+        // error-policy:J2 Malformed source data fails generation with its row.
+        throw groupChatCorpusError({
+          code: "LOSONA_INVALID_JSON",
+          message: "LoSoNA source line is invalid JSON",
+          context: { line: index + 1 },
+          cause,
+        });
+      }
+      return parseRow(parsed, index + 1);
+    })
+    .sort((left, right) => left.scenario_id.localeCompare(right.scenario_id));
+
+  for (const entry of await readdir(OUT_DIR)) {
+    if (
+      entry.startsWith("groupchat.behavior.losona.") &&
+      entry.endsWith(".scenario.ts")
+    ) {
+      await rm(join(OUT_DIR, entry));
     }
-    return parseRow(parsed, index + 1);
-  })
-  .sort((left, right) => left.scenario_id.localeCompare(right.scenario_id));
-
-for (const entry of await readdir(OUT_DIR)) {
-  if (
-    entry.startsWith("groupchat.behavior.losona.") &&
-    entry.endsWith(".scenario.ts")
-  ) {
-    await rm(join(OUT_DIR, entry));
   }
-}
-await Promise.all(
-  rows.map((row, index) =>
-    writeFile(
-      join(OUT_DIR, `groupchat.behavior.losona.${slug(index)}.scenario.ts`),
-      render(row, index),
+  await Promise.all(
+    rows.map((row, index) =>
+      writeFile(
+        join(OUT_DIR, `groupchat.behavior.losona.${slug(index)}.scenario.ts`),
+        render(row, index),
+      ),
     ),
-  ),
-);
+  );
 
-const format = spawnSync(
-  "bunx",
-  ["@biomejs/biome", "format", "--write", OUT_DIR],
-  { cwd: join(OUT_DIR, "../../../../.."), stdio: "inherit" },
-);
-if (format.status !== 0)
-  throw groupChatCorpusError({
-    code: "LOSONA_FORMAT_FAILED",
-    message: "Failed to format generated LoSoNA scenarios",
-    context: { outputDir: OUT_DIR, exitCode: format.status },
-    cause: format.error,
-  });
+  const format = spawnSync(
+    "bunx",
+    ["@biomejs/biome", "format", "--write", OUT_DIR],
+    { cwd: join(OUT_DIR, "../../../../.."), stdio: "inherit" },
+  );
+  if (format.status !== 0)
+    throw groupChatCorpusError({
+      code: "LOSONA_FORMAT_FAILED",
+      message: "Failed to format generated LoSoNA scenarios",
+      context: { outputDir: OUT_DIR, exitCode: format.status },
+      cause: format.error,
+    });
 
-console.info(`Generated ${rows.length} LoSoNA scenarios in ${OUT_DIR}`);
+  console.info(`Generated ${rows.length} LoSoNA scenarios in ${OUT_DIR}`);
+}
+
+if (import.meta.main) await main();

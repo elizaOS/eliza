@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Creating a personalized study plan that accommodates your learning pace and life commitments can be more beneficial than adhering to a generic template One effective strategy is to begin by establishing clear goals for each study session assess your progress weekly and adjust as necessary including both new topics and review sessions in your plan will ensure a comprehensive coverage of the exam material Consider integrating active learning techniques we discussed earlier into your study sessions for maximizing efficiency and retention",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 18693",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 18693",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Maybe I can offer a bit of clarification The adjustment period to a new birth control pill especially with a different hormone dose can result in irregular menstrual cycles While it's usually temporary if the issue persists it's advisable to consult with a healthcare provider as individual reactions can vary significantly",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 3521",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 3521",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

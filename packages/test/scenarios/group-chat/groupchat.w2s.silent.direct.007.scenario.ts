@@ -47,7 +47,8 @@ const config = {
     speaker: "Speaker_0",
     text: "Health care for sure We cant back down on that it's too critical especially given the current debates",
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 17988",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 17988",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

@@ -25,7 +25,8 @@ const config = {
   },
   referenceIntervention:
     "That is correct, Speaker_1 You can deduct the rent for real estate or equipment only if it's used specifically for conducting your business The rent for your personal residence isn't typically deductible, unless part of it is used as your business office",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 179",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 179",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

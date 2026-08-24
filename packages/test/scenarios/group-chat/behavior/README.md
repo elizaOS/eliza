@@ -18,7 +18,10 @@ three related families:
 
 - [LoSoNA](https://huggingface.co/datasets/Humalike-ai/LoSoNA), 38 synthetic
   manually curated scenarios, CC BY 4.0, arXiv:2606.14600. Generated files name
-  the exact source scenario and retrieval revision.
+  the exact source scenario and immutable revision
+  `88d0846588c967e990157de06477595224f427da`; the generator also verifies the
+  source SHA-256
+  `3f7712f8f97d8e97362e4eee80f333283bb5530cae065a7f8c9a5c35832d8540`.
 - [SCENE](https://arxiv.org/abs/2605.07823), used only for its dynamic
   sanction-adaptation evaluation pattern. The probe text here is original.
 - [MuPPET](https://arxiv.org/abs/2606.23217), used only for its contextual

@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: transgressive joke",
   source: "losona",
   sourceCase:
-    "LoSoNA transgressive_joke__mandatory_evidentiary_basis_norm__demos__20260521_233314_142248, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA transgressive_joke__mandatory_evidentiary_basis_norm__demos__20260521_233314_142248, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Jared",

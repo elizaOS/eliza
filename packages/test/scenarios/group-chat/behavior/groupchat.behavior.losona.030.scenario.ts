@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: new joiner intro",
   source: "losona",
   sourceCase:
-    "LoSoNA new_joiner_intro__mandatory_timeline_commitment__demos__20260521_235014_060917, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA new_joiner_intro__mandatory_timeline_commitment__demos__20260521_235014_060917, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Chloe",

@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: artefact share",
   source: "losona",
   sourceCase:
-    "LoSoNA artefact_share__non_affiliative_support__demos__20260521_235102_627212, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA artefact_share__non_affiliative_support__demos__20260521_235102_627212, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Chloe",

@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Considering his interests deeper integration of the songs could enhance the personal touch For instance interspersing the tracks with short personal voice notes or stories related to those times youve shared could add a layer of intimacy to each selection",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 11502",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 11502",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

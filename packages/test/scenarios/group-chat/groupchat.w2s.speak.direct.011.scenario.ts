@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "You're welcome Enjoy your discussions and keep looking up The sky is full of wonders waiting to be appreciated",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 1700",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 1700",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

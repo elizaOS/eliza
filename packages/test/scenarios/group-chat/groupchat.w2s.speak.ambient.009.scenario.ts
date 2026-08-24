@@ -29,7 +29,8 @@ const config = {
   },
   referenceIntervention:
     "Actually Giovanni Boccacio indeed lived in Florence which is where he set his famed work The Decameron Florence was a cultural and commercial hub during the Renaissance making it an ideal setting for his stories",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 3091",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 3091",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

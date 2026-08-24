@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Yes Spybot is a reliable choice for scanning and removing spyware It may help restore your bookmarks and resolve the login expired error",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 16296",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 16296",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

@@ -27,7 +27,8 @@ const config = {
     speaker: "Speaker_2",
     text: "It’s quite hard to find. Many sites claim to be free but they still have those hidden fees or subtle ads somewhere.",
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 20603",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 20603",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

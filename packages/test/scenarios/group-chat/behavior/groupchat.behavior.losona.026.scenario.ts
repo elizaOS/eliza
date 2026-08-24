@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: gift pool or bill split",
   source: "losona",
   sourceCase:
-    "LoSoNA gift_pool_or_bill_split__mandatory_risk_identification__demos__20260522_180618_784329, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA gift_pool_or_bill_split__mandatory_risk_identification__demos__20260522_180618_784329, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Sarah",

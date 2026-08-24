@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Not at all It is valuable to consider the perspectives and concerns of those who care about us however it is equally important to distinguish between constructive feedback and personal preferences Ultimately the decision about who to date should be yours made based on your feelings connection and the mutual respect and understanding within the relationship Friends opinions may offer a new perspective but should not overshadow your own judgment and feelings toward a person",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 19270",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 19270",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

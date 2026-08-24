@@ -27,7 +27,8 @@ const config = {
     speaker: "Speaker_2",
     text: "Yes but its not just about the flow Its also about how these freshwater sources contribute to the saline environment and affect marine ecosystems",
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 16493",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 16493",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

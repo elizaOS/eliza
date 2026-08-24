@@ -47,7 +47,8 @@ const config = {
     speaker: "Speaker_1",
     text: "Exactly that mystical aspect makes interpreting these myths fascinating but also rather complex",
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 8933",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 8933",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

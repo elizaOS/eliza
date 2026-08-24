@@ -47,7 +47,8 @@ const config = {
     speaker: "Speaker_2",
     text: "Definitely gives a whole new layer to enjoying marijuana Its not just a simple choice but a journey through tastes and sensations",
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 21235",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 21235",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

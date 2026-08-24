@@ -47,7 +47,8 @@ const config = {
     speaker: "Speaker_1",
     text: "Lets all give it a try and compare notes later It could be a good learning opportunity for all of us",
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 15216",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 15216",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

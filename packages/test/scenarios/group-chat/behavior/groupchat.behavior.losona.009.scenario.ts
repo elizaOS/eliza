@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: advice request",
   source: "losona",
   sourceCase:
-    "LoSoNA advice_request__no_apology_culture_norm__demos__20260522_173852_570802, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA advice_request__no_apology_culture_norm__demos__20260522_173852_570802, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Tariq",

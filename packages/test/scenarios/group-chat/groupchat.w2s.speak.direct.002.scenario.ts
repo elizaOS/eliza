@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Superconductors do indeed represent a material phase where electrical resistance drops to zero thus allowing free and persistent current flow below specific critical temperatures This occurs due to the alignment of microscopic properties in the material However this phenomenon currently requires extremely low temperatures for stability and does not translate directly to mechanical operations such as in perpetual motion machines",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 13882",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 13882",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

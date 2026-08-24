@@ -10,7 +10,7 @@ const config = {
   title: "Local norm adoption: conflict escalation",
   source: "losona",
   sourceCase:
-    "LoSoNA conflict_escalation__mandatory_silver_lining_norm__demos__20260522_173409_419593, main as retrieved 2026-08-23, CC BY 4.0",
+    "LoSoNA conflict_escalation__mandatory_silver_lining_norm__demos__20260522_173409_419593, 88d0846588c967e990157de06477595224f427da, CC BY 4.0",
   context: [
     {
       speaker: "Sara",

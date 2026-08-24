@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "It can vary widely based on individual circumstances however in general those with significant and verifiable limitations due to lupus and other health conditions do have a better chance if they can show it impacts their daily life and work abilities",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 7670",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 7670",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

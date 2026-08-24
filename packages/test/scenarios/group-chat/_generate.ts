@@ -23,10 +23,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 
-const CORPUS_URL =
-  "https://huggingface.co/datasets/duke-trust-lab/When2Speak/resolve/main/finetune_test_dialogue.jsonl";
+const CORPUS_REVISION = "092e40995896b0c278a1e32954297ef125b70112";
+const CORPUS_SHA256 =
+  "f24ea9e164c80e1fa82b0586f09587a54be4daba1ded1b79586c5d641d8c31dd";
+const CORPUS_URL = `https://huggingface.co/datasets/duke-trust-lab/When2Speak/resolve/${CORPUS_REVISION}/finetune_test_dialogue.jsonl`;
 const CACHE_DIR = path.join(tmpdir(), "eliza-group-chat-eval");
-const CACHE_FILE = path.join(CACHE_DIR, "when2speak_test_dialogue.jsonl");
+const CACHE_FILE = path.join(
+  CACHE_DIR,
+  `when2speak_test_dialogue-${CORPUS_REVISION}.jsonl`,
+);
 const REJECTION_FILE = path.join(
   CACHE_DIR,
   "when2speak_sampling_rejections.json",
@@ -78,9 +83,20 @@ function substituteAgentName(text: string): string {
   return text.replaceAll("[AGENT]", AGENT_NAME);
 }
 
+export function verifyWhen2SpeakCorpus(body: string): string {
+  const actual = createHash("sha256").update(body).digest("hex");
+  if (actual !== CORPUS_SHA256) {
+    throw new ElizaError("When2Speak corpus digest does not match the pin", {
+      code: "WHEN2SPEAK_CORPUS_HASH_MISMATCH",
+      context: { expected: CORPUS_SHA256, actual, revision: CORPUS_REVISION },
+    });
+  }
+  return body;
+}
+
 async function fetchCorpus(): Promise<string> {
   if (existsSync(CACHE_FILE)) {
-    return readFile(CACHE_FILE, "utf8");
+    return verifyWhen2SpeakCorpus(await readFile(CACHE_FILE, "utf8"));
   }
   await mkdir(CACHE_DIR, { recursive: true });
   console.log(`[generate] downloading ${CORPUS_URL}`);
@@ -95,7 +111,7 @@ async function fetchCorpus(): Promise<string> {
       },
     });
   }
-  const body = await response.text();
+  const body = verifyWhen2SpeakCorpus(await response.text());
   await writeFile(CACHE_FILE, body, "utf8");
   return body;
 }
@@ -271,7 +287,7 @@ function scenarioFileSource(point: DecisionPoint, ordinal: number): string {
     ...(point.referenceIntervention
       ? { referenceIntervention: point.referenceIntervention }
       : {}),
-    sourceRow: `When2Speak finetune_test_dialogue.jsonl row ${point.rowIndex}`,
+    sourceRow: `When2Speak finetune_test_dialogue.jsonl@${CORPUS_REVISION} row ${point.rowIndex}`,
   };
   // Emit the id/title as literals inside the object so the loader's static
   // AST metadata read works; JSON.stringify with indentation produces valid TS.
@@ -380,4 +396,4 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+if (import.meta.main) await main();

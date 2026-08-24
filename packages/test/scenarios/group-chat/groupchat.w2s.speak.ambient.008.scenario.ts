@@ -41,7 +41,8 @@ const config = {
   },
   referenceIntervention:
     "Actually, to access historical newspaper archives, you might want to consider visiting your local library as they often have subscriptions to digital newspaper archive services like ProQuest or NewspaperArchive, which compile records from newspapers across different eras. This can be particularly useful for researching cases that were reported at the time but might not have remained prominent in public records.",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 4160",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 4160",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

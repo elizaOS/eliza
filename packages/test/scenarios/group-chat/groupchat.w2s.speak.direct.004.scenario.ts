@@ -49,7 +49,8 @@ const config = {
   },
   referenceIntervention:
     "Yes, in many states, a 19-year-old can marry a 15-year-old with parental consent and sometimes a judges approval as well The laws vary by state, but parental consent is a common requirement for minors seeking to marry",
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 18345",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 18345",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

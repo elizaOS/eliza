@@ -23,7 +23,8 @@ const config = {
     speaker: "Speaker_0",
     text: "I mean do cars reach a maximum speed where they no longer stay on ground",
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 16529",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 16529",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 

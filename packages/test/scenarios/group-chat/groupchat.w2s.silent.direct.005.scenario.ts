@@ -47,7 +47,8 @@ const config = {
     speaker: "Speaker_1",
     text: "That's a good approach It ensures you're on the safe side legally and you also get to add your own unique take on the topic",
   },
-  sourceRow: "When2Speak finetune_test_dialogue.jsonl row 14156",
+  sourceRow:
+    "When2Speak finetune_test_dialogue.jsonl@092e40995896b0c278a1e32954297ef125b70112 row 14156",
 } satisfies GroupChatTimingScenarioConfig;
 const setup = buildGroupChatTimingSetup(config);
 
