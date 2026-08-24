@@ -5,6 +5,7 @@
  * `tierMemories` over hand-built sources — no mocks, no filesystem.
  */
 
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   type MemoryTier,
@@ -473,6 +474,69 @@ describe("tierMemories", () => {
       .map((memory) => memory.content.text.replace(/^\[CURRENT\] /, ""))
       .join("");
     expect(reassembled).toBe(body);
+  });
+
+  it("keeps digest-looking text unrelated to a chunked source body", () => {
+    const longBody = `${"unrelated-long-body-".repeat(8)}collision-tail`;
+    const digestLookingBody = createHash("sha256")
+      .update(longBody)
+      .digest("hex");
+    const result = tierMemories(
+      {
+        ...emptySource(),
+        awareness: digestLookingBody,
+        curatedMemory: longBody,
+      },
+      opts({ maxChunkLen: 64 }),
+    );
+
+    const current = tierOf(result, "CURRENT");
+    const longterm = tierOf(result, "LONGTERM");
+    expect(result.duplicatesDropped).toBe(0);
+    expect(result.counts).toEqual({
+      CURRENT: 1,
+      LONGTERM: 3,
+      SELF: 0,
+      MARKER: 0,
+    });
+    expect(current.map((memory) => memory.content.text)).toEqual([
+      `[CURRENT] ${digestLookingBody}`,
+    ]);
+    expect(
+      longterm
+        .sort(
+          (a, b) => (a.metadata.chunkIndex ?? 0) - (b.metadata.chunkIndex ?? 0),
+        )
+        .map((memory) => memory.content.text.replace(/^\[LONGTERM\] /, ""))
+        .join(""),
+    ).toBe(longBody);
+  });
+
+  it("deduplicates normalized-equivalent bodies across the chunk boundary", () => {
+    const compactBody = "normalized body spans the chunk boundary exactly";
+    const expandedBody = compactBody.replaceAll(" ", "     ");
+    const result = tierMemories(
+      {
+        ...emptySource(),
+        awareness: compactBody,
+        curatedMemory: expandedBody,
+      },
+      opts({ maxChunkLen: Array.from(compactBody).length }),
+    );
+
+    expect(Array.from(expandedBody).length).toBeGreaterThan(
+      Array.from(compactBody).length,
+    );
+    expect(result.duplicatesDropped).toBe(1);
+    expect(result.counts).toEqual({
+      CURRENT: 1,
+      LONGTERM: 0,
+      SELF: 0,
+      MARKER: 0,
+    });
+    expect(result.memories.map((memory) => memory.content.text)).toEqual([
+      `[CURRENT] ${compactBody}`,
+    ]);
   });
 
   it("rejects invalid maxChunkLen values before returning partial memories", () => {

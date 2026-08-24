@@ -293,11 +293,15 @@ function dedupeByTierPriority(
   memories: Memory[],
   counts: Record<MemoryTier, number>,
 ): { deduped: Memory[]; duplicatesDropped: number } {
-  const dedupKey = (memory: Memory): string =>
-    memory.metadata.sourceBodyDigest ??
-    (memory.metadata.chunkGroupId
-      ? `${memory.metadata.chunkGroupId}:${memory.metadata.chunkIndex}`
-      : normalizeForDedup(memory.content.text));
+  const dedupKey = (memory: Memory): string => {
+    if (memory.metadata.sourceBodyDigest) {
+      return `sha256:${memory.metadata.sourceBodyDigest}`;
+    }
+    const normalized = normalizeForDedup(memory.content.text);
+    return normalized
+      ? `sha256:${createHash("sha256").update(normalized).digest("hex")}`
+      : "";
+  };
   const sourceId = (memory: Memory): string =>
     memory.metadata.chunkGroupId ?? memory.id;
 
