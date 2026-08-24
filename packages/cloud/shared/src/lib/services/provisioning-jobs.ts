@@ -1626,6 +1626,28 @@ function assertRecoveryHealthy(
   throw new ProvisioningRecoveryDegradedError(phase, summary);
 }
 
+/**
+ * Acquire the lifecycle target before an explicit billing cancellation takes
+ * organization/user authority locks. Validation and durable intent/job writes
+ * stay in enqueueAgentSuspendOnceInTransaction; its repeated advisory and row
+ * locks are transaction-reentrant.
+ */
+export async function lockAgentSuspendTargetInTx(
+  tx: DbTransaction,
+  p: { agentId: string; organizationId: string },
+): Promise<void> {
+  await configureElizaLifecycleTransaction(tx);
+  await tx.execute(elizaProvisionAdvisoryLockSql(p.organizationId, p.agentId));
+  await tx
+    .select({ id: agentSandboxes.id })
+    .from(agentSandboxes)
+    .where(
+      and(eq(agentSandboxes.id, p.agentId), eq(agentSandboxes.organization_id, p.organizationId)),
+    )
+    .for("update")
+    .limit(1);
+}
+
 export class ProvisioningJobService {
   private readonly executionOverride?: (job: Job) => Promise<void>;
   private readonly executionTimeoutMs: (jobType: string) => number;

@@ -32,6 +32,7 @@ let dbWrite: typeof import("../../db/client").dbWrite;
 let closeDb: typeof import("../../db/client").closeDatabaseConnectionsForTests;
 let Service: typeof BillingResourceCancellationsService;
 let enqueueCount = 0;
+let lockTargetCount = 0;
 const currentRevisions = new Map<string, number>();
 
 beforeAll(async () => {
@@ -317,11 +318,17 @@ beforeEach(async () => {
   currentRevisions.set(`${ORG_A}:${TERMINAL_RESOURCE}`, 9);
   currentRevisions.set(`${ORG_B}:${RESOURCE}`, 7);
   enqueueCount = 0;
+  lockTargetCount = 0;
 });
 
 function createService(): BillingResourceCancellationsService {
   const dependencies: BillingResourceCancellationsDependencies = {
     transact: (callback) => dbWrite.transaction(callback),
+    // Target behavior is modeled by currentRevisions in this receipt-focused
+    // PGlite suite; real target locking is proven by the PostgreSQL suite.
+    lockTarget: async () => {
+      lockTargetCount += 1;
+    },
     enqueueStop: async (tx: DbTransaction, options: RequestBillingCancellationOptions) => {
       const current = currentRevisions.get(`${options.organizationId}:${options.resourceId}`);
       if (current === undefined) {
@@ -407,6 +414,33 @@ async function authorityCounts() {
 }
 
 describe("billing cancellation durable receipt authority", () => {
+  test("new admission locks the target before authorization while logical replay skips it", async () => {
+    const service = createService();
+    let firstAuthorizationObservedLocks = -1;
+    const first = await request(service, {
+      idempotencyKey: "cancel-lock-order-first",
+      authorizeInfrastructureMutation: async () => {
+        firstAuthorizationObservedLocks = lockTargetCount;
+        return STEWARD_A;
+      },
+    });
+    let replayAuthorizationObservedLocks = -1;
+    const replay = await request(service, {
+      idempotencyKey: "cancel-lock-order-alias",
+      authorizeInfrastructureMutation: async () => {
+        replayAuthorizationObservedLocks = lockTargetCount;
+        return STEWARD_A;
+      },
+    });
+
+    expect(first.disposition).toBe("accepted");
+    expect(replay.disposition).toBe("same_command");
+    expect(firstAuthorizationObservedLocks).toBe(1);
+    expect(replayAuthorizationObservedLocks).toBe(1);
+    expect(lockTargetCount).toBe(1);
+    expect(enqueueCount).toBe(1);
+  });
+
   test("a retry after a lost response replays the same receipt and job", async () => {
     const service = createService();
     const first = await request(service, { resourceId: RESOURCE.toUpperCase() });

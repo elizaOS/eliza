@@ -52,6 +52,34 @@ const ACTIVE_STOP_INTENT_STATUSES = [
   "terminal_attention",
 ] as const;
 
+/**
+ * Shared serialization key for every stop admission targeting one container.
+ * Keep admission callers on this helper so billing and explicit cancellation cannot
+ * silently drift onto different advisory-lock namespaces.
+ */
+export function containerStopAdvisoryLockSql(organizationId: string, containerId: string) {
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${`container-stop:${organizationId}:${containerId}`}))`;
+}
+
+/**
+ * Acquire the container stop target before an explicit cancellation takes
+ * organization/user authority locks. This helper deliberately performs no
+ * lifecycle validation or durable write: the enqueue path repeats the locked
+ * read after credential admission and remains the sole behavior authority.
+ */
+export async function lockContainerStopTargetInTx(
+  tx: DbTransaction,
+  p: { containerId: string; organizationId: string },
+): Promise<void> {
+  await tx.execute(containerStopAdvisoryLockSql(p.organizationId, p.containerId));
+  await tx
+    .select({ id: containers.id })
+    .from(containers)
+    .where(and(eq(containers.id, p.containerId), eq(containers.organization_id, p.organizationId)))
+    .for("update")
+    .limit(1);
+}
+
 export type EnqueueContainerUserStopResult =
   | {
       requested: true;
@@ -422,9 +450,7 @@ export async function enqueueContainerUserStopInTx(
     throw new Error("Container stop expected lifecycle revision must be a non-negative integer");
   }
 
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext(${`container-stop:${p.organizationId}:${p.containerId}`}))`,
-  );
+  await tx.execute(containerStopAdvisoryLockSql(p.organizationId, p.containerId));
 
   const [replayedIntent] = await tx
     .select()
@@ -618,9 +644,7 @@ export async function enqueueContainerStopOnce(p: {
   | { requested: false; id: null; created: false; reason: "funding_restored" }
 > {
   return await dbWrite.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${`container-stop:${p.organizationId}:${p.containerId}`}))`,
-    );
+    await tx.execute(containerStopAdvisoryLockSql(p.organizationId, p.containerId));
     const [container] = await tx
       .select({
         lifecycle_revision: containers.lifecycle_revision,

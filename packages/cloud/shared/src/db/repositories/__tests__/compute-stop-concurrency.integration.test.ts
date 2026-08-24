@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Client } from "pg";
 import type {
   BillingResourceCancellationsService,
@@ -16,6 +16,7 @@ import {
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
 import type { DbTransaction } from "../../client";
+import { agentComputeStopIntents } from "../../schemas/agent-compute-stop-intents";
 import { jobs as jobsTable } from "../../schemas/jobs";
 
 const SKIP_REASON =
@@ -34,6 +35,9 @@ let closeDatabaseConnectionsForTests:
   | undefined;
 let dbWrite: typeof import("../../client").dbWrite | undefined;
 let stopService: typeof import("../../../lib/services/container-stop-job-service") | undefined;
+let enqueueContainerUserStopInTx:
+  | typeof import("../../../lib/services/container-stop-job-service").enqueueContainerUserStopInTx
+  | undefined;
 let getHetznerContainersClient:
   | typeof import("../../../lib/services/containers/hetzner-client/client").getHetznerContainersClient
   | undefined;
@@ -42,6 +46,9 @@ let listRecoverableAgentComputeStopIntents:
   | undefined;
 let BillingCancellationsService:
   | typeof import("../../../lib/services/billing-resource-cancellations").BillingResourceCancellationsService
+  | undefined;
+let lockBillingCancellationTargetInTx:
+  | typeof import("../../../lib/services/billing-resource-cancellations").lockBillingCancellationTargetInTx
   | undefined;
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
@@ -63,18 +70,34 @@ async function createIsolatedDatabase(baseDsn: string): Promise<string> {
   return url.toString();
 }
 
-async function waitUntilBlocked(observer: Client): Promise<void> {
+async function waitUntilBlocked(observer: Client): Promise<{
+  pid: number;
+  blockingPids: number[];
+  query: string;
+}> {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    const result = await observer.query<{ blocked: boolean }>(`
-      SELECT EXISTS (
-        SELECT 1 FROM pg_stat_activity activity
-        WHERE activity.datname = current_database()
-          AND activity.pid <> pg_backend_pid()
-          AND cardinality(pg_blocking_pids(activity.pid)) > 0
-      ) AS blocked
+    const result = await observer.query<{
+      pid: number;
+      blocking_pids: number[];
+      query: string;
+    }>(`
+      SELECT activity.pid, pg_blocking_pids(activity.pid) AS blocking_pids, activity.query
+      FROM pg_stat_activity activity
+      WHERE activity.datname = current_database()
+        AND activity.pid <> pg_backend_pid()
+        AND cardinality(pg_blocking_pids(activity.pid)) > 0
+      ORDER BY activity.pid
+      LIMIT 1
     `);
-    if (result.rows[0]?.blocked) return;
+    const blocked = result.rows[0];
+    if (blocked) {
+      return {
+        pid: blocked.pid,
+        blockingPids: blocked.blocking_pids,
+        query: blocked.query,
+      };
+    }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error("Timed out waiting for a PostgreSQL lock waiter");
@@ -139,10 +162,12 @@ if (!postgres) {
   closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
   dbWrite = clientModule.dbWrite;
   stopService = serviceModule;
+  enqueueContainerUserStopInTx = serviceModule.enqueueContainerUserStopInTx;
   getHetznerContainersClient = providerModule.getHetznerContainersClient;
   listRecoverableAgentComputeStopIntents =
     provisioningModule.listRecoverableAgentComputeStopIntents;
   BillingCancellationsService = billingCancellationsModule.BillingResourceCancellationsService;
+  lockBillingCancellationTargetInTx = billingCancellationsModule.lockBillingCancellationTargetInTx;
 }
 
 beforeAll(async () => {
@@ -188,6 +213,9 @@ beforeAll(async () => {
         last_billed_at timestamp, next_billing_at timestamp,
         lifecycle_revision bigint NOT NULL DEFAULT 0,
         created_at timestamp NOT NULL, updated_at timestamp NOT NULL
+      );
+      CREATE TABLE agent_sandboxes (
+        id uuid PRIMARY KEY, organization_id uuid NOT NULL
       );
       CREATE TABLE compute_billing_rate_segments (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
@@ -279,6 +307,352 @@ afterAll(async () => {
 const realPostgres = postgres ? describe : describe.skip;
 
 realPostgres("compute stop concurrency", () => {
+  test("manual and billing stop admission converge without a lock-order deadlock", async () => {
+    if (
+      !isolatedDsn ||
+      !dbWrite ||
+      !stopService ||
+      !enqueueContainerUserStopInTx ||
+      !BillingCancellationsService
+    ) {
+      throw new Error("harness unavailable");
+    }
+    const organizationId = randomUUID();
+    const userId = randomUUID();
+    const containerId = randomUUID();
+    const stewardUserId = `steward:${userId}`;
+    await dbWrite.execute(
+      sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id, steward_user_id, role)
+          VALUES (${userId}, ${organizationId}, ${stewardUserId}, 'owner')`,
+    );
+    await seedContainer({ organizationId, userId, containerId, lifecycleRevision: 3 });
+
+    const seeded = await stopService.enqueueContainerStopOnce({
+      containerId,
+      organizationId,
+      userId,
+    });
+    if (!seeded.requested) throw new Error("expected seeded billing stop request");
+
+    const enqueueEntered = Promise.withResolvers<void>();
+    const releaseEnqueue = Promise.withResolvers<void>();
+    const service: BillingResourceCancellationsService = new BillingCancellationsService({
+      transact: (callback) => dbWrite!.transaction(callback),
+      // The fallback lets this exact regression execute against the vulnerable
+      // parent commit, where the dependency did not exist and PostgreSQL must
+      // expose the 40P01 cycle instead of failing at module setup.
+      lockTarget: lockBillingCancellationTargetInTx ?? (async () => {}),
+      enqueueStop: async (
+        tx: DbTransaction,
+        options: RequestBillingCancellationOptions,
+      ): Promise<{ jobId: string }> => {
+        // The barrier begins after target + authority admission. On the
+        // vulnerable order the manual transaction owns only the organization,
+        // so billing owns the target and waits for that organization. With the
+        // fixed order, billing waits behind the already-owned target instead.
+        enqueueEntered.resolve();
+        await releaseEnqueue.promise;
+        const result = await enqueueContainerUserStopInTx!(tx, {
+          containerId: options.resourceId,
+          organizationId: options.organizationId,
+          userId: options.requestedByUserId,
+          expectedLifecycleRevision: options.expectedLifecycleRevision,
+        });
+        if (!result.requested) throw new Error("manual stop unexpectedly became stale");
+        return { jobId: result.jobId };
+      },
+      triggerImmediate: async () => {},
+    });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await observer.connect();
+    try {
+      const manual = service.request({
+        organizationId,
+        requestedByUserId: userId,
+        resourceType: "container",
+        resourceId: containerId,
+        expectedLifecycleRevision: 3,
+        idempotencyKey: "cancel-lock-order-convergence-0001",
+        authorizeInfrastructureMutation: async () => stewardUserId,
+      });
+      const observedManual = manual.then(
+        (value) => ({ status: "resolved" as const, value }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      );
+      await enqueueEntered.promise;
+
+      const billing = stopService.enqueueContainerStopOnce({
+        containerId,
+        organizationId,
+        userId,
+      });
+      const observedBilling = billing.then(
+        (value) => ({ status: "resolved" as const, value }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      );
+      const blocked = await waitUntilBlocked(observer);
+      expect(blocked.blockingPids.length).toBeGreaterThan(0);
+      expect(blocked.blockingPids).not.toContain(blocked.pid);
+      releaseEnqueue.resolve();
+
+      const [manualOutcome, billingOutcome] = await Promise.all([observedManual, observedBilling]);
+      expect(manualOutcome).toMatchObject({
+        status: "resolved",
+        value: {
+          disposition: "accepted",
+          receipt: { jobId: seeded.id, status: "accepted" },
+        },
+      });
+      expect(billingOutcome).toEqual({
+        status: "resolved",
+        value: { requested: true, id: seeded.id, created: false },
+      });
+      expect(blocked.query).toContain("pg_advisory_xact_lock");
+      if (manualOutcome.status !== "resolved") {
+        throw new Error("manual cancellation unexpectedly rejected after convergence");
+      }
+
+      const durable = await observer.query(
+        `SELECT
+          (SELECT count(*)::int FROM jobs WHERE organization_id = $1) AS jobs,
+          (SELECT count(*)::int FROM container_compute_stop_intents
+             WHERE organization_id = $1 AND container_id = $2) AS intents,
+          (SELECT count(*)::int FROM billing_cancel_commands
+             WHERE organization_id = $1 AND resource_id = $2) AS commands,
+          (SELECT count(*)::int FROM billing_cancel_command_keys
+             WHERE organization_id = $1) AS keys,
+          (SELECT id FROM billing_cancel_commands
+             WHERE organization_id = $1 AND resource_id = $2) AS command_id,
+          (SELECT job_id FROM billing_cancel_commands
+             WHERE organization_id = $1 AND resource_id = $2) AS command_job_id,
+          (SELECT command_id FROM billing_cancel_command_keys
+             WHERE organization_id = $1) AS key_command_id,
+          (SELECT "authorization" FROM container_compute_stop_intents
+             WHERE organization_id = $1 AND container_id = $2) AS authorization,
+          (SELECT job_id FROM container_compute_stop_intents
+             WHERE organization_id = $1 AND container_id = $2) AS job_id`,
+        [organizationId, containerId],
+      );
+      expect(durable.rows[0]).toEqual({
+        jobs: 1,
+        intents: 1,
+        commands: 1,
+        keys: 1,
+        command_id: manualOutcome.value.receipt.receiptId,
+        command_job_id: manualOutcome.value.receipt.jobId,
+        key_command_id: manualOutcome.value.receipt.receiptId,
+        authorization: "user_request",
+        job_id: seeded.id,
+      });
+    } finally {
+      releaseEnqueue.resolve();
+      await observer.end();
+    }
+  }, 15_000);
+
+  test("manual cancellation and agent billing execution share lifecycle-first order", async () => {
+    if (!isolatedDsn || !dbWrite || !BillingCancellationsService) {
+      throw new Error("harness unavailable");
+    }
+    const organizationId = randomUUID();
+    const userId = randomUUID();
+    const agentId = randomUUID();
+    const stewardUserId = `steward:${userId}`;
+    await dbWrite.execute(
+      sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id, steward_user_id, role)
+          VALUES (${userId}, ${organizationId}, ${stewardUserId}, 'owner')`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO agent_sandboxes(id, organization_id) VALUES (${agentId}, ${organizationId})`,
+    );
+    const [seededJob] = await dbWrite
+      .insert(jobsTable)
+      .values({
+        type: "agent_suspend",
+        status: "pending",
+        data: {
+          agentId,
+          organizationId,
+          userId,
+          authorization: "billing_request",
+          lifecycleRevision: 5,
+        },
+        organization_id: organizationId,
+        user_id: userId,
+        agent_id: agentId,
+      })
+      .returning({ id: jobsTable.id });
+    if (!seededJob) throw new Error("expected seeded agent billing job");
+    await dbWrite.insert(agentComputeStopIntents).values({
+      organization_id: organizationId,
+      agent_id: agentId,
+      lifecycle_revision: 5,
+      authorization: "billing_request",
+      job_id: seededJob.id,
+    });
+
+    const enqueueEntered = Promise.withResolvers<void>();
+    const releaseEnqueue = Promise.withResolvers<void>();
+    const service: BillingResourceCancellationsService = new BillingCancellationsService({
+      transact: (callback) => dbWrite!.transaction(callback),
+      lockTarget: lockBillingCancellationTargetInTx ?? (async () => {}),
+      enqueueStop: async (
+        tx: DbTransaction,
+        options: RequestBillingCancellationOptions,
+      ): Promise<{ jobId: string }> => {
+        enqueueEntered.resolve();
+        await releaseEnqueue.promise;
+        // Mirror enqueueLifecycleJobInTx's root locks before promoting the
+        // already-queued billing intent. Re-acquisition is transaction-local
+        // and proves the same cycle against the vulnerable parent commit.
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(
+            hashtext(${options.organizationId}), hashtext(${options.resourceId})
+          )`,
+        );
+        await tx.execute(sql`SELECT id FROM agent_sandboxes
+          WHERE id = ${options.resourceId} AND organization_id = ${options.organizationId}
+          FOR UPDATE`);
+        const [intent] = await tx
+          .select()
+          .from(agentComputeStopIntents)
+          .where(
+            and(
+              eq(agentComputeStopIntents.organization_id, options.organizationId),
+              eq(agentComputeStopIntents.agent_id, options.resourceId),
+              eq(agentComputeStopIntents.lifecycle_revision, options.expectedLifecycleRevision),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!intent?.job_id) throw new Error("seeded agent stop intent was not bound");
+        await tx
+          .update(agentComputeStopIntents)
+          .set({ authorization: "user_request", updated_at: new Date() })
+          .where(eq(agentComputeStopIntents.id, intent.id));
+        return { jobId: intent.job_id };
+      },
+      triggerImmediate: async () => {},
+    });
+    const executor = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([executor.connect(), observer.connect()]);
+    try {
+      const manual = service.request({
+        organizationId,
+        requestedByUserId: userId,
+        resourceType: "agent_sandbox",
+        resourceId: agentId,
+        expectedLifecycleRevision: 5,
+        idempotencyKey: "cancel-agent-lock-order-0001",
+        authorizeInfrastructureMutation: async () => stewardUserId,
+      });
+      const observedManual = manual.then(
+        (value) => ({ status: "resolved" as const, value }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      );
+      await enqueueEntered.promise;
+
+      const execution = (async () => {
+        await executor.query("BEGIN");
+        await executor.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
+          organizationId,
+          agentId,
+        ]);
+        await executor.query(
+          "SELECT id FROM agent_sandboxes WHERE id = $1 AND organization_id = $2 FOR UPDATE",
+          [agentId, organizationId],
+        );
+        const intent = await executor.query<{ authorization: string }>(
+          `SELECT "authorization" FROM agent_compute_stop_intents
+           WHERE agent_id = $1 AND organization_id = $2 AND job_id = $3
+           FOR UPDATE`,
+          [agentId, organizationId, seededJob.id],
+        );
+        const authorization = intent.rows[0]?.authorization;
+        if (authorization === "billing_request") {
+          await executor.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [
+            organizationId,
+          ]);
+        }
+        await executor.query("COMMIT");
+        return authorization;
+      })();
+      const observedExecution = execution.then(
+        (authorization) => ({ status: "resolved" as const, authorization }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      );
+      const blocked = await waitUntilBlocked(observer);
+      expect(blocked.blockingPids.length).toBeGreaterThan(0);
+      expect(blocked.blockingPids).not.toContain(blocked.pid);
+      releaseEnqueue.resolve();
+
+      const [manualOutcome, executionOutcome] = await Promise.all([
+        observedManual,
+        observedExecution,
+      ]);
+      expect(manualOutcome).toMatchObject({
+        status: "resolved",
+        value: {
+          disposition: "accepted",
+          receipt: { jobId: seededJob.id, status: "accepted" },
+        },
+      });
+      expect(executionOutcome).toEqual({
+        status: "resolved",
+        authorization: "user_request",
+      });
+      expect(blocked.query).toContain("pg_advisory_xact_lock");
+      if (manualOutcome.status !== "resolved") {
+        throw new Error("agent cancellation unexpectedly rejected after convergence");
+      }
+
+      const durable = await observer.query(
+        `SELECT
+          (SELECT count(*)::int FROM jobs
+             WHERE organization_id = $1 AND agent_id = $2::text) AS jobs,
+          (SELECT count(*)::int FROM agent_compute_stop_intents
+             WHERE organization_id = $1 AND agent_id = $2::uuid) AS intents,
+          (SELECT count(*)::int FROM billing_cancel_commands
+             WHERE organization_id = $1 AND resource_id = $2::uuid) AS commands,
+          (SELECT count(*)::int FROM billing_cancel_command_keys
+             WHERE organization_id = $1) AS keys,
+          (SELECT "authorization" FROM agent_compute_stop_intents
+             WHERE organization_id = $1 AND agent_id = $2::uuid) AS authorization,
+          (SELECT job_id FROM agent_compute_stop_intents
+             WHERE organization_id = $1 AND agent_id = $2::uuid) AS intent_job_id,
+          (SELECT job_id FROM billing_cancel_commands
+             WHERE organization_id = $1 AND resource_id = $2::uuid) AS command_job_id,
+          (SELECT id FROM billing_cancel_commands
+             WHERE organization_id = $1 AND resource_id = $2::uuid) AS command_id,
+          (SELECT command_id FROM billing_cancel_command_keys
+             WHERE organization_id = $1) AS key_command_id`,
+        [organizationId, agentId],
+      );
+      expect(durable.rows[0]).toEqual({
+        jobs: 1,
+        intents: 1,
+        commands: 1,
+        keys: 1,
+        authorization: "user_request",
+        intent_job_id: seededJob.id,
+        command_job_id: manualOutcome.value.receipt.jobId,
+        command_id: manualOutcome.value.receipt.receiptId,
+        key_command_id: manualOutcome.value.receipt.receiptId,
+      });
+    } finally {
+      releaseEnqueue.resolve();
+      await executor.query("ROLLBACK").catch(() => undefined);
+      await Promise.all([executor.end(), observer.end()]);
+    }
+  }, 15_000);
+
   test("billing cancellation waits for an interleaved role revocation and then refuses it", async () => {
     if (!isolatedDsn || !dbWrite || !BillingCancellationsService) {
       throw new Error("harness unavailable");
@@ -298,6 +672,7 @@ realPostgres("compute stop concurrency", () => {
     let enqueueCount = 0;
     const service: BillingResourceCancellationsService = new BillingCancellationsService({
       transact: (callback) => dbWrite!.transaction(callback),
+      lockTarget: async () => {},
       enqueueStop: async (
         tx: DbTransaction,
         options: RequestBillingCancellationOptions,
@@ -376,6 +751,7 @@ realPostgres("compute stop concurrency", () => {
     let enqueueCount = 0;
     const service: BillingResourceCancellationsService = new BillingCancellationsService({
       transact: (callback) => dbWrite!.transaction(callback),
+      lockTarget: async () => {},
       enqueueStop: async (
         tx: DbTransaction,
         options: RequestBillingCancellationOptions,
@@ -466,6 +842,7 @@ realPostgres("compute stop concurrency", () => {
           await tx.execute(sql`SET LOCAL TIME ZONE 'UTC'`);
           return callback(tx);
         }),
+      lockTarget: async () => {},
       enqueueStop: async (
         tx: DbTransaction,
         options: RequestBillingCancellationOptions,

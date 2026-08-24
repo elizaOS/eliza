@@ -17,8 +17,11 @@ import type { AppEnv } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
-import { enqueueContainerUserStopInTx } from "./container-stop-job-service";
-import { provisioningJobService } from "./provisioning-jobs";
+import {
+  enqueueContainerUserStopInTx,
+  lockContainerStopTargetInTx,
+} from "./container-stop-job-service";
+import { lockAgentSuspendTargetInTx, provisioningJobService } from "./provisioning-jobs";
 
 export type BillingCancellationDisposition = "accepted" | "same_key_replay" | "same_command";
 
@@ -219,8 +222,32 @@ async function enqueueStopInTransaction(
   return { jobId: result.job.id };
 }
 
+/**
+ * Establish the global cancellation lock order without creating any durable
+ * effect: target/lifecycle first, then the caller acquires organization and
+ * user authority. Exact command replays skip this lock because they enqueue no
+ * target mutation and must remain valid after the accepted lifecycle advances.
+ */
+export async function lockBillingCancellationTargetInTx(
+  tx: DbTransaction,
+  options: RequestBillingCancellationOptions,
+): Promise<void> {
+  if (options.resourceType === "container") {
+    await lockContainerStopTargetInTx(tx, {
+      containerId: options.resourceId,
+      organizationId: options.organizationId,
+    });
+    return;
+  }
+  await lockAgentSuspendTargetInTx(tx, {
+    agentId: options.resourceId,
+    organizationId: options.organizationId,
+  });
+}
+
 export interface BillingResourceCancellationsDependencies {
   transact<T>(callback: (tx: DbTransaction) => Promise<T>): Promise<T>;
+  lockTarget(tx: DbTransaction, options: RequestBillingCancellationOptions): Promise<void>;
   enqueueStop(
     tx: DbTransaction,
     options: RequestBillingCancellationOptions,
@@ -230,6 +257,7 @@ export interface BillingResourceCancellationsDependencies {
 
 const defaultDependencies: BillingResourceCancellationsDependencies = {
   transact: (callback) => dbWrite.transaction(callback),
+  lockTarget: lockBillingCancellationTargetInTx,
   enqueueStop: enqueueStopInTransaction,
   triggerImmediate: (env) => provisioningJobService.triggerImmediate(env),
 };
@@ -276,6 +304,15 @@ export class BillingResourceCancellationsService {
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`billing-cancel:${normalizedOptions.organizationId}:${normalizedOptions.resourceType}:${normalizedOptions.resourceId}:${normalizedOptions.expectedLifecycleRevision}:stop`}, 0))`,
       );
       const logicalReplay = await billingCancelCommandsRepository.findLogical(tx, identity);
+
+      // New commands join the same target/lifecycle serialization boundary as
+      // billing stops before they take organization/user authority. Otherwise
+      // billing can hold the target while waiting for the organization as an
+      // explicit cancellation holds the organization while waiting for the
+      // target, producing PostgreSQL 40P01 and a generic route failure.
+      if (!logicalReplay) {
+        await this.dependencies.lockTarget(tx, normalizedOptions);
+      }
 
       // Preserve the fresh session/credential revalidation immediately before
       // the first durable effect, then acquire primary database authority in
