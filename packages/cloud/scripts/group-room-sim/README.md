@@ -38,7 +38,8 @@ The driver mirrors the real product flow in
    for replies; after every other line it holds a bounded `SILENCE_MS`
    window and anything that arrives counts as **unsolicited**.
 
-Eight assertions, all of which must pass for a PASS verdict:
+Eight assertions, all of which must pass for a PASS verdict (`speakerAwareness`
+is the one that can instead be skipped; see the note under the table):
 
 | Assertion | Rule |
 | --- | --- |
@@ -49,7 +50,39 @@ Eight assertions, all of which must pass for a PASS verdict:
 | `keyFactsReferenced` | at least `FACTS_MIN` distinct relation/attribution/polarity matchers appear at at least `FACTS_MIN` expected beats; a fact is eligible only where the homepage's expected beat contains the same structured evidence (default 2, floor 1) |
 | `distinctExpectedReplies` | every non-echo expected reply is textually distinct, so one canned response cannot satisfy several beats |
 | `noDetectedUnsupportedFirstPersonClaims` | no output (link/ambient acks included) trips the scoped first-person detector outside the categories the room's scripted capabilities allow. This is deliberately named as detection, not proof of absence: the parser handles explicit offers, completed acts, selected elided/passive completions, attribution switches and negation, while documented third-person/unlisted-verb blind spots remain. |
-| `speakerAwareness` | some non-echo reply names a room member |
+| `speakerAwareness` | some non-echo reply names a room member — **scored only on a transport that sends display names**, otherwise recorded as `skipped` with a reason and left out of the verdict (see below) |
+
+### When `speakerAwareness` is skipped
+
+A group reply can only name a person if the connector said who was speaking.
+The cloud API resolves every group speaker through the participant registry:
+it uses `actor.displayName` when the connector sent one, and otherwise falls
+back to `Participant <ordinal>`. Of the gateway adapters, `telegram.ts`,
+`twilio.ts` and `whatsapp.ts` set `senderName`; `blooio.ts` never does. The
+driver posts Blooio envelopes, so on a real run the model is shown
+`Participant 1..N` and **no reply can contain a member's name**.
+
+Scoring the check there would report a failure the agent could not have
+avoided, so on a nameless transport the run records
+`speakerAwareness: { pass: null, skipped: true, skipReason: ... }`, keeps it out
+of the PASS/FAIL conjunction, and prints it in `<room>.md` as
+`Speaker awareness: **SKIPPED**`. `pass` is `null` rather than `true`, so a
+skip can never be misread as evidence the check succeeded. The exemption is
+hard-coded to this one assertion: any other assertion that is not a literal
+`true` still fails the run, and a test forges the skip markers onto each of the
+others to prove it.
+
+`transport-sender-names.ts` holds the name-carrying table as an exhaustive
+`Record<SimTransport, boolean>`, so adding a connector is a type error until
+someone answers the question for it.
+
+One behavioural note for anyone comparing against older result sets: the trip
+room used to be able to pass this assertion on Blooio by accident, because a
+single human line ("what if emi's late tho") happens to contain a member's
+name — the only such line in all five rooms. That made trip an unreliable
+exception rather than real coverage, and with the skip it now behaves like the
+other four. Genuine coverage for this behaviour belongs on a name-carrying
+transport, which is what the tests score.
 
 Anti-gaming rules, adversarially reviewed so a broken, echoing or
 reply-to-everything agent cannot pass: echoed human text fails the run and
@@ -73,6 +106,8 @@ a spec-faithful bot passes every room (the positive control).
   forbidden-claim sweep (markers, negations, subject switches, todo and quote
   masking) with its documented blind spots.
 - `room-facts.ts`: hand-written key facts and `FACT_PATTERNS` per room.
+- `transport-sender-names.ts`: which connector transports send a speaker's
+  display name, and the reason text used when `speakerAwareness` is skipped.
 - `mock-blooio-provider.ts`: mock Blooio API for the gateway's outbound sends;
   records every request to a JSONL outbox, returns receipts, and serves
   `GET /_capture` in the driver's `OUTBOUND_CAPTURE` shape.
@@ -182,6 +217,9 @@ plus the hand-written facts for review.
 - Echoed-human outputs: 0 (must be 0)
 - Distinct key facts referenced (non-echo replies): 5 (min 2): arrivals meet ~10:20; ...
 - Forbidden-claim hits (incl. acks): none
+- Speaker awareness: **SKIPPED** (not counted toward the verdict) — transport
+  "blooio" sends no display names, so every group speaker is labelled
+  `Participant <ordinal>` and no reply can name a member. ...
 ```
 
 Then the transcript in order. `**Name:** ...` lines are the synthetic humans

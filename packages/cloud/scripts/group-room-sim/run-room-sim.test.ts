@@ -40,6 +40,7 @@ import {
   parseLinkCode,
   RoomSimError,
   type RunIo,
+  type RunOptions,
   type RunResult,
   readThresholds,
   renderMarkdown,
@@ -47,7 +48,14 @@ import {
   scoreElizaOutput,
   signatureFor,
   v4Envelope,
+  verdictOf,
 } from "./run-room-sim";
+import {
+  DRIVER_TRANSPORT,
+  nameCarryingTransports,
+  type SimTransport,
+  TRANSPORT_CARRIES_SENDER_NAMES,
+} from "./transport-sender-names";
 
 const spec = buildRoomsSpec();
 const HERE = new URL(".", import.meta.url).pathname;
@@ -626,6 +634,7 @@ async function simulate(
   roomId: string,
   bot: Bot,
   env: NodeJS.ProcessEnv = {},
+  options: RunOptions = {},
 ): Promise<{ result: RunResult; plan: Plan } & ReturnType<typeof fakeStack>> {
   const plan = buildPlan(spec, roomId, env);
   const stack = fakeStack(bot);
@@ -633,9 +642,17 @@ async function simulate(
     plan,
     readThresholds({ ...ZERO_WAIT, ...env }, plan.room),
     stack.io,
+    options,
   );
   return { result, plan, ...stack };
 }
+
+/**
+ * Scores as a transport that DOES send display names, so `speakerAwareness`
+ * is really asserted instead of skipped. Blooio (the driver's transport, and
+ * the default) sends none.
+ */
+const NAMED: RunOptions = { transport: "telegram" };
 
 describe("choreography against a synthetic stack", () => {
   test("replays the product flow: DM /group, pre-link probe, owner link, ambient on, then the script in order", async () => {
@@ -676,8 +693,15 @@ describe("choreography against a synthetic stack", () => {
   test("positive control: a spec-faithful bot passes every room", async () => {
     for (const room of spec.rooms) {
       const { result } = await simulate(room.id, scriptedBot(room));
+      // On the driver's own transport `speakerAwareness` is skipped, so it is
+      // neither a pass nor a failure; every other assertion must be a pass.
+      expect(result.assertions.speakerAwareness).toMatchObject({
+        pass: null,
+        skipped: true,
+        transport: DRIVER_TRANSPORT,
+      });
       const failed = Object.entries(result.assertions)
-        .filter(([, a]) => !a.pass)
+        .filter(([name, a]) => name !== "speakerAwareness" && !a.pass)
         .map(([name]) => name);
       expect({ room: room.id, failed, verdict: result.verdict }).toEqual({
         room: room.id,
@@ -706,6 +730,8 @@ describe("choreography against a synthetic stack", () => {
     const { result } = await simulate(
       "household",
       scriptedBot(room, { onExpected: (_scripted, human) => [human.text] }),
+      {},
+      NAMED,
     );
     expect(result.verdict).toBe("FAIL");
     expect(result.assertions.noEchoedHumanText.pass).toBe(false);
@@ -854,6 +880,8 @@ describe("choreography against a synthetic stack", () => {
     const { result } = await simulate(
       "co-parenting",
       scriptedBot(room, { onExpected: () => [] }),
+      {},
+      NAMED,
     );
     expect(result.verdict).toBe("FAIL");
     expect(result.assertions.respondedAtExpectedPoints).toEqual({
@@ -1141,5 +1169,132 @@ describe("mock provider capture", () => {
         }),
       ),
     ).toThrow(/message body at line 1/);
+  });
+});
+
+describe("speakerAwareness is scored only where names can exist", () => {
+  test("the transport table encodes the verified adapter behaviour", () => {
+    // Guards the fact the skip rests on. If a connector's adapter starts (or
+    // stops) sending `senderName`, this table is what has to change with it.
+    expect(TRANSPORT_CARRIES_SENDER_NAMES).toEqual({
+      blooio: false,
+      telegram: true,
+      twilio: true,
+      whatsapp: true,
+    });
+    // The driver posts Blooio envelopes, so a real run is always the nameless
+    // path; a default that carried names would silently score a check the
+    // stack cannot satisfy.
+    expect(TRANSPORT_CARRIES_SENDER_NAMES[DRIVER_TRANSPORT]).toBe(false);
+    expect(nameCarryingTransports()).toEqual([
+      "telegram",
+      "twilio",
+      "whatsapp",
+    ]);
+  });
+
+  test("a nameless transport records skipped + reason and never a pass", async () => {
+    const room = spec.rooms.find((r) => r.id === "household") as RoomSpec;
+    const { result } = await simulate("household", scriptedBot(room));
+
+    const speaker = result.assertions.speakerAwareness;
+    expect(speaker.skipped).toBe(true);
+    // A skip must never be readable as a pass, in the JSON or anywhere else.
+    expect(speaker.pass).toBeNull();
+    expect(speaker.pass).not.toBe(true);
+    expect(speaker.transport).toBe("blooio");
+    expect(speaker.skipReason).toContain("sends no display names");
+    expect(speaker.skipReason).toContain("Participant <ordinal>");
+
+    // ...and it does not hold the run back: everything else passed.
+    expect(result.verdict).toBe("PASS");
+  });
+
+  test("the readable report shows the skip instead of implying a pass", async () => {
+    const room = spec.rooms.find((r) => r.id === "household") as RoomSpec;
+    const { result } = await simulate("household", scriptedBot(room));
+    const md = renderMarkdown(result);
+
+    expect(md).toContain("- Speaker awareness: **SKIPPED**");
+    expect(md).toContain("not counted toward the verdict");
+    expect(md).toContain("sends no display names");
+    // The JSON block carries the machine-readable form too.
+    expect(md).toContain('"skipped": true');
+    expect(md).toContain('"pass": null');
+  });
+
+  test("a name-carrying transport really asserts: it passes on names", async () => {
+    // The homepage beats name people ("Noor has the dishwasher"), so a
+    // spec-faithful bot on a naming transport earns the credit for real.
+    const room = spec.rooms.find((r) => r.id === "household") as RoomSpec;
+    const { result } = await simulate(
+      "household",
+      scriptedBot(room),
+      {},
+      NAMED,
+    );
+    expect(result.assertions.speakerAwareness).toMatchObject({
+      pass: true,
+      skipped: false,
+      skipReason: null,
+      transport: "telegram",
+    });
+    expect(result.verdict).toBe("PASS");
+  });
+
+  test("a name-carrying transport can still FAIL the assertion", async () => {
+    // Same transport, but a bot that answers without ever naming anyone.
+    const room = spec.rooms.find((r) => r.id === "household") as RoomSpec;
+    const { result } = await simulate(
+      "household",
+      scriptedBot(room, {
+        onExpected: () => ["Noted, I will keep that in mind for later."],
+      }),
+      {},
+      NAMED,
+    );
+    const speaker = result.assertions.speakerAwareness;
+    expect(speaker.skipped).toBe(false);
+    expect(speaker.pass).toBe(false);
+    expect(result.verdict).toBe("FAIL");
+  });
+
+  test("the skip is narrow: no other assertion can opt out of the verdict", async () => {
+    const room = spec.rooms.find((r) => r.id === "household") as RoomSpec;
+    const { result } = await simulate("household", scriptedBot(room));
+    expect(verdictOf(result.assertions)).toBe("PASS");
+
+    // Forge the skip markers onto a different assertion. It must still count,
+    // or "skipped" becomes a general escape hatch for any inconvenient check.
+    for (const name of [
+      "restraintAtUnscriptedPoints",
+      "keyFactsReferenced",
+      "noEchoedHumanText",
+      "silentUntilLinked",
+      "respondedAtExpectedPoints",
+      "distinctExpectedReplies",
+      "noDetectedUnsupportedFirstPersonClaims",
+    ] as const) {
+      const tampered = {
+        ...result.assertions,
+        [name]: {
+          ...result.assertions[name],
+          pass: null,
+          skipped: true,
+          skipReason: "not a real exemption",
+        },
+      } as unknown as typeof result.assertions;
+      expect({ name, verdict: verdictOf(tampered) }).toEqual({
+        name,
+        verdict: "FAIL",
+      });
+    }
+  });
+
+  test("an unknown transport is treated as nameless, not as a pass", () => {
+    // Defensive: a transport absent from the table has not been verified to
+    // send names, so it must skip rather than score.
+    const unknown = "sms-carrier-pigeon" as unknown as SimTransport;
+    expect(TRANSPORT_CARRIES_SENDER_NAMES[unknown]).toBeUndefined();
   });
 });

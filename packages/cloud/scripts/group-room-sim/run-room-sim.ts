@@ -37,6 +37,12 @@ import {
   type RoomSpec,
   type RoomsSpec,
 } from "./rooms-spec";
+import {
+  DRIVER_TRANSPORT,
+  type SimTransport,
+  speakerAwarenessSkipReason,
+  TRANSPORT_CARRIES_SENDER_NAMES,
+} from "./transport-sender-names";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RESULTS_DIR = join(HERE, "results");
@@ -132,7 +138,20 @@ export interface Assertions {
     hits: string[];
     allowedCategories: string[];
   };
-  speakerAwareness: { pass: boolean; members: readonly string[] };
+  /**
+   * The only assertion that can be skipped, and only for the one reason in
+   * {@link speakerAwarenessSkipReason}: on a transport that sends no display
+   * names the evidence this check reads is never in the input, so scoring it
+   * would report a failure the agent could not have avoided. `pass` is `null`
+   * — never `true` — while skipped, so a skip can never be misread as a pass.
+   */
+  speakerAwareness: {
+    pass: boolean | null;
+    skipped: boolean;
+    skipReason: string | null;
+    transport: SimTransport;
+    members: readonly string[];
+  };
 }
 
 export interface RunResult {
@@ -282,6 +301,12 @@ export interface AssertionInputs {
   probe: { sender: string; text: string };
   allowedCategories: ReadonlySet<string>;
   thresholds: Thresholds;
+  /**
+   * The transport the run was delivered over. Required, not defaulted: whether
+   * `speakerAwareness` can be scored at all depends on it, so every caller has
+   * to state it rather than inherit a silent assumption.
+   */
+  transport: SimTransport;
 }
 
 /**
@@ -356,17 +381,58 @@ export function computeAssertions(input: AssertionInputs): Assertions {
       hits: allForbidden,
       allowedCategories: [...input.allowedCategories],
     },
-    speakerAwareness: {
-      pass: nonEchoOutputs.some((t) =>
-        room.members.some((m) => new RegExp(`\\b${m}\\b`, "i").test(t)),
-      ),
-      members: room.members,
-    },
+    speakerAwareness: scoreSpeakerAwareness(
+      nonEchoOutputs,
+      room.members,
+      input.transport,
+    ),
   };
 }
 
-function verdictOf(assertions: Assertions): RunResult["verdict"] {
-  return Object.values(assertions).every((a) => a.pass) ? "PASS" : "FAIL";
+/**
+ * Names a member, or records why it could not be asked. On a name-carrying
+ * transport this is the original check, unchanged and still able to fail.
+ */
+function scoreSpeakerAwareness(
+  nonEchoOutputs: readonly string[],
+  members: readonly string[],
+  transport: SimTransport,
+): Assertions["speakerAwareness"] {
+  if (!TRANSPORT_CARRIES_SENDER_NAMES[transport]) {
+    return {
+      pass: null,
+      skipped: true,
+      skipReason: speakerAwarenessSkipReason(transport),
+      transport,
+      members,
+    };
+  }
+  return {
+    pass: nonEchoOutputs.some((t) =>
+      members.some((m) => new RegExp(`\\b${m}\\b`, "i").test(t)),
+    ),
+    skipped: false,
+    skipReason: null,
+    transport,
+    members,
+  };
+}
+
+/**
+ * The ONE assertion a run may leave unscored. Spelled as a literal so the
+ * exemption cannot be widened by data: every other assertion must be a
+ * literal `true`, which also means a stray `null` anywhere else fails closed.
+ */
+const SKIPPABLE_ASSERTION = "speakerAwareness";
+
+export function verdictOf(assertions: Assertions): RunResult["verdict"] {
+  for (const [name, assertion] of Object.entries(assertions)) {
+    if (name === SKIPPABLE_ASSERTION && assertions.speakerAwareness.skipped) {
+      continue;
+    }
+    if (assertion.pass !== true) return "FAIL";
+  }
+  return "PASS";
 }
 
 // ── Plan ───────────────────────────────────────────────────────────────────
@@ -742,6 +808,12 @@ export function parseLinkCode(
 
 export interface RunOptions {
   linkCodeRegex?: string;
+  /**
+   * Transport the choreography is scored as. The CLI never sets this — the
+   * driver posts Blooio v4 envelopes, so {@link DRIVER_TRANSPORT} is the truth
+   * for a real run. The tests use it to score the name-carrying path.
+   */
+  transport?: SimTransport;
 }
 
 export async function runRoom(
@@ -979,6 +1051,7 @@ export async function runRoom(
     probe,
     allowedCategories,
     thresholds,
+    transport: options.transport ?? DRIVER_TRANSPORT,
   });
 
   return {
@@ -1007,6 +1080,11 @@ export function renderMarkdown(result: RunResult): string {
     `- Correctly related key facts at expected beats: ${a.keyFactsReferenced.matched.length} across ${a.keyFactsReferenced.factfulExpectedPoints} beats (min ${a.keyFactsReferenced.minRequired} each): ${a.keyFactsReferenced.matched.join("; ") || "none"}`,
     `- Repeated expected replies: ${a.distinctExpectedReplies.replies - a.distinctExpectedReplies.distinct}`,
     `- Detected unsupported first-person claim hits (incl. acks): ${a.noDetectedUnsupportedFirstPersonClaims.hits.length ? a.noDetectedUnsupportedFirstPersonClaims.hits.join(", ") : "none"}`,
+    `- Speaker awareness: ${
+      a.speakerAwareness.skipped
+        ? `**SKIPPED** (not counted toward the verdict) — ${a.speakerAwareness.skipReason}`
+        : `${a.speakerAwareness.pass ? "named a member" : "**named no member**"} (transport ${a.speakerAwareness.transport}; members ${a.speakerAwareness.members.join(", ")})`
+    }`,
     "",
     "## Transcript",
     "",
