@@ -197,16 +197,44 @@ export class TalkModeWeb extends WebPlugin {
       }
 
       utterance.onend = () => {
+        // Mirror the recognition.onend teardown guard: stop() nulls
+        // currentUtterance before the browser's async end event fires, so a
+        // stale completion must not resurrect a live "listening" state on a
+        // torn-down session (enabled=false, recognizer nulled). The promise
+        // still resolves so an in-flight speak() never hangs.
+        if (this.currentUtterance !== utterance) {
+          resolve({ completed: true, interrupted: false, usedSystemTts: true });
+          return;
+        }
         this.currentUtterance = null;
         this.notifyListeners("speakComplete", { completed: true });
-        this.setState("listening", "Listening");
+        this.setState(
+          this.enabled ? "listening" : "idle",
+          this.enabled ? "Listening" : "Off",
+        );
         resolve({ completed: true, interrupted: false, usedSystemTts: true });
       };
 
       utterance.onerror = (event) => {
+        // Same teardown guard as onend. A deliberate stop() cancels playback,
+        // which the browser reports as onerror("interrupted"); that is a normal
+        // user stop, not a speech failure, so it must not fabricate a
+        // "Speech error" status on an already-idle session.
+        if (this.currentUtterance !== utterance) {
+          resolve({
+            completed: false,
+            interrupted: event.error === "interrupted",
+            usedSystemTts: true,
+            error: event.error,
+          });
+          return;
+        }
         this.currentUtterance = null;
         this.notifyListeners("speakComplete", { completed: false });
-        this.setState("idle", "Speech error");
+        this.setState(
+          this.enabled ? "listening" : "idle",
+          this.enabled ? "Listening" : "Off",
+        );
         resolve({
           completed: false,
           interrupted: event.error === "interrupted",
