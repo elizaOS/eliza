@@ -11,6 +11,48 @@ import {
 } from "./progressive-content-evidence.ts";
 
 const manifestSha = "b".repeat(64);
+const steadyResourceSample = {
+  rssBytes: 100 * 1024 * 1024,
+  heapUsedBytes: 40 * 1024 * 1024,
+  externalBytes: 8 * 1024 * 1024,
+  arrayBuffersBytes: 4 * 1024 * 1024,
+  fileDescriptors: 12,
+  temporaryArtifacts: 0,
+  databaseRows: 0,
+  walBytes: 0,
+};
+
+function validSoakEvidence(commit: string, corpusManifestSha256: string) {
+  return {
+    status: "passed",
+    commit,
+    corpusManifestSha256,
+    durationMs: 6 * 60 * 60 * 1_000,
+    operations: 100_000,
+    sampleEveryOperations: 1_000,
+    warmupOperations: 10_000,
+    positiveLeakControlDetected: true,
+    batches: 1_000,
+    failures: [],
+    resourceSamples: Array.from({ length: 101 }, (_, index) => ({
+      operation: index * 1_000,
+      elapsedMs: index * 216_000,
+      sample: steadyResourceSample,
+    })),
+    resourceDrift: { status: "passed", failures: [] },
+    positiveLeakControlSamples: [
+      steadyResourceSample,
+      {
+        ...steadyResourceSample,
+        rssBytes: steadyResourceSample.rssBytes + 32 * 1024 * 1024,
+      },
+    ],
+    positiveLeakControlDrift: {
+      status: "failed",
+      failures: ["rss leak detected"],
+    },
+  };
+}
 
 function evidence() {
   const objects = [
@@ -196,14 +238,7 @@ function evidence() {
         })),
       })),
     },
-    "soak.json": {
-      status: "passed",
-      commit: "a".repeat(40),
-      corpusManifestSha256: manifestSha,
-      durationMs: 6 * 60 * 60 * 1_000,
-      operations: 100_000,
-      positiveLeakControlDetected: true,
-    },
+    "soak.json": validSoakEvidence("a".repeat(40), manifestSha),
     "postgres.json": {
       status: "passed",
       backend: "postgres",
@@ -594,13 +629,36 @@ describe("content-context result", () => {
 
   it("rejects a short soak even when its summary says passed", () => {
     const changed = replaceArtifact(evidence(), "soak.json", {
-      status: "passed",
+      ...validSoakEvidence("a".repeat(40), manifestSha),
       durationMs: 60_000,
-      operations: 100_000,
-      positiveLeakControlDetected: true,
     });
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/soak evidence/u);
+  });
+
+  it("recomputes soak and positive-control drift from the recorded samples", () => {
+    const forgedControl = replaceArtifact(evidence(), "soak.json", {
+      ...validSoakEvidence("a".repeat(40), manifestSha),
+      positiveLeakControlSamples: [steadyResourceSample, steadyResourceSample],
+    });
+    expect(() =>
+      validateContentContextResult(forgedControl.result, forgedControl.bytes),
+    ).toThrow(/soak evidence/u);
+
+    const leakingRun = validSoakEvidence("a".repeat(40), manifestSha);
+    const forgedRun = replaceArtifact(evidence(), "soak.json", {
+      ...leakingRun,
+      resourceSamples: leakingRun.resourceSamples.map((point, index) => ({
+        ...point,
+        sample: {
+          ...point.sample,
+          rssBytes: point.sample.rssBytes + index * 1024 * 1024,
+        },
+      })),
+    });
+    expect(() =>
+      validateContentContextResult(forgedRun.result, forgedRun.bytes),
     ).toThrow(/soak evidence/u);
   });
 

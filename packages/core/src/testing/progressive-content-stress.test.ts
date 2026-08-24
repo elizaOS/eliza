@@ -70,7 +70,10 @@ describe("progressive content stress", () => {
 		expect(passing.operations).toBeGreaterThanOrEqual(2);
 		expect(passing.durationMs).toBeGreaterThanOrEqual(1);
 		expect(passing.resourceSamples.length).toBeGreaterThanOrEqual(2);
+		expect(passing.sampleEveryOperations).toBe(1);
+		expect(passing.warmupOperations).toBe(0);
 		expect(passing.resourceDrift.status).toBe("passed");
+		expect(passing.positiveLeakControlSamples).toHaveLength(2);
 		expect(passing.positiveLeakControlDrift.status).toBe("failed");
 
 		const failed = await runProgressiveContentSoak({

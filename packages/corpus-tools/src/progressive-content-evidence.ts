@@ -133,6 +133,155 @@ function jsonLines(
   });
 }
 
+const RESOURCE_MEMORY_FIELDS = [
+  "rssBytes",
+  "heapUsedBytes",
+  "externalBytes",
+  "arrayBuffersBytes",
+] as const;
+const RESOURCE_RETAINED_FIELDS = [
+  "fileDescriptors",
+  "temporaryArtifacts",
+  "databaseRows",
+] as const;
+
+function resourceSample(value: unknown, label: string): Record<string, number> {
+  const sample = record(value, label);
+  for (const field of [
+    ...RESOURCE_MEMORY_FIELDS,
+    ...RESOURCE_RETAINED_FIELDS,
+    "walBytes",
+  ]) {
+    const metric = sample[field];
+    if (
+      typeof metric !== "number" ||
+      !Number.isSafeInteger(metric) ||
+      metric < 0
+    )
+      throw new TypeError(`${label}.${field} must be a non-negative integer`);
+  }
+  return sample as Record<string, number>;
+}
+
+function p95(values: readonly number[]): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  return (
+    sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] ??
+    0
+  );
+}
+
+function seriesDetectsLeak(
+  samples: readonly Record<string, number>[],
+  minimumMemoryAllowanceBytes = 16 * 1024 * 1024,
+): boolean {
+  if (samples.length < 2) return true;
+  const split = Math.max(1, Math.floor(samples.length / 2));
+  const early = samples.slice(0, split);
+  const late = samples.slice(split);
+  if (
+    RESOURCE_MEMORY_FIELDS.some((field) => {
+      const baseline = p95(early.map((sample) => sample[field] ?? 0));
+      const growth = p95(late.map((sample) => sample[field] ?? 0)) - baseline;
+      return (
+        growth >
+        Math.max(minimumMemoryAllowanceBytes, Math.ceil(baseline * 0.05))
+      );
+    })
+  )
+    return true;
+  return RESOURCE_RETAINED_FIELDS.some(
+    (field) => (samples.at(-1)?.[field] ?? 0) - (samples[0]?.[field] ?? 0) > 0,
+  );
+}
+
+function soakResourceFailures(soak: Record<string, unknown>): string[] {
+  const failures: string[] = [];
+  if (
+    soak.sampleEveryOperations !== 1_000 ||
+    typeof soak.warmupOperations !== "number" ||
+    !Number.isSafeInteger(soak.warmupOperations) ||
+    soak.warmupOperations < 0 ||
+    typeof soak.operations !== "number"
+  )
+    return ["soak resource sampling contract is invalid"];
+  const points = array(soak.resourceSamples, "soak resource samples").map(
+    (value, index) => {
+      const point = record(value, `soak resource sample ${index}`);
+      if (
+        typeof point.operation !== "number" ||
+        !Number.isSafeInteger(point.operation) ||
+        point.operation < 0 ||
+        typeof point.elapsedMs !== "number" ||
+        !Number.isFinite(point.elapsedMs) ||
+        point.elapsedMs < 0
+      )
+        throw new TypeError("soak resource sample coordinate is invalid");
+      return {
+        operation: point.operation,
+        elapsedMs: point.elapsedMs,
+        sample: resourceSample(point.sample, `soak resource sample ${index}`),
+      };
+    },
+  );
+  if (
+    points.length < 51 ||
+    points[0]?.operation !== 0 ||
+    (points.at(-1)?.operation ?? -1) < soak.operations ||
+    points.some(
+      (point, index) =>
+        index > 0 &&
+        (point.operation <= (points[index - 1]?.operation ?? -1) ||
+          point.operation - (points[index - 1]?.operation ?? 0) > 2_000 ||
+          point.elapsedMs < (points[index - 1]?.elapsedMs ?? 0)),
+    )
+  )
+    failures.push("soak resource samples are sparse, incomplete, or unordered");
+  const postWarmup = points
+    .filter(({ operation }) => operation >= (soak.warmupOperations as number))
+    .map(({ sample }) => sample);
+  if (seriesDetectsLeak(postWarmup))
+    failures.push(
+      "soak resource series exceeds memory or retained-resource bounds",
+    );
+  const drift = record(soak.resourceDrift, "soak resource drift");
+  if (
+    drift.status !== "passed" ||
+    !Array.isArray(drift.failures) ||
+    drift.failures.length !== 0
+  )
+    failures.push("soak resource drift report did not pass cleanly");
+  const positiveSamples = array(
+    soak.positiveLeakControlSamples,
+    "positive leak-control samples",
+  ).map((value, index) =>
+    resourceSample(value, `positive leak-control sample ${index}`),
+  );
+  const positiveDrift = record(
+    soak.positiveLeakControlDrift,
+    "positive leak-control drift",
+  );
+  if (
+    positiveSamples.length < 2 ||
+    !seriesDetectsLeak(positiveSamples) ||
+    positiveDrift.status !== "failed" ||
+    !Array.isArray(positiveDrift.failures) ||
+    positiveDrift.failures.length === 0
+  )
+    failures.push(
+      "positive leak control was not proved by the production detector",
+    );
+  if (
+    !Array.isArray(soak.failures) ||
+    soak.failures.length !== 0 ||
+    typeof soak.batches !== "number" ||
+    !Number.isSafeInteger(soak.batches) ||
+    soak.batches <= 0
+  )
+    failures.push("soak retained batch failures or lacks a batch count");
+  return failures;
+}
+
 function passingScenarioNativeRow(entry: Record<string, unknown>): boolean {
   const attestation =
     entry.privacyAttestation && typeof entry.privacyAttestation === "object"
@@ -533,7 +682,8 @@ function semanticFailures(
     soak.durationMs < 6 * 60 * 60 * 1_000 ||
     typeof soak.operations !== "number" ||
     soak.operations < 100_000 ||
-    soak.positiveLeakControlDetected !== true
+    soak.positiveLeakControlDetected !== true ||
+    soakResourceFailures(soak).length > 0
   )
     failures.push("soak evidence lacks duration, operations, or leak control");
 
