@@ -2,8 +2,14 @@
 /** Runs the When2Speak Stage-1 batch evaluator and writes its evidence report. */
 import fs from "node:fs";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import type { LiveProviderName } from "@elizaos/core/testing";
+import type { TimingInputFormat, TimingReport } from "./when2speak-eval.ts";
 import { runWhen2SpeakEval } from "./when2speak-eval.ts";
+
+function usageError(message: string): ElizaError {
+  return new ElizaError(message, { code: "WHEN2SPEAK_CLI_INVALID_ARGUMENT" });
+}
 
 function option(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -14,13 +20,39 @@ function option(name: string): string | undefined {
 }
 const input = option("input");
 if (!input)
-  throw new Error(
-    "usage: when2speak-eval --input=<jsonl> [--output=<json>] [--run-dir=<dir>] [--provider=<name>] [--limit=<n>]",
+  throw usageError(
+    "usage: when2speak-eval --input=<jsonl> [--input-format=when2speak|discord-replay] [--output=<json>] [--run-dir=<dir>] [--provider=<name>] [--limit=<n>] [--shard-index=<n> --shard-count=<n>] [--start-row=<n>] [--checkpoint-every=<n>] [--resume=<in-progress-report>]",
   );
+function positiveInteger(name: string): number | undefined {
+  const text = option(name);
+  if (text === undefined) return undefined;
+  const value = Number(text);
+  if (!Number.isSafeInteger(value) || value <= 0)
+    throw usageError(`--${name} must be a positive integer`);
+  return value;
+}
 const limitText = option("limit");
 const limit = limitText === undefined ? undefined : Number(limitText);
 if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0))
-  throw new Error("--limit must be a positive integer");
+  throw usageError("--limit must be a positive integer");
+const inputFormatText = option("input-format") ?? "when2speak";
+if (inputFormatText !== "when2speak" && inputFormatText !== "discord-replay")
+  throw usageError("--input-format must be when2speak or discord-replay");
+const inputFormat: TimingInputFormat = inputFormatText;
+const shardCount = positiveInteger("shard-count") ?? 1;
+const shardIndexText = option("shard-index");
+const shardIndex = shardIndexText === undefined ? 0 : Number(shardIndexText);
+if (
+  !Number.isSafeInteger(shardIndex) ||
+  shardIndex < 0 ||
+  shardIndex >= shardCount
+)
+  throw usageError(
+    `--shard-index must be an integer from 0 through ${shardCount - 1}`,
+  );
+const startRow = positiveInteger("start-row") ?? 1;
+const checkpointEvery = positiveInteger("checkpoint-every") ?? 1;
+const resume = option("resume");
 const output = path.resolve(
   option("output") ?? "../../reports/group-chat-timing/when2speak.json",
 );
@@ -40,16 +72,41 @@ if (
   providerText !== undefined &&
   !liveProviders.has(providerText as LiveProviderName)
 ) {
-  throw new Error(`unsupported --provider=${providerText}`);
+  throw usageError(`unsupported --provider=${providerText}`);
 }
 const provider = providerText as LiveProviderName | undefined;
+let resumeReport: unknown;
+if (resume !== undefined) {
+  try {
+    resumeReport = JSON.parse(fs.readFileSync(path.resolve(resume), "utf8"));
+  } catch (cause) {
+    // error-policy:J2 Resume input failures retain the requested path.
+    throw new ElizaError("Failed to read the When2Speak resume report", {
+      code: "WHEN2SPEAK_RESUME_READ_FAILED",
+      context: { resume: path.resolve(resume) },
+      cause,
+    });
+  }
+}
+function writeReport(report: TimingReport): void {
+  fs.mkdirSync(path.dirname(output), { recursive: true });
+  const temporary = `${output}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  fs.renameSync(temporary, output);
+}
 const report = await runWhen2SpeakEval({
   input: path.resolve(input),
   trajectoryDir,
   provider,
+  inputFormat,
   limit,
+  shardIndex,
+  shardCount,
+  startRow,
+  checkpointEvery,
+  resumeReport,
+  onCheckpoint: writeReport,
 });
-fs.mkdirSync(path.dirname(output), { recursive: true });
-fs.writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+writeReport(report);
 process.stdout.write(`${JSON.stringify(report.metrics)}\nreport: ${output}\n`);
 if (report.failures.length > 0) process.exitCode = 1;
