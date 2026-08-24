@@ -5,15 +5,25 @@
  * no live server or companion extension is involved.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { UpdateBrowserBridgeSettingsRequest } from "./browser-contracts";
+import type {
+  BrowserBridgeCompanionConnectionState,
+  BrowserBridgeCompanionStatus,
+  UpdateBrowserBridgeSettingsRequest,
+} from "./browser-contracts";
 import { ElizaClient } from "./client-base";
-import { BROWSER_BRIDGE_SESSION_STATUSES } from "./client-browser-bridge";
+import {
+  BROWSER_BRIDGE_SESSION_STATUSES,
+  type BrowserBridgeCompanionResetResponse,
+  type BrowserBridgeSession,
+} from "./client-browser-bridge";
 import "./client-browser-bridge";
 import type { AgentRequestTransport } from "./transport";
 
+type RequestSpy = ReturnType<typeof vi.fn<AgentRequestTransport["request"]>>;
+
 function makeClient(responses: Record<string, unknown>): {
   client: ElizaClient;
-  request: ReturnType<typeof vi.fn>;
+  request: RequestSpy;
 } {
   const request = vi.fn<AgentRequestTransport["request"]>(async (url) => {
     const parsed = new URL(url);
@@ -28,9 +38,18 @@ function makeClient(responses: Record<string, unknown>): {
   return { client, request };
 }
 
+function expectLastReadRequest(request: RequestSpy, expectedUrl: string): void {
+  const last = request.mock.calls.at(-1);
+  if (!last) throw new Error("no transport call recorded");
+  const [url, init] = last;
+  expect(url).toBe(expectedUrl);
+  expect(init?.method ?? "GET").toBe("GET");
+  expect(init?.body).toBeUndefined();
+}
+
 function sessionFixture(
   status: (typeof BROWSER_BRIDGE_SESSION_STATUSES)[number],
-) {
+): BrowserBridgeSession {
   return {
     id: "session-1",
     agentId: "agent-1",
@@ -87,14 +106,21 @@ describe("ElizaClient browser-bridge routes", () => {
     });
 
     await expect(client.listBrowserBridgeSessions()).resolves.toEqual(payload);
-    expect(request).toHaveBeenCalledWith(
+    expectLastReadRequest(
+      request,
       "http://agent.example:31337/api/browser-bridge/sessions",
-      expect.any(Object),
-      expect.any(Object),
     );
   });
 
   it("returns every queued-to-failed status unchanged through the list endpoint", async () => {
+    expect(BROWSER_BRIDGE_SESSION_STATUSES).toEqual([
+      "awaiting_confirmation",
+      "queued",
+      "running",
+      "done",
+      "cancelled",
+      "failed",
+    ]);
     const payload = {
       sessions: [
         sessionFixture("queued"),
@@ -140,10 +166,9 @@ describe("ElizaClient browser-bridge routes", () => {
     });
 
     await expect(client.getBrowserBridgeSettings()).resolves.toEqual(payload);
-    expect(request).toHaveBeenCalledWith(
+    expectLastReadRequest(
+      request,
       "http://agent.example:31337/api/browser-bridge/settings",
-      expect.any(Object),
-      expect.any(Object),
     );
   });
 
@@ -235,8 +260,8 @@ describe("ElizaClient browser-bridge routes", () => {
     function companion(
       id: string,
       browser: "chrome" | "firefox" | "safari",
-      connectionState: string,
-    ) {
+      connectionState: BrowserBridgeCompanionConnectionState,
+    ): BrowserBridgeCompanionStatus {
       return {
         id,
         agentId: "agent-1",
@@ -277,10 +302,9 @@ describe("ElizaClient browser-bridge routes", () => {
       "companion-b",
     ]);
     expect(listed).toEqual(payload);
-    expect(request).toHaveBeenCalledWith(
+    expectLastReadRequest(
+      request,
       "http://agent.example:31337/api/browser-bridge/companions",
-      expect.any(Object),
-      expect.any(Object),
     );
   });
 
@@ -310,7 +334,7 @@ describe("ElizaClient browser-bridge routes", () => {
         updatedAt: "2026-08-24T00:03:00.000Z",
       },
       resetAt: "2026-08-24T00:03:00.000Z",
-    };
+    } satisfies BrowserBridgeCompanionResetResponse;
     const { client, request } = makeClient({
       "/api/browser-bridge/companions/companion%20rev%20%26x%3Dy/reset-revocation":
         payload,
