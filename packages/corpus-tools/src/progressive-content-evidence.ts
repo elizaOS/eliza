@@ -1,6 +1,7 @@
 /** Validates content-context evidence bytes, identities, and cross-artifact semantics before bundling. */
 
 import { createHash } from "node:crypto";
+import { validateProgressiveContentPostgresEvidence } from "./progressive-content-postgres-evidence.ts";
 
 export const CONTENT_CONTEXT_RESULT_SCHEMA_VERSION =
   "elizaos.content-context.result.v2" as const;
@@ -786,25 +787,29 @@ function semanticFailures(
       "soak evidence lacks production duration, exact family operations, or leak control",
     );
 
-  const postgres = json(bytes["postgres.json"], "Postgres report");
-  const postgresFamilies = array(postgres.families, "Postgres families");
-  if (
-    postgres.status !== "passed" ||
-    postgres.backend !== "postgres" ||
-    postgres.commit !== result.commit ||
-    postgres.corpusManifestSha256 !== result.corpusManifestSha256 ||
-    typeof postgres.version !== "string" ||
-    !postgres.version ||
-    typeof postgres.command !== "string" ||
-    !postgres.command ||
-    postgresFamilies.length !== CONTENT_CONTEXT_FAMILIES.length ||
-    new Set(postgresFamilies).size !== postgresFamilies.length ||
-    CONTENT_CONTEXT_FAMILIES.some(
-      (family) => !postgresFamilies.includes(family),
-    ) ||
-    postgres.sharedVectorsPassed !== true
-  )
-    failures.push("real Postgres evidence is incomplete");
+  try {
+    validateProgressiveContentPostgresEvidence(
+      json(bytes["postgres.json"], "Postgres report"),
+      {
+        commit: result.commit,
+        corpusManifestSha256: result.corpusManifestSha256,
+        objects: objects.map((object) => ({
+          id: String(object.id),
+          family: String(object.family),
+          byteLength: Number(object.byteLength),
+          sourceSha256: String(object.sourceSha256),
+          revision: String(object.revision),
+          authorizationScope: String(object.authorizationScope),
+        })),
+      },
+    );
+  } catch (error) {
+    failures.push(
+      `real Postgres evidence is incomplete: ${
+        error instanceof Error ? error.message : "invalid report"
+      }`,
+    );
+  }
 
   const scenario = json(bytes["scenario.json"], "scenario report");
   const lateEvidenceFamilies = new Set(
