@@ -116,3 +116,25 @@ describe("text chunking", () => {
     expect(truncateText("abcdefghij", 5).length).toBeLessThanOrEqual(5);
   });
 });
+
+describe("surrogate safety in WhatsApp text helpers", () => {
+  it("truncateText preserves surrogate pairs intact", () => {
+    // "😀" is 2 code units: \uD83D\uDE00
+    // "a" + "😀" has length 3; if maxLength is 4, maxLength-3 is 1 (landing before emoji)
+    // "😀".repeat(10) with maxLength=5: end=2 (full emoji), output "😀..."
+    const emojiStr = "😀".repeat(10);
+    const truncated = truncateText(emojiStr, 6);
+    expect(truncated.endsWith("...")).toBe(true);
+    expect(truncated.endsWith("\uD83D...")).toBe(false);
+  });
+
+  it("chunkWhatsAppText preserves surrogate pairs on hard breaks", () => {
+    const emojis = "😀".repeat(25); // 50 code units, no spaces or newlines
+    const chunks = chunkWhatsAppText(emojis, { limit: 9 });
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(9);
+      expect(chunk.endsWith("\uD83D")).toBe(false);
+      expect(chunk.startsWith("\uDE00")).toBe(false);
+    }
+  });
+});

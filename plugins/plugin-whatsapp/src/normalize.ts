@@ -277,10 +277,17 @@ function splitAtBreakPoint(text: string, limit: number): { chunk: string; remain
     };
   }
 
-  // Hard break at limit
+  // Hard break at limit with surrogate safety
+  let hardBreakIndex = limit;
+  if (hardBreakIndex > 0 && hardBreakIndex < text.length) {
+    const code = text.charCodeAt(hardBreakIndex - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      hardBreakIndex -= 1;
+    }
+  }
   return {
-    chunk: text.slice(0, limit),
-    remainder: text.slice(limit),
+    chunk: text.slice(0, hardBreakIndex),
+    remainder: text.slice(hardBreakIndex),
   };
 }
 
@@ -323,7 +330,14 @@ export function truncateText(text: string, maxLength: number): string {
   if (maxLength <= 3) {
     return "...".slice(0, maxLength);
   }
-  return `${text.slice(0, maxLength - 3)}...`;
+  let end = maxLength - 3;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${text.slice(0, end)}...`;
 }
 
 /**
