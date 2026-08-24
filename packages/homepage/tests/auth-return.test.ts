@@ -91,3 +91,139 @@ describe("Telegram onboarding destination literals", () => {
     expect(accountLink.searchParams.has("from")).toBe(false);
   });
 });
+
+const { clearRememberedReturnTo, peekReturnTo, rememberReturnTo } =
+  await import("../src/lib/auth-return");
+
+describe("safeReturnTo input edges", () => {
+  test("rejects undefined and empty destinations", () => {
+    expect(safeReturnTo(undefined)).toBeNull();
+    expect(safeReturnTo("")).toBeNull();
+  });
+
+  test("accepts internal paths containing doubled slashes inside the path", () => {
+    expect(safeReturnTo("/a//b")).toBe("/a//b");
+  });
+});
+
+class MemorySessionStorage {
+  private readonly entries = new Map<string, string>();
+
+  snapshot(): Map<string, string> {
+    return new Map(this.entries);
+  }
+
+  getItem(key: string): string | null {
+    return this.entries.has(key) ? (this.entries.get(key) as string) : null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.entries.set(key, String(value));
+  }
+
+  removeItem(key: string): void {
+    this.entries.delete(key);
+  }
+}
+
+const sharedGlobals = globalThis as unknown as {
+  window?: unknown;
+  sessionStorage?: unknown;
+};
+
+function withBrowserGlobals(
+  run: (storage: MemorySessionStorage) => void,
+): void {
+  const { window: previousWindow, sessionStorage: previousStorage } =
+    sharedGlobals;
+  const storage = new MemorySessionStorage();
+  sharedGlobals.sessionStorage = storage;
+  sharedGlobals.window = globalThis;
+  try {
+    run(storage);
+  } finally {
+    if (previousWindow === undefined) delete sharedGlobals.window;
+    else sharedGlobals.window = previousWindow;
+    if (previousStorage === undefined) delete sharedGlobals.sessionStorage;
+    else sharedGlobals.sessionStorage = previousStorage;
+  }
+}
+
+function withoutWindow(run: () => void): void {
+  const { window: previousWindow, sessionStorage: previousStorage } =
+    sharedGlobals;
+  delete sharedGlobals.window;
+  delete sharedGlobals.sessionStorage;
+  try {
+    run();
+  } finally {
+    if (previousWindow !== undefined) sharedGlobals.window = previousWindow;
+    if (previousStorage !== undefined) {
+      sharedGlobals.sessionStorage = previousStorage;
+    }
+  }
+}
+
+describe("remembered return persistence", () => {
+  test("without a browser session the helpers degrade to explicit fallbacks", () => {
+    withoutWindow(() => {
+      expect(() => rememberReturnTo("/profile/edit")).not.toThrow();
+      expect(() => clearRememberedReturnTo()).not.toThrow();
+      expect(peekReturnTo(null)).toBe("/connected");
+      expect(peekReturnTo("//evil.com", "/get-started")).toBe("/get-started");
+    });
+  });
+
+  test("a remembered safe destination round-trips query and hash", () => {
+    withBrowserGlobals(() => {
+      rememberReturnTo("/profile/edit?source=login#wallet");
+      expect(peekReturnTo(null)).toBe("/profile/edit?source=login#wallet");
+    });
+  });
+
+  test("a safe query destination wins over the remembered value", () => {
+    withBrowserGlobals(() => {
+      rememberReturnTo("/profile/edit");
+      expect(peekReturnTo("/connected")).toBe("/connected");
+    });
+  });
+
+  test("an unsafe query destination falls back to the remembered value", () => {
+    withBrowserGlobals(() => {
+      rememberReturnTo("/profile/edit");
+      expect(peekReturnTo("https://example.com")).toBe("/profile/edit");
+    });
+  });
+
+  test("remembering an unsafe or null destination removes the stored return", () => {
+    withBrowserGlobals(() => {
+      rememberReturnTo("/profile/edit");
+      rememberReturnTo("https://example.com");
+      expect(peekReturnTo(null)).toBe("/connected");
+      rememberReturnTo("/wallet");
+      rememberReturnTo(null);
+      expect(peekReturnTo(null)).toBe("/connected");
+    });
+  });
+
+  test("clearRememberedReturnTo drops the remembered destination", () => {
+    withBrowserGlobals(() => {
+      rememberReturnTo("/profile/edit");
+      clearRememberedReturnTo();
+      expect(peekReturnTo(null)).toBe("/connected");
+    });
+  });
+
+  test("an escaping value planted in storage cannot hijack the fallback", () => {
+    withBrowserGlobals((storage) => {
+      rememberReturnTo("/known-safe");
+      const [storedKey] =
+        [...storage.snapshot().entries()].find(
+          ([, value]) => value === "/known-safe",
+        ) ?? [];
+      expect(typeof storedKey).toBe("string");
+      storage.setItem(storedKey as string, "//evil.com");
+      expect(peekReturnTo(null)).toBe("/connected");
+    });
+  });
+});
