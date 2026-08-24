@@ -70,10 +70,12 @@ vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
 vi.mock("@stwd/sdk", () => ({
   StewardApiError: class StewardApiError extends Error {
     status: number;
-    constructor(message: string, status: number) {
+    data: unknown;
+    constructor(message: string, status: number, data?: unknown) {
       super(message);
       this.name = "StewardApiError";
       this.status = status;
+      this.data = data;
     }
   },
   StewardAuth: class {
@@ -660,6 +662,12 @@ describe("StewardLoginSection passkey capability gating", () => {
       new StewardApiError(
         "A passkey already exists for this email. Sign in with it instead.",
         409,
+        {
+          ok: false,
+          error:
+            "A passkey already exists for this email. Sign in with it instead.",
+          code: "passkey_already_registered",
+        },
       ),
     ],
     [
@@ -707,6 +715,38 @@ describe("StewardLoginSection passkey capability gating", () => {
       ).toBeNull();
     },
   );
+
+  it("does not treat an untyped server conflict as an existing passkey", async () => {
+    capabilityRef.usable = true;
+    capabilityRef.reason = "available";
+    stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
+      emailGrant: "grant-conflict",
+    });
+    stewardAuthSpies.addPasskey.mockRejectedValue(
+      new StewardApiError(
+        "A passkey already exists for this email. Sign in with it instead.",
+        409,
+      ),
+    );
+
+    renderSection();
+
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
+
+    const codeInput = await screen.findByPlaceholderText("123456");
+    fireEvent.change(codeInput, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /Create passkey/i }));
+
+    expect(
+      await screen.findByText(
+        "A passkey already exists for this email. Sign in with it instead.",
+      ),
+    ).toBeTruthy();
+    expect(stewardAuthSpies.signInWithPasskey).not.toHaveBeenCalled();
+    expect(stewardAuthSpies.addPasskey).toHaveBeenCalledTimes(1);
+  });
 
   it("clears the cached email grant when the user resends the OTP", async () => {
     capabilityRef.usable = true;

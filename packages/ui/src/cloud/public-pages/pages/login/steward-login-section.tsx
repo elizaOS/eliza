@@ -1214,14 +1214,16 @@ export default function StewardLoginSection() {
 
   function isPasskeyAlreadyRegistered(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
-    if (
-      e instanceof StewardApiError &&
-      e.status === 409 &&
-      (msg.includes("passkey already") ||
-        msg.includes("credential already") ||
-        msg.includes("already registered"))
-    ) {
-      return true;
+    if (e instanceof StewardApiError && e.status === 409) {
+      const data = e.data;
+      if (
+        typeof data === "object" &&
+        data !== null &&
+        "code" in data &&
+        data.code === "passkey_already_registered"
+      ) {
+        return true;
+      }
     }
     if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
     return (
