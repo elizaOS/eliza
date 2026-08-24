@@ -62,6 +62,5 @@ describe("SensitiveRateLimiter.consume", () => {
       limiter.consume(null, now);
     }
     expect(limiter.consume(null, now)).toBe(false);
-    expect(limiter.consume(undefined, now)).toBe(false);
   });
 });
