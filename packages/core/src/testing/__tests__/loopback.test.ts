@@ -46,4 +46,46 @@ describe("canBindLoopback", () => {
 		mocks.createServer.mockReturnValue(s);
 		expect(await canBindLoopback()).toBe(true);
 	});
+
+	it("shares one probe across concurrent callers", async () => {
+		const { canBindLoopback } = await import("../loopback.ts");
+		const s = fakeServer();
+		mocks.createServer.mockReturnValue(s);
+		const first = canBindLoopback();
+		const second = canBindLoopback();
+		expect(second).toBe(first);
+		expect(mocks.createServer).toHaveBeenCalledTimes(1);
+		expect(await first).toBe(true);
+	});
+
+	it("keeps returning the settled promise instead of re-probing", async () => {
+		const { canBindLoopback } = await import("../loopback.ts");
+		const s = fakeServer();
+		mocks.createServer.mockReturnValue(s);
+		const probe = canBindLoopback();
+		expect(await probe).toBe(true);
+		expect(await canBindLoopback()).toBe(true);
+		expect(canBindLoopback()).toBe(probe);
+		expect(mocks.createServer).toHaveBeenCalledTimes(1);
+	});
+
+	it("memoizes a failed bind instead of re-probing", async () => {
+		const { canBindLoopback } = await import("../loopback.ts");
+		const s = fakeServer();
+		mocks.createServer.mockReturnValue(s);
+		s.listen.mockImplementation(() => {
+			process.nextTick(() => s.emit("error", new Error("EACCES")));
+		});
+		expect(await canBindLoopback()).toBe(false);
+		expect(await canBindLoopback()).toBe(false);
+		expect(mocks.createServer).toHaveBeenCalledTimes(1);
+	});
+
+	it("probes an ephemeral port on the loopback host", async () => {
+		const { canBindLoopback } = await import("../loopback.ts");
+		const s = fakeServer();
+		mocks.createServer.mockReturnValue(s);
+		await canBindLoopback();
+		expect(s.listen).toHaveBeenCalledWith(0, "127.0.0.1", expect.any(Function));
+	});
 });
