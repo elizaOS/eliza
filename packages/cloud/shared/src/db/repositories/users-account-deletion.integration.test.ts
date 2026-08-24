@@ -25,7 +25,7 @@ const TEST_DATABASE = resolveAccountDeletionTestDatabase();
 let databaseReady = true;
 
 const replacementAttemptMigrationUrl = new URL(
-  "../migrations/0313_agent_sandbox_replacement_attempts.sql",
+  "../migrations/0314_agent_sandbox_replacement_attempts.sql",
   import.meta.url,
 );
 

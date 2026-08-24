@@ -46,6 +46,7 @@ function resolvePath(path: string, input: CapabilityArgs, params: CapabilityArgs
       stringValue(pathParams[name]) ??
       stringValue(params[name]) ??
       stringValue(input[name]) ??
+      stringValue(params.resourceId) ??
       stringValue(input.resourceId);
     if (!value) throw new Error(`Missing path parameter: ${name}`);
     return encodeURIComponent(value);
@@ -105,6 +106,9 @@ function copyRequestHeaders(c: AppContext, input: CapabilityArgs): Headers {
     const value = extraHeaders[name];
     if (typeof value === "string" && value.length > 0) headers.set(name, value);
   }
+  if (typeof input.idempotencyKey === "string" && input.idempotencyKey.length > 0) {
+    headers.set("idempotency-key", input.idempotencyKey);
+  }
 
   headers.set("content-type", "application/json");
   return headers;
@@ -163,15 +167,25 @@ export async function executeCloudCapabilityRest(
 
   const input = asObject(args);
   const params = asObject(input.params);
+  const effectiveInput = { ...params, ...input };
   const method = resolveMethod(input, params, capability.surfaces.rest.method);
   const path = resolvePath(capability.surfaces.rest.path, input, params);
   const query = resolveQuery(input, params);
-  const body = resolveBody(method, input, params);
+  const body =
+    capability.id === "billing.cancel_resource" &&
+    input.body === undefined &&
+    params.body === undefined
+      ? {
+          resourceType: effectiveInput.resourceType,
+          mode: effectiveInput.mode ?? "stop",
+          expectedLifecycleRevision: effectiveInput.expectedLifecycleRevision,
+        }
+      : resolveBody(method, input, params);
   const url = buildUrl(c, path, query);
 
   const response = await fetch(url, {
     method,
-    headers: copyRequestHeaders(c, input),
+    headers: copyRequestHeaders(c, effectiveInput),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = response.headers.get("content-type") ?? "";

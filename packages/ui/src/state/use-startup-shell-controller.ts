@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type { StartupShellView } from "../components/shell/startup-shell-types";
 import { listenForConnectRequests } from "../events";
-import { adoptRemoteAgentFirstRun } from "../first-run/adopt-remote-first-run";
+import { completeRemoteAgentFirstRun } from "../first-run/adopt-remote-first-run";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
 import { applyLaunchConnection } from "../platform";
@@ -172,12 +172,15 @@ export function useStartupShellController(): StartupShellController {
           // first, so an already-configured host is used as-is (no clobber) and
           // a fresh host is marked complete — either way the startup re-poll
           // below lands on home rather than onboarding.
-          await adoptRemoteAgentFirstRun(client, {
-            apiBase: connection.apiBase,
-            token: connection.token,
-            uiLanguage,
-          });
-          completeFirstRun();
+          await completeRemoteAgentFirstRun(
+            client,
+            {
+              apiBase: connection.apiBase,
+              token: connection.token,
+              uiLanguage,
+            },
+            completeFirstRun,
+          );
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();

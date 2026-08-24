@@ -9,7 +9,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { agentSandboxReplacementAttempts } from "../schemas/agent-sandbox-replacement-attempts";
 
-const migrationUrl = new URL("./0313_agent_sandbox_replacement_attempts.sql", import.meta.url);
+const migrationUrl = new URL("./0314_agent_sandbox_replacement_attempts.sql", import.meta.url);
 const journalUrl = new URL("./meta/_journal.json", import.meta.url);
 const databases: PGlite[] = [];
 
@@ -336,7 +336,7 @@ describe("0313 agent sandbox replacement attempts", () => {
     };
     expect(journal.entries.at(-1)).toMatchObject({
       idx: 296,
-      tag: "0313_agent_sandbox_replacement_attempts",
+      tag: "0314_agent_sandbox_replacement_attempts",
     });
     expect(
       journal.entries.filter((entry) => entry.tag.includes("agent_sandbox_replacement_attempts")),

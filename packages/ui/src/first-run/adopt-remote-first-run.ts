@@ -21,6 +21,7 @@
 
 import type { UiLanguage } from "../i18n";
 import { buildFirstRunSubmitPlan } from "./first-run";
+import { releasePendingFirstRunText } from "./first-run-pending-text";
 
 /**
  * Normalizes a user- or link-supplied remote agent address into a canonical
@@ -110,4 +111,20 @@ export async function adoptRemoteAgentFirstRun(
 
   await client.submitFirstRun(plan.payload);
   return { alreadyComplete: false };
+}
+
+/**
+ * Adopts the remote, commits the local first-run gate, then releases any typed
+ * onboarding requests to the real composer. A failed adoption performs neither
+ * local completion nor release.
+ */
+export async function completeRemoteAgentFirstRun(
+  client: RemoteFirstRunClient,
+  input: AdoptRemoteAgentFirstRunInput,
+  completeFirstRun: () => void,
+): Promise<AdoptRemoteAgentFirstRunResult> {
+  const result = await adoptRemoteAgentFirstRun(client, input);
+  completeFirstRun();
+  releasePendingFirstRunText();
+  return result;
 }

@@ -659,6 +659,7 @@ export const groupResponsePrecedencePolicy = `response_precedence:
 - apply these rules in order; the first matching rule wins
 - a request to stop or be quiet directed at {{agentName}} -> STOP
 - a direct mention, reply, or clear continuation addressed to {{agentName}} -> RESPOND, even when the sender is another assistant/bot
+- when the current message asks to clarify or expresses disagreement, doubt, confusion, or a counterpoint about the immediately preceding prior_message:agent reply -> RESPOND
 - when the trusted provider context identifies the newest sender as another assistant/bot and the message is not addressed to {{agentName}} -> IGNORE
 - when a trusted bot-authored reply already answered the preceding human and {{agentName}} was not addressed -> IGNORE; one speaker is enough
 - otherwise use the conversation rules below; when unsure, default IGNORE
