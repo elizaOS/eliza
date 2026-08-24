@@ -14,9 +14,10 @@ import {
   AgentRuntime,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
-  type ElizaCapabilityRouter,
   type IAgentRuntime,
+  type JsonValue,
   type Memory,
+  RuntimeBrokerCapabilityRouter,
   type UUID,
   type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
@@ -1072,30 +1073,46 @@ describe("RemoteCodingCapabilityRouterService", () => {
         makeConfig({ hostWorkspaceRoot: root, workdir: root }),
         new FakeFactory(sandbox),
       );
-      let routedCalls = 0;
-      const router: ElizaCapabilityRouter = {
+      let brokerMode: "normal" | "unavailable" | "malformed" | "mismatch" =
+        "normal";
+      const router = new RuntimeBrokerCapabilityRouter({
         environment: endpoint.environment,
-        fs: endpoint.fs,
-        git: endpoint.git,
-        model: endpoint.model,
-        plugin: endpoint.plugin,
-        availability: () => endpoint.availability(),
-        pty: {
-          runCommand: async (params) => {
-            routedCalls += 1;
-            if (routedCalls === 2) {
-              throw new CapabilityError({
-                code: "CAPABILITY_UNAVAILABLE",
-                capability: "pty",
-                method: "pty.command.run",
-                message: "exercise local fallback",
-              });
-            }
-            const result = await endpoint.pty.runCommand(params);
-            return result;
-          },
+        invokeRuntime: async (method, params) => {
+          if (method !== "pty.command.run") {
+            throw new Error(`Unexpected broker method: ${method}`);
+          }
+          if (brokerMode === "unavailable") {
+            throw new CapabilityError({
+              code: "CAPABILITY_UNAVAILABLE",
+              capability: "pty",
+              method: "pty.command.run",
+              message: "exercise local fallback",
+            });
+          }
+          const produced = await endpoint.pty.runCommand(params as never);
+          if (brokerMode === "malformed") {
+            return {
+              ...produced,
+              workspaceDeltaReceipt: {
+                ...produced.workspaceDeltaReceipt,
+                unexpected: true,
+              },
+            } as unknown as JsonValue;
+          }
+          if (brokerMode === "mismatch") {
+            return {
+              ...produced,
+              workspaceExecution: produced.workspaceExecution
+                ? {
+                    ...produced.workspaceExecution,
+                    rootId: "f".repeat(64),
+                  }
+                : undefined,
+            } as unknown as JsonValue;
+          }
+          return produced as unknown as JsonValue;
         },
-      };
+      });
       const action = codingToolsPlugin.actions?.find(
         (candidate) => candidate.name === "SHELL",
       );
@@ -1133,22 +1150,31 @@ describe("RemoteCodingCapabilityRouterService", () => {
       const run = async (command: string) =>
         await action.handler?.(runtime, message, undefined, { command });
       const changed = await run("printf mutate > remote.txt");
+      brokerMode = "malformed";
+      const malformed = await run("node --check verify.js");
+      brokerMode = "mismatch";
+      const mismatch = await run("node --check verify.js");
+      brokerMode = "unavailable";
       const local = await run("true");
+      brokerMode = "normal";
       const remoteUnchanged = await run("node --check verify.js");
-      const steps = [changed, local, remoteUnchanged].map((result, index) => ({
-        toolCall: {
-          name: "SHELL",
-          params: {
-            command: [
-              "printf mutate > remote.txt",
-              "true",
-              "node --check verify.js",
-            ][index],
+      const commands = [
+        "printf mutate > remote.txt",
+        "node --check verify.js",
+        "node --check verify.js",
+        "true",
+        "node --check verify.js",
+      ];
+      const steps = [changed, malformed, mismatch, local, remoteUnchanged].map(
+        (result, index) => ({
+          toolCall: {
+            name: "SHELL",
+            params: { command: commands[index] },
           },
-        },
-        result,
-      }));
-      const trajectorySteps = steps.slice(0, 1);
+          result,
+        }),
+      );
+      const trajectorySteps = [steps[0]];
       const trajectory = {
         steps: trajectorySteps,
         archivedSteps: [],
@@ -1162,14 +1188,33 @@ describe("RemoteCodingCapabilityRouterService", () => {
         outcome: "changed",
       });
       if (!changedReceipt) throw new Error("changed receipt unavailable");
+      expect(malformed?.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "indeterminate",
+        reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+      });
+      expect(mismatch?.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "indeterminate",
+        reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+      });
+      for (const negative of [steps[1], steps[2]]) {
+        const negativeTrajectory = {
+          steps: [steps[0], negative, steps[4]],
+          archivedSteps: [],
+        } as unknown as Parameters<
+          typeof __codingMutationRequiresVerificationForTests
+        >[0];
+        expect(
+          __codingMutationRequiresVerificationForTests(negativeTrajectory),
+        ).toBe(true);
+      }
       expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
         true,
       );
-      trajectorySteps.push(steps[1]);
+      trajectorySteps.push(steps[3]);
       expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
         true,
       );
-      trajectorySteps.push(steps[2]);
+      trajectorySteps.push(steps[4]);
       expect(remoteUnchanged?.data?.workspaceDeltaReceipt).toMatchObject({
         outcome: "unchanged",
         scope: changedReceipt.scope,
