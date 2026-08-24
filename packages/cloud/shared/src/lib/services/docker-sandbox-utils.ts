@@ -673,8 +673,17 @@ export function extractDockerCreateContainerId(output: string): string {
  * should retry the entire provisioning flow.
  */
 export function allocatePort(min: number, max: number, excluded: Set<number>): number {
+  if (max <= min) {
+    throw new Error(`[docker-sandbox] Invalid port range [${min}, ${max}).`);
+  }
   const range = max - min;
-  if (excluded.size >= range) {
+  let excludedInRange = 0;
+  for (const port of excluded) {
+    if (port >= min && port < max) {
+      excludedInRange++;
+    }
+  }
+  if (excludedInRange >= range) {
     throw new Error(
       `[docker-sandbox] No available ports in range [${min}, ${max}). All ${range} ports are allocated.`,
     );

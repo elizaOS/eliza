@@ -611,6 +611,18 @@ describe("port + metadata helpers", () => {
     expect(() => allocatePort(5000, 5002, full)).toThrow(/No available ports/);
   });
 
+  test("allocatePort ignores excluded ports outside the target range", () => {
+    const excludedOutside = new Set([1000, 1001, 1002, 1003, 1004]);
+    const port = allocatePort(5000, 5003, excludedOutside);
+    expect(port).toBeGreaterThanOrEqual(5000);
+    expect(port).toBeLessThan(5003);
+  });
+
+  test("allocatePort rejects invalid ranges where max <= min", () => {
+    expect(() => allocatePort(5000, 5000, new Set())).toThrow(/Invalid port range/);
+    expect(() => allocatePort(5005, 5000, new Set())).toThrow(/Invalid port range/);
+  });
+
   test("readDockerHostPortFromMetadata returns positive ints only", () => {
     expect(readDockerHostPortFromMetadata({ hostPort: 8080 })).toBe(8080);
     expect(readDockerHostPortFromMetadata({ hostPort: -1 })).toBeNull();
