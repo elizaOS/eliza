@@ -65,6 +65,24 @@ bun run --cwd packages/scenario-runner eval:timing:merge -- \
   /path/to/shard-*.json
 ```
 
+For long live cells, use the supervisor instead of launching shards by hand:
+
+```bash
+bun run --cwd packages/scenario-runner eval:timing:matrix -- \
+  --input=/path/to/finetune_test_dialogue.jsonl \
+  --output-dir=/path/to/model-cell \
+  --provider=cli \
+  --shard-count=8 \
+  --workers=4
+```
+
+It adopts complete shards, resumes validated `in-progress` checkpoints, keeps
+per-shard stdout/stderr and trajectories, retries only runtime/provider exits,
+and writes an atomic run manifest. A configuration exit is terminal. The run
+finishes only after the canonical merger proves that every physical input row
+belongs to exactly one complete shard in one model cell. Re-running the same
+command performs no model calls after that proof exists.
+
 Pinned Discord replay output can exercise the same Stage-1 boundary:
 
 ```bash
