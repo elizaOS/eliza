@@ -139,19 +139,22 @@ async function runChild(producer, env) {
   });
 }
 
+export async function resolveProductionCommit(explicit, cwd = REPO_ROOT) {
+  const commit =
+    explicit ??
+    (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd })).stdout.trim();
+  if (!/^[0-9a-f]{40}$/u.test(commit))
+    throw new Error("content-context commit must be an exact SHA");
+  return commit;
+}
+
 export async function produceContentContextEvidence(options) {
   const planPath = path.resolve(REPO_ROOT, options.plan);
   const externalDir = path.resolve(REPO_ROOT, options.externalDir);
   const plan = validateProductionPlan(
     JSON.parse(await fs.readFile(planPath, "utf8")),
   );
-  const commit =
-    options.commit ??
-    execFileAsync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT }).then(
-      ({ stdout }) => stdout.trim(),
-    );
-  if (!/^[0-9a-f]{40}$/u.test(commit))
-    throw new Error("content-context commit must be an exact SHA");
+  const commit = await resolveProductionCommit(options.commit);
   const externalBytes = new Map();
   for (const artifact of EXTERNAL_CONTENT_CONTEXT_ARTIFACTS) {
     externalBytes.set(
