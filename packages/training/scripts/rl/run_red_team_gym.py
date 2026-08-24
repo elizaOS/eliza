@@ -31,7 +31,11 @@ PYTHON_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PYTHON_ROOT))
 
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
+from lib.generation_integrity import (  # noqa: E402
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
 
 # Load .env
 from dotenv import load_dotenv
@@ -76,14 +80,22 @@ def make_local_generator(model, tokenizer, device, system_prompt: str = ""):
         enc = tokenize_with_explicit_limit(
             tokenizer,
             text,
-            max_tokens=2048,
+            max_tokens=model_context_tokens(
+                model, tokenizer, source="run_red_team_gym.local"
+            ),
             return_tensors="pt",
         ).to(device)
+        max_new_tokens = remaining_model_context_tokens(
+            model,
+            tokenizer,
+            prompt_tokens=enc["input_ids"].shape[1],
+            source="run_red_team_gym.local",
+        )
         model.eval()
         with torch.no_grad():
             out = model.generate(
                 enc["input_ids"],
-                max_new_tokens=300,
+                max_new_tokens=max_new_tokens,
                 temperature=0.8,
                 top_p=0.9,
                 do_sample=True,
@@ -92,7 +104,7 @@ def make_local_generator(model, tokenizer, device, system_prompt: str = ""):
         generated_ids = out[0, enc["input_ids"].shape[1] :]
         require_complete_generated_tokens(
             generated_ids,
-            max_new_tokens=300,
+            max_new_tokens=max_new_tokens,
             source="run_red_team_gym.local",
             terminal_token_ids=tokenizer.eos_token_id,
         )

@@ -36,7 +36,11 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from training.tokenization import tokenize_with_explicit_limit
 
-from lib.generation_integrity import require_complete_generated_tokens
+from lib.generation_integrity import (
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
 from .simulation_bridge import ActionOutcome, Scenario, SimulationBridge
 from .turboquant import TurboQuantSettings, build_generation_cache
 
@@ -100,7 +104,6 @@ class ContinuousRLConfig:
     reward_ema_alpha: float = 0.01
 
     # Generation
-    max_new_tokens: int = 256
     temperature: float = 0.7
     top_p: float = 0.9
 
@@ -305,9 +308,19 @@ class ContinuousRLAgent:
         enc = tokenize_with_explicit_limit(
             self.tokenizer,
             prompt,
-            max_tokens=2048,
+            max_tokens=model_context_tokens(
+                self.model,
+                self.tokenizer,
+                source="continuous_rl.generate_action",
+            ),
             return_tensors="pt",
         ).to(self.config.device)
+        max_new_tokens = remaining_model_context_tokens(
+            self.model,
+            self.tokenizer,
+            prompt_tokens=enc["input_ids"].shape[1],
+            source="continuous_rl.generate_action",
+        )
 
         # Build TurboQuant cache if enabled
         past_kv = None
@@ -319,7 +332,7 @@ class ContinuousRLAgent:
             )
 
         generate_kwargs: dict[str, Any] = {
-            "max_new_tokens": self.config.max_new_tokens,
+            "max_new_tokens": max_new_tokens,
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,
             "do_sample": True,
@@ -337,7 +350,7 @@ class ContinuousRLAgent:
         response_ids = output_ids[0, prompt_len:]
         require_complete_generated_tokens(
             response_ids,
-            max_new_tokens=self.config.max_new_tokens,
+            max_new_tokens=max_new_tokens,
             source="continuous_rl.generate_action",
             terminal_token_ids=self.tokenizer.eos_token_id,
         )
