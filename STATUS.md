@@ -1,15 +1,17 @@
 # Linux parity and Devices & Runtimes status
 
-Last updated: 2026-08-23 UTC
+Last updated: 2026-08-24 UTC
 
 ## Outcome
 
-The independently actionable local engineering work is complete for the x64
+The independently actionable source engineering work is current for the x64
 candidate. Linux now uses the shared macOS-style compact launcher pill and chat
 surface, a CEF 147 Electrobun shell with durable partitioned profiles, secure
 Devices & Runtimes flows, portable local inference, and reproducible direct
-packages. The exact package payload passes the `production-direct` contract
-and its broad packaged acceptance suite.
+packages. A frozen package payload passes the `production-direct` contract and
+its broad packaged acceptance suite. That payload predates the current merged
+source head and is therefore retained as candidate evidence, not exact-head
+release evidence.
 
 This is a **local demo/review candidate, not a production release claim**.
 Physical GNOME/Wayland and hardware QA, a second Mac/VPS runtime, real Secret
@@ -17,20 +19,26 @@ Service and deployed-Cloud proof, system installer lifecycle, RPM tooling,
 review, signing, publication, merge, and deployment remain environment,
 credential, physical-device, or authority gates.
 
-The final doctor also records a host-capacity gate: 4.3 GiB is free on the root
+The current host-capacity check records 2.3 GiB free on the root
 filesystem versus the 8 GiB required for another desktop rebuild. The completed
 artifacts launch from their current locations, but a fresh rebuild requires
 owner-approved cleanup of generated outputs or caches. No unrelated cache or
 workspace data was deleted to manufacture a green doctor result.
 
 - Worktree: `/home/nubs/Documents/Codex/2026-08-22/eliza-linux-devices-runtimes`
-- Local branch at packaging time: `codex/linux-devices-runtimes-20260822`
+- Current local branch: `codex/pr25427-final`
+- Draft PR branch: `fix/linux-cef-devices-runtimes-parity`
+- Current `develop` integration checkpoint: `5f5c843fc3b13e0bc534c860d48737ac1dac4215`
+- Integrated `origin/develop`: `a83dd908470ffb2c3aa428c7f89f85a867677716`
 - Product payload source: `be05b667e76b7c8f5266667bfc33f35125b75faf`
 - Packaging/tooling checkpoint: `02c00a3902a35732d7cb134f98570b9d349bdbfc`
-- Merged base: `origin/develop` at `99188ccd5be87354502cc7db07ac50f45170ccab`
 - Original merged work: [PR #24414](https://github.com/elizaOS/eliza/pull/24414), merge commit `acf111c4a`
-- Publication state: local commits only in this continuation; no push, new PR,
-  merge, signing, release, deployment, or system installation was performed.
+- Publication state: [draft PR #25427](https://github.com/elizaOS/eliza/pull/25427)
+  is open and conflict-free. Its prior exact remote head `a38914d82e` passed
+  hosted PR Static Smoke. The current local `develop` integration and this
+  status refresh must be pushed and revalidated before they are exact PR-head
+  evidence. No merge, signing, release, deployment, or system installation was
+  performed.
 
 ## Delivered
 
@@ -138,6 +146,28 @@ b7e043197daca54f028b63fc1d05b12e6b69901a76ddbcea84adb653652d5430  electrobun-1.1
 
 ## Verification
 
+### Current merged source checkpoint
+
+- Current-`develop` merge completed without conflicts and the worktree remained
+  clean before this status refresh.
+- Focused current-source suites passed: Devices/remote-control UI 52/52,
+  storage bridge 6/6, app-core CEF/Flatpak/direct packaging 34/34,
+  Electrobun boundaries/runtime/managed-network/SSH/window/config 96/96,
+  Agent proposal/routes 22/22, app-control runtime management 46/46,
+  Headscale client 29/29, doctor/contracts 34/34, and Cloud relay/session/
+  migration/repository boundaries 78/78. The real-Postgres integration case
+  remains one intentional environment skip.
+- The PGlite remote-command-envelope repository suite passed 19/19 at this
+  checkpoint, including its complete embedded-database cleanup.
+- Affected lint passed 143/143 tasks. Affected typecheck passed 231/232 tasks;
+  the sole failure is an unchanged current-`develop` test typing defect in
+  `packages/cloud/shared/src/db/database-url.test.ts`, surfaced through the
+  Cloud API project. That file is byte-for-byte outside this PR's diff.
+- `git diff --check` passes. Hosted exact-head lint/typecheck/build and secret
+  scan will be authoritative after the refreshed head is pushed.
+
+### Frozen packaged candidate
+
 - Fresh no-streaming desktop build completed and stamped the renderer/service
   worker to `be05b667e`.
 - `production-direct` contract: pass; 151,736 entries, 78 ELF files, maximum
@@ -158,8 +188,8 @@ b7e043197daca54f028b63fc1d05b12e6b69901a76ddbcea84adb653652d5430  electrobun-1.1
 - Native patch verification passed, and the review source patch applies cleanly
   to pristine Electrobun v1.18.1.
 - Biome checks and `git diff --check` passed for the modified source.
-- Final Linux doctor: 35 passed, 5 optional warnings, 1 required failure. The
-  sole failure is the documented 4.3 GiB free-space/rebuild floor; optional
+- Frozen-candidate Linux doctor: 35 passed, 5 optional warnings, 1 required
+  failure. The sole failure is the documented free-space/rebuild floor; optional
   warnings cover development headers, containers, and unreadable firewall
   state rather than the packaged runtime.
 - Earlier completed gates remain recorded in Git history: accessibility,
@@ -192,10 +222,11 @@ root-owned tails/chroot paths remain explicit coverage gaps.
 6. RPM: install/enable an approved RPM build environment, then build and inspect
    the exact artifact.
 7. Rebuild capacity: approve removal of specific generated outputs/caches or
-   provide another build filesystem until at least 8 GiB is free.
-8. Publication: review the exact local branch, push it, and open a new draft PR
-   only after explicit approval. Signing, release publication, merge, deploy,
-   and production mutation remain separately gated.
+   provide another build filesystem until at least 8 GiB is free. The current
+   host has about 2.3 GiB free, so no exact-head packaged rebuild was attempted.
+8. Publication: refresh and approve draft PR #25427 after exact-head hosted CI
+   and evidence review. Signing, release publication, merge, deploy, and
+   production mutation remain separately gated.
 
 ## Recovery
 
