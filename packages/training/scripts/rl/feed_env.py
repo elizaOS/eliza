@@ -62,7 +62,7 @@ from .rewards import (
 from .rubric_loader import has_custom_rubric, normalize_archetype
 from .state_paths import default_trajectory_dir
 from .temporal_credit import attribute_temporal_credit
-from .tokenization_utils import tokenize_for_trainer
+from .tokenization_utils import remaining_context_tokens, tokenize_for_trainer
 
 # Optional Tinker support
 if TYPE_CHECKING:
@@ -881,8 +881,6 @@ class FeedRLAIFEnv(BaseEnv):
                     continue
 
                 # Generate multiple completions per prompt for GRPO score variance.
-                max_tokens = min(512, self.config.max_token_length // 3)
-                prompt_budget = max(1, self.config.max_token_length - max_tokens)
                 prompt_tokens = _normalize_token_ids(
                     self.tokenizer.apply_chat_template(
                         messages,
@@ -890,14 +888,20 @@ class FeedRLAIFEnv(BaseEnv):
                         add_generation_prompt=True,
                     )
                 )
-                if len(prompt_tokens) > prompt_budget:
+                if len(prompt_tokens) >= self.config.max_token_length:
                     logger.warning(
-                        "Skipping trajectory %s: prompt too long for RL sampling (%s > %s)",
+                        "Skipping trajectory %s: complete prompt does not fit RL context (%s >= %s)",
                         traj.get("trajectory_id"),
                         len(prompt_tokens),
-                        prompt_budget,
+                        self.config.max_token_length,
                     )
                     continue
+                max_tokens = remaining_context_tokens(
+                    self.tokenizer,
+                    messages,
+                    context_tokens=self.config.max_token_length,
+                    source="feed_env.collect_trajectories",
+                )
 
                 num_completions = self.config.group_size
 
@@ -906,7 +910,6 @@ class FeedRLAIFEnv(BaseEnv):
                     try:
                         tinker_result = await self.tinker_client.sample_async(
                             messages=messages,
-                            max_tokens=max_tokens,
                             temperature=0.7,
                             n=num_completions,
                             include_logprobs=False,

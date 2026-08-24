@@ -776,7 +776,6 @@ class TinkerTrainingConfig(BaseModel):
     )
 
     # Inference settings
-    inference_max_tokens: int = Field(default=512, description="Max tokens for inference")
     inference_temperature: float = Field(default=0.7, description="Temperature for inference")
 
 
@@ -823,7 +822,7 @@ class FeedTinkerTrainer:
             lora_rank=config.lora_rank,
             resume_from_state=config.resume_from_state,
             learning_rate=config.learning_rate,
-            default_max_tokens=config.inference_max_tokens,
+            max_context_tokens=config.max_token_length,
             default_temperature=config.inference_temperature,
         )
         self.tinker_client = FeedTinkerClient(self.tinker_config)
@@ -1161,7 +1160,6 @@ Your goal is to make profitable trading decisions based on market analysis."""
                 },
                 {"role": "user", "content": judge_prompt},
             ],
-            max_tokens=500,
             temperature=self.config.judge_temperature,
         )
 

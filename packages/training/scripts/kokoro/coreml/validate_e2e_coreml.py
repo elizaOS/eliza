@@ -36,7 +36,11 @@ def ids_from_phonemes(ps, vocab, max_tokens=128):
         if ch in vocab:
             ids.append(vocab[ch])
     ids.append(0)  # eos
-    ids = ids[:max_tokens]
+    if len(ids) > max_tokens:
+        raise ValueError(
+            f"Kokoro CoreML input requires {len(ids)} phoneme tokens, but the "
+            f"exported model accepts {max_tokens}; input was not truncated"
+        )
     n = len(ids)
     ids = ids + [0] * (max_tokens - n)
     return ids, n

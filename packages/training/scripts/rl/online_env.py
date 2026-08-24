@@ -404,9 +404,6 @@ class FeedOnlineEnvConfig(BaseEnvConfig):
         default=20, description="Number of NPCs to create in simulation bridge"
     )
 
-    # Generation settings
-    max_response_tokens: int = Field(default=512, description="Maximum tokens for model response")
-
     temperature: float = Field(default=0.8, description="Temperature for generation")
 
     # Archetype settings
@@ -724,17 +721,16 @@ class FeedOnlineEnv(BaseEnv):
             {"role": "user", "content": user_prompt},
         ]
 
-        # Check length before generation
-        prompt_tokens = len(
-            self.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-        )
-        if prompt_tokens > self.config.max_token_length - self.config.max_response_tokens:
-            logger.warning(f"Prompt too long ({prompt_tokens} tokens), skipping")
-            return None, []
-
         # Generate completions using direct HTTP API (OpenAI-compatible)
         # This mirrors feed_env's approach for maximum vLLM compatibility
-        from .tokenization_utils import tokenize_for_trainer
+        from .tokenization_utils import remaining_context_tokens, tokenize_for_trainer
+
+        max_tokens = remaining_context_tokens(
+            self.tokenizer,
+            messages,
+            context_tokens=self.config.max_token_length,
+            source="online_env.collect_trajectories",
+        )
 
         # Get vLLM URL from server config (first config is the inference server)
         vllm_base_url = (
@@ -749,7 +745,7 @@ class FeedOnlineEnv(BaseEnv):
                         "model": self.config.tokenizer_name,
                         "messages": messages,
                         "n": self.config.group_size,
-                        "max_tokens": self.config.max_response_tokens,
+                        "max_tokens": max_tokens,
                         "temperature": self.config.temperature,
                     },
                     timeout=aiohttp.ClientTimeout(total=120),
@@ -980,12 +976,21 @@ class FeedOnlineEnv(BaseEnv):
                 {"role": "user", "content": user_prompt},
             ]
 
+            from .tokenization_utils import remaining_context_tokens
+
+            max_tokens = remaining_context_tokens(
+                self.tokenizer,
+                messages,
+                context_tokens=self.config.max_token_length,
+                source="online_env.evaluate",
+            )
+
             # Single completion for evaluation
             async with self.server.managed_server(tokenizer=self.tokenizer) as managed:
                 chat_completion = await managed.chat_completion(
                     messages=messages,
                     n=1,
-                    max_tokens=self.config.max_response_tokens,
+                    max_tokens=max_tokens,
                     temperature=0.3,  # Lower temperature for eval
                 )
 

@@ -69,13 +69,79 @@ class UnknownModelOutputLimitError(ValueError):
         )
 
 
+class PromptExceedsContextError(ValueError):
+    """Raised before dispatch when a complete prompt cannot fit the context."""
+
+    code = "TRAINING_PROMPT_EXCEEDS_CONTEXT"
+
+    def __init__(self, source: str, prompt_tokens: int, context_tokens: int) -> None:
+        super().__init__(
+            f"{self.code}: {source} requires {prompt_tokens} prompt tokens, but "
+            f"the configured context supports {context_tokens}; prompt was not truncated"
+        )
+
+
+class ModelContextLimitUnknownError(ValueError):
+    """Raised when local generation cannot prove the model's real context size."""
+
+    code = "TRAINING_MODEL_CONTEXT_LIMIT_UNKNOWN"
+
+    def __init__(self, source: str) -> None:
+        super().__init__(
+            f"{self.code}: {source} exposes no supported context-length field; "
+            "generation was not dispatched"
+        )
+
+
+def model_context_tokens(model: object, tokenizer: object, *, source: str) -> int:
+    """Read a finite context boundary from common model/tokenizer contracts."""
+
+    owners = (
+        getattr(model, "config", None),
+        getattr(model, "args", None),
+        model,
+        tokenizer,
+    )
+    attributes = (
+        "max_position_embeddings",
+        "max_sequence_length",
+        "seq_length",
+        "context_length",
+        "model_max_length",
+    )
+    for owner in owners:
+        if owner is None:
+            continue
+        for attribute in attributes:
+            value = getattr(owner, attribute, None)
+            if isinstance(value, int) and 0 < value <= 100_000_000:
+                return value
+    raise ModelContextLimitUnknownError(source)
+
+
+def remaining_model_context_tokens(
+    model: object,
+    tokenizer: object,
+    *,
+    prompt_tokens: int,
+    source: str,
+) -> int:
+    """Return full local generation capacity or reject an oversized prompt."""
+
+    context_tokens = model_context_tokens(model, tokenizer, source=source)
+    remaining = context_tokens - prompt_tokens
+    if remaining <= 0:
+        raise PromptExceedsContextError(source, prompt_tokens, context_tokens)
+    return remaining
+
+
 def anthropic_max_output_tokens(model: str) -> int:
     """Return Anthropic's documented synchronous Messages API output maximum."""
 
     normalized = model.strip().lower()
     if normalized.startswith("claude-opus-4-7"):
         return 128_000
-    if normalized.startswith("claude-haiku-4-5"):
+    if normalized.startswith(("claude-sonnet-4-", "claude-haiku-4-5")):
         return 64_000
     raise UnknownModelOutputLimitError("Anthropic", model)
 

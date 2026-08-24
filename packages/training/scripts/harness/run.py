@@ -193,13 +193,11 @@ async def call_openai_compatible(
     model: str,
     reasoning_effort: str,
     temperature: float,
-    max_tokens: int = 800,
 ) -> tuple[str, str, list[dict[str, Any]]]:
     """Returns (content, raw_reasoning, native tool calls) on success."""
     payload = {
         "model": model,
         "messages": messages,
-        "max_tokens": max_tokens,
         "temperature": temperature,
     }
     if tools:

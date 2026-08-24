@@ -32,6 +32,7 @@ from lib.generation_integrity import (
 )
 from .online_env import FeedOnlineEnvConfig, Scenario
 from .simulation_bridge import SimulationBridge
+from .tokenization_utils import remaining_context_tokens
 
 if TYPE_CHECKING:
     from .scenario_pool import Scenario as PoolScenario
@@ -355,13 +356,19 @@ class FeedHybridEnv(BaseEnv):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+        max_tokens = remaining_context_tokens(
+            self.tokenizer,
+            messages,
+            context_tokens=self.config.max_token_length,
+            source="hybrid_env.collect_online",
+        )
 
         # Generate completions using managed_server
         async with self.server.managed_server(tokenizer=self.tokenizer) as managed:
             chat_completions = await managed.chat_completion(
                 messages=messages,
                 n=self.config.group_size,
-                max_tokens=self.config.max_response_tokens,
+                max_tokens=max_tokens,
                 temperature=self.config.temperature,
             )
 
@@ -446,6 +453,12 @@ class FeedHybridEnv(BaseEnv):
 
         # Generate N completions for the same prompt
         prompt_messages = messages[:-1]  # Exclude assistant response
+        max_tokens = remaining_context_tokens(
+            self.tokenizer,
+            prompt_messages,
+            context_tokens=self.config.max_token_length,
+            source="hybrid_env.collect_offline",
+        )
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -453,7 +466,7 @@ class FeedHybridEnv(BaseEnv):
                 json={
                     "model": model_name,
                     "messages": prompt_messages,
-                    "max_tokens": 512,
+                    "max_tokens": max_tokens,
                     "n": self.config.group_size,
                     "temperature": 0.7,
                 },
