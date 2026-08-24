@@ -624,6 +624,73 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("records and delivers only the opt-in normalized tool parameters", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const trajectoryLogger = {
+			isEnabled: vi.fn(() => true),
+			startStep: vi.fn(() => "normalized-action-step"),
+			completeStep: vi.fn(),
+			flushWriteQueue: vi.fn(async () => {}),
+			annotateStep: vi.fn(async () => {}),
+		};
+		const action = makeAction({
+			name: "MEMORY",
+			parameters: [
+				{
+					name: "text",
+					description: "Memory text",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "memoryId",
+					description: "Optional memory UUID",
+					modelOmissionSentinels: ["null"],
+					schema: { type: "string", pattern: "^[0-9a-f-]{36}$" },
+				},
+			],
+			handler,
+		});
+		const runtime = makeRuntime([action], {
+			getService: vi.fn((serviceType: string) =>
+				serviceType === "trajectories" ? trajectoryLogger : undefined,
+			),
+			getServicesByType: vi.fn(() => []),
+		});
+
+		const result = await runWithTrajectoryContext(
+			{
+				trajectoryId: "normalization-trajectory",
+				trajectoryStepId: "planner-step",
+				purpose: "planner",
+			},
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{
+						name: "MEMORY",
+						params: { text: "remember this", memoryId: "null" },
+					},
+				),
+		);
+
+		expect(result.success).toBe(true);
+		expect(handler).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({ parameters: { text: "remember this" } }),
+			undefined,
+			undefined,
+		);
+		expect(trajectoryLogger.completeStep).toHaveBeenCalledWith(
+			"normalization-trajectory",
+			"normalized-action-step",
+			expect.objectContaining({ parameters: { text: "remember this" } }),
+		);
+	});
+
 	it("preserves byte-exact canonical callback text through later voice gates", async () => {
 		const canonicalText =
 			"“Send demo video” is scheduled for Tuesday, August 4, 2026 at 9:00 AM.";
