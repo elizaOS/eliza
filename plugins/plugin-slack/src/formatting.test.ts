@@ -174,6 +174,13 @@ describe("truncateText", () => {
     expect(truncateText("short", 10)).toBe("short");
     expect(truncateText("abcdefghij", 5)).toBe("abcd…");
   });
+
+  it("never splits surrogate pairs when truncating emoji text", () => {
+    const text = `abc${"😀".repeat(5)}`;
+    const out = truncateText(text, 6, "…");
+    expect(out.length).toBeLessThanOrEqual(6);
+    expect(out.endsWith("\uD83D…")).toBe(false);
+  });
 });
 
 describe("permalink build/parse round-trip", () => {
