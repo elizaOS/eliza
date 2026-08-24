@@ -27,7 +27,9 @@ boundary used by production group messages:
 ```bash
 bun run --cwd packages/scenario-runner eval:when2speak -- \
   --input=/path/to/finetune_test_dialogue.jsonl \
-  --provider=anthropic
+  --provider=anthropic \
+  --shard-index=0 \
+  --shard-count=8
 ```
 
 The command writes `reports/group-chat-timing/when2speak.json`. It reports
@@ -39,6 +41,63 @@ accepted dialogue to Stage 1 in full. A malformed row is recorded as a failure
 and makes the command exit nonzero. Complete Stage-1 trajectories are written
 beside the report under `reports/group-chat-timing/trajectories`; override that
 location with `--run-dir=<dir>`.
+
+The evaluator writes an atomic checkpoint after every selected row by default.
+Use `--checkpoint-every=<n>` to reduce checkpoint frequency and
+`--resume=<in-progress-report>` to continue the same output after a provider
+failure. Every report binds the input path and SHA-256 content digest; resume
+rejects changed input content, changed cell identity, or duplicate/gapped prior
+rows, and a run fails if the input changes while it is being evaluated.
+Use `--start-row=<n>` for an explicitly partial diagnostic, and zero-based
+`--shard-index` with `--shard-count` to partition the physical JSONL rows
+without shortening any accepted dialogue. Reports record the backend and requested model separately;
+the requested identifier is not a claim about an alias the provider actually
+served.
+
+After every shard finishes, merge them into a comparative matrix. The merger
+reopens the source JSONL and rejects partial status, bounded runs, missing or
+duplicate shards, rows assigned to the wrong shard, source-content drift,
+duplicate rows, and incomplete physical-row coverage:
+
+```bash
+bun run --cwd packages/scenario-runner eval:timing:merge -- \
+  --output=../../reports/group-chat-timing/matrix.json \
+  /path/to/shard-*.json
+```
+
+For long live cells, use the supervisor instead of launching shards by hand:
+
+```bash
+bun run --cwd packages/scenario-runner eval:timing:matrix -- \
+  --input=/path/to/finetune_test_dialogue.jsonl \
+  --output-dir=/path/to/model-cell \
+  --provider=cli \
+  --shard-count=8 \
+  --workers=4
+```
+
+It adopts complete shards, resumes validated `in-progress` checkpoints, keeps
+per-shard stdout/stderr and trajectories, retries only runtime/provider exits,
+and writes an atomic run manifest. A configuration exit is terminal. The run
+finishes only after the canonical merger proves that every physical input row
+belongs to exactly one complete shard in one model cell. Re-running the same
+command performs no model calls after that proof exists.
+
+Pinned Discord replay output can exercise the same Stage-1 boundary:
+
+```bash
+bun run --cwd packages/scenario-runner eval:when2speak -- \
+  --input=/tmp/discord-replay.jsonl \
+  --input-format=discord-replay \
+  --provider=cli
+```
+
+Only points whose current turn is inbound to the selected target seat are
+eligible. The converter's paired SILENT pseudo-label assigns the target seat to
+the author of the current turn in a two-author chain; those points are recorded
+as explicit eligibility exclusions instead of pretending production evaluates
+its own outbound message. Exclusions remain part of physical-row coverage but
+do not make the command fail; malformed rows remain failures and exit nonzero.
 
 ## Writing a scenario
 

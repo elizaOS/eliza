@@ -2,8 +2,11 @@
 import { describe, expect, it } from "vitest";
 import {
   computeTimingMetrics,
+  isTimingRowSelected,
+  parseDiscordReplayLine,
   parseWhen2SpeakLine,
   summarizeTimingPredictions,
+  validateTimingResumeRows,
 } from "./when2speak-eval.ts";
 
 describe("When2Speak evaluator", () => {
@@ -41,6 +44,40 @@ describe("When2Speak evaluator", () => {
         3,
       ),
     ).toThrow("unparseable speaker turn");
+  });
+  it("maps a Discord target seat onto the runtime agent seat", () => {
+    const row = parseDiscordReplayLine(
+      JSON.stringify({
+        schemaVersion: 1,
+        targetSpeaker: "participant_b",
+        label: "speak",
+        turns: [
+          { speaker: "participant_b", text: "earlier agent turn" },
+          { speaker: "participant_a", text: "current inbound turn" },
+        ],
+      }),
+      9,
+    );
+    expect(row).toMatchObject({
+      row: 9,
+      label: "SPEAK",
+      directlyAddressesAgent: false,
+      speakerCount: 2,
+    });
+    expect(row.turns.map((turn) => turn.isAgent)).toEqual([true, false]);
+  });
+  it("rejects Discord pseudo-labels where the target authored the current turn", () => {
+    expect(() =>
+      parseDiscordReplayLine(
+        JSON.stringify({
+          schemaVersion: 1,
+          targetSpeaker: "participant_a",
+          label: "silent",
+          turns: [{ speaker: "participant_a", text: "own outbound turn" }],
+        }),
+        10,
+      ),
+    ).toThrow("target seat authored the current turn");
   });
   it("computes SPEAK and intervention metrics", () => {
     expect(
@@ -102,5 +139,36 @@ describe("When2Speak evaluator", () => {
       total: 1,
       trueSilent: 1,
     });
+  });
+  it("partitions physical rows into stable resumable shards", () => {
+    const selected = Array.from({ length: 10 }, (_, index) => index + 1).filter(
+      (row) =>
+        isTimingRowSelected({
+          row,
+          startRow: 4,
+          shardIndex: 1,
+          shardCount: 3,
+        }),
+    );
+    expect(selected).toEqual([5, 8]);
+  });
+
+  it("rejects duplicate or gapped checkpoint rows before resuming", () => {
+    expect(() =>
+      validateTimingResumeRows({
+        rows: [1, 3],
+        startRow: 1,
+        shardIndex: 0,
+        shardCount: 1,
+      }),
+    ).toThrow("duplicate, gapped, or out of order");
+    expect(
+      validateTimingResumeRows({
+        rows: [2, 4, 6],
+        startRow: 1,
+        shardIndex: 1,
+        shardCount: 2,
+      }),
+    ).toBe(6);
   });
 });

@@ -77,6 +77,8 @@
     "test:real-service:audio": "node scripts/real-service-audio-roundtrip.mjs",
     "test:real-service:voice": "node scripts/real-service-voice-e2e.mjs",
     "eval:when2speak": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/when2speak-eval-cli.ts",
+    "eval:timing:matrix": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/timing-matrix-runner-cli.ts",
+    "eval:timing:merge": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/timing-report-merge-cli.ts",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsc --noEmit"
