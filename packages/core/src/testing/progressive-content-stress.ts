@@ -97,11 +97,14 @@ export interface ProgressiveContentSoakReport {
 	readonly operations: number;
 	readonly requiredDurationMs: number;
 	readonly requiredOperations: number;
+	readonly sampleEveryOperations: number;
+	readonly warmupOperations: number;
 	readonly positiveLeakControlDetected: boolean;
 	readonly batches: number;
 	readonly failures: readonly string[];
 	readonly resourceSamples: readonly ProgressiveContentResourcePoint[];
 	readonly resourceDrift: ProgressiveContentResourceDrift;
+	readonly positiveLeakControlSamples: readonly ProgressiveContentResourceSample[];
 	readonly positiveLeakControlDrift: ProgressiveContentResourceDrift;
 	readonly stress: ProgressiveContentStressReport;
 }
@@ -545,11 +548,14 @@ export async function runProgressiveContentSoak(input: {
 		operations,
 		requiredDurationMs,
 		requiredOperations,
+		sampleEveryOperations,
+		warmupOperations,
 		positiveLeakControlDetected,
 		batches,
 		failures,
 		resourceSamples,
 		resourceDrift,
+		positiveLeakControlSamples: leakSamples,
 		positiveLeakControlDrift,
 		stress: latest,
 	};
