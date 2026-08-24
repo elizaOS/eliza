@@ -23,6 +23,7 @@ import {
   WindowRegionCapture,
 } from "../app-control/defaults.js";
 import { MacosAxAdapter } from "../app-control/macos-ax-adapter.js";
+import type { AppControlRouteCapability } from "../app-control/route-policy.js";
 import type {
   AppActionOutcome,
   AppActionRequest,
@@ -610,6 +611,7 @@ export class ComputerUseService extends Service {
     available: boolean;
     adapter: string;
     permission: AppControlPermissionState | "unknown";
+    routes: AppControlRouteCapability[];
   } {
     return this.appControl.readiness();
   }

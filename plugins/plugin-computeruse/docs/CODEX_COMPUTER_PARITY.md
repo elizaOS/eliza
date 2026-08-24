@@ -11,10 +11,10 @@ signed app on a permissioned physical Mac.
 | `get_app_state(app)` screenshot + AX tree | Have, physical acceptance pending | State is bound to a unique `(pid, CGWindowID)` resolved from the focused AX window. Ambiguous same-bounds/title matches return no window ID, so mutation refuses. Region capture can still include occluding windows. |
 | Incremental state diffs | Have | Per-app state IDs return added, changed, removed indices and AX-text change. `disableDiff=true` forces a full state. |
 | Ephemeral `element_index` | Have | Indices are one-based and state-bound. Any recapture invalidates every prior index; native locators remain private and are revalidated before dispatch. |
-| App-scoped click | Partial, fail closed | `AXPress`/`AXConfirm` are semantic and pointer-free. The helper has no genuine `CGWindowID`-addressed mouse dispatcher, so it does not post PID mouse events. Visual grounding can reach global physical fallback only after environment opt-in and a distinct action-time approval. |
+| App-scoped click | Partial, policy-bounded | `AXPress`/`AXConfirm` are semantic and pointer-free. The shared signed helper has no genuine `CGWindowID`-addressed mouse dispatcher and does not post PID mouse events. The exact-window pointer route is explicitly `policy_blocked`; visual grounding can reach global physical fallback only after environment opt-in and a distinct action-time approval. |
 | App-scoped key/type | Partial, physical acceptance pending | Keyboard events are process-scoped. They require an indexed element, exactly one eligible same-PID window, unchanged exact-window binding, and target-element readback. Otherwise the action refuses; it never claims window-addressed delivery. |
 | App-scoped paste + clipboard restoration | Have, physical acceptance pending | All pasteboard item type/data pairs are snapshotted and restored when the injected clipboard has not been externally changed. Clipboard content is never returned or logged. |
-| App-scoped scroll | Partial | Exposed AX page-scroll actions are semantic-first. The helper does not post process-scoped mouse-wheel events. If AX is absent, only separately opted-in and approved global physical scroll is available. |
+| App-scoped scroll | Partial, policy-bounded | Exposed AX page-scroll actions are semantic-first. The helper does not post process-scoped mouse-wheel events. The exact-window pointer route is explicitly `policy_blocked`; if AX is absent, only separately opted-in and approved global physical scroll is available. |
 | Set value and select text | Have | `AXValue` and `AXSelectedTextRange`; failures do not silently become typed-key success. |
 | Exposed secondary AX actions | Have | Only action names returned by `AXUIElementCopyActionNames` can execute. |
 | Automatic fresh-state recapture | Have | Every app action returns a new app state. Every consequential session action also captures a fresh verification observation; capture failure produces `UNCERTAIN_EFFECT`. |
@@ -38,6 +38,14 @@ activates an app, raises a window, changes Spaces, or implicitly falls through
 to global HID. Global physical input is a separate supervised mode, disabled by
 default.
 
+The v4 distribution audit rejected adding the studied private SkyLight route to
+the shared signed plugin. elizaOS packages both direct and Mac App Store
+variants from this dependency graph, and no verified exclusion keeps a private
+helper out of the store artifact. The readiness DTO now returns the typed route
+matrix so callers can distinguish supported, conditional, disabled-by-default,
+and policy-blocked routes without interpreting an error string. See
+[`EXACT_WINDOW_DISPATCH_POLICY.md`](./EXACT_WINDOW_DISPATCH_POLICY.md).
+
 Opening Eliza's own chat surface is not a Computer Use focus/click task. The
 canonical shell already owns `eliza:chat:open` and the `open-chat` OS intent;
 phone-to-Mac integration should bridge an authenticated semantic request to
@@ -51,7 +59,7 @@ The safety design was compared against MIT-licensed
 `QwenLM/open-computer-use` at
 `f238d1bc85b53bd785d2618d4fbb5d2402207c7a`, `trycua/cua` at the supplied
 `737dc2a…` reference, and `iFurySt/open-codex-computer-use` at the supplied
-`ead48da…` reference. Compatible concepts were adapted: AX-first dispatch,
+`ead48da2032c69b892c89fd39d38fa587b4d6fbf`. Compatible concepts were adapted: AX-first dispatch,
 software-cursor separation, explicit global-pointer opt-in, process/window
 identity in receipts, and refusal on uncertainty. No dependency, binary, TCC
 grant, or copied implementation was imported.
