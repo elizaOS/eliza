@@ -120,4 +120,139 @@ describe("useWakeListenWindow", () => {
     expect(result.current.phase).toBe("idle");
     expect(onOpen).not.toHaveBeenCalled();
   });
+
+  it("ignores an agent-busy edge while no window is open", async () => {
+    const onOpen = vi.fn();
+    const onClose = vi.fn();
+    const props = {
+      enabled: true,
+      alwaysOn: false,
+      agentBusy: false,
+      onOpen,
+      onClose,
+      now,
+      tickMs: 500,
+    };
+    const { rerender, result } = renderHook((p) => useWakeListenWindow(p), {
+      initialProps: props,
+    });
+
+    // A rising edge with no wake behind it dispatches a stray user-speech-final,
+    // which must not open the mic.
+    rerender({ ...props, agentBusy: true });
+    expect(result.current.phase).toBe("idle");
+    expect(onOpen).not.toHaveBeenCalled();
+
+    // The falling edge is equally inert while idle.
+    rerender({ ...props, agentBusy: false });
+    expect(result.current.phase).toBe("idle");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("re-arms an open window on a second wake, refreshing the idle budget", async () => {
+    const onClose = vi.fn();
+    const props = {
+      enabled: true,
+      alwaysOn: false,
+      agentBusy: false,
+      onOpen: vi.fn(),
+      onClose,
+      now,
+      tickMs: 500,
+    };
+    const { result } = renderHook((p) => useWakeListenWindow(p), {
+      initialProps: props,
+    });
+
+    await fireWake();
+    expect(result.current.phase).toBe("open");
+
+    // Second wake before any timeout: openedAt refreshes instead of toggling.
+    nowValue = 7000;
+    await fireWake();
+    expect(result.current.phase).toBe("open");
+
+    // 8000ms after the FIRST wake but only 2000ms after the re-arm → still open.
+    nowValue = 9000;
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(result.current.phase).toBe("open");
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Past the re-armed idle budget the window finally closes.
+    nowValue = 16000;
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(result.current.phase).toBe("idle");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("force-closes via the safety cap even while awaiting a response", async () => {
+    const onClose = vi.fn();
+    const props = {
+      enabled: true,
+      alwaysOn: false,
+      agentBusy: false,
+      onOpen: vi.fn(),
+      onClose,
+      now,
+      tickMs: 500,
+    };
+    const { rerender, result } = renderHook((p) => useWakeListenWindow(p), {
+      initialProps: props,
+    });
+
+    await fireWake();
+    nowValue = 2000;
+    rerender({ ...props, agentBusy: true });
+    expect(result.current.phase).toBe("awaiting-response");
+
+    // A missed agent-responded must not pin the mic forever: once total window
+    // lifetime reaches maxWindowMs the tick closes it regardless of phase.
+    nowValue = 31000;
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(result.current.phase).toBe("idle");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes an open window when the hook is disabled or always-on turns on", async () => {
+    const onClose = vi.fn();
+    const props = {
+      enabled: true,
+      alwaysOn: false,
+      agentBusy: false,
+      onOpen: vi.fn(),
+      onClose,
+      now,
+      tickMs: 500,
+    };
+    const { rerender, result } = renderHook((p) => useWakeListenWindow(p), {
+      initialProps: props,
+    });
+
+    await fireWake();
+    expect(result.current.phase).toBe("open");
+
+    // Master switch off mid-window → forced back to idle.
+    rerender({ ...props, enabled: false });
+    expect(result.current.phase).toBe("idle");
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // Back on: a fresh wake can open a new window.
+    rerender({ ...props });
+    await act(async () => {
+      await Promise.resolve();
+      wakeListener?.();
+    });
+    expect(result.current.phase).toBe("open");
+
+    // Always-on turning on mid-window gets the same treatment.
+    rerender({ ...props, alwaysOn: true });
+    expect(result.current.phase).toBe("idle");
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
 });
