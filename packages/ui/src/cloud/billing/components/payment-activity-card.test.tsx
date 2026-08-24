@@ -411,6 +411,82 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
     }
   });
 
+  it("rejects rows with values outside the server state vocabulary, rendering the error state instead of an invented state", async () => {
+    // The type guard must check closed unions, not string-ness: a payload
+    // claiming an unknown paymentState (or an unusable eventTime / policy
+    // status) would otherwise render an invented state, "Invalid Date", or
+    // label an applied policy as unavailable (#26752 review r5).
+    const invalidRows: Record<string, unknown>[] = [
+      { ...stateRow(), paymentState: "paid" },
+      { ...stateRow(), eventTime: "not-a-date" },
+      {
+        ...stateRow(),
+        policyEffect: { status: "applied", reason: "ok" },
+      },
+    ];
+    for (const invalid of invalidRows) {
+      apiMock.mockReset();
+      apiMock.mockResolvedValueOnce({ states: [invalid] });
+      render(
+        <MemoryRouter>
+          <PaymentActivityCard />
+        </MemoryRouter>,
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await screen.findByText(/Payment activity could not be loaded/i);
+      // eslint-disable-next-line no-await-in-loop
+      expect(screen.getByText(/malformed/i)).toBeTruthy();
+      // eslint-disable-next-line no-await-in-loop
+      expect(screen.queryByTestId("payment-state-row")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("renders the policy-effect line only when the authoritative row carries one", async () => {
+    // A fully refunded row with policyEffect: null must not display the
+    // "Policy effect unavailable" line the response never contained — the
+    // list must agree with the detail surface, which gates on !== null
+    // (#26752 review r5).
+    apiMock.mockResolvedValueOnce({
+      states: [
+        stateRow({
+          paymentState: "partially_refunded",
+          cumulativeRefundedUsd: 5,
+          policyEffect: null,
+        }),
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
+    await screen.findByTestId("payment-state-row");
+    expect(screen.getByTestId("refunded-amount").textContent).toContain("5");
+    expect(screen.queryByTestId("payment-policy-effect")).toBeNull();
+    cleanup();
+
+    // Control: a row that DOES carry the policy effect still shows it.
+    apiMock.mockReset();
+    apiMock.mockResolvedValueOnce({
+      states: [
+        stateRow({
+          paymentState: "partially_refunded",
+          cumulativeRefundedUsd: 5,
+          policyEffect: { status: "unavailable", reason: "policy_pending" },
+        }),
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
+    await screen.findByTestId("payment-state-row");
+    expect(screen.getByTestId("payment-policy-effect")).toBeTruthy();
+    expect(screen.getByTestId("refunded-amount").textContent).toContain("5");
+  });
+
   it("accepts a fully valid success row that carries null optionals, not a partial one", async () => {
     // The reviewer's exact probe shape: a success row missing ONLY the
     // required authorityId must fail; the same row with every required
