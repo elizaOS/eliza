@@ -20,27 +20,47 @@ a `<details>` block).
 ## How to run a live session
 
 ```bash
-# 1. Provide working credentials in .env (see "Env vars" per connector below),
-#    then confirm readiness on the credential dashboard (values masked to last-4):
-bun run lifeops:hitl                    # scripts/lifeops/hitl-credential-dashboard.mjs
-# 2. Boot the local app (Eliza API on :31337, dashboard on :2138):
-bun run dev
-# 3. Open the dashboard and complete first-run onboarding as the OWNER:
-open http://localhost:2138
-# 4. Prove the connection UI with deterministic, no-provider fixtures before
+# 1. Record the exact reviewed source before starting any service:
+git rev-parse HEAD
+# 2. Reserve this worktree's collision-free UI/API pair. Keep this terminal open:
+bun run --cwd packages/app dev:shared
+# 3. In another terminal, read the current worktree's registered UI/API ports:
+bun run --cwd packages/app dev:status
+# 4. Replace REGISTERED_API_PORT with the numeric API port printed above, then
+#    start the backend on that port:
+ELIZA_API_PORT="REGISTERED_API_PORT" bun run start
+# 5. Open the exact LifeOps route on the registered UI port and complete
+#    first-run onboarding as the OWNER after replacing REGISTERED_UI_PORT:
+open "http://127.0.0.1:REGISTERED_UI_PORT/lifeops/connections"
+# 6. Prove the connection UI with deterministic, no-provider fixtures before
 #    opening any OAuth or native-permission prompt:
 bun run --cwd plugins/plugin-personal-assistant test:connections:e2e
-# 5. Drive the supervised provider matrix below. There is intentionally no
+# 7. Drive the supervised provider matrix below. There is intentionally no
 #    aggregate live-lane command: every OAuth, TCC, send, and calendar-write
 #    boundary is an action-time user gate.
-# 6. Capture the populated views: open the /lifeops-live-test view, then
+# 8. Capture the populated views: open the /lifeops-live-test view, then
 bun run --cwd packages/app audit:app    # desktop + mobile screenshots per view
 bun run test:e2e:record                 # recorded walkthrough for the PR video
-# 7. Drive each view/action below as OWNER, then repeat as a non-owner USER
+# 9. Drive each view/action below as OWNER, then repeat as a non-owner USER
 #    using the agent-side connector identity. Stage all artifacts under
 #    reports/lifeops-live-validation/<session>/ and attach them inline on the
 #    PR/issue per CONTRIBUTING.md.
 ```
+
+Before step 4, bind the nonproduction Google client through the canonical
+protected runtime settings/Vault path. The required setting names are
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI`; never put
+their values in a repository `.env`, shell transcript, screenshot, test
+fixture, or session report. Set `GOOGLE_REDIRECT_URI` to exactly
+`http://127.0.0.1:<registered-api-port>/api/connectors/google/oauth/callback`
+and register that exact URI on the nonproduction Google OAuth client. Verify
+only name presence and the callback URI; do not print or copy secret values.
+
+The general `lifeops:hitl` credential dashboard still supports connectors that
+use layered environment configuration, but it is not the intake path for the
+Google OAuth client in this acceptance run. Google client credentials and the
+resulting account tokens must remain in the protected settings and connector
+credential stores.
 
 The HITL runner tracks this lane as the `lifeops-live` group
 (`node scripts/hitl/run-hitl.mjs --groups=lifeops-live` — see
@@ -261,8 +281,11 @@ in `packages/app` still resolve.
 Live tests must skip (not fail) when their credentials/devices are absent, so a
 minimal checkout stays green:
 
-- Connector live tests are gated behind their env var(s) — e.g. an `it.skipIf`
-  on the access token / sandbox key; skipped runs log the missing prerequisite.
+- Connector live tests are gated behind their declared prerequisites. For
+  Google, check protected setting-name availability without revealing values;
+  record `blocked (protected settings unavailable)` when the required settings
+  are absent. Connectors that intentionally use environment-backed sandbox
+  keys may use an `it.skipIf` and log only the missing variable name.
 - The LifeOps prompt benchmark now lives in the standalone benchmarks repo
   (https://github.com/elizaOS/benchmarks) and runs there, not in this package.
 - Native-device flows (HealthKit, Family Controls, SMS default-role) require a
@@ -276,5 +299,6 @@ minimal checkout stays green:
 - [ ] OAuth / native-permission failures are explicit and recoverable.
 - [ ] Live connector failures return typed results (no silent success).
 - [ ] Approval-gated outbound flows validated end to end.
-- [ ] This matrix records exactly which accounts, devices, scopes, env vars, and sandboxes were used.
+- [ ] This matrix records exactly which redacted account aliases, devices,
+      scopes, protected setting names, and sandboxes were used.
 - [ ] Any discovered bug has a linked issue/PR before the issue is closed.
