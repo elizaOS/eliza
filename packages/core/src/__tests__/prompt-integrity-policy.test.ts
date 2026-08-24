@@ -840,7 +840,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/\bmaxTokens\s*:/,
 		/(?:replyText|quoteText|response)\.(?:slice|substring)\(/,
 	],
-	"plugins/plugin-anthropic/models/image.ts": [/firstLine\.slice\(/],
+	"plugins/plugin-anthropic/models/image.ts": [
+		/firstLine\.slice\(/,
+		/maxOutputTokens:\s*\d/,
+	],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
 	"plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts": [
