@@ -225,6 +225,11 @@ describe("ChatOverlay first-run gating", () => {
     const firstRunThread = screen.getByTestId("chat-thread");
     expect(sheet.getAttribute("data-maximized")).not.toBe("true");
     expect(sheet.getAttribute("data-detent")).toBe("half");
+    // The effective detent is structurally pinned while onboarding is open.
+    // Assert the underlying resting target too: a stale FULL target can keep
+    // the detached native window at its tall envelope even while data-detent
+    // misleadingly reports HALF.
+    expect(sheet.getAttribute("data-resting-detent")).toBe("half");
     expect(Number.parseFloat(firstRunThread.style.flexBasis)).toBeLessThan(
       window.innerHeight * 0.75,
     );

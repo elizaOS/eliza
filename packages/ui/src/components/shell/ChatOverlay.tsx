@@ -4480,7 +4480,12 @@ export function ChatOverlay({
     }
     if (firstRunOpen) {
       setFreeH(null);
-      setMode(desktopOverlayHost ? "full" : "half");
+      // Keep the underlying resting target aligned with the structurally
+      // pinned HALF detent. Setting detached native to FULL here was masked by
+      // `effectiveMode` while onboarding was open, but the motion/window
+      // geometry still inherited the tall FULL target and produced a large,
+      // mostly-empty first-run slab.
+      setMode("half");
       setMaximized(false);
       return;
     }
@@ -6568,6 +6573,7 @@ export function ChatOverlay({
           onWheel={onSheetWheel}
           data-variant={sheetOpen ? "open" : "closed"}
           data-detent={detentLabel}
+          data-resting-detent={mode}
           data-maximized={fullBleed ? "true" : undefined}
           data-revealed={threadPresented ? "true" : "false"}
           data-collapse-phase={
