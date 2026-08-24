@@ -7,6 +7,7 @@ import {
   resolveProductionCommit,
   validateProductionPlan,
 } from "../produce-content-context.mjs";
+import { parsePostgresEvidenceArgs } from "../produce-content-context-postgres.mjs";
 
 describe("produce-content-context", () => {
   it("requires explicit production plan, external artifacts, and canonical run root", () => {
@@ -60,5 +61,19 @@ describe("produce-content-context", () => {
     await expect(resolveProductionCommit("short")).rejects.toThrow(
       /exact SHA/u,
     );
+  });
+
+  it("keeps the Postgres connection environment-only and binds an exact commit", () => {
+    const commit = "a".repeat(40);
+    expect(parsePostgresEvidenceArgs([`--commit=${commit}`])).toEqual({
+      commit,
+    });
+    expect(() => parsePostgresEvidenceArgs([])).toThrow(/exact Git SHA/u);
+    expect(() =>
+      parsePostgresEvidenceArgs([
+        `--commit=${commit}`,
+        "--postgres-url=postgresql://user:secret@example.invalid/db",
+      ]),
+    ).toThrow(/unknown argument/u);
   });
 });

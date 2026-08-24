@@ -19,7 +19,7 @@ import { resolveShellJobTtlMs } from "../shell/utils/config.js";
 const ARTIFACT_ROOT_SEGMENTS = ["coding-tools", "shell-output"] as const;
 const ARTIFACT_PREFIX = "shell_";
 const ARTIFACT_KEY_FILE = ".artifact-key";
-const SEGMENT_MAX_BYTES = 64 * 1024;
+const SEGMENT_MAX_BYTES = 16 * 1024;
 const ARTIFACT_PAGE_DEFAULT_CHARS = 12_000;
 const ARTIFACT_PAGE_MAX_CHARS = 20_000;
 const ARTIFACT_HANDLE_PATTERN =

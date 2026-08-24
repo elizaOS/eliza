@@ -137,6 +137,10 @@ describe("progressive content corpus", () => {
         expect(() =>
           new TextDecoder("utf-8", { fatal: true }).decode(bytes),
         ).toThrow();
+      } else if (object.format !== "binary") {
+        expect(() =>
+          new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+        ).not.toThrow();
       }
       if (object.format === "binary" && object.byteLength > 256) {
         expect(bytes.includes(0x00)).toBe(true);

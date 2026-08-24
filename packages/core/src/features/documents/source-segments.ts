@@ -70,7 +70,23 @@ function byteLength(value: string): number {
 }
 
 function lines(value: string): string[] {
-	return value.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
+	const result: string[] = [];
+	let start = 0;
+	for (let index = 0; index < value.length; index += 1) {
+		const character = value.charCodeAt(index);
+		if (character !== 10 && character !== 13) continue;
+		if (
+			character === 13 &&
+			index + 1 < value.length &&
+			value.charCodeAt(index + 1) === 10
+		) {
+			index += 1;
+		}
+		result.push(value.slice(start, index + 1));
+		start = index + 1;
+	}
+	if (start < value.length) result.push(value.slice(start));
+	return result;
 }
 
 function units(value: string, unit: "line" | "fragment"): string[] {
@@ -89,11 +105,28 @@ function units(value: string, unit: "line" | "fragment"): string[] {
 
 function ranges(value: string, unit: "line" | "fragment"): UnitRange[] {
 	let offset = 0;
-	return units(value, unit).map((text) => {
+	const lineRanges = lines(value).map((text) => {
 		const start = offset;
 		offset += byteLength(text);
-		return { start, end: offset };
+		return {
+			start,
+			end: offset,
+			blank: text.replace(/[\r\n]/gu, "").trim().length === 0,
+		};
 	});
+	if (unit === "line")
+		return lineRanges.map(({ start, end }) => ({ start, end }));
+	const fragments: UnitRange[] = [];
+	let fragmentStart = 0;
+	for (const line of lineRanges) {
+		if (!line.blank) continue;
+		if (line.end > fragmentStart)
+			fragments.push({ start: fragmentStart, end: line.end });
+		fragmentStart = line.end;
+	}
+	if (offset > fragmentStart)
+		fragments.push({ start: fragmentStart, end: offset });
+	return fragments;
 }
 
 function intersectingRange(

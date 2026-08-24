@@ -126,7 +126,7 @@ canonical SHELL action above continues to use the `CODING_TOOLS_*` settings.
 Foreground host SHELL capture has no one-million-character kill boundary. Raw
 streams are independently AES-GCM encrypted while the process runs, with keys
 kept only in process memory. Finalization decrypts through bounded redaction
-windows into 64 KiB publication segments, so neither source nor redacted output
+windows into 16 KiB publication segments, so neither source nor redacted output
 is materialized as one string. Exact runtime and pattern redaction runs before
 atomic immutable publication, so plaintext secrets are not persisted. A
 sensitive record that cannot be separated safely within the bounded window
