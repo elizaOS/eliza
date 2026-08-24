@@ -82,6 +82,7 @@ interface DraftInput {
 }
 
 export function normalizeText(value: string): string {
+  if (typeof value !== "string" || !value) return "";
   return value.trim().replace(/\s+/g, " ");
 }
 

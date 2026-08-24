@@ -1,7 +1,7 @@
 /** Verifies event-trigger filters are preserved and reject unsafe recursive input. */
 
 import { describe, expect, it } from "vitest";
-import { normalizeTriggerDraft } from "./scheduling.ts";
+import { normalizeText, normalizeTriggerDraft } from "./scheduling.ts";
 
 function eventDraft(eventFilter: Record<string, unknown>) {
   return normalizeTriggerDraft({
@@ -43,5 +43,14 @@ describe("event trigger normalization", () => {
     let deep: Record<string, unknown> = { value: 1 };
     for (let index = 0; index < 10; index += 1) deep = { nested: deep };
     expect(eventDraft(deep).error).toContain("8 levels");
+  });
+});
+
+describe("normalizeText", () => {
+  it("safely handles non-string or empty inputs without throwing", () => {
+    expect(normalizeText(null as unknown as string)).toBe("");
+    expect(normalizeText(undefined as unknown as string)).toBe("");
+    expect(normalizeText(123 as unknown as string)).toBe("");
+    expect(normalizeText("   hello   world   ")).toBe("hello world");
   });
 });
