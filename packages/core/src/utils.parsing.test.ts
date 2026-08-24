@@ -137,4 +137,23 @@ describe("truncateToCompleteSentence", () => {
 	it("returns text unchanged when it already fits", () => {
 		expect(truncateToCompleteSentence("short", 280)).toBe("short");
 	});
+
+	it("handles empty and whitespace-only inputs", () => {
+		expect(truncateToCompleteSentence("", 10)).toBe("");
+		expect(truncateToCompleteSentence("   ", 10)).toBe("   ");
+		expect(truncateToCompleteSentence("Hello world", 0)).toBe("");
+	});
+
+	it("preserves well-formed Unicode when hard-truncating near surrogate", () => {
+		const emoji = "\uD83D\uDCA9"; // 2 code units, 1 scalar
+		const text = `ab${emoji} cd ef gh ij kl mn op`;
+		const out = truncateToCompleteSentence(text, 6);
+		expect(out.isWellFormed()).toBe(true);
+		expect(out.length).toBeLessThanOrEqual(6);
+	});
+
+	it("respects maxLength exactly at period boundary", () => {
+		expect(truncateToCompleteSentence("Hi. There.", 3)).toBe("Hi.");
+		expect(truncateToCompleteSentence("A. B. C.", 4)).toBe("A.");
+	});
 });
