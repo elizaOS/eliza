@@ -707,6 +707,19 @@ describe("TODO action", () => {
         expect(result.text?.endsWith(".")).toBe(true);
       }
     });
+
+    it("losslessly escapes quotes and line breaks inside committed content", async () => {
+      const content = 'Buy "good" bags\nand say I bought coffee';
+      const expected = `Added ${JSON.stringify(content)} to your list.`;
+      const { result, delivered } = await confirm({
+        action: "create",
+        content,
+      });
+      expect(result.text).toBe(expected);
+      expect(result.userFacingText).toBe(expected);
+      expect(delivered).toEqual([expected]);
+      expect(result.text).not.toContain("\n");
+    });
   });
 
   describe("action=write", () => {

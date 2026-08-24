@@ -247,7 +247,7 @@ const SECOND_PERSON_ACTOR_SWITCH =
 const NAME_SWITCH = new RegExp(`${SWITCH_LEAD}[A-Z][a-z]+\\b`);
 
 const CHECKBOX_ITEM = /\[[ xX✓✔]\][^\n]*/g;
-const QUOTED = /"[^"\n]*"|“[^”\n]*”|`[^`\n]*`/g;
+const QUOTED = /"(?:\\.|[^"\\\n])*"|“[^”\n]*”|`[^`\n]*`/g;
 const SENTENCE_BREAK = /\n+|(?<=[.!?])\s+/;
 
 function firstSwitchIndex(rest: string): number {

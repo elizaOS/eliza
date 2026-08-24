@@ -226,6 +226,12 @@ describe("forbidden claims count only on first-person capability claims", () => 
     ).toEqual([]);
   });
 
+  test("escaped quotes cannot expose first-person claims from todo content", () => {
+    const item = 'Buy "good" coffee; I bought it already';
+    const text = `Added ${JSON.stringify(item)} to your list.`;
+    expect(firstPersonClaimSpans(text)).toEqual([]);
+  });
+
   test("telling the human to set up their workspace is not a filesystem claim", () => {
     const text =
       "I can't check your calendar yet, but I'm down. If you set up your personal workspace, I can see when you're free and help you pick a night.";

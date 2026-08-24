@@ -91,16 +91,21 @@ function statePhrase(status: TodoStatus): string {
   }
 }
 
+/** Lossless one-line representation of untrusted committed todo content. */
+function quotedContent(content: string): string {
+  return JSON.stringify(content);
+}
+
 /** Confirmation for a committed create; states a status only when it is set. */
 function createdConfirmation(todo: Todo): string {
   return todo.status === "pending"
-    ? `Added "${todo.content}" to your list.`
-    : `Added "${todo.content}" to your list, marked ${statePhrase(todo.status)}.`;
+    ? `Added ${quotedContent(todo.content)} to your list.`
+    : `Added ${quotedContent(todo.content)} to your list, marked ${statePhrase(todo.status)}.`;
 }
 
 /** Confirmation for a committed edit, carrying the row's committed state. */
 function updatedConfirmation(todo: Todo): string {
-  return `Updated "${todo.content}" on your list, marked ${statePhrase(todo.status)}.`;
+  return `Updated ${quotedContent(todo.content)} on your list, marked ${statePhrase(todo.status)}.`;
 }
 
 /**
@@ -113,10 +118,10 @@ function settledConfirmation(
   todo: Todo,
 ): string {
   if (action === "complete" && todo.status === "completed") {
-    return `Marked "${todo.content}" done.`;
+    return `Marked ${quotedContent(todo.content)} done.`;
   }
   if (action === "cancel" && todo.status === "cancelled") {
-    return `Cancelled "${todo.content}".`;
+    return `Cancelled ${quotedContent(todo.content)}.`;
   }
   return updatedConfirmation(todo);
 }
@@ -633,7 +638,7 @@ async function actionDelete({
   }
   const existing = execution.result.deleted;
   if (!existing) return ledgeredNotFound(id);
-  const text = `Deleted "${existing.content}" from your list.`;
+  const text = `Deleted ${quotedContent(existing.content)} from your list.`;
   return appliedMutationResult({
     action: "delete",
     callback,
