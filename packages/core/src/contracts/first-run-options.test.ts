@@ -2,7 +2,7 @@
  * First-run option tests exercise the real provider catalog, normalization,
  * connection, migration, credential, and runtime-registration contracts.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	CHARACTER_LANGUAGES,
 	DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER,
@@ -13,7 +13,6 @@ import {
 	getFirstRunProviderFamily,
 	getFirstRunProviderOption,
 	getFirstRunProviderSignalEnvKeys,
-	getProviderOptions,
 	getStoredFirstRunProviderId,
 	getStoredSubscriptionProvider,
 	getStoredSubscriptionProviderForRequest,
@@ -35,7 +34,6 @@ import {
 	type ProviderOption,
 	readFirstRunEnvSecret,
 	readFirstRunEnvString,
-	registerProviderOption,
 	requiresAdditionalRuntimeProvider,
 	resolveDeploymentTargetInConfig,
 	resolveLinkedAccountsInConfig,
@@ -746,6 +744,17 @@ describe("connection inference", () => {
 });
 
 describe("provider registry", () => {
+	let registry: typeof import("./first-run-options.ts");
+
+	beforeEach(async () => {
+		vi.resetModules();
+		registry = await import("./first-run-options.ts");
+	});
+
+	afterEach(() => {
+		vi.resetModules();
+	});
+
 	it("adds providers and replaces registrations with the same id", () => {
 		const id = "unit-test-provider";
 		const initial = providerOption(id, 900);
@@ -754,12 +763,17 @@ describe("provider registry", () => {
 			name: "Replacement provider",
 		};
 
-		registerProviderOption(initial);
-		expect(getProviderOptions()).toContainEqual(initial);
-		registerProviderOption(replacement);
-		expect(getProviderOptions().filter((option) => option.id === id)).toEqual([
-			replacement,
-		]);
+		expect(registry.getProviderOptions()).toHaveLength(
+			registry.FIRST_RUN_PROVIDER_CATALOG.length,
+		);
+		registry.registerProviderOption(initial);
+		expect(registry.getProviderOptions()).toContainEqual(initial);
+		registry.registerProviderOption(replacement);
+		const options = registry.getProviderOptions();
+		expect(options.filter((option) => option.id === id)).toEqual([replacement]);
+		expect(options).toHaveLength(
+			registry.FIRST_RUN_PROVIDER_CATALOG.length + 1,
+		);
 	});
 
 	it("lets runtime registrations override catalog entries without duplicates", () => {
@@ -768,11 +782,14 @@ describe("provider registry", () => {
 			name: "Runtime OpenAI",
 		};
 
-		registerProviderOption(override);
-		const options = getProviderOptions();
+		expect(registry.getProviderOptions()).toHaveLength(
+			registry.FIRST_RUN_PROVIDER_CATALOG.length,
+		);
+		registry.registerProviderOption(override);
+		const options = registry.getProviderOptions();
 		expect(options.filter((option) => option.id === "openai")).toEqual([
 			override,
 		]);
-		expect(options).toHaveLength(FIRST_RUN_PROVIDER_CATALOG.length + 1);
+		expect(options).toHaveLength(registry.FIRST_RUN_PROVIDER_CATALOG.length);
 	});
 });
