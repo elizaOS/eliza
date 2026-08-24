@@ -87,4 +87,46 @@ describe("isReleaseAvailable", () => {
       }),
     ).toBe(true);
   });
+
+  test("deduplicates download ids before checking the required set", () => {
+    const duplicated = completeDownloads
+      .slice(0, 4)
+      .concat({ ...completeDownloads[0], id: "macos-arm64" });
+    expect(duplicated).toHaveLength(5);
+    expect(
+      isReleaseAvailable({ tagName: "v1.0.0", downloads: duplicated }),
+    ).toBe(false);
+  });
+
+  test("returns true when downloads carry extra ids beyond the required five", () => {
+    expect(
+      isReleaseAvailable({
+        tagName: "v1.0.0",
+        downloads: [
+          ...completeDownloads,
+          { ...completeDownloads[0], id: "future-platform" },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  test("returns false when exactly one required id is missing even with an extra present", () => {
+    const missingAndroidApk = completeDownloads
+      .filter((download) => download.id !== "android-apk")
+      .concat({ ...completeDownloads[0], id: "decoy-extra" });
+    expect(missingAndroidApk).toHaveLength(5);
+    expect(
+      isReleaseAvailable({ tagName: "v1.0.0", downloads: missingAndroidApk }),
+    ).toBe(false);
+  });
+
+  test("matches the required ids case-sensitively", () => {
+    const uppercased = completeDownloads.map((download) => ({
+      ...download,
+      id: download.id.toUpperCase(),
+    }));
+    expect(
+      isReleaseAvailable({ tagName: "v1.0.0", downloads: uppercased }),
+    ).toBe(false);
+  });
 });
