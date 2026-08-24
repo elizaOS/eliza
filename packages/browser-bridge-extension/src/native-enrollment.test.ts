@@ -319,7 +319,11 @@ describe("native enrollment", () => {
       code: "native_enrollment_cancelled",
       retryable: false,
     });
-    await expect(cancellation).resolves.toBeUndefined();
+    await expect(cancellation).resolves.toMatchObject({
+      companionId: "companion-123",
+      browser: "chrome",
+      profileId: PROFILE_ID,
+    });
     expect(test.state()).toEqual(EMPTY_NATIVE_ENROLLMENT_STATE);
   });
 

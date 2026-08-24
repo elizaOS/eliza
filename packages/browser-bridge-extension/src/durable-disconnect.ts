@@ -19,15 +19,16 @@ export function disconnectFailureMessage(error: unknown): string {
 export async function performDurableDisconnect(
   dependencies: DurableDisconnectDependencies,
 ): Promise<void> {
-  const results = await Promise.allSettled([
+  const cancellationResults = await Promise.allSettled([
     dependencies.cancelSync(),
     dependencies.cancelEnrollment(),
-    dependencies.revoke?.() ?? Promise.resolve(),
   ]);
-  const failure = results.find(
+  const cancellationFailure = cancellationResults.find(
     (result): result is PromiseRejectedResult => result.status === "rejected",
   );
-  if (failure) throw failure.reason;
+  if (cancellationFailure) throw cancellationFailure.reason;
+
+  await dependencies.revoke?.();
 
   await dependencies.suppressEnrollment();
   await dependencies.clearConfig();

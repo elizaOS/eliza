@@ -29,15 +29,36 @@ describe("performDurableDisconnect", () => {
       },
     });
 
-    expect(events.slice(0, 3).sort()).toEqual([
+    expect(events.slice(0, 2).sort()).toEqual([
       "enrollment-cancelled",
-      "server-revoked",
       "sync-cancelled",
     ]);
-    expect(events.slice(3)).toEqual([
+    expect(events.slice(2)).toEqual([
+      "server-revoked",
       "enrollment-suppressed",
       "config-cleared",
     ]);
+  });
+
+  it("does not resolve revocation until asynchronous enrollment cancellation quiesces", async () => {
+    let releaseEnrollment: (() => void) | null = null;
+    const enrollmentSettled = new Promise<void>((resolve) => {
+      releaseEnrollment = resolve;
+    });
+    const revoke = vi.fn(async () => undefined);
+    const disconnect = performDurableDisconnect({
+      cancelSync: async () => undefined,
+      cancelEnrollment: async () => await enrollmentSettled,
+      revoke,
+      clearConfig: async () => undefined,
+      suppressEnrollment: async () => undefined,
+    });
+
+    await Promise.resolve();
+    expect(revoke).not.toHaveBeenCalled();
+    releaseEnrollment?.();
+    await disconnect;
+    expect(revoke).toHaveBeenCalledTimes(1);
   });
 
   it("retains config and reports failure when server revocation fails", async () => {

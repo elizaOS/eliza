@@ -1180,23 +1180,45 @@ async function handlePopupMessage(
         operationGeneration.cancelAndBlock();
         activeSessionId = null;
         try {
-          const config = await readConfig();
+          let abandonedEnrollmentConfig: CompanionConfig | null = null;
           await performDurableDisconnect({
             cancelSync: async () => await syncRunner.cancelPending(),
-            cancelEnrollment: async () => await nativeEnrollment.cancel(),
-            revoke: config
-              ? async () =>
-                  await revokeNativeCompanion({
-                    config,
-                    extensionId: getExtensionId(),
-                    extensionVersion: getManifestVersion(),
-                    send: async (request: NativeRevokeRequest) =>
-                      await sendNativeMessage<NativeRevokeRequest, unknown>(
-                        BROWSER_BRIDGE_NATIVE_HOST,
-                        request,
-                      ),
-                  })
-              : null,
+            cancelEnrollment: async () => {
+              abandonedEnrollmentConfig = await nativeEnrollment.cancel();
+            },
+            revoke: async () => {
+              const persistedConfig = await readConfig();
+              const targets = new Map<string, CompanionConfig>();
+              if (persistedConfig) {
+                targets.set(persistedConfig.companionId, persistedConfig);
+              }
+              if (abandonedEnrollmentConfig) {
+                targets.set(
+                  abandonedEnrollmentConfig.companionId,
+                  abandonedEnrollmentConfig,
+                );
+              }
+              const results = await Promise.allSettled(
+                [...targets.values()].map(
+                  async (config) =>
+                    await revokeNativeCompanion({
+                      config,
+                      extensionId: getExtensionId(),
+                      extensionVersion: getManifestVersion(),
+                      send: async (request: NativeRevokeRequest) =>
+                        await sendNativeMessage<NativeRevokeRequest, unknown>(
+                          BROWSER_BRIDGE_NATIVE_HOST,
+                          request,
+                        ),
+                    }),
+                ),
+              );
+              const failure = results.find(
+                (result): result is PromiseRejectedResult =>
+                  result.status === "rejected",
+              );
+              if (failure) throw failure.reason;
+            },
             clearConfig: clearCompanionConfig,
             suppressEnrollment: async () =>
               await suppressNativeEnrollment("owner_disconnected"),

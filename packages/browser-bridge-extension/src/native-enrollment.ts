@@ -559,6 +559,7 @@ export class NativeEnrollmentCoordinator {
   private readonly randomBytes: (length: number) => Uint8Array;
   private readonly timeoutMs: number;
   private generation = 0;
+  private abandonedConfig: BrowserBridgeCompanionConfig | null = null;
 
   constructor(private readonly dependencies: NativeEnrollmentDependencies) {
     this.now = dependencies.now ?? Date.now;
@@ -597,9 +598,12 @@ export class NativeEnrollmentCoordinator {
   /**
    * Fences an enrollment already awaiting the native host. The returned
    * promise settles only after that attempt can no longer write retry state.
+   * If the broker minted a companion before observing cancellation, the
+   * abandoned config is returned so durable Disconnect can revoke it.
    */
-  async cancel(): Promise<void> {
+  async cancel(): Promise<BrowserBridgeCompanionConfig | null> {
     this.generation += 1;
+    this.abandonedConfig = null;
     const active = this.inFlight?.promise ?? null;
     this.inFlight = null;
     if (active) {
@@ -610,6 +614,9 @@ export class NativeEnrollmentCoordinator {
         // the same in-flight native protocol rejection.
       }
     }
+    const abandoned = this.abandonedConfig;
+    this.abandonedConfig = null;
+    return abandoned;
   }
 
   private assertCurrent(generation: number): void {
@@ -676,12 +683,14 @@ export class NativeEnrollmentCoordinator {
         this.dependencies.send(request),
         timeout,
       ]);
-      this.assertCurrent(generation);
       const response = validateNativeEnrollmentResponse(
         rawResponse,
         request,
         this.now(),
       );
+      if (generation !== this.generation) {
+        this.abandonedConfig = response.config;
+      }
       this.assertCurrent(generation);
       await this.dependencies.saveState({ ...EMPTY_NATIVE_ENROLLMENT_STATE });
       this.assertCurrent(generation);
