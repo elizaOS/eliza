@@ -926,12 +926,16 @@ export default function StewardLoginSection() {
           return;
         }
       } catch (sessionError) {
+        // error-policy:J4 Session restoration failure must not blast a
+        // rate-limit or transport alert over the working signed-out
+        // provider form: the recovery path is unrelated to the options
+        // the user is about to choose, and a 429 from an unowned surface
+        // was observed on staging with no action submitted (#27712).
+        // The user can still sign in; recovery simply does not happen.
         if (!cancelled) {
-          setError(
-            getErrorMessage(
-              sessionError,
-              "Could not restore the local Steward session",
-            ),
+          console.debug(
+            "[steward-login] session restoration failed (non-blocking)",
+            sessionError,
           );
         }
       } finally {
