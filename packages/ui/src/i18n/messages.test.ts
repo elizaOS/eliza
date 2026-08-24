@@ -1,6 +1,6 @@
 /**
- * Unit coverage asserting the startup-shell keys exist across the loaded
- * language catalogs. Pure data, no runtime.
+ * Unit coverage asserting required interface copy exists in the canonical
+ * English catalog and startup-shell keys exist across all loaded catalogs.
  */
 import { describe, expect, it } from "vitest";
 import englishMessages from "./locales/en.json" with { type: "json" };
@@ -26,7 +26,17 @@ const PERMISSION_PRIMING_RECOVERY_MESSAGES = {
     "Couldn’t open Settings. Open System Settings manually, then re-check.",
 } as const;
 
+const PASSKEY_ENROLLMENT_RECOVERY_MESSAGES = {
+  "cloud.login.otp.recoveryLabel": "Other passkey options",
+  "cloud.login.otp.recoveryMessage":
+    "Already saved this passkey? Sign in with it, or use a Magic Link.",
+} as const;
+
 describe("i18n messages", () => {
+  it("keeps passkey enrollment recovery copy in the English locale", () => {
+    expect(englishMessages).toMatchObject(PASSKEY_ENROLLMENT_RECOVERY_MESSAGES);
+  });
+
   it("keeps permission recovery copy in the English locale", () => {
     expect(englishMessages).toMatchObject(PERMISSION_PRIMING_RECOVERY_MESSAGES);
   });
