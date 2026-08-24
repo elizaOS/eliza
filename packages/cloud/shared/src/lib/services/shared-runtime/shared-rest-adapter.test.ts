@@ -339,6 +339,36 @@ describe("shared-rest-adapter — messages", () => {
     });
   });
 
+  test("POST preserves generated media URLs as structured connector output", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "media",
+      result: {
+        text: "here's your video.\nhttps://media.example.com/dog.mp4",
+        actionResults: [
+          {
+            success: true,
+            data: {
+              actionName: "GENERATE_MEDIA",
+              mediaUrl: "https://media.example.com/dog.mp4",
+            },
+          },
+        ],
+      },
+    });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "animate this dog",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+
+    expect(out.mediaUrls).toEqual(["https://media.example.com/dog.mp4"]);
+  });
+
   test("POST preserves a consistent provider receipt and formats Server-Timing", async () => {
     const timing = {
       replayed: false,

@@ -90,10 +90,13 @@ export interface ExecuteImageGenerationInput {
   bindings: PublicObjectBindings;
   providerKeys: ImageProviderKeys;
   pricingCache?: PricingCacheReadOptions;
-  admit(input: ImageGenerationBillingInput): Promise<{
-    kind: "organization" | "app";
-    admission: ImageGenerationAdmission;
-  }>;
+  admit(input: ImageGenerationBillingInput): Promise<
+    | {
+        kind: "organization" | "app";
+        admission: ImageGenerationAdmission;
+      }
+    | { kind: "platform" }
+  >;
 }
 
 export interface ImageGenerationOutcome {
@@ -308,13 +311,14 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
         ...(input.identity.metadata ?? {}),
       },
     } satisfies ImageGenerationBillingInput["context"];
-    const { kind, admission } = await input.admit({ context: billingContext, cost });
+    const admitted = await input.admit({ context: billingContext, cost });
+    const admission = admitted.kind === "platform" ? undefined : admitted.admission;
 
     const storedImages: StoredImage[] = [];
     const generationIds: string[] = [];
     let billingUncertain = false;
     try {
-      await admission.markProviderDispatched?.();
+      await admission?.markProviderDispatched?.();
       const provider = deps.getProvider(definition.billingSource);
       for (let index = 0; index < request.numImages; index += 1) {
         const generated = await generateProviderImage(request, input.providerKeys, provider);
@@ -385,11 +389,16 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
       }
 
       try {
-        if (kind === "app") await admission.settle(cost.totalCost);
-        else if (admission.reservation) {
-          await deps.billFlat(billingContext, cost, admission.reservation);
+        if (admitted.kind === "platform") {
+          // Personal Shared is funded by the platform provider account. It
+          // still records the quoted provider cost on the generation row but
+          // must not reserve or settle the user's organization credits.
+        } else if (admitted.kind === "app") {
+          await admitted.admission.settle(cost.totalCost);
+        } else if (admitted.admission.reservation) {
+          await deps.billFlat(billingContext, cost, admitted.admission.reservation);
         } else {
-          await admission.settle(cost.totalCost);
+          await admitted.admission.settle(cost.totalCost);
         }
       } catch (error) {
         // error-policy:J7 exact accounting failure cannot turn a committed,
@@ -403,7 +412,7 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
           },
         );
         try {
-          await admission.settleUnknown();
+          await admission?.settleUnknown();
         } catch (settlementError) {
           // error-policy:J7 the durable admission lease remains the
           // conservative accounting backstop when reconciliation is offline.
@@ -435,7 +444,7 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
       if (!billingUncertain) {
         await cleanupFailedGeneration(deps, input.bindings, storedImages, generationIds);
         try {
-          await admission.settle(0);
+          await admission?.settle(0);
         } catch (settlementError) {
           // error-policy:J7 reservation-release failure is observable but must
           // not replace the causal transaction failure reported to the caller.

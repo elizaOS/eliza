@@ -27,7 +27,7 @@ import { getLanguageModel, ProviderConfigurationError } from "../../providers/la
 import { safeFetch } from "../../security/safe-fetch";
 import { isAllowedBlooioMediaUrl } from "./blooio-media-allowlist";
 
-export const INBOUND_MEDIA_VISION_MODEL = "openai/gpt-5.4-mini";
+export const INBOUND_MEDIA_VISION_MODEL = "gemma-4-31b";
 export const MAX_INBOUND_MEDIA_IMAGES = 4;
 // Mirrors the Telegram voice ceiling: keeps the fetched copies bounded in a
 // 128 MiB Worker isolate while covering ordinary conversational photos.
