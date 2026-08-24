@@ -47,6 +47,14 @@ describe("maxRawBytesForBase64", () => {
     );
   });
 
+  it("safely returns 0 for non-finite, negative, or invalid base64 caps", () => {
+    expect(maxRawBytesForBase64(0)).toBe(0);
+    expect(maxRawBytesForBase64(-100)).toBe(0);
+    expect(maxRawBytesForBase64(Number.NaN)).toBe(0);
+    expect(maxRawBytesForBase64(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(maxRawBytesForBase64(Number.NEGATIVE_INFINITY)).toBe(0);
+  });
+
   it("exports derived raw caps consistent with the base64 caps", () => {
     expect(MAX_CHAT_IMAGE_RAW_BYTES).toBe(
       maxRawBytesForBase64(MAX_CHAT_IMAGE_BASE64_BYTES),

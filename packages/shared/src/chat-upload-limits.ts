@@ -37,6 +37,7 @@ export const MAX_CHAT_ATTACHMENT_NAME_LENGTH = 255;
  * `raw <= floor(cap / 4) * 3` guarantees `base64Length <= cap`.
  */
 export function maxRawBytesForBase64(base64Cap: number): number {
+  if (!Number.isFinite(base64Cap) || base64Cap <= 0) return 0;
   return Math.floor(base64Cap / 4) * 3;
 }
 
