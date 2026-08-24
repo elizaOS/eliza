@@ -120,6 +120,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/contextLimit/,
 		/_contextLimit/,
 	],
+	"packages/agent/src/actions/database.ts": [
+		/params\.limit\s*\?\?/,
+		/VECTOR_SEARCH_(?:DEFAULT|MAX)_LIMIT/,
+		/Math\.min\([^\n]*params\.limit/,
+	],
 	"packages/agent/src/actions/logs.ts": [
 		/params\.limit\s*\?\?/,
 		/Math\.min\([^\n]*params\.limit/,
