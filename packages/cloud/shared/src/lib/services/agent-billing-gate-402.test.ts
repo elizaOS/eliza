@@ -28,6 +28,21 @@ describe("insufficientCreditsBody", () => {
     expect(body.code).toBe("insufficient_credits");
   });
 
+  test("safely defaults non-numeric or non-finite balance and requiredBalance", () => {
+    const body = insufficientCreditsBody(
+      {
+        balance: Number.NaN,
+        error: "Insufficient credits",
+      },
+      {
+        requiredBalance: Number.NaN,
+      },
+    );
+
+    expect(body.currentBalance).toBe(0);
+    expect(body.requiredBalance).toBe(AGENT_PRICING.MINIMUM_DEPOSIT);
+  });
+
   test("reports the stricter balance enforced by a tier-upgrade gate", () => {
     const body = insufficientCreditsBody(
       { balance: 0.5, error: "Insufficient credits to upgrade." },

@@ -54,10 +54,16 @@ export function insufficientCreditsBody(
     context.welcomeBonusWithheldReason ?? creditCheck.welcomeBonusWithheldReason;
   const withheldMessage =
     context.welcomeBonusWithheldMessage ?? creditCheck.welcomeBonusWithheldMessage;
-  // `<= 0`: a withheld-bonus org has never held funds, so zero is the expected
-  // shape, but a negative reconciliation must not flip the explanation back to
-  // the generic copy while the reason is attached.
-  const welcomeBonusWithheld = withheldReason && creditCheck.balance <= 0;
+  const balance =
+    typeof creditCheck.balance === "number" && Number.isFinite(creditCheck.balance)
+      ? creditCheck.balance
+      : 0;
+  const welcomeBonusWithheld = Boolean(withheldReason && balance <= 0);
+  const requiredBalance =
+    typeof context.requiredBalance === "number" && Number.isFinite(context.requiredBalance)
+      ? context.requiredBalance
+      : AGENT_PRICING.MINIMUM_DEPOSIT;
+
   return {
     success: false,
     code: "insufficient_credits",
@@ -65,8 +71,8 @@ export function insufficientCreditsBody(
       ? (withheldMessage ??
         "Welcome credit unavailable for this signup. Add funds to start an agent.")
       : (creditCheck.error ?? "Insufficient credits"),
-    requiredBalance: context.requiredBalance ?? AGENT_PRICING.MINIMUM_DEPOSIT,
-    currentBalance: creditCheck.balance,
+    requiredBalance,
+    currentBalance: balance,
     ...(welcomeBonusWithheld
       ? {
           welcomeBonusWithheld: true,
