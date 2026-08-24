@@ -57,6 +57,8 @@ function Fixture() {
           expiresAt: "2099-01-01T00:05:00.000Z",
           qrPayload:
             "elizaos://remote/pair?session=session-a11y-proof&code=420731",
+          capabilities: ["runtime.status"],
+          status: "pending",
         }}
         linuxTarget={{
           hostId: "linux-host",
@@ -64,6 +66,7 @@ function Fixture() {
           running: true,
           activeSessions: 1,
           lastErrorCode: null,
+          platform: "linux",
         }}
         onRefresh={noOp}
         onSelect={noOp}
@@ -73,7 +76,7 @@ function Fixture() {
         onRemove={noOp}
         onInspectSsh={noOp}
         onConnectSsh={noOp}
-        onActivateLinuxTarget={noOp}
+        onEnrollLinuxTarget={noOp}
         onSetLinuxTargetRunning={noOp}
         onRevokeLinuxTarget={noOp}
         />

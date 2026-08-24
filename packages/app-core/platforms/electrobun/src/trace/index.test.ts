@@ -4,7 +4,8 @@ import { getTraceService, resetTraceStateForTests } from "./index.js";
 describe("trace index", () => {
   it("getTraceService returns same singleton for same registry", () => {
     resetTraceStateForTests();
-    const registry = { register: vi.fn() } as never;
+    const register = vi.fn();
+    const registry = { register } as never;
     const sessions = {} as never;
     const svc1 = getTraceService({
       dynamicViewRegistry: registry,
@@ -15,7 +16,7 @@ describe("trace index", () => {
       dynamicViewSessions: sessions,
     });
     expect(svc1).toBe(svc2);
-    expect(registry.register).toHaveBeenCalled();
+    expect(register).toHaveBeenCalled();
   });
 
   it("reset clears singleton", () => {

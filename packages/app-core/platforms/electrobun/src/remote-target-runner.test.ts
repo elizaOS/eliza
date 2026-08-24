@@ -451,6 +451,7 @@ async function createHarness(): Promise<Harness> {
   const pending = await vault.prepare({
     ownerId: "owner-1",
     displayName: "Linux target",
+    platform: "linux",
     now: NOW - 10_000,
   });
   if (pending.status !== "pending") throw new Error("expected pending target");
@@ -1778,6 +1779,7 @@ describe("remote target durable runner", () => {
         ownerId: "owner-1",
         ownerAccessToken: "owner-token-123456789",
         displayName: "Linux target",
+        platform: "linux",
         managedNetwork: true,
       }),
     ).rejects.toThrow("Headscale node unavailable");
