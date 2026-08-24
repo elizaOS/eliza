@@ -155,6 +155,9 @@ function findScriptClosingEnd(value: string, index: number): number | null {
 
 /** Remove script/style elements, including parser-accepted malformed end tags. */
 export function stripHtmlRawTextElements(value: string): string {
+	if (typeof value !== "string" || !value) {
+		return "";
+	}
 	const output: string[] = [];
 	let copiedThrough = 0;
 	let cursor = 0;

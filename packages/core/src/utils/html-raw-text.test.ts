@@ -140,4 +140,10 @@ describe("stripHtmlRawTextElements", () => {
 			),
 		).toBe("before after");
 	});
+
+	it("handles non-string, null, or empty inputs gracefully", () => {
+		expect(stripHtmlRawTextElements("")).toBe("");
+		expect(stripHtmlRawTextElements(undefined as unknown as string)).toBe("");
+		expect(stripHtmlRawTextElements(null as unknown as string)).toBe("");
+	});
 });
