@@ -353,6 +353,49 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-agent-skills/src/actions/parse-helpers.ts": [
 		/truncateWellFormed/,
 	],
+	"plugins/plugin-contacts/src/providers/contacts.ts": [
+		/CONTACTS_PROVIDER_LIMIT/,
+		/listContacts\(\{\s*limit:/,
+	],
+	"plugins/plugin-phone/src/providers/call-log.ts": [
+		/CALL_LOG_LIMIT/,
+		/listRecentCalls\(\{\s*limit:/,
+	],
+	"plugins/plugin-native-contacts/android/src/main/java/ai/eliza/plugins/contacts/ContactsPlugin.kt": [
+		/getInt\("limit"\)\s*\?:\s*\d+/,
+		/limit\s*>\s*\d+/,
+	],
+	"plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/PhonePlugin.kt": [
+		/getInt\("limit"\)\s*\?:\s*\d+/,
+		/limit\s*>\s*\d+/,
+	],
+	"plugins/plugin-relationships/src/providers/entity-graph.ts": [
+		/MAX_ENTITIES/,
+		/MAX_EDGES/,
+		/list\(\{[^}]*limit:/,
+	],
+	"plugins/plugin-blocker/src/providers/app-blocker.ts": [
+		/blockedPackageNames\.slice\(/,
+	],
+	"plugins/plugin-personal-assistant/src/providers/recent-task-states.ts": [
+		/TASK_LOG_MAX_ENTRIES/,
+		/existing\.slice\(/,
+	],
+	"plugins/plugin-wallet/src/chains/solana/providers/wallet.ts": [
+		/MAX_PORTFOLIO_ITEMS/,
+		/nonZeroItems\.slice\(/,
+		/displayedItems/,
+	],
+	"plugins/plugin-wallet/src/lp/actions/liquidity.ts": [
+		/pools\.slice\(/,
+		/Showing \d+ of/,
+	],
+	"plugins/plugin-wallet/src/analytics/news/services/newsDataService.ts": [
+		/options\?\.limit\s*\|\|\s*\d+/,
+	],
+	"plugins/plugin-wallet/src/analytics/news/providers/defiNewsProvider.ts": [
+		/getLatestNews\(\{\s*limit:/,
+	],
 	"plugins/plugin-agent-orchestrator/src/actions/tasks.ts": [
 		/truncateWellFormed/,
 		/seed\.slice\(/,

@@ -160,7 +160,13 @@ export class NewsDataService extends Service {
     signal?: AbortSignal;
   }): Promise<RealWorldNewsArticle[]> {
     try {
-      const limit = options?.limit || 10;
+      const limit = options?.limit;
+      if (
+        limit !== undefined &&
+        (!Number.isSafeInteger(limit) || limit < 0)
+      ) {
+        throw new RangeError("limit must be a non-negative safe integer");
+      }
       const query = options?.query?.toLowerCase();
       const timeoutSignal = AbortSignal.timeout(
         DEFAULT_NEWS_RSS_FETCH_TIMEOUT_MS,
@@ -226,8 +232,9 @@ export class NewsDataService extends Service {
         });
       }
 
-      // Limit results
-      articles = articles.slice(0, limit);
+      if (limit !== undefined) {
+        articles = articles.slice(0, limit);
+      }
 
       return articles;
     } catch (error) {

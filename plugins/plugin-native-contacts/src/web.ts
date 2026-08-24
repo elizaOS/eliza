@@ -17,14 +17,14 @@ import type {
 
 function normalizeLimit(limit: unknown): number | undefined {
   if (limit === undefined) return undefined;
-  if (typeof limit !== "number" || !Number.isFinite(limit)) {
-    throw new Error("limit must be between 1 and 500");
+  if (
+    typeof limit !== "number" ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1
+  ) {
+    throw new Error("limit must be a positive safe integer");
   }
-  const normalized = Math.trunc(limit);
-  if (normalized < 1 || normalized > 500) {
-    throw new Error("limit must be between 1 and 500");
-  }
-  return normalized;
+  return limit;
 }
 
 function nonEmptyString(value: unknown): string {
