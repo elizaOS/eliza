@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   __resetDenylistClientForTests,
+  __setDenylistClientForTests,
   isDenylistConfigured,
   isJtiRevoked,
   revokeInternalToken,
@@ -181,28 +182,18 @@ describe("isJtiRevoked — documented degradation", () => {
 
 describe("fail closed on a store error", () => {
   test("a read error propagates instead of reporting 'not revoked'", async () => {
-    withStore();
+    const failingRedis = {
+      get: async () => {
+        throw new Error("Redis read error: connection reset");
+      },
+      set: async () => {
+        throw new Error("Redis write error");
+      },
+    } as unknown as Parameters<typeof __setDenylistClientForTests>[0];
+
+    __setDenylistClientForTests(failingRedis);
     const jti = freshJti();
-    await revokeInternalToken(jti, nowSeconds() + 3600);
 
-    // Point the factory at a TCP backend that cannot be reached, so the read
-    // fails rather than returning a value. The module must NOT swallow it.
-    delete process.env.MOCK_REDIS;
-    process.env.DIRECT_REDIS_BACKEND = "redis";
-    process.env.REDIS_URL = "redis://127.0.0.1:1/0";
-    __resetDenylistClientForTests();
-
-    let threw = false;
-    let returned: boolean | undefined;
-    try {
-      returned = await isJtiRevoked(jti);
-    } catch {
-      threw = true;
-    }
-    // Either it throws (fail closed) or the backend was never usable and the
-    // documented no-store path returned false. What must NEVER happen is a
-    // swallowed error reported as an authoritative "true".
-    expect(threw || returned === false).toBe(true);
-    expect(returned).not.toBe(true);
+    await expect(isJtiRevoked(jti)).rejects.toThrow(/Redis read error: connection reset/);
   });
 });
