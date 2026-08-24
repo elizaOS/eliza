@@ -154,6 +154,7 @@ export interface SupportedVideoModelDefinition {
     | "wan"
     | "pixverse"
     | "seedance"
+    | "seedance25"
     | "atlascloud_snapshot";
   defaultParameters: {
     durationSeconds: number;
@@ -550,6 +551,32 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
     pricingParser: "seedance",
     defaultParameters: {
       durationSeconds: 8,
+      resolution: "720p",
+      audio: true,
+    },
+  },
+  {
+    modelId: "bytedance/seedance-2.5/text-to-video",
+    provider: "fal",
+    billingSource: "fal",
+    label: "Seedance 2.5 Text to Video",
+    pageUrl: "https://fal.ai/models/bytedance/seedance-2.5/text-to-video",
+    pricingParser: "seedance25",
+    defaultParameters: {
+      durationSeconds: 5,
+      resolution: "720p",
+      audio: true,
+    },
+  },
+  {
+    modelId: "bytedance/seedance-2.5/image-to-video",
+    provider: "fal",
+    billingSource: "fal",
+    label: "Seedance 2.5 Image to Video",
+    pageUrl: "https://fal.ai/models/bytedance/seedance-2.5/image-to-video",
+    pricingParser: "seedance25",
+    defaultParameters: {
+      durationSeconds: 5,
       resolution: "720p",
       audio: true,
     },
