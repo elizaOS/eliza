@@ -346,6 +346,21 @@ describe("parseProactiveMessageEvent", () => {
       parseProactiveMessageEvent({ conversationId: "c1", message: { bad: 1 } }),
     ).toBeNull();
   });
+
+  it("rejects internal proactive messages at WebSocket ingress", () => {
+    expect(
+      parseProactiveMessageEvent({
+        conversationId: "c1",
+        message: {
+          id: "m-internal",
+          role: "assistant",
+          text: 'Repeated runtime failure "UNCLASSIFIED" from [test]',
+          timestamp: 1,
+          transcriptVisibility: "internal",
+        },
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("parseAgentStatusEvent", () => {

@@ -384,6 +384,14 @@ async function sendToChannel(
         {
           text,
           source: targetSource,
+          // The dashboard is a consumer transcript, not an operator console.
+          // Keep machine escalation envelopes durable for diagnostics while
+          // preventing the client_chat transport from presenting them as if
+          // they were ordinary assistant replies. Connector deliveries remain
+          // visible to their explicitly configured owner channels.
+          ...(targetSource === MESSAGE_SOURCE_CLIENT_CHAT
+            ? { transcriptVisibility: "internal" as const }
+            : {}),
           metadata: {
             urgency: "urgent",
             escalation: true,

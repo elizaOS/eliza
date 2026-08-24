@@ -177,6 +177,9 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
           text: content.text ?? "",
           timestamp: Date.now(),
           source: MESSAGE_SOURCE_CLIENT_CHAT,
+          ...(content.transcriptVisibility === "internal"
+            ? { transcriptVisibility: "internal" }
+            : {}),
         },
       });
       return agentMessage;

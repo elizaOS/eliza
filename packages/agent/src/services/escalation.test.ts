@@ -389,6 +389,7 @@ describe("EscalationService.startEscalation", () => {
 
     expect(sends[0]?.target.source).toBe("client_chat");
     expect(sends[0]?.target.entityId).toBe(OWNER_ID);
+    expect(sends[0]?.content.transcriptVisibility).toBe("internal");
     expect(state.channelsSent).toEqual(["client_chat"]);
     expect(state.currentStep).toBe(0);
   });

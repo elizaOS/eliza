@@ -274,6 +274,10 @@ export function parseProactiveMessageEvent(
   if (typeof conversationId !== "string") return null;
   const message = parseConversationMessageEvent(data.message);
   if (!message) return null;
+  // Internal proactive frames are durable operator/runtime evidence, not
+  // consumer chat. Reject them at the WebSocket ingress boundary so they do
+  // not flash live, create unread badges, or depend on a later render filter.
+  if (message.transcriptVisibility === "internal") return null;
   return { conversationId, message };
 }
 

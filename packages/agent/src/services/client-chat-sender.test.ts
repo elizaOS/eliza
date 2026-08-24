@@ -168,6 +168,30 @@ describe("registerClientChatSendHandler — delivery", () => {
     });
   });
 
+  it("preserves internal visibility in storage and proactive delivery", async () => {
+    const { runtime, created } = makeRuntime();
+    const { state, broadcastWs } = makeState([conv("c1", "room-1")]);
+    registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
+
+    await runtime.sendMessageToTarget(
+      { source: "client_chat", roomId: "room-1" as UUID },
+      {
+        text: 'Repeated runtime failure "UNCLASSIFIED" from [test]',
+        transcriptVisibility: "internal",
+      },
+    );
+
+    expect(created[0]?.content.transcriptVisibility).toBe("internal");
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "proactive-message",
+        message: expect.objectContaining({
+          transcriptVisibility: "internal",
+        }),
+      }),
+    );
+  });
+
   it("preserves distinct sends even when their text is identical", async () => {
     const { runtime, created } = makeRuntime();
     const { state, broadcastWs } = makeState([conv("c1", "room-1")]);
