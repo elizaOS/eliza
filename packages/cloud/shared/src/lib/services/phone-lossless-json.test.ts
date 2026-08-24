@@ -43,6 +43,11 @@ describe("phone lossless JSON hydration", () => {
       "Persisted phone metadata is not a JSON object",
     );
   });
+
+  test("rejects non-string input with TypeError", () => {
+    expect(() => parsePhoneJsonLosslessly(undefined as unknown as string)).toThrow(TypeError);
+    expect(() => parsePhoneJsonLosslessly(null as unknown as string)).toThrow(TypeError);
+  });
 });
 
 // A runtime without reviver source access must not reject every payload that

@@ -45,6 +45,9 @@ function numberRoundTripsExactly(source: string, value: number): boolean {
  * `Infinity`, zero, or a rounded integer.
  */
 export function parsePhoneJsonLosslessly(raw: string): unknown {
+  if (typeof raw !== "string") {
+    throw new TypeError("Raw JSON payload must be a string");
+  }
   const api = rawJsonApi();
   return JSON.parse(raw, (_key: string, value: unknown, context?: JsonParseContext) => {
     if (typeof value !== "number") return value;
