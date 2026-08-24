@@ -139,6 +139,16 @@ describe("Cloud stability manifest", () => {
       await readFile(path.join(outputRoot, "manifest.json"), "utf8"),
     );
     expect(artifactManifest.reportSha256).toBe(rawSha256);
+    const { manifestSha256, ...unsignedArtifactManifest } = artifactManifest;
+    expect(manifestSha256).toBe(
+      canonicalCloudStabilitySha256(unsignedArtifactManifest),
+    );
+    expect((await verifyCloudStabilityArtifacts(outputRoot)).report).toEqual(
+      report,
+    );
+    await expect(
+      runCloudStabilityLane({ manifest, outputRoot, adapter }),
+    ).rejects.toThrow();
     expect((await verifyCloudStabilityArtifacts(outputRoot)).report).toEqual(
       report,
     );
@@ -192,17 +202,28 @@ describe("Cloud stability manifest", () => {
       /not valid JSON/,
     );
 
-    const bindAlteredReport = async (bytes: Buffer): Promise<void> => {
+    const bindAlteredReport = async (
+      bytes: Buffer,
+      options: { rehashManifest?: boolean } = {},
+    ): Promise<void> => {
       const reportSha256 = createHash("sha256").update(bytes).digest("hex");
       const artifactManifest = JSON.parse(originalManifest.toString("utf8"));
+      const { manifestSha256, ...originalUnsignedManifest } = artifactManifest;
+      const unsignedArtifactManifest = {
+        ...originalUnsignedManifest,
+        reportSha256,
+      };
       await Promise.all([
         writeFile(reportPath, bytes),
         writeFile(checksumPath, `${reportSha256}  stability.json\n`),
         writeFile(
           manifestPath,
           canonicalCloudStabilityJson({
-            ...artifactManifest,
-            reportSha256,
+            ...unsignedArtifactManifest,
+            manifestSha256:
+              options.rehashManifest === false
+                ? manifestSha256
+                : canonicalCloudStabilitySha256(unsignedArtifactManifest),
           }),
         ),
       ]);
@@ -223,6 +244,31 @@ describe("Cloud stability manifest", () => {
     );
     await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
       /not canonical JSON/,
+    );
+
+    const modifiedReport = structuredClone(parsedReport);
+    modifiedReport.cells[0].attempts[0].durationMs += 1;
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(modifiedReport), "utf8"),
+      { rehashManifest: false },
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /manifest checksum does not match/,
+    );
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(modifiedReport), "utf8"),
+    );
+    await expect(
+      verifyCloudStabilityArtifacts(outputRoot),
+    ).resolves.toMatchObject({ report: modifiedReport });
+
+    const invalidReport = structuredClone(parsedReport);
+    invalidReport.cells[0].passedAttempts = 2;
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(invalidReport), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /summary does not match/,
     );
 
     await Promise.all([
