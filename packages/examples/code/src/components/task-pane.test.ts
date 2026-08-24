@@ -1,11 +1,17 @@
 /** Exercises task-list rendering and keyboard state transitions through the real TUI host. */
+/* The package lane uses Bun while the isolated merge-readiness lane uses Vitest.
+import { beforeEach, describe, expect, it } from "bun:test";
+*/
 import { type AgentRuntime, stringToUuid } from "@elizaos/core";
 import { TUI } from "@elizaos/tui";
-import { beforeEach, describe, expect, it } from "vitest";
 import { useStore } from "../lib/store.js";
 import { VirtualTerminal } from "../testing/virtual-terminal.test.js";
 import type { CodeTask } from "../types.js";
 import { TaskPane } from "./TaskPane.js";
+
+const { beforeEach, describe, expect, it } = process.env.VITEST
+  ? await import("vitest")
+  : await import("bun:test");
 
 function codeTask(): CodeTask {
   return {
