@@ -33,6 +33,7 @@ import { Link } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+import { isPaymentStateRow } from "./payment-state-row-validation";
 
 /** Mirrors the server's PaymentStateRow contract (types.ts copy rule). */
 export interface PaymentStateDisplay {
@@ -148,16 +149,14 @@ export function PaymentActivityCard() {
         "/api/v1/billing/payment-states",
       );
       // A malformed success response is an error state, never a healthy
-      // empty history: `states` is required by the route contract.
+      // empty history: `states` is required by the route contract, and every
+      // row must pass full-shape validation — rendering dereferences
+      // identifiers, amounts, event fields, and reversal totals, so a
+      // partial row would tear the surface down mid-render (#26752 review).
       if (
         !data ||
         !Array.isArray(data.states) ||
-        !data.states.every(
-          (row) =>
-            row &&
-            typeof row.id === "string" &&
-            typeof row.paymentState === "string",
-        )
+        !data.states.every(isPaymentStateRow)
       ) {
         // error-policy:J4 malformed transport payload becomes a visible error.
         setPhase({
