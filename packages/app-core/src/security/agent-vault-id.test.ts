@@ -24,6 +24,13 @@ describe("deriveAgentVaultId", () => {
       deriveAgentVaultId("/Users/y/.eliza"),
     );
   });
+
+  it("safely falls back when non-string state dir is passed", () => {
+    const a = deriveAgentVaultId(null as unknown as string);
+    const b = deriveAgentVaultId();
+    expect(a).toBe(b);
+    expect(a).toMatch(/^mldy1-[A-Za-z0-9_-]{16}$/);
+  });
 });
 
 describe("keychainAccountForSecretKind", () => {

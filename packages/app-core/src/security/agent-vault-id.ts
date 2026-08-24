@@ -56,7 +56,11 @@ export function resolveCanonicalStateDir(): string {
 export function deriveAgentVaultId(
   canonicalStateDir = resolveCanonicalStateDir(),
 ): string {
-  const hash = createHash("sha256").update(canonicalStateDir, "utf8").digest();
+  const dir =
+    typeof canonicalStateDir === "string" && canonicalStateDir
+      ? canonicalStateDir
+      : resolveCanonicalStateDir();
+  const hash = createHash("sha256").update(dir, "utf8").digest();
   const token = Buffer.from(hash).toString("base64url").slice(0, 16);
   return `mldy1-${token}`;
 }
