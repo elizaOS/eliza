@@ -151,9 +151,9 @@ describe("addDocumentFromFilePath", () => {
 		const bytes = Buffer.from([0, 1, 2, 255]);
 		fs.writeFileSync(filePath, bytes);
 		const service = makeService();
-		const worldId = "" as UUID;
-		const roomId = "00000000-0000-0000-0000-000000000003" as UUID;
-		const entityId = "00000000-0000-0000-0000-000000000004" as UUID;
+		const worldId = "00000000-0000-0000-0000-000000000003" as UUID;
+		const roomId = "00000000-0000-0000-0000-000000000004" as UUID;
+		const entityId = "00000000-0000-0000-0000-000000000005" as UUID;
 
 		await addDocumentFromFilePath({
 			service,
@@ -174,6 +174,35 @@ describe("addDocumentFromFilePath", () => {
 		});
 	});
 
+	it.each([
+		["agentId", ""],
+		["worldId", ""],
+		["roomId", "not-a-uuid"],
+		["entityId", "00000000-0000-0000-0000-invalid-uuid"],
+	] as const)(
+		"rejects invalid %s before reading file bytes",
+		async (field, value) => {
+			const directory = makeTemporaryDirectory();
+			const filePath = path.join(directory, "missing.txt");
+			const service = makeService();
+			const options: Parameters<typeof addDocumentFromFilePath>[0] = {
+				service,
+				agentId,
+				filePath,
+			};
+			Object.assign(options, { [field]: value });
+
+			await expect(addDocumentFromFilePath(options)).rejects.toMatchObject({
+				name: "ElizaError",
+				code: "DOCUMENT_SCOPE_ID_INVALID",
+				message: `Document ${field} must be a valid UUID`,
+				context: { field, value },
+			});
+			expect(fs.existsSync(filePath)).toBe(false);
+			expect(service.added).toHaveLength(0);
+		},
+	);
+
 	it("rejects unsupported extensions before calling the service", async () => {
 		const directory = makeTemporaryDirectory();
 		const filePath = path.join(directory, "archive.bin");
@@ -188,6 +217,28 @@ describe("addDocumentFromFilePath", () => {
 });
 
 describe("loadDocumentsFromPath", () => {
+	it("rejects invalid identifiers before resolving the documents path", async () => {
+		const directory = makeTemporaryDirectory();
+		const missing = path.join(directory, "missing");
+		const service = makeService();
+
+		await expect(
+			Reflect.apply(loadDocumentsFromPath, undefined, [
+				service,
+				agentId,
+				"",
+				missing,
+			]),
+		).rejects.toMatchObject({
+			name: "ElizaError",
+			code: "DOCUMENT_SCOPE_ID_INVALID",
+			message: "Document worldId must be a valid UUID",
+			context: { field: "worldId", value: "" },
+		});
+		expect(service.added).toHaveLength(0);
+		expect(service.reported).toHaveLength(0);
+	});
+
 	it("returns empty counts for missing and empty directories", async () => {
 		const directory = makeTemporaryDirectory();
 		const missing = path.join(directory, "missing");

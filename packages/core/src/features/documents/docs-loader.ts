@@ -3,16 +3,19 @@
  * `getDocumentsPath` resolves the documents directory (runtime setting →
  * `DOCUMENTS_PATH` → `./docs`), `loadDocumentsFromPath` recursively walks it
  * (skipping VCS/build dirs and dotfiles), and `addDocumentFromFilePath` maps a
- * file extension to a content type, reads the file as UTF-8 or base64 depending
- * on whether it is text-backed, and forwards it to
+ * file extension to a content type, validates document authority identifiers
+ * before filesystem access, reads the file as UTF-8 or base64 depending on
+ * whether it is text-backed, and forwards it to
  * `DocumentService.addDocument`. Used for startup ingestion and by the DOCUMENT
  * import_file subaction; it talks to the service through a minimal local
  * interface to avoid a circular import with service.ts.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { ElizaError } from "../../errors.ts";
 import { logger } from "../../logger";
 import type { UUID } from "../../types";
+import { validateUuid } from "../../utils.ts";
 import type {
 	AddDocumentOptions,
 	DocumentAddedByRole,
@@ -35,6 +38,32 @@ interface DocumentServiceLike {
 }
 
 import { isTextBackedDocumentContent } from "./utils.ts";
+
+function requireDocumentLoaderUuid(value: unknown, field: string): void {
+	if (validateUuid(value) === null) {
+		throw new ElizaError(`Document ${field} must be a valid UUID`, {
+			code: "DOCUMENT_SCOPE_ID_INVALID",
+			context: { field, value },
+		});
+	}
+}
+
+function validateDocumentLoaderIdentifiers({
+	agentId,
+	worldId,
+	roomId,
+	entityId,
+}: {
+	agentId: UUID;
+	worldId?: UUID;
+	roomId?: UUID;
+	entityId?: UUID;
+}): void {
+	requireDocumentLoaderUuid(agentId, "agentId");
+	if (worldId !== undefined) requireDocumentLoaderUuid(worldId, "worldId");
+	if (roomId !== undefined) requireDocumentLoaderUuid(roomId, "roomId");
+	if (entityId !== undefined) requireDocumentLoaderUuid(entityId, "entityId");
+}
 
 export function getDocumentsPath(runtimePath?: string): string {
 	const documentsPath =
@@ -81,6 +110,12 @@ export async function loadDocumentsFromPath(
 		metadata?: Record<string, unknown>;
 	},
 ): Promise<{ total: number; successful: number; failed: number }> {
+	validateDocumentLoaderIdentifiers({
+		agentId,
+		worldId,
+		roomId: options?.roomId,
+		entityId: options?.entityId,
+	});
 	const docsPath = getDocumentsPath(documentsPath);
 
 	if (!fs.existsSync(docsPath)) {
@@ -182,6 +217,7 @@ export async function addDocumentFromFilePath({
 	storedDocumentMemoryId: UUID;
 	fragmentCount: number;
 }> {
+	validateDocumentLoaderIdentifiers({ agentId, worldId, roomId, entityId });
 	const fileName = path.basename(filePath);
 	const fileExt = path.extname(filePath).toLowerCase();
 	const contentType = getDocumentFileContentType(fileExt);
@@ -201,10 +237,6 @@ export async function addDocumentFromFilePath({
 		clientDocumentId: "" as UUID,
 		contentType,
 		originalFilename: fileName,
-		// Only a truly omitted (undefined) value defaults to agentId. An
-		// explicit "" is not omission -- it's forwarded as-is so
-		// DocumentService.addDocument's requireDocumentScopeUuid check rejects
-		// it with a typed error instead of this call silently masking it.
 		worldId: worldId ?? agentId,
 		content,
 		roomId: roomId ?? agentId,

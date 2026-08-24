@@ -7,7 +7,8 @@
  * defaults to agentId. `DocumentService.addDocument` rejects an explicitly
  * provided empty or malformed value with a typed `DOCUMENT_SCOPE_ID_INVALID`
  * error before any memory write, for all three fields alike, verified below
- * against a real `addDocument` call.
+ * against a real `addDocument` call. The filesystem loader mirrors that
+ * validation before reading a file or calling the service boundary.
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../database/inMemoryAdapter";
@@ -191,20 +192,25 @@ describe("addDocumentFromFilePath omission vs. invalid-input handling", () => {
 		});
 	});
 
-	it("forwards an explicit empty worldId/roomId/entityId unchanged instead of masking it", async () => {
-		const { calls, stubService } = withStubService();
-		await withFixtureFile((filePath) =>
-			addDocumentFromFilePath({
-				service: stubService,
-				agentId: AGENT_ID,
-				worldId: "" as UUID,
-				roomId: "" as UUID,
-				entityId: "" as UUID,
-				filePath,
-			}),
-		);
+	it.each(["worldId", "roomId", "entityId"] as const)(
+		"rejects an explicit empty %s before calling the service",
+		async (field) => {
+			const { calls, stubService } = withStubService();
+			await withFixtureFile(async (filePath) => {
+				const options: Parameters<typeof addDocumentFromFilePath>[0] = {
+					service: stubService,
+					agentId: AGENT_ID,
+					filePath,
+				};
+				Object.assign(options, { [field]: "" });
 
-		expect(calls).toHaveLength(1);
-		expect(calls[0]).toMatchObject({ worldId: "", roomId: "", entityId: "" });
-	});
+				await expect(addDocumentFromFilePath(options)).rejects.toMatchObject({
+					code: "DOCUMENT_SCOPE_ID_INVALID",
+					context: { field, value: "" },
+				});
+			});
+
+			expect(calls).toHaveLength(0);
+		},
+	);
 });
