@@ -1181,6 +1181,33 @@ describe("F21 alias rows: email + terminal candidates bind to real parents", () 
 	});
 });
 
+describe("candidate family hints: arithmetic and task acceptance", () => {
+	it("arithmetic-shaped inventions hint the deterministic evaluator", () => {
+		for (const name of ["CALC_RESULT", "DO_MATH", "MULTIPLY_NUMBERS"]) {
+			expect(parentAliasesForCandidateAction(name)).toEqual(["CALCULATE"]);
+		}
+	});
+
+	it("task-acceptance inventions hint the TASKS control surface", () => {
+		for (const name of [
+			"COMPLETE_TASK",
+			"ACCEPT_TASK",
+			"TASK_APPROVE",
+			"MARK_DONE",
+		]) {
+			expect(parentAliasesForCandidateAction(name)).toEqual([
+				"TASKS_CONTROL",
+				"TASKS",
+			]);
+		}
+	});
+
+	it("bare ACCEPT/APPROVE stay unhinted — lifeops approval territory", () => {
+		expect(parentAliasesForCandidateAction("APPROVE")).toEqual([]);
+		expect(parentAliasesForCandidateAction("ACCEPT_MESSAGE")).toEqual([]);
+	});
+});
+
 describe("contact lookup candidate aliases", () => {
 	it.each([
 		"CONTACTS_LOOKUP",
