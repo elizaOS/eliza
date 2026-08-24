@@ -1,3 +1,5 @@
+/** Exercises identity-link code parsing and reply mapping with deterministic unit inputs. */
+
 import { describe, expect, it } from "vitest";
 import {
   extractIdentityLinkCode,
