@@ -9909,32 +9909,6 @@ export class ElizaSandboxService {
           reason: "lifecycle_changed",
         } as const;
       }
-      if (rec.status === "stopped") {
-        const confirmedAt = new Date();
-        await tx
-          .update(agentSandboxes)
-          .set({
-            billing_status: "suspended",
-            scheduled_shutdown_at: null,
-            shutdown_warning_sent_at: null,
-            bridge_url: null,
-            health_url: null,
-            updated_at: confirmedAt,
-          })
-          .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
-        if (stopIntent) {
-          await tx
-            .update(agentComputeStopIntents)
-            .set({
-              status: "provider_confirmed",
-              provider_confirmed_at: confirmedAt,
-              updated_at: confirmedAt,
-            })
-            .where(eq(agentComputeStopIntents.id, stopIntent.id));
-        }
-        return { success: true, containerStopped: true } as const;
-      }
-
       if (effectiveAuthorization === "billing_request") {
         const fundedAt = new Date();
         const settlement =
@@ -9970,6 +9944,36 @@ export class ElizaSandboxService {
             reason: "billing_recovered",
           } as const;
         }
+      }
+
+      // A stopped sandbox with a durable backup remains billable storage. A
+      // billing stop queued before a top-up must therefore settle and observe
+      // the restored funding above before this physical-state fast path can
+      // suspend billing permanently. Explicit user stops remain unconditional.
+      if (rec.status === "stopped") {
+        const confirmedAt = new Date();
+        await tx
+          .update(agentSandboxes)
+          .set({
+            billing_status: "suspended",
+            scheduled_shutdown_at: null,
+            shutdown_warning_sent_at: null,
+            bridge_url: null,
+            health_url: null,
+            updated_at: confirmedAt,
+          })
+          .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
+        if (stopIntent) {
+          await tx
+            .update(agentComputeStopIntents)
+            .set({
+              status: "provider_confirmed",
+              provider_confirmed_at: confirmedAt,
+              updated_at: confirmedAt,
+            })
+            .where(eq(agentComputeStopIntents.id, stopIntent.id));
+        }
+        return { success: true, containerStopped: true } as const;
       }
 
       // The gate captured against snapshotSource's generation; a moved

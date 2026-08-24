@@ -209,4 +209,89 @@ describe("0312 billing resource cancellation receipts", () => {
       )`),
     ).rejects.toThrow(/requesting_user_tenant/i);
   });
+
+  test("retains actor audit identity when a requester moves organizations", async () => {
+    const db = await database();
+    await db.exec(migration);
+    const commandId = "50000000-0000-4000-8000-000000000001";
+    await db.exec(`
+      INSERT INTO billing_cancel_commands (
+        id, organization_id, requested_by_user_id, resource_type, resource_id,
+        expected_lifecycle_revision, job_id
+      ) VALUES (
+        '${commandId}', '${ORG_A}', '${USER_A}', 'container', '${RESOURCE}', 4, '${JOB_A}'
+      );
+      INSERT INTO billing_cancel_command_keys (
+        organization_id, idempotency_key_hash, request_digest, command_id,
+        requested_by_user_id
+      ) VALUES (
+        '${ORG_A}', '${"a".repeat(64)}', '${"c".repeat(64)}', '${commandId}', '${USER_A}'
+      );
+      UPDATE users SET organization_id = '${ORG_B}' WHERE id = '${USER_A}';
+    `);
+
+    const audit = await db.query<{
+      command_actor: string;
+      command_org: string;
+      key_actor: string;
+      key_org: string;
+      current_user_org: string;
+    }>(`
+      SELECT
+        command.requested_by_user_id::text AS command_actor,
+        command.organization_id::text AS command_org,
+        key.requested_by_user_id::text AS key_actor,
+        key.organization_id::text AS key_org,
+        actor.organization_id::text AS current_user_org
+      FROM billing_cancel_commands command
+      JOIN billing_cancel_command_keys key ON key.command_id = command.id
+      JOIN users actor ON actor.id = command.requested_by_user_id
+      WHERE command.id = '${commandId}'
+    `);
+    expect(audit.rows).toEqual([
+      {
+        command_actor: USER_A,
+        command_org: ORG_A,
+        key_actor: USER_A,
+        key_org: ORG_A,
+        current_user_org: ORG_B,
+      },
+    ]);
+
+    await expect(
+      db.exec(`INSERT INTO billing_cancel_command_keys (
+        organization_id, idempotency_key_hash, request_digest, command_id,
+        requested_by_user_id
+      ) VALUES (
+        '${ORG_A}', '${"b".repeat(64)}', '${"c".repeat(64)}', '${commandId}', '${USER_A}'
+      )`),
+    ).rejects.toThrow(/requesting_user_tenant_guard/i);
+    await expect(
+      db.exec(`UPDATE billing_cancel_commands
+        SET requested_by_user_id = '${USER_B}' WHERE id = '${commandId}'`),
+    ).rejects.toThrow(/authority_immutable/i);
+    await expect(
+      db.exec(`UPDATE billing_cancel_command_keys
+        SET request_digest = '${"d".repeat(64)}' WHERE command_id = '${commandId}'`),
+    ).rejects.toThrow(/authority_immutable/i);
+    await expect(
+      db.exec(`DELETE FROM billing_cancel_command_keys WHERE command_id = '${commandId}'`),
+    ).rejects.toThrow(/authority_immutable/i);
+    await expect(
+      db.exec(`DELETE FROM billing_cancel_commands WHERE id = '${commandId}'`),
+    ).rejects.toThrow(/authority_immutable/i);
+    await expect(db.exec(`TRUNCATE billing_cancel_command_keys`)).rejects.toThrow(
+      /truncate_guard/i,
+    );
+    await expect(db.exec(`TRUNCATE billing_cancel_commands CASCADE`)).rejects.toThrow(
+      /truncate_guard/i,
+    );
+
+    const largeTableConstraints = await db.query<{ constraint_name: string }>(`
+      SELECT conname AS constraint_name
+      FROM pg_constraint
+      WHERE conname IN ('jobs_id_org_unique', 'users_id_org_unique')
+    `);
+    expect(largeTableConstraints.rows).toEqual([]);
+  });
 });

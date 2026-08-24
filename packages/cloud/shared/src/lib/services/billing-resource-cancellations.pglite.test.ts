@@ -50,8 +50,7 @@ beforeAll(async () => {
     );
     CREATE TABLE users (
       id uuid PRIMARY KEY,
-      organization_id uuid NOT NULL REFERENCES organizations(id),
-      CONSTRAINT users_id_org_unique UNIQUE (id, organization_id)
+      organization_id uuid NOT NULL REFERENCES organizations(id)
     );
     CREATE TABLE jobs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -86,7 +85,6 @@ beforeAll(async () => {
       completed_at timestamp,
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now(),
-      CONSTRAINT jobs_id_org_unique UNIQUE (id, organization_id),
       CONSTRAINT jobs_retryable_requeues_nonnegative_check CHECK (retryable_requeues >= 0)
     );
     CREATE TABLE container_compute_stop_intents (
@@ -143,12 +141,10 @@ beforeAll(async () => {
       created_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT billing_cancel_commands_id_org_unique UNIQUE (id, organization_id),
       CONSTRAINT billing_cancel_commands_job_unique UNIQUE (job_id),
-      CONSTRAINT billing_cancel_commands_requesting_user_tenant_fkey
-        FOREIGN KEY (requested_by_user_id, organization_id)
-        REFERENCES users(id, organization_id) ON DELETE RESTRICT,
-      CONSTRAINT billing_cancel_commands_job_tenant_fkey
-        FOREIGN KEY (job_id, organization_id)
-        REFERENCES jobs(id, organization_id) ON DELETE RESTRICT,
+      CONSTRAINT billing_cancel_commands_requested_by_user_id_users_id_fk
+        FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON DELETE RESTRICT,
+      CONSTRAINT billing_cancel_commands_job_id_jobs_id_fk
+        FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE RESTRICT,
       CONSTRAINT billing_cancel_commands_shape_check CHECK (
         resource_type IN ('container', 'agent_sandbox')
         AND action = 'stop'
@@ -174,9 +170,8 @@ beforeAll(async () => {
       CONSTRAINT billing_cancel_command_keys_command_tenant_fkey
         FOREIGN KEY (command_id, organization_id)
         REFERENCES billing_cancel_commands(id, organization_id) ON DELETE RESTRICT,
-      CONSTRAINT billing_cancel_command_keys_requesting_user_tenant_fkey
-        FOREIGN KEY (requested_by_user_id, organization_id)
-        REFERENCES users(id, organization_id) ON DELETE RESTRICT,
+      CONSTRAINT billing_cancel_command_keys_requested_by_user_id_users_id_fk
+        FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON DELETE RESTRICT,
       CONSTRAINT billing_cancel_command_keys_digest_shape_check CHECK (
         idempotency_key_hash ~ '^[a-f0-9]{64}$'
         AND request_digest ~ '^[a-f0-9]{64}$'
@@ -184,12 +179,93 @@ beforeAll(async () => {
     );
     CREATE INDEX billing_cancel_command_keys_command_idx
       ON billing_cancel_command_keys (command_id);
+    CREATE FUNCTION billing_cancel_actor_tenant_guard() RETURNS trigger AS $$
+    BEGIN
+      PERFORM 1 FROM users
+        WHERE id = NEW.requested_by_user_id
+          AND organization_id = NEW.organization_id
+        FOR SHARE;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION USING
+          ERRCODE = '23514',
+          CONSTRAINT = TG_ARGV[0],
+          MESSAGE = format('%s: actor must belong to the receipt tenant', TG_ARGV[0]);
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    CREATE FUNCTION billing_cancel_command_job_tenant_guard() RETURNS trigger AS $$
+    BEGIN
+      PERFORM 1 FROM jobs
+        WHERE id = NEW.job_id
+          AND organization_id = NEW.organization_id
+        FOR SHARE;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION USING
+          ERRCODE = '23514',
+          CONSTRAINT = 'billing_cancel_commands_job_tenant_guard',
+          MESSAGE = 'billing_cancel_commands_job_tenant_guard: job must belong to the receipt tenant';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    CREATE FUNCTION billing_cancel_authority_immutable() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION USING
+        ERRCODE = '23514',
+        CONSTRAINT = TG_ARGV[0],
+        MESSAGE = format('%s: authority fields are immutable', TG_ARGV[0]);
+    END;
+    $$ LANGUAGE plpgsql;
+    CREATE TRIGGER billing_cancel_commands_actor_tenant_guard
+      BEFORE INSERT ON billing_cancel_commands
+      FOR EACH ROW EXECUTE FUNCTION billing_cancel_actor_tenant_guard(
+        'billing_cancel_commands_requesting_user_tenant_guard'
+      );
+    CREATE TRIGGER billing_cancel_commands_job_tenant_guard
+      BEFORE INSERT ON billing_cancel_commands
+      FOR EACH ROW EXECUTE FUNCTION billing_cancel_command_job_tenant_guard();
+    CREATE TRIGGER billing_cancel_commands_authority_immutable
+      BEFORE UPDATE OR DELETE ON billing_cancel_commands
+      FOR EACH ROW EXECUTE FUNCTION billing_cancel_authority_immutable(
+        'billing_cancel_commands_authority_immutable'
+      );
+    CREATE TRIGGER billing_cancel_commands_truncate_guard
+      BEFORE TRUNCATE ON billing_cancel_commands
+      FOR EACH STATEMENT EXECUTE FUNCTION billing_cancel_authority_immutable(
+        'billing_cancel_commands_truncate_guard'
+      );
+    CREATE TRIGGER billing_cancel_command_keys_actor_tenant_guard
+      BEFORE INSERT ON billing_cancel_command_keys
+      FOR EACH ROW EXECUTE FUNCTION billing_cancel_actor_tenant_guard(
+        'billing_cancel_command_keys_requesting_user_tenant_guard'
+      );
+    CREATE TRIGGER billing_cancel_command_keys_authority_immutable
+      BEFORE UPDATE OR DELETE ON billing_cancel_command_keys
+      FOR EACH ROW EXECUTE FUNCTION billing_cancel_authority_immutable(
+        'billing_cancel_command_keys_authority_immutable'
+      );
+    CREATE TRIGGER billing_cancel_command_keys_truncate_guard
+      BEFORE TRUNCATE ON billing_cancel_command_keys
+      FOR EACH STATEMENT EXECUTE FUNCTION billing_cancel_authority_immutable(
+        'billing_cancel_command_keys_truncate_guard'
+      );
   `);
 });
 
 afterAll(async () => closeDb());
 
 beforeEach(async () => {
+  // Production receipts are append-only. The shared PGlite fixture must
+  // explicitly disarm that guard only while resetting state between tests.
+  await dbWrite.execute(sql`DROP TRIGGER billing_cancel_command_keys_authority_immutable
+    ON billing_cancel_command_keys`);
+  await dbWrite.execute(sql`DROP TRIGGER billing_cancel_command_keys_truncate_guard
+    ON billing_cancel_command_keys`);
+  await dbWrite.execute(sql`DROP TRIGGER billing_cancel_commands_authority_immutable
+    ON billing_cancel_commands`);
+  await dbWrite.execute(sql`DROP TRIGGER billing_cancel_commands_truncate_guard
+    ON billing_cancel_commands`);
   await dbWrite.execute(sql`DELETE FROM billing_cancel_command_keys`);
   await dbWrite.execute(sql`DELETE FROM billing_cancel_commands`);
   await dbWrite.execute(sql`DELETE FROM container_compute_stop_intents`);
@@ -205,6 +281,26 @@ beforeEach(async () => {
     INSERT INTO users (id, organization_id) VALUES
       (${USER_A}, ${ORG_A}), (${USER_B}, ${ORG_B})
   `);
+  await dbWrite.execute(sql`CREATE TRIGGER billing_cancel_commands_authority_immutable
+    BEFORE UPDATE OR DELETE ON billing_cancel_commands
+    FOR EACH ROW EXECUTE FUNCTION billing_cancel_authority_immutable(
+      'billing_cancel_commands_authority_immutable'
+    )`);
+  await dbWrite.execute(sql`CREATE TRIGGER billing_cancel_commands_truncate_guard
+    BEFORE TRUNCATE ON billing_cancel_commands
+    FOR EACH STATEMENT EXECUTE FUNCTION billing_cancel_authority_immutable(
+      'billing_cancel_commands_truncate_guard'
+    )`);
+  await dbWrite.execute(sql`CREATE TRIGGER billing_cancel_command_keys_authority_immutable
+    BEFORE UPDATE OR DELETE ON billing_cancel_command_keys
+    FOR EACH ROW EXECUTE FUNCTION billing_cancel_authority_immutable(
+      'billing_cancel_command_keys_authority_immutable'
+    )`);
+  await dbWrite.execute(sql`CREATE TRIGGER billing_cancel_command_keys_truncate_guard
+    BEFORE TRUNCATE ON billing_cancel_command_keys
+    FOR EACH STATEMENT EXECUTE FUNCTION billing_cancel_authority_immutable(
+      'billing_cancel_command_keys_truncate_guard'
+    )`);
   currentRevisions.clear();
   currentRevisions.set(`${ORG_A}:${RESOURCE}`, 7);
   currentRevisions.set(`${ORG_A}:${OTHER_RESOURCE}`, 3);

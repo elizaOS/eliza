@@ -1,4 +1,8 @@
-/** Durable, provider-neutral receipts for explicit billable-resource stops. */
+/**
+ * Durable, provider-neutral receipts for explicit billable-resource stops.
+ * Global actor/job identities survive tenant moves; insertion-time database
+ * guards enforce tenant equality and keep both receipt tables append-only.
+ */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
@@ -43,15 +47,15 @@ export const billingCancelCommands = pgTable(
       table.id,
       table.organization_id,
     ),
-    requesting_user_tenant_fk: foreignKey({
-      name: "billing_cancel_commands_requesting_user_tenant_fkey",
-      columns: [table.requested_by_user_id, table.organization_id],
-      foreignColumns: [users.id, users.organization_id],
+    requesting_user_fk: foreignKey({
+      name: "billing_cancel_commands_requested_by_user_id_users_id_fk",
+      columns: [table.requested_by_user_id],
+      foreignColumns: [users.id],
     }).onDelete("restrict"),
-    job_tenant_fk: foreignKey({
-      name: "billing_cancel_commands_job_tenant_fkey",
-      columns: [table.job_id, table.organization_id],
-      foreignColumns: [jobs.id, jobs.organization_id],
+    job_fk: foreignKey({
+      name: "billing_cancel_commands_job_id_jobs_id_fk",
+      columns: [table.job_id],
+      foreignColumns: [jobs.id],
     }).onDelete("restrict"),
     job_unique: unique("billing_cancel_commands_job_unique").on(table.job_id),
     logical_command_unique: uniqueIndex("billing_cancel_commands_logical_unique").on(
@@ -101,10 +105,10 @@ export const billingCancelCommandKeys = pgTable(
       columns: [table.command_id, table.organization_id],
       foreignColumns: [billingCancelCommands.id, billingCancelCommands.organization_id],
     }).onDelete("restrict"),
-    requesting_user_tenant_fk: foreignKey({
-      name: "billing_cancel_command_keys_requesting_user_tenant_fkey",
-      columns: [table.requested_by_user_id, table.organization_id],
-      foreignColumns: [users.id, users.organization_id],
+    requesting_user_fk: foreignKey({
+      name: "billing_cancel_command_keys_requested_by_user_id_users_id_fk",
+      columns: [table.requested_by_user_id],
+      foreignColumns: [users.id],
     }).onDelete("restrict"),
     command_idx: index("billing_cancel_command_keys_command_idx").on(table.command_id),
     digest_shape_check: check(

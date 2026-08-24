@@ -1,17 +1,7 @@
 // Defines the jobs Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import {
-  check,
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { apiKeys } from "./api-keys";
 import { generations } from "./generations";
 import { organizations } from "./organizations";
@@ -67,7 +57,6 @@ export const jobs = pgTable(
     updated_at: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => ({
-    tenant_identity_unique: unique("jobs_id_org_unique").on(table.id, table.organization_id),
     type_idx: index("jobs_type_idx").on(table.type),
     status_idx: index("jobs_status_idx").on(table.status),
     scheduled_for_idx: index("jobs_scheduled_for_idx").on(table.scheduled_for),

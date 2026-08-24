@@ -4200,11 +4200,15 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       agentId: string,
       orgId: string,
       jobId: string,
+      authorization?: "user_request" | "billing_request",
+      expectedLifecycleRevision?: number,
     ): Promise<{
       success: boolean;
       containerStopped: boolean;
       backupId?: string;
       error?: string;
+      skipped?: boolean;
+      reason?: string;
     }>;
     prepareSuspendBackupGate(rec: AgentSandbox): Promise<
       | { outcome: "skip" }
@@ -4643,6 +4647,73 @@ describe("replacement lifecycle teardown is absence-proof", () => {
         await svc.prepareSuspendBackupGate({ ...claimedPendingRow(), sandbox_id: null }),
       ).toEqual({ outcome: "skip" });
     } finally {
+      restore();
+    }
+  });
+
+  test("a funded billing stop for an already-stopped agent stays billable", async () => {
+    const rec: AgentSandbox = {
+      ...claimedPendingRow(),
+      status: "stopped",
+      billing_status: "shutdown_pending",
+      last_backup_at: new Date("2026-08-20T00:00:00.000Z"),
+    };
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(rec, provider);
+    const settle = spyOn(
+      agentBillingRepository,
+      "settleAccruedBillingBeforeLifecycleInTransaction",
+    ).mockResolvedValue({ status: "already_billed_recently" });
+    const updates: Array<Record<string, unknown>> = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => ({ rows: [] }),
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              for: () => ({
+                limit: async () => [
+                  {
+                    id: "00000000-0000-0000-0000-000000000098",
+                    organization_id: ORG,
+                    agent_id: AGENT,
+                    lifecycle_revision: rec.lifecycle_revision,
+                    authorization: "billing_request",
+                    status: "pending",
+                    job_id: SUSPEND_JOB,
+                    attempts: 0,
+                  },
+                ],
+              }),
+            }),
+          }),
+        }),
+        update: () => ({
+          set: (patch: Record<string, unknown>) => {
+            updates.push(patch);
+            return { where: async () => [] };
+          },
+        }),
+      } as never);
+
+    try {
+      const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB, "billing_request");
+      expect(result).toEqual({
+        success: true,
+        containerStopped: false,
+        skipped: true,
+        reason: "billing_recovered",
+      });
+      expect(settle).toHaveBeenCalledWith(expect.anything(), AGENT, ORG, expect.any(Date));
+      expect(updates).toContainEqual(
+        expect.objectContaining({ status: "superseded", last_error: "billing_recovered" }),
+      );
+      expect(updates).toContainEqual(expect.objectContaining({ billing_status: "active" }));
+      expect(updates.some((patch) => patch.billing_status === "suspended")).toBe(false);
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      settle.mockRestore();
       restore();
     }
   });
