@@ -124,6 +124,83 @@ describe("character-message-examples utilities", () => {
       expect(result[0].examples[0].content.text).toBe("Valid message");
     });
 
+    it("parses JSON arrays and objects embedded in surrounding prose", () => {
+      const input = `Here is the conversation example:
+[
+  [
+    { "speaker": "user", "text": "Can you check my calendar?" },
+    { "speaker": "assistant", "text": "You have a meeting at 2 PM." }
+  ]
+]
+Let me know if you need more examples!`;
+
+      const result = normalizeCharacterMessageExamples(input, "CalBot");
+      expect(result).toHaveLength(1);
+      expect(result[0].examples[0]).toEqual({
+        name: "{{user1}}",
+        content: { text: "Can you check my calendar?" },
+      });
+      expect(result[0].examples[1]).toEqual({
+        name: "CalBot",
+        content: { text: "You have a meeting at 2 PM." },
+      });
+    });
+
+    it("normalizes groups with structured conversation objects containing an examples array", () => {
+      const input = [
+        {
+          examples: [
+            { name: "Dr. Smith", message: "Take your medicine." },
+            { name: "Patient", message: "Will do, doctor." },
+          ],
+        },
+      ];
+
+      const result = normalizeCharacterMessageExamples(input, "Doctor");
+      expect(result).toHaveLength(1);
+      expect(result[0].examples[0]).toEqual({
+        name: "Dr. Smith",
+        content: { text: "Take your medicine." },
+      });
+      expect(result[0].examples[1]).toEqual({
+        name: "Patient",
+        content: { text: "Will do, doctor." },
+      });
+    });
+
+    it("handles fallbackMissingSpeaker option", () => {
+      const input = [
+        [
+          { text: "Message with no speaker" },
+          { user: "Alice", text: "Hello from Alice" },
+        ],
+      ];
+
+      const defaultResult = normalizeCharacterMessageExamples(input, "DefaultAgent");
+      expect(defaultResult[0].examples).toHaveLength(2);
+      expect(defaultResult[0].examples[0].name).toBe("DefaultAgent");
+
+      const noFallbackResult = normalizeCharacterMessageExamples(input, "DefaultAgent", {
+        fallbackMissingSpeaker: false,
+      });
+      expect(noFallbackResult[0].examples).toHaveLength(1);
+      expect(noFallbackResult[0].examples[0].name).toBe("Alice");
+    });
+
+    it("handles template variables {{agentname}} and {{user}}", () => {
+      const input = [
+        [
+          { role: "{{user}}", text: "Ping" },
+          { role: "{{agentname}}", text: "Pong" },
+        ],
+      ];
+
+      const result = normalizeCharacterMessageExamples(input, "BotMaster");
+      expect(result).toHaveLength(1);
+      expect(result[0].examples[0].name).toBe("{{user1}}");
+      expect(result[0].examples[1].name).toBe("BotMaster");
+    });
+
     it("returns empty array for invalid JSON or non-array inputs", () => {
       expect(normalizeCharacterMessageExamples("invalid json string")).toEqual(
         [],
