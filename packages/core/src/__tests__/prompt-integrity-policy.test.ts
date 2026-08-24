@@ -209,6 +209,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/CURRENT_ACTIVITY_SIGNAL_LIMIT/,
 		/roomIds\.slice\(/,
 	],
+	"plugins/plugin-google-workspace/src/gmail.ts": [
+		/params\.limit\s*\?\?\s*10/,
+		/normalizedLimit\(params\.maxResults,\s*20/,
+		/normalizedLimit\(params\.maxMessages,\s*200/,
+		/MAX_GMAIL_RESULTS/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,

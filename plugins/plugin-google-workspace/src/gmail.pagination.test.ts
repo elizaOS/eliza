@@ -31,6 +31,33 @@ function mappedMessage(id: string): { data: object } {
   };
 }
 
+describe("searchMessages pagination", () => {
+  it("returns every page when the caller omits a limit", async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: { messages: [{ id: "first" }], nextPageToken: "next" },
+      })
+      .mockResolvedValueOnce({ data: { messages: [{ id: "second" }] } });
+    const client = clientFor(
+      list,
+      vi.fn(async ({ id }: { id: string }) => mappedMessage(id))
+    );
+
+    const result = await client.searchMessages({
+      accountId: "acct-1",
+      query: "in:inbox",
+    });
+
+    expect(result.map((message) => message.id)).toEqual(["first", "second"]);
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ pageToken: "next", maxResults: 500 })
+    );
+  });
+});
+
 describe("searchGmailMessages pagination", () => {
   it("stops once the API stops returning a next cursor, even on empty pages", async () => {
     const list = vi
@@ -94,6 +121,30 @@ describe("searchGmailMessages pagination", () => {
       client.searchGmailMessages({ accountId: "acct-1", query: "in:inbox", maxResults: 1 })
     ).resolves.toMatchObject([{ externalId: "last" }]);
     expect(list).toHaveBeenCalledTimes(1_001);
+  });
+
+  it("returns all rich messages when the caller omits maxResults", async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: { messages: [{ id: "first" }], nextPageToken: "next" },
+      })
+      .mockResolvedValueOnce({ data: { messages: [{ id: "second" }] } });
+    const client = clientFor(
+      list,
+      vi.fn(async ({ id }: { id: string }) => mappedMessage(id))
+    );
+
+    const result = await client.searchGmailMessages({
+      accountId: "acct-1",
+      query: "in:inbox",
+    });
+
+    expect(result.map((message) => message.externalId)).toEqual([
+      "first",
+      "second",
+    ]);
+    expect(list).toHaveBeenCalledTimes(2);
   });
 });
 
