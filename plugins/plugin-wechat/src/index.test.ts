@@ -359,3 +359,23 @@ describe("@elizaos/plugin-wechat", () => {
     expect(client.sendText).toHaveBeenNthCalledWith(2, "wxid_alice", "world");
   });
 });
+
+  it("never bisects surrogate pairs when chunking outgoing text", async () => {
+    const sentChunks: string[] = [];
+    const client = {
+      sendText: vi.fn(async (_to: string, chunk: string) => {
+        sentChunks.push(chunk);
+      }),
+    } as unknown as ProxyClient;
+    // "a" + 4 emojis (8 code units): length 9.
+    // chunkSize = 5: hard break lands between surrogate halves of the 3rd emoji.
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 5 });
+
+    await dispatcher.sendText("wxid_alice", "a" + "😀".repeat(4));
+
+    expect(sentChunks.length).toBeGreaterThan(1);
+    for (const chunk of sentChunks) {
+      expect(chunk.endsWith("\uD83D")).toBe(false);
+      expect(chunk.startsWith("\uDE00")).toBe(false);
+    }
+  });
