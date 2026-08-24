@@ -215,6 +215,7 @@ import {
 	type UserVisibleModelOutput,
 } from "../runtime/user-visible-model-output";
 import { containsExternalEnvelopeMaterial } from "../security/external-content";
+import { unwrapUserMessageText } from "../security/incoming-message-security";
 import {
 	createOutboundEnvelopeStreamLatch,
 	guardOutboundEnvelopeAttachments,
@@ -335,6 +336,7 @@ import {
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
 import {
+	extractUserText,
 	getUserMessageText,
 	stripAugmentationForPersistence,
 } from "../utils/message-text";
@@ -2859,7 +2861,7 @@ function resolveContinuationInferenceMessageText(
 	message: Memory,
 	state: State | undefined,
 ): string | null {
-	const currentText = getUserMessageText(message);
+	const currentText = getActionInferenceMessageText(message);
 	if (!currentText?.trim()) return null;
 	const recentMessages = getStructuredRecentMessages(state);
 	if (!recentMessages) return null;
@@ -2870,6 +2872,17 @@ function resolveContinuationInferenceMessageText(
 		message.entityId,
 		message.id,
 	);
+}
+
+/**
+ * Returns only the authenticated user payload for deterministic action routing.
+ * The model-facing external-content envelope intentionally contains imperative
+ * security examples (for example, "Delete data"); treating that armor as user
+ * intent can combine one of those verbs with an unrelated payload noun and
+ * force a tool the user never requested.
+ */
+function getActionInferenceMessageText(message: Memory): string {
+	return extractUserText(unwrapUserMessageText(message));
 }
 
 function getRecentConversationSearchText(
@@ -3813,7 +3826,7 @@ async function createV5MessageContextObject(args: {
 		stable: false,
 		content: args.includeTools
 			? 'current_turn_boundary: Plan and execute only the final message:user. Prior messages and reply_reference are context for resolving references, never pending commands. The prior_message:agent blocks are your own earlier replies, shown only so you can resolve what a continuation like "finish it", "yes", or "that is good" refers to — treat every fact in them as stale. Stage 1 already decided this turn needs tools; use current tool results for live data and side effects, never answer by repeating a prior reply in place of executing the fresh check, and never claim work that no tool result proves.'
-			: 'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
+			: 'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. A verified_cross_room_message block is authorized visible context from this requester\'s linked private rooms: if the requested fact appears literally in its message text, attachment description, or transcript, answer directly from that block. This is recall, not inspection of a current-turn attachment or a live calendar lookup, so it does not require ATTACHMENT, CALENDAR, or another tool; never infer details absent from the block or expose a private attachment URL. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
 				// Only the chat-recall context renders the agent's own prior turns;
 				// the tool-planner context deliberately omits them (stale-answer
 				// hazard), so this grounding sentence would be false there.
@@ -4083,7 +4096,7 @@ export async function resolveEligibleDirectActionRoutes(args: {
 	state: State;
 	userRoles?: readonly RoleGateRole[];
 }): Promise<EligibleDirectActionRoute[]> {
-	const messageText = getUserMessageText(args.message)?.trim() ?? "";
+	const messageText = getActionInferenceMessageText(args.message);
 	if (!messageText) return [];
 	const actionsByName = new Map(
 		(args.runtime.actions ?? []).map((action) => [
@@ -4443,7 +4456,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
 					(context) => context !== SIMPLE_CONTEXT_ID,
 				);
-				const text = getUserMessageText(message)?.trim() ?? "";
+				const text = getActionInferenceMessageText(message);
 				if (text.length === 0) return false;
 				const matchingRules = getDirectActionRoutingRules(runtime).filter(
 					(rule) => rule.matches(text),
@@ -4472,7 +4485,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				runtime,
 				userRoles,
 			}) => {
-				const text = getUserMessageText(message)?.trim() ?? "";
+				const text = getActionInferenceMessageText(message);
 				const declaredReplacementRules = new Set(
 					getDirectActionRoutingRules(runtime).filter(
 						(rule) =>
@@ -4557,7 +4570,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					(context) => context !== SIMPLE_CONTEXT_ID,
 				);
 				if (nonSimpleContexts.length > 0) return false;
-				const text = getUserMessageText(message);
+				const text = getActionInferenceMessageText(message);
 				if (!text?.trim()) return false;
 				// A continuation turn ("finish it", "that is good") has no
 				// inferable intent of its own — rerun inference on the resolved
@@ -4582,7 +4595,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				});
 			},
 			evaluate: ({ message, messageHandler, runtime, state }) => {
-				const text = getUserMessageText(message) ?? "";
+				const text = getActionInferenceMessageText(message);
 				const inferenceText =
 					resolveContinuationInferenceMessageText(runtime, message, state) ??
 					text;
@@ -8406,7 +8419,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				args.state,
 			);
 		const inferenceMessageText =
-			continuationResolvedMessageText ?? getUserMessageText(args.message);
+			continuationResolvedMessageText ??
+			getActionInferenceMessageText(args.message);
 		if (continuationResolvedMessageText) {
 			args.runtime.logger?.debug?.(
 				{ src: "service:message" },
