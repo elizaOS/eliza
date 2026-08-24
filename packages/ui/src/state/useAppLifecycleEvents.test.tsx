@@ -364,4 +364,109 @@ describe("useAppLifecycleEvents", () => {
       "conv-persist",
     );
   });
+
+  it("on pause with no active conversation removes any persisted conversation id", () => {
+    window.localStorage.setItem(
+      "eliza:chat:activeConversationId",
+      "conv-stale",
+    );
+    const { chatAbortRef } = setup({ activeId: null });
+
+    dispatchPause();
+
+    expect(chatAbortRef.current).toBeNull();
+    expect(
+      window.localStorage.getItem("eliza:chat:activeConversationId"),
+    ).toBeNull();
+  });
+
+  it("on pause clears chatAbortRef after aborting a live controller", () => {
+    const controller = new AbortController();
+    const { chatAbortRef } = setup({ activeId: "conv-abort-clear" });
+    chatAbortRef.current = controller;
+
+    dispatchPause();
+
+    expect(controller.signal.aborted).toBe(true);
+    expect(chatAbortRef.current).toBeNull();
+  });
+
+  it("on pause clears chatAbortRef without re-aborting an already-aborted controller", () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { chatAbortRef } = setup();
+    chatAbortRef.current = controller;
+
+    dispatchPause();
+
+    expect(controller.signal.aborted).toBe(true);
+    expect(chatAbortRef.current).toBeNull();
+  });
+
+  it("on resume leaves conversation state untouched when the transcript is empty", () => {
+    const { setConversationMessages } = setup({ messages: [] });
+
+    dispatchResume();
+    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+
+    expect(setConversationMessages).not.toHaveBeenCalled();
+  });
+
+  it("sweeps only the trailing empty assistant placeholder, leaving earlier assistant turns alone", () => {
+    const stored = makeMessages(
+      { id: "m0", role: "assistant", text: "" } as ConversationMessage,
+      { id: "m1", role: "user", text: "hi" } as ConversationMessage,
+      { id: "m2", role: "assistant", text: "" } as ConversationMessage,
+    );
+    const { setConversationMessages } = setup({ messages: stored });
+
+    dispatchResume();
+    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+
+    expect(setConversationMessages).toHaveBeenCalledTimes(1);
+    const updater = setConversationMessages.mock.calls[0][0] as (
+      prev: ConversationMessage[],
+    ) => ConversationMessage[];
+    const next = updater(stored);
+    expect(next).toHaveLength(3);
+    expect(next[0].interrupted).toBeUndefined();
+    expect(next[1].interrupted).toBeUndefined();
+    expect(next[2].interrupted).toBe(true);
+  });
+
+  it("runs a second resume burst after the first completed (debounce re-arms)", () => {
+    const { loadConversationMessages } = setup({ activeId: "conv-rearm" });
+
+    dispatchResume();
+    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+    dispatchResume();
+    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+
+    expect(mocks.client.resetConnection).toHaveBeenCalledTimes(2);
+    expect(loadConversationMessages).toHaveBeenCalledTimes(2);
+    expect(loadConversationMessages).toHaveBeenLastCalledWith("conv-rearm");
+  });
+
+  it("probes /api/health with the non-fatal request contract on a normal base", () => {
+    setup({ activeId: "conv-probe" });
+
+    dispatchResume();
+    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+
+    expect(mocks.client.fetch).toHaveBeenCalledWith("/api/health", undefined, {
+      allowNonOk: true,
+      timeoutMs: 5_000,
+    });
+  });
+
+  it("a rejected health probe does not derail the rest of the resume sequence", async () => {
+    mocks.client.fetch.mockRejectedValueOnce(new Error("probe unreachable"));
+    const { loadConversationMessages } = setup({ activeId: "conv-degraded" });
+
+    dispatchResume();
+    await vi.advanceTimersByTimeAsync(RESUME_DEBOUNCE_MS);
+
+    expect(mocks.client.resetConnection).toHaveBeenCalledTimes(1);
+    expect(loadConversationMessages).toHaveBeenCalledWith("conv-degraded");
+  });
 });
