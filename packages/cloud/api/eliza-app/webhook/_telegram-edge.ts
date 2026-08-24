@@ -95,6 +95,15 @@ function readEnvString(env: AppEnv["Bindings"], key: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+async function resolveTelegramConnectorAccountId(
+  botToken: string,
+): Promise<string> {
+  // Match the gateway identity contract: the documented decimal prefix is the
+  // immutable bot id, while opaque proxy/test credentials remain non-secret.
+  const botId = botToken.match(/^(\d{1,20}):/)?.[1];
+  return botId ? `bot:${botId}` : `bot:${await sha256Hex(botToken)}`;
+}
+
 async function runInternalRoute(
   app: Hono<AppEnv>,
   body: Record<string, unknown>,
@@ -493,12 +502,14 @@ function startTyping(
 
 function deliveryBody(
   project: string,
+  connectorAccountId: string,
   event: TelegramConnectorEvent,
   voiceNote?: Awaited<ReturnType<typeof resolveTelegramVoiceNote>>,
 ): Record<string, unknown> {
   return {
     platform: "telegram",
     project,
+    connectorAccountId,
     chatId: event.chatId,
     telegramUserId: event.senderId,
     displayName: event.senderName,
@@ -596,6 +607,7 @@ export async function handlePersonalTelegramEdge(
   const project =
     readEnvString(c.env, "ELIZA_APP_WEBHOOK_PROJECT") ?? "eliza-app";
   const config = { botToken, webhookSecret };
+  const connectorAccountId = await resolveTelegramConnectorAccountId(botToken);
   const ledger = await edgeLedger(c.env, project, event);
 
   try {
@@ -661,7 +673,7 @@ export async function handlePersonalTelegramEdge(
           const turn = await runTurnWithRetry(
             c,
             deps,
-            deliveryBody(project, event, voiceNote),
+            deliveryBody(project, connectorAccountId, event, voiceNote),
             event,
             traceId,
           );
