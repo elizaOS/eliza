@@ -29,8 +29,8 @@ import { PAX } from "./_personas";
 // Corporate / customer-service openers a playful persona should never snap into.
 const CORPORATE_OPENER =
   /^(certainly!|of course!|absolutely!|here (is|are) (a|some|the)|i hope this helps|thank you for your question|great choice!)/i;
-// Unprompted numbered-list scaffolding for a one-thing question.
-const LIST_SCAFFOLD = /(^|\n)\s*\d\.\s+\S/;
+// Unprompted numbered or bulleted scaffolding for a one-thing question.
+export const LIST_SCAFFOLD = /^(?:\s*)(?:\d+[.)]|[-*•])\s+\S/m;
 // Boilerplate disclaimers / HR-speak.
 const BOILERPLATE =
   /(please note that|it is (important|worth) (to note|noting)|as an ai|i'?m unable to provide|consult a (professional|qualified))/i;
