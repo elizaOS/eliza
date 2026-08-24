@@ -90,10 +90,12 @@ describe("truncateMessageForDisplay well-formed", () => {
     const emoji = String.fromCharCode(0xd83e, 0xdd8a);
     for (let n = 1; n <= 245; n++) {
       const text = `${"x".repeat(n)}${emoji}${"y".repeat(20)}`;
-      const max = Math.max(1, n - 5);
-      const out = truncateMessageForDisplay(text, max);
-      expect(out.length).toBeLessThanOrEqual(max);
-      expectWellFormed(out);
+      for (const offset of [-1, 0, 1, 2, 3]) {
+        const max = Math.max(1, n + offset);
+        const out = truncateMessageForDisplay(text, max);
+        expect(out.length).toBeLessThanOrEqual(max);
+        expectWellFormed(out);
+      }
     }
   });
 
