@@ -4,7 +4,7 @@
  * docs/testing/hitl-ledger.json records, per connector auth path (a
  * CONNECTOR_PATHS id), when that path last ran and last succeeded against the
  * real provider: { pathId, lastSuccessAt, lastRunAt, lane, commit, counts }.
- * `counts` mirrors the run-11632-live-lanes summary shape
+ * `counts` uses the common live-validation summary shape
  * { passed, failed, skipped }. The HITL dashboard writes one entry per probe
  * (lane "dashboard-probe"); lane drivers can record with their own lane ids.
  * The file is committed evidence, so it must never contain secrets — only

@@ -61,6 +61,23 @@ type NativeCalendarEvent = {
   conferenceLink?: string | null;
   organizer?: Record<string, unknown> | null;
   attendees?: NativeCalendarAttendee[];
+  iCalUID?: string | null;
+  originalStartAt?: string | null;
+  lastModifiedAt?: string | null;
+  recurrenceRules?: Array<{
+    frequency?: string;
+    interval?: number;
+    occurrenceCount?: number | null;
+    endDate?: string | null;
+  }>;
+  reminders?: Array<{
+    relativeOffsetSeconds?: number | null;
+    absoluteDate?: string | null;
+    locationTitle?: string | null;
+  }>;
+  sourceIdentifier?: string | null;
+  sourceTitle?: string | null;
+  sourceType?: string | null;
 };
 
 type NativeCalendarSummary = {
@@ -73,6 +90,9 @@ type NativeCalendarSummary = {
   foregroundColor?: string | null;
   timeZone?: string | null;
   selected?: boolean;
+  sourceIdentifier?: string | null;
+  sourceTitle?: string | null;
+  sourceType?: string | null;
 };
 
 type NativeCalendarPayload = {
@@ -122,6 +142,10 @@ type NativeCalendarBridge = {
     payload: NativeCalendarEventPayload,
   ): Promise<NativeCalendarPayload>;
   deleteEvent(eventId: string): Promise<NativeCalendarPayload>;
+  addListener?(
+    eventName: "calendarStoreChanged",
+    listener: (event: { observedAt: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 };
 
 type NativeCalendarCreateEventPayload = {
@@ -426,10 +450,21 @@ async function loadIosCalendarBridge(): Promise<NativeCalendarBridge | null> {
           await AppleCalendar.deleteEvent({ eventId }),
         );
       },
+      async addListener(eventName, listener) {
+        return AppleCalendar.addListener(eventName, listener);
+      },
     };
   } catch {
     return null;
   }
+}
+
+export async function subscribeNativeAppleCalendarChanges(
+  listener: (event: { observedAt: string }) => void,
+): Promise<{ remove: () => Promise<void> } | null> {
+  const bridge = await loadNativeCalendarBridge();
+  if (!bridge?.addListener) return null;
+  return bridge.addListener("calendarStoreChanged", listener);
 }
 
 async function loadNativeCalendarBridge(): Promise<NativeCalendarBridge | null> {
@@ -590,6 +625,45 @@ export function lifeOpsCalendarSummaryFromApple(args: {
   };
 }
 
+const APPLE_RECURRENCE_FREQUENCIES: Record<string, string> = {
+  daily: "DAILY",
+  weekly: "WEEKLY",
+  monthly: "MONTHLY",
+  yearly: "YEARLY",
+};
+
+/**
+ * Projects EventKit recurrence rules onto RFC 5545 RRULE lines. Rules whose
+ * frequency EventKit could not classify are dropped rather than guessed, so a
+ * returned array never claims a cadence the provider did not state.
+ */
+export function appleRecurrenceToRrules(
+  rules: NativeCalendarEvent["recurrenceRules"],
+): string[] {
+  const lines: string[] = [];
+  for (const rule of rules ?? []) {
+    const frequency = APPLE_RECURRENCE_FREQUENCIES[rule.frequency ?? ""];
+    if (!frequency) continue;
+    const parts = [`FREQ=${frequency}`];
+    const interval = Number.isInteger(rule.interval) ? rule.interval : 1;
+    if (interval && interval > 1) parts.push(`INTERVAL=${interval}`);
+    if (
+      typeof rule.occurrenceCount === "number" &&
+      Number.isInteger(rule.occurrenceCount) &&
+      rule.occurrenceCount > 0
+    ) {
+      parts.push(`COUNT=${rule.occurrenceCount}`);
+    } else if (rule.endDate) {
+      const until = new Date(rule.endDate);
+      if (!Number.isNaN(until.getTime())) {
+        parts.push(`UNTIL=${until.toISOString().replace(/[-:]|\.\d{3}/g, "")}`);
+      }
+    }
+    lines.push(`RRULE:${parts.join(";")}`);
+  }
+  return lines;
+}
+
 export function lifeOpsCalendarEventFromApple(args: {
   event: NativeCalendarEvent;
   agentId: string;
@@ -604,6 +678,13 @@ export function lifeOpsCalendarEventFromApple(args: {
   const startAt = event.startAt || syncedAt;
   const endAt = event.endAt || startAt;
   const availability = normalizeAppleAvailability(event.availability);
+  const recurrence = appleRecurrenceToRrules(event.recurrenceRules);
+  // EventKit expands a series into occurrences that all share the series'
+  // event identifier and recurrence rules (occurrenceDate is set for one-off
+  // events too, so it cannot mark a series). Every occurrence therefore
+  // carries the series rule and points at the shared identifier.
+  const seriesId = event.id?.trim() || externalId;
+  const isSeriesOccurrence = recurrence.length > 0 && seriesId.length > 0;
   return {
     id: `${agentId}:apple_calendar:${side}:calendar:${calendarId}:${externalId}`,
     externalId,
@@ -626,10 +707,20 @@ export function lifeOpsCalendarEventFromApple(args: {
     conferenceLink: event.conferenceLink ?? null,
     organizer: event.organizer ?? null,
     attendees: normalizeAttendees(event.attendees),
+    recurrence: recurrence.length > 0 ? recurrence : null,
+    recurringEventId: isSeriesOccurrence ? seriesId : null,
     metadata: {
       appleCalendar: true,
       appleAvailability: availability,
       transparency: availability === "free" ? "transparent" : "opaque",
+      iCalUID: event.iCalUID ?? null,
+      originalStartTime: event.originalStartAt ?? null,
+      appleLastModifiedAt: event.lastModifiedAt ?? null,
+      recurrenceRules: event.recurrenceRules ?? [],
+      reminders: event.reminders ?? [],
+      sourceIdentifier: event.sourceIdentifier ?? null,
+      sourceTitle: event.sourceTitle ?? null,
+      sourceType: event.sourceType ?? null,
     },
     syncedAt,
     updatedAt: syncedAt,

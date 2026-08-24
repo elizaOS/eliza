@@ -13,6 +13,7 @@
  * this package's standing @elizaos/ui test stub.
  */
 
+import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import { getRendererServiceStates } from "@elizaos/ui/platform/renderer-services";
 import { describe, expect, it, vi } from "vitest";
 import { cachedDynamicImport } from "../../../packages/app/src/app-module-cache";
@@ -68,5 +69,16 @@ describe("personal-assistant production loader contract", () => {
     expect(service).toBeDefined();
     expect(service?.shells).toEqual(["main"]);
     expect(service?.status).toBe("registered");
+
+    const page = listAppShellPages().find(
+      (candidate) => candidate.id === "lifeops-connections",
+    );
+    expect(page).toMatchObject({
+      pluginId: "@elizaos/plugin-personal-assistant",
+      label: "Mail & Calendars",
+      path: "/lifeops/connections",
+      viewKind: "release",
+    });
+    expect(page?.loader).toBeTypeOf("function");
   });
 });

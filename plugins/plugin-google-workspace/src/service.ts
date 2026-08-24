@@ -41,9 +41,13 @@ import {
   type GoogleDriveFile,
   type GoogleDriveFileList,
   type GoogleGmailBulkOperation,
+  type GoogleGmailDraftResult,
   type GoogleGmailFilterCreateResult,
+  type GoogleGmailHistoryPage,
   type GoogleGmailMessageDetail,
   type GoogleGmailMessageSummary,
+  type GoogleGmailMutationReceipt,
+  type GoogleGmailSearchPage,
   type GoogleGmailSendResult,
   type GoogleGmailSubscriptionMessageHeaders,
   type GoogleGmailUnrespondedThread,
@@ -145,6 +149,20 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     return this.gmailClient.sendEmail(params);
   }
 
+  getGmailHistoryId(params: GoogleAccountRef): Promise<string> {
+    return this.gmailClient.getGmailHistoryId(params);
+  }
+
+  listGmailHistoryPage(
+    params: GoogleAccountRef & {
+      startHistoryId: string;
+      pageToken?: string;
+      maxResults?: number;
+    }
+  ): Promise<GoogleGmailHistoryPage> {
+    return this.gmailClient.listGmailHistoryPage(params);
+  }
+
   listGmailTriageMessages(
     params: GoogleAccountRef & { selfEmail?: string | null; maxResults?: number }
   ): Promise<GoogleGmailMessageSummary[]> {
@@ -160,6 +178,18 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     }
   ): Promise<GoogleGmailMessageSummary[]> {
     return this.gmailClient.searchGmailMessages(params);
+  }
+
+  searchGmailMessagesPage(
+    params: GoogleAccountRef & {
+      query: string;
+      selfEmail?: string | null;
+      pageToken?: string | null;
+      pageSize?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailSearchPage> {
+    return this.gmailClient.searchGmailMessagesPage(params);
   }
 
   getGmailMessage(
@@ -191,7 +221,7 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       operation: GoogleGmailBulkOperation;
       labelIds?: readonly string[];
     }
-  ): Promise<void> {
+  ): Promise<GoogleGmailMutationReceipt> {
     return this.gmailClient.modifyGmailMessages(params);
   }
 
@@ -218,6 +248,21 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     }
   ): Promise<GoogleGmailSendResult> {
     return this.gmailClient.sendGmailMessage(params);
+  }
+
+  createGmailDraft(
+    params: GoogleAccountRef & {
+      to: string[];
+      cc?: string[];
+      bcc?: string[];
+      subject: string;
+      bodyText: string;
+      threadId?: string;
+      inReplyTo?: string | null;
+      references?: string | null;
+    }
+  ): Promise<GoogleGmailDraftResult> {
+    return this.gmailClient.createGmailDraft(params);
   }
 
   getGmailSubscriptionHeaders(
