@@ -11,8 +11,9 @@
  * the end of the sentence or at the first subject switch after it
  * (PRONOUN_SWITCH, NAME_SWITCH), whichever comes first. Sentences split on
  * line breaks and terminal punctuation; checkbox items ("[ ] Buy coffee")
- * and double-quoted or backticked text are masked out first, so a todo
- * receipt or a quoted human line never counts.
+ * and double-quoted or backticked text are masked out first, so a todo list
+ * row, a todo confirmation quoting its item, or a quoted human line never
+ * counts.
  *
  * Accepted blind spots, traded for precision: third-person self-reference
  * ("Eliza can book"), elided verbs outside the explicit completion list and

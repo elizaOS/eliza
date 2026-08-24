@@ -583,6 +583,132 @@ describe("TODO action", () => {
     });
   });
 
+  describe("single-mutation confirmations", () => {
+    async function confirm(
+      parameters: Record<string, unknown>,
+    ): Promise<{ result: ActionResult; delivered: string[] }> {
+      const delivered: string[] = [];
+      const result = await todoAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { parameters } as HandlerOptions,
+        (async (content: { text?: string }) => {
+          delivered.push(content.text ?? "");
+          return [];
+        }) as never,
+      );
+      if (result === undefined) {
+        throw new Error("todoAction.handler returned undefined");
+      }
+      return { result, delivered };
+    }
+
+    async function seed(content: string): Promise<string> {
+      await invoke(runtime, { action: "create", content });
+      const id = service.rows.at(-1)?.id;
+      if (!id) throw new Error("seed todo was not persisted");
+      return id;
+    }
+
+    it.each([
+      ["pending", 'Added "Buy trash bags" to your list.'],
+      [
+        "in_progress",
+        'Added "Buy trash bags" to your list, marked in progress.',
+      ],
+      ["completed", 'Added "Buy trash bags" to your list, marked done.'],
+      ["cancelled", 'Added "Buy trash bags" to your list, marked cancelled.'],
+    ])("create with status=%s confirms in prose", async (status, expected) => {
+      const { result, delivered } = await confirm({
+        action: "create",
+        content: "Buy trash bags",
+        status,
+      });
+      expect(result.text).toBe(expected);
+      // markCanonicalCallback only preserves the do-not-paraphrase reply when
+      // the delivered text matches userFacingText byte for byte.
+      expect(result.userFacingText).toBe(expected);
+      expect(delivered).toEqual([expected]);
+    });
+
+    it.each([
+      ["pending", 'Updated "Buy bin bags" on your list, marked to do.'],
+      [
+        "in_progress",
+        'Updated "Buy bin bags" on your list, marked in progress.',
+      ],
+      ["completed", 'Updated "Buy bin bags" on your list, marked done.'],
+      ["cancelled", 'Updated "Buy bin bags" on your list, marked cancelled.'],
+    ])("update to status=%s confirms in prose", async (status, expected) => {
+      const id = await seed("Buy trash bags");
+      const { result, delivered } = await confirm({
+        action: "update",
+        id,
+        content: "Buy bin bags",
+        status,
+      });
+      expect(result.text).toBe(expected);
+      expect(result.userFacingText).toBe(expected);
+      expect(delivered).toEqual([expected]);
+    });
+
+    it("complete and cancel name the state the store committed", async () => {
+      const completeId = await seed("Buy trash bags");
+      const completed = await confirm({ action: "complete", id: completeId });
+      expect(completed.result.text).toBe('Marked "Buy trash bags" done.');
+      expect(completed.result.userFacingText).toBe(completed.result.text);
+      expect(completed.delivered).toEqual([completed.result.text]);
+
+      const cancelId = await seed("Return the ladder");
+      const cancelled = await confirm({ action: "cancel", id: cancelId });
+      expect(cancelled.result.text).toBe('Cancelled "Return the ladder".');
+      expect(cancelled.result.userFacingText).toBe(cancelled.result.text);
+      expect(cancelled.delivered).toEqual([cancelled.result.text]);
+    });
+
+    it("delete names the row it removed", async () => {
+      const id = await seed("Buy trash bags");
+      const { result, delivered } = await confirm({ action: "delete", id });
+      expect(result.text).toBe('Deleted "Buy trash bags" from your list.');
+      expect(result.userFacingText).toBe(result.text);
+      expect(delivered).toEqual([result.text]);
+    });
+
+    it("clear counts what it removed and says so when nothing was there", async () => {
+      await seed("Buy trash bags");
+      const one = await confirm({ action: "clear" });
+      expect(one.result.text).toBe("Cleared 1 todo from your list.");
+      expect(one.result.userFacingText).toBe(one.result.text);
+
+      await seed("a");
+      await seed("b");
+      const many = await confirm({ action: "clear" });
+      expect(many.result.text).toBe("Cleared 2 todos from your list.");
+
+      const none = await confirm({ action: "clear" });
+      expect(none.result.text).toBe("Your list was already empty.");
+    });
+
+    it("never sends a single mutation as a checkbox list row", async () => {
+      const id = await seed("Buy trash bags");
+      const results = [
+        (await confirm({ action: "create", content: "Refill the salt" }))
+          .result,
+        (await confirm({ action: "update", id, content: "Buy bin bags" }))
+          .result,
+        (await confirm({ action: "complete", id })).result,
+        (await confirm({ action: "cancel", id })).result,
+        (await confirm({ action: "delete", id })).result,
+        (await confirm({ action: "clear" })).result,
+      ];
+      for (const result of results) {
+        expect(result.text).not.toMatch(/\[[-x →]\]/);
+        expect(result.text?.endsWith(".")).toBe(true);
+      }
+    });
+  });
+
   describe("action=write", () => {
     it("writes a mixed list and renders markdown", async () => {
       const result = await invoke(runtime, {
