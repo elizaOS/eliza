@@ -54,7 +54,7 @@ mock.module("@/lib/utils/twilio-api", () => ({
   verifyTwilioSignature: verifySignature,
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { error: mock(), info: mock() },
+  logger: { debug: mock(), error: mock(), info: mock(), warn: mock() },
 }));
 
 const { default: app } = await import("./route");

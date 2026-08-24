@@ -11,7 +11,6 @@ const findUser = mock(async () => ({
   phone_number: "+14155550100",
   phone_verified: true,
 }));
-const resolveTarget = mock(async () => ({ agentId: "agent-1" }));
 const queueCall = mock(
   async (
     _accountSid: string,
@@ -68,10 +67,7 @@ mock.module("@/lib/utils/twilio-api", () => ({
   verifyTwilioSignature: mock(async () => true),
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { error: mock(), info: mock() },
-}));
-mock.module("../lib/resolve-voice-target", () => ({
-  resolveTwilioVoiceTarget: resolveTarget,
+  logger: { debug: mock(), error: mock(), info: mock(), warn: mock() },
 }));
 
 const { default: app } = await import("./route");
@@ -111,7 +107,6 @@ describe("POST Twilio outbound voice call", () => {
       phone_number: "+14155550100",
       phone_verified: true,
     }));
-    resolveTarget.mockClear();
     queueCall.mockClear();
     returning.mockClear();
     returning.mockImplementation(async () => [{ key: "claimed" }]);
