@@ -137,19 +137,31 @@ export function getSalt(): string {
 	const isProduction = nodeEnv === "production";
 	const allowDefaultSaltRaw =
 		getEnv("ELIZA_ALLOW_DEFAULT_SECRET_SALT", "") || "";
-	// Use the workspace's canonical env-flag truthiness (1/true/yes/y/on/enabled,
-	// trimmed and case-insensitive) rather than an exact "true" match, so the
-	// documented override does not silently fail on `1`, `yes`, or a trailing
-	// space and hard-crash boot via the production throw below.
-	const allowDefaultSalt = isTruthyEnvValue(allowDefaultSaltRaw);
+	// Strict opt-in is deliberate: this flag permits keying production ciphertext by
+	// the publicly known LEGACY_DEFAULT_SECRET_SALT, so it requires the literal word
+	// "true" and does NOT accept the broader truthy set (1/yes/on/…) other flags use.
+	// Only whitespace and case are ignored, so a trailing space off a .env line
+	// (`=true `) still works rather than silently failing the override.
+	const allowDefaultSalt = allowDefaultSaltRaw.trim().toLowerCase() === "true";
 
 	const isDefaultOrUnset =
 		envSalt === "" || envSalt === LEGACY_DEFAULT_SECRET_SALT;
 
 	if (isProduction && isDefaultOrUnset && !allowDefaultSalt) {
+		// An operator who set a truthy-but-not-"true" spelling (1/yes/on/"true ")
+		// clearly intended to opt in; the generic message reads as if the flag were
+		// unset and sends them in the wrong direction. Name the exact required value.
+		const looksLikeIntendedOptIn =
+			allowDefaultSaltRaw.trim() !== "" &&
+			isTruthyEnvValue(allowDefaultSaltRaw);
 		throw new Error(
-			"SECRET_SALT must be set to a non-default value in production. " +
-				"Set ELIZA_ALLOW_DEFAULT_SECRET_SALT=true to override (not recommended).",
+			looksLikeIntendedOptIn
+				? "SECRET_SALT must be set to a non-default value in production. " +
+					`ELIZA_ALLOW_DEFAULT_SECRET_SALT must be exactly "true" to override ` +
+					`(got ${JSON.stringify(allowDefaultSaltRaw)}); the override is intentionally ` +
+					"strict because it permits a publicly known salt (not recommended)."
+				: "SECRET_SALT must be set to a non-default value in production. " +
+					"Set ELIZA_ALLOW_DEFAULT_SECRET_SALT=true to override (not recommended).",
 		);
 	}
 
