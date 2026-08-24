@@ -264,6 +264,7 @@ export * from "./settings/permission-types";
 export * from "./settings/SubscriptionStatus";
 export * from "./settings/VoiceConfigView";
 export * from "./settings/VoiceConfigView.helpers";
+export * from "./shared/ActionListRow";
 export * from "./shared/AppPageSidebar";
 export * from "./shared/confirm-delete-control";
 export * from "./shared/LanguageDropdown";

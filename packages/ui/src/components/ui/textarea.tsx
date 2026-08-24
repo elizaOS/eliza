@@ -19,7 +19,7 @@ const textareaVariants = cva(
         config:
           "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60    ",
         codeEditor:
-          "resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-zinc-100 placeholder:text-muted",
+          "resize-none rounded-xl border-0 bg-bg p-4 font-mono text-txt placeholder:text-muted",
         document:
           "rounded-sm border-border/55 bg-bg/72 px-3 py-2 text-xs shadow-none placeholder:text-muted",
         documentEditor:
@@ -34,18 +34,18 @@ const textareaVariants = cva(
           "rounded-sm border-border/60 bg-bg/55 px-3 py-2 font-mono text-xs-tight",
       },
       density: {
-        default: "min-h-[80px]",
-        compact: "min-h-[64px] px-2 py-1.5 text-xs",
-        relaxed: "min-h-[132px]",
-        editor: "min-h-[420px] text-xs leading-5",
+        default: "min-h-20",
+        compact: "min-h-16 px-2 py-1.5 text-xs",
+        relaxed: "min-h-33",
+        editor: "min-h-105 text-xs leading-5",
         document: "min-h-28",
-        tall: "min-h-[20rem]",
+        tall: "min-h-80",
         dialogEditor: "min-h-40",
         singleLine: "min-h-11",
-        modalDefault: "min-h-[88px]",
-        modalShort: "min-h-[72px]",
-        modalLogs: "min-h-[120px] font-mono text-xs",
-        configRegular: "min-h-[72px] max-h-[400px] px-3 py-2 text-sm",
+        modalDefault: "min-h-22",
+        modalShort: "min-h-18",
+        modalLogs: "min-h-30 font-mono text-xs",
+        configRegular: "min-h-18 max-h-100 px-3 py-2 text-sm",
       },
     },
     defaultVariants: {

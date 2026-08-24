@@ -3,8 +3,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  analyzeTokenRoleClasses,
   applyExceptions,
+  assertCanonicalRecipeContractsSeen,
   assertRegisteredAdaptersUsed,
+  auditCanonicalTokenRoles,
   buildComplianceReport,
   compareToBaseline,
   compareToTightBaseline,
@@ -29,6 +32,7 @@ test("registered adapters own local recipes without creating a caller escape hat
     file: relativeFile,
     symbol: "RegisteredAdapter",
     primitive: "Button",
+    role: "action",
     owner: "scanner fixture",
     reason: "Exercises exact adapter ownership.",
     matchCount: 1,
@@ -61,6 +65,97 @@ test("registered adapters own local recipes without creating a caller escape hat
   assert.equal(findings.at(-1)?.line, 8);
 });
 
+test("token roles reject raw colors, wrong channels, and unconstrained transitions", () => {
+  assert.deepEqual(
+    analyzeTokenRoleClasses({
+      className:
+        "bg-card text-txt border-border rounded-sm px-3 hover:bg-surface",
+      role: "action",
+    }),
+    [],
+  );
+  const violations = analyzeTokenRoleClasses({
+    className:
+      "bg-white text-black border-txt bg-brand-orange shadow-xl transition-all",
+    role: "field",
+  });
+  assert.ok(violations.some((detail) => detail.includes("raw color")));
+  assert.ok(
+    violations.some((detail) => detail.includes("recognized semantic token")),
+  );
+  assert.ok(violations.some((detail) => detail.includes("border family")));
+  assert.ok(violations.some((detail) => detail.includes("elevation family")));
+  assert.ok(violations.some((detail) => detail.includes("transition-all")));
+});
+
+test("canonical recipe roles are fail-closed and converge semantic aliases", () => {
+  const file = new URL("../src/components/ui/button.tsx", import.meta.url)
+    .pathname;
+  const result = auditCanonicalTokenRoles({
+    file,
+    source: `
+      const buttonVariants = cva("text-txt", {
+        variants: {
+          variant: { first: "text-foreground", second: "text-txt" },
+          size: { default: "h-10 px-4" },
+          shape: { default: "rounded-sm" },
+          align: { center: "text-center" },
+        },
+      });
+    `,
+  });
+  assert.equal(
+    result.findings.filter(
+      (finding) => finding.rule === "equivalent-recipe-divergence",
+    ).length,
+    1,
+  );
+
+  const unknown = auditCanonicalTokenRoles({
+    file: file.replace("button.tsx", "__scanner-role__.tsx"),
+    source: `const bespokeVariants = cva("bg-card", { variants: { mood: { calm: "text-txt" } } });`,
+  });
+  assert.match(unknown.findings[0]?.detail ?? "", /no token-role contract/);
+  assert.throws(
+    () => assertCanonicalRecipeContractsSeen(new Set()),
+    /Stale canonical token-role contracts/,
+  );
+});
+
+test("registered adapter internals must obey their declared token role", () => {
+  const file = new URL(
+    "../src/components/__scanner-role-adapter__.tsx",
+    import.meta.url,
+  ).pathname;
+  const relativeFile =
+    "packages/ui/src/components/__scanner-role-adapter__.tsx";
+  const adapter = {
+    file: relativeFile,
+    symbol: "RawAdapter",
+    primitive: "Button",
+    role: "action",
+    owner: "scanner fixture",
+    reason: "Exercises token-role ownership.",
+    matchCount: 1,
+  };
+  const findings = scanSourceText({
+    file,
+    registeredAdapters: new Map([
+      [`${relativeFile}:RawAdapter:Button`, adapter],
+    ]),
+    source: `
+      import { Button } from "@elizaos/ui/button";
+      export function RawAdapter() {
+        return <Button className="bg-white text-black">Owned</Button>;
+      }
+    `,
+  });
+  assert.equal(
+    findings.filter((finding) => finding.rule === "token-role-misuse").length,
+    2,
+  );
+});
+
 test("adapter registry rejects unknown primitives and stale entries", () => {
   assert.throws(
     () =>
@@ -71,8 +166,27 @@ test("adapter registry rejects unknown primitives and stale entries", () => {
             file: "packages/ui/src/example.tsx",
             symbol: "Example",
             primitive: "ImaginaryControl",
+            role: "action",
             owner: "fixture",
             reason: "Unknown primitive fixture.",
+            matchCount: 1,
+          },
+        ],
+      }),
+    /Invalid design-system adapter/,
+  );
+  assert.throws(
+    () =>
+      validateAdapterRegistry({
+        schemaVersion: 1,
+        adapters: [
+          {
+            file: "packages/ui/src/example.tsx",
+            symbol: "Example",
+            primitive: "Button",
+            role: "product-one-off",
+            owner: "fixture",
+            reason: "Unknown role fixture.",
             matchCount: 1,
           },
         ],
@@ -83,6 +197,7 @@ test("adapter registry rejects unknown primitives and stale entries", () => {
     file: "packages/ui/src/example.tsx",
     symbol: "MissingAdapter",
     primitive: "Button",
+    role: "action",
     owner: "fixture",
     reason: "Stale adapter fixture.",
     matchCount: 1,

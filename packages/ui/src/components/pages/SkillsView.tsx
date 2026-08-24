@@ -87,7 +87,7 @@ const SkillRowButton = memo(function SkillRowButton({
   attentionLabel?: string;
   onSelect: () => void;
 }) {
-  const { agentProps } = useAgentElement<HTMLDivElement>({
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `skill-${skill.id}`,
     role: "button",
     label: skill.name,
@@ -97,20 +97,20 @@ const SkillRowButton = memo(function SkillRowButton({
     onActivate: onSelect,
   });
   return (
-    <div {...agentProps}>
-      <SkillSidebarItem
-        active={active}
-        testId={`skill-row-${skill.id}`}
-        enabled={enabled}
-        icon={icon}
-        name={skill.name}
-        description={description}
-        onLabel={onLabel}
-        offLabel={offLabel}
-        onSelect={onSelect}
-        attentionLabel={attentionLabel}
-      />
-    </div>
+    <SkillSidebarItem
+      active={active}
+      testId={`skill-row-${skill.id}`}
+      enabled={enabled}
+      icon={icon}
+      name={skill.name}
+      description={description}
+      onLabel={onLabel}
+      offLabel={offLabel}
+      onSelect={onSelect}
+      attentionLabel={attentionLabel}
+      buttonProps={agentProps}
+      buttonRef={ref}
+    />
   );
 });
 

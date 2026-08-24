@@ -7,99 +7,54 @@
  * standalone Background settings section is consolidated into this one.
  */
 
-import { Check } from "lucide-react";
+import type { ReactNode } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { ACCENT_PRESETS, useAppSelector, useContentPack } from "../../state";
-import type { AccentPreset } from "../../state/ui-preferences";
+import {
+  SelectableTile,
+  type SelectableTileLayout,
+} from "../composites/settings";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
-import { Button } from "../ui/button";
 import { BackgroundSettingsControls } from "./BackgroundSettingsControls";
 import { LoadedPacksList } from "./LoadedPacksList";
 import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "./settings-layout";
 
-function LanguageTileButton({
-  languageId,
+function AppearanceSelectableTile({
+  agentId,
+  group,
   label,
-  flag,
-  isActive,
+  leading,
+  layout,
+  selected,
   onSelect,
 }: {
-  languageId: string;
+  agentId: string;
+  group: string;
   label: string;
-  flag: string;
-  isActive: boolean;
+  leading: ReactNode;
+  layout: SelectableTileLayout;
+  selected: boolean;
   onSelect: () => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `appearance-language-${languageId}`,
+    id: agentId,
     role: "tab",
     label,
-    group: "appearance-language",
-    status: isActive ? "active" : "inactive",
+    group,
+    status: selected ? "active" : "inactive",
     onActivate: onSelect,
   });
   return (
-    <Button
+    <SelectableTile
       ref={ref}
-      variant="selection"
-      size="card"
-      data-state={isActive ? "on" : "off"}
-      onClick={onSelect}
-      aria-current={isActive ? "true" : undefined}
+      selected={selected}
+      label={label}
+      leading={leading}
+      layout={layout}
+      onSelect={onSelect}
       {...agentProps}
-    >
-      <div className="flex items-center gap-2">
-        <span className="text-base leading-none">{flag}</span>
-        <span className="text-xs font-medium text-txt">{label}</span>
-      </div>
-      {isActive ? (
-        <Check className="absolute right-1.5 top-1.5 size-3 text-accent" />
-      ) : null}
-    </Button>
-  );
-}
-
-function AccentTileButton({
-  preset,
-  isActive,
-  onSelect,
-}: {
-  preset: AccentPreset;
-  isActive: boolean;
-  onSelect: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `appearance-accent-${preset.id}`,
-    role: "tab",
-    label: preset.label,
-    group: "appearance-accent",
-    status: isActive ? "active" : "inactive",
-    onActivate: onSelect,
-  });
-  // The `default` preset carries no color (brand accent) — render the live
-  // `--accent` token so its swatch tracks the brand accent.
-  const swatchColor = preset.color ?? "var(--accent)";
-  return (
-    <Button
-      ref={ref}
-      variant="selection"
-      size="card"
-      data-state={isActive ? "on" : "off"}
-      onClick={onSelect}
-      aria-current={isActive ? "true" : undefined}
-      {...agentProps}
-    >
-      <span
-        aria-hidden
-        className="size-5 rounded-full border border-border/40"
-        style={{ backgroundColor: swatchColor }}
-      />
-      <span className="text-xs font-medium text-txt">{preset.label}</span>
-      {isActive ? (
-        <Check className="absolute right-1.5 top-1.5 size-3 text-accent" />
-      ) : null}
-    </Button>
+    />
   );
 }
 
@@ -123,10 +78,19 @@ export function AppearanceSettingsSection() {
       >
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
           {ACCENT_PRESETS.map((preset) => (
-            <AccentTileButton
+            <AppearanceSelectableTile
               key={preset.id}
-              preset={preset}
-              isActive={uiAccentId === preset.id}
+              agentId={`appearance-accent-${preset.id}`}
+              group="appearance-accent"
+              label={preset.label}
+              leading={
+                <span
+                  className="size-5 rounded-full border border-border/40"
+                  style={{ backgroundColor: preset.color ?? "var(--accent)" }}
+                />
+              }
+              layout="vertical"
+              selected={uiAccentId === preset.id}
               onSelect={() => setUiAccent(preset.id)}
             />
           ))}
@@ -139,12 +103,16 @@ export function AppearanceSettingsSection() {
       >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {LANGUAGES.map((language) => (
-            <LanguageTileButton
+            <AppearanceSelectableTile
               key={language.id}
-              languageId={language.id}
+              agentId={`appearance-language-${language.id}`}
+              group="appearance-language"
               label={language.label}
-              flag={language.flag}
-              isActive={uiLanguage === language.id}
+              leading={
+                <span className="text-base leading-none">{language.flag}</span>
+              }
+              layout="horizontal"
+              selected={uiLanguage === language.id}
               onSelect={() => setUiLanguage(language.id)}
             />
           ))}

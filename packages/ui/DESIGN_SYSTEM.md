@@ -48,10 +48,38 @@ with fewer than two call sites fails. Stateful product presentation belongs in
 an exported adapter that renders the canonical atom and is registered in
 `scripts/design-system-adapters.json`. Each registry entry fixes the owning
 file, exported symbol, canonical primitive, owner, rationale, and composition
-count. The gate rejects unknown primitives, missing exports, moved or removed
+count, and token role. The gate rejects unknown primitives, missing exports, moved or removed
 compositions, count drift, and attempts to reuse an adapter's local recipe from
 another caller. Exceptions remain reserved for renderer, native, or external
 system boundaries; they do not waive the Button reuse rule.
+
+## Token-role contracts
+
+Canonical recipes are fail-closed. Every `cva` helper in `components/ui`, each
+of its axes, and every registered adapter has an exact role in the compliance
+gate. Adding a helper, axis, or adapter without a known role fails. The roles
+admit semantic token families, not individual raw colors:
+
+| Role | Foreground | Surface | Border/divider | Status and action | Radius | Spacing/density | Elevation | State |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `action` | content, muted, on-action, inverse, contextual | neutral, inverse, transparent | structural, inverse, transparent | action and status families | control, container, pill | control scale | none or low | hover, focus, active, disabled, selected, invalid, pointer, responsive, group |
+| `field` | content, muted, inverse | neutral, inverse, transparent | structural, inverse, transparent | status feedback only | control, container, pill | control scale | none | hover, focus, disabled, invalid, placeholder, file, pointer, responsive |
+| `surface` | content, muted, inverse | neutral, inverse, transparent | structural, inverse, transparent | status feedback only | control, container, pill | container scale | semantic scale | hover, focus, active, disabled, selected, invalid, responsive, group |
+| `status` | content, muted, on-action | neutral, transparent | structural, transparent | action and status families | control, container, pill | compact or container scale | none or low | hover, focus, active, disabled, selected, responsive, group |
+| `content` | content, muted, action, status, contextual | transparent only | structural or transparent | foreground only | none | compact scale | none | hover, responsive, group |
+| `layout` | none | none | none | none | none | layout scale | none | responsive or group-derived layout |
+
+Semantic namespaces are `txt`/`foreground` content, `bg`/`card`/`surface`
+neutral surfaces, `border`/`input`/`ring` structure, `accent`/`primary` action,
+named status tokens, contextual `header`/`sidebar` tokens, and the stable
+`inverse` pair for light-on-dark or light-on-accent controls. Palette utilities,
+arbitrary color values, arbitrary control density, arbitrary elevation, and
+`transition-all` are invalid in canonical and registered-adapter recipes.
+
+The gate also normalizes semantic aliases when comparing variants inside an
+axis. Exact duplicates and recipes that differ only by equivalent aliases fail;
+one recipe must own that presentation. Layout differences do not make two
+paint recipes divergent, and distinct status tones remain distinct recipes.
 
 Skeleton geometry is caller-owned because it previews the dimensions and shape
 of caller content. Skeleton paint, animation, and effects remain owned by the
@@ -68,6 +96,24 @@ Stories and composition tests must include the visible trigger, label, value,
 focus, disabled, keyboard, ref, and change behavior that applies to the adapter.
 
 ## Shared patterns
+
+Use the narrowest shared lifecycle owner that fits:
+
+- `SettingsRow` and the typed settings-control rows own settings label,
+  description, control placement, disabled state, and row geometry. Domain
+  adapters may add agent registration or value mapping, but must compose these
+  rows instead of painting another settings shell.
+- `ContentState` owns empty and loading presentation across panel, inset,
+  surface, and workspace placements. Page-specific wrappers supply copy and
+  behavior rather than rebuilding the state geometry.
+- `ActionListRow` owns a single row-level action with native button, link, or
+  static semantics and typed leading, copy, metadata, and trailing slots. It is
+  not suitable for rows with multiple independent controls or domain progress.
+- `SelectableTile` owns controlled settings choices with a leading visual,
+  centered label, pressed state, and selected indicator. Selected state must
+  not add visible `ON` or `OFF` copy.
+- `StatusBadge` owns status paint. Domain adapters map typed domain states to a
+  canonical tone and label; they do not reproduce badge classes.
 
 Data tables use the canonical table parts. Rows stay flat and use the
 primitive-owned one-pixel semantic bottom divider. Do not wrap ordinary rows in

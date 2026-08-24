@@ -35,7 +35,231 @@ export const RULES = [
   "unstyled-canonical",
   "visual-override",
   "off-token-color",
+  "token-role-misuse",
+  "equivalent-recipe-divergence",
 ];
+
+/**
+ * Semantic paint families are intentionally namespace-based. Adding a raw
+ * color to this table would weaken the contract; new visual vocabulary must
+ * first become a named theme token in tailwind-theme.css.
+ */
+const TOKEN_ROLE_CONTRACTS = Object.freeze({
+  action: {
+    foreground: [
+      "content",
+      "muted",
+      "on-action",
+      "inverse",
+      "on-inverse",
+      "action",
+      "status",
+      "context",
+      "transparent",
+    ],
+    surface: [
+      "neutral",
+      "inverse",
+      "transparent",
+      "action",
+      "status",
+      "context",
+    ],
+    border: [
+      "structure",
+      "inverse",
+      "transparent",
+      "action",
+      "status",
+      "context",
+    ],
+    radius: ["none", "control", "container", "pill"],
+    spacing: ["control"],
+    elevation: ["none", "low"],
+    state: [
+      "hover",
+      "focus",
+      "active",
+      "disabled",
+      "selected",
+      "invalid",
+      "pointer",
+      "responsive",
+      "group",
+    ],
+  },
+  field: {
+    foreground: ["content", "muted", "inverse", "on-inverse"],
+    surface: ["neutral", "inverse", "transparent", "status"],
+    border: ["structure", "inverse", "transparent", "status"],
+    radius: ["none", "control", "container", "pill"],
+    spacing: ["control"],
+    elevation: ["none"],
+    state: [
+      "hover",
+      "focus",
+      "disabled",
+      "invalid",
+      "placeholder",
+      "file",
+      "pointer",
+      "responsive",
+    ],
+  },
+  surface: {
+    foreground: ["content", "muted", "inverse", "on-inverse", "status"],
+    surface: ["neutral", "inverse", "transparent", "status"],
+    border: ["structure", "inverse", "transparent", "status"],
+    radius: ["none", "control", "container", "pill"],
+    spacing: ["container"],
+    elevation: ["none", "low", "raised"],
+    state: [
+      "hover",
+      "focus",
+      "active",
+      "disabled",
+      "selected",
+      "invalid",
+      "responsive",
+      "group",
+    ],
+  },
+  status: {
+    foreground: [
+      "content",
+      "muted",
+      "on-action",
+      "action",
+      "status",
+      "transparent",
+    ],
+    surface: ["neutral", "transparent", "action", "status"],
+    border: ["structure", "transparent", "action", "status"],
+    radius: ["none", "control", "container", "pill"],
+    spacing: ["compact", "container"],
+    elevation: ["none", "low"],
+    state: [
+      "hover",
+      "focus",
+      "active",
+      "disabled",
+      "selected",
+      "responsive",
+      "group",
+    ],
+  },
+  content: {
+    foreground: ["content", "muted", "action", "status", "context"],
+    surface: ["transparent"],
+    border: ["structure", "transparent"],
+    radius: ["none"],
+    spacing: ["compact"],
+    elevation: ["none"],
+    state: ["hover", "responsive", "group"],
+  },
+  layout: {
+    foreground: [],
+    surface: [],
+    border: [],
+    radius: ["none"],
+    spacing: ["layout"],
+    elevation: ["none"],
+    state: ["responsive", "group"],
+  },
+});
+
+const CANONICAL_RECIPE_CONTRACTS = Object.freeze({
+  "packages/ui/src/components/ui/alert.tsx:alertVariants": {
+    role: "status",
+    axes: { variant: "status" },
+  },
+  "packages/ui/src/components/ui/attachment.tsx:attachmentVariants": {
+    role: "surface",
+    axes: { size: "surface", orientation: "layout" },
+  },
+  "packages/ui/src/components/ui/attachment.tsx:attachmentMediaVariants": {
+    role: "surface",
+    axes: { variant: "surface" },
+  },
+  "packages/ui/src/components/ui/badge.tsx:badgeVariants": {
+    role: "status",
+    axes: { variant: "status", size: "status", tone: "status" },
+  },
+  "packages/ui/src/components/ui/banner.tsx:bannerVariants": {
+    role: "status",
+    axes: { variant: "status" },
+  },
+  "packages/ui/src/components/ui/button.tsx:buttonVariants": {
+    role: "action",
+    axes: {
+      variant: "action",
+      size: "action",
+      shape: "action",
+      align: "action",
+    },
+  },
+  "packages/ui/src/components/ui/card.tsx:cardVariants": {
+    role: "surface",
+    axes: { variant: "surface" },
+  },
+  "packages/ui/src/components/ui/grid.tsx:gridVariants": {
+    role: "layout",
+    axes: { columns: "layout", spacing: "layout" },
+  },
+  "packages/ui/src/components/ui/input-group.tsx:inputGroupVariants": {
+    role: "field",
+    axes: { density: "field" },
+  },
+  "packages/ui/src/components/ui/input-group.tsx:inputGroupAddonVariants": {
+    role: "field",
+    axes: { align: "field" },
+  },
+  "packages/ui/src/components/ui/input.tsx:inputVariants": {
+    role: "field",
+    axes: { variant: "field", density: "field", adornment: "field" },
+  },
+  "packages/ui/src/components/ui/marker.tsx:markerVariants": {
+    role: "content",
+    axes: { variant: "content" },
+  },
+  "packages/ui/src/components/ui/native-select.tsx:nativeSelectVariants": {
+    role: "field",
+    axes: { presentation: "field" },
+  },
+  "packages/ui/src/components/ui/stack.tsx:stackVariants": {
+    role: "layout",
+    axes: {
+      direction: "layout",
+      align: "layout",
+      justify: "layout",
+      spacing: "layout",
+    },
+  },
+  "packages/ui/src/components/ui/tabs.tsx:tabsListVariants": {
+    role: "surface",
+    axes: { variant: "surface" },
+  },
+  "packages/ui/src/components/ui/tabs.tsx:tabsTriggerVariants": {
+    role: "action",
+    axes: { variant: "action" },
+  },
+  "packages/ui/src/components/ui/textarea.tsx:textareaVariants": {
+    role: "field",
+    axes: { variant: "field", density: "field" },
+  },
+  "packages/ui/src/components/ui/toggle.tsx:toggleVariants": {
+    role: "action",
+    axes: { variant: "action", size: "action" },
+  },
+  "packages/ui/src/components/ui/typography.tsx:textVariants": {
+    role: "content",
+    axes: { variant: "content" },
+  },
+  "packages/ui/src/components/ui/typography.tsx:headingVariants": {
+    role: "content",
+    axes: { level: "content" },
+  },
+});
 
 const CANONICAL_NAMES = new Set(
   Object.values(ATOMS).flatMap((definition) => definition.names),
@@ -64,6 +288,8 @@ export function validateAdapterRegistry(document) {
       adapter.owner.trim() === "" ||
       typeof adapter.reason !== "string" ||
       adapter.reason.trim() === "" ||
+      typeof adapter.role !== "string" ||
+      !Object.hasOwn(TOKEN_ROLE_CONTRACTS, adapter.role) ||
       !Number.isInteger(adapter.matchCount) ||
       adapter.matchCount < 1 ||
       keys.has(key)
@@ -262,6 +488,423 @@ function objectProperty(object, name) {
         ts.isShorthandPropertyAssignment(property)) &&
       propertyNameText(property) === name,
   );
+}
+
+const RAW_COLOR_TOKEN =
+  /^(?:black|white|slate|gray|zinc|neutral|stone|red|rose|pink|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia)(?:-|$)/;
+const STATUS_TOKEN =
+  /^(?:destructive|danger|warn|warning|ok|success|info|status-)/;
+const ACTION_TOKEN = /^(?:accent|primary|secondary)(?:-|$)/;
+const CONTEXT_TOKEN = /^(?:header|sidebar)(?:-|$)/;
+const CONTENT_TOKEN =
+  /^(?:txt(?:-|$)|foreground$|card-fg$|card-foreground$|popover-foreground$|muted(?:-|$))/;
+const NEUTRAL_SURFACE_TOKEN =
+  /^(?:bg(?:-|$)|background$|card$|surface$|popover$|muted$)/;
+const STRUCTURE_TOKEN = /^(?:border(?:-|$)|input$|ring$)/;
+
+function tailwindUtility(token) {
+  let bracketDepth = 0;
+  let lastSeparator = -1;
+  for (let index = 0; index < token.length; index += 1) {
+    if (token[index] === "[") bracketDepth += 1;
+    else if (token[index] === "]") bracketDepth -= 1;
+    else if (token[index] === ":" && bracketDepth === 0) lastSeparator = index;
+  }
+  return {
+    modifiers:
+      lastSeparator === -1 ? [] : token.slice(0, lastSeparator).split(":"),
+    utility: token.slice(lastSeparator + 1).replace(/!$/, ""),
+  };
+}
+
+function semanticTokenFamily(token, channel) {
+  const bare = token.replace(/\/.*$/, "");
+  if (["transparent", "current", "none"].includes(bare)) return "transparent";
+  if (bare === "inverse") return "inverse";
+  if (bare === "inverse-foreground") {
+    return channel === "foreground" ? "on-inverse" : "inverse";
+  }
+  if (bare.startsWith("[")) return "raw";
+  if (RAW_COLOR_TOKEN.test(bare)) return "raw";
+  if (STATUS_TOKEN.test(bare)) {
+    return channel === "foreground" && /-(?:fg|foreground)$/.test(bare)
+      ? "on-action"
+      : "status";
+  }
+  if (ACTION_TOKEN.test(bare)) {
+    return channel === "foreground" && /-(?:fg|foreground)$/.test(bare)
+      ? "on-action"
+      : "action";
+  }
+  if (CONTEXT_TOKEN.test(bare)) return "context";
+  if (channel === "surface" && bare === "muted") return "neutral";
+  if (CONTENT_TOKEN.test(bare)) {
+    return bare.startsWith("muted") ? "muted" : "content";
+  }
+  if (NEUTRAL_SURFACE_TOKEN.test(bare)) return "neutral";
+  if (STRUCTURE_TOKEN.test(bare)) return "structure";
+  return "unknown";
+}
+
+function canonicalTokenIdentity(token) {
+  const [name, opacity] = token.split("/");
+  const aliases = {
+    background: "bg",
+    foreground: "txt",
+    "card-foreground": "card-fg",
+    "accent-foreground": "accent-fg",
+    "primary-foreground": "primary-fg",
+    warning: "warn",
+    success: "ok",
+  };
+  return `${aliases[name] ?? name}${opacity ? `/${opacity}` : ""}`;
+}
+
+function stateFamilies(modifiers) {
+  const states = new Set();
+  for (const modifier of modifiers) {
+    if (/placeholder/.test(modifier)) states.add("placeholder");
+    else if (/file/.test(modifier)) states.add("file");
+    else if (/pointer/.test(modifier)) states.add("pointer");
+    else if (/disabled/.test(modifier)) states.add("disabled");
+    else if (/invalid|error/.test(modifier)) states.add("invalid");
+    else if (/focus/.test(modifier)) states.add("focus");
+    else if (/hover/.test(modifier)) states.add("hover");
+    else if (/active/.test(modifier)) states.add("active");
+    else if (/selected|state=(?:on|open|checked)/.test(modifier))
+      states.add("selected");
+    else if (/^(?:sm|md|lg|xl|2xl)$/.test(modifier)) states.add("responsive");
+    else if (/group|has-/.test(modifier)) states.add("group");
+  }
+  return [...states];
+}
+
+function colorClass(utility) {
+  const match = /^(bg|text|border|ring|outline|fill|stroke|divide)-(.+)$/.exec(
+    utility,
+  );
+  if (!match) return null;
+  if (
+    /^(?:bg-(?:clip|origin|gradient)|border-(?:solid|dashed|dotted|double|hidden|none)|outline-(?:none|hidden))/.test(
+      utility,
+    )
+  ) {
+    return null;
+  }
+  if (
+    match[1] === "text" &&
+    /^(?:left|right|center|justify|start|end|xs|sm|base|lg|xl|[2-9]xl|[23]xs|(?:xs|sm)-tight|chat-(?:body|lead)|\[[0-9.]+(?:px|rem)\])$/.test(
+      match[2],
+    )
+  ) {
+    return null;
+  }
+  if (
+    match[1] === "border" &&
+    /^(?:0|2|4|8|[xytrbl](?:-[0248])?)$/.test(match[2])
+  )
+    return null;
+  if (match[1] === "ring" && /^(?:0|1|2|4|8|offset-[01248])$/.test(match[2]))
+    return null;
+  let channel =
+    match[1] === "bg"
+      ? "surface"
+      : match[1] === "text"
+        ? "foreground"
+        : "border";
+  if (
+    channel === "surface" &&
+    STRUCTURE_TOKEN.test(match[2].replace(/\/.*$/, ""))
+  ) {
+    channel = "border";
+  }
+  return {
+    channel,
+    token:
+      match[1] === "ring" && match[2].startsWith("offset-")
+        ? match[2].slice("offset-".length)
+        : match[2],
+  };
+}
+
+function radiusFamily(utility) {
+  const match = /^rounded(?:-[trblse]{1,2})?-(.+)$/.exec(utility);
+  if (!match) return null;
+  if (match[1].startsWith("[")) return "raw";
+  if (match[1] === "none") return "none";
+  if (["xs", "sm", "md"].includes(match[1])) return "control";
+  if (["lg", "xl", "2xl", "3xl"].includes(match[1])) return "container";
+  if (match[1] === "full") return "pill";
+  return "raw";
+}
+
+function elevationFamily(utility) {
+  if (!utility.startsWith("shadow-")) return null;
+  if (utility.startsWith("shadow-[")) return "raw";
+  if (utility === "shadow-none") return "none";
+  if (["shadow-2xs", "shadow-xs", "shadow-sm"].includes(utility)) return "low";
+  return "raised";
+}
+
+function spacingFamily(utility, role) {
+  if (!/^(?:p[trblxy]?|gap|space-[xy]|h|min-h|max-h|size)-\[/.test(utility))
+    return null;
+  if (role === "layout") return "layout";
+  return "raw";
+}
+
+export function analyzeTokenRoleClasses({ className, role }) {
+  const contract = TOKEN_ROLE_CONTRACTS[role];
+  if (!contract) return [`Unknown token role ${role}.`];
+  const violations = [];
+  for (const token of className.split(/\s+/).filter(Boolean)) {
+    const { modifiers, utility } = tailwindUtility(token);
+    for (const state of stateFamilies(modifiers)) {
+      if (!contract.state.includes(state)) {
+        violations.push(`${state} state is not legal for ${role}.`);
+      }
+    }
+    const color = colorClass(utility);
+    if (color) {
+      const family = semanticTokenFamily(color.token, color.channel);
+      if (family === "raw") {
+        violations.push(
+          `${utility} uses a raw color instead of a semantic token.`,
+        );
+      } else if (family === "unknown") {
+        violations.push(
+          `${utility} is not in a recognized semantic token family.`,
+        );
+      } else if (!contract[color.channel].includes(family)) {
+        violations.push(
+          `${color.channel} family ${family} is not legal for ${role}.`,
+        );
+      }
+    }
+    const radius = radiusFamily(utility);
+    if (radius && !contract.radius.includes(radius)) {
+      violations.push(`radius family ${radius} is not legal for ${role}.`);
+    }
+    const spacing = spacingFamily(utility, role);
+    if (spacing && !contract.spacing.includes(spacing)) {
+      violations.push(
+        `${utility} uses raw spacing instead of the density scale.`,
+      );
+    }
+    const elevation = elevationFamily(utility);
+    if (elevation && !contract.elevation.includes(elevation)) {
+      violations.push(
+        `elevation family ${elevation} is not legal for ${role}.`,
+      );
+    }
+    if (utility === "transition-all") {
+      violations.push(
+        "transition-all is not legal; name the changing properties.",
+      );
+    }
+  }
+  return [...new Set(violations)];
+}
+
+function paintRecipe(className, canonical) {
+  const entries = [];
+  for (const token of className.split(/\s+/).filter(Boolean)) {
+    const { modifiers, utility } = tailwindUtility(token);
+    const color = colorClass(utility);
+    if (!color) continue;
+    const family = semanticTokenFamily(color.token, color.channel);
+    if (["raw", "unknown"].includes(family)) continue;
+    const states = stateFamilies(modifiers).sort().join("+") || "rest";
+    const identity = canonical
+      ? canonicalTokenIdentity(color.token)
+      : color.token;
+    entries.push(`${states}:${color.channel}:${identity}`);
+  }
+  return entries.sort().join("|");
+}
+
+function staticRecipeString(expression) {
+  if (
+    ts.isStringLiteral(expression) ||
+    ts.isNoSubstitutionTemplateLiteral(expression)
+  ) {
+    return expression.text;
+  }
+  return null;
+}
+
+export function auditCanonicalTokenRoles({ file, source }) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const rel = relative(file);
+  const findings = [];
+  const seenContracts = new Set();
+  function addMisuse(node, symbol, detail) {
+    findings.push(
+      finding({
+        rule: "token-role-misuse",
+        file: rel,
+        line:
+          sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+        symbol,
+        detail,
+      }),
+    );
+  }
+  function visit(node) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer) &&
+      ts.isIdentifier(node.initializer.expression) &&
+      node.initializer.expression.text === "cva"
+    ) {
+      const symbol = node.name.text;
+      const key = `${rel}:${symbol}`;
+      const contract = CANONICAL_RECIPE_CONTRACTS[key];
+      if (!contract) {
+        addMisuse(
+          node,
+          symbol,
+          "Canonical cva helper has no token-role contract.",
+        );
+        return;
+      }
+      seenContracts.add(key);
+      const base = node.initializer.arguments[0];
+      const baseRecipe = base ? staticRecipeString(base) : "";
+      if (base && baseRecipe === null)
+        addMisuse(
+          base,
+          symbol,
+          "Canonical cva base recipe must be a static string.",
+        );
+      if (baseRecipe !== null) {
+        for (const detail of analyzeTokenRoleClasses({
+          className: baseRecipe,
+          role: contract.role,
+        }))
+          addMisuse(base, symbol, detail);
+      }
+      const config = node.initializer.arguments[1];
+      if (!config || !ts.isObjectLiteralExpression(config)) {
+        addMisuse(
+          node,
+          symbol,
+          "Canonical cva helper must use an object-literal config.",
+        );
+        return;
+      }
+      const variants = objectProperty(config, "variants");
+      if (
+        !variants ||
+        !ts.isPropertyAssignment(variants) ||
+        !ts.isObjectLiteralExpression(variants.initializer)
+      ) {
+        addMisuse(
+          config,
+          symbol,
+          "Canonical cva helper must declare object-literal variants.",
+        );
+        return;
+      }
+      const actualAxes = variants.initializer.properties
+        .map(propertyNameText)
+        .filter(Boolean);
+      const expectedAxes = Object.keys(contract.axes);
+      if (actualAxes.sort().join("|") !== expectedAxes.sort().join("|")) {
+        addMisuse(
+          variants,
+          symbol,
+          `Token-role axes must be exactly ${expectedAxes.join(", ")}.`,
+        );
+      }
+      for (const axisProperty of variants.initializer.properties) {
+        const axis = propertyNameText(axisProperty);
+        if (
+          !axis ||
+          !ts.isPropertyAssignment(axisProperty) ||
+          !ts.isObjectLiteralExpression(axisProperty.initializer)
+        )
+          continue;
+        const role = contract.axes[axis];
+        if (!role) continue;
+        const recipes = [];
+        for (const valueProperty of axisProperty.initializer.properties) {
+          const value = propertyNameText(valueProperty);
+          if (!value || !ts.isPropertyAssignment(valueProperty)) continue;
+          const recipe = staticRecipeString(valueProperty.initializer);
+          if (recipe === null) {
+            addMisuse(
+              valueProperty,
+              `${symbol}.${axis}.${value}`,
+              "Canonical recipe must be a static string.",
+            );
+            continue;
+          }
+          for (const detail of analyzeTokenRoleClasses({
+            className: recipe,
+            role,
+          }))
+            addMisuse(valueProperty, `${symbol}.${axis}.${value}`, detail);
+          recipes.push({
+            node: valueProperty,
+            value,
+            recipe,
+            fingerprint: paintRecipe(recipe, true),
+            paint: paintRecipe(recipe, false),
+          });
+        }
+        for (let left = 0; left < recipes.length; left += 1) {
+          for (let right = left + 1; right < recipes.length; right += 1) {
+            const a = recipes[left];
+            const b = recipes[right];
+            const exactDuplicate =
+              a.recipe.trim().replace(/\s+/g, " ") ===
+              b.recipe.trim().replace(/\s+/g, " ");
+            const aliasDivergence =
+              a.fingerprint &&
+              a.fingerprint === b.fingerprint &&
+              a.paint !== b.paint;
+            if (!exactDuplicate && !aliasDivergence) continue;
+            findings.push(
+              finding({
+                rule: "equivalent-recipe-divergence",
+                file: rel,
+                line:
+                  sourceFile.getLineAndCharacterOfPosition(b.node.getStart())
+                    .line + 1,
+                symbol: `${symbol}.${axis}.${b.value}`,
+                detail: exactDuplicate
+                  ? `Duplicates ${axis}.${a.value}; keep one canonical recipe.`
+                  : `Uses token aliases equivalent to ${axis}.${a.value}; converge on one semantic recipe.`,
+              }),
+            );
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return { findings, seenContracts };
+}
+
+export function assertCanonicalRecipeContractsSeen(seenContracts) {
+  const stale = Object.keys(CANONICAL_RECIPE_CONTRACTS).filter(
+    (key) => !seenContracts.has(key),
+  );
+  if (stale.length > 0) {
+    throw new Error(
+      `Stale canonical token-role contracts: ${stale.join(", ")}`,
+    );
+  }
 }
 
 function indexStaticDeclarations(sourceFile) {
@@ -883,6 +1526,22 @@ export function scanSourceText({
               "className",
               declarations,
             );
+            if (registeredAdapter && className) {
+              for (const detail of analyzeTokenRoleClasses({
+                className,
+                role: registeredAdapter.role,
+              })) {
+                findings.push(
+                  finding({
+                    rule: "token-role-misuse",
+                    file: rel,
+                    line,
+                    symbol: registeredAdapter.symbol,
+                    detail,
+                  }),
+                );
+              }
+            }
             const visualUtility =
               record.imported === "Skeleton" || record.imported === "Tabs"
                 ? SKELETON_PAINT_UTILITY
@@ -1085,7 +1744,18 @@ export function buildComplianceReport(options = {}) {
       source: fs.readFileSync(buttonPath, "utf8"),
     });
   const buttonUsages = [];
+  const seenCanonicalRecipeContracts = new Set();
   for (const file of files) {
+    if (relative(file).startsWith(`${canonicalRoot}/`)) {
+      const tokenAudit = auditCanonicalTokenRoles({
+        file,
+        source: fs.readFileSync(file, "utf8"),
+      });
+      findings.push(...tokenAudit.findings);
+      for (const key of tokenAudit.seenContracts) {
+        seenCanonicalRecipeContracts.add(key);
+      }
+    }
     findings.push(
       ...scanSourceText({
         adapterExports,
@@ -1098,6 +1768,7 @@ export function buildComplianceReport(options = {}) {
       }),
     );
   }
+  assertCanonicalRecipeContractsSeen(seenCanonicalRecipeContracts);
   assertRegisteredAdaptersUsed(adapters, adapterMatches, adapterExports);
   const buttonAxes = buttonDefinitions.map((definition) => {
     const callers = buttonUsages.filter(
@@ -1134,6 +1805,13 @@ export function buildComplianceReport(options = {}) {
   return {
     adapters,
     buttonAxes,
+    canonicalRecipes: Object.entries(CANONICAL_RECIPE_CONTRACTS).map(
+      ([owner, contract]) => ({
+        owner,
+        role: contract.role,
+        axes: contract.axes,
+      }),
+    ),
     counts,
     findings: active,
     scannedFiles: files.length,
@@ -1167,14 +1845,30 @@ export function renderComplianceMarkdown(report) {
     lines.push("");
   }
   lines.push(
+    "## Canonical token-role inventory",
+    "",
+    "| Recipe helper | Base role | Axis roles |",
+    "| --- | --- | --- |",
+  );
+  for (const recipe of report.canonicalRecipes) {
+    lines.push(
+      `| \`${recipe.owner}\` | \`${recipe.role}\` | ${Object.entries(
+        recipe.axes,
+      )
+        .map(([axis, role]) => `\`${axis}:${role}\``)
+        .join(", ")} |`,
+    );
+  }
+  lines.push("");
+  lines.push(
     "## Registered adapters",
     "",
-    "| Owner | Exported symbol | Canonical primitive | Compositions |",
-    "| --- | --- | --- | ---: |",
+    "| Owner | Exported symbol | Canonical primitive | Token role | Compositions |",
+    "| --- | --- | --- | --- | ---: |",
   );
   for (const adapter of report.adapters) {
     lines.push(
-      `| ${adapter.owner} | \`${adapter.symbol}\` | \`${adapter.primitive}\` | ${adapter.matchCount} |`,
+      `| ${adapter.owner} | \`${adapter.symbol}\` | \`${adapter.primitive}\` | \`${adapter.role}\` | ${adapter.matchCount} |`,
     );
   }
   lines.push("");

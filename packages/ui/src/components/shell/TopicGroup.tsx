@@ -101,7 +101,7 @@ export function TitledTopicGroup({
           onClick={() => onCollapsedChange(false)}
           {...gesture}
           className={cn(
-            "my-2 h-auto w-full touch-none gap-2 whitespace-normal rounded-full border border-white/15 bg-white/10 px-3 py-1.5 font-normal text-white/80 hover:bg-white/20 hover:text-white",
+            "my-2 h-auto w-full touch-none gap-2 whitespace-normal rounded-full border border-inverse/15 bg-inverse/10 px-3 py-1.5 font-normal text-inverse/80 hover:bg-inverse/20 hover:text-inverse",
           )}
         >
           <span

@@ -9,7 +9,7 @@ import { memo } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { useAppSelector } from "../../state";
-import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
 import { PluginVisual } from "./PluginVisual";
 
 export interface PluginCardProps {
@@ -181,36 +181,20 @@ export const PluginCard = memo(function PluginCard({
           {t("pluginsview.DEMO")}
         </span>
       ) : (
-        <Button
+        <Switch
           ref={toggleControl.ref}
-          variant={
-            toggleHealth === "error"
-              ? "destructive"
-              : toggleHealth === "attention"
-                ? "warningOutline"
-                : toggleHealth === "ok"
-                  ? "default"
-                  : "outlineMuted"
-          }
-          size="touch"
-          shape="circle"
+          checked={p.enabled}
           data-plugin-toggle={p.id}
           className="shrink-0"
           title={toggleTitle}
+          aria-label={`${p.enabled ? t("common.off") : t("common.on")} ${p.name}`}
           onClick={(e) => {
             e.stopPropagation();
-            void onToggle(p.id, !p.enabled);
           }}
+          onCheckedChange={(enabled) => void onToggle(p.id, enabled)}
           disabled={toggleDisabled}
-          aria-current={p.enabled ? "true" : undefined}
           {...toggleControl.agentProps}
-        >
-          {isToggleBusy
-            ? t("pluginsview.Applying", { defaultValue: "Applying" })
-            : p.enabled
-              ? t("common.on")
-              : t("common.off")}
-        </Button>
+        />
       )}
 
       {p.enabled && p.validationErrors && p.validationErrors.length > 0 && (

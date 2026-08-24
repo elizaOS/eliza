@@ -22,7 +22,8 @@ import { FormSelect, FormSelectItem } from "../../ui/form-select";
 import { Input } from "../../ui/input";
 import { SegmentedControl } from "../../ui/segmented-control";
 import { Slider } from "../../ui/slider";
-import { Switch } from "../../ui/switch";
+import { SettingsSwitchRow } from "../settings-agent-rows";
+import { SettingsRow } from "../settings-layout";
 
 interface SettingsGroupProps {
   children: React.ReactNode;
@@ -90,31 +91,6 @@ function labelToString(label: React.ReactNode, fallback: string): string {
   return typeof label === "string" ? label : fallback;
 }
 
-/** Shared macOS-style row layout: title + description left, control right. */
-function SettingRowShell({
-  title,
-  description,
-  control,
-}: {
-  title: string;
-  description?: string;
-  control?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-6 py-3.5">
-      <div className="min-w-0">
-        <p className="text-sm font-medium leading-6 text-foreground">{title}</p>
-        {description ? (
-          <p className="mt-0.5 text-pretty text-sm-tight leading-5 text-muted-foreground">
-            {description}
-          </p>
-        ) : null}
-      </div>
-      {control ? <div className="shrink-0">{control}</div> : null}
-    </div>
-  );
-}
-
 // ── Switch row ──────────────────────────────────────────────────────────
 
 export interface CloudSwitchRowProps {
@@ -146,37 +122,23 @@ export function CloudSwitchRow({
   className,
   testId,
 }: CloudSwitchRowProps) {
-  const resolvedLabel = agentLabel ?? labelToString(label, agentId);
-  const { ref, agentProps } = useAgentElement<HTMLDivElement>({
-    id: agentId,
-    role: "toggle",
-    label: resolvedLabel,
-    group,
-    description: typeof description === "string" ? description : undefined,
-    status: agentStatus ?? (checked ? "on" : "off"),
-    getValue: () => checked,
-    onActivate: disabled ? undefined : () => onCheckedChange(!checked),
-  });
-  const { "aria-label": _ignored, ...toggleAgentProps } = agentProps;
-
+  const resolvedLabel =
+    agentLabel ?? (typeof label === "string" ? label : agentId);
   return (
-    <div className={className}>
-      <SettingRowShell
-        title={labelToString(label, agentId)}
-        description={typeof description === "string" ? description : undefined}
-        control={
-          <div ref={ref} {...toggleAgentProps} data-testid={testId}>
-            <Switch
-              id={agentId}
-              checked={checked}
-              onCheckedChange={onCheckedChange}
-              disabled={disabled}
-              aria-label={resolvedLabel}
-            />
-          </div>
-        }
-      />
-    </div>
+    <SettingsSwitchRow
+      agentId={agentId}
+      label={label}
+      agentLabel={agentLabel}
+      controlAriaLabel={resolvedLabel}
+      description={description}
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      disabled={disabled}
+      group={group}
+      agentStatus={agentStatus}
+      className={className}
+      testId={testId}
+    />
   );
 }
 
@@ -230,29 +192,28 @@ export function CloudSelectRow({
   const { "aria-label": _ignored, ...selectAgentProps } = agentProps;
 
   return (
-    <div className={className}>
-      <SettingRowShell
-        title={labelToString(label, agentId)}
-        description={typeof description === "string" ? description : undefined}
-        control={
-          <div ref={ref} {...selectAgentProps} data-testid={testId}>
-            <FormSelect
-              value={value}
-              onValueChange={onValueChange}
-              disabled={disabled}
-              triggerClassName="h-9 w-auto min-w-32 rounded-sm px-3 text-sm"
-              aria-label={resolvedLabel}
-            >
-              {options.map((option) => (
-                <FormSelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </FormSelectItem>
-              ))}
-            </FormSelect>
-          </div>
-        }
-      />
-    </div>
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
+      control={
+        <div ref={ref} {...selectAgentProps} data-testid={testId}>
+          <FormSelect
+            value={value}
+            onValueChange={onValueChange}
+            disabled={disabled}
+            triggerClassName="h-9 w-auto min-w-32 rounded-sm px-3 text-sm"
+            aria-label={resolvedLabel}
+          >
+            {options.map((option) => (
+              <FormSelectItem key={option.value} value={option.value}>
+                {option.label}
+              </FormSelectItem>
+            ))}
+          </FormSelect>
+        </div>
+      }
+    />
   );
 }
 
@@ -284,6 +245,7 @@ export function CloudSegmentedRow({
   onValueChange,
   options,
   group = "settings",
+  className,
 }: CloudSegmentedRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLDivElement>({
@@ -298,9 +260,10 @@ export function CloudSegmentedRow({
   });
 
   return (
-    <SettingRowShell
-      title={labelToString(label, agentId)}
-      description={typeof description === "string" ? description : undefined}
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
       control={
         <div ref={ref} {...agentProps}>
           <SegmentedControl
@@ -351,8 +314,10 @@ export function CloudSliderRow({
   unit,
   disabled = false,
   group = "settings",
+  className,
 }: CloudSliderRowProps) {
-  const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+  const resolvedLabel =
+    agentLabel ?? (typeof label === "string" ? label : agentId);
   const { ref, agentProps } = useAgentElement<HTMLDivElement>({
     id: agentId,
     role: "slider",
@@ -365,9 +330,10 @@ export function CloudSliderRow({
   });
 
   return (
-    <SettingRowShell
-      title={labelToString(label, agentId)}
-      description={typeof description === "string" ? description : undefined}
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
       control={
         <div ref={ref} {...agentProps} className="flex w-44 items-center gap-3">
           <Slider
@@ -421,6 +387,7 @@ export function CloudInputRow({
   disabled = false,
   type = "text",
   group = "settings",
+  className,
 }: CloudInputRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLInputElement>({
@@ -436,16 +403,18 @@ export function CloudInputRow({
   const { "aria-label": _ignored, ...inputAgentProps } = agentProps;
 
   return (
-    <SettingRowShell
-      title={labelToString(label, agentId)}
-      description={typeof description === "string" ? description : undefined}
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
+      htmlFor={agentId}
       control={
         <Input
           ref={ref as React.Ref<HTMLInputElement>}
           id={agentId}
           type={type}
           value={value}
-          onChange={(e) => onValueChange(e.target.value)}
+          onChange={(event) => onValueChange(event.target.value)}
           placeholder={placeholder}
           disabled={disabled}
           variant="form"
@@ -498,6 +467,7 @@ export function CloudActionButton({
   variant = "secondary",
   size = "sm",
   group = "settings",
+  className,
 }: CloudActionButtonProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -509,12 +479,13 @@ export function CloudActionButton({
     status: disabled ? "disabled" : "enabled",
     onActivate: disabled ? undefined : onActivate,
   });
-  const { "aria-label": _ignored, ...btnAgentProps } = agentProps;
+  const { "aria-label": _ignored, ...buttonAgentProps } = agentProps;
 
   return (
-    <SettingRowShell
-      title={labelToString(label, agentId)}
-      description={typeof description === "string" ? description : undefined}
+    <SettingsRow
+      label={label}
+      description={description}
+      className={className}
       control={
         <Button
           ref={ref}
@@ -522,7 +493,7 @@ export function CloudActionButton({
           size={ACTION_BUTTON_SIZE[size]}
           onClick={onActivate}
           disabled={disabled}
-          {...(btnAgentProps as Record<string, unknown>)}
+          {...(buttonAgentProps as Record<string, unknown>)}
         >
           {buttonLabel}
         </Button>
@@ -555,23 +526,15 @@ export function CloudRow({
   const effectiveControl = children ?? control ?? null;
 
   return (
-    <div className={cn("py-4", className)} data-testid={rest["data-testid"]}>
-      <div className="flex items-center justify-between gap-6">
-        <div className="min-w-0">
-          <p className="text-sm font-medium leading-6 text-foreground">
-            {label}
-          </p>
-          {description ? (
-            <div className="mt-0.5 text-pretty text-sm-tight leading-5 text-muted-foreground">
-              {description}
-            </div>
-          ) : null}
-        </div>
-        {effectiveControl ? (
-          <div className="shrink-0">{effectiveControl}</div>
-        ) : null}
-      </div>
-      {below}
+    <div data-testid={rest["data-testid"]}>
+      <SettingsRow
+        label={label}
+        description={description}
+        control={effectiveControl}
+        className={cn("py-4", className)}
+      >
+        {below}
+      </SettingsRow>
     </div>
   );
 }

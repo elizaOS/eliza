@@ -9,6 +9,8 @@
     "button-axis-reuse": 0,
     "unstyled-canonical": 0,
     "visual-override": 0,
-    "off-token-color": 0
+    "off-token-color": 0,
+    "token-role-misuse": 0,
+    "equivalent-recipe-divergence": 0
   }
 }

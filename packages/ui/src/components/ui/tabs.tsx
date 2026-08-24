@@ -30,9 +30,9 @@ const tabsTriggerVariants = cva(
     variants: {
       variant: {
         default:
-          "px-3 py-1.5 transition-all data-[state=active]:bg-bg data-[state=active]:text-txt",
+          "px-3 py-1.5 transition-[background-color,color] data-[state=active]:bg-bg data-[state=active]:text-txt",
         brand:
-          "gap-2 border-b-2 border-transparent px-6 py-1.5 text-txt/70 transition-colors hover:text-txt data-[state=active]:border-txt data-[state=active]:bg-bg-hover data-[state=active]:text-txt",
+          "gap-2 border-b-2 border-transparent px-6 py-1.5 text-txt/70 transition-colors hover:text-txt data-[state=active]:border-accent data-[state=active]:bg-bg-hover data-[state=active]:text-txt",
       },
     },
     defaultVariants: { variant: "default" },

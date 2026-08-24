@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 922 maintained React files. 68 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 926 maintained React files. 68 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -23,7 +23,7 @@ Clusters share both a role and an atomic dependency signature. Detection creates
 - `PluginSettingsDialog` in `packages/ui/src/components/pages/plugin-view-dialogs.tsx:68`
 - `EditSkillModal` in `packages/ui/src/components/pages/skill-detail-panel.tsx:35`
 - `InstallModal` in `packages/ui/src/components/pages/skill-installer.tsx:16`
-- `CloudModal` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:593`
+- `CloudModal` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:556`
 - `ConfirmDialog` in `packages/ui/src/components/ui/confirm-dialog.tsx:35`
 - `EventEditorDrawer` in `plugins/plugin-calendar/src/components/EventEditorDrawer.tsx:469`
 - Decision: **distinct-domain-compositions** — The shared atoms describe ordinary modal chrome; the six components own unrelated workflows and state.

@@ -616,7 +616,7 @@ describe("ChatOverlay", () => {
     expect(overlay.style.paddingBottom).toBe(initialPadding);
   });
 
-  it("publishes the full resting footprint and compact-landscape side clearance", () => {
+  it("reserves only side clearance for the compact landscape composer", () => {
     const originalInnerWidth = Object.getOwnPropertyDescriptor(
       window,
       "innerWidth",
@@ -681,7 +681,7 @@ describe("ChatOverlay", () => {
         document.documentElement.style.getPropertyValue(
           "--eliza-chat-clearance",
         ),
-      ).toBe("80px");
+      ).toBe("0px");
 
       fireEvent.focus(screen.getByLabelText("message"));
 
@@ -970,7 +970,7 @@ describe("ChatOverlay", () => {
       );
       const stop = screen.getByTestId("chat-composer-mic");
       expect(stop.className).not.toContain("animate-pulse");
-      expect(stop.className).toContain("text-white");
+      expect(stop.className).toContain("text-inverse");
       expect(stop.className).not.toContain("text-accent");
       expect(stop.getAttribute("aria-label")).toBe("end conversation");
     });
@@ -1437,7 +1437,7 @@ describe("ChatOverlay", () => {
     render(<ChatOverlay controller={makeController({ handsFree: true })} />);
     const mic = screen.getByTestId("chat-composer-mic");
     expect(mic.getAttribute("aria-pressed")).toBe("true");
-    expect(mic.className).toContain("text-white");
+    expect(mic.className).toContain("text-inverse");
     expect(mic.className).not.toContain("text-accent");
     expect(mic.className).not.toContain("animate-pulse");
     expect(mic.className).not.toMatch(/bg-white/);

@@ -44,6 +44,8 @@ export interface SettingsSwitchRowProps {
   label: React.ReactNode;
   /** What the user would say to target it (defaults to the label). */
   agentLabel?: string;
+  /** Explicit accessible name when an adapter must preserve a legacy label. */
+  controlAriaLabel?: string;
   description?: React.ReactNode;
   icon?: LucideIcon;
   iconClassName?: string;
@@ -63,6 +65,7 @@ export function SettingsSwitchRow({
   agentId,
   label,
   agentLabel,
+  controlAriaLabel,
   description,
   icon,
   iconClassName,
@@ -103,6 +106,7 @@ export function SettingsSwitchRow({
           checked={checked}
           onCheckedChange={onCheckedChange}
           disabled={disabled}
+          aria-label={controlAriaLabel}
           data-testid={testId}
           {...switchAgentProps}
         />

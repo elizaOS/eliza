@@ -2,9 +2,19 @@
   "schemaVersion": 1,
   "adapters": [
     {
+      "file": "packages/ui/src/components/shared/ActionListRow.tsx",
+      "symbol": "ActionListRow",
+      "primitive": "Button",
+      "role": "action",
+      "owner": "UI action-list-row composite",
+      "reason": "Owns native button and link semantics with one selected row recipe and shared leading, copy, metadata, and trailing slots.",
+      "matchCount": 2
+    },
+    {
       "file": "packages/ui/src/components/composites/sidebar/sidebar-content.tsx",
       "symbol": "SidebarRailItem",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI sidebar composite",
       "reason": "Owns the rail item's selected state, indicator slot, and compact navigation geometry.",
       "matchCount": 1
@@ -13,6 +23,7 @@
       "file": "packages/ui/src/components/composites/sidebar/sidebar-content.tsx",
       "symbol": "SidebarItemAction",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI sidebar composite",
       "reason": "Owns the sidebar row's hover-revealed destructive action affordance.",
       "matchCount": 1
@@ -21,6 +32,7 @@
       "file": "packages/ui/src/components/pages/RelationshipsGraphPanel.tsx",
       "symbol": "GraphZoomButton",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI relationships graph",
       "reason": "Owns the graph-specific tabular zoom percentage toggle geometry.",
       "matchCount": 1
@@ -29,6 +41,7 @@
       "file": "packages/ui/src/components/shared/CollapsibleSidebarSection.tsx",
       "symbol": "CollapsibleSidebarSection",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI collapsible sidebar section",
       "reason": "Owns section expansion, indicator, and compact sidebar toggle geometry.",
       "matchCount": 2
@@ -37,6 +50,7 @@
       "file": "packages/ui/src/components/shell/ChatOverlay.tsx",
       "symbol": "SoftButton",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI shell chat overlay",
       "reason": "Owns the overlay control's pressed, focusable-disabled, and pointer-gesture states.",
       "matchCount": 1
@@ -45,6 +59,7 @@
       "file": "packages/ui/src/components/shell/ChatOverlay.tsx",
       "symbol": "PillHandle",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI shell chat overlay",
       "reason": "Owns the collapsed chat pill's pull target and keyboard activation lifecycle.",
       "matchCount": 1
@@ -53,6 +68,7 @@
       "file": "packages/ui/src/components/shell/glass-composer.tsx",
       "symbol": "GlassIconButton",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI glass composer",
       "reason": "Owns microphone, vision, and send pointer activation with pressed-state presentation.",
       "matchCount": 1
@@ -61,6 +77,7 @@
       "file": "packages/ui/src/components/shell/HomePill.tsx",
       "symbol": "HomePill",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI shell Home pill",
       "reason": "Owns launcher, authentication, listening, speaking, and composer-size morph states.",
       "matchCount": 1
@@ -69,6 +86,7 @@
       "file": "packages/ui/src/components/shell/notification-shade-content.tsx",
       "symbol": "NotificationRow",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI shell notification shade",
       "reason": "Owns notification-row opening and stack-peek expansion gestures in one lifecycle.",
       "matchCount": 2
@@ -77,6 +95,7 @@
       "file": "packages/ui/src/components/shell/NotificationsHomeCenter.tsx",
       "symbol": "NotificationStackClearButton",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI shell notifications center",
       "reason": "Owns the stack clear action's confirming label and animated width transition.",
       "matchCount": 1
@@ -85,6 +104,7 @@
       "file": "packages/ui/src/components/shell/SlashCommandMenu.tsx",
       "symbol": "SlashCommandMenu",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI shell slash-command menu",
       "reason": "Owns listbox option focus retention, active selection, and wallpaper-row geometry.",
       "matchCount": 1
@@ -93,6 +113,7 @@
       "file": "packages/ui/src/components/shell/TopicGroup.tsx",
       "symbol": "TitledTopicGroup",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI shell topic group",
       "reason": "Owns the gesture-driven collapsed pill and expanded divider as one state machine.",
       "matchCount": 2
@@ -101,6 +122,7 @@
       "file": "packages/ui/src/components/shell/TrayLauncher.tsx",
       "symbol": "TrayLauncher",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI shell tray launcher",
       "reason": "Owns runtime launcher rows and dispatches their shared tray action contract.",
       "matchCount": 1
@@ -109,6 +131,7 @@
       "file": "packages/ui/src/components/ui/calendar.tsx",
       "symbol": "CalendarDayButton",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI calendar adapter",
       "reason": "Translates DayPicker focus, selection, and range modifiers into calendar-cell presentation.",
       "matchCount": 1
@@ -117,6 +140,7 @@
       "file": "packages/ui/src/components/ui/confirm-dialog.tsx",
       "symbol": "ConfirmDialog",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI confirm-dialog adapter",
       "reason": "Maps confirmation domain tones to the paired cancel and confirmation actions.",
       "matchCount": 2
@@ -125,6 +149,7 @@
       "file": "packages/ui/src/components/ui/new-action-button.tsx",
       "symbol": "NewActionButton",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI new-action adapter",
       "reason": "Owns the full-width create affordance and normalizes its leading icon label.",
       "matchCount": 1
@@ -133,6 +158,7 @@
       "file": "packages/ui/src/components/ui/tag-editor.tsx",
       "symbol": "TagEditor",
       "primitive": "Button",
+      "role": "action",
       "owner": "UI tag-editor adapter",
       "reason": "Owns removal-control geometry inside the compound tag chip.",
       "matchCount": 1

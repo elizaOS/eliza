@@ -236,6 +236,11 @@
       "import": "./dist/components/composites/page-panel/index.js",
       "default": "./dist/components/composites/page-panel/index.js"
     },
+    "./components/composites/settings": {
+      "types": "./dist/components/composites/settings/index.d.ts",
+      "import": "./dist/components/composites/settings/index.js",
+      "default": "./dist/components/composites/settings/index.js"
+    },
     "./components/*": {
       "types": "./dist/components/*.d.ts",
       "import": "./dist/components/*.js",

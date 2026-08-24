@@ -40,16 +40,14 @@ const inputVariants = cva(
           "rounded-sm border-border bg-surface px-3 py-2 text-xs placeholder:text-muted/50",
         admin:
           "rounded-sm border-border bg-card px-3 font-mono text-sm text-txt placeholder:text-muted/60",
-        publicPhoneLight:
-          "h-14 flex-1 rounded-none border-0 bg-transparent px-4 text-base text-neutral-900 shadow-none placeholder:text-neutral-400",
-        publicPhoneGlass:
-          "h-14 flex-1 rounded-none border-0 bg-transparent px-4 text-base text-neutral-900 shadow-none placeholder:text-neutral-400",
+        publicPhone:
+          "h-14 flex-1 rounded-none border-0 bg-transparent px-4 text-base text-inverse-foreground shadow-none placeholder:text-muted",
         publicPhoneDark:
-          "h-12 flex-1 rounded-none border-0 bg-transparent px-3 text-sm text-white shadow-none placeholder:text-white/30",
+          "h-12 flex-1 rounded-none border-0 bg-transparent px-3 text-sm text-inverse shadow-none placeholder:text-inverse/30",
         modal:
           "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted",
         publicChat:
-          "h-11 flex-1 rounded-full border-white/60 bg-white/50 px-[18px] text-base shadow-none",
+          "h-11 flex-1 rounded-full border-inverse/60 bg-inverse/50 px-4.5 text-base shadow-none",
         settingsCompact: "rounded-sm border-border bg-card px-3 text-xs",
         settingsFilter: "rounded-sm border-border/50 bg-bg/80 text-sm text-txt",
         settingsTouch:

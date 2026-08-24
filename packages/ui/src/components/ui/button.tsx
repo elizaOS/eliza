@@ -51,14 +51,15 @@ const buttonVariants = cva(
         choice:
           "border border-border-strong bg-card text-txt-strong hover:border-accent hover:bg-surface disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
         publicRow:
-          "h-full min-w-0 flex-1 justify-start gap-4 rounded-none bg-transparent p-0 text-left text-black whitespace-normal hover:bg-transparent hover:text-white",
-        publicTile: "bg-white text-black hover:bg-black hover:text-white",
+          "h-full min-w-0 flex-1 justify-start gap-4 rounded-none bg-transparent p-0 text-left text-inverse-foreground whitespace-normal hover:bg-transparent hover:text-inverse",
+        publicTile:
+          "bg-inverse text-inverse-foreground hover:bg-inverse-foreground hover:text-inverse",
         publicLink:
           "h-auto bg-transparent p-0 text-xs text-muted underline-offset-2 hover:bg-transparent hover:text-txt",
         weatherPrompt:
-          "flex-col items-end bg-transparent text-right text-white transition-opacity hover:bg-transparent hover:opacity-80",
+          "flex-col items-end bg-transparent text-right text-inverse transition-opacity hover:bg-transparent hover:opacity-80",
         launcherTile:
-          "h-auto w-full flex-col gap-2.5 rounded-2xl bg-transparent p-0 text-white whitespace-normal hover:bg-transparent hover:text-white",
+          "h-auto w-full flex-col gap-2.5 rounded-2xl bg-transparent p-0 text-inverse whitespace-normal hover:bg-transparent hover:text-inverse",
         queryHistory:
           "h-auto w-full justify-start whitespace-normal rounded-sm bg-transparent px-3 py-2 text-left font-mono text-xs-tight text-muted-strong hover:bg-surface hover:text-txt",
         dangerOutline:
@@ -77,13 +78,13 @@ const buttonVariants = cva(
         warningOutline:
           "border border-warning/35 bg-warning/12 text-warning hover:border-warning/50 hover:bg-warning/18 hover:text-warning",
         outlineAccent:
-          "border border-border/40 bg-card/40 text-muted transition-all hover:border-accent hover:bg-accent/5 hover:text-txt",
+          "border border-border/40 bg-card/40 text-muted transition-[border-color,background-color,color] hover:border-accent hover:bg-accent/5 hover:text-txt",
         mediaZoom: "h-auto rounded-sm bg-transparent p-0 hover:bg-transparent",
         transparent: "bg-transparent hover:bg-transparent",
         disclosureMuted:
           "w-full justify-between bg-transparent text-xs text-muted hover:bg-transparent hover:text-txt",
         overlayEdge:
-          "bg-transparent text-white/55 hover:bg-transparent hover:text-white",
+          "bg-transparent text-inverse/55 hover:bg-transparent hover:text-inverse",
         memorySidebar:
           "border border-border bg-card/40 text-txt hover:bg-card/70",
       },
@@ -128,9 +129,9 @@ const buttonVariants = cva(
         "icon-xs": "size-6 rounded-sm p-0",
         toolbar: "h-10 rounded-sm px-3 text-sm",
         carouselControl: "size-8 rounded-sm p-0",
-        pageDrawerTrigger: "h-[2.375rem] rounded-sm px-3 text-sm font-semibold",
+        pageDrawerTrigger: "h-9.5 rounded-sm px-3 text-sm font-semibold",
         publicTile:
-          "h-[72px] w-full justify-start gap-4 rounded-xs px-5 text-left whitespace-normal",
+          "h-18 w-full justify-start gap-4 rounded-xs px-5 text-left whitespace-normal",
         memorySidebar:
           "h-11 w-full justify-between gap-2 rounded-sm px-3 text-start text-sm font-medium",
       },

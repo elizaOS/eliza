@@ -72,7 +72,7 @@ export function ConfirmDialog({
             }
             className={
               variant === "warn"
-                ? "border border-warn/55 bg-warn/92 text-black hover:border-warn hover:bg-warn"
+                ? "border border-warn/55 bg-warn/92 text-accent-fg hover:border-warn hover:bg-warn"
                 : undefined
             }
             onClick={onConfirm}

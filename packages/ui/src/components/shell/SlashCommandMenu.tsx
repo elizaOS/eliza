@@ -343,7 +343,7 @@ export function SlashCommandMenu({
             variant="transparent"
             size="content"
             align="start"
-            className="h-auto w-full gap-3 rounded-none bg-transparent px-3.5 py-2 font-normal whitespace-normal hover:bg-white/8 data-[active=true]:bg-white/15"
+            className="h-auto w-full gap-3 rounded-none bg-transparent px-3.5 py-2 font-normal whitespace-normal hover:bg-bg-hover data-[active=true]:bg-bg-muted"
           >
             <span
               className={cn(

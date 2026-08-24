@@ -540,7 +540,7 @@ export function SoftButton({
         // pointers. Real target geometry avoids overlapping pseudo hit areas
         // when compact screens draw the two trailing controls closer together.
         "relative grid shrink-0 place-items-center [&_svg]:size-5",
-        "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-white data-[state=on]:hover:text-white aria-[disabled=true]:pointer-events-none aria-[disabled=true]:opacity-40",
+        "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-inverse data-[state=on]:hover:text-inverse aria-[disabled=true]:pointer-events-none aria-[disabled=true]:opacity-40",
         // Batch capture has no inline waveform, so its glyph breathes; realtime
         // voice keeps this control static because the composer owns the motion.
         pulse && "animate-pulse motion-reduce:animate-none",
@@ -1945,40 +1945,6 @@ export function ChatOverlay({
     };
     scheduleClear(180);
   }, []);
-  // Publish the RESTING composer footprint to --eliza-chat-clearance
-  // so content below (home widgets, launcher tiles) always reserves exactly the
-  // space the collapsed composer occupies. Without this the var was never set —
-  // every surface rode the 5.25rem fallback, which a multi-line draft or pending
-  // attachments overgrow, letting the composer cover content. Only measured
-  // while collapsed: an expanded/full sheet covers the screen, so its height
-  // must NOT become the reserved clearance.
-  React.useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof ResizeObserver === "undefined"
-    ) {
-      return;
-    }
-    const panel = getPanelElement();
-    const root = document.documentElement;
-    if (sheetOpen) return; // Keep the last resting value while the sheet is open.
-    if (!panel) return;
-    const publish = () => {
-      const h =
-        panel.getBoundingClientRect().height + CHAT_CLEARANCE_REST_GAP_PX;
-      // Cap it: a mid-collapse frame can report the open panel height, and
-      // reserving that in the home/launcher layout clips the top apps off-screen.
-      if (h > 0)
-        root.style.setProperty(
-          "--eliza-chat-clearance",
-          `${Math.min(Math.ceil(h), CHAT_CLEARANCE_MAX_PX)}px`,
-        );
-    };
-    publish();
-    const ro = new ResizeObserver(publish);
-    ro.observe(panel);
-    return () => ro.disconnect();
-  }, [sheetOpen, getPanelElement]);
   // The composer content (textarea + thread). Held so we can imperatively clear
   // its `inert` (set while pilled) the instant the pill is tapped open, before
   // React re-renders — iOS only raises the keyboard for a focus() that lands on
@@ -2963,6 +2929,44 @@ export function ChatOverlay({
     !recording &&
     !responding &&
     !pinnedOpen;
+
+  // Publish the RESTING composer footprint to --eliza-chat-clearance so routed
+  // content reserves exactly the space the collapsed composer occupies. The
+  // compact short-landscape composer sits in the inline-end corner instead of
+  // spanning the bottom edge, so that mode reserves side clearance only. A
+  // bottom reservation there removes usable height from overflow-hidden views
+  // and clips their final rows even though the composer does not cover them.
+  React.useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+    const panel = getPanelElement();
+    const root = document.documentElement;
+    if (sheetOpen) return; // Keep the last resting value while the sheet is open.
+    if (!panel) return;
+    const publish = () => {
+      if (compactLanding) {
+        root.style.setProperty("--eliza-chat-clearance", "0px");
+        return;
+      }
+      const h =
+        panel.getBoundingClientRect().height + CHAT_CLEARANCE_REST_GAP_PX;
+      // Cap it: a mid-collapse frame can report the open panel height, and
+      // reserving that in the home/launcher layout clips the top apps off-screen.
+      if (h > 0)
+        root.style.setProperty(
+          "--eliza-chat-clearance",
+          `${Math.min(Math.ceil(h), CHAT_CLEARANCE_MAX_PX)}px`,
+        );
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(panel);
+    return () => ro.disconnect();
+  }, [compactLanding, sheetOpen, getPanelElement]);
 
   // In short landscape the resting composer moves to the bottom inline-end
   // corner. Publish that footprint separately from bottom clearance so hosted

@@ -142,11 +142,9 @@ export function PhoneNumberInput({
       <Input
         type="tel"
         variant={
-          variant === "light"
-            ? "publicPhoneLight"
-            : variant === "glass"
-              ? "publicPhoneGlass"
-              : "publicPhoneDark"
+          variant === "light" || variant === "glass"
+            ? "publicPhone"
+            : "publicPhoneDark"
         }
         placeholder={t("homepage_eliza.phoneInput.placeholder", {
           defaultValue: "(000) 000-0000",
