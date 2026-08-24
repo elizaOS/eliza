@@ -450,7 +450,9 @@ jobs:
     name: Integration Lane (personal-assistant + agent)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.server == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # This lane owns a real PostgreSQL approval contract below, so it needs a
+    # runner whose Docker daemon is part of the platform contract.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       PGLITE_WASM_MODE: node
@@ -492,6 +494,26 @@ jobs:
       - name: Run agent integration lane
         timeout-minutes: 20
         run: bun run --cwd packages/agent test:integration
+
+      - name: Start approval PostgreSQL test server
+        run: |
+          docker rm -f eliza-approval-test-postgres >/dev/null 2>&1 || true
+          docker run \
+            --name eliza-approval-test-postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=eliza_test \
+            -p 5432:5432 \
+            -d pgvector/pgvector:pg16
+          timeout 60 bash -c 'until docker exec eliza-approval-test-postgres pg_isready -U postgres -d eliza_test; do sleep 0.5; done'
+
+      - name: Run approval PostgreSQL integration contract
+        timeout-minutes: 5
+        env:
+          POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/eliza_test
+        run: >-
+          bunx vitest run
+          --config packages/scripts/vitest/integration.config.ts
+          packages/agent/test/approval-index.postgres.integration.test.ts
 
   desktop-contract:
     name: Electrobun Desktop Contract
