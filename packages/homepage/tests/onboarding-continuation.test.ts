@@ -85,4 +85,76 @@ describe("resolveOnboardingEntryStep", () => {
       }),
     ).toBeNull();
   });
+
+  test("authentication outranks an in-flight Discord OAuth callback", () => {
+    expect(
+      resolveOnboardingEntryStep({
+        onboardingSessionId: SESSION,
+        isAuthenticated: true,
+        isLinkMode: false,
+        discordCode: "oauth-code",
+        methodParam: null,
+      }),
+    ).toBe("CONTINUATION_LINK");
+  });
+
+  test("authentication outranks an explicit method override", () => {
+    expect(
+      resolveOnboardingEntryStep({
+        onboardingSessionId: SESSION,
+        isAuthenticated: true,
+        isLinkMode: false,
+        discordCode: null,
+        methodParam: "telegram",
+      }),
+    ).toBe("CONTINUATION_LINK");
+  });
+
+  test("an empty session id is not a continuation", () => {
+    expect(
+      resolveOnboardingEntryStep({
+        onboardingSessionId: "",
+        isAuthenticated: false,
+        isLinkMode: false,
+        discordCode: null,
+        methodParam: null,
+      }),
+    ).toBeNull();
+  });
+
+  test("unauthenticated link mode never lands on sign-in", () => {
+    expect(
+      resolveOnboardingEntryStep({
+        onboardingSessionId: SESSION,
+        isAuthenticated: false,
+        isLinkMode: true,
+        discordCode: null,
+        methodParam: null,
+      }),
+    ).toBeNull();
+  });
+
+  test("an empty Discord code does not divert a signed-out continuation", () => {
+    expect(
+      resolveOnboardingEntryStep({
+        onboardingSessionId: SESSION,
+        isAuthenticated: false,
+        isLinkMode: false,
+        discordCode: "",
+        methodParam: null,
+      }),
+    ).toBe("ONBOARDING_SIGN_IN");
+  });
+
+  test("an empty method parameter does not divert a signed-out continuation", () => {
+    expect(
+      resolveOnboardingEntryStep({
+        onboardingSessionId: SESSION,
+        isAuthenticated: false,
+        isLinkMode: false,
+        discordCode: null,
+        methodParam: "",
+      }),
+    ).toBe("ONBOARDING_SIGN_IN");
+  });
 });
