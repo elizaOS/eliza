@@ -8,7 +8,10 @@ export function getCookieValueFromHeader(header: string | null, name: string): s
   for (const segment of segments) {
     const trimmed = segment.trim();
     if (!trimmed.startsWith(`${name}=`)) continue;
-    const raw = trimmed.slice(name.length + 1).trimStart();
+    let raw = trimmed.slice(name.length + 1).trimStart();
+    if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+      raw = raw.slice(1, -1);
+    }
     try {
       return decodeURIComponent(raw);
     } catch {

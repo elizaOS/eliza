@@ -5,6 +5,7 @@ describe("cookie-header", () => {
   it("parses single cookie", () => {
     expect(getCookieValueFromHeader("a=1; b=2", "b")).toBe("2");
     expect(getCookieValueFromHeader("token=abc%20def", "token")).toBe("abc def");
+    expect(getCookieValueFromHeader('token="abc%20def"', "token")).toBe("abc def");
   });
 
   it("returns undefined for missing or null", () => {
