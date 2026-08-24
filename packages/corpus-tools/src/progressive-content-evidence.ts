@@ -24,6 +24,24 @@ export const CONTENT_CONTEXT_REQUIRED_ARTIFACTS = [
   "e2e.json",
 ] as const;
 
+export const CONTENT_CONTEXT_FAMILIES = [
+  "file",
+  "document",
+  "memory",
+  "email",
+  "attachment",
+  "tool-output",
+] as const;
+
+export const CONTENT_CONTEXT_REQUIRED_FAULTS = [
+  "unauthorized",
+  "revoked-authorization",
+  "stale-revision",
+  "missing-source",
+  "tampered-reference",
+  "concurrent-cleanup",
+] as const;
+
 export type ContentContextRequiredArtifact =
   (typeof CONTENT_CONTEXT_REQUIRED_ARTIFACTS)[number];
 
@@ -193,6 +211,8 @@ function semanticFailures(
     (value) => record(value, "realization entry"),
   );
   const objectsById = new Map(objects.map((object) => [object.id, object]));
+  if (objectsById.size !== objects.length)
+    failures.push("corpus object identities are duplicated");
   const realizedObjectIds = new Set<unknown>();
   for (const entry of realizationEntries) {
     const object = objectsById.get(entry.objectId);
@@ -234,14 +254,21 @@ function semanticFailures(
   );
   if (
     conformanceReports.length !== objects.length ||
+    conformanceObjectIds.size !== conformanceReports.length ||
     objects.some(({ id }) => !conformanceObjectIds.has(id))
   )
     failures.push(
       "conformance does not cover every native object exactly once",
     );
   for (const report of conformanceReports) {
+    const object = objectsById.get(report.objectId);
     if (
       report.status !== "passed" ||
+      !object ||
+      report.reassembledSha256 !== object.sourceSha256 ||
+      typeof report.pages !== "number" ||
+      !Number.isSafeInteger(report.pages) ||
+      report.pages < (object.byteLength === 0 ? 0 : 1) ||
       report.restartVerified !== true ||
       report.concurrencyVerified !== true ||
       report.repeatedPageVerified !== true ||
@@ -288,9 +315,19 @@ function semanticFailures(
     failures.push("mutant report does not prove executable kills");
 
   const sourceWork = json(bytes["source-work.json"], "source work");
-  for (const sample of array(sourceWork.samples, "source samples").map(
+  const sourceSamples = array(sourceWork.samples, "source samples").map(
     (value) => record(value, "source sample"),
-  )) {
+  );
+  const sourceObjectIds = new Set(
+    sourceSamples.map(({ objectId }) => objectId),
+  );
+  if (
+    sourceSamples.length !== objects.length ||
+    sourceObjectIds.size !== sourceSamples.length ||
+    objects.some(({ id }) => !sourceObjectIds.has(id))
+  )
+    failures.push("source-work does not cover every object exactly once");
+  for (const sample of sourceSamples) {
     if (
       typeof sample.rowsRead !== "number" ||
       sample.rowsRead > 8 ||
@@ -307,12 +344,7 @@ function semanticFailures(
     (value) => record(value, "benchmark case"),
   );
   for (const minimum of [1024 * 1024, 10 * 1024 * 1024]) {
-    if (
-      !benchmarkCases.some(
-        ({ sourceBytes }) =>
-          typeof sourceBytes === "number" && sourceBytes >= minimum,
-      )
-    )
+    if (!benchmarkCases.some(({ sourceBytes }) => sourceBytes === minimum))
       failures.push(`benchmark lacks ${minimum} byte scale`);
   }
   for (const entry of benchmarkCases) {
@@ -334,23 +366,36 @@ function semanticFailures(
   }
 
   const cleanup = json(bytes["cleanup.json"], "cleanup");
+  const cleanupProbes = array(cleanup.probes, "cleanup probes").map((value) =>
+    record(value, "cleanup probe"),
+  );
+  const cleanupObjectIds = new Set(
+    cleanupProbes.map(({ objectId }) => objectId),
+  );
   if (
     cleanup.status !== "passed" ||
     cleanup.restartVerified !== true ||
     cleanup.authorizationVerified !== true ||
-    array(cleanup.probes, "cleanup probes").some(
-      (value) => record(value, "cleanup probe").absent !== true,
-    )
+    cleanupProbes.length !== objects.length ||
+    cleanupObjectIds.size !== cleanupProbes.length ||
+    objects.some(({ id }) => !cleanupObjectIds.has(id)) ||
+    cleanupProbes.some(({ absent }) => absent !== true)
   )
     failures.push(
       "cleanup evidence lacks absence, restart, or authorization proof",
     );
 
   const pageLedger = jsonLines(bytes["page-ledger.jsonl"], "page ledger");
-  const pageObjectIds = new Set(pageLedger.map(({ objectId }) => objectId));
+  const pageRowsByObject = new Map<string, Record<string, unknown>[]>();
+  for (const row of pageLedger) {
+    if (typeof row.objectId !== "string") continue;
+    const rows = pageRowsByObject.get(row.objectId) ?? [];
+    rows.push(row);
+    pageRowsByObject.set(row.objectId, rows);
+  }
   if (
-    pageLedger.length < objects.length ||
-    objects.some(({ id }) => !pageObjectIds.has(id)) ||
+    pageRowsByObject.size !== objects.length ||
+    [...pageRowsByObject.keys()].some((id) => !objectsById.has(id)) ||
     pageLedger.some((entry) => {
       const range = record(entry.range, "page ledger range");
       return (
@@ -367,6 +412,33 @@ function semanticFailures(
     })
   )
     failures.push("page ledger lacks exact bounded native reads");
+  for (const object of objects) {
+    if (typeof object.id !== "string") {
+      failures.push("page ledger encountered an invalid corpus identity");
+      continue;
+    }
+    const rows = pageRowsByObject.get(object.id) ?? [];
+    let expectedStart = 0;
+    for (const row of rows) {
+      const range = record(row.range, "page ledger range");
+      if (
+        row.revision !== object.revision ||
+        range.start !== expectedStart ||
+        typeof range.end !== "number" ||
+        range.end < expectedStart
+      ) {
+        expectedStart = -1;
+        break;
+      }
+      expectedStart = range.end;
+    }
+    if (
+      expectedStart !== object.byteLength ||
+      rows.length === 0 ||
+      (rows.length === 1 && rows[0]?.sliceSha256 !== object.sourceSha256)
+    )
+      failures.push(`page ledger is not a full traversal for ${object.id}`);
+  }
 
   const promptTokens = json(bytes["prompt-tokens.json"], "prompt tokens");
   const promptTokenCases = array(promptTokens.cases, "prompt token cases");
@@ -388,14 +460,24 @@ function semanticFailures(
     failures.push("final prompt-token evidence is incomplete or over budget");
 
   const faults = json(bytes["faults.json"], "fault report");
+  const faultCatalog = array(faults.catalog, "fault catalog");
+  const faultResults = array(faults.results, "fault results").map((value) =>
+    record(value, "fault result"),
+  );
   if (
     faults.status !== "passed" ||
     typeof faults.required !== "number" ||
     faults.required === 0 ||
     faults.required !== faults.executed ||
-    array(faults.results, "fault results").some(
-      (value) => record(value, "fault result").status !== "passed",
-    )
+    faultCatalog.length !== CONTENT_CONTEXT_REQUIRED_FAULTS.length ||
+    new Set(faultCatalog).size !== faultCatalog.length ||
+    CONTENT_CONTEXT_REQUIRED_FAULTS.some((id) => !faultCatalog.includes(id)) ||
+    faultResults.length !== CONTENT_CONTEXT_REQUIRED_FAULTS.length ||
+    new Set(faultResults.map(({ id }) => id)).size !== faultResults.length ||
+    CONTENT_CONTEXT_REQUIRED_FAULTS.some(
+      (id) => !faultResults.some((result) => result.id === id),
+    ) ||
+    faultResults.some(({ status }) => status !== "passed")
   )
     failures.push("fault matrix is incomplete or failed");
 
@@ -409,21 +491,44 @@ function semanticFailures(
   if (
     stress.status !== "passed" ||
     stressReports.length !== objects.length ||
+    stressObjectIds.size !== stressReports.length ||
     objects.some(({ id }) => !stressObjectIds.has(id)) ||
-    stressReports.some((report) =>
-      [1, 8, 32, 64].some(
-        (level) =>
-          !array(report.cases, "stress cases").some(
-            (value) => record(value, "stress case").concurrency === level,
-          ),
-      ),
-    )
+    stressReports.some((report) => {
+      if (report.status !== "passed") return true;
+      const cases = array(report.cases, "stress cases").map((value) =>
+        record(value, "stress case"),
+      );
+      return (
+        [1, 8, 32, 64].some(
+          (level) => !cases.some(({ concurrency }) => concurrency === level),
+        ) ||
+        cases.some((entry) => {
+          const work = record(entry.sourceWork, "stress source work");
+          return (
+            entry.status !== "passed" ||
+            (Array.isArray(entry.failures) && entry.failures.length > 0) ||
+            work.parentScans !== 0 ||
+            typeof entry.operations !== "number" ||
+            !Number.isSafeInteger(entry.operations) ||
+            entry.operations <= 0 ||
+            typeof work.bytesRead !== "number" ||
+            typeof work.readCalls !== "number" ||
+            typeof work.rowsRead !== "number" ||
+            work.bytesRead > entry.operations * 128 * 1024 ||
+            work.readCalls > entry.operations * 2 ||
+            work.rowsRead > entry.operations * 8
+          );
+        })
+      );
+    })
   )
     failures.push("stress evidence lacks required concurrency levels");
 
   const soak = json(bytes["soak.json"], "soak report");
   if (
     soak.status !== "passed" ||
+    soak.commit !== result.commit ||
+    soak.corpusManifestSha256 !== result.corpusManifestSha256 ||
     typeof soak.durationMs !== "number" ||
     soak.durationMs < 6 * 60 * 60 * 1_000 ||
     typeof soak.operations !== "number" ||
@@ -433,10 +538,21 @@ function semanticFailures(
     failures.push("soak evidence lacks duration, operations, or leak control");
 
   const postgres = json(bytes["postgres.json"], "Postgres report");
+  const postgresFamilies = array(postgres.families, "Postgres families");
   if (
     postgres.status !== "passed" ||
     postgres.backend !== "postgres" ||
-    array(postgres.families, "Postgres families").length < 6 ||
+    postgres.commit !== result.commit ||
+    postgres.corpusManifestSha256 !== result.corpusManifestSha256 ||
+    typeof postgres.version !== "string" ||
+    !postgres.version ||
+    typeof postgres.command !== "string" ||
+    !postgres.command ||
+    postgresFamilies.length !== CONTENT_CONTEXT_FAMILIES.length ||
+    new Set(postgresFamilies).size !== postgresFamilies.length ||
+    CONTENT_CONTEXT_FAMILIES.some(
+      (family) => !postgresFamilies.includes(family),
+    ) ||
     postgres.sharedVectorsPassed !== true
   )
     failures.push("real Postgres evidence is incomplete");
@@ -474,11 +590,16 @@ function semanticFailures(
     trajectories.some(
       (entry) =>
         entry.status !== "passed" ||
+        entry.commit !== result.commit ||
+        entry.corpusManifestSha256 !== result.corpusManifestSha256 ||
         entry.providerQualified !== true ||
         typeof entry.provider !== "string" ||
         !entry.provider ||
         typeof entry.model !== "string" ||
         !entry.model ||
+        /fixture|mock|test|deterministic/iu.test(
+          `${entry.provider} ${entry.model}`,
+        ) ||
         entry.answerLeakageDetected === true,
     )
   )
@@ -489,6 +610,12 @@ function semanticFailures(
   const e2e = json(bytes["e2e.json"], "E2E report");
   if (
     e2e.status !== "passed" ||
+    e2e.commit !== result.commit ||
+    e2e.corpusManifestSha256 !== result.corpusManifestSha256 ||
+    typeof e2e.runId !== "string" ||
+    !e2e.runId ||
+    !Array.isArray(e2e.artifactPaths) ||
+    e2e.artifactPaths.length < 4 ||
     [
       "api",
       "ui",
