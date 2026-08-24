@@ -975,6 +975,130 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     }
   });
 
+  test("an already-stopped billing target honors funding restored after enqueue", async () => {
+    const { agentId, orgId, userId } = await seedAgent({
+      executionTier: "dedicated-always",
+    });
+    const periodStart = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "1.000000" })
+      .where(eq(organizations.id, orgId));
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "stopped",
+        billing_status: "shutdown_pending",
+        sandbox_id: `sandbox-${agentId}`,
+        last_backup_at: new Date(),
+        last_billed_at: periodStart,
+        scheduled_shutdown_at: new Date(0),
+        shutdown_warning_sent_at: new Date(0),
+      })
+      .where(eq(agentSandboxes.id, agentId));
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: orgId,
+      workload_kind: "agent",
+      workload_id: agentId,
+      lifecycle_revision: 0,
+      billing_state: "running",
+      rate_per_hour: "0.010000",
+      effective_at: periodStart,
+    });
+    const [current] = await dbWrite
+      .select({ lifecycleRevision: agentSandboxes.lifecycle_revision })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, agentId));
+    const enqueued = await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      authorization: "billing_request",
+      expectedLifecycleRevision: current.lifecycleRevision,
+    });
+    type FundedStoppedSuspendService = {
+      executeSuspend(
+        targetAgentId: string,
+        targetOrganizationId: string,
+        jobId: string,
+        authorization: "user_request" | "billing_request",
+        expectedLifecycleRevision?: number,
+      ): Promise<{
+        success: boolean;
+        containerStopped: boolean;
+        skipped?: boolean;
+        reason?: string;
+        error?: string;
+      }>;
+      runBoundedSandboxStopForReplacement(sandboxId: string): Promise<{ error: unknown } | null>;
+      prepareSuspendBackupGate(
+        rec: unknown,
+      ): Promise<{ outcome: "proceed"; capturedFresh: boolean }>;
+    };
+    const service = elizaSandboxService as unknown as FundedStoppedSuspendService;
+    const providerStop = spyOn(service, "runBoundedSandboxStopForReplacement").mockResolvedValue(
+      null,
+    );
+    const gateSpy = spyOn(service, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      capturedFresh: false,
+    });
+    try {
+      await expect(
+        service.executeSuspend(
+          agentId,
+          orgId,
+          enqueued.job.id,
+          "billing_request",
+          current.lifecycleRevision,
+        ),
+      ).resolves.toEqual({
+        success: true,
+        containerStopped: false,
+        skipped: true,
+        reason: "billing_recovered",
+      });
+      expect(gateSpy).not.toHaveBeenCalled();
+      expect(providerStop).not.toHaveBeenCalled();
+
+      const [sandbox] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, agentId));
+      expect(sandbox).toMatchObject({
+        status: "stopped",
+        billing_status: "active",
+        scheduled_shutdown_at: null,
+        shutdown_warning_sent_at: null,
+      });
+      expect(sandbox.last_billed_at?.getTime()).toBeGreaterThan(periodStart.getTime());
+
+      const [intent] = await dbWrite
+        .select()
+        .from(agentComputeStopIntents)
+        .where(eq(agentComputeStopIntents.agent_id, agentId));
+      expect(intent).toMatchObject({
+        status: "superseded",
+        last_error: "billing_recovered",
+        provider_confirmed_at: null,
+      });
+      expect(
+        await dbWrite
+          .select()
+          .from(agentBillingRecords)
+          .where(eq(agentBillingRecords.sandbox_id, agentId)),
+      ).toHaveLength(1);
+      const [org] = await dbWrite
+        .select({ creditBalance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, orgId));
+      expect(Number(org.creditBalance)).toBeLessThan(1);
+    } finally {
+      providerStop.mockRestore();
+      gateSpy.mockRestore();
+    }
+  });
+
   test("execution lifecycle drift is a terminal safe no-op before backup or provider", async () => {
     const { agentId, orgId, userId, lifecycleRevision } = await seedAgent({
       executionTier: "dedicated-always",
