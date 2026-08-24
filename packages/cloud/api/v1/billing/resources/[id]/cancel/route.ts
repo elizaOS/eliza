@@ -69,7 +69,8 @@ app.post("/", async (c) => {
       idempotencyKey: c.req.header("Idempotency-Key")?.trim() ?? "",
       triggerEnv: c.env,
       authorizeInfrastructureMutation: async () => {
-        await requireCurrentBillingManagerSession(c);
+        const current = await requireCurrentBillingManagerSession(c);
+        return current.steward_id;
       },
     });
 

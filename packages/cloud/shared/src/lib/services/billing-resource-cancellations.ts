@@ -55,7 +55,8 @@ export interface RequestBillingCancellationOptions {
   expectedLifecycleRevision: number;
   idempotencyKey: string;
   triggerEnv?: AppEnv["Bindings"];
-  authorizeInfrastructureMutation: () => Promise<void>;
+  /** Returns the steward_user_id bound to the freshly revalidated credential. */
+  authorizeInfrastructureMutation: () => Promise<string | null | undefined>;
 }
 
 export const BILLING_CANCELLATION_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
@@ -281,11 +282,19 @@ export class BillingResourceCancellationsService {
       // the same transaction. The organization and user FOR SHARE locks close
       // the gap where a concurrent role or eligibility revocation could commit
       // between session validation and replay binding/job admission.
-      await normalizedOptions.authorizeInfrastructureMutation();
+      const expectedStewardUserId = await normalizedOptions.authorizeInfrastructureMutation();
+      if (!expectedStewardUserId) {
+        throw new ApiError(
+          403,
+          "access_denied",
+          "Billing cancellation credential identity changed; refresh and retry",
+        );
+      }
       const hasCurrentAuthority = await billingCancelCommandsRepository.lockBillingManagerAuthority(
         tx,
         normalizedOptions.organizationId,
         normalizedOptions.requestedByUserId,
+        expectedStewardUserId,
       );
       if (!hasCurrentAuthority) {
         throw new ApiError(

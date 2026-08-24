@@ -130,6 +130,7 @@ beforeEach(() => {
     ...user,
     organization_id: "org-current",
     role: "owner",
+    steward_id: "steward-owner",
   });
   creditsService.listTransactionsByOrganization.mockResolvedValue([{ id: "txn-1" }]);
   taskStoreSet.mockResolvedValue(undefined);
@@ -270,7 +271,7 @@ describe("Cloud platform A2A billing cancellation authority", () => {
 
   test("persists success only after cancellation uses current authorized tenant", async () => {
     requestCancellation.mockImplementation(async (options) => {
-      await options.authorizeInfrastructureMutation();
+      expect(await options.authorizeInfrastructureMutation()).toBe("steward-owner");
       return { disposition: "accepted", receipt: { status: "accepted" } };
     });
 

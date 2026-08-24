@@ -22,6 +22,8 @@ const ORG_A = "10000000-0000-4000-8000-000000000001";
 const ORG_B = "10000000-0000-4000-8000-000000000002";
 const USER_A = "20000000-0000-4000-8000-000000000001";
 const USER_B = "20000000-0000-4000-8000-000000000002";
+const STEWARD_A = "steward-user-a";
+const STEWARD_B = "steward-user-b";
 const RESOURCE = "3a000000-0000-4000-8000-000000000001";
 const OTHER_RESOURCE = "3b000000-0000-4000-8000-000000000002";
 const TERMINAL_RESOURCE = "3c000000-0000-4000-8000-000000000003";
@@ -52,6 +54,7 @@ beforeAll(async () => {
     CREATE TABLE users (
       id uuid PRIMARY KEY,
       organization_id uuid NOT NULL REFERENCES organizations(id),
+      steward_user_id text NOT NULL UNIQUE,
       role text NOT NULL DEFAULT 'member',
       is_active boolean NOT NULL DEFAULT true,
       is_anonymous boolean NOT NULL DEFAULT false,
@@ -284,8 +287,9 @@ beforeEach(async () => {
       (${ORG_A}, 'A', 'a'), (${ORG_B}, 'B', 'b')
   `);
   await dbWrite.execute(sql`
-    INSERT INTO users (id, organization_id, role) VALUES
-      (${USER_A}, ${ORG_A}, 'owner'), (${USER_B}, ${ORG_B}, 'admin')
+    INSERT INTO users (id, organization_id, steward_user_id, role) VALUES
+      (${USER_A}, ${ORG_A}, ${STEWARD_A}, 'owner'),
+      (${USER_B}, ${ORG_B}, ${STEWARD_B}, 'admin')
   `);
   await dbWrite.execute(sql`CREATE TRIGGER billing_cancel_commands_authority_immutable
     BEFORE UPDATE OR DELETE ON billing_cancel_commands
@@ -380,7 +384,8 @@ function request(
     resourceId: RESOURCE,
     expectedLifecycleRevision: 7,
     idempotencyKey: "cancel-request-0001",
-    authorizeInfrastructureMutation: async () => {},
+    authorizeInfrastructureMutation: async () =>
+      overrides.requestedByUserId === USER_B ? STEWARD_B : STEWARD_A,
     ...overrides,
   });
 }
@@ -486,6 +491,17 @@ describe("billing cancellation durable receipt authority", () => {
     expect(await authorityCounts()).toEqual({ commands: 0, keys: 0, jobs: 0 });
   });
 
+  test("missing revalidated steward identity fails closed before durable effects", async () => {
+    const service = createService();
+    await expect(
+      request(service, {
+        authorizeInfrastructureMutation: async () => null,
+      }),
+    ).rejects.toMatchObject({ status: 403, code: "access_denied" });
+    expect(enqueueCount).toBe(0);
+    expect(await authorityCounts()).toEqual({ commands: 0, keys: 0, jobs: 0 });
+  });
+
   test("primary authority loss creates no job, command, key, or enqueue", async () => {
     const service = createService();
     const scenarios = [
@@ -498,6 +514,13 @@ describe("billing cancellation durable receipt authority", () => {
         name: "different organization",
         revoke: () =>
           dbWrite.execute(sql`UPDATE users SET organization_id = ${ORG_B} WHERE id = ${USER_A}`),
+      },
+      {
+        name: "different steward identity",
+        revoke: () =>
+          dbWrite.execute(
+            sql`UPDATE users SET steward_user_id = 'steward-user-a-rebound' WHERE id = ${USER_A}`,
+          ),
       },
       {
         name: "non-manager role",
@@ -530,7 +553,8 @@ describe("billing cancellation durable receipt authority", () => {
       await dbWrite.execute(sql`UPDATE organizations SET is_active = true WHERE id = ${ORG_A}`);
       await dbWrite.execute(sql`UPDATE users SET
         organization_id = ${ORG_A}, role = 'owner', is_active = true,
-        is_anonymous = false, expires_at = NULL, deleted_at = NULL
+        steward_user_id = ${STEWARD_A}, is_anonymous = false,
+        expires_at = NULL, deleted_at = NULL
         WHERE id = ${USER_A}`);
       await scenario.revoke();
 
@@ -720,6 +744,7 @@ describe("billing cancellation durable receipt authority", () => {
         idempotencyKey: "short",
         authorizeInfrastructureMutation: async () => {
           authorized = true;
+          return STEWARD_A;
         },
       }),
     ).rejects.toMatchObject({ status: 400, code: "validation_error" });
@@ -735,6 +760,7 @@ describe("billing cancellation durable receipt authority", () => {
         resourceId: "not-a-uuid",
         authorizeInfrastructureMutation: async () => {
           authorized = true;
+          return STEWARD_A;
         },
       }),
     ).rejects.toMatchObject({ status: 400, code: "validation_error" });
