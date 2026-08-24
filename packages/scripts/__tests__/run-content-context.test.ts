@@ -141,6 +141,151 @@ function validLiveTrajectories(commit: string, corpusManifestSha256: string) {
     .join("\n");
 }
 
+function validPostgresEvidence(
+  objects: readonly {
+    id: string;
+    family: string;
+    byteLength: number;
+    sourceSha256: string;
+    revision: string;
+    authorizationScope: string;
+  }[],
+  corpusManifestSha256: string,
+) {
+  const mappings = [
+    ["file", "filesystem", "READ.byteWindow", "native-bytes", false],
+    [
+      "document",
+      "document-store",
+      "DatabaseAdapter.readDocumentRange",
+      "typed-rejection",
+      true,
+    ],
+    [
+      "memory",
+      "memory-store",
+      "DatabaseAdapter.readMessageContentRange",
+      "typed-rejection",
+      true,
+    ],
+    [
+      "email",
+      "message-store",
+      "DatabaseAdapter.readMessageContentRange",
+      "typed-rejection",
+      true,
+    ],
+    [
+      "attachment",
+      "content-addressed-media",
+      "media-store.readStoredMediaBytes",
+      "native-bytes",
+      false,
+    ],
+    [
+      "tool-output",
+      "filesystem",
+      "readShellOutputArtifactPage",
+      "native-bytes",
+      false,
+    ],
+  ] as const;
+  const commit = "a".repeat(40);
+  return {
+    schemaVersion: "elizaos.content-context.postgres.v2",
+    status: "passed",
+    backend: "postgres",
+    commit,
+    corpusManifestSha256,
+    server: { version: "PostgreSQL 17.1", versionNum: 170_001 },
+    command: {
+      executable: "bun",
+      argv: [
+        "packages/scripts/produce-content-context-postgres.mjs",
+        `--commit=${commit}`,
+      ],
+      cwd: ".",
+    },
+    familyMappings: mappings.map(
+      ([
+        family,
+        authoritativeStore,
+        productionMethod,
+        binaryPolicy,
+        postgresBacked,
+      ]) => ({
+        family,
+        authoritativeStore,
+        productionMethod,
+        binaryPolicy,
+        postgresRows: postgresBacked ? 32 : 0,
+      }),
+    ),
+    sharedVectors: mappings
+      .filter((mapping) => mapping[4])
+      .map(([family, , productionMethod]) => ({
+        family,
+        status: "passed",
+        productionMethod,
+        authorizationDenied: true,
+        isolationDenied: true,
+        restartVerified: true,
+        indexNames: [
+          family === "document"
+            ? "idx_document_source_byte_seek"
+            : "idx_message_content_byte_seek",
+        ],
+      })),
+    objects: objects.map((object) => {
+      const postgresBacked =
+        mappings.find(([family]) => family === object.family)?.[4] === true;
+      const pageBytes = 64 * 1024;
+      return {
+        objectId: object.id,
+        family: object.family,
+        sourceBytes: object.byteLength,
+        sourceSha256: object.sourceSha256,
+        revision: object.revision,
+        authorizationScope: object.authorizationScope,
+        disposition: postgresBacked
+          ? "postgres-text-reassembled"
+          : "native-store-reassembled",
+        postgresRows: postgresBacked
+          ? Math.ceil(object.byteLength / pageBytes)
+          : 0,
+        reassembledSha256: object.sourceSha256,
+        authorizationVerified: true,
+        isolationVerified: true,
+        restartVerified: true,
+        sourceWork: {
+          pageBytes,
+          bytesRead: object.byteLength,
+          readCalls: Math.ceil(object.byteLength / pageBytes),
+          rowsRead: postgresBacked
+            ? Math.ceil(object.byteLength / pageBytes)
+            : 0,
+          parentScans: 0,
+          readAmplification: 1,
+        },
+      };
+    }),
+    negativeVectors: ["document", "memory", "email"].flatMap((family) =>
+      ["binary", "invalid-utf8"].map((format) => ({
+        family,
+        format,
+        status: "passed",
+        rejectionCode:
+          format === "binary"
+            ? "CONTENT_BINARY_UNSUPPORTED"
+            : "CONTENT_INVALID_UTF8",
+        postgresRows: 0,
+        storageWrites: 0,
+      })),
+    ),
+    cleanup: { schemaDropped: true, postDropProbe: "absent" },
+  };
+}
+
 afterEach(async () => {
   for (const target of cleanup.splice(0)) {
     await rm(target, { recursive: true, force: true });
@@ -334,23 +479,7 @@ function evidenceValues() {
       })),
     },
     "soak.json": validSoakEvidence("a".repeat(40), manifestSha256),
-    "postgres.json": {
-      status: "passed",
-      backend: "postgres",
-      commit: "a".repeat(40),
-      corpusManifestSha256: manifestSha256,
-      version: "17.1",
-      command: "postgres-real-integration",
-      families: [
-        "file",
-        "document",
-        "memory",
-        "email",
-        "attachment",
-        "tool-output",
-      ],
-      sharedVectorsPassed: true,
-    },
+    "postgres.json": validPostgresEvidence(objects, manifestSha256),
     "scenario.json": {
       status: "passed",
       deterministic: true,
