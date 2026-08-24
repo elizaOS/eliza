@@ -71,3 +71,49 @@ describe("extractUsernameFromPath", () => {
     expect(extractUsernameFromPath("/other/path")).toBeNull();
   });
 });
+
+describe("non-string guards", () => {
+  test("validateUsername rejects non-string without throwing", () => {
+    // @ts-expect-error runtime guard check
+    expect(validateUsername(null).valid).toBe(false);
+    // @ts-expect-error runtime guard check
+    expect(validateUsername(undefined).valid).toBe(false);
+    // @ts-expect-error runtime guard check
+    expect(validateUsername(123).valid).toBe(false);
+    // @ts-expect-error runtime guard check
+    expect(validateUsername({}).valid).toBe(false);
+    // @ts-expect-error runtime guard check
+    expect(validateUsername([]).valid).toBe(false);
+    // @ts-expect-error runtime guard check
+    expect(validateUsername(true).valid).toBe(false);
+  });
+
+  test("slugify and generate helpers return safe defaults for non-string", () => {
+    // @ts-expect-error runtime guard check
+    expect(slugify(null)).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(slugify(undefined)).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(slugify(123)).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(slugify({})).toBe("");
+    // @ts-expect-error runtime guard check
+    expect(generateUsernameFromName(null).length).toBeGreaterThanOrEqual(3);
+    // @ts-expect-error runtime guard check
+    expect(generateUsernameFromName(undefined).length).toBeGreaterThanOrEqual(3);
+    // @ts-expect-error runtime guard check
+    expect(generateUsernameFromName(123).length).toBeGreaterThanOrEqual(3);
+    // @ts-expect-error runtime guard check
+    expect(generateUniqueUsername(null, new Set())).toBeDefined();
+    // @ts-expect-error runtime guard check
+    expect(generateUniqueUsername(undefined, new Set())).toBeDefined();
+    // @ts-expect-error runtime guard check
+    expect(extractUsernameFromPath(null)).toBeNull();
+    // @ts-expect-error runtime guard check
+    expect(extractUsernameFromPath(undefined)).toBeNull();
+    // @ts-expect-error runtime guard check
+    expect(extractUsernameFromPath(123)).toBeNull();
+    // @ts-expect-error runtime guard check
+    expect(extractUsernameFromPath({})).toBeNull();
+  });
+});

@@ -70,6 +70,9 @@ export const RESERVED_USERNAMES = new Set([
  * Validates a username against all rules.
  */
 export function validateUsername(username: string): UsernameValidationResult {
+  if (typeof username !== "string") {
+    return { valid: false, error: "Username must be a string" };
+  }
   // Normalize to lowercase
   const normalized = username.toLowerCase().trim();
 
@@ -135,6 +138,7 @@ export function validateUsername(username: string): UsernameValidationResult {
  * slugify("___Test---Agent___") // "test-agent"
  */
 export function slugify(name: string): string {
+  if (typeof name !== "string") return "";
   return (
     name
       .toLowerCase()
@@ -166,6 +170,7 @@ function padToMinLength(str: string): string {
  * Result may still need a uniqueness check.
  */
 export function generateUsernameFromName(name: string): string {
+  if (typeof name !== "string") return padToMinLength("");
   let slug = slugify(name);
 
   // Ensure minimum length
@@ -204,6 +209,7 @@ export function generateUniqueUsername(
   baseUsername: string,
   existingUsernames: Set<string>,
 ): string {
+  if (typeof baseUsername !== "string") return padToMinLength("");
   // If base doesn't exist, use it
   if (!existingUsernames.has(baseUsername)) {
     return baseUsername;
@@ -239,6 +245,7 @@ export function generateUniqueUsername(
  * Extracts username from a URL path like /chat/@username
  */
 export function extractUsernameFromPath(path: string): string | null {
+  if (typeof path !== "string") return null;
   const match = path.match(/\/@([a-z0-9]+(?:-[a-z0-9]+)*)/);
   return match ? match[1] : null;
 }
