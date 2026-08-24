@@ -279,7 +279,7 @@ const expectedTodoExecution = {
 };
 const expectedTodoActionResult = {
   success: true,
-  text: "Created: [ ] Buy milk",
+  text: 'Added "Buy milk" to your list.',
   verifiedUserFacing: true,
   effectReceipts: [
     {
@@ -850,10 +850,10 @@ describe("SharedRuntimeChatService", () => {
     streamTurn = {
       degraded: false,
       parts: (async function* () {
-        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield { type: "text-delta", text: 'Added "Buy milk" to your list.' };
         yield {
           type: "finish",
-          text: "Created: [ ] Buy milk",
+          text: 'Added "Buy milk" to your list.',
           actionResults: [expectedTodoActionResult],
         };
       })(),
@@ -891,10 +891,10 @@ describe("SharedRuntimeChatService", () => {
       degraded: false,
       blockedSecondaryCapabilities: [blockedCommunication],
       parts: (async function* () {
-        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield { type: "text-delta", text: 'Added "Buy milk" to your list.' };
         yield {
           type: "finish",
-          text: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+          text: 'Added "Buy milk" to your list.\n\nI can\'t initiate a separate email.',
           actionResults: [expectedTodoActionResult],
         };
       })(),
@@ -913,7 +913,7 @@ describe("SharedRuntimeChatService", () => {
     expect(body).toContain(`/cloud/agents/${encodeURIComponent(agent.id)}`);
     expect(memoryPairs).toEqual([
       expect.objectContaining({
-        assistantReply: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+        assistantReply: 'Added "Buy milk" to your list.\n\nI can\'t initiate a separate email.',
         interrupted: false,
       }),
     ]);

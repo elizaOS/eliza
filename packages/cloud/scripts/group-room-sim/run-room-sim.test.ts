@@ -213,8 +213,11 @@ describe("forbidden claims count only on first-person capability claims", () => 
     ]);
   });
 
-  test("a todo receipt is a list line, not a purchase", () => {
-    const text = "Created: [ ] Buy coffee";
+  // The TODO action quotes the committed item, so the quote mask carries the
+  // item text the checkbox mask used to carry (list rows keep their own case
+  // below). Either way the item is the human's words, not Eliza buying coffee.
+  test("a todo confirmation quotes the item, so it is not a purchase", () => {
+    const text = 'Added "Buy coffee" to your list.';
     expect(findUnsupportedLandingDemoClaims(text)).toEqual(["purchase"]);
     expect(firstPersonClaimSpans(text)).toEqual([]);
     const allowed = buildPlan(spec, "household", {}).allowedCategories;

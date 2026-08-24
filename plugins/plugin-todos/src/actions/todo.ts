@@ -71,6 +71,56 @@ function renderMarkdown(todos: Todo[]): string {
   return todos.map((t) => `- ${checkboxFor(t.status)} ${t.content}`).join("\n");
 }
 
+/**
+ * Single-todo confirmations below are prose composed from the row the store
+ * committed, never from model output, so the text bound to the effect receipt
+ * still states exactly what was applied. The checkbox grid stays reserved for
+ * `renderMarkdown`, where one row per todo is the point; a lone checkbox row
+ * sent into a conversation reads as a machine receipt rather than an answer.
+ */
+function statePhrase(status: TodoStatus): string {
+  switch (status) {
+    case "completed":
+      return "done";
+    case "in_progress":
+      return "in progress";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return "to do";
+  }
+}
+
+/** Confirmation for a committed create; states a status only when it is set. */
+function createdConfirmation(todo: Todo): string {
+  return todo.status === "pending"
+    ? `Added "${todo.content}" to your list.`
+    : `Added "${todo.content}" to your list, marked ${statePhrase(todo.status)}.`;
+}
+
+/** Confirmation for a committed edit, carrying the row's committed state. */
+function updatedConfirmation(todo: Todo): string {
+  return `Updated "${todo.content}" on your list, marked ${statePhrase(todo.status)}.`;
+}
+
+/**
+ * Confirmation for `complete`/`cancel`. The crisp verb is used only once the
+ * committed row carries the status that verb names, so the sentence can never
+ * outrun what the store actually applied.
+ */
+function settledConfirmation(
+  action: "complete" | "cancel",
+  todo: Todo,
+): string {
+  if (action === "complete" && todo.status === "completed") {
+    return `Marked "${todo.content}" done.`;
+  }
+  if (action === "cancel" && todo.status === "cancelled") {
+    return `Cancelled "${todo.content}".`;
+  }
+  return updatedConfirmation(todo);
+}
+
 function failure(reason: string, message: string): ActionResult {
   const text = `${TODO_FAILURE_TEXT_PREFIX} ${reason}: ${message}`;
   return { success: false, text, error: new Error(text) };
@@ -437,7 +487,7 @@ async function actionCreate({
     throw new Error("Todo mutation result does not match action=create");
   }
   const todo = execution.result.todo;
-  const text = `Created: ${checkboxFor(todo.status)} ${todo.content}`;
+  const text = createdConfirmation(todo);
   return appliedMutationResult({
     action: "create",
     callback,
@@ -506,7 +556,7 @@ async function actionUpdate({
   if (!todo) {
     return ledgeredNotFound(id);
   }
-  const text = `Updated: ${checkboxFor(todo.status)} ${todo.content}`;
+  const text = updatedConfirmation(todo);
   return appliedMutationResult({
     action: "update",
     callback,
@@ -547,7 +597,7 @@ async function actionSetStatus(
   if (!todo) {
     return ledgeredNotFound(id);
   }
-  const text = `${action}: ${checkboxFor(todo.status)} ${todo.content}`;
+  const text = settledConfirmation(action, todo);
   return appliedMutationResult({
     action,
     callback,
@@ -583,7 +633,7 @@ async function actionDelete({
   }
   const existing = execution.result.deleted;
   if (!existing) return ledgeredNotFound(id);
-  const text = `Deleted: ${existing.content}`;
+  const text = `Deleted "${existing.content}" from your list.`;
   return appliedMutationResult({
     action: "delete",
     callback,
@@ -651,7 +701,10 @@ async function actionClear({
     throw new Error("Todo mutation result does not match action=clear");
   }
   const { count } = execution.result;
-  const text = `Cleared ${count} todo${count === 1 ? "" : "s"}.`;
+  const text =
+    count === 0
+      ? "Your list was already empty."
+      : `Cleared ${count} todo${count === 1 ? "" : "s"} from your list.`;
   const data = {
     action: "clear" as const,
     op: "clear" as const,

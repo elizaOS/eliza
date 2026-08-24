@@ -2836,18 +2836,18 @@ describe("Shared Eliza Workerd runtime", () => {
     const parts = [];
     for await (const part of result.parts) parts.push(part);
     expect(parts.filter((part) => part.type === "text-delta").map((part) => part.text)).toEqual([
-      "Created: [ ] Buy milk",
+      'Added "Buy milk" to your list.',
     ]);
     const finish = parts.at(-1);
     if (!finish || finish.type !== "finish") {
       throw new Error("Genuine Todo stream emitted no terminal result");
     }
-    expect(finish.text).toBe("Created: [ ] Buy milk");
+    expect(finish.text).toBe('Added "Buy milk" to your list.');
     expect(finish.actionResults).toHaveLength(1);
     expect(finish.actionResults?.[0]).toMatchObject({
       success: true,
-      text: "Created: [ ] Buy milk",
-      userFacingText: "Created: [ ] Buy milk",
+      text: 'Added "Buy milk" to your list.',
+      userFacingText: 'Added "Buy milk" to your list.',
       verifiedUserFacing: true,
       turnComplete: true,
       data: {
