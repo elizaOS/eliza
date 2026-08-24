@@ -5,22 +5,37 @@
  */
 
 import type { ConnectorAccountManager } from "@elizaos/core";
+import { OAuth2Client } from "google-auth-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGoogleConnectorAccountProvider } from "./connector-account-provider.js";
 import { GOOGLE_OAUTH_SCOPES } from "./scopes.js";
 
-function unsignedJwt(payload: Record<string, unknown>): string {
-  return `${Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")}.${Buffer.from(
+function signedJwtShape(payload: Record<string, unknown>): string {
+  return `${Buffer.from(JSON.stringify({ alg: "RS256", kid: "test-key" })).toString("base64url")}.${Buffer.from(
     JSON.stringify(payload)
   ).toString("base64url")}.`;
 }
 
 describe("Google OAuth OIDC nonce binding", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
   it("rejects an ID token whose nonce differs from the authorization flow", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+      iss: "https://accounts.google.com",
+      aud: "client-id",
+      iat: now - 10,
+      exp: now + 3600,
+      sub: "google-subject",
+      email: "owner@example.com",
+      nonce: "different-nonce",
+    };
+    vi.spyOn(OAuth2Client.prototype, "verifyIdToken").mockResolvedValue({
+      getPayload: () => payload,
+    } as never);
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -30,11 +45,7 @@ describe("Google OAuth OIDC nonce binding", () => {
               access_token: "access-token",
               expires_in: 3600,
               scope: GOOGLE_OAUTH_SCOPES.gmail.read,
-              id_token: unsignedJwt({
-                sub: "google-subject",
-                email: "owner@example.com",
-                nonce: "different-nonce",
-              }),
+              id_token: signedJwtShape(payload),
             }),
             { status: 200, headers: { "content-type": "application/json" } }
           )
@@ -66,6 +77,7 @@ describe("Google OAuth OIDC nonce binding", () => {
             createdAt: Date.now(),
             updatedAt: Date.now(),
             metadata: {
+              requestedRole: "OWNER",
               requestedCapabilities: ["gmail.read"],
               requestedScopes: [GOOGLE_OAUTH_SCOPES.gmail.read],
               oidcNonce: "expected-nonce",

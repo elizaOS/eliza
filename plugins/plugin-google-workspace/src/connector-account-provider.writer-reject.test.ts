@@ -15,6 +15,7 @@ import {
   type IAgentRuntime,
   InMemoryDatabaseAdapter,
 } from "@elizaos/core";
+import { OAuth2Client } from "google-auth-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGoogleConnectorAccountProvider } from "./connector-account-provider.js";
 
@@ -59,10 +60,25 @@ function makeRuntime(
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 function stubTokenExchangeSuccess(nonce: string): ReturnType<typeof vi.fn> {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: "https://accounts.google.com",
+    aud: "writer-reject-client",
+    iat: now - 10,
+    exp: now + 3600,
+    sub: "google-sub-writer-reject",
+    email: "writer-reject@example.com",
+    email_verified: true,
+    nonce,
+  };
+  vi.spyOn(OAuth2Client.prototype, "verifyIdToken").mockResolvedValue({
+    getPayload: () => payload,
+  } as never);
   const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url !== TOKEN_ENDPOINT) {
@@ -76,12 +92,7 @@ function stubTokenExchangeSuccess(nonce: string): ReturnType<typeof vi.fn> {
         token_type: "Bearer",
         expires_in: 3600,
         scope: "https://www.googleapis.com/auth/gmail.readonly",
-        id_token: `${b64url({ alg: "none" })}.${b64url({
-          sub: "google-sub-writer-reject",
-          email: "writer-reject@example.com",
-          email_verified: true,
-          nonce,
-        })}.sig`,
+        id_token: `${b64url({ alg: "RS256", kid: "test-key" })}.${b64url(payload)}.sig`,
       }),
     };
   });
@@ -101,6 +112,7 @@ describe("google provider completion with a rejecting durable credential writer 
     manager.registerProvider(createGoogleConnectorAccountProvider(runtime));
     const flow = await manager.startOAuth("google", {
       scopes: ["gmail.read"],
+      metadata: { requestedRole: "OWNER" },
     });
     const fetchStub = stubTokenExchangeSuccess(
       String((flow.metadata as Record<string, unknown>).oidcNonce)

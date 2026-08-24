@@ -30,6 +30,7 @@ import {
   logger,
   type UUID,
 } from "@elizaos/core";
+import { OAuth2Client } from "google-auth-library";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
@@ -81,6 +82,10 @@ interface GoogleIdentity {
   family_name?: string;
   picture?: string;
   locale?: string;
+}
+
+interface GoogleIdTokenVerifier {
+  verifyIdToken(options: { idToken: string; audience: string }): Promise<{ getPayload(): unknown }>;
 }
 
 interface GoogleCalendarWatchRevocationService {
@@ -513,25 +518,135 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
       record.requestedRole ??
       record.agentGoogleSide
   );
-  if (!raw) return "OWNER";
+  if (!raw) {
+    throw new ElizaError("Google connector account role is required.", {
+      code: "GOOGLE_CONNECTOR_ROLE_REQUIRED",
+      severity: "fatal",
+    });
+  }
   const normalized = raw.toUpperCase();
   if (normalized === "OWNER" || normalized === "AGENT" || normalized === "TEAM") {
     return normalized;
   }
-  return "OWNER";
+  throw new ElizaError("Google connector account role is invalid.", {
+    code: "GOOGLE_CONNECTOR_ROLE_INVALID",
+    context: { role: raw },
+    severity: "fatal",
+  });
 }
 
-function parseIdTokenClaims(idToken: string | undefined): GoogleIdentity {
-  if (!idToken) return {};
+function parseIdTokenHeader(idToken: string): Record<string, unknown> {
   const segments = idToken.split(".");
-  if (segments.length < 2) return {};
-  try {
-    const payload = Buffer.from(segments[1] ?? "", "base64url").toString("utf-8");
-    const parsed = JSON.parse(payload) as GoogleIdentity;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
+  if (segments.length !== 3) {
+    throw new ElizaError("Google ID token is malformed.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      severity: "fatal",
+    });
   }
+  try {
+    const header: unknown = JSON.parse(
+      Buffer.from(segments[0] ?? "", "base64url").toString("utf-8")
+    );
+    if (!isRecord(header)) {
+      throw new Error("ID token header is not an object.");
+    }
+    return header;
+  } catch (error) {
+    // error-policy:J3 A malformed JWT header is untrusted provider input.
+    throw new ElizaError("Google ID token header is invalid.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+}
+
+export async function verifyGoogleIdTokenWithVerifier(
+  args: {
+    idToken: string;
+    clientId: string;
+    expectedNonce: string;
+    nowMs?: number;
+  },
+  verifier: GoogleIdTokenVerifier = new OAuth2Client() as GoogleIdTokenVerifier
+): Promise<GoogleIdentity> {
+  const header = parseIdTokenHeader(args.idToken);
+  if (header.alg !== "RS256" || !nonEmptyString(header.kid)) {
+    throw new ElizaError("Google ID token uses an unsupported signing header.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      context: {
+        algorithm: nonEmptyString(header.alg),
+        hasKeyId: Boolean(nonEmptyString(header.kid)),
+      },
+      severity: "fatal",
+    });
+  }
+
+  let payload: unknown;
+  try {
+    const ticket = await verifier.verifyIdToken({
+      idToken: args.idToken,
+      audience: args.clientId,
+    });
+    payload = ticket.getPayload();
+  } catch (error) {
+    // error-policy:J2 Preserve the signature/JWKS verifier as the typed cause.
+    throw new ElizaError("Google ID token signature verification failed.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+  if (!isRecord(payload)) {
+    throw new ElizaError("Google ID token payload is missing.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      severity: "fatal",
+    });
+  }
+
+  const issuer = nonEmptyString(payload.iss);
+  const audience = nonEmptyString(payload.aud);
+  const expiration = typeof payload.exp === "number" ? payload.exp : Number.NaN;
+  const issuedAt = typeof payload.iat === "number" ? payload.iat : Number.NaN;
+  const nowSeconds = Math.floor((args.nowMs ?? Date.now()) / 1000);
+  if (
+    (issuer !== "https://accounts.google.com" && issuer !== "accounts.google.com") ||
+    audience !== args.clientId ||
+    !Number.isSafeInteger(expiration) ||
+    expiration <= nowSeconds ||
+    !Number.isSafeInteger(issuedAt) ||
+    issuedAt > nowSeconds + 300
+  ) {
+    throw new ElizaError("Google ID token claims are invalid.", {
+      code: "GOOGLE_OAUTH_ID_TOKEN_INVALID",
+      context: {
+        issuer,
+        audienceMatches: audience === args.clientId,
+        hasValidExpiration: Number.isSafeInteger(expiration) && expiration > nowSeconds,
+        hasValidIssuedAt: Number.isSafeInteger(issuedAt) && issuedAt <= nowSeconds + 300,
+      },
+      severity: "fatal",
+    });
+  }
+  if (nonEmptyString(payload.nonce) !== args.expectedNonce) {
+    throw new ElizaError("Google OAuth identity nonce did not match the authorization request.", {
+      code: "GOOGLE_OAUTH_NONCE_MISMATCH",
+      severity: "fatal",
+    });
+  }
+
+  return {
+    sub: nonEmptyString(payload.sub),
+    nonce: nonEmptyString(payload.nonce),
+    email: nonEmptyString(payload.email),
+    email_verified:
+      typeof payload.email_verified === "boolean" ? payload.email_verified : undefined,
+    name: nonEmptyString(payload.name),
+    given_name: nonEmptyString(payload.given_name),
+    family_name: nonEmptyString(payload.family_name),
+    picture: nonEmptyString(payload.picture),
+    locale: nonEmptyString(payload.locale),
+  };
 }
 
 export async function fetchGoogleUserInfoWithFetch(
@@ -639,7 +754,7 @@ export function createGoogleConnectorAccountProvider(
       return {
         ...input,
         provider: GOOGLE_SERVICE_NAME,
-        role: input.role ?? "OWNER",
+        role: roleFromMetadata({ role: input.role }),
         purpose: input.purpose ?? ["messaging", "calendar", "drive", "meet"],
         accessGate: input.accessGate ?? "open",
         status: input.status ?? "pending",
@@ -854,21 +969,47 @@ export function createGoogleConnectorAccountProvider(
       }
       const purposes = purposesForCapabilities(grantedCapabilities);
 
-      let identity = parseIdTokenClaims(tokens.id_token);
       const expectedOidcNonce = nonEmptyString(
         (request.flow.metadata as Record<string, unknown> | undefined)?.oidcNonce
       );
-      if (expectedOidcNonce && identity.nonce !== expectedOidcNonce) {
-        throw new ElizaError(
-          "Google OAuth identity nonce did not match the authorization request.",
-          {
-            code: "GOOGLE_OAUTH_NONCE_MISMATCH",
-            severity: "fatal",
-          }
-        );
+      if (!expectedOidcNonce) {
+        throw new ElizaError("Google OAuth callback is missing its OpenID Connect nonce.", {
+          code: "GOOGLE_OAUTH_NONCE_MISSING",
+          severity: "fatal",
+        });
       }
-      if (!identity.sub || !identity.email) {
-        identity = { ...identity, ...(await fetchGoogleUserInfo(tokens.access_token)) };
+      const idToken = nonEmptyString(tokens.id_token);
+      if (!idToken) {
+        throw new ElizaError("Google OAuth token response is missing its ID token.", {
+          code: "GOOGLE_OAUTH_ID_TOKEN_MISSING",
+          severity: "fatal",
+        });
+      }
+      const verifiedIdentity = await verifyGoogleIdTokenWithVerifier({
+        idToken,
+        clientId: config.clientId,
+        expectedNonce: expectedOidcNonce,
+      });
+      let identity = verifiedIdentity;
+      if (!nonEmptyString(identity.sub) || !nonEmptyString(identity.email)) {
+        const userInfo = await fetchGoogleUserInfo(tokens.access_token);
+        const verifiedSubject = nonEmptyString(identity.sub);
+        const userInfoSubject = nonEmptyString(userInfo.sub);
+        if (verifiedSubject && userInfoSubject && verifiedSubject !== userInfoSubject) {
+          throw new ElizaError(
+            "Google ID token and authenticated userinfo identify different accounts.",
+            {
+              code: "GOOGLE_OAUTH_IDENTITY_MISMATCH",
+              severity: "fatal",
+            }
+          );
+        }
+        identity = {
+          ...identity,
+          ...userInfo,
+          sub: verifiedSubject ?? userInfoSubject,
+          nonce: verifiedIdentity.nonce,
+        };
       }
 
       const externalId = nonEmptyString(identity.sub);
@@ -878,7 +1019,6 @@ export function createGoogleConnectorAccountProvider(
           severity: "fatal",
         });
       }
-      const requestedRole = roleFromMetadata(request.flow.metadata);
       const requestedAccountId = nonEmptyString(request.flow.accountId);
       const existingAccount = requestedAccountId
         ? await manager.getAccount(GOOGLE_SERVICE_NAME, requestedAccountId)
@@ -893,6 +1033,9 @@ export function createGoogleConnectorAccountProvider(
           }
         );
       }
+      const requestedRole = existingAccount
+        ? roleFromMetadata({ role: existingAccount.role })
+        : roleFromMetadata(request.flow.metadata);
       const existingExternalId = nonEmptyString(existingAccount?.externalId);
       if (existingExternalId && existingExternalId !== externalId) {
         throw new ElizaError(
