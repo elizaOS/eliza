@@ -217,6 +217,20 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/capped at 20/,
 		/\.slice\([^)]*20/,
 	],
+	"packages/cloud/shared/src/lib/services/doordash-browser-run.ts": [
+		/\.slice\(0,\s*20\)/,
+		/\.slice\(0,\s*100\)/,
+		/Math\.min\(20,\s*Number\(args\.limit/,
+		/text\.slice\([^)]*,\s*240\)/,
+	],
+	"packages/cloud/shared/src/lib/services/agent-backup-verifier.ts": [
+		/mismatches\.slice\(/,
+		/summary\.failures\.slice\(/,
+	],
+	"packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts": [
+		/diagnostics\.slice\(/,
+		/args[^\n]*join\([^\n]*\.slice\(/,
+	],
 	"packages/cloud/shared/src/lib/services/room-title.ts": [
 		/result\.text[\s\S]{0,240}\.slice\(/,
 		/result\.text[\s\S]{0,240}\.split\("\\n"\)/,
