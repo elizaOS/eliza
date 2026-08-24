@@ -381,4 +381,107 @@ describe("expectTurnBrowserTask", () => {
     expect(message).toContain("Expected turn upload:");
     expect(message).toContain("actions [UPLOAD_FILE].");
   });
+
+  it("serializes seen payloads when a turn task does not satisfy the expectation", () => {
+    const message = expectTurnBrowserTask({
+      description: "turn upload done",
+      completed: true,
+    })(
+      turn([
+        browserAction("UPLOAD_FILE", {
+          completed: false,
+          artifactCount: 1,
+        }),
+      ]),
+    );
+    expect(message).toContain("Expected turn upload done:");
+    expect(message).toContain("saw browserTask payloads");
+    expect(message).toContain('"completed":false');
+  });
+});
+
+describe("browser-task assertion edge coverage", () => {
+  it("rejects an absent completed field against an explicit completed:false expectation", () => {
+    const check = expectScenarioBrowserTask({
+      description: "still open",
+      completed: false,
+    });
+    expect(typeof check(ctx([browserAction("POLL_STATUS", {})]))).toBe(
+      "string",
+    );
+    expect(
+      check(
+        ctx([
+          browserAction("POLL_STATUS", {}),
+          browserAction("POLL_STATUS", { completed: false }),
+        ]),
+      ),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ["needsHuman", { needsHuman: "true" }],
+    ["approvalRequired", { approvalRequired: 1 }],
+    ["approvalSatisfied", { approvalSatisfied: null }],
+  ] as const)(
+    "rejects a malformed %s boolean from the shape guard",
+    (_field, malformed) => {
+      const check = expectScenarioBrowserTask({
+        description: "well-formed booleans",
+      });
+      expect(check(ctx([browserAction("ASK_APPROVAL", malformed)]))).toContain(
+        "no browserTask payload found",
+      );
+    },
+  );
+
+  it("rejects a numeric blockedReason from the shape guard", () => {
+    const check = expectScenarioBrowserTask({
+      description: "string reason required",
+    });
+    expect(
+      check(ctx([browserAction("FILL_FORM", { blockedReason: 403 })])),
+    ).toContain("no browserTask payload found");
+  });
+
+  it("counts a browserTask carried by a failed action result", () => {
+    const check = expectScenarioBrowserTask({
+      description: "blocked by captcha",
+      blockedReasonIncludes: "captcha",
+    });
+    expect(
+      check(
+        ctx([
+          action({
+            actionName: "FILL_FORM",
+            result: {
+              success: false,
+              error: "captcha wall",
+              data: { browserTask: { blockedReason: "CAPTCHA challenge" } },
+            },
+          }),
+        ]),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("ignores a null data payload entirely", () => {
+    const message = expectScenarioBrowserTask({
+      description: "task done",
+      actionName: "UPLOAD_FILE",
+    })(ctx([action({ actionName: "UPLOAD_FILE", result: { data: null } })]));
+    expect(message).toContain("no browserTask payload found");
+    expect(message).toContain("[UPLOAD_FILE]");
+  });
+
+  it("never matches blockedReasonIncludes when the reason field is absent or empty", () => {
+    const check = expectScenarioBrowserTask({
+      description: "reason required",
+      blockedReasonIncludes: "captcha",
+    });
+    expect(typeof check(ctx([browserAction("FILL_FORM", {})]))).toBe("string");
+    expect(
+      typeof check(ctx([browserAction("FILL_FORM", { blockedReason: "" })])),
+    ).toBe("string");
+  });
 });
