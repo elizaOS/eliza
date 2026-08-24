@@ -35,15 +35,29 @@ const steadyResourceSample = {
 };
 
 function validSoakEvidence(commit: string, corpusManifestSha256: string) {
+  const families = [
+    "file",
+    "document",
+    "memory",
+    "email",
+    "attachment",
+    "tool-output",
+  ];
   return {
+    schemaVersion: "elizaos.progressive-content.mixed-soak.v1",
     status: "passed",
     commit,
     corpusManifestSha256,
+    clockSource: "system-monotonic",
+    evidenceEligible: true,
     durationMs: 6 * 60 * 60 * 1_000,
     operations: 100_000,
+    requiredDurationMs: 6 * 60 * 60 * 1_000,
+    requiredOperations: 100_000,
     sampleEveryOperations: 1_000,
     warmupOperations: 10_000,
     positiveLeakControlDetected: true,
+    positiveLeakControlKind: "retained-array-buffer",
     batches: 1_000,
     failures: [],
     resourceSamples: Array.from({ length: 101 }, (_, index) => ({
@@ -63,6 +77,33 @@ function validSoakEvidence(commit: string, corpusManifestSha256: string) {
       status: "failed",
       failures: ["rss leak detected"],
     },
+    families: families.map((family, index) => {
+      const operations = index < 4 ? 16_667 : 16_666;
+      const realization = {
+        file: ["filesystem", "native-bytes"],
+        document: ["document-store", "typed-rejection"],
+        memory: ["memory-store", "typed-rejection"],
+        email: ["message-store", "typed-rejection"],
+        attachment: ["content-addressed-media", "native-bytes"],
+        "tool-output": ["filesystem", "native-bytes"],
+      }[family];
+      return {
+        family,
+        adapterId: `production-${family}`,
+        objectId: `${family}-10485760`,
+        authoritativeStore: realization?.[0],
+        binaryPolicy: realization?.[1],
+        productionMethod: `${family}-native-realization`,
+        operations,
+        failures: [],
+        sourceWork: {
+          bytesRead: operations * 64 * 1024,
+          readCalls: operations,
+          rowsRead: operations,
+          parentScans: 0,
+        },
+      };
+    }),
   };
 }
 

@@ -190,8 +190,11 @@ function seriesDetectsLeak(
     })
   )
     return true;
-  return RESOURCE_RETAINED_FIELDS.some(
-    (field) => (samples.at(-1)?.[field] ?? 0) - (samples[0]?.[field] ?? 0) > 0,
+  return (
+    RESOURCE_RETAINED_FIELDS.some(
+      (field) =>
+        (samples.at(-1)?.[field] ?? 0) - (samples[0]?.[field] ?? 0) > 0,
+    ) || (samples.at(-1)?.walBytes ?? 0) - (samples[0]?.walBytes ?? 0) > 0
   );
 }
 
@@ -225,14 +228,18 @@ function soakResourceFailures(soak: Record<string, unknown>): string[] {
     },
   );
   if (
-    points.length < 51 ||
+    points.length !==
+      Math.ceil(
+        (soak.operations as number) / (soak.sampleEveryOperations as number),
+      ) +
+        1 ||
     points[0]?.operation !== 0 ||
-    (points.at(-1)?.operation ?? -1) < soak.operations ||
+    (points.at(-1)?.operation ?? -1) !== soak.operations ||
     points.some(
       (point, index) =>
         index > 0 &&
         (point.operation <= (points[index - 1]?.operation ?? -1) ||
-          point.operation - (points[index - 1]?.operation ?? 0) > 2_000 ||
+          point.operation - (points[index - 1]?.operation ?? 0) > 1_000 ||
           point.elapsedMs < (points[index - 1]?.elapsedMs ?? 0)),
     )
   )
@@ -279,6 +286,87 @@ function soakResourceFailures(soak: Record<string, unknown>): string[] {
     soak.batches <= 0
   )
     failures.push("soak retained batch failures or lacks a batch count");
+  return failures;
+}
+
+function soakFamilyFailures(soak: Record<string, unknown>): string[] {
+  const failures: string[] = [];
+  const families = array(soak.families, "soak families").map((value, index) =>
+    record(value, `soak family ${index}`),
+  );
+  const names = families.map(({ family }) => family);
+  const adapterIds = families.map(({ adapterId }) => adapterId);
+  const objectIds = families.map(({ objectId }) => objectId);
+  if (
+    families.length !== CONTENT_CONTEXT_FAMILIES.length ||
+    new Set(names).size !== families.length ||
+    CONTENT_CONTEXT_FAMILIES.some((family) => !names.includes(family)) ||
+    new Set(adapterIds).size !== families.length ||
+    new Set(objectIds).size !== families.length
+  )
+    failures.push("soak families do not provide exact unique coverage");
+  let operations = 0;
+  const operationCounts: number[] = [];
+  const realizations: Record<string, readonly [string, string]> = {
+    file: ["filesystem", "native-bytes"],
+    document: ["document-store", "typed-rejection"],
+    memory: ["memory-store", "typed-rejection"],
+    email: ["message-store", "typed-rejection"],
+    attachment: ["content-addressed-media", "native-bytes"],
+    "tool-output": ["filesystem", "native-bytes"],
+  };
+  for (const family of families) {
+    const work = record(family.sourceWork, "soak family source work");
+    const realization =
+      typeof family.family === "string"
+        ? realizations[family.family]
+        : undefined;
+    if (
+      typeof family.adapterId !== "string" ||
+      !family.adapterId ||
+      /(?:fixture|mock|stub|test)/iu.test(family.adapterId) ||
+      typeof family.objectId !== "string" ||
+      !family.objectId ||
+      !realization ||
+      family.authoritativeStore !== realization[0] ||
+      family.binaryPolicy !== realization[1] ||
+      typeof family.productionMethod !== "string" ||
+      !family.productionMethod ||
+      /(?:fixture|mock|stub|test)/iu.test(family.productionMethod) ||
+      typeof family.operations !== "number" ||
+      !Number.isSafeInteger(family.operations) ||
+      family.operations <= 0 ||
+      !Array.isArray(family.failures) ||
+      family.failures.length !== 0 ||
+      typeof work.bytesRead !== "number" ||
+      !Number.isSafeInteger(work.bytesRead) ||
+      work.bytesRead < 0 ||
+      typeof work.readCalls !== "number" ||
+      !Number.isSafeInteger(work.readCalls) ||
+      work.readCalls < 0 ||
+      typeof work.rowsRead !== "number" ||
+      !Number.isSafeInteger(work.rowsRead) ||
+      work.rowsRead < 0 ||
+      work.parentScans !== 0 ||
+      work.bytesRead > family.operations * 128 * 1024 ||
+      work.readCalls > family.operations * 2 ||
+      work.rowsRead > family.operations * 8
+    )
+      failures.push(
+        `soak family ${String(family.family)} did not pass bounded work`,
+      );
+    if (typeof family.operations === "number") {
+      operations += family.operations;
+      operationCounts.push(family.operations);
+    }
+  }
+  if (operations !== soak.operations)
+    failures.push("soak family operation totals do not match the run");
+  if (
+    operationCounts.length !== CONTENT_CONTEXT_FAMILIES.length ||
+    Math.max(...operationCounts) - Math.min(...operationCounts) > 1
+  )
+    failures.push("soak operations were not distributed across every family");
   return failures;
 }
 
@@ -675,17 +763,28 @@ function semanticFailures(
 
   const soak = json(bytes["soak.json"], "soak report");
   if (
+    soak.schemaVersion !== "elizaos.progressive-content.mixed-soak.v1" ||
     soak.status !== "passed" ||
     soak.commit !== result.commit ||
     soak.corpusManifestSha256 !== result.corpusManifestSha256 ||
+    soak.clockSource !== "system-monotonic" ||
+    soak.evidenceEligible !== true ||
     typeof soak.durationMs !== "number" ||
+    !Number.isFinite(soak.durationMs) ||
     soak.durationMs < 6 * 60 * 60 * 1_000 ||
+    soak.requiredDurationMs !== 6 * 60 * 60 * 1_000 ||
     typeof soak.operations !== "number" ||
+    !Number.isSafeInteger(soak.operations) ||
     soak.operations < 100_000 ||
+    soak.requiredOperations !== 100_000 ||
     soak.positiveLeakControlDetected !== true ||
-    soakResourceFailures(soak).length > 0
+    soak.positiveLeakControlKind !== "retained-array-buffer" ||
+    soakResourceFailures(soak).length > 0 ||
+    soakFamilyFailures(soak).length > 0
   )
-    failures.push("soak evidence lacks duration, operations, or leak control");
+    failures.push(
+      "soak evidence lacks production duration, exact family operations, or leak control",
+    );
 
   const postgres = json(bytes["postgres.json"], "Postgres report");
   const postgresFamilies = array(postgres.families, "Postgres families");
