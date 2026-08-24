@@ -9,6 +9,7 @@ import type {
   ConnectorAccountManager,
   ConnectorAccountPatch,
 } from "@elizaos/core";
+import { OAuth2Client } from "google-auth-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createGoogleConnectorAccountProvider,
@@ -16,10 +17,27 @@ import {
 } from "./connector-account-provider.js";
 import { GOOGLE_OAUTH_SCOPES } from "./scopes.js";
 
-function unsignedJwt(payload: Record<string, unknown>): string {
-  return `${Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")}.${Buffer.from(
+function signedJwtShape(payload: Record<string, unknown>): string {
+  return `${Buffer.from(JSON.stringify({ alg: "RS256", kid: "test-key" })).toString("base64url")}.${Buffer.from(
     JSON.stringify(payload)
   ).toString("base64url")}.signature`;
+}
+
+function verifiedClaims(identity: Record<string, unknown>): Record<string, unknown> {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    iss: "https://accounts.google.com",
+    aud: "client-id",
+    iat: now - 10,
+    exp: now + 3600,
+    ...identity,
+  };
+}
+
+function stubIdTokenVerification(payload: Record<string, unknown>) {
+  vi.spyOn(OAuth2Client.prototype, "verifyIdToken").mockResolvedValue({
+    getPayload: () => payload,
+  } as never);
 }
 
 function runtime() {
@@ -76,32 +94,12 @@ function manager(existing: ConnectorAccount | null = null) {
 }
 
 function stubToken(subject: string, nonce: string) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({
-            access_token: "access-token",
-            refresh_token: "refresh-token",
-            expires_in: 3600,
-            scope: GOOGLE_OAUTH_SCOPES.gmail.read,
-            id_token: unsignedJwt({
-              sub: subject,
-              email: `${subject}@example.com`,
-              nonce,
-            }),
-          }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        )
-    )
-  );
-}
-
-function stubTokenAndUserInfo(
-  tokenIdentity: Record<string, unknown>,
-  userInfo: Record<string, unknown>
-) {
+  const identity = verifiedClaims({
+    sub: subject,
+    email: `${subject}@example.com`,
+    nonce,
+  });
+  stubIdTokenVerification(identity);
   vi.stubGlobal(
     "fetch",
     vi
@@ -113,7 +111,38 @@ function stubTokenAndUserInfo(
             refresh_token: "refresh-token",
             expires_in: 3600,
             scope: GOOGLE_OAUTH_SCOPES.gmail.read,
-            id_token: unsignedJwt(tokenIdentity),
+            id_token: signedJwtShape(identity),
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(identity), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+  );
+}
+
+function stubTokenAndUserInfo(
+  tokenIdentity: Record<string, unknown>,
+  userInfo: Record<string, unknown>
+) {
+  const verifiedIdentity = verifiedClaims(tokenIdentity);
+  stubIdTokenVerification(verifiedIdentity);
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "access-token",
+            refresh_token: "refresh-token",
+            expires_in: 3600,
+            scope: GOOGLE_OAUTH_SCOPES.gmail.read,
+            id_token: signedJwtShape(verifiedIdentity),
           }),
           { status: 200, headers: { "content-type": "application/json" } }
         )
@@ -127,7 +156,7 @@ function stubTokenAndUserInfo(
   );
 }
 
-function callback(accountId?: string) {
+function callback(accountId?: string, requestedRole: string | undefined = "OWNER") {
   return {
     provider: "google",
     code: "authorization-code",
@@ -142,7 +171,7 @@ function callback(accountId?: string) {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       metadata: {
-        requestedRole: "OWNER",
+        ...(requestedRole ? { requestedRole } : {}),
         requestedCapabilities: ["gmail.read"],
         requestedScopes: [GOOGLE_OAUTH_SCOPES.gmail.read],
         oidcNonce: "expected-nonce",
@@ -152,7 +181,10 @@ function callback(accountId?: string) {
 }
 
 describe("Google OAuth connector-account identity binding", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it("completes a new-account callback with a stable provider-subject id", async () => {
     stubToken("subject-1", "expected-nonce");
@@ -219,6 +251,34 @@ describe("Google OAuth connector-account identity binding", () => {
       code: "GOOGLE_OAUTH_ACCOUNT_IDENTITY_MISMATCH",
     });
     expect(harness.upsertAccount).not.toHaveBeenCalled();
+  });
+
+  it("retains the stored role when reauthorization metadata omits it", async () => {
+    stubToken("original-subject", "expected-nonce");
+    const provider = createGoogleConnectorAccountProvider(runtime());
+    const harness = manager({
+      id: "existing-account",
+      provider: "google",
+      role: "AGENT",
+      purpose: ["messaging"],
+      accessGate: "open",
+      status: "connected",
+      externalId: "original-subject",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    const result = await provider.completeOAuth?.(
+      callback("existing-account", undefined),
+      harness.value
+    );
+
+    expect(result?.account?.role).toBe("AGENT");
+    expect(harness.upsertAccount).toHaveBeenCalledWith(
+      "google",
+      expect.objectContaining({ role: "AGENT" }),
+      "existing-account"
+    );
   });
 
   it("rejects a reauthorization flow for an account that was deleted", async () => {
