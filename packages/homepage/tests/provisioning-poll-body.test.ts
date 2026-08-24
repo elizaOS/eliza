@@ -36,4 +36,16 @@ describe("buildProvisioningPollBody", () => {
     expect(body.sessionId).toBeUndefined();
     expect(body.statusOnly).toBe(true);
   });
+
+  test("keeps an empty-string session id verbatim while falling back to the web platform", () => {
+    const body = buildProvisioningPollBody("");
+    expect(body.platform).toBe("web");
+    expect(body.sessionId).toBe("");
+  });
+
+  test("treats whitespace-only session ids as present blooio sessions", () => {
+    const body = buildProvisioningPollBody("   ");
+    expect(body.platform).toBe("blooio");
+    expect(body.sessionId).toBe("   ");
+  });
 });
