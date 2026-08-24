@@ -283,21 +283,22 @@ export class MemoryService {
         memories = await runtime.searchMemories({
           embedding,
           tableName: "memories",
-          limit: input.limit ?? 10,
+          ...(input.limit === undefined ? {} : { limit: input.limit }),
           roomId: input.roomId as UUID,
           match_threshold: 0.7,
         });
       } else {
         logger.info(`[Memory Service] Querying database directly for roomId: ${input.roomId}`);
 
-        const results = await dbRead
+        const query = dbRead
           .select()
           .from(memoryTable)
           .where(
             and(eq(memoryTable.roomId, input.roomId), eq(memoryTable.agentId, runtime.agentId)),
           )
-          .orderBy(desc(memoryTable.createdAt))
-          .limit(input.limit ?? 10);
+          .orderBy(desc(memoryTable.createdAt));
+        const results =
+          input.limit === undefined ? await query : await query.limit(input.limit);
 
         memories = results.map(
           (row) =>
@@ -329,19 +330,19 @@ export class MemoryService {
         return [];
       }
 
-      const limit = input.limit ?? 10;
       const roomIdArray = Array.from(allowedRoomIds);
 
       // PERFORMANCE FIX: Use single batched query with IN clause instead of N+1 queries
       // This reduces N database round-trips to just 1
-      const results = await dbRead
+      const query = dbRead
         .select()
         .from(memoryTable)
         .where(
           and(inArray(memoryTable.roomId, roomIdArray), eq(memoryTable.agentId, runtime.agentId)),
         )
-        .orderBy(desc(memoryTable.createdAt))
-        .limit(limit);
+        .orderBy(desc(memoryTable.createdAt));
+      const results =
+        input.limit === undefined ? await query : await query.limit(input.limit);
 
       memories = results.map(
         (row) =>
@@ -555,7 +556,6 @@ Summary:`;
 
     return Array.from(wordCounts.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
       .map((e) => e[0]);
   }
 
@@ -707,7 +707,6 @@ Summary:`;
   }> {
     const memories = await this.retrieveMemories({
       organizationId,
-      limit: 100,
     });
 
     const memoriesText = memories.map((m) => m.memory.content.text || "").join("\n");
@@ -721,7 +720,7 @@ Summary:`;
         const topics = this.extractTopics(memoriesText);
         insights = [
           `Identified ${topics.length} key topics from ${memories.length} memories`,
-          `Most frequent: ${topics.slice(0, 3).join(", ")}`,
+          `Topics by frequency: ${topics.join(", ")}`,
         ];
         data = { topics };
         chartData = topics.map((topic, idx) => ({
@@ -763,9 +762,9 @@ Summary:`;
           wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
         }
 
-        const topEntities = Array.from(wordCounts.entries())
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 10);
+        const topEntities = Array.from(wordCounts.entries()).sort(
+          (a, b) => b[1] - a[1],
+        );
 
         chartData = topEntities.map(([label, value]) => ({ label, value }));
         insights = [

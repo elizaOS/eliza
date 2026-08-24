@@ -8427,11 +8427,10 @@ export class LifeOpsRepository {
     agentId: string,
     opts: { conversationId?: string; limit?: number } = {},
   ): Promise<LifeOpsXDm[]> {
-    const DEFAULT_LIMIT = 100;
-    const limit =
+    const limitClause =
       opts.limit !== undefined && Number.isFinite(opts.limit)
-        ? opts.limit
-        : DEFAULT_LIMIT;
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
     const conversationClause = opts.conversationId
       ? `AND conversation_id = ${sqlQuote(opts.conversationId)}`
       : "";
@@ -8442,7 +8441,7 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           ${conversationClause}
         ORDER BY received_at DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseXDm);
   }
