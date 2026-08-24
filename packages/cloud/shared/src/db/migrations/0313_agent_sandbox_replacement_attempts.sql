@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS "agent_sandbox_replacement_attempts" (
   "locator_node_id" text,
   "locator_container_name" text,
   "locator_node_record_id" uuid,
+  "locator_node_incarnation" uuid,
+  "locator_node_history_id" uuid,
   "locator_node_hostname" text,
   "locator_node_ssh_port" integer,
   "locator_node_ssh_user" text,
@@ -62,6 +64,11 @@ CREATE TABLE IF NOT EXISTS "agent_sandbox_replacement_attempts" (
     "id", "organization_id", "agent_id", "backup_id", "restore_attempt_id",
     "owner_id", "generation", "catalog_epoch", "copy_role", "operation_id",
     "activation_generation", "lifecycle_revision", "expected_manifest_sha256"
+  ) ON DELETE RESTRICT,
+  CONSTRAINT "agent_sandbox_replacement_attempts_node_occurrence_fkey" FOREIGN KEY (
+    "locator_node_history_id", "locator_node_record_id", "locator_node_incarnation"
+  ) REFERENCES "agent_node_incarnation_histories" (
+    "id", "docker_node_record_id", "node_incarnation"
   ) ON DELETE RESTRICT,
   CONSTRAINT "agent_sandbox_replacement_attempts_operation_kind_check" CHECK (
     "operation_kind" IN ('provision', 'upgrade', 'downgrade')
@@ -98,7 +105,8 @@ CREATE TABLE IF NOT EXISTS "agent_sandbox_replacement_attempts" (
   CONSTRAINT "agent_sandbox_replacement_attempts_locator_shape_check" CHECK ((
     num_nonnulls(
       "locator_sandbox_id", "locator_node_id", "locator_container_name",
-      "locator_node_record_id", "locator_node_hostname", "locator_node_ssh_port",
+      "locator_node_record_id", "locator_node_incarnation", "locator_node_history_id",
+      "locator_node_hostname", "locator_node_ssh_port",
       "locator_node_ssh_user", "locator_node_host_key_fingerprint",
       "locator_secret_cleanup_version", "locator_allocation_counted",
       "locator_vpn_node_name", "locator_vpn_registration_started_at",
@@ -110,6 +118,8 @@ CREATE TABLE IF NOT EXISTS "agent_sandbox_replacement_attempts" (
       AND "locator_node_id" IS NOT NULL
       AND "locator_container_name" IS NOT NULL
       AND "locator_node_record_id" IS NOT NULL
+      AND "locator_node_incarnation" IS NOT NULL
+      AND "locator_node_history_id" IS NOT NULL
       AND "locator_node_hostname" IS NOT NULL
       AND "locator_node_ssh_port" IS NOT NULL
       AND "locator_node_ssh_user" IS NOT NULL
@@ -231,7 +241,8 @@ BEGIN
     IF NEW."state" <> 'in_flight_unresolved'
       OR num_nonnulls(
         NEW."locator_sandbox_id", NEW."locator_node_id", NEW."locator_container_name",
-        NEW."locator_node_record_id", NEW."locator_node_hostname", NEW."locator_node_ssh_port",
+        NEW."locator_node_record_id", NEW."locator_node_incarnation",
+        NEW."locator_node_history_id", NEW."locator_node_hostname", NEW."locator_node_ssh_port",
         NEW."locator_node_ssh_user", NEW."locator_node_host_key_fingerprint",
         NEW."locator_secret_cleanup_version", NEW."locator_allocation_counted",
         NEW."locator_vpn_node_name", NEW."locator_vpn_registration_started_at",
@@ -280,14 +291,16 @@ BEGIN
     END IF;
   ELSIF ROW(
     OLD."locator_sandbox_id", OLD."locator_node_id", OLD."locator_container_name",
-    OLD."locator_node_record_id", OLD."locator_node_hostname", OLD."locator_node_ssh_port",
+    OLD."locator_node_record_id", OLD."locator_node_incarnation",
+    OLD."locator_node_history_id", OLD."locator_node_hostname", OLD."locator_node_ssh_port",
     OLD."locator_node_ssh_user", OLD."locator_node_host_key_fingerprint",
     OLD."locator_secret_cleanup_version", OLD."locator_allocation_counted",
     OLD."locator_vpn_node_name", OLD."locator_vpn_registration_started_at",
     OLD."locator_previous_vpn_node_id", OLD."locator_recorded_at"
   ) IS DISTINCT FROM ROW(
     NEW."locator_sandbox_id", NEW."locator_node_id", NEW."locator_container_name",
-    NEW."locator_node_record_id", NEW."locator_node_hostname", NEW."locator_node_ssh_port",
+    NEW."locator_node_record_id", NEW."locator_node_incarnation",
+    NEW."locator_node_history_id", NEW."locator_node_hostname", NEW."locator_node_ssh_port",
     NEW."locator_node_ssh_user", NEW."locator_node_host_key_fingerprint",
     NEW."locator_secret_cleanup_version", NEW."locator_allocation_counted",
     NEW."locator_vpn_node_name", NEW."locator_vpn_registration_started_at",
@@ -345,7 +358,8 @@ BEGIN
   IF OLD."state" <> 'in_flight_unresolved'
     AND ROW(
       OLD."locator_sandbox_id", OLD."locator_node_id", OLD."locator_container_name",
-      OLD."locator_node_record_id", OLD."locator_node_hostname", OLD."locator_node_ssh_port",
+      OLD."locator_node_record_id", OLD."locator_node_incarnation",
+      OLD."locator_node_history_id", OLD."locator_node_hostname", OLD."locator_node_ssh_port",
       OLD."locator_node_ssh_user", OLD."locator_node_host_key_fingerprint",
       OLD."locator_secret_cleanup_version", OLD."locator_allocation_counted",
       OLD."locator_vpn_node_name", OLD."locator_vpn_registration_started_at",
@@ -354,7 +368,8 @@ BEGIN
       OLD."locator_vpn_node_id", OLD."locator_vpn_recorded_at"
     ) IS DISTINCT FROM ROW(
       NEW."locator_sandbox_id", NEW."locator_node_id", NEW."locator_container_name",
-      NEW."locator_node_record_id", NEW."locator_node_hostname", NEW."locator_node_ssh_port",
+      NEW."locator_node_record_id", NEW."locator_node_incarnation",
+      NEW."locator_node_history_id", NEW."locator_node_hostname", NEW."locator_node_ssh_port",
       NEW."locator_node_ssh_user", NEW."locator_node_host_key_fingerprint",
       NEW."locator_secret_cleanup_version", NEW."locator_allocation_counted",
       NEW."locator_vpn_node_name", NEW."locator_vpn_registration_started_at",
