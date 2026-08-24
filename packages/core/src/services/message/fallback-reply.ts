@@ -1,3 +1,4 @@
+import { truncateWellFormed } from "../../utils/well-formed.ts";
 /**
  * Classifies model-call failures — rate-limit/429, credit exhaustion/402,
  * auth 401/403, and transient provider errors worth failing over to another
@@ -178,7 +179,7 @@ const BILLING_KEYWORDS_RE =
 /** Cap a value before running a regex scan so a pathological provider payload
  *  cannot turn a substring match into a catastrophic-backtracking DoS. */
 function clampForScan(value: string): string {
-	return value.length > 10_000 ? value.slice(0, 10_000) : value;
+	return truncateWellFormed(value, 10_000);
 }
 
 export function isInsufficientCreditsMessage(message: string): boolean {

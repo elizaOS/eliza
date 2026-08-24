@@ -1,3 +1,4 @@
+import { truncateWellFormed } from "../../utils/well-formed.ts";
 /**
  * Basic Capabilities
  *
@@ -218,7 +219,7 @@ function textContainsAgentName(
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = truncateWellFormed(text, 10_000);
 	return names.some((name) => {
 		const candidate = name?.trim();
 		if (!candidate) {
@@ -238,7 +239,7 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = truncateWellFormed(text, 10_000);
 	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 

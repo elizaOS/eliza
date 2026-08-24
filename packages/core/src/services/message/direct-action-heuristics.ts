@@ -1,3 +1,4 @@
+import { truncateWellFormed } from "../../utils/well-formed.ts";
 /**
  * Pre-model heuristics that decide which registered actions a raw message should
  * directly trigger: local-shell inspection, web/live-info lookup, coding-task
@@ -18,7 +19,7 @@ export interface DirectActionInferenceHooks {
 }
 
 function unwrapPlannerIdentifier(value: string): string {
-	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
+	const safe = truncateWellFormed(value, 10_000);
 	const trimmed = safe
 		.trim()
 		.replace(/^(?:[-*]|\d+[.)])\s+/, "")

@@ -519,7 +519,7 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = truncateWellFormed(text, 10_000);
 	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 
@@ -10564,7 +10564,7 @@ function isStopResponse(
 }
 
 function unwrapPlannerIdentifier(value: string): string {
-	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
+	const safe = truncateWellFormed(value, 10_000);
 	const trimmed = safe
 		.trim()
 		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
