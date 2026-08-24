@@ -261,6 +261,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-web-search/src/services/webSearchService.ts": [
 		/maxResults:\s*options\?\.limit\s*\?\?\s*3/,
 	],
+	"packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoicePlugin.java": [
+		/getInt\("maxTokens",\s*48\)/,
+		/maxTokens\s*!=\s*null\s*\?\s*maxTokens\s*:\s*48/,
+	],
+	"packages/cloud/shared/src/lib/utils/ai-json-parse.ts": [
+		/truncateWellFormed/,
+		/toWellFormedUnicode\(extracted\),\s*200/,
+	],
 	"plugins/plugin-personal-assistant/src/lifeops/domains/x-read-service.ts": [
 		/opts\.limit\s*\?\?\s*20/,
 	],
