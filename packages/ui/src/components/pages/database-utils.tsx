@@ -10,6 +10,14 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 
 export type DbView = "tables" | "query";
 export type SortDir = "asc" | "desc" | null;
@@ -146,18 +154,18 @@ export function ResultsGrid({
       className="overflow-auto border border-border/40 bg-card/95 rounded-sm "
       style={{ maxHeight: "calc(100vh - 340px)" }}
     >
-      <table className="w-full border-collapse text-xs font-mono">
-        <thead className="sticky top-0 z-10 bg-bg/95 border-b border-border/40 ">
-          <tr>
+      <Table density="compact" className="font-mono">
+        <TableHeader className="sticky top-0 z-10 bg-bg/95 border-b border-border/40 ">
+          <TableRow>
             {/* Row number column */}
-            <th className="w-[50px] min-w-[50px] px-3 py-2.5 text-2xs text-muted font-medium text-right border-r border-border/40">
+            <TableHead className="w-[50px] min-w-[50px] px-3 py-2.5 text-2xs text-muted font-medium text-right border-r border-border/40">
               #
-            </th>
+            </TableHead>
             {columns.map((col) => {
               const meta = columnMeta?.get(col);
               const isSorted = sortCol === col;
               return (
-                <th
+                <TableHead
                   key={col}
                   className="px-4 py-2.5 text-left border-r border-border/40 whitespace-nowrap cursor-pointer select-none hover:bg-bg-hover transition-colors group"
                   onClick={() => onSort?.(col)}
@@ -188,29 +196,29 @@ export function ResultsGrid({
                       </span>
                     )}
                   </div>
-                </th>
+                </TableHead>
               );
             })}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row, i) => {
             const rowKey = buildResultsGridRowKey(columns, row, i, columnMeta);
             return (
-              <tr
+              <TableRow
                 key={rowKey}
                 className="border-b border-border/20 hover:bg-bg-hover transition-colors group"
               >
-                <td className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
+                <TableCell className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
                   {i + 1}
-                </td>
+                </TableCell>
                 {columns.map((col) => {
                   const raw = row[col];
                   const display = formatCell(raw);
                   const isNull = raw === null || raw === undefined;
                   const isExpandable = display.length > 40 && !!onCellClick;
                   return (
-                    <td
+                    <TableCell
                       key={col}
                       className="px-4 py-2 border-r border-border/20 max-w-[280px] truncate cursor-default transition-colors"
                       title={display}
@@ -234,14 +242,14 @@ export function ResultsGrid({
                       ) : (
                         <span className="text-txt">{display}</span>
                       )}
-                    </td>
+                    </TableCell>
                   );
                 })}
-              </tr>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

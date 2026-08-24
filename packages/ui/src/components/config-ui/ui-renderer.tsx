@@ -39,6 +39,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import { Textarea } from "../ui/textarea";
 import { ConfigFieldErrors } from "./config-control-primitives";
 import {
@@ -879,31 +887,31 @@ const TableComponent: ComponentFn = (props) => {
           {String(props.caption)}
         </div>
       ) : null}
-      <table className="w-full text-xs border-collapse">
-        <thead>
-          <tr>
+      <Table density="compact">
+        <TableHeader>
+          <TableRow>
             {columns.map((col) => (
-              <th
+              <TableHead
                 key={col}
                 className="text-left px-2.5 py-1.5 font-semibold text-muted"
               >
                 {col}
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => (
-            <tr key={row.join("|")} className="">
+            <TableRow key={row.join("|")} className="">
               {row.map((cell) => (
-                <td key={cell} className="px-2.5 py-1.5">
+                <TableCell key={cell} className="px-2.5 py-1.5">
                   {cell}
-                </td>
+                </TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 };

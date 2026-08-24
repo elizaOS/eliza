@@ -41,6 +41,14 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Switch } from "../ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import { Textarea } from "../ui/textarea";
 import {
   getConfigInputClassName,
@@ -1841,25 +1849,25 @@ function TableFieldInner(props: FieldRenderProps) {
       data-field-type="table"
     >
       <div className="border border-border overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-surface">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-surface">
               {columns.map((col) => (
-                <th
+                <TableHead
                   key={col.key}
                   className="text-left text-xs-tight font-semibold text-muted px-3 py-1.5"
                 >
                   {col.label}
-                </th>
+                </TableHead>
               ))}
-              <th className="w-[36px]" />
-            </tr>
-          </thead>
-          <tbody>
+              <TableHead className="w-[36px]" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {rows.map((row, ri) => (
-              <tr key={JSON.stringify(row)} className="">
+              <TableRow key={JSON.stringify(row)} className="">
                 {columns.map((col) => (
-                  <td key={col.key} className="px-1 py-0.5">
+                  <TableCell key={col.key} className="px-1 py-0.5">
                     <Input
                       className="h-8 w-full px-2 py-1 bg-transparent text-sm border-none outline-none "
                       value={row[col.key] ?? ""}
@@ -1867,9 +1875,9 @@ function TableFieldInner(props: FieldRenderProps) {
                       disabled={props.readonly}
                       onChange={(e) => updateCell(ri, col.key, e.target.value)}
                     />
-                  </td>
+                  </TableCell>
                 ))}
-                <td className="text-center">
+                <TableCell className="text-center">
                   {!props.readonly && rows.length > 1 && (
                     <Button
                       type="button"
@@ -1884,11 +1892,11 @@ function TableFieldInner(props: FieldRenderProps) {
                       {t("config-field.Times")}
                     </Button>
                   )}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
       {!props.readonly && rows.length < MAX_TABLE_ROWS && (
         <Button

@@ -31,6 +31,14 @@ import {
   SelectValue,
 } from "../../ui/select";
 import { SettingsSelectTrigger } from "../../ui/settings-controls";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../ui/table";
 import { SettingsSelectRow } from "../settings-agent-rows";
 import type {
   AgentSummary,
@@ -589,27 +597,28 @@ export function RoutingTab(props: RoutingTabProps) {
             })}
           </div>
         ) : (
-          <table
+          <Table
             data-testid="routing-rules-table"
-            className="w-full table-fixed border-collapse rounded-sm border border-border/40 bg-card/30 text-xs"
+            density="compact"
+            layout="fixed"
           >
-            <thead>
-              <tr className="text-left text-muted">
-                <th className="px-2 py-1 font-medium">
+            <TableHeader>
+              <TableRow className="text-left text-muted">
+                <TableHead className="px-2 py-1 font-medium">
                   {t("routing.table.key", { defaultValue: "Key" })}
-                </th>
-                <th className="px-2 py-1 font-medium">
+                </TableHead>
+                <TableHead className="px-2 py-1 font-medium">
                   {t("routing.table.scope", { defaultValue: "Scope" })}
-                </th>
-                <th className="px-2 py-1 font-medium">
+                </TableHead>
+                <TableHead className="px-2 py-1 font-medium">
                   {t("routing.table.profile", { defaultValue: "Profile" })}
-                </th>
-                <th className="w-16 px-2 py-1 font-medium text-right">
+                </TableHead>
+                <TableHead className="w-16 px-2 py-1 font-medium text-right">
                   {t("routing.table.actions", { defaultValue: "Actions" })}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {visibleRules.map((rule, idx) => {
                 const targetId =
                   rule.scope.agentId ??
@@ -645,8 +654,8 @@ export function RoutingTab(props: RoutingTabProps) {
                   />
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
 
         {saving && (
@@ -702,11 +711,11 @@ const RoutingRuleRow = memo(
         onActivate: onDelete,
       });
     return (
-      <tr
+      <TableRow
         data-testid={`routing-rule-row-${ruleKey}`}
         className="border-t border-border/30"
       >
-        <td className="px-2 py-1.5 align-top">
+        <TableCell className="px-2 py-1.5 align-top">
           {keyExists ? (
             <Button
               ref={chipRef}
@@ -727,19 +736,19 @@ const RoutingRuleRow = memo(
           ) : (
             <span className="font-mono text-2xs text-muted">{keyPattern}</span>
           )}
-        </td>
-        <td className="px-2 py-1.5 align-top">
+        </TableCell>
+        <TableCell className="px-2 py-1.5 align-top">
           <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
             {scopeKind}
           </span>
           <span className="ml-1.5 text-2xs text-txt">{targetLabel}</span>
-        </td>
-        <td className="px-2 py-1.5 align-top">
+        </TableCell>
+        <TableCell className="px-2 py-1.5 align-top">
           <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
             {profileId}
           </span>
-        </td>
-        <td className="px-2 py-1.5 align-top text-right">
+        </TableCell>
+        <TableCell className="px-2 py-1.5 align-top text-right">
           <Button
             ref={deleteRef}
             {...deleteAgentProps}
@@ -754,8 +763,8 @@ const RoutingRuleRow = memo(
           >
             <Trash2 className="size-3.5" aria-hidden />
           </Button>
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
     );
   },
   // Include handlers in the memo check so rows pick up changed navigation or

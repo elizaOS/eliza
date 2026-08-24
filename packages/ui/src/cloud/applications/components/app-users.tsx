@@ -17,6 +17,14 @@ import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/empty-state";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../../components/ui/table";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
@@ -207,33 +215,33 @@ export function AppUsers({ appId }: AppUsersProps) {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-border">
+                  <TableHead className="px-3 py-2 text-left text-xs font-medium text-muted">
                     {t("cloud.appUsers.ipAddress", {
                       defaultValue: "IP Address",
                     })}
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted">
+                  </TableHead>
+                  <TableHead className="px-3 py-2 text-right text-xs font-medium text-muted">
                     {t("cloud.appUsers.requests", {
                       defaultValue: "Requests",
                     })}
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted">
+                  </TableHead>
+                  <TableHead className="px-3 py-2 text-right text-xs font-medium text-muted">
                     {t("cloud.appUsers.lastSeenHeader", {
                       defaultValue: "Last Seen",
                     })}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {visitors.map((visitor, index) => (
-                  <tr
+                  <TableRow
                     key={visitor.ip}
                     className="border-b border-border/60 hover:bg-bg-hover"
                   >
-                    <td className="py-2 px-3">
+                    <TableCell className="py-2 px-3">
                       <div className="flex items-center gap-2">
                         <div className="flex size-6 items-center justify-center rounded-full bg-bg-accent">
                           <span className="text-2xs text-muted">
@@ -244,19 +252,19 @@ export function AppUsers({ appId }: AppUsersProps) {
                           {visitor.ip}
                         </code>
                       </div>
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs font-medium text-txt tabular-nums">
+                    </TableCell>
+                    <TableCell className="px-3 py-2 text-right text-xs font-medium text-txt tabular-nums">
                       {visitor.requestCount.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs text-muted">
+                    </TableCell>
+                    <TableCell className="px-3 py-2 text-right text-xs text-muted">
                       {formatDistanceToNow(new Date(visitor.lastSeen), {
                         addSuffix: true,
                       })}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}

@@ -84,6 +84,8 @@
     "audit:design-system:update-baseline": "node scripts/check-design-system.mjs --write-baseline",
     "migrate:canonical-imports": "node scripts/migrate-canonical-imports.mjs --write",
     "migrate:canonical-imports:check": "node scripts/migrate-canonical-imports.mjs",
+    "migrate:raw-tables": "node scripts/migrate-raw-tables.mjs --write",
+    "migrate:raw-tables:check": "node scripts/migrate-raw-tables.mjs",
     "audit:molecular-inventory": "node scripts/find-duplicate-molecular-components.mjs",
     "audit:molecular-inventory:test": "node --test scripts/find-duplicate-molecular-components.test.mjs",
     "audit:dead-code": "knip --config knip.json --include files,dependencies,unlisted,unresolved --max-issues 0",

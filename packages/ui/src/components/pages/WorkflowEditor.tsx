@@ -35,6 +35,14 @@ import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import { Textarea } from "../ui/textarea";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
@@ -209,34 +217,34 @@ function WorkflowWidget({
             </span>
           </div>
         ) : widget.component === "data-table" && columns.length > 0 ? (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
+          <Table>
+            <TableHeader>
+              <TableRow>
                 {columns.map((column) => (
-                  <th
+                  <TableHead
                     key={column}
                     className="border-b px-2 py-1 text-left font-medium text-muted-foreground"
                   >
                     {column}
-                  </th>
+                  </TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((row, index) => (
-                <tr key={String(row.id ?? index)}>
+                <TableRow key={String(row.id ?? index)}>
                   {columns.map((column) => (
-                    <td
+                    <TableCell
                       key={column}
                       className="border-b border-border/40 px-2 py-1.5"
                     >
                       {String(row[column] ?? "")}
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         ) : widget.component === "chart" && chartValues.length > 0 ? (
           <div className="space-y-2">
             {chartValues.map((item) => (

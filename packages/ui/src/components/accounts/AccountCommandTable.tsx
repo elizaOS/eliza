@@ -48,6 +48,14 @@ import {
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
+import {
   type AccountSort,
   type AccountSortKey,
   DEFAULT_ACCOUNT_SORT,
@@ -338,15 +346,15 @@ export function AccountCommandTable({
           {actionError}
         </div>
       ) : null}
-      <table className="w-full min-w-[720px] border-collapse text-left">
-        <thead>
-          <tr className="border-b border-border/40 bg-bg-accent/40">
-            <th scope="col" className="px-3 py-2 font-normal">
+      <Table className="min-w-[720px]">
+        <TableHeader>
+          <TableRow className="border-b border-border/40 bg-bg-accent/40">
+            <TableHead scope="col" className="px-3 py-2 font-normal">
               <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.account", { defaultValue: "Account" })}
               </span>
-            </th>
-            <th
+            </TableHead>
+            <TableHead
               scope="col"
               aria-sort={ariaSortFor(sort, "health")}
               className="px-3 py-2 font-normal"
@@ -359,8 +367,8 @@ export function AccountCommandTable({
                 sort={sort}
                 onSort={handleSort}
               />
-            </th>
-            <th
+            </TableHead>
+            <TableHead
               scope="col"
               aria-sort={ariaSortFor(sort, "usage")}
               className="px-3 py-2 font-normal"
@@ -373,13 +381,13 @@ export function AccountCommandTable({
                 sort={sort}
                 onSort={handleSort}
               />
-            </th>
-            <th scope="col" className="px-3 py-2 font-normal">
+            </TableHead>
+            <TableHead scope="col" className="px-3 py-2 font-normal">
               <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.resets", { defaultValue: "Resets" })}
               </span>
-            </th>
-            <th
+            </TableHead>
+            <TableHead
               scope="col"
               aria-sort={ariaSortFor(sort, "priority")}
               className="px-3 py-2 font-normal"
@@ -392,13 +400,13 @@ export function AccountCommandTable({
                 sort={sort}
                 onSort={handleSort}
               />
-            </th>
-            <th scope="col" className="px-3 py-2 font-normal">
+            </TableHead>
+            <TableHead scope="col" className="px-3 py-2 font-normal">
               <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.enabled", { defaultValue: "Enabled" })}
               </span>
-            </th>
-            <th
+            </TableHead>
+            <TableHead
               scope="col"
               aria-sort={ariaSortFor(sort, "lastUsed")}
               className="px-3 py-2 font-normal"
@@ -411,29 +419,29 @@ export function AccountCommandTable({
                 sort={sort}
                 onSort={handleSort}
               />
-            </th>
+            </TableHead>
             {showLeaseColumn ? (
-              <th scope="col" className="px-3 py-2 font-normal">
+              <TableHead scope="col" className="px-3 py-2 font-normal">
                 <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                   {t("accounts.table.col.leases", {
                     defaultValue: "Leases",
                   })}
                 </span>
-              </th>
+              </TableHead>
             ) : null}
-            <th scope="col" className="px-3 py-2 text-right font-normal">
+            <TableHead scope="col" className="px-3 py-2 text-right font-normal">
               <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.actions", {
                   defaultValue: "Actions",
                 })}
               </span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {loading ? (
-            <tr>
-              <td
+            <TableRow>
+              <TableCell
                 colSpan={columnCount}
                 className="px-3 py-6 text-center text-xs text-muted"
               >
@@ -443,29 +451,29 @@ export function AccountCommandTable({
                     defaultValue: "Loading accounts…",
                   })}
                 </span>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : error ? (
-            <tr>
-              <td
+            <TableRow>
+              <TableCell
                 colSpan={columnCount}
                 className="px-3 py-6 text-center text-xs text-destructive"
                 role="alert"
               >
                 {error}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : rows.length === 0 ? (
-            <tr>
-              <td
+            <TableRow>
+              <TableCell
                 colSpan={columnCount}
                 className="px-3 py-6 text-center text-xs text-muted"
               >
                 {t("accounts.table.empty", {
                   defaultValue: "No accounts in this pool yet.",
                 })}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : (
             rows.map((account) => {
               const rowSaving = saving.has(account.id);
@@ -479,7 +487,7 @@ export function AccountCommandTable({
               const repair = needsCredentialRepair(account);
               const lease = account.observability;
               return (
-                <tr
+                <TableRow
                   key={account.id}
                   data-testid={`account-row-${account.id}`}
                   data-active={isActive ? "true" : undefined}
@@ -489,7 +497,7 @@ export function AccountCommandTable({
                     isActive && "bg-accent/5",
                   )}
                 >
-                  <td className="px-3 py-2.5 align-middle">
+                  <TableCell className="px-3 py-2.5 align-middle">
                     <div className="flex items-center gap-2">
                       {isActive ? (
                         <span
@@ -549,11 +557,11 @@ export function AccountCommandTable({
                         ) : null}
                       </div>
                     </div>
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     <HealthCell account={account} t={t} />
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     {hasWindowUsage ? (
                       <div className="flex flex-col gap-1">
                         <UsageBar
@@ -579,8 +587,8 @@ export function AccountCommandTable({
                         })}
                       </span>
                     )}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     {hasWindowUsage ? (
                       <div className="flex flex-col gap-0.5 text-2xs tabular-nums text-muted">
                         <span title="All-model weekly reset">
@@ -595,8 +603,8 @@ export function AccountCommandTable({
                     ) : (
                       <span className="text-2xs text-muted">Not reported</span>
                     )}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     <span
                       className="text-xs-tight tabular-nums text-muted"
                       title={t("accounts.table.priority.tooltip", {
@@ -605,8 +613,8 @@ export function AccountCommandTable({
                     >
                       #{account.priority}
                     </span>
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     <Checkbox
                       checked={account.enabled}
                       disabled={rowSaving}
@@ -620,16 +628,16 @@ export function AccountCommandTable({
                         label: account.label,
                       })}
                     />
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     <span className="text-xs-tight text-muted">
                       {account.lastUsedAt
                         ? formatRelativeTimeShort(account.lastUsedAt)
                         : "-"}
                     </span>
-                  </td>
+                  </TableCell>
                   {showLeaseColumn ? (
-                    <td className="px-3 py-2.5 align-middle">
+                    <TableCell className="px-3 py-2.5 align-middle">
                       <div className="flex flex-col gap-0.5">
                         <span
                           className={cn(
@@ -652,9 +660,9 @@ export function AccountCommandTable({
                           </span>
                         ) : null}
                       </div>
-                    </td>
+                    </TableCell>
                   ) : null}
-                  <td className="px-3 py-2.5 text-right align-middle">
+                  <TableCell className="px-3 py-2.5 text-right align-middle">
                     <div className="inline-flex items-center gap-1.5">
                       {onMove ? (
                         <>
@@ -790,13 +798,13 @@ export function AccountCommandTable({
                         <Trash2 className="size-3.5" aria-hidden />
                       </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               );
             })
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
 
       <Dialog
         open={confirmingDelete}

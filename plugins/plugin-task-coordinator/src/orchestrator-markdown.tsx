@@ -1,4 +1,13 @@
 // Renders safe markdown prose inside orchestrator transcripts.
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@elizaos/ui";
 import { Button } from "@elizaos/ui/button";
 import { Input } from "@elizaos/ui/input";
 import { Check, Copy } from "lucide-react";
@@ -92,45 +101,45 @@ function renderToken(token: Token, key: string): ReactNode {
     case "table":
       return (
         <div key={key} className="my-1.5 overflow-x-auto">
-          <table className="w-full border-collapse text-2xs">
-            <thead>
-              <tr>
+          <Table density="dense">
+            <TableHeader>
+              <TableRow>
                 {token.header.map((cell: Tokens.TableCell, index: number) => {
                   const cellKey = `${key}.h${index}`;
                   return (
-                    <th
+                    <TableHead
                       key={cellKey}
                       style={alignStyle(cell.align)}
                       className="border border-border/60 bg-bg/40 px-2 py-1 text-left font-semibold text-txt"
                     >
                       {renderChildren(cell.tokens, cellKey)}
-                    </th>
+                    </TableHead>
                   );
                 })}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {token.rows.map((row: Tokens.TableCell[], rowIndex: number) => {
                 const rowKey = `${key}.r${rowIndex}`;
                 return (
-                  <tr key={rowKey}>
+                  <TableRow key={rowKey}>
                     {row.map((cell: Tokens.TableCell, cellIndex: number) => {
                       const cellKey = `${rowKey}c${cellIndex}`;
                       return (
-                        <td
+                        <TableCell
                           key={cellKey}
                           style={alignStyle(cell.align)}
                           className="border border-border/50 px-2 py-1 align-top"
                         >
                           {renderChildren(cell.tokens, cellKey)}
-                        </td>
+                        </TableCell>
                       );
                     })}
-                  </tr>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       );
     case "hr":

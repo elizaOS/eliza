@@ -33,6 +33,7 @@ export * from "../ui/slider";
 export * from "../ui/spinner";
 export * from "../ui/stack";
 export * from "../ui/switch";
+export * from "../ui/table";
 export * from "../ui/tabs";
 export * from "../ui/tag-editor";
 export * from "../ui/textarea";

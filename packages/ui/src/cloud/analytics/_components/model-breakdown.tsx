@@ -15,6 +15,14 @@ import {
   CardHeader,
   CardTitle,
 } from "../../../cloud-ui";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../../components/ui/table";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { toSuccessRatePercent } from "../lib/format";
 
@@ -96,71 +104,71 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
       <CardContent className="min-w-0 border-t border-border/60 p-4 sm:p-6">
         <div className="min-w-0 space-y-4">
           <div className="max-w-full overflow-x-auto">
-            <table className="min-w-[640px] w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/50">
-                  <th className="pb-3 text-left font-medium text-muted-foreground">
+            <Table className="min-w-[640px]">
+              <TableHeader>
+                <TableRow className="border-b border-border/50">
+                  <TableHead className="pb-3 text-left font-medium text-muted-foreground">
                     {t("cloud.analytics.modelBreakdown.col.model", {
                       defaultValue: "Model",
                     })}
-                  </th>
-                  <th className="pb-3 text-left font-medium text-muted-foreground">
+                  </TableHead>
+                  <TableHead className="pb-3 text-left font-medium text-muted-foreground">
                     {t("cloud.analytics.modelBreakdown.col.provider", {
                       defaultValue: "Provider",
                     })}
-                  </th>
-                  <th className="pb-3 text-right font-medium text-muted-foreground">
+                  </TableHead>
+                  <TableHead className="pb-3 text-right font-medium text-muted-foreground">
                     {t("cloud.analytics.modelBreakdown.col.requests", {
                       defaultValue: "Requests",
                     })}
-                  </th>
-                  <th className="pb-3 text-right font-medium text-muted-foreground">
+                  </TableHead>
+                  <TableHead className="pb-3 text-right font-medium text-muted-foreground">
                     {t("cloud.analytics.modelBreakdown.col.cost", {
                       defaultValue: "Cost",
                     })}
-                  </th>
-                  <th className="pb-3 text-right font-medium text-muted-foreground">
+                  </TableHead>
+                  <TableHead className="pb-3 text-right font-medium text-muted-foreground">
                     {t("cloud.analytics.modelBreakdown.col.tokens", {
                       defaultValue: "Tokens",
                     })}
-                  </th>
-                  <th className="pb-3 text-right font-medium text-muted-foreground">
+                  </TableHead>
+                  <TableHead className="pb-3 text-right font-medium text-muted-foreground">
                     {t("cloud.analytics.modelBreakdown.col.success", {
                       defaultValue: "Success",
                     })}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {displayedModels.map((model: (typeof models)[0]) => (
-                  <tr
+                  <TableRow
                     key={`${model.model}-${model.provider}`}
                     className="border-b border-border/30 last:border-0"
                   >
-                    <td className="py-3 font-medium text-foreground">
+                    <TableCell className="py-3 font-medium text-foreground">
                       {model.model}
-                    </td>
-                    <td className="py-3 text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="py-3 text-muted-foreground">
                       {model.provider}
-                    </td>
-                    <td className="py-3 text-right tabular-nums text-foreground">
+                    </TableCell>
+                    <TableCell className="py-3 text-right tabular-nums text-foreground">
                       {numberFormatter.format(model.totalRequests)}
-                    </td>
-                    <td className="py-3 text-right tabular-nums text-foreground">
+                    </TableCell>
+                    <TableCell className="py-3 text-right tabular-nums text-foreground">
                       ${formatCurrency(model.totalCost)}
-                    </td>
-                    <td className="py-3 text-right tabular-nums text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="py-3 text-right tabular-nums text-muted-foreground">
                       {formatTokens(model.totalTokens)}
-                    </td>
-                    <td className="py-3 text-right tabular-nums">
+                    </TableCell>
+                    <TableCell className="py-3 text-right tabular-nums">
                       <span className="text-green-600 dark:text-green-400">
                         {toSuccessRatePercent(model.successRate).toFixed(1)}%
                       </span>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           {hasMore && (
