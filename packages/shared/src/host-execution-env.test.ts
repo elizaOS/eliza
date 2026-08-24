@@ -55,6 +55,15 @@ describe("host execution boot baseline", () => {
     expect(validateHostExecutionPath("/bin\0/tmp")).toBeUndefined();
   });
 
+  it("returns undefined for non-string inputs", () => {
+    expect(
+      validateHostExecutionPath(null as unknown as string),
+    ).toBeUndefined();
+    expect(validateHostExecutionPath(42 as unknown as string)).toBeUndefined();
+    expect(validateHostExecutionPath({} as unknown as string)).toBeUndefined();
+    expect(validateHostExecutionPath("" as unknown as string)).toBeUndefined();
+  });
+
   it("accepts the Windows Path casing but rejects ambiguous case variants", () => {
     expect(
       createHostExecutionBaseline({ Path: "C:\\Windows\\System32" }, "win32")

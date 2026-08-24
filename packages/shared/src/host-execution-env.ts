@@ -30,7 +30,8 @@ export function validateHostExecutionPath(
   value: string | undefined,
   platform: NodeJS.Platform = process.platform,
 ): string | undefined {
-  if (!value || value.includes("\0")) return undefined;
+  if (typeof value !== "string" || !value || value.includes("\0"))
+    return undefined;
   const pathApi = platform === "win32" ? path.win32 : path.posix;
   const entries = value.split(pathApi.delimiter);
   if (
