@@ -7,10 +7,16 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
+import type {
+  BillingResourceCancellationsService,
+  RequestBillingCancellationOptions,
+} from "../../../lib/services/billing-resource-cancellations";
 import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
+import type { DbTransaction } from "../../client";
+import { jobs as jobsTable } from "../../schemas/jobs";
 
 const SKIP_REASON =
   "[compute stop concurrency] SKIPPED - no real PostgreSQL available. " +
@@ -33,6 +39,9 @@ let getHetznerContainersClient:
   | undefined;
 let listRecoverableAgentComputeStopIntents:
   | typeof import("../../../lib/services/provisioning-jobs").listRecoverableAgentComputeStopIntents
+  | undefined;
+let BillingCancellationsService:
+  | typeof import("../../../lib/services/billing-resource-cancellations").BillingResourceCancellationsService
   | undefined;
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
@@ -98,11 +107,18 @@ if (!postgres) {
   isolatedDsn = await createIsolatedDatabase(postgres.dsn);
   process.env.DATABASE_URL = isolatedDsn;
   process.env.TEST_DATABASE_URL = isolatedDsn;
-  const [clientModule, serviceModule, providerModule, provisioningModule] = await Promise.all([
+  const [
+    clientModule,
+    serviceModule,
+    providerModule,
+    provisioningModule,
+    billingCancellationsModule,
+  ] = await Promise.all([
     import("../../client"),
     import("../../../lib/services/container-stop-job-service"),
     import("../../../lib/services/containers/hetzner-client/client"),
     import("../../../lib/services/provisioning-jobs"),
+    import("../../../lib/services/billing-resource-cancellations"),
   ]);
   closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
   dbWrite = clientModule.dbWrite;
@@ -110,6 +126,7 @@ if (!postgres) {
   getHetznerContainersClient = providerModule.getHetznerContainersClient;
   listRecoverableAgentComputeStopIntents =
     provisioningModule.listRecoverableAgentComputeStopIntents;
+  BillingCancellationsService = billingCancellationsModule.BillingResourceCancellationsService;
 }
 
 beforeAll(async () => {
@@ -118,10 +135,14 @@ beforeAll(async () => {
     sql.raw(`
       CREATE TABLE organizations (
         id uuid PRIMARY KEY, credit_balance numeric(16,6) NOT NULL,
-        pay_as_you_go_from_earnings boolean NOT NULL DEFAULT false
+        pay_as_you_go_from_earnings boolean NOT NULL DEFAULT false,
+        is_active boolean NOT NULL DEFAULT true
       );
       CREATE TABLE users (
         id uuid PRIMARY KEY, organization_id uuid NOT NULL, role text NOT NULL DEFAULT 'member',
+        is_active boolean NOT NULL DEFAULT true,
+        is_anonymous boolean NOT NULL DEFAULT false,
+        expires_at timestamp, deleted_at timestamp,
         created_at timestamp NOT NULL DEFAULT now()
       );
       CREATE TABLE redeemable_earnings (
@@ -191,6 +212,27 @@ beforeAll(async () => {
       CREATE UNIQUE INDEX agent_compute_stop_intents_user_request_unique
         ON agent_compute_stop_intents (organization_id, agent_id, lifecycle_revision)
         WHERE "authorization" = 'user_request';
+      CREATE TABLE billing_cancel_commands (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
+        requested_by_user_id uuid NOT NULL, resource_type text NOT NULL,
+        resource_id uuid NOT NULL, expected_lifecycle_revision bigint NOT NULL,
+        action text NOT NULL DEFAULT 'stop', job_id uuid NOT NULL UNIQUE,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT billing_cancel_commands_id_org_unique UNIQUE (id, organization_id),
+        CONSTRAINT billing_cancel_commands_logical_unique UNIQUE
+          (organization_id, resource_type, resource_id, expected_lifecycle_revision, action)
+      );
+      CREATE TABLE billing_cancel_command_keys (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
+        idempotency_key_hash text NOT NULL, request_digest text NOT NULL,
+        command_id uuid NOT NULL, requested_by_user_id uuid NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT billing_cancel_command_keys_org_key_unique
+          UNIQUE (organization_id, idempotency_key_hash),
+        CONSTRAINT billing_cancel_command_keys_command_tenant_fkey
+          FOREIGN KEY (command_id, organization_id)
+          REFERENCES billing_cancel_commands(id, organization_id) ON DELETE RESTRICT
+      );
     `),
   );
 }, 30_000);
@@ -220,6 +262,78 @@ afterAll(async () => {
 const realPostgres = postgres ? describe : describe.skip;
 
 realPostgres("compute stop concurrency", () => {
+  test("billing cancellation waits for an interleaved role revocation and then refuses it", async () => {
+    if (!isolatedDsn || !dbWrite || !BillingCancellationsService) {
+      throw new Error("harness unavailable");
+    }
+    const organizationId = randomUUID();
+    const userId = randomUUID();
+    const resourceId = randomUUID();
+    await dbWrite.execute(
+      sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
+    );
+    await dbWrite.execute(
+      sql`INSERT INTO users(id, organization_id, role)
+          VALUES (${userId}, ${organizationId}, 'owner')`,
+    );
+
+    let enqueueCount = 0;
+    const service: BillingResourceCancellationsService = new BillingCancellationsService({
+      transact: (callback) => dbWrite!.transaction(callback),
+      enqueueStop: async (
+        tx: DbTransaction,
+        options: RequestBillingCancellationOptions,
+      ): Promise<{ jobId: string }> => {
+        enqueueCount += 1;
+        const [job] = await tx
+          .insert(jobsTable)
+          .values({
+            type: "container_stop",
+            status: "pending",
+            data: { resourceId: options.resourceId },
+            organization_id: options.organizationId,
+            user_id: options.requestedByUserId,
+          })
+          .returning({ id: jobsTable.id });
+        if (!job) throw new Error("test job insert returned no row");
+        return { jobId: job.id };
+      },
+      triggerImmediate: async () => {},
+    });
+    const revoker = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([revoker.connect(), observer.connect()]);
+    try {
+      const admission = service.request({
+        organizationId,
+        requestedByUserId: userId,
+        resourceType: "container",
+        resourceId,
+        expectedLifecycleRevision: 1,
+        idempotencyKey: "cancel-concurrent-revocation-0001",
+        authorizeInfrastructureMutation: async () => {
+          // Simulate the fresh session check succeeding immediately before a
+          // primary membership revocation commits on another connection.
+          await revoker.query("BEGIN");
+          await revoker.query("UPDATE users SET role = 'member' WHERE id = $1", [userId]);
+        },
+      });
+
+      await waitUntilBlocked(observer);
+      await revoker.query("COMMIT");
+      await expect(admission).rejects.toMatchObject({ status: 403, code: "access_denied" });
+      expect(enqueueCount).toBe(0);
+      const durable = await observer.query(`SELECT
+        (SELECT count(*)::int FROM jobs) AS jobs,
+        (SELECT count(*)::int FROM billing_cancel_commands) AS commands,
+        (SELECT count(*)::int FROM billing_cancel_command_keys) AS keys`);
+      expect(durable.rows[0]).toEqual({ jobs: 0, commands: 0, keys: 0 });
+    } finally {
+      await revoker.query("ROLLBACK").catch(() => undefined);
+      await Promise.all([revoker.end(), observer.end()]);
+    }
+  }, 15_000);
+
   test("a top-up holding the organization lock wins before stop eligibility is revalidated", async () => {
     if (!isolatedDsn || !dbWrite || !stopService) throw new Error("harness unavailable");
     const organizationId = randomUUID();

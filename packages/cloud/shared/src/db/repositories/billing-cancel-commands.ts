@@ -1,6 +1,6 @@
 /** Transaction-scoped access to durable billable-resource cancellation receipts. */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import {
   type AgentComputeStopIntent,
@@ -18,6 +18,8 @@ import {
   containerComputeStopIntents,
 } from "../schemas/compute-stop-intents";
 import { type Job, jobs } from "../schemas/jobs";
+import { organizations } from "../schemas/organizations";
+import { users } from "../schemas/users";
 
 export interface BillingCancelCommandBundle {
   command: BillingCancelCommand;
@@ -97,6 +99,46 @@ async function loadBundleByCommandId(
 }
 
 export const billingCancelCommandsRepository = {
+  /**
+   * Acquire the primary authority rows in one deterministic order before a
+   * cancellation transaction creates any durable effect. PostgreSQL
+   * re-evaluates a FOR SHARE predicate after a conflicting UPDATE commits, so
+   * a concurrent deactivation or role revocation cannot slip through a stale
+   * session snapshot. The retained row locks then fence later revocations
+   * until this transaction commits or rolls back.
+   */
+  async lockBillingManagerAuthority(
+    tx: DbTransaction,
+    organizationId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const [organization] = await tx
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(and(eq(organizations.id, organizationId), eq(organizations.is_active, true)))
+      .for("share")
+      .limit(1);
+    if (!organization) return false;
+
+    const [user] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.id, userId),
+          eq(users.organization_id, organizationId),
+          inArray(users.role, ["owner", "admin"]),
+          eq(users.is_active, true),
+          eq(users.is_anonymous, false),
+          isNull(users.deleted_at),
+          or(isNull(users.expires_at), gt(users.expires_at, sql`CURRENT_TIMESTAMP`)),
+        ),
+      )
+      .for("share")
+      .limit(1);
+    return Boolean(user);
+  },
+
   async findByKeyHash(
     tx: DbTransaction,
     organizationId: string,
