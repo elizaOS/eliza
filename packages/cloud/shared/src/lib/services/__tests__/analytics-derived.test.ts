@@ -71,6 +71,17 @@ describe("toDistribution", () => {
   test("returns zero percent for empty input", () => {
     expect(toDistribution({})).toEqual([]);
   });
+
+  test("sorts ties deterministically by key name", () => {
+    const out = toDistribution({ beta: 5, alpha: 5 });
+    expect(out.map((e) => e.key)).toEqual(["alpha", "beta"]);
+  });
+
+  test("handles NaN and non-finite counts safely without corrupting total", () => {
+    const out = toDistribution({ valid: 10, invalid: Number.NaN, negative: -5 });
+    expect(out[0]?.key).toBe("valid");
+    expect(out[0]?.percent).toBe(100);
+  });
 });
 
 describe("toRetentionRates", () => {

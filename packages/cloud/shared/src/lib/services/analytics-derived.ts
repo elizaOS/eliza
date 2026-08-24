@@ -36,12 +36,15 @@ export function deriveCostTrendingFields(
   creditBalance: number,
 ): CostTrendingDerivedFields {
   const balance = Number(creditBalance);
-  const monthlyBurnPercent = balance > 0 ? (costTrending.projectedMonthlyBurn / balance) * 100 : 0;
+  const burn = Number(costTrending?.projectedMonthlyBurn);
+  const safeBurn = Number.isFinite(burn) && burn > 0 ? burn : 0;
+  const safeBalance = Number.isFinite(balance) && balance > 0 ? balance : 0;
+  const monthlyBurnPercent = safeBalance > 0 ? (safeBurn / safeBalance) * 100 : 0;
   return {
     monthlyBurnPercent: round1dp(monthlyBurnPercent),
-    monthlyBurnPercentClamped: round1dp(Math.min(100, monthlyBurnPercent)),
+    monthlyBurnPercentClamped: round1dp(Math.min(100, Math.max(0, monthlyBurnPercent))),
     burnAlertThresholdExceeded:
-      costTrending.projectedMonthlyBurn > balance * PROJECTED_BURN_ALERT_RATIO,
+      safeBalance > 0 ? safeBurn > safeBalance * PROJECTED_BURN_ALERT_RATIO : safeBurn > 0,
   };
 }
 
@@ -49,15 +52,23 @@ export function deriveCostTrendingFields(
  * Convert a 0..1 success rate to a 0..100 percent value rounded to one decimal.
  */
 export function toSuccessRatePercent(rate: number): number {
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
   return round1dp(rate * 100);
 }
 
 /**
  * Compute `(numerator / denominator) * 100` rounded to one decimal.
- * Returns 0 when `denominator <= 0` so callers never divide by zero.
+ * Returns 0 when `denominator <= 0` or inputs are non-finite so callers never divide by zero.
  */
 export function toRatePercent(numerator: number, denominator: number): number {
-  if (denominator <= 0) return 0;
+  if (
+    !Number.isFinite(numerator) ||
+    !Number.isFinite(denominator) ||
+    denominator <= 0 ||
+    numerator <= 0
+  ) {
+    return 0;
+  }
   return round1dp((numerator / denominator) * 100);
 }
 
@@ -73,9 +84,16 @@ export interface DistributionEntry {
  * percentages of the total.
  */
 export function toDistribution(counts: Record<string, number>): DistributionEntry[] {
-  const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
-  return Object.entries(counts)
-    .sort(([, a], [, b]) => b - a)
+  const validEntries: [string, number][] = Object.entries(counts).map(([k, v]) => [
+    k,
+    Number.isFinite(v) && v > 0 ? v : 0,
+  ]);
+  const total = validEntries.reduce((sum, [, n]) => sum + n, 0);
+  return validEntries
+    .sort(([keyA, a], [keyB, b]) => {
+      const diff = b - a;
+      return diff !== 0 ? diff : keyA.localeCompare(keyB);
+    })
     .map(([key, count]) => ({
       key,
       count,
@@ -93,8 +111,15 @@ export interface RetentionRatePoint {
 }
 
 function toRetentionPercent(retained: number | null, cohortSize: number): number | null {
-  if (retained === null || cohortSize <= 0) return null;
-  return round1dp((retained / cohortSize) * 100);
+  if (
+    retained === null ||
+    !Number.isFinite(retained) ||
+    !Number.isFinite(cohortSize) ||
+    cohortSize <= 0
+  ) {
+    return null;
+  }
+  return round1dp((Math.max(0, retained) / cohortSize) * 100);
 }
 
 export interface RetentionCohortInput {
