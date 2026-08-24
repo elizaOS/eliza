@@ -6,11 +6,11 @@ import { PGlite } from "@electric-sql/pglite";
 
 const migrationNames = [
   "0276_account_deletion_requests.sql",
-  "0312_account_deletion_lifecycle_authority.sql",
-  "0313_account_deletion_phase_receipts.sql",
-  "0314_account_deletion_exports.sql",
-  "0315_account_deletion_canceling_state.sql",
-  "0316_account_deletion_admission_recovery.sql",
+  "0313_account_deletion_lifecycle_authority.sql",
+  "0314_account_deletion_phase_receipts.sql",
+  "0315_account_deletion_exports.sql",
+  "0316_account_deletion_canceling_state.sql",
+  "0317_account_deletion_admission_recovery.sql",
 ] as const;
 const migrations = await Promise.all(
   migrationNames.map(async (name) => await readFile(new URL(`./${name}`, import.meta.url), "utf8")),
