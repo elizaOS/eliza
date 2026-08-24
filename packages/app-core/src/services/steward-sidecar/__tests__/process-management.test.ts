@@ -236,4 +236,52 @@ describe("pipeOutput", () => {
     await pipeOutput(bytesStream(["café — 你好"]), "stdout", onLog);
     expect(onLog).toHaveBeenCalledWith("café — 你好", "stdout");
   });
+
+  it("keeps already-delivered lines when the reader rejects asynchronously", async () => {
+    const onLog = vi.fn();
+    let errored = false;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("first-line"));
+      },
+      pull(controller) {
+        if (!errored) {
+          errored = true;
+          controller.error(new Error("pipe broke"));
+        }
+      },
+    });
+
+    await expect(pipeOutput(stream, "stdout", onLog)).resolves.toBeUndefined();
+    expect(onLog).toHaveBeenCalledTimes(1);
+    expect(onLog).toHaveBeenCalledWith("first-line", "stdout");
+    expect(logger.info).toHaveBeenCalledWith("[Steward] first-line");
+  });
+
+  it("swallows a throwing onLog callback and stops processing further chunks", async () => {
+    const onLog = vi.fn((line: string) => {
+      throw new Error(`callback failed on ${line}`);
+    });
+    await expect(
+      pipeOutput(bytesStream(["boom", "after"]), "stdout", onLog),
+    ).resolves.toBeUndefined();
+    expect(onLog).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledWith("[Steward] boom");
+  });
+
+  it("emits one replacement character per chunk of a split multi-byte character", async () => {
+    // Observed: decode() without { stream: true } treats each chunk as a
+    // complete unit, so an incomplete trailing sequence becomes U+FFFD.
+    const onLog = vi.fn();
+    await pipeOutput(
+      bytesStream([new Uint8Array([0xe4, 0xbd]), new Uint8Array([0xa0])]),
+      "stdout",
+      onLog,
+    );
+    expect(onLog.mock.calls).toEqual([
+      ["\uFFFD", "stdout"],
+      ["\uFFFD", "stdout"],
+    ]);
+  });
 });
