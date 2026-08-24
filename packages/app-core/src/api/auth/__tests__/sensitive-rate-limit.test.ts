@@ -4,7 +4,7 @@ import {
   getSensitiveLimiter,
   SENSITIVE_RATE_LIMIT_MAX,
   SENSITIVE_RATE_LIMIT_WINDOW_MS,
-} from "./sensitive-rate-limit.ts";
+} from "../sensitive-rate-limit.ts";
 
 describe("getSensitiveLimiter", () => {
   it("returns the same limiter per name (registry)", () => {
