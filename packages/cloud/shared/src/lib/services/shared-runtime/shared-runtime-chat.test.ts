@@ -446,6 +446,7 @@ type TestMessage = {
 
 function harness(initialHistory?: TestMessage[]) {
   let history: TestMessage[] = initialHistory ?? [{ role: "assistant", content: "prior" }];
+  let staged: TestMessage[] = [];
   const background: Promise<unknown>[] = [];
   const merge = (messages: TestMessage[]): TestMessage[] => {
     const byId = new Map<string, TestMessage>();
@@ -464,6 +465,9 @@ function harness(initialHistory?: TestMessage[]) {
     background,
     historyStore: {
       load: async () => history,
+      stagePending: (_agentId: string, _channelId: string, messages: TestMessage[]) => {
+        staged = messages;
+      },
       save: async (_agentId: string, _channelId: string, next: TestMessage[]) => {
         history = next;
       },
@@ -474,6 +478,7 @@ function harness(initialHistory?: TestMessage[]) {
       waitUntil: (promise: Promise<unknown>) => background.push(promise),
     },
     history: () => history,
+    staged: () => staged,
   };
 }
 
@@ -1423,6 +1428,10 @@ describe("SharedRuntimeChatService", () => {
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("partial");
     const cancellation = reader.cancel("barge-in");
+    expect(h.staged()).toMatchObject([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "partial", interrupted: true },
+    ]);
     let guardTimer: ReturnType<typeof setTimeout> | undefined;
     const cancellationOutcome = await Promise.race([
       cancellation.then(() => "persisted" as const),

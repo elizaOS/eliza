@@ -214,6 +214,11 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         trustedMessageRole?: "system";
         trustedHistoryCutoffAt?: number;
         historyStore: {
+          stagePending?(
+            agentId: string,
+            channelId: string,
+            messages: unknown[],
+          ): void;
           merge(
             agentId: string,
             channelId: string,
@@ -233,8 +238,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         },
         cancel: async () => {
           canceled = true;
-          if (streamMergeGate) await streamMergeGate;
-          await options.historyStore.merge(agent.id, channelId, [
+          const interrupted = [
             {
               id: `user-${rpc.id}`,
               role: "user",
@@ -248,7 +252,10 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
               createdAt: 11,
               interrupted: true,
             },
-          ]);
+          ];
+          options.historyStore.stagePending?.(agent.id, channelId, interrupted);
+          if (streamMergeGate) await streamMergeGate;
+          await options.historyStore.merge(agent.id, channelId, interrupted);
         },
       });
       return new Response(body, {
@@ -1987,7 +1994,7 @@ test("forwards the server-authenticated history cutoff across the Durable Object
   });
 });
 
-test("stream body cancellation fences immediately and persists off the room queue", async () => {
+test("stream cancellation releases immediately with interrupted context staged", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
   repositoryRow = [];
@@ -2043,7 +2050,12 @@ test("stream body cancellation fences immediately and persists off the room queu
 
   await cancel;
   const secondResult = await second;
-  expect(secondResult).toMatchObject({ result: { historyLength: 1 } });
+  expect(secondResult).toMatchObject({
+    result: {
+      historyLength: 3,
+      historyIds: ["user-cancelled", "assistant-cancelled"],
+    },
+  });
 
   resolveStreamMergeGate();
   await Promise.all(background.splice(0));
@@ -2115,6 +2127,24 @@ test("failed durable cancellation write is retryable on a later finalize", async
   expect(
     (data.get("conversation") as { history: unknown[] }).history,
   ).toHaveLength(0);
+
+  const pendingResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/history", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "history",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  const pending = (await pendingResponse.json()) as {
+    history: Array<{ id?: string; interrupted?: boolean }>;
+  };
+  expect(pending.history).toMatchObject([
+    { id: "user-retryable" },
+    { id: "assistant-retryable", interrupted: true },
+  ]);
 
   await expect(fetchStream()).resolves.toBeUndefined();
   await Promise.all(background.splice(0));

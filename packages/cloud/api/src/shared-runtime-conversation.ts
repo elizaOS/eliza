@@ -350,6 +350,7 @@ export class SharedRuntimeConversation {
   private readonly state: DurableObjectState;
   private readonly env: AppEnv["Bindings"];
   private conversation: StoredConversation | null | undefined;
+  private readonly pendingHistory = new Map<string, SharedTurnMessage[]>();
   private hydration: Promise<void> | undefined;
   private prewarmReady = false;
   private prewarm: Promise<void> | undefined;
@@ -994,6 +995,8 @@ export class SharedRuntimeConversation {
   }
 
   private historyStore(startEmpty: boolean): SharedRuntimeHistoryStore {
+    const pendingKey = (agentId: string, channelId: string) =>
+      `${agentId}\u0000${channelId}`;
     return {
       load: async (agentId, channelId, _queryText) => {
         const current = await this.loadConversation(
@@ -1001,16 +1004,37 @@ export class SharedRuntimeConversation {
           channelId,
           startEmpty,
         );
-        return await this.loadCompleteHistory(current);
+        return mergeSharedRuntimeHistoryMessages(
+          await this.loadCompleteHistory(current),
+          this.pendingHistory.get(pendingKey(agentId, channelId)) ?? [],
+          Number.MAX_SAFE_INTEGER,
+        );
+      },
+      stagePending: (agentId, channelId, messages) => {
+        const key = pendingKey(agentId, channelId);
+        this.pendingHistory.set(
+          key,
+          mergeSharedRuntimeHistoryMessages(
+            this.pendingHistory.get(key) ?? [],
+            messages,
+            Number.MAX_SAFE_INTEGER,
+          ),
+        );
       },
       merge: async (agentId, channelId, messages) => {
+        const key = pendingKey(agentId, channelId);
+        const pending = this.pendingHistory.get(key) ?? [];
         const current = await this.loadConversation(
           agentId,
           channelId,
           startEmpty,
         );
         const merged = mergeSharedRuntimeHistoryMessages(
-          await this.loadCompleteHistory(current),
+          mergeSharedRuntimeHistoryMessages(
+            await this.loadCompleteHistory(current),
+            pending,
+            Number.MAX_SAFE_INTEGER,
+          ),
           messages,
           Number.MAX_SAFE_INTEGER,
         );
@@ -1035,6 +1059,14 @@ export class SharedRuntimeConversation {
         // response-body cancel/finalize path can attempt the write again.
         await this.state.storage.put(CONVERSATION_KEY, snapshot);
         this.conversation = snapshot;
+        if (pending.length > 0) {
+          const persistedKeys = new Set(pending.map(archiveMessageKey));
+          const remaining = (this.pendingHistory.get(key) ?? []).filter(
+            (message) => !persistedKeys.has(archiveMessageKey(message)),
+          );
+          if (remaining.length > 0) this.pendingHistory.set(key, remaining);
+          else this.pendingHistory.delete(key);
+        }
         this.scheduleMirror({ ...snapshot, history: merged });
         // Refresh the idle-expiry deadline on every save. Personal rooms are
         // exempt: their archive keys have no Postgres copy, so expiry could
