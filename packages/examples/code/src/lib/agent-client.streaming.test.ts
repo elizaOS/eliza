@@ -18,9 +18,15 @@ import type { ChatRoom } from "../types.js";
 import { getAgentClient, resetAgentClient } from "./agent-client.js";
 import type { SessionIdentity } from "./identity.js";
 
-const { beforeEach, describe, expect, it } = process.env.VITEST
+type TestApi = Pick<
+  typeof import("vitest"),
+  "beforeEach" | "describe" | "expect" | "it"
+>;
+
+const runnerApi = process.env.VITEST
   ? await import("vitest")
   : await import("bun:test");
+const { beforeEach, describe, expect, it } = runnerApi as unknown as TestApi;
 
 interface HandleMessageOptions {
   codingMode?: boolean;

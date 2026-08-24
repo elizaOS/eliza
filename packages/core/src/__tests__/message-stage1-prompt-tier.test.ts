@@ -367,3 +367,65 @@ describe("Stage-1 complete prompt rendering", () => {
 		expect(unaddressed.systemContent).toBe(addressed.systemContent);
 	});
 });
+
+describe("isUnaddressedTextGroupTurn structural edges", () => {
+	it("rejects always-respond sources matched case-insensitively as substrings", () => {
+		expect(
+			isUnaddressedTextGroupTurn(
+				makeMessage({
+					channelType: String(ChannelType.GROUP),
+					source: "Trigger-Prompt",
+				}),
+				false,
+			),
+		).toBe(false);
+		expect(
+			isUnaddressedTextGroupTurn(
+				makeMessage({
+					channelType: String(ChannelType.GROUP),
+					source: "webhook-client_chat-bridge",
+				}),
+				false,
+			),
+		).toBe(false);
+	});
+
+	it("ignores non-true autonomous and sub-agent flags", () => {
+		expect(
+			isUnaddressedTextGroupTurn(
+				makeMessage({
+					channelType: String(ChannelType.GROUP),
+					contentMetadata: { isAutonomous: false, subAgent: false },
+				}),
+				false,
+			),
+		).toBe(true);
+	});
+
+	it("treats array and null content metadata as absent", () => {
+		const base = makeMessage({ channelType: String(ChannelType.GROUP) });
+		expect(
+			isUnaddressedTextGroupTurn(
+				{ ...base, content: { ...base.content, metadata: [] } },
+				false,
+			),
+		).toBe(true);
+		expect(
+			isUnaddressedTextGroupTurn(
+				{ ...base, content: { ...base.content, metadata: null } },
+				false,
+			),
+		).toBe(true);
+	});
+
+	it("classifies a group turn that carries no source field", () => {
+		const base = makeMessage({ channelType: String(ChannelType.GROUP) });
+		const { source: _discardedSource, ...contentWithoutSource } = base.content;
+		expect(
+			isUnaddressedTextGroupTurn(
+				{ ...base, content: contentWithoutSource },
+				false,
+			),
+		).toBe(true);
+	});
+});

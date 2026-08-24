@@ -10,6 +10,12 @@ import {
 	invalidateRelatedEntityIds,
 	resolvePrimaryEntityId,
 } from "./identity-clusters.ts";
+import { runWithTrajectoryContext } from "./trajectory-context.ts";
+import {
+	IDENTITY_AUTHORITY_CONTRACT_VERSION,
+	type IdentityCluster,
+	type PrincipalService,
+} from "./types/identity.ts";
 import { type IAgentRuntime, ServiceType, type UUID } from "./types/index.ts";
 
 describe("identity-clusters", () => {
@@ -98,6 +104,156 @@ describe("identity-clusters", () => {
 			const runtime = createRuntime();
 			expect(() => invalidateRelatedEntityIds(runtime, entity1)).not.toThrow();
 			expect(() => invalidateRelatedEntityIds(runtime)).not.toThrow();
+		});
+	});
+});
+
+const AUTHORITY_AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
+const AUTHORITY_ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
+const OTHER_AUTHORITY_ENTITY_ID =
+	"22222222-2222-2222-2222-222222222223" as UUID;
+const AUTHORITY_ALIAS_ID = "33333333-3333-3333-3333-333333333331" as UUID;
+const AUTHORITY_PRIMARY_ID = "44444444-4444-4444-4444-444444444441" as UUID;
+
+function makeAuthorityRuntime(
+	services: Record<string, unknown>,
+): IAgentRuntime {
+	return {
+		agentId: AUTHORITY_AGENT_ID,
+		getService: (type: string) => services[type] ?? null,
+	} as unknown as IAgentRuntime;
+}
+
+function makeCluster(
+	overrides: Partial<IdentityCluster> = {},
+): IdentityCluster {
+	return {
+		contractVersion: IDENTITY_AUTHORITY_CONTRACT_VERSION,
+		agentId: AUTHORITY_AGENT_ID,
+		canonicalPrincipalId: AUTHORITY_PRIMARY_ID,
+		principalIds: [AUTHORITY_ENTITY_ID, AUTHORITY_PRIMARY_ID],
+		claims: [],
+		generation: 3,
+		readAt: new Date(0).toISOString(),
+		...overrides,
+	};
+}
+
+describe("getVerifiedRelatedEntityIds authority validation", () => {
+	it("returns the requester alone when the authority reports no cluster", async () => {
+		const authority = {
+			getCluster: async () => null,
+		} as unknown as PrincipalService;
+
+		await expect(
+			getVerifiedRelatedEntityIds(
+				makeAuthorityRuntime({ principal: authority }),
+				AUTHORITY_ENTITY_ID,
+			),
+		).resolves.toEqual([AUTHORITY_ENTITY_ID]);
+	});
+
+	it("places the requester and canonical principal before other verified members", async () => {
+		const authority = {
+			getCluster: async () =>
+				makeCluster({
+					principalIds: [
+						AUTHORITY_ALIAS_ID,
+						AUTHORITY_ENTITY_ID,
+						AUTHORITY_PRIMARY_ID,
+						AUTHORITY_ALIAS_ID,
+					],
+				}),
+		} as unknown as PrincipalService;
+
+		await expect(
+			getVerifiedRelatedEntityIds(
+				makeAuthorityRuntime({ principal: authority }),
+				AUTHORITY_ENTITY_ID,
+			),
+		).resolves.toEqual([
+			AUTHORITY_ENTITY_ID,
+			AUTHORITY_PRIMARY_ID,
+			AUTHORITY_ALIAS_ID,
+		]);
+	});
+
+	it.each([
+		{
+			name: "the cluster belongs to another agent",
+			override: { agentId: OTHER_AUTHORITY_ENTITY_ID },
+		},
+		{ name: "the generation is negative", override: { generation: -1 } },
+		{
+			name: "the generation is not a safe integer",
+			override: { generation: Number.NaN },
+		},
+		{
+			name: "the canonical principal is not a member",
+			override: {
+				principalIds: [AUTHORITY_ENTITY_ID],
+				canonicalPrincipalId: AUTHORITY_ALIAS_ID,
+			},
+		},
+		{
+			name: "a principal id is empty",
+			override: {
+				principalIds: [AUTHORITY_ENTITY_ID, AUTHORITY_PRIMARY_ID, "" as UUID],
+			},
+		},
+	])("fails closed when $name", async ({ override }) => {
+		const authority = {
+			getCluster: async () => makeCluster(override),
+		} as unknown as PrincipalService;
+
+		await expect(
+			getVerifiedRelatedEntityIds(
+				makeAuthorityRuntime({ principal: authority }),
+				AUTHORITY_ENTITY_ID,
+			),
+		).rejects.toMatchObject({
+			code: "IDENTITY_CLUSTER_INVALID",
+			context: {
+				entityId: AUTHORITY_ENTITY_ID,
+				runtimeAgentId: AUTHORITY_AGENT_ID,
+			},
+		});
+	});
+});
+
+describe("verified identity-cluster invalidation", () => {
+	it("supports targeted and agent-wide prefix invalidation", async () => {
+		const callsByEntity = new Map<UUID, number>();
+		const authority = {
+			getCluster: async (_agentId: UUID, entityId: UUID) => {
+				callsByEntity.set(entityId, (callsByEntity.get(entityId) ?? 0) + 1);
+				return makeCluster({
+					canonicalPrincipalId: entityId,
+					principalIds: [entityId],
+				});
+			},
+		} as unknown as PrincipalService;
+		const runtime = makeAuthorityRuntime({ principal: authority });
+
+		await runWithTrajectoryContext({ turnMemo: new Map() }, async () => {
+			await getVerifiedRelatedEntityIds(runtime, AUTHORITY_ENTITY_ID);
+			await getVerifiedRelatedEntityIds(runtime, OTHER_AUTHORITY_ENTITY_ID);
+			await getVerifiedRelatedEntityIds(runtime, AUTHORITY_ENTITY_ID);
+			await getVerifiedRelatedEntityIds(runtime, OTHER_AUTHORITY_ENTITY_ID);
+			expect(callsByEntity.get(AUTHORITY_ENTITY_ID)).toBe(1);
+			expect(callsByEntity.get(OTHER_AUTHORITY_ENTITY_ID)).toBe(1);
+
+			invalidateRelatedEntityIds(runtime, AUTHORITY_ENTITY_ID);
+			await getVerifiedRelatedEntityIds(runtime, AUTHORITY_ENTITY_ID);
+			await getVerifiedRelatedEntityIds(runtime, OTHER_AUTHORITY_ENTITY_ID);
+			expect(callsByEntity.get(AUTHORITY_ENTITY_ID)).toBe(2);
+			expect(callsByEntity.get(OTHER_AUTHORITY_ENTITY_ID)).toBe(1);
+
+			invalidateRelatedEntityIds(runtime);
+			await getVerifiedRelatedEntityIds(runtime, AUTHORITY_ENTITY_ID);
+			await getVerifiedRelatedEntityIds(runtime, OTHER_AUTHORITY_ENTITY_ID);
+			expect(callsByEntity.get(AUTHORITY_ENTITY_ID)).toBe(3);
+			expect(callsByEntity.get(OTHER_AUTHORITY_ENTITY_ID)).toBe(2);
 		});
 	});
 });
