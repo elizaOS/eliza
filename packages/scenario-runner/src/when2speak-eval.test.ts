@@ -29,6 +29,7 @@ describe("When2Speak evaluator", () => {
     expect(row).toMatchObject({
       row: 7,
       label: "SPEAK",
+      textuallyReferencesAgent: false,
       directlyAddressesAgent: false,
       speakerCount: 2,
     });
@@ -61,10 +62,11 @@ describe("When2Speak evaluator", () => {
       }),
       9,
     );
-    expect(addressed.directlyAddressesAgent).toBe(true);
+    expect(addressed.textuallyReferencesAgent).toBe(true);
+    expect(addressed.directlyAddressesAgent).toBe(false);
   });
 
-  it("translates the corpus address marker into trusted current-turn mention metadata", () => {
+  it("keeps the corpus agent marker as untrusted text", () => {
     const runtime = {
       agentId: stringToUuid("when2speak-test-agent"),
       character: { name: "ScenarioAgent" },
@@ -82,11 +84,9 @@ describe("When2Speak evaluator", () => {
     );
 
     const { message, state } = buildWhen2SpeakEvaluationState(runtime, parsed);
-    expect(message.content.mentionContext).toMatchObject({
-      isMention: true,
-      isReply: false,
-      isThread: false,
-    });
+    expect(parsed.textuallyReferencesAgent).toBe(true);
+    expect(parsed.directlyAddressesAgent).toBe(false);
+    expect(message.content.mentionContext).toBeUndefined();
     const recentMessages = state.data?.providers?.RECENT_MESSAGES?.data
       ?.recentMessages as Array<{ content: { mentionContext?: unknown } }>;
     expect(
@@ -122,6 +122,7 @@ describe("When2Speak evaluator", () => {
     expect(row).toMatchObject({
       row: 9,
       label: "SPEAK",
+      textuallyReferencesAgent: false,
       directlyAddressesAgent: false,
       speakerCount: 2,
     });
@@ -177,6 +178,7 @@ describe("When2Speak evaluator", () => {
         row: 17,
         gold: "SPEAK",
         predicted: "SILENT",
+        textuallyReferencesAgent: false,
         directlyAddressesAgent: false,
         speakerCount: 4,
         contextTurns: 7,
@@ -185,6 +187,7 @@ describe("When2Speak evaluator", () => {
         row: 18,
         gold: "SILENT",
         predicted: "SILENT",
+        textuallyReferencesAgent: true,
         directlyAddressesAgent: true,
         speakerCount: 2,
         contextTurns: 3,
@@ -192,6 +195,17 @@ describe("When2Speak evaluator", () => {
     ]);
 
     expect(report.metrics).toMatchObject({ total: 2, correct: 1 });
+    expect(report.objectives.ambientRestraint).toEqual({
+      eligibleTurns: 1,
+      predictedResponses: 0,
+      predictedSilences: 1,
+      responseRate: 0,
+      restraintRate: 1,
+    });
+    expect(report.slices.textualReference.reference).toMatchObject({
+      total: 1,
+      trueSilent: 1,
+    });
     expect(report.slices.address.ambient).toMatchObject({
       total: 1,
       falseSilent: 1,

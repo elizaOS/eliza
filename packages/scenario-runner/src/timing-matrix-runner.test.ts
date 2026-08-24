@@ -22,13 +22,14 @@ function writeReport(options: {
     row: options.invocation.shardIndex + 1,
     gold: "SPEAK" as const,
     predicted: "SPEAK" as const,
+    textuallyReferencesAgent: false,
     directlyAddressesAgent: false,
     speakerCount: 2,
     contextTurns: 3,
   };
   const summary = summarizeTimingPredictions([prediction]);
   const report: TimingReport = {
-    schema: 2,
+    schema: 3,
     status: options.status,
     dataset: "duke-trust-lab/When2Speak",
     input: options.input,
