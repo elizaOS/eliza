@@ -704,6 +704,17 @@ async function lockAndValidateAgentSandboxAuthority(
   assertAgentSandboxAuthorityMatches(await lockAgentSandboxAuthority(tx, expected), expected);
 }
 
+async function assertRestoreLeaseNotExpired(
+  tx: DbTransaction,
+  expiresAt: Date,
+  reference: ValidatedReference,
+): Promise<void> {
+  const databaseNow = await readPostLockDatabaseNow(tx);
+  if (expiresAt <= databaseNow) {
+    throw conflict("Restore lease is expired or released", reference);
+  }
+}
+
 async function lockAndValidateReplacementNodeAuthority(
   tx: DbTransaction,
   locator: ValidatedLocator,
@@ -790,13 +801,18 @@ export async function startAgentSandboxReplacementAttemptInTransaction(
       if (!lease || lease.expires_at.getTime() !== restore.expiresAt.getTime()) {
         throw conflict("Restore lease replay authority does not match", validated);
       }
-      const databaseNow = await readPostLockDatabaseNow(tx);
-      if (lease.released_at !== null || lease.expires_at <= databaseNow) {
+      if (lease.released_at !== null) {
         throw conflict("Restore lease is expired or released", validated);
       }
       restoreLeaseExpiresAt = new Date(lease.expires_at.getTime());
+      await assertRestoreLeaseNotExpired(tx, restoreLeaseExpiresAt, validated);
     }
     await lockAndValidateAgentSandboxAuthority(tx, validated);
+    if (restoreLeaseExpiresAt) {
+      // The lease row remains UPDATE-locked, so it cannot be released, but its
+      // wall-clock expiry can pass while the sandbox lock is contended.
+      await assertRestoreLeaseNotExpired(tx, restoreLeaseExpiresAt, validated);
+    }
 
     const [created] = await tx
       .insert(agentSandboxReplacementAttempts)
@@ -825,6 +841,12 @@ export async function startAgentSandboxReplacementAttemptInTransaction(
       .returning();
     if (!created) {
       throw conflict("Replacement attempt insert returned no row", validated);
+    }
+    if (restoreLeaseExpiresAt) {
+      // INSERT can itself wait on a primary-key or partial-unique-index rival.
+      // Revalidate after RETURNING so no blocking operation can admit provider
+      // work under authority that expired while this transaction was waiting.
+      await assertRestoreLeaseNotExpired(tx, restoreLeaseExpiresAt, validated);
     }
     return frozenResult(created, false);
   } catch (error) {

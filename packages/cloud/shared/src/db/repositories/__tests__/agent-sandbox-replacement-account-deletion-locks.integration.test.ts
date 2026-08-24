@@ -16,6 +16,8 @@ import {
 const SKIP_REASON =
   "[replacement attempt account deletion locks] SKIPPED - no real PostgreSQL available. " +
   "Set APPS_TENANT_DB_EPHEMERAL=1 with Docker, or provide APPS_TENANT_DB_TEST_DSN.";
+const REQUIRE_REAL_POSTGRES_REPLACEMENT_LOCK_TESTS =
+  process.env.REQUIRE_REAL_POSTGRES_REPLACEMENT_LOCK_TESTS === "1";
 const START_APPLICATION_NAME = "replacement-attempt-start-lock-test";
 const DELETE_APPLICATION_NAME = "replacement-attempt-delete-lock-test";
 const ORIGINAL_ENV = {
@@ -85,7 +87,25 @@ async function waitForBlockedSession(
   throw new Error(`Timed out waiting for ${applicationName} behind PID ${blockerPid}`);
 }
 
+async function waitForDatabaseTimeAfter(observer: Client, instant: Date): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const result = await observer.query<{ elapsed: boolean }>(
+      "SELECT clock_timestamp() > $1::timestamptz AS elapsed",
+      [instant],
+    );
+    if (result.rows[0]?.elapsed) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for database clock to pass ${instant.toISOString()}`);
+}
+
 if (!postgres) {
+  if (REQUIRE_REAL_POSTGRES_REPLACEMENT_LOCK_TESTS) {
+    throw new Error(
+      "Real PostgreSQL is required for replacement-attempt lock tests, but the harness is unavailable",
+    );
+  }
   console.warn(SKIP_REASON);
 } else {
   isolatedDsn = await createIsolatedDatabase(postgres.dsn);
@@ -119,6 +139,25 @@ beforeAll(async () => {
         activation_generation uuid,
         lifecycle_job_id uuid,
         lifecycle_execution_generation uuid
+      );
+
+      CREATE TABLE agent_backup_restore_leases (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+        agent_id uuid NOT NULL,
+        backup_id uuid NOT NULL,
+        operation_id uuid NOT NULL,
+        activation_generation uuid NOT NULL,
+        lifecycle_revision numeric(20, 0) NOT NULL,
+        expected_manifest_sha256 text NOT NULL,
+        copy_role text NOT NULL,
+        restore_attempt_id uuid NOT NULL,
+        owner_id text NOT NULL,
+        generation uuid NOT NULL,
+        catalog_epoch bigint NOT NULL,
+        expires_at timestamptz NOT NULL,
+        released_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now()
       );
 
       CREATE TABLE agent_sandbox_replacement_attempts (
@@ -225,7 +264,7 @@ afterAll(async () => {
 
 const realPostgres = postgres ? describe : describe.skip;
 
-realPostgres("replacement attempt account-deletion lock order", () => {
+realPostgres("replacement attempt PostgreSQL lock and lease barriers", () => {
   test("orders organization before sandbox and preserves an active attempt", async () => {
     if (!isolatedDsn || !dbWrite || !startAgentSandboxReplacementAttemptInTransaction) {
       throw new Error("real PostgreSQL harness was not initialized");
@@ -364,6 +403,148 @@ realPostgres("replacement attempt account-deletion lock order", () => {
       );
       await deletion.query("ROLLBACK").catch(() => undefined);
       await Promise.all([seed.end(), holder.end(), deletion.end(), observer.end()]);
+    }
+  }, 20_000);
+
+  test("rejects restore authority that expires while waiting for the sandbox lock", async () => {
+    if (!isolatedDsn || !dbWrite || !startAgentSandboxReplacementAttemptInTransaction) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const organizationId = randomUUID();
+    const agentId = randomUUID();
+    const attemptId = randomUUID();
+    const activationGeneration = randomUUID();
+    const lifecycleJobId = randomUUID();
+    const lifecycleExecutionGeneration = randomUUID();
+    const leaseId = randomUUID();
+    const backupId = randomUUID();
+    const restoreAttemptId = randomUUID();
+    const fencingToken = randomUUID();
+    const operationId = randomUUID();
+    const sourceActivationGeneration = randomUUID();
+    const ownerId = "replacement-expiry-lock-test";
+    const expectedManifestSha256 = "9".repeat(64);
+    const seed = new Client({ connectionString: isolatedDsn });
+    const holder = new Client({
+      connectionString: isolatedDsn,
+      application_name: "replacement-attempt-expiry-holder-test",
+    });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([seed.connect(), holder.connect(), observer.connect()]);
+
+    let holderOpen = false;
+    let startWork: Promise<unknown> | null = null;
+    try {
+      const expiry = await seed.query<{ expires_at: Date }>(
+        "SELECT date_trunc('milliseconds', clock_timestamp()) + interval '5 seconds' AS expires_at",
+      );
+      const expiresAt = expiry.rows[0]?.expires_at;
+      if (!expiresAt) throw new Error("database lease expiry is unavailable");
+
+      await seed.query("INSERT INTO organizations(id) VALUES ($1)", [organizationId]);
+      await seed.query(
+        `INSERT INTO agent_sandboxes
+          (id, organization_id, lifecycle_revision, activation_generation,
+           lifecycle_job_id, lifecycle_execution_generation)
+         VALUES ($1, $2, 7, $3, $4, $5)`,
+        [
+          agentId,
+          organizationId,
+          activationGeneration,
+          lifecycleJobId,
+          lifecycleExecutionGeneration,
+        ],
+      );
+      await seed.query(
+        `INSERT INTO agent_backup_restore_leases
+          (id, organization_id, agent_id, backup_id, operation_id,
+           activation_generation, lifecycle_revision, expected_manifest_sha256,
+           copy_role, restore_attempt_id, owner_id, generation, catalog_epoch,
+           expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 6, $7, 'primary', $8, $9, $10, 3, $11)`,
+        [
+          leaseId,
+          organizationId,
+          agentId,
+          backupId,
+          operationId,
+          sourceActivationGeneration,
+          expectedManifestSha256,
+          restoreAttemptId,
+          ownerId,
+          fencingToken,
+          expiresAt,
+        ],
+      );
+
+      await holder.query("BEGIN");
+      holderOpen = true;
+      await holder.query("SET LOCAL statement_timeout = '15s'");
+      const holderPidResult = await holder.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      const holderPid = holderPidResult.rows[0]?.pid;
+      if (!holderPid) throw new Error("sandbox holder PID is unavailable");
+      await holder.query("SELECT id FROM agent_sandboxes WHERE id = $1 FOR UPDATE", [agentId]);
+
+      startWork = dbWrite.transaction(async (tx) => {
+        await tx.execute(sql.raw("SET LOCAL statement_timeout = '15s'"));
+        return await startAgentSandboxReplacementAttemptInTransaction!(tx, {
+          attemptId,
+          organizationId,
+          agentId,
+          operationKind: "upgrade",
+          lifecycleRevision: "7",
+          activationGeneration,
+          lifecycleJobId,
+          lifecycleExecutionGeneration,
+          restoreAuthority: {
+            leaseId,
+            backupId,
+            restoreAttemptId,
+            ownerId,
+            fencingToken,
+            catalogEpoch: "3",
+            copyRole: "primary",
+            operationId,
+            sourceActivationGeneration,
+            sourceLifecycleRevision: "6",
+            expectedManifestSha256,
+            expiresAt,
+          },
+        });
+      });
+      await waitForBlockedSession(observer, START_APPLICATION_NAME, holderPid);
+      await waitForDatabaseTimeAfter(observer, expiresAt);
+
+      await holder.query("COMMIT");
+      holderOpen = false;
+
+      const startResult = await startWork.then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      );
+      expect(startResult).toMatchObject({
+        status: "rejected",
+        reason: {
+          code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
+          message: "Restore lease is expired or released",
+        },
+      });
+
+      const state = await observer.query<{ attempts: string; lease_expired: boolean }>(
+        `SELECT
+          (SELECT count(*)::text FROM agent_sandbox_replacement_attempts
+            WHERE id = $1) AS attempts,
+          (SELECT expires_at < clock_timestamp() FROM agent_backup_restore_leases
+            WHERE id = $2) AS lease_expired`,
+        [attemptId, leaseId],
+      );
+      expect(state.rows[0]).toEqual({ attempts: "0", lease_expired: true });
+    } finally {
+      if (holderOpen) await holder.query("ROLLBACK").catch(() => undefined);
+      await Promise.allSettled(
+        [startWork].filter((work): work is Promise<unknown> => work !== null),
+      );
+      await Promise.all([seed.end(), holder.end(), observer.end()]);
     }
   }, 20_000);
 });
