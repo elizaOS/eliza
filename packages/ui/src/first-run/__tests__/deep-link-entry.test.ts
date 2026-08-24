@@ -216,6 +216,34 @@ describe("routeFirstRunDeepLink", () => {
 
     replaceStateSpy.mockRestore();
   });
+
+  it("tolerates repeated slashes between path segments", () => {
+    // The segment splitter trims and drops empty segments, so a host emitting
+    // doubled separators still routes instead of falling through as unmatched.
+    const handled = routeFirstRunDeepLink(
+      "eliza://first-run//runtime//cloud",
+      URL_SCHEME,
+    );
+
+    expect(handled).toBe(true);
+    expect(reloadIntoFirstRunRuntimeMock).toHaveBeenCalledWith("cloud");
+  });
+
+  it("returns false without dispatching a reload when no window exists (SSR)", () => {
+    vi.stubGlobal("window", undefined);
+
+    try {
+      const handled = routeFirstRunDeepLink(
+        "eliza://first-run/runtime/local",
+        URL_SCHEME,
+      );
+
+      expect(handled).toBe(false);
+      expect(reloadIntoFirstRunRuntimeMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("installFirstRunDeepLinkListener", () => {
@@ -324,6 +352,36 @@ describe("installFirstRunDeepLinkListener", () => {
 
     await cleanup();
     expect(removeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a failed listener removal through onError during cleanup", async () => {
+    removeMock.mockRejectedValueOnce(new Error("remove failed"));
+    const onError = vi.fn();
+    const cleanup = await installFirstRunDeepLinkListener({
+      urlScheme: URL_SCHEME,
+      onError,
+    });
+
+    await cleanup();
+    // `remove()` rejection surfaces asynchronously from the cleanup closure.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(removeMock).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect((onError.mock.calls[0][0] as Error).message).toBe("remove failed");
+  });
+
+  it("routes an unmatched cold-launch URL to onUnmatched", async () => {
+    getLaunchUrlMock.mockResolvedValueOnce({ url: "eliza://chat" });
+    const onUnmatched = vi.fn();
+
+    await installFirstRunDeepLinkListener({
+      urlScheme: URL_SCHEME,
+      onUnmatched,
+    });
+
+    expect(onUnmatched).toHaveBeenCalledWith("eliza://chat");
+    expect(reloadIntoFirstRunRuntimeMock).not.toHaveBeenCalled();
   });
 });
 
@@ -441,5 +499,58 @@ describe("parseFirstRunRemoteConnectDeepLink", () => {
         URL_SCHEME,
       ),
     ).toBeNull();
+  });
+
+  it("falls through a blank value to the next alias key", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote?api=%20&url=https://agent.example.com",
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "https://agent.example.com" });
+  });
+
+  it("trims surrounding whitespace from the captured address", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote?api=%20https%3A%2F%2Fagent.example.com%09",
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "https://agent.example.com" });
+  });
+
+  it("prefers the documented api key over later aliases when several are present", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote?url=https://fallback.example&api=https://agent.example.com",
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "https://agent.example.com" });
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote?host=host.example&apiBase=base.example",
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "base.example" });
+  });
+
+  it("matches extra path depth beneath the remote target", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote/session?api=https://agent.example.com",
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "https://agent.example.com" });
+  });
+
+  it("accepts an uppercase scheme spelling through URL normalization", () => {
+    // The WHATWG parser lowercases scheme and host, so a host app that hands
+    // over `ELIZA://...` still matches the configured lowercase urlScheme.
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "ELIZA://first-run/runtime/remote?api=https://agent.example.com",
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "https://agent.example.com" });
   });
 });
