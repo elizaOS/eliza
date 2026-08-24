@@ -21,12 +21,14 @@ export class ConnectionCache {
 
   private constructor() {
     // Cleanup memory cache every 10 minutes to prevent unbounded growth
-    setInterval(() => {
+    const timer = setInterval(() => {
       if (this.memoryCache.size > 10000) {
         logger.warn("[Connection Cache] Memory cache exceeded 10k entries, clearing...");
         this.memoryCache.clear();
       }
     }, 600000);
+    // Don't keep the process alive solely for the cleanup timer (Node).
+    timer.unref?.();
   }
 
   public static getInstance(): ConnectionCache {
