@@ -3,9 +3,9 @@
  * readable and raw terminal renderers over the same authorized session.
  */
 
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui";
 import { TerminalSquare } from "lucide-react";
 import { useState } from "react";
 

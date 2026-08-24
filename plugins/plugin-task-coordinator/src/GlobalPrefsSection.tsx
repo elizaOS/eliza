@@ -8,8 +8,8 @@ import {
   SelectContent,
   SelectItem,
   SelectValue,
+  SettingsControls,
 } from "@elizaos/ui";
-import { SettingsControls } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import { useState } from "react";
 import {

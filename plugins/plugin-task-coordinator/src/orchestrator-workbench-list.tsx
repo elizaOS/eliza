@@ -2,17 +2,12 @@
  * Owns the orchestrator task-list filters and compact task metadata projection.
  */
 
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
   CodingAgentOrchestratorStatus,
   CodingAgentTaskThread,
 } from "@elizaos/ui/api/client-types-cloud";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@elizaos/ui";
 import { Bot, Pause } from "lucide-react";
 import type { ReactNode } from "react";
 import {
