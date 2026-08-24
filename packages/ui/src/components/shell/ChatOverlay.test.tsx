@@ -285,7 +285,7 @@ describe("ChatOverlay", () => {
     });
   });
 
-  it("admits semantic pill activation without duplicating physical pointer taps", async () => {
+  it("admits positive-detail AX pill activation without duplicating physical pointer taps", async () => {
     const onRequestedOpenChange = vi.fn();
     render(
       <ChatOverlay
@@ -297,18 +297,23 @@ describe("ChatOverlay", () => {
     );
 
     const pill = screen.getByTestId("chat-pill");
+    // WKWebView can report a positive detail for macOS AXPress even though no
+    // pointer sequence reached the button. It remains a semantic activation.
     fireEvent.click(pill, { detail: 1 });
-    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
-      "pill",
-    );
-
-    fireEvent.click(pill, { detail: 0 });
     await waitFor(() => {
       expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
         "collapsed",
       );
     });
     expect(onRequestedOpenChange).toHaveBeenLastCalledWith(true);
+
+    // The physical pointer gesture remains the single tap authority. Its
+    // follow-up compatibility click must not request a second open.
+    onRequestedOpenChange.mockClear();
+    fireEvent.pointerDown(pill, { pointerId: 41, clientY: 400 });
+    fireEvent.pointerUp(pill, { pointerId: 41, clientY: 400 });
+    fireEvent.click(pill, { detail: 1 });
+    expect(onRequestedOpenChange).not.toHaveBeenCalled();
   });
 
   it("honors repeated native open requests even when requestedOpen is already true", async () => {
@@ -349,21 +354,23 @@ describe("ChatOverlay", () => {
     });
   });
 
-  it("admits semantic grabber activation without duplicating physical pointer taps", async () => {
+  it("admits positive-detail AX grabber activation without duplicating physical pointer taps", async () => {
     render(<ChatOverlay controller={makeController()} initialMode="input" />);
 
     const grabber = screen.getByTestId("chat-sheet-grabber");
     fireEvent.click(grabber, { detail: 1 });
-    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
-      "collapsed",
-    );
-
-    fireEvent.click(grabber, { detail: 0 });
     await waitFor(() => {
       expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
         "half",
       );
     });
+
+    fireEvent.pointerDown(grabber, { pointerId: 42, clientY: 200 });
+    fireEvent.pointerUp(grabber, { pointerId: 42, clientY: 200 });
+    fireEvent.click(grabber, { detail: 1 });
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
   });
 
   it("shows the mic and no send button when the draft is empty", () => {

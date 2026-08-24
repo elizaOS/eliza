@@ -96,6 +96,20 @@ function inferSensitiveByHeuristic(key: string): boolean {
   );
 }
 
+/**
+ * Per-process desktop authority material must never become a durable Vault
+ * credential. The native host generates these values for one local process
+ * graph and injects them into the child runtime; persisting them creates a
+ * stale winner on the next launch and makes verified set-if-absent fail even
+ * though both the runtime and Vault are healthy. Explicit durable values in
+ * eliza.json/config.env still use the normal protected migration paths above.
+ */
+const TRANSIENT_PROCESS_ENV_KEYS = new Set([
+  "ELIZA_API_TOKEN",
+  "ELIZA_BROWSER_WORKSPACE_TOKEN",
+  "ELIZA_DESKTOP_SCREEN_CAPTURE_BRIDGE_TOKEN",
+]);
+
 /** Build the set of plugin-config keys flagged sensitive in the registry. */
 function sensitiveKeysFromRegistry(): Set<string> {
   const keys = new Set<string>();
@@ -283,6 +297,7 @@ async function mirrorProcessEnvSensitive(
 
   for (const [key, rawValue] of Object.entries(process.env)) {
     if (!isEnvVarKey(key)) continue;
+    if (TRANSIENT_PROCESS_ENV_KEYS.has(key)) continue;
     if (seenKeys.has(key)) continue;
     if (typeof rawValue !== "string" || rawValue.length === 0) continue;
     if (bridge.isVaultRef(rawValue)) continue;

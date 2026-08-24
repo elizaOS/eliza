@@ -946,6 +946,65 @@ const EMPTY_CONVERSATION_NAV: ConversationNav = {
 };
 
 /**
+ * Distinguish a browser compatibility click that follows our pointer gesture
+ * from a semantic button activation (keyboard or macOS AXPress). WebKit does
+ * not reliably keep `MouseEvent.detail === 0` for AXPress, so the only stable
+ * boundary is whether this element actually observed a pointer sequence.
+ */
+function useSemanticActivationGate(): {
+  beginPointerSequence: () => void;
+  finishPointerSequence: () => void;
+  cancelPointerSequence: () => void;
+  consumeSemanticClick: (detail: number) => boolean;
+} {
+  const pointerSequenceRef = React.useRef(false);
+  const resetTimerRef = React.useRef<number | null>(null);
+
+  const cancelReset = React.useCallback(() => {
+    if (resetTimerRef.current !== null) {
+      window.clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => cancelReset, [cancelReset]);
+
+  return {
+    beginPointerSequence: () => {
+      cancelReset();
+      pointerSequenceRef.current = true;
+    },
+    finishPointerSequence: () => {
+      cancelReset();
+      // `click` follows pointerup. Keep the marker through that compatibility
+      // click, then clear it if a drag/cancel produced no click at all.
+      resetTimerRef.current = window.setTimeout(() => {
+        pointerSequenceRef.current = false;
+        resetTimerRef.current = null;
+      }, 0);
+    },
+    cancelPointerSequence: () => {
+      cancelReset();
+      pointerSequenceRef.current = false;
+    },
+    consumeSemanticClick: (detail) => {
+      // Keyboard activation and the common AXPress path remain unambiguous.
+      // Admitting detail=0 also lets an immediate semantic action supersede a
+      // completed drag whose no-click cleanup timer has not fired yet.
+      if (detail === 0) {
+        cancelReset();
+        pointerSequenceRef.current = false;
+        return true;
+      }
+      if (!pointerSequenceRef.current) return true;
+      cancelReset();
+      pointerSequenceRef.current = false;
+      return false;
+    },
+  };
+}
+
+/**
  * The drag handle at the top of the chat sheet — pull UP to open the history,
  * pull DOWN to close it. It is also keyboard-operable (Enter/Space toggles,
  * ArrowUp opens, ArrowDown/Escape closes) so the drag-only affordance stays
@@ -983,6 +1042,7 @@ function SheetGrabber({
   pilled: boolean;
 }): React.JSX.Element {
   const disabled = pilled;
+  const activationGate = useSemanticActivationGate();
   return (
     <motion.button
       style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
@@ -999,10 +1059,10 @@ function SheetGrabber({
       data-testid="chat-sheet-grabber"
       data-open={open ? "true" : "false"}
       // Keep physical taps on the pointer-gesture path, but honor semantic
-      // button activation from macOS Accessibility, which emits detail=0 with
-      // no pointer sequence.
+      // button activation from macOS Accessibility even when WebKit reports a
+      // positive click detail. AXPress has no preceding pointer sequence.
       onClick={(event) => {
-        if (event.detail !== 0) return;
+        if (!activationGate.consumeSemanticClick(event.detail)) return;
         if (open) onClose();
         else onOpen();
       }}
@@ -1038,7 +1098,20 @@ function SheetGrabber({
         // never pass through this handler and remain normally selectable.
         event.preventDefault();
         event.stopPropagation();
+        activationGate.beginPointerSequence();
         binding.onPointerDown(event);
+      }}
+      onPointerUp={(event) => {
+        binding.onPointerUp(event);
+        activationGate.finishPointerSequence();
+      }}
+      onPointerCancel={(event) => {
+        binding.onPointerCancel(event);
+        activationGate.cancelPointerSequence();
+      }}
+      onLostPointerCapture={(event) => {
+        binding.onLostPointerCapture(event);
+        activationGate.cancelPointerSequence();
       }}
       className={cn(
         "appearance-none border-0 bg-transparent text-left",
@@ -1127,6 +1200,7 @@ function PillHandle({
    */
   expandedGestureTarget?: boolean;
 }): React.JSX.Element {
+  const activationGate = useSemanticActivationGate();
   const desktopHitWidth = expandedGestureTarget
     ? 112
     : CHAT_OVERLAY_RESTING_WINDOW_WIDTH;
@@ -1179,11 +1253,11 @@ function PillHandle({
             : undefined
         }
         // Pointer taps stay owned by the pull gesture's pointerup so one gesture
-        // cannot open twice. macOS Accessibility invokes AXPress as a synthetic
-        // click with detail=0 and no pointer sequence, so admit only that semantic
-        // activation here; physical mouse/touch clicks have a positive detail.
+        // cannot open twice. AXPress has no pointer sequence, but WebKit may
+        // still report a positive click detail, so gate on observed input rather
+        // than MouseEvent.detail.
         onClick={(event) => {
-          if (event.detail === 0) onOpen();
+          if (activationGate.consumeSemanticClick(event.detail)) onOpen();
         }}
         onKeyDown={(event) => {
           if (
@@ -1216,7 +1290,20 @@ function PillHandle({
           // cannot highlight mid-drag; real text outside this control keeps its
           // ordinary selection behavior.
           event.preventDefault();
+          activationGate.beginPointerSequence();
           binding.onPointerDown(event);
+        }}
+        onPointerUp={(event) => {
+          binding.onPointerUp(event);
+          activationGate.finishPointerSequence();
+        }}
+        onPointerCancel={(event) => {
+          binding.onPointerCancel(event);
+          activationGate.cancelPointerSequence();
+        }}
+        onLostPointerCapture={(event) => {
+          binding.onLostPointerCapture(event);
+          activationGate.cancelPointerSequence();
         }}
         tabIndex={interactive ? undefined : -1}
         aria-hidden={interactive ? undefined : true}

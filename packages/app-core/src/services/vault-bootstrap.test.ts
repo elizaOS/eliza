@@ -102,7 +102,11 @@ describe("runVaultBootstrap", () => {
     for (const key of Object.keys(process.env)) {
       delete process.env[key];
     }
-    process.env.ELIZA_API_TOKEN = "runtime-token";
+    process.env.TEST_PROVIDER_API_KEY = "provider-runtime-key";
+    process.env.ELIZA_API_TOKEN = "runtime-api-token";
+    process.env.ELIZA_BROWSER_WORKSPACE_TOKEN = "runtime-browser-token";
+    process.env.ELIZA_DESKTOP_SCREEN_CAPTURE_BRIDGE_TOKEN =
+      "runtime-capture-token";
   });
 
   afterEach(() => {
@@ -117,8 +121,21 @@ describe("runVaultBootstrap", () => {
       runVaultBootstrap({ vault: createFailingVault() }),
     ).resolves.toEqual({
       migrated: 0,
-      failed: ["ELIZA_API_TOKEN"],
+      failed: ["TEST_PROVIDER_API_KEY"],
     });
+  });
+
+  it("does not persist per-process desktop authority tokens", async () => {
+    const values = new Map<string, string>();
+
+    await expect(
+      runVaultBootstrap({ vault: createRecordingVault(values) }),
+    ).resolves.toEqual({ migrated: 1, failed: [] });
+
+    expect(values.get("TEST_PROVIDER_API_KEY")).toBe("provider-runtime-key");
+    expect(values.has("ELIZA_API_TOKEN")).toBe(false);
+    expect(values.has("ELIZA_BROWSER_WORKSPACE_TOKEN")).toBe(false);
+    expect(values.has("ELIZA_DESKTOP_SCREEN_CAPTURE_BRIDGE_TOKEN")).toBe(false);
   });
 
   it("moves known top-level connector credentials to deterministic connector keys", async () => {
