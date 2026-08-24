@@ -175,6 +175,24 @@ describe("/api/public/account-deletion", () => {
     expect(requestAccountDeletion).not.toHaveBeenCalled();
   });
 
+  test("rejects a cross-origin cancellation before recovery work", async () => {
+    checkElizaMutatingRequestOrigin.mockReturnValueOnce({ ok: false });
+    const response = await app.request(
+      "/",
+      {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+          "X-Account-Deletion-Recovery": "recovery-capability",
+        },
+        body: JSON.stringify({ confirmation: "CANCEL DELETION" }),
+      },
+      { NODE_ENV: "production" },
+    );
+    expect(response.status).toBe(403);
+    expect(cancelAccountDeletion).not.toHaveBeenCalled();
+  });
+
   test("undo requires the separate recovery capability and exact confirmation", async () => {
     const invalidConfirmation = await app.request(
       "/",
