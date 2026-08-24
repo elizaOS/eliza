@@ -222,11 +222,14 @@ describe("error-description helpers", () => {
     expect(described).toContain("constraint=users_wallet_address_unique");
   });
 
-  test("describeSyncError appends a stack excerpt for non-Postgres errors", async () => {
+  test("describeSyncError appends the complete stack for non-Postgres errors", async () => {
     const { describeSyncError } = await import("./steward-sync");
 
-    const described = describeSyncError(new Error("something unexpected"));
+    const error = new Error("something unexpected");
+    error.stack = "Error: something unexpected\n    at first\n    at second\n    at third\n    at fourth";
+    const described = describeSyncError(error);
     expect(described).toContain("something unexpected");
-    expect(described).toContain("stack=");
+    expect(described).toContain("stack=Error: something unexpected |     at first");
+    expect(described).toContain("at fourth");
   });
 });

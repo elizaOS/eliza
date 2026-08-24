@@ -231,6 +231,24 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/diagnostics\.slice\(/,
 		/args[^\n]*join\([^\n]*\.slice\(/,
 	],
+	"packages/cloud/shared/src/lib/eliza/runtime/initializer.ts": [
+		/msg\.substring\(/,
+	],
+	"packages/cloud/shared/src/lib/services/local-docker-sandbox-provider.ts": [
+		/stdout\.slice\(/,
+	],
+	"packages/cloud/shared/src/lib/services/payment-request-settlement.ts": [
+		/result\.error\.slice\(/,
+	],
+	"packages/cloud/shared/src/lib/services/tailnet-path-monitor.ts": [
+		/timedOutContainers[^\n]*\.slice\(/,
+	],
+	"packages/cloud/shared/src/lib/steward-sync.ts": [
+		/error\.stack[^\n]*\.slice\(/,
+	],
+	"packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts": [
+		/params\.error\.slice\(/,
+	],
 	"packages/cloud/shared/src/lib/services/room-title.ts": [
 		/result\.text[\s\S]{0,240}\.slice\(/,
 		/result\.text[\s\S]{0,240}\.split\("\\n"\)/,
