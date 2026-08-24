@@ -26,6 +26,7 @@ const manifest: CloudStabilityManifest = {
   timeoutMs: 1_000,
   maxInputTokens: 100,
   maxOutputTokens: 100,
+  maxModelRequests: 16,
   maxToolCalls: 10,
 };
 
@@ -85,6 +86,7 @@ describe("Cloud stability manifest", () => {
     const adapter: ScenarioStabilityExecutionAdapter = {
       async execute(input) {
         attempts.push(input.attemptNumber);
+        expect(input.budgets.maxModelRequests).toBe(manifest.maxModelRequests);
         return {
           passed: input.attemptNumber !== 2,
           initialStateHash: "b".repeat(64),
@@ -121,5 +123,60 @@ describe("Cloud stability manifest", () => {
     expect(
       await readFile(path.join(outputRoot, "stability.sha256"), "utf8"),
     ).toMatch(/^[a-f0-9]{64} {2}stability\.json\n$/);
+  });
+
+  test("retains metering failures in the exact-three focus report", async () => {
+    const outputRoot = await mkdtemp(
+      path.join(tmpdir(), "cloud-stability-metering-test-"),
+    );
+    directories.push(outputRoot);
+    const { fixtureManifestFingerprint: _fixtureFingerprint, ...baseManifest } =
+      manifest;
+    const report = await runCloudStabilityLane({
+      manifest: {
+        ...baseManifest,
+        mode: "real-llm",
+        provider: "openai",
+        model: "gpt-test",
+      },
+      outputRoot,
+      adapter: {
+        async execute() {
+          return {
+            passed: false,
+            initialStateHash: "b".repeat(64),
+            finalStateHash: "c".repeat(64),
+            inputTokens: 0,
+            outputTokens: 0,
+            toolCalls: 0,
+            evidence: {
+              trajectory: [],
+              toolReceipts: [],
+              stateTransitions: [],
+              providerReceipts: [],
+              judgeVerdicts: [],
+            },
+            stateDiff: {
+              providerUsage: {
+                requestCount: 1,
+                inputTokens: 0,
+                outputTokens: 0,
+                failures: [
+                  { code: "STABILITY_MODEL_USAGE_MISSING", requestNumber: 1 },
+                ],
+              },
+            },
+            error: "STABILITY_MODEL_USAGE_MISSING",
+          };
+        },
+        async terminate() {},
+      },
+    });
+    expect(report.cells[0]).toMatchObject({ tier: "0/3", passedAttempts: 0 });
+    expect(report.focusList[0]?.failedAttemptIds).toHaveLength(3);
+    expect(report.failureClusters[0]?.sample).toContain(
+      "STABILITY_MODEL_USAGE_MISSING",
+    );
+    expect(report.cells[0]?.attempts).toHaveLength(3);
   });
 });

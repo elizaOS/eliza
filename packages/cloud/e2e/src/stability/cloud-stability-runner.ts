@@ -31,6 +31,7 @@ export interface CloudStabilityManifest {
   timeoutMs: number;
   maxInputTokens: number;
   maxOutputTokens: number;
+  maxModelRequests: number;
   maxToolCalls: number;
 }
 
@@ -119,6 +120,7 @@ export function parseCloudStabilityManifest(
     "timeoutMs",
     "maxInputTokens",
     "maxOutputTokens",
+    "maxModelRequests",
     "maxToolCalls",
     ...(record.mode === "deterministic-mock"
       ? ["fixtureManifestFingerprint"]
@@ -154,6 +156,10 @@ export function parseCloudStabilityManifest(
     timeoutMs: positiveInteger(record.timeoutMs, "timeoutMs"),
     maxInputTokens: positiveInteger(record.maxInputTokens, "maxInputTokens"),
     maxOutputTokens: positiveInteger(record.maxOutputTokens, "maxOutputTokens"),
+    maxModelRequests: positiveInteger(
+      record.maxModelRequests,
+      "maxModelRequests",
+    ),
     maxToolCalls: positiveInteger(record.maxToolCalls, "maxToolCalls"),
   };
   if (record.mode === "deterministic-mock") {
@@ -216,6 +222,7 @@ export async function runCloudStabilityLane(
       timeoutMs: manifest.timeoutMs,
       maxInputTokens: manifest.maxInputTokens,
       maxOutputTokens: manifest.maxOutputTokens,
+      maxModelRequests: manifest.maxModelRequests,
       maxToolCalls: manifest.maxToolCalls,
     },
     adapter: input.adapter,

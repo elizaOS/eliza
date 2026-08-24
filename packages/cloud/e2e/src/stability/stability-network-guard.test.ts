@@ -52,3 +52,42 @@ test("production Bun preload blocks a child fetch before external egress", async
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("production Bun preload rejects a DNS name with a loopback-looking prefix", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "cloud-network-guard-"));
+  try {
+    const ledger = path.join(directory, "ledger.jsonl");
+    const guard = path.resolve(
+      import.meta.dirname,
+      "../../scripts/stability-network-guard.mjs",
+    );
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "--preload",
+        guard,
+        "-e",
+        'await fetch("http://127.attacker.invalid/forbidden")',
+      ],
+      {
+        cwd: directory,
+        env: {
+          PATH: process.env.PATH,
+          ELIZA_STABILITY_CHILD_NETWORK_LEDGER: ledger,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    expect(await child.exited).not.toBe(0);
+    expect(await new Response(child.stderr).text()).toContain(
+      "stability network policy blocked http://127.attacker.invalid",
+    );
+    expect(JSON.parse((await readFile(ledger, "utf8")).trim())).toMatchObject({
+      origin: "http://127.attacker.invalid",
+      allowed: false,
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
