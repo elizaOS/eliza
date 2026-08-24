@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 
 export const MANUAL_DEMO_FINGERPRINT =
@@ -36,7 +37,7 @@ export async function approveExactManualDemoAction(
       .pendingApprovals.find(
         (request) =>
           request.command === command &&
-          JSON.stringify(request.parameters) === JSON.stringify(parameters),
+          isDeepStrictEqual(request.parameters, parameters),
       );
     if (pending) {
       const resolution = service.resolveApproval(

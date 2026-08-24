@@ -9,6 +9,7 @@ export default defineConfig({
       "src/app-control/route-policy.test.ts",
       "src/app-control/macos-ax-packaging.test.ts",
       "src/__tests__/mcp-tools.test.ts",
+      "src/__tests__/computeruse-manual-demo-contract.test.ts",
     ],
     exclude: ["dist/**", "**/node_modules/**"],
     environment: "node",

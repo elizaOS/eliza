@@ -208,6 +208,11 @@ function captureFromFrame(data: string): {
       const parameters = {
         coordinate: [plan.proposed.x, plan.proposed.y],
       };
+      const approvalParameters = {
+        ...parameters,
+        tabId: undefined,
+        action: "click",
+      };
       service.setApprovalMode("approve_all");
       const completion = service.executeSessionAction(session.id, {
         actionId: "live-cerebras-safe-click",
@@ -220,7 +225,7 @@ function captureFromFrame(data: string): {
       const approval = await approveExactManualDemoAction(
         service,
         "browser_click",
-        parameters,
+        approvalParameters,
       );
       const completed = await completion;
       expect(completed.result).toMatchObject({ success: true });
