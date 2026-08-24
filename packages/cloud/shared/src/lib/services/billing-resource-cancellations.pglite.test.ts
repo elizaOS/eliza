@@ -46,11 +46,17 @@ beforeAll(async () => {
     CREATE TABLE organizations (
       id uuid PRIMARY KEY,
       name text NOT NULL,
-      slug text NOT NULL UNIQUE
+      slug text NOT NULL UNIQUE,
+      is_active boolean NOT NULL DEFAULT true
     );
     CREATE TABLE users (
       id uuid PRIMARY KEY,
-      organization_id uuid NOT NULL REFERENCES organizations(id)
+      organization_id uuid NOT NULL REFERENCES organizations(id),
+      role text NOT NULL DEFAULT 'member',
+      is_active boolean NOT NULL DEFAULT true,
+      is_anonymous boolean NOT NULL DEFAULT false,
+      expires_at timestamp,
+      deleted_at timestamp
     );
     CREATE TABLE jobs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -278,8 +284,8 @@ beforeEach(async () => {
       (${ORG_A}, 'A', 'a'), (${ORG_B}, 'B', 'b')
   `);
   await dbWrite.execute(sql`
-    INSERT INTO users (id, organization_id) VALUES
-      (${USER_A}, ${ORG_A}), (${USER_B}, ${ORG_B})
+    INSERT INTO users (id, organization_id, role) VALUES
+      (${USER_A}, ${ORG_A}, 'owner'), (${USER_B}, ${ORG_B}, 'admin')
   `);
   await dbWrite.execute(sql`CREATE TRIGGER billing_cancel_commands_authority_immutable
     BEFORE UPDATE OR DELETE ON billing_cancel_commands
@@ -480,6 +486,81 @@ describe("billing cancellation durable receipt authority", () => {
     expect(await authorityCounts()).toEqual({ commands: 0, keys: 0, jobs: 0 });
   });
 
+  test("primary authority loss creates no job, command, key, or enqueue", async () => {
+    const service = createService();
+    const scenarios = [
+      {
+        name: "inactive organization",
+        revoke: () =>
+          dbWrite.execute(sql`UPDATE organizations SET is_active = false WHERE id = ${ORG_A}`),
+      },
+      {
+        name: "different organization",
+        revoke: () =>
+          dbWrite.execute(sql`UPDATE users SET organization_id = ${ORG_B} WHERE id = ${USER_A}`),
+      },
+      {
+        name: "non-manager role",
+        revoke: () => dbWrite.execute(sql`UPDATE users SET role = 'member' WHERE id = ${USER_A}`),
+      },
+      {
+        name: "inactive user",
+        revoke: () => dbWrite.execute(sql`UPDATE users SET is_active = false WHERE id = ${USER_A}`),
+      },
+      {
+        name: "anonymous user",
+        revoke: () =>
+          dbWrite.execute(sql`UPDATE users SET is_anonymous = true WHERE id = ${USER_A}`),
+      },
+      {
+        name: "deleted user",
+        revoke: () =>
+          dbWrite.execute(sql`UPDATE users SET deleted_at = NOW() WHERE id = ${USER_A}`),
+      },
+      {
+        name: "expired user",
+        revoke: () =>
+          dbWrite.execute(
+            sql`UPDATE users SET expires_at = NOW() - interval '1 second' WHERE id = ${USER_A}`,
+          ),
+      },
+    ];
+
+    for (const [index, scenario] of scenarios.entries()) {
+      await dbWrite.execute(sql`UPDATE organizations SET is_active = true WHERE id = ${ORG_A}`);
+      await dbWrite.execute(sql`UPDATE users SET
+        organization_id = ${ORG_A}, role = 'owner', is_active = true,
+        is_anonymous = false, expires_at = NULL, deleted_at = NULL
+        WHERE id = ${USER_A}`);
+      await scenario.revoke();
+
+      await expect(
+        request(service, { idempotencyKey: `cancel-authority-loss-${index}` }),
+        scenario.name,
+      ).rejects.toMatchObject({ status: 403, code: "access_denied" });
+      expect(enqueueCount, scenario.name).toBe(0);
+      expect(await authorityCounts(), scenario.name).toEqual({ commands: 0, keys: 0, jobs: 0 });
+    }
+  });
+
+  test("authority loss cannot add a key alias to an existing logical command", async () => {
+    const service = createService();
+    const accepted = await request(service);
+    await dbWrite.execute(sql`UPDATE users SET role = 'member' WHERE id = ${USER_A}`);
+
+    await expect(
+      request(service, { idempotencyKey: "cancel-replay-after-role-loss" }),
+    ).rejects.toMatchObject({ status: 403, code: "access_denied" });
+    expect(enqueueCount).toBe(1);
+    expect(await authorityCounts()).toEqual({ commands: 1, keys: 1, jobs: 1 });
+    const [keyCount] = await sqlRows<{ count: number }>(
+      dbWrite,
+      sql`SELECT count(*)::int AS count FROM billing_cancel_command_keys
+          WHERE command_id = ${accepted.receipt.receiptId}`,
+    );
+    expect(keyCount?.count).toBe(1);
+  });
+
   test("receipt replay projects provider confirmation and supersession", async () => {
     const service = createService();
     const confirmed = await request(service);
@@ -594,6 +675,40 @@ describe("billing cancellation durable receipt authority", () => {
     expect(agentReplay.receipt).toMatchObject({
       jobId: originalAgentJobId,
       pollEndpoint: `/api/v1/jobs/${originalAgentJobId}`,
+    });
+  });
+
+  test("a failed job projects terminal attention while its intent is pending", async () => {
+    const service = createService();
+    const accepted = await request(service);
+
+    await dbWrite
+      .update(jobs)
+      .set({ status: "failed", error: "provider dispatch crashed", completed_at: new Date() })
+      .where(eq(jobs.id, accepted.receipt.jobId));
+
+    const replay = await request(service);
+    expect(replay.receipt).toMatchObject({
+      status: "terminal_attention",
+      billingStopped: false,
+      infrastructureStatus: "terminal_attention",
+    });
+  });
+
+  test("a cancelled job projects supersession while its intent is pending", async () => {
+    const service = createService();
+    const accepted = await request(service);
+
+    await dbWrite
+      .update(jobs)
+      .set({ status: "cancelled", completed_at: new Date() })
+      .where(eq(jobs.id, accepted.receipt.jobId));
+
+    const replay = await request(service);
+    expect(replay.receipt).toMatchObject({
+      status: "conflict",
+      billingStopped: false,
+      infrastructureStatus: "superseded",
     });
   });
 

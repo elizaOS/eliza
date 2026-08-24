@@ -110,21 +110,31 @@ function projectReceipt(bundle: BillingCancelCommandBundle): BillingCancellation
   const result = job.result ?? {};
   const intent =
     command.resource_type === "container" ? bundle.containerIntent : bundle.agentIntent;
-  // The durable stop intent records provider truth before asynchronous job
-  // settlement. Once present, it is authoritative even if the worker crashes
-  // and the job envelope remains in progress or is later marked failed.
-  const providerConfirmed = intent
-    ? intent.status === "provider_confirmed"
-    : job.status === "completed" && (result.stopped === true || result.containerStopped === true);
-  const superseded = intent
-    ? intent.status === "superseded"
-    : job.status === "cancelled" ||
-      terminalReason(bundle).includes("stale") ||
-      terminalReason(bundle).includes("supersed") ||
-      result.skipped === true;
-  const terminalAttention = intent
-    ? intent.status === "terminal_attention"
-    : job.status === "failed";
+  // A terminal durable intent is authoritative even when asynchronous job
+  // settlement disagrees. While the intent is still non-terminal, however,
+  // the job envelope must surface terminal failure or cancellation instead of
+  // leaving the receipt indefinitely queued.
+  const terminalIntentStatus =
+    intent?.status === "provider_confirmed" ||
+    intent?.status === "superseded" ||
+    intent?.status === "terminal_attention"
+      ? intent.status
+      : null;
+  const providerConfirmed =
+    terminalIntentStatus === "provider_confirmed" ||
+    (terminalIntentStatus === null &&
+      job.status === "completed" &&
+      (result.stopped === true || result.containerStopped === true));
+  const superseded =
+    terminalIntentStatus === "superseded" ||
+    (terminalIntentStatus === null &&
+      (job.status === "cancelled" ||
+        terminalReason(bundle).includes("stale") ||
+        terminalReason(bundle).includes("supersed") ||
+        result.skipped === true));
+  const terminalAttention =
+    terminalIntentStatus === "terminal_attention" ||
+    (terminalIntentStatus === null && job.status === "failed");
   const status: BillingCancellationStatus = providerConfirmed
     ? "provider_confirmed"
     : superseded
@@ -265,6 +275,26 @@ export class BillingResourceCancellationsService {
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`billing-cancel:${normalizedOptions.organizationId}:${normalizedOptions.resourceType}:${normalizedOptions.resourceId}:${normalizedOptions.expectedLifecycleRevision}:stop`}, 0))`,
       );
       const logicalReplay = await billingCancelCommandsRepository.findLogical(tx, identity);
+
+      // Preserve the fresh session/credential revalidation immediately before
+      // the first durable effect, then acquire primary database authority in
+      // the same transaction. The organization and user FOR SHARE locks close
+      // the gap where a concurrent role or eligibility revocation could commit
+      // between session validation and replay binding/job admission.
+      await normalizedOptions.authorizeInfrastructureMutation();
+      const hasCurrentAuthority = await billingCancelCommandsRepository.lockBillingManagerAuthority(
+        tx,
+        normalizedOptions.organizationId,
+        normalizedOptions.requestedByUserId,
+      );
+      if (!hasCurrentAuthority) {
+        throw new ApiError(
+          403,
+          "access_denied",
+          "Billing cancellation authority changed; refresh and retry",
+        );
+      }
+
       if (logicalReplay) {
         const bound = await billingCancelCommandsRepository.bindKey(tx, {
           organizationId: normalizedOptions.organizationId,
@@ -286,10 +316,6 @@ export class BillingResourceCancellationsService {
         };
       }
 
-      // The initial session lookup selects the tenant. This second fresh check
-      // is intentionally inside the admission transaction, immediately before
-      // the first durable job can become visible to the daemon.
-      await normalizedOptions.authorizeInfrastructureMutation();
       const enqueued = await this.dependencies.enqueueStop(tx, normalizedOptions);
       const command = await billingCancelCommandsRepository.createCommand(tx, {
         ...identity,
