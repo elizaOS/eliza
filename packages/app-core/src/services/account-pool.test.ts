@@ -16,6 +16,7 @@ import {
   applyDirectProviderCredentialsToEnv,
   configureDefaultAccountPoolSelection,
   type DirectProviderEnvLedger,
+  retractAllExportedDirectProviderEnv,
   selectionForProvider,
 } from "./account-pool";
 
@@ -1284,7 +1285,7 @@ describe("applyDirectProviderCredentialsToEnv fail-closed export", () => {
         "openrouter-api:only": account("openrouter-api", {
           id: "only",
           health: "rate-limited",
-          healthDetail: { rateLimitResetAt: Date.now() + 60_000 },
+          healthDetail: { until: Date.now() + 60_000 },
         }),
       },
       undefined,
@@ -1385,6 +1386,72 @@ describe("applyDirectProviderCredentialsToEnv fail-closed export", () => {
     expect(env.XAI_API_KEY).toBeUndefined();
     expect(env.OPENAI_API_KEY).toBeUndefined();
     expect(env.OPENAI_BASE_URL).toBeUndefined();
+  });
+
+  it("switches OpenRouter to native OpenAI as an atomic key and base pair", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openrouter-api:router": account("openrouter-api", { id: "router" }),
+      "openai-api:native": account("openai-api", { id: "native" }),
+    };
+    const ledger: DirectProviderEnvLedger = new Map();
+    const env: NodeJS.ProcessEnv = {};
+    const { deps } = harness(
+      accounts,
+      { router: "router-token", native: "native-token" },
+      env,
+      ledger,
+    );
+
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+    expect(env.OPENAI_API_KEY).toBe("router-token");
+    expect(env.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
+
+    await applyDirectProviderCredentialsToEnv("openai", deps);
+    expect(env.OPENAI_API_KEY).toBe("native-token");
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+  });
+
+  it("switches native OpenAI to xAI as an atomic key and base pair", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openai-api:native": account("openai-api", { id: "native" }),
+      "xai-api:grok": account("xai-api", { id: "grok" }),
+    };
+    const ledger: DirectProviderEnvLedger = new Map();
+    const env: NodeJS.ProcessEnv = {};
+    const { deps } = harness(
+      accounts,
+      { native: "native-token", grok: "grok-token" },
+      env,
+      ledger,
+    );
+
+    await applyDirectProviderCredentialsToEnv("openai", deps);
+    expect(env.OPENAI_API_KEY).toBe("native-token");
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+
+    await applyDirectProviderCredentialsToEnv("grok", deps);
+    expect(env.OPENAI_API_KEY).toBe("grok-token");
+    expect(env.OPENAI_BASE_URL).toBe("https://api.x.ai/v1");
+  });
+
+  it("retracts owned provider exports before clearing reset evidence", () => {
+    const env: NodeJS.ProcessEnv = {
+      OPENROUTER_API_KEY: "owned-token",
+      OPENAI_API_KEY: "owned-token",
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+      XAI_API_KEY: "operator-token",
+    };
+    const ledger: DirectProviderEnvLedger = new Map([
+      ["openrouter-api", { token: "owned-token", openAiCompat: true }],
+    ]);
+
+    retractAllExportedDirectProviderEnv(env, ledger);
+
+    expect(env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+    expect(env.XAI_API_KEY).toBe("operator-token");
+    expect(ledger.size).toBe(0);
   });
 });
 

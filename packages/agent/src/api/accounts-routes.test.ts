@@ -6,7 +6,7 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
+import { AgentRuntime, LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
 import { codingProviderDescriptorForProvider } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -542,7 +542,7 @@ describe("accounts routes", () => {
       expect.objectContaining({ owner: "runtime" }),
     );
     expect(deleted.jsonCalls[0]?.body).toEqual({ deleted: true });
-    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(3);
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(4);
   });
 
   it("re-exports pool credentials with the configured route after a label-only patch is skipped", async () => {
@@ -605,14 +605,99 @@ describe("accounts routes", () => {
         expect.anything(),
       );
       expect(created.jsonCalls[0]?.status).toBe(201);
-      // Same live-export contract as every other direct provider: the key is
-      // exported immediately and the pool pass then reconciles selection.
-      expect(process.env[envKey]).toBe(apiKey);
+      // The route never writes a paid-provider key directly. The account-pool
+      // export is the serialized live authority and owns any env transition.
+      expect(process.env[envKey]).toBeUndefined();
       expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(1);
       expect(JSON.stringify(created.jsonCalls)).not.toContain(apiKey);
       delete process.env[envKey];
     },
   );
+
+  it("replaces and revokes the real runtime setting after pool synchronization", async () => {
+    const runtime = new AgentRuntime({
+      character: {
+        name: "account-route-runtime-authority",
+        settings: { secrets: { OPENROUTER_API_KEY: "stale-token" } },
+      },
+      settings: { OPENROUTER_API_KEY: "stale-token" },
+    });
+    const setSetting = vi.spyOn(runtime, "setSetting");
+    const setRuntime = (ctx: AccountsRouteContext) => {
+      ctx.state.runtime = runtime;
+      ctx.state.config = {
+        serviceRouting: { llmText: { backend: "openrouter" } },
+      } as AccountsRouteContext["state"]["config"];
+    };
+
+    fakes.applyAccountPoolApiCredentials.mockImplementation(async () => {
+      process.env.OPENROUTER_API_KEY = "token-a-value";
+      process.env.OPENAI_API_KEY = "token-a-value";
+      process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
+    });
+    const created = makeContext("POST", "/api/accounts/openrouter-api", {
+      source: "api-key",
+      label: "OpenRouter",
+      apiKey: "token-a-value",
+    });
+    setRuntime(created.ctx);
+    await handleAccountsRoutes(created.ctx);
+    expect(created.errorCalls).toEqual([]);
+    expect(created.jsonCalls[0]?.status).toBe(201);
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledOnce();
+    expect(setSetting).toHaveBeenCalledWith(
+      "OPENROUTER_API_KEY",
+      "token-a-value",
+      true,
+    );
+    expect(runtime.getSetting("OPENROUTER_API_KEY")).toBe("token-a-value");
+
+    fakes.poolAccounts = [
+      {
+        ...linkedAccount,
+        id: "account-1",
+        providerId: "openrouter-api",
+        label: "OpenRouter",
+      },
+    ];
+    fakes.accounts = [
+      {
+        id: "account-1",
+        providerId: "openrouter-api",
+        label: "OpenRouter",
+        source: "api-key",
+        credentials: { access: "token-a-value" },
+        createdAt: 1,
+      },
+    ];
+    fakes.applyAccountPoolApiCredentials.mockImplementation(async () => {
+      process.env.OPENROUTER_API_KEY = "token-b-value";
+      process.env.OPENAI_API_KEY = "token-b-value";
+    });
+    const replaced = makeContext("POST", "/api/accounts/openrouter-api", {
+      source: "api-key",
+      label: "OpenRouter",
+      apiKey: "token-b-value",
+      replaceAccountId: "account-1",
+    });
+    setRuntime(replaced.ctx);
+    await handleAccountsRoutes(replaced.ctx);
+    expect(runtime.getSetting("OPENROUTER_API_KEY")).toBe("token-b-value");
+
+    fakes.applyAccountPoolApiCredentials.mockImplementation(async () => {
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_BASE_URL;
+    });
+    const disabled = makeContext(
+      "PATCH",
+      "/api/accounts/openrouter-api/account-1",
+      { enabled: false },
+    );
+    setRuntime(disabled.ctx);
+    await handleAccountsRoutes(disabled.ctx);
+    expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
+  });
 
   it("rejects an unverified OpenRouter credential without persisting it", async () => {
     fakes.probeDirectApiKey.mockResolvedValueOnce({
@@ -661,6 +746,46 @@ describe("accounts routes", () => {
       modelIds: ["grok-4", "grok-code-fast-1"],
       modelCatalogTruncated: true,
     });
+  });
+
+  it("keeps direct provider failures active until an authenticated probe heals them", async () => {
+    fakes.poolAccounts = [
+      { ...linkedAccount, providerId: "openrouter-api", id: "router" },
+    ];
+    fakes.accounts = [
+      { id: "router", providerId: "openrouter-api", label: "Router" },
+    ];
+    fakes.probeDirectApiKey.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      latencyMs: 5,
+      error: "credential rejected",
+    });
+
+    const rejected = makeContext(
+      "POST",
+      "/api/accounts/openrouter-api/router/refresh-usage",
+    );
+    await handleAccountsRoutes(rejected.ctx);
+    expect(rejected.jsonCalls[0]?.body).toMatchObject({
+      account: { health: "needs-reauth" },
+    });
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledOnce();
+
+    fakes.probeDirectApiKey.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      latencyMs: 4,
+    });
+    const healed = makeContext(
+      "POST",
+      "/api/accounts/openrouter-api/router/refresh-usage",
+    );
+    await handleAccountsRoutes(healed.ctx);
+    expect(healed.jsonCalls[0]?.body).toMatchObject({
+      account: { health: "ok" },
+    });
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(2);
   });
 
   it("verifies and replaces an API credential in place without duplicating the account", async () => {
@@ -858,7 +983,7 @@ describe("accounts routes", () => {
     }
   });
 
-  it("keeps terminal credential health terminal during usage refresh", async () => {
+  it("heals terminal direct credential health only after a provider probe succeeds", async () => {
     fakes.poolAccounts = [
       {
         ...linkedAccount,
@@ -873,10 +998,11 @@ describe("accounts routes", () => {
     await handleAccountsRoutes(refreshed.ctx);
     expect(refreshed.jsonCalls[0]?.body).toMatchObject({
       account: {
-        health: "needs-reauth",
-        healthDetail: { lastError: "refresh token revoked", lastChecked: 1 },
+        health: "ok",
+        healthDetail: { lastChecked: expect.any(Number) },
       },
     });
+    expect(fakes.applyAccountPoolApiCredentials).toHaveBeenCalledOnce();
   });
 
   it("starts and controls OAuth flows and validates the status stream", async () => {

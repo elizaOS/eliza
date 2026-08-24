@@ -3571,17 +3571,28 @@ export class AgentRuntime implements IAgentRuntime {
 
 	setSetting(key: string, value: string | boolean | null, secret = false) {
 		if (secret) {
+			const nestedSecrets =
+				this.character.settings &&
+				typeof this.character.settings.secrets === "object" &&
+				this.character.settings.secrets !== null
+					? (this.character.settings.secrets as Record<string, string>)
+					: undefined;
 			if (!this.character.secrets) {
 				this.character.secrets = {};
 			}
 			if (value !== null && value !== undefined) {
 				// Secrets are stored as strings
 				this.character.secrets[key] = String(value);
+				// Boot composition may have copied this key into the legacy nested
+				// secret map. Remove that lower-priority snapshot so a later revoke
+				// cannot resurrect it after the live value is cleared.
+				if (nestedSecrets) delete nestedSecrets[key];
 			} else {
 				// null clears — callers use setSetting(key, null) to revoke a
 				// previously bridged credential (cloud disconnect, connector
 				// admin wipe, plugin Settings blanking an optional param).
 				delete this.character.secrets[key];
+				if (nestedSecrets) delete nestedSecrets[key];
 			}
 		} else {
 			if (!this.character.settings) {
