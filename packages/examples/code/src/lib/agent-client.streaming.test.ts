@@ -1,4 +1,7 @@
 // Exercises the Code example behavior that this module protects.
+/* The package lane uses Bun while the isolated merge-readiness lane uses Vitest.
+import { beforeEach, describe, expect, it } from "bun:test";
+*/
 import {
   ChannelType,
   type Content,
@@ -11,10 +14,13 @@ import {
   type StreamChunkCallback,
   stringToUuid,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
 import type { ChatRoom } from "../types.js";
 import { getAgentClient, resetAgentClient } from "./agent-client.js";
 import type { SessionIdentity } from "./identity.js";
+
+const { beforeEach, describe, expect, it } = process.env.VITEST
+  ? await import("vitest")
+  : await import("bun:test");
 
 interface HandleMessageOptions {
   codingMode?: boolean;
