@@ -1303,26 +1303,28 @@ async function waitForConversationRestore(
 }
 
 export function normalizeActionCallbackHistory(value: unknown): string[] {
-  if (!Array.isArray(value)) {
+  if (value === undefined || value === null) {
     return [];
   }
-
-  const history: string[] = [];
-  for (const entry of value) {
-    if (typeof entry !== "string") {
-      continue;
-    }
-    const normalized = entry.trim();
-    if (!normalized) {
-      continue;
-    }
-    if (history.at(-1) === normalized) {
-      continue;
-    }
-    history.push(normalized);
+  if (!Array.isArray(value)) {
+    throw new ElizaError("Action callback history must be an array", {
+      code: "CONVERSATION_CALLBACK_HISTORY_INVALID",
+      context: { valueType: typeof value },
+    });
   }
 
-  return history;
+  return value.map((entry, index) => {
+    if (typeof entry !== "string") {
+      throw new ElizaError(
+        "Action callback history contains a non-string entry",
+        {
+          code: "CONVERSATION_CALLBACK_HISTORY_INVALID",
+          context: { index, valueType: typeof entry },
+        },
+      );
+    }
+    return entry;
+  });
 }
 
 function mergeActionCallbackHistory(
@@ -2042,7 +2044,7 @@ export async function verifyCanonicalPendantProvenance(
     segment.sessionId !== sessionId ||
     segment.status !== "resolved" ||
     segment.revision !== segmentRevision ||
-    segment.text.trim() !== prompt.trim()
+    segment.text !== prompt
   ) {
     throw new ElizaError(
       "Pendant transcript does not match a canonical resolved segment",
@@ -2182,8 +2184,8 @@ export async function persistRecentAssistantActionCallbackHistory(
   runtime: AgentRuntime,
   roomId: UUID,
   actionCallbackHistory: readonly string[],
-  sinceMs: number,
-  targetMemoryId?: UUID,
+  _sinceMs: number,
+  targetMemoryId: UUID,
   roomHandlerLease?: RoomHandlerLease,
   assertCurrent?: () => void,
 ): Promise<boolean> {
@@ -2193,15 +2195,18 @@ export async function persistRecentAssistantActionCallbackHistory(
   if (normalizedHistory.length === 0) {
     return false;
   }
+  if (typeof targetMemoryId !== "string" || targetMemoryId.length === 0) {
+    throw new ElizaError(
+      "Exact assistant memory id is required for callback history",
+      {
+        code: "CONVERSATION_CALLBACK_TARGET_REQUIRED",
+        context: { roomId },
+      },
+    );
+  }
 
   const persist = async (): Promise<boolean> => {
-    const recent = targetMemoryId
-      ? await runtime.getMemoriesByIds([targetMemoryId], "messages")
-      : await runtime.getMemories({
-          roomId,
-          tableName: "messages",
-          limit: 12,
-        });
+    const recent = await runtime.getMemoriesByIds([targetMemoryId], "messages");
     assertCurrent?.();
 
     const target = recent
@@ -2212,31 +2217,23 @@ export async function persistRecentAssistantActionCallbackHistory(
           memory.entityId === runtime.agentId,
       )
       .filter((memory) => {
-        const content = memory.content as { text?: unknown } | undefined;
-        const createdAt = memory.createdAt ?? 0;
         return (
           typeof memory.id === "string" &&
-          typeof content?.text === "string" &&
-          content.text.trim().length > 0 &&
-          (targetMemoryId
-            ? memory.id === targetMemoryId
-            : createdAt >= sinceMs - 2000)
+          memory.content !== null &&
+          typeof memory.content === "object" &&
+          memory.id === targetMemoryId
         );
       })
-      .sort(compareMemoriesByCreatedAt)
-      .at(-1);
+      .at(0);
 
     if (!target || typeof target.id !== "string") {
-      if (targetMemoryId) {
-        throw new ElizaError(
-          "Exact assistant memory for callback history was not found",
-          {
-            code: "CONVERSATION_CALLBACK_TARGET_NOT_FOUND",
-            context: { roomId, targetMemoryId },
-          },
-        );
-      }
-      return false;
+      throw new ElizaError(
+        "Exact assistant memory for callback history was not found",
+        {
+          code: "CONVERSATION_CALLBACK_TARGET_NOT_FOUND",
+          context: { roomId, targetMemoryId },
+        },
+      );
     }
 
     const content =

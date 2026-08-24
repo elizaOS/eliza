@@ -1199,6 +1199,54 @@ describe("generateConversationTitle / generateChatResponse ownership", () => {
       }),
     ).rejects.toMatchObject({ code: "CHAT_ROOM_LEASE_MISMATCH" });
   });
+
+  it("preserves repeated action callback text byte-for-byte in source order", async () => {
+    const handleMessage = vi.fn(
+      async (
+        _runtime: AgentRuntime,
+        _message: Memory,
+        callback: (content: Content, actionName?: string) => Promise<Memory[]>,
+      ) => {
+        await callback({ text: "  exact callback bytes  " }, "TEST_ACTION");
+        await callback({ text: "  exact callback bytes  " }, "TEST_ACTION");
+        return {
+          didRespond: true,
+          responseContent: { text: "done", actions: ["TEST_ACTION"] },
+          responseMessages: [],
+          actionResults: [
+            { success: true, actionName: "TEST_ACTION", text: "done" },
+          ],
+          mode: "actions",
+        };
+      },
+    );
+    const runtime = {
+      ...makeRuntime(),
+      logger: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      drainChatPreHandlers: vi.fn(async () => null),
+      reportError: vi.fn(),
+      messageService: { handleMessage },
+    } as unknown as AgentRuntime;
+    const message = createMessageMemory({
+      id: stringToUuid("gen-callback-history"),
+      entityId: USER_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      content: { text: "run it", source: "client_chat" },
+    });
+
+    const result = await generateChatResponse(runtime, message, "Eliza");
+
+    expect(result.actionCallbackHistory).toEqual([
+      "  exact callback bytes  ",
+      "  exact callback bytes  ",
+    ]);
+  });
 });
 
 describe("resolveTrustedApiPrincipal / resolveChatAdminEntityId", () => {

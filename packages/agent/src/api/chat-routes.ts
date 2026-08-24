@@ -1107,7 +1107,7 @@ function resolveCallbackMergeMode(
 }
 
 function normalizeActionCallbackText(text: string): string {
-  return text.trim();
+  return text;
 }
 
 function isInternalStructuredStreamPayload(value: unknown): boolean {
@@ -3563,14 +3563,7 @@ async function generateChatResponseWithTiming(
       }
       const normalizedText =
         hasText && text ? normalizeActionCallbackText(text) : "";
-      if (
-        normalizedText &&
-        !deliveredActionCallbacks.some(
-          (entry) =>
-            entry.actionName === normalizedActionTag &&
-            entry.text === normalizedText,
-        )
-      ) {
+      if (normalizedText) {
         deliveredActionCallbacks.push({
           actionName: normalizedActionTag,
           text: normalizedText,
@@ -4377,14 +4370,9 @@ async function generateChatResponseWithTiming(
         return successfulActionNames.has(canonicalName);
       },
     );
-    const actionCallbackHistory = successfulDeliveredActionCallbacks.reduce<
-      string[]
-    >((history, entry) => {
-      if (entry.text && history.at(-1) !== entry.text) {
-        history.push(entry.text);
-      }
-      return history;
-    }, []);
+    const actionCallbackHistory = successfulDeliveredActionCallbacks.flatMap(
+      (entry) => (typeof entry.text === "string" ? [entry.text] : []),
+    );
     const declaredResultActionNames = new Set(
       (Array.isArray(result?.responseContent?.actions)
         ? result.responseContent.actions

@@ -277,13 +277,13 @@ describe("resolveConversationAdminEntityId", () => {
 // ---------------------------------------------------------------------------
 
 describe("normalizeActionCallbackHistory", () => {
-  it("returns an empty history for non-array input", () => {
-    for (const value of [undefined, null, "OPENED CALENDAR", 7, {}]) {
+  it("returns an empty history only when callback history is absent", () => {
+    for (const value of [undefined, null]) {
       expect(normalizeActionCallbackHistory(value)).toEqual([]);
     }
   });
 
-  it("trims entries, drops invalid values, and collapses only adjacent duplicates", () => {
+  it("preserves every callback entry byte-for-byte, including blanks and duplicates", () => {
     expect(
       normalizeActionCallbackHistory([
         "  OPENED CALENDAR  ",
@@ -293,7 +293,30 @@ describe("normalizeActionCallbackHistory", () => {
         "CREATED EVENT",
         "OPENED CALENDAR",
       ]),
-    ).toEqual(["OPENED CALENDAR", "CREATED EVENT", "OPENED CALENDAR"]);
+    ).toEqual([
+      "  OPENED CALENDAR  ",
+      "OPENED CALENDAR",
+      "",
+      "   ",
+      "CREATED EVENT",
+      "OPENED CALENDAR",
+    ]);
+  });
+
+  it("rejects malformed containers and entries instead of dropping data", () => {
+    for (const value of ["OPENED CALENDAR", 7, {}]) {
+      expect(() => normalizeActionCallbackHistory(value)).toThrowError(
+        expect.objectContaining({
+          code: "CONVERSATION_CALLBACK_HISTORY_INVALID",
+        }),
+      );
+    }
+    expect(() => normalizeActionCallbackHistory(["A", 7, "B"])).toThrowError(
+      expect.objectContaining({
+        code: "CONVERSATION_CALLBACK_HISTORY_INVALID",
+        context: { index: 1, valueType: "number" },
+      }),
+    );
   });
 
   it("is idempotent over an already-normalized history", () => {
@@ -316,8 +339,10 @@ describe("formatConversationMessageText", () => {
     expect(formatConversationMessageText("   \n\t", ["A", "B"])).toBe("A\nB");
   });
 
-  it("normalizes the history before joining", () => {
-    expect(formatConversationMessageText("", ["  A ", "A", " B"])).toBe("A\nB");
+  it("joins callback entries without changing their bytes", () => {
+    expect(formatConversationMessageText("", ["  A ", "A", " B"])).toBe(
+      "  A \nA\n B",
+    );
   });
 
   it("returns the original text when the normalized history is empty", () => {
@@ -408,11 +433,11 @@ describe("buildPersistedAssistantContent", () => {
     expect(flagged.transcriptVisibility).toBe("internal");
   });
 
-  it("normalizes the action callback history and omits it when empty", () => {
-    const normalized = buildPersistedAssistantContent("t", {
+  it("preserves the action callback history and omits it only when absent", () => {
+    const preserved = buildPersistedAssistantContent("t", {
       actionCallbackHistory: ["  A ", "A", "   ", "B"],
     });
-    expect(normalized.actionCallbackHistory).toEqual(["A", "B"]);
+    expect(preserved.actionCallbackHistory).toEqual(["  A ", "A", "   ", "B"]);
 
     const empty = buildPersistedAssistantContent("t", {
       actionCallbackHistory: [],
@@ -565,14 +590,25 @@ describe("verifyCanonicalPendantProvenance", () => {
     }
   });
 
-  it("resolves the provenance for a matching resolved segment and looks it up exactly once", async () => {
+  it("binds provenance to exact canonical segment text bytes", async () => {
     const { repository, load } = repositoryReturning({
       segments: [pendantSegment()],
     });
+    const whitespaceMismatch = await capturedError(() =>
+      verifyCanonicalPendantProvenance(
+        pendantRuntime(),
+        caller,
+        `  ${PENDANT_PROMPT}  `,
+        pendantMetadata(),
+        repository,
+      ),
+    );
+    expect(whitespaceMismatch.code).toBe("PENDANT_TRANSCRIPT_SEGMENT_MISMATCH");
+
     const provenance = await verifyCanonicalPendantProvenance(
       pendantRuntime(),
       caller,
-      `  ${PENDANT_PROMPT}  `,
+      PENDANT_PROMPT,
       pendantMetadata(),
       repository,
     );
@@ -583,7 +619,7 @@ describe("verifyCanonicalPendantProvenance", () => {
       segmentId: SEGMENT_ID,
       segmentRevision: 3,
     });
-    expect(load).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledTimes(2);
     expect(load).toHaveBeenCalledWith({
       ownerId: OWNER_ID,
       agentId: AGENT_ID,
@@ -724,8 +760,9 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
     const updated = await persistRecentAssistantActionCallbackHistory(
       helpers.runtime,
       ROOM_ID,
-      ["   ", ""],
-      Date.now(),
+      [],
+      0,
+      "77777777-7777-4777-8777-777777777777" as UUID,
     );
     expect(updated).toBe(false);
     expect(helpers.getMemories).not.toHaveBeenCalled();
@@ -734,8 +771,7 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
     expect(helpers.ownsLease).not.toHaveBeenCalled();
   });
 
-  it("updates only the newest eligible assistant memory within the recency window", async () => {
-    const sinceMs = 10_000;
+  it("updates only the exact target even when a newer assistant memory exists", async () => {
     const older = assistantMemory({
       id: "88888888-8888-4888-8888-888888888888" as UUID,
       createdAt: 7_999,
@@ -757,7 +793,8 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
       helpers.runtime,
       ROOM_ID,
       ["LATEST"],
-      sinceMs,
+      0,
+      mid.id as UUID,
     );
 
     expect(updated).toBe(true);
@@ -766,31 +803,40 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
       id: UUID;
       content: { actionCallbackHistory?: string[] };
     }>;
-    expect(patch.id).toBe(newest.id);
-    expect(patch.content.actionCallbackHistory).toEqual(["LATEST"]);
+    expect(patch.id).toBe(mid.id);
+    expect(patch.content.actionCallbackHistory).toEqual(["EARLIER", "LATEST"]);
+    expect(helpers.getMemoriesByIds).toHaveBeenCalledWith([mid.id], "messages");
+    expect(helpers.getMemories).not.toHaveBeenCalled();
   });
 
-  it("merges into existing history preserving non-adjacent entries", async () => {
+  it("appends incoming history without trimming, dropping, or deduplicating", async () => {
     const target = assistantMemory({
       id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as UUID,
       createdAt: 9_000,
-      history: ["A", "B"],
+      history: ["A", " B "],
     });
     const helpers = makePersistRuntime({ memories: [target] });
     const updated = await persistRecentAssistantActionCallbackHistory(
       helpers.runtime,
       ROOM_ID,
-      ["B", "C"],
-      10_000,
+      [" B ", " B ", ""],
+      0,
+      target.id as UUID,
     );
     expect(updated).toBe(true);
     const [patch] = helpers.updateMemory.mock.calls[0] as Array<{
       content: { actionCallbackHistory?: string[] };
     }>;
-    expect(patch.content.actionCallbackHistory).toEqual(["A", "B", "C"]);
+    expect(patch.content.actionCallbackHistory).toEqual([
+      "A",
+      " B ",
+      " B ",
+      " B ",
+      "",
+    ]);
   });
 
-  it("skips the write when the merge would not change anything", async () => {
+  it("persists an adjacent duplicate because each callback is a distinct result", async () => {
     const target = assistantMemory({
       id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" as UUID,
       createdAt: 9_000,
@@ -801,13 +847,19 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
       helpers.runtime,
       ROOM_ID,
       ["A"],
-      10_000,
+      0,
+      target.id as UUID,
     );
     expect(updated).toBe(true);
-    expect(helpers.updateMemory).not.toHaveBeenCalled();
+    expect(helpers.updateMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: target.id,
+        content: expect.objectContaining({ actionCallbackHistory: ["A", "A"] }),
+      }),
+    );
   });
 
-  it("ignores memories outside the room, the assistant identity, or with blank text", async () => {
+  it("fails closed when the exact target is not an eligible assistant memory", async () => {
     const decoys = [
       assistantMemory({
         id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" as UUID,
@@ -823,19 +875,26 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
       }),
     ];
     const helpers = makePersistRuntime({ memories: decoys });
-    const updated = await persistRecentAssistantActionCallbackHistory(
-      helpers.runtime,
-      ROOM_ID,
-      ["A"],
-      Date.now(),
+    const error = await capturedError(() =>
+      persistRecentAssistantActionCallbackHistory(
+        helpers.runtime,
+        ROOM_ID,
+        ["A"],
+        0,
+        decoys[0].id as UUID,
+      ),
     );
-    expect(updated).toBe(false);
+    expect(error.code).toBe("CONVERSATION_CALLBACK_HISTORY_WRITE_FAILED");
+    expect((error.cause as ElizaError | undefined)?.code).toBe(
+      "CONVERSATION_CALLBACK_TARGET_NOT_FOUND",
+    );
     expect(helpers.updateMemory).not.toHaveBeenCalled();
   });
 
   it("looks up an exact target memory by id when one is supplied", async () => {
     const target = assistantMemory({
       id: "abcdef00-1234-4000-8000-000000000001" as UUID,
+      text: "",
       history: ["OLD"],
     });
     const helpers = makePersistRuntime({ memories: [target] });
@@ -844,7 +903,7 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
       ROOM_ID,
       ["NEW"],
       0,
-      target.id,
+      target.id as UUID,
     );
     expect(updated).toBe(true);
     expect(helpers.getMemoriesByIds).toHaveBeenCalledWith(
@@ -885,6 +944,24 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
     );
   });
 
+  it("requires an exact target id before reading any memory", async () => {
+    const helpers = makePersistRuntime({});
+    const invokeWithoutTarget =
+      persistRecentAssistantActionCallbackHistory as unknown as (
+        runtime: AgentRuntime,
+        roomId: UUID,
+        history: readonly string[],
+        sinceMs: number,
+        targetMemoryId?: UUID,
+      ) => Promise<boolean>;
+    const error = await capturedError(() =>
+      invokeWithoutTarget(helpers.runtime, ROOM_ID, ["A"], 0),
+    );
+    expect(error.code).toBe("CONVERSATION_CALLBACK_TARGET_REQUIRED");
+    expect(helpers.getMemories).not.toHaveBeenCalled();
+    expect(helpers.getMemoriesByIds).not.toHaveBeenCalled();
+  });
+
   it("runs inside the caller's lease when it still owns the room lease", async () => {
     const target = assistantMemory({
       id: "abcdef00-1234-4000-8000-000000000004" as UUID,
@@ -899,7 +976,7 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
       ROOM_ID,
       ["A"],
       0,
-      undefined,
+      target.id as UUID,
       lease as never,
     );
     expect(updated).toBe(true);
@@ -922,6 +999,7 @@ describe("persistRecentAssistantActionCallbackHistory", () => {
       ROOM_ID,
       ["A"],
       0,
+      target.id as UUID,
     );
     expect(helpers.withLease).toHaveBeenCalledTimes(1);
     expect(helpers.runInLease).toHaveBeenCalledWith(
