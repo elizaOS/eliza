@@ -132,9 +132,11 @@ const contextInspectorEvidenceSeedRoute: Route = {
         ? (ctx.body as Record<string, unknown>)
         : {};
     const conversationId = validateUuid(body.conversationId);
+    const roomId = validateUuid(body.roomId);
     const count = body.count;
     if (
       !conversationId ||
+      !roomId ||
       typeof count !== "number" ||
       !Number.isSafeInteger(count) ||
       count < 1 ||
@@ -142,7 +144,7 @@ const contextInspectorEvidenceSeedRoute: Route = {
     ) {
       return json(400, { error: "Invalid context inspector evidence seed." });
     }
-    const room = await ctx.runtime.getRoom(conversationId);
+    const room = await ctx.runtime.getRoom(roomId);
     if (!room) {
       return json(404, {
         error: "Context inspector evidence room unavailable.",
@@ -171,13 +173,14 @@ const contextInspectorEvidenceSeedRoute: Route = {
     for (let index = 0; index < count; index += 1) {
       const trajectoryId = await service.startTrajectory(ctx.runtime.agentId, {
         source: "context-inspector-e2e",
-        metadata: { conversationId, roomId: conversationId },
+        roomId,
+        metadata: { conversationId, roomId },
       });
       const stepId = service.startStep(trajectoryId);
       const view = buildReadView({
         reference: {
           kind: index % 2 === 0 ? "email" : "file",
-          ref: `/private/e2e/account-${index}/TOP-SECRET-CONTEXT-${index}`,
+          ref: `cap_e2e_context_${index}`,
           revision: `private-revision-${index}`,
         },
         slice: buildReadSlice({
@@ -200,6 +203,7 @@ const contextInspectorEvidenceSeedRoute: Route = {
         success: true,
         result: {
           text: `TOP SECRET E2E BODY ${index}`,
+          legacySourcePath: `/private/e2e/account-${index}/TOP-SECRET-CONTEXT-${index}`,
           expiresAt: "2026-08-23T17:00:00.000Z",
           view,
         },
@@ -209,6 +213,7 @@ const contextInspectorEvidenceSeedRoute: Route = {
         model: "private-model-id",
         modelType: "TEXT_LARGE",
         provider: "private-provider-account",
+        purpose: "context-inspector-e2e-budget",
         prompt: `TOP SECRET E2E BODY ${index}`,
         response: "private response",
         promptTokens: 300 + index,

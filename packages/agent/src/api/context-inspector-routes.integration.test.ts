@@ -19,6 +19,7 @@ import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
 
 const ROOM = "00000000-0000-4000-8000-000000000101" as UUID;
 const OTHER_ROOM = "00000000-0000-4000-8000-000000000102" as UUID;
+const CONVERSATION = "00000000-0000-4000-8000-000000000103" as UUID;
 const USER = "00000000-0000-4000-8000-000000000201" as UUID;
 const RAW_REFERENCE = "gmail:account-private:message-private";
 const RAW_BODY = "TOP SECRET END CANARY";
@@ -134,13 +135,21 @@ function harness(options: {
   authorization: AgentHttpRequestAuthorization;
   detail?: TrajectoryDetailRecord;
   participantRooms?: UUID[];
+  resolveConversationRoomId?: (conversationId: UUID) => Promise<UUID | null>;
 }) {
   let participantRooms = options.participantRooms ?? [ROOM];
   let detail = options.detail ?? trajectory();
   let roomReads = 0;
   let participantReads = 0;
+  let listOptions: { limit: number; offset: number; roomId: string } | null =
+    null;
   const service = {
-    async listTrajectories() {
+    async listTrajectories(next: {
+      limit: number;
+      offset: number;
+      roomId: string;
+    }) {
+      listOptions = next;
       return { trajectories: [summary()], total: 1 };
     },
     async getTrajectoryDetail() {
@@ -172,6 +181,9 @@ function harness(options: {
       url,
       runtime: runtime as never,
       authorization: options.authorization,
+      resolveConversationRoomId:
+        options.resolveConversationRoomId ??
+        (async (conversationId) => conversationId),
       now: () => Date.parse("2026-08-23T18:00:00.000Z"),
       redactReference: () => "ctx_0123456789abcdef0123",
     });
@@ -206,6 +218,7 @@ function harness(options: {
       detail = next;
     },
     counts: () => ({ roomReads, participantReads }),
+    listOptions: () => listOptions,
   };
 }
 
@@ -252,6 +265,21 @@ describe("context inspector HTTP integration", () => {
       state: "available",
     });
     expect(app.counts().roomReads).toBe(1);
+  });
+
+  it("resolves a public conversation id to its distinct runtime room", async () => {
+    const app = harness({
+      authorization: { ok: true, role: "OWNER" },
+      detail: trajectory(ROOM),
+      resolveConversationRoomId: async (conversationId) =>
+        conversationId === CONVERSATION ? ROOM : null,
+    });
+    const { response } = await app.request(
+      `/api/context-inspector?conversationId=${CONVERSATION}`,
+    );
+    expect(response.status).toBe(200);
+    expect(app.counts().roomReads).toBe(1);
+    expect(app.listOptions()).toEqual({ limit: 20, offset: 0, roomId: ROOM });
   });
 
   it("rejects unauthenticated, cross-room, revoked, and principal-free callers", async () => {

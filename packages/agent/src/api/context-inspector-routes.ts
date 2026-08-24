@@ -73,7 +73,7 @@ interface TrajectoriesServiceLike {
   listTrajectories(options: {
     limit: number;
     offset: number;
-    search: string;
+    roomId: string;
   }): Promise<{
     trajectories: TrajectorySummaryRecord[];
     total: number;
@@ -95,6 +95,7 @@ export interface ContextInspectorRouteOptions {
   url: URL;
   runtime: ContextInspectorRuntime | null;
   authorization: AgentHttpRequestAuthorization;
+  resolveConversationRoomId: (conversationId: UUID) => Promise<UUID | null>;
   now?: () => number;
   redactReference?: (reference: string) => string;
 }
@@ -209,14 +210,29 @@ function budgetFromCall(call: unknown): ContextInspectorBudget | null {
   };
 }
 
-function conversationIdForTrajectory(
+function trajectoryMatchesConversationScope(
   trajectory: Pick<TrajectoryDetailRecord, "metadata">,
-): string | null {
+  conversationId: UUID,
+  roomId: UUID,
+): boolean {
   const metadata = trajectory.metadata;
-  for (const key of ["conversationId", "roomId"] as const) {
-    if (typeof metadata?.[key] === "string") return metadata[key];
+  const recordedConversationId = metadata?.conversationId;
+  const recordedRoomId = metadata?.roomId;
+  if (
+    typeof recordedConversationId === "string" &&
+    recordedConversationId !== conversationId &&
+    recordedConversationId !== roomId
+  ) {
+    return false;
   }
-  return null;
+  if (typeof recordedRoomId === "string" && recordedRoomId !== roomId) {
+    return false;
+  }
+  return (
+    recordedConversationId === conversationId ||
+    recordedConversationId === roomId ||
+    recordedRoomId === roomId
+  );
 }
 
 /** Build the content-free wire projection from already authorized records. */
@@ -444,7 +460,13 @@ export async function handleContextInspectorRoute(
       "limit",
       MAX_LIMIT,
     );
-    await authorizeConversation(runtime, options.authorization, conversationId);
+    const roomId = await options.resolveConversationRoomId(conversationId);
+    if (!roomId) {
+      throw new ElizaError("Context inspector conversation is unavailable", {
+        code: "CONTEXT_INSPECTOR_NOT_FOUND",
+      });
+    }
+    await authorizeConversation(runtime, options.authorization, roomId);
     const service = runtime.getService(
       "trajectories",
     ) as TrajectoriesServiceLike | null;
@@ -460,7 +482,7 @@ export async function handleContextInspectorRoute(
     const page = await service.listTrajectories({
       limit,
       offset,
-      search: conversationId,
+      roomId,
     });
     const trajectories: TrajectoryDetailRecord[] = [];
     for (const summary of page.trajectories) {
@@ -470,7 +492,7 @@ export async function handleContextInspectorRoute(
           code: "CONTEXT_INSPECTOR_SCOPE_CHANGED",
         });
       }
-      if (conversationIdForTrajectory(detail) !== conversationId) {
+      if (!trajectoryMatchesConversationScope(detail, conversationId, roomId)) {
         throw new ElizaError("Context inspector trajectory scope changed", {
           code: "CONTEXT_INSPECTOR_SCOPE_CHANGED",
         });
