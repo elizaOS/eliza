@@ -252,6 +252,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-imessage/src/chatdb-reader.ts": [
 		/options\.limit[\s\S]{0,160}:\s*50/,
 	],
+	"plugins/plugin-whatsapp/src/runtime-service.ts": [
+		/Math\.min\(Number\(params\.limit\),\s*100\)/,
+		/:\s*25;/,
+		/Math\.max\(params\.limit\s*\?\?\s*100,\s*100\)/,
+		/\.slice\(0,\s*params\.limit\s*\?\?\s*25\)/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,

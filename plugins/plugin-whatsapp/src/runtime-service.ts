@@ -103,6 +103,37 @@ type RuntimeServiceConfig =
       mediaMaxMb?: number;
     };
 
+const WHATSAPP_MEMORY_PAGE_SIZE = 500;
+
+async function loadAllWhatsAppRoomMemories(
+  runtime: IAgentRuntime,
+  roomIds: UUID[]
+): Promise<Memory[]> {
+  const memories: Memory[] = [];
+  const seenIds = new Set<UUID>();
+  for (let offset = 0; ; offset += WHATSAPP_MEMORY_PAGE_SIZE) {
+    const page = await runtime.getMemoriesByRoomIds({
+      tableName: "messages",
+      roomIds,
+      limit: WHATSAPP_MEMORY_PAGE_SIZE,
+      offset,
+    });
+    if (page.length === WHATSAPP_MEMORY_PAGE_SIZE) {
+      const ids = page.map((memory) => memory.id);
+      if (ids.some((id) => !id) || ids.every((id) => seenIds.has(id as UUID))) {
+        throw new ElizaError("WhatsApp message pagination made no progress", {
+          code: "WHATSAPP_MESSAGE_PAGINATION_STALLED",
+          context: { offset, pageSize: WHATSAPP_MEMORY_PAGE_SIZE },
+          severity: "fatal",
+        });
+      }
+      for (const id of ids) seenIds.add(id as UUID);
+    }
+    memories.push(...page);
+    if (page.length < WHATSAPP_MEMORY_PAGE_SIZE) return memories;
+  }
+}
+
 const DEFAULT_WHATSAPP_MEDIA_MAX_BYTES = 50 * 1024 * 1024;
 const CONTENT_ADDRESSED_MEDIA_URL = /^\/api\/media\/([a-f0-9]{64}\.[a-z0-9]{1,8})$/;
 
@@ -1935,21 +1966,21 @@ export class WhatsAppConnectorService extends Service {
       return [];
     }
 
-    const limit = Number.isFinite(params.limit)
-      ? Math.max(1, Math.min(Number(params.limit), 100))
-      : 25;
-    const memories = await this.runtime.getMemoriesByRoomIds({
-      tableName: "messages",
-      roomIds,
-      limit: limit * Math.max(roomIds.length, 1),
-    });
+    const limit = params.limit;
+    if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+      throw new ElizaError("WhatsApp message limit must be a positive integer", {
+        code: "WHATSAPP_MESSAGE_LIMIT_INVALID",
+        context: { limit },
+      });
+    }
+    const memories = await loadAllWhatsAppRoomMemories(this.runtime, roomIds);
     const chatIds = new Set(
       knownTargets.map((known) => normalizeWhatsAppConnectorTarget(known.chatId))
     );
     const before = params.before ? Number(params.before) : undefined;
     const after = params.after ? Number(params.after) : undefined;
 
-    return memories
+    const matches = memories
       .filter((memory) => memory.content.source === "whatsapp")
       .filter((memory) => this.metadataMatchesAccount(memory, accountId))
       .filter((memory) => {
@@ -1984,8 +2015,8 @@ export class WhatsAppConnectorService extends Service {
               ? Number(left.createdAt)
               : 0;
         return r - l;
-      })
-      .slice(0, limit);
+      });
+    return limit === undefined ? matches : matches.slice(0, limit);
   }
 
   async searchConnectorMessages(
@@ -1998,15 +2029,14 @@ export class WhatsAppConnectorService extends Service {
     }
     const memories = await this.fetchConnectorMessages(context, {
       ...params,
-      limit: Math.max(params.limit ?? 100, 100),
+      limit: undefined,
     });
-    return memories
-      .filter((memory) => {
+    const matches = memories.filter((memory) => {
         const text = String(memory.content.text ?? "").toLowerCase();
         const from = String(memory.content.from ?? "").toLowerCase();
         return text.includes(query) || from.includes(query);
-      })
-      .slice(0, params.limit ?? 25);
+      });
+    return params.limit === undefined ? matches : matches.slice(0, params.limit);
   }
 
   async reactConnectorMessage(
