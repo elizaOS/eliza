@@ -1442,6 +1442,8 @@ interface BionicGenerateResponse {
 	tokens?: number;
 	ms?: number;
 	tokS?: number;
+	incomplete?: boolean;
+	finishReason?: string;
 	embedding?: number[];
 	dim?: number;
 }
@@ -1808,19 +1810,19 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			const lane = resolveMobileLaneBudget(
 				priority,
 				buildGemmaBionicPrompt(params),
-				params.maxTokens ?? 256,
+				params.maxTokens,
 			);
 			const baseRequest = {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
 				drafterPath: installed?.draftModelPath ?? "",
 				prompt: lane.prompt,
-				maxTokens: lane.maxTokens ?? 256,
+				...(lane.maxTokens !== undefined ? { maxTokens: lane.maxTokens } : {}),
 				stopSequences: resolveBionicStopSequences(params.stopSequences),
 			};
 			const res = await getInferencePriorityGate().runExclusive(
 				{
 					priority,
-					label: `${slot} bionic-host (${lane.prompt.length} chars, maxTokens=${baseRequest.maxTokens})`,
+					label: `${slot} bionic-host (${lane.prompt.length} chars)`,
 					...(lane.lockWaitMs !== undefined ? { waitMs: lane.lockWaitMs } : {}),
 					...(params.signal ? { signal: params.signal } : {}),
 				},
@@ -1855,6 +1857,19 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			if (!res.ok) {
 				throw new Error(
 					`[mobile-device-bridge] bionic host generate failed: ${res.error ?? "unknown"}`,
+				);
+			}
+			if (res.incomplete === true) {
+				throw new ElizaError(
+					"The Android bionic host exhausted its generation boundary before completing the response",
+					{
+						code: "MODEL_INCOMPLETE_OUTPUT",
+						context: {
+							provider: PROVIDER,
+							outputTokens: res.tokens,
+							reason: res.finishReason ?? "generation_boundary",
+						},
+					},
 				);
 			}
 			if (typeof res.tokS === "number") {

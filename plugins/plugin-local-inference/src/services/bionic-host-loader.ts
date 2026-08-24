@@ -33,7 +33,7 @@ import {
 } from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
@@ -58,6 +58,8 @@ interface BionicGenerateResponse {
 	tokens?: number;
 	ms?: number;
 	tokS?: number;
+	incomplete?: boolean;
+	finishReason?: string;
 }
 
 /**
@@ -73,6 +75,8 @@ interface BionicStreamFrame {
 	tokens?: number;
 	ms?: number;
 	tokS?: number;
+	incomplete?: boolean;
+	finishReason?: string;
 }
 
 /** {ok, text} response for the asr / image ops (transcript / description). */
@@ -170,7 +174,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		const request = {
 			bundleDir: this.bundleDir,
 			prompt: args.prompt,
-			maxTokens: args.maxTokens ?? 256,
+			...(args.maxTokens !== undefined ? { maxTokens: args.maxTokens } : {}),
 			temperature: args.temperature ?? 0,
 			stopSequences,
 		};
@@ -195,6 +199,18 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		if (!res.ok) {
 			throw new Error(
 				`[BionicHostLoader] host generate failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		if (res.incomplete === true) {
+			throw new ElizaError(
+				"The Android bionic host exhausted its generation boundary before completing the response",
+				{
+					code: "MODEL_INCOMPLETE_OUTPUT",
+					context: {
+						outputTokens: res.tokens,
+						reason: res.finishReason ?? "generation_boundary",
+					},
+				},
 			);
 		}
 		if (typeof res.tokS === "number") {

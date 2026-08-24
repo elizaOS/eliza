@@ -12,7 +12,7 @@
  */
 
 import { statSync } from "node:fs";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type {
 	BackendPlan,
 	GenerateArgs,
@@ -128,6 +128,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 
 	private session: FfiBackendSession | null = null;
 	private loadedPath: string | null = null;
+	private loadedContextSize: number | null = null;
 	/** Voice-budget reservations for the loaded weights (text target +
 	 *  optional separate MTP drafter). Released on unload. */
 	private budgetReservations: BudgetReservation[] = [];
@@ -178,6 +179,11 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			throw err;
 		}
 		this.loadedPath = plan.modelPath;
+		this.loadedContextSize =
+			plan.overrides?.contextSize ??
+			plan.catalog?.contextLength ??
+			this.session.loadConfig?.contextSize ??
+			null;
 		// A separate MTP drafter GGUF is only known post-acquire; reserve it
 		// now. Embedded-draft-head MTP shares the text weights — no extra
 		// reservation.
@@ -225,6 +231,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		} finally {
 			this.session = null;
 			this.loadedPath = null;
+			this.loadedContextSize = null;
 			this.releaseBudgetReservations();
 		}
 	}
@@ -244,6 +251,36 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			);
 		}
 		const { runner, tokenize, mtp, draftModelPath, loadConfig } = this.session;
+		const promptTokens = tokenize(args.prompt);
+		const contextSize =
+			this.loadedContextSize ?? loadConfig?.contextSize ?? null;
+		const explicitMaxTokens =
+			typeof args.maxTokens === "number" &&
+			Number.isInteger(args.maxTokens) &&
+			args.maxTokens > 0
+				? args.maxTokens
+				: undefined;
+		if (explicitMaxTokens === undefined && contextSize === null) {
+			throw new ElizaError(
+				"Local generation requires the loaded model context size when no caller output boundary is provided",
+				{ code: "LOCAL_CONTEXT_SIZE_REQUIRED" },
+			);
+		}
+		const maxTokens =
+			explicitMaxTokens ??
+			Math.max(0, (contextSize as number) - promptTokens.length);
+		if (maxTokens <= 0) {
+			throw new ElizaError(
+				"The complete local prompt does not fit in the loaded model context",
+				{
+					code: "MODEL_PROMPT_TOO_LARGE",
+					context: {
+						promptTokens: promptTokens.length,
+						contextSize,
+					},
+				},
+			);
+		}
 		// Force the structured-reply envelope: compile the GBNF from the
 		// caller's `responseSkeleton` / explicit `grammar` (precedence handled
 		// by `resolveGuidedDecodeForParams`, mirroring `engine.ts`'s
@@ -264,10 +301,10 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 					}
 				: args.onTextChunk;
 		const result = await runner.generateWithUsage({
-			promptTokens: tokenize(args.prompt),
+			promptTokens,
 			slotId: args.slotId ?? -1,
 			cacheKey: args.cacheKey,
-			maxTokens: args.maxTokens ?? 2048,
+			maxTokens,
 			temperature: args.temperature ?? 0.7,
 			topP: args.topP ?? 0.9,
 			topK: 40,
@@ -285,6 +322,15 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,
 		});
+		if (result.accepted >= maxTokens) {
+			throw new ElizaError(
+				"Local generation reached its output boundary before a terminal model state",
+				{
+					code: "MODEL_INCOMPLETE_OUTPUT",
+					context: { maxTokens, outputTokens: result.accepted },
+				},
+			);
+		}
 		return {
 			// The native grammar starts after the deterministic leading run. Restore
 			// that omitted run once here so parsing, UI streaming, trajectories, and

@@ -426,6 +426,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Math\.min\(requestedMaxTokens,\s*structuredSlot\s*\?\s*256\s*:\s*128\)/,
 		/const firstSentence = compact\.match/,
 	],
+	"plugins/plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts": [
+		/params\.maxTokens\s*\?\?\s*256/,
+		/lane\.maxTokens\s*\?\?\s*256/,
+	],
 	"plugins/plugin-native-bun-runtime/ios/Sources/ElizaBunRuntimePlugin/FullBunEngineHost.swift":
 		[/\?\?\s*256/],
 	"plugins/plugin-native-bun-runtime/ios/Sources/ElizaBunRuntimePlugin/bridge/LlamaBridge.swift":
@@ -434,6 +438,18 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		[/maxTokens:\s*Int32\s*=\s*256/],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
+	"plugins/plugin-local-inference/src/services/bionic-host-loader.ts": [
+		/args\.maxTokens\s*\?\?\s*256/,
+	],
+	"plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts": [
+		/args\.maxTokens\s*\?\?\s*2048/,
+	],
+	"packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/BionicDecodeLoop.java":
+		[/DEFAULT_CAP_TOKENS/],
+	"packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaBionicInferenceServer.java":
+		[/RESIDENT_STREAM_MAX_TOKENS/, /optInt\("maxTokens",\s*256\)/],
+	"packages/app-core/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp":
+		[/maxTokens\s*>\s*0\s*\?\s*maxTokens\s*:\s*32/],
 	"plugins/plugin-sql/src/services/advanced-memory-storage.ts": [
 		/entityId\.slice\(0,\s*8\)/,
 	],

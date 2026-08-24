@@ -55,7 +55,7 @@ describe("FfiStreamingBackend guided output reconstruction", () => {
 			mtp: null,
 			draftModelPath: null,
 			mmprojPath: null,
-			loadConfig: null,
+			loadConfig: { contextSize: 32 },
 		} as unknown as FfiBackendSession;
 		(
 			backend as unknown as {
@@ -81,6 +81,7 @@ describe("FfiStreamingBackend guided output reconstruction", () => {
 	});
 
 	it("leaves ordinary unprefilled generations byte-identical", async () => {
+		let nativeArgs: FfiStreamingGenerateArgs | undefined;
 		const backend = new FfiStreamingBackend({
 			supported: () => true,
 			acquire: async () => {
@@ -94,23 +95,61 @@ describe("FfiStreamingBackend guided output reconstruction", () => {
 			}
 		).session = {
 			runner: {
-				generateWithUsage: async () => ({
-					text: "plain reply",
-					slotId: 2,
-					firstTokenMs: 1,
-					drafted: 0,
-					accepted: 2,
-				}),
+				generateWithUsage: async (args: FfiStreamingGenerateArgs) => {
+					nativeArgs = args;
+					return {
+						text: "plain reply",
+						slotId: 2,
+						firstTokenMs: 1,
+						drafted: 0,
+						accepted: 2,
+					};
+				},
 			},
 			tokenize: () => new Int32Array([1]),
 			mtp: null,
 			draftModelPath: null,
 			mmprojPath: null,
-			loadConfig: null,
+			loadConfig: { contextSize: 32 },
 		} as unknown as FfiBackendSession;
 
 		await expect(backend.generate({ prompt: "reply" })).resolves.toBe(
 			"plain reply",
 		);
+		expect(nativeArgs?.maxTokens).toBe(31);
+	});
+
+	it("rejects output that reaches the complete remaining context boundary", async () => {
+		const backend = new FfiStreamingBackend({
+			supported: () => true,
+			acquire: async () => {
+				throw new Error("test injects the acquired session");
+			},
+			release: async () => {},
+		});
+		(
+			backend as unknown as {
+				session: FfiBackendSession;
+			}
+		).session = {
+			runner: {
+				generateWithUsage: async (args: FfiStreamingGenerateArgs) => ({
+					text: "partial reply",
+					slotId: 2,
+					firstTokenMs: 1,
+					drafted: 0,
+					accepted: args.maxTokens,
+				}),
+			},
+			tokenize: () => new Int32Array([1, 2, 3]),
+			mtp: null,
+			draftModelPath: null,
+			mmprojPath: null,
+			loadConfig: { contextSize: 32 },
+		} as unknown as FfiBackendSession;
+
+		await expect(backend.generate({ prompt: "reply" })).rejects.toMatchObject({
+			code: "MODEL_INCOMPLETE_OUTPUT",
+		});
 	});
 });

@@ -1393,7 +1393,11 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
                                                        jint maxTokens) {
     const std::string bundleDir = from_jstring(env, jBundleDir);
     const std::string prompt = from_jstring(env, jPrompt);
-    const int genCap = maxTokens > 0 ? maxTokens : 32;
+    if (maxTokens <= 0) {
+        throw_runtime(env, "llmSelfTest: missing positive generation boundary", nullptr);
+        return nullptr;
+    }
+    const int genCap = maxTokens;
     char* outError = nullptr;
 
     EliInferenceContext* ctx =
@@ -1442,15 +1446,24 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
 
     std::string text;
     int produced = 0;
+    bool terminal = false;
+    int failureRc = 0;
     while (produced < genCap) {
         int32_t toks[256]; char chunk[4096]; size_t nout = 0;
         int32_t dd = 0, da = 0;
+        const size_t stepCap = static_cast<size_t>(std::min(256, genCap - produced));
         const int rc = eliza_inference_llm_stream_next(
-            s, toks, 256, &nout, chunk, sizeof(chunk), &dd, &da, &outError);
-        if (rc < 0) break;
+            s, toks, stepCap, &nout, chunk, sizeof(chunk), &dd, &da, &outError);
+        if (rc < 0) {
+            failureRc = rc;
+            break;
+        }
         text += chunk;
         produced += static_cast<int>(nout);
-        if (rc == 1) break;
+        if (rc == 1) {
+            terminal = true;
+            break;
+        }
     }
     const double t1 = []() {
         timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -1459,6 +1472,11 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     eliza_inference_llm_stream_close(s);
     if (tok) eliza_inference_free_tokens(tok);
     eliza_inference_destroy(ctx);
+
+    if (failureRc < 0) {
+        throw_runtime(env, "llmSelfTest: stream_next rc=" + std::to_string(failureRc), outError);
+        return nullptr;
+    }
 
     const double ms = t1 - t0;
     const double tokS = ms > 0 ? produced * 1000.0 / ms : 0.0;
@@ -1484,7 +1502,10 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     }
     std::string json = "{\"ok\":true,\"tokens\":" + std::to_string(produced) +
                        ",\"ms\":" + std::to_string(ms) + ",\"tokS\":" +
-                       std::to_string(tokS) + ",\"text\":\"" + esc + "\"}";
+                       std::to_string(tokS) + ",\"text\":\"" + esc +
+                       "\",\"finishReason\":\"" +
+                       (terminal ? "model_terminal" : "generation_boundary") +
+                       "\",\"incomplete\":" + (terminal ? "false" : "true") + "}";
     return to_jstring(env, json);
 }
 
