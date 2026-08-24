@@ -233,4 +233,107 @@ describe("SigningPolicyEvaluator", () => {
       evaluator.tryReserve(createRequest({ requestId: "req-2" })).allowed,
     ).toBe(true);
   });
+  it("enforces chain ID allowlist when configured", () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ allowedChainIds: [1, 137] }),
+    );
+
+    expect(evaluator.evaluate(createRequest({ chainId: 1 })).allowed).toBe(
+      true,
+    );
+    expect(evaluator.evaluate(createRequest({ chainId: 137 })).allowed).toBe(
+      true,
+    );
+    expect(evaluator.evaluate(createRequest({ chainId: 10 }))).toMatchObject({
+      allowed: false,
+      matchedRule: "chain_id_allowlist",
+    });
+  });
+
+  it("enforces contract denylist over allowlist and normalizes address case", () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({
+        allowedContracts: ["0x1111111111111111111111111111111111111111"],
+        deniedContracts: ["0x2222222222222222222222222222222222222222"],
+      }),
+    );
+
+    expect(
+      evaluator.evaluate(
+        createRequest({ to: "0x1111111111111111111111111111111111111111" }),
+      ).allowed,
+    ).toBe(true);
+
+    expect(
+      evaluator.evaluate(
+        createRequest({ to: "0x2222222222222222222222222222222222222222" }),
+      ),
+    ).toMatchObject({
+      allowed: false,
+      matchedRule: "contract_denylist",
+    });
+
+    expect(
+      evaluator.evaluate(
+        createRequest({ to: "0x3333333333333333333333333333333333333333" }),
+      ),
+    ).toMatchObject({
+      allowed: false,
+      matchedRule: "contract_allowlist",
+    });
+  });
+
+  it("handles human confirmation requirements based on policy flag and threshold", () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({
+        requireHumanConfirmation: false,
+        humanConfirmationThresholdWei: "1000",
+      }),
+    );
+
+    expect(
+      evaluator.evaluate(createRequest({ value: "500" }))
+        .requiresHumanConfirmation,
+    ).toBe(false);
+
+    expect(
+      evaluator.evaluate(createRequest({ value: "1500" }))
+        .requiresHumanConfirmation,
+    ).toBe(true);
+
+    const alwaysConfirm = new SigningPolicyEvaluator(
+      createPolicy({
+        requireHumanConfirmation: true,
+        humanConfirmationThresholdWei: "10000",
+      }),
+    );
+
+    expect(
+      alwaysConfirm.evaluate(createRequest({ value: "1" }))
+        .requiresHumanConfirmation,
+    ).toBe(true);
+  });
+
+  it("detects replays and bounds replay cache after 10000 entries", () => {
+    const evaluator = new SigningPolicyEvaluator();
+
+    evaluator.recordRequest("req-replay-1");
+    expect(
+      evaluator.evaluate(createRequest({ requestId: "req-replay-1" })),
+    ).toMatchObject({
+      allowed: false,
+      matchedRule: "replay_protection",
+    });
+
+    for (let i = 0; i <= 10000; i++) {
+      evaluator.recordRequest(`bulk-req-${i}`);
+    }
+
+    expect(
+      evaluator.evaluate(createRequest({ requestId: "bulk-req-10000" })),
+    ).toMatchObject({
+      allowed: false,
+      matchedRule: "replay_protection",
+    });
+  });
 });
