@@ -23,15 +23,29 @@ const steadyResourceSample = {
 };
 
 function validSoakEvidence(commit: string, corpusManifestSha256: string) {
+  const families = [
+    "file",
+    "document",
+    "memory",
+    "email",
+    "attachment",
+    "tool-output",
+  ];
   return {
+    schemaVersion: "elizaos.progressive-content.mixed-soak.v1",
     status: "passed",
     commit,
     corpusManifestSha256,
+    clockSource: "system-monotonic",
+    evidenceEligible: true,
     durationMs: 6 * 60 * 60 * 1_000,
     operations: 100_000,
+    requiredDurationMs: 6 * 60 * 60 * 1_000,
+    requiredOperations: 100_000,
     sampleEveryOperations: 1_000,
     warmupOperations: 10_000,
     positiveLeakControlDetected: true,
+    positiveLeakControlKind: "retained-array-buffer",
     batches: 1_000,
     failures: [],
     resourceSamples: Array.from({ length: 101 }, (_, index) => ({
@@ -51,6 +65,33 @@ function validSoakEvidence(commit: string, corpusManifestSha256: string) {
       status: "failed",
       failures: ["rss leak detected"],
     },
+    families: families.map((family, index) => {
+      const operations = index < 4 ? 16_667 : 16_666;
+      const realization = {
+        file: ["filesystem", "native-bytes"],
+        document: ["document-store", "typed-rejection"],
+        memory: ["memory-store", "typed-rejection"],
+        email: ["message-store", "typed-rejection"],
+        attachment: ["content-addressed-media", "native-bytes"],
+        "tool-output": ["filesystem", "native-bytes"],
+      }[family];
+      return {
+        family,
+        adapterId: `production-${family}`,
+        objectId: `${family}-10485760`,
+        authoritativeStore: realization?.[0],
+        binaryPolicy: realization?.[1],
+        productionMethod: `${family}-native-realization`,
+        operations,
+        failures: [],
+        sourceWork: {
+          bytesRead: operations * 64 * 1024,
+          readCalls: operations,
+          rowsRead: operations,
+          parentScans: 0,
+        },
+      };
+    }),
   };
 }
 
@@ -683,6 +724,49 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(forgedRun.result, forgedRun.bytes),
     ).toThrow(/soak evidence/u);
+  });
+
+  it.each([
+    ["empty", []],
+    [
+      "partial",
+      validSoakEvidence("a".repeat(40), manifestSha).families.slice(0, 5),
+    ],
+    [
+      "duplicate",
+      [
+        ...validSoakEvidence("a".repeat(40), manifestSha).families.slice(0, 5),
+        validSoakEvidence("a".repeat(40), manifestSha).families[0],
+      ],
+    ],
+  ])("rejects %s soak family coverage", (_label, families) => {
+    const changed = replaceArtifact(evidence(), "soak.json", {
+      ...validSoakEvidence("a".repeat(40), manifestSha),
+      families,
+    });
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/exact family operations/u);
+  });
+
+  it("rejects mismatched family operation totals and fixture adapters", () => {
+    const valid = validSoakEvidence("a".repeat(40), manifestSha);
+    for (const families of [
+      valid.families.map((family, index) =>
+        index === 0 ? { ...family, operations: 0 } : family,
+      ),
+      valid.families.map((family, index) =>
+        index === 0 ? { ...family, adapterId: "file-fixture" } : family,
+      ),
+    ]) {
+      const changed = replaceArtifact(evidence(), "soak.json", {
+        ...valid,
+        families,
+      });
+      expect(() =>
+        validateContentContextResult(changed.result, changed.bytes),
+      ).toThrow(/exact family operations/u);
+    }
   });
 
   it("rejects credentialed trajectories with fewer than five repetitions", () => {

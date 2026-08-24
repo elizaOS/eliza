@@ -74,6 +74,7 @@
     "dev:core": "bun run --cwd packages/core dev",
     "seed:messages": "node packages/scripts/seed-message-corpus.mjs",
     "content-context:produce": "bun packages/scripts/produce-content-context.mjs",
+    "content-context:soak": "bun packages/scripts/run-content-context-soak.mjs",
     "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd packages/agent start",
     "build": "node packages/scripts/run-turbo.mjs run build --concurrency=8 --cache=local:rw,remote:r --output-logs=errors-only && bun run check:view-bundles",
     "build:client": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/app",
