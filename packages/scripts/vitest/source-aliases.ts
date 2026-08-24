@@ -36,10 +36,25 @@ interface WorkspaceSourceEntry {
   indexPath: string;
   sourceDir: string;
   exportedSourceAliases: Array<{ subpath: string; sourcePath: string }>;
+  blockedExactSubpaths: string[];
 }
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function packageSubpathAliasMatcher(
+  packageName: string,
+  blockedExactSubpaths: string[],
+  capturePattern: string,
+): RegExp {
+  const blockedPattern =
+    blockedExactSubpaths.length > 0
+      ? `(?!(?:${blockedExactSubpaths.map(escapeRegex).join("|")})$)`
+      : "";
+  return new RegExp(
+    `^${escapeRegex(packageName)}/${blockedPattern}(${capturePattern})$`,
+  );
 }
 
 function getWorkspaceSourceEntry(
@@ -51,6 +66,7 @@ function getWorkspaceSourceEntry(
     name?: string;
     exports?: Record<
       string,
+      | null
       | string
       | {
           "eliza-source"?:
@@ -62,33 +78,41 @@ function getWorkspaceSourceEntry(
   if (!packageJson.name?.startsWith("@elizaos/")) return undefined;
   // The testing surface resolves through the explicit alias below.
   if (packageJson.name === "@elizaos/core/testing") return undefined;
-  const exportedSourceAliases = Object.entries(
-    packageJson.exports ?? {},
-  ).flatMap(([subpath, target]) => {
-    if (subpath === "." || typeof target === "string") return [];
-    const source = target["eliza-source"];
-    const sourcePath =
-      typeof source === "string"
-        ? source
-        : (source?.import ?? source?.default ?? source?.types);
-    if (
-      !sourcePath?.startsWith("./") ||
-      !subpath.startsWith("./") ||
-      subpath.includes("*")
-    )
-      return [];
-    const resolvedSourcePath = path.resolve(packageDir, sourcePath);
-    if (
-      !resolvedSourcePath.startsWith(`${path.resolve(packageDir)}${path.sep}`)
-    )
-      return [];
-    return [
-      {
-        subpath: subpath.slice(2),
-        sourcePath: resolvedSourcePath,
-      },
-    ];
-  });
+  const packageExports = packageJson.exports ?? {};
+  const blockedExactSubpaths = Object.entries(packageExports).flatMap(
+    ([subpath, target]) =>
+      target === null && subpath.startsWith("./") && !subpath.includes("*")
+        ? [subpath.slice(2)]
+        : [],
+  );
+  const exportedSourceAliases = Object.entries(packageExports).flatMap(
+    ([subpath, target]) => {
+      if (subpath === "." || target === null || typeof target === "string")
+        return [];
+      const source = target["eliza-source"];
+      const sourcePath =
+        typeof source === "string"
+          ? source
+          : (source?.import ?? source?.default ?? source?.types);
+      if (
+        !sourcePath?.startsWith("./") ||
+        !subpath.startsWith("./") ||
+        subpath.includes("*")
+      )
+        return [];
+      const resolvedSourcePath = path.resolve(packageDir, sourcePath);
+      if (
+        !resolvedSourcePath.startsWith(`${path.resolve(packageDir)}${path.sep}`)
+      )
+        return [];
+      return [
+        {
+          subpath: subpath.slice(2),
+          sourcePath: resolvedSourcePath,
+        },
+      ];
+    },
+  );
   const sourceIndex = path.join(packageDir, "src", "index.ts");
   if (existsSync(sourceIndex)) {
     return {
@@ -96,6 +120,7 @@ function getWorkspaceSourceEntry(
       indexPath: sourceIndex,
       sourceDir: path.join(packageDir, "src"),
       exportedSourceAliases,
+      blockedExactSubpaths,
     };
   }
   const rootIndex = path.join(packageDir, "index.ts");
@@ -105,6 +130,7 @@ function getWorkspaceSourceEntry(
       indexPath: rootIndex,
       sourceDir: packageDir,
       exportedSourceAliases,
+      blockedExactSubpaths,
     };
   }
   return undefined;
@@ -178,24 +204,44 @@ export function buildWorkspaceSourceAliases(
           .map((packageDir) => getWorkspaceSourceEntry(packageDir))
           .filter((entry): entry is WorkspaceSourceEntry => entry !== undefined)
           .flatMap(
-            ({ packageName, indexPath, sourceDir, exportedSourceAliases }) => [
+            ({
+              packageName,
+              indexPath,
+              sourceDir,
+              exportedSourceAliases,
+              blockedExactSubpaths,
+            }) => [
               ...exportedSourceAliases.map(({ subpath, sourcePath }) => ({
                 find: new RegExp(
                   `^${escapeRegex(packageName)}/${escapeRegex(subpath)}$`,
                 ),
                 replacement: sourcePath,
               })),
-              { find: new RegExp(`^${packageName}$`), replacement: indexPath },
+              {
+                find: new RegExp(`^${escapeRegex(packageName)}$`),
+                replacement: indexPath,
+              },
               // Asset subpaths (JSON data imports like
               // `@elizaos/registry/first-party/curated-app-definitions.json`)
               // resolve to the source file as-is; the generic rule below would
               // otherwise append `.ts` and break the resolve. First-match wins.
               {
-                find: new RegExp(`^${packageName}/(.*\\.json)$`),
+                find: packageSubpathAliasMatcher(
+                  packageName,
+                  blockedExactSubpaths,
+                  ".*\\.json",
+                ),
                 replacement: path.join(sourceDir, "$1"),
               },
               {
-                find: new RegExp(`^${packageName}/(.*)$`),
+                // Exact null exports are excluded so the package resolver can
+                // enforce their private barrier instead of this source alias
+                // bypassing it through a matching file under `src`.
+                find: packageSubpathAliasMatcher(
+                  packageName,
+                  blockedExactSubpaths,
+                  ".*",
+                ),
                 // Keep the target extensionless so Vite can resolve either a
                 // source file (`foo.ts`) or a public directory entry
                 // (`foo/index.ts`) through the same package-subpath rule.

@@ -15,21 +15,27 @@ import {
 
 const temporaryRoots: string[] = [];
 
+type TestAlias = { find: string | RegExp; replacement: string };
+
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-function resolveAlias(
-  aliases: Array<{ find: string | RegExp; replacement: string }>,
+function findAlias(
+  aliases: TestAlias[],
   specifier: string,
-): string {
-  const alias = aliases.find(({ find }) =>
+): TestAlias | undefined {
+  return aliases.find(({ find }) =>
     typeof find === "string"
       ? specifier === find || specifier.startsWith(`${find}/`)
       : find.test(specifier),
   );
+}
+
+function resolveAlias(aliases: TestAlias[], specifier: string): string {
+  const alias = findAlias(aliases, specifier);
   expect(alias, `${specifier} must have a source alias`).toBeDefined();
   if (!alias) return specifier;
   return specifier.replace(alias.find, alias.replacement);
@@ -95,7 +101,7 @@ describe("workspace source aliases", () => {
     }
   });
 
-  test("honors exact eliza-source exports before generic package subpaths", () => {
+  test("honors exact eliza-source exports and null export barriers", () => {
     const repoRoot = mkdtempSync(
       path.join(tmpdir(), "eliza-vitest-source-aliases-"),
     );
@@ -117,6 +123,7 @@ describe("workspace source aliases", () => {
         name: "@elizaos/plugin.fixture",
         exports: {
           ".": "./dist/index.js",
+          "./private": null,
           "./public+endpoint": {
             "eliza-source": {
               types: "./src/internal/endpoint.ts",
@@ -144,6 +151,9 @@ describe("workspace source aliases", () => {
     expect(
       resolveAlias(aliases, "@elizaos/plugin.fixture/string-endpoint"),
     ).toBe(path.join(packageDir, "src", "internal", "string-endpoint.ts"));
+    expect(
+      findAlias(aliases, "@elizaos/plugin.fixture/private"),
+    ).toBeUndefined();
     expect(resolveAlias(aliases, "@elizaos/plugin.fixture/escape")).toBe(
       path.join(packageDir, "src", "escape"),
     );
