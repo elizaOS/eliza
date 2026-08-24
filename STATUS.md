@@ -19,7 +19,7 @@ Service and deployed-Cloud proof, system installer lifecycle, RPM tooling,
 review, signing, publication, merge, and deployment remain environment,
 credential, physical-device, or authority gates.
 
-The current host-capacity check records 1.8 GiB free on the root
+The current host-capacity check records under 2 GiB free on the root
 filesystem versus the 8 GiB required for another desktop rebuild. The completed
 artifacts launch from their current locations, but a fresh rebuild requires
 owner-approved cleanup of generated outputs or caches. No unrelated cache or
@@ -227,7 +227,7 @@ root-owned tails/chroot paths remain explicit coverage gaps.
    the exact artifact.
 7. Rebuild capacity: approve removal of specific generated outputs/caches or
    provide another build filesystem until at least 8 GiB is free. The current
-   host has about 1.8 GiB free, so no exact-head packaged rebuild was attempted.
+   host has under 2 GiB free, so no exact-head packaged rebuild was attempted.
 8. Publication: refresh and approve draft PR #25427 after exact-head hosted CI
    and evidence review. Signing, release publication, merge, deploy, and
    production mutation remain separately gated.
