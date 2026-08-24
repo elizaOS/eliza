@@ -109,6 +109,7 @@ export {
 	availableProviderNames,
 	CLI_SUBSCRIPTION_SENTINEL_API_KEY,
 	cliBackendCredentialsPath,
+	cliBackendCredentialsPaths,
 	isLiveTestEnabled,
 	type LiveProviderConfig,
 	type LiveProviderName,
