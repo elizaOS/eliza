@@ -166,7 +166,7 @@ describe("provider operation binding", () => {
     }
   });
 
-  it("normalizes whitespace before hashing and never returns raw material in the manifest binding", () => {
+  it("rejects whitespace-changing payloads and never returns raw material in the manifest binding", () => {
     const fixture = fixtures[0];
     const padded = mutableCopy(fixture) as {
       providerTarget: { chatGuid: string };
@@ -175,10 +175,11 @@ describe("provider operation binding", () => {
     padded.providerTarget.chatGuid = `  ${padded.providerTarget.chatGuid}  `;
     padded.operationInput.text = `  ${padded.operationInput.text}  `;
     const canonical = createProviderOperationBinding(fixture);
-    const normalized = createProviderOperationBinding(padded);
-    expect(normalized).toEqual(canonical);
-    expect(JSON.stringify(normalized)).not.toContain("chat-guid");
-    expect(JSON.stringify(normalized)).not.toContain("canary");
+    expect(() => createProviderOperationBinding(padded)).toThrow(
+      /leading or trailing whitespace/,
+    );
+    expect(JSON.stringify(canonical)).not.toContain("chat-guid");
+    expect(JSON.stringify(canonical)).not.toContain("canary");
   });
 
   it("domain-separates target and input hashes", () => {
@@ -329,6 +330,14 @@ describe("provider operation binding", () => {
     countMismatch.providerTarget.itinerary.passengerCount = 2;
     expect(() => createProviderOperationBinding(countMismatch)).toThrow(
       /must equal operationInput\.passengers length/,
+    );
+
+    const calendarMutation = mutableCopy(fixtures[2]) as {
+      operationInput: { calendarSync: { enabled: boolean } };
+    };
+    calendarMutation.operationInput.calendarSync.enabled = true;
+    expect(() => createProviderOperationBinding(calendarMutation)).toThrow(
+      /calendarSync\.enabled must equal false/,
     );
   });
 

@@ -19,6 +19,14 @@ import {
 
 export const PROVIDER_QUALIFICATION_MANIFEST_SCHEMA =
   "eliza.provider-qualified-manifest.v3" as const;
+export const LEGACY_PROVIDER_QUALIFICATION_MANIFEST_SCHEMAS = [
+  "eliza.provider-qualified-manifest.v1",
+  "eliza.provider-qualified-manifest.v2",
+] as const;
+
+export type ProviderQualificationManifestSchema =
+  | typeof PROVIDER_QUALIFICATION_MANIFEST_SCHEMA
+  | (typeof LEGACY_PROVIDER_QUALIFICATION_MANIFEST_SCHEMAS)[number];
 
 type JsonPrimitive = string | number | boolean | null;
 export type CanonicalJsonValue =
@@ -1476,7 +1484,9 @@ function validateBindings(
           contract.connectorProvider !== anchor.connectorProvider ||
           contract.accountRefSha256 !== anchor.accountRefSha256 ||
           contract.connectionRefSha256 !== anchor.connectionRefSha256 ||
-          contract.operation !== anchor.operation
+          contract.operation !== anchor.operation ||
+          anchor.resourceRefSha256 === undefined ||
+          contract.resourceRefSha256 !== anchor.resourceRefSha256
         );
       })
     ) {
@@ -1520,6 +1530,15 @@ function validateBindings(
   const matchingTargetContract = matchingTargetContracts[0];
   if (!matchingTargetContract) {
     fail("bindings.target.operation", "has no matching observation contract");
+  }
+  if (
+    matchingTargetContract.resourceRefSha256 !==
+    bindings.target.operation.providerTargetRefSha256
+  ) {
+    fail(
+      "bindings.target.operation.providerTargetRefSha256",
+      "must equal the target observation contract resourceRefSha256",
+    );
   }
   if (
     contractObserverIds.size !== observerSignerById.size ||
@@ -1812,6 +1831,20 @@ function validateManifestScenario(
 export function validateProviderQualificationManifest(
   value: unknown,
 ): ProviderQualificationManifest {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const schema = (value as Record<string, unknown>).schema;
+    if (
+      typeof schema === "string" &&
+      LEGACY_PROVIDER_QUALIFICATION_MANIFEST_SCHEMAS.includes(
+        schema as (typeof LEGACY_PROVIDER_QUALIFICATION_MANIFEST_SCHEMAS)[number],
+      )
+    ) {
+      fail(
+        "manifest.schema",
+        `${schema} requires an explicit operator reissue as ${PROVIDER_QUALIFICATION_MANIFEST_SCHEMA}; operation targets, exact inputs, and negative probes cannot be inferred safely`,
+      );
+    }
+  }
   const snapshot = canonicalJsonValue(
     value,
     "manifest",

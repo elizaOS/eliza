@@ -132,6 +132,7 @@ function bindings(): ProviderRunBindings {
         connectorProvider: "google",
         accountRefSha256,
         connectionRefSha256,
+        resourceRefSha256: hash("provider-target"),
         requiredCount: 1,
         maxObservationAgeMs: 60_000,
         provider: "google-calendar",
@@ -651,5 +652,79 @@ describe("createProviderQualificationManifest", () => {
         bindings: oversized,
       }),
     ).toThrow(/total requiredCount cannot exceed 256/);
+  });
+
+  it("rejects legacy public schemas with an explicit reissue requirement", () => {
+    const legacy = structuredClone(
+      createProviderQualificationManifest({
+        scenario: scenario(),
+        bindings: bindings(),
+      }),
+    ) as unknown as Record<string, unknown>;
+    legacy.schema = "eliza.provider-qualified-manifest.v2";
+    expect(() => validateProviderQualificationManifest(legacy)).toThrow(
+      /requires an explicit operator reissue.*cannot be inferred safely/,
+    );
+  });
+
+  it("requires one resource identity across durable transition groups", () => {
+    const definition = scenario();
+    const transitionChecks = (["pending", "approved", "done"] as const).map(
+      (state, transitionIndex) => ({
+        type: "durableApprovalObserved" as const,
+        name: `approval-${state}`,
+        observerId: "calendar-observer",
+        provider: "approval-ledger",
+        accountId: "parent-account",
+        operation: "calendar_create",
+        state,
+        minCount: 1,
+        transitionGroupId: "calendar-approval",
+        transitionIndex,
+        trajectoryPhase:
+          transitionIndex === 0 ? ("proposal" as const) : ("approval" as const),
+      }),
+    );
+    definition.finalChecks = [
+      ...(definition.finalChecks ?? []),
+      ...transitionChecks,
+    ];
+    const grouped = bindings();
+    grouped.observationContracts = [
+      ...grouped.observationContracts,
+      ...transitionChecks.map((check) => ({
+        contractId: check.name,
+        kind: "durable-approval" as const,
+        observerId: check.observerId,
+        sourceKind: "durable-database" as const,
+        system: check.provider,
+        environment: "provider-sandbox",
+        connectorProvider: "google",
+        accountRefSha256: hash(check.accountId),
+        connectionRefSha256: hash("google-connection"),
+        resourceRefSha256: hash("approval-row"),
+        requiredCount: 1,
+        maxObservationAgeMs: 60_000,
+        operation: check.operation,
+        state: check.state,
+        transitionGroupId: check.transitionGroupId,
+        transitionIndex: check.transitionIndex,
+        trajectoryPhase: check.trajectoryPhase,
+      })),
+    ];
+    expect(
+      createProviderQualificationManifest({
+        scenario: definition,
+        bindings: grouped,
+      }).requiredObservations,
+    ).toHaveLength(4);
+
+    grouped.observationContracts[2].resourceRefSha256 = hash("other-row");
+    expect(() =>
+      createProviderQualificationManifest({
+        scenario: definition,
+        bindings: grouped,
+      }),
+    ).toThrow(/must bind one correlated pending\/proposal/);
   });
 });

@@ -65,6 +65,27 @@ export interface SignedObservationConnectorBinding {
   connectionRefSha256: string;
 }
 
+export interface SignedFailureProbeResult {
+  probeId: string;
+  observedAtIso: string;
+  observerId: string;
+  sourceKind: "provider-api" | "provider-webhook";
+  system: string;
+  environment: string;
+  provider: string;
+  connectorProvider: string;
+  accountRefSha256: string;
+  connectionRefSha256: string;
+  operation: string;
+  failureClass: "authorization-denied" | "provider-rejected";
+  requestPayloadSha256: string;
+  statusCode: number;
+  errorCodeSha256: string;
+  scopeSha256: string;
+  authorizationGrantSha256: string;
+  noEffectVerified: true;
+}
+
 export interface ProviderObserverEvidencePayload {
   schema: typeof PROVIDER_OBSERVER_EVIDENCE_SCHEMA;
   manifestSha256: string;
@@ -82,6 +103,7 @@ export interface ProviderObserverEvidencePayload {
   connectorBindings: readonly SignedObservationConnectorBinding[];
   stageReferences: readonly SignedStageReference[];
   providerEffectAssurances: readonly ProviderEffectAssurance[];
+  failureProbeResults: readonly SignedFailureProbeResult[];
 }
 
 export interface SignedProviderObserverEvidence {
@@ -179,6 +201,7 @@ const MAX_OBSERVATIONS = 256;
 const MAX_CONNECTOR_BINDINGS = 256;
 const MAX_STAGE_REFERENCES = 2_048;
 const MAX_PROVIDER_ASSURANCES = 256;
+const MAX_FAILURE_PROBE_RESULTS = 64;
 const MAX_TRAJECTORY_REFS_PER_OBSERVATION = 64;
 const MAX_EFFECT_KINDS = 64;
 const MAX_SEMANTIC_VERDICTS = 128;
@@ -201,6 +224,7 @@ const PAYLOAD_KEYS = [
   "connectorBindings",
   "stageReferences",
   "providerEffectAssurances",
+  "failureProbeResults",
 ] as const;
 const SEMANTIC_PAYLOAD_KEYS = [
   "schema",
@@ -675,6 +699,87 @@ function parseSignedEvidenceRuntime(
     }
     if (mode !== "unsupported") {
       runtimeHash(idempotency.keySha256, `${itemPath}.idempotency.keySha256`);
+    }
+  }
+
+  const failureProbeResults = runtimeArray(
+    payload.failureProbeResults,
+    "signedEvidence.payload.failureProbeResults",
+    MAX_FAILURE_PROBE_RESULTS,
+  );
+  const failureProbeIds = new Set<string>();
+  for (const [index, value] of failureProbeResults.entries()) {
+    const itemPath = `signedEvidence.payload.failureProbeResults[${index}]`;
+    const result = runtimeRecord(value, itemPath);
+    requireExactKeys(result, itemPath, [
+      "probeId",
+      "observedAtIso",
+      "observerId",
+      "sourceKind",
+      "system",
+      "environment",
+      "provider",
+      "connectorProvider",
+      "accountRefSha256",
+      "connectionRefSha256",
+      "operation",
+      "failureClass",
+      "requestPayloadSha256",
+      "statusCode",
+      "errorCodeSha256",
+      "scopeSha256",
+      "authorizationGrantSha256",
+      "noEffectVerified",
+    ]);
+    const probeId = runtimeString(result.probeId, `${itemPath}.probeId`);
+    if (failureProbeIds.has(probeId)) {
+      throw new Error(
+        "signedEvidence.payload.failureProbeResults has duplicate IDs",
+      );
+    }
+    failureProbeIds.add(probeId);
+    runtimeTimestamp(result.observedAtIso, `${itemPath}.observedAtIso`);
+    for (const field of [
+      "observerId",
+      "system",
+      "environment",
+      "provider",
+      "connectorProvider",
+      "operation",
+    ] as const) {
+      runtimeString(result[field], `${itemPath}.${field}`);
+    }
+    if (
+      result.sourceKind !== "provider-api" &&
+      result.sourceKind !== "provider-webhook"
+    ) {
+      throw new Error(`${itemPath}.sourceKind is unsupported`);
+    }
+    if (
+      result.failureClass !== "authorization-denied" &&
+      result.failureClass !== "provider-rejected"
+    ) {
+      throw new Error(`${itemPath}.failureClass is unsupported`);
+    }
+    for (const field of [
+      "accountRefSha256",
+      "connectionRefSha256",
+      "requestPayloadSha256",
+      "errorCodeSha256",
+      "scopeSha256",
+      "authorizationGrantSha256",
+    ] as const) {
+      runtimeHash(result[field], `${itemPath}.${field}`);
+    }
+    if (
+      !Number.isSafeInteger(result.statusCode) ||
+      Number(result.statusCode) < 400 ||
+      Number(result.statusCode) > 599
+    ) {
+      throw new Error(`${itemPath}.statusCode must be an HTTP error status`);
+    }
+    if (result.noEffectVerified !== true) {
+      throw new Error(`${itemPath}.noEffectVerified must equal true`);
     }
   }
   return snapshot;
@@ -1273,6 +1378,7 @@ function verifyTrajectoryReferences(
 function verifyObservationFreshness(
   assignment: readonly ObservationAssignment[],
   payload: ProviderObserverEvidencePayload,
+  trajectories: VerifiedScenarioTrajectorySet,
   nowMs: number,
   clockSkewMs: number,
   reasons: string[],
@@ -1285,13 +1391,23 @@ function verifyObservationFreshness(
     payload.scenarioEndedAtIso,
     "scenarioEndedAtIso",
   );
+  const trajectoryById = new Map(
+    trajectories.trajectories.map((trajectory) => [
+      trajectory.artifact.trajectoryId,
+      trajectory,
+    ]),
+  );
   for (const { observation, contract } of assignment) {
     const observedAt = timestamp(
       observation.observedAtIso,
       `observation:${observation.observationId}.observedAtIso`,
     );
+    const requiresFinalObservation =
+      contract.kind !== "provider-no-effect" ||
+      contract.intervalCoverage === "full-scenario";
     if (
-      observedAt < scenarioEndedAt - clockSkewMs ||
+      (requiresFinalObservation &&
+        observedAt < scenarioEndedAt - clockSkewMs) ||
       observedAt > nowMs + clockSkewMs ||
       nowMs - observedAt > contract.maxObservationAgeMs + clockSkewMs
     ) {
@@ -1299,7 +1415,10 @@ function verifyObservationFreshness(
         `observation:${observation.observationId}:stale-or-outside-run`,
       );
     }
-    if (observation.kind === "provider-no-effect") {
+    if (
+      observation.kind === "provider-no-effect" &&
+      contract.kind === "provider-no-effect"
+    ) {
       const intervalStart = timestamp(
         observation.observationStartedAtIso,
         `observation:${observation.observationId}.observationStartedAtIso`,
@@ -1308,12 +1427,40 @@ function verifyObservationFreshness(
         observation.observationEndedAtIso,
         `observation:${observation.observationId}.observationEndedAtIso`,
       );
+      const referencedStageStarts = observation.trajectoryRefs.flatMap(
+        (reference) => {
+          const stage = trajectoryById
+            .get(reference.trajectoryId)
+            ?.stages.find(
+              (candidate) => candidate.stageId === reference.stageId,
+            );
+          return stage ? [Date.parse(stage.startedAtIso)] : [];
+        },
+      );
+      const referencedStageStart =
+        referencedStageStarts.length === 1
+          ? referencedStageStarts[0]
+          : undefined;
+      const intervalEndIsComplete =
+        contract.intervalCoverage === "full-scenario"
+          ? intervalEnd >= scenarioEndedAt - clockSkewMs
+          : referencedStageStart !== undefined &&
+            intervalEnd >= referencedStageStart - clockSkewMs &&
+            intervalEnd <= referencedStageStart + clockSkewMs;
       if (
         intervalStart > scenarioStartedAt ||
-        intervalEnd < scenarioEndedAt - clockSkewMs ||
+        !intervalEndIsComplete ||
         intervalEnd < intervalStart
       ) {
         reasons.push(`observation:${observation.observationId}:interval-gap`);
+      }
+      if (
+        contract.intervalCoverage === "before-referenced-stage" &&
+        referencedStageStarts.length !== 1
+      ) {
+        reasons.push(
+          `observation:${observation.observationId}:stage-boundary-mismatch`,
+        );
       }
       if (observedAt < intervalEnd - clockSkewMs) {
         reasons.push(
@@ -1464,6 +1611,109 @@ function verifyProviderAssurances(
     // end-to-end exactly-once delivery across process and network boundaries.
     exactlyOnce: false,
   };
+}
+
+function verifyFailureProbeResults(
+  manifest: ProviderQualificationManifest,
+  results: readonly SignedFailureProbeResult[],
+  provenanceById: ReadonlyMap<string, ScenarioEvidenceObserverProvenance>,
+  nowMs: number,
+  clockSkewMs: number,
+  reasons: string[],
+): void {
+  const byId = new Map<string, SignedFailureProbeResult>();
+  for (const result of results) {
+    if (byId.has(result.probeId)) reasons.push("failure-probe:duplicate");
+    byId.set(result.probeId, result);
+  }
+  if (
+    byId.size !== manifest.requiredFailureProbes.length ||
+    manifest.requiredFailureProbes.some((probe) => !byId.has(probe.probeId))
+  ) {
+    reasons.push("failure-probe:exact-multiset-mismatch");
+  }
+  for (const probe of manifest.requiredFailureProbes) {
+    const result = byId.get(probe.probeId);
+    if (!result) continue;
+    const observer = provenanceById.get(result.observerId);
+    if (
+      result.observerId !== probe.observerId ||
+      !observer ||
+      observer.kind !== result.sourceKind ||
+      observer.environment !== result.environment ||
+      result.sourceKind !== probe.sourceKind ||
+      result.system !== probe.system ||
+      result.environment !== probe.environment ||
+      result.provider !== probe.provider ||
+      result.connectorProvider !== probe.connectorProvider ||
+      result.accountRefSha256 !== probe.accountRefSha256 ||
+      result.connectionRefSha256 !== probe.connectionRefSha256 ||
+      result.operation !== probe.operation ||
+      result.failureClass !== probe.failureClass ||
+      result.requestPayloadSha256 !== probe.requestPayloadSha256 ||
+      result.statusCode !== probe.expectedStatusCode ||
+      result.errorCodeSha256 !== probe.expectedErrorCodeSha256 ||
+      result.scopeSha256 !== probe.scopeSha256 ||
+      result.authorizationGrantSha256 !== probe.authorizationGrantSha256 ||
+      result.noEffectVerified !== true
+    ) {
+      reasons.push(`failure-probe:${probe.probeId}:mismatch`);
+    }
+    const observedAt = timestamp(
+      result.observedAtIso,
+      `failureProbe:${probe.probeId}.observedAtIso`,
+    );
+    if (
+      observedAt > nowMs + clockSkewMs ||
+      nowMs - observedAt > probe.maxObservationAgeMs + clockSkewMs
+    ) {
+      reasons.push(`failure-probe:${probe.probeId}:stale-or-future`);
+    }
+  }
+}
+
+function verifyBoundOperationExecution(
+  assignment: readonly ObservationAssignment[],
+  manifest: ProviderQualificationManifest,
+  trajectories: VerifiedScenarioTrajectorySet,
+  reasons: string[],
+): void {
+  const targetRows = assignment.filter(
+    ({ contract }) =>
+      (contract.kind === "provider-effect" ||
+        contract.kind === "provider-no-effect") &&
+      contract.resourceRefSha256 ===
+        manifest.target.operation.providerTargetRefSha256,
+  );
+  if (targetRows.length !== 1) {
+    reasons.push("bound-operation:target-observation-mismatch");
+    return;
+  }
+  const row = targetRows[0];
+  if (!row) return;
+  const trajectoryById = new Map(
+    trajectories.trajectories.map((trajectory) => [
+      trajectory.artifact.trajectoryId,
+      trajectory,
+    ]),
+  );
+  const matchingStages = row.observation.trajectoryRefs.flatMap((reference) => {
+    const stage = trajectoryById
+      .get(reference.trajectoryId)
+      ?.stages.find((candidate) => candidate.stageId === reference.stageId);
+    return stage?.tool?.argsSha256 ===
+      manifest.target.operation.operationInputSha256
+      ? [stage]
+      : [];
+  });
+  if (matchingStages.length !== 1) {
+    reasons.push("bound-operation:input-stage-mismatch");
+    return;
+  }
+  const expectedSuccess = row.contract.kind === "provider-effect";
+  if (matchingStages[0]?.tool?.success !== expectedSuccess) {
+    reasons.push("bound-operation:tool-outcome-mismatch");
+  }
 }
 
 function verifyLocalResults(
@@ -1870,6 +2120,7 @@ export function deriveProviderQualification(
   verifyObservationFreshness(
     effectiveAssignment,
     payload,
+    input.trajectories,
     nowMs,
     clockSkewMs,
     reasons,
@@ -1877,6 +2128,20 @@ export function deriveProviderQualification(
   const guarantees = verifyProviderAssurances(
     effectiveAssignment,
     payload.providerEffectAssurances,
+    reasons,
+  );
+  verifyBoundOperationExecution(
+    effectiveAssignment,
+    input.manifest,
+    input.trajectories,
+    reasons,
+  );
+  verifyFailureProbeResults(
+    input.manifest,
+    payload.failureProbeResults,
+    provenanceById,
+    nowMs,
+    clockSkewMs,
     reasons,
   );
   verifyLocalResults(input, payload, reasons);

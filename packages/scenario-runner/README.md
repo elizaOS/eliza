@@ -273,6 +273,12 @@ An out-of-process controller can use the public primitives under
    observation/result multisets, independent semantic verdicts, provider
    acceptance, and required readback/idempotency.
 
+Qualification also requires the signed target operation to correlate to one
+trajectory tool stage with the exact input hash, and requires an independently
+signed result for every authorization-denied and provider-rejected probe. A
+manifest issued under an earlier schema must be reissued by the operator; the
+new operation and failure-probe bindings are never inferred during parsing.
+
 The qualifier always records `exactlyOnce: false`; provider idempotency and
 readback reduce ambiguity but do not prove end-to-end exactly-once delivery.
 Action results, model prose, loopback fixtures, local PGlite, and unsigned

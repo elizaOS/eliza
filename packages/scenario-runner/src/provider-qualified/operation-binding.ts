@@ -160,7 +160,7 @@ export interface ProviderOperationInputByKind {
     currency: string;
     passengers: [DuffelCanaryPassenger, ...DuffelCanaryPassenger[]];
     calendarSync: {
-      enabled: boolean;
+      enabled: false;
       calendarId: NullableString;
       title: NullableString;
       description: NullableString;
@@ -283,7 +283,10 @@ function string(value: unknown, path: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     fail(path, "must be a non-empty string");
   }
-  return value.trim();
+  if (value !== value.trim()) {
+    fail(path, "cannot contain leading or trailing whitespace");
+  }
+  return value;
 }
 
 function stringMatching(
@@ -308,11 +311,6 @@ function literal<T extends string | boolean | null>(
 ): T {
   if (value !== expected) fail(path, `must equal ${JSON.stringify(expected)}`);
   return expected;
-}
-
-function boolean(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") fail(path, "must be a boolean");
-  return value;
 }
 
 function positiveInteger(value: unknown, path: string): number {
@@ -648,7 +646,7 @@ function inputFor(kind: ProviderOperationKind, value: unknown): unknown {
           validatePassenger(passenger, `${path}.passengers[${index}]`),
         ),
         calendarSync: {
-          enabled: boolean(calendar.enabled, `${calendarPath}.enabled`),
+          enabled: literal(calendar.enabled, `${calendarPath}.enabled`, false),
           calendarId: nullableString(
             calendar.calendarId,
             `${calendarPath}.calendarId`,

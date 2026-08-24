@@ -23,6 +23,7 @@ import {
   createProviderQualificationManifest,
   type ProviderRunBindings,
 } from "./manifest.ts";
+import { createProviderOperationBinding } from "./operation-binding.ts";
 import {
   type DeriveProviderQualificationInput,
   deriveProviderQualification,
@@ -69,6 +70,7 @@ function scenario(): ScenarioDefinition {
         name: "calendar-create",
         observerId: "calendar-observer",
         provider: "google-calendar",
+        connectorProvider: "google",
         accountId: "parent-account",
         operation: "event-create",
       },
@@ -106,6 +108,23 @@ function bindings(
     target: {
       principalRefSha256: hash("principal"),
       roomRefSha256: hash("room"),
+      operation: createProviderOperationBinding({
+        kind: "google-calendar.event-create",
+        providerTarget: { calendarId: "primary" },
+        operationInput: {
+          title: "School pickup",
+          start: "2026-05-23T01:00:00.000Z",
+          end: "2026-05-23T01:30:00.000Z",
+          timeZone: "UTC",
+          attendees: [],
+          location: null,
+          description: null,
+          createMeetLink: false,
+          sendUpdates: "none",
+          recurrence: [],
+          idempotencyKey: "calendar-create-1",
+        },
+      }),
     },
     models: {
       actingAdapter: "eliza-runtime",
@@ -117,7 +136,7 @@ function bindings(
     },
     connectors: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         environment: "provider-sandbox",
@@ -125,7 +144,7 @@ function bindings(
     ],
     ingress: {
       kind: "provider-webhook",
-      provider: "google-calendar",
+      provider: "google",
       channel: "google-chat",
       accountRefSha256,
       connectionRefSha256,
@@ -135,7 +154,7 @@ function bindings(
     },
     capabilities: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         capability: "event-create",
@@ -150,9 +169,26 @@ function bindings(
         sourceKind: "provider-api",
         system: "google-calendar",
         environment: "provider-sandbox",
-        connectorProvider: "google-calendar",
+        connectorProvider: "google",
         accountRefSha256,
         connectionRefSha256,
+        resourceRefSha256: createProviderOperationBinding({
+          kind: "google-calendar.event-create",
+          providerTarget: { calendarId: "primary" },
+          operationInput: {
+            title: "School pickup",
+            start: "2026-05-23T01:00:00.000Z",
+            end: "2026-05-23T01:30:00.000Z",
+            timeZone: "UTC",
+            attendees: [],
+            location: null,
+            description: null,
+            createMeetLink: false,
+            sendUpdates: "none",
+            recurrence: [],
+            idempotencyKey: "calendar-create-1",
+          },
+        }).providerTargetRefSha256,
         requiredCount: 1,
         maxObservationAgeMs: 5 * 60_000,
         provider: "google-calendar",
@@ -160,6 +196,46 @@ function bindings(
         providerAcceptanceRequired: true,
         readbackRequired: true,
         idempotencyRequired: true,
+      },
+    ],
+    failureProbes: [
+      {
+        probeId: "calendar-auth-denied",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "authorization-denied",
+        requestPayloadSha256: hash("auth-denied-request"),
+        expectedStatusCode: 403,
+        expectedErrorCodeSha256: hash("insufficient-scope"),
+        scopeSha256: hash("calendar-scope"),
+        authorizationGrantSha256: hash("denied-grant"),
+        maxObservationAgeMs: 5 * 60_000,
+      },
+      {
+        probeId: "calendar-provider-rejected",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "provider-rejected",
+        requestPayloadSha256: hash("provider-rejected-request"),
+        expectedStatusCode: 400,
+        expectedErrorCodeSha256: hash("invalid-event"),
+        scopeSha256: hash("calendar-scope"),
+        authorizationGrantSha256: hash("grant"),
+        maxObservationAgeMs: 5 * 60_000,
       },
     ],
   };
@@ -233,6 +309,12 @@ function fixture(): DeriveProviderQualificationInput & {
             sha256: stageSha256,
             startedAtIso: "2026-05-23T00:00:20.000Z",
             endedAtIso: "2026-05-23T00:00:30.000Z",
+            tool: {
+              name: "CREATE_CALENDAR_EVENT",
+              argsSha256: manifest.target.operation.operationInputSha256,
+              resultSha256: hash("calendar tool result"),
+              success: true,
+            },
           },
         ],
       },
@@ -262,7 +344,7 @@ function fixture(): DeriveProviderQualificationInput & {
       kind: "provider-api",
       system: "google-calendar",
       environment: "provider-sandbox",
-      recordIdSha256: hash("provider-record"),
+      recordIdSha256: manifest.target.operation.providerTargetRefSha256,
       accountRefSha256: hash("parent-account"),
     },
     payloadSha256: hash("observation payload"),
@@ -305,7 +387,7 @@ function fixture(): DeriveProviderQualificationInput & {
     connectorBindings: [
       {
         observationId: observation.observationId,
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
       },
@@ -330,6 +412,26 @@ function fixture(): DeriveProviderQualificationInput & {
         },
       },
     ],
+    failureProbeResults: manifest.requiredFailureProbes.map((probe) => ({
+      probeId: probe.probeId,
+      observedAtIso: "2026-05-23T00:01:05.000Z",
+      observerId: probe.observerId,
+      sourceKind: probe.sourceKind,
+      system: probe.system,
+      environment: probe.environment,
+      provider: probe.provider,
+      connectorProvider: probe.connectorProvider,
+      accountRefSha256: probe.accountRefSha256,
+      connectionRefSha256: probe.connectionRefSha256,
+      operation: probe.operation,
+      failureClass: probe.failureClass,
+      requestPayloadSha256: probe.requestPayloadSha256,
+      statusCode: probe.expectedStatusCode,
+      errorCodeSha256: probe.expectedErrorCodeSha256,
+      scopeSha256: probe.scopeSha256,
+      authorizationGrantSha256: probe.authorizationGrantSha256,
+      noEffectVerified: true as const,
+    })),
   };
   const signedEvidence: SignedProviderObserverEvidence = {
     keyId: providerObserverKeyId(observerPublicKeyPem),
@@ -429,7 +531,7 @@ function resignSemantic(
   ).toString("base64url");
 }
 
-function noEffectFixture(): ReturnType<typeof fixture> {
+function noEffectFixture(stageBounded = false): ReturnType<typeof fixture> {
   const input = fixture();
   const definition = scenario();
   definition.finalChecks = [
@@ -438,8 +540,15 @@ function noEffectFixture(): ReturnType<typeof fixture> {
       name: "calendar-no-effect",
       observerId: "calendar-observer",
       provider: "google-calendar",
+      connectorProvider: "google",
       accountId: "parent-account",
-      intervalCoversScenario: true,
+      intervalCoversScenario: !stageBounded,
+      ...(stageBounded
+        ? {
+            intervalEndsBeforeReferencedStage: true,
+            trajectoryPhase: "approval" as const,
+          }
+        : {}),
     },
     definition.finalChecks?.[1] as NonNullable<
       ScenarioDefinition["finalChecks"]
@@ -458,15 +567,20 @@ function noEffectFixture(): ReturnType<typeof fixture> {
       sourceKind: "provider-api",
       system: "google-calendar",
       environment: "provider-sandbox",
-      connectorProvider: "google-calendar",
+      connectorProvider: "google",
       accountRefSha256: hash("parent-account"),
       connectionRefSha256: hash("connection"),
+      resourceRefSha256:
+        noEffectBindings.target.operation.providerTargetRefSha256,
       requiredCount: 1,
       maxObservationAgeMs: 5 * 60_000,
       provider: "google-calendar",
       effectKinds: ["event-create"],
       scopeSha256: hash("calendar-window"),
-      intervalCoverage: "full-scenario",
+      intervalCoverage: stageBounded
+        ? "before-referenced-stage"
+        : "full-scenario",
+      ...(stageBounded ? { trajectoryPhase: "approval" as const } : {}),
     },
   ];
   const manifest = createProviderQualificationManifest({
@@ -475,13 +589,24 @@ function noEffectFixture(): ReturnType<typeof fixture> {
   });
   input.scenarioDefinition = definition;
   input.manifest = manifest;
+  const targetStage = input.trajectories.trajectories[0]?.stages[0];
+  if (targetStage?.tool) targetStage.tool.success = false;
+  input.trajectories.setSha256 = canonicalSha256(
+    input.trajectories.trajectories.map((trajectory) => ({
+      artifact: trajectory.artifact,
+      stages: trajectory.stages,
+    })),
+    "verifiedTrajectories",
+  );
   resignManifest(input);
   const prior = input.signedEvidence.payload
     .observations[0] as ProviderEffectObservation;
   const observation: ProviderNoEffectObservation = {
     observationId: "no-effect-1",
     kind: "provider-no-effect",
-    observedAtIso: "2026-05-23T00:01:05.000Z",
+    observedAtIso: stageBounded
+      ? "2026-05-23T00:00:30.000Z"
+      : "2026-05-23T00:01:05.000Z",
     observerId: prior.observerId,
     source: {
       ...prior.source,
@@ -496,7 +621,9 @@ function noEffectFixture(): ReturnType<typeof fixture> {
     beforeSnapshotSha256: hash("unchanged-calendar"),
     afterSnapshotSha256: hash("unchanged-calendar"),
     observationStartedAtIso: "2026-05-23T00:00:00.000Z",
-    observationEndedAtIso: "2026-05-23T00:01:05.000Z",
+    observationEndedAtIso: stageBounded
+      ? "2026-05-23T00:00:20.000Z"
+      : "2026-05-23T00:01:05.000Z",
   };
   input.finalChecks = manifest.scenario.finalChecks.map((check) => ({
     definitionSha256: check.definitionSha256,
@@ -504,11 +631,12 @@ function noEffectFixture(): ReturnType<typeof fixture> {
   }));
   Object.assign(input.signedEvidence.payload, {
     manifestSha256: manifest.manifestSha256,
+    trajectorySetSha256: input.trajectories.setSha256,
     observations: [observation],
     connectorBindings: [
       {
         observationId: observation.observationId,
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
       },
@@ -527,6 +655,7 @@ function noEffectFixture(): ReturnType<typeof fixture> {
   });
   Object.assign(input.signedSemanticEvidence.payload, {
     manifestSha256: manifest.manifestSha256,
+    trajectorySetSha256: input.trajectories.setSha256,
     verdicts: manifest.scenario.semanticCriteria.map((criterion) => ({
       criterionId: criterion.criterionId,
       rubricSha256: criterion.rubricSha256,
@@ -559,6 +688,65 @@ describe("deriveProviderQualification", () => {
       providerReadbackVerified: true,
       providerIdempotencyVerified: true,
       exactlyOnce: false,
+    });
+  });
+
+  it("correlates the exact signed operation input to one target tool stage", () => {
+    const input = fixture();
+    const stage = input.trajectories.trajectories[0]?.stages[0];
+    if (!stage?.tool) throw new Error("fixture target tool stage is missing");
+    stage.tool.argsSha256 = hash("substituted operation input");
+    input.trajectories.setSha256 = canonicalSha256(
+      input.trajectories.trajectories.map((trajectory) => ({
+        artifact: trajectory.artifact,
+        stages: trajectory.stages,
+      })),
+      "verifiedTrajectories",
+    );
+    input.signedEvidence.payload.trajectorySetSha256 =
+      input.trajectories.setSha256;
+    input.signedSemanticEvidence.payload.trajectorySetSha256 =
+      input.trajectories.setSha256;
+    resignProvider(input);
+    resignSemantic(input);
+
+    expect(deriveProviderQualification(input).qualification).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining(["bound-operation:input-stage-mismatch"]),
+    });
+  });
+
+  it("requires the exact signed negative-probe result multiset", () => {
+    const missing = fixture();
+    missing.signedEvidence.payload.failureProbeResults =
+      missing.signedEvidence.payload.failureProbeResults.slice(1);
+    resignProvider(missing);
+    expect(deriveProviderQualification(missing).qualification).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "failure-probe:exact-multiset-mismatch",
+      ]),
+    });
+
+    const substituted = fixture();
+    substituted.signedEvidence.payload.failureProbeResults[0].statusCode = 401;
+    resignProvider(substituted);
+    expect(
+      deriveProviderQualification(substituted).qualification,
+    ).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "failure-probe:calendar-auth-denied:mismatch",
+      ]),
+    });
+  });
+
+  it("qualifies a no-effect interval ending at its single referenced stage", () => {
+    const input = noEffectFixture(true);
+    expect(deriveProviderQualification(input).qualification).toEqual({
+      status: "qualified",
+      publishable: true,
+      reasons: [],
     });
   });
 
