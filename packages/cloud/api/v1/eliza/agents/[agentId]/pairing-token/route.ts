@@ -7,10 +7,9 @@ import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { containersEnv } from "@/lib/config/containers-env";
 import {
+  getConfiguredElizaAgentPublicWebUiUrl,
   getElizaAgentDirectWebUiUrl,
-  getElizaAgentPublicWebUiUrl,
 } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
@@ -114,6 +113,13 @@ function resolveDirectWebUiUrlFromHealthUrl(
 function isBrowserUnreachableHost(hostname: string): boolean {
   const h = hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (isLoopbackHost(h)) return false;
+  if (
+    [".corp", ".home", ".internal", ".lan", ".local", ".private"].some(
+      (suffix) => h.endsWith(suffix),
+    )
+  ) {
+    return true;
+  }
   const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (m) {
     const a = Number(m[1]);
@@ -170,11 +176,10 @@ function resolveManagedWebUiUrl(
     browserReachableOrigin(resolveDirectWebUiUrlFromHealthUrl(sandbox)),
     browserReachableOrigin(getElizaAgentDirectWebUiUrl(sandbox)),
   ];
-  const canonicalOrigin = getElizaAgentPublicWebUiUrl(sandbox, {
-    baseDomain: supportsUiTokenPairing
-      ? canonicalAgentBaseDomain
-      : containersEnv.publicBaseDomain(),
-  });
+  const canonicalOrigin = getConfiguredElizaAgentPublicWebUiUrl(
+    sandbox,
+    canonicalAgentBaseDomain,
+  );
 
   if (supportsUiTokenPairing) {
     // Managed token exchange belongs to the Worker-owned hostname. A remote
@@ -184,8 +189,9 @@ function resolveManagedWebUiUrl(
   }
 
   return (
+    canonicalOrigin ??
     directOrigins.find((origin): origin is string => origin !== null) ??
-    canonicalOrigin
+    null
   );
 }
 

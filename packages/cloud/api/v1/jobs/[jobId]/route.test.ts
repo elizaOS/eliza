@@ -236,6 +236,43 @@ describe("jobs route", () => {
     expect(getJob).not.toHaveBeenCalled();
   });
 
+  test("owner polling replaces stored internal endpoints with the canonical gateway", async () => {
+    validateServiceKey.mockResolvedValueOnce(null);
+    getJobForOrg.mockResolvedValueOnce({
+      ...(await getJobForOrg()),
+      status: "completed",
+      result: {
+        cloudAgentId: "agent-job-1",
+        bridgeUrl: "http://100.64.0.12:19027",
+        containerUrl: "http://192.168.1.8:19027",
+        healthUrl: "http://10.0.0.8:19028/health",
+        nested: {
+          headscale_ip: "100.64.0.12",
+          internal_bridge_url: "http://172.20.0.8:19027",
+          status: "running",
+        },
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/v1/jobs/job-1"),
+      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "staging.elizacloud.ai" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      data: {
+        result: {
+          cloudAgentId: "agent-job-1",
+          webUiUrl: "https://agent-job-1.staging.elizacloud.ai",
+          nested: { status: "running" },
+        },
+      },
+    });
+    expect(JSON.stringify(body)).not.toMatch(/100\.64|10\.0|192\.168/);
+  });
+
   test("target-organization members cannot read admin canary jobs through the generic route", async () => {
     validateServiceKey.mockResolvedValueOnce(null);
     getJobForOrg.mockResolvedValueOnce({

@@ -67,7 +67,6 @@ const baseAgent: NormalizedAgentDetailDto = {
   executionTier: "shared",
   webUiUrl: null,
   activeJob: null,
-  bridgeUrl: null,
   errorCount: 0,
   walletAddress: null,
   walletProvider: null,
@@ -127,6 +126,7 @@ describe("AgentDetailPage product detail", () => {
         isDockerBacked: true,
         nodeId: "node-1",
         containerName: "container-1",
+        internalBridgeUrl: "http://100.64.0.1:31337",
         dockerImage: "private-image",
         headscaleIp: "100.64.0.1",
         bridgePort: 31337,
@@ -134,7 +134,6 @@ describe("AgentDetailPage product detail", () => {
         webUiUrl: "https://private-web-ui.example",
         sshCommand: "ssh private-host",
       },
-      bridgeUrl: "https://private-bridge.example",
     });
 
     expect(screen.getByRole("heading", { name: "Shared Agent" })).toBeTruthy();

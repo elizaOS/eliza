@@ -27,6 +27,42 @@ interface PairingTokenResponse {
   error?: string;
 }
 
+function isInternalBrowserHost(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (normalized === "localhost" || normalized === "::1") return false;
+  if (
+    [".corp", ".home", ".internal", ".lan", ".local", ".private"].some(
+      (suffix) => normalized.endsWith(suffix),
+    )
+  ) {
+    return true;
+  }
+  const ipv4 = normalized.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const octets = ipv4.slice(1).map(Number);
+    if (octets.some((octet) => octet > 255)) return true;
+    const [a, b] = octets;
+    return (
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254)
+    );
+  }
+  return /^f[cd]/.test(normalized) || normalized.startsWith("fe80");
+}
+
+function isSafePairingRedirectUrl(url: unknown): url is string {
+  if (!isSafeNavigationUrl(url)) return false;
+  try {
+    return !isInternalBrowserHost(new URL(url).hostname);
+  } catch {
+    // error-policy:J3 pairing redirect is an untrusted API response value.
+    return false;
+  }
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -89,7 +125,7 @@ export async function openWebUIWithPairing(agentId: string): Promise<void> {
       }
 
       if (data.data?.redirectUrl) {
-        if (!isSafeNavigationUrl(data.data.redirectUrl)) {
+        if (!isSafePairingRedirectUrl(data.data.redirectUrl)) {
           // The redirect URL is a wire value assigned to the popup's top
           // window — only absolute http(s) may navigate.
           popup.close();

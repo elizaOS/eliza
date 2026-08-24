@@ -5,6 +5,7 @@ import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { containersEnv } from "@/lib/config/containers-env";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
@@ -228,8 +229,10 @@ async function __hono_POST(
             id: existing.id,
             agentName: existing.agent_name,
             status: existing.status,
-            bridgeUrl: existing.bridge_url,
-            healthUrl: existing.health_url,
+            webUiUrl: getConfiguredElizaAgentPublicWebUiUrl(
+              existing,
+              ctx?.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+            ),
           },
         }),
         CORS_METHODS,
@@ -372,8 +375,10 @@ async function __hono_POST(
                 id: claimed.id,
                 agentName: claimed.agent_name,
                 status: "running",
-                bridgeUrl: claimed.bridge_url,
-                healthUrl: claimed.health_url,
+                webUiUrl: getConfiguredElizaAgentPublicWebUiUrl(
+                  claimed,
+                  ctx?.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+                ),
               },
               source: "warm_pool",
             }),
@@ -471,8 +476,10 @@ async function __hono_POST(
             id: result.sandboxRecord.id,
             agentName: result.sandboxRecord.agent_name,
             status: result.sandboxRecord.status,
-            bridgeUrl: result.bridgeUrl,
-            healthUrl: result.healthUrl,
+            webUiUrl: getConfiguredElizaAgentPublicWebUiUrl(
+              result.sandboxRecord,
+              ctx?.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+            ),
           },
         }),
         CORS_METHODS,

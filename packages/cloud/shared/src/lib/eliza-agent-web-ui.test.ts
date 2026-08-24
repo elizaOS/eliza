@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   getAgentBaseDomain,
   getClientSafeElizaAgentWebUiUrl,
+  getConfiguredElizaAgentPublicWebUiUrl,
   getElizaAgentDirectWebUiUrl,
   getElizaAgentPublicWebUiUrl,
   getPreferredElizaAgentWebUiUrl,
@@ -118,6 +119,48 @@ describe("getElizaAgentPublicWebUiUrl — supplied baseDomain", () => {
     for (const baseDomain of [null, "", "   ", "https://", "/", "..."]) {
       expect(getElizaAgentPublicWebUiUrl(sandbox(), { baseDomain })).toBeNull();
     }
+  });
+});
+
+describe("getConfiguredElizaAgentPublicWebUiUrl", () => {
+  test("builds the canonical ownership-scoped HTTPS host", () => {
+    expect(getConfiguredElizaAgentPublicWebUiUrl(sandbox(), "staging.elizacloud.ai")).toBe(
+      `https://${SANDBOX_ID}.staging.elizacloud.ai`,
+    );
+  });
+
+  test("fails closed when the deployment host is missing", () => {
+    process.env[ENV_KEY] = "env-must-not-be-used.example";
+    for (const baseDomain of [undefined, null, "", "   "]) {
+      expect(getConfiguredElizaAgentPublicWebUiUrl(sandbox(), baseDomain)).toBeNull();
+    }
+  });
+
+  test("rejects private, internal, and malformed deployment hosts", () => {
+    for (const baseDomain of [
+      "100.64.0.12",
+      "10.0.0.8",
+      "192.168.1.2",
+      "[fd7a:115c:a1e0::1]",
+      "headscale.internal",
+      "gateway.local",
+      "localhost",
+      "https://user:pass@gateway.example",
+      "gateway.example:8443",
+      "https://gateway.example/unexpected-path",
+      "gateway..example",
+    ]) {
+      expect(getConfiguredElizaAgentPublicWebUiUrl(sandbox(), baseDomain)).toBeNull();
+    }
+  });
+
+  test("rejects an agent id that is not a single DNS label", () => {
+    expect(
+      getConfiguredElizaAgentPublicWebUiUrl(
+        sandbox({ id: "agent.private.example" }),
+        "elizacloud.ai",
+      ),
+    ).toBeNull();
   });
 });
 
