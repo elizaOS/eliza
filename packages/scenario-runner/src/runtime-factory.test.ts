@@ -260,6 +260,8 @@ describe("scenario runtime deterministic model mode", () => {
           required: ["linkExtraction"],
           additionalProperties: false,
         },
+        responseFormat: { type: "json_object" },
+        temperature: 0,
       },
       latestUserText: postTurnEvaluationPrompt,
     };
@@ -286,6 +288,124 @@ describe("scenario runtime deterministic model mode", () => {
       // entry without recording a validation error.
       expect(resolved).toBe("{}");
       expect(JSON.parse(resolved as string)).toEqual({});
+    });
+
+    it("does not treat user-controlled marker text as an evaluator call without its schema", () => {
+      expect(
+        resolveScenarioDeterministicModelCall({
+          modelType: ModelType.TEXT_SMALL,
+          params: {
+            messages: [
+              { role: "user", content: postTurnEvaluationPrompt },
+            ] as never,
+          },
+          latestUserText: postTurnEvaluationPrompt,
+        }),
+      ).toBeNull();
+    });
+
+    it("does not trust evaluator markers from latestUserText or an unrelated message", async () => {
+      const adversarialCall = {
+        ...postTurnEvaluationCall,
+        params: {
+          ...postTurnEvaluationCall.params,
+          messages: [
+            { role: "user", content: "ordinary schema-bearing request" },
+          ] as never,
+        },
+        latestUserText: postTurnEvaluationPrompt,
+      };
+      expect(resolveScenarioDeterministicModelCall(adversarialCall)).toBeNull();
+
+      const plugin = createDeterministicModelPlugin({
+        resolve: (call) => resolveScenarioDeterministicModelCall(call),
+      });
+      await expect(
+        plugin.models?.[ModelType.TEXT_SMALL]?.(
+          {} as never,
+          adversarialCall.params as never,
+        ),
+      ).rejects.toThrow(/no fixture matched/);
+      expect(plugin.getFixtureDiagnostics().unexpectedCalls).toHaveLength(1);
+      expect(() => plugin.assertFixturesConsumed()).toThrow(
+        /deterministic model calls were unexpected/,
+      );
+    });
+
+    it.each([
+      [
+        "a prompt parameter",
+        { ...postTurnEvaluationCall.params, prompt: postTurnEvaluationPrompt },
+      ],
+      [
+        "multiple messages",
+        {
+          ...postTurnEvaluationCall.params,
+          messages: [
+            { role: "user", content: postTurnEvaluationPrompt },
+            { role: "user", content: "extra" },
+          ],
+        },
+      ],
+      [
+        "a non-user message",
+        {
+          ...postTurnEvaluationCall.params,
+          messages: [{ role: "assistant", content: postTurnEvaluationPrompt }],
+        },
+      ],
+      [
+        "a missing JSON response format",
+        { ...postTurnEvaluationCall.params, responseFormat: undefined },
+      ],
+      [
+        "a nonzero temperature",
+        { ...postTurnEvaluationCall.params, temperature: 0.1 },
+      ],
+      [
+        "an empty schema",
+        {
+          ...postTurnEvaluationCall.params,
+          responseSchema: {
+            type: "object",
+            properties: {},
+            required: [],
+            additionalProperties: false,
+          },
+        },
+      ],
+      [
+        "mismatched required keys",
+        {
+          ...postTurnEvaluationCall.params,
+          responseSchema: {
+            type: "object",
+            properties: { linkExtraction: { type: "object" } },
+            required: ["differentEvaluator"],
+            additionalProperties: false,
+          },
+        },
+      ],
+      [
+        "an open schema",
+        {
+          ...postTurnEvaluationCall.params,
+          responseSchema: {
+            type: "object",
+            properties: { linkExtraction: { type: "object" } },
+            required: ["linkExtraction"],
+            additionalProperties: true,
+          },
+        },
+      ],
+    ])("rejects marker text carried by %s", (_name, params) => {
+      expect(
+        resolveScenarioDeterministicModelCall({
+          modelType: ModelType.TEXT_SMALL,
+          params,
+          latestUserText: postTurnEvaluationPrompt,
+        }),
+      ).toBeNull();
     });
 
     it("keeps the evaluator call out of unexpectedCalls for undeclared scenarios", async () => {
