@@ -153,9 +153,22 @@ export class TurnControllerRegistry {
 	 * Abort the active turns for `roomId`. When called from inside a turn
 	 * (async context under `runWith`), that calling turn is excluded — an
 	 * abort evaluator kills the work the user wants stopped, not the turn
-	 * that is processing the stop request. Out-of-band callers (HTTP stop
-	 * route, lifecycle handlers) have no current turn and abort everything.
-	 * Returns true if at least one turn was aborted.
+	 * that is processing the stop request. EVERY OTHER active turn in the
+	 * room is aborted: out-of-band callers (HTTP stop route, voice
+	 * barge-in, lifecycle handlers) request a room-wide stop. ActiveTurn
+	 * carries no owner/waiter metadata and `runWith` registers arbitrary
+	 * concurrent room turns, so no positional heuristic (e.g. "abort only
+	 * the last entry") may spare a turn the user asked to stop — such a
+	 * guess reports success while an older planner/action turn keeps
+	 * running side effects or spend. Returns true if at least one turn was
+	 * aborted.
+	 *
+	 * Waiter-scoped cancellation (one coalesced composeState caller
+	 * stopping WITHOUT touching the shared execution) deliberately does NOT
+	 * route through here: each caller races the shared provider execution
+	 * against its OWN signal in `awaitProviderExecution` (runtime.ts),
+	 * which rejects just that caller and aborts the shared work exactly
+	 * when the interested-caller count drops to zero.
 	 */
 	abortTurn(roomId: string, reason: string): boolean {
 		// In-turn callers (threadOps' Stage-1 abort evaluator) are excluded so
@@ -165,8 +178,11 @@ export class TurnControllerRegistry {
 		// (live 2026-08-19: "cancel all ur running coding tasks" → errored
 		// turn, nothing delivered).
 		const self = getCurrentTurnStorage()?.getStore();
+		const turns = this.active.get(roomId) ?? [];
+		if (turns.length === 0) return false;
+
 		let aborted = false;
-		for (const turn of this.active.get(roomId) ?? []) {
+		for (const turn of turns) {
 			if (turn === self) continue;
 			if (turn.controller.signal.aborted) continue;
 			turn.reason = reason;
