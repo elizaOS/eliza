@@ -58,6 +58,9 @@ describe("hasReasoningResidue", () => {
 		).toBe(false);
 		expect(hasReasoningResidue("<b>bold</b> <div>x</div>")).toBe(false);
 		expect(hasReasoningResidue("")).toBe(false);
+		expect(hasReasoningResidue(undefined as unknown as string)).toBe(false);
+		expect(hasReasoningResidue(null as unknown as string)).toBe(false);
+		expect(stripReasoningPrefixes(undefined as unknown as string)).toBe("");
 	});
 
 	it("returns the same verdict on repeated calls with identical input", () => {
