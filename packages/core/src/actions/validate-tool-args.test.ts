@@ -192,7 +192,7 @@ describe("unused-optional sentinel strings", () => {
 		}
 	});
 
-	it("a REQUIRED param still demands a real value", () => {
+	it("a REQUIRED param keeps a sentinel-looking value verbatim", () => {
 		const result = validateToolArgs(action, { content: "null" });
 		// required "content" keeps whatever string was supplied — sentinels
 		// only ever mean absent for optional properties.
@@ -211,5 +211,43 @@ describe("unused-optional sentinel strings", () => {
 			memoryId: "12345678-1234-1234-1234-123456789abc",
 		});
 		expect(good.valid).toBe(true);
+	});
+});
+
+describe("optional sentinels are only absent when the schema rejects them", () => {
+	const freeText = {
+		name: "NOTE",
+		description: "Write a note",
+		parameters: [
+			{
+				name: "body",
+				description: "Note body",
+				required: true,
+				schema: { type: "string" as const },
+			},
+			{
+				name: "tag",
+				description: "Optional free-text tag",
+				required: false,
+				schema: { type: "string" as const },
+			},
+		],
+		handler: async () => undefined,
+		validate: async () => true,
+		examples: [],
+	} as unknown as Parameters<typeof validateToolArgs>[0];
+
+	it("keeps an optional free-text value that happens to read like a sentinel", () => {
+		// "null" is a legitimate thing to write in a note. The schema accepts it,
+		// so dropping it would be silent data loss on the model -> action path.
+		const result = validateToolArgs(freeText, { body: "x", tag: "null" });
+		expect(result.valid).toBe(true);
+		expect(result.args?.tag).toBe("null");
+	});
+
+	it("keeps an optional empty string when the schema accepts it", () => {
+		const result = validateToolArgs(freeText, { body: "x", tag: "" });
+		expect(result.valid).toBe(true);
+		expect(result.args?.tag).toBe("");
 	});
 });

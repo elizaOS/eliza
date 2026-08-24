@@ -181,22 +181,23 @@ function validateObject(
 	// strings "null"/"undefined"/"" rather than omitting them; a patterned
 	// optional then fails validation and kills an otherwise-valid call (live
 	// 2026-08-24: MEMORY create failed on memoryId:"null" and the turn
-	// claimed success anyway). These are canonical spellings of "not
-	// provided", not values — treat them as absent for OPTIONAL properties
-	// only; required properties still demand a real value.
+	// claimed success anyway).
+	//
+	// The rule is deliberately narrow: a sentinel counts as "absent" ONLY for
+	// an optional property whose schema cannot accept the literal anyway. For
+	// a free-text optional, "" and the literal "null" are legitimate values a
+	// user may have actually asked to send, and dropping them would be silent
+	// data loss on the model -> action path. So the value is validated first,
+	// and only a value that BOTH fails its schema and reads as a sentinel is
+	// treated as omitted.
 	const requiredKeys = new Set(schema.required ?? []);
-	const isAbsentSentinel = (key: string, supplied: unknown): boolean =>
+	const readsAsAbsent = (key: string, supplied: unknown): boolean =>
 		!requiredKeys.has(key) &&
 		typeof supplied === "string" &&
 		["", "null", "undefined"].includes(supplied.trim().toLowerCase());
 
 	for (const [key, childSchema] of Object.entries(properties)) {
-		if (
-			hasOwn(value, key) &&
-			value[key] !== undefined &&
-			value[key] !== null &&
-			!isAbsentSentinel(key, value[key])
-		) {
+		if (hasOwn(value, key) && value[key] !== undefined && value[key] !== null) {
 			const childPath = path ? `${path}.${key}` : key;
 			const before = errors.length;
 			const childValue = validateSchema(
@@ -207,8 +208,15 @@ function validateObject(
 			);
 			if (errors.length === before) {
 				output[key] = childValue;
+				continue;
 			}
-			continue;
+			if (readsAsAbsent(key, value[key])) {
+				// Schema-rejected sentinel on an optional property: drop the
+				// rejection with it and fall through to the default/absent path.
+				errors.length = before;
+			} else {
+				continue;
+			}
 		}
 
 		if (
