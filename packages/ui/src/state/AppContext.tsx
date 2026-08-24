@@ -970,8 +970,10 @@ function AppProviderInner({
     prefetchConversationMessages,
     claimConversationMessagesOwnership,
     isConversationMessagesOwnershipCurrent,
+    getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
     applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
     discardConversationMessageState,
     loadedConversationIdRef,
     getBscTradePreflight,
@@ -1066,8 +1068,10 @@ function AppProviderInner({
     prefetchConversationMessages,
     claimConversationMessagesOwnership,
     isConversationMessagesOwnershipCurrent,
+    getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
     applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
     discardConversationMessageState,
     loadedConversationIdRef,
     loadPlugins,
@@ -1579,6 +1583,11 @@ function AppProviderInner({
         return;
       }
 
+      // Conversation ids are authority-local. Purge both canonical snapshots
+      // and optimistic overlays before the live client can repoint or hydrate
+      // the same id from another profile/account.
+      discardConversationMessageState();
+
       // Conversation ids are per-account, so saved drafts from the old
       // profile would re-attach to whatever conversation happens to land
       // on the same id after the switch. Wipe them only after the durable
@@ -1614,7 +1623,11 @@ function AppProviderInner({
         target: target as RuntimeTarget,
       });
     },
-    [setActionNotice, startupCoordinatorDispatch],
+    [
+      discardConversationMessageState,
+      setActionNotice,
+      startupCoordinatorDispatch,
+    ],
   );
 
   useAgentGreetingEffects({

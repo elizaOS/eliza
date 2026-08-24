@@ -62,6 +62,7 @@ interface Harness {
     | "isConversationMessagesOwnershipCurrent"
     | "registerConversationMessageOverlay"
     | "applyConversationMessageOverlayModification"
+    | "removeConversationMessageStateMessages"
     | "discardConversationMessageState"
   >;
 }
@@ -191,6 +192,8 @@ function mountComposed(harness: Harness) {
         loaders.registerConversationMessageOverlay,
       applyConversationMessageOverlayModification:
         loaders.applyConversationMessageOverlayModification,
+      removeConversationMessageStateMessages:
+        loaders.removeConversationMessageStateMessages,
       discardConversationMessageState: loaders.discardConversationMessageState,
     });
     return { loaders, send };
@@ -855,5 +858,142 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       await result.current.loaders.loadConversationMessages("conv-c");
     });
     expect(harness.conversationMessagesRef.current).toEqual([]);
+  });
+
+  it("keeps an off-screen partial when A aborts after selecting B", async () => {
+    let rejectStream: ((error: unknown) => void) | undefined;
+    mocks.client.getConversationMessages.mockImplementation(
+      async (id: string) => ({
+        messages:
+          id === "conv-b"
+            ? [
+                {
+                  id: "b-only",
+                  role: "user",
+                  text: "B only",
+                  timestamp: 20,
+                },
+              ]
+            : [],
+      }),
+    );
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (...args: unknown[]) => {
+        const onToken = args[2] as (
+          token: string,
+          accumulatedText?: string,
+          provisional?: boolean,
+        ) => void;
+        onToken("partial", "A partial survives", false);
+        return new Promise((_resolve, reject) => {
+          rejectStream = reject;
+        });
+      },
+    );
+    const harness = makeHarness();
+    harness.activeConversationIdRef.current = "conv-a";
+    const { result } = mountComposed(harness);
+    act(() => {
+      result.current.loaders.claimConversationMessagesOwnership("conv-a");
+    });
+    await act(async () => {
+      await result.current.loaders.loadConversationMessages("conv-a");
+    });
+
+    let sendA: Promise<void>;
+    act(() => {
+      sendA = result.current.send.sendChatText("A question", {
+        conversationId: "conv-a",
+        clientMessageId: "partial-a",
+      });
+    });
+    await flushPendingWork();
+    expect(harness.conversationMessagesRef.current).toMatchObject([
+      { id: "temp-partial-a", text: "A question" },
+      { id: "temp-resp-partial-a", text: "A partial survives" },
+    ]);
+
+    act(() => {
+      result.current.loaders.claimConversationMessagesOwnership("conv-b");
+      harness.activeConversationIdRef.current = "conv-b";
+    });
+    await act(async () => {
+      await result.current.loaders.loadConversationMessages("conv-b");
+      rejectStream?.(
+        Object.assign(new Error("aborted"), { name: "AbortError" }),
+      );
+      await sendA;
+    });
+
+    act(() => {
+      result.current.loaders.claimConversationMessagesOwnership("conv-a");
+      harness.activeConversationIdRef.current = "conv-a";
+    });
+    await act(async () => {
+      await result.current.loaders.loadConversationMessages("conv-a");
+    });
+    expect(harness.conversationMessagesRef.current).toMatchObject([
+      { id: "temp-partial-a", text: "A question" },
+      { id: "temp-resp-partial-a", text: "A partial survives" },
+    ]);
+  });
+
+  it("keeps an async local command valid across a same-id reload", async () => {
+    let resolveCommands: ((value: never[]) => void) | undefined;
+    mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+    mocks.client.listCustomActions.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCommands = resolve;
+        }),
+    );
+    const harness = makeHarness();
+    harness.activeConversationIdRef.current = "conv-a";
+    const { result } = mountComposed(harness);
+    act(() => {
+      result.current.loaders.claimConversationMessagesOwnership("conv-a");
+    });
+    await act(async () => {
+      await result.current.loaders.loadConversationMessages("conv-a");
+    });
+    const commandOwnerGeneration =
+      result.current.loaders.claimConversationMessagesOwnership("conv-a");
+
+    let commandSend: Promise<void>;
+    act(() => {
+      commandSend = result.current.send.sendChatText("/commands", {
+        conversationId: "conv-a",
+        clientMessageId: "same-id-command",
+      });
+    });
+    await flushPendingWork();
+    await vi.waitFor(() => {
+      expect(mocks.client.listCustomActions).toHaveBeenCalledTimes(1);
+    });
+    expect(harness.conversationMessagesRef.current).toEqual([]);
+    await act(async () => {
+      await result.current.loaders.loadConversationMessages("conv-a");
+    });
+    expect(
+      result.current.loaders.isConversationMessagesOwnershipCurrent(
+        "conv-a",
+        commandOwnerGeneration,
+      ),
+    ).toBe(true);
+    act(() => {
+      resolveCommands?.([]);
+    });
+    await act(async () => {
+      await commandSend;
+    });
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+
+    expect(
+      harness.conversationMessagesRef.current.map((message) => message.role),
+    ).toEqual(["user", "assistant"]);
+    expect(harness.conversationMessagesRef.current[0]?.text).toBe("/commands");
+    expect(harness.conversationMessagesRef.current[1]?.text).toContain(
+      "Use #remember",
+    );
   });
 });

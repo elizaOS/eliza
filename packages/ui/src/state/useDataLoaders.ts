@@ -64,6 +64,7 @@ import {
   shouldKeepConversationMessage,
 } from "./internal";
 import { clearSettledPendingChatTurns } from "./pending-chat-turns";
+import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
 
@@ -99,6 +100,18 @@ interface ConversationMessageOverlayRecord {
 }
 
 type ConversationMessageOverlay = Map<string, ConversationMessageOverlayRecord>;
+
+export type ConversationMessageStateMutation =
+  | {
+      mode: "delete-exact";
+      removedMessages: readonly ConversationMessage[];
+    }
+  | {
+      mode: "truncate";
+      removedMessages: readonly ConversationMessage[];
+      /** Exact visible prefix captured before the server-side truncate. */
+      preservedMessages: readonly ConversationMessage[];
+    };
 
 interface ConversationMessageLoadFence {
   conversationId: string;
@@ -224,6 +237,17 @@ function findNearestPriorLocalOverlayUser(
   return null;
 }
 
+function findNearestPriorUser(
+  messages: ConversationMessage[],
+  fromIndex: number,
+): ConversationMessage | null {
+  for (let index = fromIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "user") return message;
+  }
+  return null;
+}
+
 function resolvedLocalOverlayServerIndexes(
   serverMessages: ConversationMessage[],
   currentMessages: ConversationMessage[],
@@ -317,20 +341,37 @@ const OVERLAY_NEWEST_MISS_RETIREMENT_COUNT = 3;
 function mergeMessagesChronologically(
   serverMessages: ConversationMessage[],
   localOverlay: ConversationMessage[],
+  causalServerPredecessors?: ReadonlyMap<string, number>,
 ): ConversationMessage[] {
   if (localOverlay.length === 0) return serverMessages;
-  const merged = [...serverMessages];
+  const merged: Array<{
+    message: ConversationMessage;
+    serverIndex: number | null;
+  }> = serverMessages.map((message, serverIndex) => ({ message, serverIndex }));
   const orderedOverlay = [...localOverlay].sort(
     (left, right) => left.timestamp - right.timestamp,
   );
   for (const message of orderedOverlay) {
-    const insertionIndex = merged.findIndex(
-      (candidate) => candidate.timestamp > message.timestamp,
+    let insertionIndex = merged.findIndex(
+      (candidate) => candidate.message.timestamp > message.timestamp,
     );
-    if (insertionIndex < 0) merged.push(message);
-    else merged.splice(insertionIndex, 0, message);
+    if (insertionIndex < 0) insertionIndex = merged.length;
+
+    const lineage = localConversationMessageLineage(message);
+    const predecessorServerIndex = lineage
+      ? causalServerPredecessors?.get(lineage)
+      : undefined;
+    if (typeof predecessorServerIndex === "number") {
+      const predecessorPosition = merged.findIndex(
+        (candidate) => candidate.serverIndex === predecessorServerIndex,
+      );
+      if (predecessorPosition >= 0) {
+        insertionIndex = Math.max(insertionIndex, predecessorPosition + 1);
+      }
+    }
+    merged.splice(insertionIndex, 0, { message, serverIndex: null });
   }
-  return merged;
+  return merged.map((entry) => entry.message);
 }
 
 function reconcileConversationMessagesWithOverlay(
@@ -338,6 +379,12 @@ function reconcileConversationMessagesWithOverlay(
   overlay: ConversationMessageOverlay | undefined,
   options?: {
     localContext?: ConversationMessage[];
+    /**
+     * Text/time matching is safe only when localContext still contains the
+     * preceding canonical newest window. Around/overlay-only paints can omit an
+     * older repeated row and must fall back to exact durable ids only.
+     */
+    allowTextFallback?: boolean;
     /** Present only for a full newest-history GET, never cache/around windows. */
     overlayRevisionsAtRequestStart?: ReadonlyMap<string, number>;
   },
@@ -352,13 +399,31 @@ function reconcileConversationMessagesWithOverlay(
   // consumed, so a repeated pending "yes" cannot bind to an older "yes". A
   // cache paint has no new response boundary and therefore settles by exact id
   // only.
-  const resolvedOverlayServerIndexes = options?.localContext
-    ? resolvedLocalOverlayServerIndexes(
-        serverMessages,
-        options.localContext,
-        overlayLineages,
-      )
-    : new Map<string, number>();
+  const resolvedOverlayServerIndexes =
+    options?.localContext && options.allowTextFallback
+      ? resolvedLocalOverlayServerIndexes(
+          serverMessages,
+          options.localContext,
+          overlayLineages,
+        )
+      : new Map<string, number>();
+  const causalServerPredecessors = new Map<string, number>();
+  const localContext = options?.localContext;
+  if (localContext) {
+    localContext.forEach((message, index) => {
+      if (message.role !== "assistant") return;
+      const lineage = localConversationMessageLineage(message);
+      if (!lineage || !overlay.has(lineage)) return;
+      const precedingUser = findNearestPriorUser(localContext, index);
+      if (!precedingUser) return;
+      const predecessorServerIndex =
+        serverIndexById.get(precedingUser.id) ??
+        resolvedOverlayServerIndexes.get(precedingUser.id);
+      if (typeof predecessorServerIndex === "number") {
+        causalServerPredecessors.set(lineage, predecessorServerIndex);
+      }
+    });
+  }
 
   const fullNewestRequestRevisions = options?.overlayRevisionsAtRequestStart;
   const matchedLineages = new Set<string>();
@@ -465,6 +530,7 @@ function reconcileConversationMessagesWithOverlay(
       const lineage = localConversationMessageLineage(message);
       return lineage === null || !matchedLineages.has(lineage);
     }),
+    causalServerPredecessors,
   );
 }
 
@@ -717,6 +783,16 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const visibleConversationMessagesContentOwnerRef = useRef<
     string | null | undefined
   >(null);
+  // Text/time fallback dedupe needs the complete preceding newest window. An
+  // around or overlay-only paint may omit an older repeated row, making that
+  // weaker match ambiguous until one canonical newest response has landed.
+  const canonicalNewestConversationMessageContentOwnerRef = useRef<
+    string | null
+  >(null);
+  // Once an around window commits, cache paint alone cannot prove that its
+  // omitted rows were already consumed. Require one exact-id-only newest
+  // response before re-enabling weaker text/time convergence.
+  const textFallbackBlockedConversationIdsRef = useRef<Set<string>>(new Set());
   const conversationMessageOwnerGenerationRef = useRef(0);
   // Shared by newest and around loads: every visible request supersedes every
   // older visible request, even when ownership itself did not change.
@@ -866,7 +942,14 @@ export function useDataLoaders(deps: DataLoadersDeps) {
             targetOverlay?.get(lineage)?.message === message,
         );
 
-      conversationMessageOwnerGenerationRef.current += 1;
+      // Same-id persisted claims are resyncs, not navigation. Keep the owner
+      // token stable so an async command or greeting already scoped to this
+      // conversation remains valid while the reload gets its own request token.
+      // A null -> null transition is an explicit new-draft/reset boundary and
+      // must continue cancelling older cold-create work.
+      if (previousOwner !== conversationId || conversationId === null) {
+        conversationMessageOwnerGenerationRef.current += 1;
+      }
       visibleConversationMessageRequestGenerationRef.current += 1;
       visibleConversationMessagesOwnerRef.current = conversationId;
       if (loadedConversationIdRef.current !== conversationId) {
@@ -1013,11 +1096,17 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     [],
   );
 
+  const getConversationMessagesOwnershipGeneration = useCallback(
+    (): number => conversationMessageOwnerGenerationRef.current,
+    [],
+  );
+
   const applyConversationMessageOverlayModification = useCallback(
     (
       conversationId: string | null,
       lineage: string,
       modification: StreamingTextModification,
+      options?: { onlyIfEmpty?: boolean },
     ) => {
       const overlay =
         conversationId === null
@@ -1025,6 +1114,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           : conversationMessageOverlayRef.current.get(conversationId);
       const record = overlay?.get(lineage);
       if (!overlay || !record?.message) return;
+      if (
+        options?.onlyIfEmpty &&
+        modification.mode === "drop" &&
+        record.message.text.trim()
+      ) {
+        return;
+      }
 
       let nextMessages = [record.message];
       const ownedModification = {
@@ -1062,6 +1158,125 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     [],
   );
 
+  const removeConversationMessageStateMessages = useCallback(
+    (conversationId: string, mutation: ConversationMessageStateMutation) => {
+      const { removedMessages } = mutation;
+      const removedIds = new Set(removedMessages.map((message) => message.id));
+      const removedLineages = new Set(
+        removedMessages
+          .map(localConversationMessageLineage)
+          .filter((lineage): lineage is string => lineage !== null),
+      );
+      if (
+        mutation.mode === "delete-exact" &&
+        removedIds.size === 0 &&
+        removedLineages.size === 0
+      ) {
+        return;
+      }
+
+      const fence = activeMessageLoadFenceRef.current;
+      if (fence?.conversationId === conversationId) {
+        fence.controller.abort();
+        activeMessageLoadFenceRef.current = null;
+      }
+      invalidateConversationMessageCacheRequest(conversationId);
+      const prefetch = prefetchAbortRef.current.get(conversationId);
+      prefetch?.abort();
+      if (prefetchAbortRef.current.get(conversationId) === prefetch) {
+        prefetchAbortRef.current.delete(conversationId);
+      }
+
+      // A successful mutation makes the preceding server snapshot
+      // non-canonical. The first newest response after it must reconcile by
+      // exact ids only; otherwise a stale row with repeated text can consume a
+      // replacement optimistic turn.
+      textFallbackBlockedConversationIdsRef.current.add(conversationId);
+      if (
+        canonicalNewestConversationMessageContentOwnerRef.current ===
+        conversationId
+      ) {
+        canonicalNewestConversationMessageContentOwnerRef.current = null;
+      }
+
+      if (mutation.mode === "truncate") {
+        // A centered around window can omit newer rows that the server just
+        // truncated. No exact patch can make that cached newest snapshot safe.
+        conversationMessageCacheRef.current.delete(conversationId);
+      } else {
+        const cached = conversationMessageCacheRef.current.get(conversationId);
+        if (cached) {
+          conversationMessageCacheRef.current.set(
+            conversationId,
+            cached.filter((message) => {
+              if (removedIds.has(message.id)) return false;
+              const lineage = localConversationMessageLineage(message);
+              return lineage === null || !removedLineages.has(lineage);
+            }),
+          );
+        }
+      }
+
+      const overlay = conversationMessageOverlayRef.current.get(conversationId);
+      if (overlay) {
+        const truncateCutoff =
+          mutation.mode === "truncate"
+            ? Math.min(...removedMessages.map((message) => message.timestamp))
+            : null;
+        for (const [lineage, record] of overlay) {
+          const message = record.message;
+          if (
+            removedLineages.has(lineage) ||
+            (message !== null && removedIds.has(message.id)) ||
+            (truncateCutoff !== null &&
+              Number.isFinite(truncateCutoff) &&
+              message !== null &&
+              message.timestamp >= truncateCutoff)
+          ) {
+            overlay.delete(lineage);
+          }
+        }
+        if (overlay.size === 0) {
+          conversationMessageOverlayRef.current.delete(conversationId);
+        }
+      }
+
+      if (visibleConversationMessagesOwnerRef.current === conversationId) {
+        if (mutation.mode === "truncate") {
+          // A GET may have committed a pre-truncate tail while the mutation was
+          // awaiting the server. Restore the caller's exact captured prefix,
+          // not a filtered view of whichever window happened to win that race.
+          const next = [...mutation.preservedMessages];
+          conversationMessagesRef.current = next;
+          visibleConversationMessagesContentOwnerRef.current = conversationId;
+          loadedConversationIdRef.current = conversationId;
+          greetingFiredRef.current = hasConversationBootstrapMessage(next);
+          setConversationMessages(next);
+        } else if (
+          visibleConversationMessagesContentOwnerRef.current === conversationId
+        ) {
+          const current = conversationMessagesRef.current;
+          const next = current.filter((message) => {
+            if (removedIds.has(message.id)) return false;
+            const lineage = localConversationMessageLineage(message);
+            return lineage === null || !removedLineages.has(lineage);
+          });
+          if (next.length !== current.length) {
+            conversationMessagesRef.current = next;
+            greetingFiredRef.current = hasConversationBootstrapMessage(next);
+            setConversationMessages(next);
+          }
+        }
+      }
+    },
+    [
+      conversationMessagesRef,
+      greetingFiredRef,
+      invalidateConversationMessageCacheRequest,
+      setConversationMessages,
+    ],
+  );
+
   const discardConversationMessageState = useCallback(
     (conversationId?: string) => {
       if (conversationId === undefined) {
@@ -1072,6 +1287,8 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         unownedConversationMessageOverlayRef.current.clear();
         visibleConversationMessagesOwnerRef.current = null;
         visibleConversationMessagesContentOwnerRef.current = null;
+        canonicalNewestConversationMessageContentOwnerRef.current = null;
+        textFallbackBlockedConversationIdsRef.current.clear();
         conversationMessageOwnerGenerationRef.current += 1;
         visibleConversationMessageRequestGenerationRef.current += 1;
         loadedConversationIdRef.current = null;
@@ -1081,6 +1298,12 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         prefetchAbortRef.current.clear();
         conversationMessageCacheRequestSequenceRef.current += 1;
         conversationMessageCacheRequestTokenRef.current.clear();
+        greetingFiredRef.current = false;
+        activeConversationIdRef.current = null;
+        conversationMessagesRef.current = [];
+        setActiveConversationId(null);
+        setConversationMessages([]);
+        setConversations([]);
         return;
       }
 
@@ -1092,6 +1315,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       }
       conversationMessageCacheRef.current.delete(conversationId);
       conversationMessageOverlayRef.current.delete(conversationId);
+      textFallbackBlockedConversationIdsRef.current.delete(conversationId);
+      if (
+        canonicalNewestConversationMessageContentOwnerRef.current ===
+        conversationId
+      ) {
+        canonicalNewestConversationMessageContentOwnerRef.current = null;
+      }
       invalidateConversationMessageCacheRequest(conversationId);
       prefetchAbortRef.current.get(conversationId)?.abort();
       prefetchAbortRef.current.delete(conversationId);
@@ -1103,8 +1333,27 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         loadedConversationIdRef.current = null;
       }
     },
-    [invalidateConversationMessageCacheRequest],
+    [
+      activeConversationIdRef,
+      conversationMessagesRef,
+      greetingFiredRef,
+      invalidateConversationMessageCacheRequest,
+      setActiveConversationId,
+      setConversationMessages,
+      setConversations,
+    ],
   );
+
+  useEffect(() => {
+    // Only explicit runtime/profile switches are authority boundaries. Raw
+    // setBaseUrl/repointBaseUrl also power temporary probes and the
+    // shared-to-dedicated handoff, both of which must preserve the transcript.
+    return subscribeRuntimeAuthoritySwitch((phase) => {
+      if (phase === "before") {
+        discardConversationMessageState();
+      }
+    });
+  }, [discardConversationMessageState]);
 
   const loadConversations = useCallback(async (): Promise<
     Conversation[] | null
@@ -1153,6 +1402,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           restoredServerMessages,
           overlay,
         );
+        canonicalNewestConversationMessageContentOwnerRef.current = convId;
         greetingFiredRef.current =
           hasConversationBootstrapMessage(mergedCached);
         visibleConversationMessagesContentOwnerRef.current = convId;
@@ -1167,6 +1417,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         // waiting for convergence. Paint those owned rows rather than losing
         // them during a long navigation sweep.
         const localMessages = overlayMessages(overlay);
+        canonicalNewestConversationMessageContentOwnerRef.current = null;
         greetingFiredRef.current =
           hasConversationBootstrapMessage(localMessages);
         visibleConversationMessagesContentOwnerRef.current = convId;
@@ -1178,6 +1429,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         // active conversation until the fetch resolves. Clear it immediately so
         // the home overlay cannot render old-room context under the newly
         // selected conversation while the network request is in flight.
+        canonicalNewestConversationMessageContentOwnerRef.current = null;
         greetingFiredRef.current = false;
         visibleConversationMessagesContentOwnerRef.current = convId;
         conversationMessagesRef.current = [];
@@ -1188,6 +1440,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       // server clone. Materialize that pre-request state before snapshotting so
       // the response fence compares against the exact revision it followed.
       captureVisibleConversationMessageOverlay(convId);
+      const textFallbackContextIsCanonical =
+        canonicalNewestConversationMessageContentOwnerRef.current === convId &&
+        visibleConversationMessagesContentOwnerRef.current === convId &&
+        !textFallbackBlockedConversationIdsRef.current.has(convId);
 
       const fence: ConversationMessageLoadFence = {
         conversationId: convId,
@@ -1220,6 +1476,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           currentOverlay,
           {
             localContext: conversationMessagesRef.current,
+            allowTextFallback: textFallbackContextIsCanonical,
             overlayRevisionsAtRequestStart: fence.overlayRevisionsAtStart,
           },
         );
@@ -1230,6 +1487,8 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         clearSettledPendingChatTurns(convId, serverMessages);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
+        canonicalNewestConversationMessageContentOwnerRef.current = convId;
+        textFallbackBlockedConversationIdsRef.current.delete(convId);
         visibleConversationMessagesContentOwnerRef.current = convId;
         conversationMessagesRef.current = nextMessages;
         loadedConversationIdRef.current = convId;
@@ -1282,6 +1541,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           // drop any stale cache entry so a later swipe can't resurrect it.
           discardConversationMessageState(convId);
           greetingFiredRef.current = false;
+          canonicalNewestConversationMessageContentOwnerRef.current = null;
           visibleConversationMessagesContentOwnerRef.current = null;
           conversationMessagesRef.current = [];
           setConversationMessages([]);
@@ -1378,10 +1638,15 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         const nextMessages = reconcileConversationMessagesWithOverlay(
           serverMessages,
           conversationMessageOverlayRef.current.get(convId),
-          { localContext: conversationMessagesRef.current },
+          {
+            localContext: conversationMessagesRef.current,
+            allowTextFallback: false,
+          },
         );
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
+        canonicalNewestConversationMessageContentOwnerRef.current = null;
+        textFallbackBlockedConversationIdsRef.current.add(convId);
         visibleConversationMessagesContentOwnerRef.current = convId;
         conversationMessagesRef.current = nextMessages;
         loadedConversationIdRef.current = convId;
@@ -1768,8 +2033,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     prefetchConversationMessages,
     claimConversationMessagesOwnership,
     isConversationMessagesOwnershipCurrent,
+    getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
     applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
     discardConversationMessageState,
     loadedConversationIdRef,
     // BSC / Steward / Trading
