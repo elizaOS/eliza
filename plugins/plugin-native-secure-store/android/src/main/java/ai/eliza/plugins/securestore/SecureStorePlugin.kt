@@ -30,6 +30,7 @@ class SecureStorePlugin : Plugin() {
     private val allowedKeys = setOf(
         "session.device_auth",
         "session.steward_token",
+        "remote.controller_identity",
         "runtime.active_server",
         "runtime.agent_profiles",
     )

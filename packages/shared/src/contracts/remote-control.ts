@@ -398,6 +398,63 @@ export function isRemoteControllerPublicIdentity(
   );
 }
 
+function encodeBase64Url(bytes: Uint8Array): string {
+  const alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  let encoded = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index] ?? 0;
+    const second = bytes[index + 1] ?? 0;
+    const third = bytes[index + 2] ?? 0;
+    const combined = (first << 16) | (second << 8) | third;
+    encoded += alphabet[(combined >>> 18) & 63];
+    encoded += alphabet[(combined >>> 12) & 63];
+    if (index + 1 < bytes.length) encoded += alphabet[(combined >>> 6) & 63];
+    if (index + 2 < bytes.length) encoded += alphabet[combined & 63];
+  }
+  return encoded;
+}
+
+/** Derives the stable fingerprint displayed when confirming a controller. */
+export async function deriveRemoteControllerKeyId(
+  signingPublicKeyJwk: JsonWebKey,
+  encryptionPublicKeyJwk: JsonWebKey,
+): Promise<string> {
+  if (
+    !isP256PublicJwk(signingPublicKeyJwk) ||
+    !isP256PublicJwk(encryptionPublicKeyJwk)
+  ) {
+    throw new Error("Controller public keys are invalid.");
+  }
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(
+      canonicalizeRemoteControlValue({
+        signingPublicKeyJwk,
+        encryptionPublicKeyJwk,
+      }),
+    ),
+  );
+  return `p256:${encodeBase64Url(new Uint8Array(digest))}`;
+}
+
+/** Confirms that a controller fingerprint is bound to its submitted keys. */
+export async function remoteControllerIdentityMatchesKeyId(
+  identity: RemoteControllerPublicIdentity,
+): Promise<boolean> {
+  try {
+    return (
+      identity.keyId ===
+      (await deriveRemoteControllerKeyId(
+        identity.signingPublicKeyJwk,
+        identity.encryptionPublicKeyJwk,
+      ))
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Validates an account-bound target runtime public-key bundle. */
 export function isRemoteTargetPublicIdentity(
   value: unknown,

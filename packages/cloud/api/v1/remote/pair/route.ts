@@ -18,6 +18,7 @@
 
 import {
   isRemoteControllerPublicIdentity,
+  remoteControllerIdentityMatchesKeyId,
   REMOTE_CONTROL_PROTOCOL_VERSION,
   REMOTE_TARGET_PAIRING_CAPABILITIES,
 } from "@elizaos/shared/contracts/remote-control";
@@ -134,7 +135,10 @@ app.post("/", async (c) => {
         encryptionPublicKeyJwk: controller.encryptionPublicKeyJwk,
         createdAt: Date.now(),
       };
-      if (!isRemoteControllerPublicIdentity(controllerIdentity)) {
+      if (
+        !isRemoteControllerPublicIdentity(controllerIdentity) ||
+        !(await remoteControllerIdentityMatchesKeyId(controllerIdentity))
+      ) {
         return c.json(
           { success: false, error: "Controller identity is invalid" },
           400,
@@ -237,7 +241,8 @@ app.post("/", async (c) => {
         !Number.isSafeInteger(grantTtlSeconds) ||
         (grantTtlSeconds as number) < MIN_GRANT_TTL_SECONDS ||
         (grantTtlSeconds as number) > MAX_GRANT_TTL_SECONDS ||
-        !isRemoteControllerPublicIdentity(controllerIdentity)
+        !isRemoteControllerPublicIdentity(controllerIdentity) ||
+        !(await remoteControllerIdentityMatchesKeyId(controllerIdentity))
       ) {
         return c.json(
           {

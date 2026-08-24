@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Devices & Runtimes pairing proof</title>
+    <style>
+      :root { color-scheme: light; --ink:#18241f; --muted:#65736d; --paper:#f4efe4; --card:#fffdf7; --line:#c8c0af; --green:#176b4d; --red:#a9362b; --gold:#d99c35; }
+      * { box-sizing: border-box; }
+      body { margin:0; min-height:100vh; background:radial-gradient(circle at 15% 10%,#fff8d8 0,transparent 27%),linear-gradient(145deg,#dde8dc,#f4efe4 46%,#ecd8ca); color:var(--ink); font:15px/1.45 "Avenir Next",Avenir,sans-serif; }
+      main { width:min(1120px,calc(100% - 32px)); margin:auto; padding:42px 0 54px; }
+      header { display:flex; justify-content:space-between; gap:24px; align-items:end; margin-bottom:26px; }
+      h1 { margin:0; max-width:700px; font:600 clamp(34px,5vw,64px)/.98 Georgia,serif; letter-spacing:-.04em; }
+      .eyebrow { color:var(--green); font-weight:700; letter-spacing:.14em; text-transform:uppercase; font-size:12px; }
+      .receipt { color:var(--muted); max-width:330px; }
+      .surfaces { display:grid; grid-template-columns:1.35fr .75fr; gap:24px; align-items:start; }
+      .device { border:1px solid var(--line); background:color-mix(in srgb,var(--card) 92%,transparent); box-shadow:0 24px 70px #604b3721; overflow:hidden; }
+      .mac { border-radius:22px; }
+      .phone { border-radius:36px; border-width:7px; }
+      .bar { padding:13px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; background:#f0eadc; }
+      .screen { padding:24px; min-height:490px; }
+      .phone .screen { padding:22px 18px; min-height:515px; }
+      h2 { margin:0 0 6px; font:600 26px/1.1 Georgia,serif; }
+      p { color:var(--muted); margin:0 0 18px; }
+      .panel { border:1px solid var(--line); background:#fff; padding:18px; margin-top:16px; }
+      .code { font:700 38px/1 ui-monospace,SFMono-Regular,monospace; letter-spacing:.16em; margin:12px 0; }
+      .qr { width:128px; height:128px; border:10px solid #fff; background:repeating-conic-gradient(#18241f 0 25%,#fff 0 50%) 0/18px 18px; box-shadow:0 0 0 1px var(--line); }
+      .pair-grid { display:grid; grid-template-columns:auto 1fr; gap:20px; align-items:center; }
+      button,input { width:100%; min-height:44px; border:1px solid var(--ink); border-radius:3px; padding:10px 13px; font:inherit; }
+      button { cursor:pointer; background:var(--ink); color:white; font-weight:700; margin-top:9px; }
+      button.secondary { background:transparent; color:var(--ink); }
+      button.danger { background:var(--red); border-color:var(--red); }
+      button:disabled { opacity:.42; cursor:not-allowed; }
+      .identity { font-family:ui-monospace,SFMono-Regular,monospace; font-size:12px; overflow-wrap:anywhere; color:var(--muted); }
+      .status { min-height:46px; border:1px solid var(--gold); background:#f6f0df; padding:11px 13px; margin-top:14px; }
+      .status.ok { border-color:var(--green); background:#e4f0e9; }
+      .status.fail { border-color:var(--red); background:#f7e6e2; }
+      .proofs { margin-top:24px; display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+      .proof { border-top:3px solid var(--line); padding-top:9px; color:var(--muted); font-size:13px; }
+      .proof.on { border-color:var(--green); color:var(--ink); }
+      @media(max-width:760px){ header{display:block}.receipt{margin-top:14px}.surfaces{grid-template-columns:1fr}.proofs{grid-template-columns:1fr 1fr}.pair-grid{grid-template-columns:1fr}.qr{margin:auto} }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header><div><div class="eyebrow">Local contract fixture</div><h1>Pair the phone you can name.</h1></div><div class="receipt">No production traffic or credentials. This deterministic harness makes every acceptance boundary visible before Simulator wiring.</div></header>
+      <section class="surfaces">
+        <article class="device mac"><div class="bar"><strong>Nubs's Mac</strong><span>Settings / Devices & Runtimes</span></div><div class="screen"><h2>Remote control</h2><p>Create one claim that expires and can only activate after you confirm the exact phone identity.</p><button id="create">Create one-use code</button><div class="panel" id="mac-panel"></div><div class="status" id="mac-status">Ready to create a pairing claim.</div></div></article>
+        <article class="device phone"><div class="bar"><strong>9:41</strong><span>Eliza iPhone</span></div><div class="screen"><h2>Connect to Mac</h2><p>Signed in as <strong>owner-one</strong></p><label for="code">Six-digit code</label><input id="code" inputmode="numeric" maxlength="6" placeholder="000000" /><button id="enter">Claim Mac</button><button id="scan" class="secondary">Scan displayed QR</button><button id="wrong" class="secondary">Try wrong code</button><button id="expire" class="secondary">Expire current code</button><div class="status" id="phone-status">Waiting for a Mac code.</div></div></article>
+      </section>
+      <section class="proofs"><div class="proof" id="p-claim">One-use claim</div><div class="proof" id="p-confirm">Exact identity confirmed</div><div class="proof" id="p-persist">Relaunch persisted</div><div class="proof" id="p-revoke">Revocation terminated</div></section>
+    </main>
+    <script>
+      const KEY="eliza-pairing-demo-v1";
+      const fresh=()=>({status:"idle",code:"042731",session:"11111111-1111-4111-8111-111111111111",expiresAt:0,controller:{name:"Nubs's iPhone",deviceId:"iphone-demo-7f31",keyId:"p256:9R4q-yhPr0ofYPW7bJdYOdCJVbqPcImqP7BFYV2wEQg"},reloaded:false});
+      let state=(()=>{try{return {...fresh(),...JSON.parse(localStorage.getItem(KEY)||"{}"),reloaded:localStorage.getItem(KEY)!==null}}catch{return fresh()}})();
+      const $=id=>document.getElementById(id);
+      function save(){localStorage.setItem(KEY,JSON.stringify(state));}
+      function message(id,text,type=""){$(id).textContent=text;$(id).className=`status ${type}`;}
+      function render(){
+        const active=state.status==="active";
+        const claimed=state.status==="claimed";
+        $("mac-panel").innerHTML=state.status==="idle"?"<strong>No open claim</strong>":state.status==="revoked"?"<strong>No active controller</strong><div>This one-use claim is closed.</div>":active?`<strong>Active controller</strong><div>${state.controller.name}</div><div class="identity">${state.controller.deviceId}<br>${state.controller.keyId}</div><button id="revoke" class="danger">Revoke controller</button>`:`<div class="pair-grid"><div class="qr" role="img" aria-label="QR code for one-use pairing"></div><div><div>One-use code</div><div class="code">${state.code}</div><div class="identity">Session ${state.session}</div></div></div>${claimed?`<div class="panel"><strong>Confirm exact controller</strong><div>${state.controller.name}</div><div class="identity">${state.controller.deviceId}<br>${state.controller.keyId}</div><button id="confirm">Confirm and activate once</button><button id="mismatch" class="secondary">Simulate identity mismatch</button></div>`:""}`;
+        $("create").disabled=state.status!=="idle"&&state.status!=="revoked";
+        if(state.status==="pending")message("mac-status","Claim open for five minutes. Waiting for the signed-in phone.");
+        if(claimed)message("mac-status","Phone claimed the code. Activation is blocked until exact identity confirmation.");
+        if(active)message("mac-status","Controller active. Relaunch and revocation remain testable.","ok");
+        if(state.status==="revoked")message("mac-status","Access revoked and the controller session terminated.","fail");
+        $("p-claim").classList.toggle("on",["claimed","active","revoked"].includes(state.status));
+        $("p-confirm").classList.toggle("on",["active","revoked"].includes(state.status));
+        $("p-persist").classList.toggle("on",active&&state.reloaded);
+        $("p-revoke").classList.toggle("on",state.status==="revoked");
+        $("confirm")?.addEventListener("click",()=>{state.status="active";save();message("phone-status","Mac confirmed this exact phone. Access activated once.","ok");render()});
+        $("mismatch")?.addEventListener("click",()=>message("mac-status","Identity mismatch: confirmation rejected without activation.","fail"));
+        $("revoke")?.addEventListener("click",()=>{state.status="revoked";save();message("phone-status","Access terminated by Mac revocation.","fail");render()});
+      }
+      function claim(code){
+        if(state.status==="claimed"||state.status==="active"){message("phone-status","Replay rejected: this claim was already consumed.","fail");return}
+        if(state.status!=="pending"||Date.now()>state.expiresAt){message("phone-status","Expired code rejected without revealing a session.","fail");return}
+        if(code!==state.code){message("phone-status","Wrong code rejected.","fail");return}
+        state.status="claimed";save();message("phone-status","Claimed. Check the exact identity shown on Mac.","ok");render();
+      }
+      $("create").addEventListener("click",()=>{state=fresh();state.status="pending";state.expiresAt=Date.now()+300000;save();message("phone-status","Scan the QR or enter the six-digit code.");render()});
+      $("enter").addEventListener("click",()=>claim($("code").value));
+      $("scan").addEventListener("click",()=>claim(state.code));
+      $("wrong").addEventListener("click",()=>claim("999999"));
+      $("expire").addEventListener("click",()=>{state.expiresAt=Date.now()-1;save();claim(state.code)});
+      render();
+    </script>
+  </body>
+</html>

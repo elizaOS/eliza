@@ -2195,12 +2195,9 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
     APP_URL_SCHEME,
   );
   if (remotePairing) {
-    if (
-      !isElectrobunRuntime() ||
-      !navigator.platform.toLowerCase().includes("linux")
-    ) {
+    if (!isNative || !isIOS) {
       console.warn(
-        `${APP_LOG_PREFIX} Remote target pairing is available only on the enrolled Linux desktop target`,
+        `${APP_LOG_PREFIX} Remote controller pairing requires the signed-in iPhone app`,
       );
       return;
     }

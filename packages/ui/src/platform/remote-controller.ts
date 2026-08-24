@@ -1,8 +1,14 @@
 /**
- * Renderer adapter for the native remote-controller identity. The desktop main
- * process retains private signing/decryption keys; this module only forwards
- * public identity, encrypted commands, and opaque result envelopes.
+ * Renderer adapter for native remote-controller identity. Private keys remain
+ * in desktop credential storage or the native phone's device-only secure store.
  */
+import { Capacitor } from "@capacitor/core";
+import {
+  canonicalizeRemoteControlValue,
+  deriveRemoteControllerKeyId,
+  isRemoteControllerPublicIdentity,
+  REMOTE_CONTROL_PROTOCOL_VERSION,
+} from "@elizaos/shared/contracts/remote-control";
 import type {
   EncryptedRemoteControlEnvelope,
   RemoteCommandAction,
@@ -12,6 +18,166 @@ import type {
   SignedRemoteCommand,
 } from "@elizaos/shared/contracts/remote-control";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+
+const MOBILE_CONTROLLER_IDENTITY_KEY = "remote.controller_identity" as const;
+
+interface StoredMobileControllerIdentity {
+  version: 1;
+  identity: RemoteControllerPublicIdentity;
+  signingPrivateKeyJwk: JsonWebKey;
+  encryptionPrivateKeyJwk: JsonWebKey;
+}
+
+let mobileIdentityMutationTail: Promise<unknown> = Promise.resolve();
+
+function mobilePlatform(): "ios" | "android" | undefined {
+  const platform = Capacitor.getPlatform();
+  return platform === "ios" || platform === "android" ? platform : undefined;
+}
+
+function publicJwk(privateJwk: JsonWebKey): JsonWebKey {
+  return {
+    kty: privateJwk.kty,
+    crv: privateJwk.crv,
+    x: privateJwk.x,
+    y: privateJwk.y,
+  };
+}
+
+function isPrivateP256Jwk(value: unknown): value is JsonWebKey {
+  if (!value || typeof value !== "object") return false;
+  const jwk = value as JsonWebKey;
+  return (
+    jwk.kty === "EC" &&
+    jwk.crv === "P-256" &&
+    typeof jwk.x === "string" &&
+    typeof jwk.y === "string" &&
+    typeof jwk.d === "string"
+  );
+}
+
+async function parseStoredMobileIdentity(
+  serialized: string,
+): Promise<StoredMobileControllerIdentity> {
+  let value: unknown;
+  try {
+    value = JSON.parse(serialized);
+  } catch {
+    throw new Error("Stored controller identity is corrupt.");
+  }
+  if (!value || typeof value !== "object") {
+    throw new Error("Stored controller identity is corrupt.");
+  }
+  const record = value as Partial<StoredMobileControllerIdentity>;
+  if (
+    record.version !== 1 ||
+    !isRemoteControllerPublicIdentity(record.identity) ||
+    !isPrivateP256Jwk(record.signingPrivateKeyJwk) ||
+    !isPrivateP256Jwk(record.encryptionPrivateKeyJwk)
+  ) {
+    throw new Error("Stored controller identity is corrupt.");
+  }
+  const signingPublicKeyJwk = publicJwk(record.signingPrivateKeyJwk);
+  const encryptionPublicKeyJwk = publicJwk(record.encryptionPrivateKeyJwk);
+  if (
+    canonicalizeRemoteControlValue(record.identity.signingPublicKeyJwk) !==
+      canonicalizeRemoteControlValue(signingPublicKeyJwk) ||
+    canonicalizeRemoteControlValue(record.identity.encryptionPublicKeyJwk) !==
+      canonicalizeRemoteControlValue(encryptionPublicKeyJwk) ||
+    record.identity.keyId !==
+      (await deriveRemoteControllerKeyId(
+        signingPublicKeyJwk,
+        encryptionPublicKeyJwk,
+      ))
+  ) {
+    throw new Error("Stored controller identity is corrupt.");
+  }
+  return record as StoredMobileControllerIdentity;
+}
+
+async function generatePrivateP256Jwk(
+  usage: "sign" | "deriveBits",
+): Promise<JsonWebKey> {
+  const algorithm =
+    usage === "sign"
+      ? ({ name: "ECDSA", namedCurve: "P-256" } as EcKeyGenParams)
+      : ({ name: "ECDH", namedCurve: "P-256" } as EcKeyGenParams);
+  const pair = (await crypto.subtle.generateKey(
+    algorithm,
+    true,
+    usage === "sign" ? ["sign", "verify"] : ["deriveBits"],
+  )) as CryptoKeyPair;
+  return crypto.subtle.exportKey("jwk", pair.privateKey);
+}
+
+async function getOrCreateMobileControllerIdentity(input: {
+  ownerId: string;
+  displayName?: string;
+  platform: "ios" | "android";
+}): Promise<RemoteControllerPublicIdentity> {
+  const operation = async () => {
+    const { ElizaSecureStore } = await import(
+      "@elizaos/capacitor-secure-store"
+    );
+    const existing = await ElizaSecureStore.get({
+      key: MOBILE_CONTROLLER_IDENTITY_KEY,
+    });
+    if (existing.ok && existing.value) {
+      const stored = await parseStoredMobileIdentity(existing.value);
+      if (stored.identity.ownerId === input.ownerId) return stored.identity;
+    } else if (existing.error !== "not_found") {
+      throw new Error("Secure controller identity storage is unavailable.");
+    }
+
+    const signingPrivateKeyJwk = await generatePrivateP256Jwk("sign");
+    const encryptionPrivateKeyJwk = await generatePrivateP256Jwk("deriveBits");
+    const signingPublicKeyJwk = publicJwk(signingPrivateKeyJwk);
+    const encryptionPublicKeyJwk = publicJwk(encryptionPrivateKeyJwk);
+    const identity: RemoteControllerPublicIdentity = {
+      version: REMOTE_CONTROL_PROTOCOL_VERSION,
+      role: "controller",
+      ownerId: input.ownerId,
+      deviceId: crypto.randomUUID(),
+      keyId: await deriveRemoteControllerKeyId(
+        signingPublicKeyJwk,
+        encryptionPublicKeyJwk,
+      ),
+      displayName:
+        input.displayName ??
+        (input.platform === "ios" ? "My iPhone" : "My Android phone"),
+      platform: input.platform,
+      signingPublicKeyJwk,
+      encryptionPublicKeyJwk,
+      createdAt: Date.now(),
+    };
+    const serialized = JSON.stringify({
+      version: 1,
+      identity,
+      signingPrivateKeyJwk,
+      encryptionPrivateKeyJwk,
+    } satisfies StoredMobileControllerIdentity);
+    const write = await ElizaSecureStore.set({
+      key: MOBILE_CONTROLLER_IDENTITY_KEY,
+      value: serialized,
+    });
+    if (!write.ok) {
+      throw new Error("Secure controller identity storage is unavailable.");
+    }
+    const verification = await ElizaSecureStore.get({
+      key: MOBILE_CONTROLLER_IDENTITY_KEY,
+    });
+    if (!verification.ok || verification.value !== serialized) {
+      throw new Error("Secure controller identity write could not be verified.");
+    }
+    return identity;
+  };
+  const current = mobileIdentityMutationTail.then(operation, operation);
+  mobileIdentityMutationTail = current.then(
+    () => undefined,
+    () => undefined,
+  );
+  return current;
+}
 
 function desktopPlatform(): "macos" | "windows" | "linux" {
   const platform = navigator.platform.toLowerCase();
@@ -24,6 +190,13 @@ export async function getOrCreateRemoteControllerIdentity(input: {
   ownerId: string;
   displayName?: string;
 }): Promise<RemoteControllerPublicIdentity> {
+  const nativePlatform = mobilePlatform();
+  if (nativePlatform) {
+    return getOrCreateMobileControllerIdentity({
+      ...input,
+      platform: nativePlatform,
+    });
+  }
   const platform = desktopPlatform();
   const identity =
     await invokeDesktopBridgeRequest<RemoteControllerPublicIdentity>({
@@ -158,6 +331,10 @@ export async function clearRemoteControllerSessionState(input: {
   controllerDeviceId: string;
   sessionId: string;
 }): Promise<boolean> {
+  if (mobilePlatform()) {
+    // Phone claim/activation has no local command sequence or outbox state yet.
+    return true;
+  }
   const result = await invokeDesktopBridgeRequest<{ cleared: boolean }>({
     rpcMethod: "remoteControllerClearSessionState",
     ipcChannel: "remoteController:clearSessionState",

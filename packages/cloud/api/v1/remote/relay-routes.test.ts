@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
+  deriveRemoteControllerKeyId,
   REMOTE_CONTROL_ENVELOPE_ALGORITHM,
   REMOTE_CONTROL_PROTOCOL_VERSION,
 } from "@elizaos/shared/contracts/remote-control";
@@ -20,7 +21,6 @@ const sessionId = "50000000-0000-4000-8000-000000000001";
 const grantId = "60000000-0000-4000-8000-000000000001";
 const commandId = "command-one";
 const claimToken = "70000000-0000-4000-8000-000000000001";
-const controllerKeyId = "controller-key-one";
 const targetKeyId = "target-key-one";
 const hostToken = `rhost_v1_${"A".repeat(43)}`;
 const publicJwk = {
@@ -29,6 +29,7 @@ const publicJwk = {
   x: "k6rgke6fNq62RpJc23PzYnmd9702xegeg3Ian-dsmqk",
   y: "LWE89OONX0oDV-cNpPQaAVu456yXJ70K8E9Iq2LQHvM",
 };
+const controllerKeyId = await deriveRemoteControllerKeyId(publicJwk, publicJwk);
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: ownerId,
@@ -860,6 +861,24 @@ describe("secure remote relay routes", () => {
         controllerPlatform: "ios",
       },
     });
+  });
+
+  test("rejects a controller fingerprint that does not match its public keys", async () => {
+    const response = await request("/api/v1/remote/pair", {
+      sessionId,
+      code: "123456",
+      controller: {
+        deviceId: "iphone-one",
+        keyId: `p256:${"A".repeat(43)}`,
+        displayName: "Nubs's iPhone",
+        platform: "ios",
+        signingPublicKeyJwk: publicJwk,
+        encryptionPublicKeyJwk: publicJwk,
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(claimPendingHostForOwner).not.toHaveBeenCalled();
   });
 
   test("fails closed on claim replay and requires explicit Mac confirmation", async () => {

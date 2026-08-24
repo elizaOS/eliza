@@ -22,7 +22,9 @@ const iosBoot = vi.hoisted(() => ({
   runEmbedHandshake: vi.fn(async () => undefined),
   registerServiceWorker: vi.fn(),
   lifecycleDependencies: undefined as
-    | { handleDeepLink: (url: string) => void }
+    | {
+        handleDeepLink: (url: string) => undefined | Promise<boolean>;
+      }
     | undefined,
   initializeDeepLinks: vi.fn(),
   initializeAppLifecycle: vi.fn(),
@@ -157,6 +159,21 @@ describe("renderer interactive iOS composition", () => {
 
     const handleDeepLink = iosBoot.lifecycleDependencies?.handleDeepLink;
     expect(handleDeepLink).toBeTypeOf("function");
+    const remotePairingRequest = vi.fn();
+    window.addEventListener(
+      "eliza:remote-controller-pairing",
+      remotePairingRequest,
+    );
+    handleDeepLink?.(
+      "elizaos://remote/control-claim?session=11111111-1111-4111-8111-111111111111&code=042731",
+    );
+    expect(
+      (remotePairingRequest.mock.calls[0]?.[0] as CustomEvent).detail,
+    ).toEqual({
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      code: "042731",
+      source: "qr",
+    });
     const connectRequest = vi.fn();
     const removeConnectListener = listenForConnectRequests(connectRequest);
     const notificationCenterRequest = vi.fn();
@@ -205,6 +222,10 @@ describe("renderer interactive iOS composition", () => {
       }),
     );
     removeConnectListener();
+    window.removeEventListener(
+      "eliza:remote-controller-pairing",
+      remotePairingRequest,
+    );
     window.removeEventListener(
       OPEN_NOTIFICATION_CENTER_EVENT,
       notificationCenterRequest,
