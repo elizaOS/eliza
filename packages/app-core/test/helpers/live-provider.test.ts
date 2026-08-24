@@ -212,4 +212,16 @@ describe("selectLiveProvider", () => {
 
     expect(selectLiveProvider("openai")).toBeNull();
   });
+
+  it("recognizes both Claude CLI state layouts", async () => {
+    const { cliBackendStatePaths } = await import("./live-provider.ts");
+
+    expect(cliBackendStatePaths("claude", "/test-home")).toEqual([
+      path.join("/test-home", ".claude", ".credentials.json"),
+      path.join("/test-home", ".claude.json"),
+    ]);
+    expect(cliBackendStatePaths("codex", "/test-home")).toEqual([
+      path.join("/test-home", ".codex", "auth.json"),
+    ]);
+  });
 });
