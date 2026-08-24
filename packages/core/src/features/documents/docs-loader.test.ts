@@ -1,25 +1,43 @@
 /**
- * Exercises the real filesystem document loader with temporary directories and
- * a recording service boundary, covering path resolution, traversal, content
- * encoding, option normalization, and per-file failure accounting.
+ * Exercises filesystem document loading with temporary directories, including
+ * a real owner-gated DOCUMENT import through DocumentService and PGLite
+ * persistence. Narrow loader cases use a recording service for traversal and
+ * normalization assertions that do not involve authorization or storage.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import type { UUID } from "../../types";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import type { AgentRuntime } from "../../runtime.ts";
+import { createTestRuntime } from "../../testing/pglite-runtime.ts";
+import {
+	ChannelType,
+	type HandlerOptions,
+	type Memory,
+	type UUID,
+} from "../../types";
+import { documentAction } from "./actions.ts";
 import {
 	addDocumentFromFilePath,
 	getDocumentFileContentType,
 	getDocumentsPath,
 	loadDocumentsFromPath,
 } from "./docs-loader.ts";
+import { documentsPlugin } from "./index.ts";
+import { DocumentService } from "./service.ts";
 import type { AddDocumentOptions } from "./types.ts";
 
 const agentId = "00000000-0000-0000-0000-000000000001" as UUID;
 const storedDocumentMemoryId = "00000000-0000-0000-0000-000000000002" as UUID;
+const ownerId = "f4320000-0000-4000-8000-000000000001" as UUID;
+const userId = "f4320000-0000-4000-8000-000000000002" as UUID;
+const worldId = "f4320000-0000-4000-8000-000000000003" as UUID;
+const roomId = "f4320000-0000-4000-8000-000000000004" as UUID;
 const temporaryDirectories: string[] = [];
 const originalDocumentsPath = process.env.DOCUMENTS_PATH;
+let integrationRuntime: AgentRuntime;
+let integrationService: DocumentService;
+let cleanupIntegrationRuntime: (() => Promise<void>) | undefined;
 
 function makeTemporaryDirectory(): string {
 	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "docs-loader-test-"));
@@ -58,6 +76,83 @@ function makeService(failingFilename?: string) {
 		},
 	};
 }
+
+function importMessage(entityId: UUID): Memory {
+	return {
+		id: crypto.randomUUID() as UUID,
+		agentId: integrationRuntime.agentId,
+		entityId,
+		roomId,
+		worldId,
+		content: {
+			text: "import the local release evidence",
+			source: "test",
+			channelType: ChannelType.DM,
+		},
+		createdAt: Date.now(),
+	};
+}
+
+async function persistedRowCounts(): Promise<{
+	documents: number;
+	fragments: number;
+}> {
+	const [documents, fragments] = await Promise.all([
+		integrationRuntime.getMemories({
+			tableName: "documents",
+			agentId: integrationRuntime.agentId,
+			count: 100,
+		}),
+		integrationRuntime.getMemories({
+			tableName: "document_fragments",
+			agentId: integrationRuntime.agentId,
+			count: 100,
+		}),
+	]);
+	return { documents: documents.length, fragments: fragments.length };
+}
+
+beforeAll(async () => {
+	const created = await createTestRuntime({
+		characterName: "DocumentLoaderOwnerImportTest",
+		plugins: [documentsPlugin],
+	});
+	integrationRuntime = created.runtime;
+	cleanupIntegrationRuntime = created.cleanup;
+	integrationRuntime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId);
+	integrationService = (await integrationRuntime.getServiceLoadPromise(
+		DocumentService.serviceType,
+	)) as DocumentService;
+
+	for (const [entityId, name] of [
+		[ownerId, "Document owner"],
+		[userId, "Ordinary user"],
+	] as const) {
+		await integrationRuntime.ensureConnection({
+			entityId,
+			roomId,
+			worldId,
+			worldName: "Document loader integration",
+			userName: name,
+			name,
+			source: "test",
+			type: ChannelType.DM,
+		});
+	}
+	await integrationRuntime.ensureWorldExists({
+		id: worldId,
+		name: "Document loader integration",
+		agentId: integrationRuntime.agentId,
+		metadata: {
+			roles: { [ownerId]: "OWNER", [userId]: "USER" },
+			roleSources: { [ownerId]: "owner", [userId]: "manual" },
+		},
+	});
+}, 120_000);
+
+afterAll(async () => {
+	await cleanupIntegrationRuntime?.();
+}, 120_000);
 
 afterEach(() => {
 	for (const directory of temporaryDirectories.splice(0)) {
@@ -327,4 +422,101 @@ describe("loadDocumentsFromPath", () => {
 			loadDocumentsFromPath(makeService(), agentId, undefined, filePath),
 		).rejects.toThrow(`Failed to read document directory ${filePath}`);
 	});
+});
+
+describe("DOCUMENT import_file persistence boundary", () => {
+	it("fails invalid IDs before file access, denies a non-owner, and stores a queryable owner import", async () => {
+		const directory = makeTemporaryDirectory();
+		const missingPath = path.join(directory, "missing.md");
+
+		await expect(
+			addDocumentFromFilePath({
+				service: integrationService,
+				agentId: integrationRuntime.agentId,
+				worldId: "not-a-uuid" as UUID,
+				roomId,
+				entityId: ownerId,
+				filePath: missingPath,
+			}),
+		).rejects.toMatchObject({
+			name: "ElizaError",
+			code: "DOCUMENT_SCOPE_ID_INVALID",
+			context: { field: "worldId", value: "not-a-uuid" },
+		});
+		expect(fs.existsSync(missingPath)).toBe(false);
+		expect(await persistedRowCounts()).toEqual({ documents: 0, fragments: 0 });
+
+		const filePath = path.join(directory, "owner-import.md");
+		const content = "Owner import persistence needle 26336";
+		fs.writeFileSync(filePath, content);
+		const handlerOptions = {
+			parameters: { action: "import_file", filePath },
+		} as HandlerOptions;
+
+		const denied = await documentAction.handler?.(
+			integrationRuntime,
+			importMessage(userId),
+			undefined,
+			handlerOptions,
+		);
+		expect(denied?.success).toBe(false);
+		expect(denied?.values).toMatchObject({ error: "forbidden" });
+		expect(await persistedRowCounts()).toEqual({ documents: 0, fragments: 0 });
+
+		const ownerMessage = importMessage(ownerId);
+		const imported = await documentAction.handler?.(
+			integrationRuntime,
+			ownerMessage,
+			undefined,
+			handlerOptions,
+		);
+		expect(imported?.success).toBe(true);
+		const documentId = imported?.values?.documentId as UUID | undefined;
+		expect(documentId).toMatch(/^[0-9a-f-]{36}$/i);
+
+		const stored = await integrationService.getDocumentById(
+			documentId as UUID,
+			ownerMessage,
+		);
+		expect(stored).toMatchObject({
+			id: documentId,
+			content: { text: content },
+			worldId,
+			roomId,
+			entityId: ownerId,
+			metadata: {
+				scope: "user-private",
+				scopedToEntityId: ownerId,
+				addedBy: ownerId,
+				addedByRole: "OWNER",
+				addedFrom: "file",
+			},
+		});
+
+		const query = {
+			...ownerMessage,
+			id: crypto.randomUUID() as UUID,
+			content: { ...ownerMessage.content, text: "persistence needle 26336" },
+		};
+		const results = await integrationService.searchDocuments(
+			query,
+			undefined,
+			"keyword",
+		);
+		expect(results).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					content: { text: content },
+					metadata: expect.objectContaining({ documentId }),
+				}),
+			]),
+		);
+
+		const counts = await persistedRowCounts();
+		expect(counts.documents).toBe(1);
+		expect(counts.fragments).toBeGreaterThan(0);
+		process.stdout.write(
+			`DOCUMENT_IMPORT_PROOF ${JSON.stringify({ denied: denied?.values?.error, documentId, counts, queryable: true })}\n`,
+		);
+	}, 120_000);
 });
