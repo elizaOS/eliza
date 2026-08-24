@@ -117,6 +117,7 @@ import {
   isOllamaStructuredOutputDisabled,
 } from "../utils/config";
 import { isZerollamaFlavor, resolveOllamaHostFlavor } from "../utils/host-flavor";
+import { assertCompleteOllamaGeneration } from "../utils/model-output";
 import { emitModelUsed, estimateUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { resolveOllamaFetch } from "../utils/ollama-chat-compat-fetch";
 import { ensureModelAvailable } from "./availability";
@@ -295,15 +296,20 @@ function buildOllamaStreamTextResult(args: {
   // Keep the original rejecting promises for callers, while attaching separate
   // observers so the same SDK failure cannot become an unhandled rejection when
   // the textStream generator is the authoritative failure path.
-  const textPromise = Promise.resolve(streamResult.text);
+  const sdkTextPromise = Promise.resolve(streamResult.text);
   // error-policy:J5 the same provider failure is observed and rethrown by the
   // textStream generator; this observer does not alter textPromise.
+  void sdkTextPromise.catch(() => undefined);
+  const rawFinishReasonPromise = Promise.resolve(streamResult.finishReason);
+  void rawFinishReasonPromise.catch(() => undefined);
+  const finishReasonPromise = rawFinishReasonPromise.then((reason) => {
+    const finishReason = reason as string | undefined;
+    assertCompleteOllamaGeneration(finishReason, "ollama");
+    return finishReason;
+  });
+  void finishReasonPromise.catch(() => undefined);
+  const textPromise = Promise.all([sdkTextPromise, finishReasonPromise]).then(([text]) => text);
   void textPromise.catch(() => undefined);
-  // error-policy:J5 finish-reason rejection is the same SDK stream failure
-  // surfaced by textStream; this diagnostic side promise is optional.
-  const finishReasonPromise = Promise.resolve(streamResult.finishReason).catch(
-    () => undefined
-  ) as Promise<string | undefined>;
 
   const usagePromise = Promise.resolve(streamResult.usage)
     .then(async (usage) => {
@@ -329,6 +335,7 @@ function buildOllamaStreamTextResult(args: {
       for await (const chunk of streamResult.textStream) {
         yield chunk;
       }
+      await finishReasonPromise;
       completed = true;
     } catch (streamErr) {
       // error-policy:J2 add model and endpoint context, then preserve the
@@ -404,11 +411,14 @@ function buildOllamaStreamWithToolsResult(args: {
   // error-policy:J5 the authoritative stream failure is rethrown by the
   // generator; this side observer leaves sdkTextPromise rejecting for callers.
   void sdkTextPromise.catch(() => undefined);
-  // error-policy:J5 finish-reason rejection is the same SDK stream failure
-  // surfaced by textStream; this diagnostic side promise is optional.
-  const finishReasonPromise = Promise.resolve(streamResult.finishReason).catch(
-    () => undefined
-  ) as Promise<string | undefined>;
+  const rawFinishReasonPromise = Promise.resolve(streamResult.finishReason);
+  void rawFinishReasonPromise.catch(() => undefined);
+  const finishReasonPromise = rawFinishReasonPromise.then((reason) => {
+    const finishReason = reason as string | undefined;
+    assertCompleteOllamaGeneration(finishReason, "ollama");
+    return finishReason;
+  });
+  void finishReasonPromise.catch(() => undefined);
 
   const toolCallsOutcome = Promise.resolve(streamResult.toolCalls).then(
     (calls) => ({ ok: true as const, calls }),
@@ -451,10 +461,13 @@ function buildOllamaStreamWithToolsResult(args: {
         return sdkTextPromise;
       })
     : sdkTextPromise;
+  const completeTextPromise = Promise.all([textPromise, finishReasonPromise]).then(
+    ([text]) => text
+  );
   // error-policy:J5 planner text derives from toolCallsPromise; when the
   // authoritative textStream fails first, observe the same side rejection
   // without changing the promise returned to callers.
-  void textPromise.catch(() => undefined);
+  void completeTextPromise.catch(() => undefined);
 
   async function* textStreamWithUsage(): AsyncIterable<string> {
     let completed = false;
@@ -463,6 +476,7 @@ function buildOllamaStreamWithToolsResult(args: {
         for await (const _ of streamResult.textStream) {
           // Drain text deltas; only the trailing plan JSON chunk is yielded (see module comment).
         }
+        await finishReasonPromise;
         const mapped = await toolCallsPromise;
         const first = mapped[0];
         if (first) {
@@ -478,6 +492,7 @@ function buildOllamaStreamWithToolsResult(args: {
           yield chunk;
         }
       }
+      await finishReasonPromise;
       completed = true;
     } catch (streamErr) {
       // error-policy:J2 add model and endpoint context, then preserve the
@@ -502,7 +517,7 @@ function buildOllamaStreamWithToolsResult(args: {
 
   return {
     textStream: textStreamWithUsage(),
-    text: textPromise,
+    text: completeTextPromise,
     usage: usagePromise,
     finishReason: finishReasonPromise,
     toolCalls: toolCallsPromise,
@@ -564,7 +579,7 @@ async function handleTextWithModelType(
 ): Promise<string | TextStreamResult> {
   const extended = params as GenerateTextParamsWithNativeOptions;
   const { prompt, temperature = 0.7, frequencyPenalty, presencePenalty } = params;
-  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? 8192);
+  const maxTokens = params.maxTokens;
 
   let modelIdForLog = "";
   try {
@@ -711,6 +726,7 @@ async function handleTextWithModelType(
     }
 
     const result = await generateText(baseGenerateArgs as Parameters<typeof generateText>[0]);
+    assertCompleteOllamaGeneration(result.finishReason as string | undefined, "ollama");
 
     const usage =
       normalizeTokenUsage(result.usage) ?? estimateUsage(promptForUsageEstimate, result.text);

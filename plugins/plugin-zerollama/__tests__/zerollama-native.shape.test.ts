@@ -181,6 +181,70 @@ describe("zerollama native wire helpers", () => {
     expect(streamFetch.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
   });
 
+  it("rejects a native completion that stopped at its output boundary", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        message: { content: "partial" },
+        done: true,
+        done_reason: "length",
+      })
+    );
+    const body = buildZerollamaChatBody({
+      model: "qwen3:0.6b",
+      messages: [{ role: "user", content: "hi" }],
+      stream: false,
+    });
+
+    await expect(
+      zerollamaChatComplete({
+        apiBase: "http://host:11434",
+        body,
+        fetchImpl: fetchImpl as typeof fetch,
+        promptForEstimate: "hi",
+        modelName: "qwen3:0.6b",
+      })
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  });
+
+  it("signals a native stream output-boundary stop after its final delta", async () => {
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  '{"message":{"content":"partial"},"done":false}\n' +
+                    '{"done":true,"done_reason":"length"}\n'
+                )
+              );
+              controller.close();
+            },
+          })
+        )
+    );
+    const body = buildZerollamaChatBody({
+      model: "qwen3:0.6b",
+      messages: [{ role: "user", content: "hi" }],
+      stream: true,
+    });
+    const result = zerollamaChatStream({
+      apiBase: "http://host:11434",
+      body,
+      fetchImpl: fetchImpl as typeof fetch,
+      promptForEstimate: "hi",
+      modelName: "qwen3:0.6b",
+    });
+    const chunks: string[] = [];
+
+    await expect(async () => {
+      for await (const chunk of result.textStream) chunks.push(chunk);
+    }).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    expect(chunks).toEqual(["partial"]);
+    await expect(result.text).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  });
+
   it("posts /api/embed with model+input only", async () => {
     const controller = new AbortController();
     const fetchImpl = vi.fn(async () =>

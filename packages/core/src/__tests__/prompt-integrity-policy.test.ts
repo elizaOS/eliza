@@ -250,6 +250,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/defaultMaxTokens/,
 		/params\.maxTokens\s*\?\?\s*(?:4096|8192)/,
 	],
+	"plugins/plugin-zerollama/models/text.ts": [
+		/params\.maxTokens\s*\?\?\s*8192/,
+	],
+	"plugins/plugin-zerollama/models/zerollama-text.ts": [
+		/params\.maxTokens\s*\?\?\s*8192/,
+	],
 	"plugins/plugin-wallet/src/chains/evm/providers/get-balance.ts": [
 		/maxTokens\s*:/,
 	],

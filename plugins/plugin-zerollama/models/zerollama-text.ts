@@ -56,7 +56,7 @@ export async function handleZerollamaText(args: {
   const { runtime, modelType, model, baseURL, fetchImpl, params } = args;
   const extended = params as GenerateTextParamsWithNativeOptions;
   const { prompt, temperature = 0.7, frequencyPenalty, presencePenalty } = params;
-  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? 8192);
+  const maxTokens = params.maxTokens;
 
   const tools = normalizeNativeTools(extended.tools);
   const system = resolveEffectiveSystemPrompt({
