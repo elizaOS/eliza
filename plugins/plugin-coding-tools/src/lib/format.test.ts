@@ -247,3 +247,16 @@ describe("capTranscriptForChat", () => {
     expect(head.endsWith("content")).toBe(true);
   });
 });
+
+describe("truncate surrogate safety", () => {
+  it("never bisects surrogate pairs when max cutoff lands inside a pair", () => {
+    // "a" + 10 emojis (20 code units): length 21.
+    // max = 5: cutoff lands between high and low surrogate of the 3rd emoji.
+    const longEmojiText = "a" + "😀".repeat(10);
+    const r = truncate(longEmojiText, 5);
+
+    expect(r.truncated).toBe(true);
+    const head = r.text.split("\n")[0];
+    expect(head.endsWith("\uD83D")).toBe(false);
+  });
+});

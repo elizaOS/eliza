@@ -152,8 +152,15 @@ export function truncate(
   max: number,
 ): { text: string; truncated: boolean } {
   if (s.length <= max) return { text: s, truncated: false };
+  let end = max;
+  if (end > 0 && end < s.length) {
+    const code = s.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
   return {
-    text: `${s.slice(0, max)}\n…[truncated, ${s.length - max} more chars]`,
+    text: `${s.slice(0, end)}\n…[truncated, ${s.length - max} more chars]`,
     truncated: true,
   };
 }
