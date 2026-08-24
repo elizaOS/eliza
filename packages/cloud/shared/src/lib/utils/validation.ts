@@ -40,6 +40,7 @@ export function isValidUUID(value: string): boolean {
  * @returns The sanitized UUID if valid, undefined otherwise.
  */
 export function sanitizeUUID(value: string | undefined | null): string | undefined {
+  if (typeof value !== "string") return undefined;
   if (!value) return undefined;
 
   // Remove URL-encoded garbage that commonly appends to UUIDs:

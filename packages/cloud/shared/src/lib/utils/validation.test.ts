@@ -54,4 +54,17 @@ describe("sanitizeUUID", () => {
     expect(sanitizeUUID(null)).toBeUndefined();
     expect(sanitizeUUID(undefined)).toBeUndefined();
   });
+
+  it("returns undefined for non-string without throwing", () => {
+    // @ts-expect-error runtime guard check
+    expect(sanitizeUUID(123)).toBeUndefined();
+    // @ts-expect-error runtime guard check
+    expect(sanitizeUUID(true)).toBeUndefined();
+    // @ts-expect-error runtime guard check
+    expect(sanitizeUUID({} as unknown as string)).toBeUndefined();
+    // @ts-expect-error runtime guard check
+    expect(sanitizeUUID([] as unknown as string)).toBeUndefined();
+    // @ts-expect-error runtime guard check
+    expect(sanitizeUUID(0 as unknown as string)).toBeUndefined();
+  });
 });
