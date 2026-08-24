@@ -38,10 +38,13 @@ export function parseRedeemableEarningsNumber(
   value: string | number | null | undefined,
   fieldName: string,
 ): number {
-  if (value === null || value === undefined || String(value).trim() === "") {
+  if (typeof value !== "string" && typeof value !== "number") {
     throw new CorruptRedeemableEarningsNumberError(fieldName, value, "value is empty or missing");
   }
-  const parsed = Number(value);
+  if (typeof value === "string" && value.trim() === "") {
+    throw new CorruptRedeemableEarningsNumberError(fieldName, value, "value is empty or missing");
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) {
     throw new CorruptRedeemableEarningsNumberError(
       fieldName,

@@ -66,6 +66,18 @@ describe("parseRedeemableEarningsNumber", () => {
     );
   });
 
+  test("throws on boolean, object, and array inputs", () => {
+    expect(() =>
+      parseRedeemableEarningsNumber(true as unknown as number, "available_balance"),
+    ).toThrow(/empty or missing/);
+    expect(() =>
+      parseRedeemableEarningsNumber(false as unknown as number, "available_balance"),
+    ).toThrow(/empty or missing/);
+    expect(() =>
+      parseRedeemableEarningsNumber([10.5] as unknown as number, "available_balance"),
+    ).toThrow(/empty or missing/);
+  });
+
   test("names the field in the error so corrupt columns are identifiable", () => {
     expect(() => parseRedeemableEarningsNumber("x", "total_redeemed")).toThrow(/total_redeemed/);
     expect(() => parseRedeemableEarningsNumber("x", "total_pending")).toThrow(/total_pending/);
