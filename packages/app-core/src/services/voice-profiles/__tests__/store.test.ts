@@ -85,3 +85,110 @@ describe("InMemoryVoiceProfileStore", () => {
     }
   });
 });
+
+describe("InMemoryVoiceProfileStore edge branches", () => {
+  it("search on an empty store returns no hits", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    expect(await s.search([1, 0], 5)).toEqual([]);
+  });
+
+  it("skips profiles whose embeddings list is empty", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    const hollow: VoiceProfile = {
+      ...makeProfile("hollow", [1, 0]),
+      embeddings: [],
+    };
+    await s.upsert(hollow);
+    await s.upsert(makeProfile("voiced", [1, 0]));
+    const hits = await s.search([1, 0], 10);
+    expect(hits.map((h) => h.profile.id)).toEqual(["voiced"]);
+  });
+
+  it("scores a zero-magnitude stored vector as similarity 0 instead of dropping it", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    await s.upsert(makeProfile("flat", [0, 0]));
+    const hits = await s.search([1, 0], 10);
+    expect(hits.map((h) => h.profile.id)).toEqual(["flat"]);
+    expect(hits[0]?.similarity).toBe(0);
+  });
+
+  it("scores an empty query vector as similarity 0 against stored profiles", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    await s.upsert(makeProfile("a", [1, 0]));
+    const hits = await s.search([], 10);
+    expect(hits.length).toBe(1);
+    expect(hits[0]?.similarity).toBe(0);
+  });
+
+  it("compares only the overlapping prefix when vector lengths differ", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    await s.upsert(makeProfile("short", [1]));
+    const hits = await s.search([1, 0, 0], 10);
+    expect(hits[0]?.profile.id).toBe("short");
+    expect(hits[0]?.similarity).toBe(1);
+  });
+
+  it("uses the best similarity across all stored embeddings of a profile", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    const mixed: VoiceProfile = {
+      ...makeProfile("mixed", [0, 1]),
+      embeddings: [
+        { vectorPreview: [0, 1], modelId: "ecapa-voxceleb", createdAt: 1 },
+        { vectorPreview: [1, 0], modelId: "ecapa-voxceleb", createdAt: 2 },
+        { vectorPreview: [-1, 0], modelId: "ecapa-voxceleb", createdAt: 3 },
+      ],
+    };
+    await s.upsert(mixed);
+    const hits = await s.search([1, 0], 10);
+    expect(hits.length).toBe(1);
+    expect(hits[0]?.similarity).toBe(1);
+  });
+
+  it("defaults the limit to 10 hits when omitted", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    for (let i = 0; i < 14; i++) {
+      await s.upsert(makeProfile(`p${i}`, [Math.cos(i), Math.sin(i)]));
+    }
+    const hits = await s.search([1, 0]);
+    expect(hits.length).toBe(10);
+  });
+
+  it("negative similarities sort below zero-similarity hits", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    await s.upsert(makeProfile("opposite", [-1, 0]));
+    await s.upsert(makeProfile("orthogonal", [0, 1]));
+    const hits = await s.search([1, 0], 10);
+    expect(hits.map((h) => h.profile.id)).toEqual(["orthogonal", "opposite"]);
+    expect(hits[1]?.similarity).toBe(-1);
+  });
+
+  it("ties keep insertion order across equal similarities", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    await s.upsert(makeProfile("first", [1, 0]));
+    await s.upsert(makeProfile("second", [1, 0]));
+    const hits = await s.search([2, 0], 10);
+    expect(hits.map((h) => h.profile.id)).toEqual(["first", "second"]);
+    expect(hits[0]?.similarity).toBe(1);
+    expect(hits[1]?.similarity).toBe(1);
+  });
+
+  it("upsert replaces the profile stored under an existing id", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    await s.upsert(makeProfile("a", [1, 0]));
+    const replacement: VoiceProfile = {
+      ...makeProfile("a", [0, 1]),
+      consent: "unknown",
+    };
+    await s.upsert(replacement);
+    expect((await s.list()).length).toBe(1);
+    const got = await s.get("a");
+    expect(got?.consent).toBe("unknown");
+  });
+
+  it("delete of a missing id resolves without side effects", async () => {
+    const s = new InMemoryVoiceProfileStore();
+    await s.upsert(makeProfile("kept", [1, 0]));
+    await expect(s.delete("ghost")).resolves.toBeUndefined();
+    expect((await s.list()).map((p) => p.id)).toEqual(["kept"]);
+  });
+});
