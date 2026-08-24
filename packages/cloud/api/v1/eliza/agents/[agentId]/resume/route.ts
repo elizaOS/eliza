@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
@@ -222,8 +223,10 @@ async function __hono_POST(
             action: "resume",
             message: "Agent resumed from latest snapshot",
             status: "running",
-            bridgeUrl: result.bridgeUrl,
-            healthUrl: result.healthUrl,
+            webUiUrl: getConfiguredElizaAgentPublicWebUiUrl(
+              agent,
+              env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+            ),
           },
         }),
         CORS_METHODS,

@@ -89,7 +89,7 @@ mock.module("@/lib/config/containers-env", () => ({
   containersEnv: { publicBaseDomain: () => null },
 }));
 mock.module("@/lib/eliza-agent-web-ui", () => ({
-  getElizaAgentPublicWebUiUrl: () => "https://example.test",
+  getConfiguredElizaAgentPublicWebUiUrl: () => "https://example.test",
 }));
 mock.module("@/lib/constants/agent-sandbox-quota", () => ({
   getMaxNonTerminalAgentsForOrg: () => 3,

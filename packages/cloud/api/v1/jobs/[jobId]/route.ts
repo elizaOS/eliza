@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { publicJobErrorSummary } from "@/lib/services/job-error-text";
 import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -17,6 +18,56 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+
+const OWNER_INTERNAL_RESULT_KEYS = new Set([
+  "bridgeUrl",
+  "bridge_url",
+  "containerUrl",
+  "container_url",
+  "healthUrl",
+  "health_url",
+  "headscaleIp",
+  "headscale_ip",
+  "internalBridgeUrl",
+  "internal_bridge_url",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizeOwnerJobResult(
+  value: unknown,
+  canonicalAgentBaseDomain: string | undefined,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      sanitizeOwnerJobResult(item, canonicalAgentBaseDomain),
+    );
+  }
+  if (!isRecord(value)) return value;
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (OWNER_INTERNAL_RESULT_KEYS.has(key)) continue;
+    sanitized[key] = sanitizeOwnerJobResult(item, canonicalAgentBaseDomain);
+  }
+
+  const agentId =
+    typeof value.cloudAgentId === "string"
+      ? value.cloudAgentId
+      : typeof value.agentId === "string"
+        ? value.agentId
+        : null;
+  if (agentId) {
+    sanitized.webUiUrl = getConfiguredElizaAgentPublicWebUiUrl(
+      { id: agentId },
+      canonicalAgentBaseDomain,
+    );
+  }
+
+  return sanitized;
+}
 
 app.get("/", async (c) => {
   try {
@@ -55,7 +106,12 @@ app.get("/", async (c) => {
         id: job.id,
         type: job.type,
         status: job.status,
-        result: job.result,
+        result: serviceIdentity
+          ? job.result
+          : sanitizeOwnerJobResult(
+              job.result,
+              c.env?.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+            ),
         // Operator diagnostic stays in the row; the owner gets the failure
         // summary without stack frames (server paths, module layout).
         error: publicJobErrorSummary(job.error),

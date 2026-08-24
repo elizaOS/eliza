@@ -10,7 +10,6 @@ const findByIdAndOrg = mock();
 const generateToken = mock(async () => "pair-token");
 const enqueueAgentProvisionOnce = mock();
 const checkProvisioningWorkerHealth = mock(async () => ({ ok: true }));
-let publicBaseDomain: string | undefined = "elizacloud.ai";
 let canonicalAgentBaseDomain: string | undefined = "elizacloud.ai";
 
 mock.module("@/lib/auth", () => ({
@@ -20,12 +19,6 @@ mock.module("@/lib/auth", () => ({
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: {
     findByIdAndOrg,
-  },
-}));
-
-mock.module("@/lib/config/containers-env", () => ({
-  containersEnv: {
-    publicBaseDomain: () => publicBaseDomain,
   },
 }));
 
@@ -40,12 +33,12 @@ mock.module("@/lib/eliza-agent-web-ui", () => ({
       ? `http://${sandbox.headscale_ip}:${port}`
       : null;
   },
-  getElizaAgentPublicWebUiUrl: (
+  getConfiguredElizaAgentPublicWebUiUrl: (
     sandbox: { id: string },
-    options?: { baseDomain?: string | null },
+    baseDomain?: string | null,
   ) => {
-    if (!options?.baseDomain) return null;
-    return `https://${sandbox.id}.${options.baseDomain}`;
+    if (!baseDomain || /^(?:\d|localhost)/.test(baseDomain)) return null;
+    return `https://${sandbox.id}.${baseDomain}`;
   },
 }));
 
@@ -136,7 +129,6 @@ describe("eliza agent pairing token route", () => {
       balance: 10,
       error: undefined,
     });
-    publicBaseDomain = "elizacloud.ai";
     canonicalAgentBaseDomain = "elizacloud.ai";
   });
 
@@ -164,7 +156,6 @@ describe("eliza agent pairing token route", () => {
   });
 
   test("routes staging token pairing through the staging agent hostname", async () => {
-    publicBaseDomain = "staging.elizacloud.ai";
     canonicalAgentBaseDomain = "staging.elizacloud.ai";
     findByIdAndOrg.mockResolvedValue(runningSandbox("dedicated-lazy"));
 
@@ -183,7 +174,6 @@ describe("eliza agent pairing token route", () => {
   });
 
   test("uses the Worker-bound agent domain when the broader container domain differs", async () => {
-    publicBaseDomain = "containers.example";
     canonicalAgentBaseDomain = "staging.elizacloud.ai";
     findByIdAndOrg.mockResolvedValue(runningSandbox("dedicated-lazy"));
 
@@ -236,7 +226,6 @@ describe("eliza agent pairing token route", () => {
   });
 
   test("fails closed when token pairing has only a public direct IP and no canonical hostname", async () => {
-    publicBaseDomain = undefined;
     canonicalAgentBaseDomain = undefined;
     findByIdAndOrg.mockResolvedValue(runningSandbox("dedicated-lazy"));
 
@@ -275,6 +264,43 @@ describe("eliza agent pairing token route", () => {
     });
   });
 
+  test("does not expose an internal bridge when the configured gateway host is invalid", async () => {
+    canonicalAgentBaseDomain = "100.64.0.99";
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("dedicated-lazy"),
+      bridge_url: "http://10.0.0.8:19027",
+      health_url: "http://192.168.1.8:19028/health",
+      headscale_ip: "100.64.0.12",
+    });
+
+    const response = await postPairingToken();
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toMatchObject({
+      success: false,
+      code: "AGENT_WEB_UI_NOT_READY",
+    });
+    expect(JSON.stringify(body)).not.toMatch(/100\.64|10\.0|192\.168/);
+    expect(generateToken).not.toHaveBeenCalled();
+  });
+
+  test("does not expose an internal Headscale DNS name", async () => {
+    canonicalAgentBaseDomain = undefined;
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("custom"),
+      bridge_url: "http://agent-12.tunnel.eliza.local:19027",
+      environment_vars: {},
+    });
+
+    const response = await postPairingToken();
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(body)).not.toContain("tunnel.eliza.local");
+    expect(generateToken).not.toHaveBeenCalled();
+  });
+
   test("falls back to the managed web UI hostname when no direct UI route is stored", async () => {
     findByIdAndOrg.mockResolvedValue({
       ...runningSandbox("dedicated-lazy"),
@@ -310,7 +336,8 @@ describe("eliza agent pairing token route", () => {
       success: true,
       data: {
         token: "pair-token",
-        redirectUrl: "http://168.119.244.189:19028",
+        redirectUrl:
+          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai",
         expiresIn: 60,
       },
     });
