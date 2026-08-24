@@ -8,7 +8,7 @@
 import type { AgentRuntime, ModelRegistrationInfo } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { detectRuntimeModel } from "./agent-model";
+import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model";
 
 const ELIZA_CLOUD_PROVIDER_NAME = "elizaOSCloud";
 const LOCAL_INFERENCE_PROVIDER_NAME = "eliza-local-inference";
@@ -186,5 +186,22 @@ describe("detectRuntimeModel — the #20124 reproduced state", () => {
     const model = detectRuntimeModel(runtime, reproducedUnsignedCloudProxy);
     expect(model).toBe(LOCAL_INFERENCE_PROVIDER_NAME);
     expect(model).not.toBe("elizacloud");
+  });
+});
+
+describe("resolveProviderFromModel", () => {
+  it("handles non-string and empty inputs safely without throwing", () => {
+    expect(resolveProviderFromModel(null as unknown as string)).toBeNull();
+    expect(resolveProviderFromModel(undefined as unknown as string)).toBeNull();
+    expect(resolveProviderFromModel("")).toBeNull();
+    expect(resolveProviderFromModel("   ")).toBeNull();
+  });
+
+  it("resolves canonical providers from model strings", () => {
+    expect(resolveProviderFromModel("gpt-4o")).toBe("OpenAI");
+    expect(resolveProviderFromModel("claude-3-5-sonnet")).toBe("Anthropic");
+    expect(resolveProviderFromModel("gemini-1.5-pro")).toBe("Google");
+    expect(resolveProviderFromModel("zai-coding")).toBe("ZAI");
+    expect(resolveProviderFromModel("qwen-2.5-72b")).toBe("Qwen");
   });
 });

@@ -266,6 +266,7 @@ export function detectRuntimeModel(
 }
 
 export function resolveProviderFromModel(model: string): string | null {
+  if (typeof model !== "string") return null;
   const lower = model.trim().toLowerCase();
   if (!lower) return null;
 
@@ -286,6 +287,8 @@ export function resolveProviderFromModel(model: string): string | null {
     { match: "cohere", label: "Cohere" },
     { match: "moonshot", label: "Moonshot" },
     { match: "kimi", label: "Kimi" },
+    { match: "zai", label: "ZAI" },
+    { match: "qwen", label: "Qwen" },
   ];
   for (const { match, label } of providers) {
     if (lower.includes(match)) return label;
