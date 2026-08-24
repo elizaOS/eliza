@@ -9,7 +9,12 @@ from lib.generation_integrity import (
     UnknownModelOutputLimitError,
     anthropic_max_output_tokens,
 )
-from rl.tokenization_utils import remaining_context_tokens
+from rl.tokenization_utils import (
+    MaskAlignmentError,
+    create_masks_from_response_start,
+    remaining_context_tokens,
+    tokenize_conversation_for_trainer,
+)
 
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
@@ -176,3 +181,28 @@ def test_generation_uses_all_remaining_context_or_rejects_prompt() -> None:
         remaining_context_tokens(
             tokenizer, messages, context_tokens=8, source="test"
         )
+
+
+def test_training_mask_boundaries_reject_instead_of_guessing() -> None:
+    class NonPrefixTokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            del kwargs
+            # Re-tokenizing a prefix produces more tokens than the complete
+            # conversation, so no lossless message boundary can be inferred.
+            return [1] * (10 if len(messages) == 1 else 4)
+
+        def encode(self, text, add_special_tokens=True):
+            del text, add_special_tokens
+            return [1]
+
+    with pytest.raises(MaskAlignmentError, match="complete training row"):
+        tokenize_conversation_for_trainer(
+            NonPrefixTokenizer(),
+            [
+                {"role": "user", "content": "complete prompt"},
+                {"role": "assistant", "content": "complete answer"},
+            ],
+        )
+
+    with pytest.raises(MaskAlignmentError, match="outside the complete"):
+        create_masks_from_response_start([1, 2, 3], 4)

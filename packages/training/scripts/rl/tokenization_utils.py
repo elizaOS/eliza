@@ -28,6 +28,10 @@ from lib.generation_integrity import PromptExceedsContextError
 logger = logging.getLogger(__name__)
 
 
+class MaskAlignmentError(ValueError):
+    """Raised when a complete training row cannot be aligned without guessing."""
+
+
 class ChatTokenizer(Protocol):
     """Minimal tokenizer interface needed by the masking utilities.
 
@@ -161,8 +165,6 @@ def tokenize_for_trainer(
 
     # Split into prompt (before last assistant) and completion (last assistant)
     prompt_messages = messages[:last_assistant_idx]
-    completion_message = messages[last_assistant_idx]
-
     # Tokenize prompt with generation prompt to get exact split point
     prompt_tokens = _normalize_token_ids(
         tokenizer.apply_chat_template(
@@ -185,32 +187,23 @@ def tokenize_for_trainer(
     prompt_length = len(prompt_tokens)
     completion_length = len(full_tokens) - prompt_length
 
-    # Handle edge case where tokenization differs
-    if completion_length < 0:
-        # Tokenizer may add different special tokens
-        # Fall back to tokenizing completion separately
-        completion_content = completion_message.get("content", "")
-        completion_tokens_only = _normalize_token_ids(
-            tokenizer.encode(completion_content, add_special_tokens=False)
+    if completion_length < 0 or full_tokens[:prompt_length] != prompt_tokens:
+        raise MaskAlignmentError(
+            "Prompt tokens are not an exact prefix of the complete training row"
         )
-        completion_length = len(completion_tokens_only)
-        prompt_length = len(full_tokens) - completion_length
 
     # Create masks: -100 for prompt (ignore), actual token IDs for completion (train)
     # CRITICAL: GRPO trainer checks (labels != -100) to determine trainable tokens
     masks = [-100] * prompt_length + full_tokens[prompt_length:]
 
-    # Ensure masks match tokens length
+    # Never repair a tokenizer disagreement by inventing or discarding labels.
+    # The complete row must be rejected so it cannot silently teach from a
+    # guessed prompt/completion boundary.
     if len(masks) != len(full_tokens):
-        logger.warning(
-            f"Mask length mismatch: {len(masks)} vs {len(full_tokens)} tokens. Adjusting masks."
+        raise MaskAlignmentError(
+            "Tokenized prompt/completion masks do not align with the complete row: "
+            f"{len(masks)} masks for {len(full_tokens)} tokens"
         )
-        if len(masks) < len(full_tokens):
-            # Pad with actual token IDs (assume extra tokens are completion)
-            masks.extend(full_tokens[len(masks) :])
-        else:
-            # Truncate
-            masks = masks[: len(full_tokens)]
 
     return TokenizationResult(
         tokens=full_tokens,
@@ -275,6 +268,14 @@ def tokenize_conversation_for_trainer(
         # Calculate tokens for this message
         message_end = len(partial_tokens)
         message_length = message_end - current_position
+        if (
+            message_length < 0
+            or message_end > len(full_tokens)
+            or full_tokens[:message_end] != partial_tokens
+        ):
+            raise MaskAlignmentError(
+                "A tokenized message prefix does not match the complete training row"
+            )
 
         # Mask based on role: -100 for ignore, token ID for train
         if message["role"] == "assistant":
@@ -286,14 +287,14 @@ def tokenize_conversation_for_trainer(
 
         current_position = message_end
 
-    # Ensure masks match tokens length
+    # A non-prefix-preserving chat template makes per-message alignment
+    # unknowable. Reject the complete row instead of switching to a different
+    # masking contract that would train on the wrong turns.
     if len(masks) != len(full_tokens):
-        logger.warning(
-            f"Conversation mask length mismatch: {len(masks)} vs {len(full_tokens)}. "
-            "Falling back to simple masking."
+        raise MaskAlignmentError(
+            "Multi-turn masks do not align with the complete tokenized row: "
+            f"{len(masks)} masks for {len(full_tokens)} tokens"
         )
-        # Fall back to simpler approach
-        return tokenize_for_trainer(tokenizer, messages)
 
     # Calculate prompt/completion lengths
     prompt_length = sum(1 for m in masks if m == -100)
@@ -378,10 +379,11 @@ def create_masks_from_response_start(
     Returns:
         List of masks (-100 before response, token IDs from response onwards)
     """
-    if response_start_position < 0:
-        response_start_position = 0
-    if response_start_position > len(tokens):
-        response_start_position = len(tokens)
+    if response_start_position < 0 or response_start_position > len(tokens):
+        raise MaskAlignmentError(
+            "Response boundary is outside the complete token sequence: "
+            f"{response_start_position} for {len(tokens)} tokens"
+        )
 
     # -100 for prompt, actual token IDs for completion
     return [-100] * response_start_position + tokens[response_start_position:]
@@ -421,6 +423,10 @@ def fix_historical_masks(
             "recalculating with proper -100/token_id format"
         )
         result = tokenize_for_trainer(tokenizer, messages)
+        if result.tokens != tokens:
+            raise MaskAlignmentError(
+                "Re-tokenized content does not exactly match the complete historical row"
+            )
         return result.masks
 
     # Validate current masks
@@ -432,28 +438,9 @@ def fix_historical_masks(
     result = tokenize_for_trainer(tokenizer, messages)
 
     # Ensure length matches
-    if len(result.masks) == len(tokens):
+    if result.tokens == tokens:
         return result.masks
 
-    # Last resort: find assistant turn manually
-    # Look for common assistant turn markers in token sequence
-    assistant_markers = [
-        tokenizer.encode("assistant", add_special_tokens=False),
-        tokenizer.encode("<|assistant|>", add_special_tokens=False),
-        tokenizer.encode("<start_of_turn>model", add_special_tokens=False),
-    ]
-
-    for marker_tokens in assistant_markers:
-        if not marker_tokens:
-            continue
-
-        # Find last occurrence of marker
-        for i in range(len(tokens) - len(marker_tokens), -1, -1):
-            if tokens[i : i + len(marker_tokens)] == marker_tokens:
-                # Start masking from after this marker
-                response_start = i + len(marker_tokens)
-                return create_masks_from_response_start(tokens, response_start)
-
-    # If all else fails, return original masks with warning
-    logger.error("Could not fix masks, returning original")
-    return masks
+    raise MaskAlignmentError(
+        "Re-tokenized content does not exactly match the complete historical row"
+    )

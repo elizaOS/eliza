@@ -113,6 +113,13 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/cloud/api/v1/generate-prompts/route.ts": [/maxOutputTokens\s*:/],
+	"packages/training/scripts/rl/tokenization_utils.py": [
+		/masks\s*=\s*masks\[:/,
+		/assume extra tokens are completion/,
+		/Falling back to simple masking/,
+		/Could not fix masks, returning original/,
+	],
 	"packages/agent/src/actions/context-signal-lexicon.ts": [
 		/contextLimit/,
 		/CONTEXT_LIMIT/,
