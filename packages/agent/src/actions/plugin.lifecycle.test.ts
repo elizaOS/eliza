@@ -4,15 +4,21 @@
  * sibling plugin-toggle suite does not reach (configure/read_config/disconnect),
  * validate's op-resolution precedence, and the handler catch boundary.
  *
- * Harness: real module under test with only its process edges controlled —
- * `globalThis.fetch` is stubbed to capture outbound requests, the restart
- * handler is spied through @elizaos/shared's setRestartHandler seam, and the
- * loopback port is driven by ELIZA_PORT so URL assertions exercise the real
- * resolveServerOnlyPort resolver. The plugin manager is a duck-typed fake that
- * passes isPluginManagerLike, asserting what the manager receives and returns.
+ * Harness: real module under test with only its process edges controlled. The
+ * authorization case enters through executePlannedToolCall; `globalThis.fetch`
+ * captures outbound requests, the restart handler uses @elizaos/shared's seam,
+ * and ELIZA_PORT drives the real resolveServerOnlyPort resolver. The plugin
+ * manager is a duck-typed fake that passes isPluginManagerLike.
  */
 
-import type { ActionResult, IAgentRuntime } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
+import { executePlannedToolCall } from "@elizaos/core/runtime/execute-planned-tool-call";
 import { setRestartHandler } from "@elizaos/shared";
 import {
   afterEach,
@@ -159,6 +165,30 @@ function runtimeWithManager(mgr: unknown): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
+function executorRuntime(action: Action): IAgentRuntime {
+  return {
+    actions: [action],
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+    getRoom: vi.fn(async () => null),
+    getService: vi.fn(() => null),
+    reportError: vi.fn(),
+    logger: {
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  } as unknown as IAgentRuntime;
+}
+
+function executorMessage(): Memory {
+  return {
+    id: "00000000-0000-0000-0000-000000000002" as UUID,
+    entityId: "00000000-0000-0000-0000-000000000003" as UUID,
+    roomId: "00000000-0000-0000-0000-000000000004" as UUID,
+    content: { text: "Configure the Discord connector." },
+  } as Memory;
+}
+
 type HandlerParams = Record<string, unknown>;
 
 // Every branch of pluginAction.handler returns a fully populated ActionResult;
@@ -282,6 +312,67 @@ describe("PLUGIN validate — op resolution and plugin_manager gating", () => {
     ).resolves.toBe(true);
     // bare op still reaches the gate.
     await expect(validates({ op: "sync" })).resolves.toBe(false);
+  });
+});
+
+describe("PLUGIN executor authorization and self-API boundary", () => {
+  it("denies non-owners before I/O and sends exact self-auth headers for an owner", async () => {
+    const stub = stubFetchSequence([
+      { payload: { success: true } },
+      { payload: { success: true, durationMs: 9 } },
+    ]);
+    restoreFetch = stub.restore;
+    const realHandler = pluginAction.handler;
+    if (!realHandler) throw new Error("PLUGIN handler is required");
+    const handler = vi.fn(realHandler);
+    const action = { ...pluginAction, handler };
+    const runtime = executorRuntime(action);
+    const toolCall = {
+      name: "PLUGIN",
+      params: {
+        action: "configure",
+        pluginId: "discord",
+        config: { DISCORD_API_TOKEN: "synthetic-value" },
+      },
+    };
+
+    const denied = await executePlannedToolCall(
+      runtime,
+      {
+        message: executorMessage(),
+        activeContexts: ["settings"],
+        userRoles: ["MEMBER"],
+      },
+      toolCall,
+    );
+
+    expect(denied.success).toBe(false);
+    expect(denied.error).toContain("not allowed for the current role");
+    expect(handler).not.toHaveBeenCalled();
+    expect(stub.captured).toHaveLength(0);
+
+    const allowed = await executePlannedToolCall(
+      runtime,
+      {
+        message: executorMessage(),
+        activeContexts: ["settings"],
+        userRoles: ["OWNER"],
+      },
+      toolCall,
+    );
+
+    expect(allowed.success).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(stub.captured.map((request) => request.headers)).toEqual([
+      {
+        "Content-Type": "application/json",
+        Authorization: "Bearer self-api-token",
+      },
+      {
+        "Content-Type": "application/json",
+        Authorization: "Bearer self-api-token",
+      },
+    ]);
   });
 });
 
@@ -848,7 +939,7 @@ describe("PLUGIN configure over the local compat API", () => {
     }
   });
 
-  it("survives an invalid save body and still runs the connection probe", async () => {
+  it("fails closed on an invalid save body without running the connection probe", async () => {
     const stub = stubFetchSequence([
       { failJson: true },
       { payload: { success: true, durationMs: 42 } },
@@ -861,36 +952,35 @@ describe("PLUGIN configure over the local compat API", () => {
       config: { TOKEN: "x" },
     });
 
-    // Observed behavior: an unparsable save body parses to {} and carries no
-    // failure flag, so the save counts as applied.
-    expect(result.success).toBe(true);
-    expect(stub.captured).toHaveLength(2);
-    expect(result.text).toContain("Connection test passed (42ms).");
+    expect(result.success).toBe(false);
+    expect(stub.captured).toHaveLength(1);
+    expect(result.text).toBe(
+      "Failed to save config for discord: Save returned an invalid success response.",
+    );
+    expect(result.data).toMatchObject({ error: "PLUGIN_CONFIGURE_FAILED" });
   });
 
-  it("renders each connection-test outcome distinctly", async () => {
+  it("fails configure unless the connection probe explicitly succeeds", async () => {
     const cases: Array<{
       testResponse: StubResponseSpec;
-      expectedSubstring?: string;
+      expectedReason: string;
     }> = [
-      {
-        testResponse: { payload: { success: true } },
-        expectedSubstring: "Connection test passed (0ms).",
-      },
       {
         testResponse: {
           payload: { success: false, error: "timeout reaching host" },
         },
-        expectedSubstring: "Connection test failed: timeout reaching host.",
+        expectedReason: "timeout reaching host",
       },
       {
         testResponse: { payload: { success: false } },
-        expectedSubstring: "Connection test failed: unknown.",
+        expectedReason: "invalid probe response",
       },
-      // Non-ok probe responses surface neither pass nor fail.
-      { testResponse: { ok: false, status: 503, payload: {} } },
+      {
+        testResponse: { ok: false, status: 503, payload: {} },
+        expectedReason: "HTTP 503",
+      },
     ];
-    for (const { testResponse, expectedSubstring } of cases) {
+    for (const { testResponse, expectedReason } of cases) {
       const stub = stubFetchSequence([
         { payload: { success: true } },
         testResponse,
@@ -901,16 +991,19 @@ describe("PLUGIN configure over the local compat API", () => {
         pluginId: "discord",
         config: { TOKEN: "x" },
       });
-      expect(result.success).toBe(true);
-      if (expectedSubstring) {
-        expect(result.text).toContain(expectedSubstring);
-      } else {
-        expect(result.text).not.toContain("Connection test");
-      }
+      expect(result.success).toBe(false);
+      expect(result.text).toContain(
+        `connection verification failed: ${expectedReason}.`,
+      );
+      expect(result.data).toMatchObject({
+        error: "PLUGIN_CONFIGURE_FAILED",
+        configApplied: true,
+        connectionVerified: false,
+      });
     }
   });
 
-  it("marks the connection test skipped when the probe throws", async () => {
+  it("fails configure when the connection probe transport throws", async () => {
     const original = globalThis.fetch;
     let call = 0;
     globalThis.fetch = (async () => {
@@ -934,10 +1027,32 @@ describe("PLUGIN configure over the local compat API", () => {
       config: { TOKEN: "x" },
     });
 
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
     expect(result.text).toContain(
-      "Connection test skipped: probe socket closed.",
+      "connection verification failed: probe socket closed.",
     );
+    expect(result.data).toMatchObject({
+      error: "PLUGIN_CONFIGURE_FAILED",
+      configApplied: true,
+      connectionVerified: false,
+    });
+  });
+
+  it("accepts an explicitly successful connection probe", async () => {
+    const stub = stubFetchSequence([
+      { payload: { success: true } },
+      { payload: { success: true } },
+    ]);
+    restoreFetch = stub.restore;
+
+    const result = await run(bareRuntime, {
+      action: "configure",
+      pluginId: "discord",
+      config: { TOKEN: "x" },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("Connection test passed (0ms).");
   });
 });
 
@@ -1296,13 +1411,26 @@ describe("PLUGIN list — scoping, top-level filters, and malformed payloads", (
     expect(text).toContain("- Ghost [ghost]");
   });
 
-  it("describes an unfiltered empty view with singular grammar as observed", async () => {
-    const stub = stubFetchSequence([listPayload(null)]);
+  it.each([null, "not-an-array"])(
+    "fails closed when the plugin list payload is malformed: %j",
+    async (plugins) => {
+      const stub = stubFetchSequence([listPayload(plugins)]);
+      restoreFetch = stub.restore;
+      const result = await run(bareRuntime, { action: "list" });
+
+      expect(result.success).toBe(false);
+      expect(String(result.text)).toBe(
+        "Failed to list connectors: /api/plugins returned an invalid payload",
+      );
+      expect(result.data).toMatchObject({ error: "PLUGIN_LIST_FAILED" });
+    },
+  );
+
+  it("describes a valid unfiltered empty view without claiming transport health", async () => {
+    const stub = stubFetchSequence([listPayload([])]);
     restoreFetch = stub.restore;
     const result = await run(bareRuntime, { action: "list" });
 
-    // A malformed payload degrades to zero entries; observed text records the
-    // singular form the module emits for a single-item scope.
     expect(result.success).toBe(true);
     expect(String(result.text)).toBe(
       "No connectors match the requested filter (0 connectors exist but none are listed under this view). This is a filtered view, not a statement that none exist — retry with no filter to see every connector.",
@@ -1350,7 +1478,7 @@ describe("PLUGIN list — scoping, top-level filters, and malformed payloads", (
   });
 });
 
-describe("PLUGIN disconnect — dedicated endpoints and plugin-disable fallback", () => {
+describe("PLUGIN disconnect — connector-owned revocation endpoints", () => {
   it("routes known connectors to their dedicated endpoints without a body", async () => {
     const stub = stubFetchSequence([
       { payload: { ok: true, message: "Signed out of Telegram." } },
@@ -1408,44 +1536,35 @@ describe("PLUGIN disconnect — dedicated endpoints and plugin-disable fallback"
     expect(result.data).toMatchObject({ error: "PLUGIN_DISCONNECT_FAILED" });
   });
 
-  it("falls back to disabling unknown connector plugins and notes the restart", async () => {
-    const stub = stubFetchSequence([
-      { payload: { success: true, requiresRestart: true } },
-    ]);
+  it("refuses unknown connectors instead of treating plugin disable as revocation", async () => {
+    const stub = stubFetchSequence([{ payload: { success: true } }]);
     restoreFetch = stub.restore;
     const result = await run(bareRuntime, {
       action: "disconnect",
       connectorId: "custom-relay",
     });
 
-    expect(stub.captured[0].method).toBe("PUT");
-    expect(stub.captured[0].url).toBe(
-      `http://localhost:${TEST_PORT}/api/plugins/custom-relay`,
-    );
-    expect(stub.captured[0].body).toEqual({ enabled: false });
-    expect(result.success).toBe(true);
+    expect(stub.captured).toHaveLength(0);
+    expect(result.success).toBe(false);
     expect(result.text).toBe(
-      "Disconnected custom-relay by disabling the connector. The agent will restart to drop the session.",
+      "Cannot disconnect custom-relay: no connector-owned revocation endpoint is registered. Disabling a plugin does not revoke credentials or terminate its session.",
     );
     expect(result.data).toMatchObject({
-      op: "disconnect",
-      fallback: "plugin-disable",
+      error: "PLUGIN_DISCONNECT_UNSUPPORTED",
     });
   });
 
-  it("fails the fallback branch when the disable is refused", async () => {
-    const stub = stubFetchSequence([
-      { payload: { success: false, error: "still delivering messages" } },
-    ]);
+  it("requires an explicit success response from a dedicated endpoint", async () => {
+    const stub = stubFetchSequence([{ payload: {} }]);
     restoreFetch = stub.restore;
     const result = await run(bareRuntime, {
       action: "disconnect",
-      connectorId: "custom-relay",
+      connectorId: "whatsapp",
     });
 
     expect(result.success).toBe(false);
     expect(result.text).toBe(
-      "Failed to disconnect custom-relay: still delivering messages",
+      "Failed to disconnect whatsapp: Disconnect returned an invalid success response.",
     );
     expect(result.data).toMatchObject({ error: "PLUGIN_DISCONNECT_FAILED" });
   });

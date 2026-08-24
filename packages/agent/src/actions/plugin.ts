@@ -69,16 +69,6 @@ interface PluginParams {
   search?: string;
 }
 
-interface PluginMutationResponse {
-  ok?: boolean;
-  success?: boolean;
-  requiresRestart?: boolean;
-  message?: string;
-  error?: string;
-  pluginName?: string;
-  version?: string;
-}
-
 interface PluginParamEntry {
   key: string;
   type?: string;
@@ -103,16 +93,7 @@ interface PluginListEntry {
   isActive?: boolean;
 }
 
-interface PluginsListResponse {
-  plugins: PluginListEntry[];
-}
-
-interface DisconnectResponse {
-  ok?: boolean;
-  success?: boolean;
-  message?: string;
-  error?: string;
-}
+type LocalApiResponse = Record<string, unknown>;
 
 const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
   telegram: "/api/setup/telegram-account/cancel",
@@ -133,6 +114,44 @@ function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
 
 function fail(text: string, error: string): ActionResult {
   return { success: false, text, data: { error } };
+}
+
+async function readLocalApiResponse(
+  response: Response,
+): Promise<LocalApiResponse | null> {
+  try {
+    const value: unknown = await response.json();
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as LocalApiResponse)
+      : null;
+  } catch {
+    // error-policy:J3 local API responses cross a transport boundary; malformed
+    // JSON is an explicit invalid result and can never stand in for success.
+    return null;
+  }
+}
+
+function responseText(
+  response: LocalApiResponse | null,
+  key: "error" | "message",
+): string | undefined {
+  const value = response?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function responseBoolean(
+  response: LocalApiResponse | null,
+  key: "ok" | "success" | "requiresRestart",
+): boolean | undefined {
+  const value = response?.[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function confirmsMutation(response: LocalApiResponse | null): boolean {
+  return (
+    responseBoolean(response, "success") === true ||
+    responseBoolean(response, "ok") === true
+  );
 }
 
 function normalizeNpmName(pluginId: string): string {
@@ -368,11 +387,15 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     },
   );
 
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
+  const data = await readLocalApiResponse(resp);
 
-  if (!resp.ok || data.success === false || data.ok === false) {
+  if (!resp.ok || !confirmsMutation(data)) {
     const errMsg =
-      data.error || data.message || `Save failed (${resp.status}).`;
+      responseText(data, "error") ??
+      responseText(data, "message") ??
+      (resp.ok
+        ? "Save returned an invalid success response."
+        : `Save failed (${resp.status}).`);
     logger.warn(`[plugin:configure] ${errMsg}`);
     return fail(
       `Failed to save config for ${pluginId}: ${errMsg}`,
@@ -380,8 +403,24 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     );
   }
 
-  // Auto-test connection (best-effort, surface result in text).
-  let testSummary = "";
+  const updatedKeyList = Object.keys(config);
+  const updatedKeys = [...updatedKeyList].sort().join(", ");
+  const connectionFailure = (reason: string): ActionResult => ({
+    success: false,
+    text: `Updated ${pluginId} config (${updatedKeys}), but connection verification failed: ${reason}.`,
+    data: {
+      actionName: "PLUGIN",
+      op: "configure",
+      pluginId,
+      updatedKeys: updatedKeyList,
+      configApplied: true,
+      connectionVerified: false,
+      requiresRestart: responseBoolean(data, "requiresRestart") ?? false,
+      error: "PLUGIN_CONFIGURE_FAILED",
+    },
+  });
+
+  let testSummary: string;
   try {
     const testResp = await fetch(
       `${base}/api/plugins/${encodeURIComponent(pluginId)}/test`,
@@ -394,26 +433,32 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
         signal: AbortSignal.timeout(30_000),
       },
     );
-    const testData = (await testResp.json().catch(() => ({}))) as {
-      success?: boolean;
-      error?: string;
-      durationMs?: number;
-    };
-    if (testResp.ok && testData.success) {
-      testSummary = ` Connection test passed (${testData.durationMs ?? 0}ms).`;
-    } else if (testResp.ok && testData.success === false) {
-      testSummary = ` Connection test failed: ${testData.error ?? "unknown"}.`;
+    const testData = await readLocalApiResponse(testResp);
+    if (!testResp.ok) {
+      return connectionFailure(
+        responseText(testData, "error") ??
+          responseText(testData, "message") ??
+          `HTTP ${testResp.status}`,
+      );
     }
+    if (responseBoolean(testData, "success") !== true) {
+      return connectionFailure(
+        responseText(testData, "error") ??
+          responseText(testData, "message") ??
+          "invalid probe response",
+      );
+    }
+    const durationMs = testData?.durationMs;
+    testSummary = ` Connection test passed (${typeof durationMs === "number" && Number.isFinite(durationMs) ? durationMs : 0}ms).`;
   } catch (testErr) {
-    testSummary = ` Connection test skipped: ${
-      testErr instanceof Error ? testErr.message : "unknown error"
-    }.`;
+    return connectionFailure(
+      testErr instanceof Error ? testErr.message : "unknown transport error",
+    );
   }
 
-  const restartNote = data.requiresRestart
+  const restartNote = responseBoolean(data, "requiresRestart")
     ? " The agent will restart to apply the change."
     : "";
-  const updatedKeys = Object.keys(config).sort().join(", ");
 
   return {
     success: true,
@@ -422,7 +467,7 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
       actionName: "PLUGIN",
       op: "configure",
       pluginId,
-      updatedKeys: Object.keys(config),
+      updatedKeys: updatedKeyList,
       ...data,
     },
   };
@@ -444,8 +489,14 @@ async function doReadConfig(params: PluginParams): Promise<ActionResult> {
     );
   }
 
-  const listData = (await resp.json()) as PluginsListResponse;
-  const plugins = listData.plugins;
+  const listData = await readLocalApiResponse(resp);
+  if (!Array.isArray(listData?.plugins)) {
+    return fail(
+      "Failed to fetch plugins list: invalid response",
+      "PLUGIN_READ_CONFIG_FAILED",
+    );
+  }
+  const plugins = listData.plugins as PluginListEntry[];
   const lower = pluginId.toLowerCase();
   const plugin =
     plugins.find((p) => p.id === pluginId) ??
@@ -540,11 +591,15 @@ async function doToggle(params: PluginParams): Promise<ActionResult> {
     },
   );
 
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
+  const data = await readLocalApiResponse(resp);
 
-  if (!resp.ok || data.success === false || data.ok === false) {
+  if (!resp.ok || !confirmsMutation(data)) {
     const errMsg =
-      data.error || data.message || `Toggle failed (${resp.status}).`;
+      responseText(data, "error") ??
+      responseText(data, "message") ??
+      (resp.ok
+        ? "Toggle returned an invalid success response."
+        : `Toggle failed (${resp.status}).`);
     logger.warn(`[plugin:toggle] ${errMsg}`);
     return fail(
       `Failed to ${enabled ? "enable" : "disable"} ${pluginId}: ${errMsg}`,
@@ -552,7 +607,7 @@ async function doToggle(params: PluginParams): Promise<ActionResult> {
     );
   }
 
-  const restartNote = data.requiresRestart
+  const restartNote = responseBoolean(data, "requiresRestart")
     ? " The agent will restart to apply the change."
     : "";
   return {
@@ -576,8 +631,11 @@ async function fetchPluginsList(base: string): Promise<PluginListEntry[]> {
   if (!resp.ok) {
     throw new Error(`/api/plugins returned ${resp.status}`);
   }
-  const data = (await resp.json()) as PluginsListResponse;
-  return Array.isArray(data.plugins) ? data.plugins : [];
+  const data = await readLocalApiResponse(resp);
+  if (!Array.isArray(data?.plugins)) {
+    throw new Error("/api/plugins returned an invalid payload");
+  }
+  return data.plugins as PluginListEntry[];
 }
 
 function applyListFilter(
@@ -722,10 +780,14 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
       },
       signal: AbortSignal.timeout(30_000),
     });
-    const data = (await resp.json().catch(() => ({}))) as DisconnectResponse;
-    if (!resp.ok || data.ok === false || data.success === false) {
+    const data = await readLocalApiResponse(resp);
+    if (!resp.ok || !confirmsMutation(data)) {
       const errMsg =
-        data.error || data.message || `Disconnect failed (${resp.status}).`;
+        responseText(data, "error") ??
+        responseText(data, "message") ??
+        (resp.ok
+          ? "Disconnect returned an invalid success response."
+          : `Disconnect failed (${resp.status}).`);
       logger.warn(`[plugin:disconnect] ${errMsg}`);
       return fail(
         `Failed to disconnect ${connectorId}: ${errMsg}`,
@@ -734,7 +796,7 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
     }
     return {
       success: true,
-      text: data.message ?? `Disconnected ${connectorId}.`,
+      text: responseText(data, "message") ?? `Disconnected ${connectorId}.`,
       data: {
         actionName: "PLUGIN",
         op: "disconnect",
@@ -745,42 +807,10 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
     };
   }
 
-  // Fallback: disable the plugin so its sender stops.
-  const resp = await fetch(
-    `${base}/api/plugins/${encodeURIComponent(connectorId)}`,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        ...createSelfApiRequestHeaders(),
-      },
-      body: JSON.stringify({ enabled: false }),
-      signal: AbortSignal.timeout(60_000),
-    },
+  return fail(
+    `Cannot disconnect ${connectorId}: no connector-owned revocation endpoint is registered. Disabling a plugin does not revoke credentials or terminate its session.`,
+    "PLUGIN_DISCONNECT_UNSUPPORTED",
   );
-  const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
-  if (!resp.ok || data.success === false || data.ok === false) {
-    const errMsg =
-      data.error || data.message || `Disconnect failed (${resp.status}).`;
-    return fail(
-      `Failed to disconnect ${connectorId}: ${errMsg}`,
-      "PLUGIN_DISCONNECT_FAILED",
-    );
-  }
-  const restartNote = data.requiresRestart
-    ? " The agent will restart to drop the session."
-    : "";
-  return {
-    success: true,
-    text: `Disconnected ${connectorId} by disabling the connector.${restartNote}`,
-    data: {
-      actionName: "PLUGIN",
-      op: "disconnect",
-      connectorId,
-      fallback: "plugin-disable",
-      ...data,
-    },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -950,7 +980,10 @@ export const pluginAction: Action = {
       description:
         "configure: object of key/value strings to save. Keys are plugin parameter names; values are their new settings.",
       required: false,
-      schema: { type: "object" as const },
+      schema: {
+        type: "object" as const,
+        additionalProperties: { type: "string" as const },
+      },
     },
     {
       name: "enabled",
