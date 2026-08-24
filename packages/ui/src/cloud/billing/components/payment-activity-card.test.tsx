@@ -8,14 +8,9 @@
 
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaymentActivityCard } from "./payment-activity-card";
 
@@ -88,7 +83,11 @@ afterEach(() => {
 describe("PaymentActivityCard fetch states", () => {
   it("renders the loading state before data arrives", () => {
     apiMock.mockImplementation(() => new Promise(() => {}));
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     // Loading is a visible spinner with an accessible label — never a blank
     // or fake-empty list.
     const spinner = document.querySelector(".animate-spin");
@@ -97,7 +96,11 @@ describe("PaymentActivityCard fetch states", () => {
 
   it("renders the empty state when no rows exist", async () => {
     apiMock.mockResolvedValue({ states: [] });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     await screen.findByText(/No payment activity yet/i);
     expect(apiMock).toHaveBeenCalledWith("/api/v1/billing/payment-states");
   });
@@ -105,7 +108,11 @@ describe("PaymentActivityCard fetch states", () => {
   it("renders an explicit error state with a working retry after transport failure", async () => {
     apiMock.mockRejectedValueOnce(new Error("network down"));
     apiMock.mockResolvedValueOnce({ states: [stateRow()] });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
 
     await screen.findByText(/Payment activity could not be loaded/i);
     expect(screen.getByText("network down")).toBeTruthy();
@@ -119,7 +126,11 @@ describe("PaymentActivityCard fetch states", () => {
 
   it("renders succeeded rows with verbatim state text, never color alone", async () => {
     apiMock.mockResolvedValue({ states: [stateRow()] });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     const rows = await screen.findAllByTestId("payment-state-row");
     expect(rows.length).toBe(1);
     expect(screen.getByTestId("payment-state-text").textContent).toBe(
@@ -140,7 +151,11 @@ describe("PaymentActivityCard fetch states", () => {
         }),
       ],
     });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     await screen.findAllByTestId("payment-state-row");
     expect(screen.getByTestId("payment-state-text").textContent).toBe(
       "unavailable",
@@ -168,7 +183,11 @@ describe("PaymentActivityCard fetch states", () => {
         }),
       ],
     });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     await screen.findAllByTestId("payment-state-row");
     expect(screen.getByTestId("payment-state-text").textContent).toBe(
       "unavailable",
@@ -183,14 +202,7 @@ describe("PaymentActivityCard fetch states", () => {
     );
   });
 
-  it("copies the receipt and authority references for support escalation", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    // jsdom's navigator.clipboard is a getter-only accessor; defineProperty
-    // is the established override path.
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText },
-      configurable: true,
-    });
+  it("links the receipt and authority references to the payment detail view", async () => {
     apiMock.mockResolvedValue({
       states: [
         stateRow({
@@ -201,26 +213,30 @@ describe("PaymentActivityCard fetch states", () => {
         }),
       ],
     });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     await screen.findAllByTestId("payment-state-row");
 
-    // fireEvent: userEvent's pointer simulation swallows clicks on these
-    // inline buttons (probe-proven: fireEvent reaches writeText, userEvent
-    // does not).
-    const receiptButton = screen.getByTestId("payment-receipt-link");
-    expect(receiptButton.getAttribute("aria-label")).toBe(
-      "Copy receipt ID receipt-uuid-9 to clipboard",
+    // Both identifiers are real navigation links to the linked order/receipt
+    // detail (#22966), carrying action-specific accessible names with the
+    // full identifier.
+    const receiptLink = screen.getByTestId("payment-receipt-link");
+    expect(receiptLink.getAttribute("href")).toBe(
+      "/cloud/billing/payments/payment_request%3Apr9",
     );
-    const authorityButton = screen.getByTestId("payment-authority-link");
-    expect(authorityButton.getAttribute("aria-label")).toBe(
-      "Copy payment request ID authority-uuid-9 to clipboard",
+    expect(receiptLink.getAttribute("aria-label")).toBe(
+      "View receipt receipt-uuid-9 payment detail",
     );
-    fireEvent.click(receiptButton);
-    fireEvent.click(authorityButton);
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
-
-    expect(writeText).toHaveBeenNthCalledWith(1, "receipt-uuid-9");
-    expect(writeText).toHaveBeenNthCalledWith(2, "authority-uuid-9");
+    const authorityLink = screen.getByTestId("payment-authority-link");
+    expect(authorityLink.getAttribute("href")).toBe(
+      "/cloud/billing/payments/payment_request%3Apr9",
+    );
+    expect(authorityLink.getAttribute("aria-label")).toBe(
+      "View payment request authority-uuid-9 payment detail",
+    );
   });
 });
 
@@ -242,7 +258,11 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
         }),
       ],
     });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     await screen.findAllByTestId("payment-reversal-detail");
 
     // formatAmount uses 0 fraction digits for whole-dollar amounts.
@@ -286,7 +306,11 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
         }),
       ],
     });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     await screen.findAllByTestId("payment-state-row");
 
     const states = screen
@@ -313,14 +337,22 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
         }),
       ],
     });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     await screen.findAllByTestId("payment-state-row");
     expect(screen.getByTestId("payment-receipt-link")).toBeTruthy();
   });
 
   it("refetches on retry after a mid-session error, keeping rows fresh", async () => {
     apiMock.mockResolvedValueOnce({ states: [stateRow()] });
-    render(<PaymentActivityCard />);
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
     await screen.findAllByTestId("payment-state-row");
 
     apiMock.mockRejectedValueOnce(new Error("session expired"));
