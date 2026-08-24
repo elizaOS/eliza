@@ -842,3 +842,310 @@ describe("RelationshipStore", () => {
     );
   });
 });
+
+describe("RelationshipStore extended branch coverage", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T12:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("persists truncated positive cadence and NULL for zero, negative, non-finite, and non-numeric values", async () => {
+    const tables = createTables();
+    const store = new RelationshipStore(
+      createRuntime("agent-1", tables),
+      "agent-1",
+    );
+    await store.upsert(
+      edgeInput({
+        relationshipId: "rel_frac",
+        metadata: { cadenceDays: 7.9 },
+      }),
+    );
+    await store.upsert(
+      edgeInput({
+        relationshipId: "rel_zero",
+        toEntityId: "to-c",
+        metadata: { cadenceDays: 0 },
+      }),
+    );
+    await store.upsert(
+      edgeInput({
+        relationshipId: "rel_neg",
+        toEntityId: "to-d",
+        metadata: { cadenceDays: -5 },
+      }),
+    );
+    await store.upsert(
+      edgeInput({
+        relationshipId: "rel_inf",
+        toEntityId: "to-e",
+        metadata: { cadenceDays: Number.POSITIVE_INFINITY },
+      }),
+    );
+    await store.upsert(
+      edgeInput({
+        relationshipId: "rel_nan",
+        toEntityId: "to-f",
+        metadata: { cadenceDays: Number.NaN },
+      }),
+    );
+    await store.upsert(
+      edgeInput({
+        relationshipId: "rel_str",
+        toEntityId: "to-g",
+        metadata: { cadenceDays: "14" },
+      }),
+    );
+
+    expect(tables.relationships.get("rel_frac")?.cadence_days).toBe(7);
+    expect(tables.relationships.get("rel_zero")?.cadence_days).toBeNull();
+    expect(tables.relationships.get("rel_neg")?.cadence_days).toBeNull();
+    expect(tables.relationships.get("rel_inf")?.cadence_days).toBeNull();
+    expect(tables.relationships.get("rel_nan")?.cadence_days).toBeNull();
+    expect(tables.relationships.get("rel_str")?.cadence_days).toBeNull();
+  });
+
+  it("lets an explicit status override an existing status on conflict", async () => {
+    const store = new RelationshipStore(
+      createRuntime("agent-1", createTables()),
+      "agent-1",
+    );
+    await store.upsert(
+      edgeInput({ relationshipId: "rel_flip", status: "retired" }),
+    );
+    const revived = await store.upsert(
+      edgeInput({
+        relationshipId: "rel_flip",
+        status: "active",
+        confidence: 0.6,
+      }),
+    );
+    expect(revived.status).toBe("active");
+    expect(await store.get("rel_flip")).toMatchObject({ status: "active" });
+  });
+
+  it("applies mapping defaults to a raw row with nullish optional columns", async () => {
+    const tables = createTables();
+    tables.relationships.set("rel_raw", {
+      relationship_id: "rel_raw",
+      agent_id: "agent-1",
+      from_entity_id: "from-a",
+      to_entity_id: "to-b",
+      type: "knows",
+      metadata_json: null,
+      cadence_days: null,
+      state_last_observed_at: null,
+      state_last_interaction_at: null,
+      state_interaction_count: null,
+      state_sentiment_trend: null,
+      evidence_json: null,
+      confidence: null,
+      source: null,
+      status: null,
+      retired_at: null,
+      retired_reason: null,
+      created_at: "2026-05-01T00:00:00.000Z",
+      updated_at: "2026-05-02T00:00:00.000Z",
+    });
+    const store = new RelationshipStore(
+      createRuntime("agent-1", tables),
+      "agent-1",
+    );
+    expect(await store.get("rel_raw")).toEqual({
+      relationshipId: "rel_raw",
+      fromEntityId: "from-a",
+      toEntityId: "to-b",
+      type: "knows",
+      state: {},
+      evidence: [],
+      confidence: 0,
+      source: "",
+      status: "active",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-02T00:00:00.000Z",
+    });
+  });
+
+  it("propagates row-mapper json errors for malformed metadata and non-array evidence", async () => {
+    const tables = createTables();
+    tables.relationships.set("rel_badmeta", {
+      relationship_id: "rel_badmeta",
+      agent_id: "agent-1",
+      from_entity_id: "from-a",
+      to_entity_id: "to-b",
+      type: "knows",
+      metadata_json: "{broken",
+    });
+    tables.relationships.set("rel_badevidence", {
+      relationship_id: "rel_badevidence",
+      agent_id: "agent-1",
+      from_entity_id: "from-a",
+      to_entity_id: "to-b",
+      type: "knows",
+      evidence_json: '{"nope":true}',
+    });
+    const store = new RelationshipStore(
+      createRuntime("agent-1", tables),
+      "agent-1",
+    );
+    await expect(store.get("rel_badmeta")).rejects.toThrow(
+      /Invalid JSON value/,
+    );
+    await expect(store.get("rel_badevidence")).rejects.toThrow(
+      /Expected JSON array/,
+    );
+  });
+
+  it("propagates database failures from every public method", async () => {
+    const runtime = {
+      adapter: {
+        db: {
+          execute: async () => {
+            throw new Error("db offline");
+          },
+        },
+      },
+    } as unknown as IAgentRuntime;
+    const store = new RelationshipStore(runtime, "agent-1");
+    await expect(store.get("rel_x")).rejects.toThrow("db offline");
+    await expect(store.list()).rejects.toThrow("db offline");
+    await expect(store.listAuditEvents("rel_x")).rejects.toThrow("db offline");
+    await expect(store.retire("rel_x", "gone")).rejects.toThrow("db offline");
+    await expect(store.upsert(edgeInput())).rejects.toThrow("db offline");
+    await expect(
+      store.observe({
+        fromEntityId: "from-a",
+        toEntityId: "to-b",
+        type: "knows",
+        evidence: ["ev"],
+        confidence: 0.5,
+      }),
+    ).rejects.toThrow("db offline");
+  });
+
+  it("keeps the soft-delete applied when the follow-up audit write fails", async () => {
+    const tables = createTables();
+    const seedStore = new RelationshipStore(
+      createRuntime("agent-1", tables),
+      "agent-1",
+    );
+    await seedStore.upsert(edgeInput({ relationshipId: "rel_part" }));
+    const failingAuditRuntime = {
+      adapter: {
+        db: {
+          execute: async (query: unknown) => {
+            const sql = extractSql(query);
+            if (
+              /INSERT\s+INTO\s+app_lifeops\.life_relationship_audit_events/i.test(
+                sql,
+              )
+            ) {
+              throw new Error("audit offline");
+            }
+            return executeSql(sql, tables);
+          },
+        },
+      },
+    } as unknown as IAgentRuntime;
+    const store = new RelationshipStore(failingAuditRuntime, "agent-1");
+
+    await expect(store.retire("rel_part", "half done")).rejects.toThrow(
+      "audit offline",
+    );
+
+    const after = await seedStore.get("rel_part");
+    expect(after?.status).toBe("retired");
+    expect(after?.retiredReason).toBe("half done");
+    await expect(seedStore.listAuditEvents("rel_part")).resolves.toEqual([]);
+  });
+
+  it("matches nested metadata objects through their serialized form", async () => {
+    const store = new RelationshipStore(
+      createRuntime("agent-1", createTables()),
+      "agent-1",
+    );
+    await store.upsert(
+      edgeInput({
+        relationshipId: "rel_dark",
+        metadata: { prefs: { theme: "dark" } },
+      }),
+    );
+    vi.setSystemTime(new Date("2026-06-01T12:00:01.000Z"));
+    await store.upsert(
+      edgeInput({
+        relationshipId: "rel_light",
+        toEntityId: "to-c",
+        metadata: { prefs: { theme: "light" } },
+      }),
+    );
+
+    expect(
+      (await store.list({ metadataMatch: { prefs: { theme: "dark" } } })).map(
+        (rel) => rel.relationshipId,
+      ),
+    ).toEqual(["rel_dark"]);
+    expect(
+      await store.list({ metadataMatch: { prefs: { theme: "neon" } } }),
+    ).toEqual([]);
+    expect(
+      (await store.list({ metadataMatch: { absent: undefined } })).map(
+        (rel) => rel.relationshipId,
+      ),
+    ).toEqual(["rel_light", "rel_dark"]);
+  });
+
+  it("writes no observe_on_retired audit when an active twin absorbs the observation", async () => {
+    const store = new RelationshipStore(
+      createRuntime("agent-1", createTables()),
+      "agent-1",
+    );
+    await store.upsert(edgeInput({ relationshipId: "rel_old" }));
+    await store.retire("rel_old", "superseded");
+    await store.upsert(
+      edgeInput({ relationshipId: "rel_live", confidence: 0.2 }),
+    );
+
+    const observed = await store.observe({
+      fromEntityId: "from-a",
+      toEntityId: "to-b",
+      type: "knows",
+      evidence: ["new"],
+      confidence: 0.5,
+    });
+    expect(observed.relationshipId).toBe("rel_live");
+    expect(observed.evidence).toEqual(["new"]);
+
+    const events = await store.listAuditEvents("rel_old");
+    expect(events.map((event) => event.kind)).toEqual(["retire"]);
+  });
+
+  it("strengthens without inventing metadata and defaults occurredAt to the clock", async () => {
+    const tables = createTables();
+    const store = new RelationshipStore(
+      createRuntime("agent-1", tables),
+      "agent-1",
+    );
+    await store.upsert(edgeInput({ relationshipId: "rel_plain" }));
+    vi.setSystemTime(new Date("2026-06-01T16:00:00.000Z"));
+
+    const updated = await store.observe({
+      fromEntityId: "from-a",
+      toEntityId: "to-b",
+      type: "knows",
+      evidence: [],
+      confidence: 0.7,
+    });
+
+    expect(updated.metadata).toBeUndefined();
+    expect(updated.source).toBe("user_chat");
+    expect(updated.evidence).toEqual([]);
+    expect(updated.state.interactionCount).toBe(1);
+    expect(updated.state.lastInteractionAt).toBe("2026-06-01T16:00:00.000Z");
+    expect(updated.state.lastObservedAt).toBe("2026-06-01T16:00:00.000Z");
+    expect(tables.relationships.get("rel_plain")?.metadata_json).toBe("{}");
+  });
+});
