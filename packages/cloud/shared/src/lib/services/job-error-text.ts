@@ -30,6 +30,24 @@ const JOB_ERROR_MAX_CHARS = 4_000;
 const TRUNCATION_SUFFIX = "\n… truncated";
 /** Wrapped throws are common here; deeper chains are noise in a job row. */
 const MAX_CAUSE_DEPTH = 4;
+const PUBLIC_INTERNAL_ERROR =
+  "The operation failed. Retry from Eliza Cloud or contact support if it continues.";
+
+/**
+ * Stored diagnostics may put a host path in the error message itself, before
+ * any stack frame. Those strings are useful to operators but are not a public
+ * contract. Prefer a bounded generic message to an incomplete path scrubber:
+ * path syntax has too many quoting and escaping forms to safely rewrite while
+ * preserving arbitrary operator text.
+ */
+function containsAbsolutePath(text: string): boolean {
+  return (
+    /\bfile:\/\//iu.test(text) ||
+    /(?:^|[\s'"`(=:])\/(?!\/)[^\s'"`():]+/u.test(text) ||
+    /(?:^|[\s'"`(=:])[A-Za-z]:[\\/][^\s'"`]*/u.test(text) ||
+    /(?:^|[\s'"`(=:])\\\\[^\\\s'"`]+\\[^\s'"`]*/u.test(text)
+  );
+}
 
 /** Classify an untrusted throw without allowing Proxy reflection to escape. */
 function safeError(value: unknown): Error | undefined {
@@ -186,9 +204,10 @@ export function jobErrorSummary(error: unknown): string {
 
 /**
  * What the jobs API may return to a caller. The stored text is an operator
- * diagnostic: even redacted it discloses absolute server paths and internal
- * module layout, which a non-admin job owner has no business reading. Keep the
- * first line — the failure summary — and drop the frames.
+ * diagnostic: even redacted it may disclose absolute server paths and internal
+ * module layout, which a non-admin job owner has no business reading. Drop
+ * frames, and fail closed to a stable public message when the remaining error
+ * body itself contains an absolute path.
  */
 export function publicJobErrorSummary(storedError: string | null | undefined): string | null {
   if (typeof storedError !== "string") return null;
@@ -196,5 +215,6 @@ export function publicJobErrorSummary(storedError: string | null | undefined): s
   // can itself be multi-line ("Provisioning failed:\nnode: …\nreason: …") and
   // the owner needs that body — it is the frames that disclose server layout.
   const summary = (storedError.split(/\n\s+at /, 1)[0] ?? "").trim();
-  return summary.length > 0 ? summary : null;
+  if (summary.length === 0) return null;
+  return containsAbsolutePath(summary) ? PUBLIC_INTERNAL_ERROR : summary;
 }

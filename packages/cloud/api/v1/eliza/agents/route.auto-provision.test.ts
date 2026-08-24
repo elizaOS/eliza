@@ -211,6 +211,38 @@ test("GET returns an owner-safe error summary without internal stack frames", as
   );
 });
 
+test("GET withholds a first-line absolute server path from the list DTO", async () => {
+  listAgents.mockImplementationOnce(async () => [
+    {
+      id: "agent-1",
+      agent_name: "Ada",
+      status: "error",
+      database_status: "ready",
+      last_backup_at: null,
+      last_heartbeat_at: null,
+      error_message:
+        "ENOENT: no such file, open '/srv/eliza/agents/agent-1/config.json'\n    at readAgentConfig (/opt/eliza/provision.ts:42:7)",
+      created_at: new Date("2026-08-21T00:00:00.000Z"),
+      updated_at: new Date("2026-08-21T00:01:00.000Z"),
+      character_id: null,
+      agent_config: {},
+      docker_image: null,
+      execution_tier: "dedicated-always",
+    },
+  ]);
+
+  const response = await get();
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    data: Array<{ errorMessage: string | null }>;
+  };
+  expect(body.data[0]?.errorMessage).toBe(
+    "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+  );
+  expect(JSON.stringify(body)).not.toContain("/srv/eliza");
+  expect(JSON.stringify(body)).not.toContain("/opt/eliza");
+});
+
 describe("POST /api/v1/eliza/agents autoProvision identity", () => {
   beforeEach(() => {
     checkAgentCreditGate.mockClear();

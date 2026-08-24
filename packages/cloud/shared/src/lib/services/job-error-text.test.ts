@@ -154,13 +154,19 @@ describe("publicJobErrorSummary — API boundary", () => {
     expect(summary).not.toMatch(/\n\s+at /);
   });
 
-  test("a path inside the message itself is preserved — only frames are cut", () => {
-    // Honest scope: this summary is not a path scrubber. An ENOENT message
-    // names the file the operator asked about; the redactor handles secrets.
-    const stored = jobErrorText(
-      new Error("ENOENT: no such file, open '/srv/eliza/agents/9c1/config.json'"),
+  test.each([
+    "ENOENT: no such file, open '/srv/eliza/agents/9c1/config.json'",
+    "failed to create /tmp",
+    "failed to read C:\\eliza\\agents\\9c1\\config.json",
+    "failed to read \\\\internal-host\\agents\\9c1\\config.json",
+    "failed to read file:///srv/eliza/agents/9c1/config.json",
+  ])("withholds a first-line absolute path from the owner: %s", (message) => {
+    const stored = jobErrorText(new Error(message));
+    const summary = publicJobErrorSummary(stored) ?? "";
+    expect(summary).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
     );
-    expect(publicJobErrorSummary(stored)).toContain("/srv/eliza/agents/9c1");
+    expect(summary).not.toContain("9c1");
   });
 
   test("null and empty stay null", () => {
