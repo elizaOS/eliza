@@ -98,6 +98,15 @@ Behavioral design reference: QwenLM/open-computer-use main
 owner-scoped and no-global-pointer-by-default policy; no source was copied and
 global HID fallback remains disabled.
 
+### Native status-item menu lifecycle
+
+The macOS tray uses Electrobun's standard attached `NSStatusItem.menu`, so
+AppKit owns same-item toggle, outside-click, Escape, and deactivation dismissal.
+Eliza attaches the localized menu once and deduplicates equivalent renderer
+updates. This avoids replacing the asynchronous Electrobun menu during AppKit's
+modal tracking session without installing custom event monitors or deprecated
+menu presentation APIs.
+
 ## Environment knobs
 
 `ELIZA_DESKTOP_BOTTOM_BAR` (optional accessory shell; **default OFF**) ·

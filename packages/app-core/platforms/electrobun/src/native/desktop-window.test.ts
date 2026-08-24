@@ -876,12 +876,22 @@ describe("DesktopManager main window controls", () => {
     expect(window.focus).not.toHaveBeenCalled();
   });
 
-  it("attaches a minimal native fallback menu at tray creation", async () => {
+  it("attaches the macOS native menu once and ignores equivalent renderer reinitialization", async () => {
     const manager = new DesktopManager();
 
     await manager.createTray({ icon: "/tmp/appIcon.png" });
 
     const tray = electrobunMock.trayInstances[0];
+    expect(tray.setMenu).not.toHaveBeenCalled();
+
+    const menu = [
+      { id: "tray-show-window", label: "Open Eliza" },
+      { id: "tray-fallback-separator", type: "separator" as const },
+      { id: "quit", label: "Quit Eliza" },
+    ];
+    manager.setTrayMenu({ menu });
+    manager.setTrayMenu({ menu });
+
     expect(tray.setMenu).toHaveBeenCalledTimes(1);
     expect(tray.setMenu).toHaveBeenCalledWith([
       expect.objectContaining({
@@ -896,6 +906,14 @@ describe("DesktopManager main window controls", () => {
         action: "quit",
       }),
     ]);
+
+    await manager.destroyTray();
+    await manager.createTray({ icon: "/tmp/appIcon.png" });
+    const replacementTray = electrobunMock.trayInstances[1];
+    manager.setTrayMenu({ menu });
+    expect(tray.remove).toHaveBeenCalledTimes(1);
+    expect(replacementTray.setMenu).toHaveBeenCalledTimes(1);
+    expect(electrobunMock.trayInstances).toHaveLength(2);
   });
 
   it("reports global shortcut registration rejection without tracking the shortcut", async () => {

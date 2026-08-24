@@ -464,6 +464,8 @@ export class DesktopManager {
 
   // Track menu items for context-menu-clicked matching
   private trayMenuItems: Map<string, TrayMenuItem> = new Map();
+  /** Last menu attached to Electrobun's native status item. */
+  private trayMenuSignature: string | null = null;
   private trayClickHandler: (() => void) | null = null;
   private contextMenuHandler: ElectrobunEventHandler | null = null;
   private windowEventHandlers: Partial<
@@ -782,7 +784,18 @@ export class DesktopManager {
       height: options.height ?? 16,
     });
 
-    this.setTrayMenu({ menu: options.menu ?? FALLBACK_TRAY_MENU_ITEMS });
+    // Electrobun 1.18.1 assigns NSStatusItem.menu asynchronously. On macOS,
+    // wait for the renderer-owned localized menu instead of attaching a
+    // fallback that can be replaced while AppKit is tracking it. Until then,
+    // the bare status-item action still opens Eliza. Other platforms keep the
+    // immediate fallback because their tray lifecycle is not AppKit-modal.
+    if (
+      options.menu ||
+      process.platform !== "darwin" ||
+      !shouldAttachTrayMenu()
+    ) {
+      this.setTrayMenu({ menu: options.menu ?? FALLBACK_TRAY_MENU_ITEMS });
+    }
 
     this.setupTrayEvents();
   }
@@ -811,6 +824,7 @@ export class DesktopManager {
       this.tray = null;
     }
     this.trayMenuItems.clear();
+    this.trayMenuSignature = null;
   }
 
   setTrayMenu(options: { menu: TrayMenuItem[] }): void {
@@ -831,7 +845,12 @@ export class DesktopManager {
     }
 
     const template = this.buildMenuTemplate(menu);
+    const signature = JSON.stringify(template);
+    if (signature === this.trayMenuSignature) {
+      return;
+    }
     this.tray.setMenu(template);
+    this.trayMenuSignature = signature;
   }
 
   /**
