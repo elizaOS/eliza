@@ -291,7 +291,10 @@ function reversalAuthority(
     }
   }
   if (kind === "charge") {
-    const match = /^stripe:refund:([^:]+):(.+)$/.exec(fallback);
+    // The cumulative suffix is cents, so anything nonnumeric means the key is
+    // not a production refund snapshot; keep it as its own raw authority
+    // rather than colliding with (and max-suppressing) a genuine charge row.
+    const match = /^stripe:refund:([^:]+):([0-9]+)$/.exec(fallback);
     if (match) {
       return `charge ${match[1]}`;
     }

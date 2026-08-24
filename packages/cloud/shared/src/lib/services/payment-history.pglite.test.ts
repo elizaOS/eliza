@@ -723,6 +723,52 @@ describe("listPaymentStates — refund and dispute derivation", () => {
     expect(row.paymentState).toBe("partially_refunded");
   });
 
+  test("malformed fallback keys keep their own raw authority instead of colliding with a real charge", async () => {
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 10000,
+      status: "settled",
+      settlementTxRef: "pi_malformed_key",
+      settledAt: new Date(Date.now() - 40_000),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_malformed_key",
+      amountCents: 10000,
+    });
+    // A genuine production snapshot for ch_real and an unrelated malformed
+    // key whose prefix would naively strip to the same `charge ch_real`.
+    // Digits-only suffix enforcement keeps the malformed row on its own raw
+    // authority, so the genuine $40 refund is not max-suppressed to $10.
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-40",
+      paymentIntentId: "pi_malformed_key",
+      source: "charge.refunded",
+      reversedUsd: 40,
+      idempotencyKey: "stripe:refund:ch_real:4000",
+      createdAt: new Date(Date.now() - 30_000),
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-10",
+      paymentIntentId: "pi_malformed_key",
+      source: "charge.refunded",
+      reversedUsd: 10,
+      idempotencyKey: "stripe:refund:ch_real:not:cents",
+      createdAt: new Date(Date.now() - 20_000),
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows[0];
+    // Distinct authorities stay additive: 40 (genuine) + 10 (malformed raw) = 50.
+    expect(row.cumulativeRefundedUsd).toBe(50);
+    expect(row.paymentState).toBe("partially_refunded");
+  });
+
   test("mixed provenance: reference row and key-fallback row for one charge collapse to one authority", async () => {
     const request = await insertStripePaymentRequest({
       organizationId,
