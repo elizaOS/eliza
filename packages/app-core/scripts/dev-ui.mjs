@@ -1051,6 +1051,13 @@ function startVite() {
       ELIZA_API_PORT: String(API_PORT),
       ELIZA_PORT: String(UI_PORT),
       ELIZA_HOME_API_PORT: String(API_PORT),
+      // The dev dashboard is a loopback-owned renderer by default. Pinning its
+      // public origin makes Vite's API proxy preserve that local trust without
+      // synthesizing X-Forwarded-* client headers, which the API correctly
+      // rejects. Operators can still set an explicit false-y flag (for example
+      // `0`) when deliberately serving a LAN renderer.
+      ELIZA_VITE_LOOPBACK_ORIGIN:
+        childEnv.ELIZA_VITE_LOOPBACK_ORIGIN?.trim() || "1",
     },
     stdio: ["inherit", "pipe", "pipe"],
   });

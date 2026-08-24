@@ -50,6 +50,14 @@ describe("dev-ui Vite runtime", () => {
     expect(source).not.toContain('nodePath: which("node")');
   });
 
+  it("pins the local renderer origin so the API proxy preserves loopback trust", () => {
+    const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
+
+    expect(source).toContain(
+      'ELIZA_VITE_LOOPBACK_ORIGIN:\n        childEnv.ELIZA_VITE_LOOPBACK_ORIGIN?.trim() || "1",',
+    );
+  });
+
   it("starts Vite before watcher setup and API readiness polling", () => {
     const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
     const apiStart = source.indexOf("  apiSupervisor.start();");
