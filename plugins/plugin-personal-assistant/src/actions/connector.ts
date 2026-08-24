@@ -613,7 +613,7 @@ async function dispatchGoogleVerify(
     const triage = await service.getGmailTriage(INTERNAL_URL, {
       mode: params.mode,
       side,
-      maxResults: params.recentLimit ?? 10,
+      maxResults: params.recentLimit,
       forceSync: true,
     });
     gmailRead = {

@@ -215,6 +215,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/normalizedLimit\(params\.maxMessages,\s*200/,
 		/MAX_GMAIL_RESULTS/,
 	],
+	"plugins/plugin-personal-assistant/src/lifeops/domains/gmail-service.ts": [
+		/DEFAULT_GMAIL_(?:TRIAGE_MAX_RESULTS|SEARCH_LIMIT)/,
+		/Math\.min\(\s*100/,
+		/maxResults\(request\.maxResults/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/repository.ts": [
+		/options\?\.maxResults[\s\S]{0,160}:\s*100/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,

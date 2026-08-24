@@ -6721,10 +6721,10 @@ export class LifeOpsRepository {
     },
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsGmailSpamReviewItem[]> {
-    const limit =
+    const limitClause =
       options?.maxResults !== undefined && Number.isFinite(options.maxResults)
-        ? options.maxResults
-        : 100;
+        ? `LIMIT ${sqlInteger(options.maxResults)}`
+        : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     const statusClause = options?.status
       ? `AND status = ${sqlQuote(options.status)}`
@@ -6742,7 +6742,7 @@ export class LifeOpsRepository {
           ${statusClause}
           ${grantClause}
         ORDER BY updated_at DESC, received_at DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseGmailSpamReviewItem);
   }
