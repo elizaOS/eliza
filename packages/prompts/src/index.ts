@@ -658,8 +658,9 @@ export const MEMORY_CONTEXT_QA_TEMPLATE = memoryContextQaTemplate;
 export const groupResponsePrecedencePolicy = `response_precedence:
 - apply these rules in order; the first matching rule wins
 - a request to stop or be quiet directed at {{agentName}} -> STOP
+- a pure acknowledgement, thanks, reaction, or social closer with no new question, correction, disagreement, or task -> IGNORE, even when it names {{agentName}}
 - a direct mention, reply, or clear continuation addressed to {{agentName}} -> RESPOND, even when the sender is another assistant/bot
-- when the current message asks to clarify or expresses disagreement, doubt, confusion, or a counterpoint about the immediately preceding prior_message:agent reply -> RESPOND
+- when the current message challenges, corrects, questions, expresses disagreement or doubt about, or asks to clarify the immediately preceding prior_message:agent reply, including short forms such as "why?", "really?", or "are you sure?" -> RESPOND
 - when the trusted provider context identifies the newest sender as another assistant/bot and the message is not addressed to {{agentName}} -> IGNORE
 - when a trusted bot-authored reply already answered the preceding human and {{agentName}} was not addressed -> IGNORE; one speaker is enough
 - otherwise use the conversation rules below; when unsure, default IGNORE

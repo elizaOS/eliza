@@ -541,18 +541,84 @@ function textContainsUserTag(text: string | undefined): boolean {
  * text. Shared by the reply gate, the bot-noise TEXT_SMALL triage, and the
  * Stage-1 prompt tier so all three branch on the same ground truth.
  */
+export interface MessageAddressSignals {
+	platformMention: boolean;
+	replyToAgent: boolean;
+	textualAgentName: boolean;
+	effective: boolean;
+}
+
+function textDirectlyAddressesAgentName(
+	text: string | undefined,
+	names: Array<string | null | undefined>,
+): boolean {
+	if (!text) return false;
+	return names.some((name) => {
+		const candidate = name?.trim();
+		if (!candidate) return false;
+		const escaped = escapeRegex(candidate);
+		const direct = new RegExp(
+			`(?:^\\s*(?:(?:hey|hi|hello|thanks?|thank you|please)\\s*[,!:;-]?\\s*)?@?${escaped}(?=\\s*[,!:;?-]|\\s+(?:and|stop|pause|cancel|check|can|could|would|will|do|did|are|is|what|why|how|when|where|who|please)\\b)|,\\s*@?${escaped}(?=\\s|$))`,
+			"iu",
+		);
+		return direct.test(text);
+	});
+}
+
+/** Classifies the structural signals used by Stage 1 to distinguish addressed from ambient turns. */
+export function classifyMessageAddress(
+	runtime: IAgentRuntime,
+	message: Memory,
+): MessageAddressSignals {
+	const mentionContext = message.content?.mentionContext;
+	const platformMention = mentionContext?.isMention === true;
+	const replyToAgent = mentionContext?.isReply === true;
+	const textualAgentName = textDirectlyAddressesAgentName(
+		message.content?.text,
+		[runtime.character?.name, runtime.character?.username],
+	);
+	return {
+		platformMention,
+		replyToAgent,
+		textualAgentName,
+		effective: platformMention || replyToAgent || textualAgentName,
+	};
+}
+
 function messageExplicitlyAddressesAgent(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): boolean {
-	const mentionContext = message.content?.mentionContext;
-	return (
-		mentionContext?.isMention === true ||
-		mentionContext?.isReply === true ||
-		textContainsAgentName(message.content?.text, [
-			runtime.character?.name,
-			runtime.character?.username,
-		])
+	return classifyMessageAddress(runtime, message).effective;
+}
+
+/** Detects a current-turn challenge that directly continues the agent's prior reply. */
+export function messageChallengesPriorAgentReply(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+): boolean {
+	const providers = state.data?.providers;
+	if (!providers || typeof providers !== "object") return false;
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") return false;
+	const data = (recent as { data?: unknown }).data;
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	if (!Array.isArray(recentMessages)) return false;
+	const prior = [...recentMessages]
+		.reverse()
+		.find((candidate): candidate is Memory => {
+			if (!candidate || typeof candidate !== "object") return false;
+			const memory = candidate as Memory;
+			return !message.id || memory.id !== message.id;
+		});
+	if (prior?.entityId !== runtime.agentId) return false;
+	const text = getUserMessageText(message) ?? "";
+	return /\b(counterintuitive|disagree|doubt|wrong|incorrect|confus(?:ed|ing)|clarify|actually|but i thought|i thought|are you sure|really|why)\b/iu.test(
+		text,
 	);
 }
 
@@ -1568,6 +1634,12 @@ export {
 
 export type V5MessageRuntimeStage1Result =
 	| {
+			kind: "decision";
+			action: "RESPOND" | "IGNORE" | "STOP";
+			messageHandler: MessageHandlerResult;
+			state: State;
+	  }
+	| {
 			kind: "terminal";
 			action: "IGNORE" | "STOP";
 			messageHandler: MessageHandlerResult;
@@ -1578,6 +1650,15 @@ export type V5MessageRuntimeStage1Result =
 			messageHandler: MessageHandlerResult;
 			result: StrategyResult;
 	  };
+
+/** Observable evidence emitted after Stage 1 parses a decision and before routing. */
+export interface Stage1DecisionObservation {
+	trajectoryId?: string;
+	provider?: string;
+	prefixHash: string;
+	decision: MessageHandlerResult["processMessage"];
+	parsed: MessageHandlerResult;
+}
 
 type ResponseHandlerEarlyReplyEvent = {
 	text: string;
@@ -3876,7 +3957,7 @@ async function createV5MessageContextObject(args: {
 					// "Hard to miss.", "Sounds like the move." — a running commentary
 					// nobody asked for. Unaddressed group chatter defaults to IGNORE;
 					// RESPOND is reserved for a concrete contribution.
-					"ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Default shouldRespond=IGNORE. RESPOND only when the current turn asks you to correct or clarify your own prior answer, when silence would allow a concrete consequential error or harm you can specifically prevent, or when an explicit standing responsibility makes this turn yours to handle. A broadcast question, a useful fact you could add, or the ability to keep the discussion moving is not enough. IGNORE banter, jokes, reactions, acknowledgements, open group questions, and side chatter where you would only answer, agree, comment, restate, or continue the conversation. Having replied earlier is a reason to stay silent unless the current turn directly challenges or needs clarification of that reply.",
+					"ambient_turn_policy: HARD GATE. The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Default shouldRespond=IGNORE. You MUST set shouldRespond=IGNORE unless the current turn explicitly challenges or asks to clarify your immediately preceding prior_message:agent reply, silence would allow a concrete consequential error or harm you can specifically prevent, or an explicit standing responsibility makes this turn yours to handle. A broadcast question, a useful fact you could add, your ability to answer, or your desire to keep the discussion moving is never enough. IGNORE banter, jokes, reactions, acknowledgements, open group questions, and side chatter where you would only answer, agree, comment, restate, or continue the conversation. Having replied earlier is a reason to stay silent unless the current turn directly challenges or needs clarification of that reply.",
 		});
 	}
 
@@ -5001,7 +5082,7 @@ function selectMessageHandlerTask(
 }
 
 function renderMessageHandlerInstructions(
-	runtime: OptimizedPromptRuntimeLike,
+	runtime: OptimizedPromptRuntimeLike & Pick<IAgentRuntime, "character">,
 	availableContexts: readonly ContextDefinition[],
 	options?: {
 		directMessage?: boolean;
@@ -5016,6 +5097,7 @@ function renderMessageHandlerInstructions(
 	);
 	const rendered = composePrompt({
 		state: {
+			agentName: runtime.character.name?.trim() || "the agent",
 			directMessage: options?.directMessage ? "true" : "",
 			availableContexts: formatAvailableContextsForPrompt(availableContexts),
 			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
@@ -5046,7 +5128,7 @@ function renderMessageHandlerInstructions(
 }
 
 function renderMessageHandlerModelInput(
-	runtime: OptimizedPromptRuntimeLike,
+	runtime: OptimizedPromptRuntimeLike & Pick<IAgentRuntime, "character">,
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
 	options?: {
@@ -8059,6 +8141,10 @@ export async function runV5MessageRuntimeStage1(args: {
 	 * failure-reply gate.
 	 */
 	onStage1RespondDecision?: () => void;
+	/** Receives the exact parsed Stage-1 decision and its inference provenance. */
+	onStage1Decision?: (observation: Stage1DecisionObservation) => void;
+	/** Stops after Stage-1 routing, before reply generation, planning, or tools. */
+	stage1DecisionOnly?: boolean;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -8084,7 +8170,8 @@ export async function runV5MessageRuntimeStage1(args: {
 	const ambientTurn = isAmbientStage1Turn(
 		args.runtime,
 		args.message,
-		messageExplicitlyAddressesAgent(args.runtime, args.message),
+		messageExplicitlyAddressesAgent(args.runtime, args.message) ||
+			messageChallengesPriorAgentReply(args.runtime, args.message, args.state),
 	);
 	const context = await createV5MessageContextObject({
 		...args,
@@ -8549,6 +8636,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			}
 		}
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
+		args.onStage1Decision?.({
+			...(trajectoryId ? { trajectoryId } : {}),
+			provider: messageHandlerProvider,
+			prefixHash: stage1PrefixHash,
+			decision: messageHandler.processMessage,
+			// Evaluators may patch the live handler later. Preserve the exact model
+			// boundary value observed here instead of exposing a mutable alias.
+			parsed: structuredClone(messageHandler),
+		});
 
 		if (!args.codingMode && recorder && trajectoryId) {
 			messageHandlerStageTask = recordMessageHandlerStage({
@@ -8606,6 +8702,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// trajectory persistence is recorded there; slower extraction remains a
 		// tracked data task but cannot leave the completed turn marked running.
 		if (
+			!args.stage1DecisionOnly &&
 			messageHandler.extract &&
 			((messageHandler.extract.facts?.length ?? 0) > 0 ||
 				(messageHandler.extract.relationships?.length ?? 0) > 0)
@@ -8640,7 +8737,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// against the room's participants. Fire-and-forget like the facts task;
 		// failures land in the logger but never block the reply.
 		const addressedTo = messageHandler.extract?.addressedTo ?? [];
-		if (addressedTo.length > 0) {
+		if (!args.stage1DecisionOnly && addressedTo.length > 0) {
 			const addressedToTask = applyAddressedTo({
 				runtime: args.runtime,
 				message: args.message,
@@ -8672,7 +8769,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// room's running topic list for the CHANNEL_TOPICS provider and must
 		// never block or break the turn.
 		const topics = messageHandler.extract?.topics ?? [];
-		if (topics.length > 0 && args.message.roomId) {
+		if (!args.stage1DecisionOnly && topics.length > 0 && args.message.roomId) {
 			const channelTopics = args.runtime.getService<ChannelTopicsService>(
 				ChannelTopicsService.serviceType,
 			);
@@ -8709,7 +8806,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// Stamp the turn's topics onto the inbound message memory so the dashboard
 		// can group the transcript by topic + show a topic chips bar (#8928).
 		// Additive, fire-and-forget metadata write — never blocks/breaks the turn.
-		if (topics.length > 0 && args.message.id) {
+		if (!args.stage1DecisionOnly && topics.length > 0 && args.message.id) {
 			// args.message is always a message memory, so its metadata is
 			// MessageMetadata; force `type: "message"` so the spread result is a
 			// valid, discriminated MessageMetadata regardless of the inbound shape
@@ -8860,6 +8957,19 @@ export async function runV5MessageRuntimeStage1(args: {
 			addressedToOtherParticipant,
 			messageText: getUserMessageText(args.message) ?? "",
 		});
+		if (args.stage1DecisionOnly) {
+			return {
+				kind: "decision",
+				action:
+					route.type === "ignored"
+						? "IGNORE"
+						: route.type === "stopped"
+							? "STOP"
+							: "RESPOND",
+				messageHandler,
+				state: args.state,
+			};
+		}
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
 				kind: "terminal",
@@ -14080,9 +14190,10 @@ export class DefaultMessageService implements IMessageService {
 						: {};
 				setContextRoutingMetadata(message, routedDecision);
 
-				if (outcome.kind === "terminal") {
+				if (outcome.kind === "terminal" || outcome.kind === "decision") {
 					shouldRespondToMessage = false;
-					terminalDecision = outcome.action;
+					terminalDecision =
+						outcome.action === "RESPOND" ? "IGNORE" : outcome.action;
 					state = outcome.state;
 				} else {
 					shouldRespondToMessage = true;
