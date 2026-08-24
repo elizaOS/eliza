@@ -343,3 +343,86 @@ describe("createMemoryWatchdog start/stop (timer-driven)", () => {
     setIntervalSpy.mockRestore();
   });
 });
+
+// Kept as a separate import group below the suites it serves so this additive
+// extension never rewrites the pre-existing import block.
+import { startMemoryWatchdog, stopMemoryWatchdog } from "../memory-watchdog.ts";
+
+describe("resolveMemoryWatchdogConfig integer-parsing edges", () => {
+  it("clamps negative values up to their floors", () => {
+    expect(
+      resolveMemoryWatchdogConfig({
+        ELIZA_MEMORY_WATCHDOG_RSS_MB: "-512",
+        ELIZA_MEMORY_WATCHDOG_INTERVAL_MS: "-250",
+        ELIZA_MEMORY_WATCHDOG_SUSTAINED: "-2",
+      }),
+    ).toEqual({ rssThresholdMb: 128, intervalMs: 1_000, sustainedSamples: 1 });
+  });
+
+  it("falls back to defaults for empty-string values", () => {
+    expect(
+      resolveMemoryWatchdogConfig({
+        ELIZA_MEMORY_WATCHDOG_RSS_MB: "",
+        ELIZA_MEMORY_WATCHDOG_INTERVAL_MS: "",
+        ELIZA_MEMORY_WATCHDOG_SUSTAINED: "",
+      }),
+    ).toEqual({
+      rssThresholdMb: 1536,
+      intervalMs: 30_000,
+      sustainedSamples: 3,
+    });
+  });
+
+  it("parses the leading integer after trimming whitespace and ignores trailing units", () => {
+    expect(
+      resolveMemoryWatchdogConfig({
+        ELIZA_MEMORY_WATCHDOG_RSS_MB: " 2048 ",
+        ELIZA_MEMORY_WATCHDOG_INTERVAL_MS: "5000ms",
+        ELIZA_MEMORY_WATCHDOG_SUSTAINED: "2 samples",
+      }),
+    ).toEqual({ rssThresholdMb: 2048, intervalMs: 5_000, sustainedSamples: 2 });
+  });
+});
+
+describe("startMemoryWatchdog / stopMemoryWatchdog (process-wide singleton)", () => {
+  const enabledEnv: NodeJS.ProcessEnv = {
+    ELIZA_MEMORY_WATCHDOG: "1",
+    // 1 TiB expressed in MB — far above any real RSS, so the live sampler
+    // never reaches threshold and no restart request can fire in tests.
+    ELIZA_MEMORY_WATCHDOG_RSS_MB: "1048576",
+    ELIZA_MEMORY_WATCHDOG_INTERVAL_MS: "60000",
+    ELIZA_MEMORY_WATCHDOG_SUSTAINED: "2",
+  };
+
+  afterEach(() => {
+    stopMemoryWatchdog();
+  });
+
+  it("returns null while disabled, and stop() without a watchdog is a safe no-op", () => {
+    expect(startMemoryWatchdog({})).toBeNull();
+    expect(() => stopMemoryWatchdog()).not.toThrow();
+    expect(startMemoryWatchdog({ ELIZA_MEMORY_WATCHDOG: "0" })).toBeNull();
+  });
+
+  it("starts a live sampler wired to the real process RSS", () => {
+    const wd = startMemoryWatchdog(enabledEnv);
+    expect(wd).not.toBeNull();
+    if (!wd) return;
+    // The production readRssBytes seam feeds real process.memoryUsage().rss,
+    // which stays far below the 1 TiB threshold on a manual tick.
+    expect(wd.tick()).toBe(false);
+  });
+
+  it("returns the same watchdog while active and a fresh one after stop()", () => {
+    const first = startMemoryWatchdog(enabledEnv);
+    expect(first).not.toBeNull();
+    const second = startMemoryWatchdog(enabledEnv);
+    expect(second).toBe(first);
+
+    stopMemoryWatchdog();
+
+    const third = startMemoryWatchdog(enabledEnv);
+    expect(third).not.toBeNull();
+    expect(third).not.toBe(first);
+  });
+});
