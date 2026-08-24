@@ -1605,7 +1605,9 @@ final class BootCaptureUITests: XCTestCase {
 
     /// Accepts only the app's explicit remote-server confirmation. The prompt
     /// is part of the product trust boundary, so generic alerts and unrelated
-    /// permission sheets are never dismissed by this setup path.
+    /// permission sheets are never dismissed by this setup path. A resolved
+    /// owner LoginView is also terminal because password-configured hosts do
+    /// not expose PairingView after the trusted remote origin is adopted.
     private func confirmRemoteServerTrustPromptIfNeeded(
         _ app: XCUIApplication,
         timeout: TimeInterval
@@ -1614,6 +1616,9 @@ final class BootCaptureUITests: XCTestCase {
             NSPredicate(
                 format: "label CONTAINS[c] 'pairing code' OR placeholderValue CONTAINS[c] 'pairing code'"
             )
+        ).firstMatch
+        let ownerPasswordField = app.secureTextFields.matching(
+            NSPredicate(format: "placeholderValue ==[c] 'Your password'")
         ).firstMatch
         let trustCopy = app.staticTexts.matching(
             NSPredicate(format: "label BEGINSWITH[c] 'Connect to this server?'")
@@ -1630,6 +1635,9 @@ final class BootCaptureUITests: XCTestCase {
         var nextTapAt = Date.distantPast
         while Date() < deadline {
             if pairingField.exists {
+                return
+            }
+            if ownerPasswordField.exists {
                 return
             }
             if hasAuthenticatedChatComposer(app) {
@@ -1685,7 +1693,8 @@ final class BootCaptureUITests: XCTestCase {
         attachScreenshot(named: "pairing-007-server-trust-prompt-missing")
         attachAccessibilitySnapshot(of: app)
         throw StrictGateFailure(
-            message: "the remote-agent deep link exposed no usable trust confirmation or PairingView"
+            message:
+                "the remote-agent deep link exposed no usable trust confirmation, owner LoginView, or PairingView"
         )
     }
 
