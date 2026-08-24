@@ -174,7 +174,7 @@ class Parser {
 			const absoluteBase = base.value < 0n ? -base.value : base.value;
 			if (
 				absoluteBase > 1n &&
-				BigInt(integerDigits(absoluteBase)) * exponent.value >
+				(BigInt(integerDigits(absoluteBase)) - 1n) * exponent.value + 1n >
 					BigInt(MAX_INTEGER_RESULT_DIGITS)
 			) {
 				throw new ExpressionError(
