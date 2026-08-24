@@ -97,3 +97,142 @@ describe("GET /api/logs since timestamp", () => {
     expect(body.entries).toBeUndefined();
   });
 });
+
+describe("DELETE /api/logs", () => {
+  it("clears the log buffer and returns the cleared count", async () => {
+    const json = vi.fn();
+    const logBuffer = [entry(1_000, "old"), entry(2_000, "new")];
+    const ctx = {
+      req: {} as http.IncomingMessage,
+      res: {} as http.ServerResponse,
+      method: "DELETE",
+      pathname: "/api/logs",
+      url: new URL("http://localhost/api/logs"),
+      json,
+      logBuffer,
+      eventBuffer: [],
+      auditEventTypes: [],
+      auditSeverities: [],
+      getAuditFeedSize: () => 0,
+      queryAuditFeed: () => [],
+      subscribeAuditFeed: () => () => undefined,
+    };
+
+    const handled = await handleDiagnosticsRoutes(ctx);
+    expect(handled).toBe(true);
+    expect(json).toHaveBeenCalledWith(ctx.res, { cleared: 2 });
+    expect(logBuffer).toHaveLength(0);
+  });
+});
+
+describe("POST /api/logs/export", () => {
+  it("exports logs as JSON attachment", async () => {
+    const resHeaders: Record<string, string | number> = {};
+    let writtenBody = "";
+    const res = {
+      writeHead: vi.fn(
+        (_status: number, headers: Record<string, string | number>) => {
+          Object.assign(resHeaders, headers);
+        },
+      ),
+      end: vi.fn((data: string) => {
+        writtenBody = data;
+      }),
+    } as unknown as http.ServerResponse;
+
+    const ctx = {
+      req: {} as http.IncomingMessage,
+      res,
+      method: "POST",
+      pathname: "/api/logs/export",
+      url: new URL("http://localhost/api/logs/export"),
+      json: vi.fn(),
+      error: vi.fn(),
+      readJsonBody: vi.fn().mockResolvedValue({ format: "json" }),
+      logBuffer: [entry(1_000, "message one")],
+      eventBuffer: [],
+      auditEventTypes: [],
+      auditSeverities: [],
+      getAuditFeedSize: () => 0,
+      queryAuditFeed: () => [],
+      subscribeAuditFeed: () => () => undefined,
+    };
+
+    const handled = await handleDiagnosticsRoutes(ctx);
+    expect(handled).toBe(true);
+    expect(resHeaders["Content-Type"]).toBe("application/json; charset=utf-8");
+    expect(writtenBody).toContain("message one");
+  });
+
+  it("exports logs as CSV attachment", async () => {
+    const resHeaders: Record<string, string | number> = {};
+    let writtenBody = "";
+    const res = {
+      writeHead: vi.fn(
+        (_status: number, headers: Record<string, string | number>) => {
+          Object.assign(resHeaders, headers);
+        },
+      ),
+      end: vi.fn((data: string) => {
+        writtenBody = data;
+      }),
+    } as unknown as http.ServerResponse;
+
+    const ctx = {
+      req: {} as http.IncomingMessage,
+      res,
+      method: "POST",
+      pathname: "/api/logs/export",
+      url: new URL("http://localhost/api/logs/export"),
+      json: vi.fn(),
+      error: vi.fn(),
+      readJsonBody: vi.fn().mockResolvedValue({ format: "csv" }),
+      logBuffer: [entry(1_000, "csv message")],
+      eventBuffer: [],
+      auditEventTypes: [],
+      auditSeverities: [],
+      getAuditFeedSize: () => 0,
+      queryAuditFeed: () => [],
+      subscribeAuditFeed: () => () => undefined,
+    };
+
+    const handled = await handleDiagnosticsRoutes(ctx);
+    expect(handled).toBe(true);
+    expect(resHeaders["Content-Type"]).toBe("text/csv; charset=utf-8");
+    expect(writtenBody).toContain("timestamp,level,source,tags,message");
+    expect(writtenBody).toContain("csv message");
+  });
+});
+
+describe("GET /api/extension/status", () => {
+  it("probes relay reachability and returns status payload", async () => {
+    const json = vi.fn();
+    const checkRelayReachable = vi.fn().mockResolvedValue(true);
+    const ctx = {
+      req: {} as http.IncomingMessage,
+      res: {} as http.ServerResponse,
+      method: "GET",
+      pathname: "/api/extension/status",
+      url: new URL("http://localhost/api/extension/status"),
+      json,
+      logBuffer: [],
+      eventBuffer: [],
+      relayPort: 18792,
+      checkRelayReachable,
+      auditEventTypes: [],
+      auditSeverities: [],
+      getAuditFeedSize: () => 0,
+      queryAuditFeed: () => [],
+      subscribeAuditFeed: () => () => undefined,
+    };
+
+    const handled = await handleDiagnosticsRoutes(ctx);
+    expect(handled).toBe(true);
+    expect(checkRelayReachable).toHaveBeenCalledWith(18792);
+    expect(json).toHaveBeenCalledWith(ctx.res, {
+      relayReachable: true,
+      relayPort: 18792,
+      extensionPath: null,
+    });
+  });
+});
