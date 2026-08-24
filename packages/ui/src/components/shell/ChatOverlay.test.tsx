@@ -316,6 +316,27 @@ describe("ChatOverlay", () => {
     expect(onRequestedOpenChange).not.toHaveBeenCalled();
   });
 
+  it("admits AX pill activation when WebKit exposes pointerdown without pointerup", async () => {
+    const onRequestedOpenChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={false}
+        onRequestedOpenChange={onRequestedOpenChange}
+      />,
+    );
+
+    const pill = screen.getByTestId("chat-pill");
+    fireEvent.pointerDown(pill, { pointerId: 40, clientY: 400 });
+    fireEvent.click(pill, { detail: 1 });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+    });
+    expect(onRequestedOpenChange).toHaveBeenCalledWith(true);
+  });
+
   it("honors repeated native open requests even when requestedOpen is already true", async () => {
     const { rerender } = render(
       <ChatOverlay

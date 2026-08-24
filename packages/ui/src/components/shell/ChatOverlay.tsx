@@ -972,10 +972,14 @@ function useSemanticActivationGate(): {
   return {
     beginPointerSequence: () => {
       cancelReset();
-      pointerSequenceRef.current = true;
+      // Do not suppress a click merely because WebKit exposed a synthetic
+      // pointerdown. A real completed pointer activation always reaches our
+      // pointerup first; some AXPress paths do not.
+      pointerSequenceRef.current = false;
     },
     finishPointerSequence: () => {
       cancelReset();
+      pointerSequenceRef.current = true;
       // `click` follows pointerup. Keep the marker through that compatibility
       // click, then clear it if a drag/cancel produced no click at all.
       resetTimerRef.current = window.setTimeout(() => {
