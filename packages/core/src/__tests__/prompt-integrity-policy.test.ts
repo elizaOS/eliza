@@ -202,6 +202,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/sessionEvents\.shift\(/,
 		/pruneSessions\(/,
 	],
+	"plugins/plugin-personal-assistant/src/activity-profile/service.ts": [
+		/MAX_ROOMS/,
+		/MESSAGES_LIMIT/,
+		/ACTIVITY_SIGNALS_WINDOW_LIMIT/,
+		/CURRENT_ACTIVITY_SIGNAL_LIMIT/,
+		/roomIds\.slice\(/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,
