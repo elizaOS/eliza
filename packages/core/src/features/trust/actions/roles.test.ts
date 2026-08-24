@@ -7,14 +7,18 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { ChannelType, Role } from "../../../types/index.ts";
+import { ChannelType, type UUID, Role } from "../../../types/index.ts";
+import { stringToUuid } from "../../../utils.ts";
 import { updateRoleHandler } from "./roles.ts";
 
-const ROOM_ID = "room-role-test";
-const WORLD_ID = "world-role-test";
-const REQUESTER_ID = "requester-entity";
-const BOB_ID = "bob-entity";
-const ALICE_ID = "alice-entity";
+// Real UUIDs: the #23100 CAS path fails closed on non-UUID target ids, and
+// role writes now commit through adapter.compareAndSwapWorldMetadata
+// instead of a whole-world updateWorld overwrite.
+const ROOM_ID = stringToUuid("room-role-test") as UUID;
+const WORLD_ID = stringToUuid("world-role-test") as UUID;
+const REQUESTER_ID = stringToUuid("requester-entity") as UUID;
+const BOB_ID = stringToUuid("bob-entity") as UUID;
+const ALICE_ID = stringToUuid("alice-entity") as UUID;
 
 function buildEntity(id: string, names: string[]) {
 	return { id, names };
@@ -40,7 +44,31 @@ function buildFixtures(options: FixtureOptions = {}) {
 		...(options.extraEntities ?? []),
 	];
 
+	// #23100: role writes commit through the adapter's world-metadata CAS.
+	// This stub applies the replacement to the fixture world in place when
+	// the expected snapshot still matches, preserving the suite's original
+	// observable-state semantics while exercising the real commit path.
+	const worldRecord = world as unknown as { metadata?: Record<string, unknown> };
+	const casCommits = { count: 0 };
+	const adapter = {
+		compareAndSwapWorldMetadata: vi.fn(async (params: {
+			expectedMetadata?: Record<string, unknown>;
+			replacementMetadata: Record<string, unknown>;
+		}) => {
+			const current = (worldRecord.metadata ?? {}) as Record<string, unknown>;
+			if (
+				JSON.stringify(current ?? {}) !== JSON.stringify(params.expectedMetadata ?? {})
+			) {
+				return { status: "conflict" as const };
+			}
+			worldRecord.metadata = params.replacementMetadata;
+			casCommits.count += 1;
+			return { status: "updated" as const };
+		}),
+	};
+
 	const runtime = {
+		adapter,
 		getSetting: vi.fn((key: string) =>
 			key === "WORLD_ID" ? WORLD_ID : undefined,
 		),
@@ -71,6 +99,7 @@ function buildFixtures(options: FixtureOptions = {}) {
 		message,
 		state,
 		callback,
+		casCommits,
 		run: (extraOptions?: Record<string, unknown>) =>
 			updateRoleHandler(
 				runtime as never,
@@ -225,8 +254,8 @@ describe("TRUST update_role", () => {
 			(fixtures.world as { metadata: { roles: Record<string, string> } })
 				.metadata.roles,
 		).toEqual({ [REQUESTER_ID]: Role.OWNER, [BOB_ID]: Role.ADMIN });
-		expect(fixtures.runtime.updateWorld).toHaveBeenCalledTimes(1);
-		expect(fixtures.runtime.updateWorld).toHaveBeenCalledWith(fixtures.world);
+		expect(fixtures.runtime.updateWorld).not.toHaveBeenCalled();
+		expect(fixtures.casCommits.count).toBe(1);
 		expect(fixtures.runtime.dynamicPromptExecFromState).toHaveBeenCalledTimes(
 			1,
 		);
@@ -449,7 +478,8 @@ describe("TRUST update_role", () => {
 			totalUpdated: 1,
 		});
 		expect(fixtures.world.metadata?.roles?.[BOB_ID]).toBe(Role.ADMIN);
-		expect(fixtures.runtime.updateWorld).toHaveBeenCalledTimes(1);
+		expect(fixtures.runtime.updateWorld).not.toHaveBeenCalled();
+		expect(fixtures.casCommits.count).toBe(1);
 	});
 
 	it("persists an OWNER-granted role, fires one aggregated callback, and reports counts", async () => {
@@ -482,8 +512,8 @@ describe("TRUST update_role", () => {
 			totalUpdated: 1,
 		});
 		expect(fixtures.world.metadata?.roles?.[BOB_ID]).toBe(Role.ADMIN);
-		expect(fixtures.runtime.updateWorld).toHaveBeenCalledTimes(1);
-		expect(fixtures.runtime.updateWorld).toHaveBeenCalledWith(fixtures.world);
+		expect(fixtures.runtime.updateWorld).not.toHaveBeenCalled();
+		expect(fixtures.casCommits.count).toBe(1);
 		expect(fixtures.callback).toHaveBeenCalledTimes(1);
 		expect(fixtures.callback).toHaveBeenCalledWith({
 			text: "Updated Bob's role to ADMIN.",
@@ -519,6 +549,7 @@ describe("TRUST update_role", () => {
 			updatedRoles: [{ entityId: BOB_ID, newRole: Role.ADMIN }],
 		});
 		expect(fixtures.world.metadata?.roles?.[ALICE_ID]).toBe(Role.OWNER);
-		expect(fixtures.runtime.updateWorld).toHaveBeenCalledTimes(1);
+		expect(fixtures.runtime.updateWorld).not.toHaveBeenCalled();
+		expect(fixtures.casCommits.count).toBe(1);
 	});
 });
