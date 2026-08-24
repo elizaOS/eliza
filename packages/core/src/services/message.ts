@@ -557,11 +557,30 @@ function textDirectlyAddressesAgentName(
 		const candidate = name?.trim();
 		if (!candidate) return false;
 		const escaped = escapeRegex(candidate);
-		const direct = new RegExp(
-			`(?:^\\s*(?:(?:hey|hi|hello|thanks?|thank you|please)\\s*[,!:;-]?\\s*)?@?${escaped}(?=\\s*[,!:;?-]|\\s+(?:and|stop|pause|cancel|check|can|could|would|will|do|did|are|is|what|why|how|when|where|who|please)\\b)|,\\s*@?${escaped}(?=\\s|$))`,
-			"iu",
+		if (
+			new RegExp(`,\\s*@?${escaped}(?=\\s|$)`, "iu").test(text) ||
+			new RegExp(
+				`^\\s*(?:ok(?:ay)?|thanks?|thank you)\\s*,?\\s*@?${escaped}\\s*[.!?]*\\s*$`,
+				"iu",
+			).test(text)
+		) {
+			return true;
+		}
+		const leading = text.match(
+			new RegExp(
+				`^\\s*(?:(?:hey|hi|hello|thanks?|thank you|please)\\s*[,!:;-]?\\s*)?@?${escaped}(?<rest>(?:$|[^\\p{L}\\p{N}][\\s\\S]*))$`,
+				"iu",
+			),
 		);
-		return direct.test(text);
+		if (!leading?.groups) return false;
+		const rest = leading.groups.rest.trim();
+		if (!rest || /^[,!:;?-]/u.test(rest) || /[?]$/u.test(rest)) return true;
+		// A name-led imperative is a direct address regardless of its verb. Only
+		// reject clear third-person continuations; this avoids a brittle allowlist
+		// that makes ordinary commands such as "Eliza summarize that" ambient.
+		return !/^(?:is|was|were|has|had|said|says|thinks|thought|seems|look(?:s|ed)|does|did)\b/iu.test(
+			rest,
+		);
 	});
 }
 
