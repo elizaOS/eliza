@@ -392,4 +392,77 @@ describe("CHARACTER_GATE_NOTICE", () => {
 		expect(result.text).toContain("requires the MEMBER role");
 		expect(result.text).not.toContain("only your owner/admins");
 	});
+
+	// Provider-resolution branches below the classifier: gating additionally
+	// requires a registered CHARACTER action and a resolvable minimum role, and
+	// a sender already at or above the resolved gate is never refused.
+	test("stays silent when the runtime registers no CHARACTER action", async () => {
+		const runtime = gateRuntime();
+		(runtime as unknown as { actions: unknown[] }).actions = [];
+		expectNoNotice(
+			await characterGateNoticeProvider.get(
+				runtime,
+				connectorMessage(runtime, GUEST, EXPLICIT_ASK),
+			),
+		);
+	});
+
+	test("stays silent when the runtime exposes no action list at all", async () => {
+		const fake = makeFakeRuntime({ owner: OWNER });
+		(fake.runtime as unknown as { reportError: () => void }).reportError =
+			() => {};
+		expectNoNotice(
+			await characterGateNoticeProvider.get(
+				fake.runtime,
+				connectorMessage(fake.runtime, GUEST, EXPLICIT_ASK),
+			),
+		);
+	});
+
+	test("falls back to contextGate.roleGate.minRole when roleGate is absent", async () => {
+		const runtime = gateRuntime();
+		(runtime as unknown as { actions: unknown[] }).actions = [
+			{
+				name: "CHARACTER",
+				contextGate: { roleGate: { minRole: "OWNER" } },
+			},
+		];
+		const result = await characterGateNoticeProvider.get(
+			runtime,
+			connectorMessage(runtime, GUEST, EXPLICIT_ASK),
+		);
+		expect(result.values?.characterModificationGated).toBe(true);
+		expect(result.values?.requiredRole).toBe("OWNER");
+		expect(result.text).toContain("requires the OWNER role");
+	});
+
+	test("stays silent when the CHARACTER action declares no resolvable gate role", async () => {
+		const runtime = gateRuntime();
+		(runtime as unknown as { actions: unknown[] }).actions = [
+			{ name: "CHARACTER" },
+		];
+		expectNoNotice(
+			await characterGateNoticeProvider.get(
+				runtime,
+				connectorMessage(runtime, GUEST, EXPLICIT_ASK),
+			),
+		);
+	});
+
+	test("does not refuse a sender holding the gate role through world roles", async () => {
+		const admin = "00000000-0000-4000-8000-0000000000cc" as UUID;
+		const fake = makeFakeRuntime({ owner: OWNER, admins: [admin] });
+		const runtimeMutable = fake.runtime as unknown as {
+			actions: unknown[];
+			reportError: () => void;
+		};
+		runtimeMutable.actions = [characterAction];
+		runtimeMutable.reportError = () => {};
+		expectNoNotice(
+			await characterGateNoticeProvider.get(
+				fake.runtime,
+				connectorMessage(fake.runtime, admin, EXPLICIT_ASK),
+			),
+		);
+	});
 });
