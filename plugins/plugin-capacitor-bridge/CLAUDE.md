@@ -185,6 +185,7 @@ If a new `node:fs` function needs sandboxing, add it to the appropriate array (`
 - **No Plugin object.** This package does not follow the standard elizaOS plugin shape. It cannot be passed to `character.plugins`. It is imported and called directly by the agent bundle entry point.
 - **ws is a runtime dep.** The `ws` package is loaded dynamically (`await import("ws")`) so the module can be bundled for environments where WebSocket is not needed.
 - **Interactive-over-background text lane (#11914).** Both TEXT handler paths (bionic UDS delegation and the renderer device bridge) route every generate through the process-wide `InferencePriorityGate` (`@elizaos/core`): interactive turns (the default) dispatch ahead of queued background jobs; requests marked `priority: "background"` run only when the lane is idle and wait at most the RAM-class bound. The gate preserves prompts and output settings exactly; it prevents queue starvation without imposing a generation cap (`resolveMobileLaneBudget`, driven by the `ELIZA_INFERENCE_RAM_CLASS` env contract from #11760).
+- **iOS output integrity.** Native llama generation uses the complete remaining model context when a caller does not request an explicit boundary. Never add reply-token clamps or post-generation sentence/character clipping. The native host reports token or context exhaustion as incomplete, and the TypeScript model handler rejects that result with `MODEL_INCOMPLETE_OUTPUT` instead of presenting partial text as a completed reply.
 
 ## Verification
 

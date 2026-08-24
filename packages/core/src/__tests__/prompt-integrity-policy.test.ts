@@ -421,6 +421,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/CONSTRAINED_BACKGROUND_BUDGET[^}]*maxTokens/s,
 		/STANDARD_BACKGROUND_BUDGET[^}]*maxTokens/s,
 	],
+	"plugins/plugin-capacitor-bridge/src/ios/bridge.ts": [
+		/maxTokens:\s*32/,
+		/Math\.min\(requestedMaxTokens,\s*structuredSlot\s*\?\s*256\s*:\s*128\)/,
+		/const firstSentence = compact\.match/,
+	],
+	"plugins/plugin-native-bun-runtime/ios/Sources/ElizaBunRuntimePlugin/FullBunEngineHost.swift":
+		[/\?\?\s*256/],
+	"plugins/plugin-native-bun-runtime/ios/Sources/ElizaBunRuntimePlugin/bridge/LlamaBridge.swift":
+		[/max_tokens[^\n]*\?\?\s*256/],
+	"plugins/plugin-native-bun-runtime/ios/Sources/ElizaBunRuntimePlugin/bridge/LlamaBridgeImpl.swift":
+		[/maxTokens:\s*Int32\s*=\s*256/],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
 	"plugins/plugin-sql/src/services/advanced-memory-storage.ts": [

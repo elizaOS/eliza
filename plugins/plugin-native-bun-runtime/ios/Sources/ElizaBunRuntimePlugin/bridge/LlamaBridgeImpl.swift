@@ -351,12 +351,14 @@ public struct LlamaGenerateResult {
     public let promptTokens: Int
     public let outputTokens: Int
     public let durationMs: Double
+    public let finishReason: String
+    public let incomplete: Bool
     public let error: String?
-    public static func success(text: String, promptTokens: Int, outputTokens: Int, durationMs: Double) -> LlamaGenerateResult {
-        .init(text: text, promptTokens: promptTokens, outputTokens: outputTokens, durationMs: durationMs, error: nil)
+    public static func success(text: String, promptTokens: Int, outputTokens: Int, durationMs: Double, finishReason: String, incomplete: Bool) -> LlamaGenerateResult {
+        .init(text: text, promptTokens: promptTokens, outputTokens: outputTokens, durationMs: durationMs, finishReason: finishReason, incomplete: incomplete, error: nil)
     }
     public static func failure(_ msg: String) -> LlamaGenerateResult {
-        .init(text: "", promptTokens: 0, outputTokens: 0, durationMs: 0, error: msg)
+        .init(text: "", promptTokens: 0, outputTokens: 0, durationMs: 0, finishReason: "error", incomplete: false, error: msg)
     }
 }
 
@@ -919,7 +921,7 @@ public final class LlamaBridgeImpl {
     public func generate(
         contextId: Int64,
         prompt: String,
-        maxTokens: Int32 = 256,
+        maxTokens: Int32 = Int32.max,
         temperature: Float = 0.7,
         topP: Float = 0.95,
         topK: Int32 = 40,
@@ -1040,6 +1042,7 @@ public final class LlamaBridgeImpl {
         var generatedTokens: Int32 = 0
         var nPast: Int32 = Int32(promptTokens.count)
         var stoppedByStopSeq = false
+        var stoppedByEog = false
 
         while generatedTokens < maxTokens {
             if session.cancelled { break }
@@ -1050,6 +1053,7 @@ public final class LlamaBridgeImpl {
             c_llama_sampler_accept(chain, newTokenId)
 
             if c_llama_vocab_is_eog(session.vocab, newTokenId) {
+                stoppedByEog = true
                 break
             }
 
@@ -1137,12 +1141,7 @@ public final class LlamaBridgeImpl {
                         // Disagree — accept the verified token, drop rest of burst.
                         c_llama_sampler_accept(chain, verified)
                         if c_llama_vocab_is_eog(session.vocab, verified) {
-                            // Surface the verified token, then exit outer loop.
-                            let p = LlamaBridgeImpl.tokenToPiece(vocab: session.vocab, token: verified)
-                            generated.append(p)
-                            generatedTokens += 1
-                            onToken?(p, false)
-                            nPast += 1
+                            stoppedByEog = true
                             break
                         }
                         let p = LlamaBridgeImpl.tokenToPiece(vocab: session.vocab, token: verified)
@@ -1161,7 +1160,10 @@ public final class LlamaBridgeImpl {
                     pastTokenBuffer.append(proposed)
                     onToken?(p, false)
                     nPast += 1
-                    if c_llama_vocab_is_eog(session.vocab, proposed) { break }
+                    if c_llama_vocab_is_eog(session.vocab, proposed) {
+                        stoppedByEog = true
+                        break
+                    }
                     if !stopSequences.isEmpty,
                        stopSequences.first(where: { !$0.isEmpty && generated.hasSuffix($0) }) != nil {
                         stoppedByStopSeq = true
@@ -1170,6 +1172,7 @@ public final class LlamaBridgeImpl {
                     if nPast >= Int32(session.nCtx) { break }
                 }
                 if stoppedByStopSeq { break }
+                if stoppedByEog { break }
                 if nPast >= Int32(session.nCtx) { break }
             }
         }
@@ -1186,11 +1189,34 @@ public final class LlamaBridgeImpl {
         }
 
         let elapsedNs = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
+        let finishReason: String
+        let incomplete: Bool
+        if session.cancelled {
+            finishReason = "cancelled"
+            incomplete = true
+        } else if generatedTokens >= maxTokens {
+            finishReason = "max_tokens"
+            incomplete = true
+        } else if nPast >= Int32(session.nCtx) {
+            finishReason = "context_exhausted"
+            incomplete = true
+        } else if stoppedByStopSeq {
+            finishReason = "stop_sequence"
+            incomplete = false
+        } else if stoppedByEog {
+            finishReason = "eog"
+            incomplete = false
+        } else {
+            finishReason = "completed"
+            incomplete = false
+        }
         return .success(
             text: finalText,
             promptTokens: promptTokens.count,
             outputTokens: Int(generatedTokens),
-            durationMs: Double(elapsedNs) / 1_000_000.0
+            durationMs: Double(elapsedNs) / 1_000_000.0,
+            finishReason: finishReason,
+            incomplete: incomplete
         )
     }
 
@@ -1839,12 +1865,14 @@ public struct LlamaGenerateResult {
     public let promptTokens: Int
     public let outputTokens: Int
     public let durationMs: Double
+    public let finishReason: String
+    public let incomplete: Bool
     public let error: String?
-    public static func success(text: String, promptTokens: Int, outputTokens: Int, durationMs: Double) -> LlamaGenerateResult {
-        .init(text: text, promptTokens: promptTokens, outputTokens: outputTokens, durationMs: durationMs, error: nil)
+    public static func success(text: String, promptTokens: Int, outputTokens: Int, durationMs: Double, finishReason: String, incomplete: Bool) -> LlamaGenerateResult {
+        .init(text: text, promptTokens: promptTokens, outputTokens: outputTokens, durationMs: durationMs, finishReason: finishReason, incomplete: incomplete, error: nil)
     }
     public static func failure(_ msg: String) -> LlamaGenerateResult {
-        .init(text: "", promptTokens: 0, outputTokens: 0, durationMs: 0, error: msg)
+        .init(text: "", promptTokens: 0, outputTokens: 0, durationMs: 0, finishReason: "error", incomplete: false, error: msg)
     }
 }
 
@@ -1949,7 +1977,7 @@ public final class LlamaBridgeImpl {
     public func generate(
         contextId: Int64,
         prompt: String,
-        maxTokens: Int32 = 256,
+        maxTokens: Int32 = Int32.max,
         temperature: Float = 0.7,
         topP: Float = 0.95,
         topK: Int32 = 40,
