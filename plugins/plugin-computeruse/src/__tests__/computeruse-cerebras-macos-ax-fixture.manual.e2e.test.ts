@@ -19,6 +19,8 @@ import { ComputerUseService } from "../services/computer-use-service.js";
 import {
   approveExactManualDemoAction,
   manualDemoEnabled,
+  manualDemoIdentity,
+  writeManualDemoArtifact,
 } from "./computeruse-manual-demo-contract.js";
 
 const execFileAsync = promisify(execFile);
@@ -153,6 +155,12 @@ async function waitForFixtureApp(
       )) as ComputerUseService;
       const appId = await waitForFixtureApp(service, fixture.pid);
       const before = await service.getAppState(appId, { disableDiff: true });
+      if (!before.screenshot)
+        throw new Error("Fixture state omitted screenshot");
+      await writeManualDemoArtifact(
+        "ax/before.png",
+        Buffer.from(before.screenshot, "base64"),
+      );
       const button = before.elements.find(
         (element) =>
           element.label === "Verify fixture" &&
@@ -182,7 +190,11 @@ async function waitForFixtureApp(
       };
       service.setApprovalMode("approve_all");
       const action = service.executeCommand("app_click", parameters);
-      await approveExactManualDemoAction(service, "app_click", parameters);
+      const approval = await approveExactManualDemoAction(
+        service,
+        "app_click",
+        parameters,
+      );
       const result = await action;
       expect(result.success).toBe(true);
       const data = result.data as {
@@ -209,6 +221,13 @@ async function waitForFixtureApp(
       expect(data.receipt.targetWindowId).toBeGreaterThan(0);
       expect(data.receipt.afterStateId).not.toBe(before.stateId);
       expect(data.state.axText).toContain("State: verified");
+      if (!data.state.screenshot) {
+        throw new Error("Verified fixture state omitted screenshot");
+      }
+      await writeManualDemoArtifact(
+        "ax/after.png",
+        Buffer.from(data.state.screenshot, "base64"),
+      );
 
       const afterFrame = sceneFromState(data.state);
       const verification = await new Brain(harness.runtime, {
@@ -221,6 +240,40 @@ async function waitForFixtureApp(
         ]),
       });
       expect(verification.proposed_action.kind).toBe("finish");
+      await writeManualDemoArtifact(
+        "ax/evidence.json",
+        `${JSON.stringify(
+          {
+            identity: manualDemoIdentity(
+              harness.runtime.getSetting("OPENAI_SMALL_MODEL") ??
+                harness.runtime.getSetting("CEREBRAS_SMALL_MODEL"),
+            ),
+            fixture: {
+              pid: fixture.pid,
+              appId,
+              binary: fixtureBinary,
+            },
+            request: {
+              goal: "Press only the disposable fixture verification button",
+              stateId: before.stateId,
+              elementIndex: button.element_index,
+              targetBounds: button.bounds,
+            },
+            response: {
+              proposedAction: plan.proposed,
+              verificationAction: verification.proposed_action,
+            },
+            approval,
+            receipt: data.receipt,
+            freshStateId: data.state.stateId,
+            visibleOutcome: {
+              stateVerified: data.state.axText.includes("State: verified"),
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
     } finally {
       if (service) {
         service.setApprovalMode("full_control");
