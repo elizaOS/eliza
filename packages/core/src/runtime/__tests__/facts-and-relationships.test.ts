@@ -1150,10 +1150,10 @@ describe("runFactsAndRelationshipsStage — candidate deduplication and normaliz
 	});
 });
 
-// ── Read-failure degradation paths (error-policy:J7) ─────────────────────────
+// ── Required deduplication reads fail before persistence ─────────────────────
 
-describe("runFactsAndRelationshipsStage — read-failure degradation", () => {
-	it("degrades dedup and proceeds when the facts store read fails", async () => {
+describe("runFactsAndRelationshipsStage — deduplication read failures", () => {
+	it("rejects a facts-store read failure before model dispatch or persistence", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({
 				facts: ["a fresh fact"],
@@ -1164,101 +1164,113 @@ describe("runFactsAndRelationshipsStage — read-failure degradation", () => {
 		(runtime.getMemories as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
 			new Error("facts store unavailable"),
 		);
-		const result = await runFactsAndRelationshipsStage({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			extract: { facts: ["a fresh fact"] },
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { facts: ["a fresh fact"] },
+			}),
+		).rejects.toMatchObject({
+			code: "FACTS_DEDUP_READ_FAILED",
+			cause: expect.objectContaining({ message: "facts store unavailable" }),
 		});
-		expect(runtime.reportError).toHaveBeenCalledWith(
-			"FactsAndRelationships.searchSimilarFacts",
-			expect.any(Error),
-			expect.objectContaining({ roomId: makeMessage().roomId }),
-		);
-		const validationCall = runtime.useModel.mock.calls.find(
-			(call) =>
-				typeof call[0] === "string" &&
-				(call[0] === ModelType.TEXT_LARGE || call[0] === "TEXT_LARGE"),
-		);
-		const params = validationCall?.[1] as {
-			messages?: Array<{ role: string; content: string }>;
-		};
-		const content = params.messages?.[1]?.content ?? "";
-		expect(content).not.toContain("existing_similar_facts:");
-		expect(result.written.facts).toBe(1);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
 	});
 
-	it("surfaces a failed relationships read without killing the stage", async () => {
+	it("rejects a relationships-store read failure before model dispatch or persistence", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({
 				facts: [],
 				relationships: [
 					{ subject: "user", predicate: "works_with", object: "Alice" },
 				],
-				thought: "kept despite read failure",
+				thought: "must not be written",
 			}),
 		);
 		(
 			runtime.getRelationships as ReturnType<typeof vi.fn>
 		).mockRejectedValueOnce(new Error("relationship store unavailable"));
-		const result = await runFactsAndRelationshipsStage({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			extract: {
-				relationships: [
-					{ subject: "user", predicate: "works_with", object: "Alice" },
-				],
-			},
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: {
+					relationships: [
+						{
+							subject: "user",
+							predicate: "works_with",
+							object: "Alice",
+						},
+					],
+				},
+			}),
+		).rejects.toMatchObject({
+			code: "RELATIONSHIP_DEDUP_READ_FAILED",
+			cause: expect.objectContaining({
+				message: "relationship store unavailable",
+			}),
 		});
-		expect(runtime.reportError).toHaveBeenCalledWith(
-			"FactsAndRelationships.fetchExistingRelationships",
-			expect.any(Error),
-			expect.objectContaining({ entityIds: expect.any(Array) }),
-		);
-		const validationCall = runtime.useModel.mock.calls.find(
-			(call) =>
-				typeof call[0] === "string" &&
-				(call[0] === ModelType.TEXT_LARGE || call[0] === "TEXT_LARGE"),
-		);
-		const params = validationCall?.[1] as {
-			messages?: Array<{ role: string; content: string }>;
-		};
-		const content = params.messages?.[1]?.content ?? "";
-		expect(content).not.toContain("existing_relationships:");
-		expect(result.written.relationships).toBe(1);
-		expect(runtime.createRelationship).toHaveBeenCalled();
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+		expect(runtime.createRelationship).not.toHaveBeenCalled();
 	});
 
-	it("tolerates a non-array facts-store response without reporting an error", async () => {
+	it("rejects a non-array facts-store response before model dispatch or persistence", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({
 				facts: ["a fresh fact"],
 				relationships: [],
-				thought: "kept",
+				thought: "must not be written",
 			}),
 		);
 		(runtime.getMemories as ReturnType<typeof vi.fn>).mockResolvedValueOnce(42);
-		const result = await runFactsAndRelationshipsStage({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			extract: { facts: ["a fresh fact"] },
-		});
-		// A shape-violating response is treated as "no known facts", not a
-		// pipeline failure: no reportError, no crash, stage completes.
-		expect(runtime.reportError).not.toHaveBeenCalled();
-		const validationCall = runtime.useModel.mock.calls.find(
-			(call) =>
-				typeof call[0] === "string" &&
-				(call[0] === ModelType.TEXT_LARGE || call[0] === "TEXT_LARGE"),
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { facts: ["a fresh fact"] },
+			}),
+		).rejects.toMatchObject({ code: "FACTS_DEDUP_RESPONSE_INVALID" });
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
+	it("rejects a non-array relationships-store response before model dispatch or persistence", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: "user", predicate: "works_with", object: "Alice" },
+				],
+				thought: "must not be written",
+			}),
 		);
-		const params = validationCall?.[1] as {
-			messages?: Array<{ role: string; content: string }>;
-		};
-		const content = params.messages?.[1]?.content ?? "";
-		expect(content).not.toContain("existing_similar_facts:");
-		expect(result.written.facts).toBe(1);
+		(
+			runtime.getRelationships as ReturnType<typeof vi.fn>
+		).mockResolvedValueOnce({ invalid: true });
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: {
+					relationships: [
+						{
+							subject: "user",
+							predicate: "works_with",
+							object: "Alice",
+						},
+					],
+				},
+			}),
+		).rejects.toMatchObject({ code: "RELATIONSHIP_DEDUP_RESPONSE_INVALID" });
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+		expect(runtime.createRelationship).not.toHaveBeenCalled();
 	});
 });
 
