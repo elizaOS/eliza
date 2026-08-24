@@ -226,8 +226,14 @@ function captureFromFrame(data: string): {
         "browser_click",
         approvalParameters,
       );
+      const verificationApproval = await approveExactManualDemoAction(
+        service,
+        "browser_screenshot",
+        { action: "screenshot" },
+      );
       const completed = await completion;
       expect(completed.result).toMatchObject({ success: true });
+      service.setApprovalMode("full_control");
       const pointerAfter = await service.executeCommand("get_cursor_position");
       expect(pointerAfter).toMatchObject({
         success: true,
@@ -274,7 +280,10 @@ function captureFromFrame(data: string): {
               proposedAction: plan.proposed,
               verificationAction: verification.proposed_action,
             },
-            approval,
+            approval: {
+              action: approval,
+              freshVerification: verificationApproval,
+            },
             actionResult: completed.result,
             pointer: {
               before: pointerBefore.data,
