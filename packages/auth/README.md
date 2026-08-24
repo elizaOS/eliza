@@ -26,7 +26,7 @@ OpenRouter credits/BYOK and xAI API PAYG are distinct direct-account products:
 their canonical account IDs are `openrouter-api` and `xai-api`, with
 `OPENROUTER_API_KEY` and `XAI_API_KEY` as the exported env aliases. Adding,
 repairing, or testing an OpenRouter key first authenticates through its
-current-key endpoint, then fetches the bounded public model catalog separately;
+current-key endpoint, then fetches the bounded model catalog with the same key;
 xAI authenticates through its bounded model endpoint. Failure bodies from either
 provider are never reflected to callers. Like every direct provider, the
 credential of the pool-selected account is exported to the process environment

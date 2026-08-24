@@ -198,14 +198,29 @@ async function readModelCatalog(
   };
 }
 
+async function readAuthenticatedModelCatalog(
+  response: Response,
+): Promise<ModelCatalogOutcome> {
+  try {
+    return await readModelCatalog(response);
+  } catch {
+    // error-policy:J4 user-facing degrade — authentication already succeeded;
+    // a malformed, oversized, or unreadable catalog is unavailable metadata,
+    // not a fabricated credential failure.
+    return { modelCatalogUnavailable: true };
+  }
+}
+
 async function fetchOpenRouterCatalog(
   baseUrl: string,
+  apiKey: string,
   signal: AbortSignal,
 ): Promise<ModelCatalogOutcome> {
   try {
     const response = await fetch(`${baseUrl}/models`, {
       method: "GET",
       signal,
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
     return await readModelCatalog(response);
   } catch {
@@ -219,7 +234,7 @@ async function fetchOpenRouterCatalog(
 
 /**
  * Verify a direct-API key against a provider-owned authenticated endpoint.
- * OpenRouter uses `/key` and only then reads its public `/models` catalog;
+ * OpenRouter uses `/key` and only then reads its authenticated `/models` catalog;
  * xAI authenticates through `/models` and reads that bounded catalog; every
  * other provider authenticates through `/models` and never reads a 2xx body.
  */
@@ -274,9 +289,9 @@ export async function probeDirectApiKey(
     // provider keeps its historical status-only probe and never reads one.
     const catalog: ModelCatalogOutcome =
       providerId === "openrouter-api"
-        ? await fetchOpenRouterCatalog(baseUrl, controller.signal)
+        ? await fetchOpenRouterCatalog(baseUrl, apiKey, controller.signal)
         : CATALOG_PROVIDERS.has(providerId)
-          ? await readModelCatalog(response)
+          ? await readAuthenticatedModelCatalog(response)
           : {};
     return {
       ok: true,
