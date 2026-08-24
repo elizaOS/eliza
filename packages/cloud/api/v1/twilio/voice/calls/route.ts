@@ -27,6 +27,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import {
   TWILIO_CALL_FENCE_EXPIRY,
   twilioCallFenceKey,
+  twilioCallFenceSource,
 } from "../lib/twilio-call-fence";
 import { normalizeTwilioProviderCallStatus } from "../lib/twilio-call-status";
 import { resolveTwilioPublicUrl } from "../lib/twilio-public-url";
@@ -220,7 +221,7 @@ app.post("/", async (c) => {
       .insert(idempotencyKeys)
       .values({
         key: fenceKey,
-        source: "twilio-voice-outbound-fence",
+        source: twilioCallFenceSource(callId),
         expires_at: TWILIO_CALL_FENCE_EXPIRY,
       })
       .onConflictDoNothing({ target: idempotencyKeys.key })
@@ -256,7 +257,7 @@ app.post("/", async (c) => {
         .insert(idempotencyKeys)
         .values({
           key: fenceKey,
-          source: "twilio-voice-outbound-fence",
+          source: twilioCallFenceSource(callId),
           expires_at: TWILIO_CALL_FENCE_EXPIRY,
         })
         .onConflictDoNothing({ target: idempotencyKeys.key })
@@ -363,7 +364,12 @@ app.post("/", async (c) => {
           );
         await tx
           .delete(idempotencyKeys)
-          .where(eq(idempotencyKeys.key, fenceKey));
+          .where(
+            and(
+              eq(idempotencyKeys.key, fenceKey),
+              eq(idempotencyKeys.source, twilioCallFenceSource(callId)),
+            ),
+          );
       });
       const providerStatus =
         typeof error.context?.providerStatus === "number"
@@ -425,7 +431,14 @@ app.post("/", async (c) => {
           updated_at: new Date(),
         })
         .where(eq(twilioOutboundCalls.id, callId));
-      await tx.delete(idempotencyKeys).where(eq(idempotencyKeys.key, fenceKey));
+      await tx
+        .delete(idempotencyKeys)
+        .where(
+          and(
+            eq(idempotencyKeys.key, fenceKey),
+            eq(idempotencyKeys.source, twilioCallFenceSource(callId)),
+          ),
+        );
     });
   } catch (error) {
     // error-policy:J4 Twilio accepted the call; the signed callback keyed by
