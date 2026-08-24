@@ -32,15 +32,19 @@ bun run --cwd packages/scenario-runner eval:when2speak -- \
   --shard-count=8
 ```
 
-The command writes `reports/group-chat-timing/when2speak.json`. It reports
-accuracy, SPEAK and SILENT precision/recall/F1, false intervention rate, missed
-intervention rate, and slices by direct address, speaker count, and context
-length. Row-level gold and predicted decisions make every aggregate auditable
-without redistributing the source dialogue in the report. It sends every
-accepted dialogue to Stage 1 in full. A malformed row is recorded as a failure
-and makes the command exit nonzero. Complete Stage-1 trajectories are written
-beside the report under `reports/group-chat-timing/trajectories`; override that
-location with `--run-dir=<dir>`.
+The command writes `reports/group-chat-timing/when2speak.json`. It reports two
+separate objectives: agreement with the corpus SPEAK/SILENT labels and ambient
+restraint on turns without trusted direct-address evidence. It also reports
+SPEAK and SILENT precision/recall/F1, false intervention rate, missed
+intervention rate, and slices by trusted address, textual agent reference,
+speaker count, and context length. A textual `[AGENT]` placeholder remains
+untrusted dialogue content; the evaluator does not convert it into connector
+mention metadata. Row-level gold and predicted decisions make every aggregate
+auditable without redistributing the source dialogue in the report. It sends
+every accepted dialogue to Stage 1 in full. A malformed row is recorded as a
+failure and makes the command exit nonzero. Complete Stage-1 trajectories are
+written beside the report under `reports/group-chat-timing/trajectories`;
+override that location with `--run-dir=<dir>`.
 
 The evaluator writes an atomic checkpoint after every selected row by default.
 Use `--checkpoint-every=<n>` to reduce checkpoint frequency and

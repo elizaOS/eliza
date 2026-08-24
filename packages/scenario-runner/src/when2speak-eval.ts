@@ -28,6 +28,7 @@ export interface When2SpeakExample {
   row: number;
   turns: Array<{ speaker: string; text: string; isAgent: boolean }>;
   label: TimingLabel;
+  textuallyReferencesAgent: boolean;
   directlyAddressesAgent: boolean;
   speakerCount: number;
 }
@@ -54,12 +55,13 @@ export interface TimingPrediction {
   row: number;
   gold: TimingLabel;
   predicted: TimingLabel;
+  textuallyReferencesAgent: boolean;
   directlyAddressesAgent: boolean;
   speakerCount: number;
   contextTurns: number;
 }
 export interface TimingReport {
-  schema: 2;
+  schema: 3;
   status: "in-progress" | "complete";
   dataset: TimingDataset;
   input: string;
@@ -77,8 +79,19 @@ export interface TimingReport {
   startedAt: string;
   finishedAt: string;
   metrics: TimingMetrics;
+  objectives: {
+    labelAgreement: TimingMetrics;
+    ambientRestraint: {
+      eligibleTurns: number;
+      predictedResponses: number;
+      predictedSilences: number;
+      responseRate: number | null;
+      restraintRate: number | null;
+    };
+  };
   slices: {
     address: Record<string, TimingMetrics>;
+    textualReference: Record<string, TimingMetrics>;
     speakers: Record<string, TimingMetrics>;
     contextTurns: Record<string, TimingMetrics>;
   };
@@ -150,15 +163,17 @@ export function parseWhen2SpeakLine(
       row,
       "contains an assistant turn inside the context",
     );
-  const turns = contextMessages.map((message) => ({
-    ...parseSpeakerTurn(message.content, row),
-    isAgent: false,
-  }));
+  const turns = contextMessages.map((message) => {
+    const turn = parseSpeakerTurn(message.content, row);
+    return { ...turn, isAgent: turn.speaker === "Assistant" };
+  });
+  const currentTurn = turns[turns.length - 1];
   return {
     row,
     turns,
     label: labelMessage.content.trim() === ">" ? "SILENT" : "SPEAK",
-    directlyAddressesAgent: turns.some((turn) => turn.text.includes("[AGENT]")),
+    textuallyReferencesAgent: currentTurn.text.includes("[AGENT]"),
+    directlyAddressesAgent: false,
     speakerCount: new Set(turns.map((turn) => turn.speaker)).size,
   };
 }
@@ -219,6 +234,7 @@ export function parseDiscordReplayLine(
     row,
     turns,
     label: record.label === "speak" ? "SPEAK" : "SILENT",
+    textuallyReferencesAgent: false,
     directlyAddressesAgent: false,
     speakerCount: new Set(turns.map((turn) => turn.speaker)).size,
   };
@@ -295,12 +311,13 @@ function recordPrediction(
   else if (gold === "SILENT" && predicted === "SILENT") counts.trueSilent += 1;
   else counts.falseSilent += 1;
 }
-function stateForExample(
+export function buildWhen2SpeakEvaluationState(
   runtime: IAgentRuntime,
   example: When2SpeakExample,
 ): { state: State; message: Memory } {
   const agentName = runtime.character.name ?? "ScenarioAgent";
   const roomId = stringToUuid(`when2speak-room-${example.row}`);
+  const currentTurnIndex = example.turns.length - 1;
   const memories = example.turns.map(
     (turn, index): Memory => ({
       id: stringToUuid(`when2speak-${example.row}-turn-${index}`),
@@ -315,6 +332,15 @@ function stateForExample(
         senderName: turn.isAgent ? agentName : turn.speaker,
         source: "when2speak-eval",
         channelType: ChannelType.GROUP,
+        ...(index === currentTurnIndex && example.directlyAddressesAgent
+          ? {
+              mentionContext: {
+                isMention: true,
+                isReply: false,
+                isThread: false,
+              },
+            }
+          : {}),
       },
     }),
   );
@@ -336,7 +362,7 @@ export async function evaluateExample(
   runtime: IAgentRuntime,
   example: When2SpeakExample,
 ): Promise<TimingLabel> {
-  const { state, message } = stateForExample(runtime, example);
+  const { state, message } = buildWhen2SpeakEvaluationState(runtime, example);
   const outcome = await runV5MessageRuntimeStage1({
     runtime,
     message,
@@ -366,15 +392,24 @@ function metricRecord(
 }
 export function summarizeTimingPredictions(
   predictions: readonly TimingPrediction[],
-): Pick<TimingReport, "metrics" | "slices"> {
+): Pick<TimingReport, "metrics" | "objectives" | "slices"> {
   const overall = emptyCounts();
   const address = new Map<string, TimingCounts>();
+  const textualReference = new Map<string, TimingCounts>();
   const speakers = new Map<string, TimingCounts>();
   const contextTurns = new Map<string, TimingCounts>();
   for (const prediction of predictions) {
     recordPrediction(overall, prediction.gold, prediction.predicted);
     recordPrediction(
       bucket(address, prediction.directlyAddressesAgent ? "direct" : "ambient"),
+      prediction.gold,
+      prediction.predicted,
+    );
+    recordPrediction(
+      bucket(
+        textualReference,
+        prediction.textuallyReferencesAgent ? "reference" : "none",
+      ),
       prediction.gold,
       prediction.predicted,
     );
@@ -389,10 +424,29 @@ export function summarizeTimingPredictions(
       prediction.predicted,
     );
   }
+  const metrics = computeTimingMetrics(overall);
+  const ambientPredictions = predictions.filter(
+    (prediction) => !prediction.directlyAddressesAgent,
+  );
+  const predictedResponses = ambientPredictions.filter(
+    (prediction) => prediction.predicted === "SPEAK",
+  ).length;
+  const predictedSilences = ambientPredictions.length - predictedResponses;
   return {
-    metrics: computeTimingMetrics(overall),
+    metrics,
+    objectives: {
+      labelAgreement: metrics,
+      ambientRestraint: {
+        eligibleTurns: ambientPredictions.length,
+        predictedResponses,
+        predictedSilences,
+        responseRate: ratio(predictedResponses, ambientPredictions.length),
+        restraintRate: ratio(predictedSilences, ambientPredictions.length),
+      },
+    },
     slices: {
       address: metricRecord(address),
+      textualReference: metricRecord(textualReference),
       speakers: metricRecord(speakers),
       contextTurns: metricRecord(contextTurns),
     },
@@ -438,6 +492,8 @@ function isResumePrediction(value: unknown): value is TimingPrediction {
     (value.gold === "SPEAK" || value.gold === "SILENT") &&
     "predicted" in value &&
     (value.predicted === "SPEAK" || value.predicted === "SILENT") &&
+    "textuallyReferencesAgent" in value &&
+    typeof value.textuallyReferencesAgent === "boolean" &&
     "directlyAddressesAgent" in value &&
     typeof value.directlyAddressesAgent === "boolean" &&
     "speakerCount" in value &&
@@ -510,7 +566,7 @@ function validateResumeReport(options: {
     value === null ||
     typeof value !== "object" ||
     !("schema" in value) ||
-    value.schema !== 2 ||
+    value.schema !== 3 ||
     !("status" in value) ||
     value.status !== "in-progress" ||
     !("dataset" in value) ||
@@ -676,7 +732,7 @@ export async function runWhen2SpeakEval(options: {
   const report = (status: TimingReport["status"]): TimingReport => {
     const summary = summarizeTimingPredictions(predictions);
     return {
-      schema: 2,
+      schema: 3,
       status,
       dataset,
       input,
@@ -753,6 +809,7 @@ export async function runWhen2SpeakEval(options: {
         row: example.row,
         gold: example.label,
         predicted,
+        textuallyReferencesAgent: example.textuallyReferencesAgent,
         directlyAddressesAgent: example.directlyAddressesAgent,
         speakerCount: example.speakerCount,
         contextTurns: example.turns.length,
