@@ -19,6 +19,11 @@ describe("appNetworkName", () => {
     // never the shared agent network
     expect(n).not.toBe("containers-isolated");
   });
+
+  test("throws on empty or non-alphanumeric app ID", () => {
+    expect(() => appNetworkName("")).toThrow(/Invalid app ID/);
+    expect(() => appNetworkName("---")).toThrow(/Invalid app ID/);
+  });
 });
 
 describe("buildEnsureAppNetworkCmd — isolation is real (--internal)", () => {
@@ -63,6 +68,21 @@ describe("buildLoopbackPortPublishFlag", () => {
   test("binds published ports to host loopback only", () => {
     expect(buildLoopbackPortPublishFlag(49001, 3000)).toBe("-p 127.0.0.1:49001:3000");
     expect(buildLoopbackPortPublishFlag(49002, "8080")).toBe("-p 127.0.0.1:49002:8080");
+  });
+
+  test("rejects invalid host ports", () => {
+    expect(() => buildLoopbackPortPublishFlag(0, 3000)).toThrow(/Invalid host port/);
+    expect(() => buildLoopbackPortPublishFlag(-1, 3000)).toThrow(/Invalid host port/);
+    expect(() => buildLoopbackPortPublishFlag(70000, 3000)).toThrow(/Invalid host port/);
+    expect(() => buildLoopbackPortPublishFlag(Number.NaN, 3000)).toThrow(/Invalid host port/);
+  });
+
+  test("rejects invalid or injection-like container ports", () => {
+    expect(() => buildLoopbackPortPublishFlag(8080, "3000; rm -rf /")).toThrow(
+      /Invalid container port/,
+    );
+    expect(() => buildLoopbackPortPublishFlag(8080, 0)).toThrow(/Invalid container port/);
+    expect(() => buildLoopbackPortPublishFlag(8080, 70000)).toThrow(/Invalid container port/);
   });
 });
 

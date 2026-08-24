@@ -28,6 +28,9 @@ export function appNetworkName(appId: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
     .slice(0, 24);
+  if (!short) {
+    throw new Error("Invalid app ID: must contain alphanumeric characters.");
+  }
   return `app-net-${short}`;
 }
 
@@ -59,7 +62,18 @@ export function buildLoopbackPortPublishFlag(
   hostPort: number,
   containerPort: number | string,
 ): string {
-  return `-p 127.0.0.1:${hostPort}:${containerPort}`;
+  if (!Number.isInteger(hostPort) || hostPort < 1 || hostPort > 65535) {
+    throw new Error(`Invalid host port: ${hostPort}`);
+  }
+  const portStr = String(containerPort).trim();
+  if (!/^[0-9]+(?:\/(?:tcp|udp))?$/.test(portStr)) {
+    throw new Error(`Invalid container port: ${containerPort}`);
+  }
+  const numericPort = Number.parseInt(portStr, 10);
+  if (numericPort < 1 || numericPort > 65535) {
+    throw new Error(`Invalid container port: ${containerPort}`);
+  }
+  return `-p 127.0.0.1:${hostPort}:${portStr}`;
 }
 
 /**
