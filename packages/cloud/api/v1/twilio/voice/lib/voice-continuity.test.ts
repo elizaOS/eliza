@@ -8,7 +8,6 @@ import {
   callOpeningPrompt,
   callStartedEvent,
   claimInboundCallOpeningContext,
-  ELIZA_AI_VOICE_DISCLOSURE,
   type InboundCallOpeningClaim,
   prewarmAndRecordVoiceCallStart,
   relativeInteractionAge,
@@ -19,12 +18,8 @@ describe("voice continuity", () => {
   const now = Date.UTC(2026, 7, 15, 12);
 
   test("uses an immediate deterministic greeting while the cold path prewarms", () => {
-    expect(callOpeningGreeting(false)).toBe(
-      `Hello? Who's this? ${ELIZA_AI_VOICE_DISCLOSURE}`,
-    );
-    expect(callOpeningGreeting(true)).toBe(
-      `Hey, what's up? ${ELIZA_AI_VOICE_DISCLOSURE}`,
-    );
+    expect(callOpeningGreeting(false)).toBe("Hey, how's it going?");
+    expect(callOpeningGreeting(true)).toBe("Hey, how's it going?");
   });
 
   test("describes first contact without inventing history", () => {
@@ -37,6 +32,12 @@ describe("voice continuity", () => {
     expect(relativeInteractionAge(now - 3 * 60 * 60_000, now)).toBe("3 hours");
     expect(callStartedEvent(true, now - 2 * 86_400_000, now)).toContain(
       "about 2 days ago",
+    );
+    expect(callStartedEvent(true, now - 2 * 86_400_000, now)).toContain(
+      "2026-08-13T12:00:00.000Z",
+    );
+    expect(callStartedEvent(true, now - 2 * 86_400_000, now)).toContain(
+      "2026-08-15T12:00:00.000Z",
     );
   });
 
@@ -162,8 +163,8 @@ describe("voice continuity", () => {
   });
 
   test("sanitizes teardown reasons", () => {
-    expect(callEndedEvent("client disconnect! token=secret")).toBe(
-      "Call lifecycle event: the phone call ended (client_disconnect__token_secret).",
+    expect(callEndedEvent("client disconnect! token=secret", now)).toBe(
+      "Call lifecycle event: the phone call ended at 2026-08-15T12:00:00.000Z (client_disconnect__token_secret).",
     );
   });
 
