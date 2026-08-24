@@ -791,10 +791,12 @@ function formatDuration(ms: unknown): string | null {
 	const value = readFiniteNumber(ms);
 	if (value === undefined) return null;
 	if (value < 1000) return `${Math.round(value)}ms`;
-	const seconds = value / 1000;
-	if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
-	const minutes = Math.floor(seconds / 60);
-	const remainder = Math.round(seconds % 60);
+	const oneDecimal = Math.round(value / 100) / 10;
+	if (oneDecimal < 10) return `${oneDecimal.toFixed(1)}s`;
+	const totalSeconds = Math.round(value / 1000);
+	if (totalSeconds < 60) return `${totalSeconds}s`;
+	const minutes = Math.floor(totalSeconds / 60);
+	const remainder = totalSeconds % 60;
 	return `${minutes}m ${remainder}s`;
 }
 
