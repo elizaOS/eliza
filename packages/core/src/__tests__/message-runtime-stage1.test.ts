@@ -21,6 +21,7 @@ import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-
 import { validateCharacter } from "../schemas/character";
 import {
 	GazetteerEntityRecognizer,
+	hardenIncomingUserMessage,
 	PseudonymSession,
 } from "../security/index.js";
 import {
@@ -3159,6 +3160,55 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps external-content armor out of deterministic action inference", async () => {
+		const directAnswer =
+			"Dinner is at 6:30 PM for four people at Saffron House.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: directAnswer,
+			}),
+		]);
+		const calendarHandler = vi.fn(async () => ({
+			success: true,
+			text: "Unexpected calendar lookup.",
+		}));
+		runtime.actions = [
+			{
+				name: "CALENDAR",
+				similes: [],
+				tags: ["domain:calendar", "capability:read"],
+				description: "Read or update calendar events.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: calendarHandler,
+			},
+		] as never;
+		const message = makeMessage({
+			text: "What time is dinner, for how many people, and where?",
+			source: "api",
+			mentionContext: { isMention: true },
+		});
+		hardenIncomingUserMessage(message);
+		expect(message.content.text).toContain("Delete data");
+		expect(message.content.text).toContain("dinner");
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(calendarHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(directAnswer);
+		}
+	});
+
 	it("stamps an exact internal VIEWS diagnostic before simple delivery", async () => {
 		const inventory = ["available_views:", "  type: gui", "  count: 0"].join(
 			"\n",
@@ -3639,6 +3689,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent).toContain("ORCHID-742 is in locker 19");
 		expect(userContent).toContain("Dinner at 6:30 PM");
 		expect(userContent).not.toContain("https://private.example/receipt.png");
+		expect(userContent).toContain(
+			"A verified_cross_room_message block is authorized visible context",
+		);
+		expect(userContent).toContain("answer directly from that block");
+		expect(userContent).toContain(
+			"does not require ATTACHMENT, CALENDAR, or another tool",
+		);
+		expect(userContent).toContain(
+			"never infer details absent from the block or expose a private attachment URL",
+		);
 		expect(userContent).toContain("current_turn_boundary:");
 		expect(userContent).toContain("message:user:");
 		expect(userContent).toContain(longUserText);
