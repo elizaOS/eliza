@@ -3062,6 +3062,7 @@ export function createAospPreparedTextRequestGuard(
       config: { ...args.config },
     }),
     countInputTokens: () => args.promptTokenCount,
+    countInputTokensIsExact: true,
   });
 }
 

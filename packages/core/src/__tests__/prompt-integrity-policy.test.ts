@@ -15,8 +15,6 @@ const repositoryRoot = resolve(
 );
 
 const removedCompactionModules = [
-	"packages/core/src/utils/slice-to-fit-budget.ts",
-	"packages/core/src/utils/slice-to-fit-budget.test.ts",
 	"packages/agent/src/actions/compact-conversation.ts",
 	"packages/agent/src/runtime/compaction-handoff.ts",
 	"packages/agent/src/runtime/conversation-compactor.ts",
@@ -44,7 +42,6 @@ const removedPromptCapCloneTests = [
 	"packages/core/src/services/trajectory-json.surrogate.test.ts",
 	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/character.surrogate.test.ts",
 	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/action-state.surrogate.test.ts",
-	"plugins/plugin-personal-assistant/src/lifeops/cross-channel-search.surrogate.test.ts",
 ];
 
 const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
@@ -115,315 +112,6 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
-	"packages/agent/src/services/agent-export.ts": [
-		/limit:\s*Number\.MAX_SAFE_INTEGER/,
-		/getMemoriesByWorldId\(/,
-	],
-	"packages/core/src/features/working-memory/taskClipboardService.ts": [
-		/TASK_CLIPBOARD_MAX_ITEMS/,
-		/maxItems/,
-	],
-	"plugins/plugin-inbox/src/actions/inbox.ts": [/:\s*50;/],
-	"plugins/plugin-inbox/src/inbox/repository.ts": [/opts\?\.limit\s*\?\?\s*50/],
-	"plugins/plugin-inbox/src/inbox/aggregate.ts": [
-		/DEFAULT_INBOX_LIMIT/,
-		/Math\.min\(Math\.floor\(request\.limit\),\s*500\)/,
-		/INBOX_CACHE_(?:WARM|READ|FULL)_LIMIT/,
-	],
-	"plugins/plugin-inbox/src/inbox/message-fetcher.ts": [
-		/opts\.limit\s*\?\?\s*50/,
-		/for\s*\(const msg of triageFeed\.messages\.slice/,
-	],
-	"plugins/plugin-inbox/src/inbox/unsubscribe-service.ts": [
-		/DEFAULT_SCAN_MAX_MESSAGES/,
-		/MAX_SENDERS_RETURNED/,
-		/Math\.min\(\s*1000/,
-	],
-	"plugins/plugin-finances/src/services/subscriptions-service.ts": [
-		/MAX_AUDIT_MESSAGES/,
-	],
-	"packages/cloud/api/v1/generate-prompts/route.ts": [/maxOutputTokens\s*:/],
-	"packages/training/scripts/rl/tokenization_utils.py": [
-		/masks\s*=\s*masks\[:/,
-		/assume extra tokens are completion/,
-		/Falling back to simple masking/,
-		/Could not fix masks, returning original/,
-	],
-	"packages/agent/src/actions/context-signal-lexicon.ts": [
-		/contextLimit/,
-		/CONTEXT_LIMIT/,
-	],
-	"packages/agent/src/actions/context-signal.ts": [
-		/contextLimit/,
-		/_contextLimit/,
-	],
-	"packages/agent/src/actions/database.ts": [
-		/params\.limit\s*\?\?/,
-		/VECTOR_SEARCH_(?:DEFAULT|MAX)_LIMIT/,
-		/Math\.min\([^\n]*params\.limit/,
-	],
-	"packages/agent/src/actions/logs.ts": [
-		/params\.limit\s*\?\?/,
-		/Math\.min\([^\n]*params\.limit/,
-	],
-	"packages/agent/src/api/chat-routes.ts": [
-		/sanitizeActionResultValue\([^\n]*depth/,
-		/Object\.entries\([^\n]+\.slice\(/,
-		/actionResults[\s\S]{0,200}\.slice\(-\d+\)/,
-		/truncateWellFormed\(wellFormed/,
-		/\.slice\(-50\)/,
-		/maxTokens:\s*260/,
-	],
-	"packages/agent/src/api/diagnostics-routes.ts": [/entries\.slice\(-\d+\)/],
-	"packages/agent/src/api/remote-capability-routes.ts": [
-		/appendTrustAuditRecord[\s\S]{0,700}\.slice\(-\d+\)/,
-	],
-	"packages/agent/src/api/server.ts": [
-		/pushWithBatchEvict\(\s*state\.logBuffer/,
-		/state\.logBuffer\.splice\(/,
-	],
-	"packages/agent/src/api/server-helpers-auth.ts": [/rawAuth\.slice\(/],
-	"packages/agent/scripts/live-sandbox-smoke.ts": [
-		/this\.stderr[^\n]*\.slice\(/,
-	],
-	"packages/agent/src/api/wallet-dex-prices.ts": [
-		/addresses\.slice\(0,\s*\d+\)/,
-	],
-	"packages/agent/src/api/wallet-evm-balance.ts": [
-		/nonZero\.slice\(0,\s*\d+\)/,
-		/knownTokenAddresses[\s\S]{0,100}\.slice\(0,\s*\d+\)/,
-		/truncateWellFormed\(/,
-	],
-	"packages/agent/src/services/sandbox-manager.ts": [
-		/eventLog\s*=\s*this\.eventLog\.slice/,
-		/eventLog\.splice\(/,
-		/options\.command\.substring\(/,
-		/options\.command\.slice\(/,
-	],
-	"packages/app-core/platforms/electrobun/src/voice/voice-service.ts": [
-		/this\.recent\.splice\(/,
-		/recentTurns:\s*this\.recent\.slice\(/,
-		/params\.limit\s*\?\?\s*\d+/,
-		/clampLimit\(params\.limit/,
-	],
-	"packages/app-core/platforms/electrobun/src/native/browser-workspace.ts": [
-		/DEFAULT_EVENT_LOG_LIMIT/,
-		/MAX_EVENT_QUERY_LIMIT/,
-		/MAX_EVENT_PAYLOAD_DEPTH/,
-		/MAX_EVENT_STRING_LENGTH/,
-		/this\.events\.splice\(/,
-		/value\.slice\(0,\s*50\)/,
-	],
-	"packages/app-core/platforms/electrobun/src/native/browser-bridge-broker-server.ts":
-		[/stderr[^\n]*\.slice\(/],
-	"packages/app-core/platforms/electrobun/src/native/permissions.ts": [
-		/stderr\.trim\(\)\.slice\(/,
-	],
-	"packages/app-core/deploy/cloud-agent-shared.ts": [
-		/MAX_DATABASE_DIAGNOSTIC_CHARS/,
-	],
-	"packages/app-core/platforms/electrobun/src/shell-sync-relay.ts": [
-		/truncateWellFormed\(/,
-	],
-	"packages/app-core/platforms/electrobun/src/ssh-runtime-rpc.ts": [
-		/MAX_DIAGNOSTIC_STDERR_CHARS/,
-		/diagnosticStderrTail[^\n]*\.slice\(/,
-	],
-	"packages/app-core/platforms/electrobun/src/trace/trace-store.ts": [
-		/DEFAULT_MAX_SESSIONS/,
-		/DEFAULT_MAX_EVENTS_PER_SESSION/,
-		/DEFAULT_MAX_EVENT_PAYLOAD_BYTES/,
-		/tracePayloadTruncated/,
-		/sessionEvents\.shift\(/,
-		/pruneSessions\(/,
-	],
-	"plugins/plugin-personal-assistant/src/activity-profile/service.ts": [
-		/MAX_ROOMS/,
-		/MESSAGES_LIMIT/,
-		/ACTIVITY_SIGNALS_WINDOW_LIMIT/,
-		/CURRENT_ACTIVITY_SIGNAL_LIMIT/,
-		/roomIds\.slice\(/,
-	],
-	"plugins/plugin-google-workspace/src/gmail.ts": [
-		/params\.limit\s*\?\?\s*10/,
-		/normalizedLimit\(params\.maxResults,\s*20/,
-		/normalizedLimit\(params\.maxMessages,\s*200/,
-		/MAX_GMAIL_RESULTS/,
-	],
-	"plugins/plugin-google-workspace/src/lifeops-message-adapter.ts": [
-		/maxResults:\s*opts\.limit\s*\?\?\s*50/,
-		/maxResults:\s*filters\.limit\s*\?\?\s*25/,
-		/listMessages\(runtime,\s*\{\s*limit:\s*100\s*\}\)/,
-		/truncateWellFormed/,
-		/clip\(draft\.body/,
-		/GMAIL_READ_(?:DEFAULT|MAX)_(?:BYTES|UNITS)/,
-		/GMAIL_READ_UNIT_TOO_LARGE/,
-	],
-	"plugins/plugin-google-workspace/src/people.ts": [
-		/normalizedPageSize\(params\.maxResults,\s*MAX_SEARCH_PAGE_SIZE\)/,
-		/return\s+results\.slice\(0,\s*pageSize\)/,
-	],
-	"plugins/plugin-personal-assistant/src/lifeops/domains/gmail-service.ts": [
-		/DEFAULT_GMAIL_(?:TRIAGE_MAX_RESULTS|SEARCH_LIMIT)/,
-		/Math\.min\(\s*100/,
-		/maxResults\(request\.maxResults/,
-	],
-	"plugins/plugin-personal-assistant/src/lifeops/repository.ts": [
-		/options\?\.maxResults[\s\S]{0,160}:\s*100/,
-		/DEFAULT_LIMIT\s*=\s*100/,
-	],
-	"plugins/plugin-personal-assistant/src/actions/connector.ts": [
-		/params\.recentLimit\s*\?\?\s*10/,
-	],
-	"plugins/plugin-personal-assistant/src/lifeops/domains/imessage-service.ts": [
-		/opts\.limit\s*\?\?\s*100/,
-	],
-	"plugins/plugin-personal-assistant/src/lifeops/domains/telegram-service.ts": [
-		/request\.recentLimit\s*\?\?\s*10/,
-	],
-	"plugins/plugin-personal-assistant/src/lifeops/domains/whatsapp-service.ts": [
-		/pullWhatsAppRecent\(limit\s*=\s*25/,
-		/Math\.min\(Math\.max\(1,\s*Math\.floor\(limit\)\),\s*500\)/,
-	],
-	"plugins/plugin-personal-assistant/src/lifeops/domains/reminders-service.ts":
-		[
-			/getMemoriesByRoomIds\(\{[\s\S]{0,160}limit:\s*50/,
-			/collectNearbyReminderTitles\(\{[\s\S]{0,240}limit:\s*3/,
-			/titles\.length\s*>=\s*args\.limit/,
-		],
-	"plugins/plugin-personal-assistant/src/lifeops/service.ts": [
-		/pullWhatsAppRecent\(limit\s*=\s*25/,
-	],
-	"plugins/plugin-personal-assistant/src/lifeops/cross-channel-search.ts": [
-		/DEFAULT_PER_CHANNEL_LIMIT/,
-		/query\.limit\s*\?\?/,
-		/hits\.slice\(0/,
-		/finalLimit/,
-		/pullWhatsAppRecent\([^)]*\+\s*25/,
-	],
-	"packages/core/src/database/inMemoryAdapter.ts": [
-		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
-		/const limit = params\.limit \?\? 100;[\s\S]{0,200}connectorAccountsById/,
-	],
-	"packages/core/src/connectors/account-manager.ts": [
-		/listConnectorAccounts\(\{[\s\S]{0,120}limit:\s*500/,
-	],
-	"plugins/plugin-sql/src/stores/connectorAccount.store.ts": [
-		/const limit = params\.limit \?\? 100/,
-	],
-	"plugins/plugin-inmemorydb/adapter.ts": [
-		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
-	],
-	"plugins/plugin-sql/src/base.ts": [
-		/const count = params\.count\s*\?\?\s*10/,
-		/\.limit\(params\.limit\s*\?\?\s*Number\.MAX_SAFE_INTEGER\)/,
-	],
-	"plugins/plugin-sql/src/stores/memory.store.ts": [
-		/\.limit\(params\.count\s*\?\?\s*10\)/,
-	],
-	"plugins/plugin-web-search/src/services/webSearchService.ts": [
-		/maxResults:\s*options\?\.limit\s*\?\?\s*3/,
-	],
-	"packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoicePlugin.java":
-		[
-			/getInt\("maxTokens",\s*48\)/,
-			/maxTokens\s*!=\s*null\s*\?\s*maxTokens\s*:\s*48/,
-		],
-	"packages/cloud/shared/src/lib/utils/ai-json-parse.ts": [
-		/truncateWellFormed/,
-		/toWellFormedUnicode\(extracted\),\s*200/,
-	],
-	"plugins/plugin-personal-assistant/src/lifeops/domains/x-read-service.ts": [
-		/opts\.limit\s*\?\?\s*20/,
-	],
-	"plugins/plugin-personal-assistant/src/lifeops/domains/x-service.ts": [
-		/opts\.limit\s*\?\?\s*25/,
-	],
-	"plugins/plugin-imessage/src/service.ts": [
-		/normalizeConnectorLimit\([^)]*fallback/,
-		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
-		/Math\.max\(limit,\s*100\)/,
-		/getMessages\(\{\s*chatId,\s*limit:\s*10\s*\}\)/,
-	],
-	"plugins/plugin-imessage/src/chatdb-reader.ts": [
-		/options\.limit[\s\S]{0,160}:\s*50/,
-	],
-	"plugins/plugin-whatsapp/src/runtime-service.ts": [
-		/Math\.min\(Number\(params\.limit\),\s*100\)/,
-		/:\s*25;/,
-		/Math\.max\(params\.limit\s*\?\?\s*100,\s*100\)/,
-		/\.slice\(0,\s*params\.limit\s*\?\?\s*25\)/,
-	],
-	"plugins/plugin-telegram/src/service.ts": [
-		/normalizeConnectorLimit\([^)]*fallback/,
-		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
-		/Math\.max\(limit,\s*100\)/,
-		/count:\s*10/,
-	],
-	"plugins/plugin-google-workspace/src/chat/service.ts": [
-		/normalizeConnectorLimit\([^)]*fallback/,
-		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
-		/Math\.max\(limit,\s*100\)/,
-	],
-	"plugins/plugin-instagram/src/service.ts": [
-		/normalizeConnectorLimit\([^)]*fallback/,
-		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
-		/Math\.max\(limit,\s*100\)/,
-	],
-	"plugins/plugin-matrix/src/service.ts": [
-		/normalizeConnectorLimit\([^)]*fallback/,
-		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
-		/Math\.max\(limit,\s*100\)/,
-	],
-	"plugins/plugin-wechat/src/index.ts": [
-		/normalizeConnectorLimit\([^)]*fallback/,
-		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
-		/Math\.max\(limit,\s*100\)/,
-	],
-	"plugins/plugin-discord/service.ts": [
-		/Math\.max\(params\.limit\s*\?\?\s*100,\s*100\)/,
-		/\.slice\(0,\s*params\.limit\s*\?\?\s*25\)/,
-		/Math\.min\(Number\(params\.limit\),\s*100\)/,
-	],
-	"plugins/plugin-discord/triage-adapter.ts": [
-		/DEFAULT_LIST_LIMIT/,
-		/MAX_CHANNELS_PER_SWEEP/,
-		/PER_CHANNEL_FETCH_CAP/,
-		/truncateWellFormed/,
-		/SNIPPET_LENGTH/,
-		/clip\((?:text|draft\.body)/,
-	],
-	"plugins/plugin-slack/src/service.ts": [
-		/normalizeConnectorLimit\(params\.limit,\s*25\)/,
-		/Math\.max\(requestedLimit,\s*100\)/,
-		/readHistory\(channelId,\s*\{\s*limit:\s*10\s*\}/,
-		/conversations\.replies\(\{[\s\S]{0,120}limit:\s*10/,
-	],
-	"plugins/plugin-x/src/services/x.service.ts": [
-		/clampLimit\(params\.limit,\s*20,\s*100\)/,
-		/clampLimit\(params\.limit,\s*25,\s*50\)/,
-		/listRecentDirectMessages\(accountId,\s*25\)/,
-	],
-	"plugins/plugin-x/src/services/PostService.ts": [
-		/options\.limit\s*\|\|\s*20/,
-		/options\?\.limit\s*\|\|\s*20/,
-	],
-	"plugins/plugin-x/src/client/client.ts": [
-		/maxTweets\s*=\s*200/,
-		/maxQuotes:\s*number\s*=\s*(?:40|100)/,
-		/if\s*\(tweets\.length\s*>=\s*(?:count|maxTweets)\)\s*break/,
-	],
-	"plugins/plugin-x/src/client/tweets.ts": [
-		/while\s*\(totalFetched\s*<\s*maxTweets\)/,
-	],
-	"plugins/plugin-x/src/utils.ts": [
-		/Falling back to truncated Tweet/,
-		/truncateToCompleteSentence/,
-	],
-	"packages/logger/src/logger.ts": [
-		/MAX_PROMPT_LOG_CHARS/,
-		/\[TRUNCATED[^\]]*more chars\]/,
-	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,
@@ -478,53 +166,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/capped at 20/,
 		/\.slice\([^)]*20/,
 	],
-	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
-		[/NUDGE_MAX_OUTPUT_TOKENS/, /maxOutputTokens:/],
-	"packages/cloud/shared/src/lib/services/discord-automation/app-automation.ts":
-		[/maxOutputTokens:\s*\d+/],
-	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts":
-		[/maxOutputTokens:\s*\d+/],
-	"packages/cloud/shared/src/lib/services/doordash-browser-run.ts": [
-		/\.slice\(0,\s*20\)/,
-		/\.slice\(0,\s*100\)/,
-		/Math\.min\(20,\s*Number\(args\.limit/,
-		/text\.slice\([^)]*,\s*240\)/,
-	],
-	"packages/cloud/shared/src/lib/services/agent-backup-verifier.ts": [
-		/mismatches\.slice\(/,
-		/summary\.failures\.slice\(/,
-	],
-	"packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts": [
-		/diagnostics\.slice\(/,
-		/args[^\n]*join\([^\n]*\.slice\(/,
-	],
-	"packages/cloud/shared/src/lib/storage/object-store.ts": [
-		/clampInlineDiagnosticText/,
-		/oversizeInline/,
-		/truncateToBytes/,
-	],
-	"packages/cloud/shared/src/lib/services/job-error-text.ts": [
-		/JOB_ERROR_MAX_CHARS/,
-		/TRUNCATION_SUFFIX/,
-		/MAX_CAUSE_DEPTH/,
-	],
-	"packages/cloud/shared/src/lib/eliza/runtime/initializer.ts": [
-		/msg\.substring\(/,
-	],
-	"packages/cloud/shared/src/lib/services/local-docker-sandbox-provider.ts": [
-		/stdout\.slice\(/,
-	],
-	"packages/cloud/shared/src/lib/services/payment-request-settlement.ts": [
-		/result\.error\.slice\(/,
-	],
-	"packages/cloud/shared/src/lib/services/tailnet-path-monitor.ts": [
-		/timedOutContainers[^\n]*\.slice\(/,
-	],
-	"packages/cloud/shared/src/lib/steward-sync.ts": [
-		/error\.stack[^\n]*\.slice\(/,
-	],
-	"packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts":
-		[/params\.error\.slice\(/],
 	"packages/cloud/shared/src/lib/services/room-title.ts": [
 		/result\.text[\s\S]{0,240}\.slice\(/,
 		/result\.text[\s\S]{0,240}\.split\("\\n"\)/,
@@ -533,18 +174,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		[/text\.trim\(\)\.slice\(0,\s*280\)/],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
 		[/maxOutputTokens:\s*512/],
-	"packages/cloud/shared/src/lib/services/shared-runtime/shared-turn-trace-recorder.ts":
-		[/MAX_ACTION_STAGES/, /actionResults[^\n]*\.slice\(/],
-	"packages/cloud/shared/src/lib/services/shared-runtime/shared-facts.ts": [
-		/SHARED_FACTS_MAX_PER_TURN/,
-	],
-	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-timing.ts":
-		[
-			/MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS/,
-			/MAX_SHARED_PROVIDER_TIMING_CALL_COUNT/,
-			/modelCalls\.length\s*</,
-			/contextIds[\s\S]{0,240}\.slice\(/,
-		],
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
@@ -579,20 +208,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/core/src/features/documents/service.ts": [
 		/limit:\s*(?:20|40|1_000)[,\n]/,
-		/options\.limit[\s\S]{0,160}:\s*25/,
-		/Math\.min\(Math\.floor\(options\.limit\),\s*DOCUMENT_LIST_MAX_LIMIT\)/,
 	],
-	"packages/core/src/features/documents/actions.ts": [
-		/DOCUMENT_READ_DEFAULT_LIMIT/,
-		/value\s*>\s*100/,
-		/Document read limit exceeds 100/,
-	],
-	"packages/core/src/features/documents/llm.ts": [
-		/MAX_OUTPUT_TOKENS/,
-		/maxOutputTokens\s*:/,
-	],
-	"packages/core/src/features/documents/types.ts": [/MAX_OUTPUT_TOKENS/],
-	"packages/core/src/features/documents/config.ts": [/MAX_OUTPUT_TOKENS/],
 	"packages/core/src/features/documents/provider.ts": [
 		/PINNED_DOCUMENT_(?:TOKEN_BUDGET|TRUNCATION_MARKER)/,
 		/truncateWellFormed/,
@@ -675,12 +291,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/sorted\s*\.slice\(0,\s*8\)/,
 		/room\.id\.slice\(0,\s*8\)/,
 		/formatCandidates[\s\S]{0,300}\.slice\(0,/,
-		/MEMORY_READ_(?:DEFAULT|MAX)_BYTES/,
-	],
-	"packages/core/src/features/working-memory/readAttachmentAction.ts": [
-		/ATTACHMENT_READ_(?:TOTAL_PAGE|MAX_ITEM)_BYTES/,
-		/fairLimit/,
-		/maximum page size/,
 	],
 	"packages/cloud/shared/src/lib/eliza/plugin-oauth/actions/oauth.ts": [
 		/active\.slice\(0,/,
@@ -742,112 +352,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/collapsed\.slice\(/,
 		/userReferenceLogView/,
 	],
-	"plugins/plugin-app-control/src/actions/app-create.ts": [
-		/tokenize\(intent\)\.slice\(/,
-		/displayLine\.replace\([^\n]+\.slice\(/,
-	],
-	"plugins/plugin-app-control/src/actions/views-create.ts": [
-		/tokenize\(intent\)\.slice\(/,
-		/displayLine\.replace\([^\n]+\.slice\(/,
-	],
-	"plugins/plugin-workflow/src/services/smithers-runtime.ts": [
-		/MAX_STDERR_CHARS/,
-		/\$\{stderr\}\$\{chunk\}`\.slice/,
-		/\$\{stdoutNoise\}\$\{line\}\\n`\.slice/,
-	],
-	"packages/training/scripts/eval/eliza1_eval_suite.py": [/toks\s*=\s*toks\[:/],
 	"plugins/plugin-agent-skills/src/actions/parse-helpers.ts": [
 		/truncateWellFormed/,
-	],
-	"plugins/plugin-agent-skills/src/providers/skills.ts": [
-		/scoredSkills\.slice\(1,\s*\d+\)/,
-	],
-	"plugins/plugin-calendar/src/actions/calendar-handler.ts": [
-		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
-	],
-	"plugins/plugin-health/src/actions/health.ts": [
-		/recentConversationTexts\(\{[\s\S]{0,240}limit:/,
-	],
-	"plugins/plugin-health/src/actions/screen-time.ts": [
-		/apps[\s\S]{0,80}\.slice\(0,/,
-		/topN:\s*10/,
-	],
-	"plugins/plugin-personal-assistant/src/actions/app-block.ts": [
-		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
-	],
-	"plugins/plugin-personal-assistant/src/actions/book-travel.ts": [
-		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
-	],
-	"plugins/plugin-personal-assistant/src/actions/entity.ts": [
-		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
-		/listRelationships\(\{\s*limit:/,
-	],
-	"plugins/plugin-personal-assistant/src/actions/lib/scheduling-handler.ts": [
-		/collectRecentConversationTexts\(\{[\s\S]{0,240}limit:/,
-		/listActiveNegotiations\(\{\s*limit:/,
-	],
-	"plugins/plugin-personal-assistant/src/actions/schedule.ts": [
-		/sleepEpisodes\.slice\(/,
-	],
-	"plugins/plugin-personal-assistant/src/actions/subscriptions.ts": [
-		/recentConversationTexts\(\{[\s\S]{0,240}limit:/,
-	],
-	"plugins/plugin-personal-assistant/src/actions/voice-call.ts": [
-		/listRelationships\(\{\s*limit:/,
-	],
-	"plugins/plugin-contacts/src/providers/contacts.ts": [
-		/CONTACTS_PROVIDER_LIMIT/,
-		/listContacts\(\{\s*limit:/,
-	],
-	"plugins/plugin-phone/src/providers/call-log.ts": [
-		/CALL_LOG_LIMIT/,
-		/listRecentCalls\(\{\s*limit:/,
-	],
-	"plugins/plugin-native-contacts/android/src/main/java/ai/eliza/plugins/contacts/ContactsPlugin.kt":
-		[/getInt\("limit"\)\s*\?:\s*\d+/, /limit\s*>\s*\d+/],
-	"plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/PhonePlugin.kt":
-		[/getInt\("limit"\)\s*\?:\s*\d+/, /limit\s*>\s*\d+/],
-	"plugins/plugin-relationships/src/providers/entity-graph.ts": [
-		/MAX_ENTITIES/,
-		/MAX_EDGES/,
-		/list\(\{[^}]*limit:/,
-	],
-	"plugins/plugin-blocker/src/providers/app-blocker.ts": [
-		/blockedPackageNames\.slice\(/,
-	],
-	"plugins/plugin-personal-assistant/src/providers/recent-task-states.ts": [
-		/TASK_LOG_MAX_ENTRIES/,
-		/existing\.slice\(/,
-	],
-	"plugins/plugin-wallet/src/chains/solana/providers/wallet.ts": [
-		/MAX_PORTFOLIO_ITEMS/,
-		/nonZeroItems\.slice\(/,
-		/displayedItems/,
-	],
-	"plugins/plugin-wallet/src/lp/actions/liquidity.ts": [
-		/pools\.slice\(/,
-		/Showing \d+ of/,
-	],
-	"plugins/plugin-wallet/src/analytics/news/services/newsDataService.ts": [
-		/options\?\.limit\s*\|\|\s*\d+/,
-	],
-	"plugins/plugin-wallet/src/analytics/news/providers/defiNewsProvider.ts": [
-		/getLatestNews\(\{\s*limit:/,
 	],
 	"plugins/plugin-agent-orchestrator/src/actions/tasks.ts": [
 		/truncateWellFormed/,
 		/seed\.slice\(/,
 		/userReferenceLogView/,
-		/excludedByFilters[\s\S]{0,300}\.slice\(/,
-	],
-	"plugins/plugin-cloud-apps/src/actions/check-app-domain.ts": [
-		/MAX_DOMAINS_PER_CHECK/,
-		/domains\.slice\(/,
-		/I checked the first/,
-	],
-	"plugins/plugin-calendar/src/actions/calendar-sources.ts": [
-		/normalized \|\| fallback\)\.slice\(/,
-		/replaceControlCharacters\(value\)\.slice\(/,
 	],
 	"plugins/plugin-agent-orchestrator/src/actions/task-label.ts": [
 		/truncateWellFormed/,
@@ -874,8 +385,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-agent-orchestrator/src/services/acp-service.ts": [
 		/wellFormed\.length\s*>\s*500/,
 		/truncateWellFormed\(wellFormed,\s*200\)/,
-		/STDERR_CAP_BYTES/,
-		/capStderr\(/,
 	],
 	"packages/skills/src/formatter.ts": [/raw\.slice\(0,\s*1024\)/],
 	"plugins/plugin-personal-assistant/src/actions/autofill.ts": [
@@ -934,6 +443,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-google-workspace/src/gmail-message-connector.ts": [
 		/SUBJECT_MAX_LENGTH/,
 	],
+	"plugins/plugin-google-workspace/src/lifeops-message-adapter.ts": [
+		/truncateWellFormed/,
+		/clip\(draft\.body/,
+	],
+	"plugins/plugin-discord/triage-adapter.ts": [
+		/truncateWellFormed/,
+		/SNIPPET_LENGTH/,
+		/clip\((?:text|draft\.body)/,
+	],
 	"plugins/plugin-discord/slash-commands.ts": [
 		/cleanedAnswer\.slice\(/,
 		/text\.slice\(0,\s*120\)/,
@@ -945,10 +463,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/\bmaxTokens\s*:/,
 		/(?:replyText|quoteText|response)\.(?:slice|substring)\(/,
 	],
-	"plugins/plugin-anthropic/models/image.ts": [
-		/firstLine\.slice\(/,
-		/maxOutputTokens:\s*\d/,
-	],
+	"plugins/plugin-anthropic/models/image.ts": [/firstLine\.slice\(/],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
 	"plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts": [
@@ -987,6 +502,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/providers/facts.ts": [
 		/EVIDENCE_TEXT_CHAR_CAP/,
 	],
+	"packages/agent/src/api/chat-routes.ts": [
+		/\.slice\(-50\)/,
+		/maxTokens:\s*260/,
+	],
 	"packages/agent/src/api/fallback-action-helpers.ts": [/maxTokens:\s*260/],
 	"packages/agent/src/api/interactions-routes.ts": [
 		/truncateWellFormed/,
@@ -999,6 +518,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/originalTask[^\n]*\.slice\(/,
 		/firstLine\.slice\(/,
 	],
+	"packages/agent/src/services/sandbox-manager.ts": [
+		/options\.command\.substring\(/,
+		/options\.command\.slice\(/,
+	],
 	"packages/agent/src/shared/conversation-format.ts": [
 		/room\.id\.slice\(/,
 		/room\.id\.substring\(/,
@@ -1009,8 +532,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/agent/src/runtime/prompt-optimization.ts": [
 		/actionCompactionEnabled/,
-		/requestedOutputTokens\s*\?\?\s*metadata\.maxTokens/,
-		/Math\.min\([\s\S]{0,120}configuredOutputTokens/,
 	],
 	"packages/agent/src/runtime/trajectory-internals.ts": [
 		/maxTokens:\s*512/,
@@ -1213,21 +734,20 @@ describe("prompt integrity policy", () => {
 		}
 	});
 
-	it("does not silently overwrite source-audit rules with duplicate keys", () => {
-		const source = readFileSync(fileURLToPath(import.meta.url), "utf8");
-		const declarationStart = source.indexOf("const guardedSources");
-		const declarationEnd = source.indexOf("\n};", declarationStart);
-		const declaration = source.slice(declarationStart, declarationEnd);
-		const paths = [...declaration.matchAll(/^\s*"([^"]+)":\s*\[/gmu)].map(
-			(match) => match[1],
+	it("allows prepared-request rejection only from exact counts and explicit limits", () => {
+		const source = readFileSync(
+			resolve(
+				repositoryRoot,
+				"packages/core/src/runtime/prepared-model-request.ts",
+			),
+			"utf8",
 		);
-		const seen = new Set<string>();
-		const duplicates = paths.filter((path) => {
-			if (seen.has(path)) return true;
-			seen.add(path);
-			return false;
-		});
-		expect(duplicates).toEqual([]);
+		expect(source).toMatch(
+			/args\.countInputTokensIsExact === true &&[\s\S]{0,180}args\.contextWindowTokens !== undefined &&[\s\S]{0,120}args\.outputReserveTokens !== undefined/,
+		);
+		expect(source).toMatch(
+			/rejectionAuthority === "exact-provider-tokenizer-with-explicit-limits" &&[\s\S]{0,100}counted\.count >= dispatchThresholdTokens/,
+		);
 	});
 
 	it("keeps both computer-use emitters behind the shared rejection boundary", () => {
