@@ -21,6 +21,24 @@ describe("isCharacterPersistenceService", () => {
 		expect(isCharacterPersistenceService({})).toBe(false);
 		expect(isCharacterPersistenceService({ persistCharacter: 5 })).toBe(false);
 	});
+
+	it("rejects the remaining primitives and array shapes", () => {
+		expect(isCharacterPersistenceService(undefined)).toBe(false);
+		expect(isCharacterPersistenceService(42)).toBe(false);
+		expect(isCharacterPersistenceService(true)).toBe(false);
+		expect(isCharacterPersistenceService([])).toBe(false);
+	});
+
+	it("rejects functions even when they carry a persistCharacter property", () => {
+		const candidate = (() => {}) as unknown as Record<string, unknown>;
+		candidate.persistCharacter = () => {};
+		expect(isCharacterPersistenceService(candidate)).toBe(false);
+	});
+
+	it("accepts services inherited through the prototype chain", () => {
+		const proto = { persistCharacter: () => {} };
+		expect(isCharacterPersistenceService(Object.create(proto))).toBe(true);
+	});
 });
 
 describe("getCharacterPersistenceService", () => {
@@ -33,6 +51,22 @@ describe("getCharacterPersistenceService", () => {
 	it("returns null when the service is missing or malformed", () => {
 		const runtime = { getService: () => null } as never;
 		expect(getCharacterPersistenceService(runtime)).toBeNull();
+	});
+
+	it("returns null for every malformed shape the runtime can serve", () => {
+		const broken = [undefined, 7, "nope", {}, []] as const;
+		for (const candidate of broken) {
+			const runtime = { getService: () => candidate } as never;
+			expect(getCharacterPersistenceService(runtime)).toBeNull();
+		}
+	});
+
+	it("looks the service up under the canonical token", () => {
+		const getService = vi.fn(() => null);
+		const runtime = { getService } as never;
+		getCharacterPersistenceService(runtime);
+		expect(getService).toHaveBeenCalledTimes(1);
+		expect(getService).toHaveBeenCalledWith(CHARACTER_PERSISTENCE_SERVICE);
 	});
 });
 
