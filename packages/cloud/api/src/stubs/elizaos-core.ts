@@ -335,6 +335,324 @@ export function assertModelOutputComplete(options: {
   );
 }
 
+export interface PreparedModelRequestBudget {
+  provider: string;
+  model: string;
+  inputTokens: number;
+  contextWindowTokens: number;
+  outputReserveTokens: number;
+  dispatchThresholdTokens: number;
+  countSource: "provider-tokenizer" | "utf8-upper-bound";
+  resolvedModelKey: string | null;
+}
+
+export interface PreparedModelRequestGuard {
+  readonly budget: Readonly<PreparedModelRequestBudget>;
+  readonly attempts: number;
+  assertBeforeAttempt(): void;
+}
+
+export interface CreatePreparedModelRequestGuardArgs {
+  provider: string;
+  model: string;
+  projectRequest?: () => unknown;
+  serializeRequest?: () => string;
+  contextWindowTokens?: number;
+  outputReserveTokens?: number;
+  countInputTokens?: (serializedRequest: string) => number;
+}
+
+const WORKER_MODEL_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
+  "claude-opus-4-8": 1_000_000,
+  "claude-opus-4-7": 1_000_000,
+  "claude-sonnet-5": 1_000_000,
+  "claude-sonnet-4-6": 1_000_000,
+  "claude-haiku-4-5": 200_000,
+  "gpt-5.6-sol": 1_050_000,
+  "gpt-5.6-terra": 1_050_000,
+  "gpt-5.6-luna": 1_050_000,
+  "gpt-5.5": 200_000,
+  "gpt-5.5-mini": 128_000,
+  "gemini-2.5-pro": 1_048_576,
+  "gemini-2.5-flash": 1_048_576,
+  "gpt-oss-120b": 131_000,
+  "gemma-4-31b": 131_072,
+  "qwen-3-235b-a22b-instruct-2507": 64_000,
+  "zai-glm-4.7": 131_000,
+  "llama3.1-8b": 32_000,
+  "openai/gpt-oss-120b": 131_000,
+  "llama-3.3-70b-versatile": 131_000,
+  "llama-3.1-8b-instant": 131_000,
+};
+
+const WORKER_MODEL_MAX_OUTPUT_TOKENS: Readonly<Record<string, number>> = {
+  "gpt-5.6-sol": 128_000,
+  "gpt-5.6-terra": 128_000,
+  "gpt-5.6-luna": 128_000,
+};
+
+function lookupWorkerModelLimit(
+  table: Readonly<Record<string, number>>,
+  model: string,
+): { matchedKey: string; tokens: number } | null {
+  const exact = table[model];
+  if (exact !== undefined) return { matchedKey: model, tokens: exact };
+  const normalized = model.toLowerCase();
+  const match = Object.keys(table)
+    .filter((key) => normalized.includes(key.toLowerCase()))
+    .sort((left, right) => right.length - left.length)[0];
+  return match ? { matchedKey: match, tokens: table[match] } : null;
+}
+
+function assertWorkerPositiveInteger(
+  value: number | undefined,
+  field: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new ElizaError(`Prepared model request ${field} must be positive`, {
+      code: "MODEL_PREPARED_REQUEST_INVALID_BUDGET",
+      context: { field },
+    });
+  }
+  return Math.floor(value);
+}
+
+function serializeWorkerPreparedRequest(value: unknown): string {
+  const active = new WeakSet<object>();
+  const visit = (candidate: unknown, location: string): void => {
+    if (
+      candidate === null ||
+      typeof candidate === "string" ||
+      typeof candidate === "boolean" ||
+      candidate === undefined
+    ) {
+      return;
+    }
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return;
+    if (typeof candidate !== "object") {
+      throw new ElizaError("Prepared model request contains a non-JSON value", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+        context: { location },
+      });
+    }
+    const prototype = Object.getPrototypeOf(candidate);
+    if (
+      !Array.isArray(candidate) &&
+      prototype !== Object.prototype &&
+      prototype !== null
+    ) {
+      throw new ElizaError("Prepared model request contains an opaque object", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+        context: { location },
+      });
+    }
+    if (active.has(candidate)) {
+      throw new ElizaError("Prepared model request contains a cycle", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+        context: { location },
+      });
+    }
+    active.add(candidate);
+    if (Array.isArray(candidate)) {
+      for (let index = 0; index < candidate.length; index += 1) {
+        visit(candidate[index], `${location}[${index}]`);
+      }
+    } else {
+      for (const key of Object.keys(candidate)) {
+        const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+        if (!descriptor || descriptor.get || descriptor.set) {
+          throw new ElizaError(
+            "Prepared model request contains an accessor property",
+            {
+              code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+              context: { location: `${location}.${key}` },
+            },
+          );
+        }
+        visit(descriptor.value, `${location}.${key}`);
+      }
+    }
+    active.delete(candidate);
+  };
+  visit(value, "$request");
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) {
+    throw new ElizaError("Prepared model request cannot be serialized", {
+      code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+    });
+  }
+  return serialized;
+}
+
+function freezeWorkerPreparedRequest(value: unknown): void {
+  const visited = new WeakSet<object>();
+  const visit = (candidate: unknown): void => {
+    if (
+      candidate === null ||
+      typeof candidate !== "object" ||
+      visited.has(candidate)
+    ) {
+      return;
+    }
+    const prototype = Object.getPrototypeOf(candidate);
+    if (
+      !Array.isArray(candidate) &&
+      prototype !== Object.prototype &&
+      prototype !== null
+    ) {
+      return;
+    }
+    visited.add(candidate);
+    for (const nested of Object.values(candidate)) visit(nested);
+    Object.freeze(candidate);
+  };
+  visit(value);
+}
+
+/** Worker-safe mirror of core's final prepared-request admission guard. */
+export function createPreparedModelRequestGuard(
+  args: CreatePreparedModelRequestGuardArgs,
+): PreparedModelRequestGuard {
+  const provider = args.provider.trim();
+  const model = args.model.trim();
+  if (!provider || !model) {
+    throw new ElizaError(
+      "Prepared model request needs provider and model ids",
+      {
+        code: "MODEL_PREPARED_REQUEST_INVALID_BUDGET",
+      },
+    );
+  }
+  if (Boolean(args.projectRequest) === Boolean(args.serializeRequest)) {
+    throw new ElizaError(
+      "Prepared model request needs exactly one request serializer",
+      {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+      },
+    );
+  }
+  const readSerializedRequest = (): string => {
+    if (args.serializeRequest) {
+      const body = args.serializeRequest();
+      if (typeof body !== "string") {
+        throw new ElizaError(
+          "Prepared model request serializer did not return a string",
+          {
+            code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+          },
+        );
+      }
+      return body;
+    }
+    return serializeWorkerPreparedRequest(args.projectRequest?.());
+  };
+  const initialRequest = args.projectRequest?.();
+  const serialized = args.projectRequest
+    ? serializeWorkerPreparedRequest(initialRequest)
+    : readSerializedRequest();
+  if (args.projectRequest) freezeWorkerPreparedRequest(initialRequest);
+  const countTokens = (
+    value: string,
+  ): {
+    count: number;
+    source: PreparedModelRequestBudget["countSource"];
+  } => {
+    if (!args.countInputTokens) {
+      return {
+        count: new TextEncoder().encode(value).byteLength,
+        source: "utf8-upper-bound",
+      };
+    }
+    const count = args.countInputTokens(value);
+    if (!Number.isFinite(count) || count < 0) {
+      throw new ElizaError(
+        "Provider tokenizer returned an invalid token count",
+        {
+          code: "MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED",
+        },
+      );
+    }
+    return { count: Math.ceil(count), source: "provider-tokenizer" };
+  };
+  const counted = countTokens(serialized);
+  const contextLookup = lookupWorkerModelLimit(
+    WORKER_MODEL_CONTEXT_WINDOWS,
+    model,
+  );
+  const outputLookup = lookupWorkerModelLimit(
+    WORKER_MODEL_MAX_OUTPUT_TOKENS,
+    model,
+  );
+  const contextWindowTokens =
+    assertWorkerPositiveInteger(
+      args.contextWindowTokens,
+      "contextWindowTokens",
+    ) ??
+    contextLookup?.tokens ??
+    128_000;
+  const outputReserveTokens =
+    assertWorkerPositiveInteger(
+      args.outputReserveTokens,
+      "outputReserveTokens",
+    ) ??
+    outputLookup?.tokens ??
+    Math.min(10_000, Math.max(1, contextWindowTokens - 1));
+  const dispatchThresholdTokens = Math.max(
+    1,
+    contextWindowTokens - outputReserveTokens,
+  );
+  const budget = Object.freeze({
+    provider,
+    model,
+    inputTokens: counted.count,
+    contextWindowTokens,
+    outputReserveTokens,
+    dispatchThresholdTokens,
+    countSource: counted.source,
+    resolvedModelKey: contextLookup?.matchedKey ?? null,
+  }) satisfies Readonly<PreparedModelRequestBudget>;
+  if (counted.count >= dispatchThresholdTokens) {
+    throw new ElizaError(
+      "Complete provider-prepared model request exceeds its context budget",
+      { code: "MODEL_INPUT_OVER_BUDGET", context: { ...budget } },
+    );
+  }
+  let attempts = 0;
+  return {
+    budget,
+    get attempts() {
+      return attempts;
+    },
+    assertBeforeAttempt(): void {
+      const attemptSerialized = readSerializedRequest();
+      if (attemptSerialized !== serialized) {
+        throw new ElizaError(
+          "Provider-prepared model request changed after admission",
+          {
+            code: "MODEL_PREPARED_REQUEST_MUTATED",
+            context: { provider, model, attempt: attempts + 1 },
+          },
+        );
+      }
+      const attemptCount = countTokens(attemptSerialized);
+      if (
+        attemptCount.count !== counted.count ||
+        attemptCount.source !== counted.source
+      ) {
+        throw new ElizaError(
+          "Provider token count changed for an identical admitted request",
+          {
+            code: "MODEL_PREPARED_REQUEST_TOKEN_COUNT_DRIFT",
+            context: { provider, model, attempt: attempts + 1 },
+          },
+        );
+      }
+      attempts += 1;
+    },
+  };
+}
+
 /** Structural shape of a runtime that can resolve a per-agent setting. */
 export interface SettingReader {
   getSetting(key: string): string | boolean | number | null | undefined;
@@ -2003,6 +2321,7 @@ export type MediaGenerationResponse = Record<string, unknown>;
 export default {
   logger,
   elizaLogger,
+  createPreparedModelRequestGuard,
   DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,

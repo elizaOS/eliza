@@ -101,6 +101,43 @@ describe("elizaos-core Worker stub", () => {
     );
   });
 
+  test("mirrors prepared request admission and retry identity checks", () => {
+    let body = JSON.stringify({ model: "gemma-4-31b", prompt: "complete" });
+    const guard = stub.createPreparedModelRequestGuard({
+      provider: "eliza-cloud",
+      model: "gemma-4-31b",
+      serializeRequest: () => body,
+      outputReserveTokens: 1_000,
+    });
+
+    expect(guard.budget).toMatchObject({
+      contextWindowTokens: 131_072,
+      outputReserveTokens: 1_000,
+      countSource: "utf8-upper-bound",
+      resolvedModelKey: "gemma-4-31b",
+    });
+    guard.assertBeforeAttempt();
+    expect(guard.attempts).toBe(1);
+    body = JSON.stringify({ model: "gemma-4-31b", prompt: "changed" });
+    expect(() => guard.assertBeforeAttempt()).toThrowError(
+      expect.objectContaining({ code: "MODEL_PREPARED_REQUEST_MUTATED" }),
+    );
+  });
+
+  test("rejects a complete prepared request before dispatch when over budget", () => {
+    expect(() =>
+      stub.createPreparedModelRequestGuard({
+        provider: "eliza-cloud",
+        model: "test-model",
+        serializeRequest: () => JSON.stringify({ prompt: "complete" }),
+        contextWindowTokens: 20,
+        outputReserveTokens: 5,
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "MODEL_INPUT_OVER_BUDGET" }),
+    );
+  });
+
   test("default export shares identity with the named runtime constants", () => {
     expect(stubDefault.logger).toBe(stub.logger);
     expect(stubDefault.elizaLogger).toBe(stub.elizaLogger);
