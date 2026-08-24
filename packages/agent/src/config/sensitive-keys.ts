@@ -32,6 +32,7 @@ const SENSITIVE_CAMEL_KEY_RE =
 const SENSITIVE_CONCAT_KEY_RE = /(?:master|signing|ssh|encryption)key$/i;
 
 export function isSensitiveConfigKey(key: string): boolean {
+  if (typeof key !== "string" || !key) return false;
   const lastSegment = key.split(".").at(-1) ?? key;
   const normalized = lastSegment.replace(/[-_\s]/g, "").toLowerCase();
   if (/^maxtokens?$/.test(normalized)) return false;

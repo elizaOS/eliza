@@ -31,6 +31,13 @@ describe("isSensitiveConfigKey", () => {
     expect(isSensitiveConfigKey("models.large.maxTokens")).toBe(false);
     expect(isSensitiveConfigKey("models.large.max_tokens")).toBe(false);
   });
+
+  it("safely returns false for non-string, null, or undefined keys", () => {
+    expect(isSensitiveConfigKey(null as unknown as string)).toBe(false);
+    expect(isSensitiveConfigKey(undefined as unknown as string)).toBe(false);
+    expect(isSensitiveConfigKey(123 as unknown as string)).toBe(false);
+    expect(isSensitiveConfigKey("" as unknown as string)).toBe(false);
+  });
 });
 
 describe("sensitive config handling", () => {
