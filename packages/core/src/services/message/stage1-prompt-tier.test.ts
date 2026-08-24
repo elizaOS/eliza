@@ -187,3 +187,99 @@ describe("isUnaddressedTextGroupTurn", () => {
 		expect(isUnaddressedTextGroupTurn(msg, false)).toBe(false);
 	});
 });
+
+describe("isUnaddressedTextGroupTurn edge branches", () => {
+	it("ignores non-object content metadata such as arrays", () => {
+		const msg = message({
+			content: {
+				text: "hi",
+				channelType: String(ChannelType.GROUP),
+				metadata: ["not-a-record"] as unknown as Record<string, unknown>,
+			},
+		});
+		expect(isUnaddressedTextGroupTurn(msg, false)).toBe(true);
+	});
+
+	it("ignores non-object top-level metadata such as strings or null", () => {
+		const asString = message({
+			metadata: "not-a-record" as unknown as Record<string, unknown>,
+			content: { text: "hi", channelType: String(ChannelType.GROUP) },
+		});
+		expect(isUnaddressedTextGroupTurn(asString, false)).toBe(true);
+		const asNull = message({
+			metadata: null as unknown as Record<string, unknown>,
+			content: { text: "hi", channelType: String(ChannelType.GROUP) },
+		});
+		expect(isUnaddressedTextGroupTurn(asNull, false)).toBe(true);
+	});
+
+	it("treats only strict-boolean true isAutonomous flags as autonomous", () => {
+		for (const flag of ["true", 1, false]) {
+			const msg = message({
+				content: {
+					text: "hi",
+					channelType: String(ChannelType.GROUP),
+					metadata: { isAutonomous: flag },
+				},
+			});
+			expect(isUnaddressedTextGroupTurn(msg, false)).toBe(true);
+		}
+	});
+
+	it("requires strict-boolean subAgent metadata relays", () => {
+		const msg = message({
+			content: {
+				text: "hi",
+				channelType: String(ChannelType.GROUP),
+				metadata: { subAgent: "yes" },
+			},
+		});
+		expect(isUnaddressedTextGroupTurn(msg, false)).toBe(true);
+	});
+
+	it("treats a non-string source as an ordinary turn", () => {
+		const msg = message({
+			content: {
+				text: "hi",
+				channelType: String(ChannelType.GROUP),
+				source: 42 as unknown as string,
+			},
+		});
+		expect(isUnaddressedTextGroupTurn(msg, false)).toBe(true);
+	});
+
+	it("rejects always-respond sources by substring containment", () => {
+		for (const source of ["client_chat_v2", "trigger-prompt-relay"]) {
+			const msg = message({
+				content: {
+					text: "hi",
+					channelType: String(ChannelType.GROUP),
+					source,
+				},
+			});
+			expect(isUnaddressedTextGroupTurn(msg, false)).toBe(false);
+		}
+	});
+
+	it("normalizes always-respond source case and whitespace", () => {
+		const msg = message({
+			content: {
+				text: "hi",
+				channelType: String(ChannelType.GROUP),
+				source: "  Client_Chat ",
+			},
+		});
+		expect(isUnaddressedTextGroupTurn(msg, false)).toBe(false);
+	});
+
+	it("fails open when channel type is a non-string or empty value", () => {
+		const numeric = message({
+			content: { text: "hi", channelType: 42 as unknown as string },
+		});
+		expect(isUnaddressedTextGroupTurn(numeric, false)).toBe(false);
+		const empty = message({
+			content: { text: "hi", channelType: "" },
+		});
+		expect(isUnaddressedTextGroupTurn(empty, false)).toBe(false);
+	});
+});
