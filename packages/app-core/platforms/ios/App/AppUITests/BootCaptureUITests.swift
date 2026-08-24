@@ -578,6 +578,71 @@ final class BootCaptureUITests: XCTestCase {
         )
     }
 
+    /// Proves a password-configured remote host presents the owner login—not
+    /// PairingView—then persists the remembered session across a normal app
+    /// process restart. The password arrives only in the test-runner process
+    /// environment and is never attached or interpolated into diagnostics.
+    func testRemoteOwnerPasswordLoginPersistsAcrossRelaunch() throws {
+        let env = ProcessInfo.processInfo.environment
+        let bootTimeout = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
+        let replyTimeout = Double(env["ELIZA_CHAT_REPLY_TIMEOUT_SECONDS"] ?? "") ?? 120
+        let beforeMarker = try validatedChatReplyMarker(
+            env["ELIZA_TEST_CHAT_BEFORE_RESTART_MARKER"],
+            defaultMarker: "IOS_OWNER_BEFORE_RESTART_OK"
+        )
+        let afterMarker = try validatedChatReplyMarker(
+            env["ELIZA_TEST_CHAT_AFTER_RESTART_MARKER"],
+            defaultMarker: "IOS_OWNER_AFTER_RESTART_OK"
+        )
+        guard let password = env["ELIZA_TEST_OWNER_PASSWORD"], !password.isEmpty else {
+            throw StrictGateFailure(message: "the owner password was not available to the runner")
+        }
+
+        let app = XCUIApplication()
+        launchWithRetry(app)
+        try openRemoteServerForOwnerLogin(app, env: env)
+        try signInAsRemoteOwner(app, password: password)
+        try requireHome(
+            app,
+            timeout: bootTimeout,
+            screenshotName: "owner-login-020-home",
+            env: env
+        )
+        try sendPairedChatTurn(
+            app,
+            marker: beforeMarker,
+            replyTimeout: replyTimeout,
+            screenshotPrefix: "owner-login-before",
+            env: env
+        )
+
+        app.terminate()
+        XCTAssertTrue(
+            app.wait(for: .notRunning, timeout: 20),
+            "the app did not terminate before the owner-session relaunch"
+        )
+        launchWithRetry(app)
+        try requireHome(
+            app,
+            timeout: bootTimeout,
+            screenshotName: "owner-login-100-restored-home",
+            env: env
+        )
+        XCTAssertFalse(
+            app.secureTextFields.matching(
+                NSPredicate(format: "placeholderValue ==[c] 'Your password'")
+            ).firstMatch.exists,
+            "the remembered owner session returned to LoginView after relaunch"
+        )
+        try sendPairedChatTurn(
+            app,
+            marker: afterMarker,
+            replyTimeout: replyTimeout,
+            screenshotPrefix: "owner-login-after",
+            env: env
+        )
+    }
+
     private func requireHome(
         _ app: XCUIApplication,
         timeout: TimeInterval,
@@ -1361,6 +1426,115 @@ final class BootCaptureUITests: XCTestCase {
         throw StrictGateFailure(
             message: "the app did not reach a stable authenticated shell after pairing"
         )
+    }
+
+    /// Opens only the reviewed credential-free remote-runtime deep link and
+    /// requires the password-configured host to resolve into LoginView.
+    private func openRemoteServerForOwnerLogin(
+        _ app: XCUIApplication,
+        env: [String: String]
+    ) throws {
+        guard let rawApiBase = env["ELIZA_TEST_REMOTE_API_BASE"]?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !rawApiBase.isEmpty else {
+            throw StrictGateFailure(message: "the remote API base was not available to the runner")
+        }
+        guard var components = URLComponents(string: "elizaos://first-run/runtime/remote") else {
+            throw StrictGateFailure(message: "could not construct the remote-agent deep link")
+        }
+        components.queryItems = [URLQueryItem(name: "api", value: rawApiBase)]
+        guard let deepLink = components.url else {
+            throw StrictGateFailure(message: "could not encode the remote-agent deep link")
+        }
+        guard #available(iOS 16.4, *) else {
+            throw StrictGateFailure(
+                message: "opening the remote-agent test deep link requires iOS 16.4 or newer"
+            )
+        }
+
+        _ = try grantLocalNetworkPermissionIfPresent(app, timeout: 15)
+        try waitForInteractiveRenderer(app, timeout: 30)
+        app.open(deepLink)
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 20),
+            "the app did not return foreground after opening the remote-agent deep link"
+        )
+        _ = try grantLocalNetworkPermissionIfPresent(app, timeout: 10)
+        try confirmRemoteServerTrustPromptIfNeeded(app, timeout: 15)
+
+        let passwordField = app.secureTextFields.matching(
+            NSPredicate(format: "placeholderValue ==[c] 'Your password'")
+        ).firstMatch
+        if passwordField.waitForExistence(timeout: 30) { return }
+
+        attachScreenshot(named: "owner-login-010-password-form-missing")
+        attachAccessibilitySnapshot(of: app)
+        let pairingTitle = app.staticTexts.matching(
+            NSPredicate(format: "label ==[c] 'Pairing Required'")
+        ).firstMatch
+        throw StrictGateFailure(
+            message: pairingTitle.exists
+                ? "password-configured remote host incorrectly presented PairingView"
+                : "password-configured remote host did not present LoginView"
+        )
+    }
+
+    /// Enters the owner credential through the real LoginView and selects the
+    /// product's 30-day secure-session option. No attachment is taken while
+    /// the secret is present in the secure text field.
+    private func signInAsRemoteOwner(
+        _ app: XCUIApplication,
+        password: String
+    ) throws {
+        let displayName = app.textFields.matching(
+            NSPredicate(format: "placeholderValue ==[c] 'Your display name'")
+        ).firstMatch
+        let passwordField = app.secureTextFields.matching(
+            NSPredicate(format: "placeholderValue ==[c] 'Your password'")
+        ).firstMatch
+        guard displayName.waitForExistence(timeout: 10), passwordField.exists else {
+            throw StrictGateFailure(message: "LoginView owner fields were unavailable")
+        }
+
+        displayName.tap()
+        displayName.typeText("Nubs")
+        passwordField.tap()
+        passwordField.typeText(password)
+
+        let remember = app.checkBoxes.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Remember this device for 30 days'")
+        ).firstMatch
+        let rememberLabel = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Remember this device for 30 days'")
+        ).firstMatch
+        if remember.exists {
+            if (remember.value as? String) != "1" { remember.tap() }
+        } else if rememberLabel.exists, rememberLabel.isHittable {
+            rememberLabel.tap()
+        } else {
+            throw StrictGateFailure(message: "the Remember 30d control was unavailable")
+        }
+
+        let signIn = app.buttons.matching(
+            NSPredicate(format: "label ==[c] 'Sign in'")
+        ).firstMatch
+        guard signIn.waitForExistence(timeout: 10), signIn.isHittable else {
+            throw StrictGateFailure(message: "the owner Sign in control was unavailable")
+        }
+        signIn.tap()
+        let loginError = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS[c] 'incorrect' OR label CONTAINS[c] 'failed'")
+        ).firstMatch
+        let deadline = Date().addingTimeInterval(45)
+        while Date() < deadline {
+            if hasAuthenticatedChatComposer(app) { return }
+            if loginError.exists {
+                throw StrictGateFailure(message: "owner login returned a visible authentication error")
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        attachScreenshot(named: "owner-login-015-timeout")
+        throw StrictGateFailure(message: "owner login did not unlock the authenticated composer")
     }
 
     /// Grants only the first-use Local Network alert. Other system permission
