@@ -159,6 +159,7 @@ async function run(
   runTurn: RunTurn,
   request = telegramRequest(),
   confirmIdentityLink?: TelegramEdgeDeps["confirmIdentityLink"],
+  botToken = "123:test-token",
 ): Promise<Response> {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
@@ -175,7 +176,7 @@ async function run(
   return app.fetch(
     request,
     {
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: botToken,
       ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
       ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
       PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
@@ -324,6 +325,81 @@ describe("Personal Shared Telegram edge", () => {
       providerMethods.filter((method) => method === "sendMessage"),
     ).toHaveLength(1);
     expect(providerMethods).not.toContain("webhook");
+  });
+
+  test("passes the stable Telegram bot id to the canonical turn across token rotation", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const turn = mock(async (body: Record<string, unknown>) => {
+      bodies.push(body);
+      return Response.json({ data: { reply: "Account-scoped reply" } });
+    });
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      return Response.json({
+        ok: true,
+        result: body.text ? { message_id: 9011 } : true,
+      });
+    }) as unknown as typeof fetch;
+
+    expect(
+      (
+        await run(
+          namespace(),
+          turn,
+          telegramRequest(81609),
+          undefined,
+          "123:old-secret",
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await run(
+          namespace(),
+          turn,
+          telegramRequest(81610),
+          undefined,
+          "123:rotated-secret",
+        )
+      ).status,
+    ).toBe(200);
+
+    expect(bodies.map((body) => body.connectorAccountId)).toEqual([
+      "bot:123",
+      "bot:123",
+    ]);
+  });
+
+  test("fingerprints an opaque Telegram credential without forwarding the token", async () => {
+    const botToken = "opaque-test-credential";
+    let deliveryBody: Record<string, unknown> | undefined;
+    const turn = mock(async (body: Record<string, unknown>) => {
+      deliveryBody = body;
+      return Response.json({ data: { reply: "Opaque account reply" } });
+    });
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      return Response.json({
+        ok: true,
+        result: body.text ? { message_id: 9012 } : true,
+      });
+    }) as unknown as typeof fetch;
+
+    expect(
+      (
+        await run(
+          namespace(),
+          turn,
+          telegramRequest(81611),
+          undefined,
+          botToken,
+        )
+      ).status,
+    ).toBe(200);
+    expect(deliveryBody?.connectorAccountId).toBe(
+      "bot:d437b678c02873c49f7a3ffaaf947cc5ec289fb2676cd1a2063e84087750f9b4",
+    );
+    expect(JSON.stringify(deliveryBody)).not.toContain(botToken);
   });
 
   test("releases the processing claim after all pre-egress attempts fail", async () => {
