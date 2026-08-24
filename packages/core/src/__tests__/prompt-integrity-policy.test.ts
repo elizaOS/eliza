@@ -42,6 +42,7 @@ const removedPromptCapCloneTests = [
 	"packages/core/src/services/trajectory-json.surrogate.test.ts",
 	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/character.surrogate.test.ts",
 	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/action-state.surrogate.test.ts",
+	"plugins/plugin-personal-assistant/src/lifeops/cross-channel-search.surrogate.test.ts",
 ];
 
 const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
@@ -236,6 +237,16 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-personal-assistant/src/lifeops/domains/whatsapp-service.ts": [
 		/pullWhatsAppRecent\(limit\s*=\s*25/,
 		/Math\.min\(Math\.max\(1,\s*Math\.floor\(limit\)\),\s*500\)/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/service.ts": [
+		/pullWhatsAppRecent\(limit\s*=\s*25/,
+	],
+	"plugins/plugin-personal-assistant/src/lifeops/cross-channel-search.ts": [
+		/DEFAULT_PER_CHANNEL_LIMIT/,
+		/query\.limit\s*\?\?/,
+		/hits\.slice\(0/,
+		/finalLimit/,
+		/pullWhatsAppRecent\([^)]*\+\s*25/,
 	],
 	"plugins/plugin-personal-assistant/src/lifeops/domains/x-read-service.ts": [
 		/opts\.limit\s*\?\?\s*20/,
