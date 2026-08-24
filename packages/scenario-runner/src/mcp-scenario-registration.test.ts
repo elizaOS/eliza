@@ -23,6 +23,24 @@ const here = dirname(fileURLToPath(import.meta.url));
 const fixturePath = resolve(here, "../test/fixtures/mcp-stdio-fixture.mjs");
 const MCP_SERVER_NAME = "scenario_mcp";
 const MCP_PACKAGE = "@elizaos/plugin-mcp";
+const MCP_SERVER_ENV_PATTERN = /^MCP_SERVER_.+_(?:URL|TYPE)$/;
+
+async function withoutAmbientMcpServers<T>(run: () => Promise<T>): Promise<T> {
+  const saved = new Map<string, string>();
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!MCP_SERVER_ENV_PATTERN.test(key) || value === undefined) continue;
+    saved.set(key, value);
+    delete process.env[key];
+  }
+  try {
+    return await run();
+  } finally {
+    for (const key of Object.keys(process.env)) {
+      if (MCP_SERVER_ENV_PATTERN.test(key)) delete process.env[key];
+    }
+    for (const [key, value] of saved) process.env[key] = value;
+  }
+}
 
 /**
  * Mirrors AgentRuntime.getSetting()'s real behavior: it round-trips string,
@@ -83,7 +101,7 @@ describe("deterministic-mcp-actions-routes MCP plugin registration contract", ()
     expect(plugins[0]?.name).toBe(mcpPlugin.name);
   });
 
-  it("connects the real stdio fixture and reports scenario_mcp in getServers() — the exact check the seed performs", async () => {
+  it("connects only the real stdio fixture and exercises its tool and resource", async () => {
     const runtime = createFakeRuntime({
       servers: {
         [MCP_SERVER_NAME]: {
@@ -95,17 +113,59 @@ describe("deterministic-mcp-actions-routes MCP plugin registration contract", ()
       },
     });
 
-    const service = await McpService.start(runtime);
+    const intruderUrlKey = "MCP_SERVER_REGISTRATION_TEST_INTRUDER_URL";
+    const intruderTypeKey = "MCP_SERVER_REGISTRATION_TEST_INTRUDER_TYPE";
+    const priorIntruderUrl = process.env[intruderUrlKey];
+    const priorIntruderType = process.env[intruderTypeKey];
+    process.env[intruderUrlKey] = "http://127.0.0.1:9/mcp";
+    process.env[intruderTypeKey] = "sse";
     try {
-      const server = service
-        .getServers()
-        .find((candidate) => candidate.name === MCP_SERVER_NAME);
-      expect(server).toBeDefined();
-      expect(server?.status).toBe("connected");
-      expect(server?.tools?.length ?? 0).toBe(1);
-      expect(server?.resources?.length ?? 0).toBe(1);
+      await withoutAmbientMcpServers(async () => {
+        const service = await McpService.start(runtime);
+        try {
+          expect(service.getServers().map((server) => server.name)).toEqual([
+            MCP_SERVER_NAME,
+          ]);
+          const server = service.getServers()[0];
+          expect(server?.status).toBe("connected");
+          expect(server?.tools?.map((tool) => tool.name)).toEqual([
+            "echo_code",
+          ]);
+          expect(server?.resources?.map((resource) => resource.uri)).toEqual([
+            "fixture://mcp-note",
+          ]);
+
+          await expect(
+            service.callTool(MCP_SERVER_NAME, "echo_code", {
+              code: "registration-contract",
+            }),
+          ).resolves.toMatchObject({
+            content: [
+              { type: "text", text: "mcp-tool-echo:registration-contract" },
+            ],
+          });
+          await expect(
+            service.readResource(MCP_SERVER_NAME, "fixture://mcp-note"),
+          ).resolves.toMatchObject({
+            contents: [
+              {
+                uri: "fixture://mcp-note",
+                mimeType: "text/plain",
+                text: "mcp-resource-note:alpha-42",
+              },
+            ],
+          });
+        } finally {
+          await service.stop();
+        }
+      });
+      expect(process.env[intruderUrlKey]).toBe("http://127.0.0.1:9/mcp");
+      expect(process.env[intruderTypeKey]).toBe("sse");
     } finally {
-      await service.stop();
+      if (priorIntruderUrl === undefined) delete process.env[intruderUrlKey];
+      else process.env[intruderUrlKey] = priorIntruderUrl;
+      if (priorIntruderType === undefined) delete process.env[intruderTypeKey];
+      else process.env[intruderTypeKey] = priorIntruderType;
     }
   }, 15_000);
 });
