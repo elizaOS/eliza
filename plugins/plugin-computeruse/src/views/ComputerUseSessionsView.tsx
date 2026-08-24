@@ -49,7 +49,9 @@ export interface SessionSnapshot {
     elementIndex?: number;
     appId?: string;
     updatedAt: string;
+    physicalPointerInput: boolean;
     physicalPointerMoved: boolean;
+    pointerObservation: "unchanged" | "changed" | "unavailable";
   };
   lastCommand?: string;
   lastError?: string;
@@ -65,12 +67,29 @@ export interface SessionSnapshot {
     receiptId: string;
     appId: string;
     kind: string;
+    targetPid: number;
+    targetWindowId: number;
     executionMode: string;
     changed: boolean;
+    physicalPointerInput: boolean;
     physicalPointerMoved: boolean;
+    pointerObservation: "unchanged" | "changed" | "unavailable";
+    physicalFallbackApproval?: { approvalId: string };
     clipboardRestored?: boolean;
     element_index?: number;
   };
+}
+
+function pointerProvenanceLabel(value: {
+  physicalPointerInput: boolean;
+  physicalPointerMoved: boolean;
+  pointerObservation: "unchanged" | "changed" | "unavailable";
+}): string {
+  if (value.physicalPointerInput) return "physical pointer input approved";
+  if (value.physicalPointerMoved) return "pointer moved outside this action";
+  if (value.pointerObservation === "unchanged")
+    return "system pointer unchanged";
+  return "pointer observation unavailable";
 }
 
 export interface ObservationProvenance {
@@ -223,26 +242,6 @@ function statusTone(status: SessionSnapshot["status"]): string {
   return "bg-orange-500/15 text-orange-700 dark:text-orange-300";
 }
 
-function ReadinessPill({
-  available,
-  label,
-}: {
-  available: boolean;
-  label: string;
-}) {
-  return (
-    <span
-      className={`rounded-full px-2 py-1 text-[11px] ${
-        available
-          ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
-          : "bg-destructive/10 text-destructive"
-      }`}
-    >
-      {label}: {available ? "ready" : "unavailable"}
-    </span>
-  );
-}
-
 function frameDataUrl(frame: SessionFrame): string {
   return `data:${frame.mimeType};base64,${frame.data}`;
 }
@@ -294,7 +293,7 @@ function AgentTargetOverlay({
   );
   return (
     <span
-      aria-label={`Agent target${target.elementIndex ? ` element ${target.elementIndex}` : ""}; ${target.physicalPointerMoved ? "system pointer used" : "system pointer unchanged"}`}
+      aria-label={`Agent target${target.elementIndex ? ` element ${target.elementIndex}` : ""}; ${pointerProvenanceLabel(target)}`}
       className="pointer-events-none absolute border-2 border-orange-400 bg-orange-500/10 shadow-[0_0_0_1px_rgba(0,0,0,0.5)]"
       role="img"
       style={{
@@ -305,8 +304,7 @@ function AgentTargetOverlay({
       }}
     >
       <span className="absolute -top-5 left-0 rounded bg-orange-500 px-1.5 py-0.5 text-[9px] font-medium text-white">
-        Agent target ·{" "}
-        {target.physicalPointerMoved ? "pointer used" : "pointer unchanged"}
+        Agent target
       </span>
     </span>
   );
@@ -413,8 +411,6 @@ export function ComputerUseSessionsView({
   );
 
   const sessions = state.kind === "ready" ? state.snapshot.sessions : [];
-  const readiness = state.kind === "ready" ? state.snapshot.readiness : null;
-  const events = state.kind === "ready" ? state.snapshot.events : [];
   const frameSessionKey = sessions
     .map((session) => `${session.id}:${session.status}`)
     .join("|");
@@ -552,9 +548,8 @@ export function ComputerUseSessionsView({
           <h1 className="text-base font-semibold">Computer sessions</h1>
           {!shortLandscape ? (
             <p className="text-xs text-muted-foreground">
-              One physical host cursor; isolated targets use virtual cursors.
-              Native controls use Accessibility first; pointer fallback requires
-              approval.
+              Sessions connect and update automatically. Controls only appear
+              when they are relevant.
             </p>
           ) : null}
         </div>
@@ -566,42 +561,6 @@ export function ComputerUseSessionsView({
         >
           Open floating
         </button>
-        {readiness ? (
-          <fieldset className="flex w-full flex-wrap gap-2">
-            <legend className="sr-only">Computer use readiness</legend>
-            <ReadinessPill
-              available={readiness.capture.available}
-              label="Capture"
-            />
-            <ReadinessPill
-              available={readiness.input.available}
-              label="Input"
-            />
-            <ReadinessPill
-              available={readiness.browser.available}
-              label="Browser"
-            />
-            <ReadinessPill
-              available={readiness.vision.available}
-              label="Vision"
-            />
-            {readiness.accessibility ? (
-              <>
-                <ReadinessPill
-                  available={readiness.accessibility.available}
-                  label="AX helper"
-                />
-                <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-foreground">
-                  Accessibility permission:{" "}
-                  {readiness.accessibility.permission.replaceAll("_", " ")}
-                </span>
-              </>
-            ) : null}
-            <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-foreground">
-              Approval: {readiness.approvalMode.replaceAll("_", " ")}
-            </span>
-          </fieldset>
-        ) : null}
       </header>
 
       {actionError ? (
@@ -717,34 +676,9 @@ export function ComputerUseSessionsView({
                     ? ` · Cursor ${Math.round(selected.cursor.x)}, ${Math.round(selected.cursor.y)}`
                     : " · Cursor pending"}
                 </p>
-                {selected.lastReceipt ? (
-                  <p className="truncate">
-                    {selected.lastReceipt.executionMode.replaceAll("_", " ")}
-                    {selected.lastReceipt.clipboardRestored
-                      ? " · clipboard restored"
-                      : ""}
-                    {selected.lastReceipt.physicalPointerMoved
-                      ? " · physical pointer used"
-                      : " · physical pointer unchanged"}
-                  </p>
-                ) : null}
-                {frames[selected.id]?.provenance ? (
-                  <p
-                    className="truncate"
-                    title={frames[selected.id]?.provenance.sha256}
-                  >
-                    Observation {frames[selected.id]?.provenance.sequence} ·{" "}
-                    {frames[selected.id]?.provenance.source} ·{" "}
-                    {frames[selected.id]?.provenance.sha256.slice(0, 10)}
-                  </p>
-                ) : null}
                 <p className="truncate">
-                  {selected.lastOutcome
-                    ? `Outcome: ${selected.lastOutcome.status}${
-                        selected.lastOutcome.errorCode
-                          ? ` · ${selected.lastOutcome.errorCode}`
-                          : ""
-                      }`
+                  {selected.lastError
+                    ? `Error: ${selected.lastError}`
                     : selected.lastCommand
                       ? `Last: ${selected.lastCommand}`
                       : "Waiting for first action"}
@@ -841,58 +775,7 @@ export function ComputerUseSessionsView({
                             ? `Last: ${session.lastCommand}`
                             : "Waiting for first action"}
                       </span>
-                      {frames[session.id]?.provenance ? (
-                        <span
-                          className="col-span-2 truncate"
-                          title={frames[session.id]?.provenance.sha256}
-                        >
-                          Observation {frames[session.id]?.provenance.sequence}{" "}
-                          · {frames[session.id]?.provenance.source} ·{" "}
-                          {frames[session.id]?.provenance.sha256.slice(0, 10)}
-                        </span>
-                      ) : null}
-                      {session.lastOutcome ? (
-                        <span className="col-span-2 truncate">
-                          Outcome: {session.lastOutcome.status}
-                          {session.lastOutcome.errorCode
-                            ? ` · ${session.lastOutcome.errorCode}`
-                            : ""}
-                        </span>
-                      ) : null}
-                      {session.lastReceipt ? (
-                        <span className="col-span-2 truncate">
-                          {session.lastReceipt.executionMode.replaceAll(
-                            "_",
-                            " ",
-                          )}
-                          {session.lastReceipt.clipboardRestored
-                            ? " · clipboard restored"
-                            : ""}
-                          {session.lastReceipt.physicalPointerMoved
-                            ? " · physical pointer used"
-                            : " · physical pointer unchanged"}
-                        </span>
-                      ) : null}
                     </div>
-                    {selected?.id === session.id ? (
-                      <ol
-                        className="space-y-1 border-t border-border/60 pt-2 text-[11px] text-muted-foreground"
-                        aria-label={`${session.label} action history`}
-                      >
-                        {events
-                          .filter((event) => event.sessionId === session.id)
-                          .slice(-4)
-                          .map((event) => (
-                            <li key={event.eventId} className="truncate">
-                              {event.type}
-                              {event.command ? ` · ${event.command}` : ""}
-                              {event.outcomeStatus
-                                ? ` · ${event.outcomeStatus}`
-                                : ""}
-                            </li>
-                          ))}
-                      </ol>
-                    ) : null}
                   </article>
                 ),
               )}

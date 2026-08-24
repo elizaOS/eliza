@@ -134,12 +134,12 @@ describe("ComputerUseSessionsView", () => {
       await screen.findByAltText("Chrome research latest frame"),
     ).toBeTruthy();
     expect(screen.getByLabelText("Virtual cursor at 640, 360")).toBeTruthy();
-    expect(screen.getByText("Capture: ready")).toBeTruthy();
-    expect(screen.getByText("Vision: ready")).toBeTruthy();
     expect(
-      screen.getByText(/Observation 5 · browser · 8f8cbb7dcf/),
+      screen.getByText(/Sessions connect and update automatically/),
     ).toBeTruthy();
-    expect(screen.getByText("observation.captured")).toBeTruthy();
+    expect(screen.queryByText("Capture: ready")).toBeNull();
+    expect(screen.queryByText(/Observation 5/)).toBeNull();
+    expect(screen.queryByText("observation.captured")).toBeNull();
     expect(
       screen.getByTitle("Linux guest viewer").getAttribute("sandbox"),
     ).toBe("allow-scripts");
