@@ -117,6 +117,59 @@ describe("atomic-json", () => {
 			expect((await fsp.readdir(tempDir)).sort()).toEqual(["concurrent.json"]);
 		});
 
+		it("honors skipMkdir option in async and sync writers", async () => {
+			const existingParentTarget = path.join(tempDir, "skip-mkdir.json");
+			await writeJsonAtomic(
+				existingParentTarget,
+				{ ok: true },
+				{ skipMkdir: true },
+			);
+			expect(await readJsonFile(existingParentTarget)).toEqual({ ok: true });
+
+			const nonExistentDirTarget = path.join(
+				tempDir,
+				"non-existent-dir",
+				"data.json",
+			);
+			await expect(
+				writeJsonAtomic(
+					nonExistentDirTarget,
+					{ ok: true },
+					{ skipMkdir: true },
+				),
+			).rejects.toThrow();
+
+			expect(() =>
+				writeJsonAtomicSync(
+					nonExistentDirTarget,
+					{ ok: true },
+					{ skipMkdir: true },
+				),
+			).toThrow();
+		});
+
+		it("cleans up temporary file when value serialization fails", async () => {
+			const target = path.join(tempDir, "bigint-fail.json");
+			const circular: Record<string, unknown> = {};
+			circular.self = circular;
+
+			await expect(writeJsonAtomic(target, circular)).rejects.toThrow();
+			const files = await fsp.readdir(tempDir);
+			expect(files.filter((f) => f.includes("tmp-"))).toHaveLength(0);
+
+			expect(() => writeJsonAtomicSync(target, circular)).toThrow();
+			const filesSync = fs.readdirSync(tempDir);
+			expect(filesSync.filter((f) => f.includes("tmp-"))).toHaveLength(0);
+		});
+
+		it("propagates non-ENOENT read errors (e.g. EISDIR)", async () => {
+			const dirTarget = path.join(tempDir, "directory-target");
+			await fsp.mkdir(dirTarget);
+
+			await expect(readJsonFile(dirTarget)).rejects.toThrow();
+			expect(() => readJsonFileSync(dirTarget)).toThrow();
+		});
+
 		it("rejects non-string or empty file paths", async () => {
 			await expect(
 				writeJsonAtomic("" as unknown as string, {}),
