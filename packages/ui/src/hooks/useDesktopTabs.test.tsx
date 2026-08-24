@@ -318,4 +318,176 @@ describe("useDesktopTabs", () => {
 
     expect(result.current.tabs).toEqual([]);
   });
+
+  it("starts with an empty dock when persisted state is corrupt or not an array", () => {
+    window.localStorage.setItem(STORAGE_KEY, "{not json");
+    const corrupted = renderHook(() => useDesktopTabs());
+    expect(corrupted.result.current.tabs).toEqual([]);
+    cleanup();
+
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ viewId: "not-an-array" }),
+    );
+    const nonArray = renderHook(() => useDesktopTabs());
+    expect(nonArray.result.current.tabs).toEqual([]);
+  });
+
+  it("drops malformed persisted entries and restores only well-formed tabs", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([
+        null,
+        "junk-string",
+        { label: "Missing ViewId", path: "/apps/missing-view-id" },
+        { viewId: "missing.label", path: "/apps/missing-label" },
+        { viewId: "missing.path", label: "Missing Path" },
+        {
+          viewId: "remote.ledger",
+          label: "Remote Ledger",
+          path: "/apps/remote-ledger",
+          pinned: true,
+          pinnedAt: 100,
+        },
+      ]),
+    );
+
+    const { result } = renderHook(() => useDesktopTabs());
+
+    expect(result.current.tabs).toEqual([
+      {
+        viewId: "remote.ledger",
+        label: "Remote Ledger",
+        path: "/apps/remote-ledger",
+        pinned: true,
+        pinnedAt: 100,
+      },
+    ]);
+  });
+
+  it("treats legacy persisted tabs without pinnedAt as holding the oldest pins, ties broken by open order", () => {
+    // Pre-pinnedAt persisted data: two pinned tabs carrying no pin timestamp.
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([
+        {
+          viewId: "legacy.a",
+          label: "Legacy A",
+          path: "/apps/legacy-a",
+          pinned: true,
+        },
+        {
+          viewId: "legacy.b",
+          label: "Legacy B",
+          path: "/apps/legacy-b",
+          pinned: true,
+        },
+      ]),
+    );
+
+    const { result } = renderHook(() => useDesktopTabs());
+    expect(result.current.tabs.map((tab) => tab.viewId)).toEqual([
+      "legacy.a",
+      "legacy.b",
+    ]);
+    expect(
+      result.current.tabs.every(
+        (tab) => !("pinnedAt" in tab) || tab.pinnedAt === undefined,
+      ),
+    ).toBe(true);
+
+    act(() => {
+      for (const id of ["new.c", "new.d"]) {
+        result.current.openTab(view(id), { pinned: true });
+      }
+    });
+    expect(
+      result.current.tabs.filter((tab) => tab.pinned).map((tab) => tab.viewId),
+    ).toHaveLength(4);
+
+    // Fifth pin overflows the dock. Both legacy entries lack pinnedAt so both
+    // sort as oldest; the tie breaks by open order, so legacy.a pops first.
+    act(() => {
+      result.current.openTab(view("new.e"), { pinned: true });
+    });
+
+    expect(
+      result.current.tabs.filter((tab) => tab.pinned).map((tab) => tab.viewId),
+    ).toEqual(["legacy.b", "new.c", "new.d", "new.e"]);
+  });
+
+  it("derives /apps/<viewId> for registry entries without an explicit path", () => {
+    const { result } = renderHook(() => useDesktopTabs());
+
+    act(() => {
+      result.current.openTab(view("notes"));
+    });
+
+    expect(result.current.tabs).toHaveLength(1);
+    expect(result.current.tabs[0]?.path).toBe("/apps/notes");
+  });
+
+  it("ignores closing an unknown tab and drops a closed pinned tab from persistence", () => {
+    const { result } = renderHook(() => useDesktopTabs());
+
+    act(() => {
+      result.current.openTab(view("local.notes"), { pinned: true });
+      result.current.openTab(view("remote.ledger"));
+    });
+
+    act(() => {
+      result.current.closeTab("does.not.exist");
+    });
+    expect(result.current.tabs.map((tab) => tab.viewId)).toEqual([
+      "local.notes",
+      "remote.ledger",
+    ]);
+
+    act(() => {
+      result.current.closeTab("local.notes");
+    });
+    expect(result.current.tabs.map((tab) => tab.viewId)).toEqual([
+      "remote.ledger",
+    ]);
+    expect(
+      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "[]"),
+    ).toEqual([]);
+  });
+
+  it("ignores pinning a view that is not open", () => {
+    const { result } = renderHook(() => useDesktopTabs());
+
+    act(() => {
+      result.current.openTab(view("local.notes"));
+      result.current.pinTab("does.not.exist");
+    });
+
+    expect(result.current.tabs).toHaveLength(1);
+    expect(result.current.tabs[0]?.pinned).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("[]");
+  });
+
+  it("re-pinning an already-pinned tab does not refresh its pin age", () => {
+    const { result } = renderHook(() => useDesktopTabs());
+
+    act(() => {
+      for (const id of ["a", "b", "c", "d"]) {
+        result.current.openTab(view(id));
+      }
+      for (const id of ["a", "b", "c", "d"]) {
+        result.current.pinTab(id);
+      }
+      // Duplicate pin: if it restamped, "a" would become the newest pin…
+      result.current.pinTab("a");
+    });
+    // …so filling the dock must still evict "a" as the oldest pin, not "b".
+    act(() => {
+      result.current.openTab(view("e"));
+      result.current.pinTab("e");
+    });
+
+    expect(
+      result.current.tabs.filter((tab) => tab.pinned).map((tab) => tab.viewId),
+    ).toEqual(["b", "c", "d", "e"]);
+  });
 });
