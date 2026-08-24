@@ -279,4 +279,148 @@ describe("useContinuousVoiceSession", () => {
       error: true,
     });
   });
+
+  it("passes the realtime speaker through, falling back to the batch speaker when realtime has none", () => {
+    const rtSpeaker = { name: "Ada", source: "discord" };
+    const batchSpeaker = { name: "Batch", source: "talkmode" };
+    const live = renderHook(() =>
+      useContinuousVoiceSession({
+        batch: makeBatch({ speaker: batchSpeaker }),
+        realtime: makeRealtime({
+          available: true,
+          active: true,
+          speaker: rtSpeaker,
+        }),
+      }),
+    );
+    expect(live.result.current.speaker).toBe(rtSpeaker);
+
+    // The speaker chain is `realtime.speaker ?? batch.speaker` regardless of
+    // which path owns playback, so an idle-but-available realtime client must
+    // not mask the batch attribution.
+    const idle = renderHook(() =>
+      useContinuousVoiceSession({
+        batch: makeBatch({ speaker: batchSpeaker }),
+        realtime: makeRealtime({ available: true, speaker: null }),
+      }),
+    );
+    expect(idle.result.current.speaker).toBe(batchSpeaker);
+  });
+
+  it("derives agentSpeaking from the batch status on the batch path and reports paused only from realtime", () => {
+    const speaking = renderHook(() =>
+      useContinuousVoiceSession({
+        batch: makeBatch({ status: "speaking", active: true }),
+        realtime: makeRealtime({ available: false }),
+      }),
+    );
+    expect(speaking.result.current.agentSpeaking).toBe(true);
+    // Only the realtime path can be visibility-paused; the batch path never
+    // reports it even while actively capturing.
+    expect(speaking.result.current.paused).toBe(false);
+
+    const paused = renderHook(() =>
+      useContinuousVoiceSession({
+        batch: makeBatch(),
+        realtime: makeRealtime({ available: true, active: true, paused: true }),
+      }),
+    );
+    expect(paused.result.current.paused).toBe(true);
+  });
+
+  it("surfaces the batch micReconnected pulse", () => {
+    const { result } = renderHook(() =>
+      useContinuousVoiceSession({
+        batch: makeBatch({ micReconnected: true }),
+        realtime: makeRealtime({ available: false }),
+      }),
+    );
+    expect(result.current.micReconnected).toBe(true);
+  });
+
+  it('start() resolves to the realtime outcome when available and { kind: "batch" } otherwise', async () => {
+    const rt = makeRealtime({
+      available: true,
+      start: vi
+        .fn()
+        .mockResolvedValue({
+          kind: "fallback-to-batch",
+          reason: "mint" as const,
+        }),
+    });
+    const withRt = renderHook(() =>
+      useContinuousVoiceSession({ batch: makeBatch(), realtime: rt }),
+    );
+    let rtOutcome: unknown;
+    await act(async () => {
+      rtOutcome = await withRt.result.current.start();
+    });
+    expect(rtOutcome).toEqual({ kind: "fallback-to-batch", reason: "mint" });
+
+    const batchOnly = renderHook(() =>
+      useContinuousVoiceSession({
+        batch: makeBatch(),
+        realtime: makeRealtime({ available: false }),
+      }),
+    );
+    let batchOutcome: unknown;
+    await act(async () => {
+      batchOutcome = await batchOnly.result.current.start();
+    });
+    // The caller needs to know the same mic tap now belongs to the batch path.
+    expect(batchOutcome).toEqual({ kind: "batch" });
+  });
+
+  it("reports the inactive Live Activity as errored when only a batch TTS failure exists", () => {
+    renderHook(() =>
+      useContinuousVoiceSession({
+        batch: makeBatch({
+          active: false,
+          status: "idle",
+          ttsError: { engine: "elevenlabs", message: "boom", atMs: 1 },
+        }),
+        realtime: makeRealtime({ available: false }),
+      }),
+    );
+    expect(useVoiceLiveActivityMock).toHaveBeenLastCalledWith({
+      active: false,
+      status: "idle",
+      error: true,
+    });
+  });
+
+  it("keeps the interim transcript empty while listening with an empty partial, even with a committed final", () => {
+    const { result } = renderHook(() =>
+      useContinuousVoiceSession({
+        batch: makeBatch({ interimTranscript: "batch interim" }),
+        realtime: makeRealtime({
+          available: true,
+          active: true,
+          status: "listening",
+          transcriptPartial: "",
+          transcriptFinal: "committed request",
+        }),
+      }),
+    );
+    // Only the "thinking" phase may promote the committed final into the
+    // interim slot; an empty partial while listening must stay empty.
+    expect(result.current.interimTranscript).toBe("");
+    expect(result.current.finalTranscript).toBe("committed request");
+  });
+
+  it("passes the realtime fallback diagnostics through unchanged", () => {
+    const reportFallback = vi.fn();
+    const { result } = renderHook(() =>
+      useContinuousVoiceSession({
+        batch: makeBatch(),
+        realtime: makeRealtime({
+          available: true,
+          fallbackReason: "missing-identity",
+          reportFallback,
+        }),
+      }),
+    );
+    expect(result.current.realtimeFallbackReason).toBe("missing-identity");
+    expect(result.current.reportRealtimeFallback).toBe(reportFallback);
+  });
 });
