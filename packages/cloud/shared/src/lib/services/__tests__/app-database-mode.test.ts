@@ -1,4 +1,6 @@
-// Exercises app database mode behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Exercises app database mode behavior with deterministic cloud-shared lib fixtures.
+ */
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_APP_DATABASE_MODE,
@@ -11,6 +13,7 @@ describe("isAppDatabaseMode", () => {
     expect(isAppDatabaseMode("none")).toBe(true);
     expect(isAppDatabaseMode("isolated")).toBe(true);
     expect(isAppDatabaseMode("shared")).toBe(false);
+    expect(isAppDatabaseMode("other")).toBe(false);
     expect(isAppDatabaseMode("")).toBe(false);
     expect(isAppDatabaseMode(undefined)).toBe(false);
     expect(isAppDatabaseMode(null)).toBe(false);
@@ -25,6 +28,7 @@ describe("resolveAppDatabaseMode", () => {
     expect(resolveAppDatabaseMode(null)).toBe("none");
     expect(resolveAppDatabaseMode({})).toBe("none");
     expect(resolveAppDatabaseMode({ databaseMode: "shared" })).toBe("none");
+    expect(resolveAppDatabaseMode({ databaseMode: "weird" })).toBe("none");
     expect(resolveAppDatabaseMode({ databaseMode: 1 })).toBe("none");
     expect(resolveAppDatabaseMode({ other: "isolated" })).toBe("none");
   });
