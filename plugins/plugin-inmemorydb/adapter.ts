@@ -17,10 +17,10 @@ import { randomUUID } from "node:crypto";
 import {
   type AccessContext,
   type Agent,
-  advanceWorldMetadataRevision,
-  appendWorldMetadataRoleAudit,
+  authorizeMessageContentRead,
   type Component,
   type Content,
+  canonicalAttachmentText,
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   compareMemoryIds,
@@ -41,17 +41,22 @@ import {
   type EntitiesForRoomsResult,
   type Entity,
   filterMemoryReadByAccessContext,
-  getWorldMetadataRevision,
+  hashAttachmentIdForLocator,
   type IDatabaseAdapter,
-  initializeWorldMetadataRevision,
   isDocumentVisibleToRequester,
   type JsonValue,
   type Log,
   type LogBody,
   logger,
+  MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES,
+  MESSAGE_CONTENT_READ_MAX_SEGMENTS,
   type Memory,
   type MemoryMetadata,
   MemoryType,
+  type MessageContentPublicationParams,
+  type MessageContentPublicationResult,
+  type MessageContentRangeReadParams,
+  type MessageContentRangeReadResult,
   type MessageSearchHit,
   type Metadata,
   normalizePairingPageOptions,
@@ -69,10 +74,10 @@ import {
   queryDocumentFragmentsInMemory,
   queryDocumentsInMemory,
   type Relationship,
-  ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   rankMessageSearch,
-  requireFreshWorldMetadataRevision,
+  readMessageContentProjection,
+  resolveMessageContentSourceDescriptor,
   type Task,
   type UUID,
   validateDocumentDirectGrantEntityIds,
@@ -80,10 +85,7 @@ import {
   validateQueryEntitiesPagination,
   validateTaskQueryPagination,
   type World,
-  type WorldMetadataCompareAndSwapParams,
-  type WorldMetadataMutationResult,
   withinCreatedAtWindow,
-  worldMetadataValueEquals,
 } from "@elizaos/core";
 import { dataContainsFilter } from "./data-contains-filter";
 import { EphemeralHNSW } from "./hnsw";
@@ -272,30 +274,6 @@ function storedMemoryTableName(memory: StoredMemory): string | undefined {
   return memory.tableName ?? memory.metadata?.type;
 }
 
-/**
- * Serialization tail for world-metadata writes, keyed by STORAGE INSTANCE
- * (#23100). The plugin shares one `MemoryStorage` singleton across adapter
- * instances in a process, and the storage itself has no transaction
- * isolation — an adapter-local tail would let two adapters (or a legacy
- * `updateWorlds` writer racing a CAS) both compare the same snapshot and
- * both "win". Attaching the tail to the shared storage object closes both
- * holes: every adapter over that storage, and every world write path that
- * goes through this helper, serializes on the same chain.
- */
-const worldMetadataTails = new WeakMap<IStorage, Promise<void>>();
-
-function withWorldMetadataTail<T>(storage: IStorage, operation: () => Promise<T>): Promise<T> {
-  const run = (worldMetadataTails.get(storage) ?? Promise.resolve()).then(operation, operation);
-  worldMetadataTails.set(
-    storage,
-    run.then(
-      () => undefined,
-      () => undefined
-    )
-  );
-  return run;
-}
-
 function relationshipFromStored(r: StoredRelationship, fallbackAgentId: UUID): Relationship {
   return {
     id: r.id as UUID,
@@ -418,12 +396,14 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
 }
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
+  readonly messageContentSegmentCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
   private vectorIndex: EphemeralHNSW;
   private embeddingDimension = 384;
   private ready = false;
   private readonly agentId: UUID;
+  private messageContentMutationTail: Promise<void> = Promise.resolve();
   private documentMutationTail: Promise<void> = Promise.resolve();
   private taskMutationTail: Promise<void> = Promise.resolve();
 
@@ -1264,6 +1244,257 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return memories;
   }
 
+  private withMessageContentMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.messageContentMutationTail.then(operation, operation);
+    this.messageContentMutationTail = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
+  async publishMessageContentSegments(
+    params: MessageContentPublicationParams
+  ): Promise<MessageContentPublicationResult> {
+    return this.withMessageContentMutationLock(async () => {
+      if (!this.storage.applyBatch) {
+        throw new ElizaError(
+          "The configured in-memory storage cannot atomically publish message content",
+          { code: "MESSAGE_CONTENT_ATOMIC_STORAGE_REQUIRED" }
+        );
+      }
+      const parentId = params.mode === "create" ? params.parent.id : params.messageId;
+      const publicationAgentId = params.mode === "create" ? params.parent.agentId : params.agentId;
+      if (!parentId || !publicationAgentId) {
+        throw new ElizaError("Message content publication requires parent and agent IDs", {
+          code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+        });
+      }
+      const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, parentId);
+      if (params.mode === "create" && existing) return { status: "conflict" };
+      if (params.mode === "replace") {
+        if (
+          !existing ||
+          storedMemoryTableName(existing) !== "messages" ||
+          existing.agentId !== params.agentId
+        ) {
+          return { status: "not_found" };
+        }
+        if (JSON.stringify(existing.content) !== JSON.stringify(params.expectedContent)) {
+          return { status: "conflict" };
+        }
+      }
+      const removedIds =
+        params.mode === "replace" ? new Set<string>(params.removeSegmentIds) : new Set<string>();
+      if (params.mode === "replace") {
+        for (const segmentId of params.removeSegmentIds) {
+          const segment = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, segmentId);
+          const metadata = segment?.metadata as Record<string, unknown> | undefined;
+          if (
+            !segment ||
+            segment.agentId !== params.agentId ||
+            metadata?.type !== "message-content-segment" ||
+            metadata.messageId !== params.messageId
+          ) {
+            throw new ElizaError(
+              "Message content replacement cannot remove an unrelated or missing segment",
+              {
+                code: "MESSAGE_CONTENT_DELETE_INCOMPLETE",
+                context: { messageId: params.messageId, segmentId },
+              }
+            );
+          }
+        }
+      }
+      const newSegmentIds = new Set<string>();
+      for (const segment of params.segments) {
+        if (!segment.id || segment.agentId !== publicationAgentId) {
+          throw new ElizaError("Message content segment identity is invalid", {
+            code: "MESSAGE_CONTENT_PUBLICATION_INVALID",
+            context: { messageId: parentId },
+          });
+        }
+        if (newSegmentIds.has(segment.id)) {
+          throw new ElizaError("Message content segment id is duplicated", {
+            code: "MESSAGE_CONTENT_SEGMENT_ID_CONFLICT",
+            context: { messageId: parentId, segmentId: segment.id },
+          });
+        }
+        newSegmentIds.add(segment.id);
+        const collision = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, segment.id);
+        if (collision && !removedIds.has(segment.id)) {
+          throw new ElizaError("Message content segment id already exists", {
+            code: "MESSAGE_CONTENT_SEGMENT_ID_CONFLICT",
+            context: { messageId: parentId, segmentId: segment.id },
+          });
+        }
+      }
+      const now = Date.now();
+      const storedSegments: StoredMemory[] = params.segments.map((segment) => ({
+        ...segment,
+        id: segment.id,
+        tableName: "message_content_segments",
+        agentId: publicationAgentId,
+        createdAt: segment.createdAt ?? now,
+      }));
+      const storedParent: StoredMemory =
+        params.mode === "create"
+          ? {
+              ...params.parent,
+              id: parentId,
+              tableName: "messages",
+              agentId: publicationAgentId,
+              createdAt: params.parent.createdAt ?? now,
+            }
+          : {
+              ...(existing as StoredMemory),
+              content: params.replacementContent,
+            };
+      let parentIndexStaged = false;
+      try {
+        if (params.mode === "create" && storedParent.embedding?.length) {
+          await this.vectorIndex.add(parentId, storedParent.embedding);
+          parentIndexStaged = true;
+        }
+        await this.storage.applyBatch({
+          collection: COLLECTIONS.MEMORIES,
+          deletes: [...removedIds],
+          sets: [
+            ...storedSegments.map((data) => ({ id: data.id as string, data })),
+            { id: parentId, data: storedParent },
+          ],
+        });
+      } catch (cause) {
+        if (parentIndexStaged) await this.vectorIndex.remove(parentId);
+        throw new ElizaError("Failed to publish atomic message content", {
+          code: "MESSAGE_CONTENT_PUBLICATION_FAILED",
+          context: { messageId: parentId },
+          cause,
+        });
+      }
+      for (const removedId of removedIds) await this.vectorIndex.remove(removedId);
+      return {
+        status: params.mode === "create" ? "created" : "updated",
+        parent: toMemory(storedParent),
+        removedSegmentIds: params.mode === "create" ? [] : [...params.removeSegmentIds],
+      };
+    });
+  }
+
+  async readMessageContentRange(
+    params: MessageContentRangeReadParams
+  ): Promise<MessageContentRangeReadResult> {
+    if (
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1 ||
+      params.limit > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES
+    ) {
+      throw new ElizaError("Message content range is invalid", {
+        code: "MESSAGE_CONTENT_INVALID_RANGE",
+      });
+    }
+    const storedParent = await this.storage.get<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      params.messageId
+    );
+    if (
+      !storedParent ||
+      storedMemoryTableName(storedParent) !== "messages" ||
+      storedParent.agentId !== params.agentId ||
+      storedParent.roomId !== params.authorizedRoomId
+    ) {
+      return { status: "not_found" };
+    }
+    const parent = toMemory(storedParent);
+    const participants = await this.storage.getWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (participant) =>
+        participant.roomId === parent.roomId &&
+        participant.entityId === params.accessContext.requesterEntityId
+    );
+    if (
+      !authorizeMessageContentRead({
+        parent,
+        authorizedRoomId: params.authorizedRoomId,
+        requester: params.accessContext,
+        agentId: params.agentId,
+        participantCurrent: participants.length > 0,
+        selector: params.source,
+      })
+    ) {
+      return { status: "forbidden" };
+    }
+    const descriptor = resolveMessageContentSourceDescriptor(parent.content, params.source);
+    if (!descriptor) {
+      let inline = "";
+      if (params.source.kind === "message-text") {
+        inline = parent.content.text ?? "";
+      } else {
+        const attachment = (parent.content.attachments ?? []).find(
+          (item) => hashAttachmentIdForLocator(item.id) === params.source.attachmentIdHash
+        );
+        inline = attachment ? canonicalAttachmentText(attachment) : "";
+      }
+      if (new TextEncoder().encode(inline).length > MESSAGE_CONTENT_PARENT_INLINE_MAX_BYTES) {
+        throw new ElizaError("Legacy content requires explicit segmented reindexing", {
+          code:
+            params.source.kind === "message-text"
+              ? "MESSAGE_REINDEX_REQUIRED"
+              : "ATTACHMENT_REINDEX_REQUIRED",
+          context: { messageId: params.messageId },
+        });
+      }
+      return { status: "inline", parent, text: inline };
+    }
+    if (params.offset > 0 && !params.expectedRevision) {
+      throw new ElizaError("Message content continuation requires a revision", {
+        code: "MESSAGE_CONTENT_EXPECTED_REVISION_REQUIRED",
+      });
+    }
+    if (params.expectedRevision && params.expectedRevision !== descriptor.revision) {
+      throw new ElizaError("Message content changed before continuation", {
+        code: "MESSAGE_CONTENT_STALE_REVISION",
+        context: { messageId: params.messageId },
+      });
+    }
+    const requestedEnd = Math.min(params.offset + params.limit, descriptor.byteLength);
+    const selected = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (segment) => {
+      const metadata = segment.metadata as Record<string, unknown> | undefined;
+      return (
+        segment.agentId === params.agentId &&
+        storedMemoryTableName(segment) === "message_content_segments" &&
+        metadata?.type === "message-content-segment" &&
+        metadata.messageId === params.messageId &&
+        metadata.sourceKind === params.source.kind &&
+        metadata.attachmentIdHash === params.source.attachmentIdHash &&
+        metadata.sourceRevision === descriptor.revision &&
+        typeof metadata.byteStart === "number" &&
+        typeof metadata.byteEnd === "number" &&
+        metadata.byteEnd > params.offset &&
+        metadata.byteStart < requestedEnd
+      );
+    });
+    selected.sort((left, right) => {
+      const leftMetadata = left.metadata as Record<string, unknown> | undefined;
+      const rightMetadata = right.metadata as Record<string, unknown> | undefined;
+      return Number(leftMetadata?.byteStart ?? -1) - Number(rightMetadata?.byteStart ?? -1);
+    });
+    return {
+      status: "ok",
+      parent,
+      page: readMessageContentProjection({
+        descriptor,
+        segments: selected.slice(0, MESSAGE_CONTENT_READ_MAX_SEGMENTS).map(toMemory),
+        messageId: params.messageId,
+        offset: params.offset,
+        limit: params.limit,
+        sourceQueryCount: 0,
+      }),
+    };
+  }
+
   async getCachedEmbeddings(params: {
     query_table_name: string;
     query_threshold: number;
@@ -1583,219 +1814,56 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   // ── World CRUD ────────────────────────────────────────────────────────
 
   async getAllWorlds(): Promise<World[]> {
-    const worlds = await this.storage.getAll<World>(COLLECTIONS.WORLDS);
-    return worlds.map((world) => structuredClone(world));
+    return this.storage.getAll<World>(COLLECTIONS.WORLDS);
   }
 
   async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {
     const worlds: World[] = [];
     for (const id of worldIds) {
       const w = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
-      if (w) worlds.push(structuredClone(w));
+      if (w) worlds.push(w);
     }
     return worlds;
   }
 
   async createWorlds(worlds: World[]): Promise<UUID[]> {
-    // World-collection mutations share the CAS serialization tail (#23100):
-    // a create or delete interleaving between a CAS read and its write
-    // could resurrect a deleted world or clobber a fresh one.
-    return withWorldMetadataTail(this.storage, async () => {
-      const ids: UUID[] = [];
-      for (const world of worlds) {
-        const id = world.id as UUID;
-        if (await this.storage.get<World>(COLLECTIONS.WORLDS, id)) {
-          throw new ElizaError("World already exists", {
-            code: "WORLD_ALREADY_EXISTS",
-            context: { worldId: id },
-          });
-        }
-        await this.storage.set(COLLECTIONS.WORLDS, id, {
-          ...structuredClone(world),
-          id,
-          metadata: initializeWorldMetadataRevision(world.metadata as Metadata | undefined),
-        });
-        ids.push(id);
-      }
-      return ids;
-    });
+    const ids: UUID[] = [];
+    for (const world of worlds) {
+      const id = world.id as UUID;
+      await this.storage.set(COLLECTIONS.WORLDS, id, { ...world, id });
+      ids.push(id);
+    }
+    return ids;
   }
 
   async deleteWorlds(worldIds: UUID[]): Promise<void> {
-    return withWorldMetadataTail(this.storage, async () => {
-      for (const id of worldIds) {
-        await this.storage.delete(COLLECTIONS.WORLDS, id);
-      }
-    });
+    for (const id of worldIds) {
+      await this.storage.delete(COLLECTIONS.WORLDS, id);
+    }
   }
 
   async updateWorlds(worlds: World[]): Promise<void> {
-    // World writes share the CAS serialization tail and compare the revision
-    // carried by their read snapshot. A writer that resumes after a CAS has
-    // advanced storage therefore fails with a typed stale-write error instead
-    // of overwriting authority.
-    return withWorldMetadataTail(this.storage, async () => {
-      for (const world of worlds) {
-        if (!world.id) continue;
-        const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, world.id);
-        if (!existing) continue;
-        const storedRevision = requireFreshWorldMetadataRevision(
-          existing.metadata as Metadata | undefined,
-          world.metadata as Metadata | undefined,
-          String(world.id)
-        );
-        const nextMetadata = advanceWorldMetadataRevision(
-          world.metadata as Metadata | undefined,
-          storedRevision
-        );
-        await this.storage.set(COLLECTIONS.WORLDS, world.id, {
-          ...existing,
-          ...structuredClone(world),
-          metadata: nextMetadata,
-        });
-        world.metadata = structuredClone(nextMetadata) as World["metadata"];
-      }
-    });
+    for (const world of worlds) {
+      if (!world.id) continue;
+      const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, world.id);
+      if (!existing) continue;
+      await this.storage.set(COLLECTIONS.WORLDS, world.id, {
+        ...existing,
+        ...world,
+      });
+    }
   }
 
   async upsertWorlds(worlds: World[]): Promise<void> {
-    return withWorldMetadataTail(this.storage, async () => {
-      for (const world of worlds) {
-        const id = world.id as UUID;
-        const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
-        if (!existing) {
-          await this.storage.set(COLLECTIONS.WORLDS, id, {
-            ...structuredClone(world),
-            id,
-            metadata: initializeWorldMetadataRevision(world.metadata as Metadata | undefined),
-          });
-          continue;
-        }
-        const storedRevision = requireFreshWorldMetadataRevision(
-          existing.metadata as Metadata | undefined,
-          world.metadata as Metadata | undefined,
-          String(id)
-        );
-        const nextMetadata = advanceWorldMetadataRevision(
-          world.metadata as Metadata | undefined,
-          storedRevision
-        );
-        await this.storage.set(COLLECTIONS.WORLDS, id, {
-          ...existing,
-          ...structuredClone(world),
-          id,
-          metadata: nextMetadata,
-        });
-        world.metadata = structuredClone(nextMetadata) as World["metadata"];
-      }
-    });
-  }
-
-  /**
-   * Compare-and-swap replacement of a world's whole metadata under the exact
-   * prior snapshot (#23100 role-write atomicity). The whole operation —
-   * read, compare, audit insert, world replacement — runs on the
-   * world-metadata mutation tail so concurrent CAS calls serialize and
-   * exactly one wins per snapshot. If the world write fails after the audit
-   * row was inserted, the audit row is deleted back (best-effort
-   * compensation — the storage has no transactions) so a failed attempt
-   * does not leave a false committed audit record behind.
-   */
-  async compareAndSwapWorldMetadata(
-    params: WorldMetadataCompareAndSwapParams
-  ): Promise<WorldMetadataMutationResult> {
-    // Storage-scoped serialization (see withWorldMetadataTail): this races
-    // correctly against other adapter instances over the same shared
-    // storage AND against the updateWorlds/upsertWorlds writers below,
-    // which route through the same tail.
-    return withWorldMetadataTail(this.storage, () =>
-      this.compareAndSwapWorldMetadataSerialized(params)
-    );
-  }
-
-  private async compareAndSwapWorldMetadataSerialized(
-    params: WorldMetadataCompareAndSwapParams
-  ): Promise<WorldMetadataMutationResult> {
-    const stored = await this.storage.get<World>(COLLECTIONS.WORLDS, params.worldId);
-    if (!stored) return { status: "not_found" };
-    const storedMetadata = (stored.metadata ?? {}) as Record<string, unknown>;
-    if (
-      !worldMetadataValueEquals(storedMetadata, params.expectedMetadata as Record<string, unknown>)
-    ) {
-      return { status: "conflict" };
-    }
-    const storedRevision = getWorldMetadataRevision(stored.metadata as Metadata | undefined);
-    if (storedRevision === null) return { status: "conflict" };
-    const audit = params.audit;
-    // Validate cloneability BEFORE inserting the audit row: a non-cloneable
-    // replacement must throw with the world untouched and NO audit row left
-    // behind (a committed audit without its metadata change would be a false
-    // authority record).
-    const replacementMetadata = audit
-      ? appendWorldMetadataRoleAudit(params.replacementMetadata, {
-          actorEntityId: audit.actorEntityId,
-          targetEntityId: audit.targetEntityId,
-          previousRole: audit.previousRole,
-          newRole: audit.newRole,
-          source: audit.source,
-          roomId: audit.roomId,
-        })
-      : params.replacementMetadata;
-    const replacementWorld: World = {
-      ...stored,
-      metadata: advanceWorldMetadataRevision(
-        replacementMetadata,
-        storedRevision
-      ) as World["metadata"],
-    };
-    if (audit) {
-      const id = randomUUID() as UUID;
-      await this.storage.set(COLLECTIONS.LOGS, id, {
+    for (const world of worlds) {
+      const id = world.id as UUID;
+      const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
+      await this.storage.set(COLLECTIONS.WORLDS, id, {
+        ...(existing ?? {}),
+        ...world,
         id,
-        entityId: audit.actorEntityId,
-        roomId: audit.roomId,
-        type: ROLE_WRITE_AUDIT_LOG_TYPE,
-        body: {
-          source: "role-write-cas",
-          metadata: {
-            worldId: params.worldId,
-            actorEntityId: audit.actorEntityId,
-            targetEntityId: audit.targetEntityId,
-            previousRole: audit.previousRole,
-            newRole: audit.newRole,
-            grantSource: audit.source,
-            outcome: "committed",
-          },
-        },
-        createdAt: new Date(),
-      } as Log);
-      try {
-        await this.storage.set(COLLECTIONS.WORLDS, params.worldId, replacementWorld);
-      } catch (error) {
-        // error-policy:J6 best-effort teardown: the world write failed after
-        // the audit insert; compensate by deleting the audit row so the
-        // failed attempt leaves no false committed record, then surface the
-        // original storage failure. Compensation failure is warned (and
-        // reported below) — never silently swallowed.
-        try {
-          await this.storage.delete(COLLECTIONS.LOGS, id);
-        } catch (compensationError) {
-          logger.warn(
-            {
-              src: "plugin-inmemorydb:adapter",
-              worldId: params.worldId,
-              auditLogId: id,
-              err: compensationError,
-            },
-            "Failed to roll back the role_audit row after a failed world-metadata write; a stale committed audit row may remain"
-          );
-        }
-        throw error;
-      }
-      return { status: "updated" };
+      });
     }
-    await this.storage.set(COLLECTIONS.WORLDS, params.worldId, replacementWorld);
-    return { status: "updated" };
   }
 
   // ── Room CRUD ─────────────────────────────────────────────────────────
