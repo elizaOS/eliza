@@ -51,6 +51,7 @@ export interface InvoiceDto {
  */
 export interface InvoiceApiPayload {
   id: string;
+  organizationId: string;
   stripeInvoiceId: string;
   stripeCustomerId: string;
   stripePaymentIntentId: string | null;

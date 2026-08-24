@@ -94,13 +94,10 @@ export function useVerifyCheckout() {
   });
 }
 
-function adaptInvoice(
-  payload: InvoiceApiPayload,
-  organizationId: string,
-): InvoiceDto {
+function adaptInvoice(payload: InvoiceApiPayload): InvoiceDto {
   return {
     id: payload.id,
-    organization_id: organizationId,
+    organization_id: payload.organizationId,
     stripe_invoice_id: payload.stripeInvoiceId,
     stripe_customer_id: payload.stripeCustomerId,
     stripe_payment_intent_id: payload.stripePaymentIntentId,
@@ -131,7 +128,7 @@ export function useInvoice(
 ) {
   const gate = useAuthGate(Boolean(id && organizationId));
   return useQuery({
-    queryKey: authKey(["invoice", id], gate),
+    queryKey: authKey(["invoice", id, organizationId], gate),
     queryFn: async () => {
       if (!id) throw new ApiError(400, "MISSING_ID", "Invoice ID is required");
       if (!organizationId) {
@@ -144,7 +141,14 @@ export function useInvoice(
       const res = await api<{ invoice: InvoiceApiPayload }>(
         `/api/invoices/${id}`,
       );
-      return adaptInvoice(res.invoice, organizationId);
+      if (res.invoice.organizationId !== organizationId) {
+        throw new ApiError(
+          409,
+          "INVOICE_ORG_MISMATCH",
+          "Invoice response did not match the active organization",
+        );
+      }
+      return adaptInvoice(res.invoice);
     },
     enabled: gate.enabled,
   });

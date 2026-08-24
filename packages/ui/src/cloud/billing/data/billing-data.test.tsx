@@ -243,6 +243,7 @@ describe("useBillingUser", () => {
 describe("useInvoice", () => {
   const invoicePayload = {
     id: "inv-1",
+    organizationId: "org-one",
     stripeInvoiceId: "in_1756",
     stripeCustomerId: "cus_9",
     stripePaymentIntentId: "pi_3",
@@ -343,6 +344,26 @@ describe("useInvoice", () => {
       due_date: null,
       paid_at: null,
     });
+  });
+
+  it("rejects an invoice response from a different organization", async () => {
+    apiMock.mockResolvedValue({
+      invoice: { ...invoicePayload, organizationId: "org-two" },
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderHook(
+      () => billingData.useInvoice("inv-1", "org-one"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.error).toBeInstanceOf(Error);
   });
 
   it.each([

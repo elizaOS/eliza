@@ -33,6 +33,7 @@ app.get("/", async (c) => {
     return c.json({
       invoice: {
         id: invoice.id,
+        organizationId: invoice.organization_id,
         stripeInvoiceId: invoice.stripe_invoice_id,
         stripeCustomerId: invoice.stripe_customer_id,
         stripePaymentIntentId: invoice.stripe_payment_intent_id,
