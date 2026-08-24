@@ -26,6 +26,11 @@ describe("stableSerialize", () => {
     );
   });
 
+  test("serializes invalid Date values as null without throwing", () => {
+    expect(stableSerialize(new Date(Number.NaN))).toBe("null");
+    expect(stableSerialize({ date: new Date(Number.NaN) })).toBe('{"date":null}');
+  });
+
   test("rejects non-plain objects that would otherwise collide", () => {
     expect(() => stableSerialize(new Map([["a", 1]]))).toThrow(TypeError);
     class Example {

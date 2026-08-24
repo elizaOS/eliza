@@ -16,7 +16,7 @@ function serializeStableValue(value: unknown, seen: WeakSet<object>): string {
 
   if (value && typeof value === "object") {
     if (value instanceof Date) {
-      return JSON.stringify(value.toISOString());
+      return Number.isNaN(value.getTime()) ? "null" : JSON.stringify(value.toISOString());
     }
 
     const prototype = Object.getPrototypeOf(value);
