@@ -208,3 +208,198 @@ describe("ProviderCachePlan", () => {
 		]);
 	});
 });
+
+describe("ProviderCachePlan edge branches", () => {
+	it("keeps keys at the cap intact and truncates longer ones after the v5: prefix", () => {
+		expect(buildPromptCacheKey("")).toBe("v5:");
+		const exact = buildPromptCacheKey("y".repeat(1021));
+		expect(exact).toBe(`v5:${"y".repeat(1021)}`);
+		const over = buildPromptCacheKey("z".repeat(1022));
+		expect(over).toHaveLength(1024);
+		expect(over.slice(3)).toBe("z".repeat(1021));
+	});
+
+	it("treats any google/gemini model as Gemini regardless of case or provider slot", () => {
+		const upperModelOnly = buildProviderCachePlan({
+			prefixHash: "h",
+			model: "GEMINI-2.5-Flash",
+			hasTools: true,
+			promptSegments: [{ stable: true }],
+		});
+		expect(upperModelOnly.providerOptions).not.toHaveProperty("anthropic");
+		expect(upperModelOnly.anthropic.cacheSystem).toBe(false);
+		expect(upperModelOnly.anthropic.breakpoints).toEqual([]);
+		expect(upperModelOnly.anthropic.maxBreakpoints).toBe(4);
+		expect(upperModelOnly.warnings).toEqual([
+			"Gemini explicit caching is disabled when tools are present; relying on implicit/provider caching.",
+		]);
+	});
+
+	it("keeps Anthropic cache markers for Gemini providers unless tools are present", () => {
+		const withoutTools = buildProviderCachePlan({
+			prefixHash: "h",
+			provider: "google",
+			model: "gemini-3-pro",
+			hasTools: false,
+			promptSegments: [{ stable: true }],
+		});
+		expect(withoutTools.anthropic.cacheSystem).toBe(true);
+		expect(withoutTools.providerOptions).toHaveProperty("anthropic");
+		expect(withoutTools.warnings).toEqual([]);
+	});
+
+	it("resolves OpenAI retention through namespace, case, and version suffixes", () => {
+		const namespaced = buildProviderCachePlan({
+			prefixHash: "h",
+			model: "openrouter/openai/gpt-5.1-codex-mini",
+		});
+		expect(namespaced.providerOptions.openai).toEqual({
+			promptCacheKey: "v5:h",
+			promptCacheRetention: "24h",
+		});
+		const suffixed = buildProviderCachePlan({
+			prefixHash: "h",
+			model: "gpt-5.4:2026-01-01",
+		});
+		expect(suffixed.providerOptions.openai).toEqual({
+			promptCacheKey: "v5:h",
+			promptCacheRetention: "24h",
+		});
+	});
+
+	it("drops sections that are not cacheable, not stable, or lack an integer segmentIndex", () => {
+		const plan = buildProviderCachePlan({
+			prefixHash: "h",
+			sections: [
+				{ id: "kept", segmentIndex: 2 },
+				{ id: "uncacheable", segmentIndex: 0, cacheable: false },
+				{ id: "unstable", segmentIndex: 1, stable: false },
+				{ id: "fractional", segmentIndex: 1.5 },
+				{ id: "missing-index" },
+			],
+		});
+		expect(plan.anthropic.breakpoints).toEqual([
+			{
+				id: "kept",
+				segmentIndex: 2,
+				ttl: "short",
+				cacheControl: { type: "ephemeral" },
+			},
+		]);
+	});
+
+	it("caps selected sections by priority then reports them in segment order", () => {
+		const plan = buildProviderCachePlan({
+			prefixHash: "h",
+			segmentHashes: ["h0", "h1", "h2", "h3", "h4"],
+			promptSegments: [{ stable: true }, { stable: true }],
+			sections: [
+				{ id: "a", segmentIndex: 0, priority: 50 },
+				{ id: "e", segmentIndex: 1, priority: 10 },
+				{ id: "c", segmentIndex: 2, priority: 30 },
+				{ id: "d", segmentIndex: 3, priority: 20 },
+				{ id: "b", segmentIndex: 4, priority: 40 },
+			],
+		});
+		expect(
+			plan.anthropic.breakpoints.map((breakpoint) => breakpoint.id),
+		).toEqual(["a", "c", "b"]);
+		expect(
+			plan.anthropic.breakpoints.map((breakpoint) => breakpoint.segmentHash),
+		).toEqual(["h0", "h2", "h4"]);
+	});
+
+	it("prefers an explicit section segmentHash and leaves out-of-range lookups undefined", () => {
+		const plan = buildProviderCachePlan({
+			prefixHash: "h",
+			segmentHashes: ["only-0"],
+			sections: [
+				{ id: "explicit", segmentIndex: 0, segmentHash: "own-hash" },
+				{ id: "beyond", segmentIndex: 3 },
+			],
+		});
+		expect(
+			plan.anthropic.breakpoints.map((breakpoint) => breakpoint.segmentHash),
+		).toEqual(["own-hash", undefined]);
+	});
+
+	it("keeps only the first three stable runs and warns when more exist", () => {
+		const plan = buildProviderCachePlan({
+			prefixHash: "h",
+			promptSegments: [
+				{ stable: true },
+				{ stable: false },
+				{ stable: true },
+				{ stable: false },
+				{ stable: true },
+				{ stable: false },
+				{ stable: true },
+			],
+		});
+		expect(
+			plan.anthropic.breakpoints.map((breakpoint) => breakpoint.segmentIndex),
+		).toEqual([0, 2, 4]);
+		expect(plan.warnings).toContain(
+			"Anthropic cache markers capped at 3 prompt segments plus system.",
+		);
+	});
+
+	it("returns no breakpoints and no warnings for empty or never-stable segments", () => {
+		const empty = buildProviderCachePlan({
+			prefixHash: "h",
+			promptSegments: [],
+		});
+		expect(empty.anthropic.breakpoints).toEqual([]);
+		expect(empty.warnings).toEqual([]);
+
+		const noneStable = buildProviderCachePlan({
+			prefixHash: "h",
+			promptSegments: [{ stable: false }, {}],
+		});
+		expect(noneStable.anthropic.breakpoints).toEqual([]);
+		expect(noneStable.warnings).toEqual([]);
+	});
+
+	it("strips non-string segment contents and omits promptSegments when none survive", () => {
+		const partial = buildProviderCachePlan({
+			prefixHash: "h",
+			promptSegments: [
+				{ content: "keep", stable: true },
+				{ content: 42, stable: true },
+				{},
+			] as unknown as { stable?: boolean }[],
+		});
+		const eliza = partial.providerOptions.eliza as Record<string, unknown>;
+		expect(eliza.promptSegments).toEqual([{ content: "keep", stable: true }]);
+
+		const allInvalid = buildProviderCachePlan({
+			prefixHash: "h",
+			promptSegments: [{ content: 42 }] as unknown as {
+				stable?: boolean;
+			}[],
+		});
+		expect(allInvalid.providerOptions.eliza).not.toHaveProperty(
+			"promptSegments",
+		);
+
+		const emptyList = buildProviderCachePlan({
+			prefixHash: "h",
+			promptSegments: [],
+		});
+		expect(emptyList.providerOptions.eliza).not.toHaveProperty(
+			"promptSegments",
+		);
+	});
+
+	it("mirrors top-level anthropic summary fields into providerOptions.anthropic", () => {
+		const plan = buildProviderCachePlan({
+			prefixHash: "h",
+			promptSegments: [{ stable: true }],
+		});
+		const anthropic = plan.providerOptions.anthropic as Record<string, unknown>;
+		expect(anthropic.cacheBreakpoints).toBe(plan.anthropic.breakpoints);
+		expect(anthropic.cacheControl).toEqual({ type: "ephemeral" });
+		expect(anthropic.cacheSystem).toBe(true);
+		expect(anthropic.maxBreakpoints).toBe(4);
+	});
+});
