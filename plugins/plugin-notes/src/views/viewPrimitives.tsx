@@ -4,8 +4,9 @@
  * stable semantic target for chat-driven interaction.
  */
 
+import { Button, type ButtonProps } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { StickyColor } from "../types.js";
 
 export function handleRenderedMutationFailure(cause: unknown): void {
@@ -112,7 +113,7 @@ export function AgentAction({
   children,
   disabled,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
+}: Omit<ButtonProps, "variant" | "size"> & {
   agentId: string;
   agentLabel: string;
   agentGroup: string;
@@ -142,9 +143,17 @@ export function AgentAction({
         ? { background: "transparent" }
         : {};
   return (
-    <button
+    <Button
       ref={control.ref}
       type="button"
+      variant={
+        variant === "primary"
+          ? "default"
+          : variant === "quiet"
+            ? "ghost"
+            : "surface"
+      }
+      size={compact ? "icon-lg" : "touch"}
       {...control.agentProps}
       {...rest}
       aria-label={rest["aria-label"] ?? (compact ? agentLabel : undefined)}
@@ -159,7 +168,7 @@ export function AgentAction({
       }}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
