@@ -61,7 +61,7 @@ import {
   isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
-import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
+import type { AccountPoolBrokerSnapshot, IAgentRuntime } from "@elizaos/core";
 import {
   ElizaError,
   logger,
@@ -802,7 +802,10 @@ function preserveTerminalCredentialHealth(
 // ─── Route handler ──────────────────────────────────────────────────
 
 export interface AccountsRouteContext extends RouteRequestContext {
-  state: { config: ElizaConfig };
+  state: {
+    config: ElizaConfig;
+    runtime?: Pick<IAgentRuntime, "setSetting"> | null;
+  };
   saveConfig: (config: ElizaConfig) => void;
 }
 
@@ -1142,16 +1145,6 @@ async function handleCreateApiKeyAccount(
     });
   }
 
-  const envKey =
-    accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
-      ? DIRECT_ACCOUNT_PROVIDER_ENV[accountProvider as DirectAccountProvider]
-      : null;
-  if (envKey) {
-    process.env[envKey] = parsed.data.apiKey;
-    if (accountProvider === "zai-api") {
-      process.env.Z_AI_API_KEY ??= parsed.data.apiKey;
-    }
-  }
   await syncDirectProviderCredentials(ctx, accountProvider);
 
   json(res, linkedConfig, replacementTarget ? 200 : 201);
@@ -1164,8 +1157,8 @@ async function handleCreateApiKeyAccount(
  * replaced, re-enabled, re-prioritized, disabled, or deleted account changes
  * the live provider credential (and the OpenAI-compatible route for the active
  * backend) without a process restart, and a pool that rejects every account
- * retracts the previously exported value. The standalone host has no pool
- * bridge and keeps the direct `process.env` write above.
+ * retracts the previously exported value. No route writes provider keys
+ * directly.
  */
 async function syncDirectProviderCredentials(
   ctx: Pick<AccountsRouteContext, "state">,
@@ -1183,6 +1176,21 @@ async function syncDirectProviderCredentials(
         : undefined,
     serviceRouting,
   });
+  const runtime = ctx.state.runtime;
+  if (!runtime) return;
+  const secretKeys = new Set([
+    ...Object.values(DIRECT_ACCOUNT_PROVIDER_ENV),
+    "Z_AI_API_KEY",
+    "KIMI_API_KEY",
+    "OPENAI_API_KEY",
+  ]);
+  for (const key of secretKeys) {
+    runtime.setSetting(key, process.env[key]?.trim() || null, true);
+  }
+  runtime.setSetting(
+    "OPENAI_BASE_URL",
+    process.env.OPENAI_BASE_URL?.trim() || null,
+  );
 }
 
 async function handleOAuthRoutes(
@@ -1661,7 +1669,7 @@ async function handleRefreshUsage(
 
   if (direct) {
     const probe = await probeDirectApiKey(direct, accessToken);
-    const next = preserveTerminalCredentialHealth(linked, {
+    const next: LinkedAccountConfig = {
       ...linked,
       health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
       healthDetail: {
@@ -1674,8 +1682,9 @@ async function handleRefreshUsage(
         ...(linked.usage ?? {}),
         refreshedAt: Date.now(),
       },
-    });
+    };
     await pool.upsert(next);
+    await syncDirectProviderCredentials(ctx, direct);
     json(res, { account: next, probe, source: "direct-probe" });
     return true;
   }
