@@ -29,3 +29,41 @@ describe("native-runtime-features", () => {
     expect(runtimeTrajectoriesEnabled(runtime)).toBe(false);
   });
 });
+
+describe("native-runtime-features remaining flag branches", () => {
+  it("returns true for documents when the method exists and reports enabled", () => {
+    const runtime = { isDocumentsEnabled: () => true } as never;
+    expect(runtimeDocumentsEnabled(runtime)).toBe(true);
+  });
+
+  it("returns false for trajectories when the method reports disabled", () => {
+    const runtime = { isTrajectoriesEnabled: () => false } as never;
+    expect(runtimeTrajectoriesEnabled(runtime)).toBe(false);
+  });
+
+  it("returns false when a documents flag holds a truthy non-function value", () => {
+    const runtime = { isDocumentsEnabled: "yes" } as never;
+    expect(runtimeDocumentsEnabled(runtime)).toBe(false);
+  });
+
+  it("returns false when a trajectories flag property is null", () => {
+    const runtime = { isTrajectoriesEnabled: null } as never;
+    expect(runtimeTrajectoriesEnabled(runtime)).toBe(false);
+  });
+
+  it("propagates falsy method returns without coercing them to false", () => {
+    const undefinedRuntime = {
+      isTrajectoriesEnabled: () => undefined,
+    } as never;
+    expect(runtimeTrajectoriesEnabled(undefinedRuntime)).toBeUndefined();
+    const zeroRuntime = { isDocumentsEnabled: () => 0 } as never;
+    expect(runtimeDocumentsEnabled(zeroRuntime)).toBe(0);
+    const emptyStringRuntime = { isTrajectoriesEnabled: () => "" } as never;
+    expect(runtimeTrajectoriesEnabled(emptyStringRuntime)).toBe("");
+  });
+
+  it("propagates a truthy non-boolean return as-is", () => {
+    const runtime = { isTrajectoriesEnabled: () => "enabled" } as never;
+    expect(runtimeTrajectoriesEnabled(runtime)).toBe("enabled");
+  });
+});
