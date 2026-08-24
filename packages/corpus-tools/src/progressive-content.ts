@@ -1089,14 +1089,17 @@ function deterministicObjectChunk(
   format: ProgressiveContentFormat,
 ): Buffer {
   const chunk = Buffer.allocUnsafe(length);
-  const unicodePattern = Buffer.from("世界🙂ABCDEF", "utf8");
+  // Keep filler and line-ending edits single-byte. Unicode coverage comes from
+  // complete canary byte spans; repeating or overwriting arbitrary bytes from
+  // a multibyte pattern can manufacture malformed UTF-8 in a text fixture.
+  const textPattern = Buffer.from("abcdefghijklmnopqrstuvwxyzABCDEF", "ascii");
   const jsonPattern = Buffer.from('{"key":"escaped\\nvalue","n":123},');
   for (let local = 0; local < length; local += 1) {
     const absolute = offset + local;
     chunk[local] =
       format === "binary"
         ? (absolute * 131 + 17) & 0xff
-        : (unicodePattern[absolute % unicodePattern.length] ?? 0x61);
+        : (textPattern[absolute % textPattern.length] ?? 0x61);
     if (format === "lf-lines" && absolute % 80 === 79) chunk[local] = 0x0a;
     if (format === "crlf-lines") {
       if (absolute % 80 === 78) chunk[local] = 0x0d;

@@ -145,6 +145,7 @@ function validPostgresEvidence(
   objects: readonly {
     id: string;
     family: string;
+    format: string;
     byteLength: number;
     sourceSha256: string;
     revision: string;
@@ -239,7 +240,15 @@ function validPostgresEvidence(
     objects: objects.map((object) => {
       const postgresBacked =
         mappings.find(([family]) => family === object.family)?.[4] === true;
+      const typedRejection =
+        postgresBacked &&
+        (object.format === "binary" || object.format === "invalid-utf8");
       const pageBytes = 64 * 1024;
+      const postgresRows = typedRejection
+        ? 0
+        : postgresBacked
+          ? Math.ceil(object.byteLength / pageBytes)
+          : 0;
       return {
         objectId: object.id,
         family: object.family,
@@ -247,23 +256,34 @@ function validPostgresEvidence(
         sourceSha256: object.sourceSha256,
         revision: object.revision,
         authorizationScope: object.authorizationScope,
-        disposition: postgresBacked
-          ? "postgres-text-reassembled"
-          : "native-store-reassembled",
-        postgresRows: postgresBacked
-          ? Math.ceil(object.byteLength / pageBytes)
-          : 0,
-        reassembledSha256: object.sourceSha256,
+        disposition: typedRejection
+          ? "typed-rejected"
+          : postgresBacked
+            ? "postgres-text-reassembled"
+            : "native-store-reassembled",
+        postgresRows,
+        reassembledSha256: typedRejection ? null : object.sourceSha256,
+        rejectionCode: typedRejection
+          ? object.format === "binary"
+            ? "CONTENT_BINARY_UNSUPPORTED"
+            : "CONTENT_INVALID_UTF8"
+          : null,
+        storageWrites: postgresRows,
         authorizationVerified: true,
         isolationVerified: true,
         restartVerified: true,
         sourceWork: {
           pageBytes,
-          bytesRead: object.byteLength,
-          readCalls: Math.ceil(object.byteLength / pageBytes),
-          rowsRead: postgresBacked
-            ? Math.ceil(object.byteLength / pageBytes)
-            : 0,
+          bytesRead: typedRejection
+            ? Math.min(pageBytes, object.byteLength)
+            : object.byteLength,
+          readCalls: typedRejection
+            ? 1
+            : Math.ceil(object.byteLength / pageBytes),
+          rowsRead:
+            postgresBacked && !typedRejection
+              ? Math.ceil(object.byteLength / pageBytes)
+              : 0,
           parentScans: 0,
           readAmplification: 1,
         },
@@ -282,7 +302,7 @@ function validPostgresEvidence(
         storageWrites: 0,
       })),
     ),
-    cleanup: { schemaDropped: true, postDropProbe: "absent" },
+    cleanup: { databaseDropped: true, postDropProbe: "absent" },
   };
 }
 
@@ -309,6 +329,12 @@ function evidenceValues() {
       sourceSha256: "c".repeat(64),
       revision: `revision-${family}-${byteLength}`,
       authorizationScope: `scope-${family}`,
+      format:
+        family === "memory" && byteLength === 10 * 1024 * 1024
+          ? "binary"
+          : family === "email" && byteLength === 1024 * 1024
+            ? "invalid-utf8"
+            : "lf-lines",
     })),
   );
   return {

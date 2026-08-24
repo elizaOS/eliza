@@ -106,7 +106,7 @@ describe("private shell-output artifacts", () => {
       offset = page.value.nextOffset;
     }
     expect(reassembled).toBe(source);
-    expect(bytesRead).toBeLessThanOrEqual(Buffer.byteLength(source) * 5);
+    expect(bytesRead).toBeLessThanOrEqual(Buffer.byteLength(source) * 2);
   }, 60_000);
 
   it("resolves after restart state loss and denies a different owner", async () => {
