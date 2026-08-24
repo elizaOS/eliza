@@ -4,7 +4,7 @@ import type {
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
 } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {

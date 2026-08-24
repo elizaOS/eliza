@@ -4,7 +4,7 @@
  */
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import { Square, Terminal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";

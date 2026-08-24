@@ -8,8 +8,8 @@ import {
   TableHeader,
   TableRow,
 } from "@elizaos/ui";
-import { Button } from "@elizaos/ui/button";
-import { Input } from "@elizaos/ui/input";
+import { Button } from "@elizaos/ui";
+import { Input } from "@elizaos/ui";
 import { Check, Copy } from "lucide-react";
 import { marked, type Token, type Tokens, type TokensList } from "marked";
 import { type ReactNode, useEffect, useRef, useState } from "react";

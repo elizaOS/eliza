@@ -6,7 +6,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 import {
 	dispatchNavigateViewEvent,
 	useViewEvent,

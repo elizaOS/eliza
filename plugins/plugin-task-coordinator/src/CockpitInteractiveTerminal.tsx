@@ -5,7 +5,7 @@
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PtyTerminalPane } from "./PtyTerminalPane";
 

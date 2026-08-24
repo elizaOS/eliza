@@ -23,7 +23,7 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type { ProjectSummary } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 // Direct subpath (mirrors the sibling panels): the browser barrel doesn't
 // reliably re-export the newer dropdown-menu primitives.
 import {
@@ -31,7 +31,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@elizaos/ui/dropdown-menu";
+} from "@elizaos/ui";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { Check, FolderGit2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";

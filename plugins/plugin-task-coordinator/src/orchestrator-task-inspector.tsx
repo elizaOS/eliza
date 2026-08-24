@@ -25,8 +25,8 @@ import {
   AlertDialogTrigger,
   DiffReviewPanel,
 } from "@elizaos/ui/components";
-import { Button } from "@elizaos/ui/button";
-import { Input } from "@elizaos/ui/input";
+import { Button } from "@elizaos/ui";
+import { Input } from "@elizaos/ui";
 import {
   Select,
   SelectContent,

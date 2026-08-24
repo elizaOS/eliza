@@ -4,7 +4,7 @@
  * (preflight result → status icon).
  */
 import type { AgentPreflightResult } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 import { SettingsControls } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import {

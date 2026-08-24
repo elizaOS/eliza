@@ -8,7 +8,7 @@
  * before connecting.
  */
 
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 import React, {
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,

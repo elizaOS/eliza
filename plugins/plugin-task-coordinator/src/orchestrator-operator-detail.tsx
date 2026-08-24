@@ -11,7 +11,7 @@ import type {
   CodingAgentTaskSessionRecord,
   CodingAgentTaskUsageSummary,
 } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 import { ChevronsUp, RotateCcw, X } from "lucide-react";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import { type ConversationBlock, ToolBody } from "./orchestrator-stream";

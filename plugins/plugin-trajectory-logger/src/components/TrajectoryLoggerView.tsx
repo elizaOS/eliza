@@ -11,7 +11,7 @@
 
 import type { OverlayAppContext } from "@elizaos/shared";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 
 import { useCallback, useState } from "react";

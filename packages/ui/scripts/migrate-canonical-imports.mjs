@@ -44,7 +44,8 @@ function* walk(directory) {
   }
 }
 
-export function destination(moduleName) {
+export function destination(moduleName, file = "") {
+  if (file.startsWith(path.join(repoRoot, "plugins"))) return "@elizaos/ui";
   const leaf = moduleName.slice(prefix.length);
   return directExports.get(leaf) ?? "@elizaos/ui";
 }
@@ -61,11 +62,14 @@ export function migrateImports(file, source) {
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
     const moduleName = statement.moduleSpecifier.text;
-    if (!moduleName.startsWith(prefix)) continue;
+    const pluginPublicSubpath =
+      file.startsWith(path.join(repoRoot, "plugins")) &&
+      /^@elizaos\/ui\/(button|card|input|dropdown-menu)$/.test(moduleName);
+    if (!moduleName.startsWith(prefix) && !pluginPublicSubpath) continue;
     replacements.push({
       end: statement.moduleSpecifier.getEnd() - 1,
       start: statement.moduleSpecifier.getStart() + 1,
-      value: destination(moduleName),
+      value: destination(moduleName, file),
     });
   }
   return replacements

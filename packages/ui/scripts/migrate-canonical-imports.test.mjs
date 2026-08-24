@@ -43,3 +43,13 @@ test("the migration preserves dedicated public atom exports", () => {
   );
   assert.equal(destination("@elizaos/ui/components/ui/select"), "@elizaos/ui");
 });
+
+test("plugin views use the host-rewritable root export", () => {
+  const file = path.resolve(scriptDir, "../../../plugins/example/view.tsx");
+  const source = 'import { Button } from "@elizaos/ui/button";\n';
+
+  assert.equal(
+    migrateImports(file, source),
+    'import { Button } from "@elizaos/ui";\n',
+  );
+});

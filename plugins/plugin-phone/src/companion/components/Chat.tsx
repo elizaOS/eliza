@@ -7,7 +7,7 @@
  * host chat surface, not here.
  */
 
-import { Button } from "@elizaos/ui/button";
+import { Button } from "@elizaos/ui";
 import { Link2, MonitorUp, QrCode, Radio } from "lucide-react";
 import type React from "react";
 import { useEffect } from "react";

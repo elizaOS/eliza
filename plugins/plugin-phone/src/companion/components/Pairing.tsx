@@ -12,8 +12,8 @@ import {
   CapacitorBarcodeScannerTypeHint,
 } from "@capacitor/barcode-scanner";
 import { Capacitor } from "@capacitor/core";
-import { Button } from "@elizaos/ui/button";
-import { Input } from "@elizaos/ui/input";
+import { Button } from "@elizaos/ui";
+import { Input } from "@elizaos/ui";
 import type React from "react";
 import { useCallback, useState } from "react";
 import {
