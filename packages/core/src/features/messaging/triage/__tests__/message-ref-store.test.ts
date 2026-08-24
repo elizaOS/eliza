@@ -4,12 +4,8 @@
  * capacities without replacing the system under test.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-	__resetDefaultMessageRefStoreForTests,
-	getDefaultMessageRefStore,
-	MessageRefStore,
-} from "../message-ref-store.ts";
+import { describe, expect, it } from "vitest";
+import { MessageRefStore } from "../message-ref-store.ts";
 import type { DraftRecord, MessageRef } from "../types.ts";
 
 const MESSAGE_CAPACITY = 5000;
@@ -357,25 +353,24 @@ describe("MessageRefStore missing-draft contracts", () => {
 });
 
 describe("getDefaultMessageRefStore singleton lifecycle", () => {
-	beforeEach(() => {
-		__resetDefaultMessageRefStoreForTests();
-	});
+	it("hands every caller the same live instance until it is reset", async () => {
+		const storeModule = await import("../message-ref-store.ts");
+		storeModule.__resetDefaultMessageRefStoreForTests();
 
-	afterEach(() => {
-		__resetDefaultMessageRefStoreForTests();
-	});
-
-	it("hands every caller the same live instance until it is reset", () => {
-		const first = getDefaultMessageRefStore();
+		const first = storeModule.getDefaultMessageRefStore();
 		first.saveMessage(message(42));
 
-		expect(getDefaultMessageRefStore().getMessage("message-42")).not.toBeNull();
-		expect(getDefaultMessageRefStore()).toBe(first);
+		expect(
+			storeModule.getDefaultMessageRefStore().getMessage("message-42"),
+		).not.toBeNull();
+		expect(storeModule.getDefaultMessageRefStore()).toBe(first);
 
-		__resetDefaultMessageRefStoreForTests();
+		storeModule.__resetDefaultMessageRefStoreForTests();
 
-		const next = getDefaultMessageRefStore();
+		const next = storeModule.getDefaultMessageRefStore();
 		expect(next).not.toBe(first);
 		expect(next.getMessage("message-42")).toBeNull();
+
+		storeModule.__resetDefaultMessageRefStoreForTests();
 	});
 });
