@@ -10,7 +10,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { persistConfigEnv } from "./config-env.ts";
+import {
+  persistConfigEnv,
+  readConfigEnv,
+  readConfigEnvSync,
+} from "./config-env.ts";
 
 let stateDir: string;
 let envSnapshot: NodeJS.ProcessEnv;
@@ -118,5 +122,50 @@ describe("persistConfigEnv still writes what config.env exists to hold", () => {
     expect(contents).toContain("UVICORN_HOST=ok");
     expect(contents).toContain("DOCKERFILE_PATH=ok");
     expect(contents).toContain("GIT_CONFIGURATION=ok");
+  });
+});
+
+describe("config.env encode/decode round-trip preserves escapes", () => {
+  it("round-trips a value containing a real newline", async () => {
+    const key = "ELIZA_ROUNDTRIP_NEWLINE";
+    const value = "a\nb";
+    await persistConfigEnv(key, value, { stateDir });
+    const out = await readConfigEnv(stateDir);
+    expect(out[key]).toBe(value);
+    expect(readConfigEnvSync(stateDir)[key]).toBe(value);
+  });
+
+  it("preserves literal backslash-n without corrupting to newline", async () => {
+    const key = "ELIZA_ROUNDTRIP_LITERAL_BS_N";
+    const value = "a\\nb";
+    await persistConfigEnv(key, value, { stateDir });
+    const out = await readConfigEnv(stateDir);
+    expect(out[key]).toBe(value);
+    expect(readConfigEnvSync(stateDir)[key]).toBe(value);
+    const raw = await readFile(path.join(stateDir, "config.env"), "utf8");
+    expect(raw).toContain(`${key}="a\\\\nb"`);
+  });
+
+  it("preserves Windows-style path with backslash", async () => {
+    const key = "ELIZA_ROUNDTRIP_WINPATH";
+    const value = "C:\\new\\file.txt";
+    await persistConfigEnv(key, value, { stateDir });
+    expect((await readConfigEnv(stateDir))[key]).toBe(value);
+    expect(readConfigEnvSync(stateDir)[key]).toBe(value);
+  });
+
+  it("round-trips quotes, backslashes and mixed escapes", async () => {
+    const key = "ELIZA_ROUNDTRIP_MIXED";
+    const value = 'a"b\\c\nd\re';
+    await persistConfigEnv(key, value, { stateDir });
+    expect((await readConfigEnv(stateDir))[key]).toBe(value);
+    expect(readConfigEnvSync(stateDir)[key]).toBe(value);
+  });
+
+  it("round-trips literal backslash before quoted quote", async () => {
+    const key = "ELIZA_ROUNDTRIP_BS_QUOTE";
+    const value = 'a\\"b';
+    await persistConfigEnv(key, value, { stateDir });
+    expect((await readConfigEnv(stateDir))[key]).toBe(value);
   });
 });

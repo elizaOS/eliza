@@ -249,11 +249,35 @@ function decodeValue(raw: string): string {
   ) {
     const inner = trimmed.slice(1, -1);
     if (first === '"') {
-      return inner
-        .replace(/\\n/g, "\n")
-        .replace(/\\r/g, "\r")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
+      let out = "";
+      for (let i = 0; i < inner.length; i += 1) {
+        const ch = inner[i];
+        if (ch === "\\" && i + 1 < inner.length) {
+          const next = inner[i + 1];
+          if (next === "n") {
+            out += "\n";
+            i += 1;
+            continue;
+          }
+          if (next === "r") {
+            out += "\r";
+            i += 1;
+            continue;
+          }
+          if (next === '"') {
+            out += '"';
+            i += 1;
+            continue;
+          }
+          if (next === "\\") {
+            out += "\\";
+            i += 1;
+            continue;
+          }
+        }
+        out += ch ?? "";
+      }
+      return out;
     }
     return inner;
   }
