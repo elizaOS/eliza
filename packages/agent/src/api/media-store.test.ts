@@ -40,6 +40,7 @@ const {
   isInlineSafeMime,
   sniffMarkupMime,
   readStoredMediaBytes,
+  readStoredMediaByteRange,
   writeStoredMediaFile,
   deleteMediaFile,
   resolveMediaStoreMaxBytes,
@@ -964,6 +965,46 @@ describe("readStoredMediaBytes fast-fail (#12265)", () => {
     } finally {
       fs.rmdirSync(mediaPath(name));
     }
+  });
+});
+
+describe("readStoredMediaByteRange", () => {
+  it("reassembles binary media through bounded pages and supports exact EOF", () => {
+    const bytes = Buffer.concat([
+      Buffer.from([0, 255, 1, 254]),
+      Buffer.alloc(150_000, 7),
+    ]);
+    const stored = persistMediaBytes(bytes, "application/octet-stream");
+    const pages: Buffer[] = [];
+    let offset = 0;
+    for (;;) {
+      const page = readStoredMediaByteRange(stored.fileName, offset, 64 * 1024);
+      expect(page).not.toBeNull();
+      if (!page) throw new Error("stored media page is absent");
+      expect(page.bytes.byteLength).toBeLessThanOrEqual(64 * 1024);
+      pages.push(page.bytes);
+      offset = page.end;
+      if (page.complete) break;
+    }
+    expect(Buffer.concat(pages)).toEqual(bytes);
+    expect(readStoredMediaByteRange(stored.fileName, bytes.length, 1)).toEqual({
+      bytes: Buffer.alloc(0),
+      start: bytes.length,
+      end: bytes.length,
+      total: bytes.length,
+      complete: true,
+    });
+  });
+
+  it("fails closed for unsafe names and unbounded or invalid ranges", () => {
+    const fileName = persistMediaBytes(
+      Buffer.from("safe"),
+      "text/plain",
+    ).fileName;
+    expect(readStoredMediaByteRange("../../etc/passwd", 0, 1)).toBeNull();
+    expect(readStoredMediaByteRange(fileName, -1, 1)).toBeNull();
+    expect(readStoredMediaByteRange(fileName, 0, 0)).toBeNull();
+    expect(readStoredMediaByteRange(fileName, 0, 64 * 1024 + 1)).toBeNull();
   });
 });
 

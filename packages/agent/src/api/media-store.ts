@@ -381,6 +381,62 @@ export function readStoredMediaBytes(fileName: string): Buffer | null {
   }
 }
 
+export interface StoredMediaByteRange {
+  bytes: Buffer;
+  start: number;
+  end: number;
+  total: number;
+  complete: boolean;
+}
+
+/** Read at most 64 KiB from one content-addressed media object without loading its parent. */
+export function readStoredMediaByteRange(
+  fileName: string,
+  offset: number,
+  limit: number,
+): StoredMediaByteRange | null {
+  if (
+    !MEDIA_FILE_NAME.test(fileName) ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 64 * 1024
+  ) {
+    return null;
+  }
+  const root = mediaDir();
+  const filePath = path.join(root, fileName);
+  if (path.dirname(filePath) !== root || !fs.existsSync(filePath)) return null;
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(filePath, "r");
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile()) return null;
+    const start = Math.min(offset, stat.size);
+    const length = Math.min(limit, stat.size - start);
+    const bytes = Buffer.allocUnsafe(length);
+    const bytesRead = fs.readSync(descriptor, bytes, 0, length, start);
+    const end = start + bytesRead;
+    return {
+      bytes: bytes.subarray(0, bytesRead),
+      start,
+      end,
+      total: stat.size,
+      complete: end >= stat.size,
+    };
+  } catch (err) {
+    // error-policy:J2 context-adding rethrow — range I/O failure is not absence.
+    throw new ElizaError(`media range read failed for ${fileName}`, {
+      code: "MEDIA_STORE_READ_FAILED",
+      cause: err,
+      context: { fileName, offset, limit },
+    });
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
 /**
  * Write raw bytes to a stored media file by its `<sha256>.<ext>` name (the name
  * is the content hash, so this is idempotent). Only the strict content-addressed
