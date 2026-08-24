@@ -25,7 +25,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { WREN } from "./_personas";
 
 export const TASK_PIVOT =
-  /((?:^|\n)\s*(?:\d+[.)]|[-*•])\s+\S|to-?do list|checklist|want me to (add|make|create|put)|let'?s break (it|this) down|action items?|step (one|1)\b|first,? (you|let'?s)|\bi can help\b[\s\S]{0,100}\b(prioriti[sz]e|draft|plan|organize|schedule)\b)/i;
+  /((?:^|\n)\s*(?:\d+[.)]|[-*•])\s+\S|to-?do list|checklist|want me to (add|make|create|put)|let'?s break (it|this) down|action items?|step (one|1)\b|first,? (you|let'?s)|(?:\bi (?:can|could) help\b|\b(?:want me to|would you like me to) (?:help )?)[\s\S]{0,100}\b(prioriti[sz]e|draft|plan|organize|schedule)\b)/i;
 
 export default scenario({
   lane: "live-only",

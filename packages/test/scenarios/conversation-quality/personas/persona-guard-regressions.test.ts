@@ -40,6 +40,11 @@ describe("persona scenario mechanical guards", () => {
       TASK_PIVOT.test("- Confirm the guest list\n- Draft the labels"),
     ).toBe(true);
     expect(TASK_PIVOT.test("I can help you\nplan the opening.")).toBe(true);
+    expect(TASK_PIVOT.test("I could help you plan the opening.")).toBe(true);
+    expect(TASK_PIVOT.test("Want me to help draft the invite?")).toBe(true);
+    expect(
+      TASK_PIVOT.test("Would you like me to organize the guest list?"),
+    ).toBe(true);
     expect(
       TASK_PIVOT.test("I can help you sit with that fear for a minute."),
     ).toBe(false);
