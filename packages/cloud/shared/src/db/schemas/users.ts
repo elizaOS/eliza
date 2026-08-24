@@ -1,7 +1,17 @@
 // Defines the users Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 /**
@@ -62,6 +72,17 @@ export const users = pgTable(
     preferences: text("preferences"),
     email_notifications: boolean("email_notifications").default(true),
     response_notifications: boolean("response_notifications").default(true),
+
+    // Personal lifecycle authority is separate from organization ownership so
+    // a shared member can exit without fencing or deleting the shared tenant.
+    account_lifecycle_state: text("account_lifecycle_state").notNull().default("active"),
+    account_lifecycle_revision: bigint("account_lifecycle_revision", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    account_deletion_request_id: uuid("account_deletion_request_id"),
+    auth_fenced_at: timestamp("auth_fenced_at"),
 
     is_active: boolean("is_active").default(true).notNull(),
 
@@ -129,6 +150,13 @@ export const users = pgTable(
     anonymous_session_id_partial_idx: index("users_anonymous_session_id_partial_idx")
       .on(table.anonymous_session_id)
       .where(sql`${table.anonymous_session_id} IS NOT NULL`),
+    account_deletion_request_idx: index("users_account_deletion_request_idx").on(
+      table.account_deletion_request_id,
+    ),
+    account_lifecycle_state_check: check(
+      "users_account_lifecycle_state_check",
+      sql`${table.account_lifecycle_state} IN ('active', 'deletion_recovery', 'deletion_irreversible')`,
+    ),
   }),
 );
 

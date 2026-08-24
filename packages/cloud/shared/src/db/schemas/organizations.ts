@@ -54,7 +54,9 @@ export const organizations = pgTable(
     // Durable auto-top-up re-arms only after a balance decrease. Existing
     // organizations are conservatively fenced during migration; newly created
     // organizations start without a fence so their first eligible top-up can run.
-    balance_decrease_revision: bigint("balance_decrease_revision", { mode: "number" })
+    balance_decrease_revision: bigint("balance_decrease_revision", {
+      mode: "number",
+    })
       .notNull()
       .default(0),
     auto_top_up_covered_balance_decrease_revision: bigint(
@@ -91,6 +93,18 @@ export const organizations = pgTable(
     steward_tenant_id: text("steward_tenant_id").unique(),
     steward_tenant_api_key: text("steward_tenant_api_key"),
 
+    // Account-level authority checked immediately before paid/provider work.
+    // Workers must capture both state and revision, then recheck under the
+    // primary writer immediately before their final external boundary.
+    account_lifecycle_state: text("account_lifecycle_state").notNull().default("active"),
+    account_lifecycle_revision: bigint("account_lifecycle_revision", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    account_deletion_request_id: uuid("account_deletion_request_id"),
+    paid_work_fenced_at: timestamp("paid_work_fenced_at"),
+
     is_active: boolean("is_active").default(true).notNull(),
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
@@ -104,6 +118,13 @@ export const organizations = pgTable(
     credit_balance_non_negative: check(
       "credit_balance_non_negative",
       sql`${table.credit_balance} >= 0`,
+    ),
+    account_lifecycle_state_check: check(
+      "organizations_account_lifecycle_state_check",
+      sql`${table.account_lifecycle_state} IN ('active', 'deletion_recovery', 'deletion_irreversible')`,
+    ),
+    account_deletion_request_idx: index("organizations_account_deletion_request_idx").on(
+      table.account_deletion_request_id,
     ),
   }),
 );

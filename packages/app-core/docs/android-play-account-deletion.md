@@ -1,8 +1,8 @@
-# Android Google Play account-deletion submission
+# Mobile-store account-deletion submission contract
 
 This is the source-controlled declaration worksheet for package `ai.elizaos.app`.
-It describes the standard Google Play Cloud build, not privileged/AOSP or
-sideload variants.
+It describes the shared Cloud deletion contract consumed by the standard
+Google Play and App Store builds, not privileged/AOSP or sideload variants.
 
 ## Account model
 
@@ -18,44 +18,85 @@ Do not submit the Play Console form until both public URLs serve the candidate
 revision in production. A renderer fallback page or disabled control does not
 qualify.
 
-## Current admission fence
+## Current source candidate
 
-The destructive lifecycle is not yet enabled. The authenticated route validates
-the explicit `DELETE` confirmation, returns an existing open receipt when one
-already exists, and otherwise fails closed before deactivation or receipt
-creation:
+The current source accepts a recently authenticated sole-user personal-account
+request after the exact `DELETE` confirmation. Under locked user, organization,
+and membership rows it creates one durable lifecycle reservation and phase
+receipts, issues separate opaque status and recovery capabilities, and fences
+sessions, paid work, auto-top-up, renewal, and provisioning before provider
+work. Before POST, clients generate and session-retain a 32-byte opaque
+`admissionCredential`; only its hash is stored. If the committed response is
+lost after sessions are fenced, retrying the same exact request re-delivers the
+first deterministic status and recovery capabilities before session auth and
+never creates a second reservation or provider call.
 
-- any active shared-organization membership returns `TRANSFER_REQUIRED`;
-- a sole-user personal organization returns
-  `LIFECYCLE_RESERVATION_REQUIRED` until the durable recovery and provider
-  reconciliation authority tracked by #23098 exists;
-- the worker parks historical due receipts as `action_required` with a
-  generation fence and performs no provider or database deletion.
+The stable request body for both `POST /api/v1/me/account-deletion` and
+`POST /api/public/account-deletion` is
+`{ confirmation: "DELETE", admissionCredential: <43-character base64url> }`.
+Clients must create and persist that credential before the first POST, reuse it
+after transport failure, and remove it only after validating and persisting the
+accepted status and recovery capabilities. The exported
+`AccountDeletionRequestBodyDto` is the typed Android/shared-renderer contract.
 
-Do not represent this source state as a functioning deletion request path and
-do not submit the Play Console declaration. The eventual lifecycle must reserve
-recovery and provider operations durably before it deactivates identity access,
-must preserve shared resources through an explicit transfer/revoke flow, and
-must prove provider and database erasure in staging before this section is
-replaced with the delivered contract.
+- Shared membership or ownership that cannot be removed safely returns the
+  actionable `TRANSFER_REQUIRED` state. It never deletes shared assets, cancels
+  shared billing, or leaves an organization with no active owner.
+- Cancellation is nonterminal `canceling` while export revocation and Steward
+  reactivation reconcile. Access remains fenced until both receipts complete;
+  the recovery credential remains retryable while cleanup is nonterminal, and
+  only terminal `canceled` restores active access and retires recovery authority.
+- After the recovery boundary, a leased and generation-fenced saga inspects
+  before every provider mutation and reconciles ambiguous responses rather than
+  repeating them. Database erasure and identifier nulling commit atomically
+  only after every required phase receipt is complete.
+- Pre-reservation historical receipts still take the deliberate
+  `LIFECYCLE_RESERVATION_REQUIRED` fence. That legacy guard is not request
+  admission for new reservations.
+
+This is a local production candidate, not evidence that the URLs or provider
+authorities are deployed. Do not submit either store declaration until the
+hosted disposable-account acceptance and publication gates below are complete.
 
 ## Retention disclosure
 
-The planned in-app dialog, public deletion page, and privacy policy describe a
-30-day deletion path and narrow retention categories. Those surfaces must not
-be enabled or submitted until the lifecycle reservation and staging acceptance
-exist. Never represent a rejected request, deactivation, or a parked receipt as
-completed deletion.
+The in-app dialog, public deletion page, and privacy policy disclose immediate
+access fencing, a 30-day recovery window, permanent deletion after that window,
+and narrow legal, tax, fraud-prevention, and security retention categories.
+Never represent a rejected request, `reserved`, `recovery`, `canceling`,
+`scheduled`, `processing`, or `action_required` receipt as completed deletion.
 
 ## Play Console data-deletion answers
 
-- Does the app provide a way to request deletion? **Not for the current
-  candidate**.
-- Can users request account deletion? **Not until the lifecycle gate is
-  cleared**.
+- Does the source candidate provide an in-app request path? **Yes**.
+- Does the source candidate provide an external request path? **Yes**.
 - External request URL: `https://eliza.app/account-deletion`.
 - Are associated data deleted? **Yes**, subject only to the disclosed narrow
   retention categories above.
+
+These are source-candidate answers only. Enter **Yes** in Play Console only
+after the exact production AAB, public page, API revision, background worker,
+and disposable hosted lifecycle have passed the gates below.
+
+## Apple App Store review cross-check
+
+Apple requires apps that support account creation to let users initiate
+deletion in the app; deactivation alone is insufficient. The shared renderer
+provides the initiation and exact-confirmation flow, but the exact signed iOS
+artifact still requires physical review. Confirm that:
+
+- Account & Security exposes the control without an unnecessary support-only
+  detour, and any website handoff goes directly to `/account-deletion`;
+- the 30-day recovery period, billing consequences, and narrow retained-record
+  categories are visible before confirmation;
+- Sign in with Apple token revocation is either proven in the provider saga or
+  marked not applicable for the exact release; and
+- subscription handling is reconciled with the release's actual App Store
+  purchase model and does not permit a stale renewal to reactivate the account.
+
+Do not claim App Store compliance from source tests alone. Apple review,
+signed-device behavior, hosted provider absence, and applicable local retention
+law remain separate acceptance gates.
 
 ## Data safety review before submission
 
@@ -80,22 +121,28 @@ logging, and bundled SDK behavior.
 
 ## Pre-publication gates
 
-- Apply migration `0275_account_deletion_requests` to staging, never directly
-  to production first.
-- Implement and review the durable lifecycle reservation and provider
-  reconciliation authority tracked by #23098.
+- Apply the foundational `0276_account_deletion_requests` migration followed by
+  lifecycle migrations `0312` through `0316` to disposable staging, never
+  directly to production first. Verify the migration ledger preserves upstream
+  `0311_personal_shared_group_participants` and is linear through
+  `0316_account_deletion_admission_recovery` before promotion.
+- Review the durable lifecycle reservation, cancellation reconciliation,
+  export, provider saga, and atomic erasure authority tracked by #23098.
 - Configure `STEWARD_PLATFORM_KEYS` with both
   `platform:user-lifecycle:write` and `platform:user:delete` scopes.
 - Schedule authenticated POST requests to
   `/api/cron/process-account-deletions` at least hourly.
-- Configure and verify Stripe, ElevenLabs, GitHub, container-daemon, and R2
-  deletion credentials in staging. The processor fails closed when one is
-  unavailable; it must never mark the receipt complete after a partial purge.
+- Configure and verify Steward, Stripe, managed-domain, compute/container,
+  GitHub/repository, connector OAuth, voice, primary object-store,
+  secondary-backup, backup-spool, Vault/key-binding, and other discovered grant
+  authorities in disposable staging. The processor fails closed when a required
+  authority is unavailable and must never complete after a partial purge.
 - Monitor `action_required` receipts by request ID. Resolve registered-domain
   transfer/release and any legitimate retained-record FK before replaying the
   request. Do not put email, domain, provider errors, or other PII into the
   durable receipt or operator ticket title.
-- Exercise create account → delete request → immediate sign-in denial → forced
+- Exercise create account → export → delete request → immediate cross-device
+  sign-in denial → cancellation and full reactivation → second request → forced
   due-date processing → confirmed Steward/Cloud/provider absence in staging.
 - Exercise an account with a deployed app: first run must queue container
   teardown without deleting the app row; a later run after daemon completion
@@ -107,3 +154,9 @@ logging, and bundled SDK behavior.
 - The Play developer name must match the entity identified by the privacy
   policy. Confirm that exact legal/developer name in Play Console before the
   production policy is published.
+
+## Policy references
+
+- [Google Play account-deletion requirements](https://support.google.com/googleplay/android-developer/answer/13327111)
+- [Apple account-deletion guidance](https://developer.apple.com/support/offering-account-deletion-in-your-app/)
+- [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)

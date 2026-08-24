@@ -137,6 +137,9 @@ beforeAll(async () => {
         auto_top_up_threshold numeric(10,2), auto_top_up_amount numeric(10,2),
         pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true,
         steward_tenant_id text, steward_tenant_api_key text,
+        account_lifecycle_state text NOT NULL DEFAULT 'active',
+        account_lifecycle_revision bigint NOT NULL DEFAULT 0,
+        account_deletion_request_id uuid, paid_work_fenced_at timestamp,
         is_active boolean NOT NULL DEFAULT true,
         created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL DEFAULT now()
       )`,
@@ -255,6 +258,26 @@ describe("domain renewal billing (#10245)", () => {
     const summary = await domainRenewalsService.processDomainRenewals();
 
     expect(summary.due).toBe(0);
+    expect(await readBalance()).toBeCloseTo(20, 6);
+  });
+
+  test("deletion authority fences renewal before debit or registrar work", async () => {
+    if (!pgliteReady) return;
+    await seedDomain({ expiresInDays: 7, renewalPriceCents: 1099 });
+    await dbWrite.execute(`
+      UPDATE organizations
+      SET account_lifecycle_state = 'deletion_recovery',
+          account_lifecycle_revision = 1,
+          account_deletion_request_id = '00000000-0000-4000-8000-0000000000f1',
+          is_active = false
+      WHERE id = '${ORG}';
+    `);
+
+    const summary = await domainRenewalsService.processDomainRenewals();
+
+    expect(summary.fenced).toBe(1);
+    expect(summary.renewed).toBe(0);
+    expect(await countRenewalDebits()).toBe(0);
     expect(await readBalance()).toBeCloseTo(20, 6);
   });
 });

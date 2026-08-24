@@ -175,7 +175,7 @@ async function snapshotDeletionAuthority(stack: {
 }
 
 test.describe("account deletion", () => {
-  test("fails closed without mutating the account or another tenant", async ({
+  test("requests, fences, reports, and cancels without crossing tenants", async ({
     authenticatedPage,
     stack,
     seededUser,
@@ -214,6 +214,8 @@ test.describe("account deletion", () => {
     await expect(
       authenticatedPage.getByRole("heading", { name: "Deletion scheduled" }),
     ).toHaveCount(0);
+    const trigger = authenticatedPage.getByTestId("delete-account-trigger");
+    await expect(trigger).toBeVisible();
     const httpEvidence: Array<Record<string, unknown>> = [];
     const request = async (method: "GET" | "POST", confirmation?: string) => {
       const result = await authenticatedPage.evaluate(
@@ -230,119 +232,228 @@ test.describe("account deletion", () => {
         },
         { method, confirmation },
       );
-      httpEvidence.push({ method, confirmation, ...result });
+      httpEvidence.push(
+        confirmation === undefined
+          ? { method, ...result }
+          : { method, confirmation, ...result },
+      );
       return result;
     };
 
+    const authorityBefore = await snapshotDeletionAuthority(stack);
+
     const initial = await request("GET");
     expect(initial.status).toBe(200);
-    expect(initial.body).toEqual({
-      state: "lifecycle_unavailable",
-      request: null,
-      code: "LIFECYCLE_RESERVATION_REQUIRED",
-      message:
-        "Permanent account deletion is unavailable until lifecycle recovery and provider reconciliation are reserved",
-    });
-
-    const trigger = authenticatedPage.getByTestId("delete-account-trigger");
-    await expect(trigger).toBeVisible();
-    await expect(trigger).toBeDisabled();
-    await expect(trigger).toHaveText("Deletion unavailable");
-
-    const { accountDeletionRequestsRepository } = await import(
-      "@elizaos/cloud-shared/db/repositories/account-deletion-requests"
-    );
-    const authorityBefore = await snapshotDeletionAuthority(stack);
-    expect(
-      await accountDeletionRequestsRepository.findOpenByUserId(
-        other.userId,
-        true,
-      ),
-    ).toBeUndefined();
+    expect(initial.body).toEqual({ request: null });
 
     const unconfirmed = await request("POST", "delete");
-    expect(unconfirmed).toEqual({
-      status: 400,
-      body: {
-        error: "Type DELETE to confirm permanent account deletion",
-        code: "confirmation_required",
-      },
-    });
+    expect(unconfirmed.status).toBe(400);
+    expect(stack.mocks.steward.users.get(seededUser.stewardUserId)).toBe(
+      "active",
+    );
+    expect(stack.mocks.steward.calls).toEqual([]);
     const authorityAfterUnconfirmed = await snapshotDeletionAuthority(stack);
     expect(authorityAfterUnconfirmed).toEqual(authorityBefore);
-    expect(stack.mocks.steward.calls).toEqual([]);
 
-    const refused = await request("POST", "DELETE");
-    expect(refused).toEqual({
-      status: 409,
+    await trigger.click();
+    const confirm = authenticatedPage.getByTestId("delete-account-confirm");
+    await expect(confirm).toBeDisabled();
+    await authenticatedPage.getByLabel("Type DELETE to confirm").fill("DELETE");
+    await expect(confirm).toBeEnabled();
+    const scheduledResponsePromise = authenticatedPage.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/v1/me/account-deletion",
+    );
+    await confirm.click();
+    const scheduledResponse = await scheduledResponsePromise;
+    expect(scheduledResponse.status()).toBe(202);
+    const payload = (await scheduledResponse.json()) as {
+      request?: {
+        requestId?: string;
+        status?: string;
+        scheduledDeletionAt?: string;
+      };
+      statusCredential?: string;
+      recoveryCredential?: string;
+    };
+    expect(payload.request?.requestId).toBeTruthy();
+    const requestId = payload.request?.requestId;
+    expect(payload.statusCredential).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(payload.recoveryCredential).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const statusCredential = payload.statusCredential;
+    const recoveryCredential = payload.recoveryCredential;
+    if (!statusCredential || !recoveryCredential) {
+      throw new Error("Deletion response omitted its opaque capabilities");
+    }
+    expect(payload.request?.status).toBe("reserved");
+    expect(
+      Date.parse(payload.request?.scheduledDeletionAt ?? ""),
+    ).toBeGreaterThan(Date.now());
+    await expect(
+      authenticatedPage.getByRole("heading", {
+        name: "Deletion request reserved",
+      }),
+    ).toBeVisible();
+    expect(stack.mocks.steward.users.get(seededUser.stewardUserId)).toBe(
+      "deactivated",
+    );
+    const authorityAfterReservation = await snapshotDeletionAuthority(stack);
+    expect(authorityAfterReservation).not.toEqual(authorityBefore);
+    expect(stack.mocks.steward.calls).toEqual([
+      expect.objectContaining({
+        method: "PATCH",
+        userId: seededUser.stewardUserId,
+      }),
+    ]);
+    expect(stack.mocks.steward.users.get(other.stewardUserId)).toBe("active");
+
+    const { apiKeysRepository } = await import(
+      "@elizaos/cloud-shared/db/repositories/api-keys"
+    );
+    const { organizationsRepository } = await import(
+      "@elizaos/cloud-shared/db/repositories/organizations"
+    );
+    const { usersRepository } = await import(
+      "@elizaos/cloud-shared/db/repositories/users"
+    );
+
+    const deletedUser = await usersRepository.findByIdForWrite(
+      seededUser.userId,
+    );
+    const deletedOrganization = await organizationsRepository.findById(
+      seededUser.organizationId,
+    );
+    const [deletedKey] = await apiKeysRepository.listByUser(seededUser.userId);
+    const otherUser = await usersRepository.findByIdForWrite(other.userId);
+    const otherOrganization = await organizationsRepository.findById(
+      other.organizationId,
+    );
+
+    expect(deletedUser).toMatchObject({
+      is_active: false,
+      deleted_at: null,
+      account_lifecycle_state: "deletion_recovery",
+      account_deletion_request_id: requestId,
+    });
+    expect(deletedUser?.auth_fenced_at).toBeInstanceOf(Date);
+    expect(deletedOrganization).toMatchObject({
+      is_active: false,
+      account_lifecycle_state: "deletion_recovery",
+      account_deletion_request_id: requestId,
+    });
+    expect(deletedKey).toMatchObject({ is_active: false });
+    expect(otherUser).toMatchObject({ is_active: true });
+    expect(otherOrganization).toMatchObject({ is_active: true });
+
+    const rejectedAfterDeactivation = await request("GET");
+    expect(rejectedAfterDeactivation.status).toBe(403);
+
+    const publicStatus = await authenticatedPage.evaluate(
+      async (statusCredential) => {
+        const response = await fetch("/api/public/account-deletion", {
+          headers: { "X-Account-Deletion-Status": statusCredential },
+        });
+        return { status: response.status, body: await response.json() };
+      },
+      statusCredential,
+    );
+    expect(publicStatus).toMatchObject({
+      status: 200,
       body: {
-        error:
-          "Permanent account deletion is unavailable until lifecycle recovery and provider reconciliation are reserved",
-        code: "LIFECYCLE_RESERVATION_REQUIRED",
+        request: {
+          requestId,
+          status: "reserved",
+          accessState: "fenced",
+          canCancel: true,
+        },
       },
     });
-    const authorityAfterConfirmedRefusal =
-      await snapshotDeletionAuthority(stack);
-    expect(authorityAfterConfirmedRefusal).toEqual(authorityBefore);
-    expect(stack.mocks.steward.calls).toEqual([]);
-    expect(
-      await accountDeletionRequestsRepository.findOpenByUserId(
-        seededUser.userId,
-        true,
-      ),
-    ).toBeUndefined();
-    expect(
-      await accountDeletionRequestsRepository.findOpenByUserId(
-        other.userId,
-        true,
-      ),
-    ).toBeUndefined();
 
-    const after = await request("GET");
-    expect(after).toEqual(initial);
+    const canceled = await authenticatedPage.evaluate(
+      async (recoveryCredential) => {
+        const response = await fetch("/api/public/account-deletion", {
+          method: "DELETE",
+          headers: {
+            "content-type": "application/json",
+            "X-Account-Deletion-Recovery": recoveryCredential,
+          },
+          body: JSON.stringify({ confirmation: "CANCEL DELETION" }),
+        });
+        return { status: response.status, body: await response.json() };
+      },
+      recoveryCredential,
+    );
+    expect(canceled).toMatchObject({
+      status: 200,
+      body: {
+        request: {
+          requestId,
+          status: "canceling",
+          accessState: "fenced",
+          canCancel: false,
+          nextAction: "wait_for_reconciliation",
+        },
+      },
+    });
+    expect(stack.mocks.steward.users.get(seededUser.stewardUserId)).toBe(
+      "active",
+    );
+
+    const cancelingUser = await usersRepository.findByIdForWrite(
+      seededUser.userId,
+    );
+    const cancelingOrganization = await organizationsRepository.findById(
+      seededUser.organizationId,
+    );
+    const [stillRevokedKey] = await apiKeysRepository.listByUser(
+      seededUser.userId,
+    );
+    expect(cancelingUser).toMatchObject({
+      is_active: false,
+      account_lifecycle_state: "deletion_recovery",
+      account_deletion_request_id: requestId,
+    });
+    expect(cancelingOrganization).toMatchObject({
+      is_active: false,
+      account_lifecycle_state: "deletion_recovery",
+      account_deletion_request_id: requestId,
+    });
+    expect(stillRevokedKey).toMatchObject({ is_active: false });
+
+    const stillFenced = await request("GET");
+    expect(stillFenced.status).toBe(403);
+    const authorityAfterCancellation = await snapshotDeletionAuthority(stack);
+    expect(authorityAfterCancellation).not.toEqual(authorityAfterReservation);
+    expect(stack.mocks.steward.users.get(other.stewardUserId)).toBe("active");
     expect(
       frontendEvents.filter(
         (event) => event.type === "pageerror" || event.type === "requestfailed",
       ),
     ).toEqual([]);
-    expect(
-      frontendEvents.filter((event) => event.type === "console:error"),
-    ).toEqual([
-      {
-        type: "console:error",
-        text: "Failed to load resource: the server responded with a status of 400 (Bad Request)",
-      },
-      {
-        type: "console:error",
-        text: "Failed to load resource: the server responded with a status of 409 (Conflict)",
-      },
-    ]);
 
-    await testInfo.attach("account-deletion-authority-before.json", {
-      body: serializeDeletionAuthorityEvidence(authorityBefore),
-      contentType: "application/json",
-    });
-    await testInfo.attach("account-deletion-authority-after-unconfirmed.json", {
-      body: serializeDeletionAuthorityEvidence(authorityAfterUnconfirmed),
-      contentType: "application/json",
-    });
-    await testInfo.attach(
-      "account-deletion-authority-after-confirmed-refusal.json",
-      {
-        body: serializeDeletionAuthorityEvidence(
-          authorityAfterConfirmedRefusal,
-        ),
+    for (const [name, evidence] of [
+      ["account-deletion-authority-before.json", authorityBefore],
+      [
+        "account-deletion-authority-after-unconfirmed.json",
+        authorityAfterUnconfirmed,
+      ],
+      [
+        "account-deletion-authority-after-reservation.json",
+        authorityAfterReservation,
+      ],
+      [
+        "account-deletion-authority-after-cancellation.json",
+        authorityAfterCancellation,
+      ],
+      ["account-deletion-http.json", canonicalize(httpEvidence)],
+      ["account-deletion-frontend-events.json", canonicalize(frontendEvents)],
+    ] as const) {
+      await testInfo.attach(name, {
+        body: serializeDeletionAuthorityEvidence(evidence),
         contentType: "application/json",
-      },
-    );
-    await testInfo.attach("account-deletion-http.json", {
-      body: JSON.stringify(httpEvidence, null, 2),
-      contentType: "application/json",
-    });
-    await testInfo.attach("account-deletion-frontend-events.json", {
-      body: JSON.stringify(frontendEvents, null, 2),
-      contentType: "application/json",
-    });
+      });
+    }
   });
 
   test("canonical authority snapshots detect mutations and publish only structurally redacted evidence", () => {

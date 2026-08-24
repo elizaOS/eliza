@@ -454,6 +454,10 @@ beforeAll(async () => {
       auto_top_up_enabled boolean NOT NULL DEFAULT false,
       auto_top_up_threshold numeric(10,2),
       auto_top_up_amount numeric(10,2),
+      account_lifecycle_state text NOT NULL DEFAULT 'active',
+      account_lifecycle_revision bigint NOT NULL DEFAULT 0,
+      account_deletion_request_id uuid,
+      paid_work_fenced_at timestamp,
       is_active boolean NOT NULL DEFAULT true,
       updated_at timestamp NOT NULL DEFAULT now()
     );

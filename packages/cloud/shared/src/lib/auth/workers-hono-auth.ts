@@ -26,6 +26,7 @@ import {
   type PlaywrightTestAuthEnv,
   verifyPlaywrightTestSessionToken,
 } from "./playwright-test-session";
+import { isRecentDestructiveAuth } from "./recent-auth";
 import { loadVerifiedStagingSessionUser } from "./staging-session-binding";
 import { isStagingSessionTokenCandidate, verifyStewardTokenCached } from "./steward-client";
 import { readStewardAccessCookieFromHeader } from "./steward-cookies";
@@ -212,6 +213,17 @@ async function getPlaywrightTestUser(c: AppContext): Promise<AuthedUser | null> 
   return toAuthedUser(user);
 }
 
+function hasVerifiedPlaywrightTestSession(
+  c: AppContext,
+  user: AuthedUser & { organization_id: string },
+): boolean {
+  if (!isPlaywrightTestAuthEnabled(testAuthEnv(c.env))) return false;
+  const token = getCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME);
+  if (!token) return false;
+  const claims = verifyPlaywrightTestSessionToken(token, testAuthEnv(c.env));
+  return claims?.userId === user.id && claims.organizationId === user.organization_id;
+}
+
 export async function getCurrentUser(c: AppContext): Promise<AuthedUser | null> {
   const cached = c.get("user");
   if (cached !== undefined) return cached;
@@ -301,10 +313,12 @@ export async function requireUserWithOrg(c: AppContext): Promise<
   if (user.organization.is_active === false) {
     throw ForbiddenError("Organization is inactive");
   }
-  return user as AuthedUser & {
+  const userWithOrg = user as AuthedUser & {
     organization_id: string;
     organization: NonNullable<AuthedUser["organization"]>;
   };
+  await requireActiveAuthLifecycle(userWithOrg);
+  return userWithOrg;
 }
 
 /** API-key lifecycle management always requires an interactive user session. */
@@ -332,6 +346,44 @@ export async function requireSessionUserWithOrg(c: AppContext): Promise<
       "A signed-in user session is required to manage API keys.",
     );
   }
+  return user;
+}
+
+const DEFAULT_RECENT_AUTH_MAX_AGE_SECONDS = 5 * 60;
+
+/**
+ * Requires a newly issued, directly authenticated Steward browser session.
+ * Bridge sessions and API keys cannot authorize destructive account actions;
+ * clients must complete Steward authentication again when this gate expires.
+ */
+export async function requireRecentSessionUserWithOrg(
+  c: AppContext,
+  maxAgeSeconds = DEFAULT_RECENT_AUTH_MAX_AGE_SECONDS,
+): Promise<Awaited<ReturnType<typeof requireSessionUserWithOrg>>> {
+  const user = await requireSessionUserWithOrg(c);
+  // The signed Playwright capability is deliberately accepted as recent only
+  // by the already production-disabled test-auth gate. This lets the real
+  // local Worker exercise destructive routes without weakening live sessions.
+  if (hasVerifiedPlaywrightTestSession(c, user)) return user;
+  const token = readSessionCredential(c);
+  const claims = token ? await verifyStewardTokenCached(c.env, token) : null;
+  const nowSeconds = Math.floor(Date.now() / 1_000);
+  if (
+    !isRecentDestructiveAuth({
+      claims,
+      expectedStewardUserId: user.steward_id ?? null,
+      nowSeconds,
+      maxAgeSeconds,
+      allowStagingSession: c.env.NODE_ENV !== "production",
+    })
+  ) {
+    throw new ApiError(
+      401,
+      "recent_auth_required",
+      "Authenticate again before changing account ownership or deletion state.",
+    );
+  }
+
   return user;
 }
 
@@ -423,6 +475,16 @@ export async function requireCurrentBillingManagerSession(
   return authorized;
 }
 
+async function requireActiveAuthLifecycle(user: AuthedUserWithOrg): Promise<void> {
+  const { organizationLifecycleAllowsNewWork, readOrganizationLifecycleAuthority } = await import(
+    "../services/account-lifecycle-authority"
+  );
+  const authority = await readOrganizationLifecycleAuthority(user.organization_id);
+  if (!organizationLifecycleAllowsNewWork(authority)) {
+    throw ForbiddenError("Account access is fenced by its lifecycle state");
+  }
+}
+
 async function authenticateApiKeyWithOrg<T>(
   c: AppContext,
   apiKey: string,
@@ -464,8 +526,9 @@ async function authenticateApiKeyWithOrg<T>(
     orgLookupResult = orgLookupOutcome?.value;
   }
 
-  trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
   const authed = toAuthedUser(user) as AuthedUserWithOrg;
+  await requireActiveAuthLifecycle(authed);
+  trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
   c.set("user", authed);
   c.set("authMethod", "api_key");
   c.set("apiKeyId", validated.id);
@@ -608,8 +671,11 @@ export async function requireUserOrApiKey(c: AppContext): Promise<AuthedUser> {
     const user = await usersService.getWithOrganization(validated.user_id);
     if (!user) throw AuthenticationError("User associated with API key not found");
     if (!user.is_active) throw ForbiddenError("User account is inactive");
-    trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
     const authed = toAuthedUser(user);
+    if (authed.organization_id && authed.organization) {
+      await requireActiveAuthLifecycle(authed as AuthedUserWithOrg);
+    }
+    trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
     c.set("user", authed);
     c.set("authMethod", "api_key");
     c.set("apiKeyId", validated.id);
