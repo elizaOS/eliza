@@ -20,6 +20,35 @@ export interface ProgressiveContentResourceSample {
 	readonly externalBytes: number;
 	readonly arrayBuffersBytes: number;
 	readonly fileDescriptors?: number;
+	readonly temporaryArtifacts?: number;
+	readonly databaseRows?: number;
+	readonly walBytes?: number;
+}
+
+export interface ProgressiveContentResourcePoint {
+	readonly operation: number;
+	readonly elapsedMs: number;
+	readonly sample: ProgressiveContentResourceSample;
+}
+
+export interface ProgressiveContentResourceDrift {
+	readonly status: "passed" | "failed";
+	readonly warmupOperations: number;
+	readonly memoryGrowthLimitsBytes: {
+		readonly rss: number;
+		readonly heap: number;
+		readonly external: number;
+		readonly arrayBuffers: number;
+	};
+	readonly rssP95GrowthBytes: number;
+	readonly heapP95GrowthBytes: number;
+	readonly externalP95GrowthBytes: number;
+	readonly arrayBuffersP95GrowthBytes: number;
+	readonly fileDescriptorGrowth?: number;
+	readonly temporaryArtifactGrowth?: number;
+	readonly databaseRowGrowth?: number;
+	readonly walGrowthBytes?: number;
+	readonly failures: readonly string[];
 }
 
 export interface ProgressiveContentStressCase {
@@ -69,6 +98,11 @@ export interface ProgressiveContentSoakReport {
 	readonly requiredDurationMs: number;
 	readonly requiredOperations: number;
 	readonly positiveLeakControlDetected: boolean;
+	readonly batches: number;
+	readonly failures: readonly string[];
+	readonly resourceSamples: readonly ProgressiveContentResourcePoint[];
+	readonly resourceDrift: ProgressiveContentResourceDrift;
+	readonly positiveLeakControlDrift: ProgressiveContentResourceDrift;
 	readonly stress: ProgressiveContentStressReport;
 }
 
@@ -95,6 +129,175 @@ function positiveInteger(value: number, label: string): number {
 		throw new RangeError(`${label} must be a positive safe integer`);
 	}
 	return value;
+}
+
+function finiteNonNegativeInteger(value: number, label: string): number {
+	if (!Number.isSafeInteger(value) || value < 0) {
+		throw new RangeError(`${label} must be a non-negative safe integer`);
+	}
+	return value;
+}
+
+function p95Metric(
+	samples: readonly ProgressiveContentResourcePoint[],
+	select: (sample: ProgressiveContentResourceSample) => number,
+): number {
+	return percentile(
+		samples
+			.map(({ sample }) => select(sample))
+			.sort((left, right) => left - right),
+		0.95,
+	);
+}
+
+function optionalGrowth(
+	samples: readonly ProgressiveContentResourcePoint[],
+	select: (sample: ProgressiveContentResourceSample) => number | undefined,
+): number | undefined {
+	const values = samples
+		.map(({ sample }) => select(sample))
+		.filter((value): value is number => value !== undefined);
+	if (values.length !== samples.length || values.length < 2) return undefined;
+	return (values.at(-1) ?? 0) - (values[0] ?? 0);
+}
+
+/** Detect sustained post-warmup growth with the same oracle used by the leak control. */
+export function analyzeProgressiveContentResourceDrift(input: {
+	readonly samples: readonly ProgressiveContentResourcePoint[];
+	readonly warmupOperations?: number;
+	readonly minimumMemoryAllowanceBytes?: number;
+	readonly maximumMemoryGrowthRatio?: number;
+}): ProgressiveContentResourceDrift {
+	const warmupOperations = finiteNonNegativeInteger(
+		input.warmupOperations ?? 0,
+		"warmupOperations",
+	);
+	const minimumMemoryAllowanceBytes = positiveInteger(
+		input.minimumMemoryAllowanceBytes ?? 16 * 1024 * 1024,
+		"minimumMemoryAllowanceBytes",
+	);
+	const maximumMemoryGrowthRatio = input.maximumMemoryGrowthRatio ?? 0.05;
+	if (
+		!Number.isFinite(maximumMemoryGrowthRatio) ||
+		maximumMemoryGrowthRatio < 0
+	) {
+		throw new RangeError(
+			"maximumMemoryGrowthRatio must be finite and non-negative",
+		);
+	}
+	const samples = input.samples.filter(
+		({ operation }) => operation >= warmupOperations,
+	);
+	if (samples.length < 2) {
+		return {
+			status: "failed",
+			warmupOperations,
+			memoryGrowthLimitsBytes: {
+				rss: minimumMemoryAllowanceBytes,
+				heap: minimumMemoryAllowanceBytes,
+				external: minimumMemoryAllowanceBytes,
+				arrayBuffers: minimumMemoryAllowanceBytes,
+			},
+			rssP95GrowthBytes: 0,
+			heapP95GrowthBytes: 0,
+			externalP95GrowthBytes: 0,
+			arrayBuffersP95GrowthBytes: 0,
+			failures: ["resource drift requires at least two post-warmup samples"],
+		};
+	}
+	const split = Math.max(1, Math.floor(samples.length / 2));
+	const early = samples.slice(0, split);
+	const late = samples.slice(split);
+	const baselineRss = p95Metric(early, ({ rssBytes }) => rssBytes);
+	const baselineHeap = p95Metric(early, ({ heapUsedBytes }) => heapUsedBytes);
+	const baselineExternal = p95Metric(
+		early,
+		({ externalBytes }) => externalBytes,
+	);
+	const baselineArrayBuffers = p95Metric(
+		early,
+		({ arrayBuffersBytes }) => arrayBuffersBytes,
+	);
+	const memoryGrowthLimitsBytes = {
+		rss: Math.max(
+			minimumMemoryAllowanceBytes,
+			Math.ceil(baselineRss * maximumMemoryGrowthRatio),
+		),
+		heap: Math.max(
+			minimumMemoryAllowanceBytes,
+			Math.ceil(baselineHeap * maximumMemoryGrowthRatio),
+		),
+		external: Math.max(
+			minimumMemoryAllowanceBytes,
+			Math.ceil(baselineExternal * maximumMemoryGrowthRatio),
+		),
+		arrayBuffers: Math.max(
+			minimumMemoryAllowanceBytes,
+			Math.ceil(baselineArrayBuffers * maximumMemoryGrowthRatio),
+		),
+	};
+	const rssP95GrowthBytes =
+		p95Metric(late, ({ rssBytes }) => rssBytes) - baselineRss;
+	const heapP95GrowthBytes =
+		p95Metric(late, ({ heapUsedBytes }) => heapUsedBytes) - baselineHeap;
+	const externalP95GrowthBytes =
+		p95Metric(late, ({ externalBytes }) => externalBytes) - baselineExternal;
+	const arrayBuffersP95GrowthBytes =
+		p95Metric(late, ({ arrayBuffersBytes }) => arrayBuffersBytes) -
+		baselineArrayBuffers;
+	const fileDescriptorGrowth = optionalGrowth(
+		samples,
+		({ fileDescriptors }) => fileDescriptors,
+	);
+	const temporaryArtifactGrowth = optionalGrowth(
+		samples,
+		({ temporaryArtifacts }) => temporaryArtifacts,
+	);
+	const databaseRowGrowth = optionalGrowth(
+		samples,
+		({ databaseRows }) => databaseRows,
+	);
+	const walGrowthBytes = optionalGrowth(samples, ({ walBytes }) => walBytes);
+	const failures: string[] = [];
+	for (const [label, growth, limit] of [
+		["rss", rssP95GrowthBytes, memoryGrowthLimitsBytes.rss],
+		["heap", heapP95GrowthBytes, memoryGrowthLimitsBytes.heap],
+		["external", externalP95GrowthBytes, memoryGrowthLimitsBytes.external],
+		[
+			"arrayBuffers",
+			arrayBuffersP95GrowthBytes,
+			memoryGrowthLimitsBytes.arrayBuffers,
+		],
+	] as const) {
+		if (growth > limit) {
+			failures.push(`${label} p95 growth ${growth} exceeds ${limit}`);
+		}
+	}
+	for (const [label, growth] of [
+		["file descriptors", fileDescriptorGrowth],
+		["temporary artifacts", temporaryArtifactGrowth],
+		["database rows", databaseRowGrowth],
+	] as const) {
+		if (growth !== undefined && growth > 0) {
+			failures.push(`${label} grew by ${growth}`);
+		}
+	}
+	return {
+		status: failures.length === 0 ? "passed" : "failed",
+		warmupOperations,
+		memoryGrowthLimitsBytes,
+		rssP95GrowthBytes,
+		heapP95GrowthBytes,
+		externalP95GrowthBytes,
+		arrayBuffersP95GrowthBytes,
+		...(fileDescriptorGrowth === undefined ? {} : { fileDescriptorGrowth }),
+		...(temporaryArtifactGrowth === undefined
+			? {}
+			: { temporaryArtifactGrowth }),
+		...(databaseRowGrowth === undefined ? {} : { databaseRowGrowth }),
+		...(walGrowthBytes === undefined ? {} : { walGrowthBytes }),
+		failures,
+	};
 }
 
 /** Exercise deterministic pages at each required concurrency and record bounded work. */
@@ -228,7 +431,11 @@ export async function runProgressiveContentSoak(input: {
 	readonly requiredOperations?: number;
 	readonly batchOperationsPerWorker?: number;
 	readonly concurrency?: number;
-	readonly positiveLeakControl: () => boolean | Promise<boolean>;
+	readonly sampleEveryOperations?: number;
+	readonly warmupOperations?: number;
+	readonly positiveLeakControl: () =>
+		| readonly ProgressiveContentResourceSample[]
+		| Promise<readonly ProgressiveContentResourceSample[]>;
 	readonly measureResources?: () =>
 		| ProgressiveContentResourceSample
 		| Promise<ProgressiveContentResourceSample>;
@@ -246,9 +453,22 @@ export async function runProgressiveContentSoak(input: {
 		input.batchOperationsPerWorker ?? 16,
 		"batchOperationsPerWorker",
 	);
+	const sampleEveryOperations = positiveInteger(
+		input.sampleEveryOperations ?? 1_000,
+		"sampleEveryOperations",
+	);
+	const warmupOperations = finiteNonNegativeInteger(
+		input.warmupOperations ??
+			Math.min(10_000, Math.floor(requiredOperations / 10)),
+		"warmupOperations",
+	);
 	const startedAt = performance.now();
 	let operations = 0;
+	let batches = 0;
+	let lastSampledOperation = -1;
 	let latest: ProgressiveContentStressReport | undefined;
+	const failures: string[] = [];
+	const resourceSamples: ProgressiveContentResourcePoint[] = [];
 	do {
 		latest = await runProgressiveContentStress({
 			adapter: input.adapter,
@@ -258,18 +478,67 @@ export async function runProgressiveContentSoak(input: {
 			measureResources: input.measureResources,
 		});
 		operations += concurrency * batchOperationsPerWorker;
+		batches += 1;
+		for (const stressCase of latest.cases)
+			failures.push(...stressCase.failures);
+		if (resourceSamples.length === 0) {
+			resourceSamples.push({
+				operation: Math.max(
+					0,
+					operations - concurrency * batchOperationsPerWorker,
+				),
+				elapsedMs: 0,
+				sample: latest.resources.before,
+			});
+			lastSampledOperation = resourceSamples[0]?.operation ?? 0;
+		}
+		if (operations - lastSampledOperation >= sampleEveryOperations) {
+			resourceSamples.push({
+				operation: operations,
+				elapsedMs: performance.now() - startedAt,
+				sample: latest.resources.after,
+			});
+			lastSampledOperation = operations;
+		}
 	} while (
 		operations < requiredOperations ||
 		performance.now() - startedAt < requiredDurationMs
 	);
 	const durationMs = performance.now() - startedAt;
-	const positiveLeakControlDetected = await input.positiveLeakControl();
+	if (lastSampledOperation !== operations && latest) {
+		resourceSamples.push({
+			operation: operations,
+			elapsedMs: durationMs,
+			sample: latest.resources.after,
+		});
+	}
+	const resourceDrift = analyzeProgressiveContentResourceDrift({
+		samples: resourceSamples,
+		warmupOperations,
+	});
+	const leakSamples = await input.positiveLeakControl();
+	const positiveLeakControlDrift = analyzeProgressiveContentResourceDrift({
+		samples: leakSamples.map((sample, index) => ({
+			operation: index,
+			elapsedMs: index,
+			sample,
+		})),
+	});
+	const positiveLeakControlDetected =
+		positiveLeakControlDrift.status === "failed";
+	if (!positiveLeakControlDetected) {
+		failures.push("positive leak control was not detected");
+	}
+	if (resourceDrift.status === "failed")
+		failures.push(...resourceDrift.failures);
 	return {
 		schemaVersion: PROGRESSIVE_CONTENT_STRESS_SCHEMA_VERSION,
 		adapterId: input.adapter.adapterId,
 		objectId: input.object.id,
 		status:
-			latest.status === "passed" && positiveLeakControlDetected
+			failures.length === 0 &&
+			latest.status === "passed" &&
+			positiveLeakControlDetected
 				? "passed"
 				: "failed",
 		durationMs,
@@ -277,6 +546,11 @@ export async function runProgressiveContentSoak(input: {
 		requiredDurationMs,
 		requiredOperations,
 		positiveLeakControlDetected,
+		batches,
+		failures,
+		resourceSamples,
+		resourceDrift,
+		positiveLeakControlDrift,
 		stress: latest,
 	};
 }
