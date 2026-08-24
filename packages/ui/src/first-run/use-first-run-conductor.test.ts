@@ -799,6 +799,64 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
+  it("restores every typed request exactly once after a cold OAuth relaunch", async () => {
+    localStorage.removeItem("steward_session_token");
+    const firstSpies = seedAppStore({ elizaCloudConnected: false });
+    const first = renderConductor();
+    await waitForTurn(first.turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunText("Research quiet hotels near the venue.")).toBe(
+      true,
+    );
+    expect(
+      tryHandleFirstRunText(
+        "Keep the budget under $300 exactly.\nPreserve this second line.",
+      ),
+    ).toBe(true);
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(firstSpies.handleInteractiveCloudLogin).toHaveBeenCalled();
+    });
+
+    // External OAuth evicts the WebView: all React refs and the transcript are
+    // gone, while browser storage and the completed account session survive.
+    first.unmount();
+    localStorage.setItem("steward_session_token", "cloud-token");
+    const prefill = vi.fn();
+    window.addEventListener(CHAT_PREFILL_EVENT, prefill);
+    const secondSpies = seedAppStore({ elizaCloudConnected: true });
+    const second = renderConductor();
+    try {
+      await waitForTurn(second.turn, "first-run:tutorial");
+      expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+      await waitFor(() => {
+        expect(prefill).toHaveBeenCalledTimes(1);
+      });
+      expect(prefill).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detail: {
+            text: [
+              "Research quiet hotels near the venue.",
+              "Keep the budget under $300 exactly.\nPreserve this second line.",
+            ].join("\n\n"),
+            select: true,
+          },
+        }),
+      );
+      expect(secondSpies.completeFirstRun).toHaveBeenCalledWith("chat");
+
+      // A later mount cannot replay a request the real composer consumed.
+      second.unmount();
+      seedAppStore({ elizaCloudConnected: true });
+      const third = renderConductor();
+      await Promise.resolve();
+      expect(prefill).toHaveBeenCalledTimes(1);
+      third.unmount();
+    } finally {
+      window.removeEventListener(CHAT_PREFILL_EVENT, prefill);
+    }
+  });
+
   it("clears the cloud resume marker on a fresh local runtime pick so a relaunch never resumes an abandoned cloud flow", async () => {
     // The user had armed a cloud marker, then came back and chose local. Local
     // is the latest intent — the stale cloud marker must be cleared.

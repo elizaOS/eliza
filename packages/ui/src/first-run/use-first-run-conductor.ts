@@ -131,6 +131,11 @@ import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "./first-run-greeting";
+import {
+  readPendingFirstRunText,
+  takePendingFirstRunText,
+  writePendingFirstRunText,
+} from "./first-run-pending-text";
 import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
 import { revertLocalRuntimeCommitment } from "./revert-local-runtime-commitment";
 
@@ -523,9 +528,16 @@ export function useFirstRunConductor(): void {
   const textTurnSeqRef = React.useRef(0);
   // Every pre-agent request is retained losslessly. Multiple turns remain
   // distinct paragraphs when setup releases the real composer.
-  const pendingFirstRunTextRef = React.useRef<string[]>([]);
+  const pendingFirstRunTextRef = React.useRef<string[]>(
+    readPendingFirstRunText(),
+  );
   const resumePendingFirstRunText = React.useCallback(() => {
+    // The ref is authoritative in-session: a later localStorage quota failure
+    // must not roll it back to an older durable prefix. On a cold mount the ref
+    // was initialized from that same durable copy.
     const pending = pendingFirstRunTextRef.current;
+    const durable = takePendingFirstRunText();
+    if (pending.length === 0 && durable.length > 0) pending.push(...durable);
     if (pending.length === 0) return;
     pendingFirstRunTextRef.current = [];
     const text = pending.join("\n\n");
@@ -1468,6 +1480,7 @@ export function useFirstRunConductor(): void {
               : FIRST_RUN_TEXT_REPLY.signIn;
       textTurnSeqRef.current += 1;
       pendingFirstRunTextRef.current.push(trimmed);
+      writePendingFirstRunText(pendingFirstRunTextRef.current);
       const seq = textTurnSeqRef.current;
       seedTurn({
         id: `first-run:user:${seq}`,
