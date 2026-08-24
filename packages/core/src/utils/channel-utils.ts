@@ -17,7 +17,8 @@ export type NormalizedChatType = "direct" | "group" | "channel";
  * @returns Normalized chat type
  */
 export function normalizeChatType(raw?: string): NormalizedChatType {
-	const lower = raw?.toLowerCase().trim();
+	if (typeof raw !== "string") return "direct";
+	const lower = raw.toLowerCase().trim();
 	if (!lower) {
 		return "direct";
 	}
@@ -353,7 +354,8 @@ export type SenderLabelParams = {
 };
 
 function normalizeLabel(value?: string): string | undefined {
-	const trimmed = value?.trim();
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
 	return trimmed ? trimmed : undefined;
 }
 

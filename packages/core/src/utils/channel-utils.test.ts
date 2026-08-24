@@ -27,6 +27,15 @@ describe("normalizeChatType", () => {
 		expect(normalizeChatType(undefined)).toBe("direct");
 		expect(normalizeChatType("weird")).toBe("direct");
 	});
+
+	it("returns direct for non-string inputs without throwing", () => {
+		expect(normalizeChatType(null as unknown as string)).toBe("direct");
+		expect(normalizeChatType(123 as unknown as string)).toBe("direct");
+		expect(normalizeChatType(0 as unknown as string)).toBe("direct");
+		expect(normalizeChatType(true as unknown as string)).toBe("direct");
+		expect(normalizeChatType({} as unknown as string)).toBe("direct");
+		expect(normalizeChatType([] as unknown as string)).toBe("direct");
+	});
 });
 
 describe("resolveMentionGating", () => {
@@ -302,5 +311,14 @@ describe("resolveSenderLabel and listSenderLabelCandidates", () => {
 		expect(candidates).toContain("alice_w");
 		expect(candidates).toContain("u123");
 		expect(candidates).toContain("Alice (u123)");
+	});
+
+	it("returns null/empty for non-string sender inputs without throwing", () => {
+		expect(resolveSenderLabel({ name: 123 as unknown as string })).toBeNull();
+		expect(resolveSenderLabel({ username: {} as unknown as string })).toBeNull();
+		expect(resolveSenderLabel({ tag: true as unknown as string })).toBeNull();
+		expect(listSenderLabelCandidates({ name: 123 as unknown as string })).toEqual([]);
+		expect(listSenderLabelCandidates({ id: 123 as unknown as string })).toEqual([]);
+		expect(listSenderLabelCandidates({ name: null as unknown as string, id: undefined })).toEqual([]);
 	});
 });
