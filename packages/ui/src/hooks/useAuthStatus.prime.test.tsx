@@ -617,3 +617,309 @@ describe("isAuthenticatedNow + subscribeAuthStatus (non-hook seam, #16242)", () 
     expect(seen).not.toContain("unauthenticated");
   });
 });
+
+// Additive coverage: the option contracts, module seams, and failure mappings
+// outside startup priming — skip/observeOnly, the #11084 zero-traffic gate,
+// forced revalidation through the non-hook seam, unknown-failure-reason
+// mapping, the local-agent 503 retry budget, visibility-gated polling, and the
+// Steward cleared guard on non-shared targets. Same harness contract as above:
+// real modules under test; only global fetch (the network boundary) is stubbed.
+
+const { getAuthStatusSnapshot, revalidateAuthStatus, useIsAuthenticated } =
+  await import("./useAuthStatus");
+const { STEWARD_SESSION_CHANGE_EVENT } = await import(
+  "@elizaos/shared/steward-session-client"
+);
+
+function setDocumentVisibility(state: DocumentVisibilityState): void {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+}
+
+function restoreDocumentVisibility(): void {
+  delete (document as unknown as Record<string, unknown>).visibilityState;
+}
+
+describe("useAuthStatus option contracts, seams, and failure mapping", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const realFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    delete (window as Window & { __electrobunWindowId?: number })
+      .__electrobunWindowId;
+    localStorage.clear();
+    setStewardAuthedCookie(false);
+    setBootConfig({ branding: {} });
+    __resetAuthStatusForTests();
+    fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  afterEach(async () => {
+    // Restore real timers before draining: the React 19 scheduler drain below
+    // relies on setImmediate, which vitest fake timers also virtualise.
+    vi.useRealTimers();
+    cleanup();
+    await act(async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+    });
+    globalThis.fetch = realFetch;
+    restoreDocumentVisibility();
+    setStewardAuthedCookie(false);
+    delete (window as Window & { __electrobunWindowId?: number })
+      .__electrobunWindowId;
+    vi.restoreAllMocks();
+    __resetAuthStatusForTests();
+  });
+
+  it("skip mounts fail-closed on loading without probing; refetch forces the deferred probe", async () => {
+    const { result } = renderHook(() =>
+      useAuthStatus({ skip: true, pollIntervalMs: 0 }),
+    );
+    await act(async () => {});
+    expect(result.current.state.phase).toBe("loading");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValue(jsonResponse(200, AUTH_ME_BODY));
+    await act(async () => {
+      await result.current.refetch();
+    });
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("observeOnly tracks external publishes without ever starting a probe", async () => {
+    const { result } = renderHook(() =>
+      useAuthStatus({ observeOnly: true, pollIntervalMs: 0 }),
+    );
+    await act(async () => {});
+    expect(result.current.state.phase).toBe("loading");
+
+    let restore: (() => void) | undefined;
+    act(() => {
+      restore = __setAuthStatusForTests({
+        phase: "authenticated",
+        identity: { id: "owner", displayName: "Owner", kind: "owner" },
+        session: { id: "s1", kind: "browser", expiresAt: null },
+        access: {
+          mode: "session",
+          passwordConfigured: true,
+          ownerConfigured: true,
+        },
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+
+    act(() => {
+      restore?.();
+    });
+    expect(result.current.state.phase).toBe("loading");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("useIsAuthenticated gates on the shared snapshot with zero network traffic (#11084)", async () => {
+    const { result } = renderHook(() => useIsAuthenticated());
+    await act(async () => {});
+    expect(result.current).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    let restore: (() => void) | undefined;
+    act(() => {
+      restore = __setAuthStatusForTests({
+        phase: "authenticated",
+        identity: { id: "owner", displayName: "Owner", kind: "owner" },
+        session: { id: "s1", kind: "browser", expiresAt: null },
+        access: {
+          mode: "session",
+          passwordConfigured: true,
+          ownerConfigured: true,
+        },
+      });
+    });
+    await waitFor(() => expect(result.current).toBe(true));
+
+    act(() => {
+      restore?.();
+    });
+    await waitFor(() => expect(result.current).toBe(false));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("revalidateAuthStatus forces real sequential probes and publishes the shared snapshot", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, AUTH_ME_BODY));
+
+    await act(async () => {
+      await revalidateAuthStatus();
+    });
+    expect(getAuthStatusSnapshot()).toMatchObject({
+      phase: "authenticated",
+      identity: AUTH_ME_BODY.identity,
+      session: AUTH_ME_BODY.session,
+      access: AUTH_ME_BODY.access,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await revalidateAuthStatus();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("maps an unrecognized 401 reason to unauthenticated without a reason, preserving access", async () => {
+    const access = {
+      mode: "session",
+      passwordConfigured: false,
+      ownerConfigured: false,
+    };
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, { reason: "totally_unknown", access }),
+    );
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("unauthenticated"),
+    );
+    expect(result.current.state).toEqual({
+      phase: "unauthenticated",
+      reason: undefined,
+      access,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces remote_password_not_configured so the gate can route to setup", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, {
+        reason: "remote_password_not_configured",
+        access: {
+          mode: "remote",
+          passwordConfigured: false,
+          ownerConfigured: false,
+        },
+      }),
+    );
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({
+        phase: "unauthenticated",
+        reason: "remote_password_not_configured",
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays loading through the local-agent 503 boot budget, then publishes server_unavailable after exactly 11 probes", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(503, {}));
+    vi.useFakeTimers();
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // First probe in flight; the hook must remain fail-closed on loading
+    // while the retry budget is still running.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.state.phase).toBe("loading");
+
+    for (let round = 0; round < 12; round += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      if (result.current.state.phase === "server_unavailable") break;
+    }
+
+    expect(result.current.state.phase).toBe("server_unavailable");
+    // 1 initial probe + SERVER_UNAVAILABLE_RETRIES (10) retries.
+    expect(fetchMock).toHaveBeenCalledTimes(11);
+  });
+
+  it("background polling fires only while the document is visible", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(401, {}));
+    vi.useFakeTimers();
+    setDocumentVisibility("visible");
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 50 }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    setDocumentVisibility("hidden");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    setDocumentVisibility("visible");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.current.state.phase).toBe("unauthenticated");
+  });
+
+  it("ignores a Steward cleared event on a self-hosted target instead of tearing down the session", async () => {
+    const apiBase = "https://vps.example/api/v1/eliza/agents/agent-1";
+    setBootConfig({ branding: {}, apiBase });
+    savePersistedActiveServer(
+      createPersistedActiveServer({
+        kind: "remote",
+        apiBase,
+        accessToken: "selfhost-token",
+      }),
+    );
+    fetchMock.mockResolvedValue(jsonResponse(200, AUTH_ME_BODY));
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(STEWARD_SESSION_CHANGE_EVENT, {
+          detail: { state: "cleared" },
+        }),
+      );
+    });
+    await act(async () => {});
+
+    expect(result.current.state.phase).toBe("authenticated");
+    expect(loadPersistedActiveServer()?.accessToken).toBe("selfhost-token");
+    expect(getBootConfig().apiBase).toBe(apiBase);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores storage events whose key is not the canonical Steward token", async () => {
+    const apiBase = "https://vps.example/api/v1/eliza/agents/agent-1";
+    setBootConfig({ branding: {}, apiBase });
+    fetchMock.mockResolvedValue(jsonResponse(200, AUTH_ME_BODY));
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: "some_other_app_key" }),
+      );
+    });
+    await act(async () => {});
+
+    expect(result.current.state.phase).toBe("authenticated");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
