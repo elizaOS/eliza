@@ -189,15 +189,15 @@ describe("url-ingest", () => {
 		});
 	});
 
-	it("defaults missing content types to octet-stream text", async () => {
+	it("treats a missing content type as binary octet-stream", async () => {
 		__setDocumentUrlFetchImplForTests(
 			async () => new Response(new TextEncoder().encode("raw text")),
 		);
 
 		await expect(fetchDocumentFromUrl("https://8.8.8.8/raw")).resolves.toEqual({
 			filename: "raw",
-			content: "raw text",
-			contentType: "text",
+			content: "cmF3IHRleHQ=",
+			contentType: "binary",
 			mimeType: "application/octet-stream",
 		});
 	});
@@ -213,6 +213,30 @@ describe("url-ingest", () => {
 
 		await expect(
 			fetchDocumentFromUrl("https://8.8.8.8/large.txt"),
+		).rejects.toThrow(
+			`URL content exceeds maximum size of ${maximumBytes} bytes`,
+		);
+	});
+
+	it("rejects an undeclared streamed body that grows beyond the import limit", async () => {
+		const maximumBytes = 10 * 1024 * 1024;
+		__setDocumentUrlFetchImplForTests(async () => {
+			const body = new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new Uint8Array(maximumBytes));
+					controller.enqueue(new Uint8Array(1));
+					controller.close();
+				},
+			});
+			const response = new Response(body, {
+				headers: { "Content-Type": "text/plain" },
+			});
+			expect(response.headers.has("content-length")).toBe(false);
+			return response;
+		});
+
+		await expect(
+			fetchDocumentFromUrl("https://8.8.8.8/chunked.txt"),
 		).rejects.toThrow(
 			`URL content exceeds maximum size of ${maximumBytes} bytes`,
 		);
