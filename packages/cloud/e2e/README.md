@@ -89,8 +89,10 @@ Strict deterministic fixtures are the only model in the PR lane.
 `stability:real -- --provider openai|anthropic` runs the identical scenario,
 world, plugins, services, and mock endpoints while replacing only the model.
 The selected provider is forced through a bounded loopback proxy; a pinned-Bun
-preload rejects direct child fetch egress. Exactly one model credential is
-passed, and real service credentials are never passed. Successful responses
+preload rejects direct child fetch and Node HTTP(S) egress. The attempt parent
+captures exactly one selected `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, removes
+it before starting the mock stack, and injects it only at the provider proxy;
+the scenario child receives a dummy SDK key. Real service credentials are never passed. Successful responses
 must carry authoritative OpenAI or Anthropic usage; the proxy aggregates those
 counts and fails closed on missing, malformed, over-budget, or over-limit calls.
 

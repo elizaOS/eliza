@@ -11,6 +11,13 @@ export interface StabilityParentNetworkEntry {
   allowed: boolean;
 }
 
+function requestMethod(
+  input: Parameters<typeof globalThis.fetch>[0],
+  init?: Parameters<typeof globalThis.fetch>[1],
+): string {
+  return init?.method ?? (input instanceof Request ? input.method : "GET");
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   if (hostname === "localhost") return true;
   const address =
@@ -39,12 +46,32 @@ export function createLoopbackOnlyFetch(
       const allowed = isLoopbackHostname(url.hostname);
       ledger.push({
         origin: url.origin,
-        method:
-          init?.method ?? (input instanceof Request ? input.method : "GET"),
+        method: requestMethod(input, init),
         allowed,
       });
       if (!allowed) throw new Error(`unexpected egress blocked: ${url.origin}`);
-      return nativeFetch(input, init);
+      const response = await nativeFetch(input, {
+        ...init,
+        redirect: "manual",
+      });
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) throw new Error("loopback redirect omitted Location");
+        const target = new URL(location, url);
+        const targetAllowed = isLoopbackHostname(target.hostname);
+        ledger.push({
+          origin: target.origin,
+          method: requestMethod(input, init),
+          allowed: targetAllowed,
+        });
+        if (!targetAllowed) {
+          throw new Error(
+            `unexpected redirect egress blocked: ${target.origin}`,
+          );
+        }
+        throw new Error(`loopback redirect blocked: ${target.origin}`);
+      }
+      return response;
     },
     { preconnect: nativeFetch.preconnect },
   );

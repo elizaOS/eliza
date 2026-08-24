@@ -36,6 +36,16 @@ const INTERNAL_CONTROL_ENV = new Set([
   "ELIZA_SYNTHETIC_CONTROL_TOKEN",
   "ELIZA_SYNTHETIC_CONTROL_URL",
 ]);
+const REAL_MODEL_METER_FAILURE_CODES = new Set([
+  "STABILITY_MODEL_USAGE_MISSING",
+  "STABILITY_MODEL_USAGE_MALFORMED",
+  "STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED",
+  "STABILITY_MODEL_TOKEN_BUDGET_EXHAUSTED",
+  "STABILITY_MODEL_REQUEST_BUDGET_EXCEEDED",
+  "STABILITY_MODEL_PROVIDER_ERROR",
+  "STABILITY_MODEL_PROVIDER_TIMEOUT",
+  "STABILITY_MODEL_PROXY_ERROR",
+]);
 
 export type ScenarioStabilityModelMode =
   | { kind: "deterministic-mock"; fixtureManifestFingerprint: string }
@@ -621,23 +631,64 @@ export class ScenarioStabilitySubprocessAdapter
         );
       });
       const receipt = receipts[0] as Record<string, unknown> | undefined;
+      const meteringFailures = Array.isArray(receipt?.meteringFailures)
+        ? receipt.meteringFailures
+        : null;
+      const meteringFailuresValid =
+        meteringFailures?.every((value) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) {
+            return false;
+          }
+          const failure = value as Record<string, unknown>;
+          return (
+            typeof failure.code === "string" &&
+            REAL_MODEL_METER_FAILURE_CODES.has(failure.code) &&
+            typeof failure.message === "string" &&
+            failure.message.trim().length > 0 &&
+            Number.isSafeInteger(failure.requestNumber) &&
+            (failure.requestNumber as number) > 0 &&
+            (failure.requestNumber as number) <=
+              (receipt && Number.isSafeInteger(receipt.requestCount)
+                ? (receipt.requestCount as number) + 1
+                : 0)
+          );
+        }) === true;
+      const lastMeteringFailure = meteringFailures?.at(-1) as
+        | Record<string, unknown>
+        | undefined;
+      const requestCount = receipt?.requestCount;
+      const successMeteringValid =
+        execution.passed === false ||
+        (receipt?.liveModelInvoked === true &&
+          Number.isSafeInteger(requestCount) &&
+          (requestCount as number) > 0 &&
+          execution.inputTokens > 0 &&
+          meteringFailures?.length === 0);
+      const failedMeteringBindingValid =
+        execution.passed === true ||
+        (((Number.isSafeInteger(requestCount) &&
+          (requestCount as number) > 0) ||
+          (meteringFailures?.length ?? 0) > 0) &&
+          ((meteringFailures?.length ?? 0) === 0 ||
+            execution.error === lastMeteringFailure?.code));
       if (
         receipts.length !== 1 ||
         !receipt ||
         receipt.provider !== input.target.model.provider ||
         receipt.model !== input.target.model.model ||
-        receipt.liveModelInvoked !== true ||
-        !Number.isSafeInteger(receipt.requestCount) ||
-        (receipt.requestCount as number) <= 0 ||
+        receipt.liveModelInvoked !==
+          (Number.isSafeInteger(requestCount) &&
+            (requestCount as number) > 0) ||
+        !Number.isSafeInteger(requestCount) ||
+        (requestCount as number) < 0 ||
         !Number.isSafeInteger(input.budgets.maxModelRequests) ||
         (input.budgets.maxModelRequests as number) <= 0 ||
-        (receipt.requestCount as number) >
-          (input.budgets.maxModelRequests as number) ||
+        (requestCount as number) > (input.budgets.maxModelRequests as number) ||
         receipt.inputTokens !== execution.inputTokens ||
         receipt.outputTokens !== execution.outputTokens ||
-        execution.inputTokens <= 0 ||
-        !Array.isArray(receipt.meteringFailures) ||
-        receipt.meteringFailures.length !== 0 ||
+        !meteringFailuresValid ||
+        !successMeteringValid ||
+        !failedMeteringBindingValid ||
         receipt.namespace !== session.manifest.namespace ||
         receipt.manifestId !== session.manifest.manifestId ||
         receipt.generation !== session.generation ||

@@ -22,14 +22,16 @@ if (process.env.ELIZA_TEST_PRINT_SECRETS === "1") {
   process.stderr.write(String(process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN) + " " + String(process.env.OPENAI_API_KEY || ""));
 }
 const hash = process.env.ELIZA_STABILITY_AUTHORITY_INITIAL_STATE_HASH;
-const inputTokens = process.env.ELIZA_TEST_ZERO_REAL === "1" ? 0 : 4;
+const meterFailureCode = process.env.ELIZA_TEST_METER_FAILURE;
+const inputTokens = process.env.ELIZA_TEST_ZERO_REAL === "1" || meterFailureCode === "STABILITY_MODEL_USAGE_MISSING" || meterFailureCode === "STABILITY_MODEL_USAGE_MALFORMED" ? 0 : meterFailureCode === "STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED" ? 12 : 4;
+const outputTokens = meterFailureCode === "STABILITY_MODEL_USAGE_MISSING" || meterFailureCode === "STABILITY_MODEL_USAGE_MALFORMED" ? 0 : 2;
 const requestCount = process.env.ELIZA_TEST_OVER_CAP_REAL === "1" ? 3 : 1;
 process.stdout.write(JSON.stringify({
-  passed: true,
+  passed: !meterFailureCode,
   initialStateHash: hash,
   finalStateHash: "b".repeat(64),
   inputTokens,
-  outputTokens: 2,
+  outputTokens,
   toolCalls: 1,
   evidence: {
     trajectory: [{ model: process.env.ELIZA_STABILITY_MODEL }],
@@ -56,8 +58,8 @@ process.stdout.write(JSON.stringify({
       liveModelInvoked: true,
       requestCount,
       inputTokens,
-      outputTokens: 2,
-      meteringFailures: [],
+      outputTokens,
+      meteringFailures: meterFailureCode ? [{ code: meterFailureCode, message: meterFailureCode + " retained", requestNumber: 1 }] : [],
       namespace: process.env.ELIZA_SYNTHETIC_NAMESPACE,
       manifestId: process.env.ELIZA_SYNTHETIC_MANIFEST_ID,
       generation: Number(process.env.ELIZA_SYNTHETIC_GENERATION),
@@ -66,7 +68,8 @@ process.stdout.write(JSON.stringify({
     }],
     judgeVerdicts: [{ passed: true }]
   },
-  stateDiff: { sent: true }
+  stateDiff: { sent: true },
+  ...(meterFailureCode ? { error: meterFailureCode } : {})
 }));
 `;
 
@@ -457,6 +460,103 @@ describe("scenario stability subprocess adapter", () => {
       }
     }
   });
+
+  it.each([
+    ["STABILITY_MODEL_USAGE_MISSING", 0, 0],
+    ["STABILITY_MODEL_USAGE_MALFORMED", 0, 0],
+    ["STABILITY_MODEL_TOKEN_BUDGET_EXCEEDED", 12, 2],
+  ] as const)(
+    "retains authentic failed real-model evidence for %s",
+    async (meterFailureCode, expectedInputTokens, expectedOutputTokens) => {
+      const outputRoot = root();
+      const manifest = {
+        version: 1 as const,
+        namespace: `real-failure-${meterFailureCode}`,
+        manifestId: `real-failure-${meterFailureCode}-v1`,
+        domains: {},
+      };
+      let generation = 0;
+      const adapter = new ScenarioStabilitySubprocessAdapter({
+        command: process.execPath,
+        args: () => ["-e", CHILD_SCRIPT],
+        cwd: outputRoot,
+        modelMode: {
+          kind: "real-llm",
+          credentialEnv: "OPENAI_API_KEY",
+          credentialValue: "dummy-model-key",
+        },
+        syntheticControl: {
+          controlUrl: "http://127.0.0.1:43191",
+          controlToken: "control-secret",
+          manifest,
+        },
+        mockServiceUrls: {
+          ELIZA_MOCK_MESSAGES_URL: "http://127.0.0.1:43192/messages",
+        },
+        env: { ELIZA_TEST_METER_FAILURE: meterFailureCode },
+        openSession: async () =>
+          ({
+            manifest,
+            generation: ++generation,
+            async execute() {
+              return { ready: true };
+            },
+            async close() {},
+          }) as unknown as SyntheticControlSession,
+      });
+      const report = await executeScenarioStability({
+        plan: createScenarioStabilityPlan({
+          runId: `real-failure-${meterFailureCode}`,
+          outputRoot,
+        }),
+        targets: [
+          {
+            scenarioId: "live-failure",
+            model: { provider: "openai", model: "gpt-test" },
+          },
+        ],
+        budgets: {
+          timeoutMs: 2_000,
+          maxInputTokens: 10,
+          maxOutputTokens: 10,
+          maxModelRequests: 2,
+          maxToolCalls: 2,
+        },
+        adapter,
+      });
+
+      expect(report.cells[0]?.tier).toBe("0/3");
+      expect(report.focusList[0]?.failedAttemptIds).toHaveLength(3);
+      expect(report.failureClusters).toEqual([
+        expect.objectContaining({
+          occurrences: 3,
+          sample: meterFailureCode,
+        }),
+      ]);
+      for (const attempt of report.cells[0]?.attempts ?? []) {
+        expect(attempt).toMatchObject({
+          passed: false,
+          error: meterFailureCode,
+          inputTokens: expectedInputTokens,
+          outputTokens: expectedOutputTokens,
+        });
+        expect(
+          attempt.evidence.providerReceipts.find(
+            (receipt) =>
+              (receipt as { receiptType?: unknown }).receiptType ===
+              "eliza.stability.real-llm.v1",
+          ),
+        ).toMatchObject({
+          requestCount: 1,
+          inputTokens: expectedInputTokens,
+          outputTokens: expectedOutputTokens,
+          meteringFailures: [
+            expect.objectContaining({ code: meterFailureCode }),
+          ],
+        });
+      }
+    },
+  );
 
   it("allows one explicit model credential only in real-llm mode", () => {
     const outputRoot = root();

@@ -613,11 +613,11 @@ export async function executeScenarioStability(input: {
             `initial state hash differs from the first attempt in this cell: ${execution.initialStateHash}`,
             execution,
           );
+        } else if (!execution.passed) {
+          failureClassification = "scenario-failure";
         } else if (violation) {
           failureClassification = "scenario-failure";
           execution = failedExecution(violation, execution);
-        } else if (!execution.passed) {
-          failureClassification = "scenario-failure";
         } else {
           failureClassification = null;
         }

@@ -14,6 +14,7 @@ import cloudStabilityScenario from "../scenarios/cloud-stability-agent.scenario.
 import { startCloudStack } from "../src/fixtures/stack.ts";
 import { canonicalCloudStabilitySha256 } from "../src/stability/cloud-stability-runner.ts";
 import {
+  liveModelScenarioChildEnvironment,
   type StabilityModelProvider,
   startLiveModelEgressProxy,
 } from "../src/stability/live-model-meter.ts";
@@ -102,18 +103,28 @@ const providerRoutes: Record<
   string,
   {
     origin: string;
-    baseUrlEnvironment: "OPENAI_BASE_URL" | "ANTHROPIC_BASE_URL";
+    credentialEnvironment: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
   }
 > = {
   openai: {
     origin: "https://api.openai.com",
-    baseUrlEnvironment: "OPENAI_BASE_URL",
+    credentialEnvironment: "OPENAI_API_KEY",
   },
   anthropic: {
     origin: "https://api.anthropic.com",
-    baseUrlEnvironment: "ANTHROPIC_BASE_URL",
+    credentialEnvironment: "ANTHROPIC_API_KEY",
   },
 };
+const providerRoute = providerRoutes[provider];
+if (mode === "real-llm" && !providerRoute) {
+  throw new Error(`unsupported real-model provider ${provider}`);
+}
+const realModelCredential =
+  mode === "real-llm" && providerRoute
+    ? required(providerRoute.credentialEnvironment)
+    : undefined;
+delete process.env.OPENAI_API_KEY;
+delete process.env.ANTHROPIC_API_KEY;
 const guardedFetch = createLoopbackOnlyFetch(nativeFetch, networkLedger);
 globalThis.fetch = guardedFetch;
 
@@ -281,8 +292,9 @@ const modelProxy =
           ),
           maxRequests: maxModelRequests,
         },
+        upstreamCredential: realModelCredential,
         fetchUpstream: (url, init) => nativeFetch(url, init),
-        upstreamOrigin: providerRoutes[provider]?.origin,
+        upstreamOrigin: providerRoute?.origin,
         onUpstreamRequest: (origin, method) => {
           networkLedger.push({ origin, method, allowed: true });
         },
@@ -300,6 +312,13 @@ const childQuiescenceLedgerPath = path.join(
   outputDir,
   "child-quiescence-ledger.json",
 );
+const childProcessEnvironment = modelProxy
+  ? liveModelScenarioChildEnvironment(
+      provider as StabilityModelProvider,
+      modelProxy.url,
+      process.env,
+    )
+  : process.env;
 let cliStdout = "";
 let cliStderr = "";
 let cliCode: number | null = null;
@@ -333,14 +352,11 @@ try {
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
-      ...process.env,
+      ...childProcessEnvironment,
       CLOUD_E2E_API_URL: cloudApiProxy.url,
       CLOUD_E2E_CONTROL_PLANE_URL: stack.urls.controlPlane,
       CLOUD_E2E_HETZNER_URL: hetznerProxy.url,
       ELIZA_SCENARIO_MODEL: model,
-      ...(modelProxy
-        ? { [providerRoutes[provider].baseUrlEnvironment]: modelProxy.url }
-        : {}),
       ELIZA_STABILITY_CHILD_NETWORK_LEDGER: childNetworkLedgerPath,
       ELIZA_STABILITY_CHILD_QUIESCENCE_LEDGER: childQuiescenceLedgerPath,
       ELIZA_SYNTHETIC_RUNTIME_LEDGER: childRuntimeLedgerPath,
@@ -392,8 +408,7 @@ try {
 }
 
 const explicitSecrets = [
-  process.env.OPENAI_API_KEY,
-  process.env.ANTHROPIC_API_KEY,
+  realModelCredential,
   process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN,
 ].filter(
   (value): value is string => typeof value === "string" && value.length > 0,
