@@ -125,6 +125,7 @@ describe("notification boot boundaries", () => {
     render(<NotificationsShellBoot />);
     await waitFor(() => expect(mocks.push).toHaveBeenCalledOnce());
     expect(mocks.localTap).not.toHaveBeenCalled();
+    expect(mocks.seed).not.toHaveBeenCalled();
 
     mocks.goHome.mockImplementationOnce(() => {
       expect(peekNotificationCenterOpenRequest()).toEqual(expect.any(Number));

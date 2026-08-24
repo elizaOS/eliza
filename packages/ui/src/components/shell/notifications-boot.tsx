@@ -15,10 +15,7 @@ import { initLocalNotificationTapRouting } from "../../bridge/native-notificatio
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
 import { useAppSelector } from "../../state";
 import { peekNotificationCenterOpenRequest } from "../../state/notifications/notification-center-open-request";
-import {
-  initNotifications,
-  seedDevNotificationsIfEmpty,
-} from "../../state/notifications/notification-store";
+import { initNotifications } from "../../state/notifications/notification-store";
 import {
   initPushRegistration,
   refreshPushRegistrationAuthority,
@@ -103,14 +100,6 @@ export function NotificationsShellBoot(): null {
     const onTokenAuthorityChange = () => refreshAuthority();
     const unsubscribeBase = client.onBaseUrlChange(onBaseAuthorityChange);
     window.addEventListener("steward-token-sync", onTokenAuthorityChange);
-    // Dev builds only: paint the demo spread when the inbox is empty so the
-    // inline home notification surface is visible by default while developing.
-    // Prod bundles compile `import.meta.env.DEV` to false, so this is stripped.
-    try {
-      if (import.meta.env?.DEV) void seedDevNotificationsIfEmpty();
-    } catch {
-      // `import.meta.env` unavailable (non-Vite host) — treat as non-dev.
-    }
     return () => {
       unsubscribeBase();
       window.removeEventListener("steward-token-sync", onTokenAuthorityChange);

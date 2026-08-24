@@ -807,12 +807,11 @@ export function initNotifications(): void {
 let devSeedAttempted = false;
 
 /**
- * Dev-only: populate the demo spread when the inbox is empty so the home
- * notification surface is visible by default while developing. The boot wiring
- * calls this only in dev builds (`import.meta.env.DEV`); the server's
- * `/dev/seed` route is itself non-production (404s in prod), so this stays a
- * no-op outside dev. Runs at most once per session and never seeds over a real
- * inbox — production is strictly data-driven.
+ * Explicit dev helper: populate the demo spread when the inbox is empty. The
+ * shell never calls this automatically; developers opt in from Advanced
+ * Settings when they need notification fixtures. The server's `/dev/seed`
+ * route is itself non-production (404s in prod), so this stays a no-op outside
+ * dev. Runs at most once per session and never seeds over a real inbox.
  */
 export async function seedDevNotificationsIfEmpty(): Promise<void> {
   if (devSeedAttempted) return;

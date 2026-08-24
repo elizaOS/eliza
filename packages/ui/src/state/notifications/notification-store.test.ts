@@ -839,7 +839,7 @@ describe("notification-store", () => {
     );
   });
 
-  describe("seedDevNotificationsIfEmpty (dev default-active)", () => {
+  describe("seedDevNotificationsIfEmpty (explicit dev helper)", () => {
     it("seeds the demo spread when the inbox hydrates empty", async () => {
       const seeded = [
         makeNotification({ id: "s1", priority: "urgent" }),
