@@ -104,6 +104,7 @@ def model_context_tokens(model: object, tokenizer: object, *, source: str) -> in
     )
     attributes = (
         "max_position_embeddings",
+        "max_target_positions",
         "max_sequence_length",
         "seq_length",
         "context_length",

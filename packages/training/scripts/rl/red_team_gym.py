@@ -321,7 +321,7 @@ async def run_red_team_gym(
                 "attacker_reward": episode.attacker_reward,
                 "defender_reward": episode.defender_reward,
                 "conversation": [
-                    {"role": t.role, "content": t.content[:300]} for t in episode.turns
+                    {"role": t.role, "content": t.content} for t in episode.turns
                 ],
             }
             target_results["episodes"].append(ep_data)

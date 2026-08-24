@@ -67,7 +67,7 @@ def _decode_escapes(raw: str) -> str:
 def extract_streams(rec: dict) -> tuple[str, str, str]:
     """Return (user_input, assistant_thought, assistant_text)."""
     cm = rec.get("currentMessage") or {}
-    user_input = (cm.get("content") or "")[:2000]
+    user_input = cm.get("content") or ""
 
     er = rec.get("expectedResponse") or ""
     thought = ""

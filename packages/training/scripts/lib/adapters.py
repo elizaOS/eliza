@@ -839,7 +839,7 @@ def _build_messages_record(
     if current.get("role") not in ("user", "assistant"):
         current = {**current, "role": "user", "speaker": "user"}
 
-    seed = room_seed or current["content"][:120]
+    seed = room_seed or current["content"]
     return build(
         roomName=stable_id(slug, seed),
         agentId="agent",
@@ -1213,7 +1213,7 @@ def functions_53k(records, *, slug, license, split, encoder):
             actions = REPLY_ACTIONS.copy()
             tt = "reply"
         yield build(
-            roomName=stable_id(slug, r.get("id") or prompt[:120]),
+            roomName=stable_id(slug, r.get("id") or prompt),
             agentId="agent",
             currentMessage={"role": "user", "speaker": "user", "content": prompt, "channel": "dm"},
             memoryEntries=[],
@@ -1917,7 +1917,7 @@ def mcp_messages(records, *, slug, license, split, encoder):
             if reason:
                 md["tool_reason"] = reason
             yield build(
-                roomName=stable_id(slug, prompt[:120]),
+                roomName=stable_id(slug, prompt),
                 agentId="mcp-agent",
                 currentMessage={"role": "user", "speaker": "user", "content": prompt, "channel": "dm"},
                 memoryEntries=[],
@@ -1954,7 +1954,7 @@ def mcp_messages(records, *, slug, license, split, encoder):
             tt = "reply"
             md = {"original_id": str(r.get("id") or "")}
         yield build(
-            roomName=stable_id(slug, prompt[:120]),
+                roomName=stable_id(slug, prompt),
             agentId="mcp-agent",
             currentMessage={"role": "user", "speaker": "user", "content": prompt, "channel": "dm"},
             memoryEntries=[],
@@ -1993,7 +1993,7 @@ def _mcp_multi_turn(
             assistant=assistant, encoder=encoder, tools_list=tools_list,
             default_task_type="mcp_tool_call",
             extra_metadata=extra,
-            room_seed=f"{base_id}#{idx}" if base_id else f"{current['content'][:120]}#{idx}",
+            room_seed=f"{base_id}#{idx}" if base_id else f"{current['content']}#{idx}",
         )
 
 
@@ -2239,7 +2239,7 @@ def terminal_corpus(records, *, slug, license, split, encoder):
                 continue
             expected_response = encoder.encode(_shell_target(command, explanation))
             yield build(
-                roomName=stable_id(slug, current["content"][:120]),
+                roomName=stable_id(slug, current["content"]),
                 agentId="agent",
                 memoryEntries=memory,
                 currentMessage=current,
@@ -2327,7 +2327,7 @@ def agent_trove(records, *, slug, license, split, encoder):
                 continue
             expected_response = encoder.encode(_shell_target(command, explanation))
             yield build(
-                roomName=stable_id(slug, r.get("id") or current["content"][:120]),
+                roomName=stable_id(slug, r.get("id") or current["content"]),
                 agentId="agent",
                 memoryEntries=memory,
                 currentMessage=current,
@@ -2375,7 +2375,7 @@ def reasoning_cot(records, *, slug, license, split, encoder):
             if not prompt or not response:
                 continue
             yield build(
-                roomName=stable_id(slug, r.get("id") or prompt[:120]),
+                roomName=stable_id(slug, r.get("id") or prompt),
                 agentId="agent",
                 currentMessage={"role": "user", "speaker": "user", "content": str(prompt), "channel": "dm"},
                 memoryEntries=[],
@@ -2413,7 +2413,7 @@ def reasoning_cot(records, *, slug, license, split, encoder):
         if calls:
             md["expected_tool_calls"] = calls
         yield build(
-            roomName=stable_id(slug, r.get("id") or current["content"][:120]),
+            roomName=stable_id(slug, r.get("id") or current["content"]),
             agentId="agent",
             memoryEntries=memory,
             currentMessage=current,
@@ -2687,7 +2687,7 @@ def nubilio_trajectories(records, *, slug, license, split, encoder):
             source_file, ("agent_trace", [ACTION_REPLY, ACTION_TASKS, ACTION_IGNORE]),
         )
 
-        dedup = stable_id(sys_prompt[:512], current["content"][:512], assistant_text[:512])
+        dedup = stable_id(sys_prompt, current["content"], assistant_text)
         if dedup in seen:
             continue
         seen.add(dedup)
@@ -2993,7 +2993,7 @@ def scam_defense_corpus(records, *, slug, license, split, encoder):
                     "channel": "dm",
                 }
 
-                dedup = stable_id(traj_id, step.get("stepNumber", 0), call_idx, response[:512])
+                dedup = stable_id(traj_id, step.get("stepNumber", 0), call_idx, response)
                 if dedup in seen:
                     continue
                 seen.add(dedup)
@@ -3351,7 +3351,7 @@ def n8n_workflow(records, *, slug, license, split, encoder):
         if wf is None:
             continue
 
-        dedup = stable_id(slug, prompt_text[:512], json.dumps(wf, sort_keys=True)[:512])
+        dedup = stable_id(slug, prompt_text, json.dumps(wf, sort_keys=True))
         if dedup in seen:
             continue
         seen.add(dedup)
@@ -3382,7 +3382,7 @@ def n8n_workflow(records, *, slug, license, split, encoder):
                 md[k] = v if not isinstance(v, (dict, list)) else json.dumps(v)
 
         yield build(
-            roomName=stable_id(slug, prompt_text[:120]),
+            roomName=stable_id(slug, prompt_text),
             agentId="agent",
             memoryEntries=memory,
             currentMessage=current_msg,
@@ -3503,7 +3503,7 @@ def light_multilight(records, *, slug, license, split, encoder):
         characters = r.get("characters") or []
         if len(messages) < 2 or not characters:
             continue
-        episode_id = r.get("episode_id") or stable_id(slug, json.dumps(messages[:1]))
+        episode_id = r.get("episode_id") or stable_id(slug, json.dumps(messages))
         location = r.get("location") or {}
         location_name = (location.get("name") or "").strip()
         location_desc = (location.get("description") or "").strip()
@@ -3785,7 +3785,7 @@ def claude_distill(records: Iterator[dict], *, slug: str, license: str,
             "preserve_think_tags": True,
         }
 
-        seed = current["content"][:160] + "|" + (final_assistant["content"][:80])
+        seed = current["content"] + "|" + final_assistant["content"]
         yield build(
             roomName=stable_id(slug, source, seed),
             agentId="assistant",
@@ -3854,9 +3854,9 @@ def _abliteration_yield(
         prompt = _abliteration_prompt(r)
         if not prompt:
             continue
-        prompt = _strip_surrogates(prompt)[:4000]
+        prompt = _strip_surrogates(prompt)
         yield build(
-            roomName=stable_id(slug, task_type, prompt[:160]),
+            roomName=stable_id(slug, task_type, prompt),
             agentId="calibration",
             currentMessage={
                 "role": "user", "speaker": "user",

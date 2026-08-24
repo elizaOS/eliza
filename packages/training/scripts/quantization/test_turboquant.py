@@ -329,7 +329,7 @@ def main() -> int:
                 continue
             cm = (rec.get("currentMessage") or {}).get("content") or ""
             if cm:
-                cal_prompts.append(cm[:512])
+                cal_prompts.append(cm)
             if len(cal_prompts) >= args.calibration_samples:
                 break
     skip: set[int] = set()

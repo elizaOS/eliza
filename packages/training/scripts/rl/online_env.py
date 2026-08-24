@@ -159,7 +159,7 @@ def build_observation_prompt(scenario: Scenario) -> str:
     # News
     if obs["news"]:
         lines.append("RECENT NEWS:")
-        for news in obs["news"][:3]:  # Limit to 3
+        for news in obs["news"]:
             sentiment_icon = {"bullish": "📈", "bearish": "📉", "neutral": "➡️"}.get(
                 news["sentiment"], ""
             )
@@ -169,9 +169,9 @@ def build_observation_prompt(scenario: Scenario) -> str:
     # Social
     if obs["socialFeed"]:
         lines.append("SOCIAL FEED:")
-        for post in obs["socialFeed"][:3]:  # Limit to 3
+        for post in obs["socialFeed"]:
             verified = "✓" if post.get("verified") else ""
-            lines.append(f"  @{post['author']}{verified}: {post['content'][:80]}...")
+            lines.append(f"  @{post['author']}{verified}: {post['content']}")
         lines.append("")
 
     lines.append("What is your next action?")
@@ -1113,7 +1113,7 @@ class FeedOnlineEnv(BaseEnv):
         for news in bridge_scenario.recent_news:
             scenario.add_news(
                 {
-                    "headline": news.content[:100],
+                    "headline": news.content,
                     "content": news.content,
                     "source": news.source,
                     "sentiment": "neutral"

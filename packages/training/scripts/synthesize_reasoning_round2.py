@@ -12,7 +12,7 @@ Differences from round-1:
 - Stricter prompt (forbids 3rd-person words in ALL caps, gives examples).
 - Complete source messages and responses are preserved in every teacher prompt.
 - Longer backoff (5s base, up to 60s) — handles cloudflare 1010 / 5xx.
-- Higher max_tokens budget for reasoning.
+- Complete provider output admission for reasoning.
 - 8 retries; temperature steps DOWN on retry to encourage cleaner output.
 - "still_dirty" attempts are persisted so we can audit reject reasons.
 """

@@ -48,11 +48,6 @@ def test_provider_choice_consumers_use_generation_admission() -> None:
 
 def test_known_training_context_slices_do_not_return() -> None:
     forbidden = {
-        "rl/tinker/tinker_client.py": (
-            "completion_tokens = completion_tokens[:max_sequence_length]",
-            "tokens = tokens[-max_sequence_length:]",
-        ),
-        "rl/feed_env.py": ("messages = [messages[0], *messages[2:]]",),
         "synth/together_synth.py": ("memory[-6:]", 'get("content") or "")[:300]'),
         "build_eliza1_sft_2b.py": ("msgs[: last_nonempty + 1]",),
         "rewrites/regularizer_reasoning_tool.py": (
@@ -66,12 +61,35 @@ def test_known_training_context_slices_do_not_return() -> None:
             '(response or "")[:2000]',
         ),
         "kokoro/coreml/validate_e2e_coreml.py": ("ids = ids[:max_tokens]",),
-        "rl/feed_env.py": ("min(512, self.config.max_token_length // 3)",),
-        "rl/online_env.py": ("self.config.max_response_tokens",),
+        "rl/feed_env.py": (
+            "messages = [messages[0], *messages[2:]]",
+            "min(512, self.config.max_token_length // 3)",
+        ),
         "rl/hybrid_env.py": ("self.config.max_response_tokens", '"max_tokens": 512'),
-        "rl/tinker/tinker_client.py": ("default_max_tokens",),
+        "rl/tinker/tinker_client.py": (
+            "completion_tokens = completion_tokens[:max_sequence_length]",
+            "tokens = tokens[-max_sequence_length:]",
+            "default_max_tokens",
+        ),
         "rl/tinker/tinker_rl_orchestrator.py": ("max_tokens=128",),
         "rl/tinker/tinker_trainer.py": ("inference_max_tokens", "max_tokens=500"),
+        "synthesize_routing.py": ('"content": content[:2000]',),
+        "synthesize_should_respond_routing.py": ('"content": content[:600]',),
+        "synthesize_multiparty_routing.py": ("reasoning=str(reasoning)[:400]",),
+        "synthesize_native_fillins.py": ("sanitize_task_text(content[:600])",),
+        "lib/adapters.py": ("_strip_surrogates(prompt)[:4000]",),
+        "sources/scambench_adapter.py": ("reasoning[:1000]",),
+        "rl/online_env.py": (
+            "self.config.max_response_tokens",
+            'obs["news"][:3]',
+            'obs["socialFeed"][:3]',
+            "post['content'][:80]",
+        ),
+        "rl/simulation_bridge.py": ("self.recent_news[:3]", "news.content[:80]"),
+        "rl/adversarial_game.py": ("t.content[:300]",),
+        "rl/red_team_gym.py": ("t.content[:300]",),
+        "rl/deterministic_eval.py": ("cleaned_response[:219]",),
+        "rl/compare_served_models.py": ('"max_tokens": max_tokens',),
     }
     found = []
     for relative, markers in forbidden.items():

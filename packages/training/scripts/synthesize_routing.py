@@ -186,7 +186,7 @@ def _to_chat_msg(row: dict, slug: str) -> dict | None:
         speaker = "user"
     return {
         "speaker": str(speaker)[:40],
-        "content": content[:2000],
+        "content": content,
         "channel": str(channel)[:40] or slug,
         "ts": row.get("timestamp") or row.get("ts") or row.get("date"),
     }
@@ -324,7 +324,7 @@ def synthesize_one(
     payload = encoder.encode(target)
 
     return build(
-        roomName=stable_id("dialogue_routing", agent, current["content"][:120], target_action),
+        roomName=stable_id("dialogue_routing", agent, current["content"], target_action),
         agentId=agent.lower(),
         memoryEntries=memory,
         currentMessage=current,

@@ -30,7 +30,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from format_for_training import format_record  # noqa: E402
 from lib.attn import select_attn_impl  # noqa: E402
-from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
+from lib.generation_integrity import (  # noqa: E402
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -625,14 +628,18 @@ def score_json(
     return True, fields["top_level_keys"], False, fields
 
 
-def generate(
-    model: Any, tokenizer: Any, prompt: str, *, max_new_tokens: int,
-) -> tuple[str, int, int, float]:
+def generate(model: Any, tokenizer: Any, prompt: str) -> tuple[str, int, int, float]:
     """Returns (decoded_text, n_prompt_tokens, n_gen_tokens, generate_seconds)."""
     import torch
 
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     prompt_len = int(inputs["input_ids"].shape[-1])
+    max_new_tokens = remaining_model_context_tokens(
+        model,
+        tokenizer,
+        prompt_tokens=prompt_len,
+        source="native_tool_call_bench.generate",
+    )
     with torch.no_grad():
         t0 = time.perf_counter()
         output = model.generate(
@@ -664,7 +671,6 @@ def main() -> int:
         default=0,
         help="Explicit per-bucket sample count; 0 evaluates the complete corpus",
     )
-    parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument(
         "--device", default="auto", choices=("auto", "cuda", "mps", "cpu"),
         help="Inference device. 'auto' prefers cuda, then Apple-silicon mps, "
@@ -735,10 +741,7 @@ def main() -> int:
             if not prompt:
                 continue
             predicted, n_prompt_tok, n_gen_tok, gen_dt = generate(
-                model,
-                tokenizer,
-                prompt,
-                max_new_tokens=args.max_new_tokens,
+                model, tokenizer, prompt
             )
             expected_calls = expected_tool_calls(record)
             if expected_calls:

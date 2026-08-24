@@ -136,7 +136,6 @@ class FeedEnvConfig(BaseEnvConfig):
         description="Model to use for LLM judge scoring (Deprecated by Deterministic Judge)",
     )
     judge_temperature: float = Field(default=0.3, description="Temperature for judge model")
-    judge_max_tokens: int = Field(default=2000, description="Max tokens for judge response")
 
     # Scoring preferences
     scoring_rubric: str = Field(
@@ -1413,7 +1412,7 @@ You receive market updates and must analyze, reason, and then act."""
             epsilon = 0.0
             epsilon += (len(generated_response) % 100) * 0.0001  # Response length variance
             # Deterministic content-based variance (sum of character codes)
-            content_hash = sum(ord(c) for c in generated_response[:50]) % 1000
+            content_hash = sum(ord(c) for c in generated_response) % 1000
             epsilon += content_hash * 0.00001  # Content-based variance
             # Add more variance based on action type
             if format_validation.action.action_type:
