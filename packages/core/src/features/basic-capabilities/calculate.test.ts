@@ -24,6 +24,12 @@ describe("evaluateArithmetic", () => {
 		expect(evaluateArithmetic("-5 + 3").text).toBe("-2");
 		expect(evaluateArithmetic("2 ^ 10").text).toBe("1024");
 		expect(evaluateArithmetic("2 ** 10").text).toBe("1024");
+		expect(evaluateArithmetic("-2 ^ 2").text).toBe("-4");
+		expect(evaluateArithmetic("(-2) ^ 2").text).toBe("4");
+		expect(evaluateArithmetic("2 ^ -2")).toEqual({
+			text: "0.25",
+			exact: false,
+		});
 		expect(evaluateArithmetic("10 % 3").text).toBe("1");
 	});
 
@@ -44,8 +50,17 @@ describe("evaluateArithmetic", () => {
 		expect(evaluateArithmetic("0.1 + 0.2").text).toBe("0.3");
 	});
 
-	it("rejects words, variables, division by zero, and runaway exponents", () => {
-		for (const bad of ["two plus two", "x * 3", "5 / 0", "2 ^ 20000", "3 +"]) {
+	it("rejects invalid input and oversized work before returning a partial result", () => {
+		for (const bad of [
+			"two plus two",
+			"x * 3",
+			"1,,2 + 3",
+			"5 / 0",
+			"2 ^ 20000",
+			"99 ^ 10000",
+			"3 +",
+			"1".repeat(10_001),
+		]) {
 			expect(() => evaluateArithmetic(bad)).toThrow();
 		}
 	});

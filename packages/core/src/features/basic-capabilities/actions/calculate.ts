@@ -8,9 +8,9 @@
  * no eval/Function — so the result is arithmetic, not model recall.
  *
  * Integer-only expressions (+ - * % and non-negative integer ^) evaluate in
- * BigInt and are EXACT at any magnitude. Anything involving division or
- * decimals evaluates in floats and says so. Unsupported input is a typed
- * rejection naming the supported grammar — never a guess.
+ * BigInt and are exact within the explicit resource boundary below. Anything
+ * involving division or decimals evaluates in floats and says so. Unsupported
+ * or oversized input is a typed rejection — never a guess or partial result.
  */
 import type {
 	Action,
@@ -24,7 +24,20 @@ import { hasActionContext } from "../../../utils/action-validation.ts";
 
 type Num = { kind: "int"; value: bigint } | { kind: "float"; value: number };
 
-const int = (value: bigint): Num => ({ kind: "int", value });
+const MAX_EXPRESSION_CHARS = 10_000;
+const MAX_INTEGER_RESULT_DIGITS = 10_000;
+
+const integerDigits = (value: bigint): number =>
+	(value < 0n ? -value : value).toString().length;
+
+const int = (value: bigint): Num => {
+	if (integerDigits(value) > MAX_INTEGER_RESULT_DIGITS) {
+		throw new ExpressionError(
+			`Integer result is too large (max ${MAX_INTEGER_RESULT_DIGITS} digits)`,
+		);
+	}
+	return { kind: "int", value };
+};
 const flt = (value: number): Num => ({ kind: "float", value });
 const toFloat = (n: Num): number =>
 	n.kind === "int" ? Number(n.value) : n.value;
@@ -74,27 +87,27 @@ class Parser {
 	}
 
 	private term(): Num {
-		let left = this.power();
+		let left = this.unary();
 		for (;;) {
 			this.ws();
 			const op = this.src[this.pos];
 			const twoChar = this.src.slice(this.pos, this.pos + 2);
 			if (op === "*" && twoChar !== "**") {
 				this.pos++;
-				const right = this.power();
+				const right = this.unary();
 				left =
 					left.kind === "int" && right.kind === "int"
 						? int(left.value * right.value)
 						: flt(toFloat(left) * toFloat(right));
 			} else if (op === "/") {
 				this.pos++;
-				const right = this.power();
+				const right = this.unary();
 				const divisor = toFloat(right);
 				if (divisor === 0) throw new ExpressionError("Division by zero");
 				left = flt(toFloat(left) / divisor);
 			} else if (op === "%") {
 				this.pos++;
-				const right = this.power();
+				const right = this.unary();
 				if (left.kind === "int" && right.kind === "int") {
 					if (right.value === 0n) throw new ExpressionError("Division by zero");
 					left = int(left.value % right.value);
@@ -109,8 +122,23 @@ class Parser {
 		}
 	}
 
+	private unary(): Num {
+		this.ws();
+		const ch = this.src[this.pos];
+		if (ch === "-") {
+			this.pos++;
+			const value = this.unary();
+			return value.kind === "int" ? int(-value.value) : flt(-value.value);
+		}
+		if (ch === "+") {
+			this.pos++;
+			return this.unary();
+		}
+		return this.power();
+	}
+
 	private power(): Num {
-		const base = this.factor();
+		const base = this.primary();
 		this.ws();
 		const isCaret = this.src[this.pos] === "^";
 		const isStarStar = this.src.slice(this.pos, this.pos + 2) === "**";
@@ -118,7 +146,7 @@ class Parser {
 		this.pos += isStarStar ? 2 : 1;
 		// Right-associative; guard runaway integer exponents (10^6 digits is
 		// already far past anything a chat answer can carry).
-		const exponent = this.power();
+		const exponent = this.unary();
 		if (
 			base.kind === "int" &&
 			exponent.kind === "int" &&
@@ -127,12 +155,22 @@ class Parser {
 			if (exponent.value > 10_000n) {
 				throw new ExpressionError("Exponent too large (max 10000)");
 			}
+			const absoluteBase = base.value < 0n ? -base.value : base.value;
+			if (
+				absoluteBase > 1n &&
+				BigInt(integerDigits(absoluteBase)) * exponent.value >
+					BigInt(MAX_INTEGER_RESULT_DIGITS)
+			) {
+				throw new ExpressionError(
+					`Integer result is too large (max ${MAX_INTEGER_RESULT_DIGITS} digits)`,
+				);
+			}
 			return int(base.value ** exponent.value);
 		}
 		return flt(toFloat(base) ** toFloat(exponent));
 	}
 
-	private factor(): Num {
+	private primary(): Num {
 		this.ws();
 		const ch = this.src[this.pos];
 		if (ch === "(") {
@@ -145,16 +183,9 @@ class Parser {
 			this.pos++;
 			return inner;
 		}
-		if (ch === "-") {
-			this.pos++;
-			const inner = this.factor();
-			return inner.kind === "int" ? int(-inner.value) : flt(-inner.value);
-		}
-		if (ch === "+") {
-			this.pos++;
-			return this.factor();
-		}
-		const match = /^\d[\d_,]*(?:\.\d+)?/.exec(this.src.slice(this.pos));
+		const match = /^\d(?:\d|[,_](?=\d))*(?:\.\d+)?/.exec(
+			this.src.slice(this.pos),
+		);
 		if (!match) {
 			throw new ExpressionError(
 				`Expected a number at position ${this.pos + 1}`,
@@ -173,6 +204,11 @@ export function evaluateArithmetic(expression: string): {
 	text: string;
 	exact: boolean;
 } {
+	if (expression.length > MAX_EXPRESSION_CHARS) {
+		throw new ExpressionError(
+			`Expression is too large (max ${MAX_EXPRESSION_CHARS} characters)`,
+		);
+	}
 	const result = new Parser(expression).parse();
 	if (result.kind === "int") {
 		return { text: result.value.toString(), exact: true };
@@ -196,7 +232,7 @@ export const calculateAction: Action = {
 	name: "CALCULATE",
 	contexts: ["general"],
 	description:
-		"Exact arithmetic: evaluates a numeric expression (+ - * / % ^ parentheses, decimals, unary minus) deterministically. Use for ANY multi-digit arithmetic instead of computing in your head — model mental math is unreliable and this result is exact for integer expressions at any size.",
+		"Exact arithmetic: evaluates a numeric expression (+ - * / % ^ parentheses, decimals, unary minus) deterministically. Use for ANY multi-digit arithmetic instead of computing in your head — model mental math is unreliable and supported integer results are exact.",
 	descriptionCompressed:
 		"exact arithmetic eval; use for any multi-digit math instead of mental math",
 	similes: ["MATH", "COMPUTE", "ARITHMETIC", "MULTIPLY", "DIVIDE", "EVAL_MATH"],
