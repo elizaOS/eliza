@@ -246,7 +246,6 @@ Maximum 500 characters.`;
         system: systemPrompt,
         prompt:
           "Create a compelling announcement about this app that would engage a Telegram community. Focus on what makes it unique and valuable.",
-        maxOutputTokens: 200,
       });
       assertModelOutputComplete({
         finishReason: result.finishReason,
@@ -329,7 +328,6 @@ Maximum 300 characters.`;
         prompt: userName
           ? `User ${userName} says: "${userMessage}"`
           : `User says: "${userMessage}"`,
-        maxOutputTokens: 150,
       });
       assertModelOutputComplete({
         finishReason: result.finishReason,

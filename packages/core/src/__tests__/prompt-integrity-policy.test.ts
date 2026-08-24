@@ -237,6 +237,16 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/capped at 20/,
 		/\.slice\([^)]*20/,
 	],
+	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts": [
+		/NUDGE_MAX_OUTPUT_TOKENS/,
+		/maxOutputTokens:/,
+	],
+	"packages/cloud/shared/src/lib/services/discord-automation/app-automation.ts": [
+		/maxOutputTokens:\s*\d+/,
+	],
+	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts": [
+		/maxOutputTokens:\s*\d+/,
+	],
 	"packages/cloud/shared/src/lib/services/doordash-browser-run.ts": [
 		/\.slice\(0,\s*20\)/,
 		/\.slice\(0,\s*100\)/,
