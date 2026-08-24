@@ -263,6 +263,17 @@ afterEach(() => {
 });
 
 describe("Shared Eliza Workerd runtime", () => {
+  test("streaming-context prewarm does not construct a disposable runtime", async () => {
+    const { prewarmSharedElizaStreamingContext } = await import("./shared-eliza-runtime");
+    const initializeSpy = spyOn(AgentRuntime.prototype, "initialize");
+    try {
+      await prewarmSharedElizaStreamingContext();
+      expect(initializeSpy).not.toHaveBeenCalled();
+    } finally {
+      initializeSpy.mockRestore();
+    }
+  });
+
   test("prewarms once, releases the runtime, and never dispatches inference", async () => {
     const { prewarmSharedElizaRuntime } = await import("./shared-eliza-runtime");
     const stopSpy = spyOn(AgentRuntime.prototype, "stop");

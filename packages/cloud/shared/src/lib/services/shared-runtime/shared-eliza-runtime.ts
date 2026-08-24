@@ -313,6 +313,11 @@ function createRuntime(options: {
   });
 }
 
+/** Loads only the streaming context without constructing an AgentRuntime. */
+export async function prewarmSharedElizaStreamingContext(): Promise<void> {
+  await ensureEdgeStreamingContext();
+}
+
 /** Pays one-time Workerd runtime initialization before the first live user turn. */
 export async function prewarmSharedElizaRuntime(): Promise<void> {
   await ensureEdgeStreamingContext();

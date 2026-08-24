@@ -109,6 +109,7 @@ import {
 
 export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 
+const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
@@ -1772,6 +1773,10 @@ export class SharedRuntimeChatService {
       start: async (controller) => {
         let finished = false;
         try {
+          // Flush one valid SSE comment before provider text so Workerd exposes
+          // the Durable Object response headers independently of model latency.
+          // Consumers ignore comments; the complete reply remains unchanged.
+          controller.enqueue(encoder.encode(SSE_TRANSPORT_READY_COMMENT));
           for await (const part of turn.parts!) {
             if (part.type === "text-delta") {
               streamedReply += part.text;
