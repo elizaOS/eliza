@@ -43,6 +43,7 @@ const PERSONAL_SHARED_ATTEMPTS = 3;
 const PERSONAL_SHARED_RETRY_DELAY_CAP_MS = 5_000;
 const PROCESSING_TTL_SECONDS = 120;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
+const PERSONAL_TELEGRAM_DELIVERY_EPOCH = 2;
 const CONNECTOR_PROCESSING = "processing";
 const CONNECTOR_DELIVERED = "delivered";
 const CONNECTOR_UNCERTAIN = "uncertain";
@@ -210,6 +211,7 @@ async function sendReplyWithRequiredReceipt(
 async function reconcileLegacyTelegramDelivery(
   deps: HandlerDeps,
   project: string,
+  connectorAccountId: string,
   event: ChatEvent,
   traceId: string,
   operation: "mark_uncertain" | "mark_delivered",
@@ -228,7 +230,9 @@ async function reconcileLegacyTelegramDelivery(
         "X-Eliza-Webhook-Forwarder-Secret": secret,
       },
       body: JSON.stringify({
+        deliveryEpoch: PERSONAL_TELEGRAM_DELIVERY_EPOCH,
         project,
+        connectorAccountId,
         senderId: event.senderId,
         messageId: event.messageId,
         operation,
@@ -259,6 +263,7 @@ async function forwardPersonalTelegramToEdge(
   rawBody: string,
   deps: HandlerDeps,
   project: string,
+  connectorAccountId: string,
   event: ChatEvent,
   dedupKey: string,
   traceId: string,
@@ -272,6 +277,7 @@ async function forwardPersonalTelegramToEdge(
     const reconciled = await reconcileLegacyTelegramDelivery(
       deps,
       project,
+      connectorAccountId,
       event,
       traceId,
       legacy === TELEGRAM_DELIVERED ? "mark_delivered" : "mark_uncertain",
@@ -533,11 +539,19 @@ export async function handleWebhook(
         event.chatType !== "supergroup" &&
         deps.deliveryAuthoritySecret !== undefined
       ) {
+        const connectorAccountId = resolveConnectorAccountId(
+          "telegram",
+          config,
+        );
+        if (!connectorAccountId) {
+          throw new Error("Telegram connector account identity is missing");
+        }
         return forwardPersonalTelegramToEdge(
           request,
           rawBody,
           deps,
           project,
+          connectorAccountId,
           event,
           dedupKey,
           trace.traceId,
