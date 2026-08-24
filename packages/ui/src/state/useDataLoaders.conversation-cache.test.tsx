@@ -269,6 +269,119 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     );
   });
 
+  it("preserves rekeyed local turns while stale history resolves, then deduplicates durable server rows", async () => {
+    const persistedHistory = [userMsg("persisted-1")];
+    let resolveStaleHistory:
+      | ((messages: ConversationMessage[]) => void)
+      | undefined;
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: persistedHistory })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveStaleHistory = (messages) => resolve({ messages });
+          }),
+      )
+      .mockResolvedValueOnce({
+        messages: [
+          ...persistedHistory,
+          {
+            ...userMsg("server-user-new"),
+            text: "new question",
+            timestamp: 10,
+          },
+          {
+            ...assistantMsg("server-assistant-new"),
+            text: "finished response",
+            timestamp: 11,
+          },
+        ],
+      });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    const optimisticUser = {
+      ...userMsg("temp-user-new"),
+      clientRenderId: "temp-user-new",
+      text: "new question",
+      timestamp: 10,
+    };
+    const optimisticAssistant = {
+      ...assistantMsg("temp-resp-user-new"),
+      clientRenderId: "temp-resp-user-new",
+      text: "finished response",
+      timestamp: 11,
+    };
+    conversationMessagesRef.current = [
+      ...persistedHistory,
+      optimisticUser,
+      optimisticAssistant,
+    ];
+
+    let staleLoadPromise: Promise<unknown>;
+    act(() => {
+      staleLoadPromise = result.current.loadConversationMessages("conv-a");
+    });
+    expect(resolveStaleHistory).toBeDefined();
+
+    act(() => {
+      setConversationMessages([
+        ...persistedHistory,
+        { ...optimisticUser, id: "server-user-new" },
+        { ...optimisticAssistant, id: "server-assistant-new" },
+      ]);
+    });
+
+    await act(async () => {
+      resolveStaleHistory?.(persistedHistory);
+      await staleLoadPromise;
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["persisted-1", "server-user-new", "server-assistant-new"]);
+    expect(
+      conversationMessagesRef.current.slice(-2).map((message) => ({
+        id: message.id,
+        clientRenderId: message.clientRenderId,
+      })),
+    ).toEqual([
+      { id: "server-user-new", clientRenderId: "temp-user-new" },
+      {
+        id: "server-assistant-new",
+        clientRenderId: "temp-resp-user-new",
+      },
+    ]);
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["persisted-1", "server-user-new", "server-assistant-new"]);
+    expect(
+      conversationMessagesRef.current.filter(
+        (message) => message.id === "server-user-new",
+      ),
+    ).toHaveLength(1);
+    expect(
+      conversationMessagesRef.current.filter(
+        (message) => message.id === "server-assistant-new",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("preserves optimistic turns on the first load of a newly created active conversation", async () => {
     mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
     const { deps, conversationMessagesRef, activeConversationIdRef } =
