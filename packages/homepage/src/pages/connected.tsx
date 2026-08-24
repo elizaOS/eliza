@@ -314,12 +314,13 @@ export default function ConnectedPage() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-label={t("homepage_eliza.connected.userMenuAria", {
                 defaultValue: "Open user menu",
               })}
-              className="focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 focus:ring-offset-[color:var(--brand-orange)] rounded-xs"
             >
               {user.avatar ? (
                 <img
@@ -334,7 +335,7 @@ export default function ConnectedPage() {
                   {displayName.charAt(0).toUpperCase()}
                 </div>
               )}
-            </button>
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
@@ -425,10 +426,10 @@ export default function ConnectedPage() {
         <div className="flex flex-col gap-4">
           {user.telegram_id ? (
             <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
-              <button
+              <Button
                 type="button"
+                variant="publicRow"
                 onClick={handleOpenTelegram}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
                   <TelegramIcon className="size-8 text-[#229ED9]" />
@@ -443,7 +444,7 @@ export default function ConnectedPage() {
                     @{getTelegramBotUsername()}
                   </span>
                 </div>
-              </button>
+              </Button>
               <Button
                 type="button"
                 variant="ghost"
@@ -488,10 +489,10 @@ export default function ConnectedPage() {
 
           {user.phone_number ? (
             <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
-              <button
+              <Button
                 type="button"
+                variant="publicRow"
                 onClick={() => void handleOpenMessages()}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
                   <AppleMessagesIcon className="size-8" />
@@ -503,7 +504,7 @@ export default function ConnectedPage() {
                     })}
                   </span>
                 </div>
-              </button>
+              </Button>
               <Button
                 type="button"
                 variant="ghost"
@@ -529,9 +530,9 @@ export default function ConnectedPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <button
+              <Button
                 type="button"
-                className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
+                variant="publicTile"
                 onClick={() => setShowPhoneInput((v) => !v)}
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
@@ -544,7 +545,7 @@ export default function ConnectedPage() {
                     })}
                   </span>
                 </div>
-              </button>
+              </Button>
 
               {showPhoneInput && (
                 <div className="w-full bg-black text-white border border-black p-4 flex flex-col gap-3">
@@ -599,10 +600,10 @@ export default function ConnectedPage() {
           {whatsappHref &&
             (user.whatsapp_id ? (
               <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
-                <button
+                <Button
                   type="button"
+                  variant="publicRow"
                   onClick={handleOpenWhatsApp}
-                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
                 >
                   <div className="size-8 shrink-0 flex items-center justify-center">
                     <WhatsAppIcon className="size-8 text-[#25D366]" />
@@ -620,7 +621,7 @@ export default function ConnectedPage() {
                         })}
                     </span>
                   </div>
-                </button>
+                </Button>
                 <Button
                   type="button"
                   variant="ghost"
@@ -642,9 +643,9 @@ export default function ConnectedPage() {
                 </Button>
               </div>
             ) : (
-              <button
+              <Button
                 type="button"
-                className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
+                variant="publicTile"
                 onClick={handleOpenWhatsApp}
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
@@ -657,15 +658,15 @@ export default function ConnectedPage() {
                     })}
                   </span>
                 </div>
-              </button>
+              </Button>
             ))}
 
           {user.discord_id ? (
             <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
-              <button
+              <Button
                 type="button"
+                variant="publicRow"
                 onClick={handleOpenDiscord}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
                   <DiscordIcon className="size-8 text-[#5865F2]" />
@@ -680,7 +681,7 @@ export default function ConnectedPage() {
                     @{user.discord_username || "Eliza"}
                   </span>
                 </div>
-              </button>
+              </Button>
               <Button
                 type="button"
                 variant="ghost"

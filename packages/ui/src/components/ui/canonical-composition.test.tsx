@@ -7,6 +7,8 @@ import { Badge } from "./badge";
 import { Button } from "./button";
 import { Card } from "./card";
 import { Input } from "./input";
+import { NativeDialog } from "./native-dialog";
+import { NativeSelect } from "./native-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs";
 
 afterEach(cleanup);
@@ -77,5 +79,30 @@ describe("canonical atom composition", () => {
     expect(screen.getByRole("textbox", { name: "Search" }).classList).toContain(
       "pl-10",
     );
+  });
+
+  it("preserves native select semantics for platform pickers", () => {
+    render(
+      <NativeSelect aria-label="Country" presentation="overlay">
+        <option value="in">India</option>
+      </NativeSelect>,
+    );
+
+    const select = screen.getByRole("combobox", { name: "Country" });
+    expect(select.tagName).toBe("SELECT");
+    expect(select.classList).toContain("opacity-0");
+  });
+
+  it("forwards the native dialog host and accessibility contract", () => {
+    const ref = { current: null as HTMLDialogElement | null };
+    render(
+      <NativeDialog ref={ref} aria-label="Contact Eliza">
+        Contact options
+      </NativeDialog>,
+    );
+
+    const dialog = screen.getByLabelText("Contact Eliza");
+    expect(dialog.tagName).toBe("DIALOG");
+    expect(ref.current).toBe(dialog);
   });
 });

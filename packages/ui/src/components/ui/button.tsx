@@ -50,6 +50,14 @@ const buttonVariants = cva(
           "bg-transparent text-txt-strong hover:bg-accent-subtle data-[state=on]:bg-accent-subtle data-[state=on]:text-txt-strong",
         choice:
           "border border-border bg-bg text-txt-strong hover:border-accent hover:bg-accent-subtle data-[state=on]:border-accent data-[state=on]:bg-accent-subtle",
+        publicRow:
+          "h-full min-w-0 flex-1 justify-start gap-4 rounded-none bg-transparent p-0 text-left text-black whitespace-normal hover:bg-transparent hover:text-white",
+        publicTile:
+          "h-[72px] w-full justify-start gap-4 rounded-xs bg-white px-5 text-left text-black whitespace-normal hover:bg-black hover:text-white",
+        publicPrimary:
+          "h-[72px] w-full justify-start gap-4 rounded-xs bg-accent px-5 text-left text-accent-fg whitespace-normal hover:bg-accent-hover",
+        publicLink:
+          "h-auto bg-transparent p-0 text-xs text-muted underline-offset-2 hover:bg-transparent hover:text-txt",
       },
       size: {
         default:

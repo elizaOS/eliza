@@ -23,6 +23,8 @@ export {
   MessageHeader,
 } from "../ui/message";
 export * from "../ui/message-scroller";
+export * from "../ui/native-dialog";
+export * from "../ui/native-select";
 export * from "../ui/popover";
 export * from "../ui/progress";
 export * from "../ui/select";

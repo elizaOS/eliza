@@ -171,6 +171,21 @@
       "import": "./dist/components/ui/input.js",
       "default": "./dist/components/ui/input.js"
     },
+    "./native-select": {
+      "types": "./dist/components/ui/native-select.d.ts",
+      "import": "./dist/components/ui/native-select.js",
+      "default": "./dist/components/ui/native-select.js"
+    },
+    "./native-dialog": {
+      "types": "./dist/components/ui/native-dialog.d.ts",
+      "import": "./dist/components/ui/native-dialog.js",
+      "default": "./dist/components/ui/native-dialog.js"
+    },
+    "./textarea": {
+      "types": "./dist/components/ui/textarea.d.ts",
+      "import": "./dist/components/ui/textarea.js",
+      "default": "./dist/components/ui/textarea.js"
+    },
     "./app-navigate-view": {
       "types": "./dist/app-navigate-view.d.ts",
       "import": "./dist/app-navigate-view.js",

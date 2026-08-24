@@ -10,6 +10,7 @@ import {
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
+import { Input } from "@elizaos/ui/input";
 import { ArrowLeft, Check, ExternalLink, Info, Send } from "lucide-react";
 import {
   type CSSProperties,
@@ -532,15 +533,16 @@ function ProvisioningChatStep({
           {statusLabel}
         </span>
         {hasObservedStatus && !isReady && !isDedicatedOff && (
-          <button
+          <Button
             type="button"
+            variant="publicLink"
             onClick={onContinue}
-            className="ml-auto text-xs text-neutral-400 hover:text-neutral-600 underline underline-offset-2"
+            className="ml-auto underline"
           >
             {t("homepage_eliza.getStarted.skipToDashboard", {
               defaultValue: "Skip to Eliza",
             })}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -597,7 +599,7 @@ function ProvisioningChatStep({
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
-        <input
+        <Input
           ref={inputRef}
           type="text"
           placeholder={
@@ -624,7 +626,7 @@ function ProvisioningChatStep({
           disabled={!hasObservedStatus || isLoading || isDedicatedOff}
           style={CHAT_INPUT_STYLE}
         />
-        <button
+        <Button
           type="button"
           onClick={() => void handleSend()}
           disabled={
@@ -643,7 +645,7 @@ function ProvisioningChatStep({
           }}
         >
           <Send size={16} />
-        </button>
+        </Button>
       </div>
 
       {(isReady || isDedicatedOff) && (
@@ -1414,7 +1416,7 @@ export default function GetStartedPage() {
       >
         <div className="w-24">
           {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" ? (
-            <button
+            <Button
               type="button"
               onClick={handleBack}
               className={`inline-flex min-h-11 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors cursor-pointer`}
@@ -1423,7 +1425,7 @@ export default function GetStartedPage() {
               <span className="text-sm font-medium">
                 {t("homepage_eliza.getStarted.back", { defaultValue: "Back" })}
               </span>
-            </button>
+            </Button>
           ) : (
             <Link
               to="/"
@@ -1468,11 +1470,11 @@ export default function GetStartedPage() {
               )}
 
               <div className="w-full flex flex-col gap-3">
-                <button
+                <Button
                   type="button"
+                  variant="publicPrimary"
                   data-testid="onboarding-signin-discord"
                   onClick={() => handleMethodSelect("discord")}
-                  className="w-full min-h-11 h-[72px] bg-orange-600 hover:bg-orange-700 text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(0)}
                 >
                   <div className="size-12 rounded-xs bg-white/15 flex items-center justify-center shrink-0">
@@ -1485,17 +1487,17 @@ export default function GetStartedPage() {
                       })}
                     </p>
                   </div>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
+                  variant="publicTile"
                   aria-label={t("homepage_eliza.getStarted.solanaAria", {
                     defaultValue: "Sign in with Solana",
                   })}
                   data-testid="onboarding-signin-solana"
                   disabled={isSolanaLoading}
                   onClick={() => handleMethodSelect("solana")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer disabled:opacity-60"
                   style={cardStyle(1)}
                 >
                   <div
@@ -1515,20 +1517,21 @@ export default function GetStartedPage() {
                           })}
                     </p>
                   </div>
-                </button>
+                </Button>
               </div>
 
-              <button
+              <Button
                 type="button"
+                variant="publicLink"
                 data-testid="onboarding-signin-more"
                 onClick={() => setStep("SELECT_METHOD")}
-                className="w-full mt-6 text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer"
+                className="mt-6 w-full"
                 style={cardStyle(2)}
               >
                 {t("homepage_eliza.getStarted.onboardingSignInMore", {
                   defaultValue: "More ways to connect",
                 })}
-              </button>
+              </Button>
             </>
           )}
 
@@ -1556,7 +1559,7 @@ export default function GetStartedPage() {
               )}
 
               <div className="w-full flex flex-col gap-3">
-                <button
+                <Button
                   type="button"
                   onClick={() => handleMethodSelect("telegram")}
                   className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
@@ -1572,9 +1575,9 @@ export default function GetStartedPage() {
                       })}
                     </p>
                   </div>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
                   onClick={() => handleMethodSelect("imessage")}
                   className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
@@ -1590,10 +1593,10 @@ export default function GetStartedPage() {
                       })}
                     </p>
                   </div>
-                </button>
+                </Button>
 
                 {whatsappNumber && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => handleMethodSelect("whatsapp")}
                     className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
@@ -1609,10 +1612,10 @@ export default function GetStartedPage() {
                         })}
                       </p>
                     </div>
-                  </button>
+                  </Button>
                 )}
 
-                <button
+                <Button
                   type="button"
                   onClick={() => handleMethodSelect("discord")}
                   className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
@@ -1628,9 +1631,9 @@ export default function GetStartedPage() {
                       })}
                     </p>
                   </div>
-                </button>
+                </Button>
 
-                <button
+                <Button
                   type="button"
                   aria-label={t("homepage_eliza.getStarted.solanaAria", {
                     defaultValue: "Sign in with Solana",
@@ -1655,7 +1658,7 @@ export default function GetStartedPage() {
                           })}
                     </p>
                   </div>
-                </button>
+                </Button>
                 {solanaError && (
                   <p
                     role="alert"
@@ -1884,18 +1887,19 @@ export default function GetStartedPage() {
                 </Button>
               )}
 
-              <button
+              <Button
                 type="button"
+                variant="publicLink"
                 onClick={() => {
                   setSelectedMethod("telegram");
                   setStep("TELEGRAM_DIRECT");
                 }}
-                className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700"
+                className="mt-4 w-full"
               >
                 {t("homepage_eliza.getStarted.alsoTelegram", {
                   defaultValue: "I also want to use Telegram",
                 })}
-              </button>
+              </Button>
             </>
           )}
 
@@ -1933,18 +1937,19 @@ export default function GetStartedPage() {
                 <ExternalLink className="size-4 ml-1" />
               </Button>
 
-              <button
+              <Button
                 type="button"
+                variant="publicLink"
                 onClick={() => {
                   setSelectedMethod("telegram");
                   setStep("TELEGRAM_DIRECT");
                 }}
-                className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700"
+                className="mt-4 w-full"
               >
                 {t("homepage_eliza.getStarted.alsoTelegram", {
                   defaultValue: "I also want to use Telegram",
                 })}
-              </button>
+              </Button>
             </>
           )}
 
@@ -2022,15 +2027,16 @@ export default function GetStartedPage() {
                       defaultValue: "Try Again",
                     })}
                   </Button>
-                  <button
+                  <Button
                     type="button"
+                    variant="publicLink"
                     onClick={handleBack}
-                    className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer"
+                    className="mt-4 w-full"
                   >
                     {t("homepage_eliza.getStarted.chooseDifferent", {
                       defaultValue: "Choose a different method",
                     })}
-                  </button>
+                  </Button>
                 </>
               ) : isLinkMode && user?.phone_number ? (
                 <div className="w-full flex flex-col items-center gap-3">
@@ -2081,11 +2087,12 @@ export default function GetStartedPage() {
                         })}
                   </Button>
 
-                  <button
+                  <Button
                     type="button"
+                    variant="publicLink"
                     onClick={handleDiscordSkipPhone}
                     disabled={isDiscordLoading}
-                    className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                    className="mt-4 w-full"
                   >
                     {isDiscordLoading
                       ? t("homepage_eliza.getStarted.settingUp", {
@@ -2094,7 +2101,7 @@ export default function GetStartedPage() {
                       : t("homepage_eliza.getStarted.skipAddLater", {
                           defaultValue: "Skip — I’ll add it later",
                         })}
-                  </button>
+                  </Button>
 
                   <p className="text-xs text-neutral-400 text-center mt-4">
                     {t("homepage_eliza.getStarted.phoneHelper", {

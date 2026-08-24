@@ -3,6 +3,7 @@
  */
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Input } from "@elizaos/ui/input";
+import { NativeSelect } from "@elizaos/ui/native-select";
 import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 import { ChevronDown } from "lucide-react";
 import { useMemo } from "react";
@@ -75,8 +76,6 @@ const variantStyles = {
       "relative flex h-14 shrink-0 cursor-pointer items-center gap-2 pl-3 pr-2 text-neutral-600 hover:text-neutral-900",
     flag: "size-6 rounded-xs overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-4 shrink-0 pointer-events-none text-neutral-400",
-    select:
-      "absolute inset-0 cursor-pointer appearance-none bg-transparent opacity-0",
     input:
       "rounded-none border-0 bg-transparent text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-0 focus-visible:ring-offset-0 h-14 px-4 text-base flex-1 min-w-0",
   },
@@ -87,8 +86,6 @@ const variantStyles = {
       "relative flex h-14 shrink-0 cursor-pointer items-center gap-2 pl-4 pr-2 text-neutral-600 hover:text-neutral-900",
     flag: "size-6 rounded-full overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-4 shrink-0 pointer-events-none text-neutral-400",
-    select:
-      "absolute inset-0 cursor-pointer appearance-none bg-transparent opacity-0",
     input:
       "rounded-none border-0 bg-transparent text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-0 focus-visible:ring-offset-0 h-14 px-4 text-base flex-1 min-w-0",
   },
@@ -99,8 +96,6 @@ const variantStyles = {
       "relative flex h-12 shrink-0 cursor-pointer items-center gap-2 pl-3 pr-2 text-white/60 hover:text-white/80",
     flag: "size-5 rounded-xs overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-3.5 shrink-0 pointer-events-none text-white/30",
-    select:
-      "absolute inset-0 cursor-pointer appearance-none bg-transparent opacity-0",
     input:
       "rounded-none border-0 bg-transparent text-white placeholder:text-white/30 focus-visible:ring-0 focus-visible:ring-offset-0 h-12 px-3 text-sm flex-1 min-w-0",
   },
@@ -121,13 +116,14 @@ export function PhoneNumberInput({
 
   return (
     <div className={styles.wrapper}>
-      <label className={styles.label}>
+      <label htmlFor="homepage-country-select" className={styles.label}>
         <CountryFlag countryCode={selectedCountry} className={styles.flag} />
         <ChevronDown className={styles.chevron} />
-        <select
+        <NativeSelect
+          id="homepage-country-select"
+          presentation="overlay"
           value={selectedCountry}
           onChange={(e) => onCountryChange(e.target.value)}
-          className={styles.select}
           aria-label={t("homepage_eliza.phoneInput.chooseCountryAria", {
             defaultValue: "Choose country",
           })}
@@ -147,7 +143,7 @@ export function PhoneNumberInput({
               })}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <Input
         type="tel"
