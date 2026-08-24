@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   clearLlmWireMockEnvForLiveProvider,
   deterministicScheduledDispatchRenderText,
+  isPostTurnEvaluationPrompt,
   isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
   resolveScenarioDeterministicModelCall,
@@ -219,6 +220,110 @@ describe("scenario runtime deterministic model mode", () => {
         latestUserText: "",
       }),
     ).toBe("Heads up: take a short walk.");
+  });
+
+  // `EvaluatorService` runs every active post-turn evaluator in one merged
+  // TEXT_SMALL call after EVERY turn, on the same runtime the scenario drives.
+  // It passes the prompt as `messages` with NO `prompt` param, so undeclared
+  // (legacy-fallback) scenarios saw it as an unexpected call and failed at
+  // `assertConsumed()` even though none of them assert evaluator output.
+  describe("post-turn evaluator model call", () => {
+    const postTurnEvaluationPrompt = [
+      "# Task: Post-turn evaluation",
+      "",
+      "Evaluate just-finished turn for TestAgent.",
+      "",
+      "## Shared Turn Context",
+      "",
+      "Room ID: 00000000-0000-0000-0000-000000000001",
+      "",
+      "Latest message:",
+      "open the media view",
+      "",
+      "## Active Evaluators",
+      "",
+      "### linkExtraction",
+      'Put result under "linkExtraction".',
+      "",
+    ].join("\n");
+
+    // The real call shape: `messages` only, plus a merged responseSchema.
+    const postTurnEvaluationCall = {
+      modelType: ModelType.TEXT_SMALL,
+      params: {
+        messages: [
+          { role: "user", content: postTurnEvaluationPrompt },
+        ] as never,
+        responseSchema: {
+          type: "object",
+          properties: { linkExtraction: { type: "object" } },
+          required: ["linkExtraction"],
+          additionalProperties: false,
+        },
+      },
+      latestUserText: postTurnEvaluationPrompt,
+    };
+
+    it("recognizes the merged post-turn evaluation prompt", () => {
+      expect(isPostTurnEvaluationPrompt(postTurnEvaluationPrompt)).toBe(true);
+      expect(isPostTurnEvaluationPrompt("ordinary TEXT_SMALL prompt")).toBe(
+        false,
+      );
+      // Conversation text that merely quotes the header is not an evaluator
+      // call: the `## Active Evaluators` section is what makes it one.
+      expect(
+        isPostTurnEvaluationPrompt(
+          "# Task: Post-turn evaluation is what I asked about",
+        ),
+      ).toBe(false);
+    });
+
+    it("answers the messages-shaped evaluator call with the empty shape", () => {
+      const resolved = resolveScenarioDeterministicModelCall(
+        postTurnEvaluationCall,
+      );
+      // "Nothing to record" — every section absent, so the evaluator skips each
+      // entry without recording a validation error.
+      expect(resolved).toBe("{}");
+      expect(JSON.parse(resolved as string)).toEqual({});
+    });
+
+    it("keeps the evaluator call out of unexpectedCalls for undeclared scenarios", async () => {
+      // Legacy-fallback wiring: an EMPTY registry plus the fallback resolver.
+      // The call must resolve AND leave the scenario assertable.
+      const plugin = createDeterministicModelPlugin({
+        resolve: (call) => resolveScenarioDeterministicModelCall(call),
+      });
+      await expect(
+        plugin.models?.[ModelType.TEXT_SMALL]?.(
+          {} as never,
+          postTurnEvaluationCall.params as never,
+        ),
+      ).resolves.toBe("{}");
+      expect(plugin.getFixtureDiagnostics().unexpectedCalls).toEqual([]);
+      expect(() => {
+        plugin.assertFixturesConsumed();
+      }).not.toThrow();
+    });
+
+    it("still fails closed when no fallback resolver is wired", async () => {
+      // Strict lanes (`mode: "fixtures"` / `"model-free"`) pass no `resolve`, so
+      // the same call must still be recorded and still fail the scenario. This
+      // pins that the fallback did not weaken strict-mode enforcement.
+      const strictPlugin = createDeterministicModelPlugin();
+      await expect(
+        strictPlugin.models?.[ModelType.TEXT_SMALL]?.(
+          {} as never,
+          postTurnEvaluationCall.params as never,
+        ),
+      ).rejects.toThrow(/no fixture matched/);
+      expect(strictPlugin.getFixtureDiagnostics().unexpectedCalls).toHaveLength(
+        1,
+      );
+      expect(() => {
+        strictPlugin.assertFixturesConsumed();
+      }).toThrow(/deterministic model calls were unexpected/);
+    });
   });
 });
 
