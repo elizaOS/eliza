@@ -12,11 +12,13 @@
  * gate, was renamed to final, and registered as an installed model with a
  * miscomputed size (`existingPartial + fullSize`).
  *
- * These tests stand up two local origins — one that HONORS Range (206 + the
- * remaining bytes) and one that IGNORES it (200 + the full body) — seed a stale
- * `.part`, drive the real mutation, and assert the final `models/<id>.gguf`
- * bytes exactly equal the full file in BOTH cases, plus that the registry size
- * matches the true file length. No mocks: real fs + real HTTP; only
+ * These tests stand up local origins that model the compliant server (206 + the
+ * remaining bytes), the CDN/mirror that ignores Range (200 + the full body), and
+ * misbehaving proxies that answer 206 with a Content-Range whose start is
+ * misaligned to — or missing for — the requested resume offset. Each seeds a
+ * stale `.part`, drives the real mutation, and asserts the final
+ * `models/<id>.gguf` bytes exactly equal the full file plus that the registry
+ * size matches the true file length. No mocks: real fs + real HTTP; only
  * `ELIZA_STATE_DIR` and `ELIZA_HF_BASE_URL` are redirected.
  */
 import {
@@ -105,6 +107,31 @@ async function startOrigin(honorRange: boolean): Promise<void> {
 }
 
 /**
+ * Start a misbehaving proxy origin: it always answers `206 Partial Content`
+ * with the FULL body regardless of the requested Range, and stamps a
+ * `Content-Range` header from `contentRange` (or omits it entirely when null).
+ * This models a proxy that ignores Range semantics but still returns a 206
+ * status — exactly the case where a naive `statusCode === 206` gate would
+ * append the full body onto the stale partial and corrupt the GGUF.
+ */
+async function startMisalignedRangeOrigin(
+	contentRange: string | null,
+): Promise<void> {
+	server = http.createServer((_req, res) => {
+		const headers: Record<string, string> = {
+			"content-length": String(FULL.length),
+		};
+		if (contentRange !== null) headers["content-range"] = contentRange;
+		res.writeHead(206, headers);
+		res.end(FULL);
+	});
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const address = server.address() as { port: number };
+	baseUrl = `http://127.0.0.1:${address.port}`;
+	process.env.ELIZA_HF_BASE_URL = baseUrl;
+}
+
+/**
  * Poll until the download job has fully completed — i.e. the registry row is
  * written. `downloadModel` renames the staging file into place BEFORE it hashes
  * and registers the model, so waiting only for the final file would race the
@@ -174,6 +201,47 @@ describe("local-inference route resume download (#26629)", () => {
 		// The corrupt-append bug produced 36 bytes
 		// ("GGUFSTALE-PARTIALGGUFREAL-MODEL-BODY"); the fix must yield exactly the
 		// full body with the stale partial discarded.
+		expect(stored.length).toBe(FULL.length);
+		expect(stored.equals(FULL)).toBe(true);
+	});
+
+	it("restarts from byte 0 when a 206 Content-Range is misaligned to the requested offset", async () => {
+		seedStalePartial();
+		// STALE is 17 bytes, so the resume request is `Range: bytes=17-`. The proxy
+		// answers 206 but claims the body starts at byte 0 — a misaligned range that
+		// must NOT be appended onto the stale partial.
+		await startMisalignedRangeOrigin(
+			`bytes 0-${FULL.length - 1}/${FULL.length}`,
+		);
+
+		await applyLocalInferenceManagementMutation({
+			op: "start_download",
+			modelId: MODEL_ID,
+		});
+
+		const installedSize = await waitForInstalledSize();
+		expect(installedSize).toBe(FULL.length);
+
+		const stored = readFileSync(finalPath());
+		expect(stored.length).toBe(FULL.length);
+		expect(stored.equals(FULL)).toBe(true);
+	});
+
+	it("restarts from byte 0 when a 206 omits the Content-Range header", async () => {
+		seedStalePartial();
+		// A 206 with no Content-Range cannot be validated as aligned to the resume
+		// offset, so the fix must fail closed and restart from byte 0.
+		await startMisalignedRangeOrigin(null);
+
+		await applyLocalInferenceManagementMutation({
+			op: "start_download",
+			modelId: MODEL_ID,
+		});
+
+		const installedSize = await waitForInstalledSize();
+		expect(installedSize).toBe(FULL.length);
+
+		const stored = readFileSync(finalPath());
 		expect(stored.length).toBe(FULL.length);
 		expect(stored.equals(FULL)).toBe(true);
 	});

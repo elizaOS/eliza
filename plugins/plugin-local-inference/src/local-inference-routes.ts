@@ -502,6 +502,24 @@ async function openDownloadResponse(
 	});
 }
 
+/**
+ * Parse the zero-based start byte from an RFC 7233
+ * `Content-Range: bytes <start>-<end>/<total>` response header. Returns null
+ * when the header is absent, is an array, or does not match the
+ * `bytes <start>-...` grammar, so a caller can treat an unparseable range as
+ * "do not trust this resume" and restart from byte 0 rather than appending
+ * misaligned bytes onto a stale partial.
+ */
+export function parseContentRangeStart(
+	value: string | string[] | undefined,
+): number | null {
+	if (typeof value !== "string") return null;
+	const match = /^\s*bytes\s+(\d+)-/i.exec(value);
+	if (!match) return null;
+	const start = Number.parseInt(match[1], 10);
+	return Number.isFinite(start) ? start : null;
+}
+
 async function ensureLocalInferenceDirs(): Promise<void> {
 	await fsp.mkdir(modelsDir(), { recursive: true });
 	await fsp.mkdir(downloadsDir(), { recursive: true });
@@ -745,16 +763,26 @@ async function downloadModel(
 		if (statusCode < 200 || statusCode >= 300) {
 			throw new Error(`HTTP ${statusCode} ${response.statusMessage ?? ""}`);
 		}
-		// Resume is only valid when the origin honored our Range request with a 206
-		// Partial Content. CDN redirect targets, gated/proxy repos, and mirrors
-		// frequently ignore Range and answer 200 with the FULL body; appending that
-		// onto the stale `.part` bytes produces a corrupt GGUF that still passes the
-		// 4-byte magic check. Restart from byte 0 in that case, mirroring the
-		// canonical guard in services/downloader.ts (statusCode !== 206 -> restart).
+		// Resume is only trustworthy when the origin honored our Range request with
+		// a 206 Partial Content AND its Content-Range starts exactly at the byte we
+		// asked to resume from. CDN redirect targets, gated/proxy repos, and mirrors
+		// frequently ignore Range and answer 200 with the FULL body; a misbehaving
+		// proxy can also answer 206 with a misaligned or missing Content-Range.
+		// Appending any of those onto the stale `.part` bytes produces a corrupt
+		// GGUF that still passes the 4-byte magic check. Restart from byte 0 unless
+		// the range is a valid 206 aligned to `existingPartial`, mirroring the
+		// canonical guard in services/downloader.ts and failing closed on any
+		// ambiguity.
 		let effectiveStart = existingPartial;
-		if (existingPartial > 0 && statusCode !== 206) {
-			effectiveStart = 0;
-			record.received = 0;
+		if (existingPartial > 0) {
+			const rangeStart =
+				statusCode === 206
+					? parseContentRangeStart(response.headers["content-range"])
+					: null;
+			if (rangeStart !== existingPartial) {
+				effectiveStart = 0;
+				record.received = 0;
+			}
 		}
 		const contentLength = Number.parseInt(
 			String(response.headers["content-length"] ?? "0"),
