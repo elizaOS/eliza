@@ -901,7 +901,17 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       if ("error" in scope) {
         return failure("missing_param", scope.error);
       }
-      if (action === "write" && validateUuid(scope.roomId) === null) {
+      if (
+        (action === "write" || action === "clear") &&
+        validateUuid(scope.roomId) === null
+      ) {
+        // A valid roomId is a precondition for both destructive mutations, not
+        // a delete filter: `write` seeds new rows with it, and `clear` requires
+        // it as cheap evidence the request came from a real conversational turn
+        // before permanently removing the entity's whole cross-room list. The
+        // clear delete itself still reconciles on (entityId, agentId) only, so
+        // a roomless or malformed dispatch fails closed instead of wiping the
+        // account (#28006 review follow-up).
         return failure(
           "invalid_scope",
           `a valid roomId is required for action=${action}`,

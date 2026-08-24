@@ -363,10 +363,12 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     ).toEqual(expectedIds);
   });
 
-  it("rejects an unscoped write without touching either room", async () => {
-    // write needs a valid roomId to seed brand-new rows, so an unscoped write is
-    // still rejected. clear is deliberately excluded here: it reconciles on the
-    // (entityId, agentId) scope and needs no roomId (see the #28006 cases).
+  it("rejects unscoped destructive actions without touching either room", async () => {
+    // write needs a valid roomId to seed brand-new rows, and clear requires one
+    // as a fail-closed precondition even though its delete reconciles on the
+    // (entityId, agentId) scope: a roomless or malformed dispatch must not wipe
+    // the entity's whole cross-room list (#28006 review follow-up). Both
+    // destructive actions are rejected here without mutating any row.
     const entityId = "23456789-2345-4345-8345-23456789abcd" as UUID;
     const roomA = "11111111-aaaa-4aaa-8aaa-111111111111" as UUID;
     const roomB = "22222222-bbbb-4bbb-8bbb-222222222222" as UUID;
@@ -393,21 +395,25 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       } as Memory,
     ];
 
-    for (const message of invalidMessages) {
-      const result = await invokeTodoAction(message, {
-        action: "write",
-        todos: [],
-      });
-      expect(result.success).toBe(false);
-      expect(result.text).toContain("invalid_scope");
-      expect(result.effectReceipts).toBeUndefined();
-      expect(result.userFacingEffectReceiptIds).toBeUndefined();
-      expect(result.verifiedUserFacing).toBeUndefined();
-      expect(
-        (await service.list({ entityId, agentId: runtime.agentId }))
-          .map((todo) => todo.id)
-          .sort(),
-      ).toEqual(expectedIds);
+    const destructiveInvocations: Record<string, unknown>[] = [
+      { action: "write", todos: [] },
+      { action: "clear" },
+    ];
+
+    for (const params of destructiveInvocations) {
+      for (const message of invalidMessages) {
+        const result = await invokeTodoAction(message, params);
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("invalid_scope");
+        expect(result.effectReceipts).toBeUndefined();
+        expect(result.userFacingEffectReceiptIds).toBeUndefined();
+        expect(result.verifiedUserFacing).toBeUndefined();
+        expect(
+          (await service.list({ entityId, agentId: runtime.agentId }))
+            .map((todo) => todo.id)
+            .sort(),
+        ).toEqual(expectedIds);
+      }
     }
   });
 

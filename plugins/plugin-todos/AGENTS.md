@@ -132,10 +132,13 @@ the Cloud Shared host currently supplies a Hyperdrive-backed Drizzle client.
   all storage predicates. `write` replaces the entity-scoped list exposed to
   the planner across rooms, and the planner-facing `TODO` action=clear likewise
   removes the user's whole cross-room list so it matches what `list` and the
-  `CURRENT_TODOS` provider read. The store's `clear({ roomId })` opt-in can
-  still narrow deletion to one room for trusted internal callers, but the
-  action never uses it. `roomId` and `worldId` otherwise remain projection
-  metadata, not ownership boundaries.
+  `CURRENT_TODOS` provider read. Both destructive planner actions (`write` and
+  `clear`) still require a valid `roomId` as a fail-closed precondition — cheap
+  evidence the request came from a real conversational turn — even though the
+  clear delete itself reconciles on `(entityId, agentId)` and never filters by
+  room. The store's `clear({ roomId })` opt-in can still narrow deletion to one
+  room for trusted internal callers, but the action never uses it. `roomId` and
+  `worldId` otherwise remain projection metadata, not ownership boundaries.
 - **Planner mutations use the ledger.** Calling direct `create` / `update` /
   `delete` from an action bypasses exactly-once replay and is a correctness bug.
 - **`write` is a full replacement.** It reconciles the desired scoped list,
