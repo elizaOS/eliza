@@ -70,6 +70,39 @@ describe("wallet contracts", () => {
 			expect(normalizeWalletRpcProviderId("evm", null)).toBeNull();
 			expect(normalizeWalletRpcProviderId("evm", undefined)).toBeNull();
 		});
+
+		it("trims surrounding whitespace and folds case before matching", () => {
+			expect(normalizeWalletRpcProviderId("evm", "  Alchemy ")).toBe("alchemy");
+			expect(normalizeWalletRpcProviderId("bsc", "QUICKNODE")).toBe(
+				"quicknode",
+			);
+			expect(normalizeWalletRpcProviderId("evm", "\tinfura\n")).toBe("infura");
+		});
+
+		it("applies aliases after trimming and lowercasing", () => {
+			expect(normalizeWalletRpcProviderId("evm", "  ELIZACLOUD  ")).toBe(
+				"eliza-cloud",
+			);
+			expect(normalizeWalletRpcProviderId("solana", "\tHelius\n")).toBe(
+				"helius-birdeye",
+			);
+			expect(normalizeWalletRpcProviderId("bsc", "ElizaCloud")).toBe(
+				"eliza-cloud",
+			);
+		});
+
+		it("rejects whitespace-only values and truthy non-string inputs", () => {
+			expect(normalizeWalletRpcProviderId("evm", "   ")).toBeNull();
+			expect(normalizeWalletRpcProviderId("bsc", "\t\n")).toBeNull();
+			expect(
+				normalizeWalletRpcProviderId("evm", 42 as unknown as string),
+			).toBeNull();
+			expect(
+				normalizeWalletRpcProviderId("solana", {
+					id: "alchemy",
+				} as unknown as string),
+			).toBeNull();
+		});
 	});
 
 	describe("normalizeWalletRpcSelections", () => {
@@ -96,6 +129,34 @@ describe("wallet contracts", () => {
 			expect(normalizeWalletRpcSelections({})).toEqual(
 				DEFAULT_WALLET_RPC_SELECTIONS,
 			);
+		});
+
+		it("falls back per chain while preserving valid selections", () => {
+			expect(
+				normalizeWalletRpcSelections({
+					evm: "not-a-provider",
+					bsc: "quicknode",
+					solana: "HELIUS",
+				}),
+			).toEqual({
+				evm: "eliza-cloud",
+				bsc: "quicknode",
+				solana: "helius-birdeye",
+			});
+		});
+
+		it("treats explicit null and undefined fields as missing", () => {
+			expect(
+				normalizeWalletRpcSelections({
+					evm: null,
+					bsc: "ankr",
+					solana: undefined,
+				}),
+			).toEqual({
+				evm: "eliza-cloud",
+				bsc: "ankr",
+				solana: "eliza-cloud",
+			});
 		});
 	});
 });
