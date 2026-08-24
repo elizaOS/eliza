@@ -3,6 +3,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { toast } from "sonner";
+import { Button } from "../../components/ui/button";
 import { Toaster } from "./sonner";
 import { ThemeProvider } from "./theme/theme-provider";
 
@@ -53,7 +54,7 @@ const TriggerButton = ({
   label: string;
   onClick: () => void;
 }) => (
-  <button
+  <Button
     type="button"
     onClick={onClick}
     style={{
@@ -67,7 +68,7 @@ const TriggerButton = ({
     }}
   >
     {label}
-  </button>
+  </Button>
 );
 
 export const Default: Story = {

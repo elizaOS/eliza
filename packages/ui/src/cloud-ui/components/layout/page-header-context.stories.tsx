@@ -3,6 +3,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect } from "react";
+import { Button } from "../../../components/ui/button";
 import { PageHeaderProvider } from "./page-header-context";
 import { usePageHeader, useSetPageHeader } from "./page-header-context.hooks";
 
@@ -122,7 +123,7 @@ export const WithActions: Story = {
         description="Custom brands across all your workspaces."
         actions={
           <div style={{ display: "flex", gap: 8 }}>
-            <button
+            <Button
               type="button"
               onClick={() => {}}
               style={{
@@ -135,8 +136,8 @@ export const WithActions: Story = {
               }}
             >
               Import
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={() => {}}
               style={{
@@ -149,7 +150,7 @@ export const WithActions: Story = {
               }}
             >
               New brand
-            </button>
+            </Button>
           </div>
         }
       />

@@ -25,6 +25,8 @@ import {
 } from "react";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import {
   ACCOUNT_PROVIDER_OPTIONS,
   type AccountProviderCategory,
@@ -140,7 +142,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
           className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted"
           aria-hidden
         />
-        <input
+        <Input
           ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -183,7 +185,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                     {CATEGORY_LABEL[option.category]}
                   </div>
                 ) : null}
-                <button
+                <Button
                   type="button"
                   data-index={index}
                   role="option"
@@ -223,7 +225,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                       {t("accounts.add.enterHint", { defaultValue: "\u21b5" })}
                     </kbd>
                   ) : null}
-                </button>
+                </Button>
               </div>
             );
           })

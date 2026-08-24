@@ -29,6 +29,7 @@ import type { TranslateFn } from "../../../types";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import { Badge } from "../../ui/badge";
+import { Button } from "../../ui/button";
 import {
   type AttentionGoal,
   GOALS_REFRESH_INTERVAL_MS,
@@ -185,7 +186,7 @@ function TodayTodoRow({
 }) {
   const overdue = isOverdue(todo, now);
   return (
-    <button
+    <Button
       type="button"
       data-testid="today-todo-row"
       aria-label={`Complete todo "${todo.title}"`}
@@ -214,7 +215,7 @@ function TodayTodoRow({
           )}
         </div>
       </div>
-    </button>
+    </Button>
   );
 }
 
@@ -236,7 +237,7 @@ function GoalAttentionRow({
   const status = atRisk ? "at risk" : "needs attention";
   const isHome = tone === "home";
   return (
-    <button
+    <Button
       type="button"
       data-testid="todo-goal-attention-row"
       aria-label={`Goal "${goal.title}" ${status}. Open Goals.`}
@@ -270,7 +271,7 @@ function GoalAttentionRow({
           </Badge>
         </div>
       </div>
-    </button>
+    </Button>
   );
 }
 

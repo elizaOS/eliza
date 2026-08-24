@@ -39,6 +39,7 @@ import {
   subscribeVoiceCaptureBreadcrumbs,
   type VoiceCaptureBreadcrumb,
 } from "../../utils/voice-capture-debug";
+import { Button } from "../ui/button";
 
 const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.voiceHud.dismissed";
@@ -278,7 +279,7 @@ export function VoiceCaptureHud() {
             </div>
           ))}
         </div>
-        <button
+        <Button
           type="button"
           data-testid="voice-capture-hud-dismiss"
           title="Hide voice trace for this session"
@@ -287,7 +288,7 @@ export function VoiceCaptureHud() {
           className="shrink-0 self-start text-white/50 hover:text-white"
         >
           <X aria-hidden="true" className="size-2.5" />
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
  * Storybook stories demonstrating the cloud ThemeProvider.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../../components/ui/button";
 import { ThemeProvider } from "./theme-provider";
 import { useTheme } from "./theme-provider.hooks";
 
@@ -47,27 +48,27 @@ function ThemeConsumer() {
         </div>
       </div>
       <div style={btnRow}>
-        <button
+        <Button
           type="button"
           style={btnStyle(theme === "light")}
           onClick={() => setTheme("light")}
         >
           Light
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           style={btnStyle(theme === "dark")}
           onClick={() => setTheme("dark")}
         >
           Dark
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           style={btnStyle(theme === "system")}
           onClick={() => setTheme("system")}
         >
           System
-        </button>
+        </Button>
       </div>
     </div>
   );

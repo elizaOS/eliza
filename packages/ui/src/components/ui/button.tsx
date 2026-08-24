@@ -58,6 +58,10 @@ const buttonVariants = cva(
           "h-[72px] w-full justify-start gap-4 rounded-xs bg-accent px-5 text-left text-accent-fg whitespace-normal hover:bg-accent-hover",
         publicLink:
           "h-auto bg-transparent p-0 text-xs text-muted underline-offset-2 hover:bg-transparent hover:text-txt",
+        weatherPrompt:
+          "flex-col items-end bg-transparent text-right text-white transition-opacity hover:bg-transparent hover:opacity-80",
+        launcherTile:
+          "flex-col gap-2.5 rounded-2xl bg-transparent text-white hover:bg-transparent hover:text-white",
       },
       size: {
         default:
@@ -72,6 +76,7 @@ const buttonVariants = cva(
         row: "min-h-16 w-full px-3 py-2",
         tile: "min-h-12 flex-col gap-1 px-2 py-2 text-xs",
         card: "min-h-20 flex-col items-stretch p-3",
+        content: "h-auto w-auto min-w-0 p-0",
       },
       shape: {
         default: "",

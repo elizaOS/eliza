@@ -854,7 +854,7 @@ const PeoplePicker = memo(function PeoplePicker({
           data-testid="memory-person-search"
         />
         <div className="max-h-56 overflow-auto">
-          <button
+          <Button
             type="button"
             className={`${MEMORY_FOCUS_CLASS} flex min-h-11 w-full items-center rounded-sm px-2 text-start text-sm ${
               selectedId === null
@@ -867,11 +867,11 @@ const PeoplePicker = memo(function PeoplePicker({
             }}
           >
             {everyoneLabel}
-          </button>
+          </Button>
           {visible.map((person) => {
             const active = person.primaryEntityId === selectedId;
             return (
-              <button
+              <Button
                 key={person.groupId}
                 type="button"
                 className={`${MEMORY_FOCUS_CLASS} flex min-h-11 w-full items-center gap-2 rounded-sm px-2 text-start text-sm ${
@@ -895,7 +895,7 @@ const PeoplePicker = memo(function PeoplePicker({
                     {person.factCount}
                   </span>
                 ) : null}
-              </button>
+              </Button>
             );
           })}
         </div>

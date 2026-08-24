@@ -22,7 +22,7 @@ test("compliance inventory is deterministic and covers every governed rule", () 
     false,
   );
   assert.equal(first.counts["atomic-duplicate"], 0);
-  assert.ok(first.counts["raw-control"] > 0);
+  assert.equal(first.counts["raw-control"], 0);
 });
 
 test("baseline comparison rejects increases and permits reductions", () => {

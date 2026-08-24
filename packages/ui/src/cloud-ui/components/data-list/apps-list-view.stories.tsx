@@ -3,7 +3,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
-
+import { Button } from "../../../components/ui/button";
 import { type AppsListItem, AppsListView } from "./apps-list-view";
 
 const noop = () => {};
@@ -17,13 +17,13 @@ function renderAppLink({
   children: ReactNode;
 }) {
   return (
-    <button
+    <Button
       type="button"
       className={className}
       onClick={(e) => e.preventDefault()}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

@@ -1,6 +1,8 @@
 /** Minimal Google Play consumer shell: Cloud auth, text/voice chat and history. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
 import {
   AndroidCloudClient,
   type AndroidCloudSession,
@@ -317,30 +319,30 @@ export function AndroidCloudApp({
             </p>
           ) : null}
           {busy ? (
-            <button
+            <Button
               type="button"
               onClick={cancelSignIn}
               className="w-full rounded-xl border border-border px-4 py-3 font-semibold"
             >
               Cancel sign-in
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
               onClick={() => void signIn()}
               className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-foreground"
             >
               Sign in
-            </button>
+            </Button>
           )}
           {error ? (
-            <button
+            <Button
               type="button"
               onClick={() => void restore()}
               className="text-sm text-muted underline"
             >
               Retry session check
-            </button>
+            </Button>
           ) : null}
         </section>
       </main>
@@ -355,7 +357,7 @@ export function AndroidCloudApp({
           <p className="text-xs text-muted">{session?.identity.displayName}</p>
         </div>
         <div className="flex gap-3">
-          <button
+          <Button
             type="button"
             onClick={() => {
               localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
@@ -365,15 +367,15 @@ export function AndroidCloudApp({
             className="text-sm text-muted"
           >
             New chat
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={busy}
             onClick={() => void signOut()}
             className="text-sm text-muted disabled:opacity-50"
           >
             Sign out
-          </button>
+          </Button>
         </div>
       </header>
       <ol
@@ -392,13 +394,13 @@ export function AndroidCloudApp({
           >
             <p className="whitespace-pre-wrap">{message.text || "Thinking…"}</p>
             {message.role === "assistant" && message.text ? (
-              <button
+              <Button
                 type="button"
                 onClick={() => speak(message.text)}
                 className="mt-2 text-xs text-muted underline"
               >
                 Play
-              </button>
+              </Button>
             ) : null}
           </li>
         ))}
@@ -415,7 +417,7 @@ export function AndroidCloudApp({
           void send();
         }}
       >
-        <button
+        <Button
           type="button"
           aria-pressed={listening}
           aria-label={listening ? "Stop dictation" : "Start dictation"}
@@ -423,11 +425,11 @@ export function AndroidCloudApp({
           className="rounded-xl border border-border px-3"
         >
           {listening ? "Stop" : "Mic"}
-        </button>
+        </Button>
         <label className="sr-only" htmlFor="android-cloud-message">
           Message Eliza
         </label>
-        <textarea
+        <Textarea
           id="android-cloud-message"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -437,21 +439,21 @@ export function AndroidCloudApp({
           placeholder="Message Eliza"
         />
         {busy ? (
-          <button
+          <Button
             type="button"
             onClick={() => abortRef.current?.abort()}
             className="rounded-xl border border-border px-4"
           >
             Stop
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="submit"
             disabled={!draft.trim()}
             className="rounded-xl bg-accent px-4 text-accent-foreground disabled:opacity-50"
           >
             Send
-          </button>
+          </Button>
         )}
       </form>
     </main>

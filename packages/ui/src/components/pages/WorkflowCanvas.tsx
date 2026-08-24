@@ -147,14 +147,14 @@ export function WorkflowCanvas({
           />
         </ReactFlow>
       ) : (
-        <button
+        <Button
           type="button"
           className="grid h-full w-full place-items-center text-muted-foreground/50"
           onClick={onAddStep}
           aria-label="Add first step with Eliza"
         >
           <Plus className="size-8" />
-        </button>
+        </Button>
       )}
       <Button
         variant="ghost"

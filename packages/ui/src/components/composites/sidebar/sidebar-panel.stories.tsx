@@ -3,6 +3,7 @@
  * collapsed, and shell navigation layouts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../ui/button";
 import { SidebarPanel } from "./sidebar-panel";
 
 const meta = {
@@ -22,24 +23,24 @@ const meta = {
     children: (
       <>
         <h2 className="px-1 text-sm font-medium text-txt">Conversations</h2>
-        <button
+        <Button
           type="button"
           className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
         >
           Design review
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
         >
           Launch planning
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
         >
           Standup notes
-        </button>
+        </Button>
       </>
     ),
   },

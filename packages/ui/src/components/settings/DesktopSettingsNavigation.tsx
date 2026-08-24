@@ -8,6 +8,7 @@ import { useCallback, useRef } from "react";
 import { cn } from "../../lib/utils";
 import { Sidebar } from "../composites/sidebar";
 import { ViewBackButton } from "../shared/ViewHeader";
+import { Button } from "../ui/button";
 import {
   type GroupedSettingsSections,
   SECTION_HUE_MEDALLION_CLASS,
@@ -96,7 +97,7 @@ export function DesktopSettingsNavigation({
                 const isActive = section.id === activeId;
 
                 return (
-                  <button
+                  <Button
                     key={section.id}
                     ref={(node) => setItemRef(section.id, node)}
                     type="button"
@@ -141,7 +142,7 @@ export function DesktopSettingsNavigation({
                         className="size-1.5 shrink-0 rounded-full bg-accent"
                       />
                     ) : null}
-                  </button>
+                  </Button>
                 );
               })}
             </div>

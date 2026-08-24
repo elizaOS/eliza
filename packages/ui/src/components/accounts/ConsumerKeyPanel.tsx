@@ -28,6 +28,7 @@ import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Skeleton } from "../ui/skeleton";
 
 export interface ConsumerKeyPanelApi {
@@ -306,20 +307,28 @@ export function ConsumerKeyPanelBody({
           className="flex flex-wrap items-end gap-2 rounded-lg border border-border/50 bg-card/40 p-3"
           data-testid="consumer-keys-create-form"
         >
-          <label className="flex flex-col gap-1 text-xs-tight text-muted">
+          <label
+            htmlFor="consumer-key-label"
+            className="flex flex-col gap-1 text-xs-tight text-muted"
+          >
             {t("consumerKeys.labelField", { defaultValue: "Label" })}
-            <input
+            <Input
+              id="consumer-key-label"
               className="h-8 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
               value={createLabel}
               onChange={(event) => setCreateLabel(event.target.value)}
               placeholder="protocol-proxy"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs-tight text-muted">
+          <label
+            htmlFor="consumer-key-quota"
+            className="flex flex-col gap-1 text-xs-tight text-muted"
+          >
             {t("consumerKeys.quotaField", {
               defaultValue: "Daily token quota (blank = unlimited)",
             })}
-            <input
+            <Input
+              id="consumer-key-quota"
               className="h-8 w-44 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
               value={createQuota}
               onChange={(event) => setCreateQuota(event.target.value)}
@@ -501,7 +510,7 @@ export function ConsumerKeyPanelBody({
                       )}
                       {editing ? (
                         <span className="flex items-center gap-1">
-                          <input
+                          <Input
                             className="h-7 w-32 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
                             value={editing.value}
                             inputMode="numeric"

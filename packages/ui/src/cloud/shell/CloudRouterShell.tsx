@@ -40,6 +40,7 @@ import {
   useLocation,
   useParams,
 } from "react-router-dom";
+import { Button } from "../../components/ui/button";
 import { isAppModeHost } from "../app-mode/app-mode";
 import { queryClient } from "../lib/query-client";
 import { useSessionAuth } from "../lib/use-session-auth";
@@ -215,13 +216,13 @@ function PrivateCloudUnavailable({
           Dashboard surfaces could not be loaded. Check your connection and try
           again.
         </p>
-        <button
+        <Button
           type="button"
           className="rounded-md border border-white/20 px-3 py-1.5 text-white hover:bg-white/10"
           onClick={onRetry}
         >
           Retry
-        </button>
+        </Button>
       </div>
     </div>
   );

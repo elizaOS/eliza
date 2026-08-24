@@ -149,7 +149,7 @@ function CatalogTile({
     onActivate: () => onSelect(entry),
   });
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
       onClick={() => onSelect(entry)}
@@ -165,7 +165,7 @@ function CatalogTile({
         selected={selected}
         style={catalogPreviewStyle(entry)}
       />
-    </button>
+    </Button>
   );
 }
 

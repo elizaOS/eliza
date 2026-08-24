@@ -3,6 +3,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
+import { Button } from "../../../components/ui/button";
 import { PageTransition } from "./page-transition";
 
 const SamplePanel = ({ title, body }: { title: string; body: string }) => (
@@ -105,7 +106,7 @@ export const Interactive: Story = {
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", gap: 8 }}>
           {pages.map((p, i) => (
-            <button
+            <Button
               key={p.path}
               type="button"
               onClick={() => setIndex(i)}
@@ -119,7 +120,7 @@ export const Interactive: Story = {
               }}
             >
               {p.title}
-            </button>
+            </Button>
           ))}
         </div>
         <PageTransition {...args} pathname={current.path}>

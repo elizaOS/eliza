@@ -1,6 +1,7 @@
 /** Storybook stories for `MediaGalleryView` under `withMockApp` (no backend). */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
+import { Button } from "../ui/button";
 import { MediaGalleryView } from "./MediaGalleryView";
 
 const meta: Meta<typeof MediaGalleryView> = {
@@ -42,13 +43,13 @@ export const WithContentHeader: Story = {
     contentHeader: (
       <div className="flex items-center justify-between px-6 py-3 text-sm font-semibold text-txt">
         <span>Media Gallery</span>
-        <button
+        <Button
           type="button"
           className="rounded-sm border border-accent/30 bg-accent/12 px-3 py-1 text-xs-tight text-txt-strong"
           onClick={() => {}}
         >
           Refresh
-        </button>
+        </Button>
       </div>
     ),
   },

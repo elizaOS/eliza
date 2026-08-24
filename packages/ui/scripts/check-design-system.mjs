@@ -210,17 +210,16 @@ function scanFile(file) {
         sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
       if (/^[a-z]/.test(tag) && !rel.startsWith(`${canonicalRoot}/`)) {
         const rawSymbol = tag === "input" ? inputHost(node) : tag;
-        if (
-          [
-            "button",
-            "input",
-            "checkbox",
-            "select",
-            "textarea",
-            "dialog",
-            "table",
-          ].includes(rawSymbol)
-        ) {
+        const isRawControl = [
+          "button",
+          "input",
+          "checkbox",
+          "select",
+          "textarea",
+          "dialog",
+          "table",
+        ].includes(rawSymbol);
+        if (isRawControl) {
           findings.push(
             finding({
               rule: "raw-control",
@@ -228,6 +227,19 @@ function scanFile(file) {
               line,
               symbol: rawSymbol,
               detail: `Raw <${tag}> bypasses the canonical atom owner.`,
+            }),
+          );
+        }
+        const className = stringAttribute(node, "className");
+        if (isRawControl && className && VISUAL_UTILITY.test(className)) {
+          findings.push(
+            finding({
+              rule: "visual-override",
+              file: rel,
+              line,
+              symbol: rawSymbol,
+              detail:
+                "Control visuals must be owned by a typed canonical variant; caller className is layout-only.",
             }),
           );
         }
@@ -434,7 +446,10 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   if (process.argv.includes("--write-baseline")) {
     if (baseline) {
       const regressions = compareToBaseline(report, baseline);
-      if (regressions.length > 0) {
+      if (
+        regressions.length > 0 &&
+        !process.argv.includes("--accept-measurement-expansion")
+      ) {
         throw new Error(
           `Refusing to raise design-system baseline: ${regressions.join(", ")}`,
         );

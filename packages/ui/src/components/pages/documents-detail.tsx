@@ -353,7 +353,7 @@ export function DocumentViewer({
       ) : null;
     } else if (readerKind === "image" && mediaUrl) {
       mediaBlock = (
-        <button
+        <Button
           type="button"
           data-testid="reader-image"
           onClick={() => setFullscreen(true)}
@@ -364,7 +364,7 @@ export function DocumentViewer({
             alt={doc.filename}
             className="max-h-[28rem] w-auto object-contain"
           />
-        </button>
+        </Button>
       );
     } else if (readerKind === "audio" && mediaUrl) {
       mediaBlock = (

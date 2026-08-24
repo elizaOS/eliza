@@ -175,14 +175,14 @@ export function MeetingJoinBar({
               <span className="text-xs text-muted">
                 {SESSION_STATUS_LABEL[m.status]}
               </span>
-              <button
+              <Button
                 type="button"
                 data-testid={`stop-meeting-${m.id}`}
                 onClick={() => onStop(m.id)}
                 className="ml-auto rounded-sm px-2 py-0.5 text-xs text-muted transition-colors hover:bg-bg-muted/30 hover:text-txt"
               >
                 Stop
-              </button>
+              </Button>
             </div>
           ))}
         </div>

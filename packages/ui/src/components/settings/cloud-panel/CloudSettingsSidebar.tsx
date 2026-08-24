@@ -8,6 +8,7 @@ import { Check, ChevronUp, Circle, Loader2, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../../lib/utils";
 import { useAppSelector } from "../../../state";
+import { Button } from "../../ui/button";
 import { CLOUD_PANEL_GROUPS } from "./cloud-panel-groups";
 import {
   type CloudPanelAccountFooterSection,
@@ -68,7 +69,7 @@ export function CloudAccountMenu({
   if (accountState === "disconnected") {
     return (
       <div className="border-t border-border p-3">
-        <button
+        <Button
           type="button"
           className="keyboard-focus-surface flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
           onClick={() => {
@@ -86,7 +87,7 @@ export function CloudAccountMenu({
         >
           <Circle className="size-2.5 text-muted-foreground" />
           Connect Cloud
-        </button>
+        </Button>
       </div>
     );
   }
@@ -115,21 +116,21 @@ export function CloudAccountMenu({
         <p className="px-2 text-xs text-destructive" role="alert">
           Cloud sign-out didn&apos;t finish.
         </p>
-        <button
+        <Button
           type="button"
           className="keyboard-focus-surface flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-hover"
           onClick={startSignOut}
         >
           <RotateCcw aria-hidden="true" className="size-3.5" />
           Retry sign out
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
     <div className="border-t border-border px-3 py-2">
-      <button
+      <Button
         type="button"
         aria-controls="cloud-account-menu"
         aria-expanded={open}
@@ -146,7 +147,7 @@ export function CloudAccountMenu({
             !open && "rotate-180",
           )}
         />
-      </button>
+      </Button>
       {open && (
         <div
           id="cloud-account-menu"
@@ -161,13 +162,13 @@ export function CloudAccountMenu({
             />
           ))}
           <div className="my-1 border-t border-border" />
-          <button
+          <Button
             type="button"
             className="keyboard-focus-surface flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
             onClick={startSignOut}
           >
             Sign out
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -214,7 +215,7 @@ function SectionItem({
 }) {
   const Icon = section.icon;
   return (
-    <button
+    <Button
       type="button"
       onClick={() => onSelect(section.id)}
       aria-current={active ? "page" : undefined}
@@ -235,7 +236,7 @@ function SectionItem({
       {active && (
         <Check className="ml-auto size-3.5 shrink-0 text-foreground" />
       )}
-    </button>
+    </Button>
   );
 }
 

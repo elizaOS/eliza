@@ -3,6 +3,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
+import { Button } from "../../../components/ui/button";
 import { DashboardRoutePage } from "./dashboard-route-page";
 import { PageHeaderProvider } from "./page-header-context";
 import { usePageHeader } from "./page-header-context.hooks";
@@ -85,13 +86,13 @@ export const WithActions: Story = {
     title: "Agents",
     description: "Manage and deploy your autonomous agents.",
     actions: (
-      <button
+      <Button
         type="button"
         className="border border-orange-400/40 bg-orange-400/10 px-3 py-1.5 text-sm text-orange-200 hover:bg-orange-400/20"
         onClick={() => {}}
       >
         New agent
-      </button>
+      </Button>
     ),
   },
 };

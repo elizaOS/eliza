@@ -444,7 +444,7 @@ export function CloudInputRow({
       title={labelToString(label, agentId)}
       description={typeof description === "string" ? description : undefined}
       control={
-        <input
+        <Input
           ref={ref as React.Ref<HTMLInputElement>}
           id={agentId}
           type={type}
@@ -650,14 +650,14 @@ export function CloudModal({
                 </DialogDescription>
               ) : null}
             </div>
-            <button
+            <Button
               type="button"
               onClick={onClose}
               className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground"
               aria-label="Close dialog"
             >
               <X aria-hidden className="size-4" />
-            </button>
+            </Button>
           </div>
         </div>
         <div className="px-4 py-3">{children}</div>

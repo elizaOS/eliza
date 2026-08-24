@@ -3,6 +3,7 @@
  * collapsed, and shell navigation layouts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../ui/button";
 import { Sidebar } from "./sidebar-root";
 
 const sampleItems = [
@@ -18,13 +19,13 @@ const sampleChildren = (
       Conversations
     </h2>
     {sampleItems.map((label) => (
-      <button
+      <Button
         key={label}
         type="button"
         className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
       >
         {label}
-      </button>
+      </Button>
     ))}
   </div>
 );
@@ -37,12 +38,12 @@ const sampleHeader = (
 );
 
 const sampleFooter = (
-  <button
+  <Button
     type="button"
     className="rounded-sm border border-border px-3 py-1.5 text-xs text-txt hover:bg-black/10"
   >
     New chat
-  </button>
+  </Button>
 );
 
 const meta = {

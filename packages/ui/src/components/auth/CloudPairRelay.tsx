@@ -21,6 +21,7 @@ import {
   isDedicatedCloudAgentBase,
 } from "../../utils/cloud-agent-base";
 import { setElizaApiToken } from "../../utils/eliza-globals";
+import { Button } from "../ui/button";
 
 export { cloudPairTokenKeyForAgent };
 
@@ -422,7 +423,7 @@ export function CloudHostedAgentAuthNotice({
               : "This Cloud agent uses your Eliza Cloud session. Open it from Eliza Cloud again to create a fresh secure sign-in link."}
         </p>
         {onNativeReauth ? (
-          <button
+          <Button
             className={ctaClass}
             disabled={activeNativeAction !== null}
             onClick={() => void handleNativeAction(onNativeReauth, "primary")}
@@ -437,14 +438,14 @@ export function CloudHostedAgentAuthNotice({
                 : nativeRecoveryMode === "manage"
                   ? "Open Eliza Cloud"
                   : "Re-open from Eliza Cloud"}
-          </button>
+          </Button>
         ) : (
           <a className={ctaClass} href={reopenUrl} rel="noopener" target="_top">
             Re-open from Eliza Cloud
           </a>
         )}
         {nativeRecoveryMode === "manage" && onNativeRetry ? (
-          <button
+          <Button
             className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md border border-white/15 bg-white/5 px-5 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-70"
             disabled={activeNativeAction !== null}
             onClick={() => void handleNativeAction(onNativeRetry, "retry")}
@@ -453,7 +454,7 @@ export function CloudHostedAgentAuthNotice({
             {activeNativeAction === "retry"
               ? "Reconnecting…"
               : "I fixed it — reconnect"}
-          </button>
+          </Button>
         ) : null}
         {reauthError ? (
           <p className="mt-4 text-sm leading-6 text-[#f4b55a]" role="alert">
@@ -540,13 +541,13 @@ export function CloudPairRelay({
           {message}
         </p>
         {status.phase === "session-only" ? (
-          <button
+          <Button
             className="mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710]"
             onClick={() => onPaired()}
             type="button"
           >
             Continue to your agent
-          </button>
+          </Button>
         ) : null}
       </div>
     </main>

@@ -5988,7 +5988,7 @@ export function ChatOverlay({
               restoreDragging ||
               restorePressRef.current != null) &&
             !pinnedOpen ? (
-              <button
+              <Button
                 {...restoreZoneBinding}
                 type="button"
                 data-testid="chat-maximize-restore-zone"

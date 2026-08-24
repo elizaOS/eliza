@@ -45,6 +45,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import {
@@ -169,7 +170,7 @@ function SortHeader({
       ? ArrowUp
       : ArrowDown;
   return (
-    <button
+    <Button
       type="button"
       onClick={() => onSort(columnKey)}
       className={cn(
@@ -185,7 +186,7 @@ function SortHeader({
         )}
         aria-hidden
       />
-    </button>
+    </Button>
   );
 }
 
@@ -512,7 +513,7 @@ export function AccountCommandTable({
                       )}
                       <div className="flex min-w-0 flex-col">
                         {editingLabelId === account.id ? (
-                          <input
+                          <Input
                             value={labelDraft}
                             disabled={rowSaving}
                             onChange={(event) =>
@@ -535,7 +536,7 @@ export function AccountCommandTable({
                             className="h-6 min-w-0 rounded-sm border border-border/60 bg-bg px-1.5 text-base font-medium text-txt-strong outline-none sm:text-xs"
                           />
                         ) : (
-                          <button
+                          <Button
                             type="button"
                             disabled={rowSaving}
                             onClick={() => beginLabelEdit(account)}
@@ -545,7 +546,7 @@ export function AccountCommandTable({
                             className="truncate text-left text-xs font-medium text-txt-strong hover:underline"
                           >
                             {account.label}
-                          </button>
+                          </Button>
                         )}
                         {account.email && account.email !== account.label ? (
                           <span

@@ -13,6 +13,7 @@
 import { ChevronRight } from "lucide-react";
 
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import {
   type GroupedSettingsSections,
   SECTION_HUE_MEDALLION_CLASS,
@@ -44,7 +45,7 @@ export function SettingsHubList({
               const Icon = section.icon;
               const sectionLabel = label(section.label, section.defaultLabel);
               return (
-                <button
+                <Button
                   key={section.id}
                   type="button"
                   data-testid={`settings-hub-row-${section.id}`}
@@ -70,7 +71,7 @@ export function SettingsHubList({
                     aria-hidden
                     className="size-4 shrink-0 text-muted/60"
                   />
-                </button>
+                </Button>
               );
             })}
           </div>

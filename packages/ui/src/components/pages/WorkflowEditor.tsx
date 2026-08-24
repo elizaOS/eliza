@@ -33,6 +33,7 @@ import type {
 import { dispatchChatPrefill } from "../../events";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import {
@@ -520,7 +521,7 @@ export function WorkflowEditor({
           aria-label="Workflow views"
         >
           {STUDIO_TABS.map(([value, label, Icon]) => (
-            <button
+            <Button
               key={value}
               type="button"
               onClick={() => setTab(value)}
@@ -530,11 +531,11 @@ export function WorkflowEditor({
               title={label}
             >
               <Icon className="size-4" />
-            </button>
+            </Button>
           ))}
         </nav>
         {workflow.id ? (
-          <button
+          <Button
             type="button"
             onClick={() => void toggleActive()}
             className="grid size-8 place-items-center rounded-md hover:bg-muted/60"
@@ -546,7 +547,7 @@ export function WorkflowEditor({
             <span
               className={`size-2.5 rounded-full ${workflow.active ? "bg-status-success" : "bg-muted-foreground/40"}`}
             />
-          </button>
+          </Button>
         ) : null}
         {dirty ? (
           <span
@@ -664,7 +665,7 @@ export function WorkflowEditor({
         <div className="grid min-h-0 flex-1 lg:grid-cols-[220px_minmax(0,1fr)]">
           <aside className="min-h-0 overflow-auto border-b border-border/70 p-2 lg:border-b-0 lg:border-r">
             <div className="flex justify-end">
-              <button
+              <Button
                 type="button"
                 className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                 onClick={() => void refreshRuns()}
@@ -672,11 +673,11 @@ export function WorkflowEditor({
                 title="Refresh"
               >
                 <RefreshCw className="size-3.5" />
-              </button>
+              </Button>
             </div>
             <div className="space-y-1">
               {executions.map((execution) => (
-                <button
+                <Button
                   type="button"
                   key={execution.id}
                   onClick={() => setSelectedRunId(execution.id)}
@@ -697,7 +698,7 @@ export function WorkflowEditor({
                       minute: "2-digit",
                     })}
                   </span>
-                </button>
+                </Button>
               ))}
               {executions.length === 0 ? (
                 <div
@@ -803,7 +804,7 @@ export function WorkflowEditor({
                           </span>
                           <div className="min-w-0">
                             {inspectable ? (
-                              <button
+                              <Button
                                 type="button"
                                 className="flex min-h-11 w-full items-start gap-1 text-left"
                                 aria-label={`Inspect ${event.type} event`}
@@ -825,7 +826,7 @@ export function WorkflowEditor({
                                 <ChevronRight
                                   className={`mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform ${selected ? "rotate-90" : ""}`}
                                 />
-                              </button>
+                              </Button>
                             ) : (
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-medium">
@@ -1059,14 +1060,13 @@ export function WorkflowEditor({
                   {field.type === "boolean" ? (
                     <span className="flex items-center justify-between rounded-lg bg-muted/35 px-3 py-2 text-sm">
                       {field.title}
-                      <input
+                      <Checkbox
                         id={`workflow-input-${field.key}`}
-                        type="checkbox"
                         checked={Boolean(runInput[field.key])}
-                        onChange={(event) =>
+                        onCheckedChange={(checked) =>
                           setRunInput((current) => ({
                             ...current,
-                            [field.key]: event.target.checked,
+                            [field.key]: checked === true,
                           }))
                         }
                       />

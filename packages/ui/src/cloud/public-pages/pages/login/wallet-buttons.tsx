@@ -27,6 +27,7 @@ import type {
 } from "@stwd/sdk";
 import { useCallback, useEffect, useRef } from "react";
 import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
+import { Button } from "../../../../components/ui/button";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 
 type HexAddress = `0x${string}`;
@@ -348,7 +349,7 @@ function EthereumButton({
   // that fires on a later successful connect.
 
   return (
-    <button
+    <Button
       type="button"
       onClick={handleClick}
       disabled={disabled}
@@ -356,7 +357,7 @@ function EthereumButton({
     >
       {loading && <Spinner />}
       {t("cloud.login.wallet.evm", { defaultValue: "EVM wallet" })}
-    </button>
+    </Button>
   );
 }
 
@@ -449,7 +450,7 @@ function SolanaButton({
   }, [autoStart, disabled, handleClick, loading, onAutoStartHandled]);
 
   return (
-    <button
+    <Button
       type="button"
       onClick={handleClick}
       disabled={disabled}
@@ -457,7 +458,7 @@ function SolanaButton({
     >
       {loading && <Spinner />}
       {t("cloud.login.wallet.solana", { defaultValue: "Solana wallet" })}
-    </button>
+    </Button>
   );
 }
 

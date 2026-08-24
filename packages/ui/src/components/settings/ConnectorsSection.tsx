@@ -429,14 +429,14 @@ function ConnectorDetailPage({
       <div className="flex flex-col gap-3">
         {/* Mobile already has ViewHeader "Back to Connectors"; keep this control
             desktop-only so we do not double-render an undersized touch target. */}
-        <button
+        <Button
           type="button"
           onClick={onBack}
           className="hidden self-start text-xs font-medium text-muted hover:text-txt md:inline-flex min-h-11 items-center"
           data-testid="connector-detail-back"
         >
           {t("connectors.detail.back", { defaultValue: "← Connectors" })}
-        </button>
+        </Button>
         <div className="flex items-start gap-3">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-md border border-border/50 bg-bg-accent/70">
             <Icon className="size-5 text-txt" />
@@ -596,7 +596,7 @@ function ConnectorsIndex({
             mode: channelModeCopy[otherChannelMode].label,
             names: hiddenConnectors.map((p) => p.name).join(", "),
           })}{" "}
-          <button
+          <Button
             type="button"
             className="font-medium text-accent underline-offset-2 hover:underline"
             onClick={() => setConnectorChannelMode(otherChannelMode)}
@@ -605,7 +605,7 @@ function ConnectorsIndex({
               defaultValue: "Switch to {{mode}}",
               mode: channelModeCopy[otherChannelMode].label,
             })}
-          </button>
+          </Button>
         </p>
       ) : null}
     </SettingsStack>

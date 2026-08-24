@@ -335,7 +335,7 @@ export function AccountManagementPanel({
       {/* ── Available-to-connect disclosure (kills the empty-card stack) ── */}
       {availableOptions.length > 0 ? (
         <div className="grid gap-2">
-          <button
+          <Button
             type="button"
             onClick={() => setShowAvailable((v) => !v)}
             className="flex w-full items-center gap-1.5 text-left text-xs font-medium uppercase tracking-wider text-muted transition-colors hover:text-txt-strong"
@@ -357,7 +357,7 @@ export function AccountManagementPanel({
                   defaultValue: `More providers (${availableOptions.length})`,
                   count: availableOptions.length,
                 })}
-          </button>
+          </Button>
           {showAvailable ? (
             <div className="grid gap-2">
               {availableOptions.map((option) => (

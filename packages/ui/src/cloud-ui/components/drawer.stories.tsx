@@ -2,6 +2,8 @@
  * Storybook stories for the cloud-ui drawer.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
 import {
   Drawer,
   DrawerBody,
@@ -53,9 +55,9 @@ export const BottomSheet: Story = {
           migrated to the new build.
         </DrawerBody>
         <DrawerFooter>
-          <button type="button" className={primaryButtonClass}>
+          <Button type="button" className={primaryButtonClass}>
             Deploy now
-          </button>
+          </Button>
           <DrawerClose className={secondaryButtonClass}>Cancel</DrawerClose>
         </DrawerFooter>
       </DrawerContent>
@@ -77,23 +79,32 @@ export const RightSide: Story = {
           </DrawerDescription>
         </DrawerHeader>
         <div className="flex flex-col gap-3 px-4 py-2 text-sm text-white/80">
-          <label className="flex items-center justify-between gap-4">
+          <label
+            htmlFor="drawer-stream"
+            className="flex items-center justify-between gap-4"
+          >
             <span>Stream responses</span>
-            <input type="checkbox" defaultChecked />
+            <Checkbox id="drawer-stream" defaultChecked />
           </label>
-          <label className="flex items-center justify-between gap-4">
+          <label
+            htmlFor="drawer-summarize"
+            className="flex items-center justify-between gap-4"
+          >
             <span>Auto-summarize sessions</span>
-            <input type="checkbox" />
+            <Checkbox id="drawer-summarize" />
           </label>
-          <label className="flex items-center justify-between gap-4">
+          <label
+            htmlFor="drawer-verbose"
+            className="flex items-center justify-between gap-4"
+          >
             <span>Verbose logging</span>
-            <input type="checkbox" />
+            <Checkbox id="drawer-verbose" />
           </label>
         </div>
         <DrawerFooter>
-          <button type="button" className={primaryButtonClass}>
+          <Button type="button" className={primaryButtonClass}>
             Save changes
-          </button>
+          </Button>
           <DrawerClose className={secondaryButtonClass}>Close</DrawerClose>
         </DrawerFooter>
       </DrawerContent>
@@ -115,13 +126,13 @@ export const LeftSide: Story = {
         <nav className="flex flex-col gap-1 p-2 text-sm text-white/85">
           {["Overview", "Agents", "Deployments", "Billing", "Settings"].map(
             (item) => (
-              <button
+              <Button
                 key={item}
                 type="button"
                 className="rounded-md px-3 py-2 text-left transition hover:bg-white/5"
               >
                 {item}
-              </button>
+              </Button>
             ),
           )}
         </nav>

@@ -3,6 +3,7 @@
  * expanded, collapsed, and shell navigation layouts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../ui/button";
 import { SidebarScrollRegion } from "./sidebar-scroll-region";
 
 const sampleItems = [
@@ -23,13 +24,13 @@ const sampleItems = [
 const ItemList = ({ count = sampleItems.length }: { count?: number }) => (
   <div className="flex flex-col gap-1">
     {sampleItems.slice(0, count).map((label) => (
-      <button
+      <Button
         key={label}
         type="button"
         className="rounded-sm px-2 py-1.5 text-left text-sm text-txt hover:bg-black/10"
       >
         {label}
-      </button>
+      </Button>
     ))}
   </div>
 );

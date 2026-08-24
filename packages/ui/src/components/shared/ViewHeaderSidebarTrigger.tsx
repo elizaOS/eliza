@@ -7,6 +7,7 @@ import type * as React from "react";
 
 import type { WorkspaceMobileSidebarControl } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 /**
  * Compact mobile sidebar trigger for the `ViewHeader` `right` slot.
@@ -37,7 +38,7 @@ export function ViewHeaderSidebarTrigger({
   if (!control || control.open) return null;
   const triggerLabel = label ?? control.label ?? "Browse";
   return (
-    <button
+    <Button
       type="button"
       data-testid="page-layout-mobile-sidebar-trigger"
       onClick={() => control.setOpen(true)}
@@ -48,6 +49,6 @@ export function ViewHeaderSidebarTrigger({
     >
       <PanelLeftOpen className="size-4 shrink-0" aria-hidden />
       <span className="truncate">{triggerLabel}</span>
-    </button>
+    </Button>
   );
 }

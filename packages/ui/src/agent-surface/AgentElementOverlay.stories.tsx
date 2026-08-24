@@ -3,6 +3,8 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useRef } from "react";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { AgentElementOverlay } from "./AgentElementOverlay";
 import { AgentSurfaceProvider } from "./AgentSurfaceContext";
 import { getViewRegistry } from "./registry";
@@ -73,7 +75,7 @@ function MockView({
   return (
     <div className="max-w-sm space-y-3 p-6">
       <h3 className="text-sm font-semibold">Send funds</h3>
-      <input
+      <Input
         ref={(el) => {
           refs.current["send.amount"] = el;
         }}
@@ -81,7 +83,7 @@ function MockView({
         placeholder="0.00"
         className="w-full rounded border px-3 py-2 text-base sm:text-sm"
       />
-      <input
+      <Input
         ref={(el) => {
           refs.current["send.recipient"] = el;
         }}
@@ -89,7 +91,7 @@ function MockView({
         placeholder="address"
         className="w-full rounded border px-3 py-2 text-base sm:text-sm"
       />
-      <button
+      <Button
         type="button"
         ref={(el) => {
           refs.current["send.submit"] = el;
@@ -97,7 +99,7 @@ function MockView({
         className="rounded bg-accent px-4 py-2 text-sm text-accent-fg"
       >
         Send
-      </button>
+      </Button>
       <AgentElementOverlay />
     </div>
   );

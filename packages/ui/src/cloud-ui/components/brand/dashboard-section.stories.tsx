@@ -2,6 +2,7 @@
  * Storybook stories for DashboardSection.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../../components/ui/button";
 import { DashboardSection } from "./dashboard-section";
 
 const meta = {
@@ -40,13 +41,13 @@ export const WithAction: Story = {
     title: "Production agents",
     description: "Six agents currently serving traffic across two regions.",
     action: (
-      <button
+      <Button
         type="button"
         onClick={() => {}}
         className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
       >
         Deploy agent
-      </button>
+      </Button>
     ),
   },
 };
@@ -63,13 +64,13 @@ export const RichDescription: Story = {
       </span>
     ),
     action: (
-      <button
+      <Button
         type="button"
         onClick={() => {}}
         className="rounded-md border border-border px-4 py-2 text-sm font-medium text-txt-strong"
       >
         View plans
-      </button>
+      </Button>
     ),
   },
 };

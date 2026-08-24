@@ -25,6 +25,7 @@ import {
   useState,
 } from "react";
 import { useAppSelector } from "../../../state";
+import { Button } from "../../ui/button";
 
 export interface ChatWidgetShellProps {
   /** Header title (plain text or inline nodes); truncates rather than wraps. */
@@ -95,7 +96,7 @@ export function ChatWidgetShell({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {status}
-          <button
+          <Button
             type="button"
             aria-expanded={expanded}
             aria-controls={bodyId}
@@ -116,7 +117,7 @@ export function ChatWidgetShell({
             <ChevronDown
               className={`size-3.5 transition-transform duration-200 ${expanded ? "" : "-rotate-90"}`}
             />
-          </button>
+          </Button>
         </div>
       </div>
       {!expanded && summary != null && (

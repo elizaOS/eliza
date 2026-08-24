@@ -241,7 +241,7 @@ export function ConfigField({
               />
             ) : usesEditDialog ? (
               <>
-                <button
+                <Button
                   type="button"
                   disabled={renderProps.readonly}
                   onClick={() => {
@@ -263,7 +263,7 @@ export function ConfigField({
                 >
                   <span className="min-w-0 truncate">{chipLabel}</span>
                   <Pencil className="size-3 shrink-0 text-muted" aria-hidden />
-                </button>
+                </Button>
 
                 <Dialog
                   open={editOpen}

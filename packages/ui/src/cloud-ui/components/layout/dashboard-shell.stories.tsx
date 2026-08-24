@@ -2,6 +2,7 @@
  * Storybook stories for the DashboardShellLayout (sidebar + content).
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../../components/ui/button";
 import { DashboardShellLayout } from "./dashboard-shell";
 
 const Sidebar = ({ items }: { items: string[] }) => (
@@ -11,7 +12,7 @@ const Sidebar = ({ items }: { items: string[] }) => (
     </div>
     <nav className="flex flex-col gap-1 text-sm text-white/80">
       {items.map((label, i) => (
-        <button
+        <Button
           type="button"
           key={label}
           className={`rounded px-3 py-2 text-left hover:bg-white/5 ${
@@ -19,7 +20,7 @@ const Sidebar = ({ items }: { items: string[] }) => (
           }`}
         >
           {label}
-        </button>
+        </Button>
       ))}
     </nav>
   </aside>
@@ -99,12 +100,12 @@ export const EmptyContent: Story = {
         <div className="mt-1 text-sm text-white/60">
           Create your first agent to get started.
         </div>
-        <button
+        <Button
           type="button"
           className="mt-4 rounded-md bg-orange-500 px-4 py-2 text-sm font-medium text-black hover:bg-orange-600"
         >
           New agent
-        </button>
+        </Button>
       </div>
     ),
   },

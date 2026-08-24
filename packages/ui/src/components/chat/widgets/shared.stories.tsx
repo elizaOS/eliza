@@ -3,6 +3,7 @@
  * interaction-focused render states.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../ui/button";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 
 const ListIcon = (
@@ -82,12 +83,12 @@ export const WithAction: Story = {
   args: {
     title: "Tasks",
     action: (
-      <button
+      <Button
         type="button"
         className="rounded-sm bg-card/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted hover:text-txt"
       >
         + Add
-      </button>
+      </Button>
     ),
   },
 };
@@ -128,12 +129,12 @@ export const EmptyStateWithAction: StoryObj<typeof EmptyWidgetState> = {
     title: "No tasks for today",
     description: "Add one to get started.",
     children: (
-      <button
+      <Button
         type="button"
         className="self-center rounded-md bg-card/60 px-3 py-1 text-xs text-txt hover:bg-card"
       >
         Create task
-      </button>
+      </Button>
     ),
   },
 };

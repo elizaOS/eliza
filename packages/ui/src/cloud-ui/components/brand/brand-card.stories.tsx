@@ -2,6 +2,7 @@
  * Storybook stories for BrandCard / AgentCard (cloud brand card skins).
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../../components/ui/button";
 import { AgentCard, BrandCard } from "./brand-card";
 
 const meta = {
@@ -74,13 +75,13 @@ export const AsAgentCard: StoryObj = {
         }
         color="#ff6a00"
         action={
-          <button
+          <Button
             type="button"
             className="text-sm font-medium text-txt-strong underline-offset-4 hover:underline"
             onClick={() => {}}
           >
             Open agent
-          </button>
+          </Button>
         }
       />
       <AgentCard

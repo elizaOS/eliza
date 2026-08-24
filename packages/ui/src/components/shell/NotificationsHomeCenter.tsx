@@ -121,6 +121,7 @@ export {
   rowPropsEqual,
 } from "./notification-shade-content";
 
+import { Button } from "../ui/button";
 import {
   LIQUID_GLASS_BLUR,
   LIQUID_GLASS_EDGE_SHADOW,
@@ -2599,14 +2600,14 @@ export function NotificationsHomeCenter({
               still arrive.
             </p>
           </div>
-          <button
+          <Button
             type="button"
             onClick={() => void retryNotificationHydration()}
             className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
           >
             <RefreshCw aria-hidden className="size-3.5" />
             Retry
-          </button>
+          </Button>
         </div>
       </section>
     );
@@ -2995,7 +2996,7 @@ export function NotificationsHomeCenter({
                       {group.label}
                     </span>
                     <span className="flex shrink-0 items-center gap-1">
-                      <button
+                      <Button
                         type="button"
                         data-testid="notification-stack-collapse"
                         data-notification-stack-collapse=""
@@ -3008,8 +3009,8 @@ export function NotificationsHomeCenter({
                         className="h-8 px-2 text-xs font-medium text-white/60 transition-colors hover:text-white/90"
                       >
                         Show Less
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
                         data-testid="notification-stack-clear"
                         data-confirming={
@@ -3037,7 +3038,7 @@ export function NotificationsHomeCenter({
                         <ClearConfirmationContent
                           confirming={confirmingGroupKey === group.key}
                         />
-                      </button>
+                      </Button>
                     </span>
                   </div>
                 ) : null}

@@ -3,6 +3,7 @@
  * collapsed, and shell navigation layouts.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../ui/button";
 import {
   SidebarContent,
   SidebarEmptyState,
@@ -96,13 +97,13 @@ export const WithToolbar: Story = {
           <SidebarContent.SectionLabel>Channels</SidebarContent.SectionLabel>
         </SidebarContent.ToolbarPrimary>
         <SidebarContent.ToolbarActions>
-          <button
+          <Button
             type="button"
             onClick={() => {}}
             className="text-2xs text-muted hover:text-txt"
           >
             + New
-          </button>
+          </Button>
         </SidebarContent.ToolbarActions>
       </SidebarContent.Toolbar>
       <SidebarContent.Item variant="accent-soft" onClick={() => {}}>

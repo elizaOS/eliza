@@ -11,6 +11,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useMediaQuery } from "../../../hooks/useMediaQuery";
 import { cn } from "../../../lib/utils";
 import { useAppSelector } from "../../../state";
+import { Button } from "../../ui/button";
 import { ErrorBoundary } from "../../ui/error-boundary";
 import {
   CloudAccountMenu,
@@ -79,13 +80,13 @@ function SectionError({
       <p className="max-w-prose break-words text-xs text-muted-foreground">
         {error.message}
       </p>
-      <button
+      <Button
         type="button"
         onClick={onRetry}
         className="mt-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-ring"
       >
         Retry
-      </button>
+      </Button>
     </div>
   );
 }
@@ -136,7 +137,7 @@ function HubList({
                 const Icon = section.icon;
                 const active = section.id === activeSection;
                 return (
-                  <button
+                  <Button
                     key={section.id}
                     type="button"
                     onClick={() => onSelect(section.id)}
@@ -164,7 +165,7 @@ function HubList({
                         {section.subtitle}
                       </div>
                     </div>
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -276,14 +277,14 @@ export function CloudSettingsPanel() {
           />
         ) : (
           <div className="flex flex-1 flex-col overflow-hidden">
-            <button
+            <Button
               type="button"
               onClick={() => setNarrowView("hub")}
               className="flex items-center gap-1.5 border-b border-border px-4 py-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               <ArrowLeft className="size-4" />
               Settings
-            </button>
+            </Button>
             <div className="flex-1 overflow-y-auto px-4 py-6">
               {section && <SectionContent section={section} />}
             </div>

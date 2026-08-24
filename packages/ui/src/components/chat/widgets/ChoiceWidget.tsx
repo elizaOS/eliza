@@ -159,7 +159,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
                 : `${options.length} options`}
           </span>
           {!firstRun && !locked && (
-            <button
+            <Button
               type="button"
               aria-label="Dismiss"
               data-testid={`choice-dismiss-${id}`}
@@ -167,7 +167,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
               onClick={handleDismiss}
             >
               <X className="size-3.5" aria-hidden />
-            </button>
+            </Button>
           )}
         </>
       }

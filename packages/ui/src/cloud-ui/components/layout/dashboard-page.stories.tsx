@@ -2,6 +2,7 @@
  * Storybook stories for the dashboard page container/stack.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../../components/ui/button";
 import {
   DashboardPageContainer,
   DashboardPageStack,
@@ -60,18 +61,18 @@ function ToolbarTitle() {
 function ToolbarActions() {
   return (
     <div className="flex gap-2">
-      <button
+      <Button
         type="button"
         className="rounded-md border border-border px-3 py-1.5 text-sm"
       >
         Export
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
         className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground"
       >
         New agent
-      </button>
+      </Button>
     </div>
   );
 }

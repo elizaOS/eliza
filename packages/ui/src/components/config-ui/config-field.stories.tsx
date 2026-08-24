@@ -12,6 +12,7 @@ import {
   type MockAppOptions,
   MockAppProvider,
 } from "../../storybook/mock-providers";
+import { Input } from "../ui/input";
 import { ConfigField } from "./config-field";
 
 const mockAppValue = {
@@ -24,7 +25,7 @@ const mockAppValue = {
 } satisfies MockAppOptions;
 
 const sampleRenderer: FieldRenderer = (props: FieldRenderProps) => (
-  <input
+  <Input
     type="text"
     value={String(props.value ?? "")}
     onChange={() => {}}

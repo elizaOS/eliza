@@ -226,7 +226,7 @@ export function ProviderAccountRow({
     >
       {/* ── Header row: the single calm summary line ── */}
       <div className="flex items-center gap-3 px-3 py-2.5">
-        <button
+        <Button
           type="button"
           onClick={onToggle}
           disabled={!connected}
@@ -319,7 +319,7 @@ export function ProviderAccountRow({
               ) : null}
             </span>
           </span>
-        </button>
+        </Button>
 
         {/* Right-aligned inline actions — no separate modal world. */}
         <div className="flex shrink-0 items-center gap-1.5">
