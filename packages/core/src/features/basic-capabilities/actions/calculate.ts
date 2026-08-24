@@ -26,6 +26,7 @@ type Num = { kind: "int"; value: bigint } | { kind: "float"; value: number };
 
 const MAX_EXPRESSION_CHARS = 10_000;
 const MAX_INTEGER_RESULT_DIGITS = 10_000;
+const MAX_PARSE_DEPTH = 256;
 
 const integerDigits = (value: bigint): number =>
 	(value < 0n ? -value : value).toString().length;
@@ -47,7 +48,22 @@ class ExpressionError extends Error {}
 /** Recursive-descent evaluator over + - * / % ^ ( ) with unary minus. */
 class Parser {
 	private pos = 0;
+	private depth = 0;
 	constructor(private readonly src: string) {}
+
+	private nested<T>(parse: () => T): T {
+		this.depth++;
+		if (this.depth > MAX_PARSE_DEPTH) {
+			throw new ExpressionError(
+				`Expression nesting is too deep (max ${MAX_PARSE_DEPTH})`,
+			);
+		}
+		try {
+			return parse();
+		} finally {
+			this.depth--;
+		}
+	}
 
 	parse(): Num {
 		const value = this.expression();
@@ -127,12 +143,12 @@ class Parser {
 		const ch = this.src[this.pos];
 		if (ch === "-") {
 			this.pos++;
-			const value = this.unary();
+			const value = this.nested(() => this.unary());
 			return value.kind === "int" ? int(-value.value) : flt(-value.value);
 		}
 		if (ch === "+") {
 			this.pos++;
-			return this.unary();
+			return this.nested(() => this.unary());
 		}
 		return this.power();
 	}
@@ -146,7 +162,7 @@ class Parser {
 		this.pos += isStarStar ? 2 : 1;
 		// Right-associative; guard runaway integer exponents (10^6 digits is
 		// already far past anything a chat answer can carry).
-		const exponent = this.unary();
+		const exponent = this.nested(() => this.unary());
 		if (
 			base.kind === "int" &&
 			exponent.kind === "int" &&
@@ -175,7 +191,7 @@ class Parser {
 		const ch = this.src[this.pos];
 		if (ch === "(") {
 			this.pos++;
-			const inner = this.expression();
+			const inner = this.nested(() => this.expression());
 			this.ws();
 			if (this.src[this.pos] !== ")") {
 				throw new ExpressionError("Missing closing parenthesis");

@@ -60,6 +60,8 @@ describe("evaluateArithmetic", () => {
 			"99 ^ 10000",
 			"3 +",
 			"1".repeat(10_001),
+			`${"(".repeat(300)}1${")".repeat(300)}`,
+			`${"-".repeat(300)}1`,
 		]) {
 			expect(() => evaluateArithmetic(bad)).toThrow();
 		}
@@ -106,6 +108,9 @@ describe("deterministic arithmetic routing", () => {
 			"3847 * 292?",
 			"1,234 divided by 7 pls",
 			"what is 12345 plus 999",
+			"what is 3847 - 292",
+			"3847 / 292",
+			"3847 x 292?",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
 				"CALCULATE",
@@ -119,6 +124,13 @@ describe("deterministic arithmetic routing", () => {
 			"see you at 10 - 11 tomorrow",
 			"i walked 5 x this week",
 			"no math here at all",
+			"our 2024-2025 plan is attached",
+			"our 2024 - 2025 plan is attached",
+			"ISO 9001-2015 certification",
+			"call 555-1234 tomorrow",
+			"the 100-200 range",
+			"upgrade from version 100/200",
+			"use the 1920x1080 image",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual(
 				[],
