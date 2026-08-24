@@ -314,14 +314,17 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
       try {
         const result = await client.testAccount(providerId, accountId);
         if (result.ok) {
+          const catalogSuffix = result.modelCatalogUnavailable
+            ? "; model catalog unavailable"
+            : "";
           setActionNotice?.(
             `Connection OK${
               typeof result.latencyMs === "number"
                 ? ` (${result.latencyMs}ms)`
                 : ""
-            }`,
-            "success",
-            3000,
+            }${catalogSuffix}`,
+            result.modelCatalogUnavailable ? "info" : "success",
+            result.modelCatalogUnavailable ? 6000 : 3000,
           );
         } else {
           setActionNotice?.(

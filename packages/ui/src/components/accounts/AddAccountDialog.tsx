@@ -600,6 +600,7 @@ export function AddAccountDialog({
             ? { replaceAccountId: credentialRepairAccount.id }
             : {}),
         });
+        setApiKey("");
         onCreated(account);
         onClose();
       } catch (err) {

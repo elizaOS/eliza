@@ -1482,6 +1482,15 @@ function retractExportedDirectProviderEnv(
   }
 }
 
+export function retractAllExportedDirectProviderEnv(
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+): void {
+  for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
+    retractExportedDirectProviderEnv(providerId, env, ledger);
+  }
+}
+
 /**
  * Export the pool-selected credential of every direct provider into `env`.
  *
@@ -1500,16 +1509,13 @@ export async function applyDirectProviderCredentialsToEnv(
   const activeProvider = activeBackend
     ? DIRECT_PROVIDER_BY_BACKEND[activeBackend]
     : undefined;
-  let activeProviderToken: string | null = null;
-  let activeProviderHasAccounts = false;
+  const selected = new Map<DirectAccountProvider, string>();
+  const providersWithAccounts = new Set<DirectAccountProvider>();
 
   for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
     const accounts = deps.listAccounts(providerId);
-    if (accounts.length === 0) {
-      retractExportedDirectProviderEnv(providerId, env, ledger);
-      continue;
-    }
-    if (activeProvider === providerId) activeProviderHasAccounts = true;
+    if (accounts.length === 0) continue;
+    providersWithAccounts.add(providerId);
 
     const account = await pool.select({
       providerId,
@@ -1517,48 +1523,35 @@ export async function applyDirectProviderCredentialsToEnv(
       ...selectionForProvider(providerId),
     });
     const token = account ? await deps.getToken(providerId, account.id) : null;
-    if (!account || !token) {
-      retractExportedDirectProviderEnv(providerId, env, ledger);
-      continue;
-    }
+    if (account && token) selected.set(providerId, token);
+  }
 
+  // Resolve every selection before mutating the environment, then retract the
+  // complete previous export as one synchronous transition. This prevents a
+  // native OpenAI token from being paired with a stale OpenRouter/xAI base URL
+  // while switching routes, and lets a disabled/revoked selection fail closed.
+  retractAllExportedDirectProviderEnv(env, ledger);
+
+  for (const [providerId, token] of selected) {
     const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
     env[envKey] = token;
-    if (activeProvider === providerId) {
-      activeProviderToken = token;
-    }
     if (providerId === "zai-api") {
       env.Z_AI_API_KEY ??= token;
     }
-
-    const openAiCompatibleBase =
-      activeProvider === providerId
-        ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId]
-        : undefined;
-    if (openAiCompatibleBase) {
-      env.OPENAI_API_KEY = token;
-      env.OPENAI_BASE_URL = openAiCompatibleBase;
-    } else {
-      // A provider that was the OpenAI-compatible route on an earlier pass and
-      // no longer is must not leave its token behind as OPENAI_API_KEY.
-      const previous = ledger.get(providerId);
-      if (previous?.openAiCompat && env.OPENAI_API_KEY === previous.token) {
-        delete env.OPENAI_API_KEY;
-        if (
-          env.OPENAI_BASE_URL ===
-          OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId]
-        ) {
-          delete env.OPENAI_BASE_URL;
-        }
-      }
-    }
     ledger.set(providerId, {
       token,
-      openAiCompat: Boolean(openAiCompatibleBase),
+      openAiCompat: false,
     });
   }
 
-  if (activeProvider && !activeProviderToken && !activeProviderHasAccounts) {
+  let activeProviderToken = activeProvider
+    ? (selected.get(activeProvider) ?? null)
+    : null;
+  if (
+    activeProvider &&
+    !activeProviderToken &&
+    !providersWithAccounts.has(activeProvider)
+  ) {
     const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[activeProvider];
     activeProviderToken = env[envKey]?.trim() || null;
     if (!activeProviderToken && activeProvider === "zai-api") {
@@ -1567,14 +1560,15 @@ export async function applyDirectProviderCredentialsToEnv(
     if (!activeProviderToken && activeProvider === "moonshot-api") {
       activeProviderToken = env.KIMI_API_KEY?.trim() || null;
     }
-    const openAiCompatibleBase = activeProviderToken
-      ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider]
-      : undefined;
-    const token = activeProviderToken;
-    if (openAiCompatibleBase && token) {
-      env.OPENAI_API_KEY = token;
-      env.OPENAI_BASE_URL = openAiCompatibleBase;
-    }
+  }
+  const openAiCompatibleBase = activeProvider
+    ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider]
+    : undefined;
+  if (openAiCompatibleBase && activeProviderToken) {
+    env.OPENAI_API_KEY = activeProviderToken;
+    env.OPENAI_BASE_URL = openAiCompatibleBase;
+    const exported = activeProvider ? ledger.get(activeProvider) : undefined;
+    if (exported) exported.openAiCompat = true;
   }
 }
 
@@ -1802,12 +1796,9 @@ export async function sweepAccountPoolKeepAlive(
       const token = outcome.accessToken;
 
       if (!isSubscriptionProvider(providerId)) {
-        // Direct-API providers have no usage probe, but a successful token
-        // resolve proves the credential works — clear any stale needs-reauth /
-        // invalid flag so a transient earlier failure doesn't strand the account
-        // out of rotation (filterEligible only re-admits OK + reset rate-limits,
-        // and refreshUsage — the only other path to `ok` — skips direct APIs).
-        await pool.markHealthy(record.id, { providerId });
+        // Reading a locally stored API key proves only that storage is intact.
+        // Provider-observed 401/429 health remains authoritative until the
+        // explicit authenticated probe route records a successful response.
         continue;
       }
 
@@ -1950,9 +1941,12 @@ function installAnthropicBridge(pool: AccountPool): void {
 
 export function resetDefaultAccountPoolAfterCredentialReset(): void {
   stopAccountPoolKeepAliveForTests();
+  retractAllExportedDirectProviderEnv(
+    process.env,
+    defaultDirectProviderEnvLedger,
+  );
   cachedDefaultPool = null;
   cachedRuntimeStoragePolicy = null;
-  defaultDirectProviderEnvLedger.clear();
 }
 
 export const __resetDefaultAccountPoolForTests =

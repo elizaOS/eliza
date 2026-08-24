@@ -37,7 +37,7 @@ describe("direct provider authority", () => {
           status: 200,
         });
       }
-      expect(init?.headers).toBeUndefined();
+      expect(init?.headers).toEqual({ Authorization: "Bearer secret-value" });
       return new Response(JSON.stringify({ data: models }), { status: 200 });
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -172,6 +172,30 @@ describe("direct provider authority", () => {
         status: 200,
         latencyMs: expect.any(Number),
         modelIds: ["grok-4"],
+      },
+    );
+  });
+
+  it("keeps authenticated xAI health when its catalog body is unreadable", async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => {
+            throw new Error("read failed");
+          },
+        }),
+      },
+    } as unknown as Response;
+    globalThis.fetch = vi.fn(async () => response) as unknown as typeof fetch;
+
+    await expect(probeDirectApiKey("xai-api", "secret-value")).resolves.toEqual(
+      {
+        ok: true,
+        status: 200,
+        latencyMs: expect.any(Number),
+        modelCatalogUnavailable: true,
       },
     );
   });

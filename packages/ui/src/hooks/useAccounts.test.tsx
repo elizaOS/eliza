@@ -372,4 +372,25 @@ describe("useAccounts", () => {
       6000,
     );
   });
+
+  it("reports authenticated health separately from an unavailable model catalog", async () => {
+    client.testAccount.mockResolvedValueOnce({
+      ok: true,
+      latencyMs: 12,
+      modelCatalogUnavailable: true,
+    });
+    const notices = vi.fn();
+    const { result } = renderHook(() =>
+      useAccounts({ pollMs: 0, setActionNotice: notices }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(() => result.current.test("openai-api", "primary"));
+
+    expect(notices).toHaveBeenCalledWith(
+      "Connection OK (12ms); model catalog unavailable",
+      "info",
+      6000,
+    );
+  });
 });
