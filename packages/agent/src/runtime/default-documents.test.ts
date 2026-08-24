@@ -78,6 +78,7 @@ describe("default-documents", () => {
       {
         id: fragId,
         agentId: runtime.agentId,
+        entityId: runtime.agentId,
         roomId: runtime.agentId,
         content: { text: "fragment" },
         metadata: { documentId: docId },

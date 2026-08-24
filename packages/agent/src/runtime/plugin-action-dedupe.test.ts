@@ -12,7 +12,7 @@ function makeAction(name: string): Action {
     description: `Description for ${name}`,
     similes: [],
     examples: [],
-    handler: async () => true,
+    handler: async () => ({ success: true }),
     validate: async () => true,
   };
 }

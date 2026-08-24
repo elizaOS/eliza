@@ -19,7 +19,7 @@ describe("boot-config-store", () => {
     expect(initial.preferSharedCloudTier).toBe(true);
 
     const customConfig: AppBootConfig = {
-      branding: { name: "Custom Eliza" },
+      branding: { appName: "Custom Eliza" },
       cloudApiBase: "https://custom.eliza.app",
       preferSharedCloudTier: false,
       autoUpgradeSharedToDedicated: true,
@@ -27,7 +27,7 @@ describe("boot-config-store", () => {
 
     setBootConfig(customConfig);
     const updated = getBootConfig();
-    expect(updated.branding?.name).toBe("Custom Eliza");
+    expect(updated.branding?.appName).toBe("Custom Eliza");
     expect(updated.cloudApiBase).toBe("https://custom.eliza.app");
     expect(updated.preferSharedCloudTier).toBe(false);
     expect(updated.autoUpgradeSharedToDedicated).toBe(true);
