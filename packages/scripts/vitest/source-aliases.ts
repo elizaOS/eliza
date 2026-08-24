@@ -43,6 +43,30 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Vite strips query/hash suffixes before resolving a module and maps explicit
+// JavaScript-family spellings back to TypeScript sources (for example `.js`
+// and `.jsx` can resolve to an existing `.ts` file). JSON is also in Vite's
+// default extension set. These spellings must not turn an exact `null` package
+// export back into a source alias. Descendant subpaths stay eligible because an
+// exact `./private: null` export does not itself block `./private/*`.
+const VITE_EQUIVALENT_EXTENSION_PATTERN = String.raw`\.(?:mjs|js|mts|ts|jsx|tsx|cjs|cts|json)`;
+
+// A generic source alias is a test-only affordance, so only canonical package
+// subpaths may use it. Vite normalizes repeated separators and `.` / `..`
+// segments after alias replacement; accepting those spellings here can route a
+// noncanonical request onto a different source file before package `exports`
+// gets a say. Percent-encoded dots and separators are invalid package subpaths
+// and stay under the real resolver too. Query/hash contents are excluded from
+// these pathname checks.
+const CANONICAL_PACKAGE_SUBPATH_GUARD = [
+  "(?=[^/?#])",
+  "(?!\\.{1,2}(?:/|[?#]|$))",
+  "(?![^?#]*/\\.{1,2}(?:/|[?#]|$))",
+  "(?![^?#]*//)",
+  "(?![^?#]*\\\\)",
+  "(?![^?#]*%(?:2[eEfF]|5[cC]))",
+].join("");
+
 function packageSubpathAliasMatcher(
   packageName: string,
   blockedExactSubpaths: string[],
@@ -50,10 +74,10 @@ function packageSubpathAliasMatcher(
 ): RegExp {
   const blockedPattern =
     blockedExactSubpaths.length > 0
-      ? `(?!(?:${blockedExactSubpaths.map(escapeRegex).join("|")})$)`
+      ? `(?!(?:${blockedExactSubpaths.map(escapeRegex).join("|")})(?:${VITE_EQUIVALENT_EXTENSION_PATTERN})?(?:[?#].*)?$)`
       : "";
   return new RegExp(
-    `^${escapeRegex(packageName)}/${blockedPattern}(${capturePattern})$`,
+    `^${escapeRegex(packageName)}/${CANONICAL_PACKAGE_SUBPATH_GUARD}${blockedPattern}(${capturePattern})$`,
   );
 }
 
