@@ -1,0 +1,162 @@
+{
+  "packages/ui/src/cloud-ui/components/analytics/cost-alerts.tsx:CostAlerts": {
+    "disposition": "molecular",
+    "canonicalOwner": null,
+    "note": "Analytics alert collection, not an Alert primitive."
+  },
+  "packages/ui/src/cloud-ui/components/docs/llms-txt-badge.tsx:LlmsTxtBadge": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/badge.tsx",
+    "note": "Link-shaped badge duplicates badge chrome and should compose Badge with asChild support."
+  },
+  "packages/ui/src/components/apps/extensions/surface.tsx:SurfaceBadge": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/status-badge.tsx",
+    "note": "Tone-based text badge overlaps the canonical status badge contract."
+  },
+  "packages/ui/src/components/composites/chat/chat-source.tsx:ChatVoiceSpeakerBadge": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": "packages/ui/src/components/ui/badge.tsx",
+    "note": "Role and voice icon marker has domain behavior, but should continue to source base badge tokens from the canonical owner."
+  },
+  "packages/ui/src/components/composites/OwnerBadge.tsx:OwnerBadge": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": "packages/ui/src/components/ui/badge.tsx",
+    "note": "Placement-aware owner marker is shared domain UI rather than a second general badge."
+  },
+  "packages/ui/src/components/local-inference/HardwareBadge.tsx:HardwareBadge": {
+    "disposition": "molecular",
+    "canonicalOwner": null,
+    "note": "Multi-field hardware summary made of several status regions."
+  },
+  "packages/ui/src/components/RedactedBadge.tsx:RedactedBadge": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/badge.tsx",
+    "note": "Static labeled badge duplicates canonical badge structure and styling."
+  },
+  "packages/ui/src/components/shell/BuildBadge.tsx:BuildBadge": {
+    "disposition": "molecular",
+    "canonicalOwner": null,
+    "note": "Interactive build-details control and popover, not an atomic badge."
+  },
+  "packages/ui/src/components/transcripts/SpeakerNameAttributionBadge.tsx:SpeakerNameAttributionBadge": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/status-badge.tsx",
+    "note": "Status-toned attribution label should compose the canonical status badge."
+  },
+  "packages/ui/src/cloud-ui/components/brand/brand-button.tsx:BrandButton": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
+    "note": "Reimplements Slot, button attributes, sizes, states, and variants already owned by Button."
+  },
+  "packages/ui/src/cloud-ui/components/brand/lock-on-button.tsx:LockOnButton": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
+    "note": "Special hover treatment can be a canonical Button variant or wrapper without a second button base."
+  },
+  "packages/ui/src/components/shared/ViewHeader.tsx:ViewBackButton": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
+    "note": "Agent instrumentation is specialized, but the raw button can compose the canonical Button."
+  },
+  "packages/ui/stories/src/lab/lab-ui.tsx:ActionButton": {
+    "disposition": "lab-only",
+    "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
+    "note": "Design-lab fixture is not shipped product UI."
+  },
+  "packages/ui/src/cloud-ui/components/brand/brand-card.tsx:BrandCard": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/card.tsx",
+    "note": "Reimplements the base card surface, polymorphism, padding, border, and hover contract."
+  },
+  "packages/ui/src/cloud-ui/components/brand/mini-stat-card.tsx:MiniStatCard": {
+    "disposition": "molecular",
+    "canonicalOwner": "packages/ui/src/components/ui/card.tsx",
+    "note": "Metric composition, not a base card primitive."
+  },
+  "packages/ui/src/components/apps/extensions/surface.tsx:SurfaceCard": {
+    "disposition": "false-positive",
+    "canonicalOwner": null,
+    "note": "Compact label-value definition block; the Card suffix does not represent card chrome."
+  },
+  "packages/ui/src/cloud-ui/components/promotion/promote-app-dialog.tsx:PromoteAppDialog": {
+    "disposition": "molecular",
+    "canonicalOwner": "packages/ui/src/components/ui/dialog.tsx",
+    "note": "Multi-step workflow already composes the canonical Dialog family."
+  },
+  "packages/ui/src/components/conversations/ConversationRenameDialog.tsx:ConversationRenameDialog": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": "packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx",
+    "note": "Compatibility adapter around the shared conversation rename composition."
+  },
+  "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:CloudInputRow": {
+    "disposition": "molecular",
+    "canonicalOwner": "packages/ui/src/components/ui/input.tsx",
+    "note": "Settings row composition; its internal raw input remains a separate migration target."
+  },
+  "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:CloudTextInput": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/input.tsx",
+    "note": "Directly reimplements the canonical text input with a narrower value callback."
+  },
+  "plugins/plugin-notes/src/views/viewPrimitives.tsx:AgentInput": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/agent-surface/components.tsx",
+    "note": "Duplicates the shared agent-aware Input adapter inside one plugin."
+  },
+  "packages/ui/src/cloud-ui/components/monetization/milestone-progress.tsx:MilestoneProgress": {
+    "disposition": "molecular",
+    "canonicalOwner": "packages/ui/src/components/ui/progress.tsx",
+    "note": "Milestone state composition, not a generic progress primitive."
+  },
+  "packages/ui/src/cloud-ui/components/navigation-progress.tsx:NavigationProgress": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": null,
+    "note": "Route lifecycle adapter around nprogress, not an inline progress control."
+  },
+  "packages/ui/src/components/local-inference/DownloadProgress.tsx:DownloadProgress": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/progress.tsx",
+    "note": "Inline determinate progress bar duplicates the canonical Progress base."
+  },
+  "packages/ui/src/cloud-ui/components/code/monaco-editor-skeleton.tsx:MonacoEditorSkeleton": {
+    "disposition": "molecular",
+    "canonicalOwner": "packages/ui/src/components/ui/skeleton.tsx",
+    "note": "Editor loading composition with label and spinner."
+  },
+  "packages/ui/src/cloud-ui/components/dashboard/cloud-dashboard-components.tsx:AppsSkeleton": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": "packages/ui/src/cloud-ui/components/data-list/dashboard-table-skeleton.tsx",
+    "note": "Named preset around the shared dashboard table skeleton."
+  },
+  "packages/ui/src/cloud-ui/components/dashboard/cloud-dashboard-components.tsx:ContainersSkeleton": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": "packages/ui/src/cloud-ui/components/data-list/dashboard-table-skeleton.tsx",
+    "note": "Named preset around the shared dashboard table skeleton."
+  },
+  "packages/ui/src/cloud/public-pages/pages/login/login-section-skeleton.tsx:LoginOptionsSkeleton": {
+    "disposition": "molecular",
+    "canonicalOwner": "packages/ui/src/components/ui/skeleton.tsx",
+    "note": "Full login-options loading composition."
+  },
+  "packages/ui/src/components/views/ViewStatusStates.tsx:ViewLoadingSkeleton": {
+    "disposition": "false-positive",
+    "canonicalOwner": null,
+    "note": "Loading status frame uses a spinner and contains no skeleton primitive."
+  },
+  "packages/ui/src/cloud/applications/components/apps-table.tsx:AppsTable": {
+    "disposition": "molecular",
+    "canonicalOwner": "packages/ui/src/cloud-ui/components/data-list/apps-list-view.tsx",
+    "note": "Application list composition, not a table primitive implementation."
+  },
+  "packages/ui/src/cloud-ui/components/brand/brand-tabs.tsx:BrandTabs": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/tabs.tsx",
+    "note": "Direct Radix Tabs root and subcomponent implementation duplicates canonical Tabs."
+  },
+  "plugins/plugin-notes/src/views/viewPrimitives.tsx:AgentTextarea": {
+    "disposition": "consolidation-candidate",
+    "canonicalOwner": "packages/ui/src/components/ui/textarea.tsx",
+    "note": "Duplicates agent instrumentation plus the canonical Textarea inside one plugin."
+  }
+}

@@ -14,6 +14,12 @@ const repoRoot = path.resolve(scriptDir, "../../..");
 const canonicalRoot = "packages/ui/src/components/ui";
 const reportJson = path.join(scriptDir, "duplicate-components-report.json");
 const reportMarkdown = path.join(scriptDir, "duplicate-components-report.md");
+const decisions = JSON.parse(
+  fs.readFileSync(
+    path.join(scriptDir, "component-inventory-decisions.json"),
+    "utf8",
+  ),
+);
 
 export const ATOMS = {
   alert: { names: ["Alert"], hosts: ["div"], rawHosts: [] },
@@ -298,6 +304,10 @@ export function buildInventory() {
       a.file.localeCompare(b.file) ||
       a.line - b.line,
   );
+  for (const candidate of candidates) {
+    const decision = decisions[`${candidate.file}:${candidate.name}`];
+    if (decision) candidate.decision = decision;
+  }
   const atoms = {};
   for (const atom of Object.keys(ATOMS)) {
     const entries = candidates.filter((candidate) => candidate.atom === atom);
@@ -332,6 +342,11 @@ export function buildInventory() {
       molecularCandidates: candidates.filter(
         (candidate) => candidate.classification === "molecular-candidate",
       ).length,
+      reviewedParallelPrimitives: candidates.filter(
+        (candidate) =>
+          candidate.classification === "parallel-primitive" &&
+          candidate.decision,
+      ).length,
     },
   };
 }
@@ -365,14 +380,20 @@ export function renderMarkdown(report) {
       continue;
     }
     lines.push(
-      "| Classification | Definition | Rendered tags |",
-      "| --- | --- | --- |",
+      "| Classification | Decision | Definition | Canonical owner | Rendered tags |",
+      "| --- | --- | --- | --- | --- |",
     );
     for (const entry of group.candidates) {
       const tags = entry.renderedTags.map((tag) => `\`${tag}\``).join(", ");
+      const decision = entry.decision?.disposition ?? "not-reviewed";
+      const owner = entry.decision?.canonicalOwner
+        ? `\`${entry.decision.canonicalOwner}\``
+        : "-";
       lines.push(
-        `| ${entry.classification} | \`${entry.name}\` in \`${entry.file}:${entry.line}\` | ${tags} |`,
+        `| ${entry.classification} | ${decision} | \`${entry.name}\` in \`${entry.file}:${entry.line}\` | ${owner} | ${tags} |`,
       );
+      if (entry.decision?.note)
+        lines.push(`|  |  | ${entry.decision.note} |  |  |`);
     }
     lines.push("");
   }
