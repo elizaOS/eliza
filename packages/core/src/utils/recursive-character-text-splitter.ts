@@ -54,7 +54,7 @@ export class RecursiveCharacterTextSplitter {
 				splits = text.split(separator);
 			}
 		} else {
-			splits = text.split("");
+			splits = Array.from(text);
 		}
 		return splits.filter((s) => s !== "");
 	}
