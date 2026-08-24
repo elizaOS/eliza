@@ -87,4 +87,41 @@ describe("stability parent network guard", () => {
       },
     ]);
   });
+
+  test("rejects and retains a loopback redirect to a remote origin", async () => {
+    const ledger: StabilityParentNetworkEntry[] = [];
+    const nativeCalls: string[] = [];
+    const nativeFetch = Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        nativeCalls.push(String(input));
+        expect(init?.redirect).toBe("manual");
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://api.openai.com/v1/responses" },
+        });
+      },
+      { preconnect: fetch.preconnect },
+    ) as typeof fetch;
+    const guardedFetch = createLoopbackOnlyFetch(nativeFetch, ledger);
+
+    await expect(
+      guardedFetch("http://127.0.0.1:43123/redirect"),
+    ).rejects.toThrow("unexpected redirect egress blocked");
+    expect(nativeCalls).toEqual(["http://127.0.0.1:43123/redirect"]);
+    expect(ledger).toEqual([
+      {
+        origin: "http://127.0.0.1:43123",
+        method: "GET",
+        allowed: true,
+      },
+      {
+        origin: "https://api.openai.com",
+        method: "GET",
+        allowed: false,
+      },
+    ]);
+  });
 });
