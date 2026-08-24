@@ -129,6 +129,151 @@ function validLiveTrajectories(commit: string, corpusManifestSha256: string) {
     .join("\n");
 }
 
+function validPostgresEvidence(
+  objects: readonly {
+    id: string;
+    family: string;
+    byteLength: number;
+    sourceSha256: string;
+    revision: string;
+    authorizationScope: string;
+  }[],
+  corpusManifestSha256: string,
+) {
+  const mappings = [
+    ["file", "filesystem", "READ.byteWindow", "native-bytes", false],
+    [
+      "document",
+      "document-store",
+      "DatabaseAdapter.readDocumentRange",
+      "typed-rejection",
+      true,
+    ],
+    [
+      "memory",
+      "memory-store",
+      "DatabaseAdapter.readMessageContentRange",
+      "typed-rejection",
+      true,
+    ],
+    [
+      "email",
+      "message-store",
+      "DatabaseAdapter.readMessageContentRange",
+      "typed-rejection",
+      true,
+    ],
+    [
+      "attachment",
+      "content-addressed-media",
+      "media-store.readStoredMediaBytes",
+      "native-bytes",
+      false,
+    ],
+    [
+      "tool-output",
+      "filesystem",
+      "readShellOutputArtifactPage",
+      "native-bytes",
+      false,
+    ],
+  ] as const;
+  const commit = "a".repeat(40);
+  return {
+    schemaVersion: "elizaos.content-context.postgres.v2",
+    status: "passed",
+    backend: "postgres",
+    commit,
+    corpusManifestSha256,
+    server: { version: "PostgreSQL 17.1", versionNum: 170_001 },
+    command: {
+      executable: "bun",
+      argv: [
+        "packages/scripts/produce-content-context-postgres.mjs",
+        `--commit=${commit}`,
+      ],
+      cwd: ".",
+    },
+    familyMappings: mappings.map(
+      ([
+        family,
+        authoritativeStore,
+        productionMethod,
+        binaryPolicy,
+        postgresBacked,
+      ]) => ({
+        family,
+        authoritativeStore,
+        productionMethod,
+        binaryPolicy,
+        postgresRows: postgresBacked ? 32 : 0,
+      }),
+    ),
+    sharedVectors: mappings
+      .filter((mapping) => mapping[4])
+      .map(([family, , productionMethod]) => ({
+        family,
+        status: "passed",
+        productionMethod,
+        authorizationDenied: true,
+        isolationDenied: true,
+        restartVerified: true,
+        indexNames: [
+          family === "document"
+            ? "idx_document_source_byte_seek"
+            : "idx_message_content_byte_seek",
+        ],
+      })),
+    objects: objects.map((object) => {
+      const postgresBacked =
+        mappings.find(([family]) => family === object.family)?.[4] === true;
+      const pageBytes = 64 * 1024;
+      return {
+        objectId: object.id,
+        family: object.family,
+        sourceBytes: object.byteLength,
+        sourceSha256: object.sourceSha256,
+        revision: object.revision,
+        authorizationScope: object.authorizationScope,
+        disposition: postgresBacked
+          ? "postgres-text-reassembled"
+          : "native-store-reassembled",
+        postgresRows: postgresBacked
+          ? Math.ceil(object.byteLength / pageBytes)
+          : 0,
+        reassembledSha256: object.sourceSha256,
+        authorizationVerified: true,
+        isolationVerified: true,
+        restartVerified: true,
+        sourceWork: {
+          pageBytes,
+          bytesRead: object.byteLength,
+          readCalls: Math.ceil(object.byteLength / pageBytes),
+          rowsRead: postgresBacked
+            ? Math.ceil(object.byteLength / pageBytes)
+            : 0,
+          parentScans: 0,
+          readAmplification: 1,
+        },
+      };
+    }),
+    negativeVectors: ["document", "memory", "email"].flatMap((family) =>
+      ["binary", "invalid-utf8"].map((format) => ({
+        family,
+        format,
+        status: "passed",
+        rejectionCode:
+          format === "binary"
+            ? "CONTENT_BINARY_UNSUPPORTED"
+            : "CONTENT_INVALID_UTF8",
+        postgresRows: 0,
+        storageWrites: 0,
+      })),
+    ),
+    cleanup: { schemaDropped: true, postDropProbe: "absent" },
+  };
+}
+
 function evidence() {
   const objects = [
     "file",
@@ -314,23 +459,7 @@ function evidence() {
       })),
     },
     "soak.json": validSoakEvidence("a".repeat(40), manifestSha),
-    "postgres.json": {
-      status: "passed",
-      backend: "postgres",
-      commit: "a".repeat(40),
-      corpusManifestSha256: manifestSha,
-      version: "17.1",
-      command: "postgres-real-integration",
-      families: [
-        "file",
-        "document",
-        "memory",
-        "email",
-        "attachment",
-        "tool-output",
-      ],
-      sharedVectorsPassed: true,
-    },
+    "postgres.json": validPostgresEvidence(objects, manifestSha),
     "scenario.json": {
       status: "passed",
       deterministic: true,
@@ -689,6 +818,101 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(pattern);
+  });
+
+  it("rejects Postgres evidence that copies native stores into SQL", () => {
+    const original = evidence();
+    const postgres = JSON.parse(
+      new TextDecoder().decode(original.bytes["postgres.json"]),
+    ) as {
+      familyMappings: Array<Record<string, unknown>>;
+    };
+    const file = postgres.familyMappings.find(
+      ({ family }) => family === "file",
+    );
+    if (!file) throw new Error("valid fixture lacks file mapping");
+    file.postgresRows = 1;
+    const changed = replaceArtifact(original, "postgres.json", postgres);
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/production storage ownership/u);
+  });
+
+  it("rejects Postgres evidence with amplified reads or missing typed rejections", () => {
+    const original = evidence();
+    const amplified = JSON.parse(
+      new TextDecoder().decode(original.bytes["postgres.json"]),
+    ) as {
+      objects: Array<{ sourceWork: { bytesRead: number } }>;
+    };
+    const firstObject = amplified.objects[0];
+    if (!firstObject) throw new Error("valid fixture lacks Postgres objects");
+    firstObject.sourceWork.bytesRead = 100 * 1024 * 1024;
+    const changedWork = replaceArtifact(original, "postgres.json", amplified);
+    expect(() =>
+      validateContentContextResult(changedWork.result, changedWork.bytes),
+    ).toThrow(/source work is unbounded/u);
+
+    const missingNegative = JSON.parse(
+      new TextDecoder().decode(original.bytes["postgres.json"]),
+    ) as { negativeVectors: unknown[] };
+    missingNegative.negativeVectors.pop();
+    const changedNegative = replaceArtifact(
+      original,
+      "postgres.json",
+      missingNegative,
+    );
+    expect(() =>
+      validateContentContextResult(
+        changedNegative.result,
+        changedNegative.bytes,
+      ),
+    ).toThrow(/negative vectors are incomplete/u);
+  });
+
+  it("rejects Postgres evidence with a fake index, rejection code, or producer command", () => {
+    const original = evidence();
+    const fakeIndex = JSON.parse(
+      new TextDecoder().decode(original.bytes["postgres.json"]),
+    ) as { sharedVectors: Array<{ indexNames: string[] }> };
+    const firstVector = fakeIndex.sharedVectors[0];
+    if (!firstVector) throw new Error("valid fixture lacks shared vectors");
+    firstVector.indexNames = ["idx_fixture_only"];
+    const changedIndex = replaceArtifact(original, "postgres.json", fakeIndex);
+    expect(() =>
+      validateContentContextResult(changedIndex.result, changedIndex.bytes),
+    ).toThrow(/shared vector is incomplete/u);
+
+    const fakeRejection = JSON.parse(
+      new TextDecoder().decode(original.bytes["postgres.json"]),
+    ) as { negativeVectors: Array<{ rejectionCode: string }> };
+    const firstNegative = fakeRejection.negativeVectors[0];
+    if (!firstNegative) throw new Error("valid fixture lacks negative vectors");
+    firstNegative.rejectionCode = "FIXTURE_REJECTED";
+    const changedRejection = replaceArtifact(
+      original,
+      "postgres.json",
+      fakeRejection,
+    );
+    expect(() =>
+      validateContentContextResult(
+        changedRejection.result,
+        changedRejection.bytes,
+      ),
+    ).toThrow(/negative vector is not fail-closed/u);
+
+    const fakeCommand = JSON.parse(
+      new TextDecoder().decode(original.bytes["postgres.json"]),
+    ) as { command: { argv: string[] } };
+    fakeCommand.command.argv[0] = "packages/scripts/fixture.mjs";
+    const changedCommand = replaceArtifact(
+      original,
+      "postgres.json",
+      fakeCommand,
+    );
+    expect(() =>
+      validateContentContextResult(changedCommand.result, changedCommand.bytes),
+    ).toThrow(/command is not exact/u);
   });
 
   it("rejects a short soak even when its summary says passed", () => {
