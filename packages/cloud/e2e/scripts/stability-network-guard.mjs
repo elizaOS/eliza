@@ -5,12 +5,22 @@
  */
 
 import { appendFileSync } from "node:fs";
+import { isIP } from "node:net";
 
 const ledgerPath = process.env.ELIZA_STABILITY_CHILD_NETWORK_LEDGER;
 if (!ledgerPath) throw new Error("network guard requires its ledger path");
 const nativeFetch = globalThis.fetch;
-const loopback = (hostname) =>
-  hostname === "localhost" || hostname === "::1" || hostname.startsWith("127.");
+const loopback = (hostname) => {
+  if (hostname === "localhost") return true;
+  const address =
+    hostname.startsWith("[") && hostname.endsWith("]")
+      ? hostname.slice(1, -1)
+      : hostname;
+  return (
+    address === "::1" ||
+    (isIP(address) === 4 && address.split(".", 1)[0] === "127")
+  );
+};
 
 globalThis.fetch = async (input, init) => {
   const url = new URL(

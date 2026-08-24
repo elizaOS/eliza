@@ -90,7 +90,9 @@ Strict deterministic fixtures are the only model in the PR lane.
 world, plugins, services, and mock endpoints while replacing only the model.
 The selected provider is forced through a bounded loopback proxy; a pinned-Bun
 preload rejects direct child fetch egress. Exactly one model credential is
-passed, and real service credentials are never passed.
+passed, and real service credentials are never passed. Successful responses
+must carry authoritative OpenAI or Anthropic usage; the proxy aggregates those
+counts and fails closed on missing, malformed, over-budget, or over-limit calls.
 
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains
