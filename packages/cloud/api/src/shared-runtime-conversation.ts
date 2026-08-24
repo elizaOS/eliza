@@ -1867,16 +1867,33 @@ export class SharedRuntimeConversation {
       if (stallTimer !== undefined) clearTimeout(stallTimer);
       release();
     };
+    const cancelOffQueue = (reason: string): void => {
+      // Calling reader.cancel synchronously fences the old generation before
+      // the room queue advances. Its promise includes interrupted-history and
+      // billing finalization, which can cross storage/provider boundaries and
+      // must not hold later realtime turns behind the coordinator deadline.
+      const cancellation = reader.cancel(reason);
+      settle();
+      this.state.waitUntil(
+        cancellation.catch(async (error: unknown) => {
+          // error-policy:J7 cancellation durability remains observable and is
+          // retryable, but cannot poison the live room admission queue.
+          const { logger } = await import("@/lib/utils/logger");
+          logger.warn(
+            "[SharedRuntimeConversation] off-queue stream cancellation failed",
+            {
+              reason,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }),
+      );
+    };
     const armStallTimer = () => {
       if (settled) return;
       if (stallTimer !== undefined) clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
-        reader
-          .cancel("shared-runtime room stream stalled past backstop")
-          // error-policy:J6 canceling an already-errored reader is teardown
-          // only; the lock release below is the recovery that matters.
-          .catch(() => undefined)
-          .finally(settle);
+        cancelOffQueue("shared-runtime room stream stalled past backstop");
       }, this.streamStallTimeoutMs);
     };
     armStallTimer();
@@ -1898,12 +1915,8 @@ export class SharedRuntimeConversation {
           controller.error(error);
         }
       },
-      cancel: async (reason) => {
-        try {
-          await reader.cancel(reason);
-        } finally {
-          settle();
-        }
+      cancel: (reason) => {
+        cancelOffQueue(String(reason));
       },
     });
     return new Response(body, {

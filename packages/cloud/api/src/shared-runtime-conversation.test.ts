@@ -1987,7 +1987,7 @@ test("forwards the server-authenticated history cutoff across the Durable Object
   });
 });
 
-test("stream body cancellation persists before the room queue releases", async () => {
+test("stream body cancellation fences immediately and persists off the room queue", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
   repositoryRow = [];
@@ -2039,12 +2039,14 @@ test("stream body cancellation persists before the room queue releases", async (
     return result;
   });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(secondCompleted).toBe(false);
+  expect(secondCompleted).toBe(true);
 
-  resolveStreamMergeGate();
   await cancel;
   const secondResult = await second;
-  expect(secondResult).toMatchObject({ result: { historyLength: 3 } });
+  expect(secondResult).toMatchObject({ result: { historyLength: 1 } });
+
+  resolveStreamMergeGate();
+  await Promise.all(background.splice(0));
 
   const stored = (
     data.get("conversation") as {
@@ -2057,7 +2059,6 @@ test("stream body cancellation persists before the room queue releases", async (
     "turn-after-cancel",
   ]);
   expect(stored[1]?.interrupted).toBe(true);
-  await Promise.all(background.splice(0));
 });
 
 test("failed durable cancellation write is retryable on a later finalize", async () => {
@@ -2109,12 +2110,14 @@ test("failed durable cancellation write is retryable on a later finalize", async
     return reader.cancel("client disconnected");
   };
 
-  await expect(fetchStream()).rejects.toThrow("storage unavailable");
+  await expect(fetchStream()).resolves.toBeUndefined();
+  await Promise.all(background.splice(0));
   expect(
     (data.get("conversation") as { history: unknown[] }).history,
   ).toHaveLength(0);
 
-  await fetchStream();
+  await expect(fetchStream()).resolves.toBeUndefined();
+  await Promise.all(background.splice(0));
   const stored = (
     data.get("conversation") as {
       history: Array<{ content: string; interrupted?: boolean }>;
