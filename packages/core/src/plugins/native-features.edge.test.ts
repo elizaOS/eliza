@@ -73,3 +73,69 @@ describe("native-features.edge", () => {
 		expect(resolveNativeRuntimeFeatureFromServiceType("anything")).toBeNull();
 	});
 });
+
+describe("native-features.edge fail-closed policy details", () => {
+	it("getNativeRuntimeFeaturePlugin throws an Error naming the requested feature", () => {
+		for (const feature of Object.keys(nativeRuntimeFeatureDefaults) as Array<
+			keyof typeof nativeRuntimeFeatureDefaults
+		>) {
+			let caught: unknown;
+			try {
+				getNativeRuntimeFeaturePlugin(feature);
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeInstanceOf(Error);
+			expect((caught as Error).message).toBe(
+				`Core native feature ${feature} requires a dedicated runtime host`,
+			);
+		}
+	});
+
+	it("resolves every exported plugin name back to its own feature", () => {
+		for (const feature of Object.keys(nativeRuntimeFeaturePluginNames) as Array<
+			keyof typeof nativeRuntimeFeaturePluginNames
+		>) {
+			expect(
+				resolveNativeRuntimeFeatureFromPluginName(
+					nativeRuntimeFeaturePluginNames[feature],
+				),
+			).toBe(feature);
+		}
+	});
+
+	it("keeps defaults and plugin names in sync with unique plugin names", () => {
+		expect(Object.keys(nativeRuntimeFeaturePluginNames).sort()).toEqual(
+			Object.keys(nativeRuntimeFeatureDefaults).sort(),
+		);
+		const names = Object.values(nativeRuntimeFeaturePluginNames);
+		expect(new Set(names).size).toBe(names.length);
+	});
+
+	it("does not resolve near-miss plugin names", () => {
+		expect(resolveNativeRuntimeFeatureFromPluginName(" documents")).toBeNull();
+		expect(resolveNativeRuntimeFeatureFromPluginName("documents ")).toBeNull();
+		expect(
+			resolveNativeRuntimeFeatureFromPluginName("ADVANCED-PLANNING"),
+		).toBeNull();
+		expect(
+			resolveNativeRuntimeFeatureFromPluginName("advanced_planning"),
+		).toBeNull();
+		expect(
+			resolveNativeRuntimeFeatureFromPluginName("advancedPlanning"),
+		).toBeNull();
+	});
+
+	it("resolveNativeRuntimeFeatureFromServiceType rejects feature-shaped service types", () => {
+		for (const feature of Object.keys(nativeRuntimeFeaturePluginNames) as Array<
+			keyof typeof nativeRuntimeFeaturePluginNames
+		>) {
+			expect(resolveNativeRuntimeFeatureFromServiceType(feature)).toBeNull();
+		}
+		expect(
+			resolveNativeRuntimeFeatureFromServiceType(
+				nativeRuntimeFeaturePluginNames.advancedPlanning,
+			),
+		).toBeNull();
+	});
+});
