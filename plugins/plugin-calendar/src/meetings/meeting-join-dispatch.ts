@@ -6,10 +6,13 @@
  * "meeting_join"` and `output.target = "meeting_join:<calendarEventId>"`.
  * The scheduling host (`@elizaos/plugin-personal-assistant`) registers this
  * handler as a `ChannelContribution` on its channel registry; the runner's
- * production dispatcher then routes the fire here, where the event is
- * re-loaded from the calendar store, its conference link re-validated with
- * `parseMeetingUrl`, and the meetings service (`@elizaos/plugin-meetings`)
- * is asked to join.
+ * production dispatcher then routes the fire here, where the current auto-join
+ * policy is re-checked, the firing task's scheduled mode is confirmed to still
+ * match that policy (the fire-time epoch guard that stops a superseded direct
+ * `all` join from firing under a later `ask` policy without owner approval),
+ * the event is re-loaded from the calendar store, its conference link
+ * re-validated with `parseMeetingUrl`, and the meetings service
+ * (`@elizaos/plugin-meetings`) is asked to join.
  *
  * Every failure is a typed `DispatchResult { ok: false }` so the spine's
  * dispatch policy (retry / escalate / fail-loud) applies — no silent skips,
@@ -17,11 +20,18 @@
  */
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import type { DispatchResult } from "@elizaos/plugin-scheduling";
+import {
+  type DispatchResult,
+  getScheduledTaskRunner,
+  type ScheduledTask,
+} from "@elizaos/plugin-scheduling";
 import type { MeetingJoinRequest, MeetingSession } from "@elizaos/shared";
 import { parseMeetingUrl } from "@elizaos/shared";
 import { CalendarRepository } from "../service/CalendarRepository.js";
-import { readMeetingAutoJoinSettings } from "./auto-join-settings.js";
+import {
+  type MeetingAutoJoinPolicy,
+  readMeetingAutoJoinSettings,
+} from "./auto-join-settings.js";
 
 const LOG_PREFIX = "[MeetingJoinChannel]";
 
@@ -43,6 +53,61 @@ function getMeetingsService(
     MEETINGS_SERVICE_TYPE,
   ) as MeetingsServiceLike | null;
   return service && typeof service.requestJoin === "function" ? service : null;
+}
+
+/**
+ * Read the firing task id from the channel dispatch payload. The PA dispatcher
+ * sends `{ target, message, metadata }` where `metadata.taskId` is the task
+ * that fired (see plugin-personal-assistant `runtime-wiring.ts`). Used by the
+ * fire-time policy-epoch guard to resolve the task's scheduled mode.
+ */
+function readFiringTaskId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const metadata = (payload as Record<string, unknown>).metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  const taskId = (metadata as Record<string, unknown>).taskId;
+  return typeof taskId === "string" && taskId.trim() ? taskId.trim() : null;
+}
+
+/**
+ * Fire-time policy-epoch guard. A join task is scheduled under one auto-join
+ * policy generation, recorded structurally in `metadata.autoJoinMode`. The
+ * scheduling-time idempotency key and stale-dismiss pass (see `auto-join.ts`)
+ * are the primary epoch enforcement, but a concurrent or stale reconcile can
+ * leave a task from a superseded generation `scheduled` inside the race window
+ * before the next reconcile retires it. The most dangerous case is a direct
+ * `all` join that survives into an `ask` policy: it would join with no owner
+ * approval. This resolves the firing task and returns its scheduled mode so the
+ * handler can refuse any task whose mode no longer matches the current policy.
+ * Returns `null` when the mode cannot be determined; the caller then defers to
+ * the scheduling-time guarantees rather than blocking a legitimate join.
+ */
+async function resolveFiringTaskMode(
+  runtime: IAgentRuntime,
+  payload: unknown,
+): Promise<MeetingAutoJoinPolicy | null> {
+  const taskId = readFiringTaskId(payload);
+  if (!taskId) return null;
+  let task: ScheduledTask | undefined;
+  try {
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const tasks = await runner.list({ source: "plugin" });
+    task = tasks.find((candidate) => candidate.taskId === taskId);
+  } catch (error) {
+    // error-policy:J7 the epoch guard is a defense-in-depth safety check layered
+    // on the authoritative scheduling-time enforcement; a runner-resolution
+    // failure must be warned and must not break the dispatch boundary contract
+    // (every outcome is a typed DispatchResult, never a throw).
+    logger.warn(
+      { src: "calendar:meeting-join-channel", taskId, error },
+      `${LOG_PREFIX} Could not resolve firing task ${taskId} for policy-epoch guard; deferring to scheduling-time guarantees.`,
+    );
+    return null;
+  }
+  const mode = task?.metadata?.autoJoinMode;
+  return mode === "all" || mode === "ask" ? mode : null;
 }
 
 /**
@@ -85,6 +150,21 @@ export async function handleMeetingJoinDispatch(
       reason: "disconnected",
       userActionable: true,
       message: "Meeting auto-join is disabled for this agent.",
+    };
+  }
+
+  // Policy-epoch guard: refuse a join whose scheduled mode no longer matches
+  // the current policy. This closes the reconcile race where a stale `all`
+  // (direct) join lingers into an `ask` policy and would otherwise join with no
+  // owner approval, or a stale `ask` (gated) join lingers into `all`. Only a
+  // task from the current policy generation is allowed to fire.
+  const firingMode = await resolveFiringTaskMode(runtime, payload);
+  if (firingMode && firingMode !== settings.policy) {
+    return {
+      ok: false,
+      reason: "disconnected",
+      userActionable: true,
+      message: `Meeting auto-join task belongs to a superseded "${firingMode}" policy generation; current policy is "${settings.policy}". Refusing to join.`,
     };
   }
 

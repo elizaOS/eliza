@@ -6,11 +6,33 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { MeetingJoinRequest, MeetingSession } from "@elizaos/shared";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  registerAnchorRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
+} from "@elizaos/plugin-scheduling";
+import type {
+  LifeOpsCalendarEvent,
+  MeetingJoinRequest,
+  MeetingSession,
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
+import { reconcileMeetingAutoJoin } from "./auto-join.js";
 import { writeMeetingAutoJoinPolicy } from "./auto-join-settings.js";
 import {
   handleMeetingJoinDispatch,
+  MEETING_JOIN_CHANNEL_KEY,
   readMeetingJoinTarget,
 } from "./meeting-join-dispatch.js";
 
@@ -97,6 +119,168 @@ describe("readMeetingJoinTarget", () => {
     expect(readMeetingJoinTarget({})).toBeNull();
     expect(readMeetingJoinTarget({ target: "  " })).toBeNull();
     expect(readMeetingJoinTarget("evt-1")).toBeNull();
+  });
+});
+
+const EVENT_NOW = new Date("2026-07-03T10:00:00.000Z");
+
+function lifeOpsEvent(
+  overrides: Partial<LifeOpsCalendarEvent> = {},
+): LifeOpsCalendarEvent {
+  return {
+    id: "evt-1",
+    externalId: "ext-1",
+    agentId: AGENT_ID,
+    provider: "google",
+    side: "owner",
+    calendarId: "primary",
+    title: "Design sync",
+    description: "",
+    location: "",
+    status: "confirmed",
+    startAt: "2026-07-03T15:00:00.000Z",
+    endAt: "2026-07-03T15:30:00.000Z",
+    isAllDay: false,
+    timezone: "UTC",
+    htmlLink: null,
+    conferenceLink: "https://meet.google.com/abc-defg-hij",
+    organizer: null,
+    attendees: [],
+    metadata: {},
+    syncedAt: EVENT_NOW.toISOString(),
+    updatedAt: EVENT_NOW.toISOString(),
+    ...overrides,
+  } as LifeOpsCalendarEvent;
+}
+
+/**
+ * Runtime backed by the REAL `@elizaos/plugin-scheduling` in-memory runner (so
+ * the fire-time policy-epoch guard resolves a genuine, reconcile-scheduled task
+ * via `runner.get`), plus the calendar SQL stub and a recording meetings
+ * service. Used to prove the guard against real tasks rather than a hand-rolled
+ * metadata double.
+ */
+function makeScheduledRuntime(options: RuntimeOptions = {}): {
+  runtime: IAgentRuntime;
+  runner: ScheduledTaskRunnerHandle;
+} {
+  const cache = new Map<string, unknown>();
+  const anchors = createAnchorRegistry();
+  const gates = createTaskGateRegistry();
+  registerBuiltInGates(gates);
+  const completionChecks = createCompletionCheckRegistry();
+  registerBuiltInCompletionChecks(completionChecks);
+  const ladders = createEscalationLadderRegistry();
+  registerDefaultEscalationLadders(ladders);
+  const runner = createScheduledTaskRunner({
+    agentId: AGENT_ID,
+    store: createInMemoryScheduledTaskStore(),
+    logStore: createInMemoryScheduledTaskLogStore(),
+    gates,
+    completionChecks,
+    ladders,
+    anchors,
+    consolidation: createConsolidationRegistry(),
+    ownerFacts: () => ({ timezone: "UTC" }),
+    globalPause: { current: async () => ({ active: false }) },
+    activity: { hasSignalSince: () => false },
+    subjectStore: { wasUpdatedSince: () => false },
+    dispatcher: TestNoopScheduledTaskDispatcher,
+    channelKeys: () => new Set(["in_app", MEETING_JOIN_CHANNEL_KEY]),
+    now: () => EVENT_NOW,
+  });
+  const runnerService = { getRunner: () => runner };
+  const runtime = {
+    agentId: AGENT_ID,
+    adapter: {
+      db: { execute: async () => ({ rows: options.rows ?? [] }) },
+    },
+    getService: (type: string) =>
+      type === "meetings"
+        ? (options.meetings ?? null)
+        : type === "lifeops_scheduled_task_runner"
+          ? runnerService
+          : null,
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+      return true;
+    },
+  } as unknown as IAgentRuntime;
+  registerAnchorRegistry(runtime, anchors);
+  return { runtime, runner };
+}
+
+async function scheduleJoinTaskId(
+  runtime: IAgentRuntime,
+  runner: ScheduledTaskRunnerHandle,
+): Promise<string> {
+  await reconcileMeetingAutoJoin({
+    runtime,
+    agentId: AGENT_ID,
+    events: [lifeOpsEvent()],
+    now: () => EVENT_NOW,
+  });
+  const tasks = await runner.list();
+  const join = tasks.find(
+    (t) => t.metadata?.calendarAutoJoin === true && t.metadata?.role === "join",
+  );
+  if (!join) throw new Error("expected a scheduled auto-join join task");
+  return join.taskId;
+}
+
+describe("handleMeetingJoinDispatch policy-epoch guard", () => {
+  it("refuses a stale direct all join once the policy changed to ask (no join without approval) (#26503)", async () => {
+    const requests: MeetingJoinRequest[] = [];
+    const { runtime, runner } = makeScheduledRuntime({
+      rows: [eventRow()],
+      meetings: {
+        requestJoin: async (request) => {
+          requests.push(request);
+          return session();
+        },
+      },
+    });
+    // Policy `all` scheduled a direct join; then the owner switched to `ask`
+    // and the stale direct join lingers into the race window before the next
+    // reconcile retires it.
+    await writeMeetingAutoJoinPolicy(runtime, "all");
+    const taskId = await scheduleJoinTaskId(runtime, runner);
+    await writeMeetingAutoJoinPolicy(runtime, "ask");
+
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: `${MEETING_JOIN_CHANNEL_KEY}:evt-1`,
+      message: "Join the meeting",
+      metadata: { taskId, firedAtIso: "2026-07-03T14:59:00.000Z" },
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: "disconnected" });
+    // The agent must NOT have joined the meeting the owner never approved.
+    expect(requests).toEqual([]);
+  });
+
+  it("allows a join whose scheduled mode still matches the current policy (#26503)", async () => {
+    const requests: MeetingJoinRequest[] = [];
+    const { runtime, runner } = makeScheduledRuntime({
+      rows: [eventRow()],
+      meetings: {
+        requestJoin: async (request) => {
+          requests.push(request);
+          return session();
+        },
+      },
+    });
+    await writeMeetingAutoJoinPolicy(runtime, "all");
+    const taskId = await scheduleJoinTaskId(runtime, runner);
+
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: `${MEETING_JOIN_CHANNEL_KEY}:evt-1`,
+      message: "Join the meeting",
+      metadata: { taskId, firedAtIso: "2026-07-03T14:59:00.000Z" },
+    });
+
+    expect(result).toEqual({ ok: true, messageId: "meeting:sess-1" });
+    expect(requests).toHaveLength(1);
   });
 });
 

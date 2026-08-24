@@ -678,7 +678,7 @@ describe("reconcileMeetingAutoJoin", () => {
     });
     const firstJoin = (await tasksByRole(harness.runner, "join"))[0];
     expect(firstJoin.idempotencyKey).toBe(
-      `calendar-auto-join:${event.id}:g0:join`,
+      `calendar-auto-join:${event.id}:g0:all:join`,
     );
     await harness.runner.apply(firstJoin.taskId, "complete");
 
@@ -694,12 +694,13 @@ describe("reconcileMeetingAutoJoin", () => {
     );
     const askApproval = askLive.find((t) => t.metadata?.role === "approval");
     const askJoin = askLive.find((t) => t.metadata?.role === "join");
-    // Same generation segment, distinct role segment within one generation.
+    // Same generation segment, distinct role segment within one generation, and
+    // the mode segment records the policy epoch that scheduled them.
     expect(askApproval?.idempotencyKey).toBe(
-      `calendar-auto-join:${event.id}:g1:approval`,
+      `calendar-auto-join:${event.id}:g1:ask:approval`,
     );
     expect(askJoin?.idempotencyKey).toBe(
-      `calendar-auto-join:${event.id}:g1:join`,
+      `calendar-auto-join:${event.id}:g1:ask:join`,
     );
 
     await writeMeetingAutoJoinPolicy(harness.runtime, "all");
@@ -717,8 +718,52 @@ describe("reconcileMeetingAutoJoin", () => {
     // the retired g0 key.
     expect(secondJoin?.idempotencyKey).not.toBe(firstJoin.idempotencyKey);
     expect(secondJoin?.idempotencyKey).toMatch(
-      new RegExp(`^calendar-auto-join:${event.id}:g[1-9][0-9]*:join$`),
+      new RegExp(`^calendar-auto-join:${event.id}:g[1-9][0-9]*:all:join$`),
     );
+  });
+
+  it("cross-policy joins never share an idempotency key even at the same generation (#26503)", async () => {
+    // The direct `all` join and the approval-gated `ask` join both carry role
+    // `join`. If the key omitted the policy mode, a stale `all` reconcile and a
+    // current `ask` reconcile that both observed an empty set (generation 0)
+    // would compute the SAME `join` key for semantically different tasks, and
+    // the spine would collapse them — potentially leaving an `ask` agent with a
+    // direct, approval-skipping join. The mode segment keeps them distinct.
+    const allJoinKey = `calendar-auto-join:${"evt-x"}:g0:all:join`;
+    const askJoinKey = `calendar-auto-join:${"evt-x"}:g0:ask:join`;
+    expect(allJoinKey).not.toBe(askJoinKey);
+
+    // Observable proof through the real reconcile path: schedule an `all` join,
+    // then (a genuine policy change) an `ask` generation. The two live join
+    // tasks carry distinct, mode-stamped keys — never a collision.
+    await writeMeetingAutoJoinPolicy(harness.runtime, "all");
+    const event = makeEvent();
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const allJoin = (await tasksByRole(harness.runner, "join"))[0];
+    expect(allJoin.idempotencyKey).toMatch(
+      new RegExp(`^calendar-auto-join:${event.id}:g\\d+:all:join$`),
+    );
+
+    await writeMeetingAutoJoinPolicy(harness.runtime, "ask");
+    await reconcileMeetingAutoJoin({
+      runtime: harness.runtime,
+      agentId: AGENT_ID,
+      events: [event],
+      now: () => NOW,
+    });
+    const askJoin = (await tasksByRole(harness.runner, "join")).find(
+      (t) =>
+        t.state.status === "scheduled" && t.metadata?.autoJoinMode === "ask",
+    );
+    expect(askJoin?.idempotencyKey).toMatch(
+      new RegExp(`^calendar-auto-join:${event.id}:g\\d+:ask:join$`),
+    );
+    expect(askJoin?.idempotencyKey).not.toBe(allJoin.idempotencyKey);
   });
 
   it("concurrent initial syncs compute one stable idempotency key (spine dedups in production) (#26503)", async () => {
@@ -746,7 +791,9 @@ describe("reconcileMeetingAutoJoin", () => {
     ]);
     const joins = await tasksByRole(harness.runner, "join");
     const keys = new Set(joins.map((t) => t.idempotencyKey));
-    expect(keys).toEqual(new Set([`calendar-auto-join:${event.id}:g0:join`]));
+    expect(keys).toEqual(
+      new Set([`calendar-auto-join:${event.id}:g0:all:join`]),
+    );
   });
 
   it("survives a runtime with no scheduling runner (typed skip, no crash)", async () => {

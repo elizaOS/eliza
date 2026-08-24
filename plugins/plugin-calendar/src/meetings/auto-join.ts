@@ -129,9 +129,21 @@ function isAutoJoinTask(task: ScheduledTask): boolean {
  * `(agentId, idempotencyKey)` (unique constraint in the SQL store, replayed by
  * `scheduleWithResult` — see `plugin-scheduling` `runner.ts`/`db-schema.ts`).
  * That is the concurrency contract the reconcile path relies on: two concurrent
- * syncs that both observe an empty task set compute the SAME key for the same
- * event/generation/role, so only one row is ever inserted and the loser
- * replays it instead of creating a duplicate approval/join.
+ * syncs that both observe an empty task set and hold the SAME policy compute the
+ * SAME key for the same event/generation/mode/role, so only one row is ever
+ * inserted and the loser replays it instead of creating a duplicate
+ * approval/join.
+ *
+ * The `mode` segment is load-bearing for the cross-policy race: an `all` join
+ * is a DIRECT `custom` task while an `ask` join is an `after_task`
+ * approval-gated `custom` task, yet both carry role `join`. Without the mode in
+ * the key, a stale `all` reconcile and a current `ask` reconcile that both see
+ * an empty set would compute the same `join` key for semantically different
+ * tasks; the spine would then replay whichever won and could leave an `ask`
+ * agent with a direct (approval-skipping) join. Keying on mode keeps the two
+ * generations' join tasks distinct; the fire-time policy-epoch guard in
+ * `meeting-join-dispatch.ts` then refuses any task whose mode no longer matches
+ * the current policy, so a superseded direct join can never actually fire.
  *
  * `generation` is a monotonic per-event token (the count of prior task
  * lifecycles for the event; task rows are only ever added, never removed, and
@@ -143,9 +155,10 @@ function isAutoJoinTask(task: ScheduledTask): boolean {
 function autoJoinIdempotencyKey(
   eventId: string,
   generation: number,
+  mode: MeetingAutoJoinPolicy,
   role: "join" | "approval",
 ): string {
-  return `calendar-auto-join:${eventId}:g${generation}:${role}`;
+  return `calendar-auto-join:${eventId}:g${generation}:${mode}:${role}`;
 }
 
 async function listAutoJoinTasksForEvent(
@@ -198,7 +211,7 @@ function joinTaskInput(
   };
   return {
     kind: "custom",
-    idempotencyKey: autoJoinIdempotencyKey(event.id, generation, "join"),
+    idempotencyKey: autoJoinIdempotencyKey(event.id, generation, mode, "join"),
     promptInstructions: `Join the ${MEETING_PLATFORM_LABELS[parsed.platform]} meeting "${event.title.trim() || "Untitled event"}" as the owner's notetaker.`,
     trigger,
     priority: "high",
@@ -235,7 +248,12 @@ function approvalTaskInput(
   };
   return {
     kind: "approval",
-    idempotencyKey: autoJoinIdempotencyKey(event.id, generation, "approval"),
+    idempotencyKey: autoJoinIdempotencyKey(
+      event.id,
+      generation,
+      "ask",
+      "approval",
+    ),
     promptInstructions: `Send the agent to join "${event.title.trim() || "Untitled event"}" on ${MEETING_PLATFORM_LABELS[parsed.platform]} at ${startLabel(event)}? Approve to have it attend and transcribe the meeting.`,
     trigger: {
       kind: "relative_to_anchor",
