@@ -5,8 +5,29 @@
  * host↔sandbox path mapping, and cloud coding-container provisioning. Uses fake
  * sandbox factories and fetch-mocked remote-runner / cloud HTTP servers.
  */
-import { CapabilityError, type IAgentRuntime, type UUID } from "@elizaos/core";
+import { execFile } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { promisify } from "node:util";
+import {
+  AgentRuntime,
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  CapabilityError,
+  type ElizaCapabilityRouter,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+  type WorkspaceDeltaReceipt,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import codingToolsPlugin, {
+  SANDBOX_SERVICE,
+  SandboxService,
+  SESSION_CWD_SERVICE,
+  SessionCwdService,
+} from "../../../../plugins/plugin-coding-tools/src/index.ts";
+import { __codingMutationRequiresVerificationForTests } from "../../../core/src/runtime/planner-loop.ts";
 import {
   DEFAULT_ELIZA_CLOUD_API_BASE_URL,
   RemoteCodingCapabilityRouterService,
@@ -17,6 +38,8 @@ import {
   type SandboxCommandResult,
   type SandboxEntryInfo,
 } from "./remote-coding-runner.ts";
+
+const execFileAsync = promisify(execFile);
 
 class FakeFiles {
   readonly listCalls: string[] = [];
@@ -674,10 +697,188 @@ describe("RemoteCodingCapabilityRouterService", () => {
       timedOut: false,
     });
     expect(result.output).toContain("ran npm 'test'");
-    expect(sandbox.commands.runCalls[1]).toMatchObject({
+    expect(
+      sandbox.commands.runCalls.find((call) => call.cmd === "npm 'test'"),
+    ).toMatchObject({
       cmd: "npm 'test'",
       cwd: "/workspace/src",
     });
+  });
+
+  it("observes and emits changed then unchanged receipts at the production PTY endpoint", async () => {
+    const sandbox = new FakeSandbox();
+    let remoteFingerprint = "1".repeat(40);
+    vi.spyOn(sandbox.commands, "run").mockImplementation(
+      async (cmd, opts = {}) => {
+        sandbox.commands.runCalls.push({ cmd, cwd: opts.cwd });
+        if (cmd.startsWith("bash -lc ")) {
+          return { exitCode: 0, stdout: `${remoteFingerprint}\n`, stderr: "" };
+        }
+        if (cmd.includes("mutate")) remoteFingerprint = "2".repeat(40);
+        return { exitCode: 0, stdout: `ran ${cmd}\n`, stderr: "" };
+      },
+    );
+    const service = new RemoteCodingCapabilityRouterService(
+      makeRuntime(),
+      makeConfig(),
+      new FakeFactory(sandbox),
+    );
+
+    const changed = await service.pty.runCommand({
+      command: "node mutate.js",
+      cwd: "/repo",
+    });
+    const unchanged = await service.pty.runCommand({
+      command: "bun test",
+      cwd: "/repo",
+    });
+
+    expect(changed.workspaceDeltaReceipt).toMatchObject({
+      outcome: "changed",
+      scope: changed.workspaceExecution,
+    });
+    expect(unchanged.workspaceDeltaReceipt).toMatchObject({
+      outcome: "unchanged",
+      scope: changed.workspaceExecution,
+    });
+    expect(changed.workspaceExecution).toMatchObject({
+      root: "/workspace",
+      rootId: expect.stringMatching(/^[a-f0-9]{64}$/),
+      executionDomainId: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+  });
+
+  it("carries production endpoint receipts through RuntimeBroker, SHELL, and planner scope matching", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "remote-receipt-e2e-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const sandbox = new FakeSandbox();
+      let remoteFingerprint = "1".repeat(40);
+      vi.spyOn(sandbox.commands, "run").mockImplementation(
+        async (cmd, opts = {}) => {
+          sandbox.commands.runCalls.push({ cmd, cwd: opts.cwd });
+          if (cmd.startsWith("bash -lc ")) {
+            return {
+              exitCode: 0,
+              stdout: `${remoteFingerprint}\n`,
+              stderr: "",
+            };
+          }
+          if (cmd.includes("mutate")) remoteFingerprint = "2".repeat(40);
+          return { exitCode: 0, stdout: `ran ${cmd}\n`, stderr: "" };
+        },
+      );
+      const endpoint = new RemoteCodingCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({ hostWorkspaceRoot: root }),
+        new FakeFactory(sandbox),
+      );
+      let routedCalls = 0;
+      const router: ElizaCapabilityRouter = {
+        environment: endpoint.environment,
+        fs: endpoint.fs,
+        git: endpoint.git,
+        model: endpoint.model,
+        plugin: endpoint.plugin,
+        availability: () => endpoint.availability(),
+        pty: {
+          runCommand: async (params) => {
+            routedCalls += 1;
+            if (routedCalls === 2) {
+              throw new CapabilityError({
+                code: "CAPABILITY_UNAVAILABLE",
+                capability: "pty",
+                method: "pty.command.run",
+                message: "exercise local fallback",
+              });
+            }
+            const result = await endpoint.pty.runCommand(params);
+            return result;
+          },
+        },
+      };
+      const action = codingToolsPlugin.actions?.find(
+        (candidate) => candidate.name === "SHELL",
+      );
+      if (!action?.handler) throw new Error("SHELL action unavailable");
+      const owner = new AgentRuntime({
+        character: { name: "remote-receipt-conformance" } as never,
+      });
+      const services = new Map<string, unknown>();
+      const runtime = {
+        agentId: owner.agentId,
+        runtimeInstanceId: "55555555-5555-4555-8555-555555555555" as UUID,
+        actions: [action],
+        character: owner.character,
+        getSetting: (key: string) =>
+          key === "CODING_TOOLS_WORKSPACE_ROOTS" ? root : undefined,
+        getService: <T>(type: string) => (services.get(type) as T) ?? null,
+        redactSecrets: (text: string) => text,
+        locateConfiguredSecretFragmentTaint:
+          owner.locateConfiguredSecretFragmentTaint.bind(owner),
+        logger: owner.logger,
+      } as IAgentRuntime;
+      const sandboxService = await SandboxService.start(runtime);
+      const sessionService = await SessionCwdService.start(runtime);
+      services.set(SANDBOX_SERVICE, sandboxService);
+      services.set(SESSION_CWD_SERVICE, sessionService);
+      services.set(CAPABILITY_ROUTER_SERVICE_TYPE, router);
+      const roomId = "22222222-2222-2222-2222-222222222222" as UUID;
+      sessionService.setCwd(String(roomId), root);
+      const message = {
+        id: "33333333-3333-3333-3333-333333333333" as UUID,
+        roomId,
+        entityId: "44444444-4444-4444-4444-444444444444" as UUID,
+        content: { text: "mutate and verify" },
+      } as Memory;
+      const run = async (command: string) =>
+        await action.handler?.(runtime, message, undefined, { command });
+      const changed = await run("printf mutate");
+      const local = await run("true");
+      const remoteUnchanged = await run("bun test");
+      const steps = [changed, local, remoteUnchanged].map((result, index) => ({
+        toolCall: {
+          name: "SHELL",
+          params: {
+            command: ["printf mutate", "true", "bun test"][index],
+          },
+        },
+        result,
+      }));
+      const trajectorySteps = steps.slice(0, 1);
+      const trajectory = {
+        steps: trajectorySteps,
+        archivedSteps: [],
+      } as unknown as Parameters<
+        typeof __codingMutationRequiresVerificationForTests
+      >[0];
+      const changedReceipt = changed?.data?.workspaceDeltaReceipt as
+        | WorkspaceDeltaReceipt
+        | undefined;
+      expect(changedReceipt).toMatchObject({
+        outcome: "changed",
+      });
+      if (!changedReceipt) throw new Error("changed receipt unavailable");
+      expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+        true,
+      );
+      trajectorySteps.push(steps[1]);
+      expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+        true,
+      );
+      trajectorySteps.push(steps[2]);
+      expect(remoteUnchanged?.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "unchanged",
+        scope: changedReceipt.scope,
+      });
+      expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+        false,
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("retries runner creation after a transient failure instead of caching the rejection", async () => {
@@ -804,7 +1005,11 @@ describe("RemoteCodingCapabilityRouterService", () => {
     });
 
     expect(result.operation.status).toBe("completed");
-    expect(sandbox.commands.runCalls.at(-1)).toMatchObject({
+    expect(
+      sandbox.commands.runCalls.find(
+        (call) => call.cmd === "git 'status' '--short'",
+      ),
+    ).toMatchObject({
       cmd: "git 'status' '--short'",
       cwd: "/workspace",
     });
@@ -929,6 +1134,10 @@ describe("RemoteCodingCapabilityRouterService", () => {
           "/v1/fs/entries",
           "/v1/fs/file",
           "/v1/fs/file",
+          "/v1/processes/run",
+          "/v1/processes/run",
+          "/v1/processes/run",
+          "/v1/processes/run",
           "/v1/processes/run",
           "/v1/processes/run",
         ]);
@@ -1475,6 +1684,9 @@ describe("RemoteCodingCapabilityRouterService", () => {
         output: "partial output\ncommand deadline reached",
         exitCode: 124,
         timedOut: true,
+        workspaceExecution: expect.objectContaining({
+          root: "/workspace",
+        }),
       });
     } finally {
       replaceGlobalFetch(originalFetch);

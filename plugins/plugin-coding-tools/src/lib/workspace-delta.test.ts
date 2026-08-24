@@ -5,8 +5,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  __runWorkspaceDeltaGitForTests,
   beginLocalWorkspaceDeltaObservation as beginObservation,
   finishLocalWorkspaceDeltaObservation,
   type LocalWorkspaceDeltaDependencies,
@@ -50,16 +52,11 @@ afterEach(async () => {
 });
 
 describe("local workspace delta observation", () => {
-  it("derives distinct opaque domains from distinct runtime-owned identities on one host", () => {
-    const runtime = (instanceId: string) => ({
-      agentId: "11111111-1111-1111-1111-111111111111",
-      getSetting: (key: string) =>
-        key === "ELIZA_RUNTIME_INSTANCE_ID" ? instanceId : undefined,
-    });
-    expect(
-      runtimeWorkspaceExecutionDomainId(runtime("installation-a") as never),
-    ).not.toBe(
-      runtimeWorkspaceExecutionDomainId(runtime("installation-b") as never),
+  it("derives distinct opaque domains for distinct runtime instances without environment ids", () => {
+    const runtime = () =>
+      new AgentRuntime({ character: { name: "shared-character" } as never });
+    expect(runtimeWorkspaceExecutionDomainId(runtime())).not.toBe(
+      runtimeWorkspaceExecutionDomainId(runtime()),
     );
   });
 
@@ -320,6 +317,18 @@ describe("local workspace delta observation", () => {
       outcome: "indeterminate",
       reasonCode: "OBSERVATION_OUTPUT_BUDGET_EXCEEDED",
     });
+  });
+
+  it("enforces the aggregate reservation while a real child fills both streams", async () => {
+    const root = await repository();
+    const bothStreamsAlias =
+      'alias.both=!node -e \'process.stdout.write("o".repeat(520)); process.stderr.write("e".repeat(520))\'';
+    await expect(
+      __runWorkspaceDeltaGitForTests(root, ["-c", bothStreamsAlias, "both"], {
+        timeoutMs: 1_000,
+        maxOutputBytes: 1_000,
+      }),
+    ).rejects.toMatchObject({ code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" });
   });
 
   it("bounds stalled filesystem metadata and file-stream reads", async () => {

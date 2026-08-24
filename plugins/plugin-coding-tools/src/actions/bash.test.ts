@@ -41,6 +41,7 @@ import { runShell } from "../lib/run-shell.js";
 import { persistShellOutputArtifact } from "../lib/shell-output-artifact.js";
 import { availableToolsProvider } from "../providers/available-tools.js";
 import {
+  BackgroundShellReapTimeoutError,
   BackgroundShellService,
   SandboxService,
   SessionCwdService,
@@ -128,6 +129,8 @@ interface RuntimeOptions {
   withShellHistoryService?: boolean;
   capabilityRouter?: ElizaCapabilityRouter;
   backgroundBufferChars?: number;
+  backgroundKillGraceMs?: number;
+  backgroundReapWaitMs?: number;
   configuredSecret?: string;
 }
 
@@ -161,6 +164,12 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     settings.CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS =
       opts.backgroundBufferChars;
   }
+  if (opts.backgroundKillGraceMs !== undefined)
+    settings.CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS =
+      opts.backgroundKillGraceMs;
+  if (opts.backgroundReapWaitMs !== undefined)
+    settings.CODING_TOOLS_BACKGROUND_SHELL_REAP_WAIT_MS =
+      opts.backgroundReapWaitMs;
 
   const services = new Map<string, unknown>();
   const character = {
@@ -172,6 +181,7 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const secretOwner = new AgentRuntime({ character });
   const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
+    runtimeInstanceId: secretOwner.runtimeInstanceId,
     actions: [shellAction],
     character,
     getSetting: vi.fn((key: string) => settings[key]),
@@ -1270,6 +1280,140 @@ describeIfPosix("shellAction", () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("escalates overflow from TERM to KILL and reaps a TERM-ignoring process", async () => {
+    const { runtime, backgroundShell } = await makeRuntime({
+      backgroundBufferChars: 5,
+      backgroundKillGraceMs: 50,
+      backgroundReapWaitMs: 500,
+    });
+    const message = makeMessage();
+    const startedAt = Date.now();
+    const started = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command: "trap '' TERM; printf 123456; while :; do sleep 1; done",
+      }),
+    );
+    const handle = (started.data as Record<string, unknown>).handle as string;
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(message.roomId),
+      handle,
+    );
+    const settled = await backgroundShell.inspect({
+      conversationId: String(message.roomId),
+      handle,
+    });
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect(settled).toMatchObject({
+      status: "error",
+      endedAt: expect.any(Number),
+      signal: "SIGKILL",
+      workspaceDeltaReceipt: {
+        operation: { handle, status: "error" },
+      },
+    });
+  });
+
+  it("bounds explicit kill while escalating a TERM-ignoring process", async () => {
+    const { runtime } = await makeRuntime({
+      backgroundKillGraceMs: 50,
+      backgroundReapWaitMs: 500,
+    });
+    const message = makeMessage();
+    const started = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command: "trap '' TERM; printf ready; while :; do sleep 1; done",
+      }),
+    );
+    const handle = (started.data as Record<string, unknown>).handle as string;
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("ready"),
+    );
+    const startedAt = Date.now();
+    const killed = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "kill_background",
+        handle,
+      }),
+    );
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect(killed.data).toMatchObject({
+      handle,
+      status: "killed",
+      workspaceDeltaReceipt: {
+        operation: { handle, status: "killed" },
+      },
+    });
+  });
+
+  it("retains a pending receipt when close cannot prove reap before the deadline", async () => {
+    const { runtime, backgroundShell } = await makeRuntime({
+      backgroundKillGraceMs: 30,
+      backgroundReapWaitMs: 80,
+    });
+    const message = makeMessage();
+    const started = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command: "trap '' TERM; printf ready; while :; do sleep 1; done",
+      }),
+    );
+    const handle = (started.data as Record<string, unknown>).handle as string;
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("ready"),
+    );
+    type CloseListener = (
+      code: number | null,
+      signal: NodeJS.Signals | null,
+    ) => void;
+    type CloseControlledProcess = {
+      rawListeners(event: "close"): CloseListener[];
+      removeAllListeners(event: "close"): void;
+      once(event: "close", listener: CloseListener): CloseControlledProcess;
+    };
+    const internal = backgroundShell as unknown as {
+      sessions: Map<string, { process: CloseControlledProcess }>;
+    };
+    const process = internal.sessions.get(handle)?.process;
+    if (!process) throw new Error("background process unavailable");
+    const closeListeners = process.rawListeners("close");
+    const originalOnce = process.once.bind(process);
+    process.removeAllListeners("close");
+    process.once = () => process;
+
+    await expect(
+      backgroundShell.kill({
+        conversationId: String(message.roomId),
+        handle,
+      }),
+    ).rejects.toBeInstanceOf(BackgroundShellReapTimeoutError);
+    expect(
+      await backgroundShell.inspect({
+        conversationId: String(message.roomId),
+        handle,
+      }),
+    ).toMatchObject({
+      status: "terminating",
+      endedAt: null,
+      workspaceDeltaReceipt: {
+        outcome: "indeterminate",
+        reasonCode: "BACKGROUND_RECEIPT_PENDING",
+        operation: { handle, status: "terminating" },
+      },
+    });
+
+    process.once = originalOnce;
+    for (const listener of closeListeners) listener(null, "SIGKILL");
+    expect(
+      await backgroundShell.inspect({
+        conversationId: String(message.roomId),
+        handle,
+      }),
+    ).toMatchObject({ status: "killed", endedAt: expect.any(Number) });
   });
 
   it("returns incremental background output using stream offsets", async () => {

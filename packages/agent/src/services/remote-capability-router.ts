@@ -559,7 +559,7 @@ async function invokeLocalRouter(
     case "pty.command.run":
       return (await router.pty.runCommand(
         params as TerminalRunParams,
-      )) as JsonValue;
+      )) as unknown as JsonValue;
     case "git.status":
       return (await router.git.status(params as GitStatusParams)) as JsonValue;
     case "git.diff":

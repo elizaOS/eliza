@@ -573,6 +573,8 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	/** Database adapter. Set in constructor; required. */
 	adapter: IDatabaseAdapter;
 	agentId: UUID;
+	/** Opaque identity of this concrete runtime instance, never character-derived. */
+	runtimeInstanceId: UUID;
 	character: Character;
 	enableAutonomy: boolean;
 	/** When true, TaskService does not start a timer; host drives via runDueTasks(). WHY: no long-lived process in serverless. */
