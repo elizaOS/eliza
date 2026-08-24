@@ -586,6 +586,28 @@ describe("handleMediaRouteRequest (in-process / iOS path)", () => {
     expect(res.status).toBe(200);
     expect(res.body).toBeUndefined();
   });
+
+  it("ignores Range variants with whitespace or multiple ranges", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "audio/mpeg");
+    // Leading/trailing whitespace around header is trimmed; inner whitespace is not matched
+    expect(handleMediaRouteRequest(url, "GET", "  bytes=2-5  ").status).toBe(
+      206,
+    );
+    expect(handleMediaRouteRequest(url, "GET", "bytes= 2-5").status).toBe(200);
+    expect(handleMediaRouteRequest(url, "GET", "bytes=2 -5").status).toBe(200);
+    expect(handleMediaRouteRequest(url, "GET", "bytes=0-2,5-7").status).toBe(
+      200,
+    );
+  });
+
+  it("416s reversed and negative-start ranges", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "audio/mpeg");
+    expect(handleMediaRouteRequest(url, "GET", "bytes=5-2").status).toBe(416);
+    expect(handleMediaRouteRequest(url, "GET", "bytes=-0").status).toBe(416);
+    expect(handleMediaRouteRequest(url, "GET", "bytes=0-0").status).toBe(206);
+  });
 });
 
 describe("serveMediaFile Range (HTTP path)", () => {
