@@ -100,6 +100,9 @@ and the asserted three-cycle seed/reset ledger. Failures still upload evidence.
 exact digest in both `stability.sha256` and `manifest.json`. Verify retained
 evidence before consuming it with
 `bun run stability:verify -- --output <artifact-directory>`.
+The verifier also checks the strict aggregate schema and a manifest self-hash
+that binds `reportSha256`; artifact publication is staged, fsynced, and refuses
+to overwrite a prior bundle.
 
 The lane composes #24081, #24136, #24209, and pending #24344. Until those stacks
 land together, source runs need their exact dependency heads; real-model proof
