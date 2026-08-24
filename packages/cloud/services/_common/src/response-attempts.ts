@@ -100,12 +100,9 @@ export async function executeResponseAttempts(
         retryable &&
         options.retryStatuses &&
         budgetAttempts < options.maxAttempts;
-      const parsedRetryAfter = Number.parseInt(
-        response.headers.get("Retry-After") ?? "",
-        10,
-      );
-      const retryAfterSeconds = Number.isFinite(parsedRetryAfter)
-        ? parsedRetryAfter
+      const rawRetryAfter = (response.headers.get("Retry-After") ?? "").trim();
+      const retryAfterSeconds = /^\d+$/.test(rawRetryAfter)
+        ? Number.parseInt(rawRetryAfter, 10)
         : null;
       const retryDelayMs = shouldRetry
         ? retryAfterSeconds === null
