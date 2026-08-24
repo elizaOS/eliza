@@ -953,15 +953,11 @@ function FilterChipButton({
       ref={ref}
       onClick={() => onSelect(filter)}
       aria-current={isActive ? "true" : undefined}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="pillDense"
+      data-state={isActive ? "on" : "off"}
       // Borderless text tab (#10710): active reads as accent text on a faint
       // wash; the count renders as plain text and hides at zero.
-      className={`h-auto gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-        isActive
-          ? "bg-accent/10 text-accent-muted dark:text-accent"
-          : "text-muted-strong hover:bg-bg-accent/40"
-      }`}
       {...agentProps}
     >
       <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>

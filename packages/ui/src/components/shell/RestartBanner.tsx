@@ -73,14 +73,10 @@ export function RestartBanner() {
           {t("restartbanner.Later")}
         </Button>
         <Button
-          variant="secondary"
+          variant="default"
           size="tinyWide"
           onClick={handleRestart}
           disabled={restarting}
-          style={{
-            background: "var(--accent)",
-            color: "var(--accent-foreground)",
-          }}
         >
           {restarting
             ? t("restartbanner.Restarting")

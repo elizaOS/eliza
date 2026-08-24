@@ -104,34 +104,28 @@ export function CharacterFilters({
         {/* View mode toggle */}
         <div className="flex h-9 shrink-0 rounded-full border border-white/15 bg-black/40 p-1 md:h-10">
           <Button
-            variant="ghost"
+            variant="selection"
+            size="icon-sm"
+            data-state={viewMode === "grid" ? "on" : "off"}
             type="button"
             aria-label={t("cloud.characterFilters.gridView", {
               defaultValue: "Grid view",
             })}
             aria-pressed={viewMode === "grid"}
             onClick={() => onViewModeChange("grid")}
-            className={`flex items-center justify-center w-8 md:w-9 rounded-sm transition-colors ${
-              viewMode === "grid"
-                ? "bg-white/10 text-white"
-                : "text-white/50 hover:text-white"
-            }`}
           >
             <LayoutGrid className="size-4" />
           </Button>
           <Button
-            variant="ghost"
+            variant="selection"
+            size="icon-sm"
+            data-state={viewMode === "list" ? "on" : "off"}
             type="button"
             aria-label={t("cloud.characterFilters.listView", {
               defaultValue: "List view",
             })}
             aria-pressed={viewMode === "list"}
             onClick={() => onViewModeChange("list")}
-            className={`flex items-center justify-center w-8 md:w-9 rounded-sm transition-colors ${
-              viewMode === "list"
-                ? "bg-white/10 text-white"
-                : "text-white/50 hover:text-white"
-            }`}
           >
             <List className="size-4" />
           </Button>

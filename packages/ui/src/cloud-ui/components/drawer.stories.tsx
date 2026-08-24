@@ -31,9 +31,6 @@ type Story = StoryObj<typeof meta>;
 const triggerButtonClass =
   "rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10";
 
-const primaryButtonClass =
-  "rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-orange-600";
-
 const secondaryButtonClass =
   "rounded-md border border-white/15 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/5";
 
@@ -55,7 +52,7 @@ export const BottomSheet: Story = {
           migrated to the new build.
         </DrawerBody>
         <DrawerFooter>
-          <Button type="button" className={primaryButtonClass}>
+          <Button type="button" size="labeledSm">
             Deploy now
           </Button>
           <DrawerClose className={secondaryButtonClass}>Cancel</DrawerClose>
@@ -102,7 +99,7 @@ export const RightSide: Story = {
           </label>
         </div>
         <DrawerFooter>
-          <Button type="button" className={primaryButtonClass}>
+          <Button type="button" size="labeledSm">
             Save changes
           </Button>
           <DrawerClose className={secondaryButtonClass}>Close</DrawerClose>

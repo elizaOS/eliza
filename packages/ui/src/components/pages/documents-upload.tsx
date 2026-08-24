@@ -112,16 +112,13 @@ function ScopeButton({
       title={t(titleKey, { defaultValue: defaultTitle })}
       onClick={() => onSelect(value)}
       disabled={uploading}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="tiny"
+      shape="circle"
+      data-state={active ? "on" : "off"}
       // Borderless text tab (#10710): active = accent text on a faint wash,
       // matching DocumentsView's ScopeFilterChip so the two scope rows read as
       // one system (and the view stays under its border-density ceiling).
-      className={`h-7 gap-1.5 rounded-full px-2 text-2xs font-semibold transition-colors ${
-        active
-          ? "bg-accent/12 text-accent"
-          : "text-muted hover:bg-bg-muted/30 hover:text-txt"
-      }`}
       {...agentProps}
     >
       <Icon className="size-3" aria-hidden />
@@ -356,11 +353,9 @@ export function UploadZone({
             </Button>
             <Button
               ref={addUrlButton.ref}
-              variant="outline"
+              variant="choice"
               size="icon"
-              className={`size-9 ${
-                showUrlInput ? "border-accent/45 bg-accent/12 text-txt" : ""
-              }`}
+              data-state={showUrlInput ? "on" : "off"}
               onClick={() => setShowUrlInput((current) => !current)}
               disabled={uploading}
               aria-label={t("documentsview.AddFromURL", {
@@ -375,11 +370,9 @@ export function UploadZone({
             </Button>
             <Button
               ref={newTextButton.ref}
-              variant="outline"
+              variant="choice"
               size="icon"
-              className={`size-9 ${
-                showTextInput ? "border-accent/45 bg-accent/12 text-txt" : ""
-              }`}
+              data-state={showTextInput ? "on" : "off"}
               onClick={() => setShowTextInput((current) => !current)}
               disabled={uploading}
               aria-label={t("documentsview.NewTextDocument", {

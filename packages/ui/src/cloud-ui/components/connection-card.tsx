@@ -96,13 +96,7 @@ function ConnectionConnectedBadge({
   className?: string;
 }) {
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "bg-status-success-bg text-status-success border-status-success/30",
-        className,
-      )}
-    >
+    <Badge variant="outline" tone="success" className={className}>
       <CheckCircle className="size-3 mr-1" />
       {label}
     </Badge>
@@ -224,13 +218,7 @@ function ConnectionInstructions({
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full justify-between p-4 h-auto bg-bg-muted",
-            triggerClassName,
-          )}
-        >
+        <Button variant="sectionToggle" className={triggerClassName}>
           <span className="font-medium">{title}</span>
           <ChevronDown
             className={cn("size-4 transition-transform", open && "rotate-180")}

@@ -2,39 +2,31 @@
 
 Scanned 922 maintained React files. 68 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
-Clusters share both a role and an atomic dependency signature. They are review candidates. Product behavior, state ownership, and responsive layout still determine whether consolidation is correct.
+Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
 | Role | Atomic dependencies | Components | Decision |
 | --- | --- | ---: | --- |
 | dialog | button, dialog | 6 | distinct-domain-compositions |
-| card | button, input | 4 | distinct-domain-compositions |
-| dialog | button, dialog, input | 4 | shared-pattern-candidate |
+| dialog | button, dialog, input | 4 | distinct-domain-compositions |
 | panel | button, input | 4 | distinct-domain-compositions |
-| card | badge, button, checkbox, dialog, spinner | 2 | shared-shell-candidate |
+| card | button, input | 3 | distinct-domain-compositions |
+| card | badge, button, checkbox, dialog, spinner | 2 | distinct-domain-compositions |
 | dialog | button, input | 2 | distinct-domain-compositions |
 | form | button, input | 2 | distinct-domain-compositions |
 | header | button, input | 2 | distinct-domain-compositions |
-| panel | badge, button, input | 2 | duplicate-implementation |
+| panel | badge, button, input | 2 | shared-lifecycle-owner |
 
-## Candidate clusters
+## Reviewed clusters
 
 ### dialog: button + dialog
 
 - `PluginSettingsDialog` in `packages/ui/src/components/pages/plugin-view-dialogs.tsx:68`
 - `EditSkillModal` in `packages/ui/src/components/pages/skill-detail-panel.tsx:35`
 - `InstallModal` in `packages/ui/src/components/pages/skill-installer.tsx:16`
-- `CloudModal` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:600`
+- `CloudModal` in `packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx:593`
 - `ConfirmDialog` in `packages/ui/src/components/ui/confirm-dialog.tsx:35`
-- `EventEditorDrawer` in `plugins/plugin-calendar/src/components/EventEditorDrawer.tsx:470`
+- `EventEditorDrawer` in `plugins/plugin-calendar/src/components/EventEditorDrawer.tsx:469`
 - Decision: **distinct-domain-compositions** — The shared atoms describe ordinary modal chrome; the six components own unrelated workflows and state.
-
-### card: button + input
-
-- `BuyDomainCard` in `packages/ui/src/cloud/applications/components/BuyDomainCard.tsx:68`
-- `ChoiceWidget` in `packages/ui/src/components/chat/widgets/ChoiceWidget.tsx:60`
-- `ConnectorCardWidget` in `packages/ui/src/components/chat/widgets/connector-card.tsx:83`
-- `AppBlockerSettingsCard` in `plugins/plugin-personal-assistant/src/components/AppBlockerSettingsCard.tsx:110`
-- Decision: **distinct-domain-compositions** — Domain purchase, chat choice, connector, and app-blocking cards only coincide at a broad dependency signature.
 
 ### dialog: button + dialog + input
 
@@ -42,7 +34,7 @@ Clusters share both a role and an atomic dependency signature. They are review c
 - `SaveCommandModal` in `packages/ui/src/components/chat/SaveCommandModal.tsx:37`
 - `ChatConversationRenameDialog` in `packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx:41`
 - `PromptDialog` in `packages/ui/src/components/ui/confirm-dialog.tsx:95`
-- Decision: **shared-pattern-candidate** — These are submit-oriented form dialogs; compare their validation, pending, and error-state shell before extracting anything.
+- Decision: **distinct-domain-compositions** — Withdrawal, command persistence, conversation renaming, and generic prompting have different validation, pending, error, and result contracts; their only stable shared behavior already belongs to the canonical Dialog, Input, and Button atoms.
 
 ### panel: button + input
 
@@ -52,11 +44,18 @@ Clusters share both a role and an atomic dependency signature. They are review c
 - `ReleaseNotesSection` in `packages/ui/src/components/release-center/sections.tsx:241`
 - Decision: **distinct-domain-compositions** — Search, connector setup, and release-note panels have different interaction and state contracts.
 
+### card: button + input
+
+- `BuyDomainCard` in `packages/ui/src/cloud/applications/components/BuyDomainCard.tsx:68`
+- `ChoiceWidget` in `packages/ui/src/components/chat/widgets/ChoiceWidget.tsx:60`
+- `ConnectorCardWidget` in `packages/ui/src/components/chat/widgets/connector-card.tsx:83`
+- Decision: **distinct-domain-compositions** — Domain purchase, chat choice, and connector cards only coincide at a broad dependency signature.
+
 ### card: badge + button + checkbox + dialog + spinner
 
 - `AccountCard` in `packages/ui/src/components/accounts/AccountCard.tsx:178`
 - `ConnectorAccountCard` in `packages/ui/src/components/connectors/ConnectorAccountCard.tsx:163`
-- Decision: **shared-shell-candidate** — AccountCard and ConnectorAccountCard repeat account status, editable identity, action, busy, and destructive-confirmation regions while retaining different domain behavior.
+- Decision: **distinct-domain-compositions** — The credential-pool card owns priority ordering, provider usage windows, credential repair, and enabled opacity; the connector card owns selection/default state, capability grants, privacy/purpose, sync identity, and independent busy transitions. Their shared status, editing, controls, and confirmation behavior already comes from canonical atoms, while a shared slot shell would hide distinct state machines without removing domain logic.
 
 ### dialog: button + input
 
@@ -78,7 +77,7 @@ Clusters share both a role and an atomic dependency signature. They are review c
 
 ### panel: badge + button + input
 
-- `AgentSection` in `packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx:120`
-- `CloudAgentsSection` in `packages/ui/src/components/settings/CloudAgentsSection.tsx:91`
-- Decision: **duplicate-implementation** — AgentSection and CloudAgentsSection implement the same cloud-agent management lifecycle with near-identical state and operations; one owner should serve both surfaces.
+- `AgentSection` in `packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx:109`
+- `CloudAgentsSection` in `packages/ui/src/components/settings/CloudAgentsSection.tsx:77`
+- Decision: **shared-lifecycle-owner** — The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers.
 

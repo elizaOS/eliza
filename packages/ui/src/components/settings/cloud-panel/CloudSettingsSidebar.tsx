@@ -224,15 +224,14 @@ function SectionItem({
   const Icon = section.icon;
   return (
     <Button
+      variant="selection"
+      size="compact"
+      align="start"
+      data-state={active ? "on" : "off"}
       type="button"
       onClick={() => onSelect(section.id)}
       aria-current={active ? "page" : undefined}
-      className={cn(
-        "keyboard-focus-surface flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
-        active
-          ? "bg-accent-subtle font-medium text-foreground"
-          : "text-muted-foreground hover:bg-bg-hover hover:text-foreground",
-      )}
+      className="keyboard-focus-surface w-full"
     >
       <Icon
         className={cn(

@@ -68,17 +68,13 @@ export function PtyConsoleDrawer({
               return (
                 <Button
                   variant="selection"
-                  size="content"
+                  size="eventRow"
                   align="start"
                   data-state={selected ? "on" : "off"}
                   key={session.sessionId}
                   type="button"
                   onClick={() => onSessionClick(session.sessionId)}
-                  className={`mb-1 w-full rounded-md p-2 text-left text-xs transition ${
-                    selected
-                      ? "bg-accent/15 text-txt"
-                      : "text-muted hover:bg-muted/20 hover:text-txt"
-                  }`}
+                  className="mb-1"
                 >
                   <div className="truncate font-medium">
                     {session.label ?? "Terminal"}

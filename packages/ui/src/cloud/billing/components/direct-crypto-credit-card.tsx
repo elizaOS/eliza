@@ -486,9 +486,6 @@ export function DirectCryptoCreditCard({
   }
 
   const isCloudSurface = surface === "cloud";
-  const cardClassName = isCloudSurface
-    ? "rounded-xs border-black/12 bg-white/88 text-black"
-    : "border-border bg-card text-card-fg";
   const mutedTextClassName = isCloudSurface ? "text-black/62" : "text-muted";
   const titleClassName = isCloudSurface ? "text-black" : "text-txt-strong";
   const dividerClassName = isCloudSurface
@@ -512,7 +509,7 @@ export function DirectCryptoCreditCard({
 
   if (!status?.directWallet?.enabled) {
     return (
-      <Card className={cardClassName}>
+      <Card variant={isCloudSurface ? "cloudPaymentPublic" : "cloudPayment"}>
         <CardContent className="p-5">
           <p className={`text-sm ${mutedTextClassName}`}>
             Direct wallet payments are not configured yet.
@@ -523,7 +520,7 @@ export function DirectCryptoCreditCard({
   }
 
   return (
-    <Card className={cardClassName}>
+    <Card variant={isCloudSurface ? "cloudPaymentPublic" : "cloudPayment"}>
       <CardHeader className="flex-row items-center gap-3 space-y-0 p-5 pb-4">
         <div
           className={`flex size-9 shrink-0 items-center justify-center border ${iconBoxClassName}`}

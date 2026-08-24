@@ -234,19 +234,12 @@ export function CockpitInteractiveTerminal({
         <span>{headerLabel}</span>
         <Button
           ref={closeRef}
-          variant="ghost"
-          size="content"
+          variant="transparent"
+          size="inlineIcon"
           type="button"
           data-testid="cockpit-terminal-close"
           onClick={close}
           {...closeAgentProps}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "inherit",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
         >
           ✕
         </Button>

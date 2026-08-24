@@ -46,14 +46,14 @@ export function SettingsHubList({
               const sectionLabel = label(section.label, section.defaultLabel);
               return (
                 <Button
+                  variant="ghostMuted"
+                  size="touch"
+                  align="start"
                   key={section.id}
                   type="button"
                   data-testid={`settings-hub-row-${section.id}`}
                   onClick={() => onSelect(section.id)}
-                  className={cn(
-                    "flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                    "hover:bg-surface/80",
-                  )}
+                  className="w-full"
                 >
                   <span
                     aria-hidden

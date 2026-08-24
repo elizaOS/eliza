@@ -172,11 +172,10 @@ function SortHeader({
   return (
     <Button
       type="button"
+      variant="mutedLink"
+      size="content"
       onClick={() => onSort(columnKey)}
-      className={cn(
-        "inline-flex items-center gap-1 text-2xs font-semibold uppercase tracking-wider text-muted transition-colors hover:text-txt-strong",
-        align === "right" && "flex-row-reverse",
-      )}
+      className={cn(align === "right" && "flex-row-reverse")}
     >
       <span>{label}</span>
       <Icon

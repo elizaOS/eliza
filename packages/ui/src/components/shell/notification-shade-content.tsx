@@ -602,6 +602,9 @@ export const NotificationRow = memo(function NotificationRow({
               <Button
                 key={`${notification.id}-stack-peek-${layer}`}
                 type="button"
+                variant="transparent"
+                size="fill"
+                shape="2xl"
                 data-testid={
                   stackPeeks.testIdVisible
                     ? "notification-stack-peek"
@@ -632,7 +635,7 @@ export const NotificationRow = memo(function NotificationRow({
                   }
                 }}
                 className={cn(
-                  "eliza-notif-glass eliza-notif-stack-peek eliza-notif-shade-transition absolute inset-0 rounded-2xl",
+                  "eliza-notif-glass eliza-notif-stack-peek eliza-notif-shade-transition absolute inset-0",
                   stackPeeks.fanned && "pointer-events-none",
                 )}
                 data-swipe-promoting={promotingStack ? "" : undefined}

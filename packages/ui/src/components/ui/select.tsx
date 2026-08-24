@@ -17,24 +17,69 @@ const SelectGroup = SelectPrimitive.Group;
 
 const SelectValue = SelectPrimitive.Value;
 
+interface SelectTriggerProps
+  extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger> {
+  variant?:
+    | "default"
+    | "config"
+    | "modal"
+    | "settingsCompact"
+    | "settingsFilter"
+    | "settingsSoft"
+    | "settingsToolbar"
+    | "settingsTouch";
+  density?: "default" | "compact" | "short";
+  hasError?: boolean;
+}
+
 const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      "flex h-10 w-full items-center justify-between rounded-sm border border-input bg-bg px-3 py-2 text-sm placeholder:text-muted pointer-coarse:min-h-touch pointer-coarse:min-w-touch disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+  SelectTriggerProps
+>(
+  (
+    {
       className,
-    )}
-    {...props}
-  >
-    {children}
-    <SelectPrimitive.Icon asChild>
-      <ChevronDown className="size-4 opacity-50" />
-    </SelectPrimitive.Icon>
-  </SelectPrimitive.Trigger>
-));
+      children,
+      variant = "default",
+      density = "default",
+      hasError = false,
+      ...props
+    },
+    ref,
+  ) => (
+    <SelectPrimitive.Trigger
+      ref={ref}
+      className={cn(
+        "flex h-10 w-full items-center justify-between rounded-sm border border-input bg-bg px-3 py-2 text-sm placeholder:text-muted pointer-coarse:min-h-touch pointer-coarse:min-w-touch disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+        variant === "config" &&
+          "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60",
+        variant === "modal" &&
+          "h-11 border-border bg-bg-hover text-txt placeholder:text-muted",
+        variant === "settingsCompact" &&
+          "h-9 rounded-sm border-border bg-card px-2.5 py-1.5 text-xs",
+        variant === "settingsFilter" &&
+          "h-10 rounded-sm border-border/50 bg-bg/80 px-3 py-2 text-left text-sm text-txt",
+        variant === "settingsSoft" &&
+          "rounded-sm border-border bg-bg px-2.5 py-1.5 text-xs",
+        variant === "settingsToolbar" &&
+          "h-11 rounded-sm border-border/60 bg-bg/70 text-left",
+        variant === "settingsTouch" &&
+          "h-11 rounded-md border-border bg-card px-3.5 text-left text-sm text-txt",
+        density === "compact" && "h-8 px-2 py-1 text-xs",
+        density === "short" && "h-9 px-3 py-2 text-sm",
+        hasError &&
+          "border-destructive bg-[color-mix(in_srgb,var(--destructive)_3%,var(--card))]",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <SelectPrimitive.Icon asChild>
+        <ChevronDown className="size-4 opacity-50" />
+      </SelectPrimitive.Icon>
+    </SelectPrimitive.Trigger>
+  ),
+);
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
 
 const SelectScrollUpButton = React.forwardRef<

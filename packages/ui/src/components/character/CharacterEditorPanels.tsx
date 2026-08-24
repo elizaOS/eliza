@@ -71,9 +71,6 @@ const GripIconSvg = ({ className }: { className?: string }) => (
   </svg>
 );
 
-const compactIconBtn =
-  "inline-flex size-7 items-center justify-center rounded-sm text-muted transition-colors hover:bg-bg-muted/70 hover:text-txt disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
-
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
 const STYLE_SECTION_PLACEHOLDERS: Record<
@@ -324,6 +321,9 @@ function StyleRuleRow({
         <GripIconSvg />
       </span>
       <Input
+        variant="embeddedName"
+        density="denseResponsive"
+        hasError={isDuplicate}
         ref={inputRef}
         value={value}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
@@ -331,9 +331,7 @@ function StyleRuleRow({
         }
         onBlur={onCommit}
         aria-label={ruleLabel}
-        className={`h-8 min-w-0 flex-1 rounded-none border-0 border-b bg-transparent px-0 text-sm text-txt ${
-          isDuplicate ? "border-warning/60 " : "border-border/30 "
-        }`}
+        className="min-w-0 flex-1"
         {...inputAgentProps}
       />
       {isDuplicate ? (
@@ -661,9 +659,8 @@ function ConversationFooter({
       </Button>
       <Button
         ref={removeRef}
-        variant="ghost"
+        variant="dangerGhost"
         size="icon-sm"
-        className={compactIconBtn}
         onClick={onRemove}
         title={t("charactereditor.RemoveExample", {
           defaultValue: "Remove conversation",

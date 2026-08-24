@@ -63,12 +63,12 @@ export function ConfirmDialog({
             {cancelLabel}
           </Button>
           <Button
-            className={
+            variant={
               variant === "danger"
-                ? "border-destructive/70 bg-destructive text-destructive-fg hover:border-destructive hover:bg-destructive"
+                ? "confirmDanger"
                 : variant === "warn"
-                  ? "border-warn/55 bg-warn/92 !text-black hover:border-warn hover:bg-warn"
-                  : "border-accent bg-accent text-accent-fg hover:border-accent-hover hover:bg-accent-hover"
+                  ? "confirmWarning"
+                  : "default"
             }
             onClick={onConfirm}
           >

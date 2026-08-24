@@ -5,7 +5,6 @@
 import { Eye, type LucideIcon, Mic, Send } from "lucide-react";
 import * as React from "react";
 
-import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 
 /**
@@ -69,10 +68,11 @@ export function GlassIconButton({
 
   return (
     <Button
-      variant="ghost"
+      variant="micToggle"
       size="icon-lg"
       aria-label={label}
       aria-pressed={icon === "mic" ? active : undefined}
+      data-state={active ? "on" : "off"}
       disabled={disabled}
       onClick={handleClick}
       onPointerDown={onPointerDown}
@@ -80,11 +80,7 @@ export function GlassIconButton({
       onPointerCancel={onPointerCancel}
       onPointerLeave={onPointerLeave}
       onMouseDown={handleMouseDown}
-      className={cn(
-        "grid shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent",
-        active ? "text-accent" : "text-muted-strong hover:text-txt",
-        disabled && "opacity-40",
-      )}
+      className="grid shrink-0 place-items-center"
     >
       <Icon className="size-[26px]" aria-hidden={true} />
     </Button>

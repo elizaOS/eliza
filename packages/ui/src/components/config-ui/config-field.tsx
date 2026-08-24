@@ -243,18 +243,15 @@ export function ConfigField({
               <>
                 <Button
                   type="button"
+                  variant="choice"
+                  size="compact"
+                  align="start"
                   disabled={renderProps.readonly}
                   onClick={() => {
                     setClearConfirming(false);
                     setEditOpen(true);
                   }}
-                  className={cn(
-                    "inline-flex max-w-[14rem] items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-left text-xs font-semibold text-txt-strong transition-colors",
-                    "hover:border-border-strong hover:bg-bg-hover",
-                    !isConfigValueFilled(renderProps.value) &&
-                      !renderProps.isSet &&
-                      "font-medium text-muted-strong",
-                  )}
+                  className="max-w-[14rem]"
                   aria-label={t("config-field.editLabel", {
                     defaultValue: "Edit {{label}}",
                     label,

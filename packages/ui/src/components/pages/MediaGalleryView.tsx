@@ -208,14 +208,11 @@ function MediaFilterChip({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="compact"
+      align="start"
+      data-state={isActive ? "on" : "off"}
       aria-current={isActive ? "page" : undefined}
-      className={`h-auto min-h-[2.25rem] rounded-sm px-3 py-2 text-left text-xs-tight font-semibold transition-colors ${
-        isActive
-          ? "bg-accent/14 text-txt-strong"
-          : "bg-bg/35 text-muted hover:bg-bg-hover hover:text-txt"
-      }`}
       onClick={() => onSelect(chip)}
       {...agentProps}
     >

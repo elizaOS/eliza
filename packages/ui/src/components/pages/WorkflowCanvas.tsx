@@ -80,7 +80,7 @@ function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
               : state === "finished"
                 ? "bg-status-success"
                 : state === "waiting"
-                  ? "bg-amber-500"
+                  ? "bg-warning"
                   : "animate-pulse bg-primary"
           }`}
           title={state}

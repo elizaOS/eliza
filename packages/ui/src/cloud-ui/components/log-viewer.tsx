@@ -29,12 +29,15 @@ import { cn } from "../lib/utils";
 import { BrandButton, BrandCard } from "./brand";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
+type BadgeTone = React.ComponentProps<typeof Badge>["tone"];
+type BadgeSize = React.ComponentProps<typeof Badge>["size"];
 
 export interface LogViewerBadge {
   key?: string;
   label: React.ReactNode;
   variant?: BadgeVariant;
-  className?: string;
+  tone?: BadgeTone;
+  size?: BadgeSize;
 }
 
 export interface LogViewerSelectOption {
@@ -249,7 +252,8 @@ export function LogViewer({
                 <Badge
                   key={badge.key ?? String(badge.label)}
                   variant={badge.variant ?? "outline"}
-                  className={badge.className}
+                  tone={badge.tone}
+                  size={badge.size}
                 >
                   {badge.label}
                 </Badge>

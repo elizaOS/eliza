@@ -20,8 +20,6 @@ import { Textarea } from "../ui/textarea";
 
 const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1002] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/75 px-4 py-6 font-body text-txt  sm:px-6";
-const OVERLAY_CARD_CLASS =
-  "relative z-10 w-full max-w-[820px] overflow-hidden border border-border/60 bg-card/95 ";
 const EMPTY_SNAPSHOT: ComputerUseApprovalSnapshot = {
   mode: "full_control",
   pendingCount: 0,
@@ -276,7 +274,7 @@ export function ComputerUseApprovalOverlay() {
       tabIndex={-1}
       className={OVERLAY_SHELL_CLASS}
     >
-      <Card className={OVERLAY_CARD_CLASS}>
+      <Card variant="overlayWide">
         <CardHeader className="bg-warning/5 pb-6 pt-6">
           <div className="flex flex-col gap-4">
             <StatusBadge

@@ -57,10 +57,10 @@ export function PageLayoutMobileDrawer({
         <div className="mb-2 flex shrink-0 md:hidden">
           <Button
             type="button"
-            variant="outline"
-            size="sm"
+            variant="pageDrawerTrigger"
+            size="pageDrawerTrigger"
             className={cn(
-              "h-[2.375rem] max-w-[min(11rem,100%)] rounded-sm border-border bg-card px-3 text-sm font-semibold text-txt ",
+              "max-w-[min(11rem,100%)]",
               mobileSidebarTriggerClassName,
             )}
             data-testid="page-layout-mobile-sidebar-trigger"

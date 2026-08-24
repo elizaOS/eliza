@@ -168,30 +168,6 @@ const CHAT_SCROLLER_STYLE: CSSProperties = {
   marginBottom: 10,
 };
 
-const CHAT_INPUT_STYLE: CSSProperties = {
-  flex: 1,
-  height: 44,
-  padding: "0 18px",
-  borderRadius: 22,
-  border: "1px solid rgba(255,255,255,0.6)",
-  background: "rgba(255,255,255,0.5)",
-  backdropFilter: "blur(8px)",
-  fontSize: 16,
-  fontFamily: SANS,
-};
-
-const CHAT_SEND_BUTTON_STYLE: CSSProperties = {
-  width: 44,
-  height: 44,
-  borderRadius: 22,
-  border: "none",
-  color: "#fff",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  transition: "background 0.15s",
-};
-
 /** Landing-page glass tile language: white hairline + frosted fill. */
 const GLASS_TILE = "border border-white/60 bg-white/35 backdrop-blur-md";
 
@@ -603,6 +579,7 @@ function ProvisioningChatStep({
         <Input
           ref={inputRef}
           type="text"
+          variant="publicChat"
           placeholder={
             isReady
               ? t("homepage_eliza.getStarted.chatPlaceholderReady", {
@@ -625,28 +602,16 @@ function ProvisioningChatStep({
             }
           }}
           disabled={!hasObservedStatus || isLoading || isDedicatedOff}
-          style={CHAT_INPUT_STYLE}
         />
         <Button
-          variant="surface"
-          size="touch"
+          variant="default"
+          size="icon-lg"
           shape="circle"
           type="button"
           onClick={() => void handleSend()}
           disabled={
             !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
           }
-          style={{
-            ...CHAT_SEND_BUTTON_STYLE,
-            background:
-              !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
-                ? "rgba(0,0,0,0.15)"
-                : "#1a1a1a",
-            cursor:
-              !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
-                ? "not-allowed"
-                : "pointer",
-          }}
         >
           <Send size={16} />
         </Button>

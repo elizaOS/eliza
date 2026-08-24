@@ -49,7 +49,7 @@ const buttonVariants = cva(
         selection:
           "bg-transparent text-txt-strong hover:bg-accent-subtle data-[state=on]:bg-accent-subtle data-[state=on]:text-txt-strong",
         choice:
-          "border border-border bg-bg text-txt-strong hover:border-accent hover:bg-accent-subtle data-[state=on]:border-accent data-[state=on]:bg-accent-subtle",
+          "border border-border-strong bg-card text-txt-strong hover:border-accent hover:bg-surface disabled:opacity-40 aria-disabled:opacity-40 data-[state=on]:border-accent data-[state=on]:bg-accent data-[state=on]:text-accent-fg data-[state=on]:disabled:opacity-100 data-[state=on]:aria-disabled:opacity-100",
         publicRow:
           "h-full min-w-0 flex-1 justify-start gap-4 rounded-none bg-transparent p-0 text-left text-black whitespace-normal hover:bg-transparent hover:text-white",
         publicTile:
@@ -61,7 +61,7 @@ const buttonVariants = cva(
         weatherPrompt:
           "flex-col items-end bg-transparent text-right text-white transition-opacity hover:bg-transparent hover:opacity-80",
         launcherTile:
-          "flex-col gap-2.5 rounded-2xl bg-transparent text-white hover:bg-transparent hover:text-white",
+          "h-auto w-full flex-col gap-2.5 rounded-2xl bg-transparent p-0 text-white whitespace-normal hover:bg-transparent hover:text-white",
         queryHistory:
           "h-auto w-full justify-start whitespace-normal rounded-sm bg-transparent px-3 py-2 text-left font-mono text-xs-tight text-muted-strong hover:bg-surface hover:text-txt",
         dangerOutline:
@@ -93,6 +93,36 @@ const buttonVariants = cva(
           "bg-transparent text-accent hover:bg-transparent hover:text-accent-muted",
         setupLink:
           "h-auto bg-transparent p-0 text-sm text-[var(--first-run-text-muted)] underline underline-offset-2 hover:bg-transparent hover:opacity-80",
+        overlayEdge:
+          "bg-transparent text-white/55 hover:bg-transparent hover:text-white",
+        micToggle:
+          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-accent",
+        wallpaperRow:
+          "bg-transparent hover:bg-white/8 data-[active=true]:bg-white/15",
+        wallpaperControl:
+          "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-white data-[state=on]:hover:text-white aria-[disabled=true]:pointer-events-none aria-[disabled=true]:opacity-40",
+        homePill:
+          "rounded-full bg-transparent shadow-none hover:bg-transparent active:scale-95 data-[needs-auth=true]:active:scale-[0.96] focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
+        notificationClear:
+          "text-white/60 hover:text-white/90 data-[confirming=true]:text-white",
+        topicPill:
+          "border border-white/15 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",
+        topicHeader:
+          "bg-transparent text-white/45 hover:bg-transparent hover:text-white/70",
+        sidebarRail:
+          "border border-border/24 bg-card text-xs font-semibold tracking-[0.02em] text-muted-strong transition-[border-color,background-color,color,box-shadow,transform] duration-150 hover:border-border/38 hover:bg-surface hover:text-txt active:scale-[0.98] data-[state=on]:border-accent data-[state=on]:bg-accent-subtle data-[state=on]:text-txt",
+        sidebarAction:
+          "bg-bg/80 text-muted opacity-0 group-hover:opacity-100 hover:bg-danger/10 hover:text-danger",
+        confirmDanger:
+          "border border-destructive/70 bg-destructive text-destructive-fg hover:border-destructive hover:bg-destructive",
+        confirmWarning:
+          "border border-warn/55 bg-warn/92 text-black hover:border-warn hover:bg-warn",
+        calendarDay:
+          "font-normal data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring dark:hover:text-accent-foreground data-[range-end=true]:rounded-sm data-[range-end=true]:rounded-r-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-sm data-[range-start=true]:rounded-l-md",
+        pageDrawerTrigger:
+          "border border-border bg-card text-txt hover:border-border-strong hover:bg-surface hover:text-txt",
+        memorySidebar:
+          "border border-border bg-card/40 text-txt hover:bg-card/70",
       },
       size: {
         default:
@@ -143,10 +173,32 @@ const buttonVariants = cva(
         "icon-2xs": "size-4 rounded-sm p-0",
         labeledMicro:
           "h-auto gap-0.5 rounded-sm px-1 py-0 text-2xs font-semibold",
+        trayRow: "h-9 gap-3 rounded-sm px-2 text-sm font-normal",
+        wallpaperRow:
+          "h-auto w-full gap-3 rounded-none px-3.5 py-2 font-normal",
+        pillHandle: "h-auto w-full rounded-none px-8 pb-1.5 pt-10",
+        warningPill:
+          "h-auto gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
+        homePill:
+          "h-11 w-16 p-0 data-[composer-sized=true]:h-16 data-[composer-sized=true]:w-[36rem]",
+        notificationClear: "h-8 overflow-hidden text-xs font-medium",
+        topicPill: "h-auto w-full gap-2 rounded-full px-3 py-1.5 font-normal",
+        topicHeader: "h-auto w-full gap-2 py-1 font-normal",
+        sidebarItem: "h-auto gap-3 rounded-none p-0 font-normal",
+        toolbar: "h-10 rounded-sm px-3 text-sm",
+        newAction:
+          "min-h-touch w-full justify-start rounded-sm px-4 py-2.5 text-sm font-medium",
+        carouselControl: "size-8 rounded-sm p-0",
+        calendarDay:
+          "aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 leading-none [&>span]:text-xs [&>span]:opacity-70",
+        pageDrawerTrigger: "h-[2.375rem] rounded-sm px-3 text-sm font-semibold",
+        memorySidebar:
+          "h-11 w-full justify-between gap-2 rounded-sm px-3 text-start text-sm font-medium",
       },
       shape: {
         default: "",
         circle: "rounded-full",
+        "2xl": "rounded-2xl",
       },
       align: {
         center: "text-center",

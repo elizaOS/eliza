@@ -424,7 +424,8 @@ export function CloudHostedAgentAuthNotice({
         </p>
         {onNativeReauth ? (
           <Button
-            className={ctaClass}
+            variant="default"
+            size="touch"
             disabled={activeNativeAction !== null}
             onClick={() => void handleNativeAction(onNativeReauth, "primary")}
             type="button"

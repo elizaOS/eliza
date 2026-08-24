@@ -909,12 +909,8 @@ export const ChatMessage = memo(function ChatMessage({
         onChange={(event) => setDraftText(event.target.value)}
         onKeyDown={handleEditKeyDown}
         rows={Math.min(6, Math.max(1, draftText.split("\n").length))}
-        className={cn(
-          "field-sizing-content min-h-0 max-h-40 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent p-0 shadow-none outline-none transition-opacity duration-200 disabled:cursor-default",
-          glass
-            ? "font-chat text-chat-body text-white caret-white"
-            : "font-chat text-chat-body text-txt-strong caret-txt-strong",
-        )}
+        variant="mobileComposer"
+        density="singleLine"
         disabled={savingEdit}
       />
       {glass ? null : inlineEditControls}

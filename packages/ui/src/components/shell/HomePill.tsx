@@ -320,12 +320,15 @@ export function HomePill({
 
   return (
     <Button
-      variant="ghost"
+      variant="homePill"
+      size="homePill"
       aria-label={label}
       aria-busy={needsAuth && signingIn ? true : undefined}
       aria-pressed={needsAuth ? undefined : isOpen}
       data-phase={phase}
       data-speaking={speaking || undefined}
+      data-composer-sized={composerSized ? "true" : "false"}
+      data-needs-auth={needsAuth ? "true" : "false"}
       data-testid="shell-home-pill"
       onClick={handleClick}
       onPointerDown={handlePointerDown}
@@ -352,12 +355,8 @@ export function HomePill({
         // pixels. The shipped default stays transparent, and a permanent blur
         // here would fail the battery gate (see the blur allowlist test in
         // packages/ui/src).
-        "group pointer-events-auto relative flex items-center justify-center rounded-full bg-transparent p-0 shadow-none",
-        composerSized ? "h-16 w-[36rem]" : "h-11 w-16",
+        "group pointer-events-auto relative flex items-center justify-center",
         "transition-[width,height,transform] duration-200 motion-reduce:transition-none",
-        "hover:bg-transparent",
-        needsAuth ? "active:scale-[0.96]" : "active:scale-95",
-        "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
     >
       <span

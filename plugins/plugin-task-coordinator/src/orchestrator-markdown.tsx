@@ -254,24 +254,23 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
           {lang}
         </div>
       ) : null}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        type="button"
-        onClick={copy}
-        aria-label={copied ? "Copied" : "Copy code"}
-        // Unobtrusive: faded until the block is hovered/focused, fully shown
-        // once copied. Green only as the success affordance.
-        className={`absolute right-1 top-1 z-10 rounded p-1 text-muted opacity-0 transition-[color,opacity] hover:bg-bg-hover/60 hover:text-txt focus-visible:opacity-100 group-hover/code:opacity-100 ${
-          copied ? "text-ok opacity-100" : ""
-        }`}
+      <span
+        className={`absolute right-1 top-1 z-10 opacity-0 focus-within:opacity-100 group-hover/code:opacity-100 ${copied ? "opacity-100" : ""}`}
       >
-        {copied ? (
-          <Check className="size-3.5" aria-hidden />
-        ) : (
-          <Copy className="size-3.5" aria-hidden />
-        )}
-      </Button>
+        <Button
+          variant={copied ? "surfaceAccent" : "ghostMuted"}
+          size="icon-sm"
+          type="button"
+          onClick={copy}
+          aria-label={copied ? "Copied" : "Copy code"}
+        >
+          {copied ? (
+            <Check className="size-3.5" aria-hidden />
+          ) : (
+            <Copy className="size-3.5" aria-hidden />
+          )}
+        </Button>
+      </span>
       <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">
         <code className="whitespace-pre-wrap break-words">{code}</code>
       </pre>

@@ -934,11 +934,9 @@ function ConnectorPluginCard({
       />
       <Button
         ref={expandControl.ref}
-        variant="ghost"
-        size="icon"
-        className={`size-8 shrink-0 rounded-none border-0 bg-transparent transition-colors hover:bg-transparent ${
-          isExpanded ? "text-txt" : "text-muted hover:text-txt"
-        }`}
+        variant="disclosureMuted"
+        size="icon-sm"
+        className="shrink-0"
         onClick={(event) => {
           event?.stopPropagation();
           handleConnectorSectionToggle(plugin.id);
@@ -1274,16 +1272,7 @@ function ConnectorPluginCard({
                     ? "destructive"
                     : "outline"
               }
-              size="sm"
-              className={`h-8 rounded-sm px-4 text-xs-tight font-bold transition-all ${
-                testResult?.loading
-                  ? "cursor-wait opacity-70"
-                  : testResult?.success
-                    ? "border-ok bg-ok text-ok-fg hover:bg-ok/90"
-                    : testResult?.error
-                      ? "border-danger bg-danger text-danger-fg hover:bg-danger/90"
-                      : "border-border/40 bg-card/40 hover:border-accent/40"
-              }`}
+              size="denseWide"
               disabled={testResult?.loading}
               onClick={() => void handleTestConnection(plugin.id)}
               {...testControl.agentProps}
@@ -1305,12 +1294,7 @@ function ConnectorPluginCard({
               <Button
                 ref={saveControl.ref}
                 variant={saveSuccess ? "default" : "secondary"}
-                size="sm"
-                className={`h-8 rounded-sm px-4 text-xs-tight font-bold transition-all ${
-                  saveSuccess
-                    ? "bg-ok text-ok-fg hover:bg-ok/90"
-                    : "bg-accent text-accent-fg hover:bg-accent/90"
-                }`}
+                size="denseWide"
                 onClick={() => void handleConfigSave(plugin.id)}
                 disabled={isSaving}
                 {...saveControl.agentProps}

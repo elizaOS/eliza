@@ -587,18 +587,14 @@ export function CustomActionEditor({
             <div className="flex gap-2">
               {(["http", "shell", "code"] as const).map((type) => (
                 <Button
-                  variant={handlerType === type ? "default" : "outline"}
-                  size="sm"
+                  variant="choice"
+                  size="compact"
+                  data-state={handlerType === type ? "on" : "off"}
                   key={type}
                   onClick={() => {
                     setHandlerType(type);
                     setFormError("");
                   }}
-                  className={`px-3 py-1.5 text-xs ${
-                    handlerType === type
-                      ? ""
-                      : "border-border text-muted hover:text-txt"
-                  }`}
                 >
                   {type === "http"
                     ? "HTTP Request"

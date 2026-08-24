@@ -97,7 +97,7 @@ function TileFrame({
   return (
     <span
       className={cn(
-        "group/tile relative flex aspect-[3/4] w-full min-h-touch flex-col justify-end overflow-hidden rounded-2xl text-left transition-transform duration-200 ease-out",
+        "group/tile relative flex aspect-[3/4] w-full min-h-touch flex-col items-center justify-center overflow-hidden rounded-2xl text-center transition-transform duration-200 ease-out",
         "border border-border/50 group-hover/btn:-translate-y-0.5 group-active/btn:scale-[0.98]",
         selected &&
           "border-2 border-accent shadow-[0_8px_28px_-14px_var(--color-scrim)]",
@@ -108,15 +108,8 @@ function TileFrame({
       {/* A low legibility gradient so the label reads over any wallpaper, tinted
           toward the field rather than a flat black bar. */}
       <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-scrim/80 to-transparent" />
-      {selected ? (
-        <span className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full bg-accent text-accent-fg shadow-[0_2px_8px_-2px_var(--color-scrim)]">
-          <span className="text-2xs font-semibold uppercase tracking-wide">
-            on
-          </span>
-        </span>
-      ) : null}
-      <span className="relative flex flex-col gap-0.5 px-2.5 pb-2.5">
-        <span className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_2px_var(--color-scrim)]">
+      <span className="relative flex flex-col items-center gap-0.5 px-1.5">
+        <span className="whitespace-nowrap text-xs leading-tight font-semibold text-white drop-shadow-[0_1px_2px_var(--color-scrim)]">
           {label}
         </span>
         {meta ? (
@@ -445,7 +438,7 @@ export function BackgroundSettingsControls({
 
       <div
         data-testid="background-catalog-gallery"
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
       >
         {CURATED_IMAGE_CATALOG.map((entry) => (
           <CatalogTile
@@ -465,7 +458,7 @@ export function BackgroundSettingsControls({
             </h3>
             <span className="h-px flex-1 bg-border/40" />
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {userCatalog.map((entry) => (
               <CatalogTile
                 key={entry.id}

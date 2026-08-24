@@ -837,13 +837,9 @@ function TriggerKindSection({
           ref={promptKindButton.ref}
           aria-pressed={form.kind === "text"}
           onClick={() => setField("kind", "text")}
-          variant="ghost"
-          size="sm"
-          className={`rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors ${
-            form.kind === "text"
-              ? "border-accent bg-accent/10 text-accent"
-              : "border-border/40 text-muted hover:border-border hover:text-txt"
-          }`}
+          variant="choice"
+          size="compact"
+          data-state={form.kind === "text" ? "on" : "off"}
           {...promptKindButton.agentProps}
         >
           {t("triggerform.prompt", { defaultValue: "Prompt" })}
@@ -852,13 +848,9 @@ function TriggerKindSection({
           ref={workflowKindButton.ref}
           aria-pressed={form.kind === "workflow"}
           onClick={() => setField("kind", "workflow")}
-          variant="ghost"
-          size="sm"
-          className={`rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors ${
-            form.kind === "workflow"
-              ? "border-accent bg-accent/10 text-accent"
-              : "border-border/40 text-muted hover:border-border hover:text-txt"
-          }`}
+          variant="choice"
+          size="compact"
+          data-state={form.kind === "workflow" ? "on" : "off"}
           {...workflowKindButton.agentProps}
         >
           {t("triggerform.workflow", { defaultValue: "Workflow" })}

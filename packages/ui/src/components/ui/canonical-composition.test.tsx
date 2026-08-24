@@ -1,8 +1,10 @@
 /** Tests canonical polymorphism and branded variants with the real Radix adapters. */
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { createRef } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Badge } from "./badge";
 import { Button } from "./button";
 import { Card } from "./card";
@@ -70,6 +72,9 @@ describe("canonical atom composition", () => {
     expect(choice.classList.contains("data-[state=on]:border-accent")).toBe(
       true,
     );
+    expect(choice.classList).toContain("data-[state=on]:bg-accent");
+    expect(choice.classList).toContain("disabled:opacity-40");
+    expect(choice.classList).toContain("data-[state=on]:disabled:opacity-100");
     expect(choice.getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -133,5 +138,102 @@ describe("canonical atom composition", () => {
     const input = screen.getByLabelText("Upload avatar");
     expect(input.getAttribute("type")).toBe("file");
     expect(input.classList).toContain("sr-only");
+  });
+
+  it("connects display-none file machinery to an imperative trigger", async () => {
+    const user = userEvent.setup();
+    const inputRef = createRef<HTMLInputElement>();
+    const onChange = vi.fn();
+    render(
+      <>
+        <Input
+          ref={inputRef}
+          type="file"
+          variant="nativeFileDisplayNone"
+          aria-label="Choose attachment"
+          onChange={onChange}
+        />
+        <Button type="button" onClick={() => inputRef.current?.click()}>
+          Choose file
+        </Button>
+      </>,
+    );
+
+    const input = screen.getByLabelText("Choose attachment");
+    const click = vi.spyOn(input, "click");
+    await user.click(screen.getByRole("button", { name: "Choose file" }));
+    expect(click).toHaveBeenCalledOnce();
+    expect(inputRef.current).toBe(input);
+
+    const attachment = new File(["hello"], "hello.txt", {
+      type: "text/plain",
+    });
+    await user.upload(input, attachment);
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(inputRef.current?.files?.[0]?.name).toBe("hello.txt");
+  });
+
+  it("forwards color value, change, focus, ref, and disabled semantics", async () => {
+    const user = userEvent.setup();
+    const colorRef = createRef<HTMLInputElement>();
+    const onChange = vi.fn();
+    render(
+      <Input
+        ref={colorRef}
+        type="color"
+        variant="nativeColor"
+        aria-label="Accent color"
+        defaultValue="#ff7a1a"
+        onChange={onChange}
+      />,
+    );
+
+    const color = screen.getByLabelText("Accent color");
+    color.focus();
+    expect(colorRef.current).toBe(color);
+    expect(document.activeElement).toBe(color);
+    fireEvent.change(color, { target: { value: "#112233" } });
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(colorRef.current?.value).toBe("#112233");
+
+    colorRef.current?.blur();
+    colorRef.current?.setAttribute("disabled", "");
+    await user.click(color);
+    expect(document.activeElement).not.toBe(color);
+  });
+
+  it("preserves range focus, keyboard, change, ref, and disabled semantics", async () => {
+    const user = userEvent.setup();
+    const rangeRef = createRef<HTMLInputElement>();
+    const onChange = vi.fn();
+    const onKeyDown = vi.fn();
+    render(
+      <Input
+        ref={rangeRef}
+        type="range"
+        variant="nativeRange"
+        aria-label="Playback position"
+        min="0"
+        max="100"
+        defaultValue="25"
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+      />,
+    );
+
+    const range = screen.getByRole("slider", { name: "Playback position" });
+    await user.click(range);
+    expect(rangeRef.current).toBe(range);
+    expect(document.activeElement).toBe(range);
+    await user.keyboard("{ArrowRight}");
+    expect(onKeyDown).toHaveBeenCalledOnce();
+    fireEvent.change(range, { target: { value: "30" } });
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(rangeRef.current?.value).toBe("30");
+
+    rangeRef.current?.blur();
+    rangeRef.current?.setAttribute("disabled", "");
+    await user.click(range);
+    expect(document.activeElement).not.toBe(range);
   });
 });

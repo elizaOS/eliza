@@ -568,11 +568,10 @@ function AgentAutoallowToggle({
     <Button
       ref={ref}
       {...agentProps}
-      variant="ghost"
-      size="sm"
-      className={`size-7 shrink-0 rounded-sm p-0 ${
-        allowed ? "text-accent hover:text-accent" : "text-muted hover:text-txt"
-      }`}
+      variant="selection"
+      size="tiny"
+      data-state={allowed ? "on" : "off"}
+      className="shrink-0"
       aria-label={label}
       title={label}
       onClick={() => onChange(!allowed)}

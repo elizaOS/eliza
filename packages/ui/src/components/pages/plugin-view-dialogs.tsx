@@ -275,16 +275,7 @@ export function PluginSettingsDialog({
                       ? "destructive"
                       : "outline"
                 }
-                size="sm"
-                className={`h-8 px-4 text-xs-tight font-bold tracking-wide transition-all ${
-                  testResults.get(plugin.id)?.loading
-                    ? "opacity-70 cursor-wait"
-                    : testResults.get(plugin.id)?.success
-                      ? "bg-ok text-ok-fg border-ok hover:bg-ok/90"
-                      : testResults.get(plugin.id)?.error
-                        ? "bg-danger text-danger-fg border-danger hover:bg-danger/90"
-                        : "border-border/40 bg-card/40 hover:border-accent/40"
-                }`}
+                size="denseWide"
                 disabled={testResults.get(plugin.id)?.loading}
                 onClick={() => void onTestConnection(plugin.id)}
                 ref={testControl.ref}
@@ -305,12 +296,7 @@ export function PluginSettingsDialog({
             <Button
               ref={saveControl.ref}
               variant={saveSuccess ? "default" : "secondary"}
-              size="sm"
-              className={`h-8 px-5 text-xs font-bold tracking-wide transition-all ${
-                saveSuccess
-                  ? "bg-ok text-ok-fg hover:bg-ok/90"
-                  : "bg-accent text-accent-fg hover:bg-accent/90 "
-              }`}
+              size="denseWide"
               onClick={() => void onConfigSave(plugin.id)}
               disabled={isSaving}
               {...saveControl.agentProps}

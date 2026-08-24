@@ -37,11 +37,7 @@ export function BrandCard({
     <Card
       asChild={asChild}
       variant="brand"
-      className={cn(
-        hover &&
-          "group transition-colors duration-200 hover:border-border-strong hover:bg-bg-hover",
-        className,
-      )}
+      className={cn(hover && "group", className)}
       {...props}
     >
       {corners && <CornerBrackets size={cornerSize} color={cornerColor} />}

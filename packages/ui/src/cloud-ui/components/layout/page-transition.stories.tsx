@@ -110,14 +110,8 @@ export const Interactive: Story = {
               key={p.path}
               type="button"
               onClick={() => setIndex(i)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                border: "1px solid #d1d5db",
-                background: i === index ? "#111827" : "#ffffff",
-                color: i === index ? "#ffffff" : "#111827",
-                cursor: "pointer",
-              }}
+              variant={i === index ? "default" : "outline"}
+              size="short"
             >
               {p.title}
             </Button>

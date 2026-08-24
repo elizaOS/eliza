@@ -85,13 +85,13 @@ export function CollapsibleSidebarSection({
         </Button>
         {onAdd ? (
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
             onClick={onAdd}
             aria-label={addLabel ?? "Add"}
             title={addLabel}
             data-testid={`${testIdPrefix}-add-${sectionKey}`}
-            className={`size-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt${hoverHideClass}`}
+            className={`shrink-0${hoverHideClass}`}
           >
             <Plus className="size-3.5" aria-hidden />
           </Button>

@@ -161,16 +161,12 @@ export function McpsView() {
         <div className="flex flex-wrap gap-1.5">
           {categories.map((cat) => (
             <Button
-              variant="ghost"
+              variant="selection"
+              size="pillDense"
+              data-state={category === cat ? "on" : "off"}
               type="button"
               key={cat}
               onClick={() => setCategory(cat)}
-              className={cn(
-                "min-h-touch px-3 text-xs rounded-full border transition-colors capitalize",
-                category === cat
-                  ? "border-accent/50 bg-accent-subtle text-txt-strong"
-                  : "border-border bg-bg-elevated text-muted hover:bg-bg-hover hover:text-txt",
-              )}
             >
               {cat}
             </Button>

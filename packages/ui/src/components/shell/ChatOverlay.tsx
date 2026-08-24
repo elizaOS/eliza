@@ -516,11 +516,12 @@ function SoftButton({
 }): React.JSX.Element {
   return (
     <Button
-      variant="ghost"
+      variant="wallpaperControl"
       size="icon"
       data-testid={testId}
       aria-label={label}
       aria-pressed={pressed ?? active}
+      data-state={active ? "on" : "off"}
       // aria-disabled (not the native attr) so the button stays focusable and its
       // label/reason is announceable; the click is guarded instead.
       aria-disabled={disabled}
@@ -538,10 +539,7 @@ function SoftButton({
         // shared Button primitive raise the real element to 44px on coarse
         // pointers. Real target geometry avoids overlapping pseudo hit areas
         // when compact screens draw the two trailing controls closer together.
-        "relative grid shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent [&_svg]:size-5",
-        active
-          ? "text-white hover:text-white"
-          : "text-muted-strong hover:text-txt",
+        "relative grid shrink-0 place-items-center [&_svg]:size-5",
         // Batch capture has no inline waveform, so its glyph breathes; realtime
         // voice keeps this control static because the composer owns the motion.
         pulse && "animate-pulse motion-reduce:animate-none",
@@ -550,7 +548,6 @@ function SoftButton({
         // (no hover color shift, no cursor) — matching the attachment "+".
         // Keyboard focus is unaffected, so the aria-disabled label still
         // announces.
-        disabled && "pointer-events-none opacity-40",
       )}
     >
       {Icon ? (
@@ -1081,7 +1078,8 @@ function PillHandle({
 }): React.JSX.Element {
   return (
     <Button
-      variant="ghost"
+      variant="transparent"
+      size="pillHandle"
       data-testid="chat-pill"
       aria-label="open chat"
       // No onClick: the pull-gesture binding is the single tap authority (a tap
@@ -1119,7 +1117,7 @@ function PillHandle({
         // flick zone so a swipe-up from anywhere across the bottom opens the chat
         // (the lock-screen affordance). Flex-center keeps the capsule centred
         // while the invisible hit area spans wide.
-        "flex h-auto w-full cursor-grab touch-none select-none items-end justify-center rounded-none bg-transparent px-8 pb-1.5 pt-10 hover:bg-transparent active:cursor-grabbing",
+        "flex cursor-grab touch-none select-none items-end justify-center active:cursor-grabbing",
         // Interactive only while pilled. When NOT pilled the (faded) handle must
         // let taps fall through to the composer textarea below it — otherwise its
         // tall hit zone steals the tap and the keyboard never opens.
@@ -5685,15 +5683,11 @@ export function ChatOverlay({
           className="pointer-events-none relative mb-2 flex w-full justify-center"
         >
           <Button
-            variant="ghost"
-            size="sm"
+            variant="warningOutline"
+            size="warningPill"
             onClick={unlockAudio}
             data-testid="overlay-voice-audio-unlock"
-            className={cn(
-              "pointer-events-auto h-auto gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
-              "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
-              WALLPAPER_FLOAT_SHADOW,
-            )}
+            className={cn("pointer-events-auto", WALLPAPER_FLOAT_SHADOW)}
           >
             <Glyph d={SPEAKER_MUTED_GLYPH} />
             <span>Tap to enable sound</span>
@@ -5989,28 +5983,32 @@ export function ChatOverlay({
               restoreDragging ||
               restorePressRef.current != null) &&
             !pinnedOpen ? (
-              <Button
-                {...restoreZoneBinding}
-                type="button"
-                variant="publicRow"
-                size="content"
-                data-testid="chat-maximize-restore-zone"
-                aria-label="drag down to exit full screen"
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" ||
-                    e.key === " " ||
-                    e.key === "ArrowDown"
-                  ) {
-                    e.preventDefault();
-                    restoreFromMaximizedGuarded();
-                  }
-                }}
-                className="pointer-events-auto absolute inset-x-0 top-0 z-[15] touch-none"
+              <div
+                className="pointer-events-auto absolute inset-x-0 top-0 z-[15]"
                 style={{
                   height: `calc(env(safe-area-inset-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
                 }}
-              />
+              >
+                <Button
+                  {...restoreZoneBinding}
+                  type="button"
+                  variant="publicRow"
+                  size="fill"
+                  data-testid="chat-maximize-restore-zone"
+                  aria-label="drag down to exit full screen"
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" ||
+                      e.key === " " ||
+                      e.key === "ArrowDown"
+                    ) {
+                      e.preventDefault();
+                      restoreFromMaximizedGuarded();
+                    }
+                  }}
+                  className="touch-none"
+                />
+              </div>
             ) : null}
 
             {/* Sheet header — shown at the HALF detent and up (not just FULL).

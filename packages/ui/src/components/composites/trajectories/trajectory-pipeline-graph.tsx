@@ -89,7 +89,7 @@ function PipelineNodeButton({
 }) {
   const Icon = node.icon;
 
-  const statusClasses = {
+  const _statusClasses = {
     active: selected
       ? "border-primary/40 bg-primary/5   "
       : "border-border/40 hover:border-border/60 ",
@@ -115,13 +115,11 @@ function PipelineNodeButton({
 
   return (
     <Button
-      variant="ghost"
+      variant="choice"
+      size="card"
+      data-state={selected ? "on" : "off"}
       onClick={onClick}
-      className={`
-        h-auto min-w-[90px] flex-col items-center gap-1.5 rounded-sm border
-        px-3 py-2.5 transition-all duration-150 cursor-pointer select-none
-        ${statusClasses[node.status]}
-      `}
+      className="min-w-[90px] items-center"
     >
       <Icon className={`size-5 ${iconColor[node.status]}`} />
       <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-strong whitespace-nowrap">

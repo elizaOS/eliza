@@ -329,14 +329,9 @@ function TileButton({
   download?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
-  const cls = cn(
-    "inline-flex size-7 items-center justify-center rounded-full",
-    "bg-scrim text-white transition-colors",
-    "hover:bg-brand-black active:scale-[0.96] motion-reduce:active:scale-100",
-  );
   if (href) {
     return (
-      <Button asChild variant="ghost" size="icon-sm" className={cls}>
+      <Button asChild variant="surface" size="icon-sm" shape="circle">
         <a
           href={href}
           download={download}
@@ -353,11 +348,11 @@ function TileButton({
   }
   return (
     <Button
-      variant="ghost"
+      variant="surface"
       size="icon-sm"
+      shape="circle"
       aria-label={label}
       title={label}
-      className={cls}
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();
@@ -525,11 +520,10 @@ function PdfTile({
     return (
       <Button
         asChild
-        variant="ghost"
-        className={cn(
-          "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
-          "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
-        )}
+        variant="choice"
+        size="row"
+        align="start"
+        className="max-w-[min(20rem,100%)]"
       >
         <a
           href={src}
@@ -805,12 +799,10 @@ function CodeTile({
     return (
       <Button
         asChild
-        variant="publicRow"
-        size="content"
-        className={cn(
-          "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
-          "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
-        )}
+        variant="choice"
+        size="row"
+        align="start"
+        className="max-w-[min(20rem,100%)]"
       >
         <a
           href={src}

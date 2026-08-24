@@ -356,19 +356,16 @@ export function ApiExplorerSurface() {
                       ).length;
                 return (
                   <Button
-                    variant="ghost"
+                    variant="selection"
+                    size="compact"
+                    data-state={selectedCategory === category ? "on" : "off"}
                     type="button"
                     key={category}
                     onClick={() => {
                       setSelectedCategory(category);
                       setSearchQuery("");
                     }}
-                    className={cn(
-                      "flex h-7 shrink-0 items-center gap-1 rounded-sm border px-2 text-xs-tight font-medium transition-colors sm:h-9 sm:gap-2 sm:rounded-sm sm:px-3 sm:text-xs",
-                      selectedCategory === category
-                        ? "bg-muted text-txt-strong border-border"
-                        : "bg-neutral-900/50 text-neutral-400 border-white/5 hover:text-white hover:border-white/10",
-                    )}
+                    className="shrink-0"
                   >
                     <span>{category}</span>
                     <span

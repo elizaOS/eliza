@@ -259,36 +259,25 @@ export function GameViewOverlay() {
           }}
         >
           <Button
-            variant="publicRow"
+            variant="transparent"
             size="content"
-            className="flex-1 cursor-inherit truncate"
-            style={{ color: "rgba(240,238,250,0.92)" }}
+            className="flex-1 truncate"
             onMouseDown={handleDragStart}
             aria-label={t("aria.dragOverlay")}
           >
             {activeGameDisplayName || "Game"}
           </Button>
           <Button
-            variant="outline"
+            variant="outlineMuted"
             size="micro"
-            style={{
-              border: "1px solid rgba(255,255,255,0.1)",
-              background: "rgba(255,255,255,0.04)",
-              color: "rgba(240,238,250,0.92)",
-            }}
             onClick={handleExpand}
             title={t("gameviewoverlay.ExpandBackToApps")}
           >
             {t("common.expand")}
           </Button>
           <Button
-            variant="outline"
+            variant="outlineMuted"
             size="micro"
-            style={{
-              border: "1px solid rgba(255,255,255,0.1)",
-              background: "rgba(255,255,255,0.04)",
-              color: "rgba(240,238,250,0.92)",
-            }}
             onClick={handleClose}
             title={t("gameviewoverlay.CloseOverlay")}
           >

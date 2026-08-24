@@ -21,6 +21,17 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
       flatPadded: "p-4",
       brand: "relative border border-border bg-bg-elevated p-4 text-txt md:p-6",
       panel: "border border-border/60 bg-card/92",
+      overlayWide:
+        "relative z-10 w-full max-w-[820px] overflow-hidden border border-border/60 bg-card/95",
+      overlayMedium:
+        "relative z-10 w-full max-w-[640px] overflow-hidden border border-border/60 bg-card/95",
+      pairingGate:
+        "relative z-10 w-full max-w-[620px] overflow-hidden border border-border/60 bg-card/95",
+      startupFailure:
+        "relative z-10 w-full max-w-[720px] overflow-hidden border border-border/60 bg-card/95",
+      cloudPayment: "border border-border bg-card text-card-fg",
+      cloudPaymentPublic:
+        "rounded-xs border border-black/12 bg-white/88 text-black",
     },
   },
   defaultVariants: {

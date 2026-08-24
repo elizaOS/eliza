@@ -126,29 +126,12 @@ export const WithActions: Story = {
             <Button
               type="button"
               onClick={() => {}}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                border: "1px solid #e5e7eb",
-                background: "white",
-                color: "#111827",
-                cursor: "pointer",
-              }}
+              variant="outline"
+              size="short"
             >
               Import
             </Button>
-            <Button
-              type="button"
-              onClick={() => {}}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                border: "none",
-                background: "#111827",
-                color: "white",
-                cursor: "pointer",
-              }}
-            >
+            <Button type="button" onClick={() => {}} size="short">
               New brand
             </Button>
           </div>

@@ -62,8 +62,9 @@ describe("ChatMessage desktop hover chrome", () => {
       name: "Copy message",
       hidden: true,
     });
-    expect(copy.className).toContain("max-md:h-8");
-    expect(copy.className).toContain("max-md:w-8");
+    expect(copy.className).toContain("size-8");
+    expect(copy.className).toContain("pointer-coarse:min-h-touch");
+    expect(copy.className).toContain("pointer-coarse:min-w-touch");
     expect(
       screen.queryByRole("button", { name: /delete/i, hidden: true }),
     ).toBeNull();

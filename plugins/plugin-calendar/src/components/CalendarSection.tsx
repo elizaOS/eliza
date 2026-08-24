@@ -580,7 +580,7 @@ function DayColumnGrid({
               onSelectEvent(event);
             }}
             aria-pressed={isSelected}
-            className={`group absolute overflow-hidden border px-1.5 py-1 text-left transition-transform ${isSelected ? "ring-2 ring-accent z-10" : "hover:translate-y-[-1px]"}`}
+            className="group absolute overflow-hidden"
             style={{
               top: `calc(${position.topPct}% + 0.1rem)`,
               height: `calc(${position.heightPct}% - 0.2rem)`,
@@ -921,7 +921,7 @@ function AgendaEventButton({
   return (
     <Button
       variant="selection"
-      size="content"
+      size="eventRow"
       data-state={isSelected ? "on" : "off"}
       ref={ref}
       type="button"
@@ -931,9 +931,6 @@ function AgendaEventButton({
         onSelectEvent(event);
       }}
       aria-pressed={isSelected}
-      className={`flex w-full items-start gap-3 px-2 py-3 text-left transition-colors ${
-        isSelected ? "bg-accent/8" : "hover:bg-bg-muted/40"
-      }`}
       {...agentProps}
     >
       <span

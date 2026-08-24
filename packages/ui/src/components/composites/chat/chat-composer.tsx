@@ -46,11 +46,6 @@ const INLINE_TEXTAREA_MIN_HEIGHT_PX = 32;
 const INLINE_TEXTAREA_MAX_HEIGHT_PX = 128;
 const INLINE_STACKED_INLINE_PADDING_PX = 12;
 
-const inlineTextareaClass =
-  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt outline-none placeholder:text-muted-strong pointer-coarse:text-[16px]    ";
-
-const inlineMeasureTextareaClass = `${inlineTextareaClass} pointer-events-none fixed left-0 top-0 z-[-1] opacity-0`;
-
 const inlineComposerSurfaceClass =
   "border-[color-mix(in_srgb,var(--border)_62%,var(--txt)_38%)] bg-[color-mix(in_srgb,var(--bg)_78%,var(--txt)_16%)]   ";
 
@@ -360,11 +355,9 @@ export function ChatComposer({
     const inlineAttachButton =
       !isGameModal && !hideAttachButton ? (
         <Button
-          variant="ghost"
-          size="icon"
-          className={`size-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
-            chatPendingImagesCount > 0 ? "text-accent hover:text-accent" : ""
-          }`}
+          variant={chatPendingImagesCount > 0 ? "surfaceAccent" : "ghostMuted"}
+          size="icon-sm"
+          className="shrink-0"
           onClick={onAttachImage}
           aria-label={t("aria.attachImage")}
           title={t("aria.attachImage")}
@@ -389,9 +382,8 @@ export function ChatComposer({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           data-testid="chat-composer-textarea"
-          variant={null}
-          density={null}
-          className={inlineTextareaClass}
+          variant="mobileComposer"
+          density="singleLine"
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}
           disabled={isComposerLocked}
@@ -412,13 +404,9 @@ export function ChatComposer({
 
     const inlineMicButton = (
       <Button
-        variant="default"
-        size="icon"
-        className={`size-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
-          voice.isListening
-            ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
-            : "bg-bg text-muted hover:bg-bg hover:text-txt"
-        }`}
+        variant={voice.isListening ? "default" : "ghostMuted"}
+        size="icon-sm"
+        className="shrink-0"
         data-testid="chat-composer-mic"
         onClick={handleMicClick}
         {...micHoldHandlers}
@@ -509,16 +497,19 @@ export function ChatComposer({
             : `flex min-h-[40px] items-center gap-1 rounded-sm border px-1 py-1 ${inlineComposerSurfaceClass}`
         }
       >
-        <Textarea
-          ref={inlineMeasureRef}
-          aria-hidden="true"
-          className={inlineMeasureTextareaClass}
-          data-chat-composer-measure="true"
-          readOnly
-          rows={1}
-          tabIndex={-1}
-          value={chatInput}
-        />
+        <div className="pointer-events-none fixed left-0 top-0 z-[-1] opacity-0">
+          <Textarea
+            ref={inlineMeasureRef}
+            aria-hidden="true"
+            variant="mobileComposer"
+            density="singleLine"
+            data-chat-composer-measure="true"
+            readOnly
+            rows={1}
+            tabIndex={-1}
+            value={chatInput}
+          />
+        </div>
         {isInlineMultiline ? (
           <>
             {inlineTextarea}
@@ -550,21 +541,9 @@ export function ChatComposer({
     >
       {!isGameModal && !hideAttachButton ? (
         <Button
-          variant="ghost"
-          size="icon"
-          className={
-            isInline
-              ? `h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt ${
-                  chatPendingImagesCount > 0
-                    ? "text-accent hover:text-accent"
-                    : ""
-                }`
-              : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
-                  chatPendingImagesCount > 0
-                    ? "text-accent hover:text-accent"
-                    : ""
-                }`
-          }
+          variant={chatPendingImagesCount > 0 ? "surfaceAccent" : "ghostMuted"}
+          size="icon-sm"
+          className="shrink-0"
           onClick={onAttachImage}
           aria-label={t("aria.attachImage")}
           title={t("aria.attachImage")}
@@ -582,17 +561,9 @@ export function ChatComposer({
         <>
           {!isGameModal ? <PstnCallButton disabled={isComposerLocked} /> : null}
           <Button
-            variant="ghost"
-            size="icon"
-            className={
-              isGameModal
-                ? `flex items-center justify-center h-[46px] w-[46px] shrink-0 ${
-                    voice.isListening
-                      ? "animate-pulse select-none rounded-sm border border-border/28 bg-card text-txt    transition-all duration-300 active:scale-95 "
-                      : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none  transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95"
-                  } ${isComposerLocked ? "opacity-50" : ""}`
-                : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${voice.isListening ? "text-accent hover:text-accent" : ""}`
-            }
+            variant={voice.isListening ? "surfaceAccent" : "ghostMuted"}
+            size={isGameModal ? "icon-lg" : "icon-sm"}
+            className="shrink-0"
             data-testid="chat-composer-mic"
             onClick={handleMicClick}
             {...micHoldHandlers}
@@ -622,15 +593,8 @@ export function ChatComposer({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           data-testid="chat-composer-textarea"
-          variant={isInline ? null : undefined}
-          density={isInline ? null : undefined}
-          className={
-            isGameModal
-              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-chat disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-chat-body leading-[1.55] text-txt-strong placeholder:text-muted pointer-coarse:text-[16px]"
-              : isInline
-                ? inlineTextareaClass
-                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-chat disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-chat-body leading-[1.55] text-txt placeholder:text-muted pointer-coarse:text-[16px]"
-          }
+          variant="mobileComposer"
+          density="singleLine"
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}
           disabled={isComposerLocked}
@@ -650,23 +614,8 @@ export function ChatComposer({
 
       {!isInline && showAgentVoiceToggle ? (
         <Button
-          variant={
-            isGameModal
-              ? "ghost"
-              : agentVoiceEnabled
-                ? "surfaceAccent"
-                : "surface"
-          }
-          size="icon"
-          className={
-            isGameModal
-              ? `flex items-center justify-center h-[46px] w-[46px] shrink-0 ${
-                  agentVoiceEnabled
-                    ? "select-none rounded-sm border border-border/28 bg-card text-txt    transition-all duration-300 active:scale-95 "
-                    : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none  transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95"
-                }`
-              : "h-[46px] w-[46px] shrink-0"
-          }
+          variant={agentVoiceEnabled ? "surfaceAccent" : "outlineAccent"}
+          size="icon-lg"
           onClick={onToggleAgentVoice}
           aria-label={
             agentVoiceEnabled ? t("aria.agentVoiceOn") : t("aria.agentVoiceOff")
@@ -688,13 +637,9 @@ export function ChatComposer({
         <Button
           variant="surfaceDestructive"
           data-testid="chat-composer-action"
-          className={
-            isInline
-              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
-              : "ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
-          }
+          className="ml-1 shrink-0"
           onClick={onStop}
-          size="icon"
+          size={isInline ? "icon-sm" : "icon-lg"}
           title={actionButtonLabel}
           aria-label={actionButtonLabel}
         >
@@ -712,13 +657,9 @@ export function ChatComposer({
         <Button
           variant="surfaceDestructive"
           data-testid="chat-composer-action"
-          className={
-            isInline
-              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
-              : "ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
-          }
+          className="ml-1 shrink-0"
           onClick={onStopSpeaking}
-          size="icon"
+          size={isInline ? "icon-sm" : "icon-lg"}
           title={actionButtonLabel}
           aria-label={actionButtonLabel}
         >
@@ -726,13 +667,9 @@ export function ChatComposer({
         </Button>
       ) : isInline && !hasDraft ? (
         <Button
-          variant="ghost"
-          size="icon"
-          className={`size-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
-            voice.isListening
-              ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
-              : "bg-bg text-muted hover:bg-bg hover:text-txt"
-          }`}
+          variant={voice.isListening ? "default" : "ghostMuted"}
+          size="icon-sm"
+          className="shrink-0"
           data-testid="chat-composer-mic"
           onClick={handleMicClick}
           {...micHoldHandlers}
@@ -745,20 +682,16 @@ export function ChatComposer({
         </Button>
       ) : (
         <Button
-          variant={isGameModal ? "default" : "ghost"}
-          data-testid="chat-composer-action"
-          size="icon"
-          className={
+          variant={
             isGameModal
-              ? `ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0 ${
-                  hasDraft
-                    ? "select-none rounded-sm border border-border/28 bg-card text-txt    transition-all duration-300 active:scale-95 "
-                    : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none  transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95 opacity-80"
-                }`
-              : isInline
-                ? "h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
-                : "ml-1 h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt transition-colors select-none active:scale-95  disabled:opacity-40 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
+              ? hasDraft
+                ? "default"
+                : "outlineAccent"
+              : "ghostMuted"
           }
+          data-testid="chat-composer-action"
+          size={isGameModal ? "icon-lg" : "icon-sm"}
+          className="ml-1 shrink-0"
           onClick={onSend}
           // Keep the textarea focused through the tap so the keyboard doesn't
           // flicker closed/open on send (see the inline send button).

@@ -407,15 +407,14 @@ export function ConfigPageView({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
           <Button
             ref={cloudModeEl.ref}
-            variant="ghost"
+            variant="choice"
+            size="card"
+            align="start"
+            data-state={rpcMode === "cloud" ? "on" : "off"}
             data-testid="wallet-rpc-mode-cloud"
             {...cloudModeEl.agentProps}
             onClick={() => handleModeChange("cloud")}
-            className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
-              rpcMode === "cloud"
-                ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 hover:border-border"
-            }`}
+            className="relative"
           >
             <div className="flex items-center gap-2">
               <svg
@@ -457,14 +456,13 @@ export function ConfigPageView({
 
           <Button
             ref={customModeEl.ref}
-            variant="ghost"
+            variant="choice"
+            size="card"
+            align="start"
+            data-state={rpcMode === "custom" ? "on" : "off"}
             {...customModeEl.agentProps}
             onClick={() => handleModeChange("custom")}
-            className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
-              rpcMode === "custom"
-                ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 hover:border-border"
-            }`}
+            className="relative"
           >
             <div className="flex items-center gap-2">
               <svg

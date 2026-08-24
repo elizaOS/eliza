@@ -98,6 +98,10 @@ export function DesktopSettingsNavigation({
 
                 return (
                   <Button
+                    variant="selection"
+                    size="touch"
+                    align="start"
+                    data-state={isActive ? "on" : "off"}
                     key={section.id}
                     ref={(node) => setItemRef(section.id, node)}
                     type="button"
@@ -116,12 +120,7 @@ export function DesktopSettingsNavigation({
                         onSelect(section.id);
                       }
                     }}
-                    className={cn(
-                      "group flex min-h-11 w-full items-center gap-2.5 rounded-md border border-transparent p-2 text-left text-sm transition-colors",
-                      "text-muted hover:bg-surface/70 hover:text-txt-strong",
-                      isActive &&
-                        "bg-accent/10 font-medium text-txt-strong hover:bg-accent/12",
-                    )}
+                    className="group w-full"
                   >
                     <span
                       aria-hidden

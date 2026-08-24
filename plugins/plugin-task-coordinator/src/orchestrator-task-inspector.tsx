@@ -637,9 +637,10 @@ function EditedPlanRestartSection({
             <FieldLabel>{summaryLabel}</FieldLabel>
             <Input
               id="orchestrator-plan-edit-summary"
+              variant="embeddedSearch"
+              density="compact"
               value={summary}
               onChange={(event) => setSummary(event.target.value)}
-              className={FIELD_CLASS}
               placeholder={t("orchestrator.planEdit.summaryPlaceholder", {
                 defaultValue: "What changed",
               })}
@@ -650,10 +651,11 @@ function EditedPlanRestartSection({
             <FieldLabel>{draftLabel}</FieldLabel>
             <Textarea
               id="orchestrator-plan-draft"
+              variant="documentEditor"
+              density="compact"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               rows={8}
-              className={`${FIELD_CLASS} resize-y font-mono leading-relaxed`}
               spellCheck={false}
               data-testid="orchestrator-plan-draft"
             />
@@ -794,9 +796,6 @@ export function UsageSection({
   );
 }
 
-const FIELD_CLASS =
-  "w-full border-border/35 border-b bg-transparent px-1 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/60";
-
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
     <span className="mb-1 block text-xs font-medium text-muted">
@@ -929,9 +928,10 @@ function AddAgentForm({
     <div className="mt-1.5 space-y-1.5">
       <Input
         ref={labelRef}
+        variant="embeddedSearch"
+        density="compact"
         value={label}
         onChange={(event) => setLabel(event.target.value)}
-        className={FIELD_CLASS}
         placeholder={fieldLabels.label}
         aria-label={fieldLabels.label}
         data-testid="orchestrator-add-agent-label"
@@ -940,18 +940,20 @@ function AddAgentForm({
       <div className="flex gap-1.5">
         <Input
           ref={frameworkRef}
+          variant="embeddedSearch"
+          density="compact"
           value={framework}
           onChange={(event) => setFramework(event.target.value)}
-          className={FIELD_CLASS}
           placeholder={fieldLabels.framework}
           aria-label={fieldLabels.framework}
           {...frameworkAgentProps}
         />
         <Input
           ref={modelRef}
+          variant="embeddedSearch"
+          density="compact"
           value={model}
           onChange={(event) => setModel(event.target.value)}
-          className={FIELD_CLASS}
           placeholder={fieldLabels.model}
           aria-label={fieldLabels.model}
           {...modelAgentProps}
@@ -959,28 +961,31 @@ function AddAgentForm({
       </div>
       <Input
         ref={workdirRef}
+        variant="embeddedSearch"
+        density="compact"
         value={workdir}
         onChange={(event) => setWorkdir(event.target.value)}
-        className={FIELD_CLASS}
         placeholder={fieldLabels.workdir}
         aria-label={fieldLabels.workdir}
         {...workdirAgentProps}
       />
       <Input
         ref={repoRef}
+        variant="embeddedSearch"
+        density="compact"
         value={repo}
         onChange={(event) => setRepo(event.target.value)}
-        className={FIELD_CLASS}
         placeholder={fieldLabels.repo}
         aria-label={fieldLabels.repo}
         {...repoAgentProps}
       />
       <Textarea
         ref={taskRef}
+        variant="documentEditor"
+        density="compact"
         value={task}
         onChange={(event) => setTask(event.target.value)}
         rows={2}
-        className={`${FIELD_CLASS} resize-none`}
         placeholder={fieldLabels.task}
         aria-label={fieldLabels.task}
         {...taskAgentProps}
@@ -1031,18 +1036,13 @@ function ControlButton({
 }) {
   return (
     <Button
-      variant={tone === "danger" ? "surfaceDestructive" : "ghost"}
+      variant={tone === "danger" ? "dangerGhost" : "ghostMuted"}
       size="icon-sm"
       type="button"
       disabled={disabled}
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`flex items-center justify-center p-1.5 transition-colors disabled:opacity-50 ${
-        tone === "danger"
-          ? "text-muted hover:text-danger"
-          : "text-muted hover:text-txt"
-      }`}
       data-testid={testId}
       data-agent-authority="human"
       data-agent-human-id={agentId}

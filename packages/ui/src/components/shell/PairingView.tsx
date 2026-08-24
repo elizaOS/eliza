@@ -24,11 +24,6 @@ import { PairingCommandHint } from "./PairingCommandHint";
 
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-y-auto bg-bg px-4 py-6 font-body text-txt sm:px-6";
-/* The screen card keeps its surface scrim: it must carry its own contrast
-   over the wallpaper. Inner content is flat — no nested boxes. */
-const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[620px] overflow-hidden border border-border/60 bg-card/95";
-
 export function PairingView() {
   const [statusUnavailable, setStatusUnavailable] = useState(false);
   const {
@@ -108,7 +103,7 @@ export function PairingView() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(var(--accent-rgb),0.12),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_40%)]"
       />
-      <Card className={SCREEN_CARD_CLASS}>
+      <Card variant="pairingGate">
         {statusUnavailable ? (
           <div
             role="alert"

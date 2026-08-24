@@ -575,15 +575,13 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
                 aria-pressed={active}
                 title={mode.description}
                 data-testid={`inline-plugin-config-mode-${mode.id}`}
+                variant="selection"
+                size="tiny"
+                data-state={active ? "on" : "off"}
                 onClick={() => {
                   setModeChoice(mode.id);
                   setError(null);
                 }}
-                className={`px-3 py-1 h-7 text-2xs font-medium border transition-colors ${
-                  active
-                    ? "border-accent text-accent bg-accent/10"
-                    : "border-border text-muted hover:text-txt hover:border-txt/40"
-                }`}
               >
                 {mode.label}
               </Button>

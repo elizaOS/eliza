@@ -198,15 +198,16 @@ function CharacterPageTabButton({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="content"
+      data-state={isActive ? "on" : "off"}
       id={`character-editor-tab-${page}`}
       role="tab"
       aria-selected={isActive}
       aria-current={isActive ? "page" : undefined}
       aria-controls={`character-editor-panel-${page}`}
       tabIndex={isActive ? 0 : -1}
-      className={`h-auto ${className ?? ""}`}
+      className={className}
       style={style}
       onClick={() => onSelect(page)}
       onKeyDown={onKeyDown}

@@ -158,13 +158,14 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
 
 2. **Story gate (`audit:stories`, `test/story-gate/`).** Renders **every**
    Storybook story in headless Chromium and HARD-fails on a story that throws,
-   renders blank, or raises a pageerror; console errors + serious/critical axe
-   a11y violations are enforced once their baselines are populated. A determinism
-   shim (frozen clock / seeded RNG / en-US-UTC / animations off) makes every
-   screenshot byte-stable. App-context-dependent stories are classified soft
-   `needs-runtime` (covered live by `audit:app`), not failed. Build the catalog
-   first (`build-storybook --output-dir storybook-static`), then run the gate
-   when reviewing story or design-system changes. Reusable helpers:
+   renders blank, or raises a pageerror. Console errors that remain after the
+   static-harness noise filters and serious or critical axe violations fail
+   directly; there is no per-story allowlist or baseline. A
+   determinism shim (frozen clock / seeded RNG / en-US-UTC / animations off)
+   makes every screenshot byte-stable. App-context-dependent stories are
+   classified soft `needs-runtime` (covered live by `audit:app`), not failed.
+   Build the catalog first (`build-storybook --output-dir storybook-static`),
+   then run the gate when reviewing story or design-system changes. Reusable helpers:
    `determinism-shim.mjs` and `log-capture.mjs`
    (durable frontend console/network artifact, wired per story into
    `output/frontend-logs.json`).
@@ -178,6 +179,11 @@ Every new story automatically gains story-gate coverage; a new interactive
 component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
 (behaviour). The live full-app visual audit lives in `packages/app`
 (`audit:app` and `audit:cloud` in `packages/app`).
+
+Story presence is also checked against
+`scripts/stories-coverage-baseline.json`. `node scripts/stories-coverage.mjs
+--check` fails when the covered-component count or coverage ratio falls, or
+when a component newly appears in the missing-story set.
 
 ### Design validation
 

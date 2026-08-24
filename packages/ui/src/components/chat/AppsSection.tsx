@@ -26,10 +26,6 @@ import {
 } from "../ui/dropdown-menu";
 import { WidgetSection } from "./widgets/shared";
 
-function getRunRingClass(_run: AppRunSummary): string {
-  return "";
-}
-
 function isOverlayLaunchApp(app: RegistryAppInfo): boolean {
   return isOverlayApp(app.name) || app.launchType === "overlay";
 }
@@ -300,7 +296,6 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           {orderedApps.map((app) => {
             const run = runByName.get(app.name);
             const displayName = app.displayName ?? getAppShortName(app);
-            const ringClass = run ? getRunRingClass(run) : "";
             const isRunning = Boolean(run);
             return (
               <div
@@ -314,8 +309,8 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                     defaultValue: `Launch ${displayName}`,
                     name: displayName,
                   })}
-                  variant="outlineMuted"
-                  className={`h-auto rounded-sm p-0 transition-transform hover:bg-transparent hover:scale-105 ${ringClass}`}
+                  variant={isRunning ? "outlineAccent" : "transparent"}
+                  size="content"
                   onClick={() => void handleLaunch(app)}
                 >
                   <AppIdentityTile

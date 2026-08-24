@@ -137,6 +137,217 @@ function stringAttribute(node, name) {
   return null;
 }
 
+function indexStaticDeclarations(sourceFile) {
+  const declarations = new Map();
+  function visit(candidate) {
+    if (
+      ts.isVariableDeclaration(candidate) &&
+      ts.isIdentifier(candidate.name) &&
+      candidate.initializer
+    ) {
+      const existing = declarations.get(candidate.name.text);
+      declarations.set(
+        candidate.name.text,
+        existing === undefined ? candidate.initializer : null,
+      );
+    }
+    ts.forEachChild(candidate, visit);
+  }
+  visit(sourceFile);
+  return declarations;
+}
+
+function staticAttributeText(node, name, declarations) {
+  const attribute = node.attributes.properties.find(
+    (property) =>
+      ts.isJsxAttribute(property) && property.name.getText() === name,
+  );
+  if (!attribute || !ts.isJsxAttribute(attribute) || !attribute.initializer)
+    return null;
+  if (ts.isStringLiteral(attribute.initializer)) {
+    return attribute.initializer.text;
+  }
+  if (!ts.isJsxExpression(attribute.initializer)) return null;
+
+  const fragments = [];
+  const resolving = new Set();
+  function collect(expression) {
+    if (
+      ts.isStringLiteral(expression) ||
+      ts.isNoSubstitutionTemplateLiteral(expression)
+    ) {
+      fragments.push(expression.text);
+      return;
+    }
+    if (ts.isTemplateExpression(expression)) {
+      fragments.push(expression.head.text);
+      for (const span of expression.templateSpans) {
+        collect(span.expression);
+        fragments.push(span.literal.text);
+      }
+      return;
+    }
+    if (ts.isIdentifier(expression)) {
+      const initializer = declarations.get(expression.text);
+      if (initializer && !resolving.has(expression.text)) {
+        resolving.add(expression.text);
+        collect(initializer);
+        resolving.delete(expression.text);
+      }
+      return;
+    }
+    ts.forEachChild(expression, collect);
+  }
+  if (attribute.initializer.expression) {
+    collect(attribute.initializer.expression);
+  }
+  return fragments.length > 0 ? fragments.join(" ") : null;
+}
+
+function hasOpaqueClassExpression(node, declarations) {
+  const attribute = node.attributes.properties.find(
+    (property) =>
+      ts.isJsxAttribute(property) && property.name.getText() === "className",
+  );
+  if (
+    !attribute ||
+    !ts.isJsxAttribute(attribute) ||
+    !attribute.initializer ||
+    !ts.isJsxExpression(attribute.initializer) ||
+    !attribute.initializer.expression
+  ) {
+    return false;
+  }
+
+  const resolving = new Set();
+  function inspect(expression) {
+    if (
+      ts.isStringLiteral(expression) ||
+      ts.isNoSubstitutionTemplateLiteral(expression) ||
+      ts.isNumericLiteral(expression) ||
+      expression.kind === ts.SyntaxKind.TrueKeyword ||
+      expression.kind === ts.SyntaxKind.FalseKeyword ||
+      expression.kind === ts.SyntaxKind.NullKeyword
+    ) {
+      return false;
+    }
+    if (ts.isIdentifier(expression)) {
+      const initializer = declarations.get(expression.text);
+      if (!initializer || resolving.has(expression.text)) return false;
+      resolving.add(expression.text);
+      const opaque = inspect(initializer);
+      resolving.delete(expression.text);
+      return opaque;
+    }
+    if (ts.isPropertyAccessExpression(expression)) return true;
+    if (ts.isElementAccessExpression(expression)) return true;
+    if (ts.isCallExpression(expression)) {
+      if (
+        ts.isIdentifier(expression.expression) &&
+        ["cn", "clsx"].includes(expression.expression.text)
+      ) {
+        return expression.arguments.some(inspect);
+      }
+      return true;
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return inspect(expression.whenTrue) || inspect(expression.whenFalse);
+    }
+    if (
+      ts.isBinaryExpression(expression) &&
+      expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+    ) {
+      return inspect(expression.right);
+    }
+    if (ts.isPrefixUnaryExpression(expression)) return false;
+    let opaque = false;
+    ts.forEachChild(expression, (child) => {
+      if (!opaque && ts.isExpression(child)) opaque = inspect(child);
+    });
+    return opaque;
+  }
+
+  return inspect(attribute.initializer.expression);
+}
+
+const VISUAL_STYLE_PROPERTIES = new Set([
+  "background",
+  "backgroundColor",
+  "border",
+  "borderBottom",
+  "borderColor",
+  "borderLeft",
+  "borderRadius",
+  "borderRight",
+  "borderTop",
+  "boxShadow",
+  "color",
+  "columnGap",
+  "fill",
+  "gap",
+  "height",
+  "maxHeight",
+  "minHeight",
+  "outline",
+  "outlineColor",
+  "padding",
+  "paddingBottom",
+  "paddingLeft",
+  "paddingRight",
+  "paddingTop",
+  "rowGap",
+  "stroke",
+]);
+
+function staticStyleProperties(node, declarations) {
+  const attribute = node.attributes.properties.find(
+    (property) =>
+      ts.isJsxAttribute(property) && property.name.getText() === "style",
+  );
+  if (
+    !attribute ||
+    !ts.isJsxAttribute(attribute) ||
+    !attribute.initializer ||
+    !ts.isJsxExpression(attribute.initializer) ||
+    !attribute.initializer.expression
+  ) {
+    return [];
+  }
+
+  const properties = new Set();
+  const resolving = new Set();
+  function collect(expression) {
+    if (ts.isObjectLiteralExpression(expression)) {
+      for (const property of expression.properties) {
+        if (
+          (ts.isPropertyAssignment(property) ||
+            ts.isShorthandPropertyAssignment(property)) &&
+          (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+        ) {
+          properties.add(property.name.text);
+        } else if (ts.isSpreadAssignment(property)) {
+          collect(property.expression);
+        }
+      }
+      return;
+    }
+    if (ts.isIdentifier(expression)) {
+      const initializer = declarations.get(expression.text);
+      if (initializer && !resolving.has(expression.text)) {
+        resolving.add(expression.text);
+        collect(initializer);
+        resolving.delete(expression.text);
+      }
+      return;
+    }
+    ts.forEachChild(expression, collect);
+  }
+  collect(attribute.initializer.expression);
+  return [...properties].filter((property) =>
+    VISUAL_STYLE_PROPERTIES.has(property),
+  );
+}
+
 function hasAttribute(node, name) {
   return node.attributes.properties.some(
     (property) =>
@@ -152,8 +363,7 @@ function finding({ rule, file, line, symbol, detail }) {
   return { detail, file, line, rule, symbol };
 }
 
-function scanFile(file) {
-  const source = fs.readFileSync(file, "utf8");
+export function scanSourceText({ file, source }) {
   const sourceFile = ts.createSourceFile(
     file,
     source,
@@ -162,6 +372,7 @@ function scanFile(file) {
     ts.ScriptKind.TSX,
   );
   const imports = importsByLocalName(sourceFile);
+  const declarations = indexStaticDeclarations(sourceFile);
   const rel = relative(file);
   const findings = [];
 
@@ -248,8 +459,13 @@ function scanFile(file) {
             }),
           );
         }
-        const className = stringAttribute(node, "className");
-        if (isRawControl && className && VISUAL_UTILITY.test(className)) {
+        const className = staticAttributeText(node, "className", declarations);
+        const styleProperties = staticStyleProperties(node, declarations);
+        if (
+          isRawControl &&
+          ((className && VISUAL_UTILITY.test(className)) ||
+            styleProperties.length > 0)
+        ) {
           findings.push(
             finding({
               rule: "visual-override",
@@ -281,12 +497,24 @@ function scanFile(file) {
                 }),
               );
             }
-            const className = stringAttribute(node, "className");
+            const className = staticAttributeText(
+              node,
+              "className",
+              declarations,
+            );
             const visualUtility =
               record.imported === "Skeleton" || record.imported === "Tabs"
                 ? SKELETON_PAINT_UTILITY
                 : VISUAL_UTILITY;
-            if (className && visualUtility.test(className)) {
+            const styleProperties = staticStyleProperties(node, declarations);
+            const opaqueClassName =
+              !["Skeleton", "Tabs"].includes(record.imported) &&
+              hasOpaqueClassExpression(node, declarations);
+            if (
+              (className && visualUtility.test(className)) ||
+              styleProperties.length > 0 ||
+              opaqueClassName
+            ) {
               findings.push(
                 finding({
                   rule: "visual-override",
@@ -301,7 +529,7 @@ function scanFile(file) {
           }
         }
       }
-      const className = stringAttribute(node, "className");
+      const className = staticAttributeText(node, "className", declarations);
       if (className && OFF_TOKEN_COLOR.test(className)) {
         findings.push(
           finding({
@@ -320,8 +548,11 @@ function scanFile(file) {
   return findings;
 }
 
-function parseExceptions(now) {
-  const document = JSON.parse(fs.readFileSync(exceptionsPath, "utf8"));
+function scanFile(file) {
+  return scanSourceText({ file, source: fs.readFileSync(file, "utf8") });
+}
+
+export function validateExceptions(document, now) {
   if (document.schemaVersion !== 1 || !Array.isArray(document.exceptions)) {
     throw new Error(
       "design-system-exceptions.json must use schemaVersion 1 with an exceptions array",
@@ -337,7 +568,13 @@ function parseExceptions(now) {
       typeof exception.symbol !== "string" ||
       typeof exception.owner !== "string" ||
       typeof exception.reason !== "string" ||
-      typeof exception.reviewBy !== "string"
+      typeof exception.reviewBy !== "string" ||
+      !Number.isInteger(exception.matchCount) ||
+      exception.matchCount < 1 ||
+      (exception.lines !== undefined &&
+        (!Array.isArray(exception.lines) ||
+          exception.lines.length !== exception.matchCount ||
+          exception.lines.some((line) => !Number.isInteger(line) || line < 1)))
     ) {
       throw new Error(
         `Invalid design-system exception: ${JSON.stringify(exception)}`,
@@ -354,14 +591,36 @@ function parseExceptions(now) {
   return document.exceptions;
 }
 
-function applyExceptions(findings, exceptions) {
+function parseExceptions(now) {
+  return validateExceptions(
+    JSON.parse(fs.readFileSync(exceptionsPath, "utf8")),
+    now,
+  );
+}
+
+export function applyExceptions(findings, exceptions) {
+  for (const exception of exceptions) {
+    const matches = findings.filter(
+      (entry) =>
+        exception.rule === entry.rule &&
+        exception.file === entry.file &&
+        exception.symbol === entry.symbol &&
+        (exception.lines === undefined || exception.lines.includes(entry.line)),
+    );
+    if (matches.length !== exception.matchCount) {
+      throw new Error(
+        `Design-system exception ${exception.id} expected ${exception.matchCount} match(es), found ${matches.length}`,
+      );
+    }
+  }
   const used = new Set();
   const active = findings.filter((entry) => {
     const exception = exceptions.find(
       (candidate) =>
         candidate.rule === entry.rule &&
         candidate.file === entry.file &&
-        candidate.symbol === entry.symbol,
+        candidate.symbol === entry.symbol &&
+        (candidate.lines === undefined || candidate.lines.includes(entry.line)),
     );
     if (!exception) return true;
     used.add(exception.id);
@@ -475,6 +734,16 @@ export function compareToBaseline(report, baseline) {
   );
 }
 
+export function compareToTightBaseline(report, baseline) {
+  return RULES.flatMap((rule) =>
+    report.counts[rule] !== baseline.counts[rule]
+      ? [
+          `${rule}: actual ${report.counts[rule]} != baseline ${baseline.counts[rule]}`,
+        ]
+      : [],
+  );
+}
+
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const report = buildComplianceReport();
   const markdown = renderComplianceMarkdown(report);
@@ -502,7 +771,9 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
       throw new Error(
         "Missing design-system baseline; initialize it with --write-baseline",
       );
-    const regressions = compareToBaseline(report, baseline);
+    const regressions = process.argv.includes("--require-tight-baseline")
+      ? compareToTightBaseline(report, baseline)
+      : compareToBaseline(report, baseline);
     if (regressions.length > 0) {
       throw new Error(
         `Design-system violations exceed baseline: ${regressions.join(", ")}`,

@@ -527,7 +527,9 @@ export function WorkflowEditor({
               key={value}
               type="button"
               onClick={() => setTab(value)}
-              className={`grid size-8 place-items-center rounded-md transition ${tab === value ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+              variant="selection"
+              size="icon-sm"
+              data-state={tab === value ? "on" : "off"}
               aria-label={label}
               aria-current={tab === value ? "page" : undefined}
               title={label}
@@ -687,7 +689,10 @@ export function WorkflowEditor({
                   type="button"
                   key={execution.id}
                   onClick={() => setSelectedRunId(execution.id)}
-                  className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition ${selectedRun?.id === execution.id ? "border-primary/40 bg-primary/5" : "border-transparent hover:bg-muted/50"}`}
+                  variant="choice"
+                  size="row"
+                  align="start"
+                  data-state={selectedRun?.id === execution.id ? "on" : "off"}
                   title={`${execution.status} · ${execution.id}`}
                 >
                   <span

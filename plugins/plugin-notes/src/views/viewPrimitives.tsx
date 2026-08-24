@@ -81,26 +81,6 @@ export const SECONDARY_TEXT_STYLE: CSSProperties = {
   lineHeight: 1.45,
 };
 
-const BUTTON_STYLE: CSSProperties = {
-  boxSizing: "border-box",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 7,
-  minHeight: 44,
-  border: "none",
-  borderRadius: 12,
-  padding: "8px 12px",
-  background:
-    "color-mix(in srgb, var(--surface, rgba(255,255,255,.08)) 86%, transparent)",
-  color: "var(--txt, #f5f5f5)",
-  font: "inherit",
-  fontSize: 13,
-  fontWeight: 650,
-  cursor: "pointer",
-  transition: "background 160ms ease, opacity 160ms ease, transform 160ms ease",
-};
-
 export function AgentAction({
   agentId,
   agentLabel,
@@ -131,17 +111,6 @@ export function AgentAction({
       if (!disabled) onClick?.({} as never);
     },
   });
-  const variantStyle: CSSProperties =
-    variant === "primary"
-      ? {
-          background: disabled
-            ? "color-mix(in srgb, var(--surface, rgba(255,255,255,.08)) 86%, transparent)"
-            : "var(--accent, #ff6a1f)",
-          color: "var(--accent-foreground, #fff)",
-        }
-      : variant === "quiet"
-        ? { background: "transparent" }
-        : {};
   return (
     <Button
       ref={control.ref}
@@ -159,13 +128,7 @@ export function AgentAction({
       aria-label={rest["aria-label"] ?? (compact ? agentLabel : undefined)}
       disabled={disabled}
       onClick={onClick}
-      style={{
-        ...BUTTON_STYLE,
-        ...variantStyle,
-        ...(compact ? { minWidth: 44, width: 44, padding: 0 } : {}),
-        ...(disabled ? { cursor: "default", opacity: 0.5 } : {}),
-        ...style,
-      }}
+      style={style}
     >
       {children}
     </Button>

@@ -492,8 +492,10 @@ function LegacySettingsView({
         <div
           data-testid="settings-shell"
           className={cn(
-            "flex min-h-full w-full",
-            isDesktop ? "flex-row" : "flex-col",
+            "flex w-full",
+            isDesktop
+              ? "min-h-full flex-row"
+              : "h-full min-h-0 flex-col overflow-hidden",
           )}
         >
           {/* Agent-surface anchors: the agent addresses every section by
@@ -510,7 +512,14 @@ function LegacySettingsView({
             ))}
           </div>
 
-          <div className="min-w-0 flex-1 pb-32">
+          <div
+            className={cn(
+              "min-w-0 flex-1",
+              isDesktop
+                ? "pb-32"
+                : "eliza-chat-scroll max-h-[calc(100dvh-var(--eliza-chat-clearance,5.25rem)-5rem)] min-h-0 overflow-y-auto pb-4",
+            )}
+          >
             {isDesktop ? (
               <main
                 data-testid="desktop-settings-work-area"

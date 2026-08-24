@@ -54,19 +54,7 @@ const TriggerButton = ({
   label: string;
   onClick: () => void;
 }) => (
-  <Button
-    type="button"
-    onClick={onClick}
-    style={{
-      padding: "8px 14px",
-      borderRadius: 8,
-      border: "1px solid var(--border, #2a2a2a)",
-      background: "var(--popover, #111)",
-      color: "var(--popover-foreground, #fafafa)",
-      cursor: "pointer",
-      fontSize: 13,
-    }}
-  >
+  <Button type="button" onClick={onClick} variant="outline" size="compact">
     {label}
   </Button>
 );

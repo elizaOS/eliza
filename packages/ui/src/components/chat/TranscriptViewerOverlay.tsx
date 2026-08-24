@@ -737,11 +737,10 @@ export function TranscriptViewerOverlay({
             </Button>
           )}
           <Button
-            variant="ghost"
+            variant={copyStatus === "failed" ? "dangerGhost" : "ghostMuted"}
             size="sm"
             onClick={() => void handleCopy()}
             data-testid="transcript-copy"
-            className={cn(copyStatus === "failed" && "text-danger")}
           >
             {copyStatus === "copied" ? (
               <Check
@@ -774,7 +773,7 @@ export function TranscriptViewerOverlay({
           </Button>
           {resolvedId || audioUrl ? (
             <Button
-              variant="ghost"
+              variant="dangerGhost"
               size="sm"
               onClick={handleOpenInKnowledge}
               data-testid="transcript-open-in-knowledge"
@@ -789,10 +788,6 @@ export function TranscriptViewerOverlay({
               size="sm"
               onClick={() => void handleDelete()}
               data-testid="transcript-delete"
-              className={cn(
-                "hover:bg-destructive-subtle",
-                confirmDelete ? "text-danger" : "text-muted",
-              )}
             >
               <Trash2 className="mr-1.5 size-4" strokeWidth={1.5} />
               {confirmDelete

@@ -53,15 +53,11 @@ function SkillFilterTab({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="badge"
+      data-state={isActive ? "on" : "off"}
       type="button"
       aria-current={isActive ? "true" : undefined}
-      className={`h-8 rounded-full border px-3 text-2xs font-bold tracking-[0.14em] ${
-        isActive
-          ? "border-accent/30 bg-accent/10 text-txt"
-          : "border-border/45 text-muted hover:border-border/70 hover:bg-bg/35 hover:text-txt"
-      }`}
       onClick={onSelect}
       {...agentProps}
     >
@@ -411,14 +407,10 @@ function SkillsFullViewContent({
             <SidebarContent.ToolbarPrimary>
               <Button
                 ref={newSkillButton.ref}
-                variant={skillCreateFormOpen ? "outline" : "default"}
-                size="sm"
+                variant={skillCreateFormOpen ? "outlineMuted" : "default"}
+                size="pill"
                 type="button"
-                className={`h-9 w-full rounded-full px-4 text-xs-tight font-bold tracking-[0.12em] ${
-                  skillCreateFormOpen
-                    ? "border-border/50 bg-bg/25 text-txt"
-                    : "text-txt-strong"
-                }`}
+                className="w-full"
                 onClick={() => {
                   setState("skillCreateFormOpen", !skillCreateFormOpen);
                   if (skillCreateFormOpen) {

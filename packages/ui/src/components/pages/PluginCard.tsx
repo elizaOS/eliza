@@ -118,14 +118,6 @@ export const PluginCard = memo(function PluginCard({
       : needsConfig || !p.isActive
         ? "attention"
         : "ok";
-  const toggleHealthClass =
-    toggleHealth === "ok"
-      ? "border-ok bg-ok text-white hover:bg-ok/90"
-      : toggleHealth === "attention"
-        ? "border-accent bg-accent text-accent-fg hover:bg-accent/90"
-        : toggleHealth === "error"
-          ? "border-destructive bg-destructive text-white hover:bg-destructive/90"
-          : "border-border bg-transparent text-muted hover:border-accent/50 hover:text-txt";
   const toggleTitle =
     toggleHealth === "error"
       ? p.loadError || inactiveLabel
@@ -191,12 +183,19 @@ export const PluginCard = memo(function PluginCard({
       ) : (
         <Button
           ref={toggleControl.ref}
-          variant="outline"
-          size="sm"
+          variant={
+            toggleHealth === "error"
+              ? "destructive"
+              : toggleHealth === "attention"
+                ? "warningOutline"
+                : toggleHealth === "ok"
+                  ? "default"
+                  : "outlineMuted"
+          }
+          size="touch"
+          shape="circle"
           data-plugin-toggle={p.id}
-          className={`min-h-11 shrink-0 rounded-full border px-3 py-2 text-2xs font-bold tracking-wider transition-colors duration-150 ${toggleHealthClass} ${
-            toggleDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-          }`}
+          className="shrink-0"
           title={toggleTitle}
           onClick={(e) => {
             e.stopPropagation();

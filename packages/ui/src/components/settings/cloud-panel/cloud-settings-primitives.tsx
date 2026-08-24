@@ -78,13 +78,9 @@ export function DestructiveSecondaryButton({
 }: React.ComponentProps<typeof Button>) {
   return (
     <Button
-      variant="secondary"
+      variant="surfaceDestructive"
       size="sm"
-      className={cn(
-        "text-danger",
-        "hover:bg-destructive-subtle active:bg-destructive-subtle/80",
-        className,
-      )}
+      className={className}
       {...props}
     />
   );
@@ -452,12 +448,9 @@ export function CloudInputRow({
           onChange={(e) => onValueChange(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
-          className={cn(
-            "w-48 rounded-md border border-border bg-bg px-3 py-1.5",
-            "text-sm leading-5 text-foreground placeholder:text-muted-foreground/60",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            "transition-colors",
-          )}
+          variant="form"
+          density="compact"
+          className="w-48"
           {...(inputAgentProps as Record<string, unknown>)}
         />
       }

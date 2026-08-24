@@ -39,13 +39,13 @@ export function ViewHeaderSidebarTrigger({
   const triggerLabel = label ?? control.label ?? "Browse";
   return (
     <Button
+      variant="surface"
+      size="compact"
+      shape="circle"
       type="button"
       data-testid="page-layout-mobile-sidebar-trigger"
       onClick={() => control.setOpen(true)}
-      className={cn(
-        "inline-flex h-9 max-w-[9rem] items-center gap-1.5 rounded-full bg-bg px-3 text-sm font-medium text-txt transition-colors pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-bg-hover",
-        className,
-      )}
+      className={cn("max-w-[9rem]", className)}
     >
       <PanelLeftOpen className="size-4 shrink-0" aria-hidden />
       <span className="truncate">{triggerLabel}</span>

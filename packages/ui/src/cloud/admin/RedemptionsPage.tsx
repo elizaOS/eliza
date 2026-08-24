@@ -107,14 +107,16 @@ interface SystemStatus {
   };
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-status-warning-bg text-status-warning border-status-warning/30",
-  approved: "bg-white/10 text-white/80 border-white/20",
-  processing: "bg-accent/20 text-accent border-accent/30",
-  completed:
-    "bg-status-success-bg text-status-success border-status-success/30",
-  failed: "bg-destructive-subtle text-destructive border-destructive/30",
-  rejected: "bg-destructive-subtle text-destructive border-destructive/30",
+const STATUS_TONES: Record<
+  string,
+  "warning" | "muted" | "accent" | "success" | "danger"
+> = {
+  pending: "warning",
+  approved: "muted",
+  processing: "accent",
+  completed: "success",
+  failed: "danger",
+  rejected: "danger",
 };
 
 const buildStatusOptions = (t: TFn) => [
@@ -588,9 +590,8 @@ export default function RedemptionsPage(): React.JSX.Element {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      className={
-                        STATUS_COLORS[r.status] || STATUS_COLORS.pending
-                      }
+                      variant="outline"
+                      tone={STATUS_TONES[r.status] ?? "warning"}
                     >
                       {r.status}
                     </Badge>
@@ -678,7 +679,10 @@ export default function RedemptionsPage(): React.JSX.Element {
                       defaultValue: "Status",
                     })}
                   </p>
-                  <Badge className={STATUS_COLORS[selectedRedemption.status]}>
+                  <Badge
+                    variant="outline"
+                    tone={STATUS_TONES[selectedRedemption.status] ?? "warning"}
+                  >
                     {selectedRedemption.status}
                   </Badge>
                 </div>

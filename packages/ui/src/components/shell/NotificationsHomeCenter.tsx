@@ -3015,6 +3015,8 @@ export function NotificationsHomeCenter({
                       </Button>
                       <Button
                         type="button"
+                        variant="notificationClear"
+                        size="notificationClear"
                         data-testid="notification-stack-clear"
                         data-confirming={
                           confirmingGroupKey === group.key ? "true" : undefined
@@ -3032,10 +3034,8 @@ export function NotificationsHomeCenter({
                           )
                         }
                         className={cn(
-                          "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
-                          confirmingGroupKey === group.key
-                            ? "w-12 text-white"
-                            : "w-8",
+                          "eliza-notif-control-transition transition-[width,color] duration-200 ease-out",
+                          confirmingGroupKey === group.key ? "w-12" : "w-8",
                         )}
                       >
                         <ClearConfirmationContent

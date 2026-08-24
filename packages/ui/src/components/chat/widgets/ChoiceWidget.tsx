@@ -208,21 +208,17 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             const recommended = isRecommended(option.label);
             const highlighted =
               isSelected || (recommended && selected === null);
-            const variant = highlighted ? "default" : "surface";
-            const choiceClass = highlighted
-              ? "h-auto min-h-11 w-full justify-between whitespace-normal px-4 py-2 text-sm font-medium disabled:opacity-100 aria-disabled:opacity-100"
-              : "h-auto min-h-11 w-full justify-between whitespace-normal border border-border-strong bg-card px-4 py-2 text-sm font-medium text-txt-strong hover:bg-surface disabled:opacity-40 aria-disabled:opacity-40";
             return (
               <Button
                 key={option.value}
                 type="button"
-                variant={variant}
-                size="default"
+                variant="choice"
+                size="row"
+                data-state={highlighted ? "on" : "off"}
                 disabled={locked}
                 aria-label={option.label}
                 aria-pressed={isSelected}
                 data-testid={`choice-${option.value}`}
-                className={choiceClass}
                 onClick={() => handleChoose(option)}
               >
                 <span className="inline-flex min-w-0 items-center gap-2 text-left">
@@ -242,22 +238,17 @@ export const ChoiceWidget = memo(function ChoiceWidget({
               </Button>
             );
           }
-          const variant = cancel ? "ghost" : "outline";
+          const variant = cancel ? "ghostMuted" : "outline";
           return (
             <Button
               key={option.value}
               type="button"
               variant={variant}
-              size="sm"
+              size="tiny"
               disabled={locked}
               aria-label={option.label}
               aria-pressed={isSelected}
               data-testid={`choice-${option.value}`}
-              className={
-                cancel
-                  ? "h-7 px-3 text-xs text-muted hover:text-txt disabled:opacity-40"
-                  : "h-7 px-3 text-xs disabled:opacity-40"
-              }
               onClick={() => handleChoose(option)}
             >
               {isSelected ? (

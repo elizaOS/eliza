@@ -206,14 +206,10 @@ function BrowserTabCard({
         aria-current={active ? "page" : undefined}
         title={tab.description}
         onClick={onActivate}
-        variant="ghost"
-        className={`flex h-auto min-h-11 w-full min-w-0 flex-col items-start justify-start gap-1 whitespace-normal rounded-xl border p-3 text-left font-normal transition-colors ${
-          tab.closable ? "pr-14" : "pr-3"
-        } ${
-          active
-            ? "border-txt/20 bg-bg-muted/80 text-txt shadow-[inset_0_1px_0_rgba(255,255,255,.06)]"
-            : "border-border/40 bg-card/35 text-txt hover:border-border/70 hover:bg-bg-muted/50"
-        }`}
+        variant={active ? "surface" : "outlineMuted"}
+        size="card"
+        align="start"
+        className="group relative min-w-0 overflow-hidden"
       >
         <span className="flex w-full min-w-0 items-center gap-2">
           <span

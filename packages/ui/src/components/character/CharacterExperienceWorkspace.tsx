@@ -438,39 +438,43 @@ function ExperienceGraphNode({
     onActivate: () => onSelectExperience(experience.id),
   });
   return (
-    <Button
-      ref={ref}
-      variant="selection"
-      size="content"
-      shape="circle"
-      aria-label={`Select experience: ${nodeLabel}`}
-      aria-pressed={selected}
-      data-testid={`experience-graph-node-${experience.id}`}
-      className="absolute -translate-x-1/2 -translate-y-1/2 hover:scale-125"
+    <div
+      className="absolute -translate-x-1/2 -translate-y-1/2"
       style={{
         left: `${position.x}%`,
         top: `${position.y}%`,
         width: `${size}rem`,
         height: `${size}rem`,
       }}
-      onClick={() => onSelectExperience(experience.id)}
-      {...agentProps}
     >
-      <span
-        aria-hidden="true"
-        className="absolute inset-0 rounded-full"
-        style={{
-          background: color,
-          opacity: 0.45 + confidence * 0.45,
-          outline: selected
-            ? "2px solid var(--accent)"
-            : connected
-              ? "1px solid var(--border)"
-              : "none",
-          outlineOffset: "2px",
-        }}
-      />
-    </Button>
+      <Button
+        ref={ref}
+        variant="selection"
+        size="fill"
+        shape="circle"
+        aria-label={`Select experience: ${nodeLabel}`}
+        aria-pressed={selected}
+        data-testid={`experience-graph-node-${experience.id}`}
+        className="hover:scale-125"
+        onClick={() => onSelectExperience(experience.id)}
+        {...agentProps}
+      >
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 rounded-full"
+          style={{
+            background: color,
+            opacity: 0.45 + confidence * 0.45,
+            outline: selected
+              ? "2px solid var(--accent)"
+              : connected
+                ? "1px solid var(--border)"
+                : "none",
+            outlineOffset: "2px",
+          }}
+        />
+      </Button>
+    </div>
   );
 }
 
@@ -574,10 +578,13 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="selection"
+      size="card"
+      align="start"
+      data-state={isSelected ? "on" : "off"}
       aria-pressed={isSelected}
       data-testid={`experience-row-${experience.id}`}
-      className={`h-auto w-full min-w-0 flex-col items-start justify-start gap-2 rounded-none p-4 text-left font-normal transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
+      className="w-full min-w-0"
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
@@ -896,15 +903,11 @@ export function CharacterExperienceWorkspace({
           {REVIEW_FILTERS.map((option) => (
             <Button
               key={option.value}
-              variant="ghost"
-              size="sm"
+              variant="selection"
+              size="pillDense"
+              data-state={reviewFilter === option.value ? "on" : "off"}
               aria-pressed={reviewFilter === option.value}
               onClick={() => setReviewFilter(option.value)}
-              className={`h-8 rounded-full px-3 text-xs font-medium transition-colors ${
-                reviewFilter === option.value
-                  ? "bg-accent/15 text-accent"
-                  : "text-muted hover:bg-bg-muted/30 hover:text-txt"
-              }`}
             >
               {option.label}
             </Button>

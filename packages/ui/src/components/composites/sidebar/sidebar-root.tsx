@@ -101,11 +101,6 @@ const sidebarFooterVariants = cva(
   "relative z-10 mt-auto flex shrink-0 justify-end  px-3.5 pb-3.5 pt-2",
 );
 
-const sidebarControlButtonClassName =
-  // Borderless toggle (#10710): the card wash alone keeps it visible over
-  // page content; hover expresses through text color.
-  "size-11 rounded-sm bg-card text-muted-strong transition-colors duration-200 hover:text-txt active:scale-95";
-
 const sidebarMobileHeaderBarClassName =
   "sticky top-0 z-10 flex items-center justify-between bg-card px-3.5 py-2.5";
 
@@ -686,12 +681,9 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
             ) : null}
             <Button
               variant="surface"
-              size="icon"
+              size="icon-lg"
               data-testid={collapseButtonTestId}
-              className={cn(
-                sidebarControlButtonClassName,
-                collapseButtonClassName,
-              )}
+              className={collapseButtonClassName}
               aria-label={collapseButtonAriaLabel}
               onClick={handleCollapse}
             >
@@ -839,11 +831,11 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
         ) : null}
         {showsCollapsedState && variant === "default" ? (
           <Button
-            variant="ghost"
-            size="icon-sm"
+            variant="ghostMuted"
+            size="icon-xs"
             data-testid={expandButtonTestId}
             className={cn(
-              "fixed bottom-2 left-2 z-40 size-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt",
+              "fixed bottom-2 left-2 z-40 shrink-0",
               collapseButtonClassName,
             )}
             aria-label={expandButtonAriaLabel}

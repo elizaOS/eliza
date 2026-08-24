@@ -63,7 +63,7 @@ import { api, apiWithStatus } from "../../lib/api-client";
 import { parseAgentsResponse } from "../lib/data/eliza-agents";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
-import { statusBadgeColor, statusDotColor } from "../lib/sandbox-status";
+import { statusDotColor } from "../lib/sandbox-status";
 import { type TrackedJob, useJobPoller } from "../lib/use-job-poller";
 import { useSandboxListPoll } from "../lib/use-sandbox-status-poll";
 import { AgentCostBadge } from "./agent-cost-badge";
@@ -303,7 +303,19 @@ function StatusCell({
       >
         <Badge
           variant="outline"
-          className={`${statusBadgeColor(displayStatus)} w-fit text-xs-tight font-medium px-2 py-0.5`}
+          size="compact"
+          tone={
+            displayStatus === "running"
+              ? "success"
+              : displayStatus === "pending"
+                ? "warning"
+                : ["disconnected", "error"].includes(displayStatus)
+                  ? "danger"
+                  : displayStatus === "provisioning"
+                    ? "accent"
+                    : "muted"
+          }
+          className="w-fit"
         >
           <span
             className={`inline-block size-1.5 rounded-full mr-1.5 ${statusDotColor(displayStatus)}`}

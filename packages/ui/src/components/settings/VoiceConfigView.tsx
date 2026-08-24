@@ -1024,12 +1024,10 @@ function PremadeVoiceButton({
   return (
     <Button
       ref={ref}
-      variant={active ? "default" : "outline"}
-      className={`h-auto min-h-16 flex-col items-start rounded-md px-3 py-2.5 text-left transition-all ${
-        active
-          ? "border-accent/45 bg-accent/12 text-txt "
-          : "border-border/60 bg-bg text-txt hover:border-border-strong hover:bg-surface"
-      }`}
+      variant="choice"
+      size="row"
+      align="start"
+      data-state={active ? "on" : "off"}
       onClick={onSelect}
       {...agentProps}
     >

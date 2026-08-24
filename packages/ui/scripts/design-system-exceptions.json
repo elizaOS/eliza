@@ -8,7 +8,9 @@
       "symbol": "button",
       "owner": "app-core desktop runtime",
       "reason": "The desktop renderer owns native window controls outside the React design-system host.",
-      "reviewBy": "2026-11-24"
+      "reviewBy": "2026-11-24",
+      "matchCount": 1,
+      "lines": [424]
     },
     {
       "id": "desktop-window-native-button-visuals",
@@ -17,7 +19,9 @@
       "symbol": "button",
       "owner": "app-core desktop runtime",
       "reason": "The desktop renderer owns native window-control visuals outside the React design-system host.",
-      "reviewBy": "2026-11-24"
+      "reviewBy": "2026-11-24",
+      "matchCount": 1,
+      "lines": [424]
     },
     {
       "id": "design-lab-shell-native-buttons",
@@ -26,7 +30,9 @@
       "symbol": "button",
       "owner": "UI design lab harness",
       "reason": "The lab shell must remain independent from the design system whose full-viewport surfaces it previews.",
-      "reviewBy": "2026-11-24"
+      "reviewBy": "2026-11-24",
+      "matchCount": 2,
+      "lines": [105, 120]
     },
     {
       "id": "design-lab-controls-native-buttons",
@@ -35,7 +41,9 @@
       "symbol": "button",
       "owner": "UI design lab harness",
       "reason": "The lab control chrome is intentionally dependency-free so canonical atom changes cannot restyle the comparison harness.",
-      "reviewBy": "2026-11-24"
+      "reviewBy": "2026-11-24",
+      "matchCount": 2,
+      "lines": [37, 83]
     },
     {
       "id": "design-lab-controls-native-checkbox",
@@ -44,7 +52,9 @@
       "symbol": "checkbox",
       "owner": "UI design lab harness",
       "reason": "The native checkbox belongs to the isolated comparison harness and must not depend on the surface under review.",
-      "reviewBy": "2026-11-24"
+      "reviewBy": "2026-11-24",
+      "matchCount": 1,
+      "lines": [62]
     },
     {
       "id": "design-lab-widget-native-button",
@@ -53,7 +63,9 @@
       "symbol": "button",
       "owner": "UI design lab harness",
       "reason": "This reseed action is harness chrome outside the product surface rendered inside the lab frame.",
-      "reviewBy": "2026-11-24"
+      "reviewBy": "2026-11-24",
+      "matchCount": 1,
+      "lines": [61]
     },
     {
       "id": "voice-renderer-harness-native-buttons",
@@ -62,7 +74,31 @@
       "symbol": "button",
       "owner": "Voice renderer harness",
       "reason": "The renderer selector is standalone harness chrome around the visual under test, not shipped product UI.",
-      "reviewBy": "2026-11-24"
+      "reviewBy": "2026-11-24",
+      "matchCount": 2,
+      "lines": [786, 809]
+    },
+    {
+      "id": "calendar-day-runtime-presentation",
+      "rule": "visual-override",
+      "file": "plugins/plugin-calendar/src/components/calendar/SimpleCalendarView.tsx",
+      "symbol": "Button",
+      "owner": "plugin-calendar",
+      "reason": "Calendar day cells combine responsive grid geometry with runtime selected and outside-month paint supplied by the calendar domain; the canonical static variants cannot represent that data-driven presentation.",
+      "reviewBy": "2026-11-24",
+      "matchCount": 1,
+      "lines": [250]
+    },
+    {
+      "id": "calendar-event-runtime-palette",
+      "rule": "visual-override",
+      "file": "plugins/plugin-calendar/src/components/CalendarSection.tsx",
+      "symbol": "Button",
+      "owner": "plugin-calendar",
+      "reason": "Calendar event controls use provider-supplied palette colors and timed-event geometry that are runtime domain data rather than a finite static visual variant.",
+      "reviewBy": "2026-11-24",
+      "matchCount": 3,
+      "lines": [456, 571, 814]
     }
   ]
 }

@@ -344,14 +344,10 @@ export function SettingsSegmentedRow({
               data-active={active ? "true" : "false"}
               disabled={disabled}
               onClick={() => onValueChange(option.value)}
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-9 flex-1 rounded-sm px-2 text-xs font-medium transition-colors disabled:opacity-50",
-                active
-                  ? "bg-card text-txt-strong"
-                  : "text-muted hover:bg-card/60 hover:text-txt",
-              )}
+              variant="selection"
+              size="compact"
+              data-state={active ? "on" : "off"}
+              className="flex-1"
             >
               {option.label}
             </Button>

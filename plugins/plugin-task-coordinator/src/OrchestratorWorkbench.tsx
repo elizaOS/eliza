@@ -697,15 +697,12 @@ export function OrchestratorWorkbench() {
                   </div>
                   <Button
                     variant="selection"
-                    size="sm"
+                    size="compact"
                     data-state={showArchived ? "on" : "off"}
                     ref={showArchivedRef}
                     type="button"
                     onClick={() => setShowArchived((value) => !value)}
                     aria-pressed={showArchived}
-                    className={`inline-flex h-9 items-center gap-2 px-2 text-xs font-medium transition-colors ${
-                      showArchived ? "text-accent" : "text-muted hover:text-txt"
-                    }`}
                     data-testid="orchestrator-show-archived"
                     {...showArchivedAgentProps}
                   >

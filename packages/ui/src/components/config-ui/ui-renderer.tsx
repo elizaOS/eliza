@@ -40,6 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { Switch } from "../ui/switch";
 import {
   Table,
   TableBody,
@@ -50,10 +51,6 @@ import {
 } from "../ui/table";
 import { Textarea } from "../ui/textarea";
 import { ConfigFieldErrors } from "./config-control-primitives";
-import {
-  getConfigInputClassName,
-  getConfigTextareaClassName,
-} from "./config-control-primitives.helpers";
 import {
   evaluateUiVisibility,
   runValidation,
@@ -420,22 +417,6 @@ const JUSTIFY: Record<string, string> = {
 // COMPONENT REGISTRY
 // ══════════════════════════════════════════════════════════════════════
 
-/**
- * Coarse-pointer tap-target floor for the agent-emitted UiRenderer controls
- * (#14399 device review: "buttons too small on the demo buttons view").
- *
- * These controls render inside chat/widget/dynamic-view surfaces, NOT at a
- * standalone `/route`, so the route-walking `tap-target-geometry-all-views`
- * Playwright gate never measured them — the whole button family here ships at
- * ~28-30px tall (`px-3 py-1.5 text-xs`), well under the 44px HIG floor on a
- * touch device. Compose the shared `min-h-touch`/`min-w-touch`
- * (`var(--min-touch-target)` = 2.75rem) floor ONLY on coarse pointers so touch
- * hits the floor while fine-pointer (desktop mouse) keeps the compact resting
- * look — same convention as `chat-composer.tsx` and the spatial button rule in
- * `base.css`. Applied to every tappable control below.
- */
-const TAP_FLOOR = "pointer-coarse:min-h-touch pointer-coarse:min-w-touch";
-
 type ComponentFn = (
   props: Record<string, unknown>,
   children: React.ReactNode,
@@ -547,10 +528,9 @@ const InputComponent: ComponentFn = (props, _children, ctx, el) => {
         <span className="text-xs font-semibold">{String(props.label)}</span>
       ) : null}
       <Input
-        className={getConfigInputClassName({
-          density: "compact",
-          hasError: !!errors?.length,
-        })}
+        variant="config"
+        density="compact"
+        hasError={!!errors?.length}
         type={String(props.type ?? "text")}
         name={String(props.name ?? "")}
         placeholder={String(props.placeholder ?? "")}
@@ -587,10 +567,9 @@ const TextareaComponent: ComponentFn = (props, _children, ctx, el) => {
         <span className="text-xs font-semibold">{String(props.label)}</span>
       ) : null}
       <Textarea
-        className={getConfigTextareaClassName({
-          density: "compact",
-          hasError: !!errors?.length,
-        })}
+        variant="config"
+        density="compact"
+        hasError={!!errors?.length}
         name={String(props.name ?? "")}
         placeholder={String(props.placeholder ?? "")}
         rows={Number(props.rows ?? 3)}
@@ -637,10 +616,9 @@ const SelectComponent: ComponentFn = (props, _children, ctx, el) => {
       >
         <SelectTrigger
           aria-label={props.label ? String(props.label) : "Select an option"}
-          className={getConfigInputClassName({
-            density: "compact",
-            hasError: !!errors?.length,
-          })}
+          variant="config"
+          density="compact"
+          hasError={!!errors?.length}
         >
           <SelectValue
             placeholder={
@@ -726,19 +704,11 @@ const SwitchComponent: ComponentFn = (props, _children, ctx) => {
   const checked = !!value;
   return (
     <span className="flex items-center gap-2 cursor-pointer">
-      <Button
+      <Switch
         aria-label={String(props.label ?? "Toggle option")}
-        type="button"
-        variant="ghost"
-        role="switch"
-        aria-checked={checked}
-        className={`relative w-9 h-[18px] p-0 transition-colors rounded-none ${TAP_FLOOR} ${checked ? "bg-accent" : "bg-muted"}`}
-        onClick={() => setValue(!checked)}
-      >
-        <div
-          className={`absolute top-0.5 w-[14px] h-[14px] bg-card transition-all ${checked ? "left-5" : "left-0.5"}`}
-        />
-      </Button>
+        checked={checked}
+        onCheckedChange={(next) => setValue(next)}
+      />
       <span className="text-xs font-semibold">{String(props.label ?? "")}</span>
     </span>
   );
@@ -780,12 +750,9 @@ const ToggleComponent: ComponentFn = (props, _children, ctx, el) => {
   return (
     <Button
       type="button"
-      variant={pressed ? "default" : "outline"}
-      className={`px-3 py-1.5 text-xs transition-colors ${TAP_FLOOR} ${
-        pressed
-          ? "bg-accent text-accent-fg border-accent"
-          : "bg-card text-txt hover:bg-[var(--bg-hover)]"
-      }`}
+      variant="selection"
+      size="compact"
+      data-state={pressed ? "on" : "off"}
       onClick={() => {
         setValue(!pressed);
         fireEvent(el.on?.press, ctx);
@@ -826,12 +793,9 @@ const ToggleGroupComponent: ComponentFn = (props, _children, ctx) => {
           <Button
             key={item.value}
             type="button"
-            variant={active ? "default" : "outline"}
-            className={`px-2.5 py-1 text-xs transition-colors ${TAP_FLOOR} ${
-              active
-                ? "bg-accent text-accent-fg border-accent"
-                : "bg-card text-txt hover:bg-[var(--bg-hover)]"
-            }`}
+            variant="selection"
+            size="tinyWide"
+            data-state={active ? "on" : "off"}
             onClick={() => toggle(item.value)}
           >
             {item.label}
@@ -857,12 +821,9 @@ const ButtonGroupComponent: ComponentFn = (props, _children, ctx) => {
           <Button
             key={btn.value}
             type="button"
-            variant={active ? "default" : "outline"}
-            className={`px-3 py-1.5 text-xs transition-colors ${TAP_FLOOR} ${
-              active
-                ? "bg-accent text-accent-fg border-accent"
-                : "bg-card text-txt hover:bg-[var(--bg-hover)]"
-            }`}
+            variant="selection"
+            size="compact"
+            data-state={active ? "on" : "off"}
             onClick={() => setValue(btn.value)}
           >
             {btn.label}
@@ -935,9 +896,8 @@ const CarouselComponent: ComponentFn = (props) => {
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="tiny"
           aria-label="Previous item"
-          className={`text-xs px-2 py-0.5 ${TAP_FLOOR}`}
           onClick={() => setCurrent((p) => Math.max(0, p - 1))}
           disabled={current === 0}
         >
@@ -949,9 +909,8 @@ const CarouselComponent: ComponentFn = (props) => {
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="tiny"
           aria-label="Next item"
-          className={`text-xs px-2 py-0.5 ${TAP_FLOOR}`}
           onClick={() => setCurrent((p) => Math.min(items.length - 1, p + 1))}
           disabled={current === items.length - 1}
         >
@@ -1138,13 +1097,6 @@ const SpinnerComponent: ComponentFn = (props) => {
 
 const ButtonComponent: ComponentFn = (props, _children, ctx, el) => {
   const variant = String(props.variant ?? "primary");
-  const cls: Record<string, string> = {
-    primary: "bg-accent text-accent-fg border-accent hover:opacity-90",
-    secondary: "bg-card text-txt border-border hover:bg-[var(--bg-hover)]",
-    danger: "bg-destructive text-white border-destructive hover:opacity-90",
-    ghost:
-      "bg-transparent text-txt border-transparent hover:bg-[var(--bg-hover)]",
-  };
   return (
     <Button
       type="button"
@@ -1157,7 +1109,7 @@ const ButtonComponent: ComponentFn = (props, _children, ctx, el) => {
               ? "outline"
               : "default"
       }
-      className={`px-3 py-1.5 text-xs font-medium transition-colors ${TAP_FLOOR} ${cls[variant] ?? cls.primary}`}
+      size="compact"
       disabled={!!props.disabled}
       onClick={() => fireEvent(el.on?.press, ctx)}
     >
@@ -1195,8 +1147,7 @@ const DropdownMenuComponent: ComponentFn = (props, _children, ctx) => {
       <Button
         type="button"
         variant="outline"
-        size="sm"
-        className={`px-3 py-1.5 text-xs ${TAP_FLOOR}`}
+        size="compact"
         onClick={() => setOpen(!open)}
       >
         {String(props.label ?? "Menu")} ▾
@@ -1246,14 +1197,11 @@ const TabsComponent: ComponentFn = (props, _children, ctx) => {
           <Button
             key={tab.value}
             type="button"
-            variant="ghost"
+            variant="selection"
+            size="compact"
             role="tab"
             aria-selected={tab.value === active}
-            className={`px-3 py-1.5 text-xs rounded-none transition-colors h-auto ${TAP_FLOOR} ${
-              tab.value === active
-                ? "border-b-2 border-accent text-accent font-semibold"
-                : "text-muted hover:text-txt"
-            }`}
+            data-state={tab.value === active ? "on" : "off"}
             onClick={() => setValue(tab.value)}
           >
             {tab.label}
@@ -1277,9 +1225,8 @@ const PaginationComponent: ComponentFn = (props, _children, ctx) => {
       <Button
         type="button"
         variant="outline"
-        size="sm"
+        size="tiny"
         aria-label="Previous page"
-        className={`px-2 py-1 text-xs disabled:opacity-40 ${TAP_FLOOR}`}
         disabled={current <= 1}
         onClick={() => setValue(current - 1)}
       >
@@ -1289,15 +1236,11 @@ const PaginationComponent: ComponentFn = (props, _children, ctx) => {
         <Button
           key={page}
           type="button"
-          variant={page === current ? "default" : "outline"}
-          size="sm"
+          variant="selection"
+          size="tiny"
           aria-label={`Page ${page}`}
           aria-current={page === current ? "page" : undefined}
-          className={`px-2 py-1 text-xs ${TAP_FLOOR} ${
-            page === current
-              ? "bg-accent text-accent-fg border-accent"
-              : "hover:bg-[var(--bg-hover)]"
-          }`}
+          data-state={page === current ? "on" : "off"}
           onClick={() => setValue(page)}
         >
           {page}
@@ -1306,9 +1249,8 @@ const PaginationComponent: ComponentFn = (props, _children, ctx) => {
       <Button
         type="button"
         variant="outline"
-        size="sm"
+        size="tiny"
         aria-label="Next page"
-        className={`px-2 py-1 text-xs disabled:opacity-40 ${TAP_FLOOR}`}
         disabled={current >= total}
         onClick={() => setValue(current + 1)}
       >
@@ -1603,10 +1545,9 @@ const DialogComponent: ComponentFn = (props, children, ctx) => {
           </div>
           <Button
             type="button"
-            variant="ghost"
-            size="icon"
+            variant="ghostMuted"
+            size="closeGlyph"
             aria-label="Close dialog"
-            className={`text-muted hover:text-txt text-lg leading-none px-1 h-auto w-auto ${TAP_FLOOR}`}
             onClick={close}
           >
             ×

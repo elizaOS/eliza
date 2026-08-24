@@ -369,14 +369,10 @@ const AppCard = memo(function AppCard({
         />
       ) : null}
       <Button
-        variant="ghost"
+        variant="transparent"
         size="icon-sm"
         aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-        className={`absolute bottom-3 right-3 size-8 rounded-full p-0 text-white transition-all ${
-          isFavorite
-            ? "bg-black/70 text-warn"
-            : "bg-black/70 text-white/70 hover:text-warn "
-        }`}
+        className="absolute bottom-3 right-3"
         onClick={(event: MouseEvent<HTMLButtonElement>) => {
           event.stopPropagation();
           onToggleFavorite(app.name);

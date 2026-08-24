@@ -24,10 +24,6 @@ const CUSTOM_ACTIONS_SHELL_CLASS =
   "flex h-full min-h-0 flex-col gap-4 rounded-sm border border-border/60 bg-card/95 p-4  ";
 const CUSTOM_ACTIONS_PANEL_CLASS =
   "rounded-sm border border-border/45 bg-bg/20 ";
-const CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS = "h-10 rounded-sm px-3 text-sm ";
-const CUSTOM_ACTIONS_INPUT_CLASS =
-  "h-10 rounded-sm border-border/60 bg-bg/55 px-3 text-sm ";
-
 const HANDLER_BADGE_CLASS: Record<string, string> = {
   http: "border border-info/25 bg-info/10 text-info",
   shell: "border border-success/25 bg-success/10 text-success",
@@ -225,10 +221,9 @@ export function CustomActionsView() {
             })}
           </p>
           <Button
-            variant="outline"
-            size="sm"
+            variant="outlineMuted"
+            size="toolbar"
             onClick={() => void loadActions()}
-            className={`${CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS} bg-bg/35 text-muted hover:bg-bg/55`}
           >
             {t("common.retry", { defaultValue: "Retry" })}
           </Button>
@@ -314,11 +309,12 @@ export function CustomActionsView() {
               {t("customactionsview.SearchAndManage")}
             </div>
             <Input
+              variant="form"
               type="text"
               placeholder={t("customactionsview.SearchActionsByNa")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className={`w-full ${CUSTOM_ACTIONS_INPUT_CLASS}`}
+              className="w-full"
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -332,27 +328,21 @@ export function CustomActionsView() {
             />
             <Button
               asChild
-              variant="outline"
-              size="sm"
-              className={`${CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS} cursor-pointer bg-bg/35 text-muted hover:bg-bg/55`}
+              variant="outlineMuted"
+              size="toolbar"
+              className="cursor-pointer"
             >
               <label htmlFor={importInputId}>{t("settings.import")}</label>
             </Button>
             <Button
-              variant="outline"
-              size="sm"
+              variant="outlineMuted"
+              size="toolbar"
               onClick={handleExport}
               disabled={actions.length === 0}
-              className={`${CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS} bg-bg/35 text-muted hover:bg-bg/55 disabled:opacity-50`}
             >
               {t("common.export")}
             </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleCreate}
-              className={`${CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS} font-medium`}
-            >
+            <Button variant="default" size="toolbar" onClick={handleCreate}>
               {t("customactionsview.CreateAction")}
             </Button>
           </div>

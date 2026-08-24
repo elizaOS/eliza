@@ -51,10 +51,6 @@ import {
   TableRow,
 } from "../ui/table";
 import { Textarea } from "../ui/textarea";
-import {
-  getConfigInputClassName,
-  getConfigTextareaClassName,
-} from "./config-control-primitives.helpers";
 
 // ── Action binding helper ──────────────────────────────────────────────
 
@@ -81,14 +77,6 @@ function fireAction(props: FieldRenderProps, eventName: string): void {
   void props.onAction(binding.action, resolvedParams);
 }
 
-function inputCls(hasError: boolean): string {
-  return getConfigInputClassName({ hasError });
-}
-
-function textareaCls(hasError: boolean, className?: string): string {
-  return getConfigTextareaClassName({ hasError, className });
-}
-
 // ── 1. Text ─────────────────────────────────────────────────────────────
 
 /** Single-line text input for unresolved field types. */
@@ -102,7 +90,9 @@ export function renderTextField(props: FieldRenderProps) {
 
   return (
     <Input
-      className={inputCls(!!props.errors?.length)}
+      variant="config"
+      density="short"
+      hasError={!!props.errors?.length}
       type="text"
       defaultValue={value}
       placeholder={placeholder}
@@ -246,7 +236,10 @@ function NumberFieldInner({ fp: props }: { fp: FieldRenderProps }) {
           </Button>
         )}
         <Input
-          className={`${inputCls(!!props.errors?.length)} ${unit ? "flex-1" : "w-full"} text-center`}
+          variant="config"
+          density="compact"
+          hasError={!!props.errors?.length}
+          className={unit ? "flex-1" : "w-full"}
           type="number"
           value={val}
           placeholder={placeholder}
@@ -353,7 +346,9 @@ export function renderUrlField(props: FieldRenderProps) {
 
   return (
     <Input
-      className={inputCls(!!props.errors?.length)}
+      variant="config"
+      density="short"
+      hasError={!!props.errors?.length}
       type="url"
       defaultValue={value}
       placeholder={placeholder}
@@ -424,7 +419,9 @@ export function RenderSelectField(props: FieldRenderProps) {
     >
       <SelectTrigger
         aria-label={props.hint.label ?? props.key}
-        className={inputCls(!!props.errors?.length)}
+        variant="config"
+        density="short"
+        hasError={!!props.errors?.length}
         data-config-key={props.key}
         data-field-type="select"
       >
@@ -570,8 +567,9 @@ function SearchableSelectInner({
       <Button
         ref={triggerRef}
         type="button"
-        variant="outline"
-        className={`${inputCls(!!props.errors?.length)} text-left flex items-center justify-between gap-2 cursor-pointer`}
+        variant="choice"
+        align="start"
+        className="w-full justify-between"
         disabled={props.readonly}
         onClick={() => {
           if (!open) setDropdownStyle(computeDropdownStyle());
@@ -649,12 +647,11 @@ function SearchableSelectInner({
                 <Button
                   key={opt.value}
                   type="button"
-                  variant="ghost"
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover transition-colors rounded-none justify-start h-auto ${
-                    opt.value === effectiveValue
-                      ? "bg-[color-mix(in_srgb,var(--accent)_10%,var(--card))] text-accent font-medium"
-                      : ""
-                  }`}
+                  variant="selection"
+                  size="content"
+                  align="start"
+                  data-state={opt.value === effectiveValue ? "on" : "off"}
+                  className="w-full"
                   onClick={() => select(opt)}
                 >
                   {opt.label}
@@ -701,7 +698,9 @@ function TextareaFieldInner({ fp: props }: { fp: FieldRenderProps }) {
   return (
     <Textarea
       ref={textareaRef}
-      className={textareaCls(!!props.errors?.length)}
+      variant="config"
+      density="configRegular"
+      hasError={!!props.errors?.length}
       style={{ fieldSizing: "content" } as React.CSSProperties}
       defaultValue={value}
       placeholder={placeholder}
@@ -729,7 +728,9 @@ export function renderEmailField(props: FieldRenderProps) {
 
   return (
     <Input
-      className={inputCls(!!props.errors?.length)}
+      variant="config"
+      density="short"
+      hasError={!!props.errors?.length}
       type="email"
       defaultValue={value}
       placeholder={placeholder}
@@ -777,7 +778,10 @@ function ColorFieldInner({ fp: props }: { fp: FieldRenderProps }) {
         onClick={() => fireAction(props, "click")}
       />
       <Input
-        className={`${inputCls(!!props.errors?.length)} flex-1`}
+        variant="config"
+        density="short"
+        hasError={!!props.errors?.length}
+        className="flex-1"
         type="text"
         value={color}
         placeholder="#000000"
@@ -978,7 +982,9 @@ export function renderDateField(props: FieldRenderProps) {
 
   return (
     <Input
-      className={inputCls(!!props.errors?.length)}
+      variant="config"
+      density="short"
+      hasError={!!props.errors?.length}
       type={inputType}
       defaultValue={value}
       data-config-key={props.key}
@@ -1029,10 +1035,9 @@ function JsonFieldInner({ fp: props }: { fp: FieldRenderProps }) {
   return (
     <div>
       <Textarea
-        className={textareaCls(
-          Boolean(jsonError || props.errors?.length),
-          "min-h-[100px]",
-        )}
+        variant="configDialog"
+        density="default"
+        hasError={Boolean(jsonError || props.errors?.length)}
         defaultValue={initial}
         placeholder={
           props.hint.placeholder ||
@@ -1067,7 +1072,9 @@ export function renderCodeField(props: FieldRenderProps) {
 
   return (
     <Textarea
-      className={textareaCls(!!props.errors?.length, "min-h-[100px]")}
+      variant="configDialog"
+      density="default"
+      hasError={!!props.errors?.length}
       defaultValue={value}
       placeholder={placeholder}
       rows={6}
@@ -1146,7 +1153,10 @@ function ArrayItem({
         </div>
       )}
       <Input
-        className={`${inputCls(hasError)} flex-1`}
+        variant="config"
+        density="short"
+        hasError={hasError}
+        className="flex-1"
         type="text"
         value={value}
         placeholder={`Item ${index + 1}`}
@@ -1305,7 +1315,10 @@ function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
           className="flex items-center gap-1"
         >
           <Input
-            className={`${inputCls(!!props.errors?.length)} flex-1`}
+            variant="config"
+            density="short"
+            hasError={!!props.errors?.length}
+            className="flex-1"
             type="text"
             value={pair.key}
             placeholder={t("config-field.Key", { defaultValue: "Key" })}
@@ -1314,7 +1327,10 @@ function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             onBlur={() => fireAction(props, "blur")}
           />
           <Input
-            className={`${inputCls(!!props.errors?.length)} flex-1`}
+            variant="config"
+            density="short"
+            hasError={!!props.errors?.length}
+            className="flex-1"
             type="text"
             value={pair.value}
             placeholder={t("common.value", { defaultValue: "Value" })}
@@ -1363,7 +1379,9 @@ export function renderDatetimeField(props: FieldRenderProps) {
 
   return (
     <Input
-      className={inputCls(!!props.errors?.length)}
+      variant="config"
+      density="short"
+      hasError={!!props.errors?.length}
       type="datetime-local"
       defaultValue={value}
       data-config-key={props.key}
@@ -1390,7 +1408,9 @@ export function RenderFileField(props: FieldRenderProps) {
   return (
     <div>
       <Input
-        className={inputCls(!!props.errors?.length)}
+        variant="config"
+        density="short"
+        hasError={!!props.errors?.length}
         type="text"
         defaultValue={value}
         placeholder={placeholder}
@@ -1620,12 +1640,7 @@ function MarkdownFieldInner(props: FieldRenderProps) {
         <Button
           type="button"
           variant={!preview ? "default" : "outline"}
-          size="sm"
-          className={`text-xs-tight px-2 py-0.5 transition-colors h-auto ${
-            !preview
-              ? "bg-accent text-accent-fg border-accent"
-              : "bg-transparent text-muted hover:text-txt"
-          }`}
+          size="tiny"
           onClick={() => setPreview(false)}
         >
           {t("common.edit", { defaultValue: "Edit" })}
@@ -1633,12 +1648,7 @@ function MarkdownFieldInner(props: FieldRenderProps) {
         <Button
           type="button"
           variant={preview ? "default" : "outline"}
-          size="sm"
-          className={`text-xs-tight px-2 py-0.5 transition-colors h-auto ${
-            preview
-              ? "bg-accent text-accent-fg border-accent"
-              : "bg-transparent text-muted hover:text-txt"
-          }`}
+          size="tiny"
           onClick={() => setPreview(true)}
         >
           {t("common.preview", { defaultValue: "Preview" })}
@@ -1662,10 +1672,9 @@ function MarkdownFieldInner(props: FieldRenderProps) {
         </div>
       ) : (
         <Textarea
-          className={textareaCls(
-            !!props.errors?.length,
-            "min-h-[100px] h-auto",
-          )}
+          variant="configDialog"
+          density="default"
+          hasError={!!props.errors?.length}
           defaultValue={value}
           placeholder={props.hint.placeholder ?? "Markdown content..."}
           data-config-key={props.key}
@@ -1782,7 +1791,9 @@ export const renderGroupField: FieldRenderer = (props) => {
         {props.hint.label ?? props.key}
       </legend>
       <Textarea
-        className={textareaCls(!!props.errors?.length, "min-h-[60px] h-auto")}
+        variant="configDialog"
+        density="compact"
+        hasError={!!props.errors?.length}
         defaultValue={value}
         placeholder={props.hint.placeholder ?? "Group configuration..."}
         disabled={props.readonly}

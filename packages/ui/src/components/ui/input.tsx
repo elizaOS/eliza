@@ -38,6 +38,22 @@ const inputVariants = cva(
           "size-9 cursor-pointer rounded-sm border-border bg-transparent p-0.5 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-0",
         surface:
           "rounded-sm border-border bg-surface px-3 py-2 text-xs placeholder:text-muted/50",
+        admin:
+          "rounded-sm border-border bg-card px-3 font-mono text-sm text-txt placeholder:text-muted/60",
+        publicPhoneLight:
+          "h-14 flex-1 rounded-none border-0 bg-transparent px-4 text-base text-neutral-900 shadow-none placeholder:text-neutral-400",
+        publicPhoneGlass:
+          "h-14 flex-1 rounded-none border-0 bg-transparent px-4 text-base text-neutral-900 shadow-none placeholder:text-neutral-400",
+        publicPhoneDark:
+          "h-12 flex-1 rounded-none border-0 bg-transparent px-3 text-sm text-white shadow-none placeholder:text-white/30",
+        modal:
+          "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted",
+        publicChat:
+          "h-11 flex-1 rounded-full border-white/60 bg-white/50 px-[18px] text-base shadow-none",
+        settingsCompact: "rounded-sm border-border bg-card px-3 text-xs",
+        settingsFilter: "rounded-sm border-border/50 bg-bg/80 text-sm text-txt",
+        settingsTouch:
+          "rounded-md border-border bg-card px-3.5 text-sm text-txt",
       },
       density: {
         default: "h-10",
@@ -60,13 +76,45 @@ const inputVariants = cva(
   },
 );
 
+type InputPresentationProps = VariantProps<typeof inputVariants>;
+type InputVariant = NonNullable<InputPresentationProps["variant"]>;
+type NativeInputVariant =
+  | "nativeFileHidden"
+  | "nativeFileDisplayNone"
+  | "nativeRange"
+  | "nativeColor";
+type StandardInputVariant = Exclude<InputVariant, NativeInputVariant>;
+
 export interface InputProps
-  extends React.InputHTMLAttributes<HTMLInputElement>,
-    VariantProps<typeof inputVariants> {
+  extends React.InputHTMLAttributes<HTMLInputElement> {
+  variant?: StandardInputVariant | null;
+  density?: InputPresentationProps["density"];
+  adornment?: InputPresentationProps["adornment"];
   hasError?: boolean;
 }
 
-const Input = React.forwardRef<HTMLInputElement, InputProps>(
+type NativeFileInputProps = Omit<InputProps, "type" | "variant"> & {
+  type: "file";
+  variant: "nativeFileHidden" | "nativeFileDisplayNone";
+};
+
+type NativeRangeInputProps = Omit<InputProps, "type" | "variant"> & {
+  type: "range";
+  variant: "nativeRange";
+};
+
+type NativeColorInputProps = Omit<InputProps, "type" | "variant"> & {
+  type: "color";
+  variant: "nativeColor";
+};
+
+type InputComponentProps =
+  | InputProps
+  | NativeFileInputProps
+  | NativeRangeInputProps
+  | NativeColorInputProps;
+
+const Input = React.forwardRef<HTMLInputElement, InputComponentProps>(
   (
     { className, type, variant, density, adornment, hasError, ...props },
     ref,

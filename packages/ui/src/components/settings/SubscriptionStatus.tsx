@@ -186,15 +186,12 @@ function SubscriptionTab({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="compact"
+      data-state={active ? "on" : "off"}
       onClick={onSelect}
       aria-label={label}
-      className={`-mb-px border-b-2 px-1 pb-2 text-xs font-medium transition-colors ${
-        active
-          ? "border-accent text-txt"
-          : "border-transparent text-muted hover:text-txt"
-      }`}
+      className="-mb-px"
       {...agentProps}
     >
       {label}

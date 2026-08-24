@@ -98,11 +98,7 @@ function CockpitDetailsButton({
       aria-pressed={open}
       data-testid="cockpit-session-details-toggle"
       title={label}
-      className={`inline-flex size-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-        open
-          ? "bg-accent/15 text-accent"
-          : "text-muted hover:bg-bg-hover/40 hover:text-txt"
-      }`}
+      className="shrink-0"
       {...agentProps}
     >
       <PanelRight className="size-4" aria-hidden />
@@ -379,11 +375,6 @@ export function CockpitSessionPane({
             title={t("cockpit.session.transcript", {
               defaultValue: "Transcript",
             })}
-            className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
-              view === "transcript"
-                ? "bg-accent/15 text-accent"
-                : "text-muted hover:bg-bg-hover/40 hover:text-txt"
-            }`}
           >
             <ScrollText className="size-4" aria-hidden />
           </Button>
@@ -400,11 +391,6 @@ export function CockpitSessionPane({
             title={t("cockpit.session.watch", {
               defaultValue: "Watch (terminal output)",
             })}
-            className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
-              view === "terminal"
-                ? "bg-accent/15 text-accent"
-                : "text-muted hover:bg-bg-hover/40 hover:text-txt"
-            }`}
           >
             <SquareTerminal className="size-4" aria-hidden />
           </Button>

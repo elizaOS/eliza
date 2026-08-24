@@ -140,13 +140,13 @@ function HubList({
                 const active = section.id === activeSection;
                 return (
                   <Button
+                    variant="selection"
+                    size="row"
+                    align="start"
+                    data-state={active ? "on" : "off"}
                     key={section.id}
                     type="button"
                     onClick={() => onSelect(section.id)}
-                    className={cn(
-                      "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
-                      active ? "bg-accent-subtle" : "hover:bg-bg-hover",
-                    )}
                   >
                     <Icon
                       className={cn(

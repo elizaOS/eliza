@@ -46,13 +46,13 @@ function PluginGameListCard({
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="selection"
+      size="card"
       type="button"
       role="option"
       aria-selected={isSelected}
-      className={`plugins-game-card${isSelected ? " is-selected" : ""}${
-        !plugin.enabled ? " is-disabled" : ""
-      } h-auto`}
+      data-state={isSelected ? "on" : "off"}
+      className={`plugins-game-card${!plugin.enabled ? " is-disabled" : ""}`}
       onClick={() => onSelect(plugin.id)}
       {...agentProps}
     >

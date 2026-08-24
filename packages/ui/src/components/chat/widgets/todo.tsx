@@ -104,13 +104,6 @@ function isWorkbenchTodoChangeEvent(
   );
 }
 
-function homeBadgeClassName(tone: "default" | "home", accent?: string): string {
-  if (tone !== "home") return accent ? `text-3xs ${accent}` : "text-3xs";
-  return accent
-    ? `border-white/15 bg-white/12 text-3xs ${accent}`
-    : "border-white/15 bg-white/12 text-3xs text-white/80";
-}
-
 function TodoRow({ todo }: { todo: WorkbenchTodo }) {
   const showDescription =
     todo.description.trim().length > 0 && todo.description !== todo.name;
@@ -134,26 +127,17 @@ function TodoRow({ todo }: { todo: WorkbenchTodo }) {
               {todo.name}
             </span>
             {todo.isUrgent ? (
-              <Badge
-                variant="secondary"
-                className={homeBadgeClassName("default", "text-danger")}
-              >
+              <Badge variant="secondary" tone="danger">
                 Urgent
               </Badge>
             ) : null}
             {todo.priority != null ? (
-              <Badge
-                variant="secondary"
-                className={homeBadgeClassName("default")}
-              >
+              <Badge variant="secondary" size="micro" tone="muted">
                 P{todo.priority}
               </Badge>
             ) : null}
             {showType ? (
-              <Badge
-                variant="secondary"
-                className={homeBadgeClassName("default")}
-              >
+              <Badge variant="secondary" size="micro" tone="muted">
                 {todo.type}
               </Badge>
             ) : null}
@@ -204,14 +188,11 @@ function TodayTodoRow({
             {todo.title}
           </span>
           {overdue ? (
-            <Badge
-              variant="secondary"
-              className={homeBadgeClassName("home", "text-accent")}
-            >
+            <Badge variant="secondary" tone="accent">
               Overdue
             </Badge>
           ) : (
-            <Badge variant="secondary" className={homeBadgeClassName("home")}>
+            <Badge variant="secondary" size="micro" tone="muted">
               Due today
             </Badge>
           )}
@@ -244,9 +225,10 @@ function GoalAttentionRow({
       data-testid="todo-goal-attention-row"
       aria-label={`Goal "${goal.title}" ${status}. Open Goals.`}
       onClick={onOpen}
-      className={`flex min-h-11 w-full items-start gap-2 text-left ${
-        isHome ? "rounded-sm border border-white/15 p-3 text-white" : "py-1.5"
-      }`}
+      variant={isHome ? "publicTile" : "transparent"}
+      size={isHome ? "row" : "eventRow"}
+      align="start"
+      className="w-full"
     >
       <Target
         className={`mt-0.5 size-4 shrink-0 ${
@@ -262,13 +244,7 @@ function GoalAttentionRow({
           >
             {goal.title}
           </span>
-          <Badge
-            variant="secondary"
-            className={homeBadgeClassName(
-              tone,
-              atRisk ? "text-danger" : "text-accent",
-            )}
-          >
+          <Badge variant="secondary" tone={atRisk ? "danger" : "accent"}>
             {atRisk ? "At risk" : "Needs attention"}
           </Badge>
         </div>

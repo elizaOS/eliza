@@ -55,16 +55,14 @@ function OperatorTabButton({
   return (
     <Button
       variant="selection"
-      size="content"
+      size="tiny"
       data-state={active === tab.id ? "on" : "off"}
       ref={ref}
       type="button"
       role="tab"
       aria-selected={active === tab.id}
       onClick={() => onSelect(tab.id)}
-      className={`flex-1 p-1 text-xs font-medium transition-colors ${
-        active === tab.id ? "text-accent" : "text-muted hover:text-txt"
-      }`}
+      className="flex-1"
       {...agentProps}
     >
       {tab.label}

@@ -77,15 +77,11 @@ export function AgentTabsSection({
           return (
             <Button
               key={agent}
-              variant={active ? "default" : "ghost"}
-              size="sm"
-              className={`h-8 flex-1 px-2 text-xs font-semibold ${
-                active
-                  ? "bg-accent text-accent-fg dark:text-accent-fg shadow-sm"
-                  : needsAuth
-                    ? "text-warn hover:bg-warn/10 hover:text-warn"
-                    : "text-muted hover:bg-bg-hover hover:text-txt"
-              }`}
+              variant={
+                active ? "default" : needsAuth ? "warningOutline" : "ghostMuted"
+              }
+              size="dense"
+              className="flex-1"
               onClick={() => onSelectAgent(agent)}
               aria-label={`${AGENT_LABELS[agent]} ${statusLabel}`}
             >

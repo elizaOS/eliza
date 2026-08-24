@@ -2,6 +2,8 @@
  * Storybook stories for the text input primitive.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { useRef, useState } from "react";
+import { Button } from "./button";
 import { Input } from "./input";
 
 const meta = {
@@ -75,9 +77,51 @@ export const NativeColor: Story = {
   },
 };
 export const HiddenFileMachinery: Story = {
-  args: {
-    type: "file",
-    variant: "nativeFileHidden",
-    "aria-label": "Upload file",
+  render: () => (
+    <div className="flex items-center gap-3">
+      <Input
+        id="hidden-file-story"
+        type="file"
+        variant="nativeFileHidden"
+        aria-label="Upload file"
+      />
+      <Button asChild variant="outline">
+        <label htmlFor="hidden-file-story">Upload file</label>
+      </Button>
+      <span className="text-sm text-muted">No file selected</span>
+    </div>
+  ),
+};
+
+export const DisplayNoneFileMachinery: Story = {
+  render: () => {
+    const inputRef = useRef<HTMLInputElement>(null);
+    const [fileName, setFileName] = useState("No file selected");
+
+    return (
+      <div className="flex items-center gap-3">
+        <Input
+          ref={inputRef}
+          type="file"
+          variant="nativeFileDisplayNone"
+          aria-label="Choose attachment"
+          onChange={(event) =>
+            setFileName(
+              event.currentTarget.files?.[0]?.name ?? "No file selected",
+            )
+          }
+        />
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => inputRef.current?.click()}
+        >
+          Choose file
+        </Button>
+        <output className="text-sm text-muted" aria-live="polite">
+          {fileName}
+        </output>
+      </div>
+    );
   },
 };

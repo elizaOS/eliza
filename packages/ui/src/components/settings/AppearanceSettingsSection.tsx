@@ -13,7 +13,6 @@ import { ACCENT_PRESETS, useAppSelector, useContentPack } from "../../state";
 import type { AccentPreset } from "../../state/ui-preferences";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { Button } from "../ui/button";
-import { selectableTileClass } from "./appearance-primitives.helpers";
 import { BackgroundSettingsControls } from "./BackgroundSettingsControls";
 import { LoadedPacksList } from "./LoadedPacksList";
 import { SettingsSwitchRow } from "./settings-agent-rows";
@@ -43,10 +42,11 @@ function LanguageTileButton({
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="selection"
+      size="card"
+      data-state={isActive ? "on" : "off"}
       onClick={onSelect}
       aria-current={isActive ? "true" : undefined}
-      className={selectableTileClass(isActive)}
       {...agentProps}
     >
       <div className="flex items-center gap-2">
@@ -83,10 +83,11 @@ function AccentTileButton({
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="selection"
+      size="card"
+      data-state={isActive ? "on" : "off"}
       onClick={onSelect}
       aria-current={isActive ? "true" : undefined}
-      className={selectableTileClass(isActive)}
       {...agentProps}
     >
       <span

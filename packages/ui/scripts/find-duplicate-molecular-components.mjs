@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Groups exported React compositions by product role and canonical atomic
- * dependencies. The output is a review queue for repeated molecular UI, not a
- * claim that identical dependency sets imply identical behavior.
+ * dependencies. Detection creates a review queue for repeated molecular UI;
+ * the committed report requires a final disposition for every cluster.
  */
 
 import fs from "node:fs";
@@ -24,6 +24,11 @@ const decisionsPath = path.join(
   "molecular-inventory-decisions.json",
 );
 
+const FINAL_DISPOSITIONS = new Set([
+  "distinct-domain-compositions",
+  "shared-lifecycle-owner",
+]);
+
 const ARCHETYPES = [
   ["empty-state", /(EmptyState|Empty|Unavailable|NoResults)$/],
   ["dialog", /(Dialog|Modal|Sheet|Drawer)$/],
@@ -40,6 +45,48 @@ const ARCHETYPES = [
 
 function archetypeFor(name) {
   return ARCHETYPES.find(([, pattern]) => pattern.test(name))?.[0] ?? null;
+}
+
+export function validateMolecularDecisions(clusters, decisions) {
+  const clusterSignatures = new Set(
+    clusters.map((cluster) => cluster.signature),
+  );
+  const missingDecisions = clusters
+    .filter((cluster) => {
+      const decision = decisions[cluster.signature];
+      return (
+        !decision ||
+        typeof decision.disposition !== "string" ||
+        typeof decision.rationale !== "string" ||
+        decision.rationale.trim().length === 0
+      );
+    })
+    .map((cluster) => cluster.signature);
+  const nonFinalDecisions = clusters
+    .filter((cluster) => {
+      const disposition = decisions[cluster.signature]?.disposition;
+      return (
+        typeof disposition === "string" &&
+        !FINAL_DISPOSITIONS.has(disposition)
+      );
+    })
+    .map(
+      (cluster) =>
+        `${cluster.signature} (${decisions[cluster.signature].disposition})`,
+    );
+  const staleDecisions = Object.keys(decisions).filter(
+    (signature) => !clusterSignatures.has(signature),
+  );
+
+  if (
+    missingDecisions.length > 0 ||
+    nonFinalDecisions.length > 0 ||
+    staleDecisions.length > 0
+  ) {
+    throw new Error(
+      `Molecular decisions must be complete and final. Missing: ${missingDecisions.join(", ") || "none"}; non-final: ${nonFinalDecisions.join(", ") || "none"}; stale: ${staleDecisions.join(", ") || "none"}. Allowed final dispositions: ${[...FINAL_DISPOSITIONS].join(", ")}`,
+    );
+  }
 }
 
 export function buildMolecularInventory() {
@@ -61,7 +108,7 @@ export function buildMolecularInventory() {
     bySignature.get(signature).push(component);
   }
 
-  const clusters = [...bySignature]
+  const detectedClusters = [...bySignature]
     .map(([signature, entries]) => ({
       archetype: entries[0].archetype,
       atomicDependencies: entries[0].atomicDependencies,
@@ -72,7 +119,6 @@ export function buildMolecularInventory() {
           a.name.localeCompare(b.name),
       ),
       signature,
-      ...decisions[signature],
     }))
     .filter((cluster) => cluster.entries.length >= 2)
     .sort(
@@ -81,17 +127,11 @@ export function buildMolecularInventory() {
         a.signature.localeCompare(b.signature),
     );
 
-  const missingDecisions = clusters
-    .filter((cluster) => !cluster.disposition || !cluster.rationale)
-    .map((cluster) => cluster.signature);
-  const staleDecisions = Object.keys(decisions).filter(
-    (signature) => !clusters.some((cluster) => cluster.signature === signature),
-  );
-  if (missingDecisions.length > 0 || staleDecisions.length > 0) {
-    throw new Error(
-      `Molecular decisions are incomplete. Missing: ${missingDecisions.join(", ") || "none"}; stale: ${staleDecisions.join(", ") || "none"}`,
-    );
-  }
+  validateMolecularDecisions(detectedClusters, decisions);
+  const clusters = detectedClusters.map((cluster) => ({
+    ...cluster,
+    ...decisions[cluster.signature],
+  }));
 
   return {
     schemaVersion: 1,
@@ -116,7 +156,7 @@ export function renderMolecularMarkdown(report) {
     "",
     `Scanned ${report.scannedFiles} maintained React files. ${report.eligibleComponents} exported compositions have a recognized molecular role and at least two atomic dependencies.`,
     "",
-    "Clusters share both a role and an atomic dependency signature. They are review candidates. Product behavior, state ownership, and responsive layout still determine whether consolidation is correct.",
+    "Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.",
     "",
     "| Role | Atomic dependencies | Components | Decision |",
     "| --- | --- | ---: | --- |",
@@ -128,7 +168,7 @@ export function renderMolecularMarkdown(report) {
     );
   }
 
-  lines.push("", "## Candidate clusters", "");
+  lines.push("", "## Reviewed clusters", "");
   for (const cluster of report.clusters) {
     lines.push(
       `### ${cluster.archetype}: ${cluster.atomicDependencies.join(" + ")}`,
@@ -146,7 +186,22 @@ export function renderMolecularMarkdown(report) {
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const report = buildMolecularInventory();
   const markdown = renderMolecularMarkdown(report);
-  fs.writeFileSync(reportJson, `${JSON.stringify(report, null, 2)}\n`);
-  fs.writeFileSync(reportMarkdown, markdown);
-  process.stdout.write(markdown);
+  const json = `${JSON.stringify(report, null, 2)}\n`;
+  if (process.argv.includes("--check")) {
+    if (
+      !fs.existsSync(reportMarkdown) ||
+      fs.readFileSync(reportMarkdown, "utf8") !== markdown
+    ) {
+      throw new Error(
+        `${path.basename(reportMarkdown)} is stale. Run bun run --cwd packages/ui audit:molecular-inventory.`,
+      );
+    }
+    process.stdout.write(
+      `Molecular inventory is current with ${report.clusters.length} final dispositions.\n`,
+    );
+  } else {
+    fs.writeFileSync(reportJson, json);
+    fs.writeFileSync(reportMarkdown, markdown);
+    process.stdout.write(markdown);
+  }
 }

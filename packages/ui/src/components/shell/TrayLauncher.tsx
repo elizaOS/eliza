@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 import { dispatchAppEvent, TRAY_ACTION_EVENT } from "../../events";
-import { cn } from "../../lib/utils";
 import {
   type DesktopLauncherEntry,
   type DesktopLauncherIconId,
@@ -76,12 +75,12 @@ export function TrayLauncher({
           <Button
             key={row.itemId}
             type="button"
-            variant="ghost"
+            variant="ghostMuted"
+            size="trayRow"
+            align="start"
             data-testid={`tray-launcher-row-${row.itemId}`}
             onClick={() => handleSelect(row.itemId)}
-            className={cn(
-              "h-9 w-full justify-start gap-3 px-2 text-sm font-normal",
-            )}
+            className="w-full"
           >
             <Icon aria-hidden="true" className="text-muted-strong" />
             <span className="truncate">{row.label}</span>

@@ -76,8 +76,6 @@ const variantStyles = {
       "relative flex h-14 shrink-0 cursor-pointer items-center gap-2 pl-3 pr-2 text-neutral-600 hover:text-neutral-900",
     flag: "size-6 rounded-xs overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-4 shrink-0 pointer-events-none text-neutral-400",
-    input:
-      "rounded-none border-0 bg-transparent text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-0 focus-visible:ring-offset-0 h-14 px-4 text-base flex-1 min-w-0",
   },
   glass: {
     wrapper:
@@ -86,8 +84,6 @@ const variantStyles = {
       "relative flex h-14 shrink-0 cursor-pointer items-center gap-2 pl-4 pr-2 text-neutral-600 hover:text-neutral-900",
     flag: "size-6 rounded-full overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-4 shrink-0 pointer-events-none text-neutral-400",
-    input:
-      "rounded-none border-0 bg-transparent text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-0 focus-visible:ring-offset-0 h-14 px-4 text-base flex-1 min-w-0",
   },
   dark: {
     wrapper:
@@ -96,8 +92,6 @@ const variantStyles = {
       "relative flex h-12 shrink-0 cursor-pointer items-center gap-2 pl-3 pr-2 text-white/60 hover:text-white/80",
     flag: "size-5 rounded-xs overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-3.5 shrink-0 pointer-events-none text-white/30",
-    input:
-      "rounded-none border-0 bg-transparent text-white placeholder:text-white/30 focus-visible:ring-0 focus-visible:ring-offset-0 h-12 px-3 text-sm flex-1 min-w-0",
   },
 } as const;
 
@@ -147,6 +141,13 @@ export function PhoneNumberInput({
       </label>
       <Input
         type="tel"
+        variant={
+          variant === "light"
+            ? "publicPhoneLight"
+            : variant === "glass"
+              ? "publicPhoneGlass"
+              : "publicPhoneDark"
+        }
         placeholder={t("homepage_eliza.phoneInput.placeholder", {
           defaultValue: "(000) 000-0000",
         })}
@@ -157,7 +158,6 @@ export function PhoneNumberInput({
             onSubmit();
           }
         }}
-        className={styles.input}
         aria-label={t("homepage_eliza.phoneInput.phoneAria", {
           defaultValue: "Phone number",
         })}

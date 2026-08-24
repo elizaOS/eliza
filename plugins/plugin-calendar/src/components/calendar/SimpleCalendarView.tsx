@@ -134,38 +134,6 @@ const YEAR_SELECT_STYLE: CSSProperties = {
   cursor: "pointer",
 };
 
-const TODAY_BUTTON_STYLE: CSSProperties = {
-  gridColumn: "2",
-  justifySelf: "center",
-  border: 0,
-  borderRadius: 9999,
-  padding: "4px 10px",
-  background: "transparent",
-  color: "var(--muted-strong, rgba(255,255,255,.76))",
-  fontFamily: "inherit",
-  fontSize: 11,
-  fontWeight: 650,
-  cursor: "pointer",
-};
-
-const MONTH_PICKER_TRIGGER_STYLE: CSSProperties = {
-  minWidth: 0,
-  minHeight: 44,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
-  border: 0,
-  borderRadius: 13,
-  background: "transparent",
-  color: "var(--txt, #f5f5f5)",
-  fontFamily: "inherit",
-  fontSize: 17,
-  lineHeight: 1.25,
-  fontWeight: 760,
-  cursor: "pointer",
-};
-
 function localDateKey(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
@@ -415,18 +383,6 @@ function MonthControls({
     },
     [onMonthChange, pickerYear],
   );
-  const navigationButton: CSSProperties = {
-    width: 44,
-    height: 44,
-    display: "grid",
-    placeItems: "center",
-    border: 0,
-    borderRadius: 13,
-    background:
-      "color-mix(in srgb, var(--surface, rgba(255,255,255,.06)) 72%, transparent)",
-    color: "var(--txt, #f5f5f5)",
-    cursor: "pointer",
-  };
   return (
     <div
       style={{
@@ -440,12 +396,11 @@ function MonthControls({
       <Button
         ref={prevControl.ref}
         {...prevControl.agentProps}
-        variant="ghost"
+        variant="surface"
         size="icon-lg"
         aria-label={`Previous month, ${month}`}
         title="Previous month"
         onClick={onPrevious}
-        style={navigationButton}
       >
         <ChevronLeft size={19} aria-hidden />
       </Button>
@@ -454,9 +409,10 @@ function MonthControls({
           <Button
             ref={monthPickerControl.ref}
             {...monthPickerControl.agentProps}
-            variant="ghost"
+            variant="transparent"
+            size="touch"
+            className="min-w-0"
             aria-label={`Choose month and year. Current month is ${month}`}
-            style={MONTH_PICKER_TRIGGER_STYLE}
           >
             <span>{month}</span>
             <ChevronDown size={15} aria-hidden />
@@ -476,11 +432,11 @@ function MonthControls({
             }}
           >
             <Button
-              variant="ghost"
-              size="icon"
+              variant="surface"
+              size="regularCompact"
+              className="w-9"
               aria-label="Previous year"
               onClick={() => setPickerYear((year) => year - 1)}
-              style={{ ...navigationButton, width: 36, height: 36 }}
             >
               <ChevronLeft size={17} aria-hidden />
             </Button>
@@ -503,11 +459,11 @@ function MonthControls({
               </SelectContent>
             </Select>
             <Button
-              variant="ghost"
-              size="icon"
+              variant="surface"
+              size="regularCompact"
+              className="w-9"
               aria-label="Next year"
               onClick={() => setPickerYear((year) => year + 1)}
-              style={{ ...navigationButton, width: 36, height: 36 }}
             >
               <ChevronRight size={17} aria-hidden />
             </Button>
@@ -526,22 +482,10 @@ function MonthControls({
               return (
                 <Button
                   key={label}
-                  variant={active ? "default" : "ghost"}
+                  variant={active ? "default" : "surface"}
+                  size="compact"
                   aria-pressed={active}
                   onClick={() => chooseMonth(monthIndex)}
-                  style={{
-                    minHeight: 38,
-                    border: 0,
-                    borderRadius: 10,
-                    background: active
-                      ? "var(--accent, #ff6a1f)"
-                      : "color-mix(in srgb, var(--surface, rgba(255,255,255,.06)) 74%, transparent)",
-                    color: active ? "#fff" : "var(--txt, #f5f5f5)",
-                    fontFamily: "inherit",
-                    fontSize: 12,
-                    fontWeight: active ? 760 : 650,
-                    cursor: "pointer",
-                  }}
                 >
                   {label}
                 </Button>
@@ -553,21 +497,22 @@ function MonthControls({
       <Button
         ref={nextControl.ref}
         {...nextControl.agentProps}
-        variant="ghost"
+        variant="surface"
         size="icon-lg"
         aria-label={`Next month, ${month}`}
         title="Next month"
         onClick={onNext}
-        style={navigationButton}
       >
         <ChevronRight size={19} aria-hidden />
       </Button>
       <Button
         ref={todayControl.ref}
         {...todayControl.agentProps}
-        variant="outline"
+        variant="ghostMuted"
+        size="tiny"
+        shape="circle"
+        className="col-start-2 justify-self-center"
         onClick={onToday}
-        style={TODAY_BUTTON_STYLE}
       >
         Today
       </Button>

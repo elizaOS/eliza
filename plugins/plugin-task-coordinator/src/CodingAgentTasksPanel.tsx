@@ -953,18 +953,13 @@ export function CodingAgentTasksPanel({
           />
           <Button
             variant="choice"
-            size="sm"
+            size="compact"
             data-state={showArchived ? "on" : "off"}
             ref={archivedRef}
             type="button"
             onClick={() => setShowArchived((value) => !value)}
             aria-pressed={showArchived}
             data-testid="task-show-archived"
-            className={`inline-flex h-9 min-h-11 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
-              showArchived
-                ? "border-accent/40 bg-accent-subtle text-accent"
-                : "border-border/50 bg-bg-accent/30 text-muted hover:text-txt"
-            }`}
             {...archivedAgentProps}
           >
             <Archive className="size-3.5" />

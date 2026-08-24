@@ -40,7 +40,6 @@ import {
   setupFooterClass,
   setupHeaderBlockClass,
   setupHelperTextClassName,
-  setupInputClassName,
   setupPrimaryActionClass,
   setupPrimaryActionTextShadowStyle,
   setupReadableTextFaintClassName,
@@ -263,6 +262,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         >
           {({ describedBy, invalid }) => (
             <Input
+              variant="form"
+              density="relaxed"
+              hasError={invalid}
               ref={inputRef}
               id={fieldId}
               type="password"
@@ -281,10 +283,6 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
               disabled={isSubmitting}
               aria-invalid={invalid}
               aria-describedby={describedBy}
-              className={cn(
-                setupInputClassName,
-                invalid && "border-[var(--danger)] ",
-              )}
             />
           )}
         </SetupField>

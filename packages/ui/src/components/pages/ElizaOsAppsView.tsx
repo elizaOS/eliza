@@ -396,13 +396,9 @@ function PhonePanelTabButton({
       ref={ref}
       onClick={() => onSelect(item.id)}
       aria-current={isActive ? "page" : undefined}
-      variant="ghost"
-      size="sm"
-      className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors ${
-        isActive
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-strong hover:bg-surface hover:text-txt"
-      }`}
+      variant="selection"
+      size="pillDense"
+      data-state={isActive ? "on" : "off"}
       {...agentProps}
     >
       {item.icon}

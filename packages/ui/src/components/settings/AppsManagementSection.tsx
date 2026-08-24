@@ -68,9 +68,9 @@ function AppRowActionButton({
     <Button
       ref={ref}
       type="button"
-      size="sm"
-      variant="ghost"
-      className={className ?? "h-7 px-2 text-xs"}
+      size="tiny"
+      variant="ghostMuted"
+      className={className}
       disabled={disabled}
       onClick={onClick}
       title={label}

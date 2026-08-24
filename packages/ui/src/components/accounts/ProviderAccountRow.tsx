@@ -227,14 +227,14 @@ export function ProviderAccountRow({
       {/* ── Header row: the single calm summary line ── */}
       <div className="flex items-center gap-3 px-3 py-2.5">
         <Button
+          variant="transparent"
+          size="content"
+          align="start"
           type="button"
           onClick={onToggle}
           disabled={!connected}
           aria-expanded={connected ? expanded : undefined}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-3 rounded-md text-left",
-            connected ? "cursor-pointer" : "cursor-default",
-          )}
+          className={cn("min-w-0 flex-1")}
         >
           {connected ? (
             <ChevronRight

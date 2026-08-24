@@ -272,7 +272,9 @@ export function VoiceCaptureHud() {
                 {line.step}
               </span>
               {line.token ? (
-                <span className={line.bad ? "text-red-300" : "text-white/70"}>
+                <span
+                  className={line.bad ? "text-destructive" : "text-white/70"}
+                >
                   ({line.token})
                 </span>
               ) : null}

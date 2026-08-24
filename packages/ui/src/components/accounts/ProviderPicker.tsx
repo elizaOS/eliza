@@ -187,17 +187,16 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                   </div>
                 ) : null}
                 <Button
+                  variant="selection"
+                  size="row"
+                  align="start"
+                  data-state={active ? "on" : "off"}
                   type="button"
                   data-index={index}
                   role="option"
                   aria-selected={active}
                   onMouseMove={() => setActiveIndex(index)}
                   onClick={() => onPick(option.id)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors",
-                    active ? "bg-bg-accent" : "hover:bg-bg-accent/60",
-                    option.unavailable && "bg-bg-muted",
-                  )}
                 >
                   <span
                     className={cn(

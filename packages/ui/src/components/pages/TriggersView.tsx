@@ -915,9 +915,10 @@ function TriggersLayout() {
                 <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
                   <Button
                     ref={toggleEnabledAgent.ref}
-                    variant="outline"
-                    size="sm"
-                    className={`h-8 px-3 text-xs ${selectedTrigger.enabled ? "border-warning/30 text-warning hover:bg-warning/10" : "border-ok/30 text-ok hover:bg-ok/10"}`}
+                    variant={
+                      selectedTrigger.enabled ? "warningOutline" : "outline"
+                    }
+                    size="dense"
                     onClick={() =>
                       void onToggleTriggerEnabled(
                         selectedTrigger.id,

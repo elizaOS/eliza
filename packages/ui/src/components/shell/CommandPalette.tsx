@@ -364,10 +364,6 @@ export function CommandPalette() {
           type="text"
           variant="embeddedSearch"
           density="search"
-          style={{
-            borderBottom: "1px solid var(--border)",
-            color: "var(--text)",
-          }}
           placeholder={t("commandpalette.TypeToSearchComma")}
           aria-label={commandSearchLabel}
           role="combobox"
@@ -398,20 +394,14 @@ export function CommandPalette() {
           ) : (
             filteredCommands.map((cmd, idx) => (
               <Button
-                variant="sectionToggle"
-                size="content"
+                variant="selection"
+                size="row"
                 align="start"
+                data-state={idx === commandActiveIndex ? "on" : "off"}
                 key={cmd.id}
                 id={`command-palette-option-${cmd.id}`}
                 role="option"
                 aria-selected={idx === commandActiveIndex}
-                style={{
-                  background:
-                    idx === commandActiveIndex
-                      ? "var(--bg-hover)"
-                      : "transparent",
-                  color: "var(--text)",
-                }}
                 onClick={() => {
                   cmd.action();
                   closeCommandPalette();

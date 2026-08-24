@@ -15,9 +15,10 @@ const Sidebar = ({ items }: { items: string[] }) => (
         <Button
           type="button"
           key={label}
-          className={`rounded px-3 py-2 text-left hover:bg-white/5 ${
-            i === 0 ? "bg-white/10 text-white" : ""
-          }`}
+          variant="selection"
+          size="compact"
+          align="start"
+          data-state={i === 0 ? "on" : "off"}
         >
           {label}
         </Button>
