@@ -38,8 +38,9 @@ describe("isEnvKeyAllowedForForwarding", () => {
     expect(isEnvKeyAllowedForForwarding("TELEGRAM_BOT_TOKEN")).toBe(true);
   });
 
-  it("allows the empty key", () => {
-    expect(isEnvKeyAllowedForForwarding("")).toBe(true);
+  it("rejects empty and whitespace-only keys", () => {
+    expect(isEnvKeyAllowedForForwarding("")).toBe(false);
+    expect(isEnvKeyAllowedForForwarding("  ")).toBe(false);
   });
 
   it("blocks ALLOW_NO_DATABASE exactly in any case but allows near-matches", () => {
@@ -115,11 +116,10 @@ describe("buildRuntimeSettingsProjection", () => {
     });
     expect(empty.ENCRYPTION_SALT).toBeUndefined();
 
-    // Presence is tested by truthiness, so whitespace-only survives verbatim.
     const blankish = buildRuntimeSettingsProjection({} as ElizaConfig, {
       env: { SECRET_SALT: "  " },
     });
-    expect(blankish.ENCRYPTION_SALT).toBe("  ");
+    expect(blankish.ENCRYPTION_SALT).toBeUndefined();
   });
 
   it("forwards allowed config env vars and drops sensitive ones", () => {
@@ -173,8 +173,7 @@ describe("buildRuntimeSettingsProjection", () => {
     expect(settings.TELEGRAM_BOT_TOKEN).toBeUndefined();
     expect(settings.DISCORD_API_TOKEN).toBe("discord-token");
     expect(settings.DISCORD_BOT_TOKEN).toBe("discord-token");
-    // The bare prefix carries no ref key, so it is forwarded literally.
-    expect(settings.WHATSAPP_AUTH_DIR).toBe("vault://");
+    expect(settings.WHATSAPP_AUTH_DIR).toBeUndefined();
   });
 
   it("lets the connector secrets overlay resolve refs and override earlier sources", () => {

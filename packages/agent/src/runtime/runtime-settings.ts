@@ -9,7 +9,6 @@ import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
-import { isVaultRef } from "./operations/vault-bridge.ts";
 
 export interface RuntimeSettingsProjectionOptions {
   preferredProviderId?: string;
@@ -36,6 +35,7 @@ export interface RuntimeSettingsProjectionOptions {
  * mnemonics, and seed phrases while allowing API keys that plugins need.
  */
 export function isEnvKeyAllowedForForwarding(key: string): boolean {
+  if (key.trim().length === 0) return false;
   const upper = key.toUpperCase();
   if (upper === "ALLOW_NO_DATABASE") return false;
   if (upper.includes("PRIVATE_KEY")) return false;
@@ -76,7 +76,9 @@ export function buildRuntimeSettingsProjection(
     : undefined;
   return {
     VALIDATION_LEVEL: "fast",
-    ...(env.SECRET_SALT ? { ENCRYPTION_SALT: env.SECRET_SALT } : {}),
+    ...(typeof env.SECRET_SALT === "string" && env.SECRET_SALT.trim().length > 0
+      ? { ENCRYPTION_SALT: env.SECRET_SALT }
+      : {}),
     ...Object.fromEntries(
       Object.entries(collectConfigEnvVars(config)).filter(([key]) =>
         isEnvKeyAllowedForForwarding(key),
@@ -86,12 +88,12 @@ export function buildRuntimeSettingsProjection(
     env.EMBEDDING_PROVIDER.trim().length > 0
       ? { EMBEDDING_PROVIDER: env.EMBEDDING_PROVIDER.trim().toLowerCase() }
       : {}),
-    // Drop unresolved `vault://` sentinels so a plugin never receives the ref
-    // literal as a credential; the resolved overlay below supplies the real
-    // value for refs the vault could serve (fail-closed for the rest).
+    // Drop every `vault://` sentinel candidate, including malformed refs, so a
+    // plugin never receives the literal as a credential. The resolved overlay
+    // below supplies the real value for refs the vault could serve.
     ...Object.fromEntries(
       Object.entries(collectConnectorEnvVars(config)).filter(
-        ([, value]) => !isVaultRef(value),
+        ([, value]) => !value.startsWith("vault://"),
       ),
     ),
     ...(options.connectorSecretsOverlay ?? {}),
