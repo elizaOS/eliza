@@ -57,6 +57,7 @@ export const ACCOUNT_LIFECYCLE_OPERATION_CONTRACTS: Readonly<
 };
 
 export type AccountDeletionStatus =
+  | "pending_activation"
   | "reserved"
   | "recovery"
   | "canceling"
@@ -75,6 +76,7 @@ export type AccountDeletionExportStatus =
   | "failed";
 
 export type AccountDeletionNextAction =
+  | "confirm_recovery_package"
   | "wait_for_export"
   | "download_export_or_cancel"
   | "wait_for_reconciliation"
@@ -114,6 +116,11 @@ export interface AccountDeletionAcceptedDto {
 export interface AccountDeletionRequestBodyDto {
   confirmation: "DELETE";
   admissionCredential: string;
+}
+
+/** Proof that the browser durably retained the recovery package before fencing. */
+export interface AccountDeletionActivationBodyDto {
+  confirmation: "ACTIVATE DELETION";
 }
 
 export type AccountDeletionApiErrorCode =

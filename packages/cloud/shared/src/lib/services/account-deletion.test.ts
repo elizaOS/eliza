@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 
 const CLAIM_GENERATION = new Date("2026-09-18T00:00:01Z");
 const REQUESTED_AT = new Date("2026-08-19T00:00:00Z");
@@ -55,6 +56,10 @@ function reservedRequest(overrides: Record<string, unknown> = {}) {
 
 const reservePersonalAccountDeletion = mock(async () => ({
   outcome: "reserved" as const,
+  request: reservedRequest({ status: "requested" }),
+}));
+const activateReservedPersonalAccountDeletion = mock(async () => ({
+  outcome: "activated" as const,
   request: reservedRequest(),
 }));
 const leasePhase = mock(async () => ({
@@ -82,6 +87,7 @@ const cancelDuringRecovery = mock(async () => ({
 }));
 const requestRepo = {
   reservePersonalAccountDeletion,
+  activateReservedPersonalAccountDeletion,
   cancelDuringRecovery,
   leasePhase,
   markPhaseProviderCallStarted,
@@ -154,6 +160,9 @@ mock.module("../utils/logger", () => ({
 }));
 
 const {
+  AccountDeletionConflictError,
+  AccountDeletionRecoveryError,
+  activateAccountDeletion,
   cancelAccountDeletion,
   processDueAccountDeletions,
   recoverAccountDeletionAdmission,
@@ -164,6 +173,11 @@ beforeEach(() => {
   reservePersonalAccountDeletion.mockReset();
   reservePersonalAccountDeletion.mockResolvedValue({
     outcome: "reserved",
+    request: reservedRequest({ status: "requested" }),
+  });
+  activateReservedPersonalAccountDeletion.mockReset();
+  activateReservedPersonalAccountDeletion.mockResolvedValue({
+    outcome: "activated",
     request: reservedRequest(),
   });
   leasePhase.mockReset();
@@ -236,7 +250,7 @@ beforeEach(() => {
 });
 
 describe("account deletion lifecycle", () => {
-  test("atomically reserves authority and returns separate opaque capabilities", async () => {
+  test("reserves a recovery package without crossing the fence or provider boundary", async () => {
     const accepted = await requestAccountDeletion({
       userId: "11111111-1111-4111-8111-111111111111",
       organizationId: "22222222-2222-4222-8222-222222222222",
@@ -250,19 +264,75 @@ describe("account deletion lifecycle", () => {
     expect(reservation?.phases).toHaveLength(16);
     expect(reservation?.phases[0]).toMatchObject({
       phase: "account_authority",
-      completed: true,
+      completed: false,
     });
     expect(accepted.request).toMatchObject({
       requestId: "33333333-3333-4333-8333-333333333333",
-      status: "reserved",
-      canCancel: true,
-      nextAction: "wait_for_export",
+      status: "pending_activation",
+      accessState: "active",
+      canCancel: false,
+      nextAction: "confirm_recovery_package",
     });
     expect(accepted.statusCredential).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(accepted.recoveryCredential).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(accepted.statusCredential).not.toBe(accepted.recoveryCredential);
-    expect(deactivateSteward).toHaveBeenCalledWith("steward-1");
+    expect(deactivateSteward).not.toHaveBeenCalled();
+    expect(completeStewardDeactivationPhase).not.toHaveBeenCalled();
+  });
+
+  test("activates exactly one fenced provider phase after recovery-package acknowledgement", async () => {
+    requestRepo.findById.mockResolvedValueOnce(reservedRequest());
+    const first = await activateAccountDeletion(derivedCredential("recovery"), REQUESTED_AT);
+    expect(first).toMatchObject({ status: "reserved", accessState: "fenced" });
+    expect(activateReservedPersonalAccountDeletion).toHaveBeenCalledTimes(1);
+    expect(deactivateSteward).toHaveBeenCalledTimes(1);
+
+    leasePhase.mockResolvedValueOnce(undefined);
+    activateReservedPersonalAccountDeletion.mockResolvedValueOnce({
+      outcome: "already_activated",
+      request: reservedRequest(),
+    });
+    requestRepo.findById.mockResolvedValueOnce(reservedRequest());
+    await expect(
+      activateAccountDeletion(derivedCredential("recovery"), REQUESTED_AT),
+    ).resolves.toMatchObject({ status: "reserved" });
+    expect(deactivateSteward).toHaveBeenCalledTimes(1);
+  });
+
+  test("resumes a crash after local activation and crosses the provider boundary once", async () => {
+    leasePhase.mockResolvedValueOnce(undefined);
+    requestRepo.findById.mockResolvedValueOnce(reservedRequest());
+    await expect(
+      activateAccountDeletion(derivedCredential("recovery"), REQUESTED_AT),
+    ).resolves.toMatchObject({ status: "reserved" });
+    expect(deactivateSteward).not.toHaveBeenCalled();
+
+    activateReservedPersonalAccountDeletion.mockResolvedValueOnce({
+      outcome: "already_activated",
+      request: reservedRequest(),
+    });
+    requestRepo.findById.mockResolvedValueOnce(reservedRequest());
+    await expect(
+      activateAccountDeletion(derivedCredential("recovery"), REQUESTED_AT),
+    ).resolves.toMatchObject({ status: "reserved" });
+    expect(deactivateSteward).toHaveBeenCalledTimes(1);
     expect(completeStewardDeactivationPhase).toHaveBeenCalledTimes(1);
+  });
+
+  test("uses coded ElizaError subclasses for lifecycle and recovery failures", () => {
+    const conflict = new AccountDeletionConflictError(
+      "Account is unavailable",
+      "ACCOUNT_UNAVAILABLE",
+    );
+    const recovery = new AccountDeletionRecoveryError(
+      "Recovery expired",
+      "RECOVERY_WINDOW_EXPIRED",
+    );
+
+    expect(conflict).toBeInstanceOf(ElizaError);
+    expect(conflict).toMatchObject({ code: "ACCOUNT_UNAVAILABLE", severity: "fatal" });
+    expect(recovery).toBeInstanceOf(ElizaError);
+    expect(recovery).toMatchObject({ code: "RECOVERY_WINDOW_EXPIRED", severity: "fatal" });
   });
 
   test.each([
@@ -345,14 +415,10 @@ describe("account deletion lifecycle", () => {
     expect(deactivateSteward).not.toHaveBeenCalled();
   });
 
-  test("records an ambiguous Steward response for reconciliation rather than replay", async () => {
+  test("records an ambiguous Steward activation response for reconciliation rather than replay", async () => {
     deactivateSteward.mockRejectedValueOnce(new Error("response lost"));
-    await requestAccountDeletion({
-      userId: "user-1",
-      organizationId: "org-1",
-      stewardUserId: "steward-1",
-      admissionCredential: ADMISSION_CREDENTIAL,
-    });
+    requestRepo.findById.mockResolvedValueOnce(reservedRequest());
+    await activateAccountDeletion(derivedCredential("recovery"), REQUESTED_AT);
     expect(markPhaseForReconciliation).toHaveBeenCalledWith(
       expect.objectContaining({
         phaseReceiptId: "44444444-4444-4444-8444-444444444444",

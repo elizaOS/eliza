@@ -6,6 +6,7 @@
  * falling through is never treated as permission to cascade or retain data.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "./schemas";
 
@@ -210,7 +211,18 @@ export function classifyAccountDeletionForeignKey(
     return "delete_private_data";
   }
 
-  throw new Error(
+  throw new ElizaError(
     `Unclassified account-deletion foreign key: ${sourceTable}.${descriptor.sourceColumns} -> ${targetTable}.${descriptor.targetColumns} (${onDelete})`,
+    {
+      code: "ACCOUNT_DELETION_FOREIGN_KEY_UNCLASSIFIED",
+      context: {
+        sourceTable,
+        sourceColumns: descriptor.sourceColumns,
+        targetTable,
+        targetColumns: descriptor.targetColumns,
+        onDelete,
+      },
+      severity: "fatal",
+    },
   );
 }

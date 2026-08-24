@@ -5,6 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import {
@@ -88,7 +89,12 @@ async function listOrganizationObjectKeys(
   bucket: RuntimeR2Bucket,
   organizationId: string,
 ): Promise<string[]> {
-  if (!bucket.list) throw new Error("Account deletion object storage cannot be inspected");
+  if (!bucket.list) {
+    throw new ElizaError("Account deletion object storage cannot be inspected", {
+      code: "ACCOUNT_DELETION_OBJECT_INSPECTION_UNAVAILABLE",
+      severity: "fatal",
+    });
+  }
   const keys: string[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
@@ -103,7 +109,10 @@ async function listOrganizationObjectKeys(
     truncated = page.truncated;
     if (!truncated) break;
     if (!page.cursor || seenCursors.has(page.cursor)) {
-      throw new Error("Account deletion object listing did not advance");
+      throw new ElizaError("Account deletion object listing did not advance", {
+        code: "ACCOUNT_DELETION_OBJECT_CURSOR_INVALID",
+        severity: "fatal",
+      });
     }
     seenCursors.add(page.cursor);
     cursor = page.cursor;
@@ -434,7 +443,10 @@ export function createAccountDeletionProviderAdapters(
       },
       async execute(context, idempotencyKey) {
         if (!dependencies.backupAuthority) {
-          throw new Error("Backup storage authority is not configured");
+          throw new ElizaError("Backup storage authority is not configured", {
+            code: "ACCOUNT_DELETION_BACKUP_AUTHORITY_UNAVAILABLE",
+            severity: "fatal",
+          });
         }
         await dependencies.backupAuthority.purgeOrganizationBackups({
           organizationId: context.organizationId,
@@ -458,7 +470,10 @@ export function createAccountDeletionProviderAdapters(
       },
       async execute(context, idempotencyKey) {
         if (!dependencies.spoolAuthority) {
-          throw new Error("Backup spool authority is not configured");
+          throw new ElizaError("Backup spool authority is not configured", {
+            code: "ACCOUNT_DELETION_SPOOL_AUTHORITY_UNAVAILABLE",
+            severity: "fatal",
+          });
         }
         await dependencies.spoolAuthority.purgeOrganizationSpools({
           organizationId: context.organizationId,
@@ -491,7 +506,10 @@ export function createAccountDeletionProviderAdapters(
             authorization: "account_deletion",
           });
           if (!deleted.success && deleted.error !== "Agent not found") {
-            throw new Error(deleted.error || "Agent provider deletion failed");
+            throw new ElizaError(deleted.error || "Agent provider deletion failed", {
+              code: "ACCOUNT_DELETION_AGENT_PROVIDER_DELETE_FAILED",
+              severity: "ephemeral",
+            });
           }
         }
       },
@@ -516,7 +534,12 @@ export function createAccountDeletionProviderAdapters(
             deleteGitHubRepo: true,
             requireContainerTeardownCompletion: true,
           });
-          if (!deleted.success) throw new Error(deleted.errors.join("; "));
+          if (!deleted.success) {
+            throw new ElizaError(deleted.errors.join("; "), {
+              code: "ACCOUNT_DELETION_APP_PROVIDER_DELETE_FAILED",
+              severity: "ephemeral",
+            });
+          }
         }
       },
     },
@@ -651,7 +674,10 @@ export function createAccountDeletionProviderAdapters(
     adapter.inspect = async (context) => {
       const inspection = await inspect(context);
       if (inspection.state === "complete" && !DIGEST_PATTERN.test(inspection.receiptDigest)) {
-        throw new Error("Account deletion provider adapter emitted an invalid digest");
+        throw new ElizaError("Account deletion provider adapter emitted an invalid digest", {
+          code: "ACCOUNT_DELETION_PROVIDER_ADAPTER_DIGEST_INVALID",
+          severity: "fatal",
+        });
       }
       return inspection;
     };

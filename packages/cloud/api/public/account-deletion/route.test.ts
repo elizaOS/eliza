@@ -34,6 +34,11 @@ const cancelAccountDeletion = mock(async (credential: string) => ({
   status: "canceled",
   credentialAccepted: credential === "recovery-capability",
 }));
+const activateAccountDeletion = mock(async (credential: string) => ({
+  requestId: "33333333-3333-4333-8333-333333333333",
+  status: "reserved",
+  credentialAccepted: credential === "recovery-capability",
+}));
 class AccountDeletionRecoveryError extends Error {
   constructor(
     message: string,
@@ -57,6 +62,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 mock.module("@/lib/services/account-deletion", () => ({
   AccountDeletionConflictError: class extends Error {},
   AccountDeletionRecoveryError,
+  activateAccountDeletion,
   cancelAccountDeletion,
   getAccountDeletionStatusByCredential,
   recoverAccountDeletionAdmission,
@@ -77,6 +83,7 @@ beforeEach(() => {
   recoverAccountDeletionAdmission.mockReset();
   recoverAccountDeletionAdmission.mockResolvedValue(null);
   cancelAccountDeletion.mockClear();
+  activateAccountDeletion.mockClear();
 });
 
 describe("/api/public/account-deletion", () => {
@@ -224,6 +231,56 @@ describe("/api/public/account-deletion", () => {
     );
     expect(canceled.status).toBe(200);
     expect(cancelAccountDeletion).toHaveBeenCalledWith("recovery-capability");
+  });
+
+  test("activates fencing only with exact recovery-package acknowledgement", async () => {
+    const invalid = await app.request(
+      "/",
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          "X-Account-Deletion-Recovery": "recovery-capability",
+        },
+        body: JSON.stringify({ confirmation: "activate deletion" }),
+      },
+      { NODE_ENV: "test" },
+    );
+    expect(invalid.status).toBe(400);
+    expect(activateAccountDeletion).not.toHaveBeenCalled();
+
+    const activated = await app.request(
+      "/",
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          "X-Account-Deletion-Recovery": "recovery-capability",
+        },
+        body: JSON.stringify({ confirmation: "ACTIVATE DELETION" }),
+      },
+      { NODE_ENV: "test" },
+    );
+    expect(activated.status).toBe(200);
+    expect(activateAccountDeletion).toHaveBeenCalledWith("recovery-capability");
+  });
+
+  test("rejects cross-origin activation before any lifecycle mutation", async () => {
+    checkElizaMutatingRequestOrigin.mockReturnValueOnce({ ok: false });
+    const response = await app.request(
+      "/",
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          "X-Account-Deletion-Recovery": "recovery-capability",
+        },
+        body: JSON.stringify({ confirmation: "ACTIVATE DELETION" }),
+      },
+      { NODE_ENV: "production" },
+    );
+    expect(response.status).toBe(403);
+    expect(activateAccountDeletion).not.toHaveBeenCalled();
   });
 
   test("undo does not accept the read-only status capability", async () => {

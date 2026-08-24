@@ -42,7 +42,7 @@ function reservationInput(requestId: string, tokenSuffix: string) {
         phase: "account_authority",
         phaseOrder: 0,
         idempotencyKeyDigest: `authority-${tokenSuffix}`,
-        completed: true,
+        completed: false,
       },
       {
         phase: "export",
@@ -121,6 +121,13 @@ async function seedPersonalAccount(): Promise<void> {
   });
 }
 
+async function activateReservation(tokenSuffix: string, activatedAt = now) {
+  return accountDeletionRequestsRepository.activateReservedPersonalAccountDeletion({
+    recoveryTokenHash: `recovery-${tokenSuffix}`,
+    now: activatedAt,
+  });
+}
+
 beforeEach(async () => {
   await dbWrite.execute("DELETE FROM account_deletion_restrictive_fixture");
   await dbWrite.execute("DELETE FROM agent_sandbox_replacement_attempts");
@@ -165,7 +172,7 @@ describe("personal account deletion reservation", () => {
     });
   });
 
-  test("publishes receipt, authority revision, credential, key, and session fences atomically", async () => {
+  test("reserves without mutation, then atomically fences after package acknowledgement", async () => {
     const result = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000001", "one"),
     );
@@ -192,28 +199,69 @@ describe("personal account deletion reservation", () => {
       .where(eq(accountDeletionExports.request_id, result.request.id));
 
     expect(result.request).toMatchObject({
-      status: "reserved",
+      status: "requested",
       admission_token_hash: "admission-one",
       restore_auto_top_up_enabled: true,
       restore_pay_as_you_go_from_earnings: true,
     });
     expect(organization).toMatchObject({
+      is_active: true,
+      auto_top_up_enabled: true,
+      pay_as_you_go_from_earnings: true,
+      account_lifecycle_state: "active",
+      account_lifecycle_revision: 0,
+    });
+    expect(user).toMatchObject({
+      is_active: true,
+      account_lifecycle_state: "active",
+      account_lifecycle_revision: 0,
+    });
+    expect(key?.is_active).toBe(true);
+    expect(session?.ended_at).toBeNull();
+    expect(phases).toHaveLength(3);
+    expect(phases.find((phase) => phase.phase === "account_authority")?.status).toBe("pending");
+    expect(exports).toHaveLength(1);
+
+    await expect(activateReservation("one")).resolves.toMatchObject({
+      outcome: "activated",
+      request: { status: "reserved" },
+    });
+    await expect(activateReservation("one", new Date(now.getTime() + 1))).resolves.toMatchObject({
+      outcome: "already_activated",
+      request: { status: "reserved" },
+    });
+
+    const [fencedOrganization] = await dbWrite
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organizationId));
+    const [fencedUser] = await dbWrite.select().from(users).where(eq(users.id, userId));
+    const [revokedKey] = await dbWrite.select().from(apiKeys).where(eq(apiKeys.user_id, userId));
+    const [endedSession] = await dbWrite
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.user_id, userId));
+    const activatedPhases = await dbWrite
+      .select()
+      .from(accountDeletionPhaseReceipts)
+      .where(eq(accountDeletionPhaseReceipts.request_id, result.request.id));
+    expect(fencedOrganization).toMatchObject({
       is_active: false,
       auto_top_up_enabled: false,
       pay_as_you_go_from_earnings: false,
       account_lifecycle_state: "deletion_recovery",
       account_lifecycle_revision: 1,
     });
-    expect(user).toMatchObject({
+    expect(fencedUser).toMatchObject({
       is_active: false,
       account_lifecycle_state: "deletion_recovery",
       account_lifecycle_revision: 1,
     });
-    expect(key?.is_active).toBe(false);
-    expect(session?.ended_at).toEqual(now);
-    expect(phases).toHaveLength(3);
-    expect(phases.find((phase) => phase.phase === "account_authority")?.status).toBe("completed");
-    expect(exports).toHaveLength(1);
+    expect(revokedKey?.is_active).toBe(false);
+    expect(endedSession?.ended_at).toEqual(now);
+    expect(activatedPhases.find((phase) => phase.phase === "account_authority")?.status).toBe(
+      "completed",
+    );
 
     const status = await accountDeletionRequestsRepository.findByStatusTokenHash("status-one", now);
     expect(status?.request.id).toBe(result.request.id);
@@ -225,7 +273,7 @@ describe("personal account deletion reservation", () => {
     expect(admission?.request.id).toBe(result.request.id);
   });
 
-  test("replays only the matching admission hash after a committed response is lost", async () => {
+  test("replays matching admission and safely replaces an evicted pre-fence package", async () => {
     const first = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000010", "lost-response"),
     );
@@ -238,16 +286,26 @@ describe("personal account deletion reservation", () => {
 
     expect(first.outcome).toBe("reserved");
     expect(retry.outcome).toBe("replayed");
-    expect(wrongSecret.outcome).toBe("existing");
+    expect(wrongSecret.outcome).toBe("reserved");
     if (!("request" in first) || !("request" in retry) || !("request" in wrongSecret)) {
       throw new Error("reservation receipts were not returned");
     }
     expect(retry.request.id).toBe(first.request.id);
     expect(wrongSecret.request.id).toBe(first.request.id);
     expect(await dbWrite.select().from(accountDeletionRequests)).toHaveLength(1);
+    await expect(
+      accountDeletionRequestsRepository.activateReservedPersonalAccountDeletion({
+        recoveryTokenHash: "recovery-lost-response",
+        now,
+      }),
+    ).resolves.toEqual({ outcome: "invalid_credential" });
+    await expect(activateReservation("wrong-secret")).resolves.toMatchObject({
+      outcome: "activated",
+      request: { id: first.request.id, status: "reserved" },
+    });
   });
 
-  test("serializes concurrent retries without rotating the winner capabilities", async () => {
+  test("serializes concurrent pre-fence packages onto one receipt", async () => {
     const [left, right] = await Promise.all([
       accountDeletionRequestsRepository.reservePersonalAccountDeletion(
         reservationInput("50000000-0000-4000-8000-000000000002", "two"),
@@ -256,14 +314,14 @@ describe("personal account deletion reservation", () => {
         reservationInput("50000000-0000-4000-8000-000000000003", "three"),
       ),
     ]);
-    expect([left.outcome, right.outcome].sort()).toEqual(["existing", "reserved"]);
+    expect([left.outcome, right.outcome].sort()).toEqual(["reserved", "reserved"]);
     if (!("request" in left) || !("request" in right)) {
       throw new Error("concurrent reservations did not return receipts");
     }
     expect(left.request.id).toBe(right.request.id);
-    const winnerToken = left.outcome === "reserved" ? "status-two" : "status-three";
-    expect(left.request.status_token_hash).toBe(winnerToken);
-    expect(right.request.status_token_hash).toBe(winnerToken);
+    const final = (await dbWrite.select().from(accountDeletionRequests))[0];
+    if (!final?.status_token_hash) throw new Error("winning status receipt was not persisted");
+    expect(["status-two", "status-three"]).toContain(final.status_token_hash);
     const receipts = await dbWrite.select().from(accountDeletionRequests);
     expect(receipts).toHaveLength(1);
   });
@@ -274,6 +332,7 @@ describe("personal account deletion reservation", () => {
     );
     expect(reserved.outcome).toBe("reserved");
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("undo")).resolves.toMatchObject({ outcome: "activated" });
 
     const staleDeactivation = await accountDeletionRequestsRepository.leasePhase({
       requestId: reserved.request.id,
@@ -473,6 +532,7 @@ describe("personal account deletion reservation", () => {
     await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
       reservationInput("50000000-0000-4000-8000-000000000005", "expired"),
     );
+    await expect(activateReservation("expired")).resolves.toMatchObject({ outcome: "activated" });
     const result = await accountDeletionRequestsRepository.cancelDuringRecovery({
       recoveryTokenHash: "recovery-expired",
       reactivationIdempotencyKeyDigest: "reactivation-expired",
@@ -499,6 +559,7 @@ describe("personal account deletion reservation", () => {
     );
     expect(reserved.outcome).toBe("reserved");
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("export")).resolves.toMatchObject({ outcome: "activated" });
 
     const firstLease = await accountDeletionRequestsRepository.leasePhase({
       requestId: reserved.request.id,
@@ -588,6 +649,9 @@ describe("personal account deletion reservation", () => {
       reservationInput("50000000-0000-4000-8000-000000000006", "reconcile"),
     );
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("reconcile")).resolves.toMatchObject({
+      outcome: "activated",
+    });
     const leased = await accountDeletionRequestsRepository.leasePhase({
       requestId: reserved.request.id,
       phase: "export",
@@ -629,6 +693,7 @@ describe("personal account deletion reservation", () => {
       reservationInput("50000000-0000-4000-8000-000000000007", "expiry"),
     );
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("expiry")).resolves.toMatchObject({ outcome: "activated" });
 
     const exportLease = await accountDeletionRequestsRepository.leasePhase({
       requestId: reserved.request.id,
@@ -730,6 +795,9 @@ describe("personal account deletion reservation", () => {
       reservationInput("50000000-0000-4000-8000-000000000008", "incomplete"),
     );
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("incomplete")).resolves.toMatchObject({
+      outcome: "activated",
+    });
 
     const activation =
       await accountDeletionRequestsRepository.activateExpiredPersonalAccountDeletion({
@@ -764,6 +832,7 @@ describe("personal account deletion reservation", () => {
     });
     const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(input);
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("erase")).resolves.toMatchObject({ outcome: "activated" });
     await dbWrite.execute(`
       INSERT INTO agent_sandbox_replacement_attempts (id, organization_id)
       VALUES ('71000000-0000-4000-8000-000000000001', '${organizationId}')
@@ -894,6 +963,7 @@ describe("personal account deletion reservation", () => {
     ];
     const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(input);
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await expect(activateReservation("blocked")).resolves.toMatchObject({ outcome: "activated" });
     await dbWrite.execute(`
       INSERT INTO account_deletion_restrictive_fixture (id, organization_id)
       VALUES ('70000000-0000-4000-8000-000000000001', '${organizationId}')

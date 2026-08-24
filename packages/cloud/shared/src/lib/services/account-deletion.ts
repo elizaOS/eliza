@@ -1,6 +1,7 @@
 /** Coordinates fail-closed account-deletion requests and fenced worker claims. */
 
 import { createHash, randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { accountDeletionRequestsRepository } from "../../db/repositories/account-deletion-requests";
 import type { AccountDeletionExport } from "../../db/schemas/account-deletion-exports";
 import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
@@ -87,33 +88,42 @@ export type AccountDeletionConflictCode =
   | "TRANSFER_REQUIRED"
   | "LIFECYCLE_RESERVATION_REQUIRED";
 
-export class AccountDeletionConflictError extends Error {
+export class AccountDeletionConflictError extends ElizaError {
+  override readonly name = "AccountDeletionConflictError";
+  override readonly code: AccountDeletionConflictCode;
+  readonly details?: Readonly<Record<string, unknown>>;
+
   constructor(
     message: string,
-    readonly code: AccountDeletionConflictCode,
-    readonly details?: Readonly<Record<string, unknown>>,
+    code: AccountDeletionConflictCode,
+    details?: Readonly<Record<string, unknown>>,
   ) {
-    super(message);
-    this.name = "AccountDeletionConflictError";
+    super(message, { code, severity: "fatal" });
+    this.code = code;
+    this.details = details;
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
-export class AccountDeletionRecoveryError extends Error {
-  constructor(
-    message: string,
-    readonly code: "STATUS_CREDENTIAL_INVALID" | "RECOVERY_WINDOW_EXPIRED",
-  ) {
-    super(message);
-    this.name = "AccountDeletionRecoveryError";
+export class AccountDeletionRecoveryError extends ElizaError {
+  override readonly name = "AccountDeletionRecoveryError";
+  override readonly code: "STATUS_CREDENTIAL_INVALID" | "RECOVERY_WINDOW_EXPIRED";
+
+  constructor(message: string, code: "STATUS_CREDENTIAL_INVALID" | "RECOVERY_WINDOW_EXPIRED") {
+    super(message, { code, severity: "fatal" });
+    this.code = code;
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
 function publicStatus(status: AccountDeletionRequest["status"]): AccountDeletionStatus {
-  return status === "requested" ? "reserved" : status;
+  return status === "requested" ? "pending_activation" : status;
 }
 
 function nextActionForStatus(status: AccountDeletionStatus): AccountDeletionNextAction {
   switch (status) {
+    case "pending_activation":
+      return "confirm_recovery_package";
     case "reserved":
       return "wait_for_export";
     case "recovery":
@@ -144,7 +154,12 @@ export function toAccountDeletionRequestDto(
     irreversibleAt: request.irreversible_at?.toISOString() ?? null,
     completedAt: request.completed_at?.toISOString() ?? null,
     identityDeactivated: request.identity_deactivated_at !== null,
-    accessState: status === "completed" ? "erased" : status === "canceled" ? "active" : "fenced",
+    accessState:
+      status === "completed"
+        ? "erased"
+        : status === "canceled" || status === "pending_activation"
+          ? "active"
+          : "fenced",
     canCancel: status === "reserved" || status === "recovery",
     nextAction: nextActionForStatus(status),
     export: exportReceipt
@@ -301,7 +316,7 @@ export async function requestAccountDeletion(input: {
     idempotencyKeyDigest: createHash("sha256")
       .update(`account-deletion-phase:v1:${requestId}:${phase}`)
       .digest("hex"),
-    completed: phase === "account_authority",
+    completed: false,
   }));
 
   const reservation = await accountDeletionRequestsRepository.reservePersonalAccountDeletion({
@@ -364,17 +379,63 @@ export async function requestAccountDeletion(input: {
     };
   }
 
-  await attemptImmediateStewardDeactivation({
-    requestId: reservation.request.id,
-    stewardUserId: input.stewardUserId,
-    now,
-  });
-
   return {
     request: toAccountDeletionRequestDto(reservation.request),
     statusCredential,
     recoveryCredential,
   };
+}
+
+/**
+ * Activates a pre-fence reservation only after the client proves possession of
+ * its durably stored recovery package. Replays drive a missing Steward call
+ * through the same generation-fenced phase instead of issuing a second call.
+ */
+export async function activateAccountDeletion(
+  recoveryCredential: string,
+  now = new Date(),
+): Promise<AccountDeletionStatusDto> {
+  if (!OPAQUE_CREDENTIAL_PATTERN.test(recoveryCredential)) {
+    throw new AccountDeletionRecoveryError(
+      "Recovery credential is invalid",
+      "STATUS_CREDENTIAL_INVALID",
+    );
+  }
+  const activation =
+    await accountDeletionRequestsRepository.activateReservedPersonalAccountDeletion({
+      recoveryTokenHash: hashOpaqueCredential(recoveryCredential),
+      now,
+    });
+  if (activation.outcome === "invalid_credential") {
+    throw new AccountDeletionRecoveryError(
+      "Recovery credential is invalid or expired",
+      "STATUS_CREDENTIAL_INVALID",
+    );
+  }
+  if (activation.outcome === "account_unavailable") {
+    throw new AccountDeletionConflictError("Account is no longer available", "ACCOUNT_UNAVAILABLE");
+  }
+  if (activation.outcome === "transfer_required") {
+    throw new AccountDeletionConflictError(
+      "Transfer or revoke shared organization resources before deleting this account",
+      "TRANSFER_REQUIRED",
+      {
+        successorOwnerRequired: true,
+        activeOwnerCount: activation.activeOwnerCount,
+      },
+    );
+  }
+
+  const request = activation.request;
+  if ((request.status === "reserved" || request.status === "recovery") && request.steward_user_id) {
+    await attemptImmediateStewardDeactivation({
+      requestId: request.id,
+      stewardUserId: request.steward_user_id,
+      now,
+    });
+  }
+  const latest = await accountDeletionRequestsRepository.findById(request.id);
+  return toAccountDeletionRequestDto(latest ?? request);
 }
 
 async function attemptImmediateStewardDeactivation(input: {
@@ -577,7 +638,10 @@ async function reconcileCancelingStewardReactivations(input: {
     try {
       await reactivateStewardPlatformUser(request.steward_user_id);
       if ((await inspectStewardPlatformUser(request.steward_user_id)) !== "active") {
-        throw new Error("Steward reactivation was not visible after acknowledgement");
+        throw new ElizaError("Steward reactivation was not visible after acknowledgement", {
+          code: "ACCOUNT_DELETION_STEWARD_REACTIVATION_NOT_VISIBLE",
+          severity: "ephemeral",
+        });
       }
       const completed = await accountDeletionRequestsRepository.completeStewardReactivationPhase({
         requestId: request.id,
@@ -636,10 +700,19 @@ function requireProcessAccountDeletionResources(
     typeof blob.put !== "function" ||
     typeof blob.delete !== "function"
   ) {
-    throw new Error("Account deletion requires a valid Cloud object-storage binding");
+    throw new ElizaError("Account deletion requires a valid Cloud object-storage binding", {
+      code: "ACCOUNT_DELETION_OBJECT_STORAGE_INVALID",
+      severity: "fatal",
+    });
   }
   if (!resources.purgeOrganizationResources && typeof blob.list !== "function") {
-    throw new Error("Account deletion's default resource purge requires Cloud object listing");
+    throw new ElizaError(
+      "Account deletion's default resource purge requires Cloud object listing",
+      {
+        code: "ACCOUNT_DELETION_OBJECT_LISTING_UNAVAILABLE",
+        severity: "fatal",
+      },
+    );
   }
 }
 
@@ -750,10 +823,16 @@ export async function processDueAccountDeletions(
   for (const request of due) {
     try {
       if (!request.steward_user_id || !request.user_id) {
-        throw new Error("Claimed deletion request is missing account identifiers");
+        throw new ElizaError("Claimed deletion request is missing account identifiers", {
+          code: "ACCOUNT_DELETION_CLAIM_IDENTIFIERS_MISSING",
+          severity: "fatal",
+        });
       }
       if (!request.organization_id) {
-        throw new Error("Claimed deletion request is missing its organization identifier");
+        throw new ElizaError("Claimed deletion request is missing its organization identifier", {
+          code: "ACCOUNT_DELETION_CLAIM_ORGANIZATION_MISSING",
+          severity: "fatal",
+        });
       }
       if (!request.processing_started_at) {
         logger.error("[AccountDeletion] Claimed request is missing its generation", {

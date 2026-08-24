@@ -70,12 +70,13 @@ export function AccountDeletionDialog({
               Permanently delete your Eliza account?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Access is disabled immediately. Your Steward identity and
-              associated Eliza Cloud data enter a 30-day recovery window before
-              irreversible deletion. You can download the export when it is
-              ready or cancel from the account-deletion page during that window.
-              Limited transaction, fraud, tax, or security records may be
-              retained when legally required.
+              After this browser securely saves your recovery access, account
+              access is disabled and your Steward identity and associated Eliza
+              Cloud data enter a 30-day recovery window before irreversible
+              deletion. You can download the export when it is ready or cancel
+              from the account-deletion page during that window. Limited
+              transaction, fraud, tax, or security records may be retained when
+              legally required.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <label

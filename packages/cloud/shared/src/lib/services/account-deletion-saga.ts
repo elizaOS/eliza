@@ -5,6 +5,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { accountDeletionRequestsRepository } from "../../db/repositories/account-deletion-requests";
 import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
@@ -68,14 +69,20 @@ function digest(value: string): string {
 
 function requireReceiptDigest(value: string): string {
   if (!DIGEST_PATTERN.test(value)) {
-    throw new Error("Account deletion provider returned an invalid receipt digest");
+    throw new ElizaError("Account deletion provider returned an invalid receipt digest", {
+      code: "ACCOUNT_DELETION_PROVIDER_RECEIPT_INVALID",
+      severity: "fatal",
+    });
   }
   return value;
 }
 
 function requireActionCode(value: string): string {
   if (!ERROR_CODE_PATTERN.test(value)) {
-    throw new Error("Account deletion provider returned an invalid action code");
+    throw new ElizaError("Account deletion provider returned an invalid action code", {
+      code: "ACCOUNT_DELETION_PROVIDER_ACTION_CODE_INVALID",
+      severity: "fatal",
+    });
   }
   return value;
 }
@@ -362,7 +369,10 @@ async function processProviderPhase(input: {
       });
       return committed ? "action_required" : "stale";
     }
-    throw new Error("Provider mutation returned without a terminal inspection");
+    throw new ElizaError("Provider mutation returned without a terminal inspection", {
+      code: "ACCOUNT_DELETION_PROVIDER_INSPECTION_NONTERMINAL",
+      severity: "ephemeral",
+    });
   } catch {
     // error-policy:J1 Any error after the durable before-call marker may be a
     // lost successful response. Persist reconciliation and never mutate again

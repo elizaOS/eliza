@@ -4,15 +4,52 @@ import type {
   AccountDeletionAcceptedDto,
   AccountDeletionStatusDto,
 } from "@elizaos/cloud-shared/types/account-lifecycle";
+import { ElizaError } from "@elizaos/core";
+import { shellLocalStorage } from "../../../surface-realm-channel";
 import { api, apiFetch } from "../../lib/api-client";
 import { signOutFromSsoBridgedHost } from "../../sso-bridge/sso-bridge";
 
 const STATUS_CREDENTIAL_KEY = "eliza.account-deletion.status.v1";
 const RECOVERY_CREDENTIAL_KEY = "eliza.account-deletion.recovery.v1";
 const ADMISSION_CREDENTIAL_KEY = "eliza.account-deletion.admission.v1";
-const volatileCredentials = new Map<string, string>();
+
+export type AccountDeletionClientErrorCode =
+  | "ACCOUNT_DELETION_CAPABILITY_STORAGE_UNAVAILABLE"
+  | "ACCOUNT_DELETION_EXPORT_CRYPTO_UNAVAILABLE"
+  | "ACCOUNT_DELETION_EXPORT_DIGEST_INVALID"
+  | "ACCOUNT_DELETION_EXPORT_DIGEST_MISMATCH"
+  | "ACCOUNT_DELETION_RECEIPT_INVALID"
+  | "ACCOUNT_DELETION_RECOVERY_CAPABILITY_UNAVAILABLE"
+  | "ACCOUNT_DELETION_SECURE_RANDOM_UNAVAILABLE";
+
+/** Typed browser-boundary failure that never includes an opaque capability. */
+export class AccountDeletionClientError extends ElizaError {
+  override readonly name = "AccountDeletionClientError";
+  override readonly code: AccountDeletionClientErrorCode;
+
+  constructor(
+    message: string,
+    options: {
+      code: AccountDeletionClientErrorCode;
+      cause?: unknown;
+      severity?: "ephemeral" | "fatal";
+    },
+  ) {
+    super(message, options);
+    this.code = options.code;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+function invalidReceipt(): AccountDeletionClientError {
+  return new AccountDeletionClientError(
+    "Account deletion receipt was malformed",
+    { code: "ACCOUNT_DELETION_RECEIPT_INVALID", severity: "fatal" },
+  );
+}
 
 const ACCOUNT_DELETION_STATUSES = new Set<AccountDeletionStatusDto["status"]>([
+  "pending_activation",
   "reserved",
   "recovery",
   "canceling",
@@ -28,6 +65,7 @@ const ACCOUNT_DELETION_ACCESS_STATES = new Set<
 const ACCOUNT_DELETION_NEXT_ACTIONS = new Set<
   AccountDeletionStatusDto["nextAction"]
 >([
+  "confirm_recovery_package",
   "wait_for_export",
   "download_export_or_cancel",
   "wait_for_reconciliation",
@@ -58,6 +96,12 @@ function expectedProjection(status: AccountDeletionStatusDto["status"]): {
   nextAction: AccountDeletionStatusDto["nextAction"];
 } {
   switch (status) {
+    case "pending_activation":
+      return {
+        accessState: "active",
+        canCancel: false,
+        nextAction: "confirm_recovery_package",
+      };
     case "reserved":
       return {
         accessState: "fenced",
@@ -104,7 +148,7 @@ function parseExport(value: unknown): AccountDeletionStatusDto["export"] {
       (typeof value.contentDigest !== "string" ||
         !/^[a-f0-9]{64}$/.test(value.contentDigest)))
   ) {
-    throw new Error("Account deletion receipt was malformed");
+    throw invalidReceipt();
   }
   return {
     status: value.status as NonNullable<
@@ -140,7 +184,7 @@ function parseStatus(value: unknown): AccountDeletionStatusDto {
       value.nextAction as AccountDeletionStatusDto["nextAction"],
     )
   ) {
-    throw new Error("Account deletion receipt was malformed");
+    throw invalidReceipt();
   }
 
   const status = value.status as AccountDeletionStatusDto["status"];
@@ -150,7 +194,7 @@ function parseStatus(value: unknown): AccountDeletionStatusDto {
     value.canCancel !== projection.canCancel ||
     value.nextAction !== projection.nextAction
   ) {
-    throw new Error("Account deletion receipt was malformed");
+    throw invalidReceipt();
   }
 
   return {
@@ -171,7 +215,7 @@ function parseStatus(value: unknown): AccountDeletionStatusDto {
 
 function parseStatusEnvelope(value: unknown): AccountDeletionStatusDto {
   if (!isRecord(value)) {
-    throw new Error("Account deletion receipt was malformed");
+    throw invalidReceipt();
   }
   return parseStatus(value.request);
 }
@@ -185,7 +229,7 @@ function parseAccepted(value: unknown): AccountDeletionAcceptedDto {
     !/^[A-Za-z0-9_-]{43}$/.test(value.recoveryCredential) ||
     value.statusCredential === value.recoveryCredential
   ) {
-    throw new Error("Account deletion receipt was malformed");
+    throw invalidReceipt();
   }
   return {
     request: parseStatus(value.request),
@@ -194,42 +238,92 @@ function parseAccepted(value: unknown): AccountDeletionAcceptedDto {
   };
 }
 
-function readSessionCredential(key: string): string | null {
-  if (typeof window === "undefined") return null;
+function capabilityStorageError(cause: unknown): AccountDeletionClientError {
+  return new AccountDeletionClientError(
+    "This browser cannot durably retain account-deletion recovery authority.",
+    {
+      code: "ACCOUNT_DELETION_CAPABILITY_STORAGE_UNAVAILABLE",
+      cause,
+      severity: "fatal",
+    },
+  );
+}
+
+function writeDurableCredential(key: string, value: string): void {
+  if (typeof window === "undefined") return;
   try {
-    return window.sessionStorage.getItem(key);
-  } catch {
-    // error-policy:J4 a storage-denied browser retains capabilities only for
-    // the current renderer lifetime and never substitutes a public identifier.
-    return volatileCredentials.get(key) ?? null;
+    shellLocalStorage.setItem(key, value);
+    if (window.localStorage.getItem(key) !== value) {
+      throw capabilityStorageError("credential round-trip mismatch");
+    }
+  } catch (cause) {
+    // error-policy:J2 losing this capability after the server fences the
+    // account would strand cancellation and export, so storage must fail closed.
+    if (cause instanceof AccountDeletionClientError) throw cause;
+    throw capabilityStorageError(cause);
   }
 }
 
-function writeSessionCredential(key: string, value: string): void {
+function removeLegacySessionCredential(key: string): void {
   if (typeof window === "undefined") return;
-  volatileCredentials.set(key, value);
-  try {
-    window.sessionStorage.setItem(key, value);
-  } catch {
-    // error-policy:J4 a storage-denied browser can still use the accepted
-    // capability from volatile memory until this renderer exits.
-  }
-}
-
-function removeSessionCredential(key: string): void {
-  if (typeof window === "undefined") return;
-  volatileCredentials.delete(key);
   try {
     window.sessionStorage.removeItem(key);
   } catch {
-    // error-policy:J4 the volatile copy is already removed and the consumed
-    // recovery capability is invalid server-side.
+    // error-policy:J6 the durable copy is authoritative; legacy-session
+    // cleanup is best-effort and never changes server capability validity.
+  }
+}
+
+function readDurableCredential(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const durable = window.localStorage.getItem(key);
+    if (durable !== null) return durable;
+  } catch (cause) {
+    // error-policy:J2 a denied durable store cannot be mistaken for an absent
+    // deletion request after immediate session fencing.
+    throw capabilityStorageError(cause);
+  }
+
+  let legacy: string | null = null;
+  try {
+    legacy = window.sessionStorage.getItem(key);
+  } catch {
+    // error-policy:J4 sessionStorage is only a backward-compatibility source;
+    // a usable durable store remains the authoritative empty state.
+  }
+  if (legacy !== null) {
+    writeDurableCredential(key, legacy);
+    removeLegacySessionCredential(key);
+  }
+  return legacy;
+}
+
+function removeDurableCredential(key: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    shellLocalStorage.removeItem(key);
+    if (window.localStorage.getItem(key) !== null) {
+      throw capabilityStorageError("credential removal round-trip mismatch");
+    }
+    removeLegacySessionCredential(key);
+  } catch (cause) {
+    // error-policy:J2 local retirement must be explicit. Server-side
+    // invalidation still prevents a retained consumed capability from working.
+    if (cause instanceof AccountDeletionClientError) throw cause;
+    throw capabilityStorageError(cause);
   }
 }
 
 function createAdmissionCredential(): string {
   if (!globalThis.crypto?.getRandomValues) {
-    throw new Error("This browser cannot create secure deletion authority.");
+    throw new AccountDeletionClientError(
+      "This browser cannot create secure deletion authority.",
+      {
+        code: "ACCOUNT_DELETION_SECURE_RANDOM_UNAVAILABLE",
+        severity: "fatal",
+      },
+    );
   }
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes))
@@ -239,18 +333,55 @@ function createAdmissionCredential(): string {
 }
 
 function getOrCreateAdmissionCredential(): string {
-  const current = readSessionCredential(ADMISSION_CREDENTIAL_KEY);
+  const current = readDurableCredential(ADMISSION_CREDENTIAL_KEY);
   if (current && /^[A-Za-z0-9_-]{43}$/.test(current)) return current;
   const created = createAdmissionCredential();
-  writeSessionCredential(ADMISSION_CREDENTIAL_KEY, created);
+  writeDurableCredential(ADMISSION_CREDENTIAL_KEY, created);
   return created;
 }
 
 export function rememberAccountDeletionCapabilities(
   accepted: AccountDeletionAcceptedDto,
 ): void {
-  writeSessionCredential(STATUS_CREDENTIAL_KEY, accepted.statusCredential);
-  writeSessionCredential(RECOVERY_CREDENTIAL_KEY, accepted.recoveryCredential);
+  writeDurableCredential(STATUS_CREDENTIAL_KEY, accepted.statusCredential);
+  writeDurableCredential(RECOVERY_CREDENTIAL_KEY, accepted.recoveryCredential);
+}
+
+async function recoverAccountDeletionCapabilities(): Promise<AccountDeletionAcceptedDto | null> {
+  const admissionCredential = readDurableCredential(ADMISSION_CREDENTIAL_KEY);
+  if (!admissionCredential) return null;
+  const accepted = parseAccepted(
+    await api<unknown>("/api/public/account-deletion", {
+      method: "POST",
+      skipAuth: true,
+      json: { confirmation: "DELETE", admissionCredential },
+    }),
+  );
+  rememberAccountDeletionCapabilities(accepted);
+  return accepted;
+}
+
+async function activateAccountDeletion(
+  recoveryCredential: string,
+): Promise<AccountDeletionStatusDto> {
+  const response = await api<unknown>("/api/public/account-deletion", {
+    method: "PATCH",
+    skipAuth: true,
+    headers: { "X-Account-Deletion-Recovery": recoveryCredential },
+    json: { confirmation: "ACTIVATE DELETION" },
+  });
+  const status = parseStatusEnvelope(response);
+  if (status.status === "pending_activation") {
+    throw new AccountDeletionClientError(
+      "Account deletion activation was not acknowledged.",
+      {
+        code: "ACCOUNT_DELETION_RECEIPT_INVALID",
+        severity: "fatal",
+      },
+    );
+  }
+  removeDurableCredential(ADMISSION_CREDENTIAL_KEY);
+  return status;
 }
 
 export async function submitAccountDeletion(): Promise<AccountDeletionAcceptedDto> {
@@ -264,12 +395,24 @@ export async function submitAccountDeletion(): Promise<AccountDeletionAcceptedDt
     }),
   );
   rememberAccountDeletionCapabilities(accepted);
-  removeSessionCredential(ADMISSION_CREDENTIAL_KEY);
-  return accepted;
+  const request = await activateAccountDeletion(accepted.recoveryCredential);
+  return { ...accepted, request };
 }
 
 export async function readAccountDeletionStatus(): Promise<AccountDeletionStatusDto | null> {
-  const statusCredential = readSessionCredential(STATUS_CREDENTIAL_KEY);
+  let statusCredential = readDurableCredential(STATUS_CREDENTIAL_KEY);
+  let recoveryCredential = readDurableCredential(RECOVERY_CREDENTIAL_KEY);
+  if (!statusCredential || !recoveryCredential) {
+    const recovered = await recoverAccountDeletionCapabilities();
+    if (recovered) {
+      statusCredential = recovered.statusCredential;
+      recoveryCredential = recovered.recoveryCredential;
+    }
+    statusCredential = readDurableCredential(STATUS_CREDENTIAL_KEY);
+  }
+  if (recoveryCredential && readDurableCredential(ADMISSION_CREDENTIAL_KEY)) {
+    return activateAccountDeletion(recoveryCredential);
+  }
   if (!statusCredential) return null;
   const response = await api<unknown>("/api/public/account-deletion", {
     skipAuth: true,
@@ -279,10 +422,14 @@ export async function readAccountDeletionStatus(): Promise<AccountDeletionStatus
 }
 
 export async function cancelAccountDeletion(): Promise<AccountDeletionStatusDto> {
-  const recoveryCredential = readSessionCredential(RECOVERY_CREDENTIAL_KEY);
+  const recoveryCredential = readDurableCredential(RECOVERY_CREDENTIAL_KEY);
   if (!recoveryCredential) {
-    throw new Error(
+    throw new AccountDeletionClientError(
       "The recovery capability is unavailable in this browser session.",
+      {
+        code: "ACCOUNT_DELETION_RECOVERY_CAPABILITY_UNAVAILABLE",
+        severity: "fatal",
+      },
     );
   }
   const response = await api<unknown>("/api/public/account-deletion", {
@@ -292,7 +439,9 @@ export async function cancelAccountDeletion(): Promise<AccountDeletionStatusDto>
     json: { confirmation: "CANCEL DELETION" },
   });
   const status = parseStatusEnvelope(response);
-  removeSessionCredential(RECOVERY_CREDENTIAL_KEY);
+  if (status.status === "canceled") {
+    removeDurableCredential(RECOVERY_CREDENTIAL_KEY);
+  }
   return status;
 }
 
@@ -303,10 +452,14 @@ export interface AccountDeletionExportDownload {
 }
 
 export async function downloadAccountDeletionExport(): Promise<AccountDeletionExportDownload> {
-  const recoveryCredential = readSessionCredential(RECOVERY_CREDENTIAL_KEY);
+  const recoveryCredential = readDurableCredential(RECOVERY_CREDENTIAL_KEY);
   if (!recoveryCredential) {
-    throw new Error(
+    throw new AccountDeletionClientError(
       "The recovery capability is unavailable in this browser session.",
+      {
+        code: "ACCOUNT_DELETION_RECOVERY_CAPABILITY_UNAVAILABLE",
+        severity: "fatal",
+      },
     );
   }
   const response = await apiFetch("/api/public/account-deletion/export", {
@@ -318,15 +471,25 @@ export async function downloadAccountDeletionExport(): Promise<AccountDeletionEx
   const contentDigest =
     response.headers.get("X-Account-Deletion-Export-SHA256") ?? "";
   if (!/^[a-f0-9]{64}$/.test(contentDigest)) {
-    throw new Error(
+    throw new AccountDeletionClientError(
       "The deletion export response has no valid content digest.",
+      {
+        code: "ACCOUNT_DELETION_EXPORT_DIGEST_INVALID",
+        severity: "fatal",
+      },
     );
   }
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const filenameMatch = /filename="([A-Za-z0-9._-]+)"/.exec(disposition);
   const blob = await response.blob();
   if (!globalThis.crypto?.subtle) {
-    throw new Error("This browser cannot verify the deletion export digest.");
+    throw new AccountDeletionClientError(
+      "This browser cannot verify the deletion export digest.",
+      {
+        code: "ACCOUNT_DELETION_EXPORT_CRYPTO_UNAVAILABLE",
+        severity: "fatal",
+      },
+    );
   }
   const actualDigest = Array.from(
     new Uint8Array(
@@ -338,8 +501,12 @@ export async function downloadAccountDeletionExport(): Promise<AccountDeletionEx
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
   if (actualDigest !== contentDigest) {
-    throw new Error(
+    throw new AccountDeletionClientError(
       "The deletion export bytes do not match the server receipt.",
+      {
+        code: "ACCOUNT_DELETION_EXPORT_DIGEST_MISMATCH",
+        severity: "fatal",
+      },
     );
   }
   return {

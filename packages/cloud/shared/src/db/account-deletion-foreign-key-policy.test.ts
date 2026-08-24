@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256,
   type AccountDeletionForeignKeyDescriptor,
@@ -47,14 +48,22 @@ describe("account deletion full-schema foreign-key policy", () => {
   });
 
   test("rejects an unknown restrictive relationship", () => {
-    expect(() =>
+    let failure: unknown;
+    try {
       classifyAccountDeletionForeignKey({
         sourceTable: "new_provider_grants",
         sourceColumns: "organization_id",
         targetTable: "organizations",
         targetColumns: "id",
         onDelete: "restrict",
-      }),
-    ).toThrow("Unclassified account-deletion foreign key");
+      });
+    } catch (cause) {
+      failure = cause;
+    }
+    expect(failure).toBeInstanceOf(ElizaError);
+    expect(failure).toMatchObject({
+      code: "ACCOUNT_DELETION_FOREIGN_KEY_UNCLASSIFIED",
+      severity: "fatal",
+    });
   });
 });

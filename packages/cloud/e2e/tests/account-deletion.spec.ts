@@ -286,7 +286,7 @@ test.describe("account deletion", () => {
     if (!statusCredential || !recoveryCredential) {
       throw new Error("Deletion response omitted its opaque capabilities");
     }
-    expect(payload.request?.status).toBe("reserved");
+    expect(payload.request?.status).toBe("pending_activation");
     expect(
       Date.parse(payload.request?.scheduledDeletionAt ?? ""),
     ).toBeGreaterThan(Date.now());

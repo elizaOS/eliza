@@ -152,7 +152,10 @@ export function decryptAccountDeletionExport(
 
 function quoteIdentifier(identifier: string): string {
   if (!/^[a-z][a-z0-9_]*$/.test(identifier)) {
-    throw new Error("Unsafe account export schema identifier");
+    throw new AccountDeletionExportError(
+      "Unsafe account export schema identifier",
+      "EXPORT_INTEGRITY_FAILED",
+    );
   }
   return `"${identifier}"`;
 }
@@ -257,7 +260,10 @@ export async function collectPortableAccountDeletionExport(input: {
   const grouped = new Map<string, Map<string, { column: string; value: string }>>();
   for (const descriptor of listAccountDeletionForeignKeys()) {
     if (descriptor.sourceColumns.includes(",") || descriptor.targetColumns !== "id") {
-      throw new Error("Composite account export authority is unsupported");
+      throw new AccountDeletionExportError(
+        "Composite account export authority is unsupported",
+        "EXPORT_INTEGRITY_FAILED",
+      );
     }
     const value = descriptor.targetTable === "users" ? input.userId : input.organizationId;
     const predicates = grouped.get(descriptor.sourceTable) ?? new Map();

@@ -1,5 +1,6 @@
 /** Permanently removes personal-organization resources before the account row is deleted. */
 
+import { ElizaError } from "@elizaos/core";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { organizationsRepository } from "../../db/repositories/organizations";
 import { userVoicesRepository } from "../../db/repositories/user-voices";
@@ -45,7 +46,10 @@ export async function purgeOrganizationObjectStorage(
   organizationId: string,
 ): Promise<number> {
   if (!bucket.list) {
-    throw new Error("R2 binding does not support listing for account deletion");
+    throw new ElizaError("R2 binding does not support listing for account deletion", {
+      code: "ACCOUNT_DELETION_R2_LISTING_UNAVAILABLE",
+      severity: "fatal",
+    });
   }
 
   let cursor: string | undefined;
@@ -66,7 +70,10 @@ export async function purgeOrganizationObjectStorage(
     truncated = page.truncated;
     if (!truncated) break;
     if (!page.cursor || seenCursors.has(page.cursor)) {
-      throw new Error("R2 account-deletion listing returned an invalid cursor");
+      throw new ElizaError("R2 account-deletion listing returned an invalid cursor", {
+        code: "ACCOUNT_DELETION_R2_CURSOR_INVALID",
+        severity: "fatal",
+      });
     }
     seenCursors.add(page.cursor);
     cursor = page.cursor;
@@ -105,8 +112,12 @@ export function defaultAccountDeletionResourcePurgeDependencies(): AccountDeleti
           .map((domain) => managedDomainsService.setAutoRenew(domain.id, false)),
       );
       if (registered.length > 0) {
-        throw new Error(
+        throw new ElizaError(
           "Registered domains must be transferred or released before account deletion can complete",
+          {
+            code: "ACCOUNT_DELETION_DOMAIN_TRANSFER_REQUIRED",
+            severity: "fatal",
+          },
         );
       }
     },
@@ -120,7 +131,10 @@ export function defaultAccountDeletionResourcePurgeDependencies(): AccountDeleti
         authorization: "account_deletion",
       });
       if (!result.success) {
-        throw new Error(result.error || `Agent ${agentId} could not be deleted`);
+        throw new ElizaError(result.error || `Agent ${agentId} could not be deleted`, {
+          code: "ACCOUNT_DELETION_AGENT_DELETE_FAILED",
+          severity: "ephemeral",
+        });
       }
     },
     async listAppIds(organizationId) {
@@ -132,7 +146,12 @@ export function defaultAccountDeletionResourcePurgeDependencies(): AccountDeleti
         deleteGitHubRepo: true,
         requireContainerTeardownCompletion: true,
       });
-      if (!result.success) throw new Error(result.errors.join("; "));
+      if (!result.success) {
+        throw new ElizaError(result.errors.join("; "), {
+          code: "ACCOUNT_DELETION_APP_DELETE_FAILED",
+          severity: "ephemeral",
+        });
+      }
     },
     async listActiveVoiceIds(organizationId) {
       const ids: string[] = [];
@@ -149,7 +168,10 @@ export function defaultAccountDeletionResourcePurgeDependencies(): AccountDeleti
         if (!hasMore) return ids;
         offset += result.voices.length;
         if (result.voices.length === 0) {
-          throw new Error("Voice deletion pagination did not advance");
+          throw new ElizaError("Voice deletion pagination did not advance", {
+            code: "ACCOUNT_DELETION_VOICE_CURSOR_INVALID",
+            severity: "fatal",
+          });
         }
       }
       return ids;

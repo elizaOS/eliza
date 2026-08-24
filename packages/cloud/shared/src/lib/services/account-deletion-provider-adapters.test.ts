@@ -98,9 +98,10 @@ describe("account deletion remote backup adapter", () => {
       state: "action_required",
       errorCode: "BACKUP_STORAGE_AUTHORITY_UNAVAILABLE",
     });
-    await expect(adapter.execute(context, "delete-backups-once")).rejects.toThrow(
-      "Backup storage authority is not configured",
-    );
+    await expect(adapter.execute(context, "delete-backups-once")).rejects.toMatchObject({
+      code: "ACCOUNT_DELETION_BACKUP_AUTHORITY_UNAVAILABLE",
+      severity: "fatal",
+    });
   });
 
   test("does not infer absence when the authority observes remote backup objects", async () => {

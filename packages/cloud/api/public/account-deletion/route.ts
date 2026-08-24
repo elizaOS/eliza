@@ -11,6 +11,7 @@ import {
 import {
   AccountDeletionRecoveryError,
   AccountDeletionConflictError,
+  activateAccountDeletion,
   cancelAccountDeletion,
   getAccountDeletionStatusByCredential,
   recoverAccountDeletionAdmission,
@@ -82,6 +83,54 @@ app.delete("/", async (c) => {
     // transport boundary and never expose the submitted capability.
     if (error instanceof AccountDeletionRecoveryError) {
       return c.json({ error: error.message, code: error.code }, 409);
+    }
+    return failureResponse(c, error);
+  }
+});
+
+app.patch("/", async (c) => {
+  c.header("Cache-Control", "no-store, private");
+  const origin = checkElizaMutatingRequestOrigin(
+    c.req,
+    c.env.NODE_ENV === "production",
+  );
+  if (!origin.ok) {
+    return c.json(
+      { error: "Forbidden", code: "forbidden_origin" as const },
+      403,
+    );
+  }
+  const credential = c.req.header("X-Account-Deletion-Recovery")?.trim() ?? "";
+  let body: { confirmation?: unknown } = {};
+  try {
+    body = await c.req.json<{ confirmation?: unknown }>();
+  } catch {
+    // error-policy:J3 malformed JSON is an invalid activation acknowledgement,
+    // never proof that the browser retained the recovery package.
+  }
+  if (body.confirmation !== "ACTIVATE DELETION") {
+    return c.json(
+      {
+        error: "Confirm recovery-package possession before account fencing",
+        code: "CONFIRMATION_REQUIRED",
+      },
+      400,
+    );
+  }
+  try {
+    const request = await activateAccountDeletion(credential);
+    return c.json({ request });
+  } catch (error) {
+    // error-policy:J1 activation credentials and account identifiers never
+    // cross this transport boundary in error payloads or logs.
+    if (error instanceof AccountDeletionRecoveryError) {
+      return c.json({ error: error.message, code: error.code }, 409);
+    }
+    if (error instanceof AccountDeletionConflictError) {
+      return c.json(
+        { error: error.message, code: error.code, details: error.details },
+        409,
+      );
     }
     return failureResponse(c, error);
   }

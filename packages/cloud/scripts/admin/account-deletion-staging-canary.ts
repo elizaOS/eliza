@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Runs a fail-closed account-deletion canary against the exact staging Cloud
  * deployment and a disposable Steward tenant. The canary creates fresh target
@@ -6,9 +7,11 @@
  * waits for the normal scheduled Worker, and emits identifier-free evidence.
  */
 
+import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
+import { ElizaError } from "@elizaos/core";
 import { readDatabaseIdentityReceipt } from "./preflight-database-identity";
 
 interface PgClient {
@@ -127,13 +130,18 @@ export interface AccountDeletionStagingCanaryEvidence {
   failure: { phase: Phase; code: string } | null;
 }
 
-class CanaryFailure extends Error {
-  constructor(
-    readonly phase: Phase,
-    readonly code: string,
-  ) {
-    super(`${phase}:${code}`);
-    this.name = "CanaryFailure";
+class CanaryFailure extends ElizaError {
+  override readonly name = "CanaryFailure";
+  readonly phase: Phase;
+
+  constructor(phase: Phase, code: string) {
+    super(`${phase}:${code}`, {
+      code,
+      context: { phase },
+      severity: "fatal",
+    });
+    this.phase = phase;
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -743,6 +751,7 @@ class CloudClient {
   }
 
   async requestDeletion(session: CloudSession): Promise<DeletionReceipt> {
+    const admissionCredential = randomBytes(32).toString("base64url");
     const response = await fetchWithTimeout(
       this.fetchImpl,
       `${this.config.cloudBaseUrl}/api/v1/me/account-deletion`,
@@ -753,7 +762,7 @@ class CloudClient {
           cookie: session.cookie,
           origin: this.config.cloudOrigin,
         },
-        body: JSON.stringify({ confirmation: "DELETE" }),
+        body: JSON.stringify({ confirmation: "DELETE", admissionCredential }),
       },
     );
     await expectStatus(response, [202], "request", "deletion_request_failed");
@@ -761,8 +770,45 @@ class CloudClient {
     if (!isRecord(body.request))
       throw new CanaryFailure("request", "invalid_response_shape");
     const requestId = requiredString(body.request, "requestId", "request");
-    if (!UUID_PATTERN.test(requestId) || body.request.status !== "scheduled") {
+    const recoveryCredential = requiredString(
+      body,
+      "recoveryCredential",
+      "request",
+    );
+    if (
+      !UUID_PATTERN.test(requestId) ||
+      body.request.status !== "pending_activation" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(recoveryCredential)
+    ) {
       throw new CanaryFailure("request", "deletion_not_scheduled");
+    }
+
+    const activation = await fetchWithTimeout(
+      this.fetchImpl,
+      `${this.config.cloudBaseUrl}/api/public/account-deletion`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          origin: this.config.cloudOrigin,
+          "X-Account-Deletion-Recovery": recoveryCredential,
+        },
+        body: JSON.stringify({ confirmation: "ACTIVATE DELETION" }),
+      },
+    );
+    await expectStatus(
+      activation,
+      [200],
+      "request",
+      "deletion_activation_failed",
+    );
+    const activationBody = await responseJson(activation, "request");
+    if (
+      !isRecord(activationBody.request) ||
+      activationBody.request.requestId !== requestId ||
+      !["reserved", "recovery"].includes(String(activationBody.request.status))
+    ) {
+      throw new CanaryFailure("request", "deletion_activation_invalid");
     }
     return { requestId };
   }

@@ -23,6 +23,8 @@ import { usePageTitle } from "../../lib/use-page-title";
 
 function statusHeading(request: AccountDeletionStatusDto): string {
   switch (request.status) {
+    case "pending_activation":
+      return "Confirming recovery access";
     case "reserved":
       return "Deletion request reserved";
     case "recovery":
@@ -43,6 +45,8 @@ function statusHeading(request: AccountDeletionStatusDto): string {
 
 function statusInstruction(request: AccountDeletionStatusDto): string {
   switch (request.status) {
+    case "pending_activation":
+      return "No account access has been disabled yet. This browser must retain and acknowledge the recovery package before fencing begins.";
     case "reserved":
       return "Account access is disabled while the portable export is prepared.";
     case "recovery":
