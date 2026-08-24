@@ -1,8 +1,10 @@
 /**
  * Durable one-shot authority for agent sandbox replacement provider calls.
  * Rows retain their lifecycle, restore-lease, exact Docker placement, and
- * settlement evidence permanently so ambiguous remote creates never expire
- * into permission for another create.
+ * settlement evidence for the life of its owner so ambiguous remote creates
+ * never expire into permission for another create. At this table boundary,
+ * only terminal history may cascade with atomic organization erasure; other
+ * retention authorities can still reject that erasure.
  */
 
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
@@ -58,7 +60,7 @@ export const agentSandboxReplacementAttempts = pgTable(
     id: uuid("id").primaryKey(),
     organization_id: uuid("organization_id")
       .notNull()
-      .references(() => organizations.id, { onDelete: "restrict" }),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     agent_id: uuid("agent_id").notNull(),
     operation_kind: text("operation_kind").$type<AgentSandboxReplacementOperationKind>().notNull(),
     lifecycle_revision: numeric("lifecycle_revision", {
