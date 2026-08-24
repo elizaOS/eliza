@@ -20,12 +20,15 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
- * Detail lookups scan the org's full bounded history window, matching the
- * `limit` maximum the pagination helper documents for this route family
- * (1–500, see ../../pagination.ts). Any change to that cap must move with
- * this constant so a linked row is reachable for the whole listable window.
+ * Detail lookups scan the org's full bounded history window: 200 is the
+ * paymentHistoryService projection's hard clamp (Math.min(limit, 200)) and
+ * the pagination family's list maximum is 500 — passing a value above the
+ * service clamp would silently shrink the reachable window, and passing one
+ * below the list max would make listable rows unlinkable. Any change to
+ * either cap must move with this constant so every listable row stays
+ * reachable from its linked detail.
  */
-const DETAIL_WINDOW_LIMIT = 500;
+const DETAIL_WINDOW_LIMIT = 200;
 
 const app = new Hono<AppEnv>();
 

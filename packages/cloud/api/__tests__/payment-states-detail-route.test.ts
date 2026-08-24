@@ -108,7 +108,7 @@ describe("GET /api/v1/billing/payment-states/:id (#22966 detail)", () => {
     expect(body.success).toBe(true);
     expect(body.state.id).toBe("checkout_order:o1");
     expect(body.state.paymentState).toBe("succeeded");
-    expect(listPaymentStates).toHaveBeenCalledWith(ORG_A, 500);
+    expect(listPaymentStates).toHaveBeenCalledWith(ORG_A, 200);
   });
 
   test("404s a well-formed id outside the org's window", async () => {
