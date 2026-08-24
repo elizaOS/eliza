@@ -55,6 +55,10 @@
  *     no install step; build-private-workspace-packages.mjs builds it on a fresh
  *     clone. `sentinel` is the dist file whose presence proves it is already
  *     built; `order` is the ascending build order (deps before dependents).
+ *
+ *   contentContextEvidence: { role: "coding-tools" | "sql" }
+ *     Package-owned production seam used by the real PostgreSQL progressive-
+ *     content evidence producer. Roles must be unique.
  */
 
 import { listPackages } from "./workspaces.mjs";
@@ -230,4 +234,32 @@ export function resolveBuildOnInstallPackages(opts) {
       order: Number(pkg.scripts.buildOnInstall.order ?? 0),
     }))
     .sort((a, b) => a.order - b.order || a.dir.localeCompare(b.dir));
+}
+
+/** Production packages required by progressive-content PostgreSQL evidence. */
+export function resolveContentContextEvidencePackages(opts) {
+  const packages = new Map();
+  const invalid = [];
+  for (const pkg of packagesWithScriptMeta(opts)) {
+    const declaration = pkg.scripts.contentContextEvidence;
+    if (declaration === undefined) continue;
+    const role =
+      declaration && typeof declaration === "object"
+        ? declaration.role
+        : undefined;
+    if (role !== "coding-tools" && role !== "sql") {
+      invalid.push(
+        `${pkg.name}: contentContextEvidence.role must be coding-tools or sql`,
+      );
+      continue;
+    }
+    if (packages.has(role)) {
+      invalid.push(
+        `${pkg.name}: duplicate contentContextEvidence role ${role}`,
+      );
+      continue;
+    }
+    packages.set(role, pkg);
+  }
+  return { packages, invalid };
 }
