@@ -138,6 +138,9 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/agent/src/api/diagnostics-routes.ts": [
 		/entries\.slice\(-\d+\)/,
 	],
+	"packages/agent/src/api/remote-capability-routes.ts": [
+		/appendTrustAuditRecord[\s\S]{0,700}\.slice\(-\d+\)/,
+	],
 	"packages/agent/src/api/server.ts": [
 		/pushWithBatchEvict\(\s*state\.logBuffer/,
 		/state\.logBuffer\.splice\(/,
