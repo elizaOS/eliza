@@ -88,11 +88,12 @@ async function seedContainer(params: {
 }): Promise<void> {
   if (!dbWrite) throw new Error("real PostgreSQL harness was not initialized");
   const periodStart = new Date(Date.now() - 60 * 60 * 1000);
+  const scheduledShutdownAt = new Date(Date.now() - 60 * 1000);
   await dbWrite.execute(sql`INSERT INTO containers
       (id, organization_id, user_id, status, billing_status, scheduled_shutdown_at,
        last_billed_at, lifecycle_revision, created_at, updated_at)
       VALUES (${params.containerId}, ${params.organizationId}, ${params.userId},
-        'running', 'shutdown_pending', NOW() - interval '1 minute',
+        'running', 'shutdown_pending', ${scheduledShutdownAt},
         ${periodStart}, ${params.lifecycleRevision}, ${periodStart}, ${periodStart})`);
   await dbWrite.execute(sql`INSERT INTO compute_billing_rate_segments
       (organization_id, workload_kind, workload_id, lifecycle_revision,
