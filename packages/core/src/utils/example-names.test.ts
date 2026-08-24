@@ -51,4 +51,18 @@ describe("pickRandomExampleName", () => {
 			EXAMPLE_NAMES[2],
 		);
 	});
+
+	it("maps non-number, null, and undefined arguments to index zero", () => {
+		vi.spyOn(Math, "random").mockReturnValue(0);
+		expect(pickRandomExampleName(null as unknown as number)).toBe(
+			EXAMPLE_NAMES[0],
+		);
+		expect(pickRandomExampleName(undefined)).toBe(EXAMPLE_NAMES[0]);
+		expect(pickRandomExampleName("foo" as unknown as number)).toBe(
+			EXAMPLE_NAMES[0],
+		);
+		expect(pickRandomExampleName({} as unknown as number)).toBe(
+			EXAMPLE_NAMES[0],
+		);
+	});
 });
