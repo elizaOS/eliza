@@ -68,6 +68,7 @@ function visitErrorChain(error: unknown, visitor: (code: string) => boolean): bo
 
 /** Match only an exact stable error code, including through bounded causes. */
 export function phoneErrorHasCode(error: unknown, expectedCode: string): boolean {
+  if (typeof expectedCode !== "string" || expectedCode.trim() === "") return false;
   return visitErrorChain(error, (code) => code === expectedCode);
 }
 

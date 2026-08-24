@@ -7,6 +7,7 @@ import {
   isPhoneSchemaMigrationRequired,
   isPostgresUndefinedTableError,
   phoneErrorDiagnostic,
+  phoneErrorHasCode,
 } from "./phone-error-diagnostics";
 
 describe("phone error diagnostics", () => {
@@ -87,5 +88,14 @@ describe("phone error diagnostics", () => {
     expect(phoneErrorDiagnostic(hostile)).toEqual({
       errorClass: "unexpected_phone_failure",
     });
+  });
+
+  test("safely returns false for non-string or empty expectedCode", () => {
+    const error = { code: "PHONE_MESSAGE_PERSISTENCE_FAILED" };
+    const emptyError = { code: "" };
+    expect(phoneErrorHasCode(error, undefined as unknown as string)).toBe(false);
+    expect(phoneErrorHasCode(error, null as unknown as string)).toBe(false);
+    expect(phoneErrorHasCode(error, "")).toBe(false);
+    expect(phoneErrorHasCode(emptyError, "")).toBe(false);
   });
 });
