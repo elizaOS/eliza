@@ -308,6 +308,13 @@ export function splitMessageForIMessage(
       }
     }
 
+    if (breakPoint > 0 && breakPoint < remaining.length) {
+      const code = remaining.charCodeAt(breakPoint - 1);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        breakPoint -= 1;
+      }
+    }
+
     chunks.push(remaining.slice(0, breakPoint).trimEnd());
     remaining = remaining.slice(breakPoint).trimStart();
   }

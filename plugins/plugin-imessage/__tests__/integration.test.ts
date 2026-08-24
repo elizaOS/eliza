@@ -1133,3 +1133,18 @@ describe("parseContactsOutput", () => {
     expect(map.get("+15559999999")?.name).toBe("OK");
   });
 });
+
+describe("splitMessageForIMessage surrogate safety", () => {
+  it("never bisects surrogate pairs when breaking at maxLength", () => {
+    // "😀" is 2 code units: \uD83D\uDE00
+    // Long continuous emojis with no newlines or spaces
+    const longEmojis = "😀".repeat(500); // 1000 code units
+    const chunks = splitMessageForIMessage(longEmojis, 100);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(100);
+      expect(chunk.endsWith("\uD83D")).toBe(false);
+      expect(chunk.startsWith("\uDE00")).toBe(false);
+    }
+  });
+});
