@@ -39,10 +39,7 @@ vi.mock("@/db/client", () => ({
     }),
   },
 }));
-vi.mock(
-  "@/db/schemas/auth-events",
-  async () => await import("../../../shared/src/db/schemas/auth-events.ts"),
-);
+vi.mock("@/db/schemas/auth-events", () => ({ authEvents: {} }));
 
 const originalAuditLogSink = process.env.AUDIT_LOG_SINK;
 
