@@ -57,6 +57,11 @@ export interface CloudRouteDef {
 /** A gate component: wraps a route body and renders it only when authorized. */
 export type CloudRouteGate = ComponentType<{ children: ReactNode }>;
 
+/** Complete route-state snapshot that can be restored after scoped mutations. */
+export interface CloudRouteRegistrySnapshot {
+  readonly routes: readonly CloudRouteDef[];
+}
+
 interface CloudRouteRegistryStore {
   entries: Map<string, CloudRouteDef>;
   seq: number;
@@ -90,6 +95,14 @@ function notifyCloudRouteListeners(): void {
   }
 }
 
+function assertReviewedPublicAccess(def: CloudRouteDef): void {
+  if (def.public === true && def.publicAccess !== CLOUD_PUBLIC_ROUTE_ACCESS) {
+    throw new Error(
+      `Cloud route "${def.path}" is public but did not opt in with CLOUD_PUBLIC_ROUTE_ACCESS`,
+    );
+  }
+}
+
 /**
  * Subscribe to route-registry mutations (registration / override). Used by
  * {@link CloudRouterShell} so public routes can paint before private domains
@@ -120,11 +133,7 @@ interface CloudRouteEntry extends CloudRouteDef {
 export function registerCloudRoute(def: CloudRouteDef): void {
   const store = getStore();
   const existing = store.entries.get(def.path);
-  if (def.public === true && def.publicAccess !== CLOUD_PUBLIC_ROUTE_ACCESS) {
-    throw new Error(
-      `Cloud route "${def.path}" is public but did not opt in with CLOUD_PUBLIC_ROUTE_ACCESS`,
-    );
-  }
+  assertReviewedPublicAccess(def);
   if (
     isDevMode() &&
     existing &&
@@ -164,6 +173,52 @@ export function listCloudRoutes(): CloudRouteDef[] {
       group,
       gate,
     }));
+}
+
+/** Capture the complete ordered route set for a later scoped restore. */
+export function snapshotCloudRouteRegistry(): CloudRouteRegistrySnapshot {
+  return { routes: listCloudRoutes() };
+}
+
+/** Remove every registered route while retaining subscribers. */
+export function resetCloudRouteRegistry(): void {
+  const store = getStore();
+  store.entries.clear();
+  store.seq += 1;
+  notifyCloudRouteListeners();
+}
+
+/**
+ * Replace the complete route set from a snapshot. Paths registered after the
+ * snapshot are removed, route order is preserved, and subscribers observe one
+ * atomic mutation with a monotonic version.
+ */
+export function restoreCloudRouteRegistry(
+  snapshot: CloudRouteRegistrySnapshot,
+): void {
+  const routes = snapshot.routes.map((route) => ({ ...route }));
+  const paths = new Set<string>();
+  for (const route of routes) {
+    assertReviewedPublicAccess(route);
+    if (paths.has(route.path)) {
+      throw new Error(
+        `Cloud route registry snapshot contains duplicate path "${route.path}"`,
+      );
+    }
+    paths.add(route.path);
+  }
+
+  const store = getStore();
+  const entries = new Map<string, CloudRouteDef>();
+  let order = store.seq;
+  for (const route of routes) {
+    const entry: CloudRouteEntry = { ...route, order };
+    entries.set(route.path, entry);
+    order += 1;
+  }
+  store.entries = entries;
+  store.seq = Math.max(store.seq + 1, order);
+  notifyCloudRouteListeners();
 }
 
 /** Look up a single registered route by path. */

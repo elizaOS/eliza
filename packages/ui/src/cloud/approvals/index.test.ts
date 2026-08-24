@@ -15,6 +15,9 @@ import { describe, expect, it } from "vitest";
 import {
   getCloudRoute,
   listCloudRoutes,
+  resetCloudRouteRegistry,
+  restoreCloudRouteRegistry,
+  snapshotCloudRouteRegistry,
   subscribeCloudRoutes,
 } from "../shell/cloud-route-registry";
 import * as approvalsRouteModule from "./ApprovalsRoute";
@@ -26,6 +29,16 @@ import {
   registerApprovalsCloudRoute,
 } from "./index";
 import * as approvalsDataLayer from "./lib/approvals";
+
+function withCloudRouteRegistryRestored(run: () => void): void {
+  const snapshot = snapshotCloudRouteRegistry();
+  try {
+    run();
+  } finally {
+    restoreCloudRouteRegistry(snapshot);
+    expect(snapshotCloudRouteRegistry()).toEqual(snapshot);
+  }
+}
 
 describe("approvals barrel constants", () => {
   it("pins the stable view/section id", () => {
@@ -105,63 +118,121 @@ describe("barrel re-export wiring", () => {
 
 describe("registerApprovalsCloudRoute against the real registry", () => {
   it("notifies registry subscribers on registration", () => {
-    let notifications = 0;
-    const unsubscribe = subscribeCloudRoutes(() => {
-      notifications += 1;
+    withCloudRouteRegistryRestored(() => {
+      let notifications = 0;
+      const unsubscribe = subscribeCloudRoutes(() => {
+        notifications += 1;
+      });
+      try {
+        registerApprovalsCloudRoute();
+        expect(notifications).toBeGreaterThanOrEqual(1);
+      } finally {
+        unsubscribe();
+      }
     });
-    try {
-      registerApprovalsCloudRoute();
-      expect(notifications).toBeGreaterThanOrEqual(1);
-    } finally {
-      unsubscribe();
-    }
   });
 
   it("keeps exactly one entry per path when re-registering (last wins)", () => {
-    registerApprovalsCloudRoute();
-    registerApprovalsCloudRoute();
-    const entries = listCloudRoutes().filter(
-      (route) => route.path === APPROVALS_ROUTE_PATH,
-    );
-    expect(entries).toHaveLength(1);
+    withCloudRouteRegistryRestored(() => {
+      registerApprovalsCloudRoute();
+      registerApprovalsCloudRoute();
+      const entries = listCloudRoutes().filter(
+        (route) => route.path === APPROVALS_ROUTE_PATH,
+      );
+      expect(entries).toHaveLength(1);
+    });
   });
 
   it("preserves the built-in definition when called with no override", () => {
-    registerApprovalsCloudRoute();
-    const route = getCloudRoute(APPROVALS_ROUTE_PATH);
-    expect(route).toMatchObject({
-      path: APPROVALS_ROUTE_PATH,
-      group: "cloud",
+    withCloudRouteRegistryRestored(() => {
+      registerApprovalsCloudRoute();
+      const route = getCloudRoute(APPROVALS_ROUTE_PATH);
+      expect(route).toMatchObject({
+        path: APPROVALS_ROUTE_PATH,
+        group: "cloud",
+      });
+      expect(route?.public).toBeUndefined();
+      expect(route?.publicAccess).toBeUndefined();
+      expect(route?.gate).toBeUndefined();
     });
-    expect(route?.public).toBeUndefined();
-    expect(route?.publicAccess).toBeUndefined();
-    expect(route?.gate).toBeUndefined();
   });
 
   it("merges partial overrides without replacing untouched fields", () => {
-    try {
+    withCloudRouteRegistryRestored(() => {
       registerApprovalsCloudRoute({ gate: "admin" });
       const route = getCloudRoute(APPROVALS_ROUTE_PATH);
       expect(route?.gate).toBe("admin");
       expect(route?.path).toBe(APPROVALS_ROUTE_PATH);
       expect(route?.group).toBe("cloud");
       expect(route?.element).toBe(approvalsCloudRoute.element);
-    } finally {
-      registerApprovalsCloudRoute();
-    }
+    });
   });
 
   it("supports a custom-path mount while leaving the default intact", () => {
-    registerApprovalsCloudRoute({
-      path: "cloud/approvals-custom-mount",
-      group: "custom",
+    withCloudRouteRegistryRestored(() => {
+      registerApprovalsCloudRoute({
+        path: "cloud/approvals-custom-mount",
+        group: "custom",
+      });
+      expect(getCloudRoute("cloud/approvals-custom-mount")).toMatchObject({
+        path: "cloud/approvals-custom-mount",
+        group: "custom",
+      });
+      const fallback = getCloudRoute(APPROVALS_ROUTE_PATH);
+      expect(fallback).toBeDefined();
+      expect(fallback?.group).toBe("cloud");
     });
-    expect(getCloudRoute("cloud/approvals-custom-mount")).toMatchObject({
-      path: "cloud/approvals-custom-mount",
-      group: "custom",
+  });
+
+  it("restores a snapshot by removing paths registered afterward", () => {
+    withCloudRouteRegistryRestored(() => {
+      const snapshot = snapshotCloudRouteRegistry();
+      registerApprovalsCloudRoute({
+        path: "cloud/approvals-custom-mount",
+        group: "custom",
+      });
+      expect(getCloudRoute("cloud/approvals-custom-mount")?.group).toBe(
+        "custom",
+      );
+      restoreCloudRouteRegistry(snapshot);
+      expect(getCloudRoute("cloud/approvals-custom-mount")).toBeUndefined();
+      expect(snapshotCloudRouteRegistry()).toEqual(snapshot);
     });
-    const fallback = getCloudRoute(APPROVALS_ROUTE_PATH);
-    expect(fallback).toBeDefined();
-    expect(fallback?.group).toBe("cloud");
+  });
+
+  it("resets the complete registry independently of restore", () => {
+    withCloudRouteRegistryRestored(() => {
+      registerApprovalsCloudRoute({
+        path: "cloud/approvals-custom-mount",
+        group: "custom",
+      });
+      expect(getCloudRoute("cloud/approvals-custom-mount")).toBeDefined();
+      resetCloudRouteRegistry();
+      expect(listCloudRoutes()).toEqual([]);
+    });
+  });
+
+  it("restores the same registry after either registration order", () => {
+    withCloudRouteRegistryRestored(() => {
+      const snapshot = snapshotCloudRouteRegistry();
+      const registerCustom = () =>
+        registerApprovalsCloudRoute({
+          path: "cloud/approvals-custom-mount",
+          group: "custom",
+        });
+      const registrationOrders = [
+        [registerCustom, registerApprovalsCloudRoute],
+        [registerApprovalsCloudRoute, registerCustom],
+      ];
+
+      for (const registrations of registrationOrders) {
+        restoreCloudRouteRegistry(snapshot);
+        for (const register of registrations) register();
+        expect(getCloudRoute(APPROVALS_ROUTE_PATH)?.group).toBe("cloud");
+        expect(getCloudRoute("cloud/approvals-custom-mount")?.group).toBe(
+          "custom",
+        );
+      }
+    });
   });
 });
