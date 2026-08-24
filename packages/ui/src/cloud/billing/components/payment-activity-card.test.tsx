@@ -365,4 +365,78 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
       );
     });
   });
+
+  it("rejects a partial row missing rendered fields, rendering the explicit error state instead of tearing down", async () => {
+    // Start from a valid row and drop one rendered field at a time: the
+    // ready-state guard must validate the complete row shape, because
+    // rendering dereferences identifiers (authorityId.slice), amounts,
+    // event fields, and reversal totals — a partial row previously tore
+    // the whole card down to <div /> and never showed the promised
+    // malformed/retry state (#26752 review).
+    const dropFields = [
+      "surface",
+      "authorityId",
+      "provider",
+      "amountCents",
+      "currency",
+      "eventTime",
+      "eventTimeKind",
+      "cumulativeRefundedUsd",
+      "cumulativeDisputedUsd",
+      "cumulativeClawbackCredits",
+      "reinstatedCredits",
+      "unrecoveredShortfallUsd",
+      "disputeReinstated",
+      "supportState",
+    ] as const;
+    for (const field of dropFields) {
+      apiMock.mockReset();
+      const partial = { ...stateRow() } as Record<string, unknown>;
+      delete partial[field];
+      apiMock.mockResolvedValueOnce({ states: [partial] });
+      render(
+        <MemoryRouter>
+          <PaymentActivityCard />
+        </MemoryRouter>,
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await screen.findByText(/Payment activity could not be loaded/i);
+      // eslint-disable-next-line no-await-in-loop
+      expect(screen.getByText(/malformed/i)).toBeTruthy();
+      // eslint-disable-next-line no-await-in-loop
+      expect(screen.queryByTestId("payment-activity-list")).toBeNull();
+      // eslint-disable-next-line no-await-in-loop
+      expect(screen.queryByTestId("payment-state-row")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("accepts a fully valid success row that carries null optionals, not a partial one", async () => {
+    // The reviewer's exact probe shape: a success row missing ONLY the
+    // required authorityId must fail; the same row with every required
+    // field present (receiptId null) must render.
+    apiMock.mockResolvedValueOnce({
+      states: [{ ...stateRow(), authorityId: undefined }],
+    });
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
+    await screen.findByText(/Payment activity could not be loaded/i);
+    expect(screen.queryByTestId("payment-state-row")).toBeNull();
+    cleanup();
+
+    apiMock.mockReset();
+    apiMock.mockResolvedValueOnce({ states: [stateRow()] });
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
+    await screen.findAllByTestId("payment-state-row");
+    expect(screen.getByTestId("payment-state-text").textContent).toBe(
+      "succeeded",
+    );
+  });
 });
