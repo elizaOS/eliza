@@ -50,7 +50,7 @@ export interface LocalWorkspaceDeltaDependencies {
   fs?: Partial<WorkspaceDeltaFs>;
 }
 
-interface WorkspaceDeltaFs {
+export interface WorkspaceDeltaFs {
   realpath(value: string): Promise<string>;
   lstat(value: string): Promise<Awaited<ReturnType<typeof fs.lstat>>>;
   readlink(value: string): Promise<string>;
@@ -690,7 +690,26 @@ function failureReason(
   error: unknown,
   fallback: WorkspaceDeltaIndeterminateReasonCode,
 ): WorkspaceDeltaIndeterminateReasonCode {
-  return error instanceof ObservationBudgetError ? error.reasonCode : fallback;
+  if (error instanceof ObservationBudgetError) return error.reasonCode;
+  const failure = error as NodeJS.ErrnoException & {
+    killed?: boolean;
+    signal?: string;
+  };
+  if (failure.code === "EOBSERVATIONBYTE") {
+    return "OBSERVATION_BYTE_BUDGET_EXCEEDED";
+  }
+  if (failure.code === "EOBSERVATIONOUTPUT") {
+    return "OBSERVATION_OUTPUT_BUDGET_EXCEEDED";
+  }
+  if (
+    failure.code === "EOBSERVATIONTIME" ||
+    failure.killed ||
+    failure.signal === "SIGTERM" ||
+    failure.signal === "SIGKILL"
+  ) {
+    return "OBSERVATION_TIME_BUDGET_EXCEEDED";
+  }
+  return fallback;
 }
 
 /** Returns undefined when cwd is not inside a Git worktree. */
