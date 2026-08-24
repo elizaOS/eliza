@@ -196,7 +196,9 @@ async function waitForFixtureApp(
         parameters,
       );
       const result = await action;
-      expect(result.success).toBe(true);
+      if (!result.success) {
+        throw new Error(`Semantic AX fixture action failed: ${result.error}`);
+      }
       const data = result.data as {
         receipt: {
           afterStateId: string;

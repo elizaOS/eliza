@@ -8,13 +8,12 @@ import {
 it("approves only the exact canonical browser action envelope", async () => {
   const parameters = {
     coordinate: [120, 112],
-    tabId: undefined,
     action: "click",
   };
   const request = {
     id: "approval-fixture-browser-click",
     command: "browser_click",
-    parameters: { action: "click", coordinate: [120, 112], tabId: undefined },
+    parameters: { action: "click", coordinate: [120, 112] },
     requestedAt: "2026-08-24T00:00:00.000Z",
   };
   const resolution = {

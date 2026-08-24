@@ -210,7 +210,6 @@ function captureFromFrame(data: string): {
       };
       const approvalParameters = {
         ...parameters,
-        tabId: undefined,
         action: "click",
       };
       service.setApprovalMode("approve_all");

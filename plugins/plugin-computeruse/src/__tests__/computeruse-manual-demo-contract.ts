@@ -52,7 +52,17 @@ export async function approveExactManualDemoAction(
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  throw new Error(`Exact approval request did not appear for ${command}`);
+  const pending = service
+    .getApprovalSnapshot()
+    .pendingApprovals.map(
+      ({ command: pendingCommand, parameters: pendingParameters }) => ({
+        command: pendingCommand,
+        parameters: pendingParameters,
+      }),
+    );
+  throw new Error(
+    `Exact approval request did not appear for ${command}; fixture-only pending=${JSON.stringify(pending)}`,
+  );
 }
 
 export async function writeManualDemoArtifact(
