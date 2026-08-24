@@ -390,6 +390,7 @@ describe("MEMORY uuid validation", () => {
       (candidate) => candidate.name === "memoryId",
     );
     expect(memoryId?.schema.pattern).toBeDefined();
+    expect(memoryId?.modelOmissionSentinels).toEqual(["", "null", "undefined"]);
     const pattern = new RegExp(memoryId?.schema.pattern ?? "");
     expect(pattern.test(ROOM_ID)).toBe(true);
     expect(pattern.test("general")).toBe(false);
