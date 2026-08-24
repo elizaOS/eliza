@@ -149,3 +149,26 @@ describe("workspace source aliases", () => {
     );
   });
 });
+
+  test("ignores null exports without crashing", () => {
+    const repoRoot = mkdtempSync(
+      path.join(tmpdir(), "eliza-vitest-null-exports-"),
+    );
+    temporaryRoots.push(repoRoot);
+    const packageDir = path.join(repoRoot, "packages", "agent");
+    mkdirSync(path.join(packageDir, "src"), { recursive: true });
+    writeFileSync(path.join(packageDir, "src", "index.ts"), "export {};\n");
+    writeFileSync(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/agent",
+        exports: {
+          ".": "./dist/index.js",
+          "./runtime/runtime-installation-id": null,
+        },
+      }),
+    );
+
+    const aliases = buildWorkspaceSourceAliases(repoRoot);
+    expect(aliases.some((a) => typeof a.find !== "string" && a.find.test("@elizaos/agent"))).toBe(true);
+  });

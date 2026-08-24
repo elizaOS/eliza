@@ -65,7 +65,13 @@ function getWorkspaceSourceEntry(
   const exportedSourceAliases = Object.entries(
     packageJson.exports ?? {},
   ).flatMap(([subpath, target]) => {
-    if (subpath === "." || typeof target === "string") return [];
+    if (
+      subpath === "." ||
+      typeof target === "string" ||
+      !target ||
+      typeof target !== "object"
+    )
+      return [];
     const source = target["eliza-source"];
     const sourcePath =
       typeof source === "string"
