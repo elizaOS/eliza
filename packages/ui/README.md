@@ -78,3 +78,8 @@ bun run --cwd packages/ui stories:dev # component stories
 ```
 
 This is a library; there is no standalone dev server — run it through a host app.
+
+The ownership, adapter, variant, and exception rules for shared UI live in
+[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md). Run
+`bun run --cwd packages/ui audit:design-system` before submitting changes to
+tokens, controls, or reusable UI patterns.

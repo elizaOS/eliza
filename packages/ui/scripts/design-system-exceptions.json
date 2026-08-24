@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "id": "desktop-window-native-button",
+      "rule": "raw-control",
+      "file": "packages/app-core/src/runtime/desktop/AppWindowRenderer.tsx",
+      "symbol": "button",
+      "owner": "app-core desktop runtime",
+      "reason": "The desktop renderer owns native window controls outside the React design-system host.",
+      "reviewBy": "2026-11-24"
+    }
+  ]
+}
