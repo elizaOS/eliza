@@ -97,4 +97,57 @@ describe("useBarSurfaceWindows", () => {
     expect(openWindow).not.toHaveBeenCalled();
     expect(openLauncher).not.toHaveBeenCalled();
   });
+
+  it("summons the launcher for the views id too", async () => {
+    const { openWindow, openLauncher } = setup();
+    await dispatchNavigate({ viewId: "views" });
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(openLauncher).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores close-all actions", async () => {
+    const { openWindow, openLauncher } = setup();
+    await dispatchNavigate({ action: "close-all" });
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(openLauncher).not.toHaveBeenCalled();
+  });
+
+  it("opens nothing when the navigation carries neither a view id nor an explicit path", async () => {
+    const { openWindow, openLauncher } = setup();
+    await dispatchNavigate({ action: "open-window", viewLabel: "Mystery" });
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(openLauncher).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the generic View title when only an explicit path is given", async () => {
+    const { openWindow } = setup();
+    await dispatchNavigate({ viewPath: "/custom/path" });
+    expect(openWindow).toHaveBeenCalledTimes(1);
+    const arg = openWindow.mock.calls[0][0];
+    expect(arg.title).toBe("View");
+    expect(arg.path).toBe("/custom/path");
+    expect(arg.slug).toBeUndefined();
+    expect(arg.alwaysOnTop).toBe(false);
+  });
+
+  it("stops listening after unmount", async () => {
+    const openWindow = vi.fn<
+      (opts: OpenWindowArg) => Promise<{ id: string } | null>
+    >(async () => ({ id: "w1" }));
+    const openLauncher = vi.fn<() => Promise<{ id: string } | null>>(
+      async () => ({ id: "launcher" }),
+    );
+    const { unmount } = renderHook(() =>
+      useBarSurfaceWindows({
+        openWindow,
+        openLauncher,
+        isDesktop: () => true,
+      }),
+    );
+    unmount();
+    await dispatchNavigate({ viewId: "calendar", action: "open-window" });
+    await dispatchNavigate({ viewId: "launcher" });
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(openLauncher).not.toHaveBeenCalled();
+  });
 });
