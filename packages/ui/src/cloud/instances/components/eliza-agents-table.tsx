@@ -320,7 +320,7 @@ function StatusCell({
           })}
         </span>
       )}
-      {errorMessage && (
+      {errorMessage && ["error", "disconnected"].includes(displayStatus) && (
         <p className="text-xs-tight text-destructive/80 max-w-[180px] pl-0.5">
           {t("cloud.elizaAgentsTable.agentNeedsAttention", {
             defaultValue: "Agent needs attention",
