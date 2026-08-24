@@ -353,24 +353,29 @@ function assertLocalIMessageAccount(accountId?: string | null): string {
   return normalized;
 }
 
-function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return fallback;
+function normalizeConnectorLimit(limit: number | undefined): number | undefined {
+  if (limit === undefined) {
+    return undefined;
   }
-  return Math.min(Math.floor(limit), 200);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error("iMessage limit must be a positive integer when provided");
+  }
+  return limit;
 }
 
-function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+function filterMemoriesByQuery(
+  memories: Memory[],
+  query: string,
+  limit?: number
+): Memory[] {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) {
-    return memories.slice(0, limit);
-  }
-  return memories
-    .filter((memory) => {
+  const matches = normalized
+    ? memories.filter((memory) => {
       const text = typeof memory.content.text === "string" ? memory.content.text : "";
       return text.toLowerCase().includes(normalized);
     })
-    .slice(0, limit);
+    : memories;
+  return limit === undefined ? matches : matches.slice(0, limit);
 }
 
 function publicIMessageToMemory(
@@ -831,8 +836,7 @@ export class IMessageService extends Service implements IIMessageService {
                   ? left.createdAt
                   : 0;
               return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
-            })
-            .slice(0, limit);
+            });
         }
         if (target?.roomId) {
           return context.runtime.getMemories({
@@ -853,7 +857,7 @@ export class IMessageService extends Service implements IIMessageService {
         );
         const chatId = target ? await resolveIMessageChatId(context.runtime, target) : null;
         const platformMessages = await service
-          .getMessages({ ...(chatId ? { chatId } : {}), limit: Math.max(limit, 100) })
+          .getMessages({ ...(chatId ? { chatId } : {}), limit })
           .catch(() => []);
         const roomId =
           target?.roomId ??
@@ -867,7 +871,7 @@ export class IMessageService extends Service implements IIMessageService {
               ? await context.runtime.getMemories({
                   tableName: "messages",
                   roomId: target.roomId,
-                  limit: Math.max(limit, 100),
+                  limit,
                   orderBy: "createdAt",
                   orderDirection: "desc",
                 })
@@ -882,7 +886,7 @@ export class IMessageService extends Service implements IIMessageService {
           readTargetAccountId(target) ?? readContextAccountId(context)
         );
         const chatId = await resolveIMessageChatId(context.runtime, target);
-        const messages = chatId ? await service.getMessages({ chatId, limit: 10 }) : [];
+        const messages = chatId ? await service.getMessages({ chatId }) : [];
         return {
           target: targetWithAccount(target, accountId),
           label: chatId ?? target.channelId ?? target.entityId ?? "iMessage target",
@@ -1121,7 +1125,7 @@ export class IMessageService extends Service implements IIMessageService {
    * running under plain Node without bun:sqlite, or Full Disk Access not
    * granted, etc.).
    */
-  async getRecentMessages(limit: number = 50): Promise<IMessageMessage[]> {
+  async getRecentMessages(limit?: number): Promise<IMessageMessage[]> {
     return this.getMessages({ limit });
   }
 

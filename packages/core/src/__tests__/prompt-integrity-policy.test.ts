@@ -243,6 +243,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-personal-assistant/src/lifeops/domains/x-service.ts": [
 		/opts\.limit\s*\?\?\s*25/,
 	],
+	"plugins/plugin-imessage/src/service.ts": [
+		/normalizeConnectorLimit\([^)]*fallback/,
+		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
+		/Math\.max\(limit,\s*100\)/,
+		/getMessages\(\{\s*chatId,\s*limit:\s*10\s*\}\)/,
+	],
+	"plugins/plugin-imessage/src/chatdb-reader.ts": [
+		/options\.limit[\s\S]{0,160}:\s*50/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,
