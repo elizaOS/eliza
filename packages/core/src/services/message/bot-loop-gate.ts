@@ -172,8 +172,12 @@ export async function runBotLoopGate(args: {
 			limit: GROUP_SIGNAL_WINDOW,
 			unique: false,
 		});
-	} catch {
-		// error-policy: a read failure must never mute the agent — fail open.
+	} catch (error) {
+		// error-policy:J4 This optional suppression gate deliberately degrades to
+		// the ordinary response pipeline when its bounded room read is unavailable.
+		runtime.reportError("BotLoopGate.window", error, {
+			roomId: message.roomId,
+		});
 		return { ignored: false, reason: "window_unavailable" };
 	}
 	const dialogue = window
