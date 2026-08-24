@@ -4,6 +4,11 @@
  * known `Entity`. The referent (`message.content.text`), sender, agent, room
  * members, related contacts, and the complete room-message transcript are bound
  * into the TEXT_SMALL prompt; EXACT_MATCH is restricted to that candidate set.
+ * Resolution is evidence-consistent: a decisive response resolves only when
+ * every identifying evidence field (non-EXACT `entityId`, uniquely-label-matched
+ * candidates) agrees on exactly one id-bearing in-scope entity; AMBIGUOUS and
+ * UNKNOWN are terminal, and exact contextual me/myself/you/yourself referents
+ * bind to the sender/agent before ordinary identity lookup (#24765).
  * Room messages are read without a limit, the same unbounded contract the
  * recent-messages provider uses — never a most-recent or item-count window
  * (`AGENTS.md` prompt integrity, the "never discard model context" section).
@@ -28,6 +33,7 @@ import {
 	normalizeEntityMatches,
 	readEntityResolutionField,
 } from "./entity-matches";
+import { ElizaError } from "./errors";
 import { logger } from "./logger";
 // Type-only (erased at runtime, so no cycle with roles.ts, which imports
 // createUniqueUuid from this module). The role-resolution values are pulled via a
@@ -108,7 +114,25 @@ interface ParsedResolution {
 			| { name?: string; reason?: string }
 			| { name?: string; reason?: string }[];
 	};
+	/** True when the model supplied match evidence in an unusable shape. */
+	malformedMatches?: boolean;
+	/** True when a supplied entityId/resolvedId was not a usable string. */
+	malformedEntityId?: boolean;
+	/** True when supplied entityId and resolvedId strings disagree. */
+	conflictingEntityId?: boolean;
 }
+
+/**
+ * The decisive resolution types the model contract supports. A response
+ * without one of these types (or with AMBIGUOUS/UNKNOWN) is not decisive
+ * evidence and must not resolve (#24765).
+ */
+const DECISIVE_RESOLUTION_TYPES = new Set([
+	"EXACT_MATCH",
+	"USERNAME_MATCH",
+	"NAME_MATCH",
+	"RELATIONSHIP_MATCH",
+]);
 
 function parseEntityResolutionResponse(
 	response: unknown,
@@ -132,21 +156,75 @@ function parseEntityResolutionResponse(
 		const entityIdValue = readEntityResolutionField(parsedJson, "entityId");
 		const resolvedIdValue = readEntityResolutionField(parsedJson, "resolvedId");
 		const type = typeof typeValue === "string" ? typeValue : undefined;
+		// Supplied-but-malformed identification fields must not silently
+		// disappear at this boundary (#24765). JSON null (and the literal
+		// "null") is the contract's explicit "no id" encoding and stays
+		// absent; anything else that is not a usable string, or two
+		// conflicting string ids, is flagged for the consistency gate to
+		// reject via explicit booleans rather than sentinel strings.
+		const entityIdSupplied =
+			(entityIdValue !== undefined && entityIdValue !== null) ||
+			(resolvedIdValue !== undefined && resolvedIdValue !== null);
+		const malformedEntityId =
+			entityIdSupplied &&
+			typeof entityIdValue !== "string" &&
+			typeof resolvedIdValue !== "string";
+		const conflictingEntityId =
+			typeof entityIdValue === "string" &&
+			typeof resolvedIdValue === "string" &&
+			entityIdValue !== resolvedIdValue;
 		const entityId =
 			typeof entityIdValue === "string"
 				? entityIdValue
 				: typeof resolvedIdValue === "string"
 					? resolvedIdValue
 					: undefined;
-		const matches = normalizeEntityMatches(
-			readEntityResolutionField(parsedJson, "matches"),
-		);
+		const rawMatches = readEntityResolutionField(parsedJson, "matches");
+		const matches = normalizeEntityMatches(rawMatches);
+		// Match evidence supplied in an unusable shape must invalidate, not
+		// vanish (#24765). The schema-legal shapes are an array of
+		// {name, reason} entries, a single such entry, or the documented
+		// model-produced {match: …} wrapper that normalizeEntityMatches
+		// unwraps; `undefined` means absent. Anything else (a number, a
+		// random object, …) is malformed. Inside a legal array (or unwrapped
+		// wrapper), entries the normalizer drops for lacking a usable name
+		// are likewise malformed supplied evidence.
+		const matchesAbsent = rawMatches === undefined || rawMatches === null;
+		const malformedMatches =
+			!matchesAbsent &&
+			((Array.isArray(rawMatches) && matches.length !== rawMatches.length) ||
+				(!Array.isArray(rawMatches) &&
+					typeof rawMatches !== "object" &&
+					matches.length !== 1) ||
+				(!matchesAbsent &&
+					typeof rawMatches === "object" &&
+					!Array.isArray(rawMatches) &&
+					!("match" in rawMatches) &&
+					matches.length !== 1));
 
 		if (type || entityId || matches.length > 0) {
 			return {
 				type,
 				entityId: entityId && entityId !== "null" ? entityId : undefined,
 				matches: matches.length > 0 ? { match: matches } : undefined,
+				malformedMatches,
+				malformedEntityId,
+				conflictingEntityId,
+			};
+		}
+
+		// A response carrying only malformed evidence (for example
+		// `matches: 42` with no id and no type) is still a supplied-evidence
+		// defect; surface it so the gate rejects rather than treating the
+		// response as unparseable noise indistinguishable from garbage text.
+		if (malformedMatches || malformedEntityId || conflictingEntityId) {
+			return {
+				type,
+				entityId: undefined,
+				matches: undefined,
+				malformedMatches,
+				malformedEntityId,
+				conflictingEntityId,
 			};
 		}
 	}
@@ -227,6 +305,35 @@ function stripAtPrefix(value: string): string {
 
 function referentTextOf(message: Memory): string {
 	return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+/**
+ * Exact contextual self/agent references ("me", "myself", "you", "yourself")
+ * bind to the message sender and the agent before any ordinary identity
+ * lookup. Without this precedence, an entity literally named "Me" or "You"
+ * wins the unique referent-hit shortcut and captures the reference (#24765).
+ * Only the exact normalized/stripped forms are contextual — "Meagan" or
+ * "@me-suffix" names are ordinary identity lookups.
+ */
+const CONTEXTUAL_SELF_REFERENT = new Set(["me", "myself"]);
+const CONTEXTUAL_AGENT_REFERENT = new Set(["you", "yourself"]);
+
+function contextualReferentTarget(referent: string): "sender" | "agent" | null {
+	const normalized = normalizeEntityName(referent);
+	const stripped = stripAtPrefix(referent);
+	if (
+		CONTEXTUAL_SELF_REFERENT.has(normalized) ||
+		CONTEXTUAL_SELF_REFERENT.has(stripped)
+	) {
+		return "sender";
+	}
+	if (
+		CONTEXTUAL_AGENT_REFERENT.has(normalized) ||
+		CONTEXTUAL_AGENT_REFERENT.has(stripped)
+	) {
+		return "agent";
+	}
+	return null;
 }
 
 function formatRecentMessagesForResolution(memories: Memory[]): string {
@@ -495,6 +602,26 @@ export async function findEntityByName(
 	]);
 	const indexedEntities = indexEntities(allEntities);
 	const referent = referentTextOf(message);
+
+	// Exact contextual self/agent references bind to the sender/agent before
+	// any ordinary identity lookup — a literal "Me"/"You" entity must not
+	// capture them (#24765). Once the referent is recognized as contextual,
+	// its target must be found in scope: falling through to the ordinary
+	// lookup would let a literal "Me"/"You" entity capture the reference
+	// exactly when the roster is incomplete.
+	const contextualTarget = contextualReferentTarget(referent);
+	if (contextualTarget) {
+		const contextualId =
+			contextualTarget === "sender" ? message.entityId : runtime.agentId;
+		const contextualEntity = allEntities.find(
+			(entity) => entity.id === contextualId,
+		);
+		if (contextualEntity) {
+			return contextualEntity;
+		}
+		return null;
+	}
+
 	const uniqueReferentHits = entitiesMatchingReferent(
 		indexedEntities,
 		referent,
@@ -561,11 +688,12 @@ export async function findEntityByName(
 		return null;
 	}
 
-	if (resolution.type === "EXACT_MATCH" && resolution.entityId) {
-		const matched = candidateById.get(resolution.entityId as UUID);
-		if (matched) {
-			return matched;
-		}
+	// Only the contract's decisive types may resolve. AMBIGUOUS and UNKNOWN
+	// are terminal unresolved results — their `matches` arrays are diagnostic
+	// context, not decisive evidence — and a missing or unsupported type is
+	// not a decisive response at all (#24765).
+	if (!resolution.type || !DECISIVE_RESOLUTION_TYPES.has(resolution.type)) {
+		return null;
 	}
 
 	let matchesArray: EntityMatch[] = [];
@@ -576,24 +704,70 @@ export async function findEntityByName(
 		matchesArray = Array.isArray(matchValue) ? matchValue : [matchValue];
 	}
 
+	// Decisive evidence must validate uniquely and agree on exactly one
+	// id-bearing in-scope entity. Every SUPPLIED identification field — the
+	// `entityId`/`resolvedId` for any decisive type (EXACT_MATCH included)
+	// and every match entry — must resolve to exactly one in-scope id-bearing
+	// candidate. A supplied field that resolves to zero, several, an
+	// out-of-scope id, an id-less candidate, or was malformed at the parse
+	// boundary invalidates the WHOLE response instead of being silently
+	// dropped while another field decides (#24765). Zero supplied fields is
+	// no evidence either.
+	const evidenceIds = new Set<UUID>();
+	let suppliedEvidence = false;
+	let invalidated =
+		parsedResolution.malformedMatches === true ||
+		parsedResolution.malformedEntityId === true ||
+		parsedResolution.conflictingEntityId === true;
+
+	if (resolution.entityId) {
+		suppliedEvidence = true;
+		const byId = candidateById.get(resolution.entityId as UUID);
+		if (byId) {
+			evidenceIds.add(byId.id);
+		} else {
+			invalidated = true;
+		}
+	}
+
 	for (const match of matchesArray) {
 		if (!match?.name) continue;
+		suppliedEvidence = true;
 		const matchName = normalizeEntityName(match.name);
 		const matchKey = stripAtPrefix(match.name);
-		const matchingEntity = indexedEntities.find((entry) =>
-			indexedEntityMatches(entry, matchName, matchKey),
-		)?.entity;
-		if (!matchingEntity) continue;
-		if (resolution.type === "RELATIONSHIP_MATCH") {
-			const interactionInfo = interactionData.find(
-				(data) => data.entity.id === matchingEntity.id,
-			);
-			if (interactionInfo && interactionInfo.count > 0) {
-				return matchingEntity;
-			}
+		const matching = indexedEntities
+			.filter((entry) => indexedEntityMatches(entry, matchName, matchKey))
+			.map((entry) => entry.entity);
+		// A label naming zero or several candidates, or an id-less candidate,
+		// invalidates the response; it must never silently resolve to the
+		// first index hit (#24765).
+		if (matching.length !== 1) {
+			invalidated = true;
 			continue;
 		}
-		return matchingEntity;
+		const labeled = matching[0] as Entity;
+		if (!labeled.id) {
+			invalidated = true;
+			continue;
+		}
+		evidenceIds.add(labeled.id);
+	}
+
+	if (suppliedEvidence && !invalidated && evidenceIds.size === 1) {
+		const evidenceId = [...evidenceIds][0] as UUID;
+		const resolved = candidateById.get(evidenceId);
+		if (resolved) {
+			if (resolution.type === "RELATIONSHIP_MATCH") {
+				const interactionInfo = interactionData.find(
+					(data) => data.entity.id === resolved.id,
+				);
+				if (interactionInfo && interactionInfo.count > 0) {
+					return resolved;
+				}
+			} else {
+				return resolved;
+			}
+		}
 	}
 
 	return null;
@@ -630,7 +804,29 @@ export async function getEntityDetails({
 
 			for (const entity of roomEntities) {
 				const entityId = entity.id;
-				if (!entityId || uniqueEntities.has(entityId)) continue;
+				// An optional-but-absent id on a persisted room entity is a storage
+				// integrity defect, not a skippable row: silently dropping it hands
+				// downstream model context a partial roster with no error. Reject
+				// typed so provider boundaries degrade visibly (#24765). This is
+				// not error-policy:J3 — the input is a runtime-owned DB read, not
+				// untrusted request data, so the invariant fails fast here.
+				if (!entityId) {
+					throw new ElizaError(
+						`Room ${roomId} contains an entity without an id (names: ${
+							entity.names?.length ? entity.names.join(", ") : "(none)"
+						})`,
+						{
+							code: "ROOM_ENTITY_ID_MISSING",
+							severity: "fatal",
+							context: {
+								roomId,
+								agentId: runtime.agentId,
+								names: entity.names ?? [],
+							},
+						},
+					);
+				}
+				if (uniqueEntities.has(entityId)) continue;
 
 				const mergedData: Record<string, unknown> = {};
 				for (const component of entity.components || []) {
