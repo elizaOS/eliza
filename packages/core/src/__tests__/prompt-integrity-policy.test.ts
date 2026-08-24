@@ -350,6 +350,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/collapsed\.slice\(/,
 		/userReferenceLogView/,
 	],
+	"plugins/plugin-app-control/src/actions/app-create.ts": [
+		/tokenize\(intent\)\.slice\(/,
+		/displayLine\.replace\([^\n]+\.slice\(/,
+	],
+	"plugins/plugin-app-control/src/actions/views-create.ts": [
+		/tokenize\(intent\)\.slice\(/,
+		/displayLine\.replace\([^\n]+\.slice\(/,
+	],
+	"packages/training/scripts/eval/eliza1_eval_suite.py": [
+		/toks\s*=\s*toks\[:/,
+	],
 	"plugins/plugin-agent-skills/src/actions/parse-helpers.ts": [
 		/truncateWellFormed/,
 	],
