@@ -120,7 +120,7 @@ function findTerminatorEnd(text: string, start: number): number {
     const ch = text[i] ?? "";
 
     // Newline acts as a soft terminator (e.g. message body broken into lines).
-    if (ch === "\n") {
+    if (ch === "\n" || ch === "\r") {
       // Neither the delimiter nor horizontal spacing before it is spoken.
       let end = i - 1;
       while (end >= start && /\s/u.test(text[end] ?? "")) end--;
@@ -247,7 +247,7 @@ export function wordCount(s: string): number {
     //   - decimal number (digits . digits, possibly multi-segment)
     //   - dotted acronym (≥2 single-letter dot pairs)
     //   - regular word with optional hyphen/apostrophe internal joiners
-    /\p{N}+(?:\.\p{N}+)+|(?:\p{L}\.){2,}|[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu,
+    /\p{N}+(?:\.\p{N}+)+|(?:\p{L}\.){2,}|[\p{L}\p{N}]+(?:[’'‘-][\p{L}\p{N}]+)*/gu,
   );
   return matches ? matches.length : 0;
 }
