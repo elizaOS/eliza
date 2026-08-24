@@ -193,6 +193,116 @@ describe("SwarmCoordinatorService ACP bind race (coordinator silent give-up)", (
     await service.stop();
   });
 
+  it("fans out parent-agent failure receipts without changing legacy task status", async () => {
+    const { runtime, registerAcp } = makeRuntime();
+    const { acp, emit } = makeFakeAcp();
+    registerAcp(acp);
+    const service = new SwarmCoordinatorService(runtime);
+    (service as unknown as { bindToAcp: () => void }).bindToAcp();
+    await vi.advanceTimersByTimeAsync(1);
+
+    const seen: string[] = [];
+    service.subscribe((event) => seen.push(event.type));
+    emit("s-parent-failure", "ready", { label: "worker" });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(service.getTaskContext("s-parent-failure")?.status).toBe("ready");
+
+    emit("s-parent-failure", "parent_agent_failure", {
+      type: "parent_agent_failure",
+      version: 1,
+      brokerSuccess: false,
+      delivered: true,
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        transient: true,
+        message: "Shell execution failed.",
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(seen).toContain("parent_agent_failure");
+    expect(service.getTaskContext("s-parent-failure")?.status).toBe("ready");
+    await service.stop();
+  });
+
+  it("keeps terminal eviction and dedupe markers through a late parent-agent failure", async () => {
+    const handlers: Array<
+      (sessionId: string, event: string, data: unknown) => void
+    > = [];
+    const sessionId = "s-terminal-parent-failure";
+    const acp = {
+      onSessionEvent(
+        handler: (sessionId: string, event: string, data: unknown) => void,
+      ) {
+        handlers.push(handler);
+        return () => {};
+      },
+      getSession: async () => ({
+        id: sessionId,
+        agentType: "codex",
+        status: "completed",
+        metadata: {
+          originRoomId: "11111111-1111-4111-8111-111111111111",
+          taskRoomId: "22222222-2222-4222-8222-222222222222",
+        },
+      }),
+    };
+    const runtime = {
+      getService: (serviceType: string) => {
+        if (serviceType === AcpService.serviceType) return acp;
+        if (serviceType === "ACPX_SUB_AGENT_ROUTER") {
+          return { isActive: () => true };
+        }
+        return null;
+      },
+    } as unknown as IAgentRuntime;
+    const service = new SwarmCoordinatorService(runtime);
+    (service as unknown as { bindToAcp: () => void }).bindToAcp();
+    const completions = vi.fn();
+    service.setSwarmCompleteCallback(completions);
+    const emit = (event: string, data: unknown) => {
+      for (const handler of [...handlers]) handler(sessionId, event, data);
+    };
+    const internals = service as unknown as {
+      legacyTaskEvictionTimers: Map<string, ReturnType<typeof setTimeout>>;
+      routerCededTerminalSessions: Set<string>;
+      validatorPassSessions: Set<string>;
+    };
+
+    emit("task_complete", { response: "router already relayed completion" });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(internals.legacyTaskEvictionTimers.has(sessionId)).toBe(true);
+    expect(internals.routerCededTerminalSessions.has(sessionId)).toBe(true);
+    // A validated terminal uses the same late-teardown suppression window.
+    // Seed that sibling marker so this event ordering proves neither terminal
+    // path is accidentally treated as a new resumed turn.
+    internals.validatorPassSessions.add(sessionId);
+
+    emit("parent_agent_failure", {
+      type: "parent_agent_failure",
+      version: 1,
+      brokerSuccess: false,
+      delivered: true,
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        transient: false,
+        message: "late broker receipt",
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(internals.legacyTaskEvictionTimers.has(sessionId)).toBe(true);
+    expect(internals.routerCededTerminalSessions.has(sessionId)).toBe(true);
+    expect(internals.validatorPassSessions.has(sessionId)).toBe(true);
+
+    emit("stopped", { response: "teardown" });
+    emit("stopped", { response: "duplicate teardown" });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(completions).not.toHaveBeenCalled();
+
+    await service.stop();
+  });
+
   it("marks UNBOUND loudly when ACP fails to start (load-promise rejects)", async () => {
     const errorSpy = vi
       .spyOn(logger, "error")
