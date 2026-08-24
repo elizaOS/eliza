@@ -62,7 +62,10 @@ export function describeCron(expression: string): string | null {
   // Every-N-minutes form
   const everyN = minPart.match(/^\*\/(\d+)$/);
   if (everyN && hourPart === "*" && domPart === "*" && dowPart === "*") {
-    return `Every ${everyN[1]} minutes`;
+    const interval = Number.parseInt(everyN[1] ?? "", 10);
+    if (!Number.isFinite(interval) || interval < 1 || interval > 59)
+      return null;
+    return `Every ${interval} minutes`;
   }
 
   if (
