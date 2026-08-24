@@ -1,9 +1,40 @@
 /** Covers Cerebras schema normalization across every JSON-schema child form. */
 import { describe, expect, it } from "vitest";
+import { ElizaError } from "../../errors";
+import * as cerebrasSchemaCompat from "../schema-compat";
 import {
 	normalizeSchemaForCerebras,
 	sanitizeFunctionNameForCerebras,
 } from "../schema-compat";
+
+const {
+	CEREBRAS_SCHEMA_UNBOUNDED,
+	MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+	MAX_CEREBRAS_SCHEMA_WALK_NODES,
+	cloneSchemaForBoundedTransport,
+	isCerebrasSchemaUnbounded,
+} = cerebrasSchemaCompat;
+
+/**
+ * Builds an object chain whose deepest node sits exactly `depth` levels below
+ * the root, so callers can probe the walk-depth boundary precisely.
+ */
+function nestedObjectChain(depth: number): Record<string, unknown> {
+	let node: Record<string, unknown> = { type: "string" };
+	for (let level = 0; level < depth; level += 1) {
+		node = { type: "object", properties: { inner: node } };
+	}
+	return node;
+}
+
+function captureThrow(attempt: () => unknown): unknown {
+	try {
+		attempt();
+	} catch (error) {
+		return error;
+	}
+	return undefined;
+}
 
 describe("normalizeSchemaForCerebras", () => {
 	it("closes empty-properties object schemas (keeps properties:{} + additionalProperties:false)", () => {
@@ -315,5 +346,338 @@ describe("sanitizeFunctionNameForCerebras", () => {
 		expect(sanitizeFunctionNameForCerebras("ns:fn")).toBe("ns_fn");
 		expect(sanitizeFunctionNameForCerebras("a/b/c")).toBe("a_b_c");
 		expect(sanitizeFunctionNameForCerebras("a b c")).toBe("a_b_c");
+	});
+});
+
+describe("sanitizeFunctionNameForCerebras edge inputs", () => {
+	it("returns the empty string unchanged", () => {
+		expect(sanitizeFunctionNameForCerebras("")).toBe("");
+	});
+
+	it("replaces each disallowed character with exactly one underscore", () => {
+		expect(sanitizeFunctionNameForCerebras("a!@#b")).toBe("a___b");
+		expect(sanitizeFunctionNameForCerebras("café table")).toBe("caf__table");
+	});
+
+	it("is idempotent on already-sanitized output", () => {
+		const once = sanitizeFunctionNameForCerebras("ns:fetch.all v2/β");
+		expect(sanitizeFunctionNameForCerebras(once)).toBe(once);
+	});
+});
+
+describe("isCerebrasSchemaUnbounded", () => {
+	it("recognizes the walk-budget rejection raised by the normalizer", () => {
+		const cyclic: Record<string, unknown> = { type: "object" };
+		cyclic.not = cyclic;
+		const caught = captureThrow(() => normalizeSchemaForCerebras(cyclic));
+		expect(caught).toBeInstanceOf(ElizaError);
+		expect((caught as ElizaError).code).toBe(CEREBRAS_SCHEMA_UNBOUNDED);
+		expect(isCerebrasSchemaUnbounded(caught)).toBe(true);
+	});
+
+	it("rejects plain errors, other ElizaErrors, and non-error values", () => {
+		expect(isCerebrasSchemaUnbounded(new Error("plain"))).toBe(false);
+		expect(
+			isCerebrasSchemaUnbounded(new ElizaError("other", { code: "OTHER" })),
+		).toBe(false);
+		expect(isCerebrasSchemaUnbounded(CEREBRAS_SCHEMA_UNBOUNDED)).toBe(false);
+		expect(isCerebrasSchemaUnbounded(null)).toBe(false);
+		expect(isCerebrasSchemaUnbounded(undefined)).toBe(false);
+	});
+});
+
+describe("normalizeSchemaForCerebras walk budgets", () => {
+	it("accepts a chain whose deepest node sits exactly at the depth limit", () => {
+		const schema = nestedObjectChain(MAX_CEREBRAS_SCHEMA_WALK_DEPTH);
+		const result = normalizeSchemaForCerebras(schema) as Record<
+			string,
+			unknown
+		>;
+		expect(result.additionalProperties).toBe(false);
+		let deepest = (result.properties as Record<string, unknown>)
+			.inner as Record<string, unknown>;
+		while (
+			deepest.properties &&
+			(deepest.properties as Record<string, unknown>).inner
+		) {
+			expect(deepest.additionalProperties).toBe(false);
+			deepest = (deepest.properties as Record<string, unknown>).inner as Record<
+				string,
+				unknown
+			>;
+		}
+		expect(deepest).toEqual({ type: "string" });
+	});
+
+	it("fails closed one level past the depth limit", () => {
+		const caught = captureThrow(() =>
+			normalizeSchemaForCerebras(nestedObjectChain(65)),
+		);
+		expect(isCerebrasSchemaUnbounded(caught)).toBe(true);
+		const context = (caught as ElizaError).context;
+		expect(context?.depth).toBe(65);
+		expect(context?.max).toBe(MAX_CEREBRAS_SCHEMA_WALK_DEPTH);
+	});
+
+	it("trips the aggregate node budget before touching a huge sparse array", () => {
+		const caught = captureThrow(() =>
+			normalizeSchemaForCerebras({
+				type: "array",
+				items: new Array(MAX_CEREBRAS_SCHEMA_WALK_NODES + 1),
+			}),
+		);
+		expect(isCerebrasSchemaUnbounded(caught)).toBe(true);
+		expect((caught as ElizaError).context?.maxNodes).toBe(
+			MAX_CEREBRAS_SCHEMA_WALK_NODES,
+		);
+	});
+
+	it("reports a self-referential schema as a cycle", () => {
+		const cyclic: Record<string, unknown> = { type: "object" };
+		cyclic.not = cyclic;
+		const caught = captureThrow(() => normalizeSchemaForCerebras(cyclic));
+		expect(isCerebrasSchemaUnbounded(caught)).toBe(true);
+		expect((caught as ElizaError).context?.cycle).toBe(true);
+	});
+
+	it("lets siblings share one sub-schema without tripping cycle detection", () => {
+		const shared = { type: "string" };
+		const result = normalizeSchemaForCerebras({
+			type: "object",
+			properties: { a: shared, b: shared },
+		}) as Record<string, unknown>;
+		const props = result.properties as Record<string, unknown>;
+		expect(props.a).toEqual({ type: "string" });
+		expect(props.b).toEqual({ type: "string" });
+		expect(props.a).not.toBe(props.b);
+	});
+
+	it("converts an accessor descriptor into the unbounded failure", () => {
+		const hostile: Record<string, unknown> = { type: "object" };
+		Object.defineProperty(hostile, "properties", {
+			enumerable: true,
+			get() {
+				return {};
+			},
+		});
+		const caught = captureThrow(() => normalizeSchemaForCerebras(hostile));
+		expect(isCerebrasSchemaUnbounded(caught)).toBe(true);
+		const context = (caught as ElizaError).context;
+		expect(context?.accessor).toBe(true);
+		expect(context?.key).toBe("properties");
+	});
+
+	it("contains a hostile array proxy without leaking its raw TypeError", () => {
+		const proxyArray = new Proxy([], {
+			getPrototypeOf() {
+				throw new TypeError("prototype inspection denied");
+			},
+		});
+		const caught = captureThrow(() =>
+			normalizeSchemaForCerebras({ type: "array", items: proxyArray }),
+		);
+		expect(caught).toBeInstanceOf(ElizaError);
+		expect(caught).not.toBeInstanceOf(TypeError);
+		expect(isCerebrasSchemaUnbounded(caught)).toBe(true);
+	});
+
+	it("preserves holes while normalizing sparse arrays", () => {
+		const sparse: unknown[] = new Array(2);
+		sparse[1] = { type: "object" };
+		const result = normalizeSchemaForCerebras({
+			type: "array",
+			items: sparse,
+		}) as Record<string, unknown>;
+		const items = result.items as unknown[];
+		expect(items).toHaveLength(2);
+		expect(0 in items).toBe(false);
+		expect(items[1]).toEqual({
+			type: "object",
+			properties: {},
+			additionalProperties: false,
+		});
+	});
+});
+
+describe("normalizeSchemaForCerebras illegal root wrapping", () => {
+	it("wraps a scalar root under properties.value with required", () => {
+		expect(normalizeSchemaForCerebras({ type: "string" }, true)).toEqual({
+			type: "object",
+			properties: { value: { type: "string" } },
+			required: ["value"],
+			additionalProperties: false,
+		});
+	});
+
+	it("wraps an enum root and carries the enum values verbatim", () => {
+		expect(
+			normalizeSchemaForCerebras({ enum: ["read", "write"] }, true),
+		).toEqual({
+			type: "object",
+			properties: { value: { enum: ["read", "write"] } },
+			required: ["value"],
+			additionalProperties: false,
+		});
+	});
+
+	it("wraps a not-root and keeps walking the wrapped sub-schema", () => {
+		expect(
+			normalizeSchemaForCerebras({ not: { type: "string" } }, true),
+		).toEqual({
+			type: "object",
+			properties: { value: { not: { type: "string" } } },
+			required: ["value"],
+			additionalProperties: false,
+		});
+	});
+
+	it("wraps a oneOf root and folds it into anyOf inside the wrapper", () => {
+		const result = normalizeSchemaForCerebras(
+			{ oneOf: [{ type: "string" }, { type: "number" }] },
+			true,
+		) as Record<string, unknown>;
+		const value = (result.properties as Record<string, unknown>)
+			.value as Record<string, unknown>;
+		expect(value.oneOf).toBeUndefined();
+		expect(value.anyOf).toEqual([{ type: "string" }, { type: "number" }]);
+		expect(result.required).toEqual(["value"]);
+	});
+
+	it("gives a non-strict tool a bare open object for a missing root", () => {
+		expect(
+			normalizeSchemaForCerebras(undefined, true, { strict: false }),
+		).toEqual({ type: "object" });
+	});
+});
+
+describe("normalizeSchemaForCerebras strict shaping edges", () => {
+	it("keeps a dangling required list while injecting empty properties", () => {
+		const result = normalizeSchemaForCerebras({
+			type: "object",
+			required: ["ghost"],
+		}) as Record<string, unknown>;
+		expect(result.properties).toEqual({});
+		expect(result.required).toEqual(["ghost"]);
+		expect(result.additionalProperties).toBe(false);
+	});
+
+	it("treats an empty anyOf array as no alternatives", () => {
+		const result = normalizeSchemaForCerebras({
+			type: "object",
+			anyOf: [],
+		}) as Record<string, unknown>;
+		expect(result.properties).toEqual({});
+		expect(result.anyOf).toEqual([]);
+		expect(result.additionalProperties).toBe(false);
+	});
+});
+
+describe("cloneSchemaForBoundedTransport", () => {
+	it("clones declared shape verbatim without applying Cerebras semantics", () => {
+		const input = {
+			type: "object",
+			additionalProperties: { type: "string" },
+		};
+		const out = cloneSchemaForBoundedTransport(input) as Record<
+			string,
+			unknown
+		>;
+		expect(out).toEqual(input);
+		expect(out).not.toBe(input);
+		expect(out.additionalProperties).toEqual({ type: "string" });
+		expect(out.properties).toBeUndefined();
+	});
+
+	it("passes primitives and bare arrays through by reference", () => {
+		expect(cloneSchemaForBoundedTransport(null)).toBe(null);
+		expect(cloneSchemaForBoundedTransport("text")).toBe("text");
+		expect(cloneSchemaForBoundedTransport(42)).toBe(42);
+		const arrayRoot = [{ type: "string" }];
+		expect(cloneSchemaForBoundedTransport(arrayRoot)).toBe(arrayRoot);
+	});
+
+	it("preserves holes so tuple positions stay distinguishable", () => {
+		const sparse: unknown[] = new Array(2);
+		sparse[1] = { type: "object" };
+		const out = cloneSchemaForBoundedTransport({
+			type: "array",
+			items: sparse,
+		}) as Record<string, unknown>;
+		const items = out.items as unknown[];
+		expect(Array.isArray(items)).toBe(true);
+		expect(items).toHaveLength(2);
+		expect(0 in items).toBe(false);
+		expect(items[1]).toEqual({ type: "object" });
+		expect(items).not.toBe(sparse);
+	});
+
+	it("carries annotation data by reference without descending into it", () => {
+		const defaultValue = { nested: ["a", "b"] };
+		const examples = [[1, 2]];
+		const constValue = { k: 1 };
+		const extensionValue = { deep: true };
+		const requiredList = ["x"];
+		const input = {
+			type: "string",
+			default: defaultValue,
+			examples,
+			const: constValue,
+			required: requiredList,
+			"x-extension": extensionValue,
+		};
+		const out = cloneSchemaForBoundedTransport(input) as Record<
+			string,
+			unknown
+		>;
+		expect(out.default).toBe(defaultValue);
+		expect(out.examples).toBe(examples);
+		expect(out.const).toBe(constValue);
+		expect(out.required).toBe(requiredList);
+		expect(out["x-extension"]).toBe(extensionValue);
+	});
+
+	it("leaves a deeply frozen input untouched and still produces a fresh clone", () => {
+		const input = Object.freeze({
+			type: "object",
+			properties: Object.freeze({ q: Object.freeze({ type: "string" }) }),
+		});
+		const out = cloneSchemaForBoundedTransport(input) as Record<
+			string,
+			unknown
+		>;
+		expect(out).toEqual(input);
+		expect(out).not.toBe(input);
+		expect((out.properties as Record<string, unknown>).q).not.toBe(
+			(input.properties as Record<string, unknown>).q,
+		);
+	});
+
+	it("fails closed on a cyclic graph", () => {
+		const cyclic: Record<string, unknown> = { type: "object" };
+		cyclic.not = cyclic;
+		const caught = captureThrow(() => cloneSchemaForBoundedTransport(cyclic));
+		expect(isCerebrasSchemaUnbounded(caught)).toBe(true);
+		expect((caught as ElizaError).context?.clone).toBe(true);
+	});
+
+	it("enforces the same depth budget as the normalizer", () => {
+		const atLimit = cloneSchemaForBoundedTransport(
+			nestedObjectChain(MAX_CEREBRAS_SCHEMA_WALK_DEPTH),
+		);
+		expect(atLimit).toEqual(nestedObjectChain(MAX_CEREBRAS_SCHEMA_WALK_DEPTH));
+		const caught = captureThrow(() =>
+			cloneSchemaForBoundedTransport(nestedObjectChain(65)),
+		);
+		expect(isCerebrasSchemaUnbounded(caught)).toBe(true);
+	});
+
+	it("enforces the aggregate node budget", () => {
+		const caught = captureThrow(() =>
+			cloneSchemaForBoundedTransport({
+				type: "array",
+				items: new Array(MAX_CEREBRAS_SCHEMA_WALK_NODES + 1),
+			}),
+		);
+		expect(isCerebrasSchemaUnbounded(caught)).toBe(true);
 	});
 });
