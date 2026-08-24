@@ -59,4 +59,37 @@ describe("checkRateLimit", () => {
     // Still only 6 minutes into hourly-op's 1-hour window: must stay blocked.
     expect(checkRateLimit("hourly-op", hourly).allowed).toBe(false);
   });
+
+  it("tracks independent limits across multiple distinct keys", () => {
+    const config = { maxRequests: 1, windowMs: MINUTE };
+    expect(checkRateLimit("user-a", config).allowed).toBe(true);
+    expect(checkRateLimit("user-a", config).allowed).toBe(false);
+
+    // user-b is completely independent
+    expect(checkRateLimit("user-b", config).allowed).toBe(true);
+    expect(checkRateLimit("user-b", config).allowed).toBe(false);
+  });
+
+  it("resetRateLimits clears active buckets immediately", () => {
+    const config = { maxRequests: 1, windowMs: MINUTE };
+    expect(checkRateLimit("key-x", config).allowed).toBe(true);
+    expect(checkRateLimit("key-x", config).allowed).toBe(false);
+
+    resetRateLimits();
+
+    expect(checkRateLimit("key-x", config).allowed).toBe(true);
+  });
+
+  it("adapts when a key's windowMs is dynamically updated", () => {
+    const configShort = { maxRequests: 2, windowMs: MINUTE };
+    expect(checkRateLimit("dyn-key", configShort).allowed).toBe(true);
+    expect(checkRateLimit("dyn-key", configShort).allowed).toBe(true);
+    expect(checkRateLimit("dyn-key", configShort).allowed).toBe(false);
+
+    // Switch key to a 5-second window
+    const configFiveSec = { maxRequests: 2, windowMs: 5_000 };
+    vi.advanceTimersByTime(6_000);
+
+    expect(checkRateLimit("dyn-key", configFiveSec).allowed).toBe(true);
+  });
 });
