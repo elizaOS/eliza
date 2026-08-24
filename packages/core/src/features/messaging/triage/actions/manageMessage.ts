@@ -157,7 +157,7 @@ export const manageMessageAction: Action = {
 					decision.status === "pending"
 						? `${preview} Reply yes to confirm or no to cancel.`
 						: "Unsubscribe cancelled.";
-				if (callback) {
+				if (decision.status === "cancelled" && callback) {
 					await callback({ text, action: "MESSAGE" });
 				}
 				return {

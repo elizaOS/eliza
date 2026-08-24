@@ -419,11 +419,17 @@ describe("manageMessageAction", () => {
 
 	it("requires a second turn before unsubscribe and cancels a non-confirmation", async () => {
 		const runtime = createRuntime();
+		const delivered: Content[] = [];
+		const callback: HandlerCallback = async (content) => {
+			delivered.push(content);
+			return [];
+		};
 		const pending = await manageMessageAction.handler(
 			runtime,
 			turn,
 			undefined,
 			options({ messageId: "direct-1", operation: "unsubscribe" }),
+			callback,
 		);
 
 		expect(pending).toMatchObject({
@@ -437,12 +443,20 @@ describe("manageMessageAction", () => {
 			},
 		});
 		expect(adapter.managed).toEqual([]);
+		expect(delivered).toEqual([
+			{
+				text: "Unsubscribe from the sender of message direct-1?",
+				source: "gmail",
+			},
+		]);
+		delivered.length = 0;
 
 		const cancelled = await manageMessageAction.handler(
 			runtime,
 			{ ...turn, content: { ...turn.content, text: "no" } } as Memory,
 			undefined,
 			options({ messageId: "direct-1", operation: "unsubscribe" }),
+			callback,
 		);
 
 		expect(cancelled).toMatchObject({
@@ -451,6 +465,9 @@ describe("manageMessageAction", () => {
 			data: { requiresConfirmation: false, cancelled: true },
 		});
 		expect(adapter.managed).toEqual([]);
+		expect(delivered).toEqual([
+			{ text: "Unsubscribe cancelled.", action: "MESSAGE" },
+		]);
 	});
 
 	it("executes unsubscribe after a matching confirmation", async () => {
