@@ -8,7 +8,7 @@ import {
   resolveEmbedSessionSecret,
   resolveEmbedSessionSecretForRuntime,
   verifyEmbedSessionToken,
-} from "./embed-session-token.ts";
+} from "../embed-session-token.ts";
 
 describe("isEmbedRole", () => {
   it("accepts only the elevated role set", () => {
