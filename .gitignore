@@ -767,6 +767,8 @@ modelcontextprotocol/
 
 *storybook.log
 storybook-static
+storybook-static-*
+packages/ui/test/story-gate/output-*/
 .next-dev/
 .env.preview
 .env.local.bak-*
