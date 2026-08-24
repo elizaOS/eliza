@@ -134,11 +134,13 @@ import {
   type AcpCapacity,
   type AcpEventCallback,
   type AcpJsonRpcMessage,
+  type AcpTerminalFailure,
   type AcpToolCall,
   type AgentType,
   type ApprovalPreset,
   type AvailableAgentInfo,
   type PromptResult,
+  readAcpTerminalFailure,
   type SendOptions,
   SessionCapError,
   type SessionEventCallback,
@@ -230,6 +232,8 @@ type RunResult = {
   stderr: string;
   finalText: string;
   stopReason?: string;
+  terminalFailure?: AcpTerminalFailure;
+  protocolError?: string;
   cancelled?: boolean;
   durationMs: number;
 };
@@ -950,7 +954,15 @@ export class AcpService extends Service {
   // the completed turn through the session's next task metadata (#18490).
   private readonly promptTurns = new Map<
     string,
-    { id: string; sessionSnapshot: SessionInfo }
+    {
+      id: string;
+      sessionSnapshot: SessionInfo;
+      settled: Promise<void>;
+      resolveSettled: () => void;
+      cancelRequested: boolean;
+      cancellationRequested: Promise<void>;
+      resolveCancellationRequested: () => void;
+    }
   >();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
@@ -2388,17 +2400,31 @@ export class AcpService extends Service {
     if (this.promptTurns.has(sessionId)) {
       throw new Error(`ACP session is already busy: ${sessionId}`);
     }
+    let resolveSettled: () => void = () => undefined;
+    const settled = new Promise<void>((resolve) => {
+      resolveSettled = resolve;
+    });
+    let resolveCancellationRequested: () => void = () => undefined;
+    const cancellationRequested = new Promise<void>((resolve) => {
+      resolveCancellationRequested = resolve;
+    });
     const turn = {
       id: randomUUID(),
       sessionSnapshot: {
         ...session,
         metadata: session.metadata ? { ...session.metadata } : undefined,
       },
+      settled,
+      resolveSettled,
+      cancelRequested: false,
+      cancellationRequested,
+      resolveCancellationRequested,
     };
     this.promptTurns.set(sessionId, turn);
     try {
       return await this.sendPromptTurn(session, text, opts);
     } finally {
+      turn.resolveSettled();
       if (this.promptTurns.get(sessionId)?.id === turn.id) {
         this.promptTurns.delete(sessionId);
       }
@@ -2412,13 +2438,44 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     const sessionId = session.id;
     const transportMode = sessionTransportMode(session, this.transportMode);
+    const startedAt = Date.now();
+    const settlePreProcessCancellation = async (): Promise<PromptResult> => {
+      await this.store.updateStatus(sessionId, "cancelled");
+      this.emitSessionEvent(sessionId, "cancelled", {
+        sessionId,
+        response: "",
+        exitCode: null,
+        signal: null,
+      });
+      return {
+        sessionId,
+        response: "",
+        finalText: "",
+        stopReason: "cancelled",
+        durationMs: Date.now() - startedAt,
+        exitCode: null,
+        signal: null,
+      };
+    };
+    const raceCancellation = async <T>(operation: Promise<T>) => {
+      const turn = this.promptTurns.get(sessionId);
+      if (!turn) return { cancelled: false as const, value: await operation };
+      if (turn.cancelRequested) return { cancelled: true as const };
+      return Promise.race([
+        operation.then((value) => ({ cancelled: false as const, value })),
+        turn.cancellationRequested.then(() => ({ cancelled: true as const })),
+      ]);
+    };
     if (
       transportMode !== "native" &&
       session.acpxSessionId &&
       !this.nativeClients.has(sessionId)
     ) {
-      const exists = await this.hasAcpxSessionState(session.acpxSessionId);
-      if (!exists) {
+      const stateCheck = await raceCancellation(
+        this.hasAcpxSessionState(session.acpxSessionId),
+      );
+      if (stateCheck.cancelled) return settlePreProcessCancellation();
+      if (!stateCheck.value) {
         this.logSubAgentStateLost(session, "send-prompt");
         const message =
           "Sub-agent state was lost (process exited without persisting). No automatic action taken.";
@@ -2430,7 +2487,6 @@ export class AcpService extends Service {
         throw new Error(message);
       }
     }
-    const startedAt = Date.now();
     const promptModel =
       session.agentType === "claude"
         ? normalizeClaudeAcpModelId(opts.model)
@@ -2463,7 +2519,6 @@ export class AcpService extends Service {
       }
     }
     this.turnOutputBuffers.set(sessionId, []);
-    await this.store.updateStatus(sessionId, "busy");
     const args = this.baseArgs({
       workdir: session.workdir,
       approvalPreset: session.approvalPreset,
@@ -2484,16 +2539,32 @@ export class AcpService extends Service {
     // session's selected-account credentials (the native transport keeps the
     // spawn-time client, which already has them) and the per-session git index
     // env that keeps same-repo sessions from sharing one mutable index file.
-    let promptCredentials: Record<string, string> | undefined;
-    try {
-      promptCredentials = await this.accountCredentialsForSession(session);
-    } catch (err) {
+    const credentialResult = await raceCancellation(
+      this.accountCredentialsForSession(session),
+    ).catch((error: unknown) => ({
+      cancelled: false as const,
+      error,
+    }));
+    if (credentialResult.cancelled) return settlePreProcessCancellation();
+    if ("error" in credentialResult) {
       // error-policy:J1 The CLI prompt boundary persists the typed account
       // failure before propagating it; no subprocess may inherit ambient
       // credentials after a session's pinned account pool is exhausted.
-      const message = errorMessage(err);
-      await this.recordAccountCredentialFailure(session, err, message);
-      throw err;
+      const message = errorMessage(credentialResult.error);
+      await this.recordAccountCredentialFailure(
+        session,
+        credentialResult.error,
+        message,
+      );
+      throw credentialResult.error;
+    }
+    const promptCredentials = credentialResult.value;
+    if (this.promptTurns.get(sessionId)?.cancelRequested) {
+      return settlePreProcessCancellation();
+    }
+    await this.store.updateStatus(sessionId, "busy");
+    if (this.promptTurns.get(sessionId)?.cancelRequested) {
+      return settlePreProcessCancellation();
     }
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
@@ -2519,12 +2590,14 @@ export class AcpService extends Service {
     });
 
     const stopReason =
-      result.stopReason ??
-      (result.cancelled
-        ? "cancelled"
-        : result.code === 0
-          ? "end_turn"
-          : "error");
+      result.terminalFailure || result.protocolError
+        ? "error"
+        : (result.stopReason ??
+          (result.cancelled
+            ? "cancelled"
+            : result.code === 0
+              ? "end_turn"
+              : "error"));
     const promptResult: PromptResult = {
       sessionId,
       response: result.finalText,
@@ -2533,17 +2606,42 @@ export class AcpService extends Service {
       durationMs: result.durationMs || Date.now() - startedAt,
       exitCode: result.code,
       signal: result.signal,
-      ...(result.code !== 0 && !result.cancelled
-        ? { error: this.classifyExitError(result.code, result.stderr) }
-        : {}),
+      ...(result.terminalFailure
+        ? {
+            error: result.terminalFailure.message,
+            terminalFailure: result.terminalFailure,
+          }
+        : result.protocolError
+          ? { error: result.protocolError }
+          : result.code !== 0 && !result.cancelled
+            ? { error: this.classifyExitError(result.code, result.stderr) }
+            : {}),
     };
+
+    if (result.terminalFailure || result.protocolError) {
+      // An authoritative failed-turn receipt or invalid protocol result was
+      // observed before the subprocess closed. It outranks a later cancel race
+      // so the event, durable status, and returned result all remain an error.
+      await this.store.updateStatus(
+        sessionId,
+        "errored",
+        promptResult.error ?? "ACP prompt failed",
+      );
+      return promptResult;
+    }
 
     if (result.cancelled || stopReason === "cancelled") {
       await this.store.updateStatus(sessionId, "cancelled");
       return promptResult;
     }
 
-    if (result.code === 0 && stopReason !== "error") {
+    if (
+      (result.code === 0 || result.code === null) &&
+      (stopReason !== "error" || result.finalText.trim().length > 0)
+    ) {
+      // Preserve the legacy untyped ACP heuristic: an error stop reason after
+      // a captured deliverable remains a completion. Typed and malformed
+      // receipts returned above before they can enter this branch.
       await this.store.update(sessionId, {
         status: "ready",
         lastActivityAt: new Date(),
@@ -2565,6 +2663,32 @@ export class AcpService extends Service {
   }
 
   async cancelSession(sessionId: string): Promise<void> {
+    const ownedPromptTurn = this.promptTurns.get(sessionId);
+    if (
+      ownedPromptTurn &&
+      sessionTransportMode(
+        ownedPromptTurn.sessionSnapshot,
+        this.transportMode,
+      ) !== "native"
+    ) {
+      ownedPromptTurn.cancelRequested = true;
+      ownedPromptTurn.resolveCancellationRequested();
+      const active = this.activeProcesses.get(sessionId);
+      if (active) {
+        active.cancelled = true;
+        this.terminateProcess(sessionId, active);
+      }
+      // Consult prompt ownership before any store lookup or process lookup.
+      // The turn spans setup, child execution, close, and durable settlement,
+      // so no fallback acpx cancel or competing status write may begin here.
+      await ownedPromptTurn.settled;
+      this.workspaceRegistry.markTerminal(
+        ownedPromptTurn.sessionSnapshot.workdir,
+      );
+      void this.revokeModelLease(sessionId, "cancelSession");
+      await this.removeOwnedGitIndex(ownedPromptTurn.sessionSnapshot);
+      return;
+    }
     const session = await this.requireSession(sessionId);
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (transportMode === "native") {
@@ -2608,23 +2732,17 @@ export class AcpService extends Service {
       await this.removeOwnedGitIndex(session);
       return;
     }
-    const active = this.activeProcesses.get(sessionId);
-    if (active) {
-      active.cancelled = true;
-      this.terminateProcess(sessionId, active);
-    } else {
-      const args = this.agentCommandArgs(session.agentType, [
-        "cancel",
-        "-s",
-        session.name ?? session.id,
-      ]);
-      await this.runAcpx({
-        sessionId,
-        agentType: session.agentType,
-        workdir: session.workdir,
-        args,
-      });
-    }
+    const args = this.agentCommandArgs(session.agentType, [
+      "cancel",
+      "-s",
+      session.name ?? session.id,
+    ]);
+    await this.runAcpx({
+      sessionId,
+      agentType: session.agentType,
+      workdir: session.workdir,
+      args,
+    });
     await this.store.updateStatus(sessionId, "cancelled");
     this.workspaceRegistry.markTerminal(session.workdir);
     void this.revokeModelLease(sessionId, "cancelSession");
@@ -3587,29 +3705,39 @@ export class AcpService extends Service {
         : cancelled
           ? "cancelled"
           : stopReason;
+      const terminalFailure = result.terminalFailure;
+      const effectiveStopReason = terminalFailure ? "error" : finalStopReason;
       const promptResult: PromptResult = {
         sessionId: session.id,
         response: finalText,
         finalText,
-        stopReason: finalStopReason,
+        stopReason: effectiveStopReason,
         durationMs: Date.now() - startedAt,
         exitCode: 0,
         signal: null,
-        ...(finalStopReason === "error" && !finalText?.trim()
-          ? { error: "ACP prompt ended with stopReason error" }
-          : {}),
+        ...(terminalFailure
+          ? { error: terminalFailure.message, terminalFailure }
+          : effectiveStopReason === "error" && !finalText?.trim()
+            ? { error: "ACP prompt ended with stopReason error" }
+            : {}),
       };
-      if (stopped) {
+      if (terminalFailure) {
+        await this.store.updateStatus(
+          session.id,
+          "errored",
+          terminalFailure.message,
+        );
+        void this.revokeModelLease(session.id, "native_prompt:error");
+      } else if (stopped) {
         await this.store.updateStatus(session.id, "stopped");
         void this.revokeModelLease(session.id, "native_prompt:stopped");
       } else if (cancelled) {
         await this.store.updateStatus(session.id, "cancelled");
         void this.revokeModelLease(session.id, "native_prompt:cancelled");
-      } else if (finalStopReason === "error" && !finalText?.trim()) {
-        // Mirror the handleAcpEvent guard: a stopReason-error session that still
-        // captured a real deliverable is relayed as a completion, so don't mark
-        // it errored in the durable store — that would show a false-failed task
-        // in history/providers while the user actually got the result.
+      } else if (effectiveStopReason === "error" && !finalText?.trim()) {
+        // Untyped errors with a captured deliverable retain the legacy
+        // completion heuristic. An authoritative terminalFailure never reaches
+        // this branch and is always persisted as errored above.
         await this.store.updateStatus(
           session.id,
           "errored",
@@ -3949,7 +4077,23 @@ export class AcpService extends Service {
     const startedAt = Date.now();
     let finalText = "";
     let stopReason: string | undefined;
+    let terminalFailure: AcpTerminalFailure | undefined;
+    let protocolError: string | undefined;
     const capturedToolOutputs = new Set<string>();
+    const promptTurn = opts.sessionId
+      ? this.promptTurns.get(opts.sessionId)
+      : undefined;
+    if (opts.activeForSession && promptTurn?.cancelRequested) {
+      return Promise.resolve({
+        code: null,
+        signal: null,
+        stderr: "",
+        finalText: "",
+        stopReason: "cancelled",
+        cancelled: true,
+        durationMs: Date.now() - startedAt,
+      });
+    }
     const missingCliMessage = this.missingCliMessage();
     if (missingCliMessage) {
       if (opts.sessionId) {
@@ -3996,6 +4140,48 @@ export class AcpService extends Service {
       };
       if (opts.activeForSession && opts.sessionId)
         this.activeProcesses.set(opts.sessionId, record);
+      if (opts.activeForSession && promptTurn?.cancelRequested) {
+        record.cancelled = true;
+        this.terminateProcess(opts.sessionId ?? "", record);
+      }
+
+      const consumeAcpEvent = (parsed: AcpJsonRpcMessage): void => {
+        if (protocolError) return;
+        try {
+          const handled = this.handleAcpEvent(
+            parsed,
+            opts.sessionId,
+            finalText,
+            startedAt,
+            opts.activeForSession === true,
+            capturedToolOutputs,
+            opts.activeForSession === true,
+          );
+          finalText = handled.finalText;
+          stopReason = handled.stopReason ?? stopReason;
+          terminalFailure = handled.terminalFailure ?? terminalFailure;
+        } catch (err) {
+          // error-policy:J1 The CLI stdout boundary contains an invalid typed
+          // receipt and converts it to a structured failed prompt. Throwing
+          // from EventEmitter's data listener would crash the host process.
+          protocolError = errorMessage(err);
+          stopReason = "error";
+          record.stderr = capStderr(
+            `${record.stderr}\nACP protocol error: ${protocolError}`,
+          );
+          this.log("warn", "invalid acpx prompt result", {
+            sessionId: opts.sessionId,
+            error: protocolError,
+          });
+          if (opts.sessionId) {
+            this.emitSessionEvent(opts.sessionId, "error", {
+              message: protocolError,
+              failureKind: "protocol_error",
+              stopReason: "error",
+            });
+          }
+        }
+      };
 
       proc.stdout.on("data", (chunk: Buffer) => {
         const rawChunk = chunk.toString("utf8");
@@ -4007,19 +4193,7 @@ export class AcpService extends Service {
           record.stdoutBuffer = record.stdoutBuffer.slice(newlineIndex + 1);
           if (line) {
             const parsed = this.parseNdjson(line, opts.sessionId);
-            if (parsed) {
-              const handled = this.handleAcpEvent(
-                parsed,
-                opts.sessionId,
-                finalText,
-                startedAt,
-                opts.activeForSession === true,
-                capturedToolOutputs,
-                opts.activeForSession === true,
-              );
-              finalText = handled.finalText;
-              stopReason = handled.stopReason ?? stopReason;
-            }
+            if (parsed) consumeAcpEvent(parsed);
           }
           newlineIndex = record.stdoutBuffer.indexOf("\n");
         }
@@ -4049,19 +4223,7 @@ export class AcpService extends Service {
             record.stdoutBuffer.trim(),
             opts.sessionId,
           );
-          if (parsed) {
-            const handled = this.handleAcpEvent(
-              parsed,
-              opts.sessionId,
-              finalText,
-              startedAt,
-              opts.activeForSession === true,
-              capturedToolOutputs,
-              opts.activeForSession === true,
-            );
-            finalText = handled.finalText;
-            stopReason = handled.stopReason ?? stopReason;
-          }
+          if (parsed) consumeAcpEvent(parsed);
         }
         if (
           opts.sessionId &&
@@ -4073,6 +4235,8 @@ export class AcpService extends Service {
         if (
           opts.sessionId &&
           !record.cancelled &&
+          !terminalFailure &&
+          !protocolError &&
           code !== 0 &&
           // Emit for a 401/unauthorized auth failure OR an explicit token-expiry
           // exit (isAuthText alone misses a bare "token expired"), so a run that
@@ -4087,6 +4251,8 @@ export class AcpService extends Service {
         if (
           opts.sessionId &&
           !record.cancelled &&
+          !terminalFailure &&
+          !protocolError &&
           code !== 0 &&
           code !== null
         ) {
@@ -4137,7 +4303,19 @@ export class AcpService extends Service {
             (code === 0 || code === null) &&
             finalText.trim().length > 0 &&
             !isIncompletePromptStopReason(stopReason);
-          if (record.cancelled) {
+          if (terminalFailure) {
+            this.emitSessionEvent(opts.sessionId, "error", {
+              message: terminalFailure.message,
+              failureKind: terminalFailure.kind,
+              ...(terminalFailure.code
+                ? { failureCode: terminalFailure.code }
+                : {}),
+              transient: terminalFailure.transient,
+              stopReason: "error",
+            });
+          } else if (protocolError) {
+            // The data-listener boundary already emitted the structured error.
+          } else if (record.cancelled) {
             this.emitSessionEvent(opts.sessionId, "cancelled", {
               sessionId: opts.sessionId,
               response: finalText,
@@ -4175,7 +4353,14 @@ export class AcpService extends Service {
           signal,
           stderr: record.stderr,
           finalText,
-          stopReason: record.cancelled ? "cancelled" : stopReason,
+          stopReason:
+            terminalFailure || protocolError
+              ? "error"
+              : record.cancelled
+                ? "cancelled"
+                : stopReason,
+          ...(terminalFailure ? { terminalFailure } : {}),
+          ...(protocolError ? { protocolError } : {}),
           cancelled: record.cancelled,
           durationMs: Date.now() - startedAt,
         });
@@ -4214,9 +4399,14 @@ export class AcpService extends Service {
     emitPromptTerminalEvents: boolean,
     capturedToolOutputs: Set<string>,
     deferPromptTerminalEvent = false,
-  ): { finalText: string; stopReason?: string } {
+  ): {
+    finalText: string;
+    stopReason?: string;
+    terminalFailure?: AcpTerminalFailure;
+  } {
     const protocolSessionId = extractSessionId(event);
     const sessionId = localSessionId ?? protocolSessionId;
+    let terminalFailure: AcpTerminalFailure | undefined;
     if (
       localSessionId &&
       protocolSessionId &&
@@ -4473,7 +4663,8 @@ export class AcpService extends Service {
     }
 
     if (sessionId && result && typeof result.stopReason === "string") {
-      stopReason = result.stopReason;
+      terminalFailure = readAcpTerminalFailure(result);
+      stopReason = terminalFailure ? "error" : result.stopReason;
       if (emitPromptTerminalEvents) {
         // Per-turn token usage rides on the terminal result (claude-agent-acp
         // reports it under `result.usage` / `result._meta.usage`). Emit it once
@@ -4505,9 +4696,19 @@ export class AcpService extends Service {
         // NO captured output is a true, user-facing failure — otherwise the user
         // gets a false "hit a snag" for a build that actually succeeded.
         if (deferPromptTerminalEvent) {
-          return { finalText, stopReason };
+          return { finalText, stopReason, terminalFailure };
         }
-        if (!isIncompletePromptStopReason(stopReason)) {
+        if (terminalFailure) {
+          this.emitSessionEvent(sessionId, "error", {
+            message: terminalFailure.message,
+            failureKind: terminalFailure.kind,
+            ...(terminalFailure.code
+              ? { failureCode: terminalFailure.code }
+              : {}),
+            transient: terminalFailure.transient,
+            stopReason,
+          });
+        } else if (!isIncompletePromptStopReason(stopReason)) {
           if (stopReason === "cancelled") {
             this.emitSessionEvent(sessionId, "cancelled", {
               response: finalText,
@@ -4544,7 +4745,7 @@ export class AcpService extends Service {
       this.emitSessionEvent(sessionId, "error", { message });
     }
 
-    return { finalText, stopReason };
+    return { finalText, stopReason, terminalFailure };
   }
 
   emitSessionEvent(
