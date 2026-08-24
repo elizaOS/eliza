@@ -669,6 +669,8 @@ function parseToonKey(
 		arrayIndex = candidateIndex;
 	}
 	if (!/^[A-Za-z_][\w.-]*$/.test(key)) return null;
+	if (key === "__proto__" || key === "constructor" || key === "prototype")
+		return null;
 	return arrayIndex === undefined ? { key } : { key, arrayIndex };
 }
 
@@ -696,8 +698,18 @@ export function parseToonKeyValue<T = Record<string, unknown>>(
 		const parsedKey = parseToonKey(line.slice(0, colonIndex));
 		if (!parsedKey) continue;
 
-		found = true;
 		const { key, arrayIndex } = parsedKey;
+		let parsedIndex: number | undefined;
+		if (arrayIndex !== undefined) {
+			parsedIndex = Number.parseInt(arrayIndex, 10);
+			if (
+				!Number.isSafeInteger(parsedIndex) ||
+				parsedIndex < 0 ||
+				parsedIndex > 10000
+			)
+				continue;
+		}
+		found = true;
 		const rawValue = line.slice(colonIndex + 1).trimStart();
 		const value = parseToonScalar(rawValue.trim());
 		if (arrayIndex === undefined) {
@@ -705,10 +717,9 @@ export function parseToonKeyValue<T = Record<string, unknown>>(
 			continue;
 		}
 
-		const index = Number.parseInt(arrayIndex, 10);
 		const current = result[key];
 		const values = Array.isArray(current) ? current : [];
-		values[index] = value;
+		values[parsedIndex as number] = value;
 		result[key] = values;
 	}
 
