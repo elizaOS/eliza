@@ -416,21 +416,62 @@ function detectCurrentProvider(): DatabaseProviderType {
   return process.env.POSTGRES_URL ? "postgres" : "pglite";
 }
 
-/** Verify a table name refers to a real user table. */
-async function assertTableExists(
+interface ResolvedTable {
+  schema: string;
+  qualifiedName: string;
+}
+
+/** Resolve one exact user table, rejecting ambiguous unqualified names. */
+async function resolveTable(
   runtime: AgentRuntime,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
   tableName: string,
-): Promise<boolean> {
-  const safe = tableName.replace(/'/g, "''");
+): Promise<ResolvedTable | null> {
+  const url = new URL(
+    req.url ?? "/",
+    `http://${req.headers.host ?? "localhost"}`,
+  );
+  const requestedSchema = url.searchParams.get("schema");
+  if (requestedSchema !== null && requestedSchema.trim() === "") {
+    sendJsonError(res, "schema must be a non-empty name", 400);
+    return null;
+  }
+
+  const safeTable = tableName.replace(/'/g, "''");
+  const schemaClause = requestedSchema
+    ? `AND table_schema = '${requestedSchema.replace(/'/g, "''")}'`
+    : "";
   const { rows } = await executeRawSql(
     runtime,
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_name = '${safe}'
+    `SELECT table_schema AS schema FROM information_schema.tables
+     WHERE table_name = '${safeTable}'
        AND table_schema NOT IN ('pg_catalog', 'information_schema')
        AND table_type = 'BASE TABLE'
-     LIMIT 1`,
+       ${schemaClause}
+     ORDER BY table_schema`,
   );
-  return rows.length > 0;
+  if (rows.length === 0) {
+    const label = requestedSchema
+      ? `${requestedSchema}.${tableName}`
+      : tableName;
+    sendJsonError(res, `Table "${label}" not found`, 404);
+    return null;
+  }
+  if (!requestedSchema && rows.length > 1) {
+    sendJsonError(
+      res,
+      `Table "${tableName}" is ambiguous across schemas; specify ?schema=<name>`,
+      409,
+    );
+    return null;
+  }
+
+  const schema = String(rows[0].schema);
+  return {
+    schema,
+    qualifiedName: `${quoteIdent(schema)}.${quoteIdent(tableName)}`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -844,19 +885,18 @@ async function handleGetRows(
   const sortOrder = parsedOrder.order;
   const search = url.searchParams.get("search") ?? "";
 
-  if (!(await assertTableExists(runtime, tableName))) {
-    sendJsonError(res, `Table "${tableName}" not found`, 404);
-    return;
-  }
+  const table = await resolveTable(runtime, req, res, tableName);
+  if (!table) return;
 
   // Get column names for this table (for search and sort validation)
   const safeTableName = tableName.replace(/'/g, "''");
+  const safeSchema = table.schema.replace(/'/g, "''");
   const colResult = await executeRawSql(
     runtime,
     `SELECT column_name, data_type
      FROM information_schema.columns
      WHERE table_name = '${safeTableName}'
-       AND table_schema NOT IN ('pg_catalog', 'information_schema')
+       AND table_schema = '${safeSchema}'
      ORDER BY ordinal_position`,
   );
   const columnNames = colResult.rows.map((r) => String(r.column_name));
@@ -904,7 +944,7 @@ async function handleGetRows(
   // Count total (with search filter)
   const countResult = await executeRawSql(
     runtime,
-    `SELECT count(*) AS total FROM ${quoteIdent(tableName)} ${whereClause}`,
+    `SELECT count(*) AS total FROM ${table.qualifiedName} ${whereClause}`,
   );
   const total = Number(
     (countResult.rows[0] as Record<string, unknown>)?.total ?? 0,
@@ -914,7 +954,7 @@ async function handleGetRows(
   const orderClause = validSort
     ? `ORDER BY ${quoteIdent(validSort)} ${sortOrder}`
     : "";
-  const query = `SELECT * FROM ${quoteIdent(tableName)} ${whereClause} ${orderClause} LIMIT ${limit} OFFSET ${offset}`;
+  const query = `SELECT * FROM ${table.qualifiedName} ${whereClause} ${orderClause} LIMIT ${limit} OFFSET ${offset}`;
 
   const result = await executeRawSql(runtime, query);
 
@@ -952,10 +992,8 @@ async function handleInsertRow(
     return;
   }
 
-  if (!(await assertTableExists(runtime, tableName))) {
-    sendJsonError(res, `Table "${tableName}" not found`, 404);
-    return;
-  }
+  const table = await resolveTable(runtime, req, res, tableName);
+  if (!table) return;
 
   const columns = Object.keys(body.data);
   const values = Object.values(body.data);
@@ -964,7 +1002,7 @@ async function handleInsertRow(
 
   const result = await executeRawSql(
     runtime,
-    `INSERT INTO ${quoteIdent(tableName)} (${colList}) VALUES (${valList}) RETURNING *`,
+    `INSERT INTO ${table.qualifiedName} (${colList}) VALUES (${valList}) RETURNING *`,
   );
 
   sendJson(res, { inserted: true, row: result.rows[0] ?? null }, 201);
@@ -1001,6 +1039,9 @@ async function handleUpdateRow(
     return;
   }
 
+  const table = await resolveTable(runtime, req, res, tableName);
+  if (!table) return;
+
   const setClauses = Object.entries(body.data).map(([col, val]) =>
     sqlAssign(col, val),
   );
@@ -1010,7 +1051,7 @@ async function handleUpdateRow(
 
   const result = await executeRawSql(
     runtime,
-    `UPDATE ${quoteIdent(tableName)}
+    `UPDATE ${table.qualifiedName}
         SET ${setClauses.join(", ")}
       WHERE ${whereClauses.join(" AND ")}
       RETURNING *`,
@@ -1047,13 +1088,16 @@ async function handleDeleteRow(
     return;
   }
 
+  const table = await resolveTable(runtime, req, res, tableName);
+  if (!table) return;
+
   const whereClauses = Object.entries(body.where).map(([col, val]) =>
     sqlPredicate(col, val),
   );
 
   const result = await executeRawSql(
     runtime,
-    `DELETE FROM ${quoteIdent(tableName)}
+    `DELETE FROM ${table.qualifiedName}
       WHERE ${whereClauses.join(" AND ")}
       RETURNING *`,
   );
@@ -1092,11 +1136,19 @@ async function handleQuery(
 
   const sqlText = body.sql.trim();
 
-  // If readOnly mode, reject mutation statements.
+  if (body.readOnly === false) {
+    sendJsonError(
+      res,
+      "Raw SQL write mode is not available over HTTP; use the structured row routes.",
+    );
+    return;
+  }
+
+  // Raw SQL over HTTP is always read-only. Reject mutation statements.
   // Strip SQL comments, then scan for mutation keywords *anywhere* in the
   // query — not just the leading keyword. This prevents bypass via CTEs
   // (WITH ... AS (DELETE ...)) and other SQL constructs that nest mutations.
-  if (body.readOnly !== false) {
+  {
     const scan = scanSqlForReadOnly(sqlText);
     if (!scan.ok) {
       sendJsonError(res, `Query rejected: ${scan.reason}`);
@@ -1169,7 +1221,7 @@ async function handleQuery(
     if (match) {
       sendJsonError(
         res,
-        `Query rejected: "${match[1].toUpperCase()}" is a mutation keyword. Set readOnly: false to execute mutations.`,
+        `Query rejected: "${match[1].toUpperCase()}" is a mutation keyword. Use a structured row route for mutations.`,
       );
       return;
     }
@@ -1260,7 +1312,7 @@ async function handleQuery(
       const fnName = fnNameMatch ? fnNameMatch[1].toUpperCase() : "UNKNOWN";
       sendJsonError(
         res,
-        `Query rejected: "${fnName}" is a dangerous function that can modify server state. Set readOnly: false to execute this query.`,
+        `Query rejected: "${fnName}" is a dangerous function that can modify server state.`,
       );
       return;
     }

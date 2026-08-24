@@ -15,15 +15,22 @@
  * for the agent's own tool surface.
  */
 
+import { createHash } from "node:crypto";
 import type {
   Action,
   ActionResult,
+  HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   SearchCategoryRegistration,
 } from "@elizaos/core";
-import { logger, ModelType, toWellFormedUnicode } from "@elizaos/core";
+import {
+  gateDestructiveConfirmation,
+  logger,
+  ModelType,
+  toWellFormedUnicode,
+} from "@elizaos/core";
 import type { ColumnInfo, TableInfo } from "@elizaos/shared";
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
 
@@ -564,7 +571,9 @@ async function opSearchVectors(
 
 async function databaseHandler(
   runtime: IAgentRuntime,
+  message: Memory,
   options: unknown,
+  callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const params = getParams(options);
   const op = params.action ?? params.subaction ?? params.op;
@@ -581,6 +590,44 @@ async function databaseHandler(
   }
 
   try {
+    if (op === "query" && params.allowWrites === true && params.sql?.trim()) {
+      const sqlText = params.sql.trim();
+      const guard = checkReadOnly(sqlText);
+      if (!guard.ok) {
+        const digest = createHash("sha256").update(sqlText).digest("hex");
+        const decision = await gateDestructiveConfirmation({
+          runtime,
+          message,
+          actionName: "DATABASE",
+          pendingKey: `query:${digest}`,
+          prompt:
+            `Run this database mutation?\n\n${sqlText}\n\n` +
+            "Reply yes to execute this exact SQL or no to cancel.",
+          callback,
+          metadata: { sqlSha256: digest },
+        });
+        if (decision.status !== "confirmed") {
+          return {
+            success: decision.status === "pending",
+            text:
+              decision.status === "pending"
+                ? "Asked the user to confirm the database mutation; no SQL was executed."
+                : "The user cancelled the database mutation; no SQL was executed.",
+            values: {
+              allowWrites: false,
+              confirmationRequired: decision.status === "pending",
+              cancelled: decision.status === "cancelled",
+            },
+            data: {
+              actionName: "DATABASE",
+              op: "query",
+              awaitingUserInput: decision.status === "pending",
+            },
+          };
+        }
+      }
+    }
+
     switch (op) {
       case "list_tables":
         return await opListTables(runtime, params);
@@ -636,8 +683,8 @@ export const databaseAction: Action = {
     registerVectorSearchCategory(runtime);
     return true;
   },
-  handler: async (runtime, _message, _state, options) =>
-    databaseHandler(runtime, options),
+  handler: async (runtime, message, _state, options, callback) =>
+    databaseHandler(runtime, message, options, callback),
   parameters: [
     {
       name: "action",
@@ -690,13 +737,15 @@ export const databaseAction: Action = {
     },
     {
       name: "sql",
-      description: "query: SQL text. Read-only unless allowWrites:true.",
+      description:
+        "query: SQL text. Mutations require allowWrites:true and a matching user confirmation turn.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "allowWrites",
-      description: "query: permit mutations (INSERT/UPDATE/DELETE/DDL).",
+      description:
+        "query: request a mutation confirmation; this flag never authorizes execution by itself.",
       required: false,
       schema: { type: "boolean" as const, default: false },
     },

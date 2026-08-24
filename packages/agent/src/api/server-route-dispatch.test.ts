@@ -394,8 +394,10 @@ describe("handleDatabaseRouteGroup", () => {
     return {
       req: makeReq(method, pathname),
       res: makeRes(),
+      method,
       pathname,
       state: dispatchState(),
+      callerAuthorization: { ok: true, role: "OWNER" },
     };
   }
 
@@ -426,6 +428,24 @@ describe("handleDatabaseRouteGroup", () => {
     await vi.waitFor(() => {
       expect(args.res.statusCode).toBe(503);
     });
+  });
+
+  it("denies database routes without authenticated caller authority", async () => {
+    const args = ctx("/api/database/status");
+    args.callerAuthorization = undefined;
+
+    await expect(handleDatabaseRouteGroup(args)).resolves.toBe(true);
+    expect(args.res.statusCode).toBe(401);
+  });
+
+  it("denies USER and GUEST callers before the database leaf handler", async () => {
+    for (const role of ["USER", "GUEST"] as const) {
+      const args = ctx("/api/database/status");
+      args.callerAuthorization = { ok: true, role };
+
+      await expect(handleDatabaseRouteGroup(args)).resolves.toBe(true);
+      expect(args.res.statusCode).toBe(403);
+    }
   });
 });
 

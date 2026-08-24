@@ -261,12 +261,26 @@ export async function handleDatabaseRouteGroup({
   res,
   pathname,
   state,
+  callerAuthorization,
 }: Pick<
   DispatchRouteContext,
-  "req" | "res" | "pathname" | "state"
+  "req" | "res" | "method" | "pathname" | "state" | "callerAuthorization"
 >): Promise<boolean> {
   if (!pathname.startsWith("/api/database/")) {
     return false;
+  }
+
+  if (!callerAuthorization?.ok) {
+    res.statusCode = 401;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ error: "Authentication required" }));
+    return true;
+  }
+  if (callerAuthorization.role !== "OWNER") {
+    res.statusCode = 403;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ error: "Owner role required" }));
+    return true;
   }
 
   return handleDatabaseRoute(req, res, state.runtime, pathname);

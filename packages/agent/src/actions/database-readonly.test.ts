@@ -9,6 +9,86 @@ import { checkReadOnly } from "../security/sql-readonly-guard.ts";
 import { databaseAction } from "./database.ts";
 
 describe("DATABASE action read-only guard", () => {
+  it("does not let allowWrites authorize SQL until the user confirms the exact query", async () => {
+    const execute = vi.fn(async () => ({ rows: [], fields: [] }));
+    const cache = new Map<string, unknown>();
+    const runtime = {
+      adapter: { db: { execute } },
+      getCache: vi.fn(async (key: string) => cache.get(key)),
+      setCache: vi.fn(async (key: string, value: unknown) => {
+        cache.set(key, value);
+      }),
+      deleteCache: vi.fn(async (key: string) => {
+        cache.delete(key);
+      }),
+    } as unknown as IAgentRuntime;
+    const message = (text: string) =>
+      ({
+        entityId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        content: { text, source: "test" },
+      }) as unknown as Memory;
+    const callback = vi.fn(async () => []);
+    const options = {
+      parameters: {
+        action: "query",
+        sql: "DELETE FROM memories WHERE id = 'target'",
+        allowWrites: true,
+      },
+    };
+
+    const pending = await databaseAction.handler(
+      runtime,
+      message("delete the target memory"),
+      undefined,
+      options,
+      callback,
+    );
+
+    expect(pending).toMatchObject({
+      success: true,
+      data: { awaitingUserInput: true },
+      values: { allowWrites: false, confirmationRequired: true },
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining(
+          "DELETE FROM memories WHERE id = 'target'",
+        ),
+      }),
+    );
+
+    const changedQuery = await databaseAction.handler(
+      runtime,
+      message("yes"),
+      undefined,
+      {
+        parameters: {
+          ...options.parameters,
+          sql: "DELETE FROM memories WHERE id = 'different-target'",
+        },
+      },
+      callback,
+    );
+
+    expect(changedQuery).toMatchObject({
+      success: true,
+      data: { awaitingUserInput: true },
+    });
+    expect(execute).not.toHaveBeenCalled();
+
+    const confirmed = await databaseAction.handler(
+      runtime,
+      message("yes"),
+      undefined,
+      options,
+      callback,
+    );
+
+    expect(confirmed).toMatchObject({ success: true });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects the context-ordering regression before adapter execution", async () => {
     const execute = vi.fn();
     const runtime = {

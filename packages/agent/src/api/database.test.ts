@@ -1,6 +1,7 @@
 /**
- * Real-PGlite unit coverage for the database API's status, table discovery,
- * row browsing, CRUD, and raw-query routes through the production handler.
+ * Real-PGlite coverage for the pre-authorized database leaf handler's status,
+ * table discovery, schema resolution, row browsing, CRUD, and read-only query
+ * behavior. The real HTTP authorization boundary has a separate TCP suite.
  */
 
 import type http from "node:http";
@@ -110,6 +111,8 @@ describe("database API with real PGlite", () => {
 
   beforeEach(async () => {
     await pglite.exec(`
+      DROP SCHEMA IF EXISTS shadow CASCADE;
+      SET search_path TO public;
       TRUNCATE TABLE widgets, empty_items RESTART IDENTITY;
       INSERT INTO widgets (label, score, note, active, payload) VALUES
         ('alpha', 10, NULL, TRUE, '{"rank":1}'::jsonb),
@@ -349,7 +352,7 @@ describe("database API with real PGlite", () => {
     ]);
   });
 
-  it("executes read-only queries and explicit mutations against the live store", async () => {
+  it("executes read-only queries but rejects model-shaped raw write mode", async () => {
     const selected = await callRoute("POST", "/api/database/query", {
       sql: "SELECT label, score FROM widgets WHERE score >= 40 ORDER BY score DESC",
     });
@@ -372,16 +375,58 @@ describe("database API with real PGlite", () => {
     });
     expect(inserted).toMatchObject({
       handled: true,
-      status: 200,
+      status: 400,
       data: {
-        columns: ["label", "score"],
-        rowCount: 1,
-        rows: [{ label: "raw", score: 70 }],
+        error:
+          "Raw SQL write mode is not available over HTTP; use the structured row routes.",
       },
     });
     await expect(
       pglite.query("SELECT label FROM widgets WHERE score = 70"),
-    ).resolves.toMatchObject({ rows: [{ label: "raw" }] });
+    ).resolves.toMatchObject({ rows: [] });
+  });
+
+  it("rejects ambiguous table names and schema-qualifies explicit CRUD", async () => {
+    await pglite.exec(`
+      CREATE SCHEMA shadow;
+      CREATE TABLE shadow.widgets (
+        id SERIAL PRIMARY KEY,
+        shadow_label TEXT NOT NULL
+      );
+      SET search_path TO shadow, public;
+    `);
+
+    const ambiguous = await callRoute(
+      "GET",
+      "/api/database/tables/widgets/rows",
+    );
+    const inserted = await callRoute(
+      "POST",
+      "/api/database/tables/widgets/rows?schema=public",
+      { data: { label: "public-only", score: 70 } },
+    );
+
+    expect(ambiguous).toMatchObject({
+      handled: true,
+      status: 409,
+      data: {
+        error:
+          'Table "widgets" is ambiguous across schemas; specify ?schema=<name>',
+      },
+    });
+    expect(inserted).toMatchObject({
+      handled: true,
+      status: 201,
+      data: { inserted: true, row: { label: "public-only", score: 70 } },
+    });
+    await expect(
+      pglite.query(
+        "SELECT count(*)::int AS total FROM public.widgets WHERE score = 70",
+      ),
+    ).resolves.toMatchObject({ rows: [{ total: 1 }] });
+    await expect(
+      pglite.query("SELECT count(*)::int AS total FROM shadow.widgets"),
+    ).resolves.toMatchObject({ rows: [{ total: 0 }] });
   });
 
   it("rejects empty mutations before touching the database", async () => {

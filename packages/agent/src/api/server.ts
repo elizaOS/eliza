@@ -1392,6 +1392,7 @@ export {
 // boundary-role registry (#12087 item 12).
 export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
 
+import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
 
@@ -3112,7 +3113,47 @@ async function handleRequest(
     return;
   }
 
-  if (await handleDatabaseRouteGroup({ req, res, pathname, state })) {
+  let databaseCallerAuthorization: AgentHttpRequestAuthorization | undefined;
+  if (pathname.startsWith("/api/database/")) {
+    const bridge = getAgentHostBridge();
+    const hostOwnsAuthorization =
+      typeof bridge.resolveHttpRequestAuthorization === "function" ||
+      typeof bridge.isHttpRequestAuthorized === "function";
+    const hostAuthorization = await resolveHostSessionAuthorization();
+    if (hostOwnsAuthorization) {
+      // The embedding host's cookie/CSRF result is authoritative. Falling
+      // back to loopback trust here would turn a failed CSRF check into OWNER.
+      databaseCallerAuthorization = hostAuthorization;
+    } else if (isServerTokenAuthorized(req)) {
+      databaseCallerAuthorization = {
+        ok: true,
+        role: "USER",
+        principal: "shared-server-gateway",
+      };
+    } else if (resolveBoundaryRole(req) === "OWNER") {
+      databaseCallerAuthorization = { ok: true, role: "OWNER" };
+    } else {
+      const registeredAccess = resolveRegisteredTokenRoleAccess(req);
+      databaseCallerAuthorization = registeredAccess
+        ? {
+            ok: true,
+            role: registeredAccess.worldRole,
+            principal: registeredAccess.principal,
+          }
+        : hostAuthorization;
+    }
+  }
+
+  if (
+    await handleDatabaseRouteGroup({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      callerAuthorization: databaseCallerAuthorization,
+    })
+  ) {
     return;
   }
 
