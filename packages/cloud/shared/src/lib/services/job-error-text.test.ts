@@ -179,6 +179,15 @@ describe("publicJobErrorSummary — API boundary", () => {
     expect(publicJobErrorSummary(stored)).toBe(`Error: ${message}`);
   });
 
+  test("still finds a formatted host path adjacent to a public URL", () => {
+    const stored = jobErrorText(
+      new Error("Provider https://api.eliza.app[/srv/eliza/agents/9c1/config.json]"),
+    );
+    expect(publicJobErrorSummary(stored)).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+  });
+
   test("null and empty stay null", () => {
     expect(publicJobErrorSummary(null)).toBeNull();
     expect(publicJobErrorSummary(undefined)).toBeNull();

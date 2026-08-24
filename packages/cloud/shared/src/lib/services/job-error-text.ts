@@ -44,7 +44,7 @@ function containsAbsolutePath(text: string): boolean {
   // A network URL contains `//` and path slashes but is not a host filesystem
   // path. Remove only the public network schemes we understand; `file:` stays
   // private and every unknown scheme fails closed through the checks below.
-  const withoutNetworkUrls = text.replace(/\b(?:https?|wss?):\/\/[^\s'"`<>]+/giu, "");
+  const withoutNetworkUrls = text.replace(/\b(?:https?|wss?):\/\//giu, "network:");
   return (
     /\bfile:\/\//iu.test(text) ||
     /(?:^|[^A-Za-z0-9_.~%-])\/+[^\s'"`<>]+/u.test(withoutNetworkUrls) ||
