@@ -199,6 +199,87 @@ describe("expectCalendarResultData", () => {
     );
     expect(both).toBeUndefined();
   });
+
+  it("does not count successful calls without result data toward minCount", () => {
+    const check = expectCalendarResultData({
+      description: "three events",
+      minCount: 3,
+    });
+    const result = check(
+      ctx([
+        action({ result: { success: true, data: { id: "e1" } } }),
+        action({ result: { success: true, text: "no payload" } }),
+        action({ result: { success: true, data: null } }),
+      ]),
+    );
+    expect(result).toContain("successful CALENDAR result data, saw 1");
+  });
+
+  it("matches patterns against the combined serialized data of all successful calls", () => {
+    const check = expectCalendarResultData({
+      description: "series created",
+      includesAll: ["monday", "friday"],
+    });
+    expect(
+      check(
+        ctx([
+          action({ result: { success: true, data: { day: "Monday" } } }),
+          action({ result: { success: true, data: { day: "Friday" } } }),
+        ]),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("evaluates RegExp patterns against the lowercased data serialization", () => {
+    const caseSensitive = expectCalendarResultData({
+      description: "event created",
+      includesAll: [/Standup-\d+/],
+    });
+    expect(
+      caseSensitive(
+        ctx([
+          action({ result: { success: true, data: { title: "Standup-7" } } }),
+        ]),
+      ),
+    ).toContain("missing /Standup-\\d+/");
+
+    const lowercaseEquivalent = expectCalendarResultData({
+      description: "event created",
+      includesAll: [/standup-\d+/],
+    });
+    expect(
+      lowercaseEquivalent(
+        ctx([
+          action({ result: { success: true, data: { title: "Standup-7" } } }),
+        ]),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("renders RegExp alternatives in their literal form inside includesAny failures", () => {
+    const check = expectCalendarResultData({
+      description: "event created",
+      includesAny: [/weekly-\d+/, "monthly"],
+    });
+    const result = check(
+      ctx([action({ result: { success: true, data: { title: "daily" } } })]),
+    );
+    expect(result).toContain("missing any of [/weekly-\\d+/, monthly]");
+  });
+
+  it("caps the missing-pattern payload preview at 600 characters", () => {
+    const check = expectCalendarResultData({
+      description: "event created",
+      includesAll: ["needle-not-present"],
+    });
+    const result = check(
+      ctx([
+        action({ result: { success: true, data: { blob: "x".repeat(2000) } } }),
+      ]),
+    );
+    const preview = String(result).split("Payload: ")[1];
+    expect(preview).toHaveLength(600);
+  });
 });
 
 describe("expectCalendarPayload", () => {
@@ -299,5 +380,55 @@ describe("expectCalendarPayload", () => {
     expect(result).toContain('"parameters":null');
     expect(result).toContain('"data":null');
     expect(result).toContain('"text":null');
+  });
+
+  it("supports includesAny across parameters, data, and text", () => {
+    const passing = expectCalendarPayload({
+      description: "event arguments",
+      includesAny: ["absent-token", "standup"],
+    });
+    expect(
+      passing(
+        ctx([
+          action({
+            parameters: { title: "Standup" },
+            result: { success: true },
+          }),
+        ]),
+      ),
+    ).toBeUndefined();
+
+    const failing = expectCalendarPayload({
+      description: "event arguments",
+      includesAny: ["alpha", /beta-\d+/],
+    });
+    const result = failing(
+      ctx([
+        action({
+          parameters: { title: "Gamma" },
+          result: { success: true, data: { note: "delta" }, text: "Epsilon" },
+        }),
+      ]),
+    );
+    expect(result).toContain(
+      "Expected event arguments: missing any of [alpha, /beta-\\d+/]",
+    );
+  });
+
+  it("caps the missing-pattern payload preview at 600 characters", () => {
+    const check = expectCalendarPayload({
+      description: "event arguments",
+      includesAll: ["needle-not-present"],
+    });
+    const result = check(
+      ctx([
+        action({
+          parameters: { blob: "y".repeat(2000) },
+          result: { success: true },
+        }),
+      ]),
+    );
+    const preview = String(result).split("Payload: ")[1];
+    expect(preview).toHaveLength(600);
   });
 });
