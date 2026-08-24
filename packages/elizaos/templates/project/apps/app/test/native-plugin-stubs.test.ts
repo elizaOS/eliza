@@ -3,7 +3,7 @@ import {
   Agent,
   Desktop,
   startDeviceBridgeClient,
-} from "./native-plugin-stubs.ts";
+} from "../src/native-plugin-stubs.ts";
 
 describe("native-plugin-stubs", () => {
   it("Agent.getStatus reports unavailable", async () => {
