@@ -22,6 +22,7 @@ import {
   type Mock,
   vi,
 } from "vitest";
+import type { ImageAttachment } from "../../../api/client-types-chat";
 import type { RealtimeVoiceStartOutcome } from "../../../hooks/useRealtimeVoiceSession";
 import { RESYNC_EVENT } from "../../../state/AppContext.hooks";
 import {
@@ -2782,5 +2783,500 @@ describe("useShellController cloud-only auth gate", () => {
     expect(result.current.handsFree).toBe(false);
     expect(result.current.isOpen).toBe(false);
     expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── Additive coverage: input routing edges, pendant relay, vision, notices ──
+// These blocks extend (never rewrite) the suites above with branches they did
+// not reach: the omi pendant → chat relay effect, the VISION button pipeline,
+// send()'s empty/image-only guards, the remaining describeCaptureFailure copy
+// branches + the once-per-grant-epoch notice latch, the onSilentDrop hint,
+// unrecognized voice-settings continuous values, the bootProgressSignal token,
+// cancelRecording's dispose-without-drain contract, stopTurn's streaming-vs-TTS
+// split, the agent voice-mute toggle, and unlockAudio's realtime routing.
+
+describe("useShellController — send() edge guards", () => {
+  beforeEach(() => {
+    appMock.value.agentStatus = { ...READY_STATUS };
+    appMock.value.sendChatText.mockClear();
+  });
+
+  it("ignores a whitespace-only send that carries no attachments", () => {
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.send("   "));
+
+    // Neither text nor an image: nothing reaches sendChatText.
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+  });
+
+  it("accepts an image-only send with empty text", () => {
+    const { result } = renderHook(() => useShellController());
+    const image: ImageAttachment = {
+      data: "aGk=",
+      mimeType: "image/png",
+      name: "shot.png",
+    };
+
+    act(() => result.current.send("", { images: [image] }));
+
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("");
+    const options = appMock.value.sendChatText.mock.calls[0]?.[1] as {
+      images?: ImageAttachment[];
+      channelType?: string;
+    };
+    expect(options?.images).toHaveLength(1);
+    expect(options?.images?.[0]?.name).toBe("shot.png");
+    // A typed/image-only turn is NOT voice-originated — no spoken reply.
+    expect(voiceOutputMock.lastTurnVoiceSeen).toBe(false);
+  });
+
+  it("forwards channelType, metadata, and clientMessageId verbatim", () => {
+    const { result } = renderHook(() => useShellController());
+    const metadata = { source: "test" };
+
+    act(() =>
+      result.current.send("hello", {
+        channelType: "DM",
+        metadata,
+        clientMessageId: "client-1",
+      }),
+    );
+
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("hello");
+    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toEqual({
+      channelType: "DM",
+      metadata,
+      clientMessageId: "client-1",
+    });
+  });
+});
+
+describe("useShellController — pendant transcript relay", () => {
+  beforeEach(() => {
+    appMock.value.agentStatus = { ...READY_STATUS };
+    appMock.value.sendChatText.mockClear();
+  });
+
+  function firePendant(detail: Record<string, unknown>): void {
+    window.dispatchEvent(
+      new CustomEvent("eliza:pendant:voice-transcript", { detail }),
+    );
+  }
+
+  it("routes a finalized pendant transcript as a VOICE_DM turn", () => {
+    renderHook(() => useShellController());
+
+    act(() =>
+      firePendant({
+        text: "note from the pendant",
+        ownerId: "owner-1",
+        agentId: "agent-2",
+        sessionId: "sess-3",
+        segmentId: "seg-9",
+        segmentRevision: 4,
+      }),
+    );
+
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
+      "note from the pendant",
+    );
+    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
+      channelType: "VOICE_DM",
+      clientMessageId: "pendant:seg-9",
+      metadata: {
+        voiceSource: "pendant",
+        pendantOwnerId: "owner-1",
+        pendantAgentId: "agent-2",
+        pendantSessionId: "sess-3",
+        pendantSegmentId: "seg-9",
+        pendantSegmentRevision: 4,
+      },
+    });
+  });
+
+  it("omits the dedupe id when the pendant segment has none", () => {
+    renderHook(() => useShellController());
+
+    act(() => firePendant({ text: "quick note" }));
+
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    const options = appMock.value.sendChatText.mock.calls[0]?.[1] as {
+      clientMessageId?: string;
+    };
+    expect(options.clientMessageId).toBeUndefined();
+  });
+
+  it("ignores a blank pendant transcript", () => {
+    renderHook(() => useShellController());
+
+    act(() => firePendant({ text: "   " }));
+
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+  });
+});
+
+describe("useShellController — vision capture", () => {
+  beforeEach(() => {
+    appMock.value.agentStatus = { ...READY_STATUS };
+    appMock.value.sendChatText.mockClear();
+  });
+
+  it("sends the screen-vision turn and pulses until the reply is in flight", () => {
+    const { result, rerender } = renderHook(() => useShellController());
+    expect(result.current.visionCapturing).toBe(false);
+
+    act(() => result.current.captureVision());
+
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
+      "Take a look at my screen and tell me what you see.",
+    );
+    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
+      metadata: { vision: { surface: "screen" } },
+    });
+    expect(result.current.visionCapturing).toBe(true);
+
+    // The pulse clears once the turn is actually in flight (responding rises).
+    composerMock.value.chatSending = true;
+    rerender();
+    expect(result.current.visionCapturing).toBe(false);
+    composerMock.value.chatSending = false;
+  });
+
+  it("does not capture vision when the agent is stopped", () => {
+    appMock.value.agentStatus = { state: "stopped", canRespond: false };
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.canSend).toBe(false);
+
+    act(() => result.current.captureVision());
+
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+    expect(result.current.visionCapturing).toBe(false);
+  });
+});
+
+describe("useShellController — capture-failure copy + notice latch", () => {
+  /** Install a capture whose start() rejects with the given error. */
+  function installRejectingCapture(err: unknown): void {
+    createVoiceCaptureMock.mockImplementation(
+      () =>
+        ({
+          start: vi.fn(() => Promise.reject(err)),
+          stop: vi.fn(() => Promise.resolve()),
+          dispose: vi.fn(),
+          getAnalyser: vi.fn(() => null),
+        }) as never,
+    );
+  }
+
+  async function flushCaptureStart(): Promise<void> {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  beforeEach(() => {
+    createVoiceCaptureMock.mockReset();
+    appMock.value.setActionNotice.mockClear();
+    appMock.value.agentStatus = { ...READY_STATUS };
+    try {
+      window.localStorage.clear();
+    } catch {}
+  });
+
+  it("uses generic microphone wording for an unknown failure", async () => {
+    installRejectingCapture(new Error("kaboom"));
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("ptt");
+    });
+    await flushCaptureStart();
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledTimes(1);
+    const [text, tone] = appMock.value.setActionNotice.mock.calls[0] as [
+      string,
+      string,
+    ];
+    expect(text).toContain("Could not start the microphone");
+    expect(tone).toBe("error");
+    expect(result.current.recording).toBe(false);
+  });
+
+  it("surfaces the transcription-failure wording for a post-capture STT error", async () => {
+    installFakeCapture();
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("ptt");
+    });
+    expect(result.current.recording).toBe(true);
+
+    // The mic worked and the utterance was recorded, but cloud STT failed at
+    // stop() — the honest message blames transcription, not the microphone.
+    act(() =>
+      lastCaptureOpts?.onStateChange?.(
+        "error",
+        new Error("CloudSttError: upstream 502"),
+      ),
+    );
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledTimes(1);
+    const [text] = appMock.value.setActionNotice.mock.calls[0] as [string];
+    expect(text).toContain("Didn't catch that");
+    expect(text.toLowerCase()).not.toContain("permission");
+    expect(result.current.recording).toBe(false);
+  });
+
+  it("notifies once per grant epoch until a capture starts successfully", async () => {
+    installRejectingCapture(new Error("kaboom"));
+    const { result } = renderHook(() => useShellController());
+
+    // First failed open → one actionable notice.
+    await act(async () => {
+      result.current.startRecording("ptt");
+    });
+    await flushCaptureStart();
+    expect(appMock.value.setActionNotice).toHaveBeenCalledTimes(1);
+
+    // A retry (e.g. the hands-free re-listen loop) must NOT spam the toast
+    // while the grant epoch is unresolved.
+    await act(async () => {
+      result.current.startRecording("ptt");
+    });
+    await flushCaptureStart();
+    expect(appMock.value.setActionNotice).toHaveBeenCalledTimes(1);
+
+    // One successful open clears the latch…
+    installFakeCapture();
+    await act(async () => {
+      result.current.startRecording("dictate");
+    });
+    expect(result.current.recording).toBe(true);
+
+    // Release the healthy capture so the mic is free again…
+    await act(async () => {
+      result.current.stopRecording();
+    });
+    expect(result.current.recording).toBe(false);
+
+    // …then a later denial is surfaced again instead of vanishing forever.
+    installRejectingCapture(new Error("kaboom"));
+    await act(async () => {
+      result.current.startRecording("ptt");
+    });
+    await flushCaptureStart();
+    expect(appMock.value.setActionNotice).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces the silent-drop hint as an info notice", async () => {
+    installFakeCapture();
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("ptt");
+    });
+    // The factory's pre-POST silence guard fired: a near-silent tap produced
+    // nothing worth sending — nudge the user to speak up (info, short).
+    act(() => lastCaptureOpts?.onSilentDrop?.());
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "Didn't catch that — try again.",
+      "info",
+      2500,
+    );
+  });
+});
+
+describe("useShellController — interim transcript + cancelRecording", () => {
+  beforeEach(() => {
+    lastCaptureOpts = null;
+    captureHandles = [];
+    createVoiceCaptureMock.mockReset();
+    installFakeCapture();
+    appMock.value.agentStatus = { ...READY_STATUS };
+    appMock.value.sendChatText.mockClear();
+    try {
+      window.localStorage.clear();
+    } catch {}
+  });
+
+  it("shows the live interim transcript and clears it on cancel without draining", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("dictate");
+    });
+    expect(result.current.recording).toBe(true);
+
+    // An interim (non-final) segment surfaces as the live transcription.
+    act(() =>
+      lastCaptureOpts?.onTranscript?.({
+        text: "partial words",
+        final: false,
+        backend: "browser",
+      }),
+    );
+    expect(result.current.transcript).toBe("partial words");
+
+    // Cancel (#20483 hold-release abort): dispose releases the mic WITHOUT the
+    // stop() STT drain — nothing transcribes, nothing sends.
+    act(() => result.current.cancelRecording());
+
+    expect(captureHandles[0]?.dispose).toHaveBeenCalledTimes(1);
+    expect(captureHandles[0]?.stop).not.toHaveBeenCalled();
+    expect(result.current.recording).toBe(false);
+    expect(result.current.transcript).toBe("");
+  });
+});
+
+describe("useShellController — stop() routing", () => {
+  beforeEach(() => {
+    appMock.value.handleChatStop.mockClear();
+    voiceOutputMock.stopSpeaking.mockClear();
+  });
+
+  it("halts a streaming turn via handleChatStop and stops speech", () => {
+    composerMock.value.chatSending = true;
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.stop());
+
+    expect(appMock.value.handleChatStop).toHaveBeenCalledTimes(1);
+    expect(voiceOutputMock.stopSpeaking).toHaveBeenCalledTimes(1);
+    composerMock.value.chatSending = false;
+  });
+
+  it("during pure TTS playback stops the speech but not the chat stream", () => {
+    composerMock.value.chatSending = false;
+    voiceOutputMock.speaking = true;
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.stop());
+
+    // handleChatStop also tears down unrelated PTY sessions — it must NOT run
+    // while only the spoken playback is active.
+    expect(appMock.value.handleChatStop).not.toHaveBeenCalled();
+    expect(voiceOutputMock.stopSpeaking).toHaveBeenCalledTimes(1);
+    voiceOutputMock.speaking = false;
+  });
+});
+
+describe("useShellController — agent voice mute toggle", () => {
+  it("projects the voice-output mute surface and delegates the toggle to it", () => {
+    const { result } = renderHook(() => useShellController());
+
+    // The controller exposes the voice-output hook's mute state + control.
+    expect(result.current.agentVoiceMuted).toBe(
+      voiceOutputMock.agentVoiceMuted,
+    );
+    expect(result.current.toggleAgentVoiceMute).toBe(
+      voiceOutputMock.toggleAgentVoiceMute,
+    );
+
+    act(() => result.current.toggleAgentVoiceMute());
+
+    expect(voiceOutputMock.toggleAgentVoiceMute).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useShellController — audio unlock routing", () => {
+  beforeEach(() => {
+    // The file-wide afterEach does not clear these; earlier suites' engage
+    // paths would otherwise leak calls into the first assertion here.
+    voiceOutputMock.unlockAudio.mockClear();
+    realtimeVoiceMock.unlock.mockClear();
+  });
+
+  afterEach(() => {
+    voiceOutputMock.unlockAudio.mockClear();
+  });
+
+  it("routes to the realtime session while it owns the microphone", async () => {
+    realtimeVoiceMock.enabled = true;
+    realtimeVoiceMock.state.active = true;
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.unlockAudio();
+    });
+
+    expect(realtimeVoiceMock.unlock).toHaveBeenCalledTimes(1);
+    expect(voiceOutputMock.unlockAudio).not.toHaveBeenCalled();
+  });
+
+  it("falls back to voice output when realtime stays idle", async () => {
+    realtimeVoiceMock.enabled = true;
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.unlockAudio();
+    });
+
+    expect(realtimeVoiceMock.unlock).not.toHaveBeenCalled();
+    expect(voiceOutputMock.unlockAudio).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useShellController — voice-settings apply validation", () => {
+  beforeEach(() => {
+    lastCaptureOpts = null;
+    captureHandles = [];
+    createVoiceCaptureMock.mockReset();
+    appMock.value.agentStatus = { ...READY_STATUS };
+    try {
+      window.localStorage.clear();
+    } catch {}
+  });
+
+  it("ignores an apply whose continuous value is unrecognized", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      emitViewEvent(
+        VOICE_SETTINGS_APPLY_EVENT,
+        { continuous: "sometimes" },
+        "agent",
+      );
+      await Promise.resolve();
+    });
+
+    expect(result.current.handsFree).toBe(false);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).toBe(null);
+  });
+});
+
+describe("useShellController — boot progress signal", () => {
+  it("advances on fresh warming observations and disappears once ready", () => {
+    // One live status record mutated across observations — exactly what the
+    // readiness poll produces (same shape, fresh fields).
+    const warming: {
+      state: string;
+      canRespond?: boolean;
+    } & Record<string, unknown> = { state: "starting", canRespond: false };
+    appMock.value.agentStatus = warming;
+    const { result, rerender } = renderHook(() => useShellController());
+
+    // While waking, the token is a truthy string the slow-boot banner keys on.
+    const firstToken = result.current.bootProgressSignal;
+    expect(typeof firstToken).toBe("string");
+
+    // A fresh observation of the still-warming agent (a new port report)
+    // advances the token so the banner restarts its escalation timer.
+    warming.port = 43110;
+    rerender();
+    expect(result.current.bootProgressSignal).not.toBe(firstToken);
+
+    // Once ready there is no boot-progress channel to report.
+    appMock.value.agentStatus = { ...READY_STATUS };
+    rerender();
+    expect(result.current.bootProgressSignal).toBeUndefined();
   });
 });
