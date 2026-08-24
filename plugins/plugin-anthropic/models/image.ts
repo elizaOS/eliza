@@ -8,8 +8,12 @@ import type { IAgentRuntime, ImageDescriptionParams, ImageDescriptionResult } fr
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
-import { getSmallModel } from "../utils/config";
+import { getMaxOutputTokensOverride, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
+import {
+  assertCompleteAnthropicGeneration,
+  getAnthropicModelOutputLimit,
+} from "../utils/model-output";
 import { executeWithRetry, formatModelError, sanitizeUrlForLogs } from "../utils/retry";
 
 const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
@@ -47,6 +51,8 @@ export async function handleImageDescription(
       ? DEFAULT_IMAGE_DESCRIPTION_PROMPT
       : (params.prompt ?? DEFAULT_IMAGE_DESCRIPTION_PROMPT);
   const operationName = `${ModelType.IMAGE_DESCRIPTION} request using ${modelName}`;
+  const maxOutputTokens =
+    getMaxOutputTokensOverride(runtime, modelName) ?? getAnthropicModelOutputLimit(modelName);
 
   if (!imageUrl || imageUrl.trim().length === 0) {
     throw new Error("[Anthropic] IMAGE_DESCRIPTION requires a valid image URL.");
@@ -67,9 +73,10 @@ export async function handleImageDescription(
             ],
           },
         ],
-        maxOutputTokens: 1_024,
+        maxOutputTokens,
       })
     );
+    assertCompleteAnthropicGeneration(response.finishReason as string | undefined);
 
     if (response.usage) {
       emitModelUsageEvent(

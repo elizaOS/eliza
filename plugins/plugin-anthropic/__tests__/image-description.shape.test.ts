@@ -47,7 +47,7 @@ describe("Anthropic image description plumbing", () => {
     });
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        maxOutputTokens: 1024,
+        maxOutputTokens: 64_000,
         messages: [
           {
             role: "user",
@@ -62,6 +62,18 @@ describe("Anthropic image description plumbing", () => {
         ],
       })
     );
+  });
+
+  it("rejects a max-token image description instead of parsing partial prose", async () => {
+    mocks.generateText.mockResolvedValue({
+      text: "Title: Partial\nDescription: unfinished",
+      finishReason: "length",
+      usage: { inputTokens: 12, outputTokens: 64_000 },
+    });
+
+    await expect(
+      handleImageDescription(createRuntime(), "https://example.com/partial.png")
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
   });
 
   it("rejects empty image URLs before calling the provider", async () => {

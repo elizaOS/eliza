@@ -29,6 +29,52 @@ afterEach(() => {
 });
 
 describe("Anthropic native text plumbing", () => {
+  it("rejects a length-finished non-streaming response", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "partial",
+      finishReason: "length",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    }));
+    vi.doMock("ai", () => ({ generateText, streamText: vi.fn() }));
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    await expect(
+      handleTextSmall(createRuntime(), { prompt: "complete this" })
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  }, 60_000);
+
+  it("signals a length-finished stream at its terminal boundary", async () => {
+    const streamText = vi.fn(() => ({
+      textStream: (async function* () {
+        yield "partial";
+      })(),
+      text: Promise.resolve("partial"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("length"),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+      providerMetadata: Promise.resolve(undefined),
+    }));
+    vi.doMock("ai", () => ({ generateText: vi.fn(), streamText }));
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    const result = (await handleTextSmall(createRuntime(), {
+      prompt: "complete this",
+      stream: true,
+    })) as { textStream: AsyncIterable<string>; text: Promise<string> };
+    const chunks: string[] = [];
+    await expect(async () => {
+      for await (const chunk of result.textStream) chunks.push(chunk);
+    }).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    expect(chunks).toEqual(["partial"]);
+    await expect(result.text).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  }, 60_000);
+
   it("forwards nested __proto__ provider data without changing prototypes", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",

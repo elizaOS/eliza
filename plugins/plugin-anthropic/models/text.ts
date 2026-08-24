@@ -67,6 +67,10 @@ import {
   isTemperatureLockedModel,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
+import {
+  assertCompleteAnthropicGeneration,
+  getAnthropicModelOutputLimit,
+} from "../utils/model-output";
 import { executeWithRetry, formatModelError } from "../utils/retry";
 import { readProviderOptions } from "./anthropic-provider-options";
 
@@ -676,22 +680,6 @@ function isOpus4Model(modelName: ModelName): boolean {
   return modelName.toLowerCase().includes("opus-4");
 }
 
-function getBuiltInMaxOutputTokens(modelName: ModelName): number {
-  const name = modelName.toLowerCase();
-  if (
-    name === "claude-fable-5" ||
-    name === "claude-opus-5" ||
-    name === "claude-opus-4-8" ||
-    name === "claude-opus-4-7" ||
-    name === "claude-opus-4-6" ||
-    name === "claude-sonnet-5" ||
-    name === "claude-sonnet-4-6"
-  ) {
-    return 128_000;
-  }
-  return isOpus4Model(modelName) ? 32_000 : 64_000;
-}
-
 /**
  * Whether a model accepts the effort parameter (output_config.effort) at all.
  * Live-probed 2026-07-12: haiku-4-5 rejects both `effort` ("This model does
@@ -1270,7 +1258,7 @@ function resolveTextParams(
   // ANTHROPIC_MAX_OUTPUT_TOKENS overrides the heuristic (bare number or
   // per-model `id:tokens` pairs) so unknown ids get the right ceiling.
   const modelHardCap =
-    getMaxOutputTokensOverride(runtime, modelName) ?? getBuiltInMaxOutputTokens(modelName);
+    getMaxOutputTokensOverride(runtime, modelName) ?? getAnthropicModelOutputLimit(modelName);
   const requestedMaxTokens = params.maxTokens;
   if (
     !params.omitMaxTokens &&
@@ -1600,6 +1588,19 @@ async function generateTextWithModel(
   if (params.stream && !streamDisabled && !paramsWithAttachments.responseSchema) {
     try {
       const streamResult = streamText(generateParams);
+      const rawFinishReasonPromise = Promise.resolve(streamResult.finishReason) as Promise<
+        string | undefined
+      >;
+      rawFinishReasonPromise.catch(() => {
+        // error-policy:J5 textStream awaits the same terminal rejection.
+      });
+      const completeFinishReasonPromise = rawFinishReasonPromise.then((finishReason) => {
+        assertCompleteAnthropicGeneration(finishReason);
+        return finishReason;
+      });
+      completeFinishReasonPromise.catch(() => {
+        // error-policy:J5 textStream and returned companions observe this rejection.
+      });
       // error-policy:J5 unhandled-rejection suppression — provider metadata is
       // usage-normalization enrichment only; the underlying stream failure is
       // observed in `textStreamWithUsage` (finishReason await rethrows).
@@ -1646,7 +1647,7 @@ async function generateTextWithModel(
           // `finishReason` here so an errored/empty stream re-throws the real
           // cause (matching the non-stream generateText branch) rather than
           // silently returning ''. The happy path resolves with a value.
-          await streamResult.finishReason;
+          await completeFinishReasonPromise;
           completed = true;
         } catch (error) {
           // error-policy:J2 context-adding rethrow — formatModelError wraps the
@@ -1674,18 +1675,18 @@ async function generateTextWithModel(
       return {
         textStream: textStreamWithUsage(),
         text: handledPromise(
-          Promise.resolve(streamResult.text).then(async (text) => {
-            await usagePromise.catch(ignoreUsageError);
-            return text;
-          })
+          Promise.all([Promise.resolve(streamResult.text), completeFinishReasonPromise]).then(
+            async ([text]) => {
+              await usagePromise.catch(ignoreUsageError);
+              return text;
+            }
+          )
         ),
         ...(shouldReturnNativeResult
           ? { toolCalls: handledPromise(Promise.resolve(streamResult.toolCalls)) }
           : {}),
         usage: handledPromise(usagePromise),
-        finishReason: handledPromise(
-          Promise.resolve(streamResult.finishReason) as Promise<string | undefined>
-        ),
+        finishReason: handledPromise(completeFinishReasonPromise),
       };
     } catch (error) {
       // error-policy:J2 context-adding rethrow — formatModelError wraps the
@@ -1696,6 +1697,7 @@ async function generateTextWithModel(
 
   try {
     const response = await executeWithRetry(operationName, () => generateText(generateParams));
+    assertCompleteAnthropicGeneration(response.finishReason as string | undefined);
 
     if (response.usage) {
       // Normalize BEFORE emitting so MODEL_USED (and the structured cache
