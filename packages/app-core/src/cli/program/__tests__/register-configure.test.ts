@@ -14,7 +14,7 @@ vi.mock("@elizaos/shared", () => ({
   theme: mocks.theme,
 }));
 
-import { registerConfigureCommand } from "./register.configure.ts";
+import { registerConfigureCommand } from "../register.configure.ts";
 
 function fakeProgram() {
   const cmd: {

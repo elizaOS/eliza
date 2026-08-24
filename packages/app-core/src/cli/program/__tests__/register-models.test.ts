@@ -8,7 +8,7 @@ vi.mock("@elizaos/shared", () => ({
   getLogPrefix: (...a: unknown[]) => mocks.getLogPrefix(...a),
 }));
 
-import { registerModelsCli } from "./register.models.ts";
+import { registerModelsCli } from "../register.models.ts";
 
 function fakeProgram() {
   const cmd: {
