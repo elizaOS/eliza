@@ -46,9 +46,10 @@ export function normalizeCalendarTimeZone(value: unknown): string {
 }
 
 function validateIsoCalendarDatePrefix(text: string, field: string): void {
-  const match = /^(?<year>[+-]?\d{4,6})-(?<month>\d{1,2})-(?<day>\d{1,2})/.exec(
-    text,
-  );
+  const match =
+    /^(?<year>[+-]?\d{4,6})-(?<month>\d{1,2})-(?<day>\d{1,2})(?:[T ](?<hour>\d{1,2}):(?<minute>\d{2})(?::(?<second>\d{2})(?:\.\d{1,3})?)?)?/.exec(
+      text,
+    );
   // Non-ISO compatibility inputs remain the generic parser's responsibility.
   // Every ISO-like input, however, must prove its civil date before any route
   // reaches Date.parse, whose permissive legacy grammar normalizes Feb 30.
@@ -80,6 +81,20 @@ function validateIsoCalendarDatePrefix(text: string, field: string): void {
     day > (daysInMonth[month - 1] ?? 0)
   ) {
     fail(400, `${field} must be a valid ISO datetime`);
+  }
+
+  // The date fix (#19222) only bounded the civil date. An offset-less local
+  // time-of-day that is out of range (hour >= 24, minute >= 60, second >= 60)
+  // otherwise falls through to `buildUtcDateFromLocalParts`, which throws a
+  // bare RangeError blaming the timezone; the action boundary only translates
+  // CalendarServiceError, so that leaks. Reject it here as the same clean 400.
+  if (match.groups.hour !== undefined) {
+    const hour = Number(match.groups.hour);
+    const minute = Number(match.groups.minute);
+    const second = Number(match.groups.second ?? "0");
+    if (hour > 23 || minute > 59 || second > 59) {
+      fail(400, `${field} must be a valid ISO datetime`);
+    }
   }
 }
 
