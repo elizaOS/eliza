@@ -133,5 +133,10 @@ export function isRegisteredTokenRoleAuthorized(
   const access = resolveRegisteredTokenRoleAccess(req);
   if (!access) return false;
   if (access.isAdmin) return true;
-  return access.isRouteInScope(method.toUpperCase(), pathname);
+  try {
+    return Boolean(access.isRouteInScope(method.toUpperCase(), pathname));
+  } catch {
+    // error-policy:J3 Fail closed if the product's scope check throws.
+    return false;
+  }
 }

@@ -172,4 +172,20 @@ describe("isRegisteredTokenRoleAuthorized", () => {
     expect(isRegisteredTokenRoleAuthorized(req, "get", "/api/me")).toBe(true);
     expect(spy).toHaveBeenCalledWith("GET", "/api/me");
   });
+
+  it("fails closed when isRouteInScope throws", () => {
+    const access = makeAccess("user", {
+      isAdmin: false,
+      isRouteInScope: () => {
+        throw new Error("malformed route path");
+      },
+    });
+    registerTokenRoleResolver(makeResolver("user", access));
+    expect(() =>
+      isRegisteredTokenRoleAuthorized(req, "GET", "/api/boom"),
+    ).not.toThrow();
+    expect(isRegisteredTokenRoleAuthorized(req, "GET", "/api/boom")).toBe(
+      false,
+    );
+  });
 });
