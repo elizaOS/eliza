@@ -225,7 +225,7 @@ function GoalAttentionRow({
       data-testid="todo-goal-attention-row"
       aria-label={`Goal "${goal.title}" ${status}. Open Goals.`}
       onClick={onOpen}
-      variant={isHome ? "publicTile" : "transparent"}
+      variant={isHome ? "outline" : "transparent"}
       size={isHome ? "row" : "eventRow"}
       align="start"
       className="w-full"
