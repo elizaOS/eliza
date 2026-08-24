@@ -497,6 +497,16 @@ export class AppControlCoordinator {
       pointerBefore,
       pointerAfter,
     );
+    if (
+      executionMode === "experimental_direct_exact_window" &&
+      pointerObservation !== "unchanged"
+    ) {
+      return {
+        success: false,
+        error: `Experimental exact-window dispatch could not prove pointer-free execution; coordinator pointer observation was ${pointerObservation}`,
+        state: after,
+      };
+    }
     const changed =
       stored.publicState.axText !== after.axText ||
       stored.publicState.screenshot !== after.screenshot;
