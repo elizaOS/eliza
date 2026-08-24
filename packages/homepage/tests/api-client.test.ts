@@ -184,4 +184,150 @@ describe("elizacloud API client", () => {
       "elizacloud API error 401: Unauthorized resource",
     );
   });
+
+  it("normalizes paths without a leading slash", async () => {
+    let observedUrl = "";
+
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      _init?: RequestInit,
+    ) => {
+      observedUrl = input.toString();
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    await elizacloudFetch("v1/no-slash");
+
+    expect(observedUrl).toBe("https://api.eliza.app/v1/no-slash");
+  });
+
+  it("keeps multiple params in insertion order", async () => {
+    let observedUrl = "";
+
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      _init?: RequestInit,
+    ) => {
+      observedUrl = input.toString();
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    await elizacloudFetch("/v1/items", {
+      params: { mode: "fast", page: "2" },
+    });
+
+    expect(observedUrl).toBe("https://api.eliza.app/v1/items?mode=fast&page=2");
+  });
+
+  it("honors VITE_ELIZACLOUD_API_URL and strips its trailing slash", () => {
+    const envWithClient = import.meta.env as unknown as {
+      VITE_ELIZACLOUD_API_URL?: string;
+    };
+    const originalEnvUrl = envWithClient.VITE_ELIZACLOUD_API_URL;
+
+    try {
+      envWithClient.VITE_ELIZACLOUD_API_URL = "https://staging.eliza.app/";
+      expect(getElizacloudUrl()).toBe("https://staging.eliza.app");
+    } finally {
+      if (originalEnvUrl === undefined) {
+        delete envWithClient.VITE_ELIZACLOUD_API_URL;
+      } else {
+        envWithClient.VITE_ELIZACLOUD_API_URL = originalEnvUrl;
+      }
+    }
+  });
+
+  it("returns the text body when a success response is not json", async () => {
+    globalThis.fetch = (async () => {
+      return new Response("plain-text-body", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }) as typeof fetch;
+
+    const res = await elizacloudFetch<string>("/v1/healthz");
+    expect(res).toBe("plain-text-body");
+  });
+
+  it("sends Content-Type application/json by default and lets caller headers win", async () => {
+    let observedHeaders: Record<string, string> = {};
+
+    globalThis.fetch = (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      observedHeaders = init?.headers as Record<string, string>;
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    await elizacloudFetch("/v1/upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain",
+        "X-Custom": "custom-value",
+      },
+    });
+
+    expect(observedHeaders["Content-Type"]).toBe("text/plain");
+    expect(observedHeaders["X-Custom"]).toBe("custom-value");
+  });
+
+  it("returns null token when window is undefined", () => {
+    delete (globalThis as unknown as { window?: Window }).window;
+
+    expect(getAuthToken()).toBeNull();
+  });
+
+  it("omits Authorization header when no session token exists", async () => {
+    let observedAuthHeader: string | undefined;
+
+    globalThis.fetch = (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const headers = init?.headers as Record<string, string>;
+      observedAuthHeader = headers?.Authorization;
+      return new Response(JSON.stringify({ anonymous: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const res = await elizacloudAuthFetch<{ anonymous: boolean }>("/v1/feed");
+
+    expect(res).toEqual({ anonymous: true });
+    expect(observedAuthHeader).toBeUndefined();
+  });
+
+  it("lets a caller Authorization header override the session Bearer token", async () => {
+    mockStorage.eliza_app_session = "session-token-abc";
+    let observedAuthHeader: string | undefined;
+
+    globalThis.fetch = (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const headers = init?.headers as Record<string, string>;
+      observedAuthHeader = headers?.Authorization;
+      return new Response(JSON.stringify({ user: "bob" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    await elizacloudAuthFetch<{ user: string }>("/v1/me", {
+      headers: { Authorization: "Bearer caller-token-xyz" },
+    });
+
+    expect(observedAuthHeader).toBe("Bearer caller-token-xyz");
+  });
 });
