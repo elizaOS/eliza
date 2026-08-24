@@ -105,13 +105,7 @@ export function OrchestratorAccountsView({
   );
 
   const connectAction = (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="h-6 px-2 text-2xs"
-      onClick={onConnect}
-    >
+    <Button type="button" variant="ghost" size="micro" onClick={onConnect}>
       {t("agentorchestrator.connectAccounts", { defaultValue: "Connect" })}
     </Button>
   );

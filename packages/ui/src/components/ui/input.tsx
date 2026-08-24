@@ -26,6 +26,8 @@ const inputVariants = cva(
           "rounded-sm border-border/60 bg-bg px-2.5 py-1.5 font-mono text-txt placeholder:text-muted",
         embeddedName:
           "rounded-none border-0 bg-transparent px-0 font-semibold shadow-none placeholder:text-muted",
+        document:
+          "rounded-sm border-border/55 bg-bg/72 px-3 py-2 text-xs shadow-none placeholder:text-muted",
       },
       density: {
         default: "h-10",

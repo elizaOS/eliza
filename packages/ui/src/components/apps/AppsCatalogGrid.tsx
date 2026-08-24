@@ -265,7 +265,7 @@ function CatalogSkeletonSection({
   return (
     <section className="space-y-3" aria-hidden="true">
       <div className="flex items-center gap-3">
-        <Skeleton className="h-3 w-28 rounded-full bg-bg-accent/80" />
+        <Skeleton className="h-3 w-28 rounded-full" />
         <div className="h-px flex-1 bg-border/30" />
       </div>
 
@@ -283,9 +283,9 @@ function CatalogSkeletonSection({
                 key={cardKey}
                 className="overflow-hidden rounded-sm border border-border/35 bg-card/72"
               >
-                <Skeleton className="aspect-[4/3] w-full rounded-none bg-bg-accent/70" />
+                <Skeleton className="aspect-[4/3] w-full rounded-none" />
                 <div className="space-y-2 p-3">
-                  <Skeleton className="h-3 w-2/3 rounded-full bg-bg-accent/80" />
+                  <Skeleton className="h-3 w-2/3 rounded-full" />
                 </div>
               </div>
             ))}
@@ -319,11 +319,12 @@ const AppCard = memo(function AppCard({
       }`}
     >
       <Button
-        variant="ghost"
+        variant="publicRow"
+        size="content"
         data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
         title={displayName}
         aria-label={displayName}
-        className="block h-auto w-full rounded-none p-0 text-left font-normal whitespace-normal hover:bg-transparent"
+        className="block"
         onClick={() => onLaunch(app)}
       >
         <AppHero
@@ -451,9 +452,9 @@ export function AppsCatalogGrid({
           <span>{error}</span>
           {onRetry ? (
             <Button
-              variant="ghost"
-              size="sm"
-              className="h-auto self-start rounded-full border border-danger/40 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-danger transition-colors hover:bg-danger/10 sm:self-auto"
+              variant="dangerOutline"
+              size="badge"
+              className="self-start sm:self-auto"
               onClick={onRetry}
             >
               Retry

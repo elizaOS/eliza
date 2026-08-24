@@ -313,6 +313,7 @@ export function ConfigField({
                         />
                       ) : (
                         <Input
+                          variant="config"
                           id={`${fieldId}-edit`}
                           type={
                             renderProps.fieldType === "password" ||
@@ -345,7 +346,6 @@ export function ConfigField({
                             renderProps.onChange(draft);
                             setEditOpen(false);
                           }}
-                          className="h-10 border-border/60 bg-bg-muted"
                         />
                       )}
                     </div>
@@ -396,9 +396,9 @@ export function ConfigField({
                           {canClearSecret ? (
                             <Button
                               type="button"
-                              variant="ghost"
+                              variant="surfaceDestructive"
                               size="sm"
-                              className="mr-auto text-danger hover:text-danger"
+                              className="mr-auto"
                               onClick={() => setClearConfirming(true)}
                             >
                               {t("common.clear", { defaultValue: "Clear" })}
@@ -408,7 +408,6 @@ export function ConfigField({
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="text-txt"
                             onClick={() => setEditOpen(false)}
                           >
                             {t("common.cancel", { defaultValue: "Cancel" })}

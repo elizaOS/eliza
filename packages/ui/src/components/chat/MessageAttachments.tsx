@@ -383,9 +383,10 @@ function ImageTile({
   return (
     <div className="group relative inline-block max-w-[min(20rem,100%)] overflow-hidden rounded-lg border border-border bg-card">
       <Button
-        variant="ghost"
+        variant="publicRow"
+        size="content"
         onClick={onExpand}
-        className="block h-auto w-full cursor-zoom-in rounded-none bg-transparent p-0 hover:bg-transparent"
+        className="block cursor-zoom-in"
         aria-label={`Expand image ${label}`}
       >
         <img
@@ -746,11 +747,7 @@ function Model3dTile({
         </span>
       </figcaption>
       {showFallbackBody ? (
-        <Button
-          asChild
-          variant="ghost"
-          className="h-auto min-h-touch w-full justify-start gap-2.5 rounded-none p-3 text-txt transition-colors hover:bg-bg-hover"
-        >
+        <Button asChild variant="sectionToggle" size="content" align="start">
           <a
             href={src}
             target="_blank"
@@ -808,7 +805,8 @@ function CodeTile({
     return (
       <Button
         asChild
-        variant="ghost"
+        variant="publicRow"
+        size="content"
         className={cn(
           "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
           "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
@@ -973,7 +971,7 @@ function Lightbox({
         variant="ghost"
         aria-label="Close preview"
         onClick={onClose}
-        className="absolute inset-0 h-auto w-auto cursor-zoom-out rounded-none bg-scrim p-0 hover:bg-scrim"
+        className="absolute inset-0 cursor-zoom-out"
       />
       <img
         src={src}

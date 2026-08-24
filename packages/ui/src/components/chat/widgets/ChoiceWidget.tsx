@@ -120,14 +120,14 @@ export const ChoiceWidget = memo(function ChoiceWidget({
         <Button
           type="button"
           variant="surface"
-          size="default"
+          size="touch"
+          align="center"
           disabled={selected !== null}
           aria-label={soleOption.label}
           aria-pressed={isSelected}
           data-testid={`choice-${soleOption.value}`}
           // The locked (selected) state stays at full opacity: it is the
           // confirmation the user just acted on, not a faded leftover.
-          className="h-auto min-h-10 w-full justify-center whitespace-normal rounded-md border border-white/30 bg-[#2c2f3a] px-4 py-2 text-sm font-semibold text-[#f0f2f7] transition-colors hover:bg-[#363a46] disabled:bg-[#2c2f3a] disabled:text-[#f0f2f7] disabled:opacity-100"
           onClick={() => handleChoose(soleOption)}
         >
           <span className="flex w-full min-w-0 items-center justify-center gap-2">
@@ -161,9 +161,10 @@ export const ChoiceWidget = memo(function ChoiceWidget({
           {!firstRun && !locked && (
             <Button
               type="button"
+              variant="ghostMuted"
+              size="icon-sm"
               aria-label="Dismiss"
               data-testid={`choice-dismiss-${id}`}
-              className="flex  size-5 items-center justify-center rounded-sm text-muted transition-colors hover:text-txt"
               onClick={handleDismiss}
             >
               <X className="size-3.5" aria-hidden />
@@ -279,7 +280,9 @@ export const ChoiceWidget = memo(function ChoiceWidget({
                 data-testid="choice-custom-input"
                 value={customText}
                 placeholder="Type your answer…"
-                className="h-7 min-w-40 rounded-md border-border bg-transparent px-2 text-xs"
+                variant="form"
+                density="compact"
+                className="min-w-40"
                 onChange={(e) => setCustomText(e.currentTarget.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -291,11 +294,10 @@ export const ChoiceWidget = memo(function ChoiceWidget({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
+                size="tinyWide"
                 data-testid="choice-custom-send"
                 aria-label="Send your answer"
                 disabled={customText.trim().length === 0}
-                className="h-7 px-3 text-xs disabled:opacity-40"
                 onClick={submitCustom}
               >
                 Send
@@ -305,10 +307,9 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="tinyWide"
               data-testid="choice-custom-open"
               aria-label="Other"
-              className="h-7 px-3 text-xs"
               onClick={() => setCustomMode(true)}
             >
               Other…

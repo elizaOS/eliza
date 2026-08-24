@@ -27,12 +27,12 @@ const mockAppValue = {
 const sampleRenderer: FieldRenderer = (props: FieldRenderProps) => (
   <Input
     type="text"
+    variant="config"
     value={String(props.value ?? "")}
     onChange={() => {}}
     placeholder={props.hint.placeholder}
     aria-label={props.hint.label ?? props.key}
     readOnly={props.readonly}
-    className="w-full px-3 py-2 rounded-md border border-input bg-background text-base sm:text-sm"
   />
 );
 

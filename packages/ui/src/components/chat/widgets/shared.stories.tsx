@@ -83,10 +83,7 @@ export const WithAction: Story = {
   args: {
     title: "Tasks",
     action: (
-      <Button
-        type="button"
-        className="rounded-sm bg-card/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted hover:text-txt"
-      >
+      <Button type="button" variant="ghostMuted" size="micro">
         + Add
       </Button>
     ),
@@ -131,7 +128,9 @@ export const EmptyStateWithAction: StoryObj<typeof EmptyWidgetState> = {
     children: (
       <Button
         type="button"
-        className="self-center rounded-md bg-card/60 px-3 py-1 text-xs text-txt hover:bg-card"
+        variant="surface"
+        size="tinyWide"
+        className="self-center"
       >
         Create task
       </Button>

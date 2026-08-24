@@ -169,10 +169,10 @@ export function PendingInvitesList({
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
-                      variant="ghost"
+                      variant="dangerGhost"
+                      size="icon-sm"
                       type="button"
                       aria-label={`Revoke invitation for ${invite.email}`}
-                      className="p-2 hover:bg-surface transition-colors border border-border"
                     >
                       <X className="size-4 text-danger" />
                     </Button>

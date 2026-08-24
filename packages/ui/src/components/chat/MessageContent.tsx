@@ -598,8 +598,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         <div className="py-1.5" data-testid="inline-plugin-config-oauth">
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="denseWide"
             onClick={() => void handleOAuthSignIn()}
             disabled={signingIn}
             data-testid="inline-plugin-config-oauth-btn"
@@ -621,7 +620,9 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
                 setError(null);
               }}
               data-testid="inline-plugin-config-use-apikey"
-              className="mt-2 block text-2xs text-muted underline hover:text-txt"
+              variant="mutedLink"
+              size="content"
+              className="mt-2 block"
             >
               {t("messagecontent.OAuthUseApiKey", {
                 defaultValue: "Use an API key / local setup instead",
@@ -642,8 +643,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           )}
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="denseWide"
             onClick={() => void handleLocalSignIn()}
             disabled={signingIn}
             data-testid="inline-plugin-config-local-btn"
@@ -693,8 +693,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         {showConfigForm && (
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="tinyWide"
             onClick={handleSave}
             disabled={saving || enabling || Object.keys(values).length === 0}
           >
@@ -708,9 +707,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
 
         {!isEnabled ? (
           <Button
-            variant="outline"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs border-ok/50 text-ok bg-ok/5 hover:bg-ok/10 hover:text-ok disabled:opacity-40"
+            variant="outlineAccent"
+            size="tinyWide"
             onClick={() => void handleToggle(true)}
             disabled={enabling || saving}
           >
@@ -724,9 +722,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           </Button>
         ) : (
           <Button
-            variant="outline"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs text-muted hover:border-danger hover:text-danger disabled:opacity-40"
+            variant="dangerOutline"
+            size="tinyWide"
             onClick={() => void handleToggle(false)}
             disabled={enabling || saving}
           >
@@ -859,9 +856,8 @@ export function MessageUiSpecBlock({
           {t("messagecontent.InteractiveUI")}
         </span>
         <Button
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-2xs text-txt hover:underline decoration-accent/50 underline-offset-2"
+          variant="mutedLink"
+          size="content"
           onClick={() => setShowRaw((v) => !v)}
         >
           {showRaw
@@ -1093,7 +1089,8 @@ export function SensitiveRequestBlock({
                     id={inputId}
                     aria-label={label}
                     data-testid={`sensitive-request-file-${field.name}`}
-                    className="border-border bg-bg px-2 py-1.5 text-sm"
+                    variant="secret"
+                    density="short"
                     type="file"
                     accept={accept}
                     // Mobile: prefer the rear camera for image capture (2FA QR/seed).
@@ -1146,7 +1143,8 @@ export function SensitiveRequestBlock({
                 <Input
                   id={inputId}
                   aria-label={label}
-                  className="border-border bg-bg px-2 py-1.5 text-sm"
+                  variant="secret"
+                  density="short"
                   type={field.input === "secret" ? "password" : "text"}
                   value={values[field.name] ?? ""}
                   onChange={(event) => {

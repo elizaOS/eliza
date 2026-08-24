@@ -132,16 +132,13 @@ export function McpsView() {
       <div className="flex gap-1 border-b border-border">
         {tabs.map((tabDef) => (
           <Button
-            variant="ghost"
+            variant="selection"
+            size="touch"
+            data-state={tab === tabDef.id ? "on" : "off"}
             type="button"
             key={tabDef.id}
             onClick={() => setTab(tabDef.id)}
-            className={cn(
-              "min-h-touch px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-              tab === tabDef.id
-                ? "border-accent text-txt-strong"
-                : "border-transparent text-muted hover:text-txt",
-            )}
+            className="-mb-px"
           >
             {tabDef.label}
           </Button>
@@ -153,12 +150,12 @@ export function McpsView() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2  size-4 text-muted" />
           <Input
+            adornment="leading"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("cloud.mcps.searchPlaceholder", {
               defaultValue: "Search MCPs...",
             })}
-            className="pl-9"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -265,10 +262,12 @@ const UserMcpCard = memo(function UserMcpCard({
   const t = useCloudT();
   return (
     <Button
-      variant="ghost"
+      variant="choice"
+      size="card"
+      align="start"
       type="button"
       onClick={() => onSelect(mcp.id)}
-      className="group text-left rounded-sm border border-border bg-card p-4 transition-colors hover:border-border-strong hover:bg-bg-hover"
+      className="group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">

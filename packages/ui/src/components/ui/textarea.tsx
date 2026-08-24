@@ -20,12 +20,18 @@ const textareaVariants = cva(
           "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60    ",
         codeEditor:
           "resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-zinc-100 placeholder:text-muted",
+        document:
+          "rounded-sm border-border/55 bg-bg/72 px-3 py-2 text-xs shadow-none placeholder:text-muted",
+        documentEditor:
+          "resize-y rounded-sm border-border/40 bg-bg-muted/15 px-3 py-2 font-mono text-sm leading-relaxed placeholder:text-muted",
       },
       density: {
         default: "min-h-[80px]",
         compact: "min-h-[64px] px-2 py-1.5 text-xs",
         relaxed: "min-h-[132px]",
         editor: "min-h-[420px] text-xs leading-5",
+        document: "min-h-28",
+        tall: "min-h-[20rem]",
       },
     },
     defaultVariants: {

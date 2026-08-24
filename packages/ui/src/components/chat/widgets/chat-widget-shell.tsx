@@ -98,6 +98,8 @@ export function ChatWidgetShell({
           {status}
           <Button
             type="button"
+            variant="ghostMuted"
+            size="icon-sm"
             aria-expanded={expanded}
             aria-controls={bodyId}
             aria-label={
@@ -106,7 +108,6 @@ export function ChatWidgetShell({
                 : t("chatwidget.Expand", { defaultValue: "Expand" })
             }
             data-testid={testId ? `${testId}-chevron` : undefined}
-            className="flex size-5 items-center justify-center text-muted transition-colors hover:text-txt"
             onClick={() =>
               setManualDisclosure({
                 version: completionVersion,

@@ -178,10 +178,11 @@ export const WorkflowSteps = memo(function WorkflowSteps({
             {workflow.workflowId ? (
               <Button
                 type="button"
+                variant="externalLink"
+                size="content"
                 onClick={() =>
                   dispatchVisualizeWorkflow(workflow.workflowId as string)
                 }
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
               >
                 <ExternalLink className="size-3.5" /> Open workflow
               </Button>
@@ -189,12 +190,13 @@ export const WorkflowSteps = memo(function WorkflowSteps({
             {workflow.runId && !complete ? (
               <Button
                 type="button"
+                variant="ghostMuted"
+                size="tiny"
                 onClick={() =>
                   void client
                     .cancelWorkflowExecution(workflow.runId as string)
                     .then(setExecution)
                 }
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
               >
                 <Square className="size-3.5" /> Cancel run
               </Button>

@@ -443,14 +443,14 @@ export function UploadZone({
                   event.key === "Enter" && handleUrlSubmit()
                 }
                 disabled={uploading}
-                className="h-10 flex-1 border-border/55 bg-bg/72 text-xs shadow-none"
+                variant="document"
+                className="flex-1"
                 {...urlInputField.agentProps}
               />
               <Button
                 ref={urlSubmitButton.ref}
                 variant="default"
-                size="sm"
-                className="h-10 px-4 text-xs-tight font-semibold"
+                size="formAction"
                 onClick={handleUrlSubmit}
                 disabled={!urlInput.trim() || uploading}
                 {...urlSubmitButton.agentProps}
@@ -473,7 +473,7 @@ export function UploadZone({
                 value={titleInput}
                 onChange={(event) => setTitleInput(event.target.value)}
                 disabled={uploading}
-                className="h-10 border-border/55 bg-bg/72 text-xs shadow-none"
+                variant="document"
                 {...textTitleInput.agentProps}
               />
               <Textarea
@@ -484,14 +484,15 @@ export function UploadZone({
                 value={textInput}
                 onChange={(event) => setTextInput(event.target.value)}
                 disabled={uploading}
-                className="min-h-28 resize-y border-border/55 bg-bg/72 text-xs shadow-none"
+                variant="document"
+                density="document"
                 {...textBodyInput.agentProps}
               />
               <Button
                 ref={textSaveButton.ref}
                 variant="default"
-                size="sm"
-                className="h-10 self-end px-4 text-xs-tight font-semibold"
+                size="formAction"
+                className="self-end"
                 onClick={handleTextSubmit}
                 disabled={!textInput.trim() || uploading}
                 {...textSaveButton.agentProps}

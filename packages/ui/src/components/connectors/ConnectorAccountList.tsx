@@ -380,7 +380,6 @@ export function ConnectorAccountList({
             size="sm"
             disabled={addDisabled}
             onClick={() => void handleAdd()}
-            className="h-8 gap-1 px-2.5 text-xs"
           >
             {addBusy ? (
               <Spinner className="size-3" />

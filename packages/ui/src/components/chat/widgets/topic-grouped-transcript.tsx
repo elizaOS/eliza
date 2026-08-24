@@ -93,8 +93,9 @@ export function TopicGroupedTranscript({
               aria-expanded={!collapsed}
               aria-controls={bodyId}
               data-testid={`topic-group-toggle-${group.id}`}
-              variant="ghost"
-              className="flex h-auto w-full items-center justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left font-normal transition-colors hover:bg-surface"
+              variant="sectionToggle"
+              size="content"
+              align="start"
               onClick={() => toggle(group.id)}
             >
               <span className="shrink-0 text-muted" aria-hidden>

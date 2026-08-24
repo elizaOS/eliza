@@ -357,7 +357,9 @@ export function DocumentViewer({
           type="button"
           data-testid="reader-image"
           onClick={() => setFullscreen(true)}
-          className="mx-auto block max-h-[28rem] cursor-zoom-in overflow-hidden rounded-sm"
+          variant="mediaZoom"
+          size="content"
+          className="mx-auto block max-h-[28rem] cursor-zoom-in overflow-hidden"
         >
           <img
             src={mediaUrl}
@@ -610,7 +612,8 @@ export function DocumentViewer({
                     value={draftText}
                     rows={16}
                     onChange={(event) => setDraftText(event.target.value)}
-                    className="min-h-[20rem] resize-y rounded-sm border-border/40 bg-bg-muted/15 font-mono text-sm leading-relaxed"
+                    variant="documentEditor"
+                    density="tall"
                   />
                 ) : previewText ? (
                   <pre className="custom-scrollbar max-h-[16rem] overflow-auto whitespace-pre-wrap break-words text-sm leading-relaxed text-txt/88">

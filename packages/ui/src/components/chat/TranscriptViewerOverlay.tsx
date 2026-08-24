@@ -465,8 +465,9 @@ export function TranscriptViewerOverlay({
       <Button
         aria-label="Close transcript"
         onClick={onClose}
-        variant="ghost"
-        className="absolute inset-0 h-auto w-auto cursor-default rounded-none bg-scrim hover:bg-scrim"
+        variant="publicRow"
+        size="content"
+        className="absolute inset-0 cursor-default"
       />
       <div
         className={cn(
@@ -481,7 +482,8 @@ export function TranscriptViewerOverlay({
           </h2>
           <Badge
             variant="outline"
-            className="hidden shrink-0 items-center gap-1 border-border/70 bg-bg/45 font-normal text-muted sm:inline-flex"
+            size="compact"
+            className="hidden shrink-0 sm:inline-flex"
           >
             <LockKeyhole className="size-3" aria-hidden />
             Private
@@ -489,7 +491,8 @@ export function TranscriptViewerOverlay({
           {load.status === "ready" && load.redacted ? (
             <Badge
               variant="secondary"
-              className="shrink-0 items-center gap-1 bg-bg-accent text-txt"
+              size="compact"
+              className="shrink-0"
               data-testid="transcript-redacted-badge"
             >
               <ShieldCheck className="size-3" aria-hidden />
@@ -499,9 +502,10 @@ export function TranscriptViewerOverlay({
           <Button
             aria-label="Close"
             onClick={onClose}
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
-            className="size-7 rounded-full bg-bg-hover text-muted transition-colors hover:bg-surface hover:text-txt active:scale-[0.96] motion-reduce:active:scale-100"
+            shape="circle"
+            className="active:scale-[0.96] motion-reduce:active:scale-100"
           >
             <X className="size-4" strokeWidth={1.5} />
           </Button>
@@ -550,7 +554,9 @@ export function TranscriptViewerOverlay({
               onChange={(e) => setValue(e.target.value)}
               aria-label="Edit transcript"
               data-testid="transcript-editor"
-              className="min-h-[40vh] w-full resize-none border-border bg-bg text-xs-tight leading-relaxed text-txt"
+              variant="form"
+              density="editor"
+              className="resize-none leading-relaxed"
               autoFocus
             />
           ) : (
@@ -596,7 +602,7 @@ export function TranscriptViewerOverlay({
                     placeholder="Entity ID"
                     density="compact"
                     data-testid="transcript-share-target"
-                    className="font-mono text-xs-tight"
+                    variant="config"
                   />
                 </label>
                 <div className="grid content-end gap-1">
@@ -606,8 +612,7 @@ export function TranscriptViewerOverlay({
                     </legend>
                     <Button
                       variant={shareMode === "redacted" ? "default" : "ghost"}
-                      size="sm"
-                      className="h-8 rounded-sm px-3 text-xs"
+                      size="dense"
                       onClick={() => {
                         setShareMode("redacted");
                         setShareStatus({ kind: "idle" });
@@ -620,9 +625,8 @@ export function TranscriptViewerOverlay({
                       minRole="ADMIN"
                       fallback={
                         <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 rounded-sm px-3 text-xs"
+                          variant="ghostMuted"
+                          size="dense"
                           disabled
                           data-testid="transcript-share-mode-full-disabled"
                         >
@@ -632,8 +636,7 @@ export function TranscriptViewerOverlay({
                     >
                       <Button
                         variant={shareMode === "full" ? "default" : "ghost"}
-                        size="sm"
-                        className="h-8 rounded-sm px-3 text-xs"
+                        size="dense"
                         onClick={() => {
                           setShareMode("full");
                           setShareStatus({ kind: "idle" });

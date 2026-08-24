@@ -26,7 +26,8 @@ function MockOverlayComponent(props: OverlayAppContext): ReactElement {
       </p>
       <Button
         type="button"
-        className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-accent"
+        variant="outline"
+        size="regularCompact"
         onClick={props.exitToApps}
       >
         {props.t("Exit to apps")}

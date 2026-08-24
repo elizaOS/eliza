@@ -188,10 +188,12 @@ function TodayTodoRow({
   return (
     <Button
       type="button"
+      variant="outline"
+      size="row"
+      align="start"
       data-testid="today-todo-row"
       aria-label={`Complete todo "${todo.title}"`}
       onClick={onComplete}
-      className="flex min-h-11 w-full items-start gap-2 rounded-sm border border-white/15 px-3 py-2 text-left text-white"
     >
       <Circle
         className={`mt-0.5 size-4 shrink-0 ${overdue ? "text-accent" : "text-white/70"}`}

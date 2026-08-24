@@ -314,7 +314,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                     defaultValue: `Launch ${displayName}`,
                     name: displayName,
                   })}
-                  variant="ghost"
+                  variant="outlineMuted"
                   className={`h-auto rounded-sm p-0 transition-transform hover:bg-transparent hover:scale-105 ${ringClass}`}
                   onClick={() => void handleLaunch(app)}
                 >
@@ -333,7 +333,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                       onClick={(event) => event.stopPropagation()}
                       variant="ghost"
                       size="icon-sm"
-                      className="absolute -right-1 -top-1  size-5 rounded-full border border-border bg-bg text-muted opacity-0 transition-opacity hover:bg-bg hover:text-txt group-hover:opacity-100"
+                      className="absolute -right-1 -top-1 opacity-0 transition-opacity group-hover:opacity-100"
                     >
                       <MoreHorizontal className="size-3" aria-hidden />
                     </Button>

@@ -32,6 +32,7 @@ import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -694,7 +695,11 @@ const RadioComponent: ComponentFn = (props, _children, ctx) => {
   const options =
     (props.options as Array<{ label: string; value: string }>) ?? [];
   return (
-    <div className="flex flex-col gap-1">
+    <RadioGroup
+      value={String(value ?? "")}
+      onValueChange={setValue}
+      className="flex flex-col gap-1"
+    >
       {props.label ? (
         <span className="text-xs font-semibold mb-0.5">
           {String(props.label)}
@@ -705,18 +710,11 @@ const RadioComponent: ComponentFn = (props, _children, ctx) => {
           key={o.value}
           className="flex items-center gap-2 text-xs cursor-pointer"
         >
-          <Input
-            type="radio"
-            name={String(props.name ?? "")}
-            value={o.value}
-            checked={value === o.value}
-            onChange={() => setValue(o.value)}
-            className="size-4 p-0"
-          />
+          <RadioGroupItem value={o.value} aria-label={o.label} />
           <span>{o.label}</span>
         </span>
       ))}
-    </div>
+    </RadioGroup>
   );
 };
 
@@ -1210,7 +1208,9 @@ const DropdownMenuComponent: ComponentFn = (props, _children, ctx) => {
               key={item.value}
               type="button"
               variant="ghost"
-              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--bg-hover)] rounded-none justify-start h-auto pointer-coarse:min-h-touch"
+              size="touch"
+              align="start"
+              className="w-full"
               onClick={() => {
                 setOpen(false);
                 if (ctx.onAction)
@@ -1446,7 +1446,8 @@ const TooltipComponent: ComponentFn = (props) => {
     <Button
       type="button"
       variant="ghost"
-      className="relative inline-block p-0 h-auto"
+      size="content"
+      className="relative"
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
       onFocus={() => setShow(true)}
@@ -1472,7 +1473,7 @@ const PopoverComponent: ComponentFn = (props) => {
       <Button
         type="button"
         variant="link"
-        className="text-xs text-accent underline p-0 h-auto"
+        size="content"
         onClick={() => setOpen(!open)}
       >
         {String(props.trigger ?? "Click")}
@@ -1483,8 +1484,8 @@ const PopoverComponent: ComponentFn = (props) => {
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="text-2xs text-muted mt-1 hover:text-txt p-0 h-auto"
+            size="content"
+            className="mt-1"
             onClick={() => setOpen(false)}
           >
             Close
@@ -1503,7 +1504,9 @@ const CollapsibleComponent: ComponentFn = (props, children) => {
         type="button"
         variant="ghost"
         aria-expanded={open}
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors rounded-none justify-start h-auto pointer-coarse:min-h-touch"
+        size="touch"
+        align="start"
+        className="w-full"
         onClick={() => setOpen(!open)}
       >
         <span
@@ -1542,7 +1545,9 @@ const AccordionComponent: ComponentFn = (props) => {
             type="button"
             variant="ghost"
             aria-expanded={openSet.has(i)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-[var(--bg-hover)] rounded-none justify-start h-auto pointer-coarse:min-h-touch"
+            size="touch"
+            align="start"
+            className="w-full"
             onClick={() => toggle(i)}
           >
             <span
@@ -1639,9 +1644,10 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
         <Button
           variant="ghost"
           size="sm"
+          shape="circle"
           aria-label="Close drawer"
           onClick={close}
-          className="group mx-auto mb-3 h-8 w-32 cursor-pointer rounded-full transition-colors hover:bg-surface/70"
+          className="group mx-auto mb-3 w-32"
         >
           <span
             className="h-1 w-10 rounded-full bg-border transition-all group-hover:w-14 group-hover:bg-accent/70"
