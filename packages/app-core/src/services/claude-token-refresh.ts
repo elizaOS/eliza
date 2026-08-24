@@ -64,6 +64,9 @@ export function resolveClaudeExpectedRunMs(
 ): number {
   const raw = read("ELIZA_CLAUDE_EXPECTED_RUN_MS")?.trim();
   if (!raw) return DEFAULT_CLAUDE_EXPECTED_RUN_MS;
+  // Reject non-canonical forms that Number() would silently accept (hex,
+  // scientific, Infinity). Only decimal digits with optional fraction allowed.
+  if (!/^\d+(\.\d+)?$/.test(raw)) return DEFAULT_CLAUDE_EXPECTED_RUN_MS;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return DEFAULT_CLAUDE_EXPECTED_RUN_MS;
