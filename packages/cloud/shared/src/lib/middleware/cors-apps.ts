@@ -39,9 +39,18 @@ export function addCorsHeaders(
   origin: string | null,
   methods: string[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 ): Response {
+  const effectiveMethods =
+    Array.isArray(methods) && methods.length > 0
+      ? methods.filter((m) => typeof m === "string" && m.trim().length > 0)
+      : [];
+  const methodsList =
+    effectiveMethods.length > 0
+      ? effectiveMethods
+      : ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+
   // Use wildcard for maximum compatibility - security is via auth tokens
   response.headers.set("Access-Control-Allow-Origin", "*");
-  response.headers.set("Access-Control-Allow-Methods", methods.join(", "));
+  response.headers.set("Access-Control-Allow-Methods", methodsList.join(", "));
   response.headers.set("Access-Control-Allow-Headers", CORS_ALLOW_HEADERS);
   // Note: credentials cannot be used with wildcard, but we use auth tokens instead
   response.headers.set("Access-Control-Max-Age", CORS_MAX_AGE);

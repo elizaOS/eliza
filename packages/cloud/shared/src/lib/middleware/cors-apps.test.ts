@@ -22,4 +22,12 @@ describe("cors-apps", () => {
     const out = addCorsHeaders(res, "https://example.com");
     expect(out.headers.get("access-control-allow-origin")).toBeTruthy();
   });
+
+  it("safely falls back to default methods when methods is empty or non-array", () => {
+    const res = new Response("ok");
+    const out = addCorsHeaders(res, null, []);
+    expect(out.headers.get("access-control-allow-methods")).toBe(
+      "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    );
+  });
 });
