@@ -134,7 +134,10 @@ function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
 }
 
 function localPartsToEpochMs(parts: LocalDateTimeParts): number {
-  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  const date = new Date(0);
+  date.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+  date.setUTCHours(parts.hour, parts.minute, parts.second, 0);
+  return date.getTime();
 }
 
 function sameZonedParts(left: LocalDateTimeParts, right: LocalDateTimeParts): boolean {

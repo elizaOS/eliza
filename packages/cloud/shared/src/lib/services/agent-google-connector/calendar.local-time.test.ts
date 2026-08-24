@@ -71,6 +71,20 @@ describe("buildUtcDateFromLocalParts compatible disambiguation", () => {
     expect(repeated.toISOString()).toBe("2026-11-01T05:30:00.000Z");
     expect(skipped.toISOString()).toBe("2026-03-08T07:30:00.000Z");
   });
+
+  test("preserves years 0-99 without Date.UTC 1900-1999 remapping", () => {
+    const instant = buildUtcDateFromLocalParts("UTC", {
+      year: 25,
+      month: 1,
+      day: 1,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+
+    expect(instant.getUTCFullYear()).toBe(25);
+    expect(instant.toISOString()).toBe("0025-01-01T00:00:00.000Z");
+  });
 });
 
 async function fetchAllDayEvent(args: { startDate: string; endDate: string; timeZone: string }) {
