@@ -399,7 +399,7 @@ describe("hasContextSignal", () => {
     ).resolves.toBe(true);
   });
 
-  it("skips getMemories when state already meets contextLimit (capacity gate)", async () => {
+  it("ignores the legacy contextLimit and inspects complete durable context", async () => {
     let called = false;
     const runtime = runtimeWithMemories(
       [{ content: { text: "the only calendar mention" } }],
@@ -416,11 +416,11 @@ describe("hasContextSignal", () => {
       [],
       2,
     );
-    expect(called).toBe(false);
-    expect(matched).toBe(false);
+    expect(called).toBe(true);
+    expect(matched).toBe(true);
   });
 
-  it("still inspects the current message after the capacity gate skips the DB", async () => {
+  it("inspects both durable context and the current message", async () => {
     let called = false;
     const matched = await hasContextSignal(
       runtimeWithMemories([{ content: { text: "ignored" } }], () => {
@@ -432,11 +432,11 @@ describe("hasContextSignal", () => {
       [],
       2,
     );
-    expect(called).toBe(false);
+    expect(called).toBe(true);
     expect(matched).toBe(true);
   });
 
-  it("treats contextLimit 0 with empty state as already-full and skips the DB", async () => {
+  it("does not let legacy contextLimit 0 suppress durable context", async () => {
     let called = false;
     const matched = await hasContextSignal(
       runtimeWithMemories(
@@ -451,14 +451,19 @@ describe("hasContextSignal", () => {
       [],
       0,
     );
-    expect(called).toBe(false);
-    expect(matched).toBe(false);
+    expect(called).toBe(true);
+    expect(matched).toBe(true);
   });
 
-  it("falls back to state texts when getMemories throws", async () => {
+  it("reports and propagates storage failures instead of fabricating short context", async () => {
+    const reported: Array<{ scope: string; error: unknown }> = [];
+    const failure = new Error("db unavailable");
     const runtime = {
       getMemories: async () => {
-        throw new Error("db unavailable");
+        throw failure;
+      },
+      reportError: (scope: string, error: unknown) => {
+        reported.push({ scope, error });
       },
     } as unknown as IAgentRuntime;
     await expect(
@@ -468,7 +473,10 @@ describe("hasContextSignal", () => {
         stateWithRecent("calendar reminder"),
         ["calendar"],
       ),
-    ).resolves.toBe(true);
+    ).rejects.toBe(failure);
+    expect(reported).toEqual([
+      { scope: "RecentContext.getMemories", error: failure },
+    ]);
   });
 
   it("activates on a weak term from backfilled memories", async () => {

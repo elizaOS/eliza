@@ -18,9 +18,15 @@ import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index
 
 const execFileAsync = promisify(execFile);
 
+// Fixture tree for this scenario. Seed and cleanup both `rm -rf` this root,
+// so it must be unique per runner process: with a constant path, two
+// concurrent runners — separate worktrees, CI shards, or two developers on
+// one box — delete each other's tree mid-run. The victim then fails somewhere
+// unrelated-looking, e.g. the seeded repo is gone so SHELL runs in the
+// process cwd instead of the fixture repo.
 const tmpRoot = path.join(
   realpathSync(os.tmpdir()),
-  "eliza-scenario-coding-tools",
+  `eliza-scenario-coding-tools-${process.pid}`,
 );
 const repoRoot = path.join(tmpRoot, "repo");
 const blockedRoot = path.join(tmpRoot, "_blocked");

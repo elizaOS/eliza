@@ -2109,6 +2109,273 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
+  it("CLI sendPrompt preserves the untyped error-with-deliverable completion heuristic", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cli-untyped-error-with-output",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "build it");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-untyped-error",
+          result: {
+            stopReason: "error",
+            content: [{ type: "text", text: "Verified deliverable." }],
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    closeOk(prompt);
+
+    const result = await sent;
+    expect(result).toMatchObject({
+      stopReason: "error",
+      finalText: "Verified deliverable.",
+    });
+    expect(result.error).toBeUndefined();
+    expect(events).toEqual(["task_complete"]);
+    expect((await service.getSession(sessionId))?.status).toBe("ready");
+  });
+
+  it("CLI typed failure suppresses generic auth/crash handling on nonzero exit", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cli-typed-terminal-failure",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      code: "VERIFY_REQUIRED",
+      transient: false,
+      message: "Files changed, but verification did not complete.",
+    };
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "change and verify it");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-typed-failure",
+          result: {
+            stopReason: "end_turn",
+            content: [{ type: "text", text: terminalFailure.message }],
+            _meta: { terminalFailure },
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    prompt.proc.stderr.emit(
+      "data",
+      Buffer.from("401 Unauthorized token expired"),
+    );
+    prompt.proc.emit("close", 1, null);
+
+    const result = await sent;
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(result).toMatchObject({
+      stopReason: "error",
+      finalText: terminalFailure.message,
+      error: terminalFailure.message,
+      terminalFailure,
+    });
+    expect(events.map(({ event }) => event)).toEqual(["error"]);
+    expect(events[0]?.payload).toEqual({
+      message: terminalFailure.message,
+      failureKind: terminalFailure.kind,
+      failureCode: terminalFailure.code,
+      transient: false,
+      stopReason: "error",
+    });
+    expect(await service.getSession(sessionId)).toMatchObject({
+      status: "errored",
+      lastError: terminalFailure.message,
+    });
+  });
+
+  it("CLI protocol failure suppresses generic crash persistence on nonzero exit", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cli-malformed-terminal-failure",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "change and verify it");
+    await waitForSpawn(prompt);
+    expect(() =>
+      prompt.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          `${JSON.stringify({
+            jsonrpc: "2.0",
+            id: "req-malformed-failure",
+            result: {
+              stopReason: "end_turn",
+              content: [{ type: "text", text: "Unverified prose." }],
+              _meta: {
+                terminalFailure: {
+                  kind: "coding_mutation_unverified",
+                  transient: "no",
+                  message: "Unverified prose.",
+                },
+              },
+            },
+            sessionId,
+          })}\n`,
+        ),
+      ),
+    ).not.toThrow();
+    prompt.proc.stderr.emit("data", Buffer.from("subprocess crashed"));
+    prompt.proc.emit("close", 2, null);
+
+    const result = await sent;
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(result).toMatchObject({
+      stopReason: "error",
+      error: expect.stringContaining(
+        "ACP terminalFailure requires kind, message, transient",
+      ),
+    });
+    expect(events.map(({ event }) => event)).toEqual(["error"]);
+    expect(events[0]?.payload).toMatchObject({
+      failureKind: "protocol_error",
+      stopReason: "error",
+    });
+    expect(await service.getSession(sessionId)).toMatchObject({
+      status: "errored",
+      lastError: expect.stringContaining(
+        "ACP terminalFailure requires kind, message, transient",
+      ),
+    });
+  });
+
+  it.each([
+    {
+      label: "typed terminal failure",
+      terminalFailure: {
+        kind: "coding_mutation_unverified",
+        transient: false,
+        message: "Typed failure remains authoritative.",
+      },
+      expectedFailureKind: "coding_mutation_unverified",
+      expectedLastError: "Typed failure remains authoritative.",
+    },
+    {
+      label: "malformed terminal receipt",
+      terminalFailure: {
+        kind: "coding_mutation_unverified",
+        transient: "no",
+        message: "Malformed failure receipt.",
+      },
+      expectedFailureKind: "protocol_error",
+      expectedLastError:
+        "ACP terminalFailure requires kind, message, transient",
+    },
+  ])(
+    "keeps $label exactly once across an auth-like nonzero exit",
+    async ({
+      label,
+      terminalFailure,
+      expectedFailureKind,
+      expectedLastError,
+    }) => {
+      const create = nextProc();
+      const service = new AcpService(runtime());
+      const events: Array<{ event: string; payload: unknown }> = [];
+      service.onSessionEvent((_sid, event, payload) => {
+        events.push({ event, payload });
+      });
+      await service.start();
+      const spawned = service.spawnSession({
+        name: `exactly-once-${label.replaceAll(" ", "-")}`,
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      await waitForSpawn(create);
+      closeOk(create);
+      const { sessionId } = await spawned;
+      events.length = 0;
+
+      const prompt = nextProc();
+      const sent = service.sendPrompt(sessionId, "verify it");
+      await waitForSpawn(prompt);
+      prompt.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          `${JSON.stringify({
+            jsonrpc: "2.0",
+            id: `req-${label}`,
+            result: {
+              stopReason: "end_turn",
+              _meta: { terminalFailure },
+            },
+            sessionId,
+          })}\n`,
+        ),
+      );
+      prompt.proc.stderr.emit(
+        "data",
+        Buffer.from("401 Unauthorized token expired"),
+      );
+      prompt.proc.emit("close", 3, null);
+
+      const result = await sent;
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(result.stopReason).toBe("error");
+      expect(events.map(({ event }) => event)).toEqual(["error"]);
+      expect(events[0]?.payload).toMatchObject({
+        failureKind: expectedFailureKind,
+      });
+      expect(await service.getSession(sessionId)).toMatchObject({
+        status: "errored",
+        lastError: expect.stringContaining(expectedLastError),
+      });
+    },
+  );
+
   it("flushes raw stdout before advertising stdoutLogPath on task_complete", async () => {
     const priorTrajDir = process.env.ELIZA_TRAJECTORY_DIR;
     const priorRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
@@ -2346,6 +2613,59 @@ describe("AcpService", () => {
     expect(result.finalText).toBe("Deployed the site to https://x.io");
     // Durable store is NOT flipped to errored — the work succeeded for the user.
     expect((await service.getSession(sessionId))?.status).not.toBe("errored");
+  });
+
+  it("native sendPrompt never promotes a typed terminal failure with prose to task_complete", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-typed-error-with-output",
+      agentType: "elizaos",
+      workdir: "/tmp/acp-test",
+    });
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      code: "VERIFY_REQUIRED",
+      transient: false,
+      message: "Files changed, but verification did not complete.",
+    };
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "error",
+          content: [{ type: "text", text: terminalFailure.message }],
+          _meta: { terminalFailure },
+        },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn", terminalFailure };
+    });
+
+    const result = await service.sendPrompt(sessionId, "build it");
+
+    expect(result).toMatchObject({
+      stopReason: "error",
+      finalText: terminalFailure.message,
+      error: terminalFailure.message,
+      terminalFailure,
+    });
+    expect(events.map((event) => event.event)).toContain("error");
+    expect(events.map((event) => event.event)).not.toContain("task_complete");
+    expect(events.find((event) => event.event === "error")?.payload).toEqual({
+      message: terminalFailure.message,
+      failureKind: terminalFailure.kind,
+      failureCode: terminalFailure.code,
+      transient: false,
+      stopReason: "error",
+    });
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
   });
 
   // The other half of Fix #2: a true failure (stopReason error AND no captured
@@ -2587,8 +2907,8 @@ describe("AcpService", () => {
     await new Promise((resolve) => setImmediate(resolve));
     const cancelled = service.cancelSession(sessionId);
     resolvePrompt({ stopReason: "cancelled" });
-    await cancelled;
     const result = await sent;
+    await cancelled;
 
     expect(client.cancel).toHaveBeenCalledWith("protocol-session");
     expect(result.stopReason).toBe("cancelled");
@@ -2928,6 +3248,57 @@ describe("AcpService", () => {
     );
   });
 
+  it("cancels a CLI prompt during credential setup without spawning a prompt process", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cancel-during-credentials",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    let markCredentialsStarted: () => void = () => undefined;
+    const credentialsStarted = new Promise<void>((resolve) => {
+      markCredentialsStarted = resolve;
+    });
+    let releaseCredentials: (value: Record<string, string>) => void = () =>
+      undefined;
+    const delayedCredentials = new Promise<Record<string, string>>(
+      (resolve) => {
+        releaseCredentials = resolve;
+      },
+    );
+    const internal = service as unknown as {
+      accountCredentialsForSession(
+        session: unknown,
+      ): Promise<Record<string, string> | undefined>;
+    };
+    vi.spyOn(internal, "accountCredentialsForSession").mockImplementationOnce(
+      async () => {
+        markCredentialsStarted();
+        return delayedCredentials;
+      },
+    );
+    const spawnCountBeforePrompt = spawnMock.mock.calls.length;
+    const sent = service.sendPrompt(sessionId, "start slowly");
+    await credentialsStarted;
+    const cancelled = service.cancelSession(sessionId);
+
+    const [result] = await Promise.all([sent, cancelled.then(() => undefined)]);
+    releaseCredentials({});
+    expect(result).toMatchObject({ stopReason: "cancelled" });
+    expect(spawnMock.mock.calls).toHaveLength(spawnCountBeforePrompt);
+    expect(events).toEqual(["cancelled"]);
+    expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+  });
+
   it("cancelSession sends SIGTERM then SIGKILL after grace", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
@@ -2982,6 +3353,253 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("cancelled");
     expect(events).toContain("cancelled");
     expect(events).not.toContain("error");
+  });
+
+  it("keeps a typed CLI terminal failure authoritative over a later cancellation", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "typed-failure-cancel-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const internalStore = (
+      service as unknown as {
+        store: {
+          updateStatus(
+            id: string,
+            status: string,
+            error?: string,
+          ): Promise<unknown>;
+        };
+      }
+    ).store;
+    const originalUpdateStatus = internalStore.updateStatus.bind(internalStore);
+    const statusWrites: string[] = [];
+    let releaseDelayedCancelledWrite: () => void = () => undefined;
+    const delayedCancelledWrite = new Promise<void>((resolve) => {
+      releaseDelayedCancelledWrite = resolve;
+    });
+    vi.spyOn(internalStore, "updateStatus").mockImplementation(
+      async (id, status, error) => {
+        statusWrites.push(status);
+        if (status === "cancelled") await delayedCancelledWrite;
+        return originalUpdateStatus(id, status, error);
+      },
+    );
+
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      code: "VERIFY_REQUIRED",
+      transient: false,
+      message: "Verification failed before cancellation arrived.",
+    };
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "change and verify it");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-typed-cancel-race",
+          result: {
+            stopReason: "end_turn",
+            content: [{ type: "text", text: terminalFailure.message }],
+            _meta: { terminalFailure },
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    const cancelled = service.cancelSession(sessionId);
+    await new Promise((resolve) => setImmediate(resolve));
+    prompt.proc.emit("close", 130, "SIGTERM");
+
+    const result = await sent;
+    // If cancelSession started its own durable write, release it only after the
+    // prompt's errored write has landed. The old two-writer implementation then
+    // finished as cancelled and failed the assertions below.
+    releaseDelayedCancelledWrite();
+    await cancelled;
+    expect(result).toMatchObject({
+      stopReason: "error",
+      error: terminalFailure.message,
+      terminalFailure,
+    });
+    expect(events.map(({ event }) => event)).toEqual(["error"]);
+    expect(events[0]?.payload).toEqual({
+      message: terminalFailure.message,
+      failureKind: terminalFailure.kind,
+      failureCode: terminalFailure.code,
+      transient: false,
+      stopReason: "error",
+    });
+    expect(statusWrites).not.toContain("cancelled");
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
+  });
+
+  it("keeps prompt ownership after process close until delayed error persistence settles", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "post-close-persistence-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const internalStore = (
+      service as unknown as {
+        store: {
+          updateStatus(
+            id: string,
+            status: string,
+            error?: string,
+          ): Promise<unknown>;
+        };
+      }
+    ).store;
+    const originalUpdateStatus = internalStore.updateStatus.bind(internalStore);
+    const statusWrites: string[] = [];
+    let markErroredWriteStarted: () => void = () => undefined;
+    const erroredWriteStarted = new Promise<void>((resolve) => {
+      markErroredWriteStarted = resolve;
+    });
+    let releaseErroredWrite: () => void = () => undefined;
+    const delayedErroredWrite = new Promise<void>((resolve) => {
+      releaseErroredWrite = resolve;
+    });
+    vi.spyOn(internalStore, "updateStatus").mockImplementation(
+      async (id, status, error) => {
+        statusWrites.push(status);
+        if (status === "errored") {
+          markErroredWriteStarted();
+          await delayedErroredWrite;
+        }
+        return originalUpdateStatus(id, status, error);
+      },
+    );
+
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      transient: false,
+      message: "The terminal receipt owns settlement.",
+    };
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "finish");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-post-close-race",
+          result: {
+            stopReason: "end_turn",
+            _meta: { terminalFailure },
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    prompt.proc.emit("close", 0, null);
+    await erroredWriteStarted;
+    const spawnCountAtClose = spawnMock.mock.calls.length;
+    const fallbackCancel = nextProc();
+    const cancelled = service.cancelSession(sessionId);
+    await new Promise((resolve) => setImmediate(resolve));
+    if (spawnMock.mock.calls.length > spawnCountAtClose)
+      closeOk(fallbackCancel);
+    releaseErroredWrite();
+
+    const [result] = await Promise.all([sent, cancelled.then(() => undefined)]);
+    expect(result).toMatchObject({
+      stopReason: "error",
+      error: terminalFailure.message,
+      terminalFailure,
+    });
+    expect(spawnMock.mock.calls).toHaveLength(spawnCountAtClose);
+    expect(statusWrites).not.toContain("cancelled");
+    expect(events).toEqual(["error"]);
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
+  });
+
+  it("keeps a malformed CLI receipt error authoritative over a later cancellation", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "protocol-error-cancel-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "change and verify it");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-malformed-cancel-race",
+          result: {
+            stopReason: "end_turn",
+            _meta: {
+              terminalFailure: {
+                kind: "coding_mutation_unverified",
+                transient: "no",
+                message: "Malformed receipt.",
+              },
+            },
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    const cancelled = service.cancelSession(sessionId);
+    await new Promise((resolve) => setImmediate(resolve));
+    prompt.proc.emit("close", 130, "SIGTERM");
+
+    await cancelled;
+    const result = await sent;
+    expect(result).toMatchObject({
+      stopReason: "error",
+      error: expect.stringContaining(
+        "ACP terminalFailure requires kind, message, transient",
+      ),
+    });
+    expect(events.map(({ event }) => event)).toEqual(["error"]);
+    expect(events[0]?.payload).toMatchObject({
+      failureKind: "protocol_error",
+      stopReason: "error",
+    });
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
   });
 
   it("ignores malformed NDJSON without crashing", async () => {

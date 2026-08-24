@@ -464,7 +464,8 @@ function parseDateProperty(
   const dUtc = new Date(0);
   dUtc.setUTCFullYear(parts.year, parts.month - 1, parts.day);
   dUtc.setUTCHours(parts.hour, parts.minute, parts.second, 0);
-  const instant = isUtc ? dUtc.toISOString()
+  const instant = isUtc
+    ? dUtc.toISOString()
     : normalizeCalendarDateTimeInTimeZone(
         `${dateTimeMatch[1]}-${dateTimeMatch[2]}-${dateTimeMatch[3]}T${dateTimeMatch[4]}:${dateTimeMatch[5]}:${dateTimeMatch[6] ?? "00"}`,
         field,

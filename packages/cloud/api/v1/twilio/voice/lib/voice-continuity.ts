@@ -6,9 +6,6 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
-export const ELIZA_AI_VOICE_DISCLOSURE =
-  "Just so you know, I'm an AI assistant using an AI-generated voice.";
-
 export interface InboundCallOpeningClaim extends CallContinuityContext {
   id: string;
   receivedAt: Date;
@@ -102,6 +99,9 @@ function callRelationshipContext(
     return "This is their first recorded interaction with Eliza.";
   return [
     "They have prior private conversation history.",
+    previousInteractionAt
+      ? `Their last recorded interaction was at ${new Date(previousInteractionAt).toISOString()}.`
+      : "There is no reliable timestamp for that prior interaction.",
     age
       ? `Their last recorded interaction was about ${age} ago.`
       : "There is no reliable elapsed-time value for that prior interaction.",
@@ -114,7 +114,7 @@ export function callStartedEvent(
   now = Date.now(),
 ): string {
   return [
-    "Call lifecycle event: the user has called Eliza and is now connected.",
+    `Call lifecycle event: the user called Eliza and connected at ${new Date(now).toISOString()}.`,
     callRelationshipContext(returningCaller, previousInteractionAt, now),
   ].join(" ");
 }
@@ -125,8 +125,8 @@ export function callStartedEvent(
  * through the agent runtime puts its entire cold path before first audio.
  */
 export function callOpeningGreeting(returningCaller: boolean): string {
-  const greeting = returningCaller ? "Hey, what's up?" : "Hello? Who's this?";
-  return `${greeting} ${ELIZA_AI_VOICE_DISCLOSURE}`;
+  void returningCaller;
+  return "Hey, how's it going?";
 }
 
 /** Keeps variable history inside the canonical private turn while bounding its spoken output. */
@@ -153,12 +153,12 @@ export function callOpeningClientMessageId(callSid: string): string {
   return `twilio-call:${callSid}:opening`;
 }
 
-export function callEndedEvent(reason: string): string {
+export function callEndedEvent(reason: string, now = Date.now()): string {
   const normalized = reason
     .trim()
     .replace(/[^a-z_]/gi, "_")
     .slice(0, 40);
-  return `Call lifecycle event: the phone call ended (${normalized || "unknown"}).`;
+  return `Call lifecycle event: the phone call ended at ${new Date(now).toISOString()} (${normalized || "unknown"}).`;
 }
 
 /** Starts latency prewarm before lifecycle persistence and joins both tasks. */

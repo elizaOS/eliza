@@ -91,9 +91,9 @@ describe("resolveCodingMaxToolCalls (ELIZA_CODING_MAX_TOOL_CALLS)", () => {
 		}
 	});
 
-	it("defaults to 80 when unset", () => {
+	it("defaults to 32 when unset", () => {
 		delete process.env[KEY];
-		expect(resolveCodingMaxToolCalls()).toBe(80);
+		expect(resolveCodingMaxToolCalls()).toBe(32);
 	});
 
 	it("honors a canonical override exactly", () => {
