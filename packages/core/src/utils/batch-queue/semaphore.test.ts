@@ -64,4 +64,34 @@ describe("Semaphore", () => {
 		expect(sem.queueLength).toBe(0);
 		expect(sem.availablePermits).toBe(1);
 	});
+
+	it("caps permits on release to prevent unbounded growth", async () => {
+		const sem = new Semaphore(2);
+		await sem.acquire();
+		expect(sem.availablePermits).toBe(1);
+		sem.release();
+		expect(sem.availablePermits).toBe(2);
+		// Extra releases should not exceed capacity
+		sem.release();
+		expect(sem.availablePermits).toBe(2);
+		sem.release();
+		expect(sem.availablePermits).toBe(2);
+		// Acquires should still respect capacity after over-release
+		await sem.acquire();
+		await sem.acquire();
+		expect(sem.availablePermits).toBe(0);
+		// Next acquire should queue
+		let queued = false;
+		const waiter = sem.acquire().then(() => {
+			queued = true;
+		});
+		expect(sem.queueLength).toBe(1);
+		expect(queued).toBe(false);
+		sem.release();
+		await waiter;
+		expect(queued).toBe(true);
+		expect(sem.availablePermits).toBe(0);
+		sem.release();
+		expect(sem.availablePermits).toBe(1);
+	});
 });
