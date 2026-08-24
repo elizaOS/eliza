@@ -168,6 +168,7 @@ import {
   measureSafeAreaInsetTop,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
+  resolveDetachedFirstRunThreadHeight,
 } from "./chat-panel-layout";
 import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
 import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
@@ -2185,6 +2186,27 @@ export function ChatOverlay({
   // The transcript's inner content wrapper — measured to size the onboarding
   // sheet to its content (grow-from-the-bottom) instead of a tall empty panel.
   const threadContentRef = React.useRef<HTMLDivElement>(null);
+  const [detachedFirstRunContentHeight, setDetachedFirstRunContentHeight] =
+    React.useState(0);
+  React.useLayoutEffect(() => {
+    if (!desktopOverlayHost || !firstRunOpen) return undefined;
+    const content = threadContentRef.current;
+    if (!content) return undefined;
+    const measure = () => {
+      const next = Math.ceil(
+        Math.max(content.scrollHeight, content.getBoundingClientRect().height),
+      );
+      if (next <= 0) return;
+      setDetachedFirstRunContentHeight((current) =>
+        current === next ? current : next,
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [desktopOverlayHost, firstRunOpen]);
   const layoutShiftIntentTimerRef = React.useRef<number | null>(null);
   const layoutShiftIntentLastMotionRef = React.useRef(0);
   const markLayoutShiftIntent = React.useCallback(() => {
@@ -3364,7 +3386,14 @@ export function ChatOverlay({
   // detent may never outrun its current panel ceiling: panelCapH intentionally
   // follows threadHeight during a live over-pull, so an oversized HALF target
   // otherwise re-expands the cap and clips the grabber above the screen.
-  const halfH = resolveChatPanelHalfDetentHeight(viewportH, panelMaxH);
+  const canonicalHalfH = resolveChatPanelHalfDetentHeight(viewportH, panelMaxH);
+  const halfH =
+    desktopOverlayHost && firstRunOpen
+      ? resolveDetachedFirstRunThreadHeight(
+          detachedFirstRunContentHeight,
+          canonicalHalfH,
+        )
+      : canonicalHalfH;
   const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
   // A free-drag rest height wins over the detent until a detent is re-taken.
   const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;

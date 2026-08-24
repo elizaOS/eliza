@@ -27,6 +27,13 @@ const SAFE_AREA_TOP_BUFFER = 8;
 // of visual viewport, a 200px panel, and every message bubble unhittable).
 const MIN_PANEL_HEIGHT = 200;
 
+// The detached desktop first-run transcript should read like a small setup
+// card, not inherit the ordinary chat sheet's reading detent. This is the
+// thread portion only; the composer remains below it in the same panel.
+export const DETACHED_FIRST_RUN_DEFAULT_THREAD_HEIGHT = 252;
+export const DETACHED_FIRST_RUN_MIN_THREAD_HEIGHT = 220;
+export const DETACHED_FIRST_RUN_CONTENT_GUTTER = 24;
+
 // SheetGrabber sits 2px below the panel top and extends its invisible hit zone
 // 24px upward. Keeping 22px above a keyboard-constrained panel therefore keeps
 // the complete 44px drag target on-screen instead of clipping the close gesture
@@ -81,6 +88,27 @@ export function resolveChatPanelHalfDetentHeight(
     Math.round(viewportH * SHEET_HALF_VIEWPORT_FRACTION),
   );
   return Math.min(nominalHalf, Math.max(0, panelMaxH));
+}
+
+/**
+ * Fits detached desktop onboarding to its actual transcript while retaining a
+ * bounded scroll viewport for longer setup steps. Browser/mobile keep the
+ * canonical HALF detent and never call this helper.
+ */
+export function resolveDetachedFirstRunThreadHeight(
+  contentHeight: number,
+  halfDetentHeight: number,
+): number {
+  const ceiling = Math.max(0, Math.round(halfDetentHeight));
+  if (ceiling === 0) return 0;
+  const measured =
+    Number.isFinite(contentHeight) && contentHeight > 0
+      ? Math.ceil(contentHeight) + DETACHED_FIRST_RUN_CONTENT_GUTTER
+      : DETACHED_FIRST_RUN_DEFAULT_THREAD_HEIGHT;
+  return Math.min(
+    ceiling,
+    Math.max(DETACHED_FIRST_RUN_MIN_THREAD_HEIGHT, measured),
+  );
 }
 
 /**

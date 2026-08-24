@@ -5,9 +5,11 @@
 import { describe, expect, it } from "vitest";
 import {
   type ChatPanelLayoutInput,
+  DETACHED_FIRST_RUN_DEFAULT_THREAD_HEIGHT,
   isShortLandscapeViewport,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
+  resolveDetachedFirstRunThreadHeight,
   SHEET_GRABBER_TOP_CLEARANCE,
   SHEET_TOP_MARGIN,
   SHORT_LANDSCAPE_MAX_HEIGHT,
@@ -312,6 +314,21 @@ describe("resolveChatPanelHalfDetentHeight", () => {
 
   it("keeps the ordinary viewport-relative half detent when it fits", () => {
     expect(resolveChatPanelHalfDetentHeight(800, 728)).toBe(368);
+  });
+});
+
+describe("resolveDetachedFirstRunThreadHeight", () => {
+  it("starts compact before measurement and never exceeds the half detent", () => {
+    expect(resolveDetachedFirstRunThreadHeight(0, 368)).toBe(
+      DETACHED_FIRST_RUN_DEFAULT_THREAD_HEIGHT,
+    );
+    expect(resolveDetachedFirstRunThreadHeight(0, 180)).toBe(180);
+  });
+
+  it("fits measured choices with breathing room and scroll-bounds long setup", () => {
+    expect(resolveDetachedFirstRunThreadHeight(180, 368)).toBe(220);
+    expect(resolveDetachedFirstRunThreadHeight(280, 368)).toBe(304);
+    expect(resolveDetachedFirstRunThreadHeight(900, 368)).toBe(368);
   });
 });
 

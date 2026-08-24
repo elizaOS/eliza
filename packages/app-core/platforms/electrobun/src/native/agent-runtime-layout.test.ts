@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   isStartupDiagnosticsOwnedByBundle,
+  isStartupDiagnosticsOwnedByCurrentProcess,
   resolveRuntimeEntryPath,
 } from "./agent";
 
@@ -74,5 +75,22 @@ describe("startup diagnostics ownership", () => {
         null,
       ),
     ).toBe(false);
+  });
+
+  it("suppresses a stale predecessor failure rebuilt at the same bundle path", () => {
+    expect(
+      isStartupDiagnosticsOwnedByCurrentProcess(
+        { ownerBundlePath: "/Applications/Eliza.app", ownerPid: 100 },
+        "/Applications/Eliza.app",
+        101,
+      ),
+    ).toBe(false);
+    expect(
+      isStartupDiagnosticsOwnedByCurrentProcess(
+        { ownerBundlePath: "/Applications/Eliza.app", ownerPid: 101 },
+        "/Applications/Eliza.app",
+        101,
+      ),
+    ).toBe(true);
   });
 });

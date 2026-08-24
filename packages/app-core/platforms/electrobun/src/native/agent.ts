@@ -885,6 +885,22 @@ export function isStartupDiagnosticsOwnedByBundle(
   return normalize(owner) === normalize(current);
 }
 
+/**
+ * A shared config-directory failure belongs to this launch only when both the
+ * bundle and native main PID match. Rebuilding at the same app path must not
+ * resurrect a predecessor process's already-fixed crash dialog.
+ */
+export function isStartupDiagnosticsOwnedByCurrentProcess(
+  diagnostics: Pick<StartupDiagnosticsSnapshot, "ownerBundlePath" | "ownerPid">,
+  currentBundlePath: string | null | undefined,
+  currentPid = process.pid,
+): boolean {
+  return (
+    isStartupDiagnosticsOwnedByBundle(diagnostics, currentBundlePath) &&
+    diagnostics.ownerPid === currentPid
+  );
+}
+
 export function getStartupDiagnosticLogTail(maxChars = 16_000): string {
   return readFileTail(getDiagnosticLogPath(), maxChars);
 }

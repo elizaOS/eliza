@@ -733,7 +733,10 @@ export function ComputerUseSessionsView({
                   </p>
                 ) : null}
                 {selected.lastControlMode ? (
-                  <p className="truncate" title={selected.lastFallbackDisclosure}>
+                  <p
+                    className="truncate"
+                    title={selected.lastFallbackDisclosure}
+                  >
                     {selected.lastControlMode === "coordinate_fallback"
                       ? (selected.lastFallbackDisclosure ??
                         "Coordinate fallback · physical pointer borrowed")

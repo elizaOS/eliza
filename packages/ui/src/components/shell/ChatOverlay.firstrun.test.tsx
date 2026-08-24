@@ -213,7 +213,7 @@ describe("ChatOverlay first-run gating", () => {
     );
   });
 
-  it("opens the native companion at its compact reading detent without drag affordances", () => {
+  it("opens the native companion at a content-sized setup detent without drag affordances", () => {
     render(
       <ChatOverlay
         controller={makeController()}
@@ -228,6 +228,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(Number.parseFloat(firstRunThread.style.flexBasis)).toBeLessThan(
       window.innerHeight * 0.75,
     );
+    expect(Number.parseFloat(firstRunThread.style.flexBasis)).toBeLessThan(300);
     expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
     expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();

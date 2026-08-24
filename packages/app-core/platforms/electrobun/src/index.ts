@@ -99,7 +99,7 @@ import {
   getStartupDiagnosticLogTail,
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
-  isStartupDiagnosticsOwnedByBundle,
+  isStartupDiagnosticsOwnedByCurrentProcess,
   terminateManagedAgentOnHostExit,
 } from "./native/agent";
 import {
@@ -3459,7 +3459,7 @@ async function maybePromptStartupCrashReport(): Promise<void> {
 
   const diagnostics = getStartupDiagnosticsSnapshot();
   if (
-    !isStartupDiagnosticsOwnedByBundle(
+    !isStartupDiagnosticsOwnedByCurrentProcess(
       diagnostics,
       resolveStartupBundlePath(process.execPath),
     )
