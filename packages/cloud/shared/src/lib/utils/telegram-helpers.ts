@@ -1,5 +1,5 @@
 import { truncateWellFormed } from "@elizaos/core";
-import { assertValidMessageChunkLength } from "./message-chunking";
+import { splitMessageLosslessly } from "./message-chunking";
 
 // Provides cloud utility telegram helpers helpers shared by backend services.
 export function escapeMarkdownV2(text: string): string {
@@ -8,33 +8,7 @@ export function escapeMarkdownV2(text: string): string {
 }
 
 export function splitMessage(text: string, maxLength = 4096): string[] {
-  assertValidMessageChunkLength(maxLength);
-  const chunks: string[] = [];
-  if (!text) return chunks;
-
-  let current = "";
-
-  for (const line of text.split("\n")) {
-    if (current.length + line.length + 1 <= maxLength) {
-      current += (current ? "\n" : "") + line;
-    } else {
-      if (current) chunks.push(current);
-      if (line.length > maxLength) {
-        let remaining = line;
-        while (remaining.length > maxLength) {
-          const head = truncateWellFormed(remaining, maxLength);
-          chunks.push(head);
-          remaining = remaining.slice(head.length);
-        }
-        current = remaining;
-      } else {
-        current = line;
-      }
-    }
-  }
-
-  if (current) chunks.push(current);
-  return chunks;
+  return splitMessageLosslessly(text, maxLength);
 }
 
 export function createInlineKeyboard(buttons: Array<{ text: string; url: string }>): {

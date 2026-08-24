@@ -221,19 +221,13 @@ export function refreshMessageConnectorActionDescription(
 					getMessageConnectors?: () => MessageConnector[];
 				}
 			).getMessageConnectors?.call(runtime) ?? []);
-	const visible = connectors
-		.slice(0, 12)
-		.map((connector) =>
-			messageConnectorSummary(connector, Boolean(options.connectorOnly)),
-		);
-	const suffix =
-		connectors.length > visible.length
-			? `; +${connectors.length - visible.length} more`
-			: "";
+	const visible = connectors.map((connector) =>
+		messageConnectorSummary(connector, Boolean(options.connectorOnly)),
+	);
 	const connectorText =
 		connectors.length === 0
 			? "connectors[0]: none_registered"
-			: `connectors[${connectors.length}]: ${visible.join("; ")}${suffix}`;
+			: `connectors[${connectors.length}]: ${visible.join("; ")}`;
 	action.description = `${options.baseDescription}\n${connectorText}`;
 	action.descriptionCompressed = `${options.baseCompressed} ${connectorText}`;
 }
@@ -249,19 +243,13 @@ export function refreshPostConnectorActionDescription(
 	},
 ): void {
 	const connectors = getPostConnectorsWithHook(runtime, options.hook);
-	const visible = connectors
-		.slice(0, 12)
-		.map((connector) =>
-			postConnectorSummary(connector, Boolean(options.connectorOnly)),
-		);
-	const suffix =
-		connectors.length > visible.length
-			? `; +${connectors.length - visible.length} more`
-			: "";
+	const visible = connectors.map((connector) =>
+		postConnectorSummary(connector, Boolean(options.connectorOnly)),
+	);
 	const connectorText =
 		connectors.length === 0
 			? "connectors[0]: none_registered"
-			: `connectors[${connectors.length}]: ${visible.join("; ")}${suffix}`;
+			: `connectors[${connectors.length}]: ${visible.join("; ")}`;
 	action.description = `${options.baseDescription}\n${connectorText}`;
 	action.descriptionCompressed = `${options.baseCompressed} ${connectorText}`;
 }

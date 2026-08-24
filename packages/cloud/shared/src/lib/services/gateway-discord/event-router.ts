@@ -26,6 +26,7 @@ import { runtimeFactory } from "../../eliza/runtime-factory";
 import { userContextService } from "../../eliza/user-context";
 import { DISCORD_API_BASE, discordBotHeaders } from "../../utils/discord-api";
 import { logger } from "../../utils/logger";
+import { splitMessageLosslessly } from "../../utils/message-chunking";
 import { getEncryptionService } from "../secrets/encryption";
 import {
   DISCORD_RATE_LIMIT_DEFAULT_RETRY_MS,
@@ -60,29 +61,6 @@ const DISCORD_TOKEN_PATTERN = /[A-Za-z0-9_-]{18,30}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-
 function sanitizeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(DISCORD_TOKEN_PATTERN, "[REDACTED_TOKEN]");
-}
-
-/**
- * Truncate a string to a maximum UTF-16 code unit length (Discord's limit).
- * Avoids breaking surrogate pairs (emoji, etc.) by backing up if needed.
- */
-function truncateUtf16Safe(str: string, maxLength: number): string {
-  if (str.length <= maxLength) {
-    return str;
-  }
-
-  // Truncate to maxLength
-  let truncated = str.slice(0, maxLength);
-
-  // Check if we cut in the middle of a surrogate pair
-  // High surrogate: 0xD800-0xDBFF, Low surrogate: 0xDC00-0xDFFF
-  const lastChar = truncated.charCodeAt(truncated.length - 1);
-  if (lastChar >= 0xd800 && lastChar <= 0xdbff) {
-    // Last char is a high surrogate without its low surrogate - remove it
-    truncated = truncated.slice(0, -1);
-  }
-
-  return truncated;
 }
 
 /** HTTP request timeout for Discord API calls */
@@ -692,56 +670,57 @@ async function sendDiscordResponse(
   content: string,
   replyToMessageId?: string,
 ): Promise<void> {
-  const payload: Record<string, unknown> = {
-    content: truncateUtf16Safe(content, MAX_DISCORD_MESSAGE_LENGTH),
-  };
+  const sendChunk = async (chunk: string, replyTo?: string): Promise<void> => {
+    const payload: Record<string, unknown> = { content: chunk };
+    if (replyTo) {
+      payload.message_reference = { message_id: replyTo };
+    }
 
-  if (replyToMessageId) {
-    payload.message_reference = {
-      message_id: replyToMessageId,
-    };
-  }
-
-  // Acquire rate limit token (waits if necessary)
-  await discordRateLimiter.acquire(botToken);
-
-  const makeRequest = async (): Promise<Response> => {
+    await discordRateLimiter.acquire(botToken);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), DISCORD_API_TIMEOUT_MS);
 
-    try {
-      return await fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
+    const makeRequest = async (): Promise<Response> =>
+      fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
         method: "POST",
         headers: discordBotHeaders(botToken),
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
+
+    try {
+      let response = await makeRequest();
+      if (response.status === 429) {
+        const retryAfterHeader = response.headers.get("Retry-After");
+        const retryAfterSeconds = retryAfterHeader
+          ? parseFloat(retryAfterHeader)
+          : undefined;
+        const retryMs = discordRateLimiter.handleRateLimit(
+          botToken,
+          retryAfterSeconds,
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryMs));
+        await discordRateLimiter.acquire(botToken);
+        response = await makeRequest();
+      }
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const errorText = sanitizeError(JSON.stringify(errorBody));
+        logger.error("[DiscordRouter] Discord API error", {
+          channelId,
+          status: response.status,
+          error: errorText,
+        });
+        throw new Error(`Discord API ${response.status}: ${errorText}`);
+      }
     } finally {
       clearTimeout(timeoutId);
     }
   };
 
-  let response = await makeRequest();
-
-  // Handle rate limit with single retry
-  if (response.status === 429) {
-    const retryAfterHeader = response.headers.get("Retry-After");
-    const retryAfterSeconds = retryAfterHeader ? parseFloat(retryAfterHeader) : undefined;
-
-    const retryMs = discordRateLimiter.handleRateLimit(botToken, retryAfterSeconds);
-
-    // Wait and retry once
-    await new Promise((resolve) => setTimeout(resolve, retryMs));
-    await discordRateLimiter.acquire(botToken);
-    response = await makeRequest();
-  }
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    logger.error("[DiscordRouter] Discord API error", {
-      channelId,
-      status: response.status,
-      error: sanitizeError(JSON.stringify(errorBody)),
-    });
+  const chunks = splitMessageLosslessly(content, MAX_DISCORD_MESSAGE_LENGTH);
+  for (const [index, chunk] of chunks.entries()) {
+    await sendChunk(chunk, index === 0 ? replyToMessageId : undefined);
   }
 }

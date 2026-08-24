@@ -14,7 +14,6 @@ import {
 } from "@elizaos/core";
 
 export const CHARACTER_HISTORY_TABLE = "character_modifications";
-export const MAX_CHARACTER_HISTORY_LIMIT = 100;
 /**
  * Honest character snapshots are a handful of objects deep. Zod
  * `contentSchema.passthrough()` still admits extra keys that `JSON.parse`
@@ -757,20 +756,18 @@ export function parseCharacterHistoryEntry(
 
 export async function listCharacterHistory(
   runtime: IAgentRuntime,
-  limit = 20,
+  limit?: number,
 ): Promise<CharacterHistoryEntry[]> {
-  const safeLimit = Math.min(
-    Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 20),
-    MAX_CHARACTER_HISTORY_LIMIT,
-  );
+  if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)) {
+    throw new RangeError("Character history limit must be a positive safe integer");
+  }
 
   const memories = await runtime.getMemories({
     entityId: runtime.agentId,
-    count: Math.max(safeLimit * 4, safeLimit),
     tableName: CHARACTER_HISTORY_TABLE,
   });
 
-  return memories
+  const entries = memories
     .map((memory) => parseCharacterHistoryEntry(memory))
     .filter((entry): entry is CharacterHistoryEntry => entry !== null)
     .sort((left, right) => {
@@ -785,6 +782,6 @@ export async function listCharacterHistory(
       return (
         rightTime - leftTime || (left.id ?? "").localeCompare(right.id ?? "")
       );
-    })
-    .slice(0, safeLimit);
+    });
+  return limit === undefined ? entries : entries.slice(0, limit);
 }

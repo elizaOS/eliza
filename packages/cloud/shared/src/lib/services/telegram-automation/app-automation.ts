@@ -410,22 +410,11 @@ Maximum 300 characters.`;
     let lastError: string | undefined;
 
     try {
-      // If we have a promotional image, send it as a photo with caption
+      // The photo and text are separate deliveries because Telegram captions
+      // cannot carry a complete long announcement.
       if (promotionalImageUrl) {
-        // Telegram photo captions are limited to 1024 characters
-        const caption =
-          messageText.length > 1024 ? messageText.substring(0, 1021) + "..." : messageText;
-
-        const replyMarkup = buttonUrl
-          ? createInlineKeyboard([{ text: "🚀 Try It Now", url: buttonUrl }])
-          : undefined;
-
         const result = await Promise.race([
-          bot.telegram.sendPhoto(chatId, promotionalImageUrl, {
-            caption,
-            parse_mode: "HTML",
-            reply_markup: replyMarkup,
-          }),
+          bot.telegram.sendPhoto(chatId, promotionalImageUrl),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
           ),
@@ -439,29 +428,27 @@ Maximum 300 characters.`;
           messageId: lastMessageId,
           imageUrl: promotionalImageUrl,
         });
-      } else {
-        // No image - send text message as before
-        const chunks = splitMessage(messageText, TELEGRAM_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      }
 
-        for (const chunk of chunks) {
-          const isLastChunk = chunk === chunks[chunks.length - 1];
-          const replyMarkup =
-            isLastChunk && buttonUrl
-              ? createInlineKeyboard([{ text: "🚀 Try It Now", url: buttonUrl }])
-              : undefined;
+      const chunks = splitMessage(messageText, TELEGRAM_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      for (const [index, chunk] of chunks.entries()) {
+        const isLastChunk = index === chunks.length - 1;
+        const replyMarkup =
+          isLastChunk && buttonUrl
+            ? createInlineKeyboard([{ text: "🚀 Try It Now", url: buttonUrl }])
+            : undefined;
 
-          const result = await Promise.race([
-            bot.telegram.sendMessage(chatId, chunk, {
-              parse_mode: "HTML",
-              reply_markup: replyMarkup,
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
-            ),
-          ]);
+        const result = await Promise.race([
+          bot.telegram.sendMessage(chatId, chunk, {
+            parse_mode: "HTML",
+            reply_markup: replyMarkup,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
+          ),
+        ]);
 
-          lastMessageId = result.message_id;
-        }
+        lastMessageId = result.message_id;
       }
     } catch (error) {
       // error-policy:J1 Telegram send transport boundary -> typed PostResult failure the callers surface as success:false
@@ -472,6 +459,10 @@ Maximum 300 characters.`;
         error: lastError,
         hasImage: !!promotionalImageUrl,
       });
+    }
+
+    if (lastError) {
+      return { success: false, error: lastError };
     }
 
     if (lastMessageId) {
@@ -535,14 +526,25 @@ Maximum 300 characters.`;
     const bot = new Telegraf(botToken);
 
     try {
-      const result = await Promise.race([
-        bot.telegram.sendMessage(message.chatId, replyText, {
-          reply_parameters: { message_id: message.messageId },
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
-        ),
-      ]);
+      const chunks = splitMessage(replyText, TELEGRAM_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      let lastMessageId: number | undefined;
+      for (const [index, chunk] of chunks.entries()) {
+        const result = await Promise.race([
+          bot.telegram.sendMessage(message.chatId, chunk, {
+            ...(index === 0
+              ? { reply_parameters: { message_id: message.messageId } }
+              : {}),
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
+          ),
+        ]);
+        lastMessageId = result.message_id;
+      }
+
+      if (lastMessageId === undefined) {
+        throw new Error("Telegram reply was empty");
+      }
 
       const currentConfig = app.telegram_automation || {
         enabled: false,
@@ -561,7 +563,7 @@ Maximum 300 characters.`;
 
       return {
         success: true,
-        messageId: result.message_id,
+        messageId: lastMessageId,
         chatId: message.chatId,
       };
     } catch (error) {

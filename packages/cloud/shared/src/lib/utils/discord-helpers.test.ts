@@ -8,7 +8,7 @@ import {
   maskId,
   mention,
   splitMessage,
-  truncate,
+  createEmbed,
 } from "./discord-helpers";
 
 /**
@@ -18,14 +18,16 @@ import {
  */
 
 describe("splitMessage", () => {
-  test("returns chunks all within the limit, losing no content words", () => {
+  test("returns chunks all within the limit with exact reassembly", () => {
     expect(splitMessage("", 100)).toEqual([]);
     expect(splitMessage("short", 100)).toEqual(["short"]);
     const long = Array.from({ length: 500 }, (_, i) => `word${i}`).join(" ");
     const chunks = splitMessage(long, 100);
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.every((c) => c.length <= 100)).toBe(true);
-    expect(chunks.join(" ").replace(/\s+/g, " ")).toContain("word499");
+    expect(chunks.join("")).toBe(long);
+    const whitespace = `  lead\n\n${"😀".repeat(80)}\ntrail  `;
+    expect(splitMessage(whitespace, 17).join("")).toBe(whitespace);
   });
 });
 
@@ -49,7 +51,7 @@ describe("isValidSnowflake / maskId", () => {
 });
 
 describe("channel + text helpers", () => {
-  test("channel type naming, text-channel check, mentions, truncate", () => {
+  test("channel type naming, text-channel check, and mentions", () => {
     expect(getChannelTypeName(0)).toBe("Text Channel");
     expect(getChannelTypeName(999)).toBe("Channel");
     expect(isTextChannel(0)).toBe(true);
@@ -57,7 +59,14 @@ describe("channel + text helpers", () => {
     expect(mention("42", "user")).toBe("<@42>");
     expect(mention("42", "role")).toBe("<@&42>");
     expect(mention("42", "channel")).toBe("<#42>");
-    expect(truncate("hello world", 8)).toBe("hello...");
-    expect(truncate("hi", 8)).toBe("hi");
+  });
+
+  test("rejects an oversized embed description without discarding it", () => {
+    expect(() => createEmbed({ description: "x".repeat(4097) })).toThrow(
+      "Discord embed description exceeds the 4096-character protocol limit",
+    );
+    expect(createEmbed({ description: "x".repeat(4096) })).toEqual({
+      description: "x".repeat(4096),
+    });
   });
 });

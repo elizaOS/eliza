@@ -134,7 +134,7 @@ export class MemoriesRepository {
       beforeTimestamp?: number;
     } = {},
   ): Promise<Memory[]> {
-    const { agentId, limit = 50, offset = 0, afterTimestamp, beforeTimestamp } = options;
+    const { agentId, limit, offset = 0, afterTimestamp, beforeTimestamp } = options;
 
     const conditions = [eq(memoryTable.roomId, roomId), eq(memoryTable.type, "messages")];
 
@@ -148,13 +148,14 @@ export class MemoriesRepository {
       conditions.push(sql`${memoryTable.createdAt} < ${new Date(beforeTimestamp)}`);
     }
 
-    const results = await dbRead
+    const query = dbRead
       .select()
       .from(memoryTable)
       .where(and(...conditions))
-      .orderBy(desc(memoryTable.createdAt))
-      .limit(limit)
-      .offset(offset);
+      .orderBy(desc(memoryTable.createdAt));
+    const results = await (limit === undefined
+      ? query.offset(offset)
+      : query.limit(limit).offset(offset));
 
     return results.map(toMemory);
   }
@@ -162,7 +163,11 @@ export class MemoriesRepository {
   /**
    * Gets messages for multiple rooms.
    */
-  async findMessagesByRoomIds(roomIds: string[], agentId?: string, limit = 50): Promise<Memory[]> {
+  async findMessagesByRoomIds(
+    roomIds: string[],
+    agentId?: string,
+    limit?: number,
+  ): Promise<Memory[]> {
     if (roomIds.length === 0) return [];
 
     const conditions = [inArray(memoryTable.roomId, roomIds), eq(memoryTable.type, "messages")];
@@ -171,12 +176,12 @@ export class MemoriesRepository {
       conditions.push(eq(memoryTable.agentId, agentId));
     }
 
-    const results = await dbRead
+    const query = dbRead
       .select()
       .from(memoryTable)
       .where(and(...conditions))
-      .orderBy(desc(memoryTable.createdAt))
-      .limit(limit);
+      .orderBy(desc(memoryTable.createdAt));
+    const results = await (limit === undefined ? query : query.limit(limit));
 
     return results.map(toMemory);
   }
