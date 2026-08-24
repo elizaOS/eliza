@@ -30,7 +30,7 @@
  */
 import {
 	type EntityMatch,
-	normalizeEntityMatches,
+	normalizeEntityMatchesStrict,
 	readEntityResolutionField,
 } from "./entity-matches";
 import { ElizaError } from "./errors";
@@ -159,16 +159,21 @@ function parseEntityResolutionResponse(
 		// Supplied-but-malformed identification fields must not silently
 		// disappear at this boundary (#24765). JSON null (and the literal
 		// "null") is the contract's explicit "no id" encoding and stays
-		// absent; anything else that is not a usable string, or two
-		// conflicting string ids, is flagged for the consistency gate to
-		// reject via explicit booleans rather than sentinel strings.
+		// absent; every other SUPPLIED field must be a usable string —
+		// validity is per field, so a malformed alias next to a valid one
+		// (entityId: 42 + resolvedId: ALICE) still invalidates. Two
+		// conflicting string ids are flagged separately for the gate.
 		const entityIdSupplied =
 			(entityIdValue !== undefined && entityIdValue !== null) ||
 			(resolvedIdValue !== undefined && resolvedIdValue !== null);
 		const malformedEntityId =
 			entityIdSupplied &&
-			typeof entityIdValue !== "string" &&
-			typeof resolvedIdValue !== "string";
+			((entityIdValue !== undefined &&
+				entityIdValue !== null &&
+				typeof entityIdValue !== "string") ||
+				(resolvedIdValue !== undefined &&
+					resolvedIdValue !== null &&
+					typeof resolvedIdValue !== "string"));
 		const conflictingEntityId =
 			typeof entityIdValue === "string" &&
 			typeof resolvedIdValue === "string" &&
@@ -180,27 +185,14 @@ function parseEntityResolutionResponse(
 					? resolvedIdValue
 					: undefined;
 		const rawMatches = readEntityResolutionField(parsedJson, "matches");
-		const matches = normalizeEntityMatches(rawMatches);
-		// Match evidence supplied in an unusable shape must invalidate, not
-		// vanish (#24765). The schema-legal shapes are an array of
-		// {name, reason} entries, a single such entry, or the documented
-		// model-produced {match: …} wrapper that normalizeEntityMatches
-		// unwraps; `undefined` means absent. Anything else (a number, a
-		// random object, …) is malformed. Inside a legal array (or unwrapped
-		// wrapper), entries the normalizer drops for lacking a usable name
-		// are likewise malformed supplied evidence.
-		const matchesAbsent = rawMatches === undefined || rawMatches === null;
-		const malformedMatches =
-			!matchesAbsent &&
-			((Array.isArray(rawMatches) && matches.length !== rawMatches.length) ||
-				(!Array.isArray(rawMatches) &&
-					typeof rawMatches !== "object" &&
-					matches.length !== 1) ||
-				(!matchesAbsent &&
-					typeof rawMatches === "object" &&
-					!Array.isArray(rawMatches) &&
-					!("match" in rawMatches) &&
-					matches.length !== 1));
+		// Match evidence legality comes from the strict walk in
+		// entity-matches.ts — the single authority — instead of rules here
+		// that can drift from the walk's semantics (#24765). `undefined` is
+		// absent; every other supplied shape (including null, since the
+		// contract documents `matches` as an array, and any wrapper or
+		// entry the walk drops) is malformed supplied evidence.
+		const { matches, dropped } = normalizeEntityMatchesStrict(rawMatches);
+		const malformedMatches = rawMatches !== undefined && dropped;
 
 		if (type || entityId || matches.length > 0) {
 			return {

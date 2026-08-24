@@ -320,6 +320,91 @@ describe("relationship match evidence gate", () => {
 	});
 });
 
+describe("supplied evidence must be well-formed (RP r4 P1s)", () => {
+	it("returns null when entityId is a number even though resolvedId names a valid entity", async () => {
+		const found = await findEntityByName(
+			runtime([structuredClone(bob), structuredClone(alice)], {
+				type: "NAME_MATCH",
+				entityId: 42,
+				resolvedId: ALICE,
+				matches: [],
+			}),
+			message("who should I ping"),
+			state,
+		);
+		expect(found).toBeNull();
+	});
+
+	it("returns null when resolvedId is a number even though entityId names a valid entity", async () => {
+		const found = await findEntityByName(
+			runtime([structuredClone(bob), structuredClone(alice)], {
+				type: "NAME_MATCH",
+				entityId: ALICE,
+				resolvedId: 42,
+				matches: [],
+			}),
+			message("who should I ping"),
+			state,
+		);
+		expect(found).toBeNull();
+	});
+
+	it("returns null when matches is null even though entityId names a valid entity", async () => {
+		const found = await findEntityByName(
+			runtime([structuredClone(bob), structuredClone(alice)], {
+				type: "EXACT_MATCH",
+				entityId: ALICE,
+				matches: null,
+			}),
+			message("who should I ping"),
+			state,
+		);
+		expect(found).toBeNull();
+	});
+
+	it("returns null when a wrapped matches entry is malformed", async () => {
+		const found = await findEntityByName(
+			runtime([structuredClone(bob), structuredClone(alice)], {
+				type: "EXACT_MATCH",
+				entityId: ALICE,
+				matches: { match: 42 },
+			}),
+			message("who should I ping"),
+			state,
+		);
+		expect(found).toBeNull();
+	});
+
+	it("returns null when a wrapped matches array contains malformed entries", async () => {
+		const found = await findEntityByName(
+			runtime([structuredClone(bob), structuredClone(alice)], {
+				type: "EXACT_MATCH",
+				entityId: ALICE,
+				matches: { match: [{ name: "Alice" }, {}] },
+			}),
+			message("who should I ping"),
+			// A dropped entry alongside a valid one must still invalidate:
+			// the response supplied evidence that vanished at the parse
+			// boundary (#24765).
+			state,
+		);
+		expect(found).toBeNull();
+	});
+
+	it("returns null when a direct matches array contains malformed entries", async () => {
+		const found = await findEntityByName(
+			runtime([structuredClone(bob), structuredClone(alice)], {
+				type: "EXACT_MATCH",
+				entityId: ALICE,
+				matches: [{ name: "Alice" }, {}],
+			}),
+			message("who should I ping"),
+			state,
+		);
+		expect(found).toBeNull();
+	});
+});
+
 describe("id-less room entity integrity rejection", () => {
 	it("throws a typed ROOM_ENTITY_ID_MISSING error instead of silently skipping", async () => {
 		const withId = entity(ALICE, ["Alice"]);
