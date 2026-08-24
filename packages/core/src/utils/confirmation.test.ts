@@ -205,22 +205,147 @@ describe("confirmation utilities", () => {
 		expect(runtime.cacheStore.size).toBe(0);
 	});
 
-	it("delegates properly through gateDestructiveConfirmation", async () => {
+	it("delegates properly through gateDestructiveConfirmation across all statuses", async () => {
 		const runtime = createMockRuntime();
 		const message: Memory = {
 			entityId: "user-123",
 			content: { text: "remove" },
 		} as unknown as Memory;
 
-		const gate = await gateDestructiveConfirmation({
+		const pendingGate = await gateDestructiveConfirmation({
 			runtime,
 			message,
 			actionName: "REMOVE_ENTRY",
 			pendingKey: "entry:5",
 			prompt: "Remove entry 5?",
+			metadata: { entryId: 5 },
 		});
 
-		expect(gate.status).toBe("pending");
+		expect(pendingGate.status).toBe("pending");
+
+		// Confirmed branch
+		const confirmMessage: Memory = {
+			entityId: "user-123",
+			content: { text: "yes" },
+		} as unknown as Memory;
+
+		const confirmedGate = await gateDestructiveConfirmation({
+			runtime,
+			message: confirmMessage,
+			actionName: "REMOVE_ENTRY",
+			pendingKey: "entry:5",
+			prompt: "Remove entry 5?",
+		});
+
+		expect(confirmedGate.status).toBe("confirmed");
+		expect(confirmedGate.metadata).toEqual({ entryId: 5 });
+
+		// Cancelled branch
+		await gateDestructiveConfirmation({
+			runtime,
+			message,
+			actionName: "REMOVE_ENTRY",
+			pendingKey: "entry:6",
+			prompt: "Remove entry 6?",
+			metadata: { entryId: 6 },
+		});
+
+		const cancelMessage: Memory = {
+			entityId: "user-123",
+			content: { text: "no" },
+		} as unknown as Memory;
+
+		const cancelledGate = await gateDestructiveConfirmation({
+			runtime,
+			message: cancelMessage,
+			actionName: "REMOVE_ENTRY",
+			pendingKey: "entry:6",
+			prompt: "Remove entry 6?",
+		});
+
+		expect(cancelledGate.status).toBe("cancelled");
+		expect(cancelledGate.metadata).toEqual({ entryId: 6 });
+	});
+
+	it("supports custom confirmRegex pattern", async () => {
+		const runtime = createMockRuntime();
+		const message1: Memory = {
+			entityId: "user-123",
+			content: { text: "delete database" },
+		} as unknown as Memory;
+
+		const customRegex = /^PROCEED_WITH_PURGE$/;
+
+		await requireConfirmation({
+			runtime,
+			message: message1,
+			actionName: "PURGE_DB",
+			pendingKey: "db:production",
+			prompt: "Type PROCEED_WITH_PURGE to confirm",
+			confirmRegex: customRegex,
+		});
+
+		// Replying with standard "yes" is cancelled under customRegex
+		const regularYes: Memory = {
+			entityId: "user-123",
+			content: { text: "yes" },
+		} as unknown as Memory;
+
+		const decision1 = await requireConfirmation({
+			runtime,
+			message: regularYes,
+			actionName: "PURGE_DB",
+			pendingKey: "db:production",
+			prompt: "Type PROCEED_WITH_PURGE to confirm",
+			confirmRegex: customRegex,
+		});
+		expect(decision1.status).toBe("cancelled");
+
+		// Request again and reply with exact pattern
+		await requireConfirmation({
+			runtime,
+			message: message1,
+			actionName: "PURGE_DB",
+			pendingKey: "db:production",
+			prompt: "Type PROCEED_WITH_PURGE to confirm",
+			confirmRegex: customRegex,
+		});
+
+		const matchingReply: Memory = {
+			entityId: "user-123",
+			content: { text: "PROCEED_WITH_PURGE" },
+		} as unknown as Memory;
+
+		const decision2 = await requireConfirmation({
+			runtime,
+			message: matchingReply,
+			actionName: "PURGE_DB",
+			pendingKey: "db:production",
+			prompt: "Type PROCEED_WITH_PURGE to confirm",
+			confirmRegex: customRegex,
+		});
+		expect(decision2.status).toBe("confirmed");
+	});
+
+	it("falls back to DEFAULT_TTL_MS when non-positive ttlMs is supplied", async () => {
+		const runtime = createMockRuntime();
+		const message: Memory = {
+			entityId: "user-123",
+			content: { text: "delete item" },
+		} as unknown as Memory;
+
+		await requireConfirmation({
+			runtime,
+			message,
+			actionName: "DELETE_ITEM",
+			pendingKey: "item:1",
+			prompt: "Delete item?",
+			ttlMs: -100,
+		});
+
+		const cachedKey = "confirmation:user-123:DELETE_ITEM:item:1";
+		const record = runtime.cacheStore.get(cachedKey) as { ttlMs: number };
+		expect(record.ttlMs).toBe(300_000);
 	});
 
 	it("rejects LLM confirmed flag as authoritative", () => {
