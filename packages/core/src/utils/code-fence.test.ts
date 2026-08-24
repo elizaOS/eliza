@@ -28,4 +28,24 @@ describe("unwrapWholeCodeFence", () => {
 			"x",
 		);
 	});
+
+	it("returns null for non-string inputs without throwing", () => {
+		// @ts-expect-error runtime guard check
+		expect(unwrapWholeCodeFence(null, ["json"])).toBeNull();
+		// @ts-expect-error runtime guard check
+		expect(unwrapWholeCodeFence(undefined, ["json"])).toBeNull();
+		// @ts-expect-error runtime guard check
+		expect(unwrapWholeCodeFence(123, ["json"])).toBeNull();
+		// @ts-expect-error runtime guard check
+		expect(unwrapWholeCodeFence({}, ["json"])).toBeNull();
+		// @ts-expect-error runtime guard check
+		expect(unwrapWholeCodeFence([], ["json"])).toBeNull();
+		// @ts-expect-error runtime guard check
+		expect(unwrapWholeCodeFence("```json\nx\n```", null)).toBeNull();
+		// @ts-expect-error runtime guard check
+		expect(unwrapWholeCodeFence("```json\nx\n```", undefined)).toBeNull();
+		// @ts-expect-error runtime guard check
+		expect(unwrapWholeCodeFence("```json\nx\n```", "json" as unknown as string[])).toBeNull();
+		expect(unwrapWholeCodeFence("", ["json"])).toBeNull();
+	});
 });
