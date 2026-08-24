@@ -143,16 +143,42 @@ describe("shouldLoadRemoteCodingRunnerForBoot additional branches", () => {
     }
   });
 
-  it("treats configured values as presence flags, not parsed booleans or URLs", () => {
-    const presenceFlags = ["false", "0", "not-a-url"];
-    for (const flag of presenceFlags) {
+  it("treats false and zero runner settings as explicit disablement", () => {
+    for (const value of ["false", "0"]) {
       expect(
         shouldLoadRemoteCodingRunnerForBoot(
-          runtimeWith({ ELIZA_REMOTE_RUNNER: flag }),
+          runtimeWith({ ELIZA_REMOTE_RUNNER: value }),
           {},
         ),
-        `expected ${flag} to count as configured`,
-      ).toBe(true);
+        `expected ${value} to keep the remote runner disabled`,
+      ).toBe(false);
+    }
+  });
+
+  it("rejects unsupported runner modes instead of authorizing module load", () => {
+    expect(() =>
+      shouldLoadRemoteCodingRunnerForBoot(
+        runtimeWith({ ELIZA_REMOTE_RUNNER: "not-a-url" }),
+        {},
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "REMOTE_CODING_RUNNER_MODE_INVALID",
+      }),
+    );
+  });
+
+  it("rejects malformed and non-HTTP runner URLs before module load", () => {
+    for (const value of ["not-a-url", "file:///tmp/runner"]) {
+      expect(() =>
+        shouldLoadRemoteCodingRunnerForBoot(runtimeWith(), {
+          ELIZA_HOME_RUNNER_URL: value,
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          code: "REMOTE_CODING_RUNNER_URL_INVALID",
+        }),
+      );
     }
   });
 
