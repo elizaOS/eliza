@@ -61,7 +61,11 @@ test("source scenario child exits naturally with zero runtime leaks", async () =
         stderr: "pipe",
       },
     );
-    expect(await child.exited).toBe(0);
+    const stdoutPromise = new Response(child.stdout).text();
+    const stderrPromise = new Response(child.stderr).text();
+    const exitCode = await child.exited;
+    const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
+    expect(exitCode, `stdout:\n${stdout}\nstderr:\n${stderr}`).toBe(0);
     expect(Date.now() - startedAt).toBeLessThan(60_000);
     const evidence = JSON.parse(await readFile(quiescence, "utf8")) as {
       handles: Array<{ constructorName: string; fd?: number }>;
