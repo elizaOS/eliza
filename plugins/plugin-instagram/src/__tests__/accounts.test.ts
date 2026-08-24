@@ -312,3 +312,29 @@ describe("Instagram connector accounts", () => {
     }
   );
 });
+
+describe("Instagram comment truncation surrogate safety", () => {
+  it("never splits surrogate pairs when truncating long comments", async () => {
+    const service = Object.create(InstagramService.prototype) as InstagramService;
+    const postComment = vi.fn(async () => "123");
+    Object.assign(service, {
+      defaultAccountId: "default",
+      instagramConfig: { accountId: "default", username: "user", password: "password" },
+      isRunning: true,
+      postComment,
+    });
+    const runtime = { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+
+    // Repeat emojis past MAX_COMMENT_LENGTH (2200)
+    const longEmojiText = "😀".repeat(1200); // 2400 code units
+    await service.handleSendPost(runtime, {
+      text: longEmojiText,
+      metadata: { mediaId: "12345" },
+    } as Content);
+
+    expect(postComment).toHaveBeenCalledOnce();
+    const commentArg = postComment.mock.calls[0][1];
+    expect(commentArg.endsWith("...")).toBe(true);
+    expect(commentArg.endsWith("\uD83D...")).toBe(false);
+  });
+});
