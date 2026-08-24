@@ -1,5 +1,4 @@
 /** Implements Electrobun desktop trace store ts behavior for app-core shell integration. */
-import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import type { JsonValue } from "@elizaos/core";
 import { TraceError } from "./errors";
@@ -38,34 +37,9 @@ type TraceEventStringAssignment = {
 };
 
 export interface TraceStoreOptions {
-  maxSessions?: number;
-  maxEventsPerSession?: number;
-  maxEventPayloadBytes?: number;
-  defaultTailLimit?: number;
-  maxTailLimit?: number;
   now?: () => Date;
   sessionIdFactory?: () => string;
   eventIdFactory?: () => string;
-}
-
-const DEFAULT_MAX_SESSIONS = 200;
-const DEFAULT_MAX_EVENTS_PER_SESSION = 5_000;
-const DEFAULT_MAX_EVENT_PAYLOAD_BYTES = 256 * 1024;
-const DEFAULT_TAIL_LIMIT = 100;
-const DEFAULT_MAX_TAIL_LIMIT = 500;
-
-function readPositiveIntEnv(
-  name: string,
-  fallback: number,
-  env: Record<string, string | undefined> = process.env,
-): number {
-  const raw = env[name]?.trim();
-  if (!raw) return fallback;
-  // parseInt stops at the first non-digit, so "2junk" would yield 2 and shrink
-  // a retention limit to a fraction of its default. Require full decimal.
-  if (!/^\+?\d+$/.test(raw)) return fallback;
-  const parsed = Number(raw);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function nowIso(now: () => Date): string {
@@ -87,31 +61,17 @@ function cloneEvent(event: TraceEvent): TraceEvent {
   return { ...event, timing: event.timing ? { ...event.timing } : undefined };
 }
 
-function byteLength(value: string): number {
-  return Buffer.byteLength(value, "utf8");
-}
-
-function safeJsonValue(
-  value: JsonValue | undefined,
-  maxBytes: number,
-): JsonValue | undefined {
+function safeJsonValue(value: JsonValue | undefined): JsonValue | undefined {
   if (value === undefined) return undefined;
   try {
     const serialized = JSON.stringify(value);
     if (serialized === undefined) return null;
-    const size = byteLength(serialized);
-    if (size <= maxBytes) return value;
-    return {
-      tracePayloadTruncated: true,
-      bytes: size,
-      maxBytes,
-      preview: serialized.slice(0, Math.min(2048, maxBytes)),
-    };
+    return value;
   } catch (error) {
-    return {
-      tracePayloadUnserializable: true,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    throw new TraceError(
+      "TRACE_INVALID_REQUEST",
+      `Trace payload must be JSON-serializable: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -145,11 +105,6 @@ function durationMs(
 }
 
 export class TraceStore {
-  private readonly maxSessions: number;
-  private readonly maxEventsPerSession: number;
-  private readonly maxEventPayloadBytes: number;
-  private readonly defaultTailLimit: number;
-  private readonly maxTailLimit: number;
   private readonly now: () => Date;
   private readonly sessionIdFactory: () => string;
   private readonly eventIdFactory: () => string;
@@ -158,23 +113,6 @@ export class TraceStore {
   private readonly sequences = new Map<TraceSessionId, number>();
 
   constructor(options: TraceStoreOptions = {}) {
-    this.maxSessions =
-      options.maxSessions ??
-      readPositiveIntEnv("ELIZA_TRACE_MAX_SESSIONS", DEFAULT_MAX_SESSIONS);
-    this.maxEventsPerSession =
-      options.maxEventsPerSession ??
-      readPositiveIntEnv(
-        "ELIZA_TRACE_MAX_EVENTS_PER_SESSION",
-        DEFAULT_MAX_EVENTS_PER_SESSION,
-      );
-    this.maxEventPayloadBytes =
-      options.maxEventPayloadBytes ??
-      readPositiveIntEnv(
-        "ELIZA_TRACE_MAX_EVENT_PAYLOAD_BYTES",
-        DEFAULT_MAX_EVENT_PAYLOAD_BYTES,
-      );
-    this.defaultTailLimit = options.defaultTailLimit ?? DEFAULT_TAIL_LIMIT;
-    this.maxTailLimit = options.maxTailLimit ?? DEFAULT_MAX_TAIL_LIMIT;
     this.now = options.now ?? (() => new Date());
     this.sessionIdFactory = options.sessionIdFactory ?? (() => randomUUID());
     this.eventIdFactory = options.eventIdFactory ?? (() => randomUUID());
@@ -210,7 +148,6 @@ export class TraceStore {
     this.sessions.set(session.id, session);
     this.events.set(session.id, []);
     this.sequences.set(session.id, 0);
-    this.pruneSessions();
     return cloneSession(session);
   }
 
@@ -265,7 +202,7 @@ export class TraceStore {
       current.metadata = {
         ...(current.metadata ?? {}),
         errorDetails:
-          safeJsonValue(params.details, this.maxEventPayloadBytes) ?? null,
+          safeJsonValue(params.details) ?? null,
       };
       return cloneSession(current);
     }
@@ -336,10 +273,10 @@ export class TraceStore {
   listSessions(
     params: { limit?: number; status?: TraceSessionStatus } = {},
   ): TraceSession[] {
-    const limit = this.normalizeLimit(params.limit, this.maxSessions);
-    return [...this.sessions.values()]
-      .filter((session) => !params.status || session.status === params.status)
-      .slice(-limit)
+    const limit = this.normalizeLimit(params.limit);
+    const matching = [...this.sessions.values()]
+      .filter((session) => !params.status || session.status === params.status);
+    return (limit === undefined ? matching : matching.slice(-limit))
       .map(cloneSession)
       .reverse();
   }
@@ -378,15 +315,19 @@ export class TraceStore {
 
   tailEvents(params: TraceTailParams): TraceTailResult {
     this.requireSession(params.sessionId);
-    const limit = this.normalizeLimit(params.limit, this.maxTailLimit);
+    const limit = this.normalizeLimit(params.limit);
     const afterSequence = params.afterSequence ?? 0;
     const sessionEvents = this.events.get(params.sessionId) ?? [];
-    const selected =
+    const matching =
       params.afterSequence === undefined
-        ? sessionEvents.slice(-limit)
-        : sessionEvents
-            .filter((event) => event.sequence > afterSequence)
-            .slice(0, limit);
+        ? sessionEvents
+        : sessionEvents.filter((event) => event.sequence > afterSequence);
+    const selected =
+      limit === undefined
+        ? matching
+        : params.afterSequence === undefined
+          ? matching.slice(-limit)
+          : matching.slice(0, limit);
     return {
       sessionId: params.sessionId,
       events: selected.map(cloneEvent),
@@ -395,10 +336,10 @@ export class TraceStore {
   }
 
   searchEvents(params: TraceSearchParams): TraceEvent[] {
-    const limit = this.normalizeLimit(params.limit, this.maxTailLimit);
+    const limit = this.normalizeLimit(params.limit);
     const query = params.query?.trim();
     const events = [...this.events.values()].flat();
-    return events
+    const matching = events
       .filter((event) => {
         const session = this.sessions.get(event.sessionId);
         if (!session) return false;
@@ -432,10 +373,8 @@ export class TraceStore {
           return false;
         }
         return !query || eventMatchesText(event, query);
-      })
-      .slice(-limit)
-      .map(cloneEvent)
-      .reverse();
+      });
+    return (limit === undefined ? matching : matching.slice(-limit)).map(cloneEvent).reverse();
   }
 
   private closeSession(
@@ -467,15 +406,15 @@ export class TraceStore {
     return session;
   }
 
-  private normalizeLimit(limit: number | undefined, max: number): number {
-    if (limit === undefined) return Math.min(this.defaultTailLimit, max);
-    if (!Number.isFinite(limit) || limit <= 0) {
+  private normalizeLimit(limit: number | undefined): number | undefined {
+    if (limit === undefined) return undefined;
+    if (!Number.isSafeInteger(limit) || limit <= 0) {
       throw new TraceError(
         "TRACE_INVALID_REQUEST",
         `Trace limit must be a positive number: ${String(limit)}`,
       );
     }
-    return Math.min(Math.floor(limit), max);
+    return limit;
   }
 
   private assertNonEmptyString(value: string | undefined, field: string): void {
@@ -515,8 +454,8 @@ export class TraceStore {
     event: TraceEvent,
     params: Pick<TraceRecordEventParams, "payload" | "raw">,
   ): void {
-    const payload = safeJsonValue(params.payload, this.maxEventPayloadBytes);
-    const raw = safeJsonValue(params.raw, this.maxEventPayloadBytes);
+    const payload = safeJsonValue(params.payload);
+    const raw = safeJsonValue(params.raw);
     if (payload !== undefined) event.payload = payload;
     if (raw !== undefined) event.raw = raw;
   }
@@ -534,22 +473,6 @@ export class TraceStore {
       );
     }
     sessionEvents.push(event);
-    while (sessionEvents.length > this.maxEventsPerSession) {
-      sessionEvents.shift();
-    }
     session.updatedAt = timestamp;
-  }
-
-  private pruneSessions(): void {
-    while (this.sessions.size > this.maxSessions) {
-      const removable =
-        [...this.sessions.values()].find(
-          (session) => session.status !== "running",
-        ) ?? this.sessions.values().next().value;
-      if (!removable) return;
-      this.sessions.delete(removable.id);
-      this.events.delete(removable.id);
-      this.sequences.delete(removable.id);
-    }
   }
 }

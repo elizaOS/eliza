@@ -183,6 +183,25 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/app-core/platforms/electrobun/src/native/permissions.ts": [
 		/stderr\.trim\(\)\.slice\(/,
 	],
+	"packages/app-core/deploy/cloud-agent-shared.ts": [
+		/MAX_DATABASE_DIAGNOSTIC_CHARS/,
+		/text\.slice\(/,
+	],
+	"packages/app-core/platforms/electrobun/src/shell-sync-relay.ts": [
+		/truncateWellFormed\(/,
+	],
+	"packages/app-core/platforms/electrobun/src/ssh-runtime-rpc.ts": [
+		/MAX_DIAGNOSTIC_STDERR_CHARS/,
+		/diagnosticStderrTail[^\n]*\.slice\(/,
+	],
+	"packages/app-core/platforms/electrobun/src/trace/trace-store.ts": [
+		/DEFAULT_MAX_SESSIONS/,
+		/DEFAULT_MAX_EVENTS_PER_SESSION/,
+		/DEFAULT_MAX_EVENT_PAYLOAD_BYTES/,
+		/tracePayloadTruncated/,
+		/sessionEvents\.shift\(/,
+		/pruneSessions\(/,
+	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
 		/source\.descriptionCompressed\s*\?\?/,

@@ -1,5 +1,5 @@
 /** Exercises trace store behavior with deterministic app-core test fixtures. */
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { TraceError } from "./errors";
 import { TraceStore } from "./trace-store";
 
@@ -10,7 +10,6 @@ function store(): TraceStore {
     now: () => new Date(1_800_000_000_000 + tick++),
     sessionIdFactory: () => `session-${++sessionCount}`,
     eventIdFactory: () => `event-${tick}`,
-    maxEventPayloadBytes: 64,
   });
 }
 
@@ -89,7 +88,7 @@ describe("TraceStore", () => {
     ).toMatchObject([{ kind: "model.completed" }]);
   });
 
-  it("stores an explicit summary when payloads exceed the size limit", () => {
+  it("stores complete large payloads", () => {
     const traces = store();
     const session = traces.createSession({
       title: "Agent run",
@@ -99,14 +98,26 @@ describe("TraceStore", () => {
       sessionId: session.id,
       kind: "log",
       payload: {
-        text: "x".repeat(200),
+        text: "x".repeat(200_000),
       },
     });
 
-    expect(event.payload).toMatchObject({
-      tracePayloadTruncated: true,
-      maxBytes: 64,
-    });
+    expect(event.payload).toEqual({ text: "x".repeat(200_000) });
+  });
+
+  it("rejects cyclic payloads instead of storing a partial substitute", () => {
+    const traces = store();
+    const session = traces.createSession({ title: "Agent run", source: "agent" });
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    expect(() =>
+      traces.recordEvent({
+        sessionId: session.id,
+        kind: "log",
+        payload: cyclic as never,
+      }),
+    ).toThrow("must be JSON-serializable");
   });
 
   it("handles cancellation and errors", () => {
@@ -139,40 +150,23 @@ describe("TraceStore", () => {
       traces.recordEvent({ sessionId: "missing", kind: "log" }),
     ).toThrow(TraceError);
   });
-});
-
-describe("trace store env limits", () => {
-  const KEY = "ELIZA_TRACE_MAX_SESSIONS";
-  const original = process.env[KEY];
-  afterEach(() => {
-    if (original === undefined) delete process.env[KEY];
-    else process.env[KEY] = original;
-  });
-
-  it("ignores a trailing-garbage session limit instead of parsing its prefix", () => {
-    // parseInt("2junk") is 2 — a two-session retention window that evicts
-    // almost every trace, from a value nobody meant as a setting.
-    process.env[KEY] = "2junk";
+  it("retains every session beyond the retired rolling window", () => {
     const traces = new TraceStore();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 250; i++) {
       traces.createSession({ title: `run ${i}`, source: "agent" });
     }
-    expect(traces.listSessions().length).toBe(5);
+    expect(traces.listSessions()).toHaveLength(250);
   });
 
-  it("keeps an explicit leading plus and rejects one past the safe range", () => {
-    process.env[KEY] = "+2";
-    const explicitlyBounded = new TraceStore();
-    for (let i = 0; i < 5; i++) {
-      explicitlyBounded.createSession({ title: `run ${i}`, source: "agent" });
+  it("retains every event beyond the retired per-session window", () => {
+    const traces = new TraceStore();
+    const session = traces.createSession({ title: "long run", source: "agent" });
+    for (let i = 0; i < 5_250; i++) {
+      traces.recordEvent({ sessionId: session.id, kind: "log", text: `event-${i}` });
     }
-    expect(explicitlyBounded.listSessions()).toHaveLength(2);
-
-    process.env[KEY] = String(Number.MAX_SAFE_INTEGER + 1);
-    const fallbackBounded = new TraceStore();
-    for (let i = 0; i < 5; i++) {
-      fallbackBounded.createSession({ title: `run ${i}`, source: "agent" });
-    }
-    expect(fallbackBounded.listSessions()).toHaveLength(5);
+    const events = traces.tailEvents({ sessionId: session.id }).events;
+    expect(events).toHaveLength(5_250);
+    expect(events[0]?.text).toBe("event-0");
+    expect(events.at(-1)?.text).toBe("event-5249");
   });
 });

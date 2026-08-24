@@ -144,7 +144,6 @@ const DATABASE_LIVENESS_STATUSES = new Set<DatabaseLivenessPayload["status"]>([
   "transient_error",
   "terminal_error",
 ]);
-const MAX_DATABASE_DIAGNOSTIC_CHARS = 4_096;
 
 function readProbeDiagnosticProperty(
   value: unknown,
@@ -176,11 +175,7 @@ function describeDatabaseProbeError(error: unknown): string {
       text = "[uninspectable thrown value]";
     }
   }
-  const clipped =
-    text.length > MAX_DATABASE_DIAGNOSTIC_CHARS
-      ? `${text.slice(0, MAX_DATABASE_DIAGNOSTIC_CHARS)}…[truncated]`
-      : text;
-  return Array.from(clipped, (character) => {
+  return Array.from(text, (character) => {
     const code = character.codePointAt(0) ?? 0;
     return code <= 0x1f ||
       (code >= 0x7f && code <= 0x9f) ||
