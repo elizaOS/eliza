@@ -124,6 +124,28 @@ describe("formatTimestamp (verbose)", () => {
 // JS Date is valid only in ±8.64e15 ms; one past either end is Invalid Date.
 const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000;
 
+describe("format edge pluralization and epoch", () => {
+	it("renders singular vs plural correctly at boundaries", () => {
+		expect(formatRelativeTime(NOW - 2 * MINUTE)).toBe("2m ago");
+		expect(formatRelativeTime(NOW + 2 * MINUTE)).toBe("in 2m");
+		expect(formatTimestamp(NOW - MINUTE)).toBe("1 minute ago");
+		expect(formatTimestamp(NOW - 2 * MINUTE)).toBe("2 minutes ago");
+		expect(formatTimestamp(NOW + MINUTE)).toBe("in 1 minute");
+	});
+
+	it("renders epoch and distant past as locale date, not just now", () => {
+		expect(formatRelativeTime(0)).not.toBe("just now");
+		expect(formatRelativeTime(0)).not.toBe("Invalid Date");
+		expect(formatTimestamp(0)).not.toBe("just now");
+		expect(formatTimestamp(0)).not.toBe("Invalid Date");
+	});
+
+	it("handles exactly one week past as locale date for compact", () => {
+		expect(formatRelativeTime(NOW - 7 * DAY)).not.toMatch(/ago|now/);
+		expect(formatRelativeTime(NOW + 7 * DAY)).not.toMatch(/in |now/);
+	});
+});
+
 describe("invalid and unrepresentable timestamps", () => {
 	it("fails closed to 'just now' for non-number inputs", () => {
 		expect(formatRelativeTime(null as unknown as number)).toBe("just now");
