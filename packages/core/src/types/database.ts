@@ -195,6 +195,56 @@ export interface DocumentDeleteParams extends DocumentRequesterContext {
 	expected: DocumentMutationSnapshot;
 }
 
+/**
+ * Durable audit row committed in the SAME adapter transaction as an
+ * authorization-role write (#23100). A committed role change must never be
+ * separable from its audit record, so the audit insert rides the CAS
+ * transaction rather than a follow-up `createLogs` call.
+ */
+export interface RoleWriteAuditRecord {
+	/** Originating actor whose authority produced the write. */
+	actorEntityId: UUID;
+	/** Entity whose world role changed. */
+	targetEntityId: UUID;
+	/** Role held by the target immediately before the write. */
+	previousRole: string;
+	/** Role after the write (same as previousRole when nothing changed). */
+	newRole: string;
+	/** Grant provenance recorded alongside the role. */
+	source: string;
+	/** Real room the mutation request originated from — audit scope. */
+	roomId: UUID;
+}
+
+/**
+ * Compare-and-swap replacement of a world's whole `metadata` JSON under the
+ * exact prior snapshot (#23100 role-write atomicity). Mirrors the document
+ * mutation contract: the adapter compares `expectedMetadata` against the
+ * stored value in the same transaction that writes `replacementMetadata`,
+ * commits the audit row only on success, and reports a typed conflict so a
+ * concurrent writer can never be silently overwritten.
+ */
+export interface WorldMetadataCompareAndSwapParams {
+	worldId: UUID;
+	/** Exact prior metadata snapshot the caller read and authorized against. */
+	expectedMetadata: Metadata;
+	/** Whole replacement metadata; role grants are embedded within. */
+	replacementMetadata: Metadata;
+	/** Committed atomically with the metadata replacement. */
+	audit?: RoleWriteAuditRecord;
+}
+
+export type WorldMetadataMutationResult =
+	| { status: "updated" }
+	| { status: "not_found" | "conflict" };
+
+/**
+ * Canonical `logs.type` tag for durable role-write audit rows committed by
+ * {@link IDatabaseAdapter.compareAndSwapWorldMetadata}. Queried as
+ * `getLogs({ type: "role_audit" })`.
+ */
+export const ROLE_WRITE_AUDIT_LOG_TYPE = "role_audit";
+
 export type DocumentMutationResult =
 	| { status: "updated"; document: Memory }
 	| { status: "deleted"; document: Memory }
@@ -1187,6 +1237,17 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	deleteDocumentWithSnapshot(
 		params: DocumentDeleteParams,
 	): Promise<DocumentMutationResult>;
+
+	/**
+	 * Atomic compare-and-swap replacement of a world's whole metadata under the
+	 * exact prior snapshot, committing the audit row in the same transaction
+	 * (#23100 role-write atomicity). Authorization role writes MUST go through
+	 * this operation — a blind `updateWorlds` overwrite can resurrect revoked
+	 * authority when racing a concurrent writer.
+	 */
+	compareAndSwapWorldMetadata(
+		params: WorldMetadataCompareAndSwapParams,
+	): Promise<WorldMetadataMutationResult>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
 
