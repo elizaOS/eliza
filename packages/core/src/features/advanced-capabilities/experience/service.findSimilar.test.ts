@@ -117,3 +117,93 @@ describe("ExperienceService.findSimilarExperiences — shared recall embed fail-
 		await service.stop();
 	});
 });
+
+describe("ExperienceService.findSimilarExperiences — relevance outranks quality", () => {
+	const REL = "00000000-0000-0000-0000-00000000e101" as UUID;
+	const IRR = "00000000-0000-0000-0000-00000000e102" as UUID;
+	const DAY = 24 * 60 * 60 * 1000;
+
+	// Query vector is [1,0,0], so cosine similarity is just the first component.
+	function ranked(id: UUID, first: number, quality: "best" | "worst"): Memory {
+		const now = Date.now();
+		const best = quality === "best";
+		return {
+			id,
+			entityId: AGENT_ID,
+			agentId: AGENT_ID,
+			roomId: AGENT_ID,
+			createdAt: best ? now : now - 365 * DAY,
+			content: {
+				text: "",
+				type: "experience",
+				data: {
+					id,
+					agentId: AGENT_ID,
+					type: ExperienceType.LEARNING,
+					outcome: OutcomeType.SUCCESS,
+					context: "ctx",
+					action: "act",
+					result: "res",
+					learning: best ? "low-relevance" : "high-relevance",
+					domain: "general",
+					tags: ["t"],
+					keywords: ["k"],
+					confidence: best ? 1 : 0,
+					importance: best ? 1 : 0,
+					createdAt: best ? now : now - 365 * DAY,
+					updatedAt: best ? now : now - 365 * DAY,
+					accessCount: best ? 50 : 0,
+					embedding: [first, Math.sqrt(1 - first * first), 0],
+				},
+			},
+		} as unknown as Memory;
+	}
+
+	afterEach(() => {
+		vi.clearAllMocks();
+	});
+
+	test("a 9x less similar experience does not outrank a relevant one on quality alone", async () => {
+		embedRecallQuery.mockResolvedValue([1, 0, 0]);
+		const runtime = createMockRuntime({
+			agentId: AGENT_ID,
+			getCurrentRunId: () => "33333333-3333-3333-3333-333333333333",
+			getMemories: vi.fn(async () => [
+				ranked(REL, 0.45, "worst"), // cosine 0.45, worst-possible quality
+				ranked(IRR, 0.05, "best"), // cosine 0.05 (at the floor), perfect quality
+			]),
+			upsertMemory: vi.fn(async () => true),
+			useModel: vi.fn(async () => [1, 0, 0]),
+		});
+
+		const service = await ExperienceService.start(runtime);
+		const results = await service.findSimilarExperiences("query", 5);
+
+		// Additive scoring (similarity*0.7 + quality*0.3) ranked "low-relevance"
+		// first: 0.05*0.7 + 1*0.3 = 0.335 beats 0.45*0.7 + 0*0.3 = 0.315.
+		expect(results[0]?.learning).toBe("high-relevance");
+
+		await service.stop();
+	});
+
+	test("quality still decides between comparably relevant experiences", async () => {
+		embedRecallQuery.mockResolvedValue([1, 0, 0]);
+		const runtime = createMockRuntime({
+			agentId: AGENT_ID,
+			getCurrentRunId: () => "33333333-3333-3333-3333-333333333333",
+			getMemories: vi.fn(async () => [
+				ranked(REL, 0.5, "worst"), // only 1.11x more similar — inside the window
+				ranked(IRR, 0.45, "best"),
+			]),
+			upsertMemory: vi.fn(async () => true),
+			useModel: vi.fn(async () => [1, 0, 0]),
+		});
+
+		const service = await ExperienceService.start(runtime);
+		const results = await service.findSimilarExperiences("query", 5);
+
+		expect(results[0]?.learning).toBe("low-relevance");
+
+		await service.stop();
+	});
+});

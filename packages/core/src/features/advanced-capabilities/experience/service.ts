@@ -913,13 +913,16 @@ export class ExperienceService extends Service {
 	 * Find similar experiences using vector search + reranking.
 	 *
 	 * Reranking strategy:
-	 *   Vector similarity is the dominant signal (70%) — an irrelevant experience
-	 *   should never outrank a relevant one just because it has high confidence.
-	 *   Quality signals (confidence, importance) act as tiebreakers among
-	 *   similarly-relevant results (30% combined).
+	 *   Vector similarity is the primary signal and quality signals (confidence,
+	 *   importance, recency, access frequency) scale it rather than adding to it,
+	 *   so quality can only reorder results that are already comparably relevant.
+	 *   The bound is exact: quality multiplies the score by 0.7..1.0, so it can
+	 *   overturn at most a 1/0.7 = 1.43x similarity ratio. Beyond that ratio the
+	 *   more similar experience always ranks higher, whatever its quality.
 	 *
-	 *   A minimum similarity threshold filters out noise so quality signals
-	 *   can't promote genuinely irrelevant experiences.
+	 *   A minimum similarity threshold additionally drops candidates that are not
+	 *   plausibly relevant at all. Note the threshold alone does not bound the
+	 *   reorder window — the multiplicative form is what does that.
 	 */
 	async findSimilarExperiences(text: string, limit = 5): Promise<Experience[]> {
 		if (!text || this.experiences.size === 0) {
@@ -990,8 +993,13 @@ export class ExperienceService extends Service {
 				recencyFactor * 0.12 +
 				accessFactor * 0.08;
 
-			// Final reranking score: similarity dominates (70%), quality tiebreaks (30%)
-			const rerankScore = similarity * 0.7 + qualityScore * 0.3;
+			// Quality scales similarity rather than being added to it, so the
+			// window in which quality may reorder results is relative (a 1/0.7 =
+			// 1.43x similarity ratio) rather than absolute. Adding a 0..0.3 quality
+			// term instead would let quality overturn any similarity gap below
+			// 3/7 = 0.4286, which at the low end of the admissible range inverts
+			// an order-of-magnitude relevance difference.
+			const rerankScore = similarity * (0.7 + 0.3 * qualityScore);
 
 			scored.push({ experience, score: rerankScore });
 		}
