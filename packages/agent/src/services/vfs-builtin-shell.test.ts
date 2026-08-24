@@ -208,4 +208,32 @@ describe("runVfsBuiltinShell", () => {
 
     expect(result).toMatchObject({ exitCode: 0, stderr: "" });
   });
+
+  it("tokenizes escaped quotes inside double-quoted args", async () => {
+    const result = await runVfsBuiltinShell({
+      cwdUri: "vfs://escape/",
+      command: "sh",
+      args: ["-c", 'echo "a \\"b\\" c"'],
+    });
+    expect(result).toMatchObject({ exitCode: 0, stdout: 'a "b" c\n' });
+  });
+
+  it("handles backslashes and single-quoted escapes correctly", async () => {
+    const result = await runVfsBuiltinShell({
+      cwdUri: "vfs://escape2/",
+      command: "sh",
+      args: ["-c", 'echo "a\\\\b" && echo \'a\\b\''],
+    });
+    expect(result.stdout).toContain("a\\b\n");
+    expect(result.stdout).toContain("a\\b\n");
+  });
+
+  it("preserves quoted paths with spaces via echo", async () => {
+    const result = await runVfsBuiltinShell({
+      cwdUri: "vfs://spaces/",
+      command: "sh",
+      args: ["-c", 'echo "file with spaces.txt"'],
+    });
+    expect(result).toMatchObject({ exitCode: 0, stdout: "file with spaces.txt\n" });
+  });
 });

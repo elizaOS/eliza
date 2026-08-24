@@ -547,11 +547,53 @@ function normalizeAbsoluteVirtualPath(input: string): string {
 
 function tokenize(input: string): string[] {
   const tokens: string[] = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let match = re.exec(input);
-  while (match) {
-    tokens.push(match[1] ?? match[2] ?? match[3] ?? "");
-    match = re.exec(input);
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  let inToken = false;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i] ?? "";
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      inToken = true;
+      continue;
+    }
+    if (ch === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      current += ch;
+      inToken = true;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch as "'" | '"';
+      inToken = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (inToken) {
+        tokens.push(current);
+        current = "";
+        inToken = false;
+      }
+      continue;
+    }
+    current += ch;
+    inToken = true;
+  }
+  if (escaped) {
+    current += "\\";
+  }
+  if (inToken || current.length > 0 || quote !== null) {
+    tokens.push(current);
   }
   return tokens;
 }
