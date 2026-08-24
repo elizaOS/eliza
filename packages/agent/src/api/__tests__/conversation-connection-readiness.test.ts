@@ -445,3 +445,441 @@ describe("conversation connection readiness", () => {
     ).not.toThrow();
   });
 });
+
+describe("conversation connection readiness extended coverage", () => {
+  type CaptureInput = Parameters<
+    typeof captureConversationConnectionDescriptor
+  >[0];
+
+  function extendedCaptureInput(
+    runtime: AgentRuntime,
+    overrides: Partial<CaptureInput> = {},
+  ): CaptureInput {
+    return {
+      runtime,
+      conversationId: "extended-conversation",
+      roomId: stringToUuid("extended-room") as UUID,
+      agentName: "Extended Coverage Agent",
+      worldId: stringToUuid("extended-world") as UUID,
+      messageServerId: stringToUuid("extended-server") as UUID,
+      channelId: "web-conv-extended",
+      ownerId: stringToUuid("extended-owner") as UUID,
+      callerEntityId: stringToUuid("extended-caller") as UUID,
+      callerRole: "USER",
+      callerUserName: "extended-caller",
+      ...overrides,
+    };
+  }
+
+  it("captures descriptor identity fields exactly and partitions proofs", () => {
+    const runtime = createRuntime("Capture Fidelity Agent");
+    const roomId = stringToUuid("fidelity-room") as UUID;
+    const descriptor = captureConversationConnectionDescriptor(
+      extendedCaptureInput(runtime, { roomId }),
+    );
+
+    expect(Object.isFrozen(descriptor)).toBe(true);
+    expect(descriptor.runtimeAgentId).toBe(runtime.agentId);
+    expect(descriptor.roomId).toBe(roomId);
+    expect(descriptor.topologyGeneration).toBe(0);
+    expect("requestFence" in descriptor).toBe(false);
+
+    const sameRoomRecapture = captureConversationConnectionDescriptor(
+      extendedCaptureInput(runtime, { roomId }),
+    );
+    expect(sameRoomRecapture.topologyIdentity).toBe(
+      descriptor.topologyIdentity,
+    );
+    expect(sameRoomRecapture.proofIdentity).toBe(descriptor.proofIdentity);
+    expect(sameRoomRecapture.roomGeneration).toBe(descriptor.roomGeneration);
+
+    const proofOnlyChange = captureConversationConnectionDescriptor(
+      extendedCaptureInput(runtime, { roomId, channelId: "web-conv-other" }),
+    );
+    expect(proofOnlyChange.topologyIdentity).toBe(descriptor.topologyIdentity);
+    expect(proofOnlyChange.topologyGeneration).toBe(
+      descriptor.topologyGeneration,
+    );
+    expect(proofOnlyChange.proofIdentity).not.toBe(descriptor.proofIdentity);
+
+    const otherRoom = captureConversationConnectionDescriptor(
+      extendedCaptureInput(runtime, {
+        roomId: stringToUuid("fidelity-room-two") as UUID,
+      }),
+    );
+    expect(otherRoom.topologyIdentity).toBe(descriptor.topologyIdentity);
+    expect(otherRoom.roomGeneration).not.toBe(descriptor.roomGeneration);
+  });
+
+  it("runs the request fence around reconciliation and turn assertion", async () => {
+    const runtime = createRuntime("Fence Order Agent");
+    const events: string[] = [];
+    const descriptor = captureConversationConnectionDescriptor(
+      extendedCaptureInput(runtime, {
+        requestFence: () => {
+          events.push("fence");
+        },
+      }),
+    );
+    expect(descriptor.requestFence).toBeDefined();
+
+    await scheduleConversationConnectionEnsure(descriptor, async () => {
+      events.push("ensure");
+    });
+
+    expect(events).toEqual(["fence", "ensure", "fence"]);
+
+    events.length = 0;
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, descriptor),
+    ).not.toThrow();
+    expect(events).toEqual(["fence"]);
+  });
+
+  it("propagates a pre-reconciliation fence failure without starting work", async () => {
+    const runtime = createRuntime("Fence Abort Agent");
+    const fenceError = new Error("request aborted before reconciliation");
+    let ensureRan = false;
+    const descriptor = captureConversationConnectionDescriptor(
+      extendedCaptureInput(runtime, {
+        requestFence: () => {
+          throw fenceError;
+        },
+      }),
+    );
+
+    await expect(
+      scheduleConversationConnectionEnsure(descriptor, async () => {
+        ensureRan = true;
+      }),
+    ).rejects.toBe(fenceError);
+    expect(ensureRan).toBe(false);
+
+    let thrown: unknown;
+    try {
+      assertConversationConnectionRuntime(runtime, descriptor);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBe(fenceError);
+  });
+
+  it("wraps a post-reconciliation fence failure and invalidates siblings", async () => {
+    const runtime = createRuntime("Fence Post Agent");
+    const fenceError = new Error("request completed out of band");
+    let fenceCalls = 0;
+    const descriptor = captureConversationConnectionDescriptor(
+      extendedCaptureInput(runtime, {
+        requestFence: () => {
+          fenceCalls += 1;
+          if (fenceCalls === 2) {
+            throw fenceError;
+          }
+        },
+      }),
+    );
+    const sibling = captureConversationConnectionDescriptor(
+      extendedCaptureInput(runtime, {
+        conversationId: "conversation-sibling",
+      }),
+    );
+
+    await expect(
+      scheduleConversationConnectionEnsure(descriptor, async () => {}),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_CONNECTION_REFRESH_FAILED",
+      cause: fenceError,
+    });
+    expect(fenceCalls).toBe(2);
+    expect(() => assertConversationConnectionRuntime(runtime, sibling)).toThrow(
+      expect.objectContaining({
+        code: "CONVERSATION_CONNECTION_INVALIDATED",
+      }),
+    );
+  });
+
+  it("wraps non-error rejection reasons and invalidates siblings", async () => {
+    const runtime = createRuntime("String Rejection Agent");
+    const descriptor = captureDescriptor(runtime, {
+      conversationId: "string-rejection",
+    });
+    const sibling = captureDescriptor(runtime, {
+      conversationId: "string-sibling",
+    });
+
+    const pending = scheduleConversationConnectionEnsure(
+      descriptor,
+      async () => {
+        throw "plain-text rejection";
+      },
+    );
+    await expect(pending).rejects.toThrow("plain-text rejection");
+    await expect(pending).rejects.toMatchObject({
+      code: "CONVERSATION_CONNECTION_REFRESH_FAILED",
+      cause: "plain-text rejection",
+    });
+    expect(() => assertConversationConnectionRuntime(runtime, sibling)).toThrow(
+      expect.objectContaining({
+        code: "CONVERSATION_CONNECTION_INVALIDATED",
+      }),
+    );
+  });
+
+  it("reports invalidation with the original cause when the topology moves mid-flight", async () => {
+    const runtime = createRuntime("Midflight Invalidation Agent");
+    const descriptor = captureDescriptor(runtime);
+    const started = deferred();
+    const release = deferred();
+    const pending = scheduleConversationConnectionEnsure(
+      descriptor,
+      async () => {
+        started.resolve();
+        await release.promise;
+        throw new Error("socket reset");
+      },
+    );
+
+    await started.promise;
+    invalidateConversationConnectionTopology(runtime);
+    release.resolve();
+    await expect(pending).rejects.toMatchObject({
+      code: "CONVERSATION_CONNECTION_INVALIDATED",
+      cause: expect.objectContaining({ message: "socket reset" }),
+    });
+
+    const fresh = captureDescriptor(runtime);
+    await scheduleConversationConnectionEnsure(fresh, async () => {});
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, fresh),
+    ).not.toThrow();
+  });
+
+  it("keeps the caller pending until the exact mutation deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = createRuntime("Deadline Boundary Agent");
+      const descriptor = captureDescriptor(runtime);
+      const started = deferred();
+      const gate = deferred();
+      const pending = scheduleConversationConnectionEnsure(
+        descriptor,
+        async () => {
+          started.resolve();
+          await gate.promise;
+        },
+      );
+
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(14_999);
+
+      const probe = await Promise.race([
+        pending.catch(() => "settled"),
+        Promise.resolve("still-pending"),
+      ]);
+      expect(probe).toBe("still-pending");
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).rejects.toMatchObject({
+        code: "CONVERSATION_CONNECTION_TIMEOUT",
+      });
+      gate.resolve();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shields a room token from eviction while its reconciliation is in flight", async () => {
+    const runtime = createRuntime("Eviction Shield Agent");
+    const guarded = captureDescriptor(runtime, {
+      roomSeed: "shielded-room",
+    });
+    const gate = deferred();
+    const inflight = scheduleConversationConnectionEnsure(guarded, async () => {
+      await gate.promise;
+    });
+
+    for (let index = 0; index < 2_048; index += 1) {
+      captureDescriptor(runtime, { roomSeed: `shield-churn-${index}` });
+    }
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, guarded),
+    ).not.toThrow();
+
+    gate.resolve();
+    await inflight;
+
+    for (let index = 0; index < 2_048; index += 1) {
+      captureDescriptor(runtime, { roomSeed: `shield-drain-${index}` });
+    }
+    expect(() => assertConversationConnectionRuntime(runtime, guarded)).toThrow(
+      expect.objectContaining({
+        code: "CONVERSATION_CONNECTION_INVALIDATED",
+      }),
+    );
+  });
+
+  it("reconciles independent runtimes concurrently and tolerates unseen runtimes", async () => {
+    const firstRuntime = createRuntime("Concurrent First");
+    const secondRuntime = createRuntime("Concurrent Second");
+    let firstActive = false;
+    const firstGate = deferred();
+    const first = scheduleConversationConnectionEnsure(
+      captureDescriptor(firstRuntime, {
+        conversationId: "first-runtime-turn",
+      }),
+      async () => {
+        firstActive = true;
+        await firstGate.promise;
+        firstActive = false;
+      },
+    );
+    const second = scheduleConversationConnectionEnsure(
+      captureDescriptor(secondRuntime, {
+        conversationId: "second-runtime-turn",
+      }),
+      async () => {},
+    );
+
+    await vi.waitFor(() => expect(firstActive).toBe(true));
+    await second;
+    expect(firstActive).toBe(true);
+
+    firstGate.resolve();
+    await first;
+    expect(firstActive).toBe(false);
+    expect(() =>
+      invalidateConversationConnectionTopology(createRuntime("Never Captured")),
+    ).not.toThrow();
+  });
+
+  it("rejects stale and deletion-blocked descriptors before starting work", async () => {
+    const runtime = createRuntime("Gatekeeper Agent");
+    const staleEnsure = vi.fn(async () => {});
+    const stale = captureDescriptor(runtime);
+    invalidateConversationConnectionTopology(runtime);
+    await expect(
+      scheduleConversationConnectionEnsure(stale, staleEnsure),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_CONNECTION_INVALIDATED",
+    });
+    expect(staleEnsure).not.toHaveBeenCalled();
+
+    const deletionGate = deferred();
+    const deletion = serializeConversationConnectionRoomDeletion(
+      runtime,
+      stringToUuid("gatekeeper-room") as UUID,
+      async () => {
+        await deletionGate.promise;
+      },
+    );
+    const blockedEnsure = vi.fn(async () => {});
+    const blocked = captureDescriptor(runtime, {
+      roomSeed: "gatekeeper-room",
+    });
+    await expect(
+      scheduleConversationConnectionEnsure(blocked, blockedEnsure),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_CONNECTION_ROOM_BLOCKED",
+    });
+    expect(blockedEnsure).not.toHaveBeenCalled();
+
+    deletionGate.resolve();
+    await deletion;
+  });
+
+  it("lets prepare release a room blocked by an in-flight deletion", async () => {
+    const runtime = createRuntime("Prepare Unblock Agent");
+    const roomId = stringToUuid("prepare-unblock-room") as UUID;
+    const deletionGate = deferred();
+    const deletion = serializeConversationConnectionRoomDeletion(
+      runtime,
+      roomId,
+      async () => {
+        await deletionGate.promise;
+      },
+    );
+
+    const revived = captureDescriptor(runtime, {
+      roomSeed: "prepare-unblock-room",
+    });
+    prepareConversationConnectionRoom(runtime, roomId);
+
+    deletionGate.resolve();
+    await deletion;
+    await expect(
+      scheduleConversationConnectionEnsure(revived, async () => {}),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_CONNECTION_INVALIDATED",
+    });
+
+    const postDeletion = captureDescriptor(runtime, {
+      roomSeed: "prepare-unblock-room",
+    });
+    await scheduleConversationConnectionEnsure(postDeletion, async () => {});
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, postDeletion),
+    ).not.toThrow();
+  });
+
+  it("releases a deletion room block when the queue refuses the deletion", async () => {
+    const runtime = createRuntime("Saturated Deletion Agent");
+    const headGate = deferred();
+    const queued = Array.from({ length: 256 }, (_, index) =>
+      scheduleConversationConnectionEnsure(
+        captureDescriptor(runtime, { conversationId: `bulk-${index}` }),
+        index === 0
+          ? async () => {
+              await headGate.promise;
+            }
+          : async () => {},
+      ),
+    );
+
+    await expect(
+      serializeConversationConnectionRoomDeletion(
+        runtime,
+        stringToUuid("saturated-deletion-room") as UUID,
+        async () => {},
+      ),
+    ).rejects.toMatchObject({
+      code: "CONVERSATION_CONNECTION_QUEUE_SATURATED",
+    });
+
+    headGate.resolve();
+    await Promise.all(queued);
+
+    const recovered = captureDescriptor(runtime, {
+      roomSeed: "saturated-deletion-room",
+    });
+    await scheduleConversationConnectionEnsure(recovered, async () => {});
+    expect(() =>
+      assertConversationConnectionRuntime(runtime, recovered),
+    ).not.toThrow();
+  });
+
+  it("recognizes every connection error code and rejects impostors", async () => {
+    const { ElizaError } = await import("@elizaos/core");
+    const codes = [
+      "CONVERSATION_CONNECTION_INVALIDATED",
+      "CONVERSATION_CONNECTION_QUEUE_SATURATED",
+      "CONVERSATION_CONNECTION_REFRESH_FAILED",
+      "CONVERSATION_CONNECTION_ROOM_BLOCKED",
+      "CONVERSATION_CONNECTION_TIMEOUT",
+      "CONVERSATION_RUNTIME_CHANGED",
+    ];
+    for (const code of codes) {
+      expect(
+        isConversationConnectionError(
+          new ElizaError(`synthetic ${code}`, { code }),
+        ),
+      ).toBe(true);
+    }
+    expect(
+      isConversationConnectionError(
+        new ElizaError("unclassified", { code: "UNRELATED_CODE" }),
+      ),
+    ).toBe(false);
+    expect(isConversationConnectionError(null)).toBe(false);
+    expect(isConversationConnectionError(undefined)).toBe(false);
+  });
+});
