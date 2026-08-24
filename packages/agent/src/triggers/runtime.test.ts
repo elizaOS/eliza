@@ -19,6 +19,7 @@ import {
   executeTriggerTask,
   listTriggerTasks,
   readTriggerConfig,
+  readTriggerRuns,
   registerTriggerTaskWorker,
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
@@ -1643,5 +1644,12 @@ describe("listTriggerTasks", () => {
 
     const tasks = await listTriggerTasks(runtime);
     expect(tasks).toEqual([]);
+  });
+
+  it("safely handles null or non-object task in readTriggerConfig and readTriggerRuns", () => {
+    expect(readTriggerConfig(null as unknown as Task)).toBeNull();
+    expect(readTriggerConfig(undefined as unknown as Task)).toBeNull();
+    expect(readTriggerRuns(null as unknown as Task)).toEqual([]);
+    expect(readTriggerRuns(undefined as unknown as Task)).toEqual([]);
   });
 });

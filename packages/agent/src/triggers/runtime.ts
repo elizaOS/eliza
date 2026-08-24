@@ -226,6 +226,7 @@ function eventFilterMatches(
 }
 
 function taskMetadata(task: Task): TriggerTaskMetadata {
+  if (!task || typeof task !== "object") return {};
   const metadata = task.metadata;
   return metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as TriggerTaskMetadata)
