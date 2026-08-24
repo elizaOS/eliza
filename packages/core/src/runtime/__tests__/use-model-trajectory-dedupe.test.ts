@@ -49,6 +49,8 @@ class CapturingTrajectoryService extends Service {
 
 	async flushWriteQueue(): Promise<void> {}
 
+	async applyReward(): Promise<void> {}
+
 	logLlmCall(params: TrajectoryRuntimeLlmCallParams): void {
 		if (this.failWrites) throw new Error("trajectory write failed");
 		this.calls.push(params);
