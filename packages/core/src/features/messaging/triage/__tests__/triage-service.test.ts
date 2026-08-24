@@ -603,3 +603,344 @@ describe("TriageService immediate delivery", () => {
 		});
 	});
 });
+
+describe("TriageService sweep scoring and partial failure", () => {
+	it("sweeps every registered source by default and persists scored messages", async () => {
+		const store = new MessageRefStore();
+		const service = new TriageService(store);
+		service.register(
+			adapter("gmail", {
+				listMessages: async () => [
+					message("newer", "gmail", { receivedAtMs: 2_000 }),
+				],
+			}),
+		);
+		service.register(
+			adapter("discord", {
+				listMessages: async () => [
+					message("older", "discord", { receivedAtMs: 1_000 }),
+				],
+			}),
+		);
+
+		const refs = await service.triage(runtime());
+
+		expect(refs.map(({ id }) => id)).toEqual(["newer", "older"]);
+		expect(store.listMessages()).toHaveLength(2);
+		expect(store.getMessage("newer")?.triageScore?.scoredAt).toBeGreaterThan(0);
+	});
+
+	it("isolates a failing source and rethrows only when nothing succeeded", async () => {
+		const mixed = new TriageService(new MessageRefStore());
+		mixed.register(
+			adapter("gmail", {
+				listMessages: async () => {
+					throw new Error("gmail boom");
+				},
+			}),
+		);
+		mixed.register(
+			adapter("discord", {
+				listMessages: async () => [message("survivor", "discord")],
+			}),
+		);
+		const refs = await mixed.triage(runtime(), {
+			sources: ["gmail", "discord"],
+		});
+		expect(refs.map(({ id }) => id)).toEqual(["survivor"]);
+
+		const doomed = new TriageService(new MessageRefStore());
+		doomed.register(
+			adapter("gmail", {
+				listMessages: async () => {
+					throw new Error("gmail boom");
+				},
+			}),
+		);
+		doomed.register(
+			adapter("discord", {
+				listMessages: async () => {
+					throw new Error("discord boom");
+				},
+			}),
+		);
+		await expect(
+			doomed.triage(runtime(), { sources: ["gmail", "discord"] }),
+		).rejects.toThrow("gmail boom");
+	});
+
+	it("forwards list options verbatim to each adapter sweep", async () => {
+		const listMessages = vi.fn(async () => [message("listed")]);
+		const service = new TriageService(new MessageRefStore());
+		service.register(adapter("gmail", { listMessages }));
+
+		await service.triage(runtime(), {
+			sources: ["gmail"],
+			sinceMs: 10,
+			limit: 5,
+			worldIds: ["world-1"],
+			channelIds: ["channel-1"],
+		});
+
+		expect(listMessages).toHaveBeenCalledWith(expect.anything(), {
+			sinceMs: 10,
+			limit: 5,
+			worldIds: ["world-1"],
+			channelIds: ["channel-1"],
+		});
+	});
+});
+
+describe("TriageService search receipts and fallback filtering", () => {
+	it("reports failed sources in the receipt while surviving sources still return hits", async () => {
+		const service = new TriageService(new MessageRefStore());
+		service.register(
+			adapter("gmail", {
+				searchMessages: async () => [message("hit")],
+			}),
+		);
+		service.register(
+			adapter("discord", {
+				searchMessages: async () => {
+					throw new Error("discord boom");
+				},
+			}),
+		);
+
+		const result = await service.searchWithReceipt(runtime(), {
+			sources: ["gmail", "discord"],
+			content: "message",
+		});
+
+		expect(result.refs.map(({ id }) => id)).toEqual(["hit"]);
+		expect(result.receipt).toMatchObject({
+			requested: ["gmail", "discord"],
+			succeeded: ["gmail"],
+			failed: ["discord"],
+		});
+
+		const doomed = new TriageService(new MessageRefStore());
+		doomed.register(
+			adapter("gmail", {
+				searchMessages: async () => {
+					throw new Error("gmail boom");
+				},
+			}),
+		);
+		await expect(
+			doomed.searchWithReceipt(runtime(), {
+				sources: ["gmail"],
+				content: "message",
+			}),
+		).rejects.toThrow("gmail boom");
+	});
+
+	it("probes one past a requested cap so exact fits report hasMore false", async () => {
+		const searchMessages = vi.fn(async () => [
+			message("first", "gmail", { receivedAtMs: 2 }),
+			message("second", "gmail", { receivedAtMs: 1 }),
+		]);
+		const service = new TriageService(new MessageRefStore());
+		service.register(adapter("gmail", { searchMessages }));
+
+		const result = await service.searchWithReceipt(runtime(), {
+			content: "message",
+			limit: 2,
+		});
+
+		expect(searchMessages.mock.calls[0]?.[1]).toMatchObject({ limit: 3 });
+		expect(result.refs.map(({ id }) => id)).toEqual(["first", "second"]);
+		expect(result.receipt).toMatchObject({ limit: 2, hasMore: false });
+	});
+
+	it("falls back to listMessages and in-memory filtering without native search", async () => {
+		const listMessages = vi.fn(async () => [
+			message("alpha-old", "gmail", {
+				snippet: "alpha plans",
+				receivedAtMs: 1_000,
+			}),
+			message("beta-new", "gmail", {
+				snippet: "beta notes",
+				receivedAtMs: 3_000,
+			}),
+			message("alpha-new", "gmail", {
+				snippet: "alpha recap",
+				receivedAtMs: 2_000,
+			}),
+		]);
+		const service = new TriageService(new MessageRefStore());
+		service.register(adapter("gmail", { listMessages }));
+
+		const result = await service.searchWithReceipt(runtime(), {
+			content: "ALPHA",
+		});
+
+		expect(listMessages).toHaveBeenCalledTimes(1);
+		expect(result.refs.map(({ id }) => id)).toEqual(["alpha-new", "alpha-old"]);
+		expect(result.receipt.succeeded).toEqual(["gmail"]);
+	});
+});
+
+describe("TriageService managed routing and tag delegation", () => {
+	it("resolves the adapter from stored metadata when no hint is supplied", async () => {
+		const manageMessage = vi.fn(async () => ({ ok: true }));
+		const service = new TriageService(new MessageRefStore());
+		service.register(adapter("discord", { manageMessage }));
+		service.getStore().saveMessage(message("managed", "discord"));
+
+		await expect(
+			service.manage(runtime(), "managed", { kind: "archive" }),
+		).resolves.toEqual({ ok: true });
+		expect(manageMessage).toHaveBeenCalledWith(expect.anything(), "managed", {
+			kind: "archive",
+		});
+	});
+
+	it("applies tag_add locally even when delegating to a managing adapter", async () => {
+		const manageMessage = vi.fn(async () => ({ ok: true }));
+		const service = new TriageService(new MessageRefStore());
+		service.register(adapter("gmail", { manageMessage }));
+		service.getStore().saveMessage(message("managed"));
+
+		await expect(
+			service.manage(
+				runtime(),
+				"managed",
+				{ kind: "tag_add", tag: "urgent" },
+				{ source: "gmail" },
+			),
+		).resolves.toEqual({ ok: true });
+
+		expect(service.getStore().getMessage("managed")?.tags).toEqual(["urgent"]);
+		expect(manageMessage).toHaveBeenCalledWith(expect.anything(), "managed", {
+			kind: "tag_add",
+			tag: "urgent",
+		});
+	});
+});
+
+describe("TriageService scheduled delivery", () => {
+	function schedulingAdapter(
+		scheduleSend: NonNullable<MessageAdapter["scheduleSend"]>,
+	): MessageAdapter {
+		return adapter("gmail", {
+			capabilities: () => ({
+				list: true,
+				search: false,
+				manage: {},
+				send: { reply: true, new: true, schedule: true },
+				worlds: "single",
+				channels: "none",
+			}),
+			scheduleSend,
+		});
+	}
+
+	it("rejects scheduling unknown or already-sent drafts", async () => {
+		const service = new TriageService(new MessageRefStore());
+		await expect(
+			service.scheduleDraftSend(runtime(), "missing", 50_000),
+		).rejects.toMatchObject({ code: "MESSAGE_DRAFT_NOT_FOUND" });
+
+		service.getStore().saveDraft(draft("sent-draft", { sent: true }));
+		await expect(
+			service.scheduleDraftSend(runtime(), "sent-draft", 50_000),
+		).rejects.toMatchObject({ code: "MESSAGE_DRAFT_ALREADY_SENT" });
+	});
+
+	it("records provider-accepted commits once and replays identical requests", async () => {
+		const scheduleSend = vi.fn(async () => ({
+			scheduledId: "provider-schedule-1",
+		}));
+		const service = new TriageService(new MessageRefStore());
+		service.register(schedulingAdapter(scheduleSend));
+		service.getStore().saveDraft(draft());
+
+		const scheduled = await service.scheduleDraftSend(
+			runtime(),
+			"draft-1",
+			50_000,
+		);
+		expect(scheduled).toMatchObject({
+			scheduledForMs: 50_000,
+			scheduledId: "provider-schedule-1",
+			scheduleCommit: {
+				kind: "provider_accepted",
+				id: "provider-schedule-1",
+				idempotencyKey: "message-native-schedule:gmail:draft-1:50000",
+				replayed: false,
+			},
+		});
+		expect(service.getStore().getDraft("draft-1")).toEqual(scheduled);
+
+		const replayed = await service.scheduleDraftSend(
+			runtime(),
+			"draft-1",
+			50_000,
+		);
+		expect(replayed.scheduleCommit?.replayed).toBe(true);
+		expect(replayed.scheduledId).toBe("provider-schedule-1");
+		expect(scheduleSend).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects rescheduling a committed draft at a different time", async () => {
+		const service = new TriageService(new MessageRefStore());
+		service.register(
+			schedulingAdapter(async () => ({ scheduledId: "provider-schedule-1" })),
+		);
+		service.getStore().saveDraft(draft());
+
+		await service.scheduleDraftSend(runtime(), "draft-1", 50_000);
+		await expect(
+			service.scheduleDraftSend(runtime(), "draft-1", 60_000),
+		).rejects.toMatchObject({ code: "MESSAGE_DRAFT_ALREADY_SCHEDULED" });
+	});
+
+	it("requires a durable scheduler when the adapter cannot schedule natively", async () => {
+		const service = new TriageService(new MessageRefStore());
+		service.register(adapter("gmail"));
+		service.getStore().saveDraft(draft());
+
+		await expect(
+			service.scheduleDraftSend(runtime(), "draft-1", 50_000),
+		).rejects.toMatchObject({
+			code: "DEFERRED_MESSAGE_SCHEDULER_UNAVAILABLE",
+		});
+	});
+
+	it("refuses concurrent schedules that specify different delivery times", async () => {
+		let release: (() => void) | undefined;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const scheduleSend = vi.fn(async () => {
+			await gate;
+			return { scheduledId: "provider-schedule-1" };
+		});
+		const service = new TriageService(new MessageRefStore());
+		service.register(schedulingAdapter(scheduleSend));
+		service.getStore().saveDraft(draft());
+
+		const first = service.scheduleDraftSend(runtime(), "draft-1", 50_000);
+		await expect(
+			service.scheduleDraftSend(runtime(), "draft-1", 60_000),
+		).rejects.toMatchObject({ code: "MESSAGE_DRAFT_SCHEDULE_CONFLICT" });
+		release?.();
+		await expect(first).resolves.toMatchObject({
+			scheduledForMs: 50_000,
+			scheduledId: "provider-schedule-1",
+		});
+	});
+
+	it("rejects provider schedules without a usable identifier", async () => {
+		const service = new TriageService(new MessageRefStore());
+		service.register(schedulingAdapter(async () => ({ scheduledId: "   " })));
+		service.getStore().saveDraft(draft());
+
+		await expect(
+			service.scheduleDraftSend(runtime(), "draft-1", 50_000),
+		).rejects.toMatchObject({
+			code: "MESSAGE_PROVIDER_SCHEDULE_RECEIPT_MISSING",
+		});
+	});
+});
