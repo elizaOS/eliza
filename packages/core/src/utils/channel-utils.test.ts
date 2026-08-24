@@ -230,6 +230,21 @@ describe("formatLocationText", () => {
 			"🛰 Live location: 37.774900, -122.419400\nSharing live route for 15 mins",
 		);
 	});
+
+	it("returns empty string for non-finite coordinates", () => {
+		expect(
+			formatLocationText({ latitude: Number.NaN, longitude: -122.4194 }),
+		).toBe("");
+		expect(
+			formatLocationText({
+				latitude: 37.7749,
+				longitude: Number.POSITIVE_INFINITY,
+			}),
+		).toBe("");
+		expect(
+			formatLocationText({ latitude: Number.NaN, longitude: Number.NaN }),
+		).toBe("");
+	});
 });
 
 describe("toLocationContext", () => {
