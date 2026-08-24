@@ -108,14 +108,23 @@ async function git(
   args: string[],
   limits?: { timeoutMs: number; maxOutputBytes: number },
 ): Promise<{ stdout: string; stderr: string }> {
+  const aggregateLimit =
+    limits?.maxOutputBytes ?? WORKSPACE_DELTA_GIT_OUTPUT_BUDGET;
+  // Node applies maxBuffer independently to stdout and stderr. Give each
+  // stream a disjoint half-reservation so their live aggregate cannot exceed
+  // the observation reservation before the post-return byte accounting runs.
+  const perStreamLimit = Math.floor(aggregateLimit / 2);
   const result = await execFileAsync("git", args, {
     cwd,
     encoding: "utf8",
     timeout: limits?.timeoutMs ?? WORKSPACE_DELTA_OBSERVATION_TIMEOUT_MS,
-    maxBuffer: limits?.maxOutputBytes ?? WORKSPACE_DELTA_GIT_OUTPUT_BUDGET,
+    maxBuffer: perStreamLimit,
   });
   return { stdout: result.stdout, stderr: result.stderr };
 }
+
+/** Production Git subprocess seam exposed only for aggregate-buffer tests. */
+export const __runWorkspaceDeltaGitForTests = git;
 
 function positiveLimit(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) && (value ?? 0) > 0
@@ -173,18 +182,15 @@ function canonicalExecutionDomainId(value: string | undefined): string {
 
 /** Derives an opaque domain from stable identity owned by the runtime host. */
 export function runtimeWorkspaceExecutionDomainId(
-  runtime: Pick<IAgentRuntime, "agentId" | "getSetting">,
+  runtime: Pick<IAgentRuntime, "runtimeInstanceId">,
 ): string {
-  const configured = ["ELIZA_RUNTIME_INSTANCE_ID", "ELIZA_INSTANCE_ID"]
-    .map((key) => runtime.getSetting(key))
-    .find((value) => typeof value === "string" && value.trim().length > 0);
-  const ownerIdentity =
-    typeof configured === "string"
-      ? configured.trim()
-      : String(runtime.agentId);
-  if (!ownerIdentity) {
+  if (
+    typeof runtime.runtimeInstanceId !== "string" ||
+    runtime.runtimeInstanceId.trim().length === 0
+  ) {
     throw new TypeError("Runtime execution identity is unavailable.");
   }
+  const ownerIdentity = runtime.runtimeInstanceId.trim();
   return createHash("sha256")
     .update("eliza-runtime-workspace-execution-domain-v1\0")
     .update(ownerIdentity)

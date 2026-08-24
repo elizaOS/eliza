@@ -10,7 +10,7 @@
  * root into the remote workdir and rejected if it escapes that root; model and
  * remote-plugin capabilities are intentionally unavailable on this router.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import nodePath from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
@@ -47,6 +47,7 @@ import {
   Service,
   type TerminalRunParams,
   type TerminalRunResult,
+  type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
 
 export type {
@@ -60,6 +61,7 @@ const LOG_CONTEXT = { src: "service:remote_coding_capability_router" } as const;
 const DEFAULT_REMOTE_WORKDIR = "/workspace";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
+const REMOTE_WORKSPACE_OBSERVATION_TIMEOUT_MS = 900;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_REMOTE_JSON_BYTES = 1024 * 1024;
 const MAX_REMOTE_ERROR_BYTES = 16 * 1024;
@@ -738,21 +740,48 @@ export class RemoteCodingCapabilityRouterService
     const sandbox = await this.getRunner();
     const command = commandLine(params.command, params.args ?? []);
     const cwd = this.mapPath(params.cwd ?? this.routerConfig.workdir);
+    const observationTimeoutMs = Math.min(
+      params.timeoutMs ?? this.routerConfig.requestTimeoutMs,
+      REMOTE_WORKSPACE_OBSERVATION_TIMEOUT_MS,
+    );
     const opts: SandboxCommandRunOptions = {
       cwd,
       timeoutMs: params.timeoutMs ?? this.routerConfig.timeoutMs,
       requestTimeoutMs: params.timeoutMs ?? this.routerConfig.requestTimeoutMs,
       ...(params.env === undefined ? {} : { envs: params.env }),
     };
+    const workspaceExecution = remoteWorkspaceExecution(
+      remoteExecutionOwnerIdentity(this.routerConfig, sandbox.sandboxId),
+      cwd,
+    );
+    const beforeFingerprint = await remoteWorkspaceFingerprint(
+      sandbox,
+      cwd,
+      observationTimeoutMs,
+    );
     try {
       const result = await sandbox.commands.run(command, opts);
-      return commandRunResult(result, result.timedOut === true);
+      return await commandRunResultWithWorkspaceObservation(
+        sandbox,
+        result,
+        result.timedOut === true,
+        workspaceExecution,
+        beforeFingerprint,
+        observationTimeoutMs,
+      );
     } catch (error) {
       const normalized =
         error instanceof Error ? error : new Error(String(error));
       const commandResult = commandResultFromError(normalized);
       if (commandResult) {
-        return commandRunResult(commandResult, commandResult.timedOut === true);
+        return await commandRunResultWithWorkspaceObservation(
+          sandbox,
+          commandResult,
+          commandResult.timedOut === true,
+          workspaceExecution,
+          beforeFingerprint,
+          observationTimeoutMs,
+        );
       }
       if (isTimeoutError(normalized)) {
         return {
@@ -1863,6 +1892,104 @@ function commandRunResult(
     output: `${result.stdout}${stderr}`,
     exitCode: result.exitCode,
     timedOut,
+  };
+}
+
+const REMOTE_WORKSPACE_FINGERPRINT_COMMAND =
+  "set -euo pipefail; git rev-parse --is-inside-work-tree >/dev/null 2>&1 && " +
+  "{ git rev-parse --verify HEAD 2>/dev/null || printf unborn; " +
+  "git symbolic-ref --quiet HEAD 2>/dev/null || true; " +
+  "git status --porcelain=v2 -z --untracked-files=all; " +
+  "git diff --binary; git diff --cached --binary; " +
+  "git ls-files --others --exclude-standard -z | " +
+  "while IFS= read -r -d '' p; do printf '%s\\0' \"$p\"; " +
+  'if [ -d "$p" ]; then find "$p" -type f -print0 | sort -z | ' +
+  "while IFS= read -r -d '' f; do printf '%s\\0' \"$f\"; git hash-object --no-filters -- \"$f\"; done; " +
+  'else git hash-object --no-filters -- "$p"; fi; done; } | git hash-object --stdin';
+
+function remoteWorkspaceExecution(
+  ownerIdentity: string,
+  root: string,
+): NonNullable<TerminalRunResult["workspaceExecution"]> {
+  const executionDomainId = createHash("sha256")
+    .update("eliza-remote-coding-execution-domain-v1\0")
+    .update(ownerIdentity)
+    .digest("hex");
+  const rootId = createHash("sha256")
+    .update("eliza-workspace-root-v1\0")
+    .update(executionDomainId)
+    .update("\0")
+    .update(root)
+    .digest("hex");
+  return { root, rootId, executionDomainId };
+}
+
+function remoteExecutionOwnerIdentity(
+  config: RemoteCodingRunnerConfig,
+  runnerSandboxId: string,
+): string {
+  return JSON.stringify({
+    provider: config.provider,
+    endpoint: config.remoteHttpBaseUrl ?? config.cloudApiBaseUrl ?? null,
+    sandboxId: config.sandboxId ?? runnerSandboxId,
+  });
+}
+
+async function remoteWorkspaceFingerprint(
+  sandbox: RemoteRunnerClient,
+  cwd: string,
+  requestTimeoutMs: number,
+): Promise<string | undefined> {
+  try {
+    const result = await sandbox.commands.run(
+      `bash -lc ${shellQuote(REMOTE_WORKSPACE_FINGERPRINT_COMMAND)}`,
+      { cwd, timeoutMs: requestTimeoutMs, requestTimeoutMs },
+    );
+    const fingerprint = result.stdout.trim();
+    return result.exitCode === 0 && /^[a-f0-9]{40,64}$/.test(fingerprint)
+      ? createHash("sha256").update(fingerprint).digest("hex")
+      : undefined;
+  } catch {
+    // error-policy:J4 remote observation failure stays visibly unobserved; the
+    // command result is still returned but cannot clear mutation verification.
+    return undefined;
+  }
+}
+
+async function commandRunResultWithWorkspaceObservation(
+  sandbox: RemoteRunnerClient,
+  result: SandboxCommandResult,
+  timedOut: boolean,
+  workspaceExecution: NonNullable<TerminalRunResult["workspaceExecution"]>,
+  beforeFingerprint: string | undefined,
+  requestTimeoutMs: number,
+): Promise<TerminalRunResult> {
+  const base = commandRunResult(result, timedOut);
+  const afterFingerprint = await remoteWorkspaceFingerprint(
+    sandbox,
+    workspaceExecution.root,
+    requestTimeoutMs,
+  );
+  let workspaceDeltaReceipt: WorkspaceDeltaReceipt | undefined;
+  if (beforeFingerprint && afterFingerprint) {
+    workspaceDeltaReceipt = {
+      version: 1,
+      kind: "workspace_delta",
+      scope: {
+        kind: "git_worktree",
+        ...workspaceExecution,
+        coverage: "tracked_and_untracked_nonignored",
+      },
+      outcome: beforeFingerprint === afterFingerprint ? "unchanged" : "changed",
+      beforeFingerprint,
+      afterFingerprint,
+      observedAt: new Date().toISOString(),
+    };
+  }
+  return {
+    ...base,
+    workspaceExecution,
+    ...(workspaceDeltaReceipt ? { workspaceDeltaReceipt } : {}),
   };
 }
 

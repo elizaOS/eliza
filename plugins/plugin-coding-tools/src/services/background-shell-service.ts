@@ -28,6 +28,7 @@ import { BACKGROUND_SHELL_SERVICE, CODING_TOOLS_LOG_PREFIX } from "../types.js";
 
 const DEFAULT_BUFFER_CHARS = 1_000_000;
 const DEFAULT_KILL_GRACE_MS = 1_500;
+const DEFAULT_REAP_WAIT_MS = 3_000;
 const MAX_WRITE_CHARS = 1_000_000;
 const MAX_SESSIONS_PER_CONVERSATION = 16;
 const MAX_SESSIONS_GLOBAL = 128;
@@ -113,6 +114,15 @@ export class BackgroundShellStartError extends Error {
   }
 }
 
+export class BackgroundShellReapTimeoutError extends Error {
+  constructor(readonly handle: string) {
+    super(
+      `background shell reap was not proven before its deadline: ${handle}`,
+    );
+    this.name = "BackgroundShellReapTimeoutError";
+  }
+}
+
 interface FragmentRedactionState {
   fragments: SecretFragment[];
   ranges: SecretTaintRange[];
@@ -130,6 +140,7 @@ export class BackgroundShellService extends Service {
   private handleCounter = 0;
   private bufferChars = DEFAULT_BUFFER_CHARS;
   private killGraceMs = DEFAULT_KILL_GRACE_MS;
+  private reapWaitMs = DEFAULT_REAP_WAIT_MS;
 
   static async start(runtime: IAgentRuntime): Promise<BackgroundShellService> {
     const svc = new BackgroundShellService(runtime);
@@ -142,6 +153,11 @@ export class BackgroundShellService extends Service {
       runtime,
       "CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS",
       DEFAULT_KILL_GRACE_MS,
+    );
+    svc.reapWaitMs = readPositiveIntSetting(
+      runtime,
+      "CODING_TOOLS_BACKGROUND_SHELL_REAP_WAIT_MS",
+      DEFAULT_REAP_WAIT_MS,
     );
     return svc;
   }
@@ -237,6 +253,7 @@ export class BackgroundShellService extends Service {
         chunk,
         this.bufferChars,
       );
+      if (session.outputLimitExceeded) this.scheduleTermination(session);
     });
     started.process.stderr.on("data", (chunk: string) => {
       appendSessionOutput(
@@ -246,6 +263,7 @@ export class BackgroundShellService extends Service {
         chunk,
         this.bufferChars,
       );
+      if (session.outputLimitExceeded) this.scheduleTermination(session);
     });
     started.process.stdin?.on?.("error", (error: Error) => {
       session.stdinError = error;
@@ -352,10 +370,12 @@ export class BackgroundShellService extends Service {
       await this.finalizeWorkspaceDelta(session);
       return snapshot(this.runtime, session);
     }
-    session.status = "terminating";
-    session.terminalStatusAfterClose = "killed";
+    if (session.status === "running") {
+      session.status = "terminating";
+      session.terminalStatusAfterClose = "killed";
+    }
     this.refreshPendingWorkspaceReceipt(session);
-    signalHostProcessGroup(session.process, "SIGTERM");
+    this.scheduleTermination(session);
     try {
       session.process.stdin?.end();
     } catch (error) {
@@ -365,21 +385,22 @@ export class BackgroundShellService extends Service {
         `${CODING_TOOLS_LOG_PREFIX} background SHELL stdin close failed handle=${session.handle}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    session.killTimer = setTimeout(() => {
-      if (session.endedAt === null) {
-        signalHostProcessGroup(session.process, "SIGKILL");
-      }
-    }, this.killGraceMs);
-    if (typeof session.killTimer.unref === "function") {
-      session.killTimer.unref();
-    }
-    await new Promise<void>((resolve) => {
-      if (session.endedAt !== null) {
-        resolve();
-        return;
-      }
-      session.process.once("close", () => resolve());
-    });
+    let reapTimer: NodeJS.Timeout | undefined;
+    const closed = await Promise.race([
+      new Promise<true>((resolve) => {
+        if (session.endedAt !== null) resolve(true);
+        else session.process.once("close", () => resolve(true));
+      }),
+      new Promise<false>((resolve) => {
+        reapTimer = setTimeout(
+          () => resolve(false),
+          this.killGraceMs + this.reapWaitMs,
+        );
+        reapTimer.unref?.();
+      }),
+    ]);
+    if (reapTimer) clearTimeout(reapTimer);
+    if (!closed) throw new BackgroundShellReapTimeoutError(session.handle);
     if (session.endedAt === null) {
       throw new Error(
         `background shell did not emit close after process reap: ${session.handle}`,
@@ -390,6 +411,17 @@ export class BackgroundShellService extends Service {
     );
     await this.finalizeWorkspaceDelta(session);
     return snapshot(this.runtime, session);
+  }
+
+  private scheduleTermination(session: BackgroundShellSession): void {
+    signalHostProcessGroup(session.process, "SIGTERM");
+    if (session.killTimer || session.endedAt !== null) return;
+    session.killTimer = setTimeout(() => {
+      if (session.endedAt === null) {
+        signalHostProcessGroup(session.process, "SIGKILL");
+      }
+    }, this.killGraceMs);
+    session.killTimer.unref?.();
   }
 
   private async finalizeWorkspaceDelta(
