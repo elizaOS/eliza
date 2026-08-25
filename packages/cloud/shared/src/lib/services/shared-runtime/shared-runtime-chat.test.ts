@@ -705,6 +705,115 @@ describe("SharedRuntimeChatService", () => {
     }
   });
 
+  test("retains complete content-free history provenance for a voice turn at zero sample", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "0";
+    const priorContent = "private prior sentence that must never enter diagnostics";
+    const h = harness([
+      {
+        id: "prior-user-id",
+        role: "user",
+        content: priorContent,
+        createdAt: 1_787_860_800_000,
+      },
+      {
+        id: "prior-assistant-id",
+        role: "assistant",
+        content: "private partial reply",
+        createdAt: 1_787_860_800_500,
+        interrupted: true,
+      },
+    ]);
+    await new SharedRuntimeChatService().bridge(agent, rpc, {
+      ...h,
+      channel: {
+        type: ChannelType.VOICE_DM,
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
+      },
+    });
+    await Promise.all(h.background);
+
+    expect(traceRows).toHaveLength(1);
+    const row = traceRows[0] as {
+      channel_id: string;
+      stages: {
+        historyProvenance?: {
+          channelId: string;
+          channelType: string;
+          channelSource: string;
+          messages: Array<Record<string, unknown>>;
+        };
+      };
+    };
+    expect(row.stages.historyProvenance).toEqual({
+      channelId: row.channel_id,
+      channelType: String(ChannelType.VOICE_DM),
+      channelSource: String(MESSAGE_SOURCE_CLIENT_CHAT),
+      messages: [
+        {
+          id: "prior-user-id",
+          role: "user",
+          createdAt: 1_787_860_800_000,
+          interrupted: false,
+        },
+        {
+          id: "prior-assistant-id",
+          role: "assistant",
+          createdAt: 1_787_860_800_500,
+          interrupted: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(row)).not.toContain(priorContent);
+    expect(JSON.stringify(row)).not.toContain("private partial reply");
+  });
+
+  test("retains a voice failure that occurs before the runtime emits terminal timing", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "0";
+    turnTimingOutcome = null;
+    turnError = new Error("provider failed before timing receipt");
+    const h = harness([
+      {
+        id: "failed-turn-user-id",
+        role: "user",
+        content: "private failed turn",
+        createdAt: 1_787_860_900_000,
+      },
+    ]);
+
+    await expect(
+      new SharedRuntimeChatService().bridge(agent, rpc, {
+        ...h,
+        traceId: "voice-failure-trace",
+        channel: {
+          type: ChannelType.VOICE_DM,
+          source: MESSAGE_SOURCE_CLIENT_CHAT,
+        },
+      }),
+    ).rejects.toThrow("provider failed before timing receipt");
+    await Promise.all(h.background);
+
+    expect(traceRows).toHaveLength(1);
+    expect(traceRows[0]).toMatchObject({
+      trace_id: "voice-failure-trace",
+      stages: {
+        finishReason: "error",
+        historyProvenance: {
+          messages: [
+            {
+              id: "failed-turn-user-id",
+              role: "user",
+              interrupted: false,
+            },
+          ],
+        },
+      },
+    });
+    expect(JSON.stringify(traceRows[0])).not.toContain("private failed turn");
+    expect(JSON.stringify(traceRows[0])).not.toContain("provider failed before timing receipt");
+  });
+
   test("prices the exact projected grounding replay before admission", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness([

@@ -119,6 +119,25 @@ import {
   type SharedTurnSummaryResult,
 } from "./shared-turn-trace-recorder";
 
+function retainedVoiceHistoryProvenance(
+  channelId: string,
+  history: readonly SharedTurnMessage[],
+  channel: SharedRuntimeChatOptions["channel"],
+) {
+  if (channel?.type !== ChannelType.VOICE_DM) return undefined;
+  return {
+    channelId,
+    channelType: String(channel.type),
+    channelSource: channel.source === undefined ? null : String(channel.source),
+    messages: history.map((message) => ({
+      id: message.id ?? null,
+      role: message.role,
+      createdAt: message.createdAt ?? null,
+      interrupted: message.interrupted === true,
+    })),
+  };
+}
+
 export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 
 const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
@@ -166,9 +185,9 @@ export interface SharedRuntimeHistoryStore {
 }
 
 /**
- * P5 sampled turn trace, recorded strictly off the response path. The recorder
- * self-gates on SHARED_TURN_TRACES_ENABLED + deterministic trace-id sampling
- * and never throws, so this adds zero turn latency and zero failure surface.
+ * Turn trace recorded strictly off the response path. The recorder self-gates
+ * on SHARED_TURN_TRACES_ENABLED, samples ordinary chat, and retains
+ * authenticated voice turns so incident diagnosis does not depend on sampling.
  */
 function recordTurnTraceOffPath(
   executionCtx: BridgeExecutionContext | undefined,
@@ -178,7 +197,10 @@ function recordTurnTraceOffPath(
   startedAt: number,
   result: SharedTurnSummaryResult,
   terminalTiming?: SharedRuntimeTimingReceipt,
+  history: readonly SharedTurnMessage[] = [],
+  channel?: SharedRuntimeChatOptions["channel"],
 ): void {
+  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
   void settleOffResponsePath(executionCtx, async () => {
     const summary = buildTurnSummary({
       result,
@@ -195,21 +217,29 @@ function recordTurnTraceOffPath(
       {
         ...summary,
         ...(terminalTiming ? { terminalTiming } : {}),
+        ...(historyProvenance ? { historyProvenance } : {}),
       },
+      { forceRecord: channel?.type === ChannelType.VOICE_DM },
     );
   });
 }
 
-/** Persist error/abort receipts through the same durable sampled trace row. */
+/** Persist error/abort receipts through the same durable turn trace row. */
 function recordFailedTurnTraceOffPath(
   executionCtx: BridgeExecutionContext | undefined,
   agent: SharedRuntimeAgent,
   channelId: string,
+  traceId: string,
   model: string,
   startedAt: number,
   terminalTiming: SharedRuntimeTimingReceipt | undefined,
+  history: readonly SharedTurnMessage[] = [],
+  channel?: SharedRuntimeChatOptions["channel"],
+  fallbackFinishReason: "aborted" | "error" = "error",
 ): void {
-  if (!terminalTiming) return;
+  const retainVoiceTrace = channel?.type === ChannelType.VOICE_DM;
+  if (!terminalTiming && !retainVoiceTrace) return;
+  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
   void settleOffResponsePath(executionCtx, async () => {
     const completedAt = Date.now();
     await recordSharedTurnTrace(
@@ -219,7 +249,7 @@ function recordFailedTurnTraceOffPath(
         userId: agent.user_id,
         agentId: agent.id,
         channelId,
-        traceId: terminalTiming.traceId,
+        traceId: terminalTiming?.traceId ?? traceId,
         startedAt,
         // The bounded runtime offset can be null when the measurement is
         // unavailable or rejected. The trace row still has an honest wall
@@ -227,10 +257,12 @@ function recordFailedTurnTraceOffPath(
         // failure.
         latencyMs: Math.max(0, Math.round(completedAt - startedAt)),
         model,
-        finishReason: terminalTiming.outcome === "aborted" ? "aborted" : "error",
+        finishReason: terminalTiming?.outcome === "aborted" ? "aborted" : fallbackFinishReason,
         stages: [{ name: "runtime" }],
-        terminalTiming,
+        ...(terminalTiming ? { terminalTiming } : {}),
+        ...(historyProvenance ? { historyProvenance } : {}),
       },
+      { forceRecord: retainVoiceTrace },
     );
   });
 }
@@ -1456,9 +1488,12 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         agent,
         roomId,
+        options.traceId ?? messageIds.assistant,
         character.model?.trim() || "shared-runtime",
         turnStartedAtEpochMs,
         terminalTiming,
+        history,
+        options.channel,
       );
       await settleFailedProviderWorkOffPath(
         agent,
@@ -1478,6 +1513,8 @@ export class SharedRuntimeChatService {
       turnStartedAtEpochMs,
       turn,
       terminalTiming,
+      history,
+      options.channel,
     );
     if (!turn.degraded && turn.responded !== false && messageRole === "user") {
       extractSharedTurnFactsOffPath(options.executionCtx, memoryStore, character, text, turn.reply);
@@ -1686,9 +1723,12 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         agent,
         roomId,
+        options.traceId ?? messageIds.assistant,
         character.model?.trim() || "shared-runtime",
         streamTurnStartedAtEpochMs,
         streamTerminalTiming,
+        history,
+        options.channel,
       );
       detachRequestAbort();
       await settleFailedProviderWorkOffPath(
@@ -1712,6 +1752,8 @@ export class SharedRuntimeChatService {
         streamTurnStartedAtEpochMs,
         turn,
         streamTerminalTiming,
+        history,
+        options.channel,
       );
       const reply = turn.reply?.trim() ?? "";
       if (!reply) return sseError("Shared runtime is unavailable");
@@ -2056,15 +2098,21 @@ export class SharedRuntimeChatService {
                 ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
               },
               streamTerminalTiming,
+              history,
+              options.channel,
             );
           } else {
             recordFailedTurnTraceOffPath(
               options.executionCtx,
               agent,
               roomId,
+              options.traceId ?? messageIds.assistant,
               turn.model,
               streamTurnStartedAtEpochMs,
               streamTerminalTiming,
+              history,
+              options.channel,
+              consumerCanceled || generationAbort.signal.aborted ? "aborted" : "error",
             );
           }
           detachRequestAbort();

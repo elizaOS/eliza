@@ -18,6 +18,7 @@
 import type {
   NewSharedTurnTraceRow,
   SharedTurnTraceFinishReason,
+  SharedTurnTraceHistoryProvenance,
   SharedTurnTraceStage,
   SharedTurnTraceUsage,
 } from "../../../db/schemas/shared-turn-traces";
@@ -48,6 +49,13 @@ export interface SharedTurnSummary {
   stages: SharedTurnTraceStage[];
   /** Terminal runtime receipt persisted under this row's single sample decision. */
   terminalTiming?: SharedRuntimeTimingReceipt;
+  /** Complete content-free history identity retained for voice diagnosis. */
+  historyProvenance?: SharedTurnTraceHistoryProvenance;
+}
+
+export interface RecordSharedTurnTraceOptions {
+  /** Retain authenticated voice turns even when their trace misses the sample. */
+  forceRecord?: boolean;
 }
 
 export interface SharedTurnTraceRecorderDeps {
@@ -178,11 +186,12 @@ export function buildTurnSummary(input: BuildTurnSummaryInput): SharedTurnSummar
 export async function recordSharedTurnTrace(
   deps: SharedTurnTraceRecorderDeps,
   summary: SharedTurnSummary,
+  options: RecordSharedTurnTraceOptions = {},
 ): Promise<boolean> {
   const env = deps.env ?? process.env;
   if (env.SHARED_TURN_TRACES_ENABLED !== "true") return false;
   const sampleRate = resolveSharedTurnTraceSampleRate(env.SHARED_TURN_TRACES_SAMPLE);
-  if (!isSharedTurnTraceSampled(summary.traceId, sampleRate)) return false;
+  if (!options.forceRecord && !isSharedTurnTraceSampled(summary.traceId, sampleRate)) return false;
   const compactedUsage = summary.usage ? compactUsage(summary.usage) : undefined;
   try {
     await deps.insertTrace({
@@ -199,6 +208,7 @@ export async function recordSharedTurnTrace(
         finishReason: summary.finishReason,
         stages: summary.stages,
         ...(summary.terminalTiming ? { terminalTiming: summary.terminalTiming } : {}),
+        ...(summary.historyProvenance ? { historyProvenance: summary.historyProvenance } : {}),
       },
     });
     return true;
