@@ -142,6 +142,27 @@ function personalPushUnavailable(c: Context<AppEnv>): Response {
 }
 
 /**
+ * Browser workspace is a desktop/dedicated-agent feature. A shared agent has no
+ * plugin-browser loaded and no native webview surface, so the GET endpoint
+ * returns an honest empty workspace (matching what the local agent returns when
+ * the browser plugin is absent) and the mutation endpoints return 503 — the same
+ * status the local agent uses for "Browser workspace is not available on this
+ * platform". This stops the UI from showing a persistent "Not found" error
+ * banner and instead lets the workspace load in its designed-empty state.
+ */
+function browserWorkspaceUnavailable(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      code: "browser_workspace_unavailable",
+      error: "Browser workspace is not available on this platform",
+    },
+    503,
+  );
+}
+
+/**
  * LifeOps activity-signal ingestion requires the personal-assistant plugin's
  * scheduled-task runtime, which only a dedicated agent runs. Returning a typed
  * capability gate — rather than the bare 404 this path used to fall through to —
@@ -304,6 +325,11 @@ app.get("/", async (c) => {
       return json(c, sharedRestAgentEvents());
     case "stream/settings":
       return json(c, sharedRestStreamSettings());
+    case "browser-workspace":
+      // Shared agents have no browser plugin; return the same empty snapshot
+      // the local agent returns when plugin-browser is absent, so the UI
+      // loads its designed-empty state rather than a persistent error banner.
+      return json(c, { mode: "web", tabs: [] });
     default:
       // Genuinely-unknown shell endpoint — don't mask it with a default.
       return json(
@@ -380,6 +406,9 @@ app.post("/", async (c) => {
   }
   if (path === "lifeops/activity-signals") {
     return lifeopsUnavailable(c);
+  }
+  if (path === "browser-workspace/tabs" || path.startsWith("browser-workspace/tabs/") || path === "browser-workspace/command") {
+    return browserWorkspaceUnavailable(c);
   }
   // Overlay presence is foreground-app telemetry with no store behind it on
   // this tier — ack rather than 404 a signal the shell emits on every view
