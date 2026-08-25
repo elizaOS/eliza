@@ -804,6 +804,7 @@ function documentReference(item: StoredDocument): ContentReference | null {
 		kind: "document",
 		ref: `document:${documentId}`,
 		revision,
+		resumability: "restart-safe",
 	});
 }
 
@@ -845,6 +846,7 @@ function documentReadPage(
 				kind: "document",
 				ref: `document:${documentId}`,
 				revision,
+				resumability: "restart-safe",
 			}),
 			slice: buildReadSlice({
 				range: { unit, start: page.start, end: page.end, total: page.total },

@@ -3168,6 +3168,7 @@ async function readAdapterlessStoredMemory(
 			kind: "memory",
 			ref: `memory:${memoryRef}`,
 			revision,
+			resumability: "non-resumable",
 		}),
 		slice: buildReadSlice({
 			range: {
@@ -3343,6 +3344,7 @@ async function handleReadStoredMemory(
 			kind: "memory",
 			ref: `memory:${memoryRef}`,
 			revision,
+			resumability: "restart-safe",
 		}),
 		slice: buildReadSlice({
 			range: { unit: "byte", start: offset, end, total },

@@ -7,11 +7,14 @@
  * coding sub-agent is exempted from those rewrites so its explicit commands run
  * verbatim. Gated to coding contexts with OWNER role.
  */
+
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
+  buildReadView,
   CANONICAL_SUBACTION_KEY,
   logger as coreLogger,
   getCapabilityRouter,
@@ -1391,6 +1394,40 @@ export const shellAction: Action = {
         });
       }
       const value = page.value;
+      const readView = value.contentRevision
+        ? buildReadView({
+            reference: {
+              kind: "tool-result",
+              ref: `shell:${value.handle}:${value.stream}`,
+              revision: value.contentRevision,
+              resumability: "restart-safe",
+              expiresAt: value.expiresAt,
+            },
+            slice: {
+              range: {
+                unit: "fragment",
+                start: value.startOffset,
+                end: value.endOffset,
+                total: value.totalCharacters,
+              },
+              hasPrevious: value.startOffset > 0,
+              hasMore: !value.complete,
+              ...(!value.complete ? { nextOffset: value.endOffset } : {}),
+              revision: value.contentRevision,
+              completeness: value.complete ? "complete" : "partial-recoverable",
+              sliceSha256: createHash("sha256")
+                .update(value.text)
+                .digest("hex"),
+              ...(value.complete && value.startOffset === 0
+                ? {
+                    sourceSha256: createHash("sha256")
+                      .update(value.text)
+                      .digest("hex"),
+                  }
+                : {}),
+            },
+          })
+        : undefined;
       const text = [
         `Shell artifact ${value.handle} ${value.stream} characters ${value.startOffset}..${value.endOffset} of ${value.totalCharacters} complete=${value.complete}`,
         value.text
@@ -1407,6 +1444,7 @@ export const shellAction: Action = {
         actionName: "SHELL",
         [CANONICAL_SUBACTION_KEY]: "read_output_artifact",
         ...value,
+        ...(readView ? { readView } : {}),
       });
     }
 
@@ -2175,6 +2213,34 @@ export const shellAction: Action = {
       streams.length > 0
         ? `${head}\n${artifactNotice}\n${streams}`
         : `${head}\n${artifactNotice}`;
+    const artifactReadViews = (
+      [
+        ["stdout", redactedStdout, artifact.stdout.characters],
+        ["stderr", redactedStderr, artifact.stderr.characters],
+      ] as const
+    ).map(([stream, streamText, total]) =>
+      buildReadView({
+        reference: {
+          kind: "tool-result",
+          ref: `shell:${artifact.handle}:${stream}`,
+          revision: artifact.contentRevision,
+          resumability: "restart-safe",
+          expiresAt: artifact.expiresAt,
+        },
+        slice: {
+          range: { unit: "fragment", start: 0, end: total, total },
+          hasPrevious: false,
+          hasMore: false,
+          revision: artifact.contentRevision,
+          completeness: "complete",
+          sliceSha256: createHash("sha256").update(streamText).digest("hex"),
+          sourceSha256: createHash("sha256").update(streamText).digest("hex"),
+        },
+      }),
+    );
+    const artifactContinuity = {
+      output_artifact_read_views: artifactReadViews,
+    };
 
     const echoTranscript =
       process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
@@ -2219,6 +2285,7 @@ export const shellAction: Action = {
             !result.projection.stderrComplete,
           output_artifact_handle: artifact.handle,
           output_artifact_revision: artifact.contentRevision,
+          ...artifactContinuity,
         },
       );
     }
@@ -2241,6 +2308,7 @@ export const shellAction: Action = {
             !result.projection.stderrComplete,
           output_artifact_handle: artifact.handle,
           output_artifact_revision: artifact.contentRevision,
+          ...artifactContinuity,
         },
       );
     }
@@ -2259,6 +2327,7 @@ export const shellAction: Action = {
       output_artifact_handle: artifact.handle,
       output_artifact_revision: artifact.contentRevision,
       output_artifact_expires_at: artifact.expiresAt,
+      ...artifactContinuity,
       stdout_source_bytes: artifact.source.stdout.bytes,
       stdout_source_lines: artifact.source.stdout.lines,
       stderr_source_bytes: artifact.source.stderr.bytes,

@@ -6,13 +6,21 @@
 import { describe, expect, it } from "vitest";
 import type { ElizaError } from "../errors";
 import { buildReadSlice, buildReadView } from "../types/content";
-import { deriveCompactionContentManifest } from "./content-access-manifest";
+import {
+	deriveCompactionContentManifest,
+	deriveCompactionContentManifests,
+} from "./content-access-manifest";
 
 const digest = "a".repeat(64);
 
 function readView(start: number, end: number) {
 	return buildReadView({
-		reference: { kind: "file", ref: "opaque-file", revision: "rev-1" },
+		reference: {
+			kind: "file",
+			ref: "opaque-file",
+			revision: "rev-1",
+			resumability: "restart-safe",
+		},
 		slice: buildReadSlice({
 			range: { unit: "byte", start, end, total: 100 },
 			completeness: end < 100 ? "partial-recoverable" : "complete",
@@ -61,6 +69,7 @@ describe("deriveCompactionContentManifest", () => {
 					kind: "file",
 					ref: "opaque-file",
 					revision: "rev-1",
+					resumability: "restart-safe",
 				},
 				revision: "rev-1",
 				reason: "tool:FILE",
@@ -95,7 +104,12 @@ describe("deriveCompactionContentManifest", () => {
 
 		expect(manifest.contentRefs).toMatchObject([
 			{
-				reference: { kind: "file", ref: "opaque-file", revision: "rev-1" },
+				reference: {
+					kind: "file",
+					ref: "opaque-file",
+					revision: "rev-1",
+					resumability: "restart-safe",
+				},
 				rangesUsed: [{ unit: "byte", start: 40, end: 60 }],
 			},
 		]);
@@ -165,6 +179,7 @@ describe("deriveCompactionContentManifest", () => {
 				kind: "file" as const,
 				ref: "opaque-file",
 				revision: "rev-2",
+				resumability: "restart-safe" as const,
 			},
 			slice: { ...readView(20, 40).slice, revision: "rev-2" },
 		};
@@ -208,5 +223,84 @@ describe("deriveCompactionContentManifest", () => {
 		);
 		expect(manifest.contentRefs).toHaveLength(1);
 		expect(manifest.contentRefs[0]?.reference.ref).toBe("opaque-file");
+	});
+
+	it("excludes references whose owning action cannot resolve them after restart", () => {
+		const nonResumable = {
+			...readView(0, 20),
+			reference: {
+				kind: "file" as const,
+				ref: "opaque-file",
+				revision: "rev-1",
+				resumability: "non-resumable" as const,
+			},
+		};
+		const manifests = deriveCompactionContentManifests(
+			{
+				archivedSteps: [],
+				steps: [
+					{
+						iteration: 1,
+						result: {
+							success: true,
+							promptData: { readView: nonResumable },
+						},
+					},
+				],
+			},
+			{ lastUsedAt: "2026-08-22T12:00:00.000Z" },
+		);
+		expect(manifests).toEqual([]);
+	});
+
+	it("losslessly batches arbitrary reference and range counts", () => {
+		const references = Array.from({ length: 300 }, (_, index) => ({
+			...readView(0, 20),
+			reference: {
+				kind: "document" as const,
+				ref: `document:opaque-${index}`,
+				revision: "rev-1",
+				resumability: "restart-safe" as const,
+			},
+		}));
+		const repeatedRanges = Array.from({ length: 130 }, (_, index) => ({
+			...readView(0, 1),
+			reference: {
+				kind: "document" as const,
+				ref: "document:many-ranges",
+				revision: "rev-1",
+				resumability: "restart-safe" as const,
+			},
+			slice: buildReadSlice({
+				range: { unit: "byte", start: index, end: index + 1, total: 130 },
+				completeness: index < 129 ? "partial-recoverable" : "complete",
+				sliceSha256: digest,
+				revision: "rev-1",
+			}),
+		}));
+		const manifests = deriveCompactionContentManifests(
+			{
+				archivedSteps: [],
+				steps: [
+					{
+						iteration: 1,
+						result: {
+							success: true,
+							promptData: { references, repeatedRanges },
+						},
+					},
+				],
+			},
+			{ lastUsedAt: "2026-08-22T12:00:00.000Z" },
+		);
+		const records = manifests.flatMap((manifest) => manifest.contentRefs);
+		expect(manifests.length).toBeGreaterThan(1);
+		expect(records).toHaveLength(303);
+		expect(
+			records
+				.filter((entry) => entry.reference.ref === "document:many-ranges")
+				.flatMap((entry) => entry.rangesUsed),
+		).toHaveLength(130);
+		expect(new Set(records.map((entry) => entry.reference.ref)).size).toBe(301);
 	});
 });

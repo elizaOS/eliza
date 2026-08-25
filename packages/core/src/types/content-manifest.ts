@@ -131,6 +131,11 @@ export function validateCompactionContentManifest(
 		const entry = record(rawEntry, `contentRefs[${entryIndex}]`);
 		exactKeys(entry, ENTRY_KEYS, `contentRefs[${entryIndex}]`);
 		const reference = validateContentReference(entry.reference);
+		if (reference.resumability !== "restart-safe") {
+			throw new TypeError(
+				"content manifest references must declare restart-safe resumability",
+			);
+		}
 		const revision =
 			entry.revision === undefined
 				? reference.revision
@@ -182,6 +187,16 @@ export function validateCompactionContentManifest(
 				`contentRefs[${entryIndex}].retained must be boolean`,
 			);
 		}
+		const expiresAt =
+			entry.expiresAt === undefined
+				? reference.expiresAt
+				: timestamp(entry.expiresAt, `contentRefs[${entryIndex}].expiresAt`);
+		if (
+			reference.expiresAt !== undefined &&
+			expiresAt !== reference.expiresAt
+		) {
+			throw new TypeError("content manifest reference expiry mismatch");
+		}
 		return {
 			reference,
 			...(revision ? { revision } : {}),
@@ -192,14 +207,7 @@ export function validateCompactionContentManifest(
 				`contentRefs[${entryIndex}].lastUsedAt`,
 			),
 			retained: entry.retained,
-			...(entry.expiresAt === undefined
-				? {}
-				: {
-						expiresAt: timestamp(
-							entry.expiresAt,
-							`contentRefs[${entryIndex}].expiresAt`,
-						),
-					}),
+			...(expiresAt === undefined ? {} : { expiresAt }),
 		};
 	});
 	if (!Array.isArray(input.modifiedFiles)) {

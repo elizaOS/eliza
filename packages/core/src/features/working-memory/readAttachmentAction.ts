@@ -246,6 +246,7 @@ async function pageAttachmentRecord(params: {
 					kind: "attachment",
 					ref: `attachment:${messageId}:${attachmentIdHash}`,
 					revision: page.revision,
+					resumability: "restart-safe",
 				}),
 				slice: buildReadSlice({
 					range: {
@@ -310,6 +311,7 @@ async function pageAttachmentRecord(params: {
 				kind: "attachment",
 				ref: `attachment:${params.record.attachment.id}`,
 				revision,
+				resumability: "non-resumable",
 			}),
 			slice: buildReadSlice({
 				range: { unit: "byte", start, end, total: source.length },

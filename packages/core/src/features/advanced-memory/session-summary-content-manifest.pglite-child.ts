@@ -48,6 +48,7 @@ try {
 							kind: "document",
 							ref: `document:${stringToUuid(`fresh-${index}`)}`,
 							revision: "rev-1",
+							resumability: "restart-safe",
 						},
 						revision: "rev-1",
 						reason: "fresh-process-proof",
