@@ -171,4 +171,22 @@ describe("runModelGrind", () => {
 		);
 		expect(report.models.find((m) => m.model === "asr")?.ok).toBe(false);
 	});
+
+	it("keeps ASR hypothesis well-formed when native transcript carries a lone surrogate", async () => {
+		const report = await runModelGrind(
+			baseDeps({
+				transcribeAsr: async () =>
+					"Eliza local voice end to end check one two \uD800 three",
+			}),
+		);
+		const asr = report.models.find((m) => m.model === "asr");
+		expect(asr?.ok).toBe(true);
+		expect(asr?.detail?.hypothesis).toBeDefined();
+		const hypothesis = asr?.detail?.hypothesis as string;
+		// Lone surrogate must be replaced with U+FFFD, never serialized raw:
+		// JSON.stringify emits it as a \uD800 escape that strict JSON parsers
+		// (serde: "lone leading surrogate in hex escape") reject with HTTP 400.
+		expect(hypothesis.includes("\uD800")).toBe(false);
+		expect(JSON.stringify(report).includes("\\ud800")).toBe(false);
+	});
 });
