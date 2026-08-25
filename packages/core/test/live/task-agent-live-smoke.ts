@@ -168,15 +168,20 @@ async function waitForTrackedSession(
 
 async function runSequentialSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "reuse");
-	const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-	// The production plugin supplies the durable task owner; the explicit ACP
-	// instance below remains the one whose session events this smoke reads.
-	// Start the ACP service and register it under its real serviceType so the
-	// TASKS actions (which resolve it via getAcpService -> runtime.getService
-	// ("ACP_SUBPROCESS_SERVICE")) spawn into the SAME instance this script reads
-	// output from. (Replaces the removed PTYService; same start+register pattern.)
-	const service = await AcpService.start(runtime);
-	runtime.services.set(AcpService.serviceType, [service]);
+	const { runtime, cleanup } = await createRuntime({
+		SERVER_PORT: "31337",
+		// This smoke validates ACP child turns and durable reuse. Parent-broker
+		// relay behavior has separate coverage; disabling the router here keeps a
+		// synthetic no-parent fixture from manufacturing an endless child loop.
+		ACPX_SUB_AGENT_ROUTER_DISABLED: "true",
+	});
+	// Use the single production service initialized by the plugin. Starting a
+	// second ACP instance lets TASKS spawn on one service while SubAgentRouter
+	// remains subscribed to the original, so cap-triggered stops target the
+	// wrong process and leave the prompt unresolved.
+	const service = (await runtime.getServiceLoadPromise(
+		AcpService.serviceType,
+	)) as AcpService;
 
 	const events: Array<{ event: string; data: unknown }> = [];
 	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
@@ -237,11 +242,11 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 				if (fileText !== `${agentType}-first`) return false;
 				const output = cleanForChat(await service.getSessionOutput(sessionId));
 				if (
-					output.includes(firstSentinel) ||
-					sawTaskCompletion(events, firstTaskEventStart)
+					(output.includes(firstSentinel) ||
+						sawTaskCompletion(events, firstTaskEventStart)) &&
+					sessionInfo.status === "ready"
 				)
 					return true;
-				if (sessionInfo.status === "running") return true;
 				if (
 					sessionInfo.status === "stopped" ||
 					sessionInfo.status === "error"
@@ -279,10 +284,11 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 				const fileText = fs.readFileSync(secondFilePath, "utf8").trim();
 				if (fileText !== `${agentType}-second`) return false;
 				const output = cleanForChat(await service.getSessionOutput(sessionId));
+				const sessionInfo = await service.getSession(sessionId);
 				return (
-					output.includes(secondSentinel) ||
-					sawTaskCompletion(events, secondTaskEventStart) ||
-					(await service.getSession(sessionId))?.status === "running"
+					(output.includes(secondSentinel) ||
+						sawTaskCompletion(events, secondTaskEventStart)) &&
+					sessionInfo?.status === "ready"
 				);
 			},
 			6 * 60 * 1000,
@@ -290,7 +296,6 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 		);
 	} finally {
 		unsubscribe();
-		await service.stop();
 		await cleanup();
 		if (!KEEP_ARTIFACTS) {
 			fs.rmSync(workdir, { recursive: true, force: true });
@@ -300,9 +305,13 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 
 async function runWebSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "web");
-	const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-	const service = await AcpService.start(runtime);
-	runtime.services.set(AcpService.serviceType, [service]);
+	const { runtime, cleanup } = await createRuntime({
+		SERVER_PORT: "31337",
+		ACPX_SUB_AGENT_ROUTER_DISABLED: "true",
+	});
+	const service = (await runtime.getServiceLoadPromise(
+		AcpService.serviceType,
+	)) as AcpService;
 
 	const events: Array<{ event: string; data: unknown }> = [];
 	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
@@ -394,7 +403,6 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 		await new Promise<void>((resolve) =>
 			reference.server.close(() => resolve()),
 		);
-		await service.stop();
 		await cleanup();
 		if (!KEEP_ARTIFACTS) {
 			fs.rmSync(workdir, { recursive: true, force: true });
