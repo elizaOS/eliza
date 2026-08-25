@@ -625,7 +625,15 @@ function readAttemptReflections(
 }
 
 function truncate(text: string, max = 2000): string {
-  return text.length > max ? `${text.slice(0, max)}…` : text;
+  if (text.length <= max) return text;
+  let end = max;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${text.slice(0, end)}…`;
 }
 
 /**

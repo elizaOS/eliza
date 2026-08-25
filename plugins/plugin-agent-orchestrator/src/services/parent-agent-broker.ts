@@ -776,7 +776,14 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
 function truncate(value: string, maxChars: number): string {
   const compact = value.replace(/\s+/g, " ").trim();
   if (compact.length <= maxChars) return compact;
-  return `${compact.slice(0, maxChars - 3).trimEnd()}...`;
+  let end = maxChars - 3;
+  if (end > 0 && end < compact.length) {
+    const code = compact.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${compact.slice(0, end).trimEnd()}...`;
 }
 
 function actionDescription(action: {
