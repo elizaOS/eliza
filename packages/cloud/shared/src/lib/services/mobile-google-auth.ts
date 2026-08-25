@@ -25,7 +25,6 @@ export const MOBILE_GOOGLE_AUTH_NONCE_TTL_SECONDS = MOBILE_APP_AUTH_CODE_TTL_SEC
 
 export interface MobileGoogleAuthEnv extends RedisFactoryEnv, StewardUrlEnv {
   ENVIRONMENT?: string;
-  ELIZA_MOBILE_GOOGLE_OIDC_PROVIDER_ID?: string;
   GOOGLE_CLIENT_ID?: string;
   STEWARD_JWT_SECRET?: string;
   STEWARD_SESSION_SECRET?: string;
@@ -34,7 +33,6 @@ export interface MobileGoogleAuthEnv extends RedisFactoryEnv, StewardUrlEnv {
 }
 
 export interface MobileGoogleAuthReadiness {
-  providerId: string;
   serverClientId: string;
   stewardEndpoint: URL;
   stewardRequestSigningSecret: string;
@@ -81,7 +79,7 @@ function stewardEndpoint(env: MobileGoogleAuthEnv): URL | null {
   ) {
     return null;
   }
-  return new URL(`${base.href.replace(/\/+$/, "")}/auth/jwt/login`);
+  return new URL(`${base.href.replace(/\/+$/, "")}/auth/oauth/google/id-token`);
 }
 
 /**
@@ -94,7 +92,6 @@ export function resolveMobileGoogleAuthReadiness(
   if (!exactEnvironment(env.ENVIRONMENT) || env.MOCK_REDIS === "1" || !hasRedisConfig(env)) {
     return null;
   }
-  const providerId = configuredString(env.ELIZA_MOBILE_GOOGLE_OIDC_PROVIDER_ID);
   const serverClientId = configuredString(env.GOOGLE_CLIENT_ID);
   const tenantId = configuredString(env.STEWARD_TENANT_ID);
   const stewardRequestSigningSecret = configuredString(env.STEWARD_REQUEST_SIGNING_SECRET);
@@ -103,7 +100,6 @@ export function resolveMobileGoogleAuthReadiness(
   );
   const endpoint = stewardEndpoint(env);
   if (
-    !providerId ||
     !serverClientId ||
     !tenantId ||
     !stewardRequestSigningSecret ||
@@ -113,7 +109,6 @@ export function resolveMobileGoogleAuthReadiness(
     return null;
   }
   return {
-    providerId,
     serverClientId,
     stewardEndpoint: endpoint,
     stewardRequestSigningSecret,
