@@ -132,17 +132,17 @@ export function mergeStreamingText(existing: string, incoming: string): string {
   }
 
   // Ignore clearly regressive snapshots, but never let this guard swallow a
-  // plausible repeated single-character append. When the buffer already starts
-  // with the same char as an incoming one-char delta, the guard would fire
-  // before the overlap loop and drop every char after the second, so a leading
-  // run of identical chars streamed one token at a time ("...", "!!!", the
-  // "```" of a code fence) rendered truncated. Defer to the overlap loop, which
-  // already appends a single-char delta that matches the tail of the buffer.
-  const isRepeatedCharAppend =
-    incoming.length === 1 &&
-    /\S/u.test(incoming) &&
-    existingNorm.endsWith(incomingNorm);
-  if (existingNorm.startsWith(incomingNorm) && !isRepeatedCharAppend) {
+  // single-character delta. A one-char snapshot of a longer buffer carries no
+  // information, so it is never a real regressive snapshot; under delta framing
+  // it is the next token and must append. The guard fires on
+  // `existingNorm.startsWith(incomingNorm)`, which for a one-char delta is just
+  // `buffer[0] === incoming` -- swallowing every occurrence of the buffer's
+  // leading char ("...", "!!!", the "```" fence, and any interior char equal to
+  // the first). Defer all non-whitespace single-char deltas to the overlap
+  // loop, which appends them; genuine regressive snapshots are multi-character
+  // and still caught here.
+  const isSingleCharDelta = incoming.length === 1 && /\S/u.test(incoming);
+  if (existingNorm.startsWith(incomingNorm) && !isSingleCharDelta) {
     return existing;
   }
 
