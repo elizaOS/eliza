@@ -1,8 +1,23 @@
 # Molecular component duplicate inventory
 
-Scanned 927 maintained React files. 68 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 929 maintained React files. 68 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
+
+## Canonical molecule contracts
+
+These owners are fail-closed contracts. The audit fails if an owner disappears, drops a required canonical atom, or loses its maintained consumers.
+
+| Contract | Canonical owner | Maintained references | Responsibility |
+| --- | --- | ---: | --- |
+| auth-result-shell | `AuthResultShell` in `packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.tsx` | 2 | Full-page surface, centered card, and content geometry for authentication results. |
+| connection-capability-tile | `ConnectionCapabilityTile` in `packages/ui/src/cloud/connectors/connection-capability-tile.tsx` | 2 | Icon, title, and description hierarchy for connector capability grids. |
+| content-state | `ContentState` in `packages/ui/src/components/composites/page-panel/content-state.tsx` | 2 | Empty and loading presentation inside page-panel placements. |
+| settings-row | `SettingsRow` in `packages/ui/src/components/settings/settings-layout.tsx` | 40 | Label, description, control, and navigation alignment for settings. |
+| selectable-tile | `SelectableTile` in `packages/ui/src/components/composites/settings/selectable-tile.tsx` | 1 | Pressed-state selection tile with a leading visual and check indicator. |
+| action-list-row | `ActionListRow` in `packages/ui/src/components/shared/ActionListRow.tsx` | 2 | Button, link, and static list rows with shared content slots. |
+
+## Duplicate review queue
 
 | Role | Atomic dependencies | Components | Decision |
 | --- | --- | ---: | --- |
