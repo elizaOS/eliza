@@ -3468,6 +3468,15 @@ export class SlackService extends Service implements ISlackService {
     if (!lookup) {
       return null;
     }
+    // A blank identifier must not reach the directory scan below: the
+    // substring match treats "" as contained in every member, which would
+    // resolve an arbitrary workspace member for a whitespace-only query.
+    if (
+      !SLACK_USER_ID_PATTERN.test(lookup) &&
+      !normalizeSlackConnectorQuery(lookup)
+    ) {
+      return null;
+    }
 
     let slackUserId = SLACK_USER_ID_PATTERN.test(lookup)
       ? lookup
