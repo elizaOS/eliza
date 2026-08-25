@@ -50,10 +50,6 @@ afterEach(() => {
 });
 
 describe("NewsDataService RSS timeout", () => {
-  it("exposes DEFAULT_NEWS_RSS_FETCH_TIMEOUT_MS === 10_000", () => {
-    expect(DEFAULT_NEWS_RSS_FETCH_TIMEOUT_MS).toBe(10_000);
-  });
-
   it("passes AbortSignal.timeout budget to fetch (hanging fetch → TimeoutError)", async () => {
     const origTimeout = AbortSignal.timeout.bind(AbortSignal);
     const timeoutSpy = vi

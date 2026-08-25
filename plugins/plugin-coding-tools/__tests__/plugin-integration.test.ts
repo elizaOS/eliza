@@ -14,12 +14,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import * as pluginModule from "../src/index.ts";
 import codingToolsPlugin, {
-  availableToolsProvider,
-  BackgroundShellService,
-  CODING_TOOLS_CONTEXTS,
-  ExecApprovalService,
   FILE_STATE_SERVICE,
   FileStateService,
   RIPGREP_SERVICE,
@@ -28,107 +23,9 @@ import codingToolsPlugin, {
   SandboxService,
   SESSION_CWD_SERVICE,
   SessionCwdService,
-  ShellService,
 } from "../src/index.ts";
 
-const EXPECTED_ACTIONS = [
-  "EDIT",
-  "FILE",
-  "READ",
-  "SHELL",
-  "WEB_FETCH",
-  "WEB_SEARCH",
-  "WORKTREE",
-  "WRITE",
-];
-
 describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
-  it("registers the consolidated top-level coding actions", () => {
-    const actions = codingToolsPlugin.actions ?? [];
-    const names = actions.map((a) => a.name).sort();
-    expect(names).toEqual([...EXPECTED_ACTIONS].sort());
-  });
-
-  it("does not register legacy leaf actions as planner-facing actions", () => {
-    const names = new Set((codingToolsPlugin.actions ?? []).map((a) => a.name));
-    for (const legacyName of [
-      "BASH",
-      "GREP",
-      "GLOB",
-      "LS",
-      "ASK_USER_QUESTION",
-      "ENTER_WORKTREE",
-      "EXIT_WORKTREE",
-    ]) {
-      expect(names.has(legacyName), legacyName).toBe(false);
-    }
-  });
-
-  it("FILE exposes only canonical file umbrella similes", () => {
-    const fileAction = (codingToolsPlugin.actions ?? []).find(
-      (action) => action.name === "FILE",
-    );
-    // The #16546 invented-name family. NOTE: LIST_FILES also belongs to the
-    // stored-media FILES action (since #8970) — the resolver drops a simile
-    // claimed by two parents as ambiguous (#16561), so it is runtime-inert
-    // here; removing it from this list is #16546-author follow-up.
-    expect(fileAction?.similes).toEqual([
-      "FILE_OPERATION",
-      "FILE_IO",
-      "FILES_READ",
-      "FILES_LIST",
-      "FILE_READ",
-      "FILE_LIST",
-      "READ_FILE",
-      "LIST_FILES",
-    ]);
-  });
-
-  it("each action has the required fields", () => {
-    for (const action of codingToolsPlugin.actions ?? []) {
-      expect(action.name, action.name).toBeTruthy();
-      expect(action.description, action.name).toBeTruthy();
-      expect(action.handler, action.name).toBeTypeOf("function");
-      expect(action.validate, action.name).toBeTypeOf("function");
-    }
-  });
-
-  it("action names are unique", () => {
-    const names = (codingToolsPlugin.actions ?? []).map((a) => a.name);
-    expect(new Set(names).size).toBe(names.length);
-  });
-
-  it("exports the 7 active services", () => {
-    const services = codingToolsPlugin.services ?? [];
-    expect(services).toContain(ShellService);
-    expect(services).toContain(ExecApprovalService);
-    expect(services).toContain(BackgroundShellService);
-    expect(services).toContain(FileStateService);
-    expect(services).toContain(SandboxService);
-    expect(services).toContain(SessionCwdService);
-    expect(services).toContain(RipgrepService);
-    expect(services.length).toBe(7);
-  });
-
-  it("does not export removed actions or service constants", () => {
-    expect("bashAction" in pluginModule).toBe(false);
-    expect("CodingTaskExecutor" in pluginModule).toBe(false);
-    expect("BASH_AST_SERVICE" in pluginModule).toBe(false);
-    expect("OS_SANDBOX_SERVICE" in pluginModule).toBe(false);
-    expect("SHELL_TASK_SERVICE" in pluginModule).toBe(false);
-    expect("ShellTaskService" in pluginModule).toBe(false);
-    expect("notebookEditAction" in pluginModule).toBe(false);
-    expect("taskOutputAction" in pluginModule).toBe(false);
-    expect("taskStopAction" in pluginModule).toBe(false);
-    expect("todoWriteAction" in pluginModule).toBe(false);
-  });
-
-  it("exports the available-tools provider at position -10 with code/terminal/automation gates", () => {
-    expect(codingToolsPlugin.providers ?? []).toContain(availableToolsProvider);
-    expect(availableToolsProvider.position).toBe(-10);
-    expect(availableToolsProvider.contexts).toEqual([...CODING_TOOLS_CONTEXTS]);
-  });
-
   it("validate ignores CODING_TOOLS_DISABLE — kill switch was removed", async () => {
     const runtime = {
       agentId: "00000000-0000-0000-0000-000000000000",

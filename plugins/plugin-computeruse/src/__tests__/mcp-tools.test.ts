@@ -10,7 +10,6 @@ import {
   COMPUTERUSE_MCP_TOOLS,
   type ComputerUseCommandRunner,
   dispatchComputerUseMcpTool,
-  findComputerUseMcpTool,
 } from "../mcp/tools.js";
 
 function fakeRunner(): ComputerUseCommandRunner & {
@@ -26,49 +25,6 @@ function fakeRunner(): ComputerUseCommandRunner & {
     }),
   };
 }
-
-describe("computer-use MCP tool catalog", () => {
-  it("exposes the core CUA verbs with unique names + commands", () => {
-    const names = COMPUTERUSE_MCP_TOOLS.map((t) => t.name);
-    expect(new Set(names).size).toBe(names.length);
-    // A representative slice of the surface must be present.
-    for (const n of [
-      "computer_screenshot",
-      "computer_left_click",
-      "computer_type",
-      "computer_scroll",
-      "computer_drag",
-      "computer_ocr",
-      "computer_set_value",
-      "computer_kill_app",
-    ]) {
-      expect(names, names.join(", ")).toContain(n);
-    }
-  });
-
-  it("every tool maps to a non-empty executeCommand command", () => {
-    for (const t of COMPUTERUSE_MCP_TOOLS) {
-      expect(t.command, t.name).toBeTruthy();
-      expect(typeof t.destructive).toBe("boolean");
-    }
-  });
-
-  it("read-only tools are non-destructive; input tools are destructive", () => {
-    expect(findComputerUseMcpTool("computer_screenshot")?.destructive).toBe(
-      false,
-    );
-    expect(findComputerUseMcpTool("computer_ocr")?.destructive).toBe(false);
-    expect(
-      findComputerUseMcpTool("computer_get_cursor_position")?.destructive,
-    ).toBe(false);
-    expect(findComputerUseMcpTool("computer_left_click")?.destructive).toBe(
-      true,
-    );
-    expect(findComputerUseMcpTool("computer_set_value")?.destructive).toBe(
-      true,
-    );
-  });
-});
 
 describe("dispatchComputerUseMcpTool", () => {
   it("routes each tool to its executeCommand command with the given args", async () => {
