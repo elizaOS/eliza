@@ -447,7 +447,8 @@ export const fileAction: Action = {
     },
     {
       name: "file_path",
-      description: "Absolute path for read/write/edit operations.",
+      description:
+        "Absolute or session-cwd-relative path for read/write/edit operations.",
       required: false,
       schema: { type: "string" },
     },

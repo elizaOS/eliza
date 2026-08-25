@@ -177,6 +177,56 @@ describe("GLOB", () => {
     expect(result.text).toBe("0 files");
   });
 
+  it("returns an in-root file symlink without traversing it as a directory", async () => {
+    const { runtime, message } = await buildRuntime();
+    const link = path.join(tmpRoot, "linked.ts");
+    await fs.symlink(path.join(tmpRoot, "foo", "a.ts"), link, "file");
+
+    const result = await globHandler(runtime, message, state, {
+      parameters: { pattern: "*.ts" },
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.data as { files: string[] }).files).toEqual([
+      path.join(await fs.realpath(tmpRoot), "linked.ts"),
+    ]);
+  });
+
+  it("rejects a matching file symlink whose target is outside the workspace", async () => {
+    const { runtime, message } = await buildRuntime();
+    const outsideFile = path.join(outsideRoot, "secret.txt");
+    await fs.writeFile(outsideFile, "outside\n");
+    await fs.symlink(
+      outsideFile,
+      path.join(tmpRoot, "outside-link.txt"),
+      "file",
+    );
+
+    const result = await globHandler(runtime, message, state, {
+      parameters: { pattern: "*.txt" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("glob candidate rejected");
+    expect(result.text).toContain("outside the configured coding workspace");
+  });
+
+  it("does not descend for a pattern that cannot match a path separator", async () => {
+    const visited: string[] = [];
+
+    const files = await walkContainedGlob(
+      tmpRoot,
+      "*.ts",
+      async (directory) => {
+        visited.push(path.resolve(directory));
+        return fs.readdir(directory, { withFileTypes: true });
+      },
+    );
+
+    expect(files).toEqual([]);
+    expect(visited).toEqual([path.resolve(tmpRoot)]);
+  });
+
   it.each([".[.]/outside/*.txt", "{.[.],safe}/outside/*.txt"])(
     "never traverses outside the root for encoded pattern %s",
     async (pattern) => {

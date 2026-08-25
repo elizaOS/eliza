@@ -52,7 +52,7 @@ export const myAction: Action = {
   description: "One-paragraph description for the planner.",
   descriptionCompressed: "Short tagline (under 80 chars).",
   parameters: [
-    { name: "file_path", description: "Absolute path", required: true,
+    { name: "file_path", description: "Absolute or session-cwd-relative path", required: true,
       schema: { type: "string" } },
     // ...
   ],

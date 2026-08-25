@@ -107,6 +107,7 @@ export async function walkContainedGlob(
   readDirectory: ReadDirectory = readDirectoryWithTypes,
 ): Promise<string[]> {
   const results: string[] = [];
+  const canMatchDescendants = /[\\/]/.test(pattern);
 
   async function walk(dir: string): Promise<void> {
     let entries: Array<import("node:fs").Dirent>;
@@ -121,12 +122,13 @@ export async function walkContainedGlob(
       if (EXCLUDED_DIR_NAMES.has(entry.name)) continue;
       const abs = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        await walk(abs);
-      } else if (entry.isFile()) {
-        const rel = path.relative(root, abs).split(path.sep).join("/");
-        if (path.matchesGlob(rel, pattern)) {
-          results.push(abs);
-        }
+        if (canMatchDescendants) await walk(abs);
+        continue;
+      }
+      if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+      const rel = path.relative(root, abs).split(path.sep).join("/");
+      if (path.matchesGlob(rel, pattern)) {
+        results.push(abs);
       }
     }
   }
