@@ -1504,7 +1504,7 @@ export class DocumentService extends Service {
 					normalizedContentType,
 					originalFilename,
 				);
-				documentContentToStore = extractedText;
+				documentContentToStore = content;
 			} else {
 				if (looksLikeBase64(content)) {
 					try {

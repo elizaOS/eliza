@@ -32,6 +32,13 @@ describe("readDiagnosticProperty", () => {
     const sym = Symbol("s");
     expect(readDiagnosticProperty({ [sym]: 99 }, sym)).toBe(99);
   });
+
+  it("reads properties from functions", () => {
+    function named() {
+      return undefined;
+    }
+    expect(readDiagnosticProperty(named, "name")).toBe("named");
+  });
 });
 
 describe("formatDiagnosticError", () => {
@@ -64,5 +71,28 @@ describe("formatDiagnosticError", () => {
     };
     const out = formatDiagnosticError(obj);
     expect(typeof out).toBe("string");
+  });
+
+  it("prefers stack over message", () => {
+    expect(formatDiagnosticError({ stack: "at x", message: "message" })).toBe(
+      "at x",
+    );
+  });
+
+  it("never throws when diagnostic getters and coercion are hostile", () => {
+    const hostile = {
+      get stack(): never {
+        throw new Error("stack trap");
+      },
+      get message(): never {
+        throw new Error("message trap");
+      },
+      toString(): never {
+        throw new Error("toString trap");
+      },
+    };
+
+    expect(() => formatDiagnosticError(hostile)).not.toThrow();
+    expect(typeof formatDiagnosticError(hostile)).toBe("string");
   });
 });
