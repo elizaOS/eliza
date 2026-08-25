@@ -202,6 +202,19 @@ function extForMime(mimeType: string): string {
   return EXT_BY_MIME[mimeType.trim().toLowerCase()] ?? "bin";
 }
 
+function effectiveMediaMime(
+  declaredMime: string,
+  leadingBytes: Buffer,
+): string {
+  if (!isInlineSafeMime(declaredMime)) return declaredMime;
+  const sniffed = sniffMarkupMime(leadingBytes);
+  if (!sniffed) return declaredMime;
+  logger.warn(
+    `[media-store] declared ${declaredMime} but content sniffed as ${sniffed}; storing as ${sniffed} (served as download)`,
+  );
+  return sniffed;
+}
+
 // ---------------------------------------------------------------------------
 // Size-capped eviction
 // ---------------------------------------------------------------------------
@@ -333,16 +346,7 @@ export function persistMediaBytes(
   // markup (SVG/HTML), so the store records the truthful type and the serve path
   // forces an attachment download instead of inline rendering. Truthful active
   // types declared up front are left as-is (still served as attachments).
-  let effectiveMime = mimeType;
-  if (isInlineSafeMime(mimeType)) {
-    const sniffed = sniffMarkupMime(buffer);
-    if (sniffed) {
-      logger.warn(
-        `[media-store] declared ${mimeType} but content sniffed as ${sniffed}; storing as ${sniffed} (served as download)`,
-      );
-      effectiveMime = sniffed;
-    }
-  }
+  const effectiveMime = effectiveMediaMime(mimeType, buffer.subarray(0, 512));
   const hash = crypto.createHash("sha256").update(buffer).digest("hex");
   const fileName = `${hash}.${extForMime(effectiveMime)}`;
   const filePath = path.join(mediaDir(), fileName);
@@ -351,6 +355,110 @@ export function persistMediaBytes(
     maybeEvict();
   }
   return { url: `${MEDIA_URL_PREFIX}${fileName}`, hash, fileName };
+}
+
+/**
+ * Stream bytes into the canonical media store without retaining the complete
+ * attachment in memory. The pending file is private and becomes visible only
+ * after its content identity and truthful extension are known.
+ */
+export async function persistMediaStream(
+  chunks: AsyncIterable<Uint8Array>,
+  mimeType: string,
+): Promise<PersistedMedia> {
+  const root = mediaDir();
+  const pendingPath = path.join(root, `.pending-${crypto.randomUUID()}`);
+  const handle = await fs.promises.open(pendingPath, "wx", 0o600);
+  const digest = crypto.createHash("sha256");
+  const sniffChunks: Buffer[] = [];
+  let sniffBytes = 0;
+  let writeOffset = 0;
+  let handleClosed = false;
+  let finalized = false;
+  try {
+    for await (const value of chunks) {
+      if (!(value instanceof Uint8Array)) {
+        throw new TypeError("media stream chunks must be Uint8Array values");
+      }
+      if (value.byteLength === 0) continue;
+      const chunk = Buffer.from(
+        value.buffer,
+        value.byteOffset,
+        value.byteLength,
+      );
+      digest.update(chunk);
+      let chunkOffset = 0;
+      while (chunkOffset < chunk.byteLength) {
+        const result = await handle.write(
+          chunk,
+          chunkOffset,
+          chunk.byteLength - chunkOffset,
+          writeOffset,
+        );
+        if (result.bytesWritten === 0) {
+          throw new Error("media stream write made no progress");
+        }
+        chunkOffset += result.bytesWritten;
+        writeOffset += result.bytesWritten;
+      }
+      if (sniffBytes < 512) {
+        const retained = chunk.subarray(0, 512 - sniffBytes);
+        sniffChunks.push(Buffer.from(retained));
+        sniffBytes += retained.byteLength;
+      }
+    }
+    await handle.sync();
+    await handle.close();
+    handleClosed = true;
+
+    const hash = digest.digest("hex");
+    const effectiveMime = effectiveMediaMime(
+      mimeType,
+      Buffer.concat(sniffChunks, sniffBytes),
+    );
+    const fileName = `${hash}.${extForMime(effectiveMime)}`;
+    const filePath = path.join(root, fileName);
+    try {
+      await fs.promises.link(pendingPath, filePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    await fs.promises.unlink(pendingPath);
+    finalized = true;
+    maybeEvict();
+    return { url: `${MEDIA_URL_PREFIX}${fileName}`, hash, fileName };
+  } catch (cause) {
+    // error-policy:J2 stream publication failure remains distinct from absence.
+    throw new ElizaError("media stream persistence failed", {
+      code: "MEDIA_STORE_WRITE_FAILED",
+      cause,
+      context: { mimeType },
+    });
+  } finally {
+    if (!handleClosed) {
+      try {
+        await handle.close();
+      } catch (error) {
+        // error-policy:J6 cleanup is best effort after the primary result is fixed.
+        logger.debug(
+          { error },
+          "[media-store] pending stream handle close failed",
+        );
+      }
+    }
+    if (!finalized) {
+      await fs.promises
+        .unlink(pendingPath)
+        .catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") {
+            logger.warn(
+              { error },
+              "[media-store] failed to remove pending stream artifact",
+            );
+          }
+        });
+    }
+  }
 }
 
 /**
