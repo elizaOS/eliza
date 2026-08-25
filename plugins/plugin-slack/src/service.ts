@@ -44,6 +44,8 @@ import {
   type MessagePayload,
   type Room,
   resolveAttachmentBytes,
+  type SendHandlerOutcome,
+  type SendHandlerReceipt,
   Service,
   stringToUuid,
   type TargetInfo,
@@ -55,6 +57,16 @@ import { WebClient as SlackWebClient } from "@slack/web-api";
 
 type WebClient = App["client"];
 type AccountScopedTargetInfo = TargetInfo & { accountId?: string };
+/**
+ * Per-part structural evidence for one outbound attachment upload: successful
+ * parts carry the Slack file id (the provider receipt for files.uploadV2);
+ * failed parts carry a stable code plus message. Consumed by
+ * {@link SlackService.handleSendMessage} to derive complete/partial/not-delivered.
+ */
+type OutboundAttachmentDelivery = {
+  delivered: Array<{ url: string; fileId: string; permalink: string }>;
+  failures: Array<{ url: string; code: string; message: string }>;
+};
 type AccountScopedConnectorContext = MessageConnectorQueryContext & {
   accountId?: string;
   account?: { accountId?: string };
@@ -679,15 +691,14 @@ export class SlackService extends Service implements ISlackService {
         handlerRuntime: IAgentRuntime,
         target: TargetInfo,
         content: Content,
-      ): Promise<void> => {
-        await serviceInstance.handleSendMessage(
+      ): Promise<SendHandlerOutcome> =>
+        serviceInstance.handleSendMessage(
           handlerRuntime,
           normalizedAccountId && !(target as AccountScopedTargetInfo).accountId
             ? ({ ...target, accountId: normalizedAccountId } as TargetInfo)
             : target,
           content,
         );
-      };
 
       const withContextAccount = (
         context: MessageConnectorQueryContext,
@@ -2662,11 +2673,60 @@ export class SlackService extends Service implements ISlackService {
     return channel.id;
   }
 
+  /**
+   * Compose the final delivery outcome for one logical send: provider ids are
+   * ordered text chunk `ts` values first, then accepted upload file ids in
+   * request order (the send order). Attachment failures always downgrade a
+   * send that reached the provider to `partially_delivered`; with nothing
+   * accepted the send is `not_delivered`. `uploadFile` returning no file id
+   * is treated as a failed part, never fabricated evidence.
+   */
+  private buildSendOutcome(args: {
+    acceptedIds: string[];
+    attachments: OutboundAttachmentDelivery | null;
+  }): SendHandlerOutcome {
+    const providerMessageIds = [...args.acceptedIds];
+    for (const part of args.attachments?.delivered ?? []) {
+      providerMessageIds.push(part.fileId);
+    }
+    const failures = args.attachments?.failures ?? [];
+    const failureDetail =
+      failures.length > 0
+        ? failures.map((f) => `${f.url} (${f.code}: ${f.message})`).join("; ")
+        : "no per-part failure evidence was recorded";
+    if (providerMessageIds.length === 0) {
+      return {
+        kind: "not_delivered",
+        code: "SLACK_ATTACHMENT_DELIVERY_FAILED",
+        message: `No Slack part was accepted: ${failureDetail}`,
+      };
+    }
+    const receipt: SendHandlerReceipt = {
+      providerMessageIds: providerMessageIds as [string, ...string[]],
+      acceptedAt: Date.now(),
+      persistence: {
+        status: "not_attempted",
+        reason:
+          "Slack send handler reports provider receipts only; outbound memory persistence is owned by the caller.",
+      },
+    };
+    if (failures.length > 0) {
+      return {
+        kind: "partially_delivered",
+        receipt,
+        memories: [],
+        code: "SLACK_ATTACHMENT_PARTIAL_DELIVERY",
+        message: `Slack accepted ${providerMessageIds.length} part${providerMessageIds.length === 1 ? "" : "s"} but ${failures.length} attachment${failures.length === 1 ? "" : "s"} failed: ${failureDetail}`,
+      };
+    }
+    return { kind: "delivered", receipt, memories: [] };
+  }
+
   async handleSendMessage(
     runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ): Promise<void> {
+  ): Promise<SendHandlerOutcome> {
     const accountId = await this.resolveAccountIdForTarget(runtime, target);
     if (!this.getClientForAccount(accountId)) {
       throw new Error("Slack client not initialized");
@@ -2677,9 +2737,12 @@ export class SlackService extends Service implements ISlackService {
       ? content.attachments.filter((media) => Boolean(media?.url))
       : [];
     if (!text && outboundAttachments.length === 0) {
-      throw new Error(
-        "Slack SendHandler requires non-empty text or at least one attachment.",
-      );
+      return {
+        kind: "not_delivered",
+        code: "SLACK_EMPTY_MESSAGE",
+        message:
+          "Slack SendHandler requires non-empty text or at least one attachment.",
+      };
     }
 
     let channelId = target.channelId;
@@ -2718,8 +2781,10 @@ export class SlackService extends Service implements ISlackService {
       );
     }
 
+    let textReceipt: Awaited<ReturnType<SlackService["sendMessage"]>> | null =
+      null;
     if (text) {
-      await this.sendMessage(
+      textReceipt = await this.sendMessage(
         channelId,
         text,
         {
@@ -2735,14 +2800,21 @@ export class SlackService extends Service implements ISlackService {
       );
     }
 
+    let attachmentDelivery: OutboundAttachmentDelivery | null = null;
     if (outboundAttachments.length > 0) {
-      await this.sendOutboundAttachments(
+      attachmentDelivery = await this.sendOutboundAttachments(
         channelId,
         outboundAttachments,
         threadTs,
         accountId,
       );
     }
+
+    return this.buildSendOutcome({
+      // Every accepted text chunk keeps its provider ts, in send order.
+      acceptedIds: (textReceipt?.messages ?? []).map(({ ts }) => ts),
+      attachments: attachmentDelivery,
+    });
   }
 
   /**
@@ -2760,29 +2832,65 @@ export class SlackService extends Service implements ISlackService {
    * Upload agent-generated `Media` attachments to a Slack channel (#8876).
    * Slack's API takes file BYTES (not a URL), so each attachment is fetched
    * through the SSRF-guarded fetcher and uploaded via {@link uploadFile}. Each
-   * upload is isolated in try/catch so a single unreachable/oversized URL logs a
-   * warning and never drops the rest of the reply (the text already went out).
+   * upload is isolated in try/catch so a single unreachable/oversized URL never
+   * drops the rest of the reply; instead of only warning, the failure is
+   * returned as typed per-part evidence so {@link handleSendMessage} can report
+   * a truthful complete/partial/not-delivered outcome.
    */
   private async sendOutboundAttachments(
     channelId: string,
     attachments: Media[],
     threadTs: string | undefined,
     accountId: string | null,
-  ): Promise<void> {
+  ): Promise<OutboundAttachmentDelivery> {
+    const delivered: Array<{ url: string; fileId: string; permalink: string }> =
+      [];
+    const failures: Array<{
+      url: string;
+      code: string;
+      message: string;
+    }> = [];
     for (const media of attachments) {
-      if (!media.url) continue;
+      // Blank/whitespace URLs still pass the caller's Boolean(media?.url)
+      // filter; they are deliberately attempted and reported as per-part
+      // failures rather than silently skipped (#23104 truthfulness).
       try {
         const { buffer, fileName } = await this.fetchAttachmentBytes(media.url);
         const filename =
           media.filename ?? media.title ?? fileName ?? "attachment";
-        await this.uploadFile(
+        const uploaded = await this.uploadFile(
           channelId,
           buffer,
           filename,
           { title: media.title, threadTs },
           accountId,
         );
+        if (!uploaded.fileId?.trim()) {
+          // files.uploadV2 resolving without a file object carries no
+          // structural delivery evidence; an empty id must never enter a
+          // receipt as fabricated success (repo DTO policy).
+          throw new ElizaError(
+            "Slack files.uploadV2 returned no file id for an accepted upload",
+            { code: "SLACK_FILE_ID_MISSING" },
+          );
+        }
+        delivered.push({
+          url: media.url,
+          fileId: uploaded.fileId,
+          permalink: uploaded.permalink,
+        });
       } catch (error) {
+        // error-policy:J1 per-part connector boundary — a fetch/upload failure
+        // becomes typed evidence the composed outcome reports as partial/not
+        // delivered; the remaining attachments are still attempted.
+        failures.push({
+          url: media.url,
+          code:
+            error instanceof ElizaError
+              ? error.code
+              : "SLACK_ATTACHMENT_UPLOAD_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        });
         this.runtime.logger.warn(
           {
             src: "plugin:slack",
@@ -2794,6 +2902,7 @@ export class SlackService extends Service implements ISlackService {
         );
       }
     }
+    return { delivered, failures };
   }
 
   async resolveConnectorTargets(
