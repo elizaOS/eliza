@@ -1,9 +1,11 @@
 /**
  * Exercises the in-memory adapter's lifecycle and unmocked batch storage paths
- * for agents, caches, components, pending tasks, and room participants.
+ * for agents, caches, components, pending tasks, rooms, memories, and room
+ * participants.
  */
 import { describe, expect, it } from "vitest";
-import type { Agent, Component, Task, UUID } from "../types";
+import type { Agent, Component, Memory, Task, UUID } from "../types";
+import { ChannelType } from "../types";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -17,6 +19,7 @@ const OTHER_WORLD_ID = "30000000-0000-0000-0000-000000000002" as UUID;
 const COMPONENT_ID = "40000000-0000-0000-0000-000000000001" as UUID;
 const TASK_ID = "50000000-0000-0000-0000-000000000001" as UUID;
 const OTHER_TASK_ID = "50000000-0000-0000-0000-000000000002" as UUID;
+const MEMORY_ID = "60000000-0000-0000-0000-000000000001" as UUID;
 const MISSING_ID = "ffffffff-ffff-ffff-ffff-ffffffffffff" as UUID;
 
 function component(overrides: Partial<Component> = {}): Component {
@@ -266,5 +269,59 @@ describe("InMemoryDatabaseAdapter", () => {
 				{ roomId: ROOM_ID, entityId: OTHER_ENTITY_ID },
 			]),
 		).resolves.toEqual(["MUTED", null]);
+	});
+
+	it("cascades room deletion through memories and participant indexes", async () => {
+		const adapter = new InMemoryDatabaseAdapter(AGENT_ID);
+		await adapter.createWorlds([
+			{ id: WORLD_ID, agentId: AGENT_ID, name: "test world" },
+		]);
+		await adapter.createRooms([
+			{
+				id: ROOM_ID,
+				agentId: AGENT_ID,
+				worldId: WORLD_ID,
+				name: "test room",
+				source: "test",
+				type: ChannelType.GROUP,
+			},
+		]);
+		await adapter.createRoomParticipants([ENTITY_ID], ROOM_ID);
+		await adapter.updateParticipantUserStates([
+			{ roomId: ROOM_ID, entityId: ENTITY_ID, state: "MUTED" },
+		]);
+		await adapter.createMemories([
+			{
+				memory: {
+					id: MEMORY_ID,
+					agentId: AGENT_ID,
+					entityId: ENTITY_ID,
+					roomId: ROOM_ID,
+					worldId: WORLD_ID,
+					content: { text: "private conversation" },
+					createdAt: 1,
+				} satisfies Memory,
+				tableName: "messages",
+			},
+		]);
+
+		await adapter.deleteRooms([ROOM_ID]);
+
+		await expect(adapter.getRoomsByIds([ROOM_ID])).resolves.toEqual([]);
+		await expect(
+			adapter.getMemories({ tableName: "messages", roomId: ROOM_ID }),
+		).resolves.toEqual([]);
+		await expect(adapter.getMemoriesByIds([MEMORY_ID])).resolves.toEqual([]);
+		await expect(adapter.getRoomsForParticipants([ENTITY_ID])).resolves.toEqual(
+			[],
+		);
+		await expect(
+			adapter.countMemories({ tableName: "messages" }),
+		).resolves.toBe(0);
+		await expect(
+			adapter.getParticipantUserStates([
+				{ roomId: ROOM_ID, entityId: ENTITY_ID },
+			]),
+		).resolves.toEqual([null]);
 	});
 });

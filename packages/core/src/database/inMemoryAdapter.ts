@@ -335,6 +335,31 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	private roomsByParticipant = new Map<string, Set<string>>();
 	private participantUserState = new Map<string, "FOLLOWED" | "MUTED" | null>();
 
+	private purgeRoom(roomId: UUID): void {
+		const roomKey = String(roomId);
+		this.rooms.delete(roomKey);
+
+		for (const [key, memories] of this.memoriesByRoom.entries()) {
+			if (!key.endsWith(`:${roomKey}`)) continue;
+			for (const memory of memories) {
+				if (memory.id) this.memoriesById.delete(String(memory.id));
+			}
+			this.memoriesByRoom.delete(key);
+		}
+
+		this.participantsByRoom.delete(roomKey);
+		for (const [entityKey, roomSet] of this.roomsByParticipant.entries()) {
+			if (roomSet.delete(roomKey) && roomSet.size === 0) {
+				this.roomsByParticipant.delete(entityKey);
+			}
+		}
+		for (const key of this.participantUserState.keys()) {
+			if (key.startsWith(`${roomKey}:`)) {
+				this.participantUserState.delete(key);
+			}
+		}
+	}
+
 	// Pairing storage
 	private pairingRequests = new Map<string, PairingRequest>();
 	private pairingAllowlist = new Map<string, PairingAllowlistEntry>();
@@ -1733,7 +1758,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async deleteRooms(roomIds: UUID[]): Promise<void> {
 		for (const id of roomIds) {
-			this.rooms.delete(String(id));
+			this.purgeRoom(id);
 		}
 	}
 
@@ -2194,20 +2219,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const worldId of worldIds) {
 			const rooms = await this.getRoomsByWorlds([worldId]);
 			for (const room of rooms) {
-				const roomKey = String(room.id);
-				this.rooms.delete(roomKey);
-				for (const key of this.memoriesByRoom.keys()) {
-					if (key.endsWith(`:${roomKey}`)) this.memoriesByRoom.delete(key);
-				}
-				this.participantsByRoom.delete(roomKey);
-				for (const [entityKey, roomSet] of this.roomsByParticipant.entries()) {
-					if (roomSet.delete(roomKey) && roomSet.size === 0)
-						this.roomsByParticipant.delete(entityKey);
-				}
-				for (const key of this.participantUserState.keys()) {
-					if (key.startsWith(`${roomKey}:`))
-						this.participantUserState.delete(key);
-				}
+				this.purgeRoom(room.id);
 			}
 		}
 	}
