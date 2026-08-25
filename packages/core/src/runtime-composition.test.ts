@@ -20,6 +20,7 @@ import {
 	mergeSettingsInto,
 } from "./runtime-composition";
 import type { Character } from "./types";
+import { stringToUuid } from "./utils";
 
 /** Loose settings/secrets records that intentionally carry null/undefined values. */
 type LooseSettings = Record<string, unknown>;
@@ -210,24 +211,24 @@ describe("mergeSettingsInto", () => {
 		});
 	});
 
-	it("merges secrets across all four sources with character settings.secrets winning", () => {
+	it("merges secrets across all four sources with pairwise precedence proven", () => {
 		const character = makeCharacter({
-			settings: asSettings({
-				secrets: { SHARED: "character-settings", C_SETTINGS: "cs" },
-			}),
-			secrets: { SHARED: "character-top", C_TOP: "ct" },
+			settings: asSettings({ secrets: { PAIR_CS_CTOP: "cs" } }),
+			secrets: { PAIR_CS_CTOP: "ctop", PAIR_CTOP_DS: "ctop" },
 		});
 		const merged = mergeSettingsInto(character, {
-			settings: { secrets: { SHARED: "db-settings", DB_SETTINGS: "ds" } },
-			secrets: { SHARED: "db-top", DB_TOP: "dt" },
+			settings: {
+				secrets: { PAIR_CTOP_DS: "ds", PAIR_DS_DTOP: "ds" },
+			},
+			secrets: { PAIR_DS_DTOP: "dtop" },
 		});
-		// Spread order: db secrets < db settings.secrets < character secrets < character settings.secrets.
+		// Spread order: db secrets < db settings.secrets < character secrets <
+		// character settings.secrets — each pairwise collision pins one link of
+		// the chain, so no reorder of the sources can stay green.
 		expect(merged.settings?.secrets).toEqual({
-			SHARED: "character-settings",
-			C_SETTINGS: "cs",
-			C_TOP: "ct",
-			DB_SETTINGS: "ds",
-			DB_TOP: "dt",
+			PAIR_DS_DTOP: "ds",
+			PAIR_CTOP_DS: "ctop",
+			PAIR_CS_CTOP: "cs",
 		});
 		// character.secrets becomes the merged (filtered) secrets object.
 		expect(merged.secrets).toBe(merged.settings?.secrets);
@@ -236,10 +237,34 @@ describe("mergeSettingsInto", () => {
 	it("drops null/undefined values from merged secrets", () => {
 		const character = makeCharacter({ secrets: { KEEP: "keep" } });
 		const merged = mergeSettingsInto(character, {
-			settings: { secrets: { DROP: null, DB_ONLY_NULL: null } },
+			settings: {
+				secrets: { DROP_NULL: null, DROP_UNDEFINED: undefined },
+			},
 		});
 		expect(merged.settings?.secrets).toEqual({ KEEP: "keep" });
 		expect(merged.secrets).toEqual({ KEEP: "keep" });
+	});
+
+	it("filters a higher-precedence null even when it overrides a lower-precedence value", () => {
+		const character = makeCharacter({
+			settings: asSettings({ secrets: { KILLED: null } }),
+			secrets: { KILLED: "lower" },
+		});
+		const merged = mergeSettingsInto(character, {
+			settings: { secrets: { ONLY: "one" } },
+		});
+		// character settings.secrets wins the spread, but its null then fails the
+		// filter — the key disappears entirely instead of falling back.
+		expect(merged.settings?.secrets).toEqual({ ONLY: "one" });
+	});
+
+	it("leaves settings.secrets unset when every merged secret is null/undefined", () => {
+		const character = makeCharacter();
+		const merged = mergeSettingsInto(character, {
+			settings: {},
+			secrets: { DEAD: null },
+		});
+		expect(merged.settings?.secrets).toBeUndefined();
 	});
 
 	it("stringifies non-string secret values", () => {
@@ -297,11 +322,28 @@ describe("loadCharacters", () => {
 		expect(character.name).toBe("Inline Only");
 	});
 
-	it("derives a deterministic id from the name when the character has none", async () => {
+	it("derives a deterministic id from the name via stringToUuid, distinct per name", async () => {
 		const [a] = await loadCharacters([{ name: "Derive Me" }]);
 		const [b] = await loadCharacters([{ name: "Derive Me" }]);
-		expect(a.id).toBeTruthy();
+		const [other] = await loadCharacters([{ name: "Different Name" }]);
+		expect(a.id).toBe(stringToUuid("Derive Me"));
 		expect(a.id).toBe(b.id);
+		expect(other.id).not.toBe(a.id);
+	});
+
+	it("preserves an explicitly supplied id", async () => {
+		const id = "12345678-1234-1234-1234-123456789abc";
+		const [character] = await loadCharacters([{ name: "Has Id", id }]);
+		expect(character.id).toBe(id);
+	});
+
+	it("uses an absolute path unchanged regardless of options.cwd", async () => {
+		const dir = await tempDir();
+		const file = path.join(dir, "absolute.json");
+		await writeFile(file, JSON.stringify({ name: "Absolute" }), "utf8");
+		// An unrelated cwd must be ignored for absolute sources.
+		const [character] = await loadCharacters([file], { cwd: tmpdir() });
+		expect(character.name).toBe("Absolute");
 	});
 
 	it("resolves relative file paths against options.cwd", async () => {
@@ -343,7 +385,7 @@ describe("loadCharacters", () => {
 		);
 	});
 
-	it("wraps invalid JSON in ElizaError with code CHARACTER_SOURCE_LOAD_FAILED and the resolved source", async () => {
+	it("wraps invalid JSON in ElizaError with code, resolved source, and preserved cause", async () => {
 		const dir = await tempDir();
 		const file = path.join(dir, "broken.json");
 		await writeFile(file, "{ not json", "utf8");
@@ -353,10 +395,13 @@ describe("loadCharacters", () => {
 		expect(error).toBeInstanceOf(ElizaError);
 		expect(error.code).toBe("CHARACTER_SOURCE_LOAD_FAILED");
 		expect(error.context?.source).toBe(file);
+		// The original JSON SyntaxError is preserved as the cause (J2 rethrow).
+		expect(error.cause).toBeInstanceOf(SyntaxError);
 	});
 
-	it("wraps schema-invalid file characters in ElizaError with the same code", async () => {
+	it("wraps schema-invalid file characters in ElizaError with code, source, and cause", async () => {
 		const dir = await tempDir();
+		const file = path.join(dir, "invalid.json");
 		await writeFile(
 			path.join(dir, "invalid.json"),
 			JSON.stringify({ nope: 1 }),
@@ -367,6 +412,10 @@ describe("loadCharacters", () => {
 		}).catch((e) => e);
 		expect(error).toBeInstanceOf(ElizaError);
 		expect(error.code).toBe("CHARACTER_SOURCE_LOAD_FAILED");
+		expect(error.context?.source).toBe(file);
+		// Schema failure wraps a validation Error, not a JSON SyntaxError.
+		expect(error.cause).toBeInstanceOf(Error);
+		expect(error.cause).not.toBeInstanceOf(SyntaxError);
 	});
 
 	it("throws a validation error for an inline object that fails validation", async () => {
