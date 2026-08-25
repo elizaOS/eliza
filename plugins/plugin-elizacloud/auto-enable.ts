@@ -7,7 +7,7 @@
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
 function isTruthyCloudFlag(value: string | undefined): boolean {
-  if (!value) return false;
+  if (typeof value !== "string" || !value) return false;
   const normalized = value.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
