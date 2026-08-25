@@ -35,15 +35,21 @@ const cacheSet = mock(async (_key: string, user: typeof existingUser) => {
 
 mock.module("./cache/client", () => ({
   cache: {
-    get: async () => cachedSessionUser,
-    set: cacheSet,
+    get: async (key: string) => (key.startsWith("session:debounce:") ? false : cachedSessionUser),
+    set: async (key: string, value: unknown) => {
+      if (!key.startsWith("session:debounce:")) await cacheSet(key, value as typeof existingUser);
+    },
     del: async () => undefined,
   },
 }));
 mock.module("./auth/steward-client", () => ({
   isValidStewardTelegramId: () => false,
   isStagingSessionTokenCandidate: () => false,
-  verifyStewardTokenCached: async () => ({ userId: "steward-123" }),
+  verifyStewardTokenCached: async () => ({
+    userId: "steward-123",
+    issuedAt: 1_787_653_800,
+    expiration: 1_787_657_400,
+  }),
   invalidateStewardTokenCache: async () => undefined,
 }));
 mock.module("./auth/playwright-test-session", () => ({
@@ -57,8 +63,13 @@ mock.module("./auth/wallet-auth", () => ({
   },
 }));
 mock.module("./services/admin", () => ({ adminService: {} }));
+let sessionTrackingError: Error | undefined;
+const getOrCreateSession = mock(async () => {
+  if (sessionTrackingError) throw sessionTrackingError;
+  return { id: "sess-1" };
+});
 mock.module("./services/user-sessions", () => ({
-  userSessionsService: { getOrCreateSession: async () => ({ id: "sess-1" }) },
+  userSessionsService: { getOrCreateSession },
 }));
 mock.module("./services/users", () => ({
   usersService: {
@@ -142,6 +153,8 @@ beforeEach(() => {
   characterBootstrapHealthy = false;
   cachedSessionUser = null;
   cacheSet.mockClear();
+  getOrCreateSession.mockClear();
+  sessionTrackingError = undefined;
   apiKeyHealError = undefined;
 });
 
@@ -211,5 +224,18 @@ describe("session-resolution default-character self-heal", () => {
     expect(retriedUser?.id).toBe("user-1");
     expect(apiKeyHealCalls).toHaveLength(2);
     expect(cacheSet).toHaveBeenCalledTimes(1);
+  });
+
+  test("a failed best-effort telemetry write cannot change the authenticated result", async () => {
+    sessionTrackingError = new Error("telemetry database unavailable");
+    const request = new Request("http://localhost/api/anything", {
+      headers: { cookie: "steward-token=tok-abc" },
+    });
+
+    const user = await getCurrentUserFromRequest(request);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(user?.id).toBe("user-1");
+    expect(getOrCreateSession).toHaveBeenCalledTimes(1);
   });
 });

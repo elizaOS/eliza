@@ -1,6 +1,7 @@
 /**
  * GET /api/sessions/current
- * Statistics for the current user session: credits, requests, tokens.
+ * Active telemetry aggregates for the authenticated user: credits, requests, tokens.
+ * Steward remains the authentication authority; stale telemetry is excluded in the repository.
  */
 
 import { Hono } from "hono";

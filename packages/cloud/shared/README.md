@@ -61,3 +61,7 @@ There is no build step here (`build:linked-workspaces` defers to the repo-root `
 ## More
 
 See [CLAUDE.md](./CLAUDE.md) for the migration workflow, how to add tables/services/DTOs, and the architecture rules (CQRS, server-only `lib/`, append-only migrations). WHY docs live under `docs/`.
+
+The telemetry-only contract, sensitive-field minimization, retention schedule,
+and staging-first backfill procedure for `user_sessions` are documented in
+[docs/user-session-telemetry-lifecycle.md](./docs/user-session-telemetry-lifecycle.md).

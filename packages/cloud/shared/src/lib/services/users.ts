@@ -30,6 +30,7 @@ import {
   setInferenceSessionBindingActive,
   setInferenceSubjectActive,
 } from "./inference-credential-revocation";
+import { userSessionsService } from "./user-sessions";
 
 type PersonalDeliveryIdentitySource = Partial<
   Pick<User | UserIdentity, "telegram_id" | "discord_id" | "phone_number">
@@ -427,6 +428,18 @@ export class UsersService {
         }
         if (result) {
           await this.invalidateCache(result);
+        }
+        if (data.is_active === false || movingOrganizations || sessionAuthorityChanged) {
+          try {
+            await userSessionsService.endAllUserSessions(id, "revoked");
+          } catch (error) {
+            // error-policy:J6 authentication revocation already committed through
+            // its own authorities; telemetry teardown must not roll it back.
+            logger.warn("[UsersService] Failed to close revoked session telemetry", {
+              userId: id,
+              ...getErrorDetails(error),
+            });
+          }
         }
         // Deactivation: when is_active flips to false, evict the user's warm IAC
         // entries so the now-inactive account can no longer fast-path inference.

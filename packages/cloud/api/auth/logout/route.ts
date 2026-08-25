@@ -150,7 +150,7 @@ app.post("/", async (c) => {
     if (stewardToken) {
       const user = await getCurrentUser(c);
       if (user) {
-        await userSessionsService.endAllUserSessions(user.id);
+        await userSessionsService.endAllUserSessions(user.id, "logout");
         await getAuditDispatcher()
           .emit({
             actor: { type: "user", id: user.id },

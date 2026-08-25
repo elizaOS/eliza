@@ -1,7 +1,8 @@
-// Defines the user sessions Drizzle table shape used by cloud repositories and services.
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+/** Defines the telemetry-session table shape used by cloud repositories and services. */
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   bigint,
+  check,
   index,
   integer,
   jsonb,
@@ -14,10 +15,21 @@ import {
 import { organizations } from "./organizations";
 import { users } from "./users";
 
+const USER_SESSION_END_REASONS = [
+  "logout",
+  "expired",
+  "revoked",
+  "idle",
+  "administrative_cleanup",
+  "legacy_ended",
+] as const;
+
+export type UserSessionEndReason = (typeof USER_SESSION_END_REASONS)[number];
+
 /**
- * User sessions table schema.
- *
- * Tracks authenticated user sessions with usage metrics and device information.
+ * Telemetry and usage state observed after Steward authenticated a request.
+ * Steward's signed cookie, revocation fences, and account state remain the
+ * authentication authority; no row in this table can authenticate a caller.
  */
 export const userSessions = pgTable(
   "user_sessions",
@@ -44,7 +56,15 @@ export const userSessions = pgTable(
 
     last_activity_at: timestamp("last_activity_at").notNull().defaultNow(),
 
+    token_expires_at: timestamp("token_expires_at"),
+
     ended_at: timestamp("ended_at"),
+
+    ended_reason: text("ended_reason").$type<UserSessionEndReason>(),
+
+    retention_expires_at: timestamp("retention_expires_at"),
+
+    metadata_purged_at: timestamp("metadata_purged_at"),
 
     ip_address: text("ip_address"),
 
@@ -62,6 +82,16 @@ export const userSessions = pgTable(
     token_idx: index("user_sessions_token_idx").on(table.session_token),
     started_at_idx: index("user_sessions_started_at_idx").on(table.started_at),
     active_idx: index("user_sessions_active_idx").on(table.ended_at),
+    active_lifecycle_idx: index("user_sessions_active_lifecycle_idx")
+      .on(table.user_id, table.token_expires_at, table.last_activity_at)
+      .where(sql`${table.ended_at} IS NULL`),
+    retention_idx: index("user_sessions_retention_idx")
+      .on(table.retention_expires_at)
+      .where(sql`${table.ended_at} IS NOT NULL`),
+    ended_reason_check: check(
+      "user_sessions_ended_reason_check",
+      sql`${table.ended_reason} IS NULL OR ${table.ended_reason} IN ('logout', 'expired', 'revoked', 'idle', 'administrative_cleanup', 'legacy_ended')`,
+    ),
   }),
 );
 

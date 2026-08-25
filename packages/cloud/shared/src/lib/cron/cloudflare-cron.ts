@@ -25,7 +25,7 @@ export const CRON_ROUTES: Record<string, string> = {
 export const CRON_FANOUT: Record<string, string[]> = {
   "0 0 * * *": ["/api/cron/container-billing"],
   "0 1 * * *": ["/api/cron/compute-metrics"],
-  "0 2 * * *": ["/api/cron/cleanup-webhook-events"],
+  "0 2 * * *": ["/api/cron/cleanup-webhook-events", "/api/cron/cleanup-user-sessions"],
   "0 3 * * *": [
     "/api/cron/domain-renewals",
     // #11058: release external domain rows still unverified after the reclaim

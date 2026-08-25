@@ -3,8 +3,15 @@
  */
 
 import crypto from "crypto";
-import { userSessionsRepository } from "../../db/repositories";
-import type { NewUserSession, UserSession } from "../../db/schemas/user-sessions";
+import {
+  type UserSessionCleanupMetrics,
+  userSessionsRepository,
+} from "../../db/repositories/user-sessions";
+import type {
+  NewUserSession,
+  UserSession,
+  UserSessionEndReason,
+} from "../../db/schemas/user-sessions";
 
 /**
  * Hash a token for secure storage and lookup.
@@ -41,6 +48,7 @@ export interface CreateSessionParams {
   user_id: string;
   organization_id: string;
   session_token: string;
+  token_expires_at: Date;
   ip_address?: string;
   user_agent?: string;
   device_info?: Record<string, unknown>;
@@ -82,11 +90,15 @@ class UserSessionsService {
   }
 
   async create(params: CreateSessionParams): Promise<UserSession> {
+    if (!Number.isFinite(params.token_expires_at.getTime())) {
+      throw new RangeError("user-session telemetry requires a valid token_expires_at");
+    }
     const hashedToken = normalizeToken(params.session_token);
     const sessionData: NewUserSession = {
       user_id: params.user_id,
       organization_id: params.organization_id,
       session_token: hashedToken,
+      token_expires_at: params.token_expires_at,
       ip_address: params.ip_address,
       user_agent: params.user_agent,
       device_info: params.device_info || {},
@@ -111,13 +123,19 @@ class UserSessionsService {
     });
   }
 
-  async endSession(sessionToken: string): Promise<UserSession | undefined> {
+  async endSession(
+    sessionToken: string,
+    reason: UserSessionEndReason = "logout",
+  ): Promise<UserSession | undefined> {
     const hashedToken = normalizeToken(sessionToken);
-    return await userSessionsRepository.endSession(hashedToken);
+    return await userSessionsRepository.endSession(hashedToken, reason);
   }
 
-  async endAllUserSessions(userId: string): Promise<number> {
-    return await userSessionsRepository.endAllUserSessions(userId);
+  async endAllUserSessions(
+    userId: string,
+    reason: UserSessionEndReason = "logout",
+  ): Promise<number> {
+    return await userSessionsRepository.endAllUserSessions(userId, reason);
   }
 
   async getCurrentSessionStats(userId: string): Promise<{
@@ -128,18 +146,26 @@ class UserSessionsService {
     return await userSessionsRepository.getCurrentSessionStats(userId);
   }
 
-  async cleanupOldSessions(daysOld: number = 30): Promise<number> {
-    return await userSessionsRepository.cleanupOldSessions(daysOld);
+  async cleanupLifecycle(): Promise<UserSessionCleanupMetrics> {
+    return await userSessionsRepository.cleanupLifecycle();
+  }
+
+  async cleanupOldSessions(): Promise<number> {
+    return await userSessionsRepository.cleanupOldSessions();
   }
 
   async getOrCreateSession(params: {
     user_id: string;
     organization_id: string;
     session_token: string;
+    token_expires_at: Date;
     ip_address?: string;
     user_agent?: string;
     device_info?: Record<string, unknown>;
-  }): Promise<UserSession> {
+  }): Promise<UserSession | undefined> {
+    if (!Number.isFinite(params.token_expires_at.getTime())) {
+      throw new RangeError("user-session telemetry requires a valid token_expires_at");
+    }
     // Hash the token for secure storage
     const hashedToken = normalizeToken(params.session_token);
 
@@ -148,6 +174,7 @@ class UserSessionsService {
       user_id: params.user_id,
       organization_id: params.organization_id,
       session_token: hashedToken,
+      token_expires_at: params.token_expires_at,
       ip_address: params.ip_address,
       user_agent: params.user_agent,
       device_info: params.device_info || {},

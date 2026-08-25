@@ -38,6 +38,7 @@
     "preflight:messaging-gateways:strict": "node scripts/messaging-gateway-preflight.mjs --strict",
     "db:check-migrations": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
+    "db:backfill-user-session-lifecycle": "bun scripts/backfill-user-session-lifecycle.ts",
     "db:migrate": "bun --conditions=eliza-source ../../../packages/cloud/scripts/admin/migrate-with-diagnostics.ts",
     "db:migrate:drizzle": "bun run db:migrate",
     "db:studio": "drizzle-kit studio",

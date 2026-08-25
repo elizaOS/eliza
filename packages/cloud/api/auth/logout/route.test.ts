@@ -68,6 +68,7 @@ function deletedCookieNames(res: Response): string[] {
 }
 
 beforeEach(() => {
+  endAllUserSessionsMock.mockClear();
   getCurrentUserMock.mockResolvedValue(null);
   verifyStewardTokenMock.mockResolvedValue({
     userId: "steward-1",
@@ -108,6 +109,7 @@ describe("POST /api/auth/logout cookie clearing", () => {
       "user-1",
       100,
     );
+    expect(endAllUserSessionsMock).toHaveBeenCalledWith("user-1", "logout");
   });
 
   test("strong rollout clears cookies but returns 503 when the cutoff is unconfirmed", async () => {

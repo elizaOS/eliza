@@ -24,6 +24,7 @@ const orgDeleteCalls: string[] = [];
 const lifecycleEvents: string[] = [];
 const repositoryReads: string[] = [];
 const deletedCacheKeys: string[] = [];
+const telemetryClosures: Array<[string, string]> = [];
 
 let userApiKeys: Array<{ key_hash: string }> = [];
 let orgApiKeys: Array<{ key_hash: string }> = [];
@@ -48,6 +49,15 @@ mock.module("./api-keys", () => ({
   apiKeysService: {
     deactivateByUserAndOrganization: async (userId: string, orgId: string) => {
       lifecycleEvents.push(`api-keys-deactivate:${userId}:${orgId}`);
+    },
+  },
+}));
+
+mock.module("./user-sessions", () => ({
+  userSessionsService: {
+    endAllUserSessions: async (userId: string, reason: string) => {
+      telemetryClosures.push([userId, reason]);
+      return 1;
     },
   },
 }));
@@ -220,6 +230,7 @@ beforeEach(() => {
   lifecycleEvents.length = 0;
   repositoryReads.length = 0;
   deletedCacheKeys.length = 0;
+  telemetryClosures.length = 0;
 });
 
 describe("UsersService — IAC invalidation on lifecycle", () => {
@@ -239,6 +250,7 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     await usersService.update("u1", { is_active: false });
 
     expect(invalidatedHashBatches).toEqual([["uh1", "uh2"]]);
+    expect(telemetryClosures).toEqual([["u1", "revoked"]]);
     expect(invalidatedSessionBatches).toContainEqual(["steward-u1"]);
     expect(lifecycleEvents.slice(0, 3)).toEqual([
       "projection-fence:discord:987654",
@@ -266,6 +278,7 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     await usersService.update("u1", { is_active: true });
 
     expect(invalidatedHashBatches).toEqual([]);
+    expect(telemetryClosures).toEqual([]);
   });
 
   test("organization move fences both orgs and the old session generation before the row moves", async () => {
@@ -284,6 +297,7 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     const { usersService } = await import("./users");
     await usersService.update("u1", { organization_id: "o2" });
 
+    expect(telemetryClosures).toEqual([["u1", "revoked"]]);
     expect(lifecycleEvents).toEqual([
       "projection-fence:discord:987654",
       "projection-fence:phone:+15551234567",

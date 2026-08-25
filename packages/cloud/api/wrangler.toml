@@ -93,7 +93,7 @@ crons = [
   "0 */6 * * *",  # cleanup-cli-sessions + agent-backups + reap-orphan-shared-bridges + gc-stranded-sandbox-keys
   "0 0 * * *",      # container-billing
   "0 1 * * *",      # compute-metrics
-  "0 2 * * *",      # cleanup-webhook-events
+  "0 2 * * *",      # cleanup-webhook-events + cleanup-user-sessions
   "0 3 * * *",      # domain-renewals + reclaim-stale-domains
 ]
 

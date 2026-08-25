@@ -1,4 +1,5 @@
-// Defines cloud shared auth behavior for backend service consumers.
+/** Authenticates cloud requests through Steward and records best-effort usage telemetry. */
+import { decodeJwt } from "jose";
 import type { Organization } from "../db/schemas/organizations";
 import { AuthenticationError, ForbiddenError } from "./api/errors";
 import {
@@ -30,6 +31,23 @@ import { logger } from "./utils/logger";
 
 // Re-export Organization type for convenience
 export type { Organization };
+
+/**
+ * Reads an expiry only to bound a telemetry row after the same token has passed
+ * Steward verification. This value never authenticates a request.
+ */
+function readSessionTelemetryTokenExpiry(sessionToken: string): Date | null {
+  try {
+    const expiration = decodeJwt(sessionToken).exp;
+    if (!Number.isSafeInteger(expiration) || expiration === undefined) return null;
+    const expiresAt = new Date(expiration * 1_000);
+    return Number.isFinite(expiresAt.getTime()) ? expiresAt : null;
+  } catch {
+    // error-policy:J3 malformed untrusted JWT text disables telemetry tracking;
+    // the Steward verifier independently owns authentication acceptance.
+    return null;
+  }
+}
 
 function getStewardVerifyEnv(): StewardVerifyEnv {
   const env = getCloudAwareEnv();
@@ -156,7 +174,15 @@ export async function getCurrentUserFromRequest(
     if (cachedUser) {
       logger.debug("[AUTH] Cache hit for user session");
       if (cachedUser.organization_id) {
-        void trackSessionActivity(cachedUser.id, cachedUser.organization_id, stewardToken);
+        const tokenExpiresAt = readSessionTelemetryTokenExpiry(stewardToken);
+        if (tokenExpiresAt) {
+          void trackSessionActivity(
+            cachedUser.id,
+            cachedUser.organization_id,
+            stewardToken,
+            tokenExpiresAt,
+          );
+        }
       }
       return cachedUser;
     }
@@ -209,7 +235,12 @@ export async function getCurrentUserFromRequest(
     logger.debug("[AUTH] Cached user session data");
 
     if (user.organization_id) {
-      void trackSessionActivity(user.id, user.organization_id, stewardToken);
+      void trackSessionActivity(
+        user.id,
+        user.organization_id,
+        stewardToken,
+        new Date(stewardClaims.expiration * 1_000),
+      );
     }
 
     return user;
@@ -227,6 +258,7 @@ async function trackSessionActivity(
   userId: string,
   organizationId: string,
   sessionToken: string,
+  tokenExpiresAt: Date,
 ): Promise<void> {
   try {
     const tokenHash = hashSessionToken(sessionToken);
@@ -241,6 +273,7 @@ async function trackSessionActivity(
       user_id: userId,
       organization_id: organizationId,
       session_token: sessionToken,
+      token_expires_at: tokenExpiresAt,
     });
   } catch (error) {
     const errorDetails =
