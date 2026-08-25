@@ -56,13 +56,23 @@ describe("progressive content mutant registry", () => {
 		const externalExecutors = Object.fromEntries(
 			PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.filter(
 				({ executor }) => executor !== "adapter",
-			).map(({ id, killingVector }) => [id, () => [killingVector]]),
+			).map(({ id, killingVector }) => [
+				id,
+				{
+					execute() {
+						throw Object.assign(new Error("mutant rejected"), {
+							vector: killingVector,
+						});
+					},
+				},
+			]),
 		);
 		const report = await runProgressiveContentMutantRegistry({
 			object,
 			createAdapter: progressiveConformanceAdapter,
 			externalExecutors,
 		});
+
 		expect(report).toMatchObject({
 			status: "passed",
 			required: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
@@ -70,6 +80,28 @@ describe("progressive content mutant registry", () => {
 			killed: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
 			killRate: 1,
 		});
+	});
+
+	it("does not accept an absent rejection as a killed mutant", async () => {
+		const { object } = progressiveConformanceFixture();
+		const externalExecutors = Object.fromEntries(
+			PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.filter(
+				({ executor }) => executor !== "adapter",
+			).map(({ id }) => [id, { execute() {} }]),
+		);
+		const report = await runProgressiveContentMutantRegistry({
+			object,
+			createAdapter: progressiveConformanceAdapter,
+			externalExecutors,
+		});
+		expect(report.status).toBe("failed");
+		expect(
+			report.results
+				.filter(({ executor }) => executor !== "adapter")
+				.every(({ failureVectors }) =>
+					failureVectors.includes("MUTANT_NOT_OBSERVED"),
+				),
+		).toBe(true);
 	});
 
 	it("mutates measured work instead of accepting a self-report", async () => {
