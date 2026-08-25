@@ -17,6 +17,9 @@ const ACCOUNT_ID = "20000000-0000-4000-8000-000000000002";
 const PERSONAL_ID = "personal:org-1:user-1";
 const RUNTIME_ID = "30000000-0000-4000-8000-000000000003";
 const RUNTIME_BASE = `https://${RUNTIME_ID}.cloud.eliza.app`;
+const GOOGLE_NONCE = "a".repeat(64);
+const MOBILE_CREDENTIAL_ID = "40000000-0000-4000-8000-000000000004";
+const MOBILE_SECRET = `eliza_mobile_${"b".repeat(64)}`;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -82,6 +85,194 @@ describe("AndroidCloudClient", () => {
       "https://api.eliza.app/api/auth/cli-session",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("uses native Google identity and activates the existing mobile credential", async () => {
+    let secureToken: string | null = null;
+    const credentialStore = {
+      read: vi.fn(async () => secureToken),
+      write: vi.fn(async (token: string) => {
+        secureToken = token;
+      }),
+      clear: vi.fn(async () => {
+        secureToken = null;
+      }),
+    };
+    const adapter = {
+      signIn: vi.fn(
+        async ({ nonce }: { serverClientId: string; nonce: string }) => ({
+          idToken: `header.${btoa(JSON.stringify({ nonce }))}.signature`,
+        }),
+      ),
+      cancel: vi.fn(async () => undefined),
+      clearCredentialState: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, {
+          google: { native: true, serverClientId: "google-web-client" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          nonce: GOOGLE_NONCE,
+          expiresAt: "2026-08-25T12:05:00.000Z",
+        }),
+      )
+      .mockResolvedValueOnce(json(200, { code: `emac_${"a".repeat(64)}` }))
+      .mockResolvedValueOnce(
+        json(200, {
+          credentialId: MOBILE_CREDENTIAL_ID,
+          secret: MOBILE_SECRET,
+        }),
+      )
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          status: "acknowledged",
+          credentialId: MOBILE_CREDENTIAL_ID,
+        }),
+      );
+    const client = new AndroidCloudClient({ credentialStore, fetchImpl });
+
+    await expect(client.signInWithGoogle(adapter)).resolves.toBeUndefined();
+
+    expect(adapter.signIn).toHaveBeenCalledWith({
+      nonce: GOOGLE_NONCE,
+      serverClientId: "google-web-client",
+    });
+    expect(credentialStore.write).toHaveBeenCalledWith(MOBILE_SECRET);
+    expect(fetchImpl.mock.calls.map(([input]) => String(input))).toEqual([
+      expect.stringContaining("/api/v1/app-auth/mobile/config?"),
+      "https://api.eliza.app/api/v1/app-auth/mobile/google/nonce",
+      "https://api.eliza.app/api/v1/app-auth/mobile/google",
+      "https://api.eliza.app/api/v1/app-auth/mobile/token",
+      "https://api.eliza.app/api/v1/app-auth/mobile/ack",
+    ]);
+    const nonceRequest = fetchImpl.mock.calls[1]?.[1];
+    const approvalRequest = fetchImpl.mock.calls[2]?.[1];
+    expect(JSON.parse(String(nonceRequest?.body))).toMatchObject({
+      clientId: "ai.elizaos.app",
+      environment: "production",
+      redirectUri: "https://eliza.app/auth/callback",
+      codeChallengeMethod: "S256",
+      deviceName: "Android",
+    });
+    expect(JSON.parse(String(approvalRequest?.body))).toMatchObject({
+      nonce: GOOGLE_NONCE,
+      codeChallenge: JSON.parse(String(nonceRequest?.body)).codeChallenge,
+      state: JSON.parse(String(nonceRequest?.body)).state,
+    });
+  });
+
+  it("rejects a malformed server challenge before opening Credential Manager", async () => {
+    const adapter = {
+      signIn: vi.fn(async () => ({ idToken: "unused" })),
+      cancel: vi.fn(async () => undefined),
+      clearCredentialState: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, {
+          google: { native: true, serverClientId: "google-web-client" },
+        }),
+      )
+      .mockResolvedValueOnce(json(200, { nonce: "client-controlled" }));
+
+    await expect(
+      new AndroidCloudClient({ fetchImpl }).signInWithGoogle(adapter),
+    ).rejects.toThrow("invalid Google sign-in challenge");
+    expect(adapter.signIn).not.toHaveBeenCalled();
+  });
+
+  it("restores the previous credential when acknowledgement fails", async () => {
+    let secureToken: string | null = "previous-secret";
+    const credentialStore = {
+      read: vi.fn(async () => secureToken),
+      write: vi.fn(async (token: string) => {
+        secureToken = token;
+      }),
+      clear: vi.fn(async () => {
+        secureToken = null;
+      }),
+    };
+    const adapter = {
+      signIn: vi.fn(
+        async ({ nonce }: { serverClientId: string; nonce: string }) => ({
+          idToken: `header.${btoa(JSON.stringify({ nonce }))}.signature`,
+        }),
+      ),
+      cancel: vi.fn(async () => undefined),
+      clearCredentialState: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, {
+          google: { native: true, serverClientId: "google-web-client" },
+        }),
+      )
+      .mockResolvedValueOnce(json(200, { nonce: GOOGLE_NONCE }))
+      .mockResolvedValueOnce(json(200, { code: `emac_${"a".repeat(64)}` }))
+      .mockResolvedValueOnce(
+        json(200, {
+          credentialId: MOBILE_CREDENTIAL_ID,
+          secret: MOBILE_SECRET,
+        }),
+      )
+      .mockResolvedValueOnce(json(503, { error: "temporarily_unavailable" }));
+
+    await expect(
+      new AndroidCloudClient({ credentialStore, fetchImpl }).signInWithGoogle(
+        adapter,
+      ),
+    ).rejects.toThrow();
+    expect(secureToken).toBe("previous-secret");
+    expect(credentialStore.write).toHaveBeenNthCalledWith(1, MOBILE_SECRET);
+    expect(credentialStore.write).toHaveBeenNthCalledWith(2, "previous-secret");
+    expect(credentialStore.clear).not.toHaveBeenCalled();
+  });
+
+  it("translates a mobile-auth configuration failure into product language", async () => {
+    const adapter = {
+      signIn: vi.fn(async () => ({ idToken: "unused" })),
+      cancel: vi.fn(async () => undefined),
+      clearCredentialState: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      json(503, {
+        success: false,
+        error: "server_configuration_error",
+        errorDescription: "Configured mobile App Auth app is not active",
+      }),
+    );
+    const client = new AndroidCloudClient({ fetchImpl });
+
+    await expect(client.signInWithGoogle(adapter)).rejects.toThrow(
+      "Eliza Cloud sign-in is not configured for this app yet.",
+    );
+    expect(adapter.signIn).not.toHaveBeenCalled();
+  });
+
+  it("stops native auth before opening Credential Manager when cancelled", async () => {
+    const adapter = {
+      signIn: vi.fn(async () => ({ idToken: "unused" })),
+      cancel: vi.fn(async () => undefined),
+      clearCredentialState: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = new AndroidCloudClient({ fetchImpl });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      client.signInWithGoogle(adapter, controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(adapter.signIn).not.toHaveBeenCalled();
   });
 
   it("restores identity and resolves its managed runtime before chat", async () => {
@@ -260,6 +451,25 @@ describe("AndroidCloudClient", () => {
         }),
       }),
     );
+  });
+
+  it("does not rewrite a chat protocol error as a sign-in failure", async () => {
+    const client = new AndroidCloudClient({
+      fetchImpl: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          json(503, { error: "server_configuration_error" }),
+        ),
+    });
+    const session = {
+      identity: { id: ACCOUNT_ID, displayName: "Ada" },
+      token: "steward-token",
+      chatApiBase: RUNTIME_BASE,
+    };
+
+    await expect(
+      client.sendChat(session, "conversation-1", "Hello", vi.fn()),
+    ).rejects.toThrow("server_configuration_error");
   });
 
   // A staging build must send users to the staging login: the session was

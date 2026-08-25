@@ -13,7 +13,6 @@ import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
-import { ErrorBoundary } from "@elizaos/ui";
 import {
   ANDROID_CLOUD_CONVERSATION_ID_KEY,
   AndroidCloudApp,
@@ -23,6 +22,7 @@ import {
   AndroidCloudClient,
   type AndroidCloudCredentialStore,
 } from "@elizaos/ui/android-cloud/android-cloud-client";
+import { ErrorBoundary } from "@elizaos/ui/error-boundary";
 import "@elizaos/ui/styles";
 import React from "react";
 import { createRoot } from "react-dom/client";
@@ -63,8 +63,20 @@ interface SecureCredentialsPlugin {
   remove(): Promise<void>;
 }
 
+interface GoogleIdentityPlugin {
+  signIn(options: {
+    serverClientId: string;
+    nonce: string;
+  }): Promise<{ idToken: string }>;
+  cancel(): Promise<{ cancelled: boolean }>;
+  clearCredentialState(): Promise<Record<string, never>>;
+}
+
 const SecureCredentials = registerPlugin<SecureCredentialsPlugin>(
   "ElizaSecureCredentials",
+);
+const GoogleIdentity = registerPlugin<GoogleIdentityPlugin>(
+  "ElizaGoogleIdentity",
 );
 
 const androidSecureCredentialStore: AndroidCloudCredentialStore = {
@@ -357,6 +369,7 @@ export async function bootAndroidCloudApp(): Promise<void> {
         <AndroidCloudApp
           client={androidCloudClient}
           closeExternal={() => Browser.close()}
+          googleIdentity={GoogleIdentity}
           openExternal={openExternal}
           voice={androidCloudVoice}
         />

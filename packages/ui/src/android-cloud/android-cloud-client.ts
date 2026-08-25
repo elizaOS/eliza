@@ -15,12 +15,14 @@ import {
 import {
   directCloudAppBaseForApi,
   resolveCanonicalDirectCloudApiBase,
+  STAGING_DIRECT_CLOUD_API_BASE_URL,
 } from "../api/direct-cloud-endpoints";
 
 const SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MANAGED_RUNTIME_HOST_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cloud(?:-staging)?\.eliza\.app$/i;
+const GOOGLE_NONCE_PATTERN = /^[0-9a-f]{64}$/;
 
 export interface AndroidCloudIdentity {
   id: string;
@@ -42,6 +44,15 @@ export interface AndroidCloudTranscriptMessage {
 export interface AndroidCloudLoginAttempt {
   sessionId: string;
   browserUrl: string;
+}
+
+export interface AndroidCloudGoogleIdentityAdapter {
+  signIn(options: {
+    serverClientId: string;
+    nonce: string;
+  }): Promise<{ idToken: string }>;
+  cancel(): Promise<unknown>;
+  clearCredentialState(): Promise<unknown>;
 }
 
 export type AndroidCloudLoginPoll =
@@ -111,6 +122,45 @@ async function responseJson(response: Response): Promise<JsonRecord> {
 
 function responseError(body: JsonRecord, fallback: string): string {
   return stringField(body.error) ?? stringField(body.message) ?? fallback;
+}
+
+function mobileAuthResponseError(body: JsonRecord, fallback: string): string {
+  const code = stringField(body.error);
+  if (code === "server_configuration_error") {
+    return "Eliza Cloud sign-in is not configured for this app yet.";
+  }
+  if (code === "temporarily_unavailable") {
+    return "Eliza Cloud sign-in is temporarily unavailable. Please try again.";
+  }
+  return (
+    stringField(body.message) ??
+    stringField(body.errorDescription) ??
+    code ??
+    fallback
+  );
+}
+
+function base64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function randomBinding(byteLength = 48): string {
+  const bytes = new Uint8Array(byteLength);
+  globalThis.crypto.getRandomValues(bytes);
+  return base64Url(bytes);
+}
+
+async function s256Challenge(verifier: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(verifier),
+  );
+  return base64Url(new Uint8Array(digest));
 }
 
 /** Accept only the official control plane or an Eliza-managed runtime host. */
@@ -249,6 +299,170 @@ export class AndroidCloudClient {
     );
     url.searchParams.set("session", sessionId);
     return { sessionId, browserUrl: url.toString() };
+  }
+
+  async signInWithGoogle(
+    adapter: AndroidCloudGoogleIdentityAdapter,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    signal?.throwIfAborted();
+    const clientId = "ai.elizaos.app";
+    const redirectUri = "https://eliza.app/auth/callback";
+    const environment =
+      this.apiBase === STAGING_DIRECT_CLOUD_API_BASE_URL
+        ? "staging"
+        : "production";
+    const state = randomBinding();
+    const codeVerifier = randomBinding(64);
+    const codeChallenge = await s256Challenge(codeVerifier);
+    const binding = { clientId, environment, redirectUri };
+    const pkceBinding = {
+      ...binding,
+      state,
+      codeChallenge,
+      codeChallengeMethod: "S256",
+      deviceName: "Android",
+    };
+
+    const configUrl = new URL(`${this.apiBase}/api/v1/app-auth/mobile/config`);
+    for (const [key, value] of Object.entries(binding))
+      configUrl.searchParams.set(key, value);
+    const configResponse = await this.fetchImpl(configUrl, { signal });
+    const configBody = await responseJson(configResponse);
+    if (!configResponse.ok) {
+      throw new Error(
+        mobileAuthResponseError(
+          configBody,
+          "Native Google sign-in is unavailable.",
+        ),
+      );
+    }
+    const google = record(configBody.google);
+    const serverClientId = stringField(google?.serverClientId);
+    if (!serverClientId)
+      throw new Error("Native Google sign-in is not configured.");
+
+    const nonceResponse = await this.fetchImpl(
+      `${this.apiBase}/api/v1/app-auth/mobile/google/nonce`,
+      {
+        method: "POST",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pkceBinding),
+      },
+    );
+    const nonceBody = await responseJson(nonceResponse);
+    if (!nonceResponse.ok) {
+      throw new Error(
+        mobileAuthResponseError(
+          nonceBody,
+          "Google sign-in could not be started.",
+        ),
+      );
+    }
+    const nonce = stringField(nonceBody.nonce);
+    if (!nonce || !GOOGLE_NONCE_PATTERN.test(nonce)) {
+      throw new Error(
+        "Eliza Cloud returned an invalid Google sign-in challenge.",
+      );
+    }
+
+    signal?.throwIfAborted();
+    const identity = await adapter.signIn({ serverClientId, nonce });
+    signal?.throwIfAborted();
+    if (!identity.idToken.trim())
+      throw new Error("Google returned no identity token.");
+    const approvalResponse = await this.fetchImpl(
+      `${this.apiBase}/api/v1/app-auth/mobile/google`,
+      {
+        method: "POST",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...pkceBinding,
+          googleIdToken: identity.idToken,
+          nonce,
+        }),
+      },
+    );
+    const approval = await responseJson(approvalResponse);
+    if (!approvalResponse.ok) {
+      throw new Error(
+        mobileAuthResponseError(
+          approval,
+          "Google sign-in could not be completed.",
+        ),
+      );
+    }
+    const code = stringField(approval.code);
+    if (!code) throw new Error("Eliza Cloud returned no authorization code.");
+
+    const tokenRequest = {
+      ...binding,
+      grantType: "authorization_code",
+      state,
+      code,
+      codeVerifier,
+    };
+    const tokenResponse = await this.fetchImpl(
+      `${this.apiBase}/api/v1/app-auth/mobile/token`,
+      {
+        method: "POST",
+        signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tokenRequest),
+      },
+    );
+    const exchanged = await responseJson(tokenResponse);
+    if (!tokenResponse.ok) {
+      throw new Error(
+        mobileAuthResponseError(
+          exchanged,
+          "Eliza Cloud could not create a mobile session.",
+        ),
+      );
+    }
+    const secret = stringField(exchanged.secret);
+    const credentialId = stringField(exchanged.credentialId);
+    if (!secret || !credentialId)
+      throw new Error("Eliza Cloud returned an invalid mobile session.");
+
+    signal?.throwIfAborted();
+    const previousSecret = await this.credentialStore.read();
+    await this.credentialStore.write(secret);
+    try {
+      const acknowledgeResponse = await this.fetchImpl(
+        `${this.apiBase}/api/v1/app-auth/mobile/ack`,
+        {
+          method: "POST",
+          signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...tokenRequest, credentialId, secret }),
+        },
+      );
+      const acknowledged = await responseJson(acknowledgeResponse);
+      if (!acknowledgeResponse.ok) {
+        throw new Error(
+          mobileAuthResponseError(
+            acknowledged,
+            "Eliza Cloud could not activate the mobile session.",
+          ),
+        );
+      }
+      if (
+        acknowledged.success !== true ||
+        acknowledged.status !== "acknowledged" ||
+        stringField(acknowledged.credentialId) !== credentialId
+      ) {
+        throw new Error(
+          "Eliza Cloud returned an invalid mobile session acknowledgement.",
+        );
+      }
+    } catch (error) {
+      if (previousSecret) await this.credentialStore.write(previousSecret);
+      else await this.credentialStore.clear();
+      throw error;
+    }
   }
 
   async pollLogin(sessionId: string): Promise<AndroidCloudLoginPoll> {
