@@ -95,7 +95,11 @@ export function matchesGlobPattern(
   candidate: string,
   pattern: string,
 ): boolean {
-  return minimatch(candidate, pattern, { dot: false });
+  return minimatch(candidate, pattern, {
+    dot: false,
+    nocomment: true,
+    nonegate: true,
+  });
 }
 
 type ReadDirectory = (

@@ -317,6 +317,33 @@ describe("GLOB", () => {
     },
   );
 
+  it.each([
+    { pattern: "!foo/a.ts", included: path.join("!foo", "a.ts") },
+    { pattern: "#file", included: "#file" },
+  ])(
+    "treats leading control syntax literally for $pattern",
+    async ({ pattern, included }) => {
+      const { runtime, message } = await buildRuntime();
+      if (pattern.startsWith("!")) {
+        await fs.mkdir(path.join(tmpRoot, "!foo"));
+        await fs.writeFile(
+          path.join(tmpRoot, "!foo", "a.ts"),
+          "literal bang\n",
+        );
+      } else {
+        await fs.writeFile(path.join(tmpRoot, "#file"), "literal hash\n");
+      }
+      const result = await globHandler(runtime, message, state, {
+        parameters: { pattern },
+      });
+
+      expect(result.success).toBe(true);
+      const files = (result.data as { files: string[] }).files;
+      expect(files).toHaveLength(1);
+      expect(files[0]?.endsWith(included)).toBe(true);
+    },
+  );
+
   it("fails when roomId is missing", async () => {
     const { runtime } = await buildRuntime();
     const result = await globHandler(runtime, {} as Memory, state, {
@@ -365,6 +392,9 @@ describe("matchesGlobPattern runtime contract", () => {
     [".hidden-dir/inside.ts", "**/*.ts", false],
     [".hidden-dir/inside.ts", ".hidden-dir/**/*.ts", true],
     ["foo/a.ts", "{foo,bar}/**/*.ts", true],
+    ["!foo/a.ts", "!foo/a.ts", true],
+    ["foo/a.ts", "!foo/a.ts", false],
+    ["#file", "#file", true],
   ] as const)("matches %s against %s as %s", (candidate, pattern, expected) => {
     expect(matchesGlobPattern(candidate, pattern)).toBe(expected);
   });
