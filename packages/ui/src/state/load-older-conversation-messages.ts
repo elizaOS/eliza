@@ -1,8 +1,8 @@
 /**
  * Orchestrates one older-page load for the infinite upward scroll (#13532).
  *
- * The cursor is the timestamp of the oldest currently retained message. The
- * caller owns scroll anchoring; this helper owns the API cursor, transcript
+ * The cursor is the timestamp and id of the oldest retained message. The caller
+ * owns scroll anchoring; this helper owns the API cursor, transcript
  * filtering, prepend dispatch, and the `hasMore` result that gates the next
  * fetch. Fully non-renderable pages advance the cursor in-invocation because
  * the retained-oldest cursor alone can never move past them.
@@ -17,6 +17,7 @@ export interface LoadOlderClient {
     options?: {
       signal?: AbortSignal;
       before?: number;
+      beforeId?: string;
       limit?: number;
     },
   ): Promise<{ messages: ConversationMessage[]; hasMore?: boolean }>;
@@ -26,8 +27,8 @@ export interface LoadOlderConversationMessagesDeps {
   client: LoadOlderClient;
   conversationId: string;
   /**
-   * The thread as currently held (oldest first). The `before` cursor is the
-   * first element's timestamp; an empty thread has no cursor to page below.
+   * The thread as currently held (oldest first). The cursor is the first
+   * element's timestamp and id; an empty thread has no cursor to page below.
    */
   currentMessages: ConversationMessage[];
   /** Prepend the older, renderable turns in front of the thread. */
@@ -37,6 +38,8 @@ export interface LoadOlderConversationMessagesDeps {
   signal?: AbortSignal;
   /** Cursor returned by a prior time-sliced filtered-page traversal. */
   before?: number;
+  /** ID paired with `before` when resuming a filtered-page traversal. */
+  beforeId?: string;
   /** Wall-clock budget for one scroll action; traversal resumes on the next action. */
   maxDurationMs?: number;
   /** Deterministic clock seam for tests. */
@@ -50,6 +53,8 @@ export interface LoadOlderResult {
   prependedCount: number;
   /** Continuation for filtered pages when the current operation time slice ends. */
   resumeBefore?: number;
+  /** ID paired with `resumeBefore` for an exact continuation. */
+  resumeBeforeId?: string;
 }
 
 const DEFAULT_FILTERED_TRAVERSAL_DURATION_MS = 1_000;
@@ -78,13 +83,20 @@ export async function loadOlderConversationMessages(
       : DEFAULT_FILTERED_TRAVERSAL_DURATION_MS;
   const deadlineAt = now() + maxDurationMs;
   let cursor = deps.before ?? oldest.timestamp;
-  const seenCursors = new Set<number>([cursor]);
+  let cursorId = deps.beforeId ?? oldest.id;
+  const seenCursors = new Set<string>([`${cursor}:${cursorId}`]);
   while (true) {
     if (now() >= deadlineAt) {
-      return { hasMore: true, prependedCount: 0, resumeBefore: cursor };
+      return {
+        hasMore: true,
+        prependedCount: 0,
+        resumeBefore: cursor,
+        resumeBeforeId: cursorId,
+      };
     }
     const response = await client.getConversationMessages(conversationId, {
       before: cursor,
+      beforeId: cursorId,
       ...(limit !== undefined ? { limit } : {}),
       ...(signal ? { signal } : {}),
     });
@@ -108,18 +120,30 @@ export async function loadOlderConversationMessages(
     // the retained thread's oldest message can't move, so without this hop the
     // next attempt would refetch this exact page.
     const nextCursor = response.messages[0].timestamp;
+    const nextCursorId = response.messages[0].id;
+    const nextCursorKey = `${nextCursor}:${nextCursorId}`;
     if (
       typeof nextCursor !== "number" ||
       !Number.isFinite(nextCursor) ||
-      nextCursor >= cursor ||
-      seenCursors.has(nextCursor)
+      typeof nextCursorId !== "string" ||
+      nextCursorId.length === 0 ||
+      nextCursor > cursor ||
+      (nextCursor === cursor &&
+        nextCursorId.toLowerCase() >= cursorId.toLowerCase()) ||
+      seenCursors.has(nextCursorKey)
     ) {
       throw new Error("Conversation pagination did not return an older cursor");
     }
-    seenCursors.add(nextCursor);
+    seenCursors.add(nextCursorKey);
     cursor = nextCursor;
+    cursorId = nextCursorId;
     if (now() >= deadlineAt) {
-      return { hasMore: true, prependedCount: 0, resumeBefore: cursor };
+      return {
+        hasMore: true,
+        prependedCount: 0,
+        resumeBefore: cursor,
+        resumeBeforeId: cursorId,
+      };
     }
   }
 }

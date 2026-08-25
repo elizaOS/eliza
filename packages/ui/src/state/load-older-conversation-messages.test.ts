@@ -51,7 +51,11 @@ describe("loadOlderConversationMessages", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0].id).toBe("conv-1");
-    expect(calls[0].options).toMatchObject({ before: 20, limit: 50 });
+    expect(calls[0].options).toMatchObject({
+      before: 20,
+      beforeId: "b",
+      limit: 50,
+    });
   });
 
   it("prepends renderable older turns and reports hasMore", async () => {
@@ -109,10 +113,10 @@ describe("loadOlderConversationMessages", () => {
     // The retained-oldest cursor alone would refetch this exact page forever;
     // the in-invocation hop must advance below it and prepend page 2.
     const prependMessages = vi.fn();
-    const calls: Array<{ before?: number }> = [];
+    const calls: Array<{ before?: number; beforeId?: string }> = [];
     const client: LoadOlderClient = {
       getConversationMessages: vi.fn(async (_id, options) => {
-        calls.push({ before: options?.before });
+        calls.push({ before: options?.before, beforeId: options?.beforeId });
         if (options?.before === 100) {
           return {
             messages: [blankAssistant("s1", 60), blankAssistant("s2", 70)],
@@ -133,7 +137,10 @@ describe("loadOlderConversationMessages", () => {
       prependMessages,
     });
 
-    expect(calls.map((c) => c.before)).toEqual([100, 60]);
+    expect(calls).toEqual([
+      { before: 100, beforeId: "c" },
+      { before: 60, beforeId: "s1" },
+    ]);
     expect(
       prependMessages.mock.calls[0][0].map((m: ConversationMessage) => m.id),
     ).toEqual(["a", "b"]);
@@ -219,6 +226,7 @@ describe("loadOlderConversationMessages", () => {
       hasMore: true,
       prependedCount: 0,
       resumeBefore: 97,
+      resumeBeforeId: "silent-3",
     });
 
     clock = 0;
@@ -228,6 +236,7 @@ describe("loadOlderConversationMessages", () => {
       currentMessages: [userMsg("current", 100)],
       prependMessages: () => {},
       before: result.resumeBefore,
+      beforeId: result.resumeBeforeId,
       maxDurationMs: 1,
       now: () => clock,
     });

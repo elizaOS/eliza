@@ -1982,6 +1982,7 @@ export function ChatOverlay({
   const loadOlderResumeRef = React.useRef<{
     conversationId: string | null;
     before?: number;
+    beforeId?: string;
   }>({ conversationId: activeConversationId });
   const fetchOlder = React.useCallback(async () => {
     const conversationId = activeConversationId;
@@ -1994,6 +1995,7 @@ export function ChatOverlay({
       conversationId,
       currentMessages: conversationMessages,
       before: loadOlderResumeRef.current.before,
+      beforeId: loadOlderResumeRef.current.beforeId,
       prependMessages: (older) => {
         if (loadOlderConversationIdRef.current === conversationId) {
           prependConversationMessages(older);
@@ -2004,6 +2006,7 @@ export function ChatOverlay({
       loadOlderResumeRef.current = {
         conversationId,
         before: result.resumeBefore,
+        beforeId: result.resumeBeforeId,
       };
     }
     return result;
