@@ -33,4 +33,19 @@ describe("normalizeCalendarAttendees (planner-arg sanitization)", () => {
     expect(normalizeCalendarAttendees({})).toBeUndefined();
     expect(normalizeCalendarAttendees(undefined)).toBeUndefined();
   });
+
+  it("CALENDAR_DETAILS_PARAMETER_SCHEMA attendees.items has no conflicting type above anyOf", async () => {
+    const { CALENDAR_DETAILS_PARAMETER_SCHEMA } = await import(
+      "../calendar-action-schema.ts"
+    );
+    const attendees = CALENDAR_DETAILS_PARAMETER_SCHEMA.properties
+      ?.attendees as {
+      items?: { type?: string; anyOf?: unknown[] };
+    };
+    expect(attendees?.items?.type).toBeUndefined();
+    expect(Array.isArray(attendees?.items?.anyOf)).toBe(true);
+    expect(
+      CALENDAR_DETAILS_PARAMETER_SCHEMA.properties?.notify_attendees,
+    ).toEqual({ type: "boolean" });
+  });
 });

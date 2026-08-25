@@ -96,6 +96,8 @@ const CALENDAR_DETAIL_BOOLEAN_KEYS = [
   "forcesync",
   "force_sync",
   "notifyAttendees",
+  "notifyattendees",
+  "notify_attendees",
 ] as const;
 
 const CALENDAR_DETAIL_RECURRENCE_KEYS = [
@@ -142,7 +144,6 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
     attendees: {
       type: "array",
       items: {
-        type: "object",
         anyOf: [
           { type: "string" },
           {
