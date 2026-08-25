@@ -11,7 +11,7 @@ const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-000000000004";
 const GENERATION = "00000000-0000-4000-8000-000000000002";
 const PUBLICATION_ID = "00000000-0000-4000-8000-000000000003";
 const ENDPOINT_SHA256 =
-  "73eb701612c13ee660f3598e5309e6ce83743070eb648ea7670a57e060047e11";
+  "4bd23c045b9b9ee9fece3064056f68f5d7505c0e63b93439ecfa8f8d13b64a40";
 
 const PREV_MOCK = process.env.MOCK_REDIS;
 
@@ -97,6 +97,7 @@ describe("MemoryRedisAdapter (MOCK_REDIS=1)", () => {
         generation: GENERATION,
         kind: "dedicated-sandbox" as const,
         serverName: `sandbox-${GENERATION}`,
+        runtimeAgentId: RUNTIME_AGENT_ID,
         registryUrl: "https://sandbox.internal:3000/",
         bridgeUrl: "http://100.64.0.2:3000",
         healthUrl: "http://100.64.0.2:3000/health",
