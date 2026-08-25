@@ -137,4 +137,15 @@ describe("truncateToCompleteSentence", () => {
 	it("returns text unchanged when it already fits", () => {
 		expect(truncateToCompleteSentence("short", 280)).toBe("short");
 	});
+
+	it("guards against non-finite and non-integer maxLength", () => {
+		expect(
+			truncateToCompleteSentence("Hello world. More text.", Number.NaN),
+		).toBe("");
+		expect(
+			truncateToCompleteSentence("Hello world.", Number.POSITIVE_INFINITY),
+		).toBe("");
+		expect(truncateToCompleteSentence("Hello world.", 5.5)).toBe("");
+		expect(truncateToCompleteSentence("Hello world.", -1)).toBe("");
+	});
 });

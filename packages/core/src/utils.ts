@@ -1006,7 +1006,12 @@ export function truncateToCompleteSentence(
 	text: string,
 	maxLength: number,
 ): string {
-	if (maxLength <= 0) return "";
+	if (
+		!Number.isFinite(maxLength) ||
+		!Number.isInteger(maxLength) ||
+		maxLength <= 0
+	)
+		return "";
 	if (text.length <= maxLength) {
 		return text;
 	}
