@@ -58,12 +58,13 @@ export async function bootstrapTelegramMembershipAccount(input: {
     }
     return stored.id as UUID;
   } catch (error) {
-    // error-policy:J4 Bootstrap failure is reported once; membership admission
-    // stays fail-closed until a later boot succeeds.
-    input.runtime.reportError("telegram:membership-bootstrap", error, {
-      botTelegramUserId: input.botTelegramUserId,
+    // error-policy:J2 Bootstrap failure must stay distinguishable from an
+    // absent connector-account manager: wrap and rethrow so the service
+    // records a BROKEN gate (fail-closed group admission) instead of
+    // silently degrading to the absent-authority legacy allow mode.
+    throw new Error("Telegram membership connector-account bootstrap failed", {
+      cause: error,
     });
-    return null;
   }
 }
 

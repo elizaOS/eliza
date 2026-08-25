@@ -1559,6 +1559,36 @@ export class MessageManager {
         return;
       }
 
+      // Get chat type and determine channel type
+      const chat = message.chat as Chat;
+      const channelType = getChannelType(chat);
+
+      // Membership admission gate: group/supergroup chats require canonical
+      // membership authority. DMs stay under the DM policy; channels have no
+      // inbound admission surface in this connector. The gate runs BEFORE
+      // processMessage and ensureConnection so a denied sender can neither
+      // trigger media fetch/vision work nor mutate room-participant state;
+      // the authority bootstraps the principal entity itself when evidence
+      // needs the row.
+      if (channelType === ChannelType.GROUP) {
+        const admitted = await this.telegramMembershipGate.authorizeMessage({
+          chatId: telegramChatId,
+          chatRoomKey: this.scopedTelegramKey(telegramChatId),
+          chatType: chat.type,
+          principalEntityId: entityId,
+          telegramUserId,
+          runtimeMapping: { worldId, roomId, entityId },
+          getChatMember: async () =>
+            ctx.telegram.getChatMember(
+              Number(telegramChatId),
+              Number(telegramUserId),
+            ),
+        });
+        if (!admitted) {
+          return;
+        }
+      }
+
       // Process message content and attachments
       const { processedContent, attachments } =
         await this.processMessage(message);
@@ -1575,10 +1605,6 @@ export class MessageManager {
       if (!cleanedContent && cleanedAttachments.length === 0) {
         return;
       }
-
-      // Get chat type and determine channel type
-      const chat = message.chat as Chat;
-      const channelType = getChannelType(chat);
 
       await this.runtime.ensureConnection({
         entityId,
@@ -1601,29 +1627,6 @@ export class MessageManager {
         worldId,
         worldName: telegramRoomid,
       });
-
-      // Membership admission gate: group/supergroup chats require canonical
-      // membership authority. DMs stay under the DM policy; channels have no
-      // inbound admission surface in this connector. The gate runs after
-      // ensureConnection so the principal entity row exists for reconciles.
-      if (channelType === ChannelType.GROUP) {
-        const admitted = await this.telegramMembershipGate.authorizeMessage({
-          chatId: telegramChatId,
-          chatRoomKey: this.scopedTelegramKey(telegramChatId),
-          chatType: chat.type,
-          principalEntityId: entityId,
-          telegramUserId,
-          runtimeMapping: { worldId, roomId, entityId },
-          getChatMember: async () =>
-            ctx.telegram.getChatMember(
-              Number(telegramChatId),
-              Number(telegramUserId),
-            ),
-        });
-        if (!admitted) {
-          return;
-        }
-      }
 
       // Create the memory object
       const memory: Memory = {
