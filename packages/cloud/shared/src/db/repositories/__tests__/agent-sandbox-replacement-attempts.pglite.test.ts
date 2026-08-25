@@ -633,6 +633,7 @@ async function completeCurrentActivationForAdmission(): Promise<string> {
   const [active] = await dbWrite
     .update(agentSandboxes)
     .set({
+      docker_image: "ghcr.io/elizaos/eliza:old",
       image_digest: IMAGE_DIGEST,
       activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
       activation_phase: "active",
@@ -1723,6 +1724,52 @@ describe("agent sandbox replacement attempts", () => {
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
   });
 
+  test("adopts provider success after admission against the immutable previous publication", async () => {
+    const expectedLifecycleRevision = await completeCurrentActivationForAdmission();
+    const admitted = await dbWrite.transaction((tx) =>
+      admitAndStartAgentSandboxReplacementInTransaction(
+        tx,
+        admissionInput({ expectedLifecycleRevision }),
+      ),
+    );
+    await persistSuccessfulProviderAttemptAfterExistingStart(ATTEMPT_ID);
+
+    const committed = await dbWrite.transaction((tx) =>
+      commitAgentSandboxReplacementLifecycleAdoptionInTransaction(tx, {
+        ...admitted.startInput,
+        locator: locator("final"),
+        previousPlacement: admitted.previousPlacement,
+        canonicalPatch: {
+          ...adoptionInput().canonicalPatch,
+          previousDockerImage: "ghcr.io/elizaos/eliza:old",
+          previousImageDigest: IMAGE_DIGEST,
+        },
+        providerReceiptDigest: PROVIDER_DIGEST,
+        lifecycleReceiptDigest: LIFECYCLE_DIGEST,
+      }),
+    );
+
+    expect(committed).toMatchObject({
+      replayed: false,
+      attempt: {
+        state: "lifecycle_committed",
+        activation_generation: NEXT_ACTIVATION_GENERATION,
+        previous_container_id: PREVIOUS_CONTAINER_ID,
+        previous_cleanup_state: "pending",
+      },
+    });
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      sandbox_id: CONTAINER_NAME,
+      node_id: "robot-node-a",
+      replacement_cleanup_attempt_id: ATTEMPT_ID,
+      replacement_cleanup_container_id: PREVIOUS_CONTAINER_ID,
+      activation_previous_generation: ACTIVATION_GENERATION,
+      activation_generation: NEXT_ACTIVATION_GENERATION,
+    });
+  });
+
   test("derives restore activation authority while revalidating its operation and lease", async () => {
     const { restoreAuthority } = await seedRestoreCapacityAuthority();
     const [sleeping] = await dbWrite
@@ -1784,6 +1831,7 @@ describe("agent sandbox replacement attempts", () => {
     expect(
       (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
     ).toMatchObject({
+      status: "provisioning",
       activation_previous_generation: null,
       activation_generation: RESTORE_ATTEMPT_ID,
       activation_lifecycle_revision: 9n,
@@ -1838,6 +1886,60 @@ describe("agent sandbox replacement attempts", () => {
         previous_cleanup_proven_at: null,
         previous_cleanup_receipt_digest: null,
       },
+    });
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({ status: "provisioning" });
+  });
+
+  test("atomically moves an unplaced sleeping wake into provisioning before provider work", async () => {
+    const [sleeping] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "sleeping",
+        sandbox_id: null,
+        node_id: null,
+        container_name: null,
+        activation_generation: null,
+        activation_previous_generation: null,
+        activation_lifecycle_revision: null,
+        activation_purpose: null,
+        activation_phase: null,
+        activation_token_hash: null,
+        activation_token_ciphertext: null,
+        updated_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID))
+      .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
+    if (!sleeping) throw new Error("Expected sleeping wake admission fixture");
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 0 })
+      .where(eq(dockerNodes.id, PREVIOUS_NODE_RECORD_ID));
+
+    const admitted = await dbWrite.transaction((tx) =>
+      admitAndStartAgentSandboxReplacementInTransaction(
+        tx,
+        admissionInput({
+          operationKind: "provision",
+          activationPurpose: "wake",
+          expectedLifecycleRevision: sleeping.lifecycleRevision.toString(),
+        }),
+      ),
+    );
+
+    expect(admitted).toMatchObject({
+      previousPlacement: null,
+      startInput: { operationKind: "provision" },
+      attempt: { previous_placement_absent: true },
+    });
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      status: "provisioning",
+      activation_purpose: "wake",
+      activation_phase: "container_pending",
+      activation_generation: NEXT_ACTIVATION_GENERATION,
     });
   });
 

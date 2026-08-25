@@ -24,7 +24,11 @@ import {
   type AgentSandboxReplacementOperationKind,
   agentSandboxReplacementAttempts,
 } from "../schemas/agent-sandbox-replacement-attempts";
-import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
+import {
+  type AgentSandboxStatus,
+  agentSandboxBackups,
+  agentSandboxes,
+} from "../schemas/agent-sandboxes";
 import { dockerNodes, PLACEABLE_NODE_STATE } from "../schemas/docker-nodes";
 import { organizations } from "../schemas/organizations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
@@ -999,7 +1003,7 @@ interface LockedAgentSandboxAuthority {
   activationConsentHeadBackupHash: string | null;
   lifecycleJobId: string | null;
   lifecycleExecutionGeneration: string | null;
-  status: string;
+  status: AgentSandboxStatus;
   deletedAt: Date | null;
   deletionAttemptId: string | null;
   deletionAllocationCounted: boolean | null;
@@ -1284,12 +1288,13 @@ function classifyPreviousPlacementAbsent(
       sandbox.activationPurpose === "provision" &&
       expected.restoreAuthority === null &&
       ["pending", "provisioning"].includes(sandbox.status);
-    const wake = sandbox.activationPurpose === "wake" && sandbox.status === "sleeping";
+    const wake =
+      sandbox.activationPurpose === "wake" && ["sleeping", "provisioning"].includes(sandbox.status);
     const restore =
       sandbox.activationPurpose === "restore" &&
       expected.restoreAuthority !== null &&
       sandbox.activationGeneration === expected.restoreAuthority.restoreAttemptId &&
-      sandbox.status === "sleeping";
+      ["sleeping", "provisioning"].includes(sandbox.status);
     if (
       (hasAnyReplacementCleanupAuthority(sandbox) && !allowAdvancedLifecycleRevision) ||
       expected.operationKind !== "provision" ||
@@ -1297,7 +1302,7 @@ function classifyPreviousPlacementAbsent(
       sandbox.deletionAllocationCounted === true
     ) {
       throw conflict(
-        "Only a fresh provision or sleeping wake may own an absent placement",
+        "Only a fresh provision or admitted wake/restore may own an absent placement",
         expected,
       );
     }
@@ -2055,9 +2060,16 @@ export async function admitAndStartAgentSandboxReplacementInTransaction(
   const sandbox = await lockAgentSandboxAuthority(tx, admission);
   assertReplacementAdmissionPreState(sandbox, admission);
   const databaseNow = await readPostLockDatabaseNow(tx);
+  // A no-placement lifecycle must become visibly non-routable before any
+  // provider effect. This folds the legacy sleeping/pending -> provisioning
+  // CAS into the same transaction as activation rotation and attempt start.
+  // Existing-placement upgrades keep serving on their current status until
+  // the later exact adoption/publication sequence takes ownership.
+  const admittedStatus = sandbox.sandboxId === null ? "provisioning" : sandbox.status;
   const [rotated] = await tx
     .update(agentSandboxes)
     .set({
+      status: admittedStatus,
       activation_previous_generation: sandbox.activationGeneration,
       activation_generation: admission.targetActivationGeneration,
       activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
@@ -2100,6 +2112,7 @@ export async function admitAndStartAgentSandboxReplacementInTransaction(
       ),
     )
     .returning({
+      status: agentSandboxes.status,
       lifecycleRevision: agentSandboxes.lifecycle_revision,
       activationGeneration: agentSandboxes.activation_generation,
       activationPreviousGeneration: agentSandboxes.activation_previous_generation,
@@ -2111,6 +2124,7 @@ export async function admitAndStartAgentSandboxReplacementInTransaction(
     });
   if (
     !rotated ||
+    rotated.status !== admittedStatus ||
     BigInt(rotated.lifecycleRevision) !== admission.expectedLifecycleRevision + 1n ||
     rotated.activationGeneration !== admission.targetActivationGeneration ||
     rotated.activationPreviousGeneration !== sandbox.activationGeneration ||
