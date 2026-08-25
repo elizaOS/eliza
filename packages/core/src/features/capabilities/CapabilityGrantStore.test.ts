@@ -4,11 +4,14 @@
  * itself), grant CRUD with vocabulary validation, live-grant filtering
  * (expiry + revocation in SQL), deny-wins over simultaneous allows and over
  * the role tier, constraints intersection with incompatible→deny, fail-closed
- * `authorizeCapability` semantics, per-decision audit rows with redaction by
- * construction, optimistic-version conflicts, revocation-epoch bumps,
- * quarantined legacy selectors, and restart survival — the store is opened,
- * closed, and reopened on the SAME disk data dir with grants created in the
- * first process authoritative in the second.
+ * `authorizeCapability` semantics (malformed resources and world ids,
+ * store-unavailable, audit-failure reporting through the injected hook),
+ * audit sanitization of malformed inputs, per-decision audit rows,
+ * optimistic-version conflicts, revocation-epoch bumps, typed constraint
+ * intersection, quarantined legacy vocabulary rows, world-aware active-policy
+ * uniqueness, and restart survival — the store is opened, closed, and
+ * reopened on the SAME disk data dir with grants created in the first
+ * process authoritative in the second.
  */
 
 import fs from "node:fs";
@@ -34,6 +37,7 @@ import {
 	CAPABILITY_REASON_CODES,
 	canonicalizeCapabilitySubject,
 	canonicalizeResourceSelector,
+	intersectGrantConstraints,
 	selectorMatchesResource,
 	validateCapabilityName,
 } from "./types.ts";
@@ -809,5 +813,286 @@ describe("enforcement inventory", () => {
 			expect(typeof entry.description).toBe("string");
 			expect(entry.description.length).toBeGreaterThan(10);
 		}
+	});
+});
+
+describe("RP review round-2 coverage", () => {
+	it("selector charset rejects whitespace, quotes, backslashes, non-ASCII", () => {
+		expect(canonicalizeResourceSelector("media/ file").ok).toBe(false);
+		expect(canonicalizeResourceSelector('media/"x"').ok).toBe(false);
+		expect(canonicalizeResourceSelector("media/\\x").ok).toBe(false);
+		expect(canonicalizeResourceSelector("media/файл").ok).toBe(false);
+		expect(canonicalizeResourceSelector("media/a\tb").ok).toBe(false);
+		expect(canonicalizeResourceSelector("media:general/id-1.2_x").ok).toBe(
+			true,
+		);
+	});
+
+	it("malformed resource and worldId deny as INVALID_REQUEST with sanitized audit rows", async () => {
+		const badResource = await authorizeCapability(store.db, {
+			subject: SUBJECT_ENTITY,
+			agentId: AGENT,
+			capability: "media.read",
+			resource: 42 as unknown as string,
+		});
+		expect(badResource.reasonCode).toBe(
+			CAPABILITY_REASON_CODES.INVALID_REQUEST,
+		);
+		const badWorld = await authorizeCapability(store.db, {
+			subject: SUBJECT_ENTITY,
+			agentId: AGENT,
+			worldId: "not-a-uuid" as UUID,
+			capability: "media.read",
+			resource: "media/abc",
+		});
+		expect(badWorld.reasonCode).toBe(CAPABILITY_REASON_CODES.INVALID_REQUEST);
+		const audit = await listCapabilityAudit(store.db, { limit: 50 });
+		const row = audit.find((r) => r.id === badResource.auditId);
+		expect(row?.resource).toBe("<non-string>");
+	});
+
+	it("truncates over-long audit resources at the 512-char cap", async () => {
+		const truncSubject = "entity:00000000-0000-4000-8000-00000000e804";
+		const longResource = `media/${"x".repeat(600)}`;
+		const result = await authorizeCapability(store.db, {
+			subject: truncSubject,
+			agentId: AGENT,
+			capability: "media.read",
+			resource: longResource,
+		});
+		expect(result.reasonCode).toBe(CAPABILITY_REASON_CODES.NO_MATCHING_GRANT);
+		const audit = await listCapabilityAudit(store.db, { limit: 50 });
+		const row = audit.find((r) => r.id === result.auditId);
+		expect(row?.resource.length).toBeLessThanOrEqual(512);
+		expect(row?.resource.endsWith("...")).toBe(true);
+	});
+
+	it("store-unavailable denies fail-closed", async () => {
+		const broken: CapabilityStoreDb = {
+			execute: () => {
+				throw new Error("ddl down");
+			},
+			select: () => {
+				throw new Error("read down");
+			},
+			insert: () => {
+				throw new Error("write down");
+			},
+			update: () => {
+				throw new Error("update down");
+			},
+			transaction: () => {
+				throw new Error("tx down");
+			},
+		};
+		const result = await authorizeCapability(broken, {
+			subject: SUBJECT_ENTITY,
+			agentId: AGENT,
+			capability: "media.read",
+			resource: "media/abc",
+		});
+		expect(result.decision).toBe("deny");
+		expect(result.reasonCode).toBe(CAPABILITY_REASON_CODES.STORE_UNAVAILABLE);
+	});
+
+	it("audit-write failure is reported through onAuditFailure and the decision stands", async () => {
+		const failures: unknown[] = [];
+		// Reads delegate (preserving drizzle's receiver); inserts throw —
+		// exactly the audit-sink failure shape.
+		const wrapped: CapabilityStoreDb = {
+			execute: (query) => store.db.execute(query),
+			select: (...args) => store.db.select(...args),
+			insert: () => {
+				throw new Error("audit insert down");
+			},
+			update: (table) => store.db.update(table),
+			transaction: (cb) => store.db.transaction(cb),
+		};
+		const grant = await createCapabilityGrant(store.db, {
+			subject: SUBJECT_ENTITY,
+			agentId: AGENT,
+			worldId: null,
+			capability: "media.read",
+			resourceSelector: "*",
+			effect: "allow",
+			issuer: ISSUER,
+			provenance: "api",
+		});
+		expect(grant.id).toBeTruthy();
+		const result = await authorizeCapability(wrapped, {
+			subject: SUBJECT_ENTITY,
+			agentId: AGENT,
+			capability: "media.read",
+			resource: "media/abc",
+			onAuditFailure: (error) => failures.push(error),
+		});
+		expect(result.decision).toBe("allow");
+		expect(result.auditId).toBeTruthy();
+		expect(failures.length).toBeGreaterThan(0);
+		const row = await listCapabilityAudit(store.db, { limit: 200 });
+		expect(row.find((r) => r.id === result.auditId)).toBeUndefined();
+	});
+
+	it("nearest expiry across multiple matching allows governs the decision", async () => {
+		const s = "entity:00000000-0000-4000-8000-00000000e801";
+		const now = Date.now();
+		await createCapabilityGrant(store.db, {
+			subject: s,
+			agentId: AGENT,
+			worldId: null,
+			capability: "api.route.admin",
+			resourceSelector: "*",
+			effect: "allow",
+			issuer: ISSUER,
+			expiresAt: new Date(now + 10 * MINUTE),
+			provenance: "api",
+		});
+		const near = await createCapabilityGrant(store.db, {
+			subject: s,
+			agentId: AGENT,
+			worldId: null,
+			capability: "api.route.admin",
+			resourceSelector: "route:admin/*",
+			effect: "allow",
+			issuer: ISSUER,
+			expiresAt: new Date(now + 2 * MINUTE),
+			provenance: "api",
+		});
+		const result = await authorizeCapability(store.db, {
+			subject: s,
+			agentId: AGENT,
+			capability: "api.route.admin",
+			resource: "route:admin/x",
+			now,
+		});
+		expect(result.decision).toBe("allow");
+		expect(result.expiresAt?.getTime()).toBe(near.expiresAt?.getTime());
+	});
+
+	it("typed array intersection keeps values type-separate and deduplicates", () => {
+		const merged = intersectGrantConstraints([
+			{ constraints: { channels: ["a", 1, true] } },
+			{ constraints: { channels: [1, "a", "b", true, 2] } },
+		]);
+		expect(merged.ok).toBe(true);
+		if (merged.ok) {
+			expect(merged.constraints.channels).toEqual([1, "a", true]);
+		}
+		const incompatible = intersectGrantConstraints([
+			{ constraints: { shape: { a: 1 } } },
+			{ constraints: { shape: { a: 2 } } },
+		]);
+		expect(incompatible.ok).toBe(false);
+		const structuralOk = intersectGrantConstraints([
+			{ constraints: { shape: { a: 1, b: [1, 2] } } },
+			{ constraints: { shape: { b: [1, 2], a: 1 } } },
+		]);
+		expect(structuralOk.ok).toBe(true);
+	});
+
+	it("quarantines legacy rows with malformed issuer or capability vocabulary", async () => {
+		const s = "entity:00000000-0000-4000-8000-00000000e802";
+		await store.client.exec(
+			`INSERT INTO capabilities.capability_grants (subject, agent_id, capability, resource_selector, effect, issuer, provenance)
+			 VALUES ('${s}', '${AGENT}', 'media.read', '*', 'allow', 'not-an-issuer', 'api')`,
+		);
+		await store.client.exec(
+			`INSERT INTO capabilities.capability_grants (subject, agent_id, capability, resource_selector, effect, issuer, provenance)
+			 VALUES ('${s}', '${AGENT}', 'NOT A CAPABILITY', '*', 'allow', '${ISSUER}', 'api')`,
+		);
+		const live = await listLiveGrantsFor(store.db, {
+			subject: s,
+			agentId: AGENT,
+			capability: "media.read",
+		});
+		expect(live.length).toBe(0);
+	});
+
+	it("concurrent first store calls share one bootstrap (promise memoization)", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "capgrants-race-"));
+		try {
+			const client = new PGlite(dir);
+			const db = drizzle(client) as unknown as CapabilityStoreDb;
+			const reads = await Promise.all([
+				getCapabilityEpoch(db),
+				getCapabilityEpoch(db),
+				getCapabilityEpoch(db),
+			]);
+			expect(reads).toEqual([1, 1, 1]);
+			await client.close();
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("epoch read fails loudly when the singleton row is missing", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "capgrants-epoch-"));
+		try {
+			const client = new PGlite(dir);
+			const db = drizzle(client) as unknown as CapabilityStoreDb;
+			await getCapabilityEpoch(db);
+			await client.exec("DELETE FROM capabilities.capability_epoch");
+			await expect(getCapabilityEpoch(db)).rejects.toThrow(/missing/);
+			await client.close();
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("identical policies in distinct worlds and global+world coexistence are both legal", async () => {
+		const s = "entity:00000000-0000-4000-8000-00000000e803";
+		const base = {
+			subject: s,
+			agentId: AGENT,
+			capability: "device.command",
+			resourceSelector: "home/*",
+			effect: "allow" as const,
+			issuer: ISSUER,
+			provenance: "api" as const,
+		};
+		const w1 = await createCapabilityGrant(store.db, {
+			...base,
+			worldId: WORLD_1,
+		});
+		const w2 = await createCapabilityGrant(store.db, {
+			...base,
+			worldId: WORLD_2,
+		});
+		expect(w1.id).not.toBe(w2.id);
+		const global = await createCapabilityGrant(store.db, {
+			...base,
+			worldId: null,
+		});
+		expect(global.id).toBeTruthy();
+		await expect(
+			createCapabilityGrant(store.db, { ...base, worldId: WORLD_1 }),
+		).rejects.toThrow();
+	});
+
+	it("createCapabilityGrant validates agentId and worldId uuids", async () => {
+		await expect(
+			createCapabilityGrant(store.db, {
+				subject: SUBJECT_ENTITY,
+				agentId: "nope" as UUID,
+				worldId: null,
+				capability: "media.read",
+				resourceSelector: "*",
+				effect: "allow",
+				issuer: ISSUER,
+				provenance: "api",
+			}),
+		).rejects.toThrow(/agentId/);
+		await expect(
+			createCapabilityGrant(store.db, {
+				subject: SUBJECT_ENTITY,
+				agentId: AGENT,
+				worldId: "bad" as UUID,
+				capability: "media.read",
+				resourceSelector: "*",
+				effect: "allow",
+				issuer: ISSUER,
+				provenance: "api",
+			}),
+		).rejects.toThrow(/worldId/);
 	});
 });

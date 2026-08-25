@@ -133,6 +133,12 @@ export interface CapabilityAuthorizationRequest {
 	now?: number;
 	/** Optional role-tier composition hook (evaluated after grants). */
 	roleResolver?: CapabilityRoleResolver;
+	/**
+	 * Optional sink for audit-write and role-resolver failures. Production
+	 * boundaries wire this to `runtime.reportError`; without it the failures
+	 * are silent to the caller (the decision itself is already fail-closed).
+	 */
+	onAuditFailure?: (error: unknown) => void;
 }
 
 /** Canonical authorization decision returned by `authorizeCapability`. */
@@ -251,6 +257,14 @@ export function validateCapabilityName(
 }
 
 /**
+ * Allowlist for selector characters: printable ASCII letters, digits, `-`,
+ * `_`, `:`, `.`, `/`, the bare `*` (everything), or an optional trailing
+ * `/*` wildcard. Rejects whitespace, control characters, quotes,
+ * backslashes, and non-ASCII input.
+ */
+const SELECTOR_CHARSET = /^(?:\*|[A-Za-z0-9\-_:./]+(?:\/\*)?)$/;
+
+/**
  * Validates and canonicalizes a resource selector: `*`, an exact resource id
  * (non-empty, no `*`, no leading/trailing/double slashes), or `<prefix>/*`
  * matching the prefix's descendants. Validation runs at grant-creation time
@@ -271,6 +285,14 @@ export function canonicalizeResourceSelector(
 		return {
 			ok: false,
 			error: `resource selector exceeds 512 characters, got ${value.length}`,
+		};
+	}
+	// Strict charset (RP must-fix 3): printable ASCII only; star is legal
+	// solely as the trailing `/*` wildcard (checked below).
+	if (!SELECTOR_CHARSET.test(value)) {
+		return {
+			ok: false,
+			error: `selector characters must be printable ASCII letters, digits, or - _ : . / (no spaces, quotes, backslashes, or non-ASCII); got ${JSON.stringify(value)}`,
 		};
 	}
 	if (value === "*") {
@@ -351,6 +373,45 @@ export function parseCapabilityProvenance(
 		: null;
 }
 
+/** Scalar constraint values comparable by Set identity. */
+function isScalarConstraintValue(
+	value: unknown,
+): value is string | number | boolean | null {
+	return (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean" ||
+		value === null
+	);
+}
+
+/** Structural equality over JSON-shaped constraint values. */
+export function jsonValuesEqual(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (typeof a !== typeof b) return false;
+	if (a === null || b === null) return false;
+	if (Array.isArray(a) && Array.isArray(b)) {
+		return (
+			a.length === b.length && a.every((item, i) => jsonValuesEqual(item, b[i]))
+		);
+	}
+	if (typeof a === "object" && typeof b === "object") {
+		if (Array.isArray(a) || Array.isArray(b)) return false;
+		const ak = Object.keys(a as Record<string, unknown>);
+		const bk = Object.keys(b as Record<string, unknown>);
+		if (ak.length !== bk.length) return false;
+		return ak.every((key) =>
+			key in (b as Record<string, unknown>)
+				? jsonValuesEqual(
+						(a as Record<string, unknown>)[key],
+						(b as Record<string, unknown>)[key],
+					)
+				: false,
+		);
+	}
+	return false;
+}
+
 /**
  * Intersects the constraints of multiple matching allow grants:
  * most-restrictive wins per key (min for numbers, set intersection for
@@ -381,11 +442,22 @@ export function intersectGrantConstraints(
 				continue;
 			}
 			if (Array.isArray(existing) && Array.isArray(value)) {
-				const set = new Set(existing.map(String));
-				merged[key] = value.filter((item) => set.has(String(item)));
+				// Type-preserving intersection: identical scalars collapse to
+				// one entry; non-scalar items make the combination
+				// incompatible rather than guessed at.
+				const seen = new Set(existing.filter(isScalarConstraintValue));
+				const kept: unknown[] = [];
+				for (const item of value) {
+					if (isScalarConstraintValue(item) && seen.has(item)) {
+						if (!kept.includes(item)) {
+							kept.push(item);
+						}
+					}
+				}
+				merged[key] = kept;
 				continue;
 			}
-			if (existing !== value) {
+			if (!jsonValuesEqual(existing, value)) {
 				return { ok: false };
 			}
 		}

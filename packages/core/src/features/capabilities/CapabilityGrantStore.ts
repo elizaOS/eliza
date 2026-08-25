@@ -1,14 +1,15 @@
 /**
  * Data-access layer for durable per-principal capability grants (#23102).
  * Wraps the `capabilities` schema tables: validated insert, version-checked
- * update and revoke (both bump the global `capability_epoch` and the row's
- * `version`), live-grant lookup that filters expired and revoked rows in
- * SQL, and the append-only audit append used by `authorizeCapability`.
- * `ensureCapabilityGrantTables` self-migrates with idempotent DDL on first
- * use per process (TrajectoriesService pattern), so the tables exist
- * whenever any SQL database is attached — no plugin registration needed.
- * Reads through `listLiveGrantsFor` are authoritative; a revocation is
- * visible to the very next decision because there is no decision cache.
+ * update and revoke — each mutation and its `capability_epoch` bump commit
+ * in ONE transaction — uncapped live-grant lookup that filters expired and
+ * revoked rows in SQL, and the append-only audit append used by
+ * `authorizeCapability`. `ensureCapabilityGrantTables` self-migrates with
+ * idempotent DDL, memoizing the in-flight promise per client so concurrent
+ * first calls share one bootstrap, and the tables exist whenever any SQL
+ * database is attached — no plugin registration needed. Reads through
+ * `listLiveGrantsFor` are authoritative; a revocation is visible to the
+ * very next decision because there is no decision cache.
  */
 
 import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
@@ -26,6 +27,7 @@ import type {
 import {
 	canonicalizeCapabilitySubject,
 	canonicalizeResourceSelector,
+	isValidUuid,
 	parseCapabilityGrantEffect,
 	parseCapabilityProvenance,
 	truncateAuditResource,
@@ -61,6 +63,18 @@ function rowToGrant(row: GrantRow): CapabilityGrant | null {
 	const effect = parseCapabilityGrantEffect(row.effect);
 	const provenance = parseCapabilityProvenance(row.provenance);
 	if (effect === null || provenance === null) {
+		return null;
+	}
+	const subject = canonicalizeCapabilitySubject(row.subject);
+	if (!subject.ok) {
+		return null;
+	}
+	const issuer = canonicalizeCapabilitySubject(row.issuer);
+	if (!issuer.ok) {
+		return null;
+	}
+	const capability = validateCapabilityName(row.capability);
+	if (!capability.ok) {
 		return null;
 	}
 	const constraints =
@@ -120,7 +134,7 @@ const CAPABILITY_DDL = [
 	`CREATE INDEX IF NOT EXISTS capability_grants_subject_idx ON capabilities.capability_grants (subject)`,
 	`CREATE INDEX IF NOT EXISTS capability_grants_agent_idx ON capabilities.capability_grants (agent_id)`,
 	`CREATE INDEX IF NOT EXISTS capability_grants_capability_idx ON capabilities.capability_grants (capability)`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS capability_grants_active_uniq ON capabilities.capability_grants (subject, agent_id, capability, resource_selector, effect) WHERE revoked_at IS NULL`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS capability_grants_active_uniq ON capabilities.capability_grants (subject, agent_id, coalesce(world_id, '00000000-0000-0000-0000-000000000000'::uuid), capability, resource_selector, effect) WHERE revoked_at IS NULL`,
 	`CREATE TABLE IF NOT EXISTS capabilities.capability_audit_log (
 		id uuid PRIMARY KEY,
 		agent_id uuid NOT NULL,
@@ -147,7 +161,33 @@ const CAPABILITY_DDL = [
 	`INSERT INTO capabilities.capability_epoch (id, epoch) VALUES (1, 1) ON CONFLICT (id) DO NOTHING`,
 ];
 
-const ensuredClients = new WeakSet<object>();
+const ensuredClients = new WeakMap<object, Promise<void>>();
+
+export function ensureCapabilityGrantTables(
+	db: CapabilityStoreDb,
+	client?: object,
+): Promise<void> {
+	const key = client ?? (db as unknown as object);
+	let pending = ensuredClients.get(key);
+	if (!pending) {
+		pending = runCapabilityDdl(db).catch((error: unknown) => {
+			// A failed bootstrap must be retried by the next call, not cached
+			// as "done" — drop the memo only on failure; success is permanent.
+			if (ensuredClients.get(key) === pending) {
+				ensuredClients.delete(key);
+			}
+			throw error;
+		});
+		ensuredClients.set(key, pending);
+	}
+	return pending;
+}
+
+async function runCapabilityDdl(db: CapabilityStoreDb): Promise<void> {
+	for (const statement of CAPABILITY_DDL) {
+		await db.execute(sql.raw(statement));
+	}
+}
 
 /**
  * Minimal Drizzle-compatible DB shape this store uses. Mirrors the trust
@@ -163,24 +203,7 @@ export interface CapabilityStoreDb {
 	insert: (table: any) => any;
 	// biome-ignore lint/suspicious/noExplicitAny: chainable drizzle builder
 	update: (table: any) => any;
-}
-
-/**
- * Ensures the capability tables exist on the attached database. Memoized per
- * client object so repeated calls are one WeakSet lookup.
- */
-export async function ensureCapabilityGrantTables(
-	db: CapabilityStoreDb,
-	client?: object,
-): Promise<void> {
-	const key = client ?? (db as unknown as object);
-	if (ensuredClients.has(key)) {
-		return;
-	}
-	for (const statement of CAPABILITY_DDL) {
-		await db.execute(sql.raw(statement));
-	}
-	ensuredClients.add(key);
+	transaction: (cb: (tx: CapabilityStoreDb) => Promise<void>) => Promise<void>;
 }
 
 /** Reads the current revocation epoch (cache-invalidation watermark). */
@@ -193,7 +216,16 @@ export async function getCapabilityEpoch(
 		.from(capabilityEpoch)
 		.where(eq(capabilityEpoch.id, 1))
 		.limit(1)) as Array<{ epoch: number }>;
-	return rows[0]?.epoch ?? 1;
+	const row = rows[0];
+	if (!row) {
+		// The DDL bootstrap inserts this singleton; a missing row means the
+		// table was truncated or corrupted. Fail rather than fabricate an
+		// epoch that would falsely validate every cached decision.
+		throw new Error(
+			"[capability-grants] capability_epoch row 1 is missing (corrupt store state); refusing to fabricate an epoch",
+		);
+	}
+	return row.epoch;
 }
 
 /** Bumps the revocation epoch; every grant mutation calls this. */
@@ -244,6 +276,20 @@ export interface AuditRow {
 	createdAt: Date;
 }
 
+/**
+ * Runs `work` and the epoch bump in ONE transaction so a mutation and its
+ * cache-invalidation watermark commit atomically (RP must-fix 4).
+ */
+async function withEpochBump(
+	db: CapabilityStoreDb,
+	work: (tx: CapabilityStoreDb) => Promise<void>,
+): Promise<void> {
+	await db.transaction(async (tx) => {
+		await work(tx);
+		await bumpEpoch(tx);
+	});
+}
+
 /** Creates a durable grant after validating every vocabulary field. */
 export async function createCapabilityGrant(
 	db: CapabilityStoreDb,
@@ -262,6 +308,20 @@ export async function createCapabilityGrant(
 	if (!capability.ok) {
 		throw new Error(`[capability-grants] ${capability.error}`);
 	}
+	if (!isValidUuid(input.agentId)) {
+		throw new Error(
+			`[capability-grants] agentId must be a UUID, got ${JSON.stringify(input.agentId)}`,
+		);
+	}
+	if (
+		input.worldId !== undefined &&
+		input.worldId !== null &&
+		!isValidUuid(input.worldId)
+	) {
+		throw new Error(
+			`[capability-grants] worldId must be a UUID when provided, got ${JSON.stringify(input.worldId)}`,
+		);
+	}
 	const selector = canonicalizeResourceSelector(input.resourceSelector);
 	if (!selector.ok) {
 		throw new Error(`[capability-grants] ${selector.error}`);
@@ -277,22 +337,25 @@ export async function createCapabilityGrant(
 		);
 	}
 
-	const inserted = (await db
-		.insert(capabilityGrants)
-		.values({
-			subject: subject.subject,
-			agentId: input.agentId,
-			worldId: input.worldId ?? null,
-			capability: capability.capability,
-			resourceSelector: selector.selector,
-			effect: input.effect,
-			issuer: issuer.subject,
-			expiresAt: input.expiresAt ?? null,
-			constraints: input.constraints ?? {},
-			provenance: input.provenance,
-		})
-		.returning()) as GrantRow[];
-	const row = inserted[0];
+	let row: GrantRow | undefined;
+	await withEpochBump(db, async (tx) => {
+		const inserted = (await tx
+			.insert(capabilityGrants)
+			.values({
+				subject: subject.subject,
+				agentId: input.agentId.toLowerCase() as UUID,
+				worldId: input.worldId ? (input.worldId.toLowerCase() as UUID) : null,
+				capability: capability.capability,
+				resourceSelector: selector.selector,
+				effect: input.effect,
+				issuer: issuer.subject,
+				expiresAt: input.expiresAt ?? null,
+				constraints: input.constraints ?? {},
+				provenance: input.provenance,
+			})
+			.returning()) as GrantRow[];
+		row = inserted[0];
+	});
 	if (!row) {
 		throw new Error(
 			"[capability-grants] insert returned no row (store misbehavior)",
@@ -304,15 +367,16 @@ export async function createCapabilityGrant(
 			`[capability-grants] inserted row failed vocabulary re-parse: ${JSON.stringify({ effect: row.effect, provenance: row.provenance })}`,
 		);
 	}
-	await bumpEpoch(db);
 	return grant;
 }
 
 /**
- * Live grants for a subject × capability, ordered newest-issued first.
- * Expired (expiresAt <= now) and revoked rows are excluded in SQL; rows with
- * selectors that no longer canonicalize are quarantined after the read
- * (visible for management, never authoritative).
+ * Live grants for a subject × capability, ordered newest-issued first. The
+ * read is uncapped so deny-wins and full constraint intersection always see
+ * every live policy. Expired (expiresAt <= now) and revoked rows are
+ * excluded in SQL; rows whose subject/issuer/capability/selector no longer
+ * canonicalize are quarantined after the read (visible for management via
+ * getCapabilityGrant, never authoritative).
  */
 export async function listLiveGrantsFor(
 	db: CapabilityStoreDb,
@@ -348,8 +412,10 @@ export async function listLiveGrantsFor(
 				),
 			),
 		)
-		.orderBy(desc(capabilityGrants.issuedAt), desc(capabilityGrants.id))
-		.limit(500)) as GrantRow[];
+		.orderBy(
+			desc(capabilityGrants.issuedAt),
+			desc(capabilityGrants.id),
+		)) as GrantRow[];
 	return rows
 		.map(rowToGrant)
 		.filter((grant): grant is CapabilityGrant => grant !== null)
@@ -375,20 +441,23 @@ export async function updateCapabilityGrant(
 			error: "[capability-grants] update patch must set at least one field",
 		};
 	}
-	const updated = (await db
-		.update(capabilityGrants)
-		.set({
-			...patch,
-			version: sql`${capabilityGrants.version} + 1`,
-		})
-		.where(
-			and(
-				eq(capabilityGrants.id, input.id),
-				eq(capabilityGrants.version, input.expectedVersion),
-			),
-		)
-		.returning()) as GrantRow[];
-	const row = updated[0];
+	let row: GrantRow | undefined;
+	await withEpochBump(db, async (tx) => {
+		const updated = (await tx
+			.update(capabilityGrants)
+			.set({
+				...patch,
+				version: sql`${capabilityGrants.version} + 1`,
+			})
+			.where(
+				and(
+					eq(capabilityGrants.id, input.id),
+					eq(capabilityGrants.version, input.expectedVersion),
+				),
+			)
+			.returning()) as GrantRow[];
+		row = updated[0];
+	});
 	if (!row) {
 		const existing = (await db
 			.select()
@@ -416,7 +485,6 @@ export async function updateCapabilityGrant(
 			error: "[capability-grants] updated row failed vocabulary re-parse",
 		};
 	}
-	await bumpEpoch(db);
 	return { ok: true, grant };
 }
 
@@ -432,21 +500,24 @@ export async function revokeCapabilityGrant(
 ): Promise<RevokeGrantResult> {
 	await ensureCapabilityGrantTables(db);
 	const revokedAt = new Date(params.now ?? Date.now());
-	const updated = (await db
-		.update(capabilityGrants)
-		.set({
-			revokedAt,
-			revocationReason: params.reason ?? null,
-			version: sql`${capabilityGrants.version} + 1`,
-		})
-		.where(
-			and(
-				eq(capabilityGrants.id, params.id),
-				isNull(capabilityGrants.revokedAt),
-			),
-		)
-		.returning()) as GrantRow[];
-	const row = updated[0];
+	let row: GrantRow | undefined;
+	await withEpochBump(db, async (tx) => {
+		const updated = (await tx
+			.update(capabilityGrants)
+			.set({
+				revokedAt,
+				revocationReason: params.reason ?? null,
+				version: sql`${capabilityGrants.version} + 1`,
+			})
+			.where(
+				and(
+					eq(capabilityGrants.id, params.id),
+					isNull(capabilityGrants.revokedAt),
+				),
+			)
+			.returning()) as GrantRow[];
+		row = updated[0];
+	});
 	if (!row) {
 		const existing = (await db
 			.select()
@@ -475,7 +546,6 @@ export async function revokeCapabilityGrant(
 			error: "[capability-grants] revoked row failed vocabulary re-parse",
 		};
 	}
-	await bumpEpoch(db);
 	return { ok: true, grant };
 }
 

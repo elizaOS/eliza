@@ -1,11 +1,11 @@
 /**
- * Checked-in enforcement inventory for #23102 slice 1: the authoritative list
- * of privileged boundaries that the capability-grant system must eventually
- * enforce, with per-boundary status and owner. Slice 1 ships the inventory as
- * data; enforcement wiring (slices 2+) updates statuses here as boundaries
- * are connected to `authorizeCapability`. A test walks this list and fails
- * when a boundary is left unclassified, so no privileged boundary can
- * silently appear outside the inventory.
+ * Checked-in enforcement inventory for #23102 slice 1: the tracked list of
+ * privileged boundaries the capability-grant system must eventually enforce,
+ * with per-boundary status and owner. Slice 1 ships the inventory as data;
+ * enforcement wiring (slices 2+) updates statuses here as boundaries are
+ * connected to `authorizeCapability`. A test validates every entry's shape;
+ * completeness against newly added repo boundaries is a human review
+ * obligation until a codebase-wide classifier lands (slice 2+).
  */
 
 import type { CapabilityBoundaryInventoryEntry } from "./types.ts";

@@ -4,12 +4,13 @@
  * validate (fail closed) → deny grants → allow grants (constraints
  * intersected; incompatible → deny) → role tier (composition hook, only if a
  * resolver is provided and no grant matched) → deny NO_MATCHING_GRANT. Every
- * decision writes exactly one audit row whose id is generated UP FRONT so it
- * can be returned synchronously even when the audit write itself fails (that
- * failure is reported, never swallowed into an allow). There is deliberately
- * no decision cache — revocation is effective before the next call returns —
- * and no implicit allow. Boundaries that enforce call this function; nothing
- * reads `capabilities.capability_grants` directly.
+ * decision attempts exactly one audit row whose id is generated up front and
+ * returned even when the audit write itself fails; that failure is reported
+ * through the injected `onAuditFailure` hook (J7) and never converts a
+ * denial into an allow. There is deliberately no decision cache — revocation
+ * is effective before the next call returns — and no implicit allow.
+ * Boundaries that enforce call this function; nothing reads
+ * `capabilities.capability_grants` directly.
  */
 
 import type { UUID } from "../../types/index.ts";
@@ -29,33 +30,46 @@ import {
 	intersectGrantConstraints,
 	isValidUuid,
 	selectorMatchesResource,
+	truncateAuditResource,
 	validateCapabilityName,
 } from "./types.ts";
 
 /** Null-agent sentinel for auditing malformed requests safely. */
 const NIL_AGENT = "00000000-0000-0000-0000-000000000000" as UUID;
 
-/** Best-effort audit write; returns true when the row landed. */
+/**
+ * Optional sink for audit-write failures. Production callers wire this to
+ * `runtime.reportError(scope, error, context)`; the decision itself is
+ * unaffected (J7: diagnostics must not kill the loop).
+ */
+export type CapabilityAuditFailureReporter = (error: unknown) => void;
+
+/** Best-effort audit write; reports failures through `onAuditFailure`. */
 async function writeAudit(
 	db: CapabilityStoreDb,
 	input: Parameters<typeof appendCapabilityAudit>[1],
-): Promise<boolean> {
+	onAuditFailure?: CapabilityAuditFailureReporter,
+): Promise<void> {
 	try {
 		await appendCapabilityAudit(db, input);
-		return true;
 	} catch (error) {
-		// error-policy:J7 — audit-sink failure is reported (the caller's
-		// boundary logs it via runtime.reportError), never blocks the
+		// error-policy:J7 — audit-sink failure is reported to the injected
+		// hook (runtime.reportError at the boundary), never blocks the
 		// decision, and never converts a denial into an allow.
-		loggerAuditFailure(error);
-		return false;
+		onAuditFailure?.(error);
 	}
 }
 
-/** Isolated so tests can observe audit-failure reporting. */
-export const auditFailureReports: unknown[] = [];
-function loggerAuditFailure(error: unknown): void {
-	auditFailureReports.push(error);
+/**
+ * Sanitizes a raw request field for the audit row: non-strings become the
+ * literal marker, and strings are truncated to the audit resource cap so a
+ * malformed payload cannot smuggle unbounded bytes into the audit log.
+ */
+function auditSafeField(value: unknown): string {
+	if (typeof value !== "string") {
+		return "<non-string>";
+	}
+	return truncateAuditResource(value);
 }
 
 /**
@@ -76,18 +90,21 @@ async function denyWithAudit(
 	const auditedAgentId = isValidUuid(request.agentId)
 		? request.agentId
 		: NIL_AGENT;
-	await writeAudit(db, {
-		auditId,
-		agentId: auditedAgentId,
-		subject: typeof request.subject === "string" ? request.subject : "",
-		capability:
-			typeof request.capability === "string" ? request.capability : "",
-		resource: typeof request.resource === "string" ? request.resource : "",
-		decision: "deny",
-		reasonCode,
-		details: reason,
-		approvalRequired: options?.approvalRequired ?? false,
-	});
+	await writeAudit(
+		db,
+		{
+			auditId,
+			agentId: auditedAgentId,
+			subject: auditSafeField(request.subject),
+			capability: auditSafeField(request.capability),
+			resource: auditSafeField(request.resource),
+			decision: "deny",
+			reasonCode,
+			details: reason,
+			approvalRequired: options?.approvalRequired ?? false,
+		},
+		request.onAuditFailure,
+	);
 	return {
 		decision: "deny",
 		reasonCode: reasonCode as CapabilityAuthorizationResult["reasonCode"],
@@ -214,6 +231,9 @@ export async function authorizeCapability(
 			now: request.now,
 		});
 	} catch (error) {
+		// error-policy:J4 — a store read failure becomes the structured
+		// STORE_UNAVAILABLE denial (fail closed); the boundary logs it via
+		// runtime.reportError from the decision record.
 		return denyWithAudit(
 			db,
 			request,
@@ -229,21 +249,25 @@ export async function authorizeCapability(
 		if (grant.effect !== "deny") continue;
 		if (selectorMatchesResource(grant.resourceSelector, request.resource)) {
 			const auditId = newAuditId();
-			await writeAudit(db, {
-				auditId,
-				agentId: request.agentId,
-				subject: subject.subject,
-				capability: capability.capability,
-				resource: request.resource,
-				decision: "deny",
-				reasonCode: CAPABILITY_REASON_CODES.DENY_GRANT_MATCHED,
-				details: `Denied by grant ${grant.id} (explicit deny outranks allow and role tiers)`,
-				matchedGrantId: grant.id,
-				constraints: grant.constraints ?? null,
-				grantExpiresAt: grant.expiresAt,
-				approvalRequired: false,
-				grantVersion: grant.version,
-			});
+			await writeAudit(
+				db,
+				{
+					auditId,
+					agentId: request.agentId,
+					subject: subject.subject,
+					capability: capability.capability,
+					resource: request.resource,
+					decision: "deny",
+					reasonCode: CAPABILITY_REASON_CODES.DENY_GRANT_MATCHED,
+					details: `Denied by grant ${grant.id} (explicit deny outranks allow and role tiers)`,
+					matchedGrantId: grant.id,
+					constraints: grant.constraints ?? null,
+					grantExpiresAt: grant.expiresAt,
+					approvalRequired: false,
+					grantVersion: grant.version,
+				},
+				request.onAuditFailure,
+			);
 			return {
 				decision: "deny",
 				reasonCode: CAPABILITY_REASON_CODES.DENY_GRANT_MATCHED,
@@ -271,17 +295,21 @@ export async function authorizeCapability(
 		const intersection = intersectGrantConstraints(matching);
 		if (!intersection.ok) {
 			const auditId = newAuditId();
-			await writeAudit(db, {
-				auditId,
-				agentId: request.agentId,
-				subject: subject.subject,
-				capability: capability.capability,
-				resource: request.resource,
-				decision: "deny",
-				reasonCode: CAPABILITY_REASON_CODES.INCOMPATIBLE_CONSTRAINTS,
-				details: `Matching allow grants ${matching.map((g) => g.id).join(", ")} carry incompatible constraints`,
-				approvalRequired: false,
-			});
+			await writeAudit(
+				db,
+				{
+					auditId,
+					agentId: request.agentId,
+					subject: subject.subject,
+					capability: capability.capability,
+					resource: request.resource,
+					decision: "deny",
+					reasonCode: CAPABILITY_REASON_CODES.INCOMPATIBLE_CONSTRAINTS,
+					details: `Matching allow grants ${matching.map((g) => g.id).join(", ")} carry incompatible constraints`,
+					approvalRequired: false,
+				},
+				request.onAuditFailure,
+			);
 			return {
 				decision: "deny",
 				reasonCode: CAPABILITY_REASON_CODES.INCOMPATIBLE_CONSTRAINTS,
@@ -297,25 +325,29 @@ export async function authorizeCapability(
 			};
 		}
 		const auditId = newAuditId();
-		await writeAudit(db, {
-			auditId,
-			agentId: request.agentId,
-			subject: subject.subject,
-			capability: capability.capability,
-			resource: request.resource,
-			decision: "allow",
-			reasonCode: CAPABILITY_REASON_CODES.ALLOW_GRANT_MATCHED,
-			details: `Allowed by ${matching.length} matching live allow grant(s)`,
-			matchedGrantId: matching[0].id,
-			constraints: intersection.constraints,
-			grantExpiresAt:
-				matching
-					.map((g) => g.expiresAt)
-					.filter((v): v is Date => v !== null)
-					.sort((a, b) => a.getTime() - b.getTime())[0] ?? null,
-			approvalRequired: false,
-			grantVersion: matching[0].version,
-		});
+		await writeAudit(
+			db,
+			{
+				auditId,
+				agentId: request.agentId,
+				subject: subject.subject,
+				capability: capability.capability,
+				resource: request.resource,
+				decision: "allow",
+				reasonCode: CAPABILITY_REASON_CODES.ALLOW_GRANT_MATCHED,
+				details: `Allowed by ${matching.length} matching live allow grant(s)`,
+				matchedGrantId: matching[0].id,
+				constraints: intersection.constraints,
+				grantExpiresAt:
+					matching
+						.map((g) => g.expiresAt)
+						.filter((v): v is Date => v !== null)
+						.sort((a, b) => a.getTime() - b.getTime())[0] ?? null,
+				approvalRequired: false,
+				grantVersion: matching[0].version,
+			},
+			request.onAuditFailure,
+		);
 		return allowFromGrants(matching, auditId, intersection.constraints);
 	}
 
@@ -330,9 +362,10 @@ export async function authorizeCapability(
 			});
 		} catch (error) {
 			// error-policy:J4 — a broken role resolver degrades to the plain
-			// no-match denial; it must never widen access.
+			// no-match denial; it must never widen access. The failure itself
+			// is reported through the injected hook (J7).
 			roles = null;
-			loggerAuditFailure(error);
+			request.onAuditFailure?.(error);
 		}
 		if (roles && roles.length > 0) {
 			// Slice 1 models the NONE floor only: roles present means the
@@ -342,17 +375,21 @@ export async function authorizeCapability(
 			// beyond what grants already said (no match), so record the layer
 			// and fall through to the no-match denial naming it.
 			const auditId = newAuditId();
-			await writeAudit(db, {
-				auditId,
-				agentId: request.agentId,
-				subject: subject.subject,
-				capability: capability.capability,
-				resource: request.resource,
-				decision: "deny",
-				reasonCode: CAPABILITY_REASON_CODES.NO_MATCHING_GRANT,
-				details: `Role tier evaluated (roles: ${roles.join(", ")}) but grants no floor capability in slice 1`,
-				approvalRequired: false,
-			});
+			await writeAudit(
+				db,
+				{
+					auditId,
+					agentId: request.agentId,
+					subject: subject.subject,
+					capability: capability.capability,
+					resource: request.resource,
+					decision: "deny",
+					reasonCode: CAPABILITY_REASON_CODES.NO_MATCHING_GRANT,
+					details: `Role tier evaluated (roles: ${roles.join(", ")}) but grants no floor capability in slice 1`,
+					approvalRequired: false,
+				},
+				request.onAuditFailure,
+			);
 			return {
 				decision: "deny",
 				reasonCode: CAPABILITY_REASON_CODES.NO_MATCHING_GRANT,

@@ -28,8 +28,9 @@ export const capabilitiesSchema = pgSchema("capabilities");
  * Durable per-principal capability grants. Each row is one subject ×
  * capability × resource-selector policy with allow/deny effect, issuer
  * provenance, expiry, revocation, constraints, and an optimistic-concurrency
- * version. A partial unique index enforces one active row per exact policy;
- * superseding a policy revokes the old row first.
+ * version. A partial unique index (world-aware via nil-uuid coalescing)
+ * enforces one active row per exact policy per world; superseding a policy
+ * revokes the old row first.
  */
 export const capabilityGrants = capabilitiesSchema.table(
 	"capability_grants",
@@ -75,6 +76,9 @@ export const capabilityGrants = capabilitiesSchema.table(
 			.on(
 				table.subject,
 				table.agentId,
+				// Null (global) world coalesces to the nil uuid so global and
+				// world-scoped rows never collide in the unique index.
+				sql`coalesce(${table.worldId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
 				table.capability,
 				table.resourceSelector,
 				table.effect,
@@ -85,7 +89,7 @@ export const capabilityGrants = capabilitiesSchema.table(
 
 /**
  * Append-only audit trail for capability authorization decisions. Every
- * `authorizeCapability` call — allow or deny — writes exactly one row
+ * `authorizeCapability` call — allow or deny — attempts exactly one row
  * carrying the decision's audit id so denials are as traceable as grants.
  * Audits carry ids and outcomes only — never credentials, prompts, message
  * bodies, or file bytes (#23102 acceptance criterion 8).
