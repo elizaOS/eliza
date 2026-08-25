@@ -172,10 +172,10 @@ function SettingsSectionFallback({
         {error.message}
       </p>
       <Button
-        variant="outlineAccent"
-        size="regularCompact"
+        variant="outline"
+        size="sm"
         onClick={onRetry}
-        className="mt-1"
+        className="mt-1 h-9 rounded-md border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
       >
         {t("settings.sectionRetry", { defaultValue: "Retry" })}
       </Button>
@@ -209,7 +209,7 @@ function SettingsSectionSurfaceAnchor({
     onActivate: () => onSelect(section.id),
   });
   return (
-    <Button
+    <button
       ref={ref}
       type="button"
       aria-hidden
@@ -482,9 +482,7 @@ function LegacySettingsView({
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout
         inModal={inModal}
-        className={cn(
-          !inModal && !isDesktop && "mb-[var(--eliza-chat-clearance,5.25rem)]",
-        )}
+        className={!isDesktop && !inModal ? "pb-24" : undefined}
         contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
         sidebar={desktopSidebar}
         sidebarCollapsible={false}
@@ -492,10 +490,8 @@ function LegacySettingsView({
         <div
           data-testid="settings-shell"
           className={cn(
-            "flex w-full",
-            isDesktop
-              ? "min-h-full flex-row"
-              : "h-full min-h-0 flex-col overflow-hidden",
+            "flex min-h-full w-full",
+            isDesktop ? "flex-row" : "flex-col",
           )}
         >
           {/* Agent-surface anchors: the agent addresses every section by
@@ -512,14 +508,7 @@ function LegacySettingsView({
             ))}
           </div>
 
-          <div
-            className={cn(
-              "min-w-0 flex-1",
-              isDesktop
-                ? "pb-32"
-                : "eliza-chat-scroll max-h-[calc(100dvh-var(--eliza-chat-clearance,5.25rem)-5rem)] min-h-0 overflow-y-auto pb-4",
-            )}
-          >
+          <div className="min-w-0 flex-1 pb-32">
             {isDesktop ? (
               <main
                 data-testid="desktop-settings-work-area"
