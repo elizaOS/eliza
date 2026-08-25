@@ -67,6 +67,7 @@ describe("AndroidCloudApp", () => {
     const completeLogin = vi
       .spyOn(client, "completeLogin")
       .mockResolvedValue(undefined);
+    const acknowledge = vi.fn(async () => undefined);
     const openExternal = vi.fn(async () => "opened" as const);
     const closeExternal = vi.fn(async () => undefined);
     render(
@@ -99,6 +100,7 @@ describe("AndroidCloudApp", () => {
         new CustomEvent(ANDROID_CLOUD_DEEP_LINK_EVENT, {
           detail: {
             url: "elizaos://auth/callback?code=code-1&state=state-1",
+            acknowledge,
           },
         }),
       );
@@ -109,6 +111,7 @@ describe("AndroidCloudApp", () => {
       ),
     );
     expect(closeExternal).toHaveBeenCalledOnce();
+    expect(acknowledge).toHaveBeenCalledOnce();
     expect(await screen.findByText("Ada")).toBeTruthy();
   });
 
