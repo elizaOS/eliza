@@ -525,3 +525,23 @@ describe("parseSlackMessageLink", () => {
     ).toBeNull();
   });
 });
+
+describe("chunkSlackText UTF-16 surrogate safety", () => {
+  it("preserves UTF-16 surrogate pairs during message chunking", () => {
+    // maxChars = 10 (hardLimit = 6). "a🔥🔥🔥🔥" (1 + 8 = 9 units).
+    // Raw break at hardLimit 6 lands on high surrogate of 3rd emoji.
+    // Surrogate safe back-off ensures we break at index 5 ("a🔥🔥"), keeping emojis whole.
+    const chunks = chunkSlackText("a🔥🔥🔥🔥🔥", 10);
+    expect(chunks).toEqual(["a🔥🔥", "🔥🔥🔥"]);
+    for (const chunk of chunks) {
+      for (const char of chunk) {
+        expect(
+          /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+            char,
+          ),
+        ).toBe(false);
+      }
+    }
+  });
+});
+

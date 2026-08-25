@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 /**
  * Slack mrkdwn formatting utilities. Converts agent markdown to Slack's
  * `*bold*` / `_italic_` / `~strike~` mrkdwn and chunks it under the message
@@ -228,6 +240,12 @@ export function splitSlackText(
     }
 
     splitIndex = Math.min(splitIndex, maxChars);
+    if (splitIndex > 0 && splitIndex < remaining.length) {
+      const code = remaining.charCodeAt(splitIndex - 1);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        splitIndex -= 1;
+      }
+    }
     messages.push(remaining.slice(0, splitIndex));
     remaining = remaining.slice(splitIndex);
   }
@@ -281,6 +299,12 @@ export function chunkSlackText(
     // exactly on hardLimit yields breakPoint = hardLimit + 1 and the reserved
     // fence budget is spent, pushing the emitted chunk to maxChars + 1.
     breakPoint = Math.min(breakPoint, hardLimit);
+    if (breakPoint > 0 && breakPoint < remaining.length) {
+      const code = remaining.charCodeAt(breakPoint - 1);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        breakPoint -= 1;
+      }
+    }
 
     let chunk = remaining.slice(0, breakPoint);
 
