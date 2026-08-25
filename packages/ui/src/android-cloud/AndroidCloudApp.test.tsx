@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ANDROID_CLOUD_COMPOSE_EVENT,
   ANDROID_CLOUD_CONVERSATION_ID_KEY,
+  ANDROID_CLOUD_DEEP_LINK_EVENT,
   AndroidCloudApp,
   type AndroidCloudVoiceAdapter,
 } from "./AndroidCloudApp";
@@ -59,18 +60,19 @@ describe("AndroidCloudApp", () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(session);
     vi.spyOn(client, "beginLogin").mockResolvedValue({
-      sessionId: "10000000-0000-4000-8000-000000000001",
+      state: "state-1",
       browserUrl:
-        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+        "https://cloud.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize",
     });
-    const pollLogin = vi.spyOn(client, "pollLogin").mockResolvedValue({
-      status: "authenticated",
-      token: "steward-token",
-    });
-    const openExternal = vi.fn(async () => "closed" as const);
+    const completeLogin = vi
+      .spyOn(client, "completeLogin")
+      .mockResolvedValue(undefined);
+    const openExternal = vi.fn(async () => "opened" as const);
+    const closeExternal = vi.fn(async () => undefined);
     render(
       <AndroidCloudApp
         client={client}
+        closeExternal={closeExternal}
         openExternal={openExternal}
         voice={createVoice()}
       />,
@@ -90,11 +92,23 @@ describe("AndroidCloudApp", () => {
     fireEvent.click(signInButton);
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
     expect(openExternal).toHaveBeenCalledWith(
-      "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+      "https://cloud.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize",
     );
-    expect(pollLogin).toHaveBeenCalledWith(
-      "10000000-0000-4000-8000-000000000001",
+    act(() => {
+      document.dispatchEvent(
+        new CustomEvent(ANDROID_CLOUD_DEEP_LINK_EVENT, {
+          detail: {
+            url: "elizaos://auth/callback?code=code-1&state=state-1",
+          },
+        }),
+      );
+    });
+    await waitFor(() =>
+      expect(completeLogin).toHaveBeenCalledWith(
+        "elizaos://auth/callback?code=code-1&state=state-1",
+      ),
     );
+    expect(closeExternal).toHaveBeenCalledOnce();
     expect(await screen.findByText("Ada")).toBeTruthy();
   });
 
@@ -129,10 +143,11 @@ describe("AndroidCloudApp", () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(null);
     vi.spyOn(client, "beginLogin").mockResolvedValue({
-      sessionId: "10000000-0000-4000-8000-000000000001",
+      state: "state-1",
       browserUrl:
-        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+        "https://cloud.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize",
     });
+    const cancelLogin = vi.spyOn(client, "cancelLogin");
     const openExternal = vi.fn(async () => "opened" as const);
     const closeExternal = vi.fn(async () => undefined);
     render(
@@ -150,6 +165,7 @@ describe("AndroidCloudApp", () => {
     await screen.findByRole("button", { name: "Cancel sign-in" });
     fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
     await waitFor(() => expect(closeExternal).toHaveBeenCalledOnce());
+    expect(cancelLogin).toHaveBeenCalledOnce();
     expect(
       screen.getByRole("button", { name: "Sign in with Eliza Cloud" }),
     ).toBeTruthy();

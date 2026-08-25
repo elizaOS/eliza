@@ -345,4 +345,136 @@ describe("AuthorizeContent", () => {
       "https://example.com/callback?error=access_denied&error_description=User+denied+authorization&state=state-1",
     );
   });
+
+  it("automatically completes first-party mobile PKCE without a consent interstitial", async () => {
+    searchParamsRef.current = new URLSearchParams({
+      flow: "mobile_pkce",
+      client_id: "ai.elizaos.app",
+      environment: "staging",
+      redirect_uri: "https://eliza.app/auth/callback",
+      state: "mobile-state-1",
+      code_challenge: "a".repeat(43),
+      code_challenge_method: "S256",
+      device_name: "Android",
+    });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          app: {
+            name: "Eliza",
+            websiteUrl: "https://eliza.app",
+          },
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ code: "mobile-code-1" }),
+      } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AuthorizeContent />);
+
+    await waitFor(() =>
+      expect(locationAssignMock).toHaveBeenCalledWith(
+        "elizaos://auth/callback?code=mobile-code-1&state=mobile-state-1",
+      ),
+    );
+    expect(screen.queryByRole("button", { name: /Authorize/ })).toBeNull();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/app-auth/mobile/config?clientId=ai.elizaos.app&environment=staging&redirectUri=https%3A%2F%2Feliza.app%2Fauth%2Fcallback",
+    );
+    const connectCall = fetchMock.mock.calls[1];
+    expect(connectCall?.[0]).toBe("/api/v1/app-auth/connect");
+    expect(JSON.parse(String(connectCall?.[1]?.body))).toEqual({
+      flow: "mobile_pkce",
+      clientId: "ai.elizaos.app",
+      environment: "staging",
+      codeChallenge: "a".repeat(43),
+      codeChallengeMethod: "S256",
+      deviceName: "Android",
+      redirectUri: "https://eliza.app/auth/callback",
+      state: "mobile-state-1",
+    });
+  });
+
+  it("routes signed-out mobile requests through the full hosted login page", async () => {
+    authRef.current = {
+      ...authRef.current,
+      isAuthenticated: false,
+    };
+    searchParamsRef.current = new URLSearchParams({
+      flow: "mobile_pkce",
+      client_id: "ai.elizaos.app",
+      environment: "staging",
+      redirect_uri: "https://eliza.app/auth/callback",
+      state: "mobile-state-1",
+      code_challenge: "a".repeat(43),
+      code_challenge_method: "S256",
+    });
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...realLocation,
+        assign: locationAssignMock,
+        origin: "https://cloud-staging.eliza.app",
+        search: `?${searchParamsRef.current.toString()}`,
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ success: true, app: { name: "Eliza" } }),
+      })),
+    );
+
+    render(<AuthorizeContent />);
+
+    await waitFor(() =>
+      expect(locationAssignMock).toHaveBeenCalledWith(
+        `/login?returnTo=${encodeURIComponent(`/app-auth/authorize${window.location.search}`)}`,
+      ),
+    );
+    expect(screen.queryByTestId("steward-login")).toBeNull();
+  });
+
+  it("returns a failed mobile connection to the app instead of leaving a spinner", async () => {
+    const user = userEvent.setup();
+    searchParamsRef.current = new URLSearchParams({
+      flow: "mobile_pkce",
+      client_id: "ai.elizaos.app",
+      environment: "staging",
+      redirect_uri: "https://eliza.app/auth/callback",
+      state: "mobile-state-1",
+      code_challenge: "a".repeat(43),
+      code_challenge_method: "S256",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, app: { name: "Eliza" } }),
+        } as Response)
+        .mockResolvedValueOnce({ ok: false, status: 503 } as Response),
+    );
+
+    render(<AuthorizeContent />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Failed to connect to Eliza (HTTP 503)."),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByText("Finishing sign-in…")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Return to Eliza" }));
+    expect(locationAssignMock).toHaveBeenCalledWith(
+      "elizaos://auth/callback?error=access_denied&error_description=User+denied+authorization&state=mobile-state-1",
+    );
+  });
 });
