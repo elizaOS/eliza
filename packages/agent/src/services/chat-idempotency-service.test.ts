@@ -235,4 +235,58 @@ describe("chat idempotency store", () => {
       error: { code: "CHAT_IDEMPOTENCY_CONFLICT" },
     });
   });
+
+  it("normalizes keys with default and custom length limits, rejecting invalid values", () => {
+    const store = createChatIdempotencyStore();
+    expect(store.normalize("  client-key-1  ")).toBe("client-key-1");
+    expect(store.normalize("")).toBeNull();
+    expect(store.normalize("   ")).toBeNull();
+    expect(store.normalize(123)).toBeNull();
+    expect(store.normalize(null)).toBeNull();
+    expect(store.normalize(undefined)).toBeNull();
+    expect(store.normalize({})).toBeNull();
+    expect(store.normalize("a".repeat(128))).toBe("a".repeat(128));
+    expect(store.normalize("a".repeat(129))).toBeNull();
+
+    const boundedStore = createChatIdempotencyStore({ maxKeyLength: 10 });
+    expect(boundedStore.normalize("a".repeat(10))).toBe("a".repeat(10));
+    expect(boundedStore.normalize("a".repeat(11))).toBeNull();
+  });
+
+  it("tracks and returns firstSeenAt for active and settled keys and null for missing or unkeyed", () => {
+    const store = createChatIdempotencyStore();
+    expect(store.firstSeenAt("room", null)).toBeNull();
+    expect(store.firstSeenAt("room", "unknown")).toBeNull();
+
+    store.admit("room", "admitted", { now: 12345 });
+    expect(store.firstSeenAt("room", "admitted")).toBe(12345);
+
+    store.reserve("room", "reserved", 54321);
+    expect(store.firstSeenAt("room", "reserved")).toBe(54321);
+  });
+
+  it("resets the store and notifies active duplicate waiters as released", async () => {
+    const store = createChatIdempotencyStore<{ value: string }>();
+    const owner = store.admit("room", "id", { now: 1 });
+    const duplicate = store.admit("room", "id", { now: 2 });
+    if (owner.kind !== "owner" || duplicate.kind !== "duplicate") {
+      throw new Error("fixture admission failed");
+    }
+
+    const waiter = duplicate.wait();
+    store.reset();
+
+    await expect(waiter).resolves.toEqual({ kind: "released" });
+    expect(store.firstSeenAt("room", "id")).toBeNull();
+    expect(store.outcome("room", "id")).toBeNull();
+  });
+
+  it("safely handles unkeyed requests across all store methods", () => {
+    const store = createChatIdempotencyStore<{ value: string }>();
+    expect(store.admit("room", null)).toEqual({ kind: "unkeyed" });
+    expect(store.reserve("room", null)).toBe(false);
+    expect(store.outcome("room", null)).toBeNull();
+    expect(() => store.release("room", null)).not.toThrow();
+    expect(() => store.settle("room", null, { value: "done" })).not.toThrow();
+  });
 });
