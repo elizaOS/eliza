@@ -3,13 +3,13 @@
  * (`service-mixin-x.ts`).
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { formatError } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";
 import {
   errorToDispatchResult,
   isConnectorSendPayload,
   legacyStatusToConnectorStatus,
   rejectInvalidPayload,
+  safeFormatError,
 } from "./_helpers.js";
 import type {
   ConnectorContribution,
@@ -39,7 +39,7 @@ export function createXConnectorContribution(
       } catch (error) {
         return {
           state: "disconnected",
-          message: formatError(error),
+          message: safeFormatError(error),
           observedAt: new Date().toISOString(),
         };
       }
