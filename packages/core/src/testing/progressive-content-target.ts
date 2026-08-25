@@ -48,8 +48,20 @@ export interface ProgressiveContentBoundedSource {
 	read(offset: number, maxBytes?: number): Promise<Uint8Array>;
 }
 
+export interface ProgressiveContentTargetObject {
+	readonly id: string;
+	readonly family: ProgressiveContentTargetFamily;
+	readonly byteLength: number;
+	readonly sourceSha256: string;
+	readonly sourceRevision: string;
+	readonly authorizationScope: string;
+	readonly canaries: ProgressiveConformanceObject["canaries"];
+}
+
 export interface ProgressiveContentTargetRealization {
 	readonly reference: ReadView["reference"];
+	readonly sourceRevision: string;
+	readonly authorizationMode: "principal" | "capability";
 	readonly authorizationScopeDigest: string;
 	readonly cleanupIdentity: string;
 	readonly resolverBindingSha256: string;
@@ -87,7 +99,7 @@ export interface ProgressiveContentTargetFactory {
 	readonly productionMethod: string;
 	readonly binaryPolicy: "native-bytes" | "typed-rejection";
 	create(input: {
-		readonly object: ProgressiveConformanceObject;
+		readonly object: ProgressiveContentTargetObject;
 		readonly source: ProgressiveContentBoundedSource;
 	}): Promise<ProgressiveContentTarget>;
 }
@@ -188,6 +200,11 @@ export async function runProgressiveContentTargetConformance(input: {
 		input.target.realization.reference.kind !== input.target.object.family
 	) {
 		throw new TypeError("target family and native reference kind differ");
+	}
+	if (
+		input.target.realization.reference.revision !== input.target.object.revision
+	) {
+		throw new TypeError("target native revision differs from its reference");
 	}
 	const binding = targetBindingSha256(input);
 	const receipts: ProgressiveContentTargetReceipt[] = [];
