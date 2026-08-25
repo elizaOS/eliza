@@ -22,6 +22,12 @@ describe("unwrapWholeCodeFence", () => {
 		).toBeNull();
 	});
 
+	it("unwraps code fences with leading or trailing whitespace", () => {
+		expect(
+			unwrapWholeCodeFence('  \n```json\n{"ok":true}\n```\n\n  ', ["json"]),
+		).toBe('{"ok":true}');
+	});
+
 	it("scans a 100k-character body without backtracking", () => {
 		const body = "\t".repeat(100_000);
 		expect(unwrapWholeCodeFence(`\`\`\`json\n${body}x\n\`\`\``, ["json"])).toBe(
