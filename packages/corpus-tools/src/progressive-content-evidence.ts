@@ -848,9 +848,14 @@ function semanticFailures(
         typeof entry.sliceSha256 !== "string" ||
         !/^[0-9a-f]{64}$/u.test(entry.sliceSha256) ||
         typeof range.start !== "number" ||
+        !Number.isSafeInteger(range.start) ||
         typeof range.end !== "number" ||
-        range.end < range.start ||
+        !Number.isSafeInteger(range.end) ||
+        range.end <= range.start ||
+        (range.unit !== undefined && range.unit !== "byte") ||
         typeof entry.bytesRead !== "number" ||
+        !Number.isSafeInteger(entry.bytesRead) ||
+        entry.bytesRead !== range.end - range.start ||
         entry.bytesRead > 64 * 1024
       );
     })
@@ -863,6 +868,7 @@ function semanticFailures(
     }
     const rows = pageRowsByObject.get(object.id) ?? [];
     let expectedStart = 0;
+    let terminalRows = 0;
     for (const row of rows) {
       const range = record(row.range, "page ledger range");
       if (
@@ -875,10 +881,21 @@ function semanticFailures(
         break;
       }
       expectedStart = range.end;
+      if (row.reassembledSha256 !== undefined) {
+        terminalRows += 1;
+        if (
+          range.end !== object.byteLength ||
+          row.reassembledSha256 !== object.sourceSha256
+        ) {
+          expectedStart = -1;
+          break;
+        }
+      }
     }
     if (
       expectedStart !== object.byteLength ||
       rows.length === 0 ||
+      terminalRows !== 1 ||
       (rows.length === 1 && rows[0]?.sliceSha256 !== object.sourceSha256)
     )
       failures.push(`page ledger is not a full traversal for ${object.id}`);
