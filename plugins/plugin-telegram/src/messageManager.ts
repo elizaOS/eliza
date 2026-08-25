@@ -53,6 +53,7 @@ import {
   telegramIdentityMetadata,
 } from "./identity";
 import { renderTelegramInteractions } from "./interactions";
+import { TelegramMembershipMessageGate } from "./membership-gate";
 import {
   type TelegramContent,
   TelegramEventTypes,
@@ -390,10 +391,26 @@ export class MessageManager {
     this.bot = bot;
     this.runtime = runtime;
     this.accountId = accountId;
+    this.telegramMembershipGate = new TelegramMembershipMessageGate({
+      runtime,
+      authority: null,
+      botTelegramUserId: null,
+    });
   }
 
   private scopedTelegramKey(key: string): string {
     return this.accountId === "default" ? key : `${this.accountId}:${key}`;
+  }
+
+  /** Membership admission gate for group/supergroup messages; lazily bound by the owning TelegramService. */
+  public readonly telegramMembershipGate: TelegramMembershipMessageGate;
+
+  /** Binds the authority-backed membership gate once the service has bootstrapped it. */
+  bindMembershipGate(gate: {
+    authority: import("./membership").TelegramMembershipAuthority;
+    botTelegramUserId: string;
+  }): void {
+    this.telegramMembershipGate.rebind(gate.authority, gate.botTelegramUserId);
   }
 
   private telegramMessageMemoryKey(
@@ -1576,6 +1593,29 @@ export class MessageManager {
         worldId,
         worldName: telegramRoomid,
       });
+
+      // Membership admission gate: group/supergroup chats require canonical
+      // membership authority. DMs stay under the DM policy; channels have no
+      // inbound admission surface in this connector. The gate runs after
+      // ensureConnection so the principal entity row exists for reconciles.
+      if (channelType === ChannelType.GROUP) {
+        const admitted = await this.telegramMembershipGate.authorizeMessage({
+          chatId: telegramChatId,
+          chatRoomKey: this.scopedTelegramKey(telegramChatId),
+          chatType: chat.type,
+          principalEntityId: entityId,
+          telegramUserId,
+          runtimeMapping: { worldId, roomId, entityId },
+          getChatMember: async () =>
+            ctx.telegram.getChatMember(
+              Number(telegramChatId),
+              Number(telegramUserId),
+            ),
+        });
+        if (!admitted) {
+          return;
+        }
+      }
 
       // Create the memory object
       const memory: Memory = {
