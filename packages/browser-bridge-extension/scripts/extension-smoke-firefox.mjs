@@ -249,13 +249,17 @@ async function runInstalledFirefoxSmoke() {
       );
     }
     // The externally opened Firefox popup can retain its initial DOM while
-    // BiDi reports a stale about:blank navigation identity. Re-dispatch the
-    // page's real startup event so the production refresh path reads the
-    // persisted background state, then require the connected user-facing
-    // label before capturing the success artifact.
-    await popupPage.evaluate(() => {
-      document.dispatchEvent(new Event("DOMContentLoaded"));
+    // BiDi reports a stale about:blank navigation identity. Navigate that
+    // same page to its canonical extension URL so the production startup
+    // refresh reads persisted background state without launching a second
+    // external popup tab.
+    const popupUrl = await popupPage.evaluate(() => {
+      const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
+      if (!runtime?.getURL)
+        throw new Error("extension URL resolver unavailable");
+      return runtime.getURL("popup.html");
     });
+    await popupPage.goto(popupUrl, { waitUntil: "domcontentloaded" });
     await popupPage.waitForFunction(
       () =>
         document.querySelector("#statusTitle")?.textContent ===
