@@ -214,6 +214,7 @@ async function runWorker(options) {
   const factory = await createProgressiveContentBenchmarkFactory({
     workRoot: options.workRoot,
     family: options.family,
+    idNamespace: `${options.family}-${options.sourceBytes}-${options.repetition}-${process.pid}`,
     ...(postgresUrl ? { postgresUrl } : {}),
   });
   const factories = [factory];
