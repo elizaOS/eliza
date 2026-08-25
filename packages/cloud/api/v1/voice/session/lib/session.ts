@@ -120,6 +120,8 @@ const CACHE_WARMING_CODES = new Set([
   "conversation_cache_warming",
 ]);
 const SPOKEN_TRANSCRIPT_RE = /[\p{L}\p{N}]/u;
+const UNSPEAKABLE_RESPONSE_FALLBACK =
+  "Sorry, I couldn't form a response. Could you say that again?";
 
 // Cartesia's server buffers streamed transcript for up to 3000ms by default
 // before starting synthesis, which measured ~2.7s of the speaking_start gap on
@@ -1107,6 +1109,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let modelAudioStarted = false;
     let upstreamServerTiming: ElizaServerTimingReceipt | null = null;
     let ttsTransportReadyAt: number | null = null;
+    let modelOutputChars = 0;
+    let modelSpeakableContentSeen = false;
     const abort = new AbortController();
     this.llmAbort = abort;
     const phrase = new PhraseAggregator({
@@ -1253,6 +1257,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       };
       const onDelta = (delta: string) => {
         if (this.currentVoiceTurnId !== traceId) return;
+        modelOutputChars += delta.length;
+        if (SPOKEN_TRANSCRIPT_RE.test(delta)) {
+          modelSpeakableContentSeen = true;
+        }
         if (!this.firstLlmTextEmitted) {
           this.firstLlmTextEmitted = true;
           firstModelTextAt = this.now();
@@ -1266,6 +1274,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // the retained suffix with continue:true.
         const phrases = phrase.push(delta);
         for (const p of phrases) {
+          if (!SPOKEN_TRANSCRIPT_RE.test(p)) continue;
           this.turnTtsChars += p.length;
           const stream = ensureTts();
           if (pendingPhrase !== null) {
@@ -1339,7 +1348,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
 
       const tail = phrase.flush();
-      if (tail) {
+      if (tail && SPOKEN_TRANSCRIPT_RE.test(tail)) {
         // A trailing phrase remains. Flush any held phrase (continue:true), then
         // send the tail as the terminal phrase with continue:false.
         if (pendingPhrase !== null) {
@@ -1369,6 +1378,21 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         const fallbackGreeting = options.fallbackGreeting?.trim();
         if (fallbackGreeting) {
           this.speakOpeningGreeting(fallbackGreeting);
+        } else if (modelOutputChars > 0 && !modelSpeakableContentSeen) {
+          // error-policy:J4 punctuation-only or otherwise unspeakable model
+          // output is an expected provider failure shape. Surface it as a
+          // retryable error and speak an explicit recovery prompt so a live
+          // caller never experiences a successful-looking silent turn.
+          logger.warn("[voice-session] Eliza response was not speakable", {
+            traceId,
+            outputChars: modelOutputChars,
+          });
+          this.send({
+            t: "error",
+            code: "unspeakable_llm_reply",
+            retryable: true,
+          });
+          this.speakOpeningGreeting(UNSPEAKABLE_RESPONSE_FALLBACK);
         }
       }
       // If a phrase was sent, its final continue:false closes the context.
