@@ -495,7 +495,7 @@ export function truncateText(
 	if (text.length <= maxLength) {
 		return text;
 	}
-	return text.slice(0, maxLength - ellipsis.length) + ellipsis;
+	return truncateUtf16Safe(text, maxLength, ellipsis);
 }
 
 /**

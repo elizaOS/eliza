@@ -14,6 +14,7 @@ import {
 	parseMessageLink,
 	sanitizeThreadName,
 	stripDiscordFormatting,
+	truncateText,
 	truncateUtf16Safe,
 } from "../messaging.ts";
 
@@ -93,3 +94,23 @@ describe("message link build/parse round-trip", () => {
 		expect(parseMessageLink("https://example.com/x")).toBeNull();
 	});
 });
+
+describe("truncateText", () => {
+	it("preserves UTF-16 surrogate pairs and delegates to truncateUtf16Safe", () => {
+		const text = `abc${"😀".repeat(5)}`;
+		const out = truncateText(text, 6, "…");
+		expect(out.length).toBeLessThanOrEqual(6);
+		for (const char of out) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+	});
+
+	it("returns text unchanged when within maxLength", () => {
+		expect(truncateText("hello", 10)).toBe("hello");
+	});
+});
+
