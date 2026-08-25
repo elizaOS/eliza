@@ -187,4 +187,98 @@ describe("progressive content target harness", () => {
       );
     }
   }, 60_000);
+
+  it("counts a bounded declared binary rejection as verified coverage", async () => {
+    const corpusRoot = await mkdtemp(
+      path.join(tmpdir(), "progressive-target-rejection-"),
+    );
+    roots.push(corpusRoot);
+    const generated = await generateProgressiveContentCorpus({
+      outDir: corpusRoot,
+      rootSeed: "target-harness-rejection",
+      generatorRevision: "target-harness-test",
+      profile: "micro",
+    });
+    const document = generated.objects.find(
+      ({ family }) => family === "document",
+    );
+    if (!document) throw new Error("generated corpus lacks a document");
+    const rejectingDocument = {
+      ...factory("document"),
+      binaryPolicy: "typed-rejection" as const,
+      async create() {
+        throw new HarnessTargetError("CONTENT_BINARY_UNSUPPORTED");
+      },
+    };
+    const families: ProgressiveContentFamily[] = [
+      "file",
+      "document",
+      "memory",
+      "email",
+      "attachment",
+      "tool-output",
+    ];
+    const report = await runProgressiveContentTargetHarness({
+      corpusRoot,
+      manifest: {
+        ...generated,
+        objects: [{ ...document, format: "binary" }],
+      },
+      factories: families.map((family) =>
+        family === "document" ? rejectingDocument : factory(family),
+      ),
+    });
+    expect(report.status).toBe("passed");
+    expect(report.entries).toEqual([
+      expect.objectContaining({
+        status: "typed-rejected",
+        code: "CONTENT_BINARY_UNSUPPORTED",
+        rejectionCode: "CONTENT_BINARY_UNSUPPORTED",
+      }),
+    ]);
+  });
+
+  it("fails a typed-rejection factory that returns the wrong code", async () => {
+    const corpusRoot = await mkdtemp(
+      path.join(tmpdir(), "progressive-target-wrong-rejection-"),
+    );
+    roots.push(corpusRoot);
+    const generated = await generateProgressiveContentCorpus({
+      outDir: corpusRoot,
+      rootSeed: "target-harness-wrong-rejection",
+      generatorRevision: "target-harness-test",
+      profile: "micro",
+    });
+    const document = generated.objects.find(
+      ({ family }) => family === "document",
+    );
+    if (!document) throw new Error("generated corpus lacks a document");
+    const rejectingDocument = {
+      ...factory("document"),
+      binaryPolicy: "typed-rejection" as const,
+      async create() {
+        throw new HarnessTargetError("CONTENT_INVALID_UTF8");
+      },
+    };
+    const report = await runProgressiveContentTargetHarness({
+      corpusRoot,
+      manifest: {
+        ...generated,
+        objects: [{ ...document, format: "binary" }],
+      },
+      factories: [
+        factory("file"),
+        rejectingDocument,
+        factory("memory"),
+        factory("email"),
+        factory("attachment"),
+        factory("tool-output"),
+      ],
+    });
+    expect(report.status).toBe("failed");
+    expect(report.entries[0]).toMatchObject({
+      status: "failed",
+      code: "CONTENT_INVALID_UTF8",
+    });
+  });
 });
