@@ -16,6 +16,7 @@ import { logger, requireConfirmation } from "@elizaos/core";
 import {
   buildResolvedClient,
   describeSelection,
+  truncateUtf16Safe,
   optionalStringArray,
   type ResolvedClient,
   requireNumber,
@@ -279,7 +280,7 @@ function buildPreview(
       case "label":
         return ` with [${labels?.join(", ") ?? ""}]`;
       case "comment":
-        return body ? ` body: "${body.slice(0, 120)}"` : "";
+        return body ? ` body: "${truncateUtf16Safe(body, 120)}"` : "";
       default:
         return "";
     }

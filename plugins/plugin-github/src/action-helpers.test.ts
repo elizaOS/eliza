@@ -6,6 +6,7 @@ import {
   requireString,
   requireStringArray,
   splitRepo,
+  truncateUtf16Safe,
 } from "./action-helpers.ts";
 
 /**
@@ -137,5 +138,30 @@ describe("isConfirmed", () => {
   it("is always false regardless of the supplied flag", () => {
     expect(isConfirmed({ confirmed: true })).toBe(false);
     expect(isConfirmed(undefined)).toBe(false);
+  });
+});
+
+describe("truncateUtf16Safe", () => {
+  it("keeps surrogate pairs intact when truncating at multi-byte boundaries", () => {
+    const longEmoji = "🔥".repeat(100);
+    const truncated = truncateUtf16Safe(longEmoji, 120);
+    expect(truncated.length).toBe(120);
+    for (const char of truncated) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+
+    const truncatedOdd = truncateUtf16Safe(longEmoji, 119);
+    expect(truncatedOdd.length).toBe(118);
+    for (const char of truncatedOdd) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
   });
 });
