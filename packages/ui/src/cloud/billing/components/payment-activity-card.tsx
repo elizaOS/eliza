@@ -261,12 +261,18 @@ export function PaymentActivityCard() {
               // (e.g. settled-without-receipt) can still carry refund/dispute
               // totals, a policy effect, and a support escalation state that
               // must not be hidden because the state projection is unknown.
+              // Same field set the detail surface gates its reversal
+              // block on: a row carrying ONLY a shortfall or a support
+              // escalation must show its reversal detail here too, or the
+              // two surfaces disagree on what the authority returned.
               const reversed =
                 row.policyEffect?.status === "unavailable" ||
                 row.cumulativeRefundedUsd > 0 ||
                 row.cumulativeDisputedUsd > 0 ||
                 row.cumulativeClawbackCredits > 0 ||
-                row.reinstatedCredits > 0;
+                row.reinstatedCredits > 0 ||
+                row.unrecoveredShortfallUsd > 0 ||
+                row.supportState === "contact_support";
               return (
                 <li
                   key={row.id}

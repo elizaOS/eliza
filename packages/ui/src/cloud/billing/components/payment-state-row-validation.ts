@@ -13,24 +13,34 @@ import type { PaymentStateDisplay } from "./payment-activity-card";
  * `PAYMENT_STATE_STATUSES` from cloud-shared payment-history, re-declared
  * here because `@elizaos/ui` deliberately does not import the cloud-shared
  * server bundle (same boundary rule as cloud-org-types.ts and
- * sandbox-status.ts). The compile-time `satisfies` assertion makes any drift
- * between this list and the `PaymentStateDisplay["paymentState"]` union a
- * build error instead of a silent validation hole.
+ * sandbox-status.ts). The Record-typed mirror below makes drift in EITHER
+ * direction (added server state, stray local state) a compile error instead
+ * of a silent validation hole.
  */
-const PAYMENT_STATE_STATUSES = [
-  "pending",
-  "succeeded",
-  "failed",
-  "canceled",
-  "expired",
-  "partially_refunded",
-  "refunded",
-  "dispute_withdrawn",
-  "dispute_reinstated",
-  "unavailable",
-] as const satisfies readonly PaymentStateDisplay["paymentState"][];
+// A Record keyed by the union (not an array + satisfies) is exhaustive in
+// BOTH directions: a stray value fails compilation AND an omitted union
+// member fails compilation, so the guard's vocabulary can never silently
+// fall behind the rendered union.
+const PAYMENT_STATE_SET: Readonly<
+  Record<PaymentStateDisplay["paymentState"], true>
+> = {
+  pending: true,
+  succeeded: true,
+  failed: true,
+  canceled: true,
+  expired: true,
+  partially_refunded: true,
+  refunded: true,
+  dispute_withdrawn: true,
+  dispute_reinstated: true,
+  unavailable: true,
+};
 
-const PAYMENT_STATE_SET: ReadonlySet<string> = new Set(PAYMENT_STATE_STATUSES);
+// Runtime membership view of the exhaustive mirror above. `new Set(...)` of
+// own keys only: prototype-chain names can never enter the vocabulary.
+const PAYMENT_STATE_KEYS: ReadonlySet<string> = new Set(
+  Object.keys(PAYMENT_STATE_SET),
+);
 
 /**
  * Type guard for a complete payment-state row from the transport. The list
@@ -58,14 +68,18 @@ export function isPaymentStateRow(
     Number.isFinite(row.amountCents) &&
     typeof row.currency === "string" &&
     typeof row.eventTime === "string" &&
-    // A non-parsable timestamp renders as "Invalid Date" on both surfaces;
-    // an unparsable value is malformed, not a ready row.
+    // The server serializes every eventTime with toISOString(), so the
+    // canonical round-trip is the exact transport contract: "0" parses to a
+    // 2000 date and "2024-02-30" silently normalizes to March 1 under a bare
+    // isFinite check — both would render an authoritative-looking but
+    // altered timestamp instead of the malformed-response state.
     Number.isFinite(new Date(row.eventTime).getTime()) &&
+    new Date(row.eventTime).toISOString() === row.eventTime &&
     (row.eventTimeKind === "provider_settlement" ||
       row.eventTimeKind === "server_creation" ||
       row.eventTimeKind === "reversal_ledger_observation") &&
     typeof row.paymentState === "string" &&
-    PAYMENT_STATE_SET.has(row.paymentState) &&
+    PAYMENT_STATE_KEYS.has(row.paymentState) &&
     typeof row.cumulativeRefundedUsd === "number" &&
     Number.isFinite(row.cumulativeRefundedUsd) &&
     typeof row.cumulativeDisputedUsd === "number" &&
