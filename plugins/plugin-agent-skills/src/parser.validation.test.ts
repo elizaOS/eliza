@@ -128,6 +128,54 @@ describe("validateFrontmatter", () => {
       expect(codes(r)).toContain("INVALID_BIN_NAME");
     });
   });
+
+  describe("description and compatibility boundaries", () => {
+    it("rejects description exceeding maximum allowed length", () => {
+      const r = validateFrontmatter(fm({ description: "a".repeat(1025) }));
+      expect(r.valid).toBe(false);
+      expect(codes(r)).toContain("DESCRIPTION_TOO_LONG");
+    });
+
+    it("emits warning for very short descriptions under 20 characters", () => {
+      const r = validateFrontmatter(fm({ description: "Short skill desc" }));
+      expect(r.valid).toBe(true);
+      expect(r.warnings.map((w) => w.code)).toContain("DESCRIPTION_TOO_SHORT");
+    });
+
+    it("rejects compatibility string exceeding maximum length", () => {
+      const r = validateFrontmatter(
+        fm({ compatibility: "x".repeat(501) }),
+      );
+      expect(r.valid).toBe(false);
+      expect(codes(r)).toContain("COMPATIBILITY_TOO_LONG");
+    });
+
+    it("accepts valid compatibility within bounds", () => {
+      const r = validateFrontmatter(
+        fm({ compatibility: "Requires Node.js >= 20 and git CLI" }),
+      );
+      expect(r.valid).toBe(true);
+      expect(r.errors).toEqual([]);
+    });
+
+    it("validates multiple installer bins across separate install entries", () => {
+      const r = validateFrontmatter(
+        fm({
+          metadata: {
+            otto: {
+              install: [
+                { id: "brew-pkg", kind: "brew", bins: ["valid-bin"] },
+                { id: "npm-pkg", kind: "npm", bins: ["invalid/path", "ok_bin"] },
+              ],
+            },
+          },
+        }),
+      );
+      expect(r.valid).toBe(false);
+      expect(codes(r)).toContain("INVALID_BIN_NAME");
+      expect(r.errors[0].field).toBe("metadata.otto.install[1].bins");
+    });
+  });
 });
 
 describe("validateSkillDirectory", () => {
@@ -148,5 +196,19 @@ describe("validateSkillDirectory", () => {
     ].join("\n");
     const r = validateSkillDirectory("/x/SKILL.md", content, "my-skill");
     expect(r.valid).toBe(true);
+  });
+
+  it("rejects when directory name does not match frontmatter name", () => {
+    const content = [
+      "---",
+      "name: actual-skill-name",
+      "description: A clear description of what this skill does and when to use it.",
+      "---",
+      "",
+      "# My Skill",
+    ].join("\n");
+    const r = validateSkillDirectory("/x/SKILL.md", content, "different-dir-name");
+    expect(r.valid).toBe(false);
+    expect(codes(r)).toContain("NAME_MISMATCH");
   });
 });
