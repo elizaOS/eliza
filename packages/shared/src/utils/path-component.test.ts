@@ -3,7 +3,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { decodeUrlPathComponent } from "./path-component";
+import {
+  decodeUrlPathComponent,
+  encodeUrlPathComponent,
+} from "./path-component";
 
 describe("decodeUrlPathComponent", () => {
   it.each(["%", "%2", "%ZZ", "%E0%A4"])(
@@ -29,5 +32,13 @@ describe("decodeUrlPathComponent", () => {
       ok: true,
       value: "a%2Fb",
     });
+  });
+});
+
+describe("encodeUrlPathComponent", () => {
+  it("encodes special and unicode characters as percent-encoded segments", () => {
+    expect(encodeUrlPathComponent("café")).toBe("caf%C3%A9");
+    expect(encodeUrlPathComponent("a/b")).toBe("a%2Fb");
+    expect(encodeUrlPathComponent("hello world")).toBe("hello%20world");
   });
 });

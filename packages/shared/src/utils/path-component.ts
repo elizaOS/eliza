@@ -16,3 +16,8 @@ export function decodeUrlPathComponent(raw: string): PathComponentDecodeResult {
     return { ok: false, reason: "malformed-encoding" };
   }
 }
+
+/** Encodes one URL path component using standard percent-encoding. */
+export function encodeUrlPathComponent(value: string): string {
+  return encodeURIComponent(value);
+}
