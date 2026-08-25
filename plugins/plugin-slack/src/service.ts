@@ -51,10 +51,7 @@ import {
   type World,
 } from "@elizaos/core";
 import { App, LogLevel } from "@slack/bolt";
-import {
-  WebClient as SlackWebClient,
-  type WebAPICallResult,
-} from "@slack/web-api";
+import { WebClient as SlackWebClient } from "@slack/web-api";
 
 type WebClient = App["client"];
 type AccountScopedTargetInfo = TargetInfo & { accountId?: string };
@@ -218,6 +215,45 @@ const SLACK_CONNECTOR_CAPABILITIES = [
   "get_user",
 ];
 const SLACK_USER_ID_PATTERN = /^[UW][A-Z0-9]{2,}$/i;
+
+/**
+ * Extract the provider receipt from a `files.uploadV2` result. The SDK
+ * resolves `{ ok, files: [...] }` where each entry is one
+ * `files.completeUploadExternal` response whose own `files` array carries
+ * the file object (`result.files[i].files[j]`) — there is no singular
+ * `file` key. A result with no file data anywhere is an explicit failure
+ * rather than fabricated empty identifiers.
+ */
+export function extractUploadReceipt(result: unknown): {
+  fileId: string;
+  permalink: string;
+} {
+  const responses = (result as { files?: unknown } | null)?.files;
+  if (Array.isArray(responses)) {
+    for (const response of responses) {
+      const inner = (response as { files?: unknown })?.files;
+      if (Array.isArray(inner)) {
+        const file = inner.find(
+          (candidate) => Boolean(candidate) && typeof candidate === "object",
+        ) as Record<string, unknown> | undefined;
+        if (file) {
+          return toReceipt(file);
+        }
+      }
+    }
+  }
+  throw new Error("Slack files.uploadV2 response contained no file data");
+}
+
+function toReceipt(file: Record<string, unknown>): {
+  fileId: string;
+  permalink: string;
+} {
+  return {
+    fileId: typeof file.id === "string" ? file.id : "",
+    permalink: typeof file.permalink === "string" ? file.permalink : "",
+  };
+}
 
 function normalizeSlackConnectorQuery(value: string): string {
   return value
@@ -4169,14 +4205,7 @@ export class SlackService extends Service implements ISlackService {
 
     const result = await client.files.uploadV2(uploadArgs);
 
-    const resultWithFile = result as WebAPICallResult & {
-      file?: { id: string; permalink: string };
-    };
-    const file = resultWithFile.file;
-    return {
-      fileId: file?.id || "",
-      permalink: file?.permalink || "",
-    };
+    return extractUploadReceipt(result);
   }
 
   private splitMessage(text: string): string[] {
