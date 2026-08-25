@@ -6,7 +6,9 @@ import {
   isAgentBackupCatalogWorkerEnabled,
 } from "./agent-backup-catalog-worker-composition";
 import {
+  createAccountDeletionBackupAuthorityComposition,
   createAgentBackupCatalogWorkerEnabledComposition,
+  readAccountDeletionBackupAuthorityConfig,
   readAgentBackupCatalogWorkerEnabledConfig,
 } from "./agent-backup-catalog-worker-enabled-composition";
 
@@ -91,10 +93,11 @@ function runtimeSummary() {
 }
 
 describe("backup catalogue disabled-first composition", () => {
-  test("reads only the two gates and never loads the enabled provider graph", async () => {
+  test("reads only the three gates and never loads the enabled provider graph", async () => {
     const reads: string[] = [];
     const env = new Proxy(
       {
+        ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED: "0",
         AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "0",
         AGENT_BACKUP_RPO_SCHEDULER_ENABLED: "0",
       } as NodeJS.ProcessEnv,
@@ -116,6 +119,7 @@ describe("backup catalogue disabled-first composition", () => {
     expect((await composition.runCycle()).enabled).toBe(false);
     expect(loadEnabledComposition).not.toHaveBeenCalled();
     expect(reads.sort()).toEqual([
+      "ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED",
       "AGENT_BACKUP_CATALOG_RUNTIME_ENABLED",
       "AGENT_BACKUP_RPO_SCHEDULER_ENABLED",
     ]);
@@ -143,6 +147,10 @@ describe("backup catalogue disabled-first composition", () => {
         AGENT_BACKUP_RPO_SCHEDULER_ENABLED: "0",
       },
       loadEnabledComposition: async () => ({
+        createAccountDeletionBackupAuthorityComposition: mock(async () => ({
+          enabled: true,
+          runCycle,
+        })),
         createAgentBackupCatalogWorkerEnabledComposition: createEnabled,
       }),
     });
@@ -152,9 +160,83 @@ describe("backup catalogue disabled-first composition", () => {
     expect(runCycle).toHaveBeenCalledTimes(1);
     expect(runCycle).toHaveBeenCalledWith(signal);
   });
+
+  test("loads the deletion authority while capture and scheduling stay disabled", async () => {
+    const runCycle = mock(async () => runtimeSummary());
+    const createAuthority = mock(async () => ({ enabled: true, runCycle }));
+    const createRuntime = mock(async () => {
+      throw new Error("capture runtime must stay disabled");
+    });
+    const env = {
+      ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED: "1",
+      AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "0",
+      AGENT_BACKUP_RPO_SCHEDULER_ENABLED: "0",
+    };
+    const composition = await createAgentBackupCatalogWorkerComposition({
+      env,
+      loadEnabledComposition: async () => ({
+        createAccountDeletionBackupAuthorityComposition: createAuthority,
+        createAgentBackupCatalogWorkerEnabledComposition: createRuntime,
+      }),
+    });
+    await composition.runCycle();
+    expect(createAuthority).toHaveBeenCalledWith({ env });
+    expect(createRuntime).not.toHaveBeenCalled();
+    expect(runCycle).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("backup catalogue enabled provider graph", () => {
+  test("composes deletion storage and spool authority without capture, scheduler, or KMS", async () => {
+    const env = enabledEnv();
+    env.ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED = "1";
+    env.AGENT_BACKUP_CATALOG_RUNTIME_ENABLED = "0";
+    const registry = { kind: "registry" };
+    const backup = Object.freeze({ kind: "backup" });
+    const spool = Object.freeze({ kind: "spool" });
+    const createRegistry = mock(async () => registry);
+    const createAccountDeletionBackup = mock(() => backup);
+    const createAccountDeletionSpool = mock(() => spool);
+    const processAccountDeletionAuthorities = mock(async () => undefined);
+
+    expect(readAccountDeletionBackupAuthorityConfig(env)).toMatchObject({
+      spool: { stateDirectory: "/var/lib/eliza-backup-catalog/spool" },
+    });
+    const composition = await createAccountDeletionBackupAuthorityComposition({
+      env,
+      dependencies: {
+        createRegistry: createRegistry as never,
+        createAccountDeletionBackup: createAccountDeletionBackup as never,
+        createAccountDeletionSpool: createAccountDeletionSpool as never,
+        processAccountDeletionAuthorities,
+      },
+    });
+    const result = await composition.runCycle();
+
+    expect(result.enabled).toBe(true);
+    expect(createRegistry).toHaveBeenCalledWith({ env });
+    expect(createAccountDeletionBackup).toHaveBeenCalledWith(registry);
+    expect(createAccountDeletionSpool).toHaveBeenCalledWith(
+      expect.objectContaining({ stateDirectory: "/var/lib/eliza-backup-catalog/spool" }),
+    );
+    expect(processAccountDeletionAuthorities).toHaveBeenCalledWith({ backup, spool });
+  });
+
+  test("fails closed before constructing deletion providers when authority config is incomplete", async () => {
+    const createRegistry = mock(async () => ({}));
+    await expect(
+      createAccountDeletionBackupAuthorityComposition({
+        env: {
+          ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED: "1",
+          AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "0",
+          AGENT_BACKUP_RPO_SCHEDULER_ENABLED: "0",
+        },
+        dependencies: { createRegistry: createRegistry as never },
+      }),
+    ).rejects.toThrow(/DATABASE_URL/);
+    expect(createRegistry).not.toHaveBeenCalled();
+  });
+
   test("sorts plugin ids by manifest code-unit order instead of locale collation", () => {
     const env = enabledEnv();
     env.AGENT_BACKUP_RUNTIME_PLUGINS_JSON = JSON.stringify([
