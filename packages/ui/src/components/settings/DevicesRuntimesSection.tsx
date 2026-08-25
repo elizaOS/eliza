@@ -186,7 +186,7 @@ function DesktopTargetPanel({
               {!localPairing ? (
                 <Button
                   type="button"
-                  className="min-h-11"
+                  size="touch"
                   disabled={busy || !onCreatePairing}
                   onClick={() => void onCreatePairing?.()}
                 >
@@ -294,7 +294,7 @@ function DesktopTargetPanel({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
-                    className="min-h-11"
+                    size="touch"
                     disabled={busy || !onConfirmPairing}
                     onClick={() =>
                       void onConfirmPairing?.(localPairing.sessionId)
@@ -305,7 +305,7 @@ function DesktopTargetPanel({
                   <Button
                     type="button"
                     variant="outline"
-                    className="min-h-11"
+                    size="touch"
                     disabled={busy || !onDenyPairing}
                     onClick={() => void onDenyPairing?.(localPairing.sessionId)}
                   >
@@ -579,8 +579,7 @@ function RuntimeCard({
             </label>
             <Button
               type="submit"
-              size="sm"
-              className="min-h-11"
+              size="touch"
               disabled={busy || pairCode.length !== 6}
             >
               <Link2 className="mr-1.5 size-4" aria-hidden /> Claim pairing
