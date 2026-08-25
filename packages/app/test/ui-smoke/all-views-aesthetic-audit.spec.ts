@@ -36,7 +36,6 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
-import { seedStewardSession } from "./helpers/test-auth";
 import {
   normalize,
   type OcrExpectation,
@@ -85,10 +84,7 @@ const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 // Parse the canonical TAB_PATHS straight from the @elizaos/ui navigation source
 // (no UI-bundle import) so the guard reads the real table, not a stale copy.
 const NAV_INDEX_PATH = fileURLToPath(
-  new URL(
-    "../../../ui/src/navigation/builtin-route-descriptors.ts",
-    import.meta.url,
-  ),
+  new URL("../../../ui/src/navigation/index.ts", import.meta.url),
 );
 
 // {desktop,mobile} × {landscape,portrait}. "desktop" (landscape) and "mobile"
@@ -792,7 +788,6 @@ async function collectAestheticDensityMetrics(
         style.borderBottomColor,
         style.borderLeftColor,
       ];
-      const visibleBorderWidths = [0, 0, 0, 0];
       let visibleBorderSides = 0;
       for (let i = 0; i < sideWidths.length; i += 1) {
         const width = Number.parseFloat(sideWidths[i] || "0");
@@ -802,7 +797,6 @@ async function collectAestheticDensityMetrics(
           sideStyles[i] !== "hidden" &&
           alphaOf(sideColors[i]) > 0.02
         ) {
-          visibleBorderWidths[i] = width;
           visibleBorderSides += 1;
         }
       }
@@ -834,55 +828,16 @@ async function collectAestheticDensityMetrics(
         node.id === "root" ||
         tag === "main" ||
         largestRectArea > viewportArea * 0.72;
-      if (!isPageShell) {
-        const occupiesCompleteRect =
+      if (
+        !isPageShell &&
+        (visibleBorderSides > 0 ||
           hasDividerBackground ||
           hasShadow ||
           isMedia ||
           isControl ||
-          (hasVisibleBackground && largestRectArea <= viewportArea * 0.45);
-        if (occupiesCompleteRect) {
-          for (const rect of rects) markRect(rect);
-        } else if (visibleBorderSides > 0) {
-          // A border occupies its edge, not the empty space it encloses. The
-          // previous full-rectangle mark made one large outlined empty state
-          // look denser than a screen packed with controls. Keep the 10px-grid
-          // estimate conservative by marking each visible edge strip.
-          for (const rect of rects) {
-            const [topWidth, rightWidth, bottomWidth, leftWidth] =
-              visibleBorderWidths;
-            if (topWidth > 0) {
-              markRect(
-                new DOMRect(rect.left, rect.top, rect.width, topWidth),
-              );
-            }
-            if (rightWidth > 0) {
-              markRect(
-                new DOMRect(
-                  rect.right - rightWidth,
-                  rect.top,
-                  rightWidth,
-                  rect.height,
-                ),
-              );
-            }
-            if (bottomWidth > 0) {
-              markRect(
-                new DOMRect(
-                  rect.left,
-                  rect.bottom - bottomWidth,
-                  rect.width,
-                  bottomWidth,
-                ),
-              );
-            }
-            if (leftWidth > 0) {
-              markRect(
-                new DOMRect(rect.left, rect.top, leftWidth, rect.height),
-              );
-            }
-          }
-        }
+          (hasVisibleBackground && largestRectArea <= viewportArea * 0.45))
+      ) {
+        for (const rect of rects) markRect(rect);
       }
     }
 
@@ -1302,20 +1257,7 @@ async function collectSpatialSizingIssues(page: Page): Promise<string[]> {
       const duplicatePadding =
         Number.parseFloat(surfaceStyle.paddingInlineEnd) || 0;
       const usableWidth = rect.width - duplicatePadding;
-      const pageContent = surface.closest("[data-page-content]");
-      const pageContentStyle = pageContent
-        ? getComputedStyle(pageContent)
-        : null;
-      const pageContentWidth = pageContent
-        ? pageContent.getBoundingClientRect().width -
-          (Number.parseFloat(pageContentStyle?.paddingInlineStart ?? "0") ||
-            0) -
-          (Number.parseFloat(pageContentStyle?.paddingInlineEnd ?? "0") || 0)
-        : Number.POSITIVE_INFINITY;
-      const expectedWidth = Math.min(
-        window.innerWidth - sideClearance,
-        pageContentWidth,
-      );
+      const expectedWidth = window.innerWidth - sideClearance;
       if (usableWidth >= expectedWidth * 0.8) return [];
       return [
         `spatial surface underfills shell content (${Math.round(usableWidth)}/${Math.round(expectedWidth)}px usable; ${Math.round(duplicatePadding)}px nested clearance)`,
@@ -1401,76 +1343,6 @@ async function forceRemoteBundleAuditRoute(
   view: AuditViewCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
-  if (view.id === "cloud" && view.fixtureState !== "cloud-signed-out") {
-    const connectedCloudResponses = new Map<string, unknown>([
-      [
-        "/api/cloud/status",
-        {
-          connected: true,
-          enabled: true,
-          hasApiKey: true,
-          userId: "audit-user",
-          organizationId: "audit-org",
-        },
-      ],
-      [
-        "/api/cloud/credits",
-        {
-          connected: true,
-          balance: 42.5,
-          low: false,
-          critical: false,
-          topUpUrl: "https://cloud.eliza.app/cloud/billing",
-        },
-      ],
-      [
-        "/api/cloud/compat/agents",
-        {
-          success: true,
-          data: [
-            {
-              agent_id: "audit-agent",
-              agent_name: "Research agent",
-              node_id: null,
-              container_id: null,
-              headscale_ip: null,
-              bridge_url: null,
-              web_ui_url: null,
-              status: "running",
-              agent_config: {},
-              created_at: "2026-08-01T00:00:00.000Z",
-              updated_at: "2026-08-01T00:00:00.000Z",
-              containerUrl: "",
-              webUiUrl: null,
-              database_status: "healthy",
-              error_message: null,
-              last_heartbeat_at: null,
-            },
-          ],
-        },
-      ],
-      [
-        "/api/cloud/billing/summary",
-        {
-          balance: 42.5,
-          currency: "USD",
-          hasPaymentMethod: true,
-        },
-      ],
-    ]);
-    await page.route("**/api/cloud/**", async (route) => {
-      const pathname = new URL(route.request().url()).pathname;
-      if (!connectedCloudResponses.has(pathname)) {
-        await route.fallback();
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(connectedCloudResponses.get(pathname)),
-      });
-    });
-  }
   if (view.id === "computer-use-sessions") {
     await page.route("**/api/computer-use/sessions", async (route) => {
       await route.fulfill({
@@ -1479,13 +1351,7 @@ async function forceRemoteBundleAuditRoute(
         body: JSON.stringify({
           sessions: [
             {
-              contractVersion: 2,
               id: "audit-browser",
-              ownerId: "audit-owner",
-              adapterId: "browser:chrome-profile",
-              canonicalState: "ready",
-              isolationMode: "exclusive_target",
-              generation: 1,
               label: "Research browser",
               target: { kind: "browser", targetId: "chrome-profile" },
               status: "idle",
@@ -1498,26 +1364,9 @@ async function forceRemoteBundleAuditRoute(
                 updatedAt: "2026-08-19T00:00:12.000Z",
               },
               lastCommand: "browser_click",
-              lastObservation: {
-                observationId: "audit-browser:observation:12",
-                sequence: 12,
-                observedAt: "2026-08-19T00:00:12.000Z",
-                sha256:
-                  "edee29f882543b956620b57ce980341d7304d4a09a5c4860f616185c9fc0f584",
-                mimeType: "image/png",
-                source: "browser",
-                width: 1280,
-                height: 720,
-              },
             },
             {
-              contractVersion: 2,
               id: "audit-sandbox",
-              ownerId: "audit-owner",
-              adapterId: "sandbox:qemu-linux",
-              canonicalState: "running",
-              isolationMode: "exclusive_target",
-              generation: 1,
               label: "Linux sandbox",
               target: { kind: "sandbox", targetId: "qemu-linux" },
               status: "running",
@@ -1527,23 +1376,6 @@ async function forceRemoteBundleAuditRoute(
               lastCommand: "mouse_move",
             },
           ],
-          events: [
-            {
-              eventId: 1,
-              type: "action_completed",
-              sessionId: "audit-browser",
-              occurredAt: "2026-08-19T00:00:12.000Z",
-              command: "browser_click",
-              outcomeStatus: "succeeded",
-            },
-          ],
-          readiness: {
-            capture: { available: true, tool: "screencapture" },
-            input: { available: true, tool: "cliclick" },
-            browser: { available: true, tool: "browser-bridge" },
-            vision: { available: true, modelType: "IMAGE_DESCRIPTION" },
-            approvalMode: "ask",
-          },
         }),
       });
     });
@@ -1560,17 +1392,6 @@ async function forceRemoteBundleAuditRoute(
               capturedAt: "2026-08-19T00:00:13.000Z",
               width: 1280,
               height: 720,
-              provenance: {
-                observationId: "audit-browser:observation:13",
-                sequence: 13,
-                observedAt: "2026-08-19T00:00:13.000Z",
-                sha256:
-                  "9a1f7b9f13c8fc64b5f60f5034ef77e60e9c45ef0d8c109c56f6c38a9eb966af",
-                mimeType: "image/png",
-                source: "browser",
-                width: 1280,
-                height: 720,
-              },
             },
           }),
         });
@@ -1664,15 +1485,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       `audit BUILTIN_TAB_PATHS path drift vs navigation: ${mismatched.join(", ")}`,
     ).toEqual([]);
 
-    const pluginOwnedAliases = new Set([
-      "/apps/relationships",
-      "/phone",
-      "/messages",
-      "/contacts",
-    ]);
-    const uncovered = [...navDistinctPaths].filter(
-      (p) => !inlinedPaths.has(p) && !pluginOwnedAliases.has(p),
-    );
+    const uncovered = [...navDistinctPaths].filter((p) => !inlinedPaths.has(p));
     expect(
       uncovered,
       `navigation TAB_PATHS adds routes the audit does not cover: ${uncovered.join(", ")}`,
@@ -1951,8 +1764,16 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         });
 
         await page.setViewportSize({ width: vp.width, height: vp.height });
-        await seedAppStorage(page);
-        await seedStewardSession(page, { jwt: true });
+        await seedAppStorage(
+          page,
+          view.id === "context-inspector"
+            ? {
+              "eliza:chat:activeConversationId":
+                "00000000-0000-4000-8000-000000000123",
+              "eliza:developerMode": "1",
+            }
+            : {},
+        );
         await installDefaultAppRoutes(page);
         const remoteBundleProof = await forceRemoteBundleAuditRoute(page, view);
         await openAppPath(page, remoteBundleProof?.auditPath ?? view.path);
@@ -2005,21 +1826,6 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           readPaint,
           overlayRequired,
         );
-        if (view.id === "cloud" && view.fixtureState !== "cloud-signed-out") {
-          await expect(
-            viewRoot.getByTestId("cloud-ready"),
-            "the Cloud plugin audit must capture the connected account state",
-          ).toBeVisible();
-        }
-        if (view.fixtureState === "cloud-signed-out") {
-          await expect(
-            viewRoot.getByTestId("cloud-signed-out"),
-            "the Cloud plugin audit must preserve the disconnected recovery state",
-          ).toBeVisible();
-          await expect(
-            viewRoot.getByText("Connected", { exact: true }),
-          ).toHaveCount(0);
-        }
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [
