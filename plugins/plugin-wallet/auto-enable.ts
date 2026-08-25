@@ -26,12 +26,9 @@ function hasEvmSigningPath(env: NodeJS.ProcessEnv): boolean {
   return Boolean(stewardUrl && stewardToken);
 }
 
-/** True when a Solana private key is set. */
+/** True when a Solana private key is set and is a concrete value (not a placeholder token). */
 function hasSolanaSigningPath(env: NodeJS.ProcessEnv): boolean {
-  return (
-    typeof env.SOLANA_PRIVATE_KEY === "string" &&
-    env.SOLANA_PRIVATE_KEY.trim().length > 0
-  );
+  return isConcreteValue(env.SOLANA_PRIVATE_KEY);
 }
 
 /** True when cloud-provisioned Steward credentials are present. */
