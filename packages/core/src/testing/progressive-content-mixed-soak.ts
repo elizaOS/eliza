@@ -2,10 +2,6 @@
 
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import type {
-	ProgressiveConformanceObject,
-	ProgressiveContentConformanceAdapter,
-} from "./progressive-content-conformance";
 import {
 	analyzeProgressiveContentResourceDrift,
 	type ProgressiveContentResourceDrift,
@@ -14,6 +10,7 @@ import {
 	REQUIRED_PROGRESSIVE_CONTENT_SOAK_DURATION_MS,
 	REQUIRED_PROGRESSIVE_CONTENT_SOAK_OPERATIONS,
 } from "./progressive-content-stress";
+import type { ProgressiveContentTarget } from "./progressive-content-target";
 
 export const PROGRESSIVE_CONTENT_MIXED_SOAK_SCHEMA_VERSION =
 	"elizaos.progressive-content.mixed-soak.v1" as const;
@@ -40,15 +37,10 @@ export interface ProgressiveContentSoakTarget {
 		| "memory-store";
 	readonly productionMethod: string;
 	readonly binaryPolicy: "native-bytes" | "typed-rejection";
+	readonly adapterId: string;
 	readonly create: () =>
-		| {
-				readonly adapter: ProgressiveContentConformanceAdapter;
-				readonly object: ProgressiveConformanceObject;
-		  }
-		| Promise<{
-				readonly adapter: ProgressiveContentConformanceAdapter;
-				readonly object: ProgressiveConformanceObject;
-		  }>;
+		| ProgressiveContentTarget
+		| Promise<ProgressiveContentTarget>;
 }
 
 export interface ProgressiveContentMixedResourceSample
@@ -67,6 +59,7 @@ export interface ProgressiveContentMixedSoakFamilyReport {
 	readonly productionMethod: string;
 	readonly binaryPolicy: ProgressiveContentSoakTarget["binaryPolicy"];
 	readonly operations: number;
+	readonly cleanupVerified: boolean;
 	readonly failures: readonly string[];
 	readonly sourceWork: {
 		readonly bytesRead: number;
@@ -170,7 +163,10 @@ function validateTargets(
 			target.binaryPolicy !== mapping[1] ||
 			typeof target.productionMethod !== "string" ||
 			target.productionMethod.trim().length === 0 ||
-			/(?:fixture|mock|stub|test)/iu.test(target.productionMethod)
+			/(?:fixture|mock|stub|test)/iu.test(target.productionMethod) ||
+			typeof target.adapterId !== "string" ||
+			target.adapterId.length === 0 ||
+			/(?:fixture|mock|stub|test)/iu.test(target.adapterId)
 		)
 			throw new TypeError(
 				`${target.family} target does not declare its required native production realization`,
@@ -224,13 +220,14 @@ export async function runProgressiveContentMixedSoakContract(input: {
 	const realized = await Promise.all(
 		input.targets.map(async (target) => ({
 			...target,
-			...(await target.create()),
+			target: await target.create(),
 		})),
 	);
 	if (
-		new Set(realized.map(({ adapter }) => adapter.adapterId)).size !==
+		new Set(realized.map(({ adapterId }) => adapterId)).size !==
 			realized.length ||
-		new Set(realized.map(({ object }) => object.id)).size !== realized.length
+		new Set(realized.map(({ target }) => target.object.id)).size !==
+			realized.length
 	)
 		throw new TypeError(
 			"mixed soak requires unique adapter and object identities",
@@ -240,7 +237,11 @@ export async function runProgressiveContentMixedSoakContract(input: {
 	for (const target of realized) {
 		const expectedKind =
 			target.family === "tool-output" ? "tool-result" : target.family;
-		if (target.object.family !== expectedKind)
+		if (
+			target.target.family !== target.family ||
+			target.target.object.family !== expectedKind ||
+			target.target.realization.reference.kind !== expectedKind
+		)
 			throw new TypeError(`${target.family} target object kind is mismatched`);
 	}
 	const familyState = realized.map((target) => ({
@@ -251,6 +252,7 @@ export async function runProgressiveContentMixedSoakContract(input: {
 		readCalls: 0,
 		rowsRead: 0,
 		parentScans: 0,
+		cleanupVerified: false,
 	}));
 	const resourceSamples: ProgressiveContentResourcePoint[] = [
 		{ operation: 0, elapsedMs: 0, sample: await measureResources() },
@@ -273,17 +275,16 @@ export async function runProgressiveContentMixedSoakContract(input: {
 					target.family === "tool-output" ? "tool-result" : target.family;
 				const pages = Math.max(
 					1,
-					Math.ceil(target.object.byteLength / pageBytes),
+					Math.ceil(target.target.object.byteLength / pageBytes),
 				);
 				const offset = (target.operations % pages) * pageBytes;
 				target.operations += 1;
 				try {
-					const page = await target.adapter.read({
-						objectId: target.object.id,
-						authorizationScope: target.object.authorizationScope,
+					const page = await target.target.read({
+						access: "authorized",
 						offset,
 						limit: pageBytes,
-						expectedRevision: target.object.revision,
+						expectedRevision: target.target.object.revision,
 					});
 					target.bytesRead += page.sourceWork.bytesRead;
 					target.readCalls += page.sourceWork.readCalls;
@@ -360,6 +361,19 @@ export async function runProgressiveContentMixedSoakContract(input: {
 	});
 	const positiveLeakControlDetected =
 		positiveLeakControlDrift.status === "failed";
+	for (const state of familyState) {
+		try {
+			await state.target.cleanup();
+			const snapshot = await state.target.inspect();
+			state.cleanupVerified = !snapshot.present;
+			if (!state.cleanupVerified)
+				state.failures.push("cleanup left the target present");
+		} catch (error) {
+			state.failures.push(
+				`cleanup: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
 	const failures = familyState.flatMap(({ family, failures }) =>
 		failures.map((failure) => `${family}: ${failure}`),
 	);
@@ -389,12 +403,13 @@ export async function runProgressiveContentMixedSoakContract(input: {
 		failures,
 		families: familyState.map((target) => ({
 			family: target.family,
-			adapterId: target.adapter.adapterId,
-			objectId: target.object.id,
+			adapterId: target.adapterId,
+			objectId: target.target.object.id,
 			authoritativeStore: target.authoritativeStore,
 			productionMethod: target.productionMethod,
 			binaryPolicy: target.binaryPolicy,
 			operations: target.operations,
+			cleanupVerified: target.cleanupVerified,
 			failures: target.failures,
 			sourceWork: {
 				bytesRead: target.bytesRead,
