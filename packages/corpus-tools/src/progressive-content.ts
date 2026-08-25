@@ -115,12 +115,12 @@ const PROFILE_SHAPES: Readonly<
   },
   scale: {
     counts: {
-      file: 3,
-      document: 3,
-      memory: 3,
-      email: 3,
-      attachment: 3,
-      "tool-output": 3,
+      file: 5,
+      document: 5,
+      memory: 5,
+      email: 5,
+      attachment: 5,
+      "tool-output": 5,
     },
     baseBytes: {
       file: 1024 * 1024,
@@ -201,6 +201,14 @@ const FORMAT_ORDER: readonly ProgressiveContentFormat[] = [
   "crlf-lines",
   "no-final-newline",
   "single-line",
+  "minified-json-like",
+  "binary",
+  "invalid-utf8",
+];
+
+const SCALE_FORMAT_ORDER: readonly ProgressiveContentFormat[] = [
+  "lf-lines",
+  "no-final-newline",
   "minified-json-like",
   "binary",
   "invalid-utf8",
@@ -704,12 +712,12 @@ export async function verifyProgressiveContentCorpus(
       familyOrdinal,
       profile,
     );
-    const scheduledFormat =
-      FORMAT_ORDER[index % FORMAT_ORDER.length] ?? "single-line";
-    const expectedFormat =
-      scheduledFormat === "invalid-utf8" && expectedByteLength === 0
-        ? "single-line"
-        : scheduledFormat;
+    const expectedFormat = objectFormat(
+      profile,
+      familyOrdinal,
+      index,
+      expectedByteLength,
+    );
     const expectedCanaries =
       expectedFormat === "invalid-utf8"
         ? []
@@ -1043,6 +1051,8 @@ function objectByteLength(
   if (profile === "scale") {
     if (index === 1) return 10 * 1024 * 1024;
     if (index === 2) return 100 * 1024 * 1024;
+    if (index === 3) return 4_096;
+    if (index === 4) return 4_097;
     return base;
   }
   const boundaryCases =
@@ -1051,6 +1061,21 @@ function objectByteLength(
       : PROGRESSIVE_CONTENT_BOUNDARY_BYTES;
   if (index < boundaryCases.length) return boundaryCases[index] ?? base;
   return base + (index % 7) * 257;
+}
+
+function objectFormat(
+  profile: ProgressiveContentProfile,
+  familyOrdinal: number,
+  objectOrdinal: number,
+  byteLength: number,
+): ProgressiveContentFormat {
+  const scheduled =
+    profile === "scale"
+      ? (SCALE_FORMAT_ORDER[familyOrdinal] ?? "single-line")
+      : (FORMAT_ORDER[objectOrdinal % FORMAT_ORDER.length] ?? "single-line");
+  return scheduled === "invalid-utf8" && byteLength === 0
+    ? "single-line"
+    : scheduled;
 }
 
 /** Return the deterministic byte schedule without materializing corpus files. */
@@ -1282,12 +1307,7 @@ export async function generateProgressiveContentCorpus(options: {
     for (let index = 0; index < shape.counts[family]; index += 1) {
       const id = progressiveContentObjectId(options.rootSeed, family, index);
       const byteLength = objectByteLength(shape, family, index, profile);
-      const scheduledFormat =
-        FORMAT_ORDER[objectOrdinal % FORMAT_ORDER.length] ?? "single-line";
-      const format =
-        scheduledFormat === "invalid-utf8" && byteLength === 0
-          ? "single-line"
-          : scheduledFormat;
+      const format = objectFormat(profile, index, objectOrdinal, byteLength);
       objectOrdinal += 1;
       const relativePath = path.posix.join("objects", family, `${id}.txt`);
       expectedPaths.add(relativePath);
