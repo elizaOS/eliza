@@ -445,7 +445,12 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     const revision = page.manifest.publicRevision;
     const reference = page.reference;
     const readView = buildReadView({
-      reference: buildContentReference({ kind: "email", ref: reference, revision }),
+      reference: buildContentReference({
+        kind: "email",
+        ref: reference,
+        revision,
+        resumability: "restart-safe",
+      }),
       slice: buildReadSlice({
         range: { unit, start: page.start, end: page.end, total: page.total },
         completeness: page.end < page.total ? "partial-recoverable" : "complete",

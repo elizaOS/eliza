@@ -7,7 +7,7 @@ import {
 	publishSessionSummaryContentManifests,
 	SESSION_SUMMARY_PROGRESSIVE_CONTENT_METADATA_KEY,
 } from "../features/advanced-memory/session-summary-content-manifest.ts";
-import { deriveCompactionContentManifest } from "../runtime/content-access-manifest.ts";
+import { deriveCompactionContentManifests } from "../runtime/content-access-manifest.ts";
 import type { PlannerTrajectory } from "../runtime/planner-types.ts";
 import type { Memory } from "../types/memory.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
@@ -24,14 +24,15 @@ export async function persistMessageContentContinuity(
 	params: PersistMessageContentContinuityParams,
 ): Promise<void> {
 	try {
-		const manifest = deriveCompactionContentManifest(params.trajectory, {
+		const manifests = deriveCompactionContentManifests(params.trajectory, {
 			lastUsedAt: params.lastUsedAt ?? new Date().toISOString(),
 		});
+		if (manifests.length === 0) return;
 		const envelope = await publishSessionSummaryContentManifests({
 			runtime: params.runtime,
 			roomId: params.message.roomId,
 			entityId: params.message.entityId,
-			manifests: [manifest],
+			manifests,
 		});
 		if (!envelope || !params.message.id) return;
 

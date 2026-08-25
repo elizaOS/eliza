@@ -944,6 +944,36 @@ describeIfPosix("shellAction", () => {
     expect(data.stderr_source_bytes).toBe(Buffer.byteLength(stderr, "utf8"));
     const handle = data.output_artifact_handle as string;
     expect(handle).toMatch(/^shell_/);
+    const initialReadViews = data.output_artifact_read_views as Array<{
+      reference: {
+        kind: string;
+        ref: string;
+        revision: string;
+        resumability: string;
+        expiresAt: string;
+      };
+      slice: { completeness: string };
+    }>;
+    expect(initialReadViews).toHaveLength(2);
+    expect(initialReadViews).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reference: expect.objectContaining({
+            kind: "tool-result",
+            ref: `shell:${handle}:stdout`,
+            resumability: "restart-safe",
+          }),
+          slice: expect.objectContaining({ completeness: "complete" }),
+        }),
+        expect.objectContaining({
+          reference: expect.objectContaining({
+            kind: "tool-result",
+            ref: `shell:${handle}:stderr`,
+            resumability: "restart-safe",
+          }),
+        }),
+      ]),
+    );
     expect(JSON.stringify(result)).not.toContain(secret);
 
     const retrieve = async (stream: "stdout" | "stderr") => {
@@ -961,6 +991,18 @@ describeIfPosix("shellAction", () => {
         );
         expect(page.success).toBe(true);
         const pageData = page.data as Record<string, unknown>;
+        const readView = pageData.readView as {
+          reference: { ref: string; resumability: string };
+          slice: { range: { start: number; end: number } };
+        };
+        expect(readView.reference).toMatchObject({
+          ref: `shell:${handle}:${stream}`,
+          resumability: "restart-safe",
+        });
+        expect(readView.slice.range).toMatchObject({
+          start: offset,
+          end: pageData.nextOffset,
+        });
         text += pageData.text as string;
         if (pageData.complete === true) return text;
         expect(pageData.nextOffset).toBeGreaterThan(offset);

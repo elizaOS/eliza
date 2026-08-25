@@ -33,6 +33,7 @@ function manifest(
 				kind: "document" as const,
 				ref: `document:${stringToUuid(`doc-${start + offset}`)}`,
 				revision: "rev-1",
+				resumability: "restart-safe" as const,
 			},
 			revision: "rev-1",
 			reason,

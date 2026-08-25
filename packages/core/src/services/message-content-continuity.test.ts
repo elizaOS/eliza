@@ -34,6 +34,7 @@ function trajectory() {
 							kind: "file",
 							ref: "opaque-message-file",
 							revision: "rev-1",
+							resumability: "restart-safe",
 						},
 						slice: buildReadSlice({
 							range: { unit: "byte", start: 0, end: 64, total: 128 },
@@ -99,7 +100,11 @@ describe("persistMessageContentContinuity", () => {
 			{
 				kind: "content-reference",
 				value: {
-					reference: { kind: "file", ref: "opaque-message-file" },
+					reference: {
+						kind: "file",
+						ref: "opaque-message-file",
+						resumability: "restart-safe",
+					},
 					rangesUsed: [{ unit: "byte", start: 0, end: 64 }],
 				},
 			},
