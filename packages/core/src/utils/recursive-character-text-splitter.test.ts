@@ -31,6 +31,24 @@ describe("constructor", () => {
 		).toThrow("Cannot have chunkOverlap >= chunkSize");
 	});
 
+	it("rejects non-positive or non-finite chunkSize and negative chunkOverlap", () => {
+		expect(
+			() =>
+				new RecursiveCharacterTextSplitter({ chunkSize: 0, chunkOverlap: 0 }),
+		).toThrow("chunkSize must be a positive finite number");
+		expect(
+			() =>
+				new RecursiveCharacterTextSplitter({ chunkSize: -5, chunkOverlap: 0 }),
+		).toThrow("chunkSize must be a positive finite number");
+		expect(
+			() =>
+				new RecursiveCharacterTextSplitter({
+					chunkSize: 10,
+					chunkOverlap: -1,
+				}),
+		).toThrow("chunkOverlap must be a non-negative finite number");
+	});
+
 	it("accepts an overlap smaller than the chunk", () => {
 		expect(
 			() =>
@@ -55,6 +73,8 @@ describe("splitText", () => {
 		});
 		expect(await splitter.splitText("")).toEqual([]);
 		expect(await splitter.splitText("   \n\n  ")).toEqual([]);
+		expect(await splitter.splitText(null as unknown as string)).toEqual([]);
+		expect(await splitter.splitText(undefined as unknown as string)).toEqual([]);
 	});
 
 	it("merges pieces up to chunkSize instead of emitting one per separator", async () => {

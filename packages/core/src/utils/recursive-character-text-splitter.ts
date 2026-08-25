@@ -36,6 +36,20 @@ export class RecursiveCharacterTextSplitter {
 	constructor(fields?: RecursiveCharacterTextSplitterParams) {
 		const chunkSize = fields?.chunkSize ?? 1000;
 		const chunkOverlap = fields?.chunkOverlap ?? 200;
+		if (
+			typeof chunkSize !== "number" ||
+			!Number.isFinite(chunkSize) ||
+			chunkSize <= 0
+		) {
+			throw new Error("chunkSize must be a positive finite number");
+		}
+		if (
+			typeof chunkOverlap !== "number" ||
+			!Number.isFinite(chunkOverlap) ||
+			chunkOverlap < 0
+		) {
+			throw new Error("chunkOverlap must be a non-negative finite number");
+		}
 		if (chunkOverlap >= chunkSize) {
 			throw new Error("Cannot have chunkOverlap >= chunkSize");
 		}
@@ -171,6 +185,9 @@ export class RecursiveCharacterTextSplitter {
 	}
 
 	async splitText(text: string): Promise<string[]> {
+		if (!text || typeof text !== "string") {
+			return [];
+		}
 		return this._splitText(toWellFormedUnicode(text), this.separators);
 	}
 }
