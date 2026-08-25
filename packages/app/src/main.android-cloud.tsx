@@ -22,6 +22,7 @@ import {
 import {
   AndroidCloudClient,
   type AndroidCloudCredentialStore,
+  type AndroidCloudPendingLoginStore,
 } from "@elizaos/ui/android-cloud/android-cloud-client";
 import { ErrorBoundary } from "@elizaos/ui/error-boundary";
 import "@elizaos/ui/styles";
@@ -58,9 +59,14 @@ const CLOUD_PERSISTED_KEYS = Object.freeze([
 ]);
 
 interface SecureCredentialsPlugin {
-  get(): Promise<{ value: string | null }>;
-  set(options: { value: string }): Promise<void>;
-  remove(): Promise<void>;
+  get(options?: { slot?: "credential" | "pending_login" }): Promise<{
+    value: string | null;
+  }>;
+  set(options: {
+    slot?: "credential" | "pending_login";
+    value: string;
+  }): Promise<void>;
+  remove(options?: { slot?: "credential" | "pending_login" }): Promise<void>;
 }
 
 const SecureCredentials = registerPlugin<SecureCredentialsPlugin>(
@@ -69,19 +75,35 @@ const SecureCredentials = registerPlugin<SecureCredentialsPlugin>(
 
 const androidSecureCredentialStore: AndroidCloudCredentialStore = {
   async read() {
-    return (await SecureCredentials.get()).value?.trim() || null;
+    return (
+      (await SecureCredentials.get({ slot: "credential" })).value?.trim() ||
+      null
+    );
   },
   async write(token) {
-    await SecureCredentials.set({ value: token });
+    await SecureCredentials.set({ slot: "credential", value: token });
   },
   async clear() {
-    await SecureCredentials.remove();
+    await SecureCredentials.remove({ slot: "credential" });
+  },
+};
+
+const androidSecurePendingLoginStore: AndroidCloudPendingLoginStore = {
+  async read() {
+    return (await SecureCredentials.get({ slot: "pending_login" })).value;
+  },
+  async write(value) {
+    await SecureCredentials.set({ slot: "pending_login", value });
+  },
+  async clear() {
+    await SecureCredentials.remove({ slot: "pending_login" });
   },
 };
 
 const androidCloudClient = new AndroidCloudClient({
   cloudApiBase: import.meta.env.VITE_ELIZA_CLOUD_BASE,
   credentialStore: androidSecureCredentialStore,
+  pendingLoginStore: androidSecurePendingLoginStore,
 });
 
 function logOptionalPluginFailure(plugin: string, error: unknown): void {
@@ -330,27 +352,16 @@ const androidCloudVoice: AndroidCloudVoiceAdapter = {
   },
 };
 
-export async function openAndroidCloudSignIn(url: string): Promise<"closed"> {
+export async function openAndroidCloudSignIn(url: string): Promise<"opened"> {
   const parsed = new URL(url);
   if (parsed.protocol !== "https:") {
     throw new Error("Eliza Cloud sign-in must use HTTPS.");
   }
-  let finishBrowser: (() => void) | null = null;
-  const browserFinished = new Promise<void>((resolve) => {
-    finishBrowser = resolve;
-  });
-  // Android suspends the WebView behind a Custom Tab, so the Cloud session is
-  // checked only after the system reports that the trusted auth tab closed.
-  const listener = await Browser.addListener("browserFinished", () => {
-    finishBrowser?.();
-  });
-  try {
-    await Browser.open({ url: parsed.toString() });
-    await browserFinished;
-    return "closed";
-  } finally {
-    await listener.remove();
-  }
+  // Returning immediately leaves the PKCE attempt authoritative until the
+  // app-owned callback consumes it. Treating Custom Tab closure as a cancel
+  // races Android's appUrlOpen delivery and erases the verifier first.
+  await Browser.open({ url: parsed.toString() });
+  return "opened";
 }
 
 function renderBootFailure(error: unknown): void {
