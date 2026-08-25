@@ -24,13 +24,25 @@ export type SanitizationState = {
 	exhausted: boolean;
 };
 
+function truncateUtf16Safe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = maxLength;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 function truncateTrajectoryString(value: string): string {
 	if (value.length <= TRAJECTORY_JSON_MAX_STRING_CHARS) return value;
 	const previewLength = Math.max(
 		0,
 		TRAJECTORY_JSON_MAX_STRING_CHARS - TRAJECTORY_JSON_TRUNCATION_SUFFIX.length,
 	);
-	return `${value.slice(0, previewLength)}${TRAJECTORY_JSON_TRUNCATION_SUFFIX}`;
+	return `${truncateUtf16Safe(value, previewLength)}${TRAJECTORY_JSON_TRUNCATION_SUFFIX}`;
 }
 
 function jsonByteLength(value: JsonValue): number {
