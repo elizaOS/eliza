@@ -209,7 +209,7 @@ function SettingsSectionSurfaceAnchor({
     onActivate: () => onSelect(section.id),
   });
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
       aria-hidden
