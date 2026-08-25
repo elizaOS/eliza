@@ -430,4 +430,51 @@ describe("GET_MEETING_TRANSCRIPT", () => {
     expect(await v(has.runtime, msg("hello there"), NO_STATE)).toBe(false);
     expect(await v(has.runtime, msg("show me the notes"), NO_STATE)).toBe(true);
   });
+  it("getMeetingTranscript truncates long transcript without bisecting surrogate pairs", async () => {
+    const emojis = "🔥".repeat(3000); // 6000 code units > 4000 limit
+    const row = {
+      id: "trans-emoji",
+      content: {
+        text: `Alice: ${emojis}`,
+        transcript: JSON.stringify({
+          id: "trans-emoji",
+          status: "ready",
+          segments: [
+            {
+              id: "seg-1",
+              speakerLabel: "Alice",
+              startMs: 0,
+              endMs: 1000,
+              text: emojis,
+              words: [],
+            },
+          ],
+        }),
+      },
+      metadata: { type: "custom", source: "transcript" },
+    } as unknown as Memory;
+    const h = harness({
+      service: svc([session({ transcriptId: "trans-emoji" })]),
+      memories: { "trans-emoji": row },
+    });
+    const res = await getMeetingTranscriptAction.handler(
+      h.runtime,
+      msg("show the transcript"),
+      NO_STATE,
+      {},
+      h.cb,
+    );
+    expect(res).toMatchObject({
+      success: true,
+      data: { sessionId: "sess-a", transcriptId: "trans-emoji" },
+    });
+    expect(res.text).toContain("(truncated");
+    for (const char of res.text) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

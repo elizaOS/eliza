@@ -26,6 +26,18 @@ import {
 /** Cap the inline reply; the full record lives in the Transcripts view. */
 const MAX_REPLY_CHARS = 4_000;
 
+function truncateTranscriptText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 async function handler(
   runtime: IAgentRuntime,
   message: Memory,
@@ -72,7 +84,7 @@ async function handler(
   }
   const clipped =
     text.length > MAX_REPLY_CHARS
-      ? `${text.slice(0, MAX_REPLY_CHARS)}\n… (truncated — open transcript ${transcript.id} in the Transcripts view for the full record)`
+      ? `${truncateTranscriptText(text, MAX_REPLY_CHARS)}\n… (truncated — open transcript ${transcript.id} in the Transcripts view for the full record)`
       : text;
   return reply(
     callback,
