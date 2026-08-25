@@ -159,6 +159,36 @@
       "scope": "group-scope"
     },
     {
+      "plugin": "plugin-instagram",
+      "packageName": "@elizaos/plugin-instagram",
+      "channels": ["instagram"],
+      "registrationSites": ["plugins/plugin-instagram/src/service.ts"],
+      "registrations": [
+        {
+          "source": "instagram",
+          "capabilities": [
+            "chat_context",
+            "list_rooms",
+            "resolve_targets",
+            "send_message",
+            "user_context"
+          ],
+          "supportedTargetKinds": ["thread"],
+          "scope": "group-scope",
+          "sites": ["plugins/plugin-instagram/src/service.ts"]
+        }
+      ],
+      "capabilities": [
+        "chat_context",
+        "list_rooms",
+        "resolve_targets",
+        "send_message",
+        "user_context"
+      ],
+      "supportedTargetKinds": ["thread"],
+      "scope": "group-scope"
+    },
+    {
       "plugin": "plugin-matrix",
       "packageName": "@elizaos/plugin-matrix",
       "channels": ["matrix"],

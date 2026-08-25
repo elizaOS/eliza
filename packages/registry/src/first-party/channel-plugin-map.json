@@ -4,6 +4,7 @@
   "discordLocal": "@elizaos/plugin-discord",
   "googlechat": "@elizaos/plugin-google-workspace",
   "imessage": "@elizaos/plugin-imessage",
+  "instagram": "@elizaos/plugin-instagram",
   "matrix": "@elizaos/plugin-matrix",
   "slack": "@elizaos/plugin-slack",
   "telegram": "@elizaos/plugin-telegram",

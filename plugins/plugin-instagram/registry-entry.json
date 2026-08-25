@@ -5,7 +5,12 @@
   "npmName": "@elizaos/plugin-instagram",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["connector", "social", "social-feed", "instagram"],
+  "tags": [
+    "connector",
+    "social",
+    "social-feed",
+    "instagram"
+  ],
   "config": {
     "INSTAGRAM_PROXY": {
       "type": "string",
@@ -47,7 +52,11 @@
     "icon": "Video",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",
@@ -55,6 +64,9 @@
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#instagram"
   },
   "dependsOn": [],
+  "channels": [
+    "instagram"
+  ],
   "kind": "connector",
   "subtype": "messaging",
   "auth": {

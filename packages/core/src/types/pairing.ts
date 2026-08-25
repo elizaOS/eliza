@@ -237,7 +237,6 @@ export const PAIRING_ID_LABELS: Record<string, string> = {
 	slack: "userId",
 	imessage: "phoneOrEmail",
 	googlechat: "email",
-	msteams: "userId",
 };
 
 /**

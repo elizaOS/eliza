@@ -19,6 +19,7 @@ const expectedChannelPluginMap: Record<string, string> = {
   discordLocal: "@elizaos/plugin-discord",
   googlechat: "@elizaos/plugin-google-workspace",
   imessage: "@elizaos/plugin-imessage",
+  instagram: "@elizaos/plugin-instagram",
   matrix: "@elizaos/plugin-matrix",
   slack: "@elizaos/plugin-slack",
   telegram: "@elizaos/plugin-telegram",
@@ -43,6 +44,7 @@ describe("CHANNEL_PLUGIN_MAP", () => {
       "@elizaos/plugin-google-workspace",
     );
     expect(CHANNEL_PLUGIN_MAP.imessage).toBe("@elizaos/plugin-imessage");
+    expect(CHANNEL_PLUGIN_MAP.instagram).toBe("@elizaos/plugin-instagram");
     expect(CHANNEL_PLUGIN_MAP.matrix).toBe("@elizaos/plugin-matrix");
     expect(CHANNEL_PLUGIN_MAP.slack).toBe("@elizaos/plugin-slack");
     expect(CHANNEL_PLUGIN_MAP.telegram).toBe("@elizaos/plugin-telegram");
