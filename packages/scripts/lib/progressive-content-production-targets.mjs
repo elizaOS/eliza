@@ -22,6 +22,7 @@ const TARGET_FAMILIES = [
   "attachment",
   "tool-output",
 ];
+export const PROGRESSIVE_CONTENT_SOAK_OBJECT_BYTES = 10 * 1024 * 1024;
 
 /** Instantiate each production factory exactly once under a private work root. */
 export async function createProgressiveContentProductionFactories(input) {
@@ -103,17 +104,21 @@ export async function createProgressiveContentProductionTarget(input) {
   }
 }
 
-function selectSoakObject(manifest, factory) {
+/** Select the fixed medium-corpus coordinate used by the six-hour endurance lane. */
+export function selectProgressiveContentSoakObject(manifest, factory) {
   const candidates = manifest.objects.filter(
     (object) =>
       object.family === factory.family &&
+      object.byteLength === PROGRESSIVE_CONTENT_SOAK_OBJECT_BYTES &&
       (factory.binaryPolicy === "native-bytes" ||
         (object.format !== "binary" && object.format !== "invalid-utf8")),
   );
-  candidates.sort((left, right) => right.byteLength - left.byteLength);
+  candidates.sort((left, right) => left.id.localeCompare(right.id));
   const selected = candidates[0];
   if (!selected) {
-    throw new Error(`${factory.family} has no soak-eligible corpus object`);
+    throw new Error(
+      `${factory.family} has no readable ${PROGRESSIVE_CONTENT_SOAK_OBJECT_BYTES}-byte soak object`,
+    );
   }
   return selected;
 }
@@ -203,7 +208,7 @@ export async function createProgressiveContentProductionSoakContract(input) {
   });
   const activeTargets = new Map();
   const targets = factories.map((factory) => {
-    const object = selectSoakObject(input.manifest, factory);
+    const object = selectProgressiveContentSoakObject(input.manifest, factory);
     return {
       family: factory.family,
       adapterId: factory.adapterId,
