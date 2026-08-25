@@ -451,15 +451,35 @@ export class DesktopWeb extends WebPlugin {
 
   async beep(): Promise<void> {
     const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain).connect(ctx.destination);
-    osc.frequency.value = 800;
-    osc.type = "sine";
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.1);
+    let closed = false;
+    const closeContext = (): void => {
+      if (closed) return;
+      closed = true;
+      // error-policy:J6 best-effort teardown; a rejected close() (for example
+      // an already-closed context) must not surface as a failed beep().
+      void Promise.resolve(ctx.close()).catch(() => {});
+    };
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain).connect(ctx.destination);
+      osc.frequency.value = 800;
+      osc.type = "sine";
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      // Close the context once the scheduled tone ends so each beep() opens and
+      // closes exactly one AudioContext. Browsers cap concurrent AudioContexts
+      // per document (~6 in Chrome); leaking one per call makes
+      // `new AudioContext()` throw after a handful of beeps.
+      osc.onended = closeContext;
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.1);
+    } catch (err) {
+      // error-policy:J2 close the just-opened context before rethrowing so a
+      // setup failure does not leak it, then preserve the original error.
+      closeContext();
+      throw err;
+    }
   }
 
   // Events
