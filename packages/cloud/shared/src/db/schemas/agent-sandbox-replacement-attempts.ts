@@ -13,6 +13,7 @@ import {
   boolean,
   check,
   foreignKey,
+  index,
   integer,
   numeric,
   pgTable,
@@ -21,7 +22,12 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { type AgentBackupCopyRole, agentBackupRestoreLeases } from "./agent-backup-catalog";
+import {
+  type AgentBackupCopyRole,
+  type AgentCapacityOwnershipState,
+  agentBackupRestoreLeases,
+  agentBackupRestoreOperations,
+} from "./agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 import { organizations } from "./organizations";
 
@@ -41,6 +47,10 @@ export const AGENT_SANDBOX_REPLACEMENT_ATTEMPT_STATES = [
 ] as const;
 export type AgentSandboxReplacementAttemptState =
   (typeof AGENT_SANDBOX_REPLACEMENT_ATTEMPT_STATES)[number];
+
+export const AGENT_SANDBOX_REPLACEMENT_PREVIOUS_CLEANUP_STATES = ["pending", "released"] as const;
+export type AgentSandboxReplacementPreviousCleanupState =
+  (typeof AGENT_SANDBOX_REPLACEMENT_PREVIOUS_CLEANUP_STATES)[number];
 
 /** Ambiguous or adoptable provider effects block every generation for an agent. */
 export const AGENT_SANDBOX_REPLACEMENT_GLOBAL_FENCE_STATES = [
@@ -72,6 +82,37 @@ export const agentSandboxReplacementAttempts = pgTable(
     activation_generation: uuid("activation_generation").notNull(),
     lifecycle_job_id: uuid("lifecycle_job_id"),
     lifecycle_execution_generation: uuid("lifecycle_execution_generation"),
+    /**
+     * Durable classification of the canonical row at start admission.
+     *
+     * `true` is reserved for a first provision admitted while all three
+     * canonical placement columns were NULL. `false` means an exact previous
+     * placement existed and must be retained during adoption. NULL is only an
+     * expand-deploy compatibility value for attempts created by an older
+     * binary; the repository never adopts such an unclassified attempt.
+     */
+    previous_placement_absent: boolean("previous_placement_absent"),
+    previous_sandbox_id: text("previous_sandbox_id"),
+    previous_node_id: text("previous_node_id"),
+    previous_container_name: text("previous_container_name"),
+    previous_container_id: text("previous_container_id"),
+    previous_allocation_counted: boolean("previous_allocation_counted"),
+    previous_node_record_id: uuid("previous_node_record_id"),
+    previous_node_incarnation: uuid("previous_node_incarnation"),
+    previous_node_history_id: uuid("previous_node_history_id"),
+    previous_node_hostname: text("previous_node_hostname"),
+    previous_node_ssh_port: integer("previous_node_ssh_port"),
+    previous_node_ssh_user: text("previous_node_ssh_user"),
+    previous_node_host_key_fingerprint: text("previous_node_host_key_fingerprint"),
+    /**
+     * Exact-once settlement for the old primary retained after lifecycle
+     * adoption. This is deliberately separate from `cleanup_*`, which settles
+     * an abandoned replacement candidate before adoption.
+     */
+    previous_cleanup_state:
+      text("previous_cleanup_state").$type<AgentSandboxReplacementPreviousCleanupState>(),
+    previous_cleanup_proven_at: timestamp("previous_cleanup_proven_at", { withTimezone: true }),
+    previous_cleanup_receipt_digest: text("previous_cleanup_receipt_digest"),
 
     /** Optional immutable copy of the exact restore source and lease fence. */
     restore_lease_id: uuid("restore_lease_id"),
@@ -117,6 +158,11 @@ export const agentSandboxReplacementAttempts = pgTable(
     }),
     locator_previous_vpn_node_id: text("locator_previous_vpn_node_id"),
     locator_recorded_at: timestamp("locator_recorded_at", { withTimezone: true }),
+
+    capacity_state: text("capacity_state").$type<AgentCapacityOwnershipState>(),
+    capacity_reserved_at: timestamp("capacity_reserved_at", { withTimezone: true }),
+    capacity_settled_at: timestamp("capacity_settled_at", { withTimezone: true }),
+    capacity_settlement_receipt_digest: text("capacity_settlement_receipt_digest"),
 
     /** Write-once enrichments from the created and VPN callbacks. */
     locator_container_id: text("locator_container_id"),
@@ -169,17 +215,42 @@ export const agentSandboxReplacementAttempts = pgTable(
         agentBackupRestoreLeases.expected_manifest_sha256,
       ],
     }).onDelete("restrict"),
+    restore_operation_capacity_fk: foreignKey({
+      name: "agent_sandbox_replacement_attempts_restore_operation_fkey",
+      columns: [table.organization_id, table.restore_attempt_id],
+      foreignColumns: [
+        agentBackupRestoreOperations.organization_id,
+        agentBackupRestoreOperations.restore_attempt_id,
+      ],
+    }).onDelete("restrict"),
     node_occurrence_authority_fk: foreignKey({
       name: "agent_sandbox_replacement_attempts_node_occurrence_fkey",
       columns: [
         table.locator_node_history_id,
         table.locator_node_record_id,
         table.locator_node_incarnation,
+        table.locator_node_id,
       ],
       foreignColumns: [
         agentNodeIncarnationHistories.id,
         agentNodeIncarnationHistories.docker_node_record_id,
         agentNodeIncarnationHistories.node_incarnation,
+        agentNodeIncarnationHistories.node_id,
+      ],
+    }).onDelete("restrict"),
+    previous_node_occurrence_authority_fk: foreignKey({
+      name: "agent_sandbox_replacement_attempts_previous_node_occurrence_fkey",
+      columns: [
+        table.previous_node_history_id,
+        table.previous_node_record_id,
+        table.previous_node_incarnation,
+        table.previous_node_id,
+      ],
+      foreignColumns: [
+        agentNodeIncarnationHistories.id,
+        agentNodeIncarnationHistories.docker_node_record_id,
+        agentNodeIncarnationHistories.node_incarnation,
+        agentNodeIncarnationHistories.node_id,
       ],
     }).onDelete("restrict"),
     one_active_effect_per_agent_uidx: uniqueIndex(
@@ -194,6 +265,21 @@ export const agentSandboxReplacementAttempts = pgTable(
       .where(
         sql`${table.state} IN ('in_flight_unresolved', 'provider_succeeded', 'lifecycle_committed')`,
       ),
+    one_restore_capacity_receiver_uidx: uniqueIndex(
+      "agent_sandbox_replacement_restore_capacity_receiver_uidx",
+    )
+      .on(table.organization_id, table.restore_attempt_id)
+      .where(sql`${table.restore_attempt_id} IS NOT NULL AND ${table.capacity_state} IS NOT NULL`),
+    capacity_reserved_occurrence_idx: index(
+      "agent_sandbox_replacement_capacity_reserved_occurrence_idx",
+    )
+      .on(
+        table.locator_node_record_id,
+        table.locator_node_id,
+        table.locator_node_incarnation,
+        table.locator_node_history_id,
+      )
+      .where(sql`${table.capacity_state} = 'reserved'`),
     operation_kind_check: check(
       "agent_sandbox_replacement_attempts_operation_kind_check",
       sql`${table.operation_kind} IN ('provision', 'upgrade', 'downgrade')`,
@@ -205,6 +291,70 @@ export const agentSandboxReplacementAttempts = pgTable(
             AND ${table.lifecycle_execution_generation} IS NULL)
           OR (${table.lifecycle_job_id} IS NOT NULL
             AND ${table.lifecycle_execution_generation} IS NOT NULL))) IS TRUE`,
+    ),
+    previous_placement_mode_check: check(
+      "agent_sandbox_replacement_attempts_previous_placement_mode_check",
+      sql`(${table.previous_placement_absent} IS NULL
+        OR ${table.previous_placement_absent} = FALSE
+        OR (${table.previous_placement_absent} = TRUE
+          AND ${table.operation_kind} = 'provision')) IS TRUE`,
+    ),
+    previous_placement_shape_check: check(
+      "agent_sandbox_replacement_attempts_previous_placement_shape_check",
+      sql`(CASE
+        WHEN ${table.previous_placement_absent} IS NULL THEN
+          num_nonnulls(
+            ${table.previous_sandbox_id}, ${table.previous_node_id},
+            ${table.previous_container_name}, ${table.previous_container_id},
+            ${table.previous_allocation_counted},
+            ${table.previous_node_record_id}, ${table.previous_node_incarnation},
+            ${table.previous_node_history_id}, ${table.previous_node_hostname},
+            ${table.previous_node_ssh_port}, ${table.previous_node_ssh_user},
+            ${table.previous_node_host_key_fingerprint}) = 0
+        WHEN ${table.previous_placement_absent} = TRUE THEN
+          num_nonnulls(
+            ${table.previous_sandbox_id}, ${table.previous_node_id},
+            ${table.previous_container_name}, ${table.previous_container_id},
+            ${table.previous_allocation_counted},
+            ${table.previous_node_record_id}, ${table.previous_node_incarnation},
+            ${table.previous_node_history_id}, ${table.previous_node_hostname},
+            ${table.previous_node_ssh_port}, ${table.previous_node_ssh_user},
+            ${table.previous_node_host_key_fingerprint}) = 0
+        ELSE
+          ${table.previous_sandbox_id} IS NOT NULL
+          AND ${table.previous_node_id} IS NOT NULL
+          AND ${table.previous_container_name} IS NOT NULL
+          AND ${table.previous_container_id} ~ '^[0-9a-f]{64}$'
+          AND ${table.previous_allocation_counted} = TRUE
+          AND ${table.previous_node_record_id} IS NOT NULL
+          AND ${table.previous_node_incarnation} IS NOT NULL
+          AND ${table.previous_node_history_id} IS NOT NULL
+          AND btrim(${table.previous_node_hostname}) <> ''
+          AND octet_length(${table.previous_node_hostname}) <= 255
+          AND ${table.previous_node_ssh_port} BETWEEN 1 AND 65535
+          AND btrim(${table.previous_node_ssh_user}) <> ''
+          AND octet_length(${table.previous_node_ssh_user}) <= 255
+          AND btrim(${table.previous_node_host_key_fingerprint}) <> ''
+          AND octet_length(${table.previous_node_host_key_fingerprint}) <= 1024
+        END) IS TRUE`,
+    ),
+    previous_cleanup_shape_check: check(
+      "agent_sandbox_replacement_attempts_previous_cleanup_shape_check",
+      sql`(CASE
+        WHEN ${table.previous_placement_absent} = FALSE
+          AND ${table.state} = 'lifecycle_committed' THEN
+          (${table.previous_cleanup_state} = 'pending'
+            AND ${table.previous_cleanup_proven_at} IS NULL
+            AND ${table.previous_cleanup_receipt_digest} IS NULL)
+          OR (${table.previous_cleanup_state} = 'released'
+            AND ${table.previous_cleanup_proven_at} IS NOT NULL
+            AND ${table.previous_cleanup_proven_at} >= ${table.lifecycle_committed_at}
+            AND ${table.previous_cleanup_receipt_digest} ~ '^[0-9a-f]{64}$')
+        ELSE
+          ${table.previous_cleanup_state} IS NULL
+          AND ${table.previous_cleanup_proven_at} IS NULL
+          AND ${table.previous_cleanup_receipt_digest} IS NULL
+        END) IS TRUE`,
     ),
     restore_authority_check: check(
       "agent_sandbox_replacement_attempts_restore_shape_check",
@@ -345,6 +495,38 @@ export const agentSandboxReplacementAttempts = pgTable(
           AND ${table.cleanup_receipt_digest} ~ '^[0-9a-f]{64}$'
           AND ${table.lifecycle_committed_at} IS NULL
           AND ${table.lifecycle_receipt_digest} IS NULL)) IS TRUE`,
+    ),
+    capacity_shape_check: check(
+      "agent_sandbox_replacement_attempts_capacity_shape_check",
+      sql`(CASE
+        WHEN ${table.locator_recorded_at} IS NULL THEN
+          ${table.capacity_state} IS NULL
+          AND ${table.capacity_reserved_at} IS NULL
+          AND ${table.capacity_settled_at} IS NULL
+          AND ${table.capacity_settlement_receipt_digest} IS NULL
+        ELSE
+          ${table.capacity_reserved_at} = ${table.locator_recorded_at}
+          AND ((${table.state} IN ('in_flight_unresolved', 'provider_succeeded')
+              AND ${table.capacity_state} = 'reserved'
+              AND ${table.capacity_reserved_at} IS NOT NULL
+              AND ${table.capacity_settled_at} IS NULL
+              AND ${table.capacity_settlement_receipt_digest} IS NULL)
+            OR (${table.state} = 'lifecycle_committed'
+              AND ${table.capacity_state} = 'handed_off'
+              AND ${table.capacity_reserved_at} IS NOT NULL
+              AND ${table.capacity_settled_at} >= ${table.capacity_reserved_at}
+              AND ${table.capacity_settled_at} = ${table.lifecycle_committed_at}
+              AND ${table.capacity_settlement_receipt_digest}
+                = ${table.lifecycle_receipt_digest}
+              AND ${table.capacity_settlement_receipt_digest} ~ '^[0-9a-f]{64}$')
+            OR (${table.state} = 'cleanup_proven'
+              AND ${table.capacity_state} = 'released'
+              AND ${table.capacity_reserved_at} IS NOT NULL
+              AND ${table.capacity_settled_at} >= ${table.capacity_reserved_at}
+              AND ${table.capacity_settled_at} = ${table.cleanup_proven_at}
+              AND ${table.capacity_settlement_receipt_digest} = ${table.cleanup_receipt_digest}
+              AND ${table.capacity_settlement_receipt_digest} ~ '^[0-9a-f]{64}$'))
+        END) IS TRUE`,
     ),
   }),
 );

@@ -32,6 +32,7 @@ import { organizations } from "./organizations";
 export { agentBackupCatalogAuthorities } from "./agent-sandboxes";
 
 export type AgentBackupCopyRole = "primary" | "secondary";
+export type AgentCapacityOwnershipState = "reserved" | "handed_off" | "released";
 export type AgentBackupObjectTransport = "worker-r2" | "s3-compatible";
 export type AgentBackupObjectProvider = "cloudflare-r2" | "hetzner-object-storage";
 export type AgentBackupObjectState =
@@ -437,8 +438,13 @@ export const agentBackupRestoreOperations = pgTable(
     expected_node_history_id: uuid("expected_node_history_id"),
     expected_node_record_id: uuid("expected_node_record_id"),
     expected_node_incarnation: uuid("expected_node_incarnation"),
+    expected_node_id: text("expected_node_id"),
     expected_container_id: text("expected_container_id"),
     expected_image_digest: text("expected_image_digest"),
+    capacity_state: text("capacity_state").$type<AgentCapacityOwnershipState>(),
+    capacity_reserved_at: timestamp("capacity_reserved_at", { withTimezone: true }),
+    capacity_settled_at: timestamp("capacity_settled_at", { withTimezone: true }),
+    capacity_settlement_receipt_digest: text("capacity_settlement_receipt_digest"),
     receipt_digest: text("receipt_digest"),
     last_error_code: text("last_error_code"),
     last_error: text("last_error"),
@@ -496,14 +502,16 @@ export const agentBackupRestoreOperations = pgTable(
         table.expected_node_history_id,
         table.expected_node_record_id,
         table.expected_node_incarnation,
+        table.expected_node_id,
       ],
       foreignColumns: [
         agentNodeIncarnationHistories.id,
         agentNodeIncarnationHistories.docker_node_record_id,
         agentNodeIncarnationHistories.node_incarnation,
+        agentNodeIncarnationHistories.node_id,
       ],
     }).onDelete("restrict"),
-    attempt_uidx: uniqueIndex("agent_backup_restore_operations_attempt_uidx").on(
+    attempt_unique: unique("agent_backup_restore_operations_attempt_uidx").on(
       table.organization_id,
       table.restore_attempt_id,
     ),
@@ -513,6 +521,14 @@ export const agentBackupRestoreOperations = pgTable(
     due_idx: index("agent_backup_restore_operations_due_idx")
       .on(table.next_attempt_at, table.created_at)
       .where(sql`${table.phase} NOT IN ('finalized', 'failed_terminal')`),
+    capacity_reserved_occurrence_idx: index("agent_backup_restore_capacity_reserved_occurrence_idx")
+      .on(
+        table.expected_node_record_id,
+        table.expected_node_id,
+        table.expected_node_incarnation,
+        table.expected_node_history_id,
+      )
+      .where(sql`${table.capacity_state} = 'reserved'`),
     phase_check: check(
       "agent_backup_restore_operations_phase_check",
       sql`(${table.phase} IN ('reserved','vault_seeded','container_created','restoring','committed',
@@ -570,6 +586,37 @@ export const agentBackupRestoreOperations = pgTable(
             AND ${table.expected_node_incarnation} IS NOT NULL
             AND ${table.expected_image_digest} IS NOT NULL))
       ) IS TRUE`,
+    ),
+    capacity_shape_check: check(
+      "agent_backup_restore_operations_capacity_shape_check",
+      sql`(((${table.expected_node_history_id} IS NULL
+          AND ${table.expected_node_record_id} IS NULL
+          AND ${table.expected_node_incarnation} IS NULL
+          AND ${table.expected_node_id} IS NULL
+          AND ${table.expected_container_id} IS NULL
+          AND ${table.expected_image_digest} IS NULL
+          AND ${table.capacity_state} IS NULL
+          AND ${table.capacity_reserved_at} IS NULL
+          AND ${table.capacity_settled_at} IS NULL
+          AND ${table.capacity_settlement_receipt_digest} IS NULL)
+        OR (${table.expected_node_history_id} IS NOT NULL
+          AND ${table.expected_node_record_id} IS NOT NULL
+          AND ${table.expected_node_incarnation} IS NOT NULL
+          AND ${table.expected_node_id} IS NOT NULL
+          AND btrim(${table.expected_node_id}) = ${table.expected_node_id}
+          AND octet_length(${table.expected_node_id}) BETWEEN 1 AND 255
+          AND ${table.expected_image_digest} IS NOT NULL
+          AND ((${table.capacity_state} = 'reserved'
+              AND ${table.capacity_reserved_at} IS NOT NULL
+              AND ${table.capacity_settled_at} IS NULL
+              AND ${table.capacity_settlement_receipt_digest} IS NULL)
+            OR (${table.capacity_state} IN ('handed_off', 'released')
+              AND ${table.capacity_reserved_at} IS NOT NULL
+              AND ${table.capacity_settled_at} >= ${table.capacity_reserved_at}
+              AND ${table.capacity_settlement_receipt_digest} ~ '^[0-9a-f]{64}$'))))
+        AND (${table.phase} <> 'finalized' OR ${table.capacity_state} = 'handed_off')
+        AND (${table.phase} <> 'failed_terminal'
+          OR ${table.capacity_state} IS DISTINCT FROM 'reserved')) IS TRUE`,
     ),
   }),
 );

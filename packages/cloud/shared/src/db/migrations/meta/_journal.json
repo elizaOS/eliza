@@ -2080,6 +2080,139 @@
       "when": 1794254400004,
       "tag": "0313_agent_sandbox_replacement_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1794254400005,
+      "tag": "0314_agent_restore_capacity_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 298,
+      "version": "7",
+      "when": 1794254400006,
+      "tag": "0315_agent_capacity_node_occurrence_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 299,
+      "version": "7",
+      "when": 1794254400007,
+      "tag": "0316_agent_capacity_relationships",
+      "breakpoints": true
+    },
+    {
+      "idx": 300,
+      "version": "7",
+      "when": 1794254400008,
+      "tag": "0317_agent_restore_capacity_monotonicity",
+      "breakpoints": true
+    },
+    {
+      "idx": 301,
+      "version": "7",
+      "when": 1794254400009,
+      "tag": "0318_agent_replacement_capacity_monotonicity",
+      "breakpoints": true
+    },
+    {
+      "idx": 302,
+      "version": "7",
+      "when": 1794254400010,
+      "tag": "0319_agent_restore_capacity_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1794254400011,
+      "tag": "0320_agent_replacement_capacity_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 304,
+      "version": "7",
+      "when": 1794254400012,
+      "tag": "0321_agent_replacement_cleanup_occurrence",
+      "breakpoints": true
+    },
+    {
+      "idx": 305,
+      "version": "7",
+      "when": 1794254400013,
+      "tag": "0322_agent_restore_capacity_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1794254400014,
+      "tag": "0323_agent_replacement_capacity_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1794254400015,
+      "tag": "0324_agent_replacement_cleanup_occurrence_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1794254400016,
+      "tag": "0325_agent_replacement_cleanup_occurrence_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
+      "when": 1794254400017,
+      "tag": "0326_agent_replacement_cleanup_release_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 310,
+      "version": "7",
+      "when": 1794254400018,
+      "tag": "0327_agent_replacement_candidate_cleanup_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1794254400019,
+      "tag": "0328_agent_capacity_contract_preflight",
+      "breakpoints": true
+    },
+    {
+      "idx": 312,
+      "version": "7",
+      "when": 1794254400020,
+      "tag": "0329_agent_restore_capacity_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 313,
+      "version": "7",
+      "when": 1794254400021,
+      "tag": "0330_agent_replacement_capacity_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 314,
+      "version": "7",
+      "when": 1794254400022,
+      "tag": "0331_agent_replacement_cleanup_occurrence_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 315,
+      "version": "7",
+      "when": 1794254400023,
+      "tag": "0332_agent_replacement_previous_placement_guard",
+      "breakpoints": true
     }
   ]
 }

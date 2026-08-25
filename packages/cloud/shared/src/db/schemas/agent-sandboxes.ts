@@ -46,6 +46,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 import { organizations } from "./organizations";
 import { userCharacters } from "./user-characters";
 import { users } from "./users";
@@ -412,6 +413,18 @@ export const agentSandboxes = pgTable(
     }),
     replacement_cleanup_sandbox_id: text("replacement_cleanup_sandbox_id"),
     replacement_cleanup_node_id: text("replacement_cleanup_node_id"),
+    replacement_cleanup_node_record_id: uuid("replacement_cleanup_node_record_id"),
+    replacement_cleanup_node_incarnation: uuid("replacement_cleanup_node_incarnation"),
+    replacement_cleanup_node_history_id: uuid("replacement_cleanup_node_history_id"),
+    replacement_cleanup_node_hostname: text("replacement_cleanup_node_hostname"),
+    replacement_cleanup_node_ssh_port: integer("replacement_cleanup_node_ssh_port"),
+    replacement_cleanup_node_ssh_user: text("replacement_cleanup_node_ssh_user"),
+    replacement_cleanup_node_host_key_fingerprint: text(
+      "replacement_cleanup_node_host_key_fingerprint",
+    ),
+    replacement_cleanup_secret_cleanup_version: integer(
+      "replacement_cleanup_secret_cleanup_version",
+    ),
     replacement_cleanup_container_name: text("replacement_cleanup_container_name"),
     replacement_cleanup_attempt_id: uuid("replacement_cleanup_attempt_id"),
     replacement_cleanup_container_id: text("replacement_cleanup_container_id"),
@@ -619,6 +632,14 @@ export const agentSandboxes = pgTable(
       sql`(
         ${table.replacement_cleanup_sandbox_id} IS NULL
         AND ${table.replacement_cleanup_node_id} IS NULL
+        AND ${table.replacement_cleanup_node_record_id} IS NULL
+        AND ${table.replacement_cleanup_node_incarnation} IS NULL
+        AND ${table.replacement_cleanup_node_history_id} IS NULL
+        AND ${table.replacement_cleanup_node_hostname} IS NULL
+        AND ${table.replacement_cleanup_node_ssh_port} IS NULL
+        AND ${table.replacement_cleanup_node_ssh_user} IS NULL
+        AND ${table.replacement_cleanup_node_host_key_fingerprint} IS NULL
+        AND ${table.replacement_cleanup_secret_cleanup_version} IS NULL
         AND ${table.replacement_cleanup_container_name} IS NULL
         AND ${table.replacement_cleanup_attempt_id} IS NULL
         AND ${table.replacement_cleanup_container_id} IS NULL
@@ -636,7 +657,37 @@ export const agentSandboxes = pgTable(
         AND ${table.replacement_cleanup_created_at} IS NOT NULL
         AND (
           (
+            ${table.replacement_cleanup_node_record_id} IS NULL
+            AND ${table.replacement_cleanup_node_incarnation} IS NULL
+            AND ${table.replacement_cleanup_node_history_id} IS NULL
+            AND ${table.replacement_cleanup_node_hostname} IS NULL
+            AND ${table.replacement_cleanup_node_ssh_port} IS NULL
+            AND ${table.replacement_cleanup_node_ssh_user} IS NULL
+            AND ${table.replacement_cleanup_node_host_key_fingerprint} IS NULL
+            AND ${table.replacement_cleanup_secret_cleanup_version} IS NULL
+          )
+          OR (
+            ${table.replacement_cleanup_node_record_id} IS NOT NULL
+            AND ${table.replacement_cleanup_node_incarnation} IS NOT NULL
+            AND ${table.replacement_cleanup_node_history_id} IS NOT NULL
+            AND ${table.replacement_cleanup_node_hostname} IS NOT NULL
+            AND btrim(${table.replacement_cleanup_node_hostname}) <> ''
+            AND ${table.replacement_cleanup_node_ssh_port} BETWEEN 1 AND 65535
+            AND ${table.replacement_cleanup_node_ssh_user} IS NOT NULL
+            AND btrim(${table.replacement_cleanup_node_ssh_user}) <> ''
+            AND ${table.replacement_cleanup_node_host_key_fingerprint} IS NOT NULL
+            AND btrim(${table.replacement_cleanup_node_host_key_fingerprint}) <> ''
+          )
+        )
+        AND (
+          (
             ${table.replacement_cleanup_attempt_id} IS NOT NULL
+            AND (
+              (${table.replacement_cleanup_node_record_id} IS NULL
+                AND ${table.replacement_cleanup_secret_cleanup_version} IS NULL)
+              OR (${table.replacement_cleanup_node_record_id} IS NOT NULL
+                AND ${table.replacement_cleanup_secret_cleanup_version} = 1)
+            )
             AND (
               (
                 ${table.replacement_cleanup_vpn_node_id} IS NULL
@@ -652,8 +703,14 @@ export const agentSandboxes = pgTable(
             )
           )
           OR (
-            ${table.replacement_cleanup_attempt_id} IS NULL
-            AND ${table.replacement_cleanup_container_id} IS NULL
+            ${table.replacement_cleanup_secret_cleanup_version} IS NULL
+            AND (
+              (${table.replacement_cleanup_node_record_id} IS NULL
+                AND ${table.replacement_cleanup_container_id} IS NULL)
+              OR (${table.replacement_cleanup_node_record_id} IS NOT NULL
+                AND ${table.replacement_cleanup_attempt_id} IS NOT NULL
+                AND ${table.replacement_cleanup_container_id} ~ '^[0-9a-f]{64}$')
+            )
             AND ${table.replacement_cleanup_vpn_node_name} IS NULL
             AND ${table.replacement_cleanup_preserved_vpn_node_id} IS NULL
             AND ${table.replacement_cleanup_vpn_registration_started_at} IS NULL
@@ -662,6 +719,21 @@ export const agentSandboxes = pgTable(
         )
       )`,
     ),
+    replacement_cleanup_node_occurrence_fk: foreignKey({
+      name: "agent_sandboxes_replacement_cleanup_node_occurrence_fkey",
+      columns: [
+        table.replacement_cleanup_node_history_id,
+        table.replacement_cleanup_node_record_id,
+        table.replacement_cleanup_node_incarnation,
+        table.replacement_cleanup_node_id,
+      ],
+      foreignColumns: [
+        agentNodeIncarnationHistories.id,
+        agentNodeIncarnationHistories.docker_node_record_id,
+        agentNodeIncarnationHistories.node_incarnation,
+        agentNodeIncarnationHistories.node_id,
+      ],
+    }).onDelete("restrict"),
     replacement_cleanup_pending_idx: index("agent_sandboxes_replacement_cleanup_pending_idx")
       .on(table.replacement_cleanup_created_at)
       .where(sql`${table.replacement_cleanup_sandbox_id} IS NOT NULL`),

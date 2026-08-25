@@ -32,6 +32,9 @@ export const agentNodeIncarnationHistories = pgTable(
     receipt_authority_unique: unique(
       "agent_node_incarnation_histories_receipt_authority_unique",
     ).on(table.id, table.docker_node_record_id, table.node_incarnation),
+    logical_authority_unique: unique(
+      "agent_node_incarnation_histories_logical_authority_unique",
+    ).on(table.id, table.docker_node_record_id, table.node_incarnation, table.node_id),
     shape_check: check(
       "agent_node_incarnation_histories_shape_check",
       sql`(${table.node_id} = btrim(${table.node_id})

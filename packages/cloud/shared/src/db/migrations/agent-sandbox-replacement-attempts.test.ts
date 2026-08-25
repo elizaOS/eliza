@@ -33,6 +33,36 @@ const NODE_RECORD_ID = "b0000000-0000-4000-8000-000000000001";
 const NODE_INCARNATION = "c0000000-0000-4000-8000-000000000001";
 const NODE_HISTORY_ID = "d0000000-0000-4000-8000-000000000001";
 
+const POST_0313_SCHEMA_COLUMNS = new Set([
+  "previous_placement_absent",
+  "previous_sandbox_id",
+  "previous_node_id",
+  "previous_container_name",
+  "previous_container_id",
+  "previous_allocation_counted",
+  "previous_node_record_id",
+  "previous_node_incarnation",
+  "previous_node_history_id",
+  "previous_node_hostname",
+  "previous_node_ssh_port",
+  "previous_node_ssh_user",
+  "previous_node_host_key_fingerprint",
+  "previous_cleanup_state",
+  "previous_cleanup_proven_at",
+  "previous_cleanup_receipt_digest",
+  "capacity_state",
+  "capacity_reserved_at",
+  "capacity_settled_at",
+  "capacity_settlement_receipt_digest",
+]);
+
+const POST_0313_SCHEMA_CHECKS = new Set([
+  "agent_sandbox_replacement_attempts_previous_placement_mode_check",
+  "agent_sandbox_replacement_attempts_previous_placement_shape_check",
+  "agent_sandbox_replacement_attempts_previous_cleanup_shape_check",
+  "agent_sandbox_replacement_attempts_capacity_shape_check",
+]);
+
 function normalizeDefinition(definition: string): string {
   return definition.replace(/\s+/g, " ").trim();
 }
@@ -351,11 +381,13 @@ afterEach(async () => {
 });
 
 describe("0313 agent sandbox replacement attempts", () => {
-  test("is the journal tail and matches the merged schema surface", async () => {
+  test("keeps its exact journal ordinal and matches the 0313 schema surface", async () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(
+      journal.entries.find((entry) => entry.tag === "0313_agent_sandbox_replacement_attempts"),
+    ).toMatchObject({
       idx: 296,
       tag: "0313_agent_sandbox_replacement_attempts",
     });
@@ -401,12 +433,14 @@ describe("0313 agent sandbox replacement attempts", () => {
         sqlType: sql_type.replace(/,\s*/g, ","),
       })),
     ).toEqual(
-      schema.columns.map((column) => ({
-        columnName: column.name,
-        hasDefault: column.hasDefault,
-        isNotNull: column.notNull,
-        sqlType: column.getSQLType().replace(/,\s*/g, ","),
-      })),
+      schema.columns
+        .filter((column) => !POST_0313_SCHEMA_COLUMNS.has(column.name))
+        .map((column) => ({
+          columnName: column.name,
+          hasDefault: column.hasDefault,
+          isNotNull: column.notNull,
+          sqlType: column.getSQLType().replace(/,\s*/g, ","),
+        })),
     );
 
     const constraints = await db.query<{ conname: string; definition: string }>(`
@@ -425,7 +459,7 @@ describe("0313 agent sandbox replacement attempts", () => {
     ).toEqual(EXPECTED_CONSTRAINT_DEFINITIONS);
 
     const schemaConstraintNames = [
-      ...schema.checks.map(({ name }) => name),
+      ...schema.checks.map(({ name }) => name).filter((name) => !POST_0313_SCHEMA_CHECKS.has(name)),
       "agent_sandbox_replacement_attempts_node_occurrence_fkey",
       "agent_sandbox_replacement_attempts_restore_lease_fkey",
     ];
@@ -450,7 +484,15 @@ describe("0313 agent sandbox replacement attempts", () => {
       ),
     ).toEqual(EXPECTED_INDEX_DEFINITIONS);
     expect(Object.keys(EXPECTED_INDEX_DEFINITIONS)).toEqual(
-      expect.arrayContaining(schema.indexes.map(({ config }) => config.name)),
+      expect.arrayContaining(
+        schema.indexes
+          .map(({ config }) => config.name)
+          .filter(
+            (name) =>
+              name !== "agent_sandbox_replacement_restore_capacity_receiver_uidx" &&
+              name !== "agent_sandbox_replacement_capacity_reserved_occurrence_idx",
+          ),
+      ),
     );
 
     const triggers = await db.query<{ tgname: string }>(`
