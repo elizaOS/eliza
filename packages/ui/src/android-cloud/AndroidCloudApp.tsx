@@ -15,6 +15,7 @@ import {
 } from "../first-run/first-run-greeting";
 import {
   AndroidCloudClient,
+  type AndroidCloudGoogleIdentityAdapter,
   type AndroidCloudSession,
 } from "./android-cloud-client";
 
@@ -37,6 +38,7 @@ export interface AndroidCloudAppProps {
     url: string,
   ) => Promise<"closed" | "opened"> | "closed" | "opened";
   closeExternal?: () => Promise<void> | void;
+  googleIdentity?: AndroidCloudGoogleIdentityAdapter;
   voice?: AndroidCloudVoiceAdapter;
 }
 
@@ -50,6 +52,15 @@ function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
     : "Something went wrong. Please try again.";
+}
+
+function isGoogleSignInCancellation(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "GOOGLE_SIGN_IN_CANCELLED"
+  );
 }
 
 function defaultExternalOpen(url: string): "opened" {
@@ -71,6 +82,7 @@ export function AndroidCloudApp({
   client: clientOverride,
   openExternal = defaultExternalOpen,
   closeExternal,
+  googleIdentity,
   voice,
 }: AndroidCloudAppProps): React.JSX.Element {
   const client = useMemo(
@@ -85,9 +97,11 @@ export function AndroidCloudApp({
   const [messages, setMessages] = useState<AndroidCloudMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [authFlow, setAuthFlow] = useState<"browser" | "google" | null>(null);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const authAbortRef = useRef<AbortController | null>(null);
   const loginAttemptRef = useRef(0);
 
   const restore = useCallback(async () => {
@@ -136,9 +150,11 @@ export function AndroidCloudApp({
     return () => {
       loginAttemptRef.current += 1;
       abortRef.current?.abort();
+      authAbortRef.current?.abort();
+      if (authAbortRef.current) void googleIdentity?.cancel();
       void voice?.stop();
     };
-  }, [restore, voice]);
+  }, [googleIdentity, restore, voice]);
 
   useEffect(() => {
     const compose = (event: Event) => {
@@ -155,6 +171,7 @@ export function AndroidCloudApp({
     const attemptNumber = loginAttemptRef.current + 1;
     loginAttemptRef.current = attemptNumber;
     setBusy(true);
+    setAuthFlow("browser");
     setError(null);
     try {
       const attempt = await client.beginLogin();
@@ -188,21 +205,63 @@ export function AndroidCloudApp({
         setError(errorMessage(signInError));
       }
     } finally {
-      if (loginAttemptRef.current === attemptNumber) setBusy(false);
+      if (loginAttemptRef.current === attemptNumber) {
+        setBusy(false);
+        setAuthFlow(null);
+      }
     }
   }, [client, closeExternal, openExternal, restore]);
 
+  const signInWithGoogle = useCallback(async () => {
+    if (!googleIdentity) {
+      setError("Google sign-in is not available on this device.");
+      return;
+    }
+    const attemptNumber = loginAttemptRef.current + 1;
+    loginAttemptRef.current = attemptNumber;
+    setBusy(true);
+    setAuthFlow("google");
+    setError(null);
+    const controller = new AbortController();
+    authAbortRef.current = controller;
+    try {
+      await client.signInWithGoogle(googleIdentity, controller.signal);
+      if (loginAttemptRef.current !== attemptNumber) return;
+      await restore();
+    } catch (signInError) {
+      // error-policy:J4 native identity failures remain visible and recoverable.
+      if (
+        loginAttemptRef.current === attemptNumber &&
+        !isGoogleSignInCancellation(signInError)
+      ) {
+        setError(errorMessage(signInError));
+      }
+    } finally {
+      if (loginAttemptRef.current === attemptNumber) {
+        setBusy(false);
+        setAuthFlow(null);
+      }
+      if (authAbortRef.current === controller) authAbortRef.current = null;
+    }
+  }, [client, googleIdentity, restore]);
+
   const cancelSignIn = useCallback(async () => {
+    const flow = authFlow;
     loginAttemptRef.current += 1;
     setBusy(false);
+    setAuthFlow(null);
     try {
-      await closeExternal?.();
+      if (flow === "google") {
+        authAbortRef.current?.abort();
+        await googleIdentity?.cancel();
+      } else if (flow === "browser") {
+        await closeExternal?.();
+      }
     } catch (cancelError) {
-      // error-policy:J4 a failed browser cancellation remains visible instead
-      // of pretending the canonical Cloud sign-in surface was dismissed.
+      // error-policy:J4 a failed native or browser cancellation remains visible.
       setError(errorMessage(cancelError));
     }
-  }, [closeExternal]);
+  }, [authFlow, closeExternal, googleIdentity]);
 
   const signOut = useCallback(async () => {
     setBusy(true);
@@ -214,6 +273,14 @@ export function AndroidCloudApp({
       setConversationId(null);
       setMessages([]);
       setPhase("signed-out");
+      try {
+        await googleIdentity?.clearCredentialState();
+      } catch (clearError) {
+        // error-policy:J4 the Cloud session is closed, but provider cleanup failure is visible.
+        setError(
+          `You are signed out, but Google account state could not be cleared: ${errorMessage(clearError)}`,
+        );
+      }
     } catch (signOutError) {
       // error-policy:J4 failed logout remains visible without fabricating a
       // signed-out state that the client did not complete.
@@ -221,7 +288,7 @@ export function AndroidCloudApp({
     } finally {
       setBusy(false);
     }
-  }, [client]);
+  }, [client, googleIdentity]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -366,8 +433,10 @@ export function AndroidCloudApp({
               ) : null}
               {busy ? (
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm text-white/65">
-                    Finish signing in with Steward, then return to Eliza.
+                  <p className="text-sm text-white/65" role="status">
+                    {authFlow === "google"
+                      ? "Choose your Google account to continue."
+                      : "Finish signing in with Steward, then return to Eliza."}
                   </p>
                   <Button
                     type="button"
@@ -379,15 +448,31 @@ export function AndroidCloudApp({
                   </Button>
                 </div>
               ) : (
-                <Button
-                  type="button"
-                  variant="surface"
-                  size="touch"
-                  onClick={() => void signIn()}
-                  className="w-full max-w-[13.5rem]"
-                >
-                  Sign in to Eliza Cloud
-                </Button>
+                <div className="flex flex-col items-start gap-1.5">
+                  <Button
+                    type="button"
+                    variant="surface"
+                    size="touch"
+                    onClick={() =>
+                      void (googleIdentity ? signInWithGoogle() : signIn())
+                    }
+                    className="w-full max-w-[13.5rem]"
+                  >
+                    {googleIdentity
+                      ? "Continue with Google"
+                      : "Sign in to Eliza Cloud"}
+                  </Button>
+                  {googleIdentity ? (
+                    <Button
+                      type="button"
+                      variant="mutedLink"
+                      size="compact"
+                      onClick={() => void signIn()}
+                    >
+                      Other sign-in options
+                    </Button>
+                  ) : null}
+                </div>
               )}
               {error ? (
                 <Button

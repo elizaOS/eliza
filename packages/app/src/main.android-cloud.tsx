@@ -63,8 +63,20 @@ interface SecureCredentialsPlugin {
   remove(): Promise<void>;
 }
 
+interface GoogleIdentityPlugin {
+  signIn(options: {
+    serverClientId: string;
+    nonce: string;
+  }): Promise<{ idToken: string }>;
+  cancel(): Promise<{ cancelled: boolean }>;
+  clearCredentialState(): Promise<Record<string, never>>;
+}
+
 const SecureCredentials = registerPlugin<SecureCredentialsPlugin>(
   "ElizaSecureCredentials",
+);
+const GoogleIdentity = registerPlugin<GoogleIdentityPlugin>(
+  "ElizaGoogleIdentity",
 );
 
 const androidSecureCredentialStore: AndroidCloudCredentialStore = {
@@ -373,6 +385,7 @@ export async function bootAndroidCloudApp(): Promise<void> {
         <AndroidCloudApp
           client={androidCloudClient}
           closeExternal={() => Browser.close()}
+          googleIdentity={GoogleIdentity}
           openExternal={openAndroidCloudSignIn}
           voice={androidCloudVoice}
         />

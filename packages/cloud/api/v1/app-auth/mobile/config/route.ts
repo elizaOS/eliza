@@ -7,6 +7,7 @@ import {
   MobileAppAuthProtocolError,
   validateMobileAppAuthClientBinding,
 } from "@/lib/services/mobile-app-auth";
+import { resolveMobileGoogleAuthReadiness } from "@/lib/services/mobile-google-auth";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   MOBILE_APP_AUTH_CONFIG_RATE_LIMIT,
@@ -34,6 +35,7 @@ app.get("/", async (c) => {
     const { app: appRecord, registration } =
       await requireRegisteredMobileApp(c);
     validateMobileAppAuthClientBinding(registration, parsed.data);
+    const googleReadiness = resolveMobileGoogleAuthReadiness(c.env);
     return c.json({
       success: true,
       clientId: registration.clientId,
@@ -47,6 +49,12 @@ app.get("/", async (c) => {
         logoUrl: appRecord.logo_url,
         websiteUrl: appRecord.website_url,
       },
+      google: googleReadiness
+        ? {
+            serverClientId: googleReadiness.serverClientId,
+            native: true,
+          }
+        : null,
     });
   } catch (error) {
     // error-policy:J1 HTTP boundary returns the stable mobile protocol error contract.

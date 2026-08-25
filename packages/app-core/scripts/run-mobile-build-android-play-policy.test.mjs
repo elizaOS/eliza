@@ -157,6 +157,12 @@ describe("Android Play manifest policy", () => {
     expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
       "android.permission.MODIFY_AUDIO_SETTINGS",
     );
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toEqual(
+      expect.arrayContaining([
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+      ]),
+    );
     expect(ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES).toEqual([
       "agent",
       "runners",
