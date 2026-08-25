@@ -46,6 +46,31 @@ describe("extractAndParseJSONObjectFromText", () => {
 		expect(() => extractAndParseJSONObjectFromText("")).toThrow(
 			/non-empty string/,
 		);
+		expect(() => extractAndParseJSONObjectFromText("   ")).toThrow(
+			/non-empty string/,
+		);
+		expect(() => extractAndParseJSONObjectFromText("\n\t ")).toThrow(
+			/non-empty string/,
+		);
+		expect(() =>
+			(extractAndParseJSONObjectFromText as unknown as (v: unknown) => unknown)(
+				null as unknown as string,
+			),
+		).toThrow(/non-empty string/);
+		expect(() =>
+			(extractAndParseJSONObjectFromText as unknown as (v: unknown) => unknown)(
+				undefined as unknown as string,
+			),
+		).toThrow(/non-empty string/);
+	});
+
+	it("throws non-empty error for whitespace-only fenced block", () => {
+		expect(() =>
+			extractAndParseJSONObjectFromText("```json\n   \n```"),
+		).toThrow(/Failed to parse/);
+		expect(() => extractAndParseJSONObjectFromText("```json\n\n```")).toThrow(
+			/Failed to parse/,
+		);
 	});
 
 	it("throws on unparseable text", () => {

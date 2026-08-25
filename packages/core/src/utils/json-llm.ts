@@ -21,7 +21,7 @@ const jsonBlockPattern = /```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
 export function extractAndParseJSONObjectFromText(
 	text: string,
 ): Record<string, unknown> | unknown[] {
-	if (!text || typeof text !== "string") {
+	if (!text || typeof text !== "string" || text.trim().length === 0) {
 		throw new Error("Invalid input: text must be a non-empty string");
 	}
 
