@@ -151,6 +151,10 @@ describe("cross-browser extension build", () => {
     expect(chromeBackground).toContain("browser-bridge:owner-reconnect");
     expect(chromeBackground).not.toContain("forceNativeEnrollment");
     expect(chromeBackground).toContain("app_not_authenticated");
+    expect(chromeBackground).toContain("addInstalledListener");
+    expect(chromeBackground).toContain("addStartupListener");
+    expect(chromeBackground).toContain('scheduleSync("startup-bootstrap")');
+    expect(chromeBackground).toContain("nativeEnrollment");
     const [popupHtml, popupScript] = await Promise.all([
       fs.readFile(
         path.join(packageRoot, "dist", "chrome", "popup.html"),
