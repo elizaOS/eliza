@@ -132,6 +132,32 @@ time of this receipt.
 No native bundle was built or launched, no final port was bound, and the
 shadow branch was not pushed.
 
+## Malformed-Unicode develop refresh
+
+`origin/develop` advanced by one commit to
+`6941532900d691b674ed0c0462985f1faab360d7`, changing only
+`packages/core/src/utils/reference-echo.ts` and its focused test. Feature-delta
+comparison found no overlap with the frozen Computer, Devices, iOS, Shared, or
+macOS/preflight inputs. The merge was conflict-free and produced source
+composite `3480b5d9d4b751568a5a1ffd04c98a55bb9b1b9e`, tree
+`348e92348b950bcbc0abc95f2ca7ee6d9dae10d9`.
+
+Focused proof:
+
+- Reference-echo regression: 19/19.
+- Core Node, browser, edge, testing, and declaration build: passed.
+- Scoped reference-echo Biome: passed.
+- Core package dry run: 1,519 files, 120,370,161 bytes unpacked,
+  26,287,144-byte archive estimate.
+- `git diff --check`: passed.
+
+PR #28826 remains exact at `eb74d871f652...`, fully green, and still has fresh
+review requests attached to `standujar` and `lalalune`. No review result was
+present at this receipt.
+
+No native bundle was built or launched, no final port was bound, and the
+shadow branch was not pushed.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
