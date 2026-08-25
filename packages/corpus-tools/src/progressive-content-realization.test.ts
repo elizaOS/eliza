@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 describe("progressive native realization", () => {
-  it("streams 1 and 10 MiB FILE objects and preserves exact blockers for both scales elsewhere", async () => {
+  it("streams 1, 10, and 100 MiB FILE objects and preserves exact blockers for every scale elsewhere", async () => {
     const corpusRoot = await mkdtemp(
       path.join(tmpdir(), "progressive-realization-"),
     );
@@ -67,9 +67,10 @@ describe("progressive native realization", () => {
       ],
     });
     expect(ledger.counts).toEqual({
-      verified: 2,
+      verified: 3,
+      typedRejected: 0,
       unsupported: 0,
-      pending: 10,
+      pending: 15,
       failed: 0,
     });
     for (const entry of ledger.entries.filter(

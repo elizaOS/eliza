@@ -10,21 +10,24 @@ under `fixtures/` are committed.
 
 ## Progressive-content evidence production
 
-`bun run content-context:produce -- --plan=<private-plan.json>
---external-dir=<private-external-artifacts> --run-root=reports/content-context/<run-id>`
-generates one deterministic scale corpus and passes its root, exact commit,
-manifest identity, and a unique output path to every named subproducer. The
-plan uses schema `elizaos.content-context.producers.v1` and declares exactly
-one `{ artifact, command, args }` entry for each deterministic artifact listed
-by `packages/scripts/produce-content-context.mjs`.
+`bun run content-context:produce -- --external-dir=<private-external-artifacts>
+--run-root=reports/content-context/<run-id>` generates one deterministic scale
+corpus and invokes only the fixed checked-in deterministic producer at
+`packages/scripts/produce-content-context-deterministic.mjs`. Caller-selected
+command plans and caller-supplied deterministic reports are not accepted. The
+external directory is reserved for the six-hour soak, real PostgreSQL,
+credentialed trajectories, E2E report, and E2E bytes. Every imported artifact
+must be a private, single-link regular file; missing, fixture-shaped,
+cross-commit, or cross-corpus evidence fails during canonical validation. If
+the checked-in deterministic producer is unavailable, orchestration fails
+closed instead of accepting fabricated rows.
 
-Subproducers must exercise production adapters and atomically write a private
-regular file to `ELIZA_CONTENT_CONTEXT_OUTPUT`. The orchestrator never creates
-soak, real-Postgres, live-model trajectory, or browser/UI evidence. Those four
-run-bound artifacts must already exist in `--external-dir`; missing, stale,
-fixture-shaped, cross-commit, or cross-corpus evidence fails before canonical
-publication. Successful publication still goes exclusively through the
-existing `run-content-context.mjs` producer and the normal evidence ingestor.
+`e2e.json` declares exactly one backend log, browser trace, network log, and
+database-state artifact beneath `e2e-artifacts/`, including byte length and
+SHA-256. The publisher reads, verifies, and copies those exact bytes into the
+atomic run directory; a path-only claim cannot satisfy E2E evidence. Successful
+publication still goes exclusively through `run-content-context.mjs` and the
+normal evidence ingestor.
 
 The external soak artifact is produced separately and intentionally takes at
 least six hours:

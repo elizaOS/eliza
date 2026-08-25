@@ -79,6 +79,19 @@ async function readRegularFile(filePath) {
   }
 }
 
+async function assertRealDirectoryPath(root, relativeFile) {
+  let current = root;
+  for (const segment of relativeFile.split("/").slice(0, -1)) {
+    current = path.join(current, segment);
+    const stat = await fs.lstat(current);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(
+        `content-context referenced artifact parent is unsafe: ${relativeFile}`,
+      );
+    }
+  }
+}
+
 function currentCommit(explicit) {
   if (explicit) return explicit;
   const result = spawnSync("git", ["rev-parse", "HEAD"], {
@@ -113,8 +126,11 @@ export async function publishContentContextEvidence(options) {
   if (!sourceStat.isDirectory() || sourceStat.isSymbolicLink()) {
     throw new Error("content-context source must be a real directory");
   }
-  const { buildContentContextResult, CONTENT_CONTEXT_REQUIRED_ARTIFACTS } =
-    await import("../corpus-tools/src/progressive-content-evidence.ts");
+  const {
+    buildContentContextResult,
+    CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
+    contentContextE2EArtifactDeclarations,
+  } = await import("../corpus-tools/src/progressive-content-evidence.ts");
   const artifactBytes = {};
   for (const name of CONTENT_CONTEXT_REQUIRED_ARTIFACTS) {
     artifactBytes[name] = await readRegularFile(path.join(source, name));
@@ -122,11 +138,22 @@ export async function publishContentContextEvidence(options) {
   const corpus = JSON.parse(
     artifactBytes["corpus-manifest.json"].toString("utf8"),
   );
+  const referencedArtifactBytes = {};
+  const e2eArtifacts = contentContextE2EArtifactDeclarations(
+    artifactBytes["e2e.json"],
+  );
+  for (const artifact of e2eArtifacts) {
+    await assertRealDirectoryPath(source, artifact.path);
+    referencedArtifactBytes[artifact.path] = await readRegularFile(
+      path.join(source, ...artifact.path.split("/")),
+    );
+  }
   const result = buildContentContextResult({
     commit,
     corpusManifestSha256: corpus.manifestSha256,
     generatorRevision: corpus.generatorRevision,
     artifactBytes,
+    referencedArtifactBytes,
   });
   const canonicalRoot = await canonicalParent(runRoot);
   const pending = path.join(canonicalRoot, `.pending-${randomUUID()}`);
@@ -134,6 +161,17 @@ export async function publishContentContextEvidence(options) {
   try {
     for (const name of CONTENT_CONTEXT_REQUIRED_ARTIFACTS) {
       await fs.writeFile(path.join(pending, name), artifactBytes[name], {
+        flag: "wx",
+        mode: 0o600,
+      });
+    }
+    for (const artifact of e2eArtifacts) {
+      const destination = path.join(pending, ...artifact.path.split("/"));
+      await fs.mkdir(path.dirname(destination), {
+        recursive: true,
+        mode: 0o700,
+      });
+      await fs.writeFile(destination, referencedArtifactBytes[artifact.path], {
         flag: "wx",
         mode: 0o600,
       });
@@ -152,6 +190,7 @@ export async function publishContentContextEvidence(options) {
           status: "passed",
           requiredArtifacts: [
             ...CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
+            ...e2eArtifacts.map(({ path: artifactPath }) => artifactPath),
             RESULT_FILE,
           ],
           result,

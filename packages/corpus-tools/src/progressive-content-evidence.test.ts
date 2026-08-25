@@ -18,15 +18,49 @@ import {
 } from "./progressive-content.ts";
 import {
   buildContentContextResult,
+  CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
   CONTENT_CONTEXT_PERFORMANCE_POLICY,
   CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
   CONTENT_CONTEXT_RESULT_SCHEMA_VERSION,
   type ContentContextRequiredArtifact,
-  validateContentContextResult,
+  validateContentContextResult as validateContentContextResultBase,
 } from "./progressive-content-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "./progressive-content-realization.ts";
 
 const fixtureCommit = "a".repeat(40);
+const fixtureE2EArtifactBytes = {
+  "e2e-artifacts/backend/server.log": Buffer.from("backend evidence\n"),
+  "e2e-artifacts/browser/trace.zip": Buffer.from("browser trace bytes"),
+  "e2e-artifacts/network/requests.har": Buffer.from("network evidence\n"),
+  "e2e-artifacts/database/rows.json": Buffer.from('{"rows":1}\n'),
+} as const;
+
+function fixtureE2EArtifacts() {
+  const kinds = [
+    "backend-log",
+    "browser-trace",
+    "network-log",
+    "database-state",
+  ] as const;
+  return Object.entries(fixtureE2EArtifactBytes).map(
+    ([artifactPath, bytes], index) => ({
+      kind: kinds[index],
+      path: artifactPath,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      bytes: bytes.byteLength,
+    }),
+  );
+}
+
+function validateContentContextResult(
+  value: unknown,
+  bytes: Parameters<typeof validateContentContextResultBase>[1],
+  referencedBytes: Parameters<
+    typeof validateContentContextResultBase
+  >[2] = fixtureE2EArtifactBytes,
+) {
+  return validateContentContextResultBase(value, bytes, referencedBytes);
+}
 const fixtureObjects = [
   "file",
   "document",
@@ -35,7 +69,7 @@ const fixtureObjects = [
   "attachment",
   "tool-output",
 ].flatMap((family) =>
-  [1024 * 1024, 10 * 1024 * 1024].map((byteLength) => {
+  [1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024].map((byteLength) => {
     const id = `${family}-${byteLength}`;
     return {
       id,
@@ -82,6 +116,15 @@ const steadyResourceSample = {
   databaseRows: 0,
   walBytes: 0,
 };
+
+function expectedFixtureRejection(object: (typeof fixtureObjects)[number]) {
+  if (!["file", "document", "memory", "email"].includes(object.family)) {
+    return undefined;
+  }
+  if (object.format === "binary") return "CONTENT_BINARY_UNSUPPORTED";
+  if (object.format === "invalid-utf8") return "CONTENT_INVALID_UTF8";
+  return undefined;
+}
 
 function validSoakEvidence(commit: string, corpusManifestSha256: string) {
   const families = [
@@ -144,6 +187,7 @@ function validSoakEvidence(commit: string, corpusManifestSha256: string) {
         binaryPolicy: realization?.[1],
         productionMethod: `${family}-native-realization`,
         operations,
+        cleanupVerified: true,
         failures: [],
         sourceWork: {
           bytesRead: operations * 64 * 1024,
@@ -383,6 +427,12 @@ function validPostgresEvidence(
 
 function evidence() {
   const objects = fixtureObjects.map((object) => ({ ...object }));
+  const verifiedObjects = objects.filter(
+    (object) => expectedFixtureRejection(object) === undefined,
+  );
+  const typedRejectedObjects = objects.filter(
+    (object) => expectedFixtureRejection(object) !== undefined,
+  );
   const values: Record<ContentContextRequiredArtifact, unknown> = {
     "corpus-manifest.json": {
       ...fixtureManifest,
@@ -393,28 +443,57 @@ function evidence() {
       corpusSchemaVersion: PROGRESSIVE_CONTENT_SCHEMA_VERSION,
       corpusManifestSha256: manifestSha,
       generatorRevision: fixtureCommit,
-      entries: objects.map((object) => ({
-        status: "verified",
-        objectId: object.id,
-        family: object.family,
-        sourceSha256: object.sourceSha256,
-        sourceBytes: object.byteLength,
-        revision: object.revision,
-        authorizationScope: object.authorizationScope,
-        sourceWork: {
-          bytesRead: object.byteLength,
-          maxReadBytes: 64 * 1024,
-        },
-      })),
+      entries: objects.map((object) => {
+        const rejectionCode = expectedFixtureRejection(object);
+        const common = {
+          objectId: object.id,
+          family: object.family,
+          adapterId: `production-${object.family}`,
+          sourceSha256: object.sourceSha256,
+          sourceBytes: object.byteLength,
+        };
+        return rejectionCode
+          ? {
+              ...common,
+              status: "typed-rejected",
+              sourceWork: {
+                readCalls: 1,
+                bytesRead: 64 * 1024,
+                maxReadBytes: 64 * 1024,
+              },
+              rejectionCode,
+            }
+          : {
+              ...common,
+              status: "verified",
+              revision: object.revision,
+              authorizationScope: object.authorizationScope,
+              cleanupIdentity: `cleanup-${object.id}`,
+              resolverBindingSha256: "e".repeat(64),
+              reference: {
+                kind:
+                  object.family === "tool-output"
+                    ? "tool-result"
+                    : object.family,
+                ref: `ref-${object.id}`,
+              },
+              sourceWork: {
+                readCalls: Math.ceil(object.byteLength / (64 * 1024)),
+                bytesRead: object.byteLength,
+                maxReadBytes: 64 * 1024,
+              },
+            };
+      }),
       counts: {
-        verified: objects.length,
+        verified: verifiedObjects.length,
+        typedRejected: typedRejectedObjects.length,
         unsupported: 0,
         pending: 0,
         failed: 0,
       },
     },
     "conformance.json": {
-      reports: objects.map((object) => ({
+      reports: verifiedObjects.map((object) => ({
         objectId: object.id,
         status: "passed",
         reassembledSha256: object.sourceSha256,
@@ -458,31 +537,33 @@ function evidence() {
     "source-work.json": {
       samples: objects.map((object) => ({
         objectId: object.id,
-        rowsRead: 1,
+        rowsRead: expectedFixtureRejection(object) ? 0 : 1,
         parentScans: 0,
-        bytesRead: 1024,
-        bytesReturned: 1024,
+        bytesRead: expectedFixtureRejection(object) ? 64 * 1024 : 1024,
+        bytesReturned: expectedFixtureRejection(object) ? 0 : 1024,
       })),
     },
     "benchmark.json": {
-      cases: [1024 * 1024, 10 * 1024 * 1024].map((sourceBytes) => ({
-        sourceBytes,
-        observed: {
-          maxPageLatencyMs: 2,
-          rssGrowthBytes: 1024,
-          databaseGrowthBytes: 1024,
-          readAmplification: 1,
-        },
-        ceilings: {
-          maxPageLatencyMs:
-            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs,
-          rssGrowthBytes:
-            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes,
-          databaseGrowthBytes: sourceBytes * 2,
-          readAmplification:
-            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxReadAmplification,
-        },
-      })),
+      cases: [1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024].map(
+        (sourceBytes) => ({
+          sourceBytes,
+          observed: {
+            maxPageLatencyMs: 2,
+            rssGrowthBytes: 1024,
+            databaseGrowthBytes: 1024,
+            readAmplification: 1,
+          },
+          ceilings: {
+            maxPageLatencyMs:
+              CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs,
+            rssGrowthBytes:
+              CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes,
+            databaseGrowthBytes: sourceBytes * 2,
+            readAmplification:
+              CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxReadAmplification,
+          },
+        }),
+      ),
     },
     "cleanup.json": {
       status: "passed",
@@ -490,7 +571,7 @@ function evidence() {
       authorizationVerified: true,
       probes: objects.map((object) => ({ objectId: object.id, absent: true })),
     },
-    "page-ledger.jsonl": objects
+    "page-ledger.jsonl": verifiedObjects
       .flatMap((object) =>
         Array.from(
           { length: Math.ceil(object.byteLength / (64 * 1024)) },
@@ -545,7 +626,7 @@ function evidence() {
     },
     "stress.json": {
       status: "passed",
-      reports: objects.map((object) => ({
+      reports: verifiedObjects.map((object) => ({
         objectId: object.id,
         status: "passed",
         cases: [1, 8, 32, 64].map((concurrency) => ({
@@ -599,24 +680,21 @@ function evidence() {
     })}\n`,
     "trajectories.jsonl": validLiveTrajectories("a".repeat(40), manifestSha),
     "e2e.json": {
+      schemaVersion: CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
       status: "passed",
       commit: "a".repeat(40),
       corpusManifestSha256: manifestSha,
       runId: "e2e-real-run",
-      artifactPaths: [
-        "browser/trace.zip",
-        "network/har.json",
-        "backend/log.txt",
-        "database/rows.json",
-      ],
-      api: true,
-      ui: true,
-      inspector: true,
-      backend: true,
-      browser: true,
-      network: true,
-      database: true,
-      artifacts: true,
+      checks: {
+        api: true,
+        ui: true,
+        inspector: true,
+        backend: true,
+        browser: true,
+        network: true,
+        database: true,
+      },
+      artifacts: fixtureE2EArtifacts(),
     },
   };
   const bytes = {} as Record<ContentContextRequiredArtifact, Uint8Array>;
@@ -676,6 +754,7 @@ describe("content-context result", () => {
         corpusManifestSha256: result.corpusManifestSha256,
         generatorRevision: result.generatorRevision,
         artifactBytes: bytes,
+        referencedArtifactBytes: fixtureE2EArtifactBytes,
       }),
     ).toEqual(result);
   });
@@ -934,7 +1013,45 @@ describe("content-context result", () => {
     );
     expect(() =>
       validateContentContextResult(duplicate.result, duplicate.bytes),
-    ).toThrow(/conformance does not cover every native object exactly once/u);
+    ).toThrow(
+      /conformance does not cover every verified native object exactly once/u,
+    );
+  });
+
+  it("rejects a typed rejection with the wrong code or a native reference", () => {
+    const original = evidence();
+    const ledger = JSON.parse(
+      new TextDecoder().decode(
+        original.bytes["native-realization-ledger.json"],
+      ),
+    ) as { entries: Array<Record<string, unknown>> };
+    const typedEntry = ledger.entries.find(
+      ({ status }) => status === "typed-rejected",
+    );
+    if (!typedEntry) throw new Error("typed fixture entry is absent");
+    typedEntry.rejectionCode = "CONTENT_INVALID_UTF8";
+    const wrongCode = replaceArtifact(
+      original,
+      "native-realization-ledger.json",
+      ledger,
+    );
+    expect(() =>
+      validateContentContextResult(wrongCode.result, wrongCode.bytes),
+    ).toThrow(/native typed rejection is invalid or unbounded/u);
+
+    typedEntry.rejectionCode = "CONTENT_BINARY_UNSUPPORTED";
+    typedEntry.reference = { kind: "memory", ref: "forged" };
+    const forgedReference = replaceArtifact(
+      original,
+      "native-realization-ledger.json",
+      ledger,
+    );
+    expect(() =>
+      validateContentContextResult(
+        forgedReference.result,
+        forgedReference.bytes,
+      ),
+    ).toThrow(/typed-rejected realization entry fields are not exact/u);
   });
 
   it("rejects a gapless-looking ledger that stops before source EOF", () => {
@@ -1015,20 +1132,13 @@ describe("content-context result", () => {
       validateContentContextResult(fixture.result, fixture.bytes),
     ).toThrow(/five qualified/u);
 
+    const staleE2E = JSON.parse(
+      new TextDecoder().decode(original.bytes["e2e.json"]),
+    );
     const stale = replaceArtifact(original, "e2e.json", {
-      status: "passed",
+      ...staleE2E,
       commit: "f".repeat(40),
-      corpusManifestSha256: manifestSha,
       runId: "stale-run",
-      artifactPaths: ["a", "b", "c", "d"],
-      api: true,
-      ui: true,
-      inspector: true,
-      backend: true,
-      browser: true,
-      network: true,
-      database: true,
-      artifacts: true,
     });
     expect(() =>
       validateContentContextResult(stale.result, stale.bytes),
@@ -1271,7 +1381,7 @@ describe("content-context result", () => {
     ).toThrow(/exact family operations/u);
   });
 
-  it("rejects mismatched family operation totals and fixture adapters", () => {
+  it("rejects mismatched operations, fixture adapters, and unverified cleanup", () => {
     const valid = validSoakEvidence("a".repeat(40), manifestSha);
     for (const families of [
       valid.families.map((family, index) =>
@@ -1279,6 +1389,9 @@ describe("content-context result", () => {
       ),
       valid.families.map((family, index) =>
         index === 0 ? { ...family, adapterId: "file-fixture" } : family,
+      ),
+      valid.families.map((family, index) =>
+        index === 0 ? { ...family, cleanupVerified: false } : family,
       ),
     ]) {
       const changed = replaceArtifact(evidence(), "soak.json", {
@@ -1310,19 +1423,41 @@ describe("content-context result", () => {
   });
 
   it("rejects green UI claims without inspector and database evidence", () => {
-    const changed = replaceArtifact(evidence(), "e2e.json", {
-      status: "passed",
-      api: true,
-      ui: true,
-      inspector: false,
-      backend: true,
-      browser: true,
-      network: true,
-      database: false,
-      artifacts: true,
+    const original = evidence();
+    const report = JSON.parse(
+      new TextDecoder().decode(original.bytes["e2e.json"]),
+    );
+    const changed = replaceArtifact(original, "e2e.json", {
+      ...report,
+      checks: { ...report.checks, inspector: false, database: false },
     });
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(/inspector E2E/u);
+  });
+
+  it("rejects duplicate JSON keys and mismatched referenced E2E bytes", () => {
+    const original = evidence();
+    const duplicate = replaceArtifact(
+      original,
+      "e2e.json",
+      '{"status":"passed","status":"passed"}',
+    );
+    expect(() =>
+      validateContentContextResult(duplicate.result, duplicate.bytes),
+    ).toThrow(/strict UTF-8 JSON/u);
+    expect(() =>
+      validateContentContextResult(original.result, original.bytes, {
+        ...fixtureE2EArtifactBytes,
+        "e2e-artifacts/backend/server.log": Buffer.from("changed"),
+      }),
+    ).toThrow(/referenced artifact bytes differ/u);
+    expect(
+      validateContentContextResult(
+        original.result,
+        original.bytes,
+        fixtureE2EArtifactBytes,
+      ),
+    ).toEqual(original.result);
   });
 });

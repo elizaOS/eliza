@@ -2,6 +2,7 @@
  * Exercises the strict content-context producer against real files and atomic
  * publication while keeping bundle creation outside the producer boundary.
  */
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -21,7 +22,10 @@ import {
   PROGRESSIVE_CONTENT_SCHEMA_VERSION,
   progressiveContentManifestDigest,
 } from "../../corpus-tools/src/progressive-content.ts";
-import { CONTENT_CONTEXT_PERFORMANCE_POLICY } from "../../corpus-tools/src/progressive-content-evidence.ts";
+import {
+  CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
+  CONTENT_CONTEXT_PERFORMANCE_POLICY,
+} from "../../corpus-tools/src/progressive-content-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../../corpus-tools/src/progressive-content-realization.ts";
 import { createBundle } from "../../evidence/src/bundle.ts";
 import {
@@ -39,6 +43,29 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const cleanup: string[] = [];
+const fixtureE2EArtifactBytes = {
+  "e2e-artifacts/backend/server.log": Buffer.from("backend evidence\n"),
+  "e2e-artifacts/browser/trace.zip": Buffer.from("browser trace bytes"),
+  "e2e-artifacts/network/requests.har": Buffer.from("network evidence\n"),
+  "e2e-artifacts/database/rows.json": Buffer.from('{"rows":1}\n'),
+} as const;
+
+function fixtureE2EArtifacts() {
+  const kinds = [
+    "backend-log",
+    "browser-trace",
+    "network-log",
+    "database-state",
+  ] as const;
+  return Object.entries(fixtureE2EArtifactBytes).map(
+    ([artifactPath, bytes], index) => ({
+      kind: kinds[index],
+      path: artifactPath,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      bytes: bytes.byteLength,
+    }),
+  );
+}
 const steadyResourceSample = {
   rssBytes: 100 * 1024 * 1024,
   heapUsedBytes: 40 * 1024 * 1024,
@@ -111,6 +138,7 @@ function validSoakEvidence(commit: string, corpusManifestSha256: string) {
         binaryPolicy: realization?.[1],
         productionMethod: `${family}-native-realization`,
         operations,
+        cleanupVerified: true,
         failures: [],
         sourceWork: {
           bytesRead: operations * 64 * 1024,
@@ -364,7 +392,7 @@ function evidenceValues() {
     "attachment",
     "tool-output",
   ].flatMap((family) =>
-    [1024 * 1024, 10 * 1024 * 1024].map((byteLength) => ({
+    [1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024].map((byteLength) => ({
       id: `${family}-${byteLength}`,
       family,
       byteLength,
@@ -381,6 +409,20 @@ function evidenceValues() {
             ? "invalid-utf8"
             : "lf-lines",
     })),
+  );
+  const expectedRejection = (object: (typeof objects)[number]) => {
+    if (!["file", "document", "memory", "email"].includes(object.family)) {
+      return undefined;
+    }
+    if (object.format === "binary") return "CONTENT_BINARY_UNSUPPORTED";
+    if (object.format === "invalid-utf8") return "CONTENT_INVALID_UTF8";
+    return undefined;
+  };
+  const verifiedObjects = objects.filter(
+    (object) => expectedRejection(object) === undefined,
+  );
+  const typedRejectedObjects = objects.filter(
+    (object) => expectedRejection(object) !== undefined,
   );
   const unsignedManifest = {
     schemaVersion: PROGRESSIVE_CONTENT_SCHEMA_VERSION,
@@ -407,28 +449,57 @@ function evidenceValues() {
       corpusSchemaVersion: PROGRESSIVE_CONTENT_SCHEMA_VERSION,
       corpusManifestSha256: manifestSha256,
       generatorRevision: commit,
-      entries: objects.map((object) => ({
-        status: "verified",
-        objectId: object.id,
-        family: object.family,
-        sourceSha256: object.sourceSha256,
-        sourceBytes: object.byteLength,
-        revision: object.revision,
-        authorizationScope: object.authorizationScope,
-        sourceWork: {
-          bytesRead: object.byteLength,
-          maxReadBytes: 64 * 1024,
-        },
-      })),
+      entries: objects.map((object) => {
+        const rejectionCode = expectedRejection(object);
+        const common = {
+          objectId: object.id,
+          family: object.family,
+          adapterId: `production-${object.family}`,
+          sourceSha256: object.sourceSha256,
+          sourceBytes: object.byteLength,
+        };
+        return rejectionCode
+          ? {
+              ...common,
+              status: "typed-rejected",
+              sourceWork: {
+                readCalls: 1,
+                bytesRead: 64 * 1024,
+                maxReadBytes: 64 * 1024,
+              },
+              rejectionCode,
+            }
+          : {
+              ...common,
+              status: "verified",
+              reference: {
+                kind:
+                  object.family === "tool-output"
+                    ? "tool-result"
+                    : object.family,
+                ref: `ref-${object.id}`,
+              },
+              revision: object.revision,
+              authorizationScope: object.authorizationScope,
+              cleanupIdentity: `cleanup-${object.id}`,
+              resolverBindingSha256: "e".repeat(64),
+              sourceWork: {
+                readCalls: Math.ceil(object.byteLength / (64 * 1024)),
+                bytesRead: object.byteLength,
+                maxReadBytes: 64 * 1024,
+              },
+            };
+      }),
       counts: {
-        verified: objects.length,
+        verified: verifiedObjects.length,
+        typedRejected: typedRejectedObjects.length,
         unsupported: 0,
         pending: 0,
         failed: 0,
       },
     },
     "conformance.json": {
-      reports: objects.map((object) => ({
+      reports: verifiedObjects.map((object) => ({
         objectId: object.id,
         status: "passed",
         reassembledSha256: object.sourceSha256,
@@ -472,31 +543,33 @@ function evidenceValues() {
     "source-work.json": {
       samples: objects.map((object) => ({
         objectId: object.id,
-        rowsRead: 1,
+        rowsRead: expectedRejection(object) ? 0 : 1,
         parentScans: 0,
-        bytesRead: 1024,
-        bytesReturned: 1024,
+        bytesRead: expectedRejection(object) ? 64 * 1024 : 1024,
+        bytesReturned: expectedRejection(object) ? 0 : 1024,
       })),
     },
     "benchmark.json": {
-      cases: [1024 * 1024, 10 * 1024 * 1024].map((sourceBytes) => ({
-        sourceBytes,
-        observed: {
-          maxPageLatencyMs: 1,
-          rssGrowthBytes: 1,
-          databaseGrowthBytes: 1,
-          readAmplification: 1,
-        },
-        ceilings: {
-          maxPageLatencyMs:
-            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs,
-          rssGrowthBytes:
-            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes,
-          databaseGrowthBytes: sourceBytes * 2,
-          readAmplification:
-            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxReadAmplification,
-        },
-      })),
+      cases: [1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024].map(
+        (sourceBytes) => ({
+          sourceBytes,
+          observed: {
+            maxPageLatencyMs: 1,
+            rssGrowthBytes: 1,
+            databaseGrowthBytes: 1,
+            readAmplification: 1,
+          },
+          ceilings: {
+            maxPageLatencyMs:
+              CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs,
+            rssGrowthBytes:
+              CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes,
+            databaseGrowthBytes: sourceBytes * 2,
+            readAmplification:
+              CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxReadAmplification,
+          },
+        }),
+      ),
     },
     "cleanup.json": {
       status: "passed",
@@ -504,7 +577,7 @@ function evidenceValues() {
       authorizationVerified: true,
       probes: objects.map((object) => ({ objectId: object.id, absent: true })),
     },
-    "page-ledger.jsonl": objects
+    "page-ledger.jsonl": verifiedObjects
       .flatMap((object) =>
         Array.from(
           { length: Math.ceil(object.byteLength / (64 * 1024)) },
@@ -559,7 +632,7 @@ function evidenceValues() {
     },
     "stress.json": {
       status: "passed",
-      reports: objects.map((object) => ({
+      reports: verifiedObjects.map((object) => ({
         objectId: object.id,
         status: "passed",
         cases: [1, 8, 32, 64].map((concurrency) => ({
@@ -613,24 +686,21 @@ function evidenceValues() {
     })}\n`,
     "trajectories.jsonl": validLiveTrajectories(commit, manifestSha256),
     "e2e.json": {
+      schemaVersion: CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
       status: "passed",
       commit,
       corpusManifestSha256: manifestSha256,
       runId: "e2e-real-run",
-      artifactPaths: [
-        "browser/trace.zip",
-        "network/har.json",
-        "backend/log.txt",
-        "database/rows.json",
-      ],
-      api: true,
-      ui: true,
-      inspector: true,
-      backend: true,
-      browser: true,
-      network: true,
-      database: true,
-      artifacts: true,
+      checks: {
+        api: true,
+        ui: true,
+        inspector: true,
+        backend: true,
+        browser: true,
+        network: true,
+        database: true,
+      },
+      artifacts: fixtureE2EArtifacts(),
     },
   };
 }
@@ -662,6 +732,13 @@ describe("run-content-context", () => {
         },
       );
     }
+    for (const [artifactPath, bytes] of Object.entries(
+      fixtureE2EArtifactBytes,
+    )) {
+      const destination = path.join(source, ...artifactPath.split("/"));
+      await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
+      await writeFile(destination, bytes, { mode: 0o600 });
+    }
     const runId = `producer-test-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const runRoot = path.join(repoRoot, "reports", "content-context", runId);
     cleanup.push(runRoot);
@@ -683,6 +760,14 @@ describe("run-content-context", () => {
       status: "passed",
     });
     expect(completeness.requiredArtifacts).toContain("benchmark.json");
+    expect(completeness.requiredArtifacts).toContain(
+      "e2e-artifacts/browser/trace.zip",
+    );
+    await expect(
+      readFile(path.join(runRoot, "e2e-artifacts/browser/trace.zip")),
+    ).resolves.toEqual(
+      fixtureE2EArtifactBytes["e2e-artifacts/browser/trace.zip"],
+    );
 
     const bundleRoot = await mkdtemp(
       path.join(os.tmpdir(), "content-context-bundle-"),
@@ -708,7 +793,7 @@ describe("run-content-context", () => {
     );
     expect(ingested).toMatchObject({
       status: "ingested",
-      artifactCount: 19,
+      artifactCount: 23,
     });
     const { manifest } = await bundle.finalize();
     expect(
@@ -716,5 +801,25 @@ describe("run-content-context", () => {
         artifactPath.endsWith(`/${runId}/completeness-manifest.json`),
       ),
     ).toBe(true);
+
+    await writeFile(
+      path.join(source, "e2e-artifacts/backend/server.log"),
+      "tampered backend evidence\n",
+      { mode: 0o600 },
+    );
+    const rejectedRunRoot = path.join(
+      repoRoot,
+      "reports",
+      "content-context",
+      `producer-reject-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    cleanup.push(rejectedRunRoot);
+    await expect(
+      publishContentContextEvidence({
+        source,
+        runRoot: rejectedRunRoot,
+        commit: "a".repeat(40),
+      }),
+    ).rejects.toThrow(/referenced artifact bytes differ/u);
   });
 });

@@ -17,9 +17,12 @@ import {
 } from "./progressive-content.ts";
 import { validateProgressiveContentPostgresEvidence } from "./progressive-content-postgres-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "./progressive-content-realization.ts";
+import { parseStrictJson } from "./strict-json.ts";
 
 export const CONTENT_CONTEXT_RESULT_SCHEMA_VERSION =
   "elizaos.content-context.result.v3" as const;
+export const CONTENT_CONTEXT_E2E_SCHEMA_VERSION =
+  "elizaos.content-context.e2e.v1" as const;
 export const CONTENT_CONTEXT_REQUIRED_ARTIFACTS = [
   "corpus-manifest.json",
   "native-realization-ledger.json",
@@ -89,12 +92,28 @@ export type ContentContextArtifactBytes = Readonly<
   Record<ContentContextRequiredArtifact, Uint8Array>
 >;
 
+export type ContentContextReferencedArtifactBytes = Readonly<
+  Record<string, Uint8Array>
+>;
+
+export interface ContentContextE2EArtifactDeclaration {
+  readonly kind:
+    | "backend-log"
+    | "browser-trace"
+    | "network-log"
+    | "database-state";
+  readonly path: string;
+  readonly sha256: string;
+  readonly bytes: number;
+}
+
 /** Build the producer result from the exact artifact bytes that will be ingested. */
 export function buildContentContextResult(input: {
   readonly commit: string;
   readonly corpusManifestSha256: string;
   readonly generatorRevision: string;
   readonly artifactBytes: ContentContextArtifactBytes;
+  readonly referencedArtifactBytes: ContentContextReferencedArtifactBytes;
 }): ContentContextResult {
   const result: ContentContextResult = {
     schemaVersion: CONTENT_CONTEXT_RESULT_SCHEMA_VERSION,
@@ -111,7 +130,11 @@ export function buildContentContextResult(input: {
       };
     }),
   };
-  return validateContentContextResult(result, input.artifactBytes);
+  return validateContentContextResult(
+    result,
+    input.artifactBytes,
+    input.referencedArtifactBytes,
+  );
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -144,11 +167,16 @@ function exactKeys(
 function json(bytes: Uint8Array, label: string): Record<string, unknown> {
   try {
     return record(
-      JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
+      parseStrictJson(
+        new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+        label,
+      ),
       label,
     );
   } catch (error) {
-    throw new TypeError(`${label} is not valid UTF-8 JSON`, { cause: error });
+    throw new TypeError(`${label} is not valid strict UTF-8 JSON`, {
+      cause: error,
+    });
   }
 }
 
@@ -166,13 +194,130 @@ function jsonLines(
   if (lines.length === 0) throw new TypeError(`${label} must not be empty`);
   return lines.map((line, index) => {
     try {
-      return record(JSON.parse(line), `${label} line ${index + 1}`);
+      return record(
+        parseStrictJson(line, `${label} line ${index + 1}`),
+        `${label} line ${index + 1}`,
+      );
     } catch (error) {
-      throw new TypeError(`${label} line ${index + 1} is invalid JSON`, {
+      throw new TypeError(`${label} line ${index + 1} is invalid strict JSON`, {
         cause: error,
       });
     }
   });
+}
+
+const CONTENT_CONTEXT_E2E_ARTIFACT_KINDS = [
+  "backend-log",
+  "browser-trace",
+  "network-log",
+  "database-state",
+] as const;
+
+function safeE2EArtifactPath(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    value !== value.normalize("NFC") ||
+    !value.startsWith("e2e-artifacts/") ||
+    value.includes("\\") ||
+    value.startsWith("/")
+  ) {
+    return false;
+  }
+  const segments = value.split("/");
+  return segments.every(
+    (segment) => segment.length > 0 && segment !== "." && segment !== "..",
+  );
+}
+
+/** Decode the exact E2E byte inventory referenced by a content-context report. */
+export function contentContextE2EArtifactDeclarations(
+  bytes: Uint8Array,
+): readonly ContentContextE2EArtifactDeclaration[] {
+  const report = json(bytes, "E2E report");
+  exactKeys(
+    report,
+    [
+      "schemaVersion",
+      "status",
+      "commit",
+      "corpusManifestSha256",
+      "runId",
+      "checks",
+      "artifacts",
+    ],
+    "E2E report",
+  );
+  const checks = record(report.checks, "E2E checks");
+  exactKeys(
+    checks,
+    ["api", "ui", "inspector", "backend", "browser", "network", "database"],
+    "E2E checks",
+  );
+  const artifacts = array(report.artifacts, "E2E artifacts").map(
+    (value, index) => {
+      const artifact = record(value, `E2E artifact ${index}`);
+      exactKeys(
+        artifact,
+        ["kind", "path", "sha256", "bytes"],
+        `E2E artifact ${index}`,
+      );
+      if (
+        !(CONTENT_CONTEXT_E2E_ARTIFACT_KINDS as readonly unknown[]).includes(
+          artifact.kind,
+        ) ||
+        !safeE2EArtifactPath(artifact.path) ||
+        typeof artifact.sha256 !== "string" ||
+        !/^[0-9a-f]{64}$/u.test(artifact.sha256) ||
+        typeof artifact.bytes !== "number" ||
+        !Number.isSafeInteger(artifact.bytes) ||
+        artifact.bytes <= 0
+      ) {
+        throw new TypeError(`E2E artifact ${index} is invalid`);
+      }
+      return artifact as unknown as ContentContextE2EArtifactDeclaration;
+    },
+  );
+  const paths = artifacts.map(({ path }) => path);
+  const kinds = artifacts.map(({ kind }) => kind);
+  if (
+    report.schemaVersion !== CONTENT_CONTEXT_E2E_SCHEMA_VERSION ||
+    artifacts.length !== CONTENT_CONTEXT_E2E_ARTIFACT_KINDS.length ||
+    new Set(paths).size !== paths.length ||
+    new Set(kinds).size !== kinds.length ||
+    CONTENT_CONTEXT_E2E_ARTIFACT_KINDS.some((kind) => !kinds.includes(kind))
+  ) {
+    throw new TypeError("E2E artifact inventory is not exact");
+  }
+  return artifacts;
+}
+
+function e2eReferencedByteFailures(
+  declarations: readonly ContentContextE2EArtifactDeclaration[],
+  referencedArtifactBytes: ContentContextReferencedArtifactBytes,
+): string[] {
+  const failures: string[] = [];
+  const declared = new Set(declarations.map(({ path }) => path));
+  const supplied = Object.keys(referencedArtifactBytes);
+  if (
+    supplied.length !== declared.size ||
+    supplied.some((artifactPath) => !declared.has(artifactPath))
+  ) {
+    return ["E2E referenced artifact byte fields are not exact"];
+  }
+  for (const declaration of declarations) {
+    const artifactBytes = referencedArtifactBytes[declaration.path];
+    if (
+      !artifactBytes ||
+      artifactBytes.byteLength !== declaration.bytes ||
+      createHash("sha256").update(artifactBytes).digest("hex") !==
+        declaration.sha256
+    ) {
+      failures.push(
+        `E2E referenced artifact bytes differ: ${declaration.path}`,
+      );
+    }
+  }
+  return failures;
 }
 
 const RESOURCE_MEMORY_FIELDS = [
@@ -391,6 +536,7 @@ function soakFamilyFailures(soak: Record<string, unknown>): string[] {
       family.operations <= 0 ||
       !Array.isArray(family.failures) ||
       family.failures.length !== 0 ||
+      family.cleanupVerified !== true ||
       typeof work.bytesRead !== "number" ||
       !Number.isSafeInteger(work.bytesRead) ||
       work.bytesRead < 0 ||
@@ -448,7 +594,10 @@ function scenarioNativeFinal(entry: Record<string, unknown>): boolean {
   const response = record(entry.response, "scenario native response");
   if (typeof response.text !== "string") return false;
   try {
-    const output = record(JSON.parse(response.text), "scenario native final");
+    const output = record(
+      parseStrictJson(response.text, "scenario native final"),
+      "scenario native final",
+    );
     return (
       output.success === true &&
       output.decision === "FINISH" &&
@@ -463,6 +612,7 @@ function scenarioNativeFinal(entry: Record<string, unknown>): boolean {
 function semanticFailures(
   result: ContentContextResult,
   bytes: ContentContextArtifactBytes,
+  referencedArtifactBytes: ContentContextReferencedArtifactBytes,
 ): string[] {
   const failures: string[] = [];
   const manifest = json(bytes["corpus-manifest.json"], "corpus manifest");
@@ -538,7 +688,11 @@ function semanticFailures(
         .filter((object) => object.family === family)
         .map(({ byteLength }) => byteLength),
     );
-    for (const requiredBytes of [1024 * 1024, 10 * 1024 * 1024]) {
+    for (const requiredBytes of [
+      1024 * 1024,
+      10 * 1024 * 1024,
+      100 * 1024 * 1024,
+    ]) {
       if (!sizes.has(requiredBytes))
         failures.push(`corpus ${family} missing ${requiredBytes} byte scale`);
     }
@@ -550,6 +704,18 @@ function semanticFailures(
     bytes["native-realization-ledger.json"],
     "realization ledger",
   );
+  exactKeys(
+    ledger,
+    [
+      "schemaVersion",
+      "corpusSchemaVersion",
+      "corpusManifestSha256",
+      "generatorRevision",
+      "entries",
+      "counts",
+    ],
+    "realization ledger",
+  );
   if (ledger.corpusManifestSha256 !== result.corpusManifestSha256) {
     failures.push("realization ledger targets another manifest");
   }
@@ -557,9 +723,17 @@ function semanticFailures(
     (value) => record(value, "realization entry"),
   );
   const realizationCounts = record(ledger.counts, "realization counts");
+  exactKeys(
+    realizationCounts,
+    ["verified", "typedRejected", "unsupported", "pending", "failed"],
+    "realization counts",
+  );
   const computedRealizationCounts = {
     verified: realizationEntries.filter(({ status }) => status === "verified")
       .length,
+    typedRejected: realizationEntries.filter(
+      ({ status }) => status === "typed-rejected",
+    ).length,
     unsupported: realizationEntries.filter(
       ({ status }) => status === "unsupported",
     ).length,
@@ -582,6 +756,8 @@ function semanticFailures(
   if (objectsById.size !== objects.length)
     failures.push("corpus object identities are duplicated");
   const realizedObjectIds = new Set<unknown>();
+  const verifiedObjectIds = new Set<unknown>();
+  const typedRejectedObjectIds = new Set<unknown>();
   for (const entry of realizationEntries) {
     const object = objectsById.get(entry.objectId);
     if (!object || realizedObjectIds.has(entry.objectId)) {
@@ -591,23 +767,114 @@ function semanticFailures(
       if (
         entry.family !== object.family ||
         entry.sourceSha256 !== object.sourceSha256 ||
-        entry.sourceBytes !== object.byteLength ||
-        entry.revision !== object.revision ||
-        entry.authorizationScope !== object.authorizationScope
+        entry.sourceBytes !== object.byteLength
       )
         failures.push("native realization differs from corpus object");
     }
-    if (entry.status !== "verified")
-      failures.push("native realization is not verified");
     const work = record(entry.sourceWork, "realization source work");
-    if (
-      typeof work.maxReadBytes !== "number" ||
-      work.maxReadBytes > 64 * 1024 ||
-      work.bytesRead !== entry.sourceBytes
-    )
-      failures.push(
-        "native realization source work is unbounded or incomplete",
+    exactKeys(
+      work,
+      ["readCalls", "bytesRead", "maxReadBytes"],
+      "realization source work",
+    );
+    const boundedWork =
+      typeof work.readCalls === "number" &&
+      Number.isSafeInteger(work.readCalls) &&
+      work.readCalls >= 0 &&
+      typeof work.bytesRead === "number" &&
+      Number.isSafeInteger(work.bytesRead) &&
+      work.bytesRead >= 0 &&
+      typeof work.maxReadBytes === "number" &&
+      Number.isSafeInteger(work.maxReadBytes) &&
+      work.maxReadBytes >= 0 &&
+      work.maxReadBytes <= 64 * 1024;
+    const expectedRejection =
+      object &&
+      ["file", "document", "memory", "email"].includes(String(object.family)) &&
+      object.format === "binary"
+        ? "CONTENT_BINARY_UNSUPPORTED"
+        : object &&
+            ["file", "document", "memory", "email"].includes(
+              String(object.family),
+            ) &&
+            object.format === "invalid-utf8"
+          ? "CONTENT_INVALID_UTF8"
+          : undefined;
+    if (entry.status === "verified") {
+      exactKeys(
+        entry,
+        [
+          "objectId",
+          "family",
+          "adapterId",
+          "status",
+          "sourceSha256",
+          "sourceBytes",
+          "sourceWork",
+          "reference",
+          "revision",
+          "authorizationScope",
+          "cleanupIdentity",
+          "resolverBindingSha256",
+        ],
+        "verified realization entry",
       );
+      const reference = record(entry.reference, "realization reference");
+      exactKeys(reference, ["kind", "ref"], "realization reference");
+      if (
+        expectedRejection !== undefined ||
+        entry.revision !== object?.revision ||
+        entry.authorizationScope !== object?.authorizationScope ||
+        typeof entry.adapterId !== "string" ||
+        entry.adapterId.length === 0 ||
+        typeof reference.ref !== "string" ||
+        reference.ref.length === 0 ||
+        reference.kind !==
+          (object?.family === "tool-output" ? "tool-result" : object?.family) ||
+        typeof entry.cleanupIdentity !== "string" ||
+        entry.cleanupIdentity.length === 0 ||
+        typeof entry.resolverBindingSha256 !== "string" ||
+        !/^[0-9a-f]{64}$/u.test(entry.resolverBindingSha256) ||
+        !boundedWork ||
+        work.bytesRead !== entry.sourceBytes
+      ) {
+        failures.push(
+          "native verified realization is invalid, unbounded, or incomplete",
+        );
+      }
+      verifiedObjectIds.add(entry.objectId);
+    } else if (entry.status === "typed-rejected") {
+      exactKeys(
+        entry,
+        [
+          "objectId",
+          "family",
+          "adapterId",
+          "status",
+          "sourceSha256",
+          "sourceBytes",
+          "sourceWork",
+          "rejectionCode",
+        ],
+        "typed-rejected realization entry",
+      );
+      if (
+        expectedRejection === undefined ||
+        entry.rejectionCode !== expectedRejection ||
+        typeof entry.adapterId !== "string" ||
+        entry.adapterId.length === 0 ||
+        !boundedWork ||
+        typeof work.bytesRead !== "number" ||
+        work.bytesRead > 64 * 1024
+      ) {
+        failures.push("native typed rejection is invalid or unbounded");
+      }
+      typedRejectedObjectIds.add(entry.objectId);
+    } else {
+      failures.push(
+        "native realization is neither verified nor typed-rejected",
+      );
+    }
   }
   if (realizedObjectIds.size !== objects.length)
     failures.push("native realization does not cover every corpus object");
@@ -621,12 +888,13 @@ function semanticFailures(
     conformanceReports.map(({ objectId }) => objectId),
   );
   if (
-    conformanceReports.length !== objects.length ||
+    conformanceReports.length !== verifiedObjectIds.size ||
     conformanceObjectIds.size !== conformanceReports.length ||
-    objects.some(({ id }) => !conformanceObjectIds.has(id))
+    [...verifiedObjectIds].some((id) => !conformanceObjectIds.has(id)) ||
+    [...typedRejectedObjectIds].some((id) => conformanceObjectIds.has(id))
   )
     failures.push(
-      "conformance does not cover every native object exactly once",
+      "conformance does not cover every verified native object exactly once",
     );
   for (const report of conformanceReports) {
     const object = objectsById.get(report.objectId);
@@ -771,7 +1039,7 @@ function semanticFailures(
   const benchmarkCases = array(benchmark.cases, "benchmark cases").map(
     (value) => record(value, "benchmark case"),
   );
-  for (const minimum of [1024 * 1024, 10 * 1024 * 1024]) {
+  for (const minimum of [1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024]) {
     if (!benchmarkCases.some(({ sourceBytes }) => sourceBytes === minimum))
       failures.push(`benchmark lacks ${minimum} byte scale`);
   }
@@ -837,8 +1105,14 @@ function semanticFailures(
     pageRowsByObject.set(row.objectId, rows);
   }
   if (
-    pageRowsByObject.size !== objects.length ||
-    [...pageRowsByObject.keys()].some((id) => !objectsById.has(id)) ||
+    pageRowsByObject.size !== verifiedObjectIds.size ||
+    [...pageRowsByObject.keys()].some(
+      (id) => !objectsById.has(id) || !verifiedObjectIds.has(id),
+    ) ||
+    [...verifiedObjectIds].some((id) => !pageRowsByObject.has(String(id))) ||
+    [...typedRejectedObjectIds].some((id) =>
+      pageRowsByObject.has(String(id)),
+    ) ||
     pageLedger.some((entry) => {
       const range = record(entry.range, "page ledger range");
       return (
@@ -860,7 +1134,7 @@ function semanticFailures(
     })
   )
     failures.push("page ledger lacks exact bounded native reads");
-  for (const object of objects) {
+  for (const object of objects.filter(({ id }) => verifiedObjectIds.has(id))) {
     if (typeof object.id !== "string") {
       failures.push("page ledger encountered an invalid corpus identity");
       continue;
@@ -987,9 +1261,10 @@ function semanticFailures(
   );
   if (
     stress.status !== "passed" ||
-    stressReports.length !== objects.length ||
+    stressReports.length !== verifiedObjectIds.size ||
     stressObjectIds.size !== stressReports.length ||
-    objects.some(({ id }) => !stressObjectIds.has(id)) ||
+    [...verifiedObjectIds].some((id) => !stressObjectIds.has(id)) ||
+    [...typedRejectedObjectIds].some((id) => stressObjectIds.has(id)) ||
     stressReports.some((report) => {
       if (report.status !== "passed") return true;
       const cases = array(report.cases, "stress cases").map((value) =>
@@ -1164,14 +1439,14 @@ function semanticFailures(
     );
 
   const e2e = json(bytes["e2e.json"], "E2E report");
+  const e2eArtifacts = contentContextE2EArtifactDeclarations(bytes["e2e.json"]);
+  const e2eChecks = record(e2e.checks, "E2E checks");
   if (
     e2e.status !== "passed" ||
     e2e.commit !== result.commit ||
     e2e.corpusManifestSha256 !== result.corpusManifestSha256 ||
     typeof e2e.runId !== "string" ||
     !e2e.runId ||
-    !Array.isArray(e2e.artifactPaths) ||
-    e2e.artifactPaths.length < 4 ||
     [
       "api",
       "ui",
@@ -1180,10 +1455,12 @@ function semanticFailures(
       "browser",
       "network",
       "database",
-      "artifacts",
-    ].some((key) => e2e[key] !== true)
+    ].some((key) => e2eChecks[key] !== true)
   )
     failures.push("real API/UI inspector E2E evidence is incomplete");
+  failures.push(
+    ...e2eReferencedByteFailures(e2eArtifacts, referencedArtifactBytes),
+  );
   return failures;
 }
 
@@ -1191,6 +1468,7 @@ function semanticFailures(
 export function validateContentContextResult(
   value: unknown,
   artifactBytes: ContentContextArtifactBytes,
+  referencedArtifactBytes: ContentContextReferencedArtifactBytes,
 ): ContentContextResult {
   const input = record(value, "content-context result");
   exactKeys(
@@ -1277,7 +1555,11 @@ export function validateContentContextResult(
     );
   }
   const typed = value as ContentContextResult;
-  const failures = semanticFailures(typed, artifactBytes);
+  const failures = semanticFailures(
+    typed,
+    artifactBytes,
+    referencedArtifactBytes,
+  );
   if (typed.status === "passed" && failures.length > 0) {
     throw new TypeError(
       `content-context success is semantically invalid: ${failures.join("; ")}`,
