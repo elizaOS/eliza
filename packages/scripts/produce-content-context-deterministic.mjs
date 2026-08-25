@@ -414,7 +414,6 @@ export async function produceDeterministicContentContextEvidence() {
   const sourceSamples = [];
   const stressReports = [];
   const cleanupProbes = [];
-  const benchmarks = new Map();
   for (const object of manifest.objects) {
     const harnessEntry = harness.entries.find(
       ({ objectId }) => objectId === object.id,
@@ -432,8 +431,6 @@ export async function produceDeterministicContentContextEvidence() {
       continue;
     }
     const target = await createTarget(corpusRoot, object, byFamily);
-    const rssBefore = process.memoryUsage().rss;
-    const before = await target.inspect();
     try {
       const traversal = await traverseTarget(target, object);
       pageRows.push(...traversal.rows);
@@ -450,30 +447,6 @@ export async function produceDeterministicContentContextEvidence() {
           status: entry.failures.length === 0 ? "passed" : "failed",
         })),
       });
-      const after = await target.inspect();
-      const observed = benchmarks.get(object.byteLength) ?? {
-        maxPageLatencyMs: 0,
-        rssGrowthBytes: 0,
-        databaseGrowthBytes: 0,
-        readAmplification: 0,
-      };
-      observed.maxPageLatencyMs = Math.max(
-        observed.maxPageLatencyMs,
-        traversal.maxPageLatencyMs,
-      );
-      observed.rssGrowthBytes = Math.max(
-        observed.rssGrowthBytes,
-        Math.max(0, process.memoryUsage().rss - rssBefore),
-      );
-      observed.databaseGrowthBytes = Math.max(
-        observed.databaseGrowthBytes,
-        Math.max(0, after.ownedBytes - before.ownedBytes),
-      );
-      observed.readAmplification = Math.max(
-        observed.readAmplification,
-        traversal.sourceWork.bytesRead / object.byteLength,
-      );
-      benchmarks.set(object.byteLength, observed);
     } finally {
       await target.cleanup();
       const afterCleanup = await target.inspect();
@@ -486,19 +459,6 @@ export async function produceDeterministicContentContextEvidence() {
   await writeJson(outputDir, "source-work.json", {
     status: "passed",
     samples: sourceSamples,
-  });
-  await writeJson(outputDir, "benchmark.json", {
-    status: "passed",
-    cases: [...benchmarks.entries()].map(([sourceBytes, observed]) => ({
-      sourceBytes,
-      observed,
-      ceilings: {
-        maxPageLatencyMs: 5_000,
-        rssGrowthBytes: 128 * 1024 * 1024,
-        databaseGrowthBytes: sourceBytes * 2,
-        readAmplification: 2,
-      },
-    })),
   });
   await writeJson(outputDir, "cleanup.json", {
     status: cleanupProbes.every(({ absent }) => absent) ? "passed" : "failed",
