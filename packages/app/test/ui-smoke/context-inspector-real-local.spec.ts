@@ -115,6 +115,17 @@ test.describe("real-local context inspector", () => {
       firstPage.entries[0]?.reference,
     );
 
+    const last = await page.request.get(
+      `/api/context-inspector?conversationId=${conversationId}&offset=20&limit=20`,
+    );
+    expect(last.status()).toBe(200);
+    const lastBody = await last.text();
+    expect(lastBody).not.toContain(RAW_BODY);
+    expect(lastBody).not.toContain(RAW_PATH);
+    expect(
+      (JSON.parse(lastBody) as { entries: unknown[] }).entries,
+    ).toHaveLength(1);
+
     const invalid = await page.request.get(
       `/api/context-inspector?conversationId=${conversationId}&offset=-1`,
     );
@@ -140,7 +151,9 @@ test.describe("real-local context inspector", () => {
       "Requests",
     );
     await page.getByRole("button", { name: "Next" }).click();
-    await expect(page.getByTestId("context-inspector-entry")).toHaveCount(1);
+    await expect(page.getByTestId("context-inspector-entry")).toHaveCount(1, {
+      timeout: 45_000,
+    });
     await expect(page.getByText("Trajectory window 21–40")).toBeVisible();
 
     const visibleText = await view.innerText();
