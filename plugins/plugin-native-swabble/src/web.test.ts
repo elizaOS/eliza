@@ -711,6 +711,8 @@ describe("SwabbleWeb fallback", () => {
       const audioLevels = vi.fn();
       await plugin.addListener("audioLevel", audioLevels);
       const startPromise = plugin.start({ config: { triggers: ["eliza"] } });
+      // The recognizer is constructed synchronously before the awaited prompt.
+      const recognition = FakeRecognition.latest;
       // start() is suspended awaiting the mic prompt; stop() wins the race.
       await flushMicrotasks();
       await plugin.stop();
@@ -723,6 +725,10 @@ describe("SwabbleWeb fallback", () => {
       // The raced level-meter track is released and no interval was armed, so
       // no audioLevel events fire after idle.
       expect(stop).toHaveBeenCalledTimes(1);
+      // The retired recognizer is never started after the meter await: start()
+      // must not reopen Web Speech capture on an instance stop() already cleared
+      // (all callbacks ignore the stale token, so it would be an unowned leak).
+      expect(recognition?.start).not.toHaveBeenCalled();
       audioLevels.mockClear();
       vi.advanceTimersByTime(500);
       expect(audioLevels).not.toHaveBeenCalled();
@@ -730,6 +736,73 @@ describe("SwabbleWeb fallback", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("wires only the current native capture when a stopped start's mic prompt resolves late", async () => {
+    // Two native starts race their mic prompts across a stop(). `usingNativeIpc`
+    // alone cannot tell them apart: after stop() clears it, the second start
+    // sets it true again, so the retired first start would pass a shared-boolean
+    // check and wire a graph that overwrites the live instance fields and leaks
+    // (unreachable by stopNativeAudioCapture()). A per-start generation token
+    // must gate graph wiring so only the current attempt survives.
+    FakeAudioContext.instances = [];
+    const staleMic = makeMicStream();
+    const liveMic = makeMicStream();
+    const stalePrompt = deferred<MediaStream>();
+    const livePrompt = deferred<MediaStream>();
+    const getUserMedia = vi
+      .fn<() => Promise<MediaStream>>()
+      .mockReturnValueOnce(stalePrompt.promise)
+      .mockReturnValueOnce(livePrompt.promise);
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    const swabbleStop = vi.fn(async () => undefined);
+    setWindow({
+      __ELIZA_ELECTROBUN_RPC__: {
+        request: {
+          swabbleStart: vi.fn(async () => ({ started: true })),
+          swabbleStop,
+          swabbleAudioChunk: vi.fn(async () => undefined),
+        },
+        onMessage: vi.fn(),
+        offMessage: vi.fn(),
+      },
+    });
+    setNavigator({
+      mediaDevices: { getUserMedia } as unknown as MediaDevices,
+    });
+
+    const plugin = new SwabbleWeb();
+
+    // Start A suspends at its mic prompt, then the consumer stops it.
+    const startA = plugin.start({ config: { triggers: ["eliza"] } });
+    await flushMicrotasks();
+    await plugin.stop();
+
+    // Start B suspends at its own (second) mic prompt, re-setting usingNativeIpc.
+    const startB = plugin.start({ config: { triggers: ["eliza"] } });
+    await flushMicrotasks();
+
+    // Start A's prompt resolves late: because its generation was invalidated by
+    // stop()/restart, its track is released and no graph is built for it.
+    stalePrompt.resolve(staleMic.stream);
+    await startA;
+    await flushMicrotasks();
+    expect(staleMic.stop).toHaveBeenCalledTimes(1);
+    expect(FakeAudioContext.instances).toHaveLength(0);
+
+    // Start B's prompt resolves: exactly one capture graph is wired, it is the
+    // live one, and its track is still open.
+    livePrompt.resolve(liveMic.stream);
+    await startB;
+    await flushMicrotasks();
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    expect(liveMic.stop).not.toHaveBeenCalled();
+
+    // A final stop tears down only the live graph's track; the stale one was
+    // never wired and stays released, proving no second graph leaked.
+    await plugin.stop();
+    expect(liveMic.stop).toHaveBeenCalledTimes(1);
+    expect(staleMic.stop).toHaveBeenCalledTimes(1);
   });
 
   it("ignores callbacks from a retired recognizer after a replacement starts", async () => {

@@ -208,6 +208,13 @@ export class SwabbleWeb extends WebPlugin {
   private captureProcessor: ScriptProcessorNode | null = null;
   private bridgeSubscriptions: Array<() => void> = [];
   private usingNativeIpc = false;
+  // Ownership token minted per start() attempt and invalidated by stop() or a
+  // later start(). `usingNativeIpc` only says *some* native session is active,
+  // so a suspended start that resolves its mic prompt after the session was
+  // retired (or replaced) must compare this exact generation before wiring
+  // capture; otherwise a stale attempt builds a graph that overwrites the
+  // instance fields and becomes unreachable by stopNativeAudioCapture().
+  private startGeneration = 0;
 
   private getRendererRpc() {
     return getElectrobunRendererRpc() ?? null;
@@ -275,7 +282,10 @@ export class SwabbleWeb extends WebPlugin {
     this.bridgeSubscriptions = [];
   }
 
-  private async startNativeAudioCapture(sampleRate = 16000): Promise<void> {
+  private async startNativeAudioCapture(
+    sampleRate: number,
+    generation: number,
+  ): Promise<void> {
     const rpcRequest = this.getRendererRpc()?.request?.swabbleAudioChunk;
     let stream: MediaStream | null;
     try {
@@ -293,14 +303,15 @@ export class SwabbleWeb extends WebPlugin {
     }
     if (!stream) return;
     // TOCTOU guard: the getUserMedia permission prompt is a multi-second window
-    // during which stop() can retire this session (usingNativeIpc -> false) while
-    // captureStream is still null, so stopNativeAudioCapture() is a no-op and the
-    // stop path can never reach a graph that does not yet exist. Re-check
-    // ownership before wiring the graph; otherwise a raced start leaks a live
-    // mic track, an open AudioContext, and a ScriptProcessor streaming chunks to
-    // a bridge that was already told to stop. Mirrors the recognition-token
-    // re-check on the Web Speech path.
-    if (!this.usingNativeIpc) {
+    // during which stop() can retire this session (invalidating this attempt's
+    // generation) while captureStream is still null, so stopNativeAudioCapture()
+    // is a no-op and the stop path can never reach a graph that does not yet
+    // exist. Compare the exact per-start generation, not the shared
+    // usingNativeIpc flag: a later start() can re-set that flag true, letting a
+    // stale attempt wire a graph that overwrites the current one and leaks. If
+    // this attempt no longer owns the session, release the raced stream and
+    // return so no graph is ever built after stop()/restart.
+    if (this.startGeneration !== generation) {
       stream.getTracks().forEach((t) => {
         t.stop();
       });
@@ -384,6 +395,11 @@ export class SwabbleWeb extends WebPlugin {
     if (this.isActive) return { started: true };
     const config = normalizeConfig(options.config);
 
+    // Each start() attempt owns this generation; stop() or a later start()
+    // invalidates it so an attempt suspended on an await can detect that it lost
+    // ownership before it opens or wires any capture.
+    const generation = ++this.startGeneration;
+
     // Delegate to the native desktop bridge when available.
     const rpc = this.getRendererRpc();
     if (rpc) {
@@ -394,11 +410,20 @@ export class SwabbleWeb extends WebPlugin {
           params: { ...options, config },
         });
         if (result?.started) {
+          // A stop() (or replacement start()) that raced the swabbleStart RPC
+          // await retired this attempt before usingNativeIpc was ever set. Do
+          // not claim the session or open capture for a superseded generation.
+          if (this.startGeneration !== generation) {
+            return { started: false };
+          }
           this.isActive = true;
           this.usingNativeIpc = true;
           this.config = config;
           this.setupNativeListeners();
-          await this.startNativeAudioCapture(config.sampleRate ?? 16000);
+          await this.startNativeAudioCapture(
+            config.sampleRate ?? 16000,
+            generation,
+          );
           return result;
         }
       } catch {
@@ -476,6 +501,15 @@ export class SwabbleWeb extends WebPlugin {
 
     this.recognition = recognition;
     await this.startAudioLevelMonitoring(recognition);
+    // stop() (or a replacement start()) can retire this recognizer while the
+    // level-meter mic prompt is open, clearing this.recognition and stopping the
+    // recognizer. Without this re-check, start() would call recognition.start()
+    // on that retired instance and reopen Web Speech capture past stop(), with
+    // no owned recognizer left for a later teardown (all callbacks ignore the
+    // stale token). Do not start a recognizer no callback owns.
+    if (this.recognition !== recognition) {
+      return { started: false };
+    }
     recognition.start();
     return { started: true };
   }
@@ -607,6 +641,10 @@ export class SwabbleWeb extends WebPlugin {
   async stop(): Promise<void> {
     this.isActive = false;
     this.wakeBuffer = "";
+    // Invalidate any in-flight start attempt's generation so a suspended
+    // getUserMedia/RPC await that resolves after this stop tears its own capture
+    // down instead of wiring it into a retired session.
+    this.startGeneration++;
 
     // Clean up native IPC if in native mode
     if (this.usingNativeIpc) {
