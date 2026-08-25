@@ -54,7 +54,7 @@ export async function probeFullDiskAccess(overrides?: {
   }
   const chatDbPath =
     (overrides?.chatDbPath?.trim() || null) ??
-    process.env.IMESSAGE_DB_PATH?.trim() ??
+    (process.env.IMESSAGE_DB_PATH?.trim() || null) ??
     DEFAULT_CHAT_DB_PATH;
   try {
     const handle = await fs.open(chatDbPath, "r");
