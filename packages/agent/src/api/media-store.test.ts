@@ -428,30 +428,44 @@ describe("serve-path security headers (stored-XSS defence)", () => {
 describe("selectMediaToEvict", () => {
   it("evicts nothing when within the cap", () => {
     const files = [
-      { name: "a", size: 10, mtimeMs: 1 },
-      { name: "b", size: 20, mtimeMs: 2 },
+      { name: `${"a".repeat(64)}.png`, size: 10, mtimeMs: 1 },
+      { name: `${"b".repeat(64)}.png`, size: 20, mtimeMs: 2 },
     ];
     expect(selectMediaToEvict(files, 100)).toEqual([]);
   });
 
   it("evicts oldest-first down to 90% of the cap", () => {
     const files = [
-      { name: "newest", size: 40, mtimeMs: 300 },
-      { name: "oldest", size: 40, mtimeMs: 100 },
-      { name: "middle", size: 40, mtimeMs: 200 },
+      { name: `${"c".repeat(64)}.png`, size: 40, mtimeMs: 300 },
+      { name: `${"a".repeat(64)}.png`, size: 40, mtimeMs: 100 },
+      { name: `${"b".repeat(64)}.png`, size: 40, mtimeMs: 200 },
     ];
     // total 120 > cap 100, target 90 → drop oldest (80 left), still >90? no, 80<=90 stop
-    expect(selectMediaToEvict(files, 100)).toEqual(["oldest"]);
+    expect(selectMediaToEvict(files, 100)).toEqual([`${"a".repeat(64)}.png`]);
   });
 
   it("evicts multiple oldest files when far over cap", () => {
     const files = [
-      { name: "f1", size: 50, mtimeMs: 1 },
-      { name: "f2", size: 50, mtimeMs: 2 },
-      { name: "f3", size: 50, mtimeMs: 3 },
+      { name: `${"a".repeat(64)}.png`, size: 50, mtimeMs: 1 },
+      { name: `${"b".repeat(64)}.png`, size: 50, mtimeMs: 2 },
+      { name: `${"c".repeat(64)}.png`, size: 50, mtimeMs: 3 },
     ];
     // total 150, cap 60, target 54 → drop f1 (100), f2 (50<=54) stop
-    expect(selectMediaToEvict(files, 60)).toEqual(["f1", "f2"]);
+    expect(selectMediaToEvict(files, 60)).toEqual([
+      `${"a".repeat(64)}.png`,
+      `${"b".repeat(64)}.png`,
+    ]);
+  });
+
+  it("never evicts non-media ledger files (background-pins.json)", () => {
+    const ledger = { name: "background-pins.json", size: 500, mtimeMs: 1 };
+    const mediaOld = { name: `${"a".repeat(64)}.png`, size: 60, mtimeMs: 2 };
+    const mediaNew = { name: `${"b".repeat(64)}.png`, size: 60, mtimeMs: 3 };
+    expect(selectMediaToEvict([ledger, mediaOld, mediaNew], 100)).toEqual([
+      `${"a".repeat(64)}.png`,
+    ]);
+    expect(selectMediaToEvict([ledger], 10)).toEqual([]);
+    expect(selectMediaToEvict([ledger, mediaOld], 100)).toEqual([]);
   });
 });
 

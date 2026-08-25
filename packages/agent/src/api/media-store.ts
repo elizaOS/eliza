@@ -251,10 +251,11 @@ export function selectMediaToEvict(
   files: MediaFileStat[],
   cap: number,
 ): string[] {
-  let total = files.reduce((sum, file) => sum + file.size, 0);
+  const mediaFiles = files.filter((file) => MEDIA_FILE_NAME.test(file.name));
+  let total = mediaFiles.reduce((sum, file) => sum + file.size, 0);
   if (total <= cap) return [];
   const target = Math.floor(cap * 0.9);
-  const oldestFirst = [...files].sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const oldestFirst = [...mediaFiles].sort((a, b) => a.mtimeMs - b.mtimeMs);
   const evict: string[] = [];
   for (const file of oldestFirst) {
     if (total <= target) break;
