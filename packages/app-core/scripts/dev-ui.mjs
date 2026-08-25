@@ -35,6 +35,11 @@ import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import {
+  buildDevApiChildEnv,
+  buildDevChildEnv,
+  spawnDevApiChild,
+} from "./lib/dev-api-child.mjs";
+import {
   createApiHealthWatchdog,
   createParentExitGuard,
 } from "./lib/dev-process-lifecycle.mjs";
@@ -259,37 +264,9 @@ const skipSourceWatch = process.env.ELIZA_DEV_NO_WATCH === "1";
 // Override with ELIZA_DEV_HOT_RELOAD_BULK_LIMIT.
 const HOT_RELOAD_BULK_CHANGE_LIMIT =
   Number(process.env.ELIZA_DEV_HOT_RELOAD_BULK_LIMIT) || 4;
-const DEV_TEST_MOCK_ENV_KEYS = [
-  "ELIZA_MOCK_GOOGLE_BASE",
-  "ELIZA_MOCK_TWILIO_BASE",
-  "ELIZA_MOCK_WHATSAPP_BASE",
-  "ELIZA_MOCK_X_BASE",
-  "ELIZA_MOCK_CALENDLY_BASE",
-];
-// These values configure only the Capacitor renderer bundle. Letting them
-// reach the host API child makes a remote-mac iOS UI misclassify that host as
-// a remote runtime too, which suppresses its direct model-provider plugins.
-const VITE_RENDERER_ONLY_MOBILE_ENV_KEYS = [
-  "VITE_ELIZA_IOS_RUNTIME_MODE",
-  "VITE_ELIZA_MOBILE_RUNTIME_MODE",
-  "VITE_ELIZA_IOS_API_BASE",
-  "VITE_ELIZA_MOBILE_API_BASE",
-  "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
-];
 let warnedAboutStrippedDevMocks = false;
 
-function createDevChildEnv(baseEnv) {
-  const nextEnv = { ...baseEnv };
-  if (nextEnv.ELIZA_DEV_ALLOW_TEST_MOCKS === "1") {
-    return nextEnv;
-  }
-  const strippedKeys = [];
-  for (const key of DEV_TEST_MOCK_ENV_KEYS) {
-    if (key in nextEnv) {
-      delete nextEnv[key];
-      strippedKeys.push(key);
-    }
-  }
+function reportStrippedDevMocks(strippedKeys) {
   if (!warnedAboutStrippedDevMocks && strippedKeys.length > 0) {
     warnedAboutStrippedDevMocks = true;
     const cleanupHint = strippedKeys.includes("ELIZA_MOCK_GOOGLE_BASE")
@@ -299,21 +276,18 @@ function createDevChildEnv(baseEnv) {
       `${logPrefix} Ignoring test-only mock env vars for dev: ${strippedKeys.join(", ")}.${cleanupHint}`,
     );
   }
-  return nextEnv;
+}
+
+function createDevChildEnv(baseEnv) {
+  const result = buildDevChildEnv(baseEnv);
+  reportStrippedDevMocks(result.strippedTestMockKeys);
+  return result.env;
 }
 
 function createApiChildEnv(baseEnv) {
-  const nextEnv = createDevChildEnv(baseEnv);
-  for (const key of VITE_RENDERER_ONLY_MOBILE_ENV_KEYS) {
-    delete nextEnv[key];
-  }
-  // A native macOS Keychain read may wait for user interaction and blocks
-  // Bun's event loop while it does so. Dev startup must stay non-interactive;
-  // mirror dev-all's safe default while preserving an explicit operator opt-in.
-  if (!nextEnv.ELIZA_WALLET_OS_STORE?.trim()) {
-    nextEnv.ELIZA_WALLET_OS_STORE = "0";
-  }
-  return nextEnv;
+  const result = buildDevApiChildEnv(baseEnv);
+  reportStrippedDevMocks(result.strippedTestMockKeys);
+  return result.env;
 }
 
 function prepareMacNativeEffectsForDev() {
@@ -1204,14 +1178,6 @@ if (uiOnly) {
 
   const { runtime: apiRuntime, command: apiRuntimeCmd } =
     resolveApiRuntimeCommand(process.env);
-  const apiRuntimeIsBun = apiRuntime === "bun";
-  const apiCmd = [
-    apiRuntimeCmd,
-    ...(apiRuntimeIsBun ? ["--no-install"] : []),
-    "--conditions=eliza-source",
-    ...(apiRuntimeIsBun ? [] : ["--import", "tsx"]),
-    devServerEntry,
-  ];
   // The API server resolves @elizaos/* deps via Bun workspace lookup, which
   // walks up from cwd looking for a package.json with a `workspaces` field.
   // When running from the eliza-style outer repo (cwd contains an `eliza/`
@@ -1301,7 +1267,10 @@ if (uiOnly) {
     spawnChild: () => {
       const apiProcessSpawnedAtMs = String(Date.now());
       const isHotReload = apiLaunchCount++ > 0;
-      return spawn(apiCmd[0], apiCmd.slice(1), {
+      return spawnDevApiChild({
+        executable: apiRuntimeCmd,
+        runtime: apiRuntime,
+        entryPath: devServerEntry,
         cwd: apiSpawnCwd,
         env: {
           ...apiSpawnEnv,

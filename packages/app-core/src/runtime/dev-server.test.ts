@@ -366,6 +366,35 @@ describe.sequential("dev-server process entry", () => {
     expect(typeof opts.onRestart).toBe("function");
   });
 
+  it("does not load or boot the runtime until the API listener has bound", async () => {
+    let finishBind: (() => void) | undefined;
+    startApiServer.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishBind = () =>
+            resolve({
+              port: 31337,
+              updateRuntime: vi.fn(),
+              updateStartup: vi.fn(),
+            });
+        }),
+    );
+
+    const pendingLoad = loadDevServer();
+    await vi.waitFor(() => {
+      expect(startApiServer).toHaveBeenCalledTimes(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(startEliza).not.toHaveBeenCalled();
+    if (!finishBind) {
+      throw new Error("API bind seam was not reached");
+    }
+    finishBind();
+    await pendingLoad;
+    await waitForRuntimeReady();
+    expect(startEliza).toHaveBeenCalledWith({ headless: true });
+  });
+
   it("logs a critical error when the bound port does not match the orchestrator port", async () => {
     startApiServer.mockImplementationOnce(async () => ({
       port: 9999,
@@ -756,6 +785,7 @@ describe.sequential("dev-server process entry", () => {
       expect(exitCodes).toContain(1);
     });
     expect(exitCodes).toEqual([1]);
+    expect(startEliza).not.toHaveBeenCalled();
   });
 
   it("does not fail startup when the optional plugin-dist staleness sweep throws", async () => {

@@ -77,6 +77,7 @@ import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs"
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startup-embedding-warmup-policy.mjs";
+import { spawnDevApiChild } from "./lib/dev-api-child.mjs";
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import {
   isSpawnedProcessGroupAlive,
@@ -903,13 +904,6 @@ async function launch() {
       : {}),
     ...apiEmbeddingWarmupPolicy.env,
   };
-  // Runtime startup must never mutate dependencies. Optional plugin imports
-  // should fail fast when a package is absent instead of letting Bun auto-install
-  // transitive native packages inside the desktop app process.
-  const apiSourceConditionArgs = ["--no-install", "--conditions=eliza-source"];
-  const apiArgs = apiWatchEnabled
-    ? [...apiSourceConditionArgs, "--watch", devServerEntry]
-    : [...apiSourceConditionArgs, devServerEntry];
   if (!apiWatchEnabled) {
     console.log(
       "[eliza] API file watcher disabled (set ELIZA_DESKTOP_API_WATCH=1 to enable).",
@@ -919,7 +913,11 @@ async function launch() {
   const apiSupervisor = createApiSupervisor({
     spawnChild: () => {
       const apiProcessSpawnedAtMs = String(Date.now());
-      return spawn(BUN_EXECUTABLE, apiArgs, {
+      return spawnDevApiChild({
+        executable: BUN_EXECUTABLE,
+        runtime: "bun",
+        entryPath: devServerEntry,
+        watch: apiWatchEnabled,
         cwd: bundleRoot,
         env: extendNodePathEnv(
           {
@@ -932,7 +930,7 @@ async function launch() {
           bundleRoot,
         ),
         stdio: ["ignore", "pipe", "pipe"],
-        ...(process.platform !== "win32" ? { detached: true } : {}),
+        detached: process.platform !== "win32" ? true : undefined,
       });
     },
     onSpawn: (child) => {
