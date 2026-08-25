@@ -270,3 +270,31 @@ describe("addContactTemplate input isolation", () => {
     );
   });
 });
+
+describe("autonomy templates contracts", () => {
+  it("enforces internal-only execution and JSON structure in continuous and task modes", () => {
+    const templates = [
+      prompts.autonomyContinuousFirstTemplate,
+      prompts.autonomyContinuousContinueTemplate,
+      prompts.autonomyTaskFirstTemplate,
+      prompts.autonomyTaskContinueTemplate,
+    ];
+
+    for (const t of templates) {
+      assert.ok(
+        t.includes("Do NOT speak out loud. This loop is internal-only."),
+      );
+      assert.ok(t.includes("thought"));
+      assert.ok(t.includes("actions"));
+      assert.ok(t.includes("JSON only. Return one JSON object."));
+      assert.ok(t.includes("{{targetRoomContext}}"));
+    }
+  });
+
+  it("requires lastThought placeholder in continuous continue and task continue templates", () => {
+    assert.ok(
+      prompts.autonomyContinuousContinueTemplate.includes("{{lastThought}}"),
+    );
+    assert.ok(prompts.autonomyTaskContinueTemplate.includes("{{lastThought}}"));
+  });
+});
