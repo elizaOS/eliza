@@ -34,3 +34,26 @@ export function asRecordOrUndefined(
 ): Record<string, unknown> | undefined {
 	return asRecord(value) ?? undefined;
 }
+
+/**
+ * Narrows a value to a non-empty trimmed string.
+ */
+export function isNonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Narrows a value to a finite number (rejecting NaN, Infinity, -Infinity).
+ */
+export function isFiniteNumber(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Narrows a value to a non-empty array tuple.
+ */
+export function isNonEmptyArray<T = unknown>(
+	value: unknown,
+): value is [T, ...T[]] {
+	return Array.isArray(value) && value.length > 0;
+}

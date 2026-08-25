@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
 	asRecord,
 	asRecordOrUndefined,
+	isFiniteNumber,
+	isNonEmptyArray,
+	isNonEmptyString,
 	isObjectRecord,
 	isPlainObject,
 } from "./type-guards";
@@ -91,5 +94,79 @@ describe("asRecord and asRecordOrUndefined", () => {
 
 		expect(asRecord(undefined)).toBeNull();
 		expect(asRecordOrUndefined(undefined)).toBeUndefined();
+	});
+});
+
+describe("isNonEmptyString", () => {
+	it("identifies non-empty strings", () => {
+		expect(isNonEmptyString("hello")).toBe(true);
+		expect(isNonEmptyString(" a ")).toBe(true);
+		expect(isNonEmptyString("123")).toBe(true);
+	});
+
+	it("rejects empty or whitespace-only strings", () => {
+		expect(isNonEmptyString("")).toBe(false);
+		expect(isNonEmptyString("   ")).toBe(false);
+		expect(isNonEmptyString("\t\n")).toBe(false);
+	});
+
+	it("rejects non-string values", () => {
+		expect(isNonEmptyString(null)).toBe(false);
+		expect(isNonEmptyString(undefined)).toBe(false);
+		expect(isNonEmptyString(123)).toBe(false);
+		expect(isNonEmptyString({})).toBe(false);
+		expect(isNonEmptyString([])).toBe(false);
+		expect(isNonEmptyString(true)).toBe(false);
+	});
+});
+
+describe("isFiniteNumber", () => {
+	it("identifies valid finite numbers", () => {
+		expect(isFiniteNumber(0)).toBe(true);
+		expect(isFiniteNumber(42)).toBe(true);
+		expect(isFiniteNumber(-3.14)).toBe(true);
+		expect(isFiniteNumber(Number.MAX_SAFE_INTEGER)).toBe(true);
+		expect(isFiniteNumber(Number.MIN_VALUE)).toBe(true);
+	});
+
+	it("rejects non-finite number values (NaN, ±Infinity)", () => {
+		expect(isFiniteNumber(Number.NaN)).toBe(false);
+		expect(isFiniteNumber(Number.POSITIVE_INFINITY)).toBe(false);
+		expect(isFiniteNumber(Number.NEGATIVE_INFINITY)).toBe(false);
+		expect(isFiniteNumber(Infinity)).toBe(false);
+		expect(isFiniteNumber(-Infinity)).toBe(false);
+	});
+
+	it("rejects non-number values", () => {
+		expect(isFiniteNumber("42")).toBe(false);
+		expect(isFiniteNumber(null)).toBe(false);
+		expect(isFiniteNumber(undefined)).toBe(false);
+		expect(isFiniteNumber(true)).toBe(false);
+		expect(isFiniteNumber({})).toBe(false);
+		expect(isFiniteNumber([])).toBe(false);
+		expect(isFiniteNumber(100n)).toBe(false);
+	});
+});
+
+describe("isNonEmptyArray", () => {
+	it("identifies non-empty arrays", () => {
+		expect(isNonEmptyArray([1])).toBe(true);
+		expect(isNonEmptyArray(["a", "b"])).toBe(true);
+		expect(isNonEmptyArray([null])).toBe(true);
+		expect(isNonEmptyArray([undefined])).toBe(true);
+		expect(isNonEmptyArray([{}])).toBe(true);
+	});
+
+	it("rejects empty arrays", () => {
+		expect(isNonEmptyArray([])).toBe(false);
+	});
+
+	it("rejects non-array values", () => {
+		expect(isNonEmptyArray(null)).toBe(false);
+		expect(isNonEmptyArray(undefined)).toBe(false);
+		expect(isNonEmptyArray({})).toBe(false);
+		expect(isNonEmptyArray("abc")).toBe(false);
+		expect(isNonEmptyArray(123)).toBe(false);
+		expect(isNonEmptyArray(new Set([1]))).toBe(false);
 	});
 });
