@@ -19,6 +19,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.Plugin;
 
 import ai.elizaos.app.BuildConfig;
 
@@ -110,9 +111,7 @@ public class MainActivity extends BridgeActivity {
         // this, any build lacking google-services.json hard-crashes the
         // process the moment the renderer calls PushNotifications.register()
         // with notification permission already granted.
-        if (getBridge() != null) {
-            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
-        }
+        registerSafePushNotificationsPluginIfAvailable();
 
         // Keep the screen on while the agent app is in the foreground.
         // Voice turns (ASR → LLM → TTS) on local-runtime builds regularly
@@ -175,6 +174,25 @@ public class MainActivity extends BridgeActivity {
         );
         wakePreferences.registerOnSharedPreferenceChangeListener(wakePreferenceListener);
         ElizaWorkScheduler.reconcile(getApplicationContext());
+    }
+
+    /**
+     * Replace Capacitor's push plugin only on builds which deliberately ship
+     * it. android-system removes Firebase and the push module entirely, so a
+     * reflective lookup keeps this class free of a compile-time SDK reference.
+     */
+    private void registerSafePushNotificationsPluginIfAvailable() {
+        if (BuildConfig.AOSP_BUILD || getBridge() == null) {
+            return;
+        }
+        try {
+            Class<? extends Plugin> pluginClass = Class
+                .forName(getPackageName() + ".SafePushNotificationsPlugin")
+                .asSubclass(Plugin.class);
+            getBridge().registerPlugin(pluginClass);
+        } catch (ClassNotFoundException | ClassCastException error) {
+            Log.w(TAG, "Firebase-guarded push plugin is unavailable", error);
+        }
     }
 
     @Override

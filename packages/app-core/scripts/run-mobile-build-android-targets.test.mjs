@@ -110,6 +110,7 @@ describe("Android mobile build target table", () => {
       },
       cleartextPolicy: { allowCleartext: false, label: "AOSP" },
       agentRuntime: { bunChannel: "canary", objective: true },
+      stripSourceKey: "system",
     });
   });
 

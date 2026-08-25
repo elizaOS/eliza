@@ -413,6 +413,15 @@ task copyForkLlamaLib {
     }
 }
 
+// The AOSP image deliberately omits the Capacitor push plugin and all
+// Firebase dependencies. Keep the guarded subclass available to
+// direct/sideload builds, but never compile it into android-system.
+if (project.findProperty('elizaAospBuild') == 'true') {
+    tasks.withType(JavaCompile).configureEach {
+        exclude '**/SafePushNotificationsPlugin.java'
+    }
+}
+
 afterEvaluate {
     tasks.matching { it.name == 'preBuild' }.all { it.dependsOn copyForkLlamaLib }
     tasks.matching {
@@ -579,7 +588,7 @@ dependencies {
     }
     implementation project(':capacitor-android')
     implementation "com.google.code.gson:gson:2.14.0"
-    if (project.findProperty('elizaCloudBuild') != 'true') {
+    if (project.findProperty('elizaCloudBuild') != 'true' && project.findProperty('elizaAospBuild') != 'true') {
         implementation "com.google.firebase:firebase-common-ktx:21.0.0"
     }
     testImplementation "junit:junit:$junitVersion"

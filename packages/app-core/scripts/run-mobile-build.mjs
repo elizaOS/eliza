@@ -5854,6 +5854,22 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["llama-cpp-capacitor", "llama-cpp-capacitor"],
 ];
 
+// Google SDKs which are useful in ordinary mobile builds but are intentionally
+// absent from the privileged AOSP image. The prototype keeps Eliza's local
+// agent, voice, launcher, and assistant bridges while dropping push/Firebase,
+// barcode ML Kit, text ML Kit, and their DataTransport dependency graph.
+export const ANDROID_SYSTEM_STRIPPED_NATIVE_PLUGINS = Object.freeze([
+  Object.freeze(["@capacitor/barcode-scanner", "capacitor-barcode-scanner"]),
+  Object.freeze([
+    "@capacitor/push-notifications",
+    "capacitor-push-notifications",
+  ]),
+  Object.freeze([
+    "@elizaos/capacitor-mlkit-text",
+    "elizaos-capacitor-mlkit-text",
+  ]),
+]);
+
 export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@capacitor/app",
   "@capacitor/browser",
@@ -6963,6 +6979,13 @@ function stripAndroidCloudNativePlugins() {
   );
 }
 
+function stripAndroidForSystem() {
+  stripAndroidNativePlugins(
+    ANDROID_SYSTEM_STRIPPED_NATIVE_PLUGINS,
+    "AOSP Google-SDK-disallowed",
+  );
+}
+
 function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   const failures = [];
   const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
@@ -7273,7 +7296,7 @@ function missingAndroidSmsGatewayJavaFiles() {
   return missing;
 }
 
-function androidCloudNativePluginReferenceFailures() {
+function androidNativePluginReferenceFailures(strippedPlugins) {
   const failures = [];
   for (const relPath of [
     "capacitor.settings.gradle",
@@ -7283,13 +7306,19 @@ function androidCloudNativePluginReferenceFailures() {
     const filePath = path.join(androidDir, relPath);
     if (!fs.existsSync(filePath)) continue;
     const source = fs.readFileSync(filePath, "utf8");
-    for (const [pkg, gradleProject] of ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS) {
+    for (const [pkg, gradleProject] of strippedPlugins) {
       if (source.includes(pkg) || source.includes(gradleProject)) {
         failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
       }
     }
   }
   return failures;
+}
+
+function androidCloudNativePluginReferenceFailures() {
+  return androidNativePluginReferenceFailures(
+    ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+  );
 }
 
 function auditAndroidSystemSource(
@@ -7378,6 +7407,66 @@ function auditAndroidSystemSource(
     fs.statSync(googleServicesPath).size > 0
   ) {
     failures.push("android-system must not include app/google-services.json");
+  }
+
+  failures.push(
+    ...androidNativePluginReferenceFailures(
+      ANDROID_SYSTEM_STRIPPED_NATIVE_PLUGINS,
+    ),
+  );
+
+  const appGradlePath = path.join(androidDir, "app", "build.gradle");
+  if (fs.existsSync(appGradlePath)) {
+    const gradle = fs.readFileSync(appGradlePath, "utf8");
+    if (
+      !/if\s*\(\s*project\.findProperty\(['"]elizaCloudBuild['"]\)\s*!=\s*['"]true['"]\s*&&\s*project\.findProperty\(['"]elizaAospBuild['"]\)\s*!=\s*['"]true['"]\s*\)\s*\{\s*implementation\s+["']com\.google\.firebase:firebase-common-ktx:21\.0\.0["']\s*\}/m.test(
+        gradle,
+      )
+    ) {
+      failures.push(
+        "app/build.gradle is missing the AOSP Firebase dependency guard",
+      );
+    }
+    if (
+      !gradle.includes("tasks.withType(JavaCompile).configureEach") ||
+      !gradle.includes("exclude '**/SafePushNotificationsPlugin.java'")
+    ) {
+      failures.push(
+        "app/build.gradle is missing the AOSP SafePushNotificationsPlugin compile exclusion",
+      );
+    }
+  }
+
+  const proguardRulesPath = path.join(androidDir, "app", "proguard-rules.pro");
+  if (fs.existsSync(proguardRulesPath)) {
+    const proguardRules = fs.readFileSync(proguardRulesPath, "utf8");
+    if (
+      !/-if\s+class\s+com\.google\.firebase\.FirebaseApp\s*\n\s*-keep\s+class\s+com\.google\.firebase\.\*\*/m.test(
+        proguardRules,
+      )
+    ) {
+      failures.push(
+        "app/proguard-rules.pro must condition Firebase keeps on FirebaseApp",
+      );
+    }
+  }
+
+  const mainActivityPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    packageNameToPath(APP.appId),
+    "MainActivity.java",
+  );
+  if (fs.existsSync(mainActivityPath)) {
+    const source = fs.readFileSync(mainActivityPath, "utf8");
+    if (source.includes("SafePushNotificationsPlugin.class")) {
+      failures.push(
+        "MainActivity.java still has a compile-time SafePushNotificationsPlugin reference",
+      );
+    }
   }
 
   const capabilityManifestPath = path.join(
@@ -7727,6 +7816,7 @@ const ANDROID_AFTER_TOOLCHAIN = Object.freeze({
 const ANDROID_SOURCE_STRIPS = Object.freeze({
   cloud: stripAndroidForCloud,
   smsGateway: stripAndroidForSmsGateway,
+  system: stripAndroidForSystem,
 });
 
 const ANDROID_SOURCE_AUDITS = Object.freeze({
@@ -8042,6 +8132,119 @@ function auditAndroidHostE2eArtifact({ javaHome } = {}) {
   return artifact;
 }
 
+export const ANDROID_SYSTEM_TELEMETRY_MANIFEST_MARKERS = Object.freeze([
+  "com.google.firebase.",
+  "com.google.mlkit.",
+  "com.google.android.datatransport.",
+  "com.capacitorjs.plugins.pushnotifications.",
+  "com.outsystems.plugins.barcode.",
+  "com.google.firebase.MESSAGING_EVENT",
+  "com.google.android.c2dm.",
+]);
+
+export const ANDROID_SYSTEM_TELEMETRY_DEX_MARKERS = Object.freeze([
+  "com/google/firebase/",
+  "com/google/mlkit/",
+  "com/google/android/datatransport/",
+  "com/google/android/gms/internal/mlkit",
+  "com/capacitorjs/plugins/pushnotifications/",
+  "com/outsystems/plugins/barcode/",
+  "ai/eliza/plugins/mlkittext/",
+  `${APP.appId.replaceAll(".", "/")}/SafePushNotificationsPlugin`,
+]);
+
+const ANDROID_SYSTEM_TELEMETRY_ENTRY_PATTERNS = Object.freeze([
+  /(?:^|\/)assets\/mlkit(?:[-_/]|$)/i,
+  /(?:^|\/)libmlkit[^/]*$/i,
+  /(?:^|\/)firebase-[^/]*\.properties$/i,
+  /(?:^|\/)[^/]*mlkit[^/]*\.properties$/i,
+  /(?:^|\/)barcode-scanning[^/]*\.properties$/i,
+  /(?:^|\/)text-recognition[^/]*\.properties$/i,
+  /(?:^|\/)vision-common\.properties$/i,
+  /(?:^|\/)vision-interfaces\.properties$/i,
+  /(?:^|\/)client_analytics\.proto$/i,
+  /(?:^|\/)messaging_event[^/]*\.proto$/i,
+]);
+
+const ANDROID_SYSTEM_TELEMETRY_DEPENDENCY_GROUPS = Object.freeze([
+  "com.google.firebase",
+  "com.google.mlkit",
+  "com.google.android.datatransport",
+]);
+
+export const ANDROID_SYSTEM_REQUIRED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
+  "@capacitor/local-notifications",
+  "@elizaos/capacitor-bun-runtime",
+  "@elizaos/capacitor-mobile-agent-bridge",
+  "@elizaos/capacitor-talkmode",
+]);
+
+export function findAndroidSystemTelemetryFindings({
+  dependencyText = "",
+  dexBuffers = [],
+  entries = [],
+  manifestText = "",
+} = {}) {
+  const findings = [];
+  for (const marker of ANDROID_SYSTEM_TELEMETRY_MANIFEST_MARKERS) {
+    if (manifestText.includes(marker)) {
+      findings.push(`manifest marker: ${marker}`);
+    }
+  }
+  for (const entry of entries) {
+    if (
+      ANDROID_SYSTEM_TELEMETRY_ENTRY_PATTERNS.some((pattern) =>
+        pattern.test(entry),
+      )
+    ) {
+      findings.push(`APK entry: ${entry}`);
+    }
+  }
+  for (const marker of ANDROID_SYSTEM_TELEMETRY_DEX_MARKERS) {
+    const bytes = Buffer.from(marker, "utf8");
+    if (dexBuffers.some((dex) => Buffer.from(dex).includes(bytes))) {
+      findings.push(`DEX marker: ${marker}`);
+    }
+  }
+  for (const group of ANDROID_SYSTEM_TELEMETRY_DEPENDENCY_GROUPS) {
+    if (dependencyText.includes(`groupId: "${group}"`)) {
+      findings.push(`SDK dependency group: ${group}`);
+    }
+  }
+  return [...new Set(findings)].sort();
+}
+
+export function findAndroidSystemPluginManifestFindings(pluginManifestText) {
+  let plugins;
+  try {
+    plugins = JSON.parse(pluginManifestText);
+  } catch (error) {
+    return [
+      `capacitor.plugins.json is invalid: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
+  if (!Array.isArray(plugins)) {
+    return ["capacitor.plugins.json root is not an array"];
+  }
+  const packages = new Set(
+    plugins
+      .map((plugin) => plugin?.pkg)
+      .filter((pkg) => typeof pkg === "string"),
+  );
+  const findings = [];
+  for (const [pkg] of ANDROID_SYSTEM_STRIPPED_NATIVE_PLUGINS) {
+    if (packages.has(pkg)) {
+      findings.push(`stripped native plugin remains packaged: ${pkg}`);
+    }
+  }
+  for (const pkg of ANDROID_SYSTEM_REQUIRED_NATIVE_PLUGIN_PACKAGES) {
+    if (!packages.has(pkg)) {
+      findings.push(`required native plugin is missing: ${pkg}`);
+    }
+  }
+  return findings.sort();
+}
+
 function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
   // The AOSP/system target gets the web-payload mirror like the other three
   // sync targets, but the privileged release APK still needs the same positive
@@ -8106,6 +8309,78 @@ function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
     expectedPresent: false,
     label: "ordinary AOSP",
   });
+  const dexEntries = entries.filter((entry) =>
+    /(^|\/)classes\d*\.dex$/.test(entry),
+  );
+  const dexBuffers = readAndroidArtifactEntryBuffers(
+    artifact,
+    dexEntries,
+    javaHome,
+    { label: "android-system telemetry DEX audit" },
+  );
+  const sdkDependenciesPath = path.join(
+    androidDir,
+    "app",
+    "build",
+    "outputs",
+    "sdk-dependencies",
+    "release",
+    "sdkDependencies.txt",
+  );
+  if (!fs.existsSync(sdkDependenciesPath)) {
+    throw mobileBuildError(
+      "[mobile-build] android-system SDK dependency evidence is missing.",
+      {
+        code: "ANDROID_SYSTEM_TELEMETRY_EVIDENCE_MISSING",
+        context: { artifact, sdkDependenciesPath },
+      },
+    );
+  }
+  const telemetryFindings = findAndroidSystemTelemetryFindings({
+    dependencyText: fs.readFileSync(sdkDependenciesPath, "utf8"),
+    dexBuffers,
+    entries,
+    manifestText,
+  });
+  if (telemetryFindings.length > 0) {
+    throw mobileBuildError(
+      "[mobile-build] android-system artifact still contains Google telemetry/ML SDK surfaces:\n" +
+        telemetryFindings.map((finding) => `  - ${finding}`).join("\n"),
+      {
+        code: "ANDROID_SYSTEM_TELEMETRY_POLICY_FAILED",
+        context: { artifact, findings: telemetryFindings },
+      },
+    );
+  }
+  const capacitorPluginManifestEntry = "assets/capacitor.plugins.json";
+  if (!entries.includes(capacitorPluginManifestEntry)) {
+    throw mobileBuildError(
+      `[mobile-build] android-system artifact is missing ${capacitorPluginManifestEntry}.`,
+      {
+        code: "ANDROID_SYSTEM_PLUGIN_MANIFEST_MISSING",
+        context: { artifact },
+      },
+    );
+  }
+  const [capacitorPluginManifestBytes] = readAndroidArtifactEntryBuffers(
+    artifact,
+    [capacitorPluginManifestEntry],
+    javaHome,
+    { label: "android-system Capacitor plugin manifest audit" },
+  );
+  const pluginManifestFindings = findAndroidSystemPluginManifestFindings(
+    capacitorPluginManifestBytes.toString("utf8"),
+  );
+  if (pluginManifestFindings.length > 0) {
+    throw mobileBuildError(
+      "[mobile-build] android-system Capacitor plugin manifest policy failed:\n" +
+        pluginManifestFindings.map((finding) => `  - ${finding}`).join("\n"),
+      {
+        code: "ANDROID_SYSTEM_PLUGIN_MANIFEST_POLICY_FAILED",
+        context: { artifact, findings: pluginManifestFindings },
+      },
+    );
+  }
   assertAndroidArtifactShipsWebPayload(artifact, entries, {
     requireAgent: true,
     label: "android-system",

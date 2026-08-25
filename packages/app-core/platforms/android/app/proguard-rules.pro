@@ -56,7 +56,11 @@
 -keepattributes Signature
 -keepattributes Exceptions
 
-# Firebase/GMS (if present)
+# Firebase/GMS (if present). play-services-basement contains three unused
+# Firebase-namespaced compatibility exceptions even when the Firebase SDK is
+# absent. Only retain Firebase classes when a real FirebaseApp is packaged so
+# R8 can remove those compatibility shims from the AOSP/system APK.
+-if class com.google.firebase.FirebaseApp
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
 -dontwarn com.google.firebase.ktx.Firebase

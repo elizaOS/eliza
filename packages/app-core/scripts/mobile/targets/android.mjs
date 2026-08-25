@@ -151,6 +151,7 @@ export const ANDROID_BUILD_TARGETS = Object.freeze({
       bunChannel: "canary",
       objective: true,
     },
+    stripSourceKey: "system",
     auditSourceKey: "system",
     gradle: {
       flags: [ANDROID_AOSP_GRADLE_FLAG],
