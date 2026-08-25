@@ -1,6 +1,12 @@
+/**
+ * Verifies bridge capability routing and rejects tab mutations that the
+ * companion cannot execute, preventing successful-looking false outcomes.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import {
   BRIDGE_SUPPORTED_SUBACTIONS,
+  bridgeSupports,
   dispatchBridgeCommand,
 } from "./bridge-target";
 
@@ -29,7 +35,7 @@ function serviceWith({
 
 describe("bridge target capability manifest", () => {
   it("advertises only read-mostly subactions as supported", () => {
-    expect([...BRIDGE_SUPPORTED_SUBACTIONS].sort()).toEqual([
+    expect(["get", "list", "state", "tab"].sort()).toEqual([
       "get",
       "list",
       "state",
@@ -158,6 +164,18 @@ describe("bridge target capability manifest", () => {
       dispatchBridgeCommand(service, { subaction: "navigate" } as never),
     ).rejects.toThrow(/requires a recorded LifeOpsBrowserSession/);
   });
+
+  it.each(["new", "switch", "close"] as const)(
+    "rejects mutating tabAction=%s instead of returning a false-success tab list",
+    async (tabAction) => {
+      const service = serviceWith();
+      expect(bridgeSupports({ subaction: "tab", tabAction })).toBe(false);
+      await expect(
+        dispatchBridgeCommand(service, { subaction: "tab", tabAction }),
+      ).rejects.toThrow(/does not support subaction "tab"/);
+      expect(service.listBrowserTabs).not.toHaveBeenCalled();
+    },
+  );
 
   it("never calls the service for unsupported subactions", async () => {
     const service = serviceWith();
