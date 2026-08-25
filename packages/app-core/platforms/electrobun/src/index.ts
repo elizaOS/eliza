@@ -133,7 +133,11 @@ import {
   resolveRendererAssetDir,
 } from "./runtime-layout";
 import { mergeRuntimePermissionStates } from "./runtime-permissions";
-import { resolveDesktopRuntimeForBoot } from "./runtime-preflight";
+import {
+  type DesktopRuntimeBootResolution,
+  resolveDesktopRuntimeForBoot,
+  resolveQualifiedExternalToken,
+} from "./runtime-preflight";
 import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
 import { registerShellSyncEndpoint } from "./shell-sync-relay";
@@ -246,13 +250,9 @@ onAgentReadyChange(() => setupApplicationMenu());
  * base resolves to `external` so the embedded agent is skipped; topology 1
  * (local agent → cloud inference) and topology 2 (all-local) keep `local`.
  */
-let preparedDesktopRuntime: ReturnType<
-  typeof resolveDesktopRuntimeModeWithDeployment
-> | null = null;
+let preparedDesktopRuntime: DesktopRuntimeBootResolution | null = null;
 
-function resolveDesktopRuntime(): ReturnType<
-  typeof resolveDesktopRuntimeModeWithDeployment
-> {
+function resolveDesktopRuntime(): DesktopRuntimeBootResolution {
   return (
     preparedDesktopRuntime ??
     resolveDesktopRuntimeModeWithDeployment(
@@ -277,6 +277,12 @@ function buildApiRequestHeaders(contentType?: string): Record<string, string> {
     headers["Content-Type"] = contentType;
   }
   let apiToken = resolveApiToken(process.env);
+  if (!apiToken && preparedDesktopRuntime?.mode === "external") {
+    apiToken = resolveQualifiedExternalToken(
+      preparedDesktopRuntime,
+      preparedDesktopRuntime.externalApi.base,
+    );
+  }
   if (!apiToken) {
     const rt = resolveDesktopRuntime();
     if (rt.mode === "local") {
@@ -853,7 +859,9 @@ async function startRendererServer(): Promise<string> {
   const initialApiToken =
     initialRuntime.mode === "local"
       ? configureDesktopLocalApiAuth()
-      : (resolveApiToken(process.env) ?? "");
+      : (resolveApiToken(process.env) ??
+        resolveQualifiedExternalToken(initialRuntime, initialApiBase) ??
+        "");
   apiBaseOwner.setCurrent(initialApiBase, initialApiToken);
 
   const resolveRendererCacheControl = (
@@ -1849,7 +1857,12 @@ function injectApiBase(win: BrowserWindow): void {
     apiBaseOwner.notifyChange(
       win,
       runtimeResolution.externalApi.base,
-      resolveApiToken(process.env) ?? "",
+      resolveApiToken(process.env) ??
+        resolveQualifiedExternalToken(
+          runtimeResolution,
+          runtimeResolution.externalApi.base,
+        ) ??
+        "",
     );
     setAgentReady(true);
     return;

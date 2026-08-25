@@ -6,6 +6,7 @@
  */
 import {
   type DesktopRuntimeModeResolution,
+  normalizeApiBase,
   type PersistedDeployment,
   resolveDesktopRuntimeMode,
   resolveDesktopRuntimeModeWithDeployment,
@@ -17,6 +18,26 @@ export type ExternalReachabilityProbe = (
   base: string,
   accessToken?: string,
 ) => Promise<boolean>;
+
+export interface QualifiedExternalAccess {
+  origin: string;
+  token: string;
+}
+
+export interface DesktopRuntimeBootResolution
+  extends DesktopRuntimeModeResolution {
+  qualifiedAccess?: QualifiedExternalAccess;
+}
+
+export function resolveQualifiedExternalToken(
+  resolution: DesktopRuntimeBootResolution,
+  targetBase: string | null | undefined,
+): string | undefined {
+  const targetOrigin = normalizeApiBase(targetBase ?? undefined);
+  return targetOrigin && resolution.qualifiedAccess?.origin === targetOrigin
+    ? resolution.qualifiedAccess.token
+    : undefined;
+}
 
 function hasExplicitExternalTarget(
   env: Record<string, string | undefined>,
@@ -57,6 +78,7 @@ async function fetchJson(
   const response = await fetch(url, {
     method: "GET",
     headers,
+    redirect: "error",
     signal,
   });
   if (response.status !== 200) return null;
@@ -73,7 +95,7 @@ export async function probeExternalAgent(
     const health = await fetchJson(
       `${normalizedBase}/api/health`,
       signal,
-      accessToken,
+      undefined,
     );
     if (!isReadyHealth(health)) return false;
 
@@ -97,7 +119,7 @@ export async function resolveDesktopRuntimeForBoot(options: {
   env: Record<string, string | undefined>;
   deployment: PersistedDeployment | null;
   probe?: ExternalReachabilityProbe;
-}): Promise<DesktopRuntimeModeResolution> {
+}): Promise<DesktopRuntimeBootResolution> {
   const { env, deployment, probe = probeExternalAgent } = options;
   const resolved = resolveDesktopRuntimeModeWithDeployment(env, deployment);
 
@@ -115,13 +137,14 @@ export async function resolveDesktopRuntimeForBoot(options: {
     return resolved;
   }
 
-  if (
-    await probe(
-      resolved.externalApi.base,
-      deployment?.remoteAccessToken?.trim() || undefined,
-    )
-  ) {
-    return resolved;
+  const token = deployment?.remoteAccessToken?.trim() || undefined;
+  if (await probe(resolved.externalApi.base, token)) {
+    return token
+      ? {
+          ...resolved,
+          qualifiedAccess: { origin: resolved.externalApi.base, token },
+        }
+      : resolved;
   }
 
   return envOnly;
