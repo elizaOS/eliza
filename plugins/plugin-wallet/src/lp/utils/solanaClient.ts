@@ -74,9 +74,20 @@ export async function loadWallet(
       logger.debug("Error decoding base58 private key, trying base64...");
       try {
         // Then try base64
-        const secretKey = Uint8Array.from(
-          Buffer.from(privateKeyString, "base64"),
-        );
+        const cleaned = privateKeyString.replace(/\s+/g, "");
+        const secretKey = Uint8Array.from(Buffer.from(cleaned, "base64"));
+        // Reject truncated/corrupt base64 instead of silently deriving the
+        // wrong keypair: re-encoding the decoded bytes must reproduce the
+        // input (modulo padding). Buffer.from(..., "base64") is lenient — it
+        // skips stray characters and drops trailing bits, so a damaged secret
+        // can otherwise decode to a different but still 64-byte key.
+        if (
+          secretKey.length !== 64 ||
+          Buffer.from(secretKey).toString("base64").replace(/=+$/, "") !==
+            cleaned.replace(/=+$/, "")
+        ) {
+          throw new Error("Invalid base64 secret key");
+        }
         const signer = Keypair.fromSecretKey(secretKey);
         return { signer, address: signer.publicKey };
       } catch (e2) {
