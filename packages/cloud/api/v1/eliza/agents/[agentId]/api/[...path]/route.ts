@@ -407,7 +407,11 @@ app.post("/", async (c) => {
   if (path === "lifeops/activity-signals") {
     return lifeopsUnavailable(c);
   }
-  if (path === "browser-workspace/tabs" || path.startsWith("browser-workspace/tabs/") || path === "browser-workspace/command") {
+  if (
+    path === "browser-workspace/tabs" ||
+    path.startsWith("browser-workspace/tabs/") ||
+    path === "browser-workspace/command"
+  ) {
     return browserWorkspaceUnavailable(c);
   }
   // Overlay presence is foreground-app telemetry with no store behind it on
