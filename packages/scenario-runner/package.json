@@ -114,7 +114,9 @@
   },
   "devDependencies": {
     "@elizaos/corpus-tools": "workspace:*",
+    "@elizaos/plugin-telegram": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
+    "telegraf": "4.16.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },

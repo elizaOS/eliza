@@ -343,16 +343,25 @@ function readEnvironment(dataPath: string): MockoonEnvironmentFile {
 
 async function readRequestBody(
   req: http.IncomingMessage,
-): Promise<RequestBody> {
+): Promise<RequestBody & { __rawBody?: Buffer }> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
 
-  const raw = Buffer.concat(chunks).toString("utf8");
+  const rawBytes = Buffer.concat(chunks);
+  const raw = rawBytes.toString("utf8");
   if (raw.trim().length === 0) return {};
 
   const contentType = String(req.headers["content-type"] ?? "").toLowerCase();
+  if (
+    contentType.includes("multipart/form-data") ||
+    contentType.includes("application/octet-stream")
+  ) {
+    // These bodies cannot be represented as the JSON-shaped RequestBody; the
+    // raw bytes are attached for fixtures that parse them (upload mocks).
+    return { __rawBody: rawBytes };
+  }
   if (contentType.includes("application/x-www-form-urlencoded")) {
     return Object.fromEntries(new URLSearchParams(raw).entries());
   }
@@ -549,6 +558,13 @@ function mockJsonError(
 function routeParam(pathname: string, pattern: RegExp): string | null {
   const match = pattern.exec(pathname);
   return match ? decodeURIComponent(match[1] ?? "") : null;
+}
+
+/** Drop the internal `__rawBody` passthrough so ledger entries stay JSON-shaped. */
+function stripRawBody(body: RequestBody & { __rawBody?: Buffer }): RequestBody {
+  if (!("__rawBody" in body)) return body;
+  const { __rawBody: _raw, ...rest } = body;
+  return rest;
 }
 
 function readOptionalString(body: RequestBody, key: string): string | null {
@@ -1593,10 +1609,26 @@ interface DiscordInboundMessage {
 interface DiscordMockState {
   sentMessages: Map<string, DiscordMessage[]>;
   inboundMessages: Map<string, DiscordInboundMessage[]>;
+  /**
+   * Attachment bytes a test registered for CDN-style serving, keyed by file
+   * name (#23105 delivery matrix inbound leg).
+   */
+  servedAttachments: Map<
+    string,
+    {
+      sha256: string;
+      contentType: string;
+      bytes: Buffer;
+    }
+  >;
 }
 
 function createDiscordMockState(): DiscordMockState {
-  return { sentMessages: new Map(), inboundMessages: new Map() };
+  return {
+    sentMessages: new Map(),
+    inboundMessages: new Map(),
+    servedAttachments: new Map(),
+  };
 }
 
 function discordDynamicFixture(
@@ -1605,7 +1637,63 @@ function discordDynamicFixture(
   pathname: string,
   requestBody: RequestBody,
   _ledgerEntry: MockRequestLedgerEntry,
+  rawRequest?: { rawBody: Buffer; headers: http.IncomingHttpHeaders },
+  searchParams?: URLSearchParams,
 ): DynamicFixtureResponse | null {
+  // CDN-style attachment byte serving (#23105 delivery matrix): a test
+  // registers source bytes under a file name; GET /attachments/*/<name>
+  // serves them raw with their digest. The Discord REST API never sees
+  // these bytes — this is the cdn.discordapp.com stand-in.
+  const attachmentMatch = routeParam(
+    pathname,
+    /^\/attachments\/[^/]+\/[^/]+\/(.+)$/,
+  );
+  if (
+    method === "GET" &&
+    attachmentMatch &&
+    state.servedAttachments.has(attachmentMatch)
+  ) {
+    const served = state.servedAttachments.get(attachmentMatch);
+    if (served) {
+      return {
+        statusCode: 200,
+        body: "",
+        headers: {
+          "Content-Type": served.contentType,
+          "X-Mock-Sha256": served.sha256,
+        },
+        rawBody: served.bytes,
+      } as DynamicFixtureResponse & { rawBody: Buffer };
+    }
+  }
+  // Control route: register attachment bytes for CDN-style serving. The raw
+  // bytes arrive as an octet-stream body; the file name and content type are
+  // query parameters.
+  if (
+    method === "PUT" &&
+    pathname === "/__mock/discord/attachments" &&
+    rawRequest?.rawBody
+  ) {
+    const fileName = searchParams?.get("file_name");
+    const contentType =
+      searchParams?.get("content_type") ?? "application/octet-stream";
+    if (!fileName) {
+      return jsonFixture(
+        { error: "file_name query parameter is required" },
+        400,
+      );
+    }
+    const sha256 = crypto
+      .createHash("sha256")
+      .update(rawRequest.rawBody)
+      .digest("hex");
+    state.servedAttachments.set(fileName, {
+      sha256,
+      contentType,
+      bytes: Buffer.from(rawRequest.rawBody),
+    });
+    return jsonFixture({ ok: true, file_name: fileName, sha256 });
+  }
   const postMsgChannelId = routeParam(
     pathname,
     /^\/api\/v10\/channels\/([^/]+)\/messages\/?$/,
@@ -1807,22 +1895,81 @@ interface TelegramUpdate {
   };
 }
 
+/**
+ * An uploaded Telegram file, stored by the sendPhoto/sendDocument mock so a
+ * byte-level readback can be served later (#23105 delivery matrix).
+ */
+interface TelegramUploadedFile {
+  fileId: string;
+  sha256: string;
+  byteLength: number;
+  bytes: Buffer;
+}
+
 interface TelegramMockState {
   nextUpdateId: number;
   pendingUpdates: TelegramUpdate[];
+  /** Files uploaded via multipart send* methods, keyed by file_id. */
+  uploadedFiles: Map<string, TelegramUploadedFile>;
 }
 
 function createTelegramMockState(): TelegramMockState {
-  return { nextUpdateId: 1, pendingUpdates: [] };
+  return {
+    nextUpdateId: 1,
+    pendingUpdates: [],
+    uploadedFiles: new Map(),
+  };
 }
 
-function telegramDynamicFixture(
+/**
+ * Parse a multipart/form-data body into its parts (headers + raw bytes) so
+ * the Telegram upload mocks can hash and store file bytes. Best-effort,
+ * bounded parsing: malformed multipart returns an empty list and the caller
+ * answers 400 — never a fabricated upload receipt.
+ */
+function parseMultipartParts(
+  raw: Buffer,
+  contentTypeHeader: string,
+): Array<{ name: string; filename?: string; data: Buffer }> {
+  const boundaryMatch = /boundary=("?)([^";]+)\1/.exec(contentTypeHeader);
+  if (!boundaryMatch?.[2]) return [];
+  const boundary = Buffer.from(`--${boundaryMatch[2]}`);
+  const parts: Array<{ name: string; filename?: string; data: Buffer }> = [];
+  let cursor = raw.indexOf(boundary);
+  while (cursor !== -1) {
+    const next = raw.indexOf(boundary, cursor + boundary.length);
+    if (next === -1) break;
+    // Part payload sits between the boundary line's CRLF and the CRLF that
+    // precedes the next boundary.
+    const start = cursor + boundary.length;
+    const segment = raw.subarray(start, next);
+    const headerEnd = segment.indexOf("\r\n\r\n");
+    if (headerEnd !== -1) {
+      const headers = segment.subarray(0, headerEnd).toString("utf8");
+      const nameMatch = /name="([^"]*)"/.exec(headers);
+      const fileMatch = /filename="([^"]*)"/.exec(headers);
+      const data = segment.subarray(headerEnd + 4, segment.length - 2);
+      if (nameMatch?.[1]) {
+        parts.push({
+          name: nameMatch[1],
+          ...(fileMatch?.[1] ? { filename: fileMatch[1] } : {}),
+          data,
+        });
+      }
+    }
+    cursor = next;
+  }
+  return parts;
+}
+
+async function telegramDynamicFixture(
   state: TelegramMockState,
   method: string,
   pathname: string,
   requestBody: RequestBody,
   _ledgerEntry: MockRequestLedgerEntry,
-): DynamicFixtureResponse | null {
+  rawRequest?: { rawBody: Buffer; headers: http.IncomingHttpHeaders },
+): Promise<DynamicFixtureResponse | null> {
   // Match any `/bot<TOKEN>/<method>` path so callers can use either the
   // literal `:token` placeholder or a real-looking token string.
   const tokenMethodMatch = /^\/bot([^/]+)\/([A-Za-z]+)\/?$/.exec(pathname);
@@ -1904,6 +2051,195 @@ function telegramDynamicFixture(
 
   if (method === "POST" && tgMethod === "sendChatAction") {
     return jsonFixture({ ok: true, result: true });
+  }
+
+  // Multipart upload methods (sendPhoto/sendDocument with InputFile bytes).
+  // The request body arrives as multipart/form-data, which readRequestBody
+  // cannot represent as JSON — the raw bytes + content type are passed
+  // through `rawRequest` by the server handler before this fixture runs.
+  // URL-string media arrives as JSON instead; the real Bot API fetches such
+  // URLs server-side, so the mock does the same and stores the fetched
+  // bytes as the upload (the faithful provider emulation for wire proofs).
+  if (
+    method === "POST" &&
+    (tgMethod === "sendPhoto" || tgMethod === "sendDocument")
+  ) {
+    const mediaUrl =
+      typeof requestBody.photo === "string"
+        ? requestBody.photo
+        : typeof requestBody.document === "string"
+          ? requestBody.document
+          : null;
+    if (mediaUrl && /^https?:\/\//.test(mediaUrl)) {
+      const mediaResponse = await fetch(mediaUrl);
+      if (!mediaResponse.ok) {
+        return jsonFixture(
+          {
+            ok: false,
+            error_code: 400,
+            description: `Bad Request: failed to fetch media URL (${mediaResponse.status})`,
+          },
+          400,
+        );
+      }
+      const bytes = Buffer.from(await mediaResponse.arrayBuffer());
+      const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+      const fileId = `mock-upload-${sha256.slice(0, 12)}`;
+      state.uploadedFiles.set(fileId, {
+        fileId,
+        sha256,
+        byteLength: bytes.length,
+        bytes,
+      });
+      const chatId =
+        typeof requestBody.chat_id === "number" ? requestBody.chat_id : 0;
+      const caption =
+        typeof requestBody.caption === "string" ? requestBody.caption : "";
+      return jsonFixture({
+        ok: true,
+        result: {
+          message_id: Math.floor(Math.random() * 1000000),
+          from: {
+            id: 123456789,
+            is_bot: true,
+            first_name: "MockBot",
+            username: "mock_eliza_bot",
+          },
+          chat: { id: chatId, type: "private" },
+          date: Math.floor(Date.now() / 1000),
+          ...(tgMethod === "sendPhoto"
+            ? {
+                photo: [
+                  {
+                    file_id: fileId,
+                    file_unique_id: sha256.slice(12, 24),
+                    width: 800,
+                    height: 600,
+                    file_size: bytes.length,
+                  },
+                ],
+              }
+            : {
+                document: {
+                  file_id: fileId,
+                  file_unique_id: sha256.slice(12, 24),
+                  file_name: mediaUrl.split("/").pop() ?? "upload.bin",
+                  file_size: bytes.length,
+                },
+              }),
+          ...(caption ? { caption } : {}),
+        },
+      });
+    }
+  }
+  if (
+    method === "POST" &&
+    (tgMethod === "sendPhoto" || tgMethod === "sendDocument") &&
+    rawRequest?.rawBody
+  ) {
+    const contentTypeHeader = String(rawRequest.headers["content-type"] ?? "");
+    const parts = parseMultipartParts(rawRequest.rawBody, contentTypeHeader);
+    const filePart = parts.find(
+      (part) => part.name === "photo" || part.name === "document",
+    );
+    const captionPart = parts.find((part) => part.name === "caption");
+    const chatIdPart = parts.find((part) => part.name === "chat_id");
+    if (!filePart || filePart.data.length === 0) {
+      return jsonFixture(
+        {
+          ok: false,
+          error_code: 400,
+          description: "Bad Request: no file part",
+        },
+        400,
+      );
+    }
+    const sha256 = crypto
+      .createHash("sha256")
+      .update(filePart.data)
+      .digest("hex");
+    const fileId = `mock-upload-${sha256.slice(0, 12)}`;
+    state.uploadedFiles.set(fileId, {
+      fileId,
+      sha256,
+      byteLength: filePart.data.length,
+      bytes: Buffer.from(filePart.data),
+    });
+    const chatId = Number(chatIdPart?.data.toString("utf8") ?? "0") || 0;
+    const caption = captionPart?.data.toString("utf8") ?? "";
+    return jsonFixture({
+      ok: true,
+      result: {
+        message_id: Math.floor(Math.random() * 1000000),
+        from: {
+          id: 123456789,
+          is_bot: true,
+          first_name: "MockBot",
+          username: "mock_eliza_bot",
+        },
+        chat: { id: chatId, type: "private" },
+        date: Math.floor(Date.now() / 1000),
+        ...(tgMethod === "sendPhoto"
+          ? {
+              photo: [
+                {
+                  file_id: fileId,
+                  file_unique_id: sha256.slice(12, 24),
+                  width: 800,
+                  height: 600,
+                  file_size: filePart.data.length,
+                },
+              ],
+            }
+          : {
+              document: {
+                file_id: fileId,
+                file_unique_id: sha256.slice(12, 24),
+                file_name: filePart.filename ?? "upload.bin",
+                file_size: filePart.data.length,
+              },
+            }),
+        ...(caption ? { caption } : {}),
+      },
+    });
+  }
+
+  // Byte-level readback of an uploaded file by its file_id (#23105 readback
+  // proof): GET /__mock/telegram/file/<file_id> serves the stored bytes with
+  // their digest in a header. GET /__mock/telegram/list-uploads enumerates
+  // stored uploads (digests + lengths, no bytes) so a test can bind a
+  // provider receipt to the stored bytes.
+  const uploadedReadback = routeParam(
+    pathname,
+    /^\/__mock\/telegram\/file\/([^/]+)\/?$/,
+  );
+  if (method === "GET" && pathname === "/__mock/telegram/list-uploads") {
+    return jsonFixture({
+      uploads: Array.from(state.uploadedFiles.values()).map((file) => ({
+        fileId: file.fileId,
+        sha256: file.sha256,
+        byteLength: file.byteLength,
+      })),
+    });
+  }
+  if (
+    method === "GET" &&
+    uploadedReadback &&
+    state.uploadedFiles.has(uploadedReadback)
+  ) {
+    const uploaded = state.uploadedFiles.get(uploadedReadback);
+    if (uploaded) {
+      return {
+        statusCode: 200,
+        body: "",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Mock-Sha256": uploaded.sha256,
+          "X-Mock-Byte-Length": String(uploaded.byteLength),
+        },
+        ...(uploaded.byteLength > 0 ? { rawBody: uploaded.bytes } : {}),
+      } as DynamicFixtureResponse & { rawBody?: Buffer };
+    }
   }
 
   if (method === "POST" && tgMethod === "answerCallbackQuery") {
@@ -3539,6 +3875,8 @@ async function dynamicProviderFixture(args: {
   requestBody: RequestBody;
   headers: http.IncomingHttpHeaders;
   ledgerEntry: MockRequestLedgerEntry;
+  /** Raw (undecoded) request bytes for multipart bodies readRequestBody cannot represent. */
+  rawBody?: Buffer;
 }): Promise<DynamicFixtureResponse | null> {
   if (!args.provider) return null;
   switch (args.provider.kind) {
@@ -3594,6 +3932,10 @@ async function dynamicProviderFixture(args: {
         args.pathname,
         args.requestBody,
         args.ledgerEntry,
+        args.rawBody
+          ? { rawBody: args.rawBody, headers: args.headers }
+          : undefined,
+        args.searchParams,
       );
     case "slack":
       return slackDynamicFixture(
@@ -3610,6 +3952,9 @@ async function dynamicProviderFixture(args: {
         args.pathname,
         args.requestBody,
         args.ledgerEntry,
+        args.rawBody
+          ? { rawBody: args.rawBody, headers: args.headers }
+          : undefined,
       );
     case "linear":
       return linearDynamicFixture(
@@ -3795,7 +4140,8 @@ async function startFixtureServer(
         method,
         path: requestUrl.pathname,
         query: requestUrl.search,
-        body: requestBody,
+        // Strip the internal raw-bytes passthrough; the ledger is JSON-shaped.
+        body: stripRawBody(requestBody),
         createdAt: new Date().toISOString(),
         ...(requestRunId(req.headers)
           ? { runId: requestRunId(req.headers) }
@@ -4013,13 +4359,23 @@ async function startFixtureServer(
         requestBody,
         headers: req.headers,
         ledgerEntry,
+        ...(requestBody.__rawBody ? { rawBody: requestBody.__rawBody } : {}),
       });
       if (dynamicResponse) {
+        const rawOut = (
+          dynamicResponse as DynamicFixtureResponse & { rawBody?: Buffer }
+        ).rawBody;
         res.writeHead(dynamicResponse.statusCode, {
-          "Content-Type": "application/json",
+          "Content-Type": rawOut
+            ? "application/octet-stream"
+            : "application/json",
           ...(dynamicResponse.headers ?? {}),
         });
-        res.end(JSON.stringify(dynamicResponse.body));
+        if (rawOut) {
+          res.end(rawOut);
+        } else {
+          res.end(JSON.stringify(dynamicResponse.body));
+        }
         return;
       }
 
