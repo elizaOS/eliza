@@ -1,13 +1,14 @@
 /**
- * Provider that exposes a truthful manifest of the owner's authorized
- * cross-platform conversation rooms. Message bodies stay in durable storage
- * for MEMORY_SEARCH instead of being copied eagerly into every model prompt;
- * RECENT_MESSAGES owns the current-room transcript when present. Suppressed
+ * Provider that exposes complete authorized cross-platform conversation
+ * history with a lossless retrieval manifest for models whose input boundary
+ * cannot admit the eager representation. RECENT_MESSAGES owns the current-room
+ * transcript when present. Suppressed
  * inside automation and page-scoped rooms, which carry their own context.
  * Gated to ADMIN (enforced by applyPluginRoleGating).
  */
 import type {
   IAgentRuntime,
+  Media,
   Memory,
   Provider,
   ProviderResult,
@@ -29,7 +30,26 @@ import {
   isAutomationConversationMetadata,
   isPageScopedConversationMetadata,
 } from "../api/conversation-metadata.ts";
-import { roomSourceTag } from "../shared/conversation-format.ts";
+import {
+  formatRelativeTimestampPrefix,
+  formatSpeakerLabel,
+  roomSourceTag,
+} from "../shared/conversation-format.ts";
+
+function attachmentPromptSummary(attachments: readonly Media[]): string {
+  return attachments
+    .map((attachment) => {
+      const label =
+        attachment.filename ??
+        attachment.title ??
+        attachment.id ??
+        "attachment";
+      const mediaType = attachment.mimeType ?? attachment.contentType;
+      const readableContent = attachment.text ?? attachment.description;
+      return `[attachment: ${toWellFormedUnicode(label)}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${toWellFormedUnicode(readableContent)}` : ""}]`;
+    })
+    .join(" ");
+}
 
 export const recentConversationsProvider: Provider = {
   name: "recent-conversations",
@@ -109,11 +129,19 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      const messageCount = await runtime.countMemories({
+      const memories = await runtime.getMemoriesByRoomIds({
         tableName: "messages",
         roomIds,
+        accessContext,
       });
-      if (messageCount === 0) {
+      const sorted = memories
+        .filter(
+          (memory) =>
+            Boolean(memory.content.text) ||
+            (memory.content.attachments?.length ?? 0) > 0,
+        )
+        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
+      if (sorted.length === 0) {
         return { text: "", values: {}, data: {} };
       }
 
@@ -143,19 +171,31 @@ export const recentConversationsProvider: Provider = {
           label: toWellFormedUnicode(roomSourceTag(room)),
         };
       });
-      const lines = [
+      const manifestLines = [
         "Stored conversation manifest:",
-        `${messageCount} stored message(s) across ${rooms.length} authorized room(s).`,
+        `${sorted.length} stored message(s) across ${rooms.length} authorized room(s).`,
         "Message bodies are not included here. Use MEMORY_SEARCH for complete historical recall.",
         ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
       ];
+      const eagerLines = ["Recent conversations:"];
+      for (const memory of sorted) {
+        const room = roomCache.get(memory.roomId) ?? null;
+        const text = toWellFormedUnicode(memory.content.text ?? "");
+        const attachments = attachmentPromptSummary(
+          memory.content.attachments ?? [],
+        );
+        eagerLines.push(
+          `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[text, attachments].filter(Boolean).join(" ")}`,
+        );
+      }
 
       markOwnerExclusiveDisclosureUsed(message);
 
       return {
-        text: lines.join("\n"),
+        text: eagerLines.join("\n"),
+        overflowText: manifestLines.join("\n"),
         values: {
-          recentConversationCount: messageCount,
+          recentConversationCount: sorted.length,
           recentConversationRoomCount: rooms.length,
         },
         data: { rooms },

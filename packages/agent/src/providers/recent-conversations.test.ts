@@ -83,7 +83,6 @@ function makeRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
     })),
     getRoomsForParticipants: vi.fn(async () => [ROOM_ID]),
     getRoomsForParticipant: vi.fn(async () => [ROOM_ID]),
-    countMemories: vi.fn(async () => 1),
     getMemoriesByRoomIds: vi.fn(async () => [
       { ...message(), createdAt: Number.POSITIVE_INFINITY },
     ]),
@@ -109,7 +108,7 @@ describe("recentConversationsProvider", () => {
     expect(recentConversationsProvider.alwaysInResponseState).toBe(true);
   });
 
-  it("renders room identity without copying a message body into the prompt", async () => {
+  it("keeps eager message bodies and declares a retrieval manifest", async () => {
     const runtime = makeRuntime();
 
     const result = await recentConversationsProvider.get(
@@ -118,14 +117,17 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(result.text).toContain(`[discord] general roomId=${ROOM_ID}`);
-    expect(result.text).not.toContain("hello there");
+    expect(result.text).toContain("hello there");
+    expect(result.overflowText).toContain(
+      `[discord] general roomId=${ROOM_ID}`,
+    );
+    expect(result.overflowText).not.toContain("hello there");
     expect(markOwnerExclusiveDisclosureUsed).toHaveBeenCalledWith(
       expect.objectContaining({ entityId: ENTITY_ID }),
     );
   });
 
-  it("expands linked aliases into a room manifest without reading message bodies", async () => {
+  it("expands linked aliases into complete eager context and a body-free manifest", async () => {
     getVerifiedRelatedEntityIds.mockResolvedValue([ENTITY_ID, ALIAS_ENTITY_ID]);
     const completeTexts = Array.from(
       { length: 15 },
@@ -158,7 +160,6 @@ describe("recentConversationsProvider", () => {
     const runtime = makeRuntime({
       getRoomsForParticipants,
       getRoomsForParticipant,
-      countMemories: vi.fn(async () => completeTexts.length),
       getMemoriesByRoomIds,
       getRoomsByIds,
     });
@@ -178,22 +179,27 @@ describe("recentConversationsProvider", () => {
       ALIAS_ENTITY_ID,
     ]);
     expect(getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
-    expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
-    expect(runtime.countMemories).toHaveBeenCalledWith({
+    expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
       tableName: "messages",
       roomIds: [ROOM_ID, ALIAS_ROOM_ID],
+      accessContext: expect.objectContaining({
+        authorizedRoomIds: [ROOM_ID, ALIAS_ROOM_ID],
+      }),
     });
     expect(getRoomsByIds).toHaveBeenCalledOnce();
     expect(getRoomsByIds).toHaveBeenCalledWith([ROOM_ID, ALIAS_ROOM_ID]);
     expect(result.values?.recentConversationCount).toBe(15);
     expect(result.values?.recentConversationRoomCount).toBe(2);
     expect(result.data?.rooms).toHaveLength(2);
-    expect(result.text).toContain(
+    expect(result.overflowText).toContain(
       "15 stored message(s) across 2 authorized room(s)",
     );
-    expect(result.text).toContain("discord");
-    expect(result.text).toContain("telegram");
-    for (const text of completeTexts) expect(result.text).not.toContain(text);
+    expect(result.overflowText).toContain("discord");
+    expect(result.overflowText).toContain("telegram");
+    for (const text of completeTexts) {
+      expect(result.text).toContain(text);
+      expect(result.overflowText).not.toContain(text);
+    }
   });
 
   it("leaves the current-room transcript to RECENT_MESSAGES in the full agent runtime", async () => {
@@ -220,16 +226,16 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
-    expect(runtime.countMemories).toHaveBeenCalledWith({
+    expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
       tableName: "messages",
       roomIds: [ALIAS_ROOM_ID],
+      accessContext: expect.any(Object),
     });
-    expect(result.text).toContain(`roomId=${ALIAS_ROOM_ID}`);
-    expect(result.text).not.toContain("remote-only context");
+    expect(result.overflowText).toContain(`roomId=${ALIAS_ROOM_ID}`);
+    expect(result.text).toContain("remote-only context");
   });
 
-  it("does not leak attachment bodies or capability URLs through the room manifest", async () => {
+  it("keeps safe attachment recall while excluding capability URLs", async () => {
     const runtime = makeRuntime({
       getMemoriesByRoomIds: vi.fn(async () => [
         {
@@ -256,9 +262,10 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(result.text).not.toContain("receipt.png");
-    expect(result.text).not.toContain("dinner reservation");
+    expect(result.text).toContain("receipt.png");
+    expect(result.text).toContain("dinner reservation");
     expect(result.text).not.toContain("private.example");
+    expect(result.overflowText).not.toContain("receipt.png");
     expect(result.values?.recentConversationCount).toBe(1);
     expect(result.data?.rooms).toHaveLength(1);
     expect(JSON.stringify(result.data)).not.toContain("private.example");

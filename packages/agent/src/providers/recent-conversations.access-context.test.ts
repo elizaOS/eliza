@@ -164,27 +164,18 @@ describe("recentConversationsProvider access-context integration", () => {
       isOwner: true,
       authorizedRoomIds: expect.arrayContaining([RETAINED_ROOM, REVOKED_ROOM]),
     });
-    expect(
-      await runtime.getMemoriesByRoomIds({
-        tableName: "messages",
-        roomIds: [RETAINED_ROOM, REVOKED_ROOM],
-        accessContext: firstAccessContext,
-      }),
-    ).toHaveLength(2);
     storageRead.mockClear();
-    const storageCount = vi.spyOn(runtime, "countMemories");
     const beforeRevocation = await recentConversationsProvider.get(
       runtime,
       firstTurn,
       EMPTY_STATE,
     );
 
-    expect(beforeRevocation.text).toContain(`roomId=${RETAINED_ROOM}`);
-    expect(beforeRevocation.text).toContain(`roomId=${REVOKED_ROOM}`);
-    expect(beforeRevocation.text).not.toContain("cross-world message");
+    expect(beforeRevocation.overflowText).toContain(`roomId=${RETAINED_ROOM}`);
+    expect(beforeRevocation.overflowText).toContain(`roomId=${REVOKED_ROOM}`);
+    expect(beforeRevocation.text).toContain("cross-world message");
     expect(beforeRevocation.values?.recentConversationCount).toBe(2);
-    expect(storageRead).not.toHaveBeenCalled();
-    expect(storageCount).toHaveBeenLastCalledWith(
+    expect(storageRead).toHaveBeenLastCalledWith(
       expect.objectContaining({
         roomIds: expect.arrayContaining([RETAINED_ROOM, REVOKED_ROOM]),
         tableName: "messages",
@@ -198,12 +189,16 @@ describe("recentConversationsProvider access-context integration", () => {
       EMPTY_STATE,
     );
 
-    expect(afterRevocation.text).toContain(`roomId=${RETAINED_ROOM}`);
-    expect(afterRevocation.text).not.toContain(`roomId=${REVOKED_ROOM}`);
+    expect(afterRevocation.overflowText).toContain(`roomId=${RETAINED_ROOM}`);
+    expect(afterRevocation.overflowText).not.toContain(
+      `roomId=${REVOKED_ROOM}`,
+    );
     expect(afterRevocation.values?.recentConversationCount).toBe(1);
-    expect(storageCount).toHaveBeenLastCalledWith({
-      roomIds: [RETAINED_ROOM],
-      tableName: "messages",
-    });
+    expect(storageRead).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        roomIds: [RETAINED_ROOM],
+        tableName: "messages",
+      }),
+    );
   });
 });
