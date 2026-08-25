@@ -120,3 +120,105 @@ describe("fetchDexPaprikaPrices", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+describe("computeValueUsd edge guards", () => {
+  it("handles whitespace, Infinity, and NaN inputs as zero", () => {
+    expect(computeValueUsd(" 2 ", " 1.5 ")).toBe("3.00");
+    expect(computeValueUsd("Infinity", "1")).toBe("0");
+    expect(computeValueUsd("1", "Infinity")).toBe("0");
+    expect(computeValueUsd("NaN", "1")).toBe("0");
+    expect(computeValueUsd("1", "NaN")).toBe("0");
+  });
+
+  it("handles scientific notation and tiny balances", () => {
+    expect(computeValueUsd("1e2", "1")).toBe("100.00");
+    expect(computeValueUsd("0.0001", "10000")).toBe("1.00");
+  });
+});
+
+describe("fetchDexScreenerPrices contracts", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("returns empty for unsupported chain and empty addresses without fetching", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { fetchDexScreenerPrices } = await import("./wallet-dex-prices");
+    expect((await fetchDexScreenerPrices(999, ["0xabc"])).size).toBe(0);
+    expect((await fetchDexScreenerPrices(1, [])).size).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("selects highest liquidity price and preserves logoUrl", async () => {
+    const { fetchDexScreenerPrices } = await import("./wallet-dex-prices");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify([
+        { baseToken: { address: "0xAbC" }, priceUsd: "1", liquidity: { usd: 100 }, info: { imageUrl: " https://logo " } },
+        { baseToken: { address: "0xabc" }, priceUsd: "2", liquidity: { usd: 500 }, info: { imageUrl: "https://logo2" } },
+        { baseToken: { address: "0xdef" }, priceUsd: null, liquidity: { usd: 999 } },
+      ]), { status: 200 })),
+    );
+    const res = await fetchDexScreenerPrices(1, ["0xabc", "0xdef"]);
+    expect(res.get("0xabc")?.price).toBe("2");
+    expect(res.get("0xabc")?.logoUrl).toBe("https://logo2");
+    expect(res.has("0xdef")).toBe(false);
+  });
+
+  it("batches requests in groups of 30", async () => {
+    const { fetchDexScreenerPrices } = await import("./wallet-dex-prices");
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input) => {
+      urls.push(String(input));
+      return new Response(JSON.stringify([]), { status: 200 });
+    }));
+    const addrs = Array.from({ length: 61 }, (_, i) => `0x${i.toString(16).padStart(40, "0")}`);
+    await fetchDexScreenerPrices(1, addrs);
+    expect(urls).toHaveLength(3);
+    expect(urls[0]).toContain("0x");
+  });
+
+  it("tolerates non-ok and non-array responses without throwing", async () => {
+    const { fetchDexScreenerPrices } = await import("./wallet-dex-prices");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not json", { status: 500 })));
+    await expect(fetchDexScreenerPrices(1, ["0xabc"])).resolves.toBeInstanceOf(Map);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ not: "array" }), { status: 200 })));
+    await expect(fetchDexScreenerPrices(1, ["0xabc"])).resolves.toBeInstanceOf(Map);
+  });
+});
+
+describe("fetchDexPrices fallback", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("merges screener and paprika fallbacks for missing tokens", async () => {
+    const { fetchDexPrices } = await import("./wallet-dex-prices");
+    let call = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input) => {
+      call += 1;
+      const url = String(input);
+      if (url.includes("dexscreener")) {
+        return new Response(JSON.stringify([{ baseToken: { address: "0xaaa" }, priceUsd: "10", liquidity: { usd: 100 } }]), { status: 200 });
+      }
+      return new Response(JSON.stringify({ summary: { price_usd: 20 } }), { status: 200 });
+    }));
+    const res = await fetchDexPrices(1, ["0xaaa", "0xbbb"]);
+    expect(res.get("0xaaa")?.price).toBe("10");
+    expect(res.get("0xbbb")?.price).toBe("20");
+  });
+
+  it("lowercases addresses and returns empty for empty input", async () => {
+    const { fetchDexPrices } = await import("./wallet-dex-prices");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await fetchDexPrices(1, [])).size).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([]), { status: 200 })));
+    const res = await fetchDexPrices(1, ["0xABC"]);
+    expect([...res.keys()].every((k) => k === k.toLowerCase())).toBe(true);
+  });
+});
+
