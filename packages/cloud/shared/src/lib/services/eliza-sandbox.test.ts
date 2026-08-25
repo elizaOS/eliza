@@ -146,6 +146,14 @@ type ReplacementExpectation = {
 type TestReplacementLocator = {
   sandboxId: string;
   nodeId: string;
+  nodeRecordId: string | null;
+  nodeIncarnation: string | null;
+  nodeHistoryId: string | null;
+  nodeHostname: string | null;
+  nodeSshPort: number | null;
+  nodeSshUser: string | null;
+  nodeHostKeyFingerprint: string | null;
+  replacementSecretCleanupVersion: 1 | null;
   containerName: string;
   replacementAttemptId: string | null;
   containerId: string | null;
@@ -203,6 +211,15 @@ function replacementLocatorFromTestHandle(
   return {
     sandboxId: handle.sandboxId,
     nodeId,
+    nodeRecordId: typeof metadata.nodeRecordId === "string" ? metadata.nodeRecordId : null,
+    nodeIncarnation: typeof metadata.nodeIncarnation === "string" ? metadata.nodeIncarnation : null,
+    nodeHistoryId: typeof metadata.nodeHistoryId === "string" ? metadata.nodeHistoryId : null,
+    nodeHostname: typeof metadata.hostname === "string" ? metadata.hostname : null,
+    nodeSshPort: typeof metadata.nodeSshPort === "number" ? metadata.nodeSshPort : null,
+    nodeSshUser: typeof metadata.nodeSshUser === "string" ? metadata.nodeSshUser : null,
+    nodeHostKeyFingerprint:
+      typeof metadata.nodeHostKeyFingerprint === "string" ? metadata.nodeHostKeyFingerprint : null,
+    replacementSecretCleanupVersion: metadata.replacementSecretCleanupVersion === 1 ? 1 : null,
     containerName,
     replacementAttemptId,
     containerId: typeof metadata.containerId === "string" ? metadata.containerId : null,
@@ -223,6 +240,14 @@ function expectSameReplacement(
   expect(incoming).toMatchObject({
     sandboxId: existing.sandboxId,
     nodeId: existing.nodeId,
+    nodeRecordId: existing.nodeRecordId,
+    nodeIncarnation: existing.nodeIncarnation,
+    nodeHistoryId: existing.nodeHistoryId,
+    nodeHostname: existing.nodeHostname,
+    nodeSshPort: existing.nodeSshPort,
+    nodeSshUser: existing.nodeSshUser,
+    nodeHostKeyFingerprint: existing.nodeHostKeyFingerprint,
+    replacementSecretCleanupVersion: existing.replacementSecretCleanupVersion,
     containerName: existing.containerName,
     replacementAttemptId: existing.replacementAttemptId,
     vpnNodeName: existing.vpnNodeName,
@@ -631,6 +656,14 @@ function customSandbox(): AgentSandbox {
     warm_claim_cleanup_completed_at: null,
     replacement_cleanup_sandbox_id: null,
     replacement_cleanup_node_id: null,
+    replacement_cleanup_node_record_id: null,
+    replacement_cleanup_node_incarnation: null,
+    replacement_cleanup_node_history_id: null,
+    replacement_cleanup_node_hostname: null,
+    replacement_cleanup_node_ssh_port: null,
+    replacement_cleanup_node_ssh_user: null,
+    replacement_cleanup_node_host_key_fingerprint: null,
+    replacement_cleanup_secret_cleanup_version: null,
     replacement_cleanup_container_name: null,
     replacement_cleanup_attempt_id: null,
     replacement_cleanup_container_id: null,
@@ -8345,6 +8378,12 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   const DOCKER_IMAGE = "ghcr.io/elizaos/eliza-agent:latest";
   const FROM_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000aaa";
   const TO_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
+  const OLD_NODE_RECORD_ID = "44444444-4444-4444-8444-444444444441";
+  const OLD_NODE_INCARNATION = "44444444-4444-4444-8444-444444444442";
+  const OLD_NODE_HISTORY_ID = "44444444-4444-4444-8444-444444444443";
+  const NEW_NODE_RECORD_ID = "55555555-5555-4555-8555-555555555551";
+  const NEW_NODE_INCARNATION = "55555555-5555-4555-8555-555555555552";
+  const NEW_NODE_HISTORY_ID = "55555555-5555-4555-8555-555555555553";
 
   function runtimeStatusResponse(
     body: Record<string, unknown> = {
@@ -8397,13 +8436,39 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
 
   function oldNode(): DockerNode {
     return {
+      id: OLD_NODE_RECORD_ID,
       node_id: "node-old",
+      node_incarnation: OLD_NODE_INCARNATION,
+      current_node_history_id: OLD_NODE_HISTORY_ID,
       hostname: "node-old.internal",
       ssh_port: 22,
       ssh_user: "root",
-      host_key_fingerprint: null,
+      host_key_fingerprint: "SHA256:old-node-host-key",
       allocated_count: 1,
     } as unknown as DockerNode;
+  }
+
+  function oldNodeAuthority() {
+    return {
+      nodeRecordId: OLD_NODE_RECORD_ID,
+      nodeIncarnation: OLD_NODE_INCARNATION,
+      nodeHistoryId: OLD_NODE_HISTORY_ID,
+      nodeHostname: "node-old.internal",
+      nodeSshPort: 22,
+      nodeSshUser: "root",
+      nodeHostKeyFingerprint: "SHA256:old-node-host-key",
+    };
+  }
+
+  function mockOldNodeAuthority(service: object) {
+    return spyOn(
+      service as {
+        lockReplacementCleanupNodeAuthority: (
+          ...a: unknown[]
+        ) => Promise<ReturnType<typeof oldNodeAuthority>>;
+      },
+      "lockReplacementCleanupNodeAuthority",
+    ).mockResolvedValue(oldNodeAuthority());
   }
 
   // A genuine DockerSandboxMetadata for blue — isDockerSandboxMetadata() passes.
@@ -8412,6 +8477,13 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       provider: "docker" as const,
       nodeId: "node-new",
       hostname: "node-new.internal",
+      nodeRecordId: NEW_NODE_RECORD_ID,
+      nodeIncarnation: NEW_NODE_INCARNATION,
+      nodeHistoryId: NEW_NODE_HISTORY_ID,
+      nodeSshPort: 22,
+      nodeSshUser: "root",
+      nodeHostKeyFingerprint: "SHA256:new-node-host-key",
+      replacementSecretCleanupVersion: 1 as const,
       containerName: "agent-new-1",
       bridgePort: 21080,
       webUiPort: 23950,
@@ -8759,6 +8831,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    const nodeAuthoritySpy = mockOldNodeAuthority(svc);
     // A pre-upgrade restore point MUST be captured before the swap. Stub the
     // snapshot itself (its own DB/bridge path is covered elsewhere) so we can
     // assert it ran with the "pre-upgrade" type before any swap params.
@@ -8824,6 +8897,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      nodeAuthoritySpy.mockRestore();
       snapshotSpy.mockRestore();
     }
   });
@@ -8855,6 +8929,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    const nodeAuthoritySpy = mockOldNodeAuthority(svc);
     const snapshotSpy = spyOn(
       svc as unknown as {
         snapshot: (...a: unknown[]) => Promise<{ success: boolean }>;
@@ -8905,6 +8980,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      nodeAuthoritySpy.mockRestore();
       snapshotSpy.mockRestore();
     }
   });
@@ -9088,6 +9164,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(casRow);
+    const nodeAuthoritySpy = mockOldNodeAuthority(svc);
     const snapshotSpy = spyOn(
       svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
       "snapshot",
@@ -9110,6 +9187,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      nodeAuthoritySpy.mockRestore();
       snapshotSpy.mockRestore();
     }
   }
@@ -9283,6 +9361,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    const nodeAuthoritySpy = mockOldNodeAuthority(svc);
     const snapshotSpy = spyOn(
       svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
       "snapshot",
@@ -9324,6 +9403,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      nodeAuthoritySpy.mockRestore();
       snapshotSpy.mockRestore();
     }
   });
@@ -9352,6 +9432,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    const nodeAuthoritySpy = mockOldNodeAuthority(svc);
     const snapshotSpy = spyOn(
       svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
       "snapshot",
@@ -9395,6 +9476,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      nodeAuthoritySpy.mockRestore();
       snapshotSpy.mockRestore();
     }
   });
@@ -9426,6 +9508,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    const nodeAuthoritySpy = mockOldNodeAuthority(svc);
     const snapshotSpy = spyOn(
       svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
       "snapshot",
@@ -9468,6 +9551,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      nodeAuthoritySpy.mockRestore();
       snapshotSpy.mockRestore();
     }
   });
@@ -9487,6 +9571,12 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
   // The agent currently runs on the post-upgrade digest; rollback targets PREV.
   const CURRENT_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
   const PREV_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000aaa";
+  const CURRENT_NODE_RECORD_ID = "66666666-6666-4666-8666-666666666661";
+  const CURRENT_NODE_INCARNATION = "66666666-6666-4666-8666-666666666662";
+  const CURRENT_NODE_HISTORY_ID = "66666666-6666-4666-8666-666666666663";
+  const ROLLBACK_NODE_RECORD_ID = "77777777-7777-4777-8777-777777777771";
+  const ROLLBACK_NODE_INCARNATION = "77777777-7777-4777-8777-777777777772";
+  const ROLLBACK_NODE_HISTORY_ID = "77777777-7777-4777-8777-777777777773";
 
   // A live fleet agent that HAS a persisted rollback target.
   function upgradedAgentRow(): AgentSandbox {
@@ -9509,13 +9599,39 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
 
   function curNode(): DockerNode {
     return {
+      id: CURRENT_NODE_RECORD_ID,
       node_id: "node-cur",
+      node_incarnation: CURRENT_NODE_INCARNATION,
+      current_node_history_id: CURRENT_NODE_HISTORY_ID,
       hostname: "node-cur.internal",
       ssh_port: 22,
       ssh_user: "root",
-      host_key_fingerprint: null,
+      host_key_fingerprint: "SHA256:current-node-host-key",
       allocated_count: 1,
     } as unknown as DockerNode;
+  }
+
+  function currentNodeAuthority() {
+    return {
+      nodeRecordId: CURRENT_NODE_RECORD_ID,
+      nodeIncarnation: CURRENT_NODE_INCARNATION,
+      nodeHistoryId: CURRENT_NODE_HISTORY_ID,
+      nodeHostname: "node-cur.internal",
+      nodeSshPort: 22,
+      nodeSshUser: "root",
+      nodeHostKeyFingerprint: "SHA256:current-node-host-key",
+    };
+  }
+
+  function mockCurrentNodeAuthority(service: object) {
+    return spyOn(
+      service as {
+        lockReplacementCleanupNodeAuthority: (
+          ...a: unknown[]
+        ) => Promise<ReturnType<typeof currentNodeAuthority>>;
+      },
+      "lockReplacementCleanupNodeAuthority",
+    ).mockResolvedValue(currentNodeAuthority());
   }
 
   function blueMetadata(imageDigest: string | null, previousVpnNodeId?: string) {
@@ -9523,6 +9639,13 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       provider: "docker" as const,
       nodeId: "node-rb",
       hostname: "node-rb.internal",
+      nodeRecordId: ROLLBACK_NODE_RECORD_ID,
+      nodeIncarnation: ROLLBACK_NODE_INCARNATION,
+      nodeHistoryId: ROLLBACK_NODE_HISTORY_ID,
+      nodeSshPort: 22,
+      nodeSshUser: "root",
+      nodeHostKeyFingerprint: "SHA256:rollback-node-host-key",
+      replacementSecretCleanupVersion: 1 as const,
       containerName: "agent-rb-1",
       bridgePort: 21090,
       webUiPort: 23960,
@@ -9688,6 +9811,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    const nodeAuthoritySpy = mockCurrentNodeAuthority(svc);
     let transactionCalled = false;
     upgradeTransactionImpl = async (fn) => {
       transactionCalled = true;
@@ -9726,6 +9850,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       pushSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      nodeAuthoritySpy.mockRestore();
     }
   }
 
@@ -10174,6 +10299,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    const nodeAuthoritySpy = mockCurrentNodeAuthority(svc);
     let executedSql: unknown;
     upgradeTransactionImpl = async (fn) => {
       const tx: UpgradeTx = {
@@ -10222,6 +10348,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       pushSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      nodeAuthoritySpy.mockRestore();
     }
   });
 
@@ -10271,6 +10398,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    const nodeAuthoritySpy = mockCurrentNodeAuthority(svc);
     let executedSql: unknown;
     upgradeTransactionImpl = async (fn) => {
       const tx: UpgradeTx = {
@@ -10314,6 +10442,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       pushSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
+      nodeAuthoritySpy.mockRestore();
     }
   });
 

@@ -18,6 +18,10 @@ import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { type Database, dbWrite } from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import {
+  recordAgentSandboxReplacementCleanupProvenInTransaction,
+  recordAgentSandboxReplacementPreviousCleanupProvenInTransaction,
+} from "../../db/repositories/agent-sandbox-replacement-attempts";
+import {
   type AgentBackupSnapshotType,
   type AgentSandbox,
   type AgentSandboxBackup,
@@ -892,6 +896,14 @@ interface ImageSwapResult {
 type ReplacementCleanupLocator = {
   sandboxId: string;
   nodeId: string;
+  nodeRecordId: string | null;
+  nodeIncarnation: string | null;
+  nodeHistoryId: string | null;
+  nodeHostname: string | null;
+  nodeSshPort: number | null;
+  nodeSshUser: string | null;
+  nodeHostKeyFingerprint: string | null;
+  replacementSecretCleanupVersion: 1 | null;
   containerName: string;
   replacementAttemptId: string | null;
   containerId: string | null;
@@ -902,6 +914,53 @@ type ReplacementCleanupLocator = {
   allocationCounted: boolean;
   createdAt: Date;
 };
+
+type ExactReplacementCleanupLocator = ReplacementCleanupLocator & {
+  nodeRecordId: string;
+  nodeIncarnation: string;
+  nodeHistoryId: string;
+  nodeHostname: string;
+  nodeSshPort: number;
+  nodeSshUser: string;
+  nodeHostKeyFingerprint: string;
+};
+
+const CANONICAL_NODE_AUTHORITY_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function hasExactReplacementCleanupNodeAuthority(
+  locator:
+    | ReplacementCleanupLocator
+    | Pick<
+        ReplacementCleanupLocator,
+        | "nodeRecordId"
+        | "nodeIncarnation"
+        | "nodeHistoryId"
+        | "nodeHostname"
+        | "nodeSshPort"
+        | "nodeSshUser"
+        | "nodeHostKeyFingerprint"
+      >,
+): locator is ExactReplacementCleanupLocator {
+  return (
+    typeof locator.nodeRecordId === "string" &&
+    CANONICAL_NODE_AUTHORITY_UUID.test(locator.nodeRecordId) &&
+    typeof locator.nodeIncarnation === "string" &&
+    CANONICAL_NODE_AUTHORITY_UUID.test(locator.nodeIncarnation) &&
+    typeof locator.nodeHistoryId === "string" &&
+    CANONICAL_NODE_AUTHORITY_UUID.test(locator.nodeHistoryId) &&
+    typeof locator.nodeHostname === "string" &&
+    locator.nodeHostname.trim().length > 0 &&
+    typeof locator.nodeSshPort === "number" &&
+    Number.isSafeInteger(locator.nodeSshPort) &&
+    locator.nodeSshPort >= 1 &&
+    locator.nodeSshPort <= 65_535 &&
+    typeof locator.nodeSshUser === "string" &&
+    locator.nodeSshUser.trim().length > 0 &&
+    typeof locator.nodeHostKeyFingerprint === "string" &&
+    locator.nodeHostKeyFingerprint.trim().length > 0
+  );
+}
 
 type ReplacementCleanupExpectation = {
   status: AgentSandboxStatus;
@@ -934,6 +993,31 @@ function digestPinnedImageRef(imageRef: string, digest: string): string {
   const lastSlash = imageRef.lastIndexOf("/");
   const withoutTag = lastColon > lastSlash ? imageRef.slice(0, lastColon) : imageRef;
   return `${withoutTag}@${digest}`;
+}
+
+type ReplacementAuthorityReceiptKind =
+  | "provider-succeeded"
+  | "lifecycle-adopted"
+  | "candidate-cleanup-proven"
+  | "previous-cleanup-proven";
+
+/**
+ * Stable local receipt for one exact replacement transition. Length-prefixing
+ * every field keeps nullable/empty values and concatenation boundaries
+ * unambiguous, so retries derive the same digest without trusting JSON order.
+ */
+function replacementAuthorityReceiptDigest(
+  kind: ReplacementAuthorityReceiptKind,
+  fields: readonly (string | number | boolean | null)[],
+): string {
+  const hash = crypto.createHash("sha256");
+  hash.update("elizaos.agent-sandbox-replacement-receipt.v1\0", "utf8");
+  for (const value of [kind, ...fields]) {
+    const encoded = value === null ? "-" : String(value);
+    hash.update(`${Buffer.byteLength(encoded, "utf8")}:`, "utf8");
+    hash.update(encoded, "utf8");
+  }
+  return hash.digest("hex");
 }
 
 /**
@@ -3635,6 +3719,14 @@ export class ElizaSandboxService {
           error_message: null,
           replacement_cleanup_sandbox_id: null,
           replacement_cleanup_node_id: null,
+          replacement_cleanup_node_record_id: null,
+          replacement_cleanup_node_incarnation: null,
+          replacement_cleanup_node_history_id: null,
+          replacement_cleanup_node_hostname: null,
+          replacement_cleanup_node_ssh_port: null,
+          replacement_cleanup_node_ssh_user: null,
+          replacement_cleanup_node_host_key_fingerprint: null,
+          replacement_cleanup_secret_cleanup_version: null,
           replacement_cleanup_container_name: null,
           replacement_cleanup_attempt_id: null,
           replacement_cleanup_container_id: null,
@@ -10098,6 +10190,7 @@ export class ElizaSandboxService {
         ) {
           return false;
         }
+        const previousNodeAuthority = await this.lockReplacementCleanupNodeAuthority(tx, oldNodeId);
         const exactAdminCanaryWhere = adminCanary
           ? sql`
               AND user_id = ${adminCanary.targetOwnerUserId}
@@ -10132,6 +10225,14 @@ export class ElizaSandboxService {
             },
             replacement_cleanup_sandbox_id = ${oldSandboxId},
             replacement_cleanup_node_id = ${oldNodeId},
+            replacement_cleanup_node_record_id = ${previousNodeAuthority.nodeRecordId},
+            replacement_cleanup_node_incarnation = ${previousNodeAuthority.nodeIncarnation},
+            replacement_cleanup_node_history_id = ${previousNodeAuthority.nodeHistoryId},
+            replacement_cleanup_node_hostname = ${previousNodeAuthority.nodeHostname},
+            replacement_cleanup_node_ssh_port = ${previousNodeAuthority.nodeSshPort},
+            replacement_cleanup_node_ssh_user = ${previousNodeAuthority.nodeSshUser},
+            replacement_cleanup_node_host_key_fingerprint = ${previousNodeAuthority.nodeHostKeyFingerprint},
+            replacement_cleanup_secret_cleanup_version = NULL,
             replacement_cleanup_container_name = ${oldContainerName},
             replacement_cleanup_attempt_id = NULL,
             replacement_cleanup_container_id = NULL,
@@ -10151,6 +10252,14 @@ export class ElizaSandboxService {
             AND lifecycle_revision = ${current.lifecycle_revision}
             AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
             AND replacement_cleanup_node_id = ${blueMeta.nodeId}
+            AND replacement_cleanup_node_record_id = ${cleanupLocator.nodeRecordId}
+            AND replacement_cleanup_node_incarnation = ${cleanupLocator.nodeIncarnation}
+            AND replacement_cleanup_node_history_id = ${cleanupLocator.nodeHistoryId}
+            AND replacement_cleanup_node_hostname = ${cleanupLocator.nodeHostname}
+            AND replacement_cleanup_node_ssh_port = ${cleanupLocator.nodeSshPort}
+            AND replacement_cleanup_node_ssh_user = ${cleanupLocator.nodeSshUser}
+            AND replacement_cleanup_node_host_key_fingerprint = ${cleanupLocator.nodeHostKeyFingerprint}
+            AND replacement_cleanup_secret_cleanup_version IS NOT DISTINCT FROM ${cleanupLocator.replacementSecretCleanupVersion}
             AND replacement_cleanup_container_name = ${blueMeta.containerName}
             AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${cleanupLocator.replacementAttemptId}
             AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${cleanupLocator.containerId}
@@ -10617,6 +10726,7 @@ export class ElizaSandboxService {
         ) {
           return false;
         }
+        const previousNodeAuthority = await this.lockReplacementCleanupNodeAuthority(tx, oldNodeId);
         const exactAdminCanaryWhere = adminCanary
           ? sql`
               AND user_id = ${adminCanary.targetOwnerUserId}
@@ -10651,6 +10761,14 @@ export class ElizaSandboxService {
             previous_docker_image = NULL,
             replacement_cleanup_sandbox_id = ${oldSandboxId},
             replacement_cleanup_node_id = ${oldNodeId},
+            replacement_cleanup_node_record_id = ${previousNodeAuthority.nodeRecordId},
+            replacement_cleanup_node_incarnation = ${previousNodeAuthority.nodeIncarnation},
+            replacement_cleanup_node_history_id = ${previousNodeAuthority.nodeHistoryId},
+            replacement_cleanup_node_hostname = ${previousNodeAuthority.nodeHostname},
+            replacement_cleanup_node_ssh_port = ${previousNodeAuthority.nodeSshPort},
+            replacement_cleanup_node_ssh_user = ${previousNodeAuthority.nodeSshUser},
+            replacement_cleanup_node_host_key_fingerprint = ${previousNodeAuthority.nodeHostKeyFingerprint},
+            replacement_cleanup_secret_cleanup_version = NULL,
             replacement_cleanup_container_name = ${oldContainerName},
             replacement_cleanup_attempt_id = NULL,
             replacement_cleanup_container_id = NULL,
@@ -10669,6 +10787,14 @@ export class ElizaSandboxService {
             AND lifecycle_revision = ${current.lifecycle_revision}
             AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
             AND replacement_cleanup_node_id = ${blueMeta.nodeId}
+            AND replacement_cleanup_node_record_id = ${cleanupLocator.nodeRecordId}
+            AND replacement_cleanup_node_incarnation = ${cleanupLocator.nodeIncarnation}
+            AND replacement_cleanup_node_history_id = ${cleanupLocator.nodeHistoryId}
+            AND replacement_cleanup_node_hostname = ${cleanupLocator.nodeHostname}
+            AND replacement_cleanup_node_ssh_port = ${cleanupLocator.nodeSshPort}
+            AND replacement_cleanup_node_ssh_user = ${cleanupLocator.nodeSshUser}
+            AND replacement_cleanup_node_host_key_fingerprint = ${cleanupLocator.nodeHostKeyFingerprint}
+            AND replacement_cleanup_secret_cleanup_version IS NOT DISTINCT FROM ${cleanupLocator.replacementSecretCleanupVersion}
             AND replacement_cleanup_container_name = ${blueMeta.containerName}
             AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${cleanupLocator.replacementAttemptId}
             AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${cleanupLocator.containerId}
@@ -10867,6 +10993,14 @@ export class ElizaSandboxService {
       AgentSandbox,
       | "replacement_cleanup_sandbox_id"
       | "replacement_cleanup_node_id"
+      | "replacement_cleanup_node_record_id"
+      | "replacement_cleanup_node_incarnation"
+      | "replacement_cleanup_node_history_id"
+      | "replacement_cleanup_node_hostname"
+      | "replacement_cleanup_node_ssh_port"
+      | "replacement_cleanup_node_ssh_user"
+      | "replacement_cleanup_node_host_key_fingerprint"
+      | "replacement_cleanup_secret_cleanup_version"
       | "replacement_cleanup_container_name"
       | "replacement_cleanup_attempt_id"
       | "replacement_cleanup_container_id"
@@ -10878,12 +11012,21 @@ export class ElizaSandboxService {
       | "replacement_cleanup_created_at"
     >,
   ): ReplacementCleanupLocator | null {
-    const core = [
+    const legacyCore = [
       rec.replacement_cleanup_sandbox_id,
       rec.replacement_cleanup_node_id,
       rec.replacement_cleanup_container_name,
       rec.replacement_cleanup_allocation_counted,
       rec.replacement_cleanup_created_at,
+    ];
+    const occurrenceAuthority = [
+      rec.replacement_cleanup_node_record_id,
+      rec.replacement_cleanup_node_incarnation,
+      rec.replacement_cleanup_node_history_id,
+      rec.replacement_cleanup_node_hostname,
+      rec.replacement_cleanup_node_ssh_port,
+      rec.replacement_cleanup_node_ssh_user,
+      rec.replacement_cleanup_node_host_key_fingerprint,
     ];
     const optional = [
       rec.replacement_cleanup_attempt_id,
@@ -10892,15 +11035,26 @@ export class ElizaSandboxService {
       rec.replacement_cleanup_vpn_node_name,
       rec.replacement_cleanup_preserved_vpn_node_id,
       rec.replacement_cleanup_vpn_registration_started_at,
+      rec.replacement_cleanup_secret_cleanup_version,
     ];
-    if (core.every((value) => value === null)) {
-      if (optional.some((value) => value !== null)) {
+    if (legacyCore.every((value) => value === null)) {
+      if (
+        occurrenceAuthority.some((value) => value !== null) ||
+        optional.some((value) => value !== null)
+      ) {
         throw new Error("Replacement cleanup locator contains unowned identity fields");
       }
       return null;
     }
-    if (core.some((value) => value === null)) {
+    if (legacyCore.some((value) => value === null)) {
       throw new Error("Replacement cleanup locator is incomplete");
+    }
+    const legacyAuthority = occurrenceAuthority.every((value) => value === null);
+    if (!legacyAuthority && occurrenceAuthority.some((value) => value === null)) {
+      throw new Error("Replacement cleanup node occurrence authority is incomplete");
+    }
+    if (legacyAuthority && rec.replacement_cleanup_secret_cleanup_version !== null) {
+      throw new Error("Legacy replacement cleanup cannot claim an exact cleanup protocol");
     }
     if (
       (rec.replacement_cleanup_vpn_node_name === null) !==
@@ -10912,9 +11066,18 @@ export class ElizaSandboxService {
       rec.replacement_cleanup_vpn_registration_started_at,
     );
     const createdAt = this.parseReplacementCreatedAt(rec.replacement_cleanup_created_at);
-    return {
+    const locator: ReplacementCleanupLocator = {
       sandboxId: rec.replacement_cleanup_sandbox_id!,
       nodeId: rec.replacement_cleanup_node_id!,
+      nodeRecordId: rec.replacement_cleanup_node_record_id,
+      nodeIncarnation: rec.replacement_cleanup_node_incarnation,
+      nodeHistoryId: rec.replacement_cleanup_node_history_id,
+      nodeHostname: rec.replacement_cleanup_node_hostname,
+      nodeSshPort: rec.replacement_cleanup_node_ssh_port,
+      nodeSshUser: rec.replacement_cleanup_node_ssh_user,
+      nodeHostKeyFingerprint: rec.replacement_cleanup_node_host_key_fingerprint,
+      replacementSecretCleanupVersion:
+        rec.replacement_cleanup_secret_cleanup_version === 1 ? 1 : null,
       containerName: rec.replacement_cleanup_container_name!,
       replacementAttemptId: rec.replacement_cleanup_attempt_id,
       containerId: rec.replacement_cleanup_container_id,
@@ -10925,6 +11088,28 @@ export class ElizaSandboxService {
       allocationCounted: rec.replacement_cleanup_allocation_counted!,
       createdAt,
     };
+    // Expand/contract coexistence: an old worker may persist a logical-only
+    // fence after nullable authority columns are deployed. It remains readable
+    // and blocks capacity, but is deliberately not remotely actionable.
+    if (legacyAuthority) return locator;
+    const candidateCleanup = locator.replacementSecretCleanupVersion === 1;
+    const primaryCleanup =
+      locator.replacementSecretCleanupVersion === null &&
+      typeof locator.replacementAttemptId === "string" &&
+      CANONICAL_NODE_AUTHORITY_UUID.test(locator.replacementAttemptId) &&
+      typeof locator.containerId === "string" &&
+      /^[0-9a-f]{64}$/.test(locator.containerId) &&
+      locator.vpnNodeName === null &&
+      locator.previousVpnNodeId === null &&
+      locator.vpnRegistrationStartedAt === null &&
+      locator.allocationCounted;
+    if (
+      !hasExactReplacementCleanupNodeAuthority(locator) ||
+      (candidateCleanup ? locator.replacementAttemptId === null : !primaryCleanup)
+    ) {
+      throw new Error("Replacement cleanup node occurrence authority is invalid");
+    }
+    return locator;
   }
 
   private parseReplacementVpnStartedAt(value: Date | string | null | undefined): Date | null {
@@ -10980,9 +11165,17 @@ export class ElizaSandboxService {
     if ((vpnNodeName === null) !== (vpnRegistrationStartedAt === null)) {
       throw new Error("Replacement sandbox has incomplete VPN correlation metadata");
     }
-    return {
+    const locator: Omit<ReplacementCleanupLocator, "createdAt"> = {
       sandboxId: handle.sandboxId,
       nodeId: metadata.nodeId,
+      nodeRecordId: metadata.nodeRecordId ?? "",
+      nodeIncarnation: metadata.nodeIncarnation ?? "",
+      nodeHistoryId: metadata.nodeHistoryId ?? "",
+      nodeHostname: metadata.hostname,
+      nodeSshPort: metadata.nodeSshPort ?? 0,
+      nodeSshUser: metadata.nodeSshUser ?? "",
+      nodeHostKeyFingerprint: metadata.nodeHostKeyFingerprint ?? "",
+      replacementSecretCleanupVersion: metadata.replacementSecretCleanupVersion ?? null,
       containerName: metadata.containerName,
       replacementAttemptId: metadata.replacementAttemptId,
       containerId: metadata.containerId ?? null,
@@ -10992,6 +11185,13 @@ export class ElizaSandboxService {
       vpnRegistrationStartedAt,
       allocationCounted: metadata.allocationCounted,
     };
+    if (
+      !hasExactReplacementCleanupNodeAuthority(locator) ||
+      locator.replacementSecretCleanupVersion !== 1
+    ) {
+      throw new Error("Replacement sandbox has no exact node occurrence authority");
+    }
+    return locator;
   }
 
   private replacementLocatorFromCleanupError(
@@ -11009,9 +11209,17 @@ export class ElizaSandboxService {
     if (cleanupError.allocationCounted === null) {
       throw new Error("Unresolved replacement has no capacity ownership marker");
     }
-    return {
+    const locator: Omit<ReplacementCleanupLocator, "createdAt"> = {
       sandboxId: cleanupError.sandboxId,
       nodeId: cleanupError.nodeId,
+      nodeRecordId: cleanupError.nodeRecordId ?? "",
+      nodeIncarnation: cleanupError.nodeIncarnation ?? "",
+      nodeHistoryId: cleanupError.nodeHistoryId ?? "",
+      nodeHostname: cleanupError.nodeHostname ?? "",
+      nodeSshPort: cleanupError.nodeSshPort ?? 0,
+      nodeSshUser: cleanupError.nodeSshUser ?? "",
+      nodeHostKeyFingerprint: cleanupError.nodeHostKeyFingerprint ?? "",
+      replacementSecretCleanupVersion: cleanupError.replacementSecretCleanupVersion,
       containerName: cleanupError.containerName,
       replacementAttemptId: cleanupError.replacementAttemptId,
       containerId: cleanupError.containerId,
@@ -11021,6 +11229,13 @@ export class ElizaSandboxService {
       vpnRegistrationStartedAt,
       allocationCounted: cleanupError.allocationCounted,
     };
+    if (
+      !hasExactReplacementCleanupNodeAuthority(locator) ||
+      locator.replacementSecretCleanupVersion !== 1
+    ) {
+      throw new Error("Unresolved replacement has no exact node occurrence authority");
+    }
+    return locator;
   }
 
   private assertSameReplacementIdentity(
@@ -11030,6 +11245,14 @@ export class ElizaSandboxService {
     const same =
       existing.sandboxId === incoming.sandboxId &&
       existing.nodeId === incoming.nodeId &&
+      existing.nodeRecordId === incoming.nodeRecordId &&
+      existing.nodeIncarnation === incoming.nodeIncarnation &&
+      existing.nodeHistoryId === incoming.nodeHistoryId &&
+      existing.nodeHostname === incoming.nodeHostname &&
+      existing.nodeSshPort === incoming.nodeSshPort &&
+      existing.nodeSshUser === incoming.nodeSshUser &&
+      existing.nodeHostKeyFingerprint === incoming.nodeHostKeyFingerprint &&
+      existing.replacementSecretCleanupVersion === incoming.replacementSecretCleanupVersion &&
       existing.containerName === incoming.containerName &&
       existing.replacementAttemptId === incoming.replacementAttemptId &&
       existing.vpnNodeName === incoming.vpnNodeName &&
@@ -11093,6 +11316,46 @@ export class ElizaSandboxService {
     }
   }
 
+  private async lockReplacementCleanupNodeAuthority(
+    tx: LifecycleTx,
+    nodeId: string,
+  ): Promise<{
+    nodeRecordId: string;
+    nodeIncarnation: string;
+    nodeHistoryId: string;
+    nodeHostname: string;
+    nodeSshPort: number;
+    nodeSshUser: string;
+    nodeHostKeyFingerprint: string;
+  }> {
+    const [node] = await tx
+      .select()
+      .from(dockerNodes)
+      .where(eq(dockerNodes.node_id, nodeId))
+      .for("update")
+      .limit(1);
+    if (
+      !node ||
+      !node.node_incarnation ||
+      !node.current_node_history_id ||
+      !node.hostname.trim() ||
+      !node.ssh_user.trim() ||
+      !node.host_key_fingerprint?.trim() ||
+      node.allocated_count < 1
+    ) {
+      throw new Error(`Replacement cleanup node ${nodeId} has no exact occurrence authority`);
+    }
+    return {
+      nodeRecordId: node.id,
+      nodeIncarnation: node.node_incarnation,
+      nodeHistoryId: node.current_node_history_id,
+      nodeHostname: node.hostname,
+      nodeSshPort: node.ssh_port,
+      nodeSshUser: node.ssh_user,
+      nodeHostKeyFingerprint: node.host_key_fingerprint,
+    };
+  }
+
   private async persistReplacementCleanupStage(
     agentId: string,
     orgId: string,
@@ -11140,6 +11403,14 @@ export class ElizaSandboxService {
             AND organization_id = ${orgId}
             AND replacement_cleanup_sandbox_id = ${existing.sandboxId}
             AND replacement_cleanup_node_id = ${existing.nodeId}
+            AND replacement_cleanup_node_record_id = ${existing.nodeRecordId}
+            AND replacement_cleanup_node_incarnation = ${existing.nodeIncarnation}
+            AND replacement_cleanup_node_history_id = ${existing.nodeHistoryId}
+            AND replacement_cleanup_node_hostname = ${existing.nodeHostname}
+            AND replacement_cleanup_node_ssh_port = ${existing.nodeSshPort}
+            AND replacement_cleanup_node_ssh_user = ${existing.nodeSshUser}
+            AND replacement_cleanup_node_host_key_fingerprint = ${existing.nodeHostKeyFingerprint}
+            AND replacement_cleanup_secret_cleanup_version IS NOT DISTINCT FROM ${existing.replacementSecretCleanupVersion}
             AND replacement_cleanup_container_name = ${existing.containerName}
             AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${existing.replacementAttemptId}
             AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${existing.containerId}
@@ -11176,6 +11447,13 @@ export class ElizaSandboxService {
             allocated_count = allocated_count + 1,
             updated_at = NOW()
           WHERE node_id = ${incoming.nodeId}
+            AND id = ${incoming.nodeRecordId}
+            AND node_incarnation = ${incoming.nodeIncarnation}
+            AND current_node_history_id = ${incoming.nodeHistoryId}
+            AND hostname = ${incoming.nodeHostname}
+            AND ssh_port = ${incoming.nodeSshPort}
+            AND ssh_user = ${incoming.nodeSshUser}
+            AND host_key_fingerprint = ${incoming.nodeHostKeyFingerprint}
             AND enabled = TRUE
             AND placement_state = 'open'
             AND status = 'healthy'
@@ -11191,6 +11469,14 @@ export class ElizaSandboxService {
         SET
           replacement_cleanup_sandbox_id = ${incoming.sandboxId},
           replacement_cleanup_node_id = ${incoming.nodeId},
+          replacement_cleanup_node_record_id = ${incoming.nodeRecordId},
+          replacement_cleanup_node_incarnation = ${incoming.nodeIncarnation},
+          replacement_cleanup_node_history_id = ${incoming.nodeHistoryId},
+          replacement_cleanup_node_hostname = ${incoming.nodeHostname},
+          replacement_cleanup_node_ssh_port = ${incoming.nodeSshPort},
+          replacement_cleanup_node_ssh_user = ${incoming.nodeSshUser},
+          replacement_cleanup_node_host_key_fingerprint = ${incoming.nodeHostKeyFingerprint},
+          replacement_cleanup_secret_cleanup_version = ${incoming.replacementSecretCleanupVersion},
           replacement_cleanup_container_name = ${incoming.containerName},
           replacement_cleanup_attempt_id = ${incoming.replacementAttemptId},
           replacement_cleanup_container_id = ${incoming.containerId},
@@ -11210,6 +11496,14 @@ export class ElizaSandboxService {
           AND container_name IS NOT DISTINCT FROM ${expected.containerName}
           AND deletion_attempt_id IS NULL
           AND replacement_cleanup_sandbox_id IS NULL
+          AND replacement_cleanup_node_record_id IS NULL
+          AND replacement_cleanup_node_incarnation IS NULL
+          AND replacement_cleanup_node_history_id IS NULL
+          AND replacement_cleanup_node_hostname IS NULL
+          AND replacement_cleanup_node_ssh_port IS NULL
+          AND replacement_cleanup_node_ssh_user IS NULL
+          AND replacement_cleanup_node_host_key_fingerprint IS NULL
+          AND replacement_cleanup_secret_cleanup_version IS NULL
           AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
@@ -11249,6 +11543,14 @@ export class ElizaSandboxService {
           AND organization_id = ${orgId}
           AND replacement_cleanup_sandbox_id = ${existing.sandboxId}
           AND replacement_cleanup_node_id = ${existing.nodeId}
+          AND replacement_cleanup_node_record_id = ${existing.nodeRecordId}
+          AND replacement_cleanup_node_incarnation = ${existing.nodeIncarnation}
+          AND replacement_cleanup_node_history_id = ${existing.nodeHistoryId}
+          AND replacement_cleanup_node_hostname = ${existing.nodeHostname}
+          AND replacement_cleanup_node_ssh_port = ${existing.nodeSshPort}
+          AND replacement_cleanup_node_ssh_user = ${existing.nodeSshUser}
+          AND replacement_cleanup_node_host_key_fingerprint = ${existing.nodeHostKeyFingerprint}
+          AND replacement_cleanup_secret_cleanup_version IS NOT DISTINCT FROM ${existing.replacementSecretCleanupVersion}
           AND replacement_cleanup_container_name = ${existing.containerName}
           AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${existing.replacementAttemptId}
           AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${existing.containerId}
@@ -11317,6 +11619,14 @@ export class ElizaSandboxService {
           ...updateData,
           replacement_cleanup_sandbox_id: null,
           replacement_cleanup_node_id: null,
+          replacement_cleanup_node_record_id: null,
+          replacement_cleanup_node_incarnation: null,
+          replacement_cleanup_node_history_id: null,
+          replacement_cleanup_node_hostname: null,
+          replacement_cleanup_node_ssh_port: null,
+          replacement_cleanup_node_ssh_user: null,
+          replacement_cleanup_node_host_key_fingerprint: null,
+          replacement_cleanup_secret_cleanup_version: null,
           replacement_cleanup_container_name: null,
           replacement_cleanup_attempt_id: null,
           replacement_cleanup_container_id: null,
@@ -11379,6 +11689,28 @@ export class ElizaSandboxService {
     }
   }
 
+  private async isReplacementCleanupOccurrenceCurrent(
+    locator: ExactReplacementCleanupLocator,
+  ): Promise<boolean> {
+    const [node] = await dbWrite
+      .select({ id: dockerNodes.id })
+      .from(dockerNodes)
+      .where(
+        and(
+          eq(dockerNodes.id, locator.nodeRecordId),
+          eq(dockerNodes.node_id, locator.nodeId),
+          eq(dockerNodes.node_incarnation, locator.nodeIncarnation),
+          eq(dockerNodes.current_node_history_id, locator.nodeHistoryId),
+          eq(dockerNodes.hostname, locator.nodeHostname),
+          eq(dockerNodes.ssh_port, locator.nodeSshPort),
+          eq(dockerNodes.ssh_user, locator.nodeSshUser),
+          eq(dockerNodes.host_key_fingerprint, locator.nodeHostKeyFingerprint),
+        ),
+      )
+      .limit(1);
+    return node !== undefined;
+  }
+
   private async retirePersistedReplacementCleanup(
     agentId: string,
     orgId: string,
@@ -11419,20 +11751,55 @@ export class ElizaSandboxService {
     });
     if (snapshot.state !== "pending") return snapshot.state;
 
+    const { locator } = snapshot;
+    if (!hasExactReplacementCleanupNodeAuthority(locator)) {
+      // A rolling deploy can leave fences written by the pre-expand binary.
+      // Logical node identity is not remote authority: retain the fence and
+      // its conservative capacity ownership until an operator-safe drain or
+      // explicit reconciliation can establish exact occurrence proof.
+      logger.warn("[agent-sandbox] Legacy replacement cleanup remains deferred", {
+        agentId,
+        organizationId: orgId,
+        source,
+        nodeId: locator.nodeId,
+      });
+      if (source === "background-reconcile") return "deferred";
+      throw new Error("Replacement cleanup lacks exact node occurrence authority");
+    }
+    if (!(await this.isReplacementCleanupOccurrenceCurrent(locator))) {
+      // Reboot/record replacement invalidates destructive SSH authority, but it
+      // does not prove Docker absence: restart policies may have brought the
+      // fenced container back. Retain both the fence and its capacity slot.
+      logger.warn("[agent-sandbox] Replacement cleanup occurrence remains deferred", {
+        agentId,
+        organizationId: orgId,
+        source,
+        nodeId: locator.nodeId,
+        nodeRecordId: locator.nodeRecordId,
+        nodeIncarnation: locator.nodeIncarnation,
+        elapsedMs: Date.now() - startedAt,
+      });
+      if (source === "background-reconcile") return "deferred";
+      throw new Error("Replacement cleanup node occurrence is no longer current");
+    }
+    const replacementAttemptId = locator.replacementAttemptId;
+    if (!replacementAttemptId) {
+      throw new Error("Exact replacement cleanup has no durable attempt authority");
+    }
+
     const provider = await this.getProvider();
     if (!provider.stopOnSpecificNodeForReplacement) {
       throw new Error("Sandbox provider cannot prove a persisted replacement absent");
     }
     const stopOnSpecificNodeForReplacement =
       provider.stopOnSpecificNodeForReplacement.bind(provider);
-    const { locator } = snapshot;
     logger.info("[agent-sandbox] Replacement cleanup remote retirement started", {
       agentId,
       organizationId: orgId,
       source,
       nodeId: locator.nodeId,
       containerName: locator.containerName,
-      preCutover: locator.replacementAttemptId !== null,
+      preCutover: locator.replacementSecretCleanupVersion === 1,
       elapsedMs: Date.now() - startedAt,
     });
 
@@ -11441,7 +11808,18 @@ export class ElizaSandboxService {
       locator.containerName,
       locator.vpnNodeId,
       {
-        replacementAttemptId: locator.replacementAttemptId,
+        nodeRecordId: locator.nodeRecordId,
+        nodeIncarnation: locator.nodeIncarnation,
+        nodeHistoryId: locator.nodeHistoryId,
+        nodeHostname: locator.nodeHostname,
+        nodeSshPort: locator.nodeSshPort,
+        nodeSshUser: locator.nodeSshUser,
+        nodeHostKeyFingerprint: locator.nodeHostKeyFingerprint,
+        replacementSecretCleanupVersion: locator.replacementSecretCleanupVersion,
+        // attemptId on a post-cutover primary is a DB correlation fence only.
+        // Passing it remotely would incorrectly select candidate secret cleanup.
+        replacementAttemptId:
+          locator.replacementSecretCleanupVersion === 1 ? locator.replacementAttemptId : null,
         containerId: locator.containerId,
         vpnNodeName: locator.vpnNodeName,
         previousVpnNodeId: locator.previousVpnNodeId,
@@ -11455,6 +11833,30 @@ export class ElizaSandboxService {
       source,
       elapsedMs: Date.now() - startedAt,
     });
+    const cleanupReceiptDigest = replacementAuthorityReceiptDigest(
+      locator.replacementSecretCleanupVersion === 1
+        ? "candidate-cleanup-proven"
+        : "previous-cleanup-proven",
+      [
+        orgId,
+        agentId,
+        replacementAttemptId,
+        locator.sandboxId,
+        locator.nodeId,
+        locator.nodeRecordId,
+        locator.nodeIncarnation,
+        locator.nodeHistoryId,
+        locator.nodeHostname,
+        locator.nodeSshPort,
+        locator.nodeSshUser,
+        locator.nodeHostKeyFingerprint,
+        locator.containerName,
+        locator.containerId,
+        locator.vpnNodeId,
+        locator.allocationCounted,
+        locator.createdAt.toISOString(),
+      ],
+    );
 
     const outcome = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
@@ -11473,11 +11875,37 @@ export class ElizaSandboxService {
       if (!currentLocator || !this.replacementCleanupLocatorsEqual(currentLocator, locator)) {
         throw new Error("Replacement cleanup fence changed after remote absence proof");
       }
+      const attemptReference = {
+        attemptId: replacementAttemptId,
+        organizationId: orgId,
+        agentId,
+      } as const;
+      if (locator.replacementSecretCleanupVersion === 1) {
+        await recordAgentSandboxReplacementCleanupProvenInTransaction(
+          tx,
+          attemptReference,
+          cleanupReceiptDigest,
+        );
+      } else {
+        await recordAgentSandboxReplacementPreviousCleanupProvenInTransaction(
+          tx,
+          attemptReference,
+          cleanupReceiptDigest,
+        );
+      }
       const cleared = await tx.execute<{ id: string }>(sql`
         UPDATE ${agentSandboxes}
         SET
           replacement_cleanup_sandbox_id = NULL,
           replacement_cleanup_node_id = NULL,
+          replacement_cleanup_node_record_id = NULL,
+          replacement_cleanup_node_incarnation = NULL,
+          replacement_cleanup_node_history_id = NULL,
+          replacement_cleanup_node_hostname = NULL,
+          replacement_cleanup_node_ssh_port = NULL,
+          replacement_cleanup_node_ssh_user = NULL,
+          replacement_cleanup_node_host_key_fingerprint = NULL,
+          replacement_cleanup_secret_cleanup_version = NULL,
           replacement_cleanup_container_name = NULL,
           replacement_cleanup_attempt_id = NULL,
           replacement_cleanup_container_id = NULL,
@@ -11492,6 +11920,14 @@ export class ElizaSandboxService {
           AND organization_id = ${orgId}
           AND replacement_cleanup_sandbox_id = ${locator.sandboxId}
           AND replacement_cleanup_node_id = ${locator.nodeId}
+          AND replacement_cleanup_node_record_id = ${locator.nodeRecordId}
+          AND replacement_cleanup_node_incarnation = ${locator.nodeIncarnation}
+          AND replacement_cleanup_node_history_id = ${locator.nodeHistoryId}
+          AND replacement_cleanup_node_hostname = ${locator.nodeHostname}
+          AND replacement_cleanup_node_ssh_port = ${locator.nodeSshPort}
+          AND replacement_cleanup_node_ssh_user = ${locator.nodeSshUser}
+          AND replacement_cleanup_node_host_key_fingerprint = ${locator.nodeHostKeyFingerprint}
+          AND replacement_cleanup_secret_cleanup_version IS NOT DISTINCT FROM ${locator.replacementSecretCleanupVersion}
           AND replacement_cleanup_container_name = ${locator.containerName}
           AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${locator.replacementAttemptId}
           AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${locator.containerId}
@@ -11506,20 +11942,6 @@ export class ElizaSandboxService {
       `);
       if (cleared.rows.length !== 1) {
         throw new Error("Replacement cleanup fence changed before durable release");
-      }
-      if (locator.allocationCounted) {
-        const released = await tx.execute<{ node_id: string }>(sql`
-          UPDATE ${dockerNodes}
-          SET
-            allocated_count = allocated_count - 1,
-            updated_at = NOW()
-          WHERE node_id = ${locator.nodeId}
-            AND allocated_count > 0
-          RETURNING node_id
-        `);
-        if (released.rows.length !== 1) {
-          throw new Error(`Replacement cleanup node ${locator.nodeId} disappeared before release`);
-        }
       }
       if (onConvergedInTx) await onConvergedInTx(tx);
       return "retired" as const;
@@ -11560,7 +11982,17 @@ export class ElizaSandboxService {
             AND ${jobs.status} IN ('pending', 'in_progress')
             AND ${inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES)}
         )
-      ORDER BY replacement_cleanup_created_at ASC
+      ORDER BY CASE WHEN replacement_cleanup_node_record_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM ${dockerNodes} AS cleanup_node
+        WHERE cleanup_node."id" = ${agentSandboxes.replacement_cleanup_node_record_id}
+          AND cleanup_node."node_id" = ${agentSandboxes.replacement_cleanup_node_id}
+          AND cleanup_node."node_incarnation"
+            = ${agentSandboxes.replacement_cleanup_node_incarnation}
+          AND cleanup_node."current_node_history_id"
+            = ${agentSandboxes.replacement_cleanup_node_history_id}
+      ) THEN 0 ELSE 1 END,
+      replacement_cleanup_created_at ASC,
+      id ASC
       LIMIT ${limit}
     `);
     let retired = 0;
