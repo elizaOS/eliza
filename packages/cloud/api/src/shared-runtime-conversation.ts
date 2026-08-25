@@ -1909,7 +1909,13 @@ export class SharedRuntimeConversation {
             }
           : undefined,
       });
-      return Response.json(result);
+      const response = Response.json(result);
+      // A bridge result is complete before this response exists. Releasing the
+      // room here avoids coupling later turns to whether a nested Worker fetch
+      // happens to pull the small JSON body promptly; only live SSE streams
+      // need to retain serialization until their body is consumed.
+      response.headers.set(RELEASE_QUEUE_BEFORE_BODY_HEADER, "before-body");
+      return response;
     });
   }
 
