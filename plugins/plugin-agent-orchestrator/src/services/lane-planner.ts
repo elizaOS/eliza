@@ -83,6 +83,18 @@ export interface LaneReadiness {
   blockers: string[];
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function isEnabledValue(value: unknown): boolean {
   if (typeof value !== "string") return value === true;
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
@@ -410,7 +422,7 @@ function buildLane(
       : staticAcceptanceCriteria(laneTask);
   return {
     id: `lane-${index + 1}`,
-    title: (input.title ?? laneTask).slice(0, 80),
+    title: truncateText(input.title ?? laneTask, 80),
     branchName,
     dependencies: [...dependencies],
     scopePaths: scopes,
@@ -519,7 +531,7 @@ function applyRefinement(plan: LanePlan, raw: string): LanePlan {
         ...lane,
         title:
           typeof refined.title === "string" && refined.title.trim()
-            ? refined.title.trim().slice(0, 80)
+            ? truncateText(refined.title.trim(), 80)
             : lane.title,
         initialPrompt:
           typeof refined.initialPrompt === "string" &&
