@@ -88,11 +88,13 @@ function parseState(value: unknown): PRState {
   return value === "closed" || value === "all" ? value : "open";
 }
 
-function parseReviewAction(value: unknown): ReviewAction | null {
-  return value === "approve" ||
-    value === "request-changes" ||
-    value === "comment"
-    ? value
+export function parseReviewAction(value: unknown): ReviewAction | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase().replace(/_/g, "-");
+  return normalized === "approve" ||
+    normalized === "request-changes" ||
+    normalized === "comment"
+    ? (normalized as ReviewAction)
     : null;
 }
 
@@ -110,7 +112,8 @@ async function runList(
 
   const state = parseState(options?.state);
   const author = requireString(options, "author");
-  const repo = requireString(options, "repo");
+  const repo =
+    requireString(options, "repo") ?? requireString(options, "repository");
   const prs: PRSummary[] = [];
 
   if (repo) {
@@ -176,10 +179,25 @@ async function runReview(
   callback: HandlerCallback | undefined,
 ): Promise<GitHubActionResult<GitHubPrOpResult>> {
   const selection = resolveAccountSelection(options, "user");
-  const repo = requireString(options, "repo");
-  const number = requireNumber(options, "number");
-  const action = parseReviewAction(options?.action);
-  const body = requireString(options, "body");
+  const repo =
+    requireString(options, "repo") ?? requireString(options, "repository");
+  const number =
+    requireNumber(options, "number") ??
+    requireNumber(options, "pr") ??
+    requireNumber(options, "prNumber") ??
+    requireNumber(options, "pr_number") ??
+    requireNumber(options, "id");
+  const action = parseReviewAction(
+    options?.action ??
+      options?.reviewAction ??
+      options?.review_action ??
+      options?.event,
+  );
+  const body =
+    requireString(options, "body") ??
+    requireString(options, "comment") ??
+    requireString(options, "message") ??
+    requireString(options, "content");
 
   if (!repo || !number || !action) {
     const err =

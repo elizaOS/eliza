@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { buildPreview } from "./issue-op.js";
-import { buildReviewPreview } from "./pr-op.js";
+import { buildReviewPreview, parseReviewAction } from "./pr-op.js";
 
 describe("GitHub mutation previews", () => {
   it("shows the complete issue comment body", () => {
@@ -26,5 +26,16 @@ describe("GitHub mutation previews", () => {
     );
     expect(preview.isWellFormed()).toBe(true);
     expect(preview).toContain("pr-tail");
+  });
+
+  it("normalizes review action casing, underscores, and whitespace", () => {
+    expect(parseReviewAction("approve")).toBe("approve");
+    expect(parseReviewAction("APPROVE")).toBe("approve");
+    expect(parseReviewAction("request_changes")).toBe("request-changes");
+    expect(parseReviewAction("REQUEST_CHANGES")).toBe("request-changes");
+    expect(parseReviewAction("  comment  ")).toBe("comment");
+    expect(parseReviewAction("invalid_action")).toBeNull();
+    expect(parseReviewAction(null)).toBeNull();
+    expect(parseReviewAction(123)).toBeNull();
   });
 });
