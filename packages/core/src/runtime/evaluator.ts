@@ -1796,9 +1796,17 @@ function getStructuredEvaluatorObject(
 		// parse-error path so the loop sees a malformed evaluation and retries,
 		// instead of a silent default verdict.
 		if (!isEvaluatorShapedObject(raw.object)) {
+			const objStr = JSON.stringify(raw.object);
+			let end = 200;
+			if (end > 0 && end < objStr.length) {
+				const code = objStr.charCodeAt(end - 1);
+				if (code >= 0xd800 && code <= 0xdbff) {
+					end -= 1;
+				}
+			}
 			return {
 				object: null,
-				parseError: `structured evaluator output is not evaluator-shaped: ${JSON.stringify(raw.object).slice(0, 200)}`,
+				parseError: `structured evaluator output is not evaluator-shaped: ${objStr.slice(0, end)}`,
 			};
 		}
 		return { object: raw.object as RawEvaluatorOutput };

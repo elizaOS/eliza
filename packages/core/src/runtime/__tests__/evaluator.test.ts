@@ -1349,4 +1349,19 @@ describe("fabricated marker invocations are rejected, real widgets pass", () => 
 			expect(result.messageToUser).toBe(answer);
 		}
 	});
+
+	it("preserves UTF-16 surrogate pairs in malformed structured output parse error", () => {
+		// "🔥" (2 code units * 120 = 240 units)
+		const badObject = { payload: "🔥".repeat(120) };
+		const result = parseEvaluatorOutput({ object: badObject as any });
+		expect(result.protocolFailure).toBe(true);
+		expect(result.parseError).toBeDefined();
+		for (const char of result.parseError!) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+	});
 });
