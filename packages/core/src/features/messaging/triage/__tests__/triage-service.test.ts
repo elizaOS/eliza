@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "../../../../types/index.ts";
+import { draftConsentDigest } from "../actions/send-consent.ts";
 import { MessageRefStore } from "../message-ref-store.ts";
 import {
 	__resetDefaultTriageServiceForTests,
@@ -71,6 +72,16 @@ function draft(
 		sent: false,
 		...overrides,
 	};
+}
+
+/**
+ * Digest of the currently stored draft for id, or a placeholder when the
+ * draft does not exist (the NOT_FOUND path fires before digest validation).
+ * Send-route tests must thread the digest of the exact record they intend.
+ */
+function digestFor(service: TriageService, draftId: string): string {
+	const record = service.getStore().getDraft(draftId);
+	return record ? draftConsentDigest(record) : `digest-for-${draftId}`;
 }
 
 function adapter(
@@ -479,32 +490,53 @@ describe("TriageService management and drafts", () => {
 });
 
 describe("TriageService immediate delivery", () => {
+	it("fails closed when a send route omits the consent digest (#25284 r4)", async () => {
+		const sendDraft = vi.fn(async () => ({ externalId: "unexpected" }));
+		const service = new TriageService(new MessageRefStore());
+		service.register(adapter("gmail", { sendDraft }));
+		service.getStore().saveDraft(draft());
+
+		// Untyped callers can still omit the digest at runtime; the boundary
+		// must reject before the adapter is ever contacted.
+		await expect(
+			service.sendDraft(runtime(), "draft-1", undefined as unknown as string),
+		).rejects.toMatchObject({
+			code: "MESSAGE_DRAFT_CONSENT_DIGEST_REQUIRED",
+		});
+		await expect(
+			service.sendDraft(runtime(), "draft-1", ""),
+		).rejects.toMatchObject({
+			code: "MESSAGE_DRAFT_CONSENT_DIGEST_REQUIRED",
+		});
+		expect(sendDraft).not.toHaveBeenCalled();
+	});
+
 	it("rejects missing drafts, unavailable adapters, and empty provider receipts", async () => {
 		const service = new TriageService(new MessageRefStore());
-		await expect(service.sendDraft(runtime(), "missing")).rejects.toMatchObject(
-			{
-				code: "MESSAGE_DRAFT_NOT_FOUND",
-			},
-		);
+		await expect(
+			service.sendDraft(runtime(), "missing", digestFor(service, "missing")),
+		).rejects.toMatchObject({
+			code: "MESSAGE_DRAFT_NOT_FOUND",
+		});
 
 		service.getStore().saveDraft(draft());
 		service.register(adapter("gmail", { isAvailable: () => false }));
-		await expect(service.sendDraft(runtime(), "draft-1")).rejects.toMatchObject(
-			{
-				code: "MESSAGE_ADAPTER_UNAVAILABLE",
-			},
-		);
+		await expect(
+			service.sendDraft(runtime(), "draft-1", digestFor(service, "draft-1")),
+		).rejects.toMatchObject({
+			code: "MESSAGE_ADAPTER_UNAVAILABLE",
+		});
 
 		service.register(
 			adapter("gmail", {
 				sendDraft: async () => ({ externalId: "  " }),
 			}),
 		);
-		await expect(service.sendDraft(runtime(), "draft-1")).rejects.toMatchObject(
-			{
-				code: "MESSAGE_PROVIDER_RECEIPT_MISSING",
-			},
-		);
+		await expect(
+			service.sendDraft(runtime(), "draft-1", digestFor(service, "draft-1")),
+		).rejects.toMatchObject({
+			code: "MESSAGE_PROVIDER_RECEIPT_MISSING",
+		});
 	});
 
 	it("returns already-sent drafts without contacting the adapter", async () => {
@@ -517,7 +549,9 @@ describe("TriageService immediate delivery", () => {
 		});
 		service.getStore().saveDraft(sent);
 
-		await expect(service.sendDraft(runtime(), "sent")).resolves.toEqual(sent);
+		await expect(
+			service.sendDraft(runtime(), "sent", digestFor(service, "sent")),
+		).resolves.toEqual(sent);
 		expect(sendDraft).not.toHaveBeenCalled();
 	});
 
@@ -537,14 +571,22 @@ describe("TriageService immediate delivery", () => {
 		service.register(adapter("gmail", { sendDraft }));
 		service.getStore().saveDraft(draft());
 
-		const first = service.sendDraft(runtime(), "draft-1");
-		const duplicate = service.sendDraft(runtime(), "draft-1");
+		const first = service.sendDraft(
+			runtime(),
+			"draft-1",
+			digestFor(service, "draft-1"),
+		);
+		const duplicate = service.sendDraft(
+			runtime(),
+			"draft-1",
+			digestFor(service, "draft-1"),
+		);
 		release?.();
 		await expect(Promise.all([first, duplicate])).rejects.toThrow(
 			"temporary provider failure",
 		);
 		await expect(
-			service.sendDraft(runtime(), "draft-1"),
+			service.sendDraft(runtime(), "draft-1", digestFor(service, "draft-1")),
 		).resolves.toMatchObject({
 			sent: true,
 			sentExternalId: "provider-retry",
@@ -586,6 +628,43 @@ describe("TriageService immediate delivery", () => {
 			sentExternalId: "provider-message-1",
 		});
 		expect(service.getStore().getDraft("durable-draft")).toEqual(sent);
+	});
+
+	it("fails closed when the rehydrated snapshot mutates before the replay send (#25284 r4)", async () => {
+		// The deferred replay binds the digest of the snapshot it rehydrated;
+		// a mutation landing in the isAvailable await — after the rehydrate
+		// save, before the pre-adapter revalidation read — must fail closed
+		// instead of delivering the swapped bytes.
+		const createDraft = vi.fn(async () => ({
+			draftId: "provider-local-draft",
+			preview: "provider preview",
+		}));
+		const sendDraft = vi.fn(async () => ({
+			externalId: "provider-message-1",
+		}));
+		const service = new TriageService(new MessageRefStore());
+		service.register(
+			adapter("gmail", {
+				createDraft,
+				sendDraft,
+				isAvailable: () => {
+					service.getStore().saveDraft(
+						draft("provider-local-draft", {
+							body: "Swapped hostile bytes.",
+						}),
+					);
+					return true;
+				},
+			}),
+		);
+		const snapshot = draft("durable-draft", { body: "Original bytes." });
+
+		await expect(
+			service.sendPersistedDraft(runtime(), snapshot),
+		).rejects.toMatchObject({
+			code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+		});
+		expect(sendDraft).not.toHaveBeenCalled();
 	});
 
 	it("rejects persisted sends when recreation is unavailable or lacks an id", async () => {

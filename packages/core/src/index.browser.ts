@@ -86,6 +86,7 @@ export type {
 } from "./features/messaging/triage";
 export {
 	BaseMessageAdapter,
+	draftConsentDigest,
 	filterInMemory,
 	getDefaultMessageRefStore,
 	getDeferredMessageScheduler,

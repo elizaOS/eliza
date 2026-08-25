@@ -6,6 +6,9 @@
  * registered, hands the draft off for owner approval. When the request omits a
  * concrete body it synthesizes a conservative, approval-gated acknowledgment
  * from the original message's subject/snippet rather than guessing content.
+ * Every send route binds the consent digest of the exact drafted snapshot, so
+ * a draft mutated between drafting and delivery (or between enqueue and
+ * owner-approved replay) fails closed (#25284).
  */
 import { logger } from "../../../../logger.ts";
 import type {
@@ -29,6 +32,7 @@ import {
 	type RespondToMessageParams,
 	validateMessageAction,
 } from "./_shared.ts";
+import { draftConsentDigest } from "./send-consent.ts";
 
 async function resolveTargetMessageId(
 	runtime: IAgentRuntime,
@@ -161,10 +165,18 @@ export const respondToMessageAction: Action = {
 			};
 			const required = await policy.shouldRequireApproval(runtime, draftReq);
 			if (required) {
+				// Bind the replay to the exact drafted snapshot (#25284 review
+				// r4): the digest pins delivery to the record this turn's request
+				// produced — a draft mutated between enqueue and owner-approved
+				// replay fails closed instead of delivering bytes the approval
+				// never covered.
+				const consentedDigest = draftConsentDigest(record);
 				const enq = await policy.enqueueApproval(runtime, draftReq, () =>
-					service.sendDraft(runtime, record.draftId).then((r) => ({
-						externalId: r.sentExternalId ?? `pending:${r.draftId}`,
-					})),
+					service
+						.sendDraft(runtime, record.draftId, consentedDigest)
+						.then((r) => ({
+							externalId: r.sentExternalId ?? `pending:${r.draftId}`,
+						})),
 				);
 				const text = `I've drafted the reply on ${record.source} — it's waiting for approval before it goes out.`;
 				logger.info(
@@ -196,7 +208,16 @@ export const respondToMessageAction: Action = {
 			}
 		}
 
-		const sent = await service.sendDraft(runtime, record.draftId);
+		// Bind the immediate send to the snapshot drafted this turn (#25284
+		// review r4): the user's request dictated this body on this turn, so
+		// the digest of the just-created record is the snapshot-intent proof
+		// the service boundary requires; a mutation between draftReply and
+		// send fails closed instead of delivering unvetted bytes.
+		const sent = await service.sendDraft(
+			runtime,
+			record.draftId,
+			draftConsentDigest(record),
+		);
 		const text = `Replied on ${sent.source}.`;
 		logger.info(
 			`[RespondToMessage] sent draftId=${sent.draftId} externalId=${sent.sentExternalId ?? "unknown"}`,

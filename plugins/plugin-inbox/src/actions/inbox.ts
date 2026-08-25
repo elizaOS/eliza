@@ -42,6 +42,7 @@ import type {
 } from "@elizaos/core";
 import {
   describeUserReference,
+  draftConsentDigest,
   getDefaultTriageService,
   hasRoleAccess,
   logger,
@@ -686,7 +687,15 @@ async function replyToEntry(args: {
     };
   }
 
-  const sent = await service.sendDraft(args.runtime, draft.draftId);
+  // Bind the send to the exact snapshot replyToEntry drafted this turn
+  // (#25284 review r4): every TriageService.sendDraft route must carry the
+  // consent digest of the record it intends to deliver; the service fails
+  // closed without it.
+  const sent = await service.sendDraft(
+    args.runtime,
+    draft.draftId,
+    draftConsentDigest(draft),
+  );
   await args.repo.markResolved(args.entry.id, {
     draftResponse: args.body,
     autoReplied: true,

@@ -362,4 +362,80 @@ describe("respondToMessageAction", () => {
 		expect(adapter.sent).toEqual(["draft-1"]);
 		expect(result.text).toBe("Replied on gmail.");
 	});
+
+	it("fails closed when the drafted record mutates before the immediate send (#25284 r4)", async () => {
+		// The immediate-send route binds the digest of the record drafted
+		// this turn; the binding is enforced at the service's pre-adapter
+		// revalidation, so bytes swapped into the store during the adapter
+		// availability check must reject with the typed mismatch instead of
+		// delivering.
+		const adapter = new RecordingAdapter();
+		const service = getDefaultTriageService();
+		adapter.isAvailable = () => {
+			const record = service.getStore().getDraft("draft-1");
+			if (record) {
+				service.getStore().saveDraft({
+					...record,
+					body: "Swapped hostile bytes.",
+				});
+			}
+			return true;
+		};
+		register(adapter);
+		getDefaultMessageRefStore().saveMessage(messageRef());
+
+		await expect(
+			respondToMessageAction.handler(runtime(), turn, undefined, {
+				parameters: { messageId: "message-1", body: "Legit body." },
+			} as never),
+		).rejects.toMatchObject({
+			code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+		});
+		expect(adapter.sent).toEqual([]);
+	});
+
+	it("fails closed when the queued reply mutates before owner-approved replay (#25284 r4)", async () => {
+		const adapter = new RecordingAdapter();
+		register(adapter);
+		getDefaultMessageRefStore().saveMessage(messageRef());
+		const currentRuntime = runtime();
+		let executor: (() => Promise<{ externalId: string }>) | undefined;
+		const policy: SendPolicy = {
+			async shouldRequireApproval() {
+				return true;
+			},
+			async enqueueApproval(_runtime, draft, send) {
+				executor = send;
+				return { requestId: "approval-2", preview: draft.body };
+			},
+		};
+		registerSendPolicy(currentRuntime, policy);
+
+		const result = await respondToMessageAction.handler(
+			currentRuntime,
+			turn,
+			undefined,
+			{
+				parameters: { messageId: "message-1", body: "Approved text" },
+			} as never,
+		);
+		expect(result.success).toBe(true);
+		if (!executor) throw new Error("Expected an approval executor");
+
+		// Swap hostile bytes into the store between enqueue and the
+		// owner-approved replay: the bound digest must reject them.
+		const record = getDefaultTriageService().getStore().getDraft("draft-1");
+		if (!record) throw new Error("Expected the drafted record in the store");
+		getDefaultTriageService()
+			.getStore()
+			.saveDraft({
+				...record,
+				body: "Swapped hostile bytes.",
+			});
+
+		await expect(executor()).rejects.toMatchObject({
+			code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+		});
+		expect(adapter.sent).toEqual([]);
+	});
 });
