@@ -151,12 +151,18 @@ describe("requireServiceMethodCost — fail-closed mixed-unit lookups (#22956)",
   });
 
   test("the empty catalogue is still not cached by the fail-closed lookup (self-heals)", async () => {
-    listByServiceSpy.mockResolvedValue([] as never);
+    listByServiceSpy
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([{ method: "get", cost: "0.00005" }] as never);
 
     await expect(requireServiceMethodCost("storage", "get")).rejects.toBeInstanceOf(
       PricingNotFoundError,
     );
+    // Because the empty map was never cached, the next call re-reads the
+    // repository and picks up the seeded row without process restart.
+    await expect(requireServiceMethodCost("storage", "get")).resolves.toBeCloseTo(0.00005, 12);
 
-    expect(cacheSetSpy).not.toHaveBeenCalled();
+    expect(listByServiceSpy).toHaveBeenCalledTimes(2);
+    expect(cacheSetSpy).not.toHaveBeenCalledWith(expect.anything(), {}, expect.anything());
   });
 });
