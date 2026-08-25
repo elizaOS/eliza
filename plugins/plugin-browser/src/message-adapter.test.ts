@@ -83,4 +83,39 @@ describe("BrowserBridgeAdapter", () => {
       }),
     ).resolves.toEqual([]);
   });
+
+  it("preserves UTF-16 surrogate pairs when summarizing long pages", async () => {
+    // 496 ASCII chars + "🔥" (2 units) = 498 total chars > 500 when repeated
+    const mainText = "a".repeat(496) + "🔥".repeat(10);
+    const page = {
+      id: "page-surrogate",
+      agentId: "agent-1",
+      browser: "chrome",
+      profileId: "default",
+      windowId: "window-1",
+      tabId: "tab-1",
+      url: "https://example.com/article",
+      title: "Article",
+      selectionText: null,
+      mainText,
+      headings: [],
+      links: [],
+      forms: [],
+      capturedAt: "2026-06-02T12:00:00.000Z",
+      metadata: {},
+    };
+    const routeService = {
+      getCurrentBrowserPage: vi.fn(async () => page),
+    };
+    const runtime = {
+      agentId: "agent-1",
+      getService: vi.fn(() => routeService),
+    } as unknown as IAgentRuntime;
+    const adapter = new BrowserBridgeAdapter();
+
+    const messages = await adapter.listMessages(runtime, { limit: 1 });
+    expect(messages[0]?.snippet).toBeDefined();
+    // 496 "a"s + "..." = 499 total chars, without a broken surrogate
+    expect(messages[0]?.snippet).toBe(`${"a".repeat(496)}...`);
+  });
 });
