@@ -20,6 +20,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	isRuntimeStopTurnAbort,
 	isUserRequestedTurnAbort,
 	runGenerationWithAbortableTimeout,
 } from "../messages.ts";
@@ -251,5 +252,52 @@ describe("isUserRequestedTurnAbort", () => {
 		);
 		expect(isUserRequestedTurnAbort(new Error("Bad Request"))).toBe(false);
 		expect(isUserRequestedTurnAbort(undefined)).toBe(false);
+	});
+
+	it("excludes runtime-stop aborts — a supervisor recycle is not a user cancel", () => {
+		// Shape of core's TurnAbortedError("runtime-stop") crossing the
+		// connector boundary (live 2026-08-24: misclassified as user-requested,
+		// suppressing the failure reply and leaving silence after an ack).
+		const runtimeStop = Object.assign(new Error("Turn aborted: runtime-stop"), {
+			code: "TURN_ABORTED",
+			reason: "runtime-stop",
+		});
+		expect(isUserRequestedTurnAbort(runtimeStop)).toBe(false);
+	});
+});
+
+describe("isRuntimeStopTurnAbort", () => {
+	it("matches TURN_ABORTED with the runtime-stop reason", () => {
+		const runtimeStop = Object.assign(new Error("Turn aborted: runtime-stop"), {
+			code: "TURN_ABORTED",
+			reason: "runtime-stop",
+		});
+		expect(isRuntimeStopTurnAbort(runtimeStop)).toBe(true);
+	});
+
+	it("matches a re-wrapped abort that carries only the message text", () => {
+		// throwIfProviderCompositionAborted re-wraps non-TurnAbortedError signal
+		// reasons into `new TurnAbortedError(reason.message)` — the reason field
+		// then holds the full "Turn aborted: runtime-stop" text.
+		const rewrapped = Object.assign(
+			new Error("Turn aborted: Turn aborted: runtime-stop"),
+			{ code: "TURN_ABORTED", reason: "Turn aborted: runtime-stop" },
+		);
+		expect(isRuntimeStopTurnAbort(rewrapped)).toBe(true);
+		const messageOnly = Object.assign(new Error("Turn aborted: runtime-stop"), {
+			code: "TURN_ABORTED",
+		});
+		expect(isRuntimeStopTurnAbort(messageOnly)).toBe(true);
+	});
+
+	it("does not match user cancels, plain errors, or non-errors", () => {
+		const userAbort = Object.assign(
+			new Error("Turn aborted: user requested to stop"),
+			{ code: "TURN_ABORTED", reason: "external_request" },
+		);
+		expect(isRuntimeStopTurnAbort(userAbort)).toBe(false);
+		expect(isRuntimeStopTurnAbort(new Error("runtime-stop"))).toBe(false);
+		expect(isRuntimeStopTurnAbort(undefined)).toBe(false);
+		expect(isRuntimeStopTurnAbort(null)).toBe(false);
 	});
 });

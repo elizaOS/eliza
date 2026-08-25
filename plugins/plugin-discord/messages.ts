@@ -639,17 +639,39 @@ export interface AbortableTimeoutResult {
 }
 
 /**
+ * A turn the RUNTIME killed — core's TurnAbortedError with the "runtime-stop"
+ * reason that `abortAllTurns("runtime-stop")` raises during process shutdown
+ * and supervisor recycles. NOT a user cancel: classifying it as one suppressed
+ * the failure reply and left the user silent after an ack (live 2026-08-24,
+ * health-watchdog recycle mid-TASKS-turn). The `reason` field survives the
+ * connector boundary; the message form is matched as well because provider-
+ * composition re-wraps can carry only the "Turn aborted: runtime-stop" text.
+ */
+export function isRuntimeStopTurnAbort(error: unknown): boolean {
+	if (typeof error !== "object" || error === null) return false;
+	if ((error as { code?: unknown }).code !== "TURN_ABORTED") return false;
+	const reason = (error as { reason?: unknown }).reason;
+	if (typeof reason === "string" && reason.includes("runtime-stop")) {
+		return true;
+	}
+	const message = (error as { message?: unknown }).message;
+	return typeof message === "string" && message.includes("runtime-stop");
+}
+
+/**
  * A turn the USER cancelled (core's TurnAbortedError, code TURN_ABORTED —
  * raised when a stop/cancel ask aborts the in-flight planner turn of an
  * earlier message). Not a provider failure: the stop turn's own confirmation
  * is the notice, and "I hit a provider issue… Please retry." for the build the
  * user just cancelled is wrong on both counts (live 2026-08-22, tetris).
+ * Excludes runtime-stop aborts — those are system kills, not user cancels.
  */
 export function isUserRequestedTurnAbort(error: unknown): boolean {
 	return (
 		typeof error === "object" &&
 		error !== null &&
-		(error as { code?: unknown }).code === "TURN_ABORTED"
+		(error as { code?: unknown }).code === "TURN_ABORTED" &&
+		!isRuntimeStopTurnAbort(error)
 	);
 }
 
@@ -3008,6 +3030,41 @@ export class MessageManager {
 						},
 						"Suppressing Discord timeout handling while response dispatch is in flight",
 					);
+					return;
+				}
+
+				if (isRuntimeStopTurnAbort(generationError)) {
+					// A supervisor recycle / process shutdown killed this turn
+					// mid-flight. Deliver the honest failure reply instead of the
+					// user-cancel silence: the user acked into this turn and got
+					// nothing when the suppression fired (live 2026-08-24).
+					// sendFailureReply is best-effort — the process may die before
+					// the send lands, which is no worse than the old silence.
+					statusReactions?.setError();
+					await abortPendingDraft();
+					this.runtime.logger.warn(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							messageId: message.id,
+							memoryId: messageId,
+							roomId,
+							reason: (generationError as { reason?: unknown }).reason,
+						},
+						"Discord turn killed by runtime shutdown/restart — sending honest failure reply",
+					);
+					if (!responseEmitted) {
+						await sendFailureReply(
+							"My runtime restarted while I was working on that — please send it again.",
+						);
+					}
+					if (!inboundMemoryCommitted) {
+						inboundMemoryCommitted =
+							await this.releaseMessageProcessingIfInboundNotPersisted(
+								message.id,
+								inboundMemoryId,
+							);
+					}
 					return;
 				}
 
