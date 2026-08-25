@@ -36,11 +36,24 @@ const ENDPOINT_KEYS = [
   "generation",
   "kind",
   "serverName",
+  "runtimeAgentId",
   "registryUrl",
   "bridgeUrl",
   "healthUrl",
 ] as const;
 const MAX_ENDPOINT_URL_BYTES = 4096;
+// Deliberately narrower than the WHATWG URL grammar so the reader accepts the
+// exact same endpoint language as the durable PostgreSQL authority contract.
+// V1 accepts canonical ASCII DNS names or IPv4 literals and ports 1..65535.
+const IPV4_OCTET = "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])";
+const IPV4_HOST = String.raw`${IPV4_OCTET}(?:\.${IPV4_OCTET}){3}`;
+const DNS_LABEL = "(?:[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9])";
+const DNS_HOST = String.raw`(?:${DNS_LABEL}\.)*[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?`;
+const TCP_PORT =
+  "(?::(?:6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}))?";
+const ENDPOINT_URL_V1 = new RegExp(
+  String.raw`^https?://(?:${IPV4_HOST}|${DNS_HOST})${TCP_PORT}(?:/[^\\?#\s\u0000-\u001f\u007f-\u009f]*)?$`,
+);
 
 export type ActivationRoutingSnapshotKeys = readonly [
   managedMarker: string,
@@ -105,6 +118,7 @@ export interface ActivationRoutingEndpointEnvelopeV1 {
   readonly generation: string;
   readonly kind: "dedicated-sandbox";
   readonly serverName: string;
+  readonly runtimeAgentId: string;
   readonly registryUrl: string;
   readonly bridgeUrl: string;
   readonly healthUrl: string;
@@ -233,25 +247,17 @@ function isSha256(value: unknown): value is string {
 }
 
 function isBoundedHttpEndpoint(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const encodedLength = new TextEncoder().encode(value).byteLength;
   if (
-    typeof value !== "string" ||
     value.length === 0 ||
     value !== value.trim() ||
-    !/^https?:\/\//u.test(value) ||
-    new TextEncoder().encode(value).byteLength > MAX_ENDPOINT_URL_BYTES
+    !/^https?:\/\//.test(value) ||
+    encodedLength !== value.length ||
+    encodedLength > MAX_ENDPOINT_URL_BYTES ||
+    !ENDPOINT_URL_V1.test(value)
   ) {
     return false;
-  }
-
-  for (const character of value) {
-    const codePoint = character.codePointAt(0) ?? 0;
-    if (
-      /[\s\\?#]/u.test(character) ||
-      codePoint <= 0x1f ||
-      (codePoint >= 0x7f && codePoint <= 0x9f)
-    ) {
-      return false;
-    }
   }
 
   try {
@@ -279,6 +285,7 @@ function parseEndpoint(
     value.generation !== expectedGeneration ||
     value.kind !== "dedicated-sandbox" ||
     value.serverName !== `sandbox-${expectedGeneration}` ||
+    !isCanonicalUuid(value.runtimeAgentId) ||
     !isBoundedHttpEndpoint(value.registryUrl) ||
     !isBoundedHttpEndpoint(value.bridgeUrl) ||
     !isBoundedHttpEndpoint(value.healthUrl)
@@ -291,6 +298,7 @@ function parseEndpoint(
     generation: expectedGeneration,
     kind: "dedicated-sandbox",
     serverName: value.serverName,
+    runtimeAgentId: value.runtimeAgentId,
     registryUrl: value.registryUrl,
     bridgeUrl: value.bridgeUrl,
     healthUrl: value.healthUrl,
@@ -303,6 +311,7 @@ function hashEndpoint(endpoint: ActivationRoutingEndpointEnvelopeV1): string {
     generation: endpoint.generation,
     kind: "dedicated-sandbox",
     serverName: endpoint.serverName,
+    runtimeAgentId: endpoint.runtimeAgentId,
     registryUrl: endpoint.registryUrl,
     bridgeUrl: endpoint.bridgeUrl,
     healthUrl: endpoint.healthUrl,
