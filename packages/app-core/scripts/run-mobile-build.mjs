@@ -6251,14 +6251,17 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
     private static final String KEY_ALIAS = "ai.elizaos.app.android_cloud_token_key_v1";
     private static final String PREFERENCES = "eliza_secure_credentials_v1";
-    private static final String CIPHERTEXT = "steward_token_ciphertext";
+    private static final String CREDENTIAL_CIPHERTEXT = "steward_token_ciphertext";
+    private static final String PENDING_LOGIN_CIPHERTEXT = "mobile_login_ciphertext";
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int GCM_TAG_BITS = 128;
     private static final int MAX_TOKEN_BYTES = 16 * 1024;
 
     @PluginMethod
     public synchronized void get(PluginCall call) {
-        String encoded = preferences().getString(CIPHERTEXT, null);
+        String preferenceKey = preferenceKey(call);
+        if (preferenceKey == null) return;
+        String encoded = preferences().getString(preferenceKey, null);
         if (encoded == null) {
             JSObject result = new JSObject();
             result.put("value", JSONObject.NULL);
@@ -6277,13 +6280,15 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
             result.put("value", value);
             call.resolve(result);
         } catch (GeneralSecurityException | IllegalArgumentException error) {
-            preferences().edit().remove(CIPHERTEXT).apply();
+            preferences().edit().remove(preferenceKey).apply();
             call.reject("Secure credential storage is unavailable.", "SECURE_CREDENTIAL_UNAVAILABLE", error);
         }
     }
 
     @PluginMethod
     public synchronized void set(PluginCall call) {
+        String preferenceKey = preferenceKey(call);
+        if (preferenceKey == null) return;
         String value = call.getString("value");
         if (value == null || value.trim().isEmpty()) {
             call.reject("A non-empty credential is required.", "SECURE_CREDENTIAL_INVALID");
@@ -6300,7 +6305,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
             String encoded = Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)
                     + ":"
                     + Base64.encodeToString(cipher.doFinal(plaintext), Base64.NO_WRAP);
-            if (!preferences().edit().putString(CIPHERTEXT, encoded).commit()) {
+            if (!preferences().edit().putString(preferenceKey, encoded).commit()) {
                 call.reject("Secure credential storage could not be committed.", "SECURE_CREDENTIAL_UNAVAILABLE");
                 return;
             }
@@ -6312,7 +6317,9 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
 
     @PluginMethod
     public synchronized void remove(PluginCall call) {
-        if (!preferences().edit().remove(CIPHERTEXT).commit()) {
+        String preferenceKey = preferenceKey(call);
+        if (preferenceKey == null) return;
+        if (!preferences().edit().remove(preferenceKey).commit()) {
             call.reject("Secure credential storage could not be cleared.", "SECURE_CREDENTIAL_UNAVAILABLE");
             return;
         }
@@ -6321,6 +6328,14 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
 
     private SharedPreferences preferences() {
         return getContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+    }
+
+    private String preferenceKey(PluginCall call) {
+        String slot = call.getString("slot", "credential");
+        if ("credential".equals(slot)) return CREDENTIAL_CIPHERTEXT;
+        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
+        call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
+        return null;
     }
 
     private SecretKey loadOrCreateKey() throws GeneralSecurityException {

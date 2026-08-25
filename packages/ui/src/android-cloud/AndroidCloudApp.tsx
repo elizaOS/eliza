@@ -175,7 +175,7 @@ export function AndroidCloudApp({
         await restore();
       } catch (completionError) {
         loginAttemptRef.current = activeAttempt + 1;
-        client.cancelLogin();
+        await client.cancelLogin();
         try {
           await closeExternal?.();
         } catch {
@@ -209,7 +209,7 @@ export function AndroidCloudApp({
       const externalState = await openExternal(attempt.browserUrl);
       if (loginAttemptRef.current !== attemptNumber) return;
       if (externalState === "closed") {
-        client.cancelLogin();
+        await client.cancelLogin();
         return;
       }
       awaitingCallback = true;
@@ -227,7 +227,7 @@ export function AndroidCloudApp({
 
   const cancelSignIn = useCallback(async () => {
     loginAttemptRef.current += 1;
-    client.cancelLogin();
+    await client.cancelLogin();
     setBusy(false);
     try {
       await closeExternal?.();

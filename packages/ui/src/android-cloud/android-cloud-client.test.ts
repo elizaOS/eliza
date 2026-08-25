@@ -138,6 +138,71 @@ describe("AndroidCloudClient", () => {
     });
   });
 
+  it("completes PKCE after Android recreates the renderer behind the Custom Tab", async () => {
+    let pendingLogin: string | null = null;
+    const pendingLoginStore = {
+      read: vi.fn(async () => pendingLogin),
+      write: vi.fn(async (value: string) => {
+        pendingLogin = value;
+      }),
+      clear: vi.fn(async () => {
+        pendingLogin = null;
+      }),
+    };
+    let secureToken: string | null = null;
+    const credentialStore = {
+      read: vi.fn(async () => secureToken),
+      write: vi.fn(async (token: string) => {
+        secureToken = token;
+      }),
+      clear: vi.fn(async () => {
+        secureToken = null;
+      }),
+    };
+    const config = json(200, {
+      success: true,
+      clientId: "ai.elizaos.app",
+      environment: "production",
+      redirectUri: "https://eliza.app/auth/callback",
+      codeChallengeMethod: "S256",
+    });
+    const firstClient = new AndroidCloudClient({
+      credentialStore,
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValueOnce(config),
+      pendingLoginStore,
+    });
+    const attempt = await firstClient.beginLogin();
+
+    const recreatedClient = new AndroidCloudClient({
+      credentialStore,
+      fetchImpl: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          json(200, {
+            credentialId: MOBILE_CREDENTIAL_ID,
+            secret: MOBILE_SECRET,
+          }),
+        )
+        .mockResolvedValueOnce(
+          json(200, {
+            success: true,
+            status: "acknowledged",
+            credentialId: MOBILE_CREDENTIAL_ID,
+          }),
+        ),
+      pendingLoginStore,
+    });
+    await expect(
+      recreatedClient.completeLogin(
+        `elizaos://auth/callback?code=emac_${"a".repeat(64)}&state=${encodeURIComponent(attempt.state)}`,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(secureToken).toBe(MOBILE_SECRET);
+    expect(pendingLoginStore.clear).toHaveBeenCalledOnce();
+    expect(pendingLogin).toBeNull();
+  });
+
   it("rejects a callback that does not match the in-memory PKCE state", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
       json(200, {

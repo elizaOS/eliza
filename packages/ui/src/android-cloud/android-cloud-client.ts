@@ -22,6 +22,8 @@ const MANAGED_RUNTIME_HOST_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cloud(?:-staging)?\.eliza\.app$/i;
 const MOBILE_APP_AUTH_CLIENT_ID = "ai.elizaos.app";
 const MOBILE_APP_AUTH_REDIRECT_URI = "https://eliza.app/auth/callback";
+export const ANDROID_CLOUD_PENDING_LOGIN_KEY =
+  "eliza:android-cloud:pending-login:v1";
 
 export interface AndroidCloudIdentity {
   id: string;
@@ -57,11 +59,18 @@ export interface AndroidCloudClientOptions {
   cloudApiBase?: string;
   fetchImpl?: typeof fetch;
   credentialStore?: AndroidCloudCredentialStore;
+  pendingLoginStore?: AndroidCloudPendingLoginStore;
 }
 
 export interface AndroidCloudCredentialStore {
   read(): Promise<string | null>;
   write(token: string): Promise<void>;
+  clear(): Promise<void>;
+}
+
+export interface AndroidCloudPendingLoginStore {
+  read(): Promise<string | null>;
+  write(value: string): Promise<void>;
   clear(): Promise<void>;
 }
 
@@ -77,6 +86,18 @@ const browserCredentialStore: AndroidCloudCredentialStore = {
   },
 };
 
+const browserPendingLoginStore: AndroidCloudPendingLoginStore = {
+  async read() {
+    return window.localStorage.getItem(ANDROID_CLOUD_PENDING_LOGIN_KEY);
+  },
+  async write(value) {
+    window.localStorage.setItem(ANDROID_CLOUD_PENDING_LOGIN_KEY, value);
+  },
+  async clear() {
+    window.localStorage.removeItem(ANDROID_CLOUD_PENDING_LOGIN_KEY);
+  },
+};
+
 type JsonRecord = Record<string, unknown>;
 
 function record(value: unknown): JsonRecord | null {
@@ -87,6 +108,31 @@ function record(value: unknown): JsonRecord | null {
 
 function stringField(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function parsePendingLogin(value: string): AndroidCloudPendingLogin | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  const pending = record(parsed);
+  const clientId = stringField(pending?.clientId);
+  const codeVerifier = stringField(pending?.codeVerifier);
+  const environment = stringField(pending?.environment);
+  const redirectUri = stringField(pending?.redirectUri);
+  const state = stringField(pending?.state);
+  if (
+    clientId !== MOBILE_APP_AUTH_CLIENT_ID ||
+    !codeVerifier ||
+    (environment !== "staging" && environment !== "production") ||
+    redirectUri !== MOBILE_APP_AUTH_REDIRECT_URI ||
+    !state
+  ) {
+    return null;
+  }
+  return { clientId, codeVerifier, environment, redirectUri, state };
 }
 
 async function responseJson(response: Response): Promise<JsonRecord> {
@@ -202,12 +248,15 @@ export class AndroidCloudClient {
   readonly apiBase: string;
   private readonly fetchImpl: typeof fetch;
   private readonly credentialStore: AndroidCloudCredentialStore;
+  private readonly pendingLoginStore: AndroidCloudPendingLoginStore;
   private pendingLogin: AndroidCloudPendingLogin | null = null;
 
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.credentialStore = options.credentialStore ?? browserCredentialStore;
+    this.pendingLoginStore =
+      options.pendingLoginStore ?? browserPendingLoginStore;
   }
 
   async readToken(): Promise<string | null> {
@@ -294,13 +343,15 @@ export class AndroidCloudClient {
       throw new Error("Eliza Cloud returned invalid mobile sign-in metadata.");
     }
 
-    this.pendingLogin = {
+    const pendingLogin: AndroidCloudPendingLogin = {
       clientId,
       codeVerifier,
       environment,
       redirectUri,
       state,
     };
+    await this.pendingLoginStore.write(JSON.stringify(pendingLogin));
+    this.pendingLogin = pendingLogin;
 
     const authorizePath = new URL(
       "/app-auth/authorize",
@@ -323,8 +374,9 @@ export class AndroidCloudClient {
     return { state, browserUrl: loginUrl.toString() };
   }
 
-  cancelLogin(): void {
+  async cancelLogin(): Promise<void> {
     this.pendingLogin = null;
+    await this.pendingLoginStore.clear();
   }
 
   async completeLogin(
@@ -332,7 +384,10 @@ export class AndroidCloudClient {
     signal?: AbortSignal,
   ): Promise<void> {
     signal?.throwIfAborted();
-    const pending = this.pendingLogin;
+    const storedPending = await this.pendingLoginStore.read();
+    const pending =
+      this.pendingLogin ??
+      (storedPending ? parsePendingLogin(storedPending) : null);
     if (!pending) throw new Error("No Eliza Cloud sign-in is waiting.");
     let callback: URL;
     try {
@@ -355,7 +410,7 @@ export class AndroidCloudClient {
     }
     const callbackError = callback.searchParams.get("error")?.trim();
     if (callbackError) {
-      this.pendingLogin = null;
+      await this.cancelLogin();
       throw new Error(
         callback.searchParams.get("error_description")?.trim() ||
           "Eliza Cloud sign-in was cancelled.",
@@ -373,64 +428,69 @@ export class AndroidCloudClient {
       code,
       codeVerifier: pending.codeVerifier,
     };
-    const tokenResponse = await this.fetchImpl(
-      `${this.apiBase}/api/v1/app-auth/mobile/token`,
-      {
-        method: "POST",
-        signal,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(tokenRequest),
-      },
-    );
-    const exchanged = await responseJson(tokenResponse);
-    if (!tokenResponse.ok) {
-      throw new Error(
-        mobileAuthResponseError(
-          exchanged,
-          "Eliza Cloud could not create a mobile session.",
-        ),
-      );
-    }
-    const secret = stringField(exchanged.secret);
-    const credentialId = stringField(exchanged.credentialId);
-    if (!secret || !credentialId)
-      throw new Error("Eliza Cloud returned an invalid mobile session.");
-
-    signal?.throwIfAborted();
-    const previousSecret = await this.credentialStore.read();
-    await this.credentialStore.write(secret);
     try {
-      const acknowledgeResponse = await this.fetchImpl(
-        `${this.apiBase}/api/v1/app-auth/mobile/ack`,
+      const tokenResponse = await this.fetchImpl(
+        `${this.apiBase}/api/v1/app-auth/mobile/token`,
         {
           method: "POST",
           signal,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...tokenRequest, credentialId, secret }),
+          body: JSON.stringify(tokenRequest),
         },
       );
-      const acknowledged = await responseJson(acknowledgeResponse);
-      if (!acknowledgeResponse.ok) {
+      const exchanged = await responseJson(tokenResponse);
+      if (!tokenResponse.ok) {
         throw new Error(
           mobileAuthResponseError(
-            acknowledged,
-            "Eliza Cloud could not activate the mobile session.",
+            exchanged,
+            "Eliza Cloud could not create a mobile session.",
           ),
         );
       }
-      if (
-        acknowledged.success !== true ||
-        acknowledged.status !== "acknowledged" ||
-        stringField(acknowledged.credentialId) !== credentialId
-      ) {
-        throw new Error(
-          "Eliza Cloud returned an invalid mobile session acknowledgement.",
+      const secret = stringField(exchanged.secret);
+      const credentialId = stringField(exchanged.credentialId);
+      if (!secret || !credentialId)
+        throw new Error("Eliza Cloud returned an invalid mobile session.");
+
+      signal?.throwIfAborted();
+      const previousSecret = await this.credentialStore.read();
+      await this.credentialStore.write(secret);
+      try {
+        const acknowledgeResponse = await this.fetchImpl(
+          `${this.apiBase}/api/v1/app-auth/mobile/ack`,
+          {
+            method: "POST",
+            signal,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...tokenRequest, credentialId, secret }),
+          },
         );
+        const acknowledged = await responseJson(acknowledgeResponse);
+        if (!acknowledgeResponse.ok) {
+          throw new Error(
+            mobileAuthResponseError(
+              acknowledged,
+              "Eliza Cloud could not activate the mobile session.",
+            ),
+          );
+        }
+        if (
+          acknowledged.success !== true ||
+          acknowledged.status !== "acknowledged" ||
+          stringField(acknowledged.credentialId) !== credentialId
+        ) {
+          throw new Error(
+            "Eliza Cloud returned an invalid mobile session acknowledgement.",
+          );
+        }
+      } catch (error) {
+        if (previousSecret) await this.credentialStore.write(previousSecret);
+        else await this.credentialStore.clear();
+        throw error;
       }
-      this.pendingLogin = null;
+      await this.cancelLogin();
     } catch (error) {
-      if (previousSecret) await this.credentialStore.write(previousSecret);
-      else await this.credentialStore.clear();
+      await this.cancelLogin();
       throw error;
     }
   }

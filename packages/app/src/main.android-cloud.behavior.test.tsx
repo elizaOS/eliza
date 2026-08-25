@@ -11,7 +11,6 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const playEntry = vi.hoisted(() => ({
   appListeners: new Map<string, (value: unknown) => void>(),
   browserClose: vi.fn(async () => undefined),
-  browserFinished: null as null | (() => void),
   browserOpen: vi.fn(async (_options: { url: string }) => undefined),
   createRoot: vi.fn(() => ({ render: vi.fn() })),
   preferenceGet: vi.fn(async (_options: { key: string }) => ({
@@ -29,7 +28,8 @@ const playEntry = vi.hoisted(() => ({
 vi.mock("@capacitor/browser", () => ({
   Browser: {
     addListener: vi.fn(async (name: string, listener: () => void) => {
-      if (name === "browserFinished") playEntry.browserFinished = listener;
+      void name;
+      void listener;
       return { remove: vi.fn() };
     }),
     close: playEntry.browserClose,
@@ -115,7 +115,6 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   playEntry.appListeners.clear();
-  playEntry.browserFinished = null;
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
@@ -123,7 +122,7 @@ beforeEach(() => {
 });
 
 describe("Android Cloud renderer behavior", () => {
-  it("opens hosted sign-in only in an HTTPS Custom Tab and waits for closure", async () => {
+  it("opens hosted sign-in only in an HTTPS Custom Tab without cancelling the pending callback", async () => {
     await expect(
       entry.openAndroidCloudSignIn("http://example.com/auth"),
     ).rejects.toThrow("must use HTTPS");
@@ -137,8 +136,7 @@ describe("Android Cloud renderer behavior", () => {
     expect(playEntry.browserOpen).toHaveBeenCalledWith({
       url: "https://cloud-staging.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize%3Fflow%3Dmobile_pkce",
     });
-    playEntry.browserFinished?.();
-    await expect(opening).resolves.toBe("closed");
+    await expect(opening).resolves.toBe("opened");
   });
 
   it("migrates a legacy bearer into the secure plugin before deleting plaintext", async () => {
