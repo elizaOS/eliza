@@ -4,6 +4,9 @@ export function unwrapWholeCodeFence(
 	value: string,
 	languages: readonly string[],
 ): string | null {
+	if (typeof value !== "string" || !Array.isArray(languages)) {
+		return null;
+	}
 	if (!value.startsWith("```") || !value.endsWith("```") || value.length < 6) {
 		return null;
 	}

@@ -28,4 +28,21 @@ describe("unwrapWholeCodeFence", () => {
 			"x",
 		);
 	});
+
+	it("returns null for non-string inputs instead of throwing", () => {
+		expect(
+			unwrapWholeCodeFence(null as unknown as string, ["json"]),
+		).toBeNull();
+		expect(
+			unwrapWholeCodeFence(undefined as unknown as string, ["json"]),
+		).toBeNull();
+		expect(unwrapWholeCodeFence(123 as unknown as string, ["json"])).toBeNull();
+		expect(unwrapWholeCodeFence({} as unknown as string, ["json"])).toBeNull();
+		expect(
+			unwrapWholeCodeFence("```json\n{}\n```", null as unknown as string[]),
+		).toBeNull();
+		expect(
+			unwrapWholeCodeFence("```json\n{}\n```", "json" as unknown as string[]),
+		).toBeNull();
+	});
 });
