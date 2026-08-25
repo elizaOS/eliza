@@ -1,6 +1,7 @@
 /** Exercises the atomic, fail-closed managed activation-routing reader. */
 
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   ACTIVATION_ROUTING_REDIS_EVAL_RO_SCRIPT,
   ACTIVATION_ROUTING_UPSTASH_READ_ONLY_SCRIPT,
@@ -13,8 +14,10 @@ const GENERATION = "00000000-0000-4000-8000-000000000002";
 const OTHER_GENERATION = "00000000-0000-4000-8000-000000000003";
 const PUBLICATION_ID = "00000000-0000-4000-8000-000000000004";
 const OTHER_PUBLICATION_ID = "00000000-0000-4000-8000-000000000005";
+const RUNTIME_AGENT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee6";
+const OTHER_RUNTIME_AGENT_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee7";
 const ENDPOINT_SHA256 =
-  "73eb701612c13ee660f3598e5309e6ce83743070eb648ea7670a57e060047e11";
+  "7278b3fce767689aae03cb1df507ec11dd20ed8c192c67ace95c57e0bb67bbdd";
 const OTHER_ENDPOINT_SHA256 = "b".repeat(64);
 const SNAPSHOT_MISSING_SENTINEL = "activation-routing-missing:v1";
 const SNAPSHOT_SENTINEL = "activation-routing-snapshot:v1";
@@ -48,6 +51,7 @@ interface EndpointFixture {
   generation: string;
   kind: string;
   serverName: string;
+  runtimeAgentId: string;
   registryUrl: string;
   bridgeUrl: string;
   healthUrl: string;
@@ -58,6 +62,7 @@ const ENDPOINT: EndpointFixture = {
   generation: GENERATION,
   kind: "dedicated-sandbox",
   serverName: `sandbox-${GENERATION}`,
+  runtimeAgentId: RUNTIME_AGENT_ID,
   registryUrl: "https://sandbox.internal:3000/",
   bridgeUrl: "http://100.64.0.2:3000",
   healthUrl: "http://100.64.0.2:3000/health",
@@ -70,7 +75,7 @@ function route(
     generation: string;
     publicationId: string;
     endpointSha256: string;
-    endpoint: EndpointFixture;
+    endpoint: unknown;
   }> = {},
 ): string {
   return JSON.stringify({
@@ -82,6 +87,10 @@ function route(
     endpoint: ENDPOINT,
     ...overrides,
   });
+}
+
+function routeWithEndpoint(overrides: Record<string, unknown>): string {
+  return route({ endpoint: { ...ENDPOINT, ...overrides } });
 }
 
 class SnapshotReaderProbe implements ActivationRoutingSnapshotReader {
@@ -280,6 +289,27 @@ describe("atomic activation-routing reader", () => {
     }),
     route({ kind: "shared-runtime" }),
     route({ endpointSha256: ENDPOINT_SHA256.toUpperCase() }),
+    routeWithEndpoint({ runtimeAgentId: undefined }),
+    routeWithEndpoint({ runtimeAgentId: "not-a-uuid" }),
+    routeWithEndpoint({ runtimeAgentId: RUNTIME_AGENT_ID.toUpperCase() }),
+    routeWithEndpoint({ extra: true }),
+    routeWithEndpoint({ registryUrl: "HTTPS://sandbox.internal" }),
+    routeWithEndpoint({ registryUrl: "https://user:secret@sandbox.internal" }),
+    routeWithEndpoint({ registryUrl: "http://:80/path" }),
+    routeWithEndpoint({ registryUrl: "http://127.0.0.1:0/path" }),
+    routeWithEndpoint({ registryUrl: "http://[::1]:3000/path" }),
+    routeWithEndpoint({ registryUrl: "https://sandbox.internal./path" }),
+    routeWithEndpoint({ registryUrl: "http://999.999/path" }),
+    routeWithEndpoint({ registryUrl: "https://tést.internal/path" }),
+    routeWithEndpoint({ bridgeUrl: "https://sandbox.internal/?token=secret" }),
+    routeWithEndpoint({ healthUrl: "https://sandbox.internal/health#ready" }),
+    routeWithEndpoint({ registryUrl: "https://sandbox.internal\\evil/path" }),
+    routeWithEndpoint({ healthUrl: " https://sandbox.internal/health" }),
+    routeWithEndpoint({ healthUrl: "https://sandbox.internal/a\u00a0b" }),
+    routeWithEndpoint({ healthUrl: "https://sandbox.internal/a\u202fb" }),
+    routeWithEndpoint({ healthUrl: "https://sandbox.internal/a\ufeffb" }),
+    routeWithEndpoint({ healthUrl: "https://sandbox.internal/café" }),
+    routeWithEndpoint({ healthUrl: "https://sandbox.internal:65536/health" }),
   ])("rejects malformed route JSON or shape: %s", async (rawRoute) => {
     await expect(read([MARKER, ACTIVE_AUTHORITY, rawRoute])).resolves.toEqual({
       status: "conflict",
@@ -356,6 +386,45 @@ describe("atomic activation-routing reader", () => {
     ).resolves.toEqual({
       status: "conflict",
       reason: "endpoint_hash_mismatch",
+    });
+    await expect(
+      read([
+        MARKER,
+        ACTIVE_AUTHORITY,
+        route({
+          endpoint: {
+            ...ENDPOINT,
+            runtimeAgentId: OTHER_RUNTIME_AGENT_ID,
+          },
+        }),
+      ]),
+    ).resolves.toEqual({
+      status: "conflict",
+      reason: "endpoint_hash_mismatch",
+    });
+  });
+
+  test.each([1, 65535])("accepts the V1 TCP port boundary %d", async (port) => {
+    const endpoint = {
+      ...ENDPOINT,
+      bridgeUrl: `http://127.0.0.1:${port}/bridge`,
+    };
+    const endpointSha256 = createHash("sha256")
+      .update(JSON.stringify(endpoint), "utf8")
+      .digest("hex");
+    const authority = JSON.stringify({
+      version: 1,
+      state: "active",
+      generation: GENERATION,
+      publicationId: PUBLICATION_ID,
+      endpointSha256,
+    });
+
+    await expect(
+      read([MARKER, authority, route({ endpoint, endpointSha256 })]),
+    ).resolves.toMatchObject({
+      status: "ready",
+      route: { endpoint },
     });
   });
 
