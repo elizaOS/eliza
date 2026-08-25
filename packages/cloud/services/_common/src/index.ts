@@ -1,6 +1,23 @@
 // Shares index service primitives across cloud worker sidecars.
 
 export {
+  ACTIVATION_ROUTING_REDIS_EVAL_RO_SCRIPT,
+  ACTIVATION_ROUTING_UPSTASH_READ_ONLY_SCRIPT,
+  type ActivationRegistrationAuthorityV1,
+  type ActivationRoutingAuthorityUnavailableReason,
+  type ActivationRoutingConflictReason,
+  type ActivationRoutingMarkerV1,
+  type ActivationRoutingReadResult,
+  type ActivationRoutingSnapshotKeys,
+  type ActivationRoutingSnapshotReader,
+  type ActiveRegistrationAuthorityV1,
+  type DedicatedSandboxActivationRouteV1,
+  type InactiveRegistrationAuthorityV1,
+  type RevokedRegistrationAuthorityV1,
+  readActivationRoutingState,
+  type TransitionRegistrationAuthorityV1,
+} from "./activation-routing";
+export {
   GATEWAY_TOKEN_MAX_LIFETIME_SECONDS,
   GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
   type GatewayTokenResponse,
