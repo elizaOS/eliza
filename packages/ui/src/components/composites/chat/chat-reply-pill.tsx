@@ -42,7 +42,7 @@ export function ChatReplyPill({
     >
       <Reply
         className={cn(
-          "h-3.5 w-3.5 shrink-0",
+          "size-3.5 shrink-0",
           glass ? "text-white/70" : "text-accent",
         )}
         aria-hidden="true"
@@ -67,13 +67,13 @@ export function ChatReplyPill({
         title={cancelReply}
         onClick={onCancel}
         className={cn(
-          "h-6 w-6 shrink-0 rounded-full p-0 transition-colors",
+          "size-6 shrink-0 rounded-full p-0 transition-colors",
           glass
             ? "bg-white/10 text-white/70 hover:bg-white/20"
             : "text-muted hover:bg-bg hover:text-txt-strong",
         )}
       >
-        <X className="h-3.5 w-3.5" aria-hidden="true" />
+        <X className="size-3.5" aria-hidden="true" />
       </Button>
     </div>
   );

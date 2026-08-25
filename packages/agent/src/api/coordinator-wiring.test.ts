@@ -214,6 +214,52 @@ describe("wireCoordinatorBridgesWhenReady", () => {
     expect(opts.logger.warn).not.toHaveBeenCalled();
   });
 
+  it("keeps polling without retrying bridges until the coordinator appears", async () => {
+    vi.useFakeTimers();
+    const { runtime, box } = createRuntime();
+    const opts = createOpts({
+      wireChatBridge: vi
+        .fn(async () => false)
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true),
+      wireWsBridge: vi
+        .fn(async () => false)
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true),
+      wireEventRouting: vi
+        .fn(async () => false)
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true),
+    });
+
+    const pending = wireCoordinatorBridgesWhenReady({ runtime }, opts);
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(box.serviceTypes).toEqual(["SWARM_COORDINATOR"]);
+    expect(opts.wireChatBridge).toHaveBeenCalledTimes(1);
+    expect(opts.wireWsBridge).toHaveBeenCalledTimes(1);
+    expect(opts.wireEventRouting).toHaveBeenCalledTimes(1);
+
+    box.service = boundCoordinator();
+    await vi.advanceTimersByTimeAsync(2_000);
+    const result = await pending;
+
+    expect(box.serviceTypes).toEqual([
+      "SWARM_COORDINATOR",
+      "SWARM_COORDINATOR",
+      "SWARM_COORDINATOR",
+    ]);
+    expect(result).toEqual({
+      chat: true,
+      ws: true,
+      eventRouting: true,
+      swarmSynthesis: false,
+    });
+    expect(opts.wireChatBridge).toHaveBeenCalledTimes(2);
+    expect(opts.wireWsBridge).toHaveBeenCalledTimes(2);
+    expect(opts.wireEventRouting).toHaveBeenCalledTimes(2);
+  });
+
   it("succeeds on a later retry after the coordinator appears", async () => {
     vi.useFakeTimers();
     const { runtime } = createRuntime({ service: boundCoordinator() });

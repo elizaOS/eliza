@@ -237,7 +237,7 @@ export function LogViewer({
         <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-txt" />
+              <span className="inline-block size-2 rounded-full bg-txt" />
               <h2
                 className="text-xl font-normal text-white"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -298,11 +298,11 @@ export function LogViewer({
                 title={streamingTitle}
               >
                 {streaming?.active ? (
-                  <Wifi className="h-4 w-4" />
+                  <Wifi className="size-4" />
                 ) : streaming?.enabled ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <RefreshCw className="size-4 animate-spin" />
                 ) : (
-                  <WifiOff className="h-4 w-4" />
+                  <WifiOff className="size-4" />
                 )}
               </BrandButton>
             )}
@@ -315,7 +315,7 @@ export function LogViewer({
                 title={refreshTitle}
               >
                 <RefreshCw
-                  className={cn("h-4 w-4", loading && "animate-spin")}
+                  className={cn("size-4", loading && "animate-spin")}
                 />
               </BrandButton>
             )}
@@ -328,7 +328,7 @@ export function LogViewer({
                 disabled={copyDisabled}
                 title={copyTitle}
               >
-                <Copy className="h-4 w-4" />
+                <Copy className="size-4" />
               </BrandButton>
             )}
             {onDownload && (
@@ -340,7 +340,7 @@ export function LogViewer({
                 disabled={downloadDisabled}
                 title={downloadTitle}
               >
-                <Download className="h-4 w-4" />
+                <Download className="size-4" />
               </BrandButton>
             )}
           </div>
@@ -352,7 +352,7 @@ export function LogViewer({
           <div className="flex flex-col gap-3 sm:flex-row">
             {search && (
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60" />
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/60" />
                 <Input
                   aria-label={search.placeholder ?? "Search logs"}
                   placeholder={search.placeholder ?? "Search logs..."}
@@ -407,7 +407,7 @@ export function LogViewer({
           </div>
         ) : error ? (
           <div className="py-8 text-center">
-            <Terminal className="mx-auto mb-3 h-8 w-8 text-neutral-600" />
+            <Terminal className="mx-auto mb-3 size-8 text-neutral-600" />
             <p
               className="mb-1 text-sm font-medium text-red-400"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -422,14 +422,14 @@ export function LogViewer({
                 onClick={onRetry}
                 className="mt-4"
               >
-                <RefreshCw className="mr-2 h-4 w-4" />
+                <RefreshCw className="mr-2 size-4" />
                 {retryLabel}
               </BrandButton>
             )}
           </div>
         ) : !hasData ? (
           <div className="py-8 text-center">
-            <Terminal className="mx-auto mb-3 h-8 w-8 text-neutral-600" />
+            <Terminal className="mx-auto mb-3 size-8 text-neutral-600" />
             <p className="text-sm text-white/60">
               {isFilteredEmpty ? filteredEmptyState.title : emptyState.title}
             </p>
@@ -520,10 +520,10 @@ export function LogViewer({
                       variant="ghost"
                       size="sm"
                       onClick={() => onCopyEntry(entry)}
-                      className="h-6 w-6 shrink-0 p-0 opacity-0 transition-opacity group-hover:opacity-100"
+                      className="size-6 shrink-0 p-0 opacity-0 transition-opacity group-hover:opacity-100"
                       title="Copy log line"
                     >
-                      <Copy className="h-3 w-3" />
+                      <Copy className="size-3" />
                     </BrandButton>
                   )}
                 </div>
@@ -539,7 +539,7 @@ export function LogViewer({
           >
             {streaming.active ? (
               <>
-                <Wifi className="h-3 w-3 text-green-500" />
+                <Wifi className="size-3 text-green-500" />
                 <span className="text-green-500">
                   {streaming.activeLabel ??
                     streaming.label ??
@@ -548,7 +548,7 @@ export function LogViewer({
               </>
             ) : (
               <>
-                <RefreshCw className="h-3 w-3 animate-spin" />
+                <RefreshCw className="size-3 animate-spin" />
                 {streaming.inactiveLabel ??
                   streaming.label ??
                   "Auto-refreshing"}

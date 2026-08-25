@@ -7,49 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { CONNECTOR_PLUGINS, isConnectorConfigured } from "./plugin-auto-enable";
-import { CONNECTOR_PLUGINS as ENGINE_CONNECTOR_PLUGINS } from "./plugin-auto-enable-engine";
-
-describe("plugin-auto-enable wrapper surface", () => {
-  it("re-exports the engine CONNECTOR_PLUGINS map by identity", () => {
-    expect(CONNECTOR_PLUGINS).toBe(ENGINE_CONNECTOR_PLUGINS);
-  });
-
-  it("exposes isConnectorConfigured as a function and does not re-export isWechatConfigured", async () => {
-    const wrapper = await import("./plugin-auto-enable");
-    expect(typeof wrapper.isConnectorConfigured).toBe("function");
-    expect(wrapper).toHaveProperty("CONNECTOR_PLUGINS");
-    expect(wrapper).not.toHaveProperty("isWechatConfigured");
-  });
-});
-
-describe("CONNECTOR_PLUGINS", () => {
-  it("uses the generated first-party channel map for WeChat", () => {
-    expect(CONNECTOR_PLUGINS.wechat).toBe("@elizaos/plugin-wechat");
-    expect(Object.values(CONNECTOR_PLUGINS)).not.toContain("elizaoswechat");
-  });
-
-  it("maps every first-party connector key to an @elizaos/plugin-* package", () => {
-    const entries = Object.entries(CONNECTOR_PLUGINS);
-    expect(entries.length).toBeGreaterThan(0);
-    for (const [key, pkg] of entries) {
-      expect(key.length).toBeGreaterThan(0);
-      expect(pkg).toMatch(/^@elizaos\/plugin-/);
-    }
-  });
-
-  it("keeps aliased connector keys pointing at the same plugin package", () => {
-    expect(CONNECTOR_PLUGINS.discord).toBe("@elizaos/plugin-discord");
-    expect(CONNECTOR_PLUGINS.discordLocal).toBe(CONNECTOR_PLUGINS.discord);
-    expect(CONNECTOR_PLUGINS.twitter).toBe("@elizaos/plugin-x");
-    expect(CONNECTOR_PLUGINS.x).toBe(CONNECTOR_PLUGINS.twitter);
-  });
-
-  it("does not invent a missing connector key", () => {
-    expect(CONNECTOR_PLUGINS.notAConnector).toBeUndefined();
-    expect("" in CONNECTOR_PLUGINS).toBe(false);
-  });
-});
+import { isConnectorConfigured } from "./plugin-auto-enable";
 
 describe("isConnectorConfigured", () => {
   it("rejects nullish, primitive, and empty non-object configuration", () => {

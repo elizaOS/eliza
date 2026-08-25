@@ -483,7 +483,7 @@ export function TranscriptViewerOverlay({
             variant="outline"
             className="hidden shrink-0 items-center gap-1 border-border/70 bg-bg/45 font-normal text-muted sm:inline-flex"
           >
-            <LockKeyhole className="h-3 w-3" aria-hidden />
+            <LockKeyhole className="size-3" aria-hidden />
             Private
           </Badge>
           {load.status === "ready" && load.redacted ? (
@@ -492,7 +492,7 @@ export function TranscriptViewerOverlay({
               className="shrink-0 items-center gap-1 bg-bg-accent text-txt"
               data-testid="transcript-redacted-badge"
             >
-              <ShieldCheck className="h-3 w-3" aria-hidden />
+              <ShieldCheck className="size-3" aria-hidden />
               Redacted
             </Badge>
           ) : null}
@@ -501,9 +501,9 @@ export function TranscriptViewerOverlay({
             onClick={onClose}
             variant="ghost"
             size="icon-sm"
-            className="h-7 w-7 rounded-full bg-bg-hover text-muted transition-colors hover:bg-surface hover:text-txt active:scale-[0.96] motion-reduce:active:scale-100"
+            className="size-7 rounded-full bg-bg-hover text-muted transition-colors hover:bg-surface hover:text-txt active:scale-[0.96] motion-reduce:active:scale-100"
           >
-            <X className="h-4 w-4" strokeWidth={1.5} />
+            <X className="size-4" strokeWidth={1.5} />
           </Button>
         </div>
 
@@ -525,7 +525,7 @@ export function TranscriptViewerOverlay({
               </audio>
               <div className="flex items-center gap-1 text-xs text-muted">
                 <FileAudio
-                  className="h-3.5 w-3.5 shrink-0"
+                  className="size-3.5 shrink-0"
                   strokeWidth={1.5}
                   aria-hidden
                 />
@@ -575,7 +575,7 @@ export function TranscriptViewerOverlay({
               data-testid="transcript-share-sheet"
             >
               <div className="flex flex-wrap items-center gap-2">
-                <Share2 className="h-4 w-4 text-muted" aria-hidden />
+                <Share2 className="size-4 text-muted" aria-hidden />
                 <p className="min-w-0 flex-1 text-xs font-medium text-txt">
                   Share access
                 </p>
@@ -600,7 +600,7 @@ export function TranscriptViewerOverlay({
                   />
                 </label>
                 <div className="grid content-end gap-1">
-                  <fieldset className="inline-flex rounded-sm border border-border bg-card p-0.5">
+                  <fieldset className="inline-flex rounded-sm border border-border bg-card p-1">
                     <legend className="sr-only">
                       Transcript disclosure mode
                     </legend>
@@ -660,9 +660,9 @@ export function TranscriptViewerOverlay({
                   data-testid="transcript-grant-share"
                 >
                   {shareStatus.kind === "submitting" ? (
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-1.5 size-4 animate-spin" />
                   ) : (
-                    <Share2 className="mr-1.5 h-4 w-4" />
+                    <Share2 className="mr-1.5 size-4" />
                   )}
                   Grant
                 </Button>
@@ -678,7 +678,7 @@ export function TranscriptViewerOverlay({
                   }
                   data-testid="transcript-revoke-share"
                 >
-                  <UserRoundMinus className="mr-1.5 h-4 w-4" />
+                  <UserRoundMinus className="mr-1.5 size-4" />
                   Revoke
                 </Button>
                 <p className="min-w-[12rem] flex-1 text-xs text-muted">
@@ -720,7 +720,7 @@ export function TranscriptViewerOverlay({
               onClick={() => setEditing(true)}
               data-testid="transcript-edit"
             >
-              <Pencil className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Edit
+              <Pencil className="mr-1.5 size-4" strokeWidth={1.5} /> Edit
             </Button>
           ) : (
             <Button
@@ -730,7 +730,7 @@ export function TranscriptViewerOverlay({
               disabled={!dirty}
               data-testid="transcript-undo"
             >
-              <Undo2 className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Undo
+              <Undo2 className="mr-1.5 size-4" strokeWidth={1.5} /> Undo
             </Button>
           )}
           <Button
@@ -742,11 +742,11 @@ export function TranscriptViewerOverlay({
           >
             {copyStatus === "copied" ? (
               <Check
-                className="mr-1.5 h-4 w-4 text-status-success"
+                className="mr-1.5 size-4 text-status-success"
                 strokeWidth={1.5}
               />
             ) : (
-              <Copy className="mr-1.5 h-4 w-4" strokeWidth={1.5} />
+              <Copy className="mr-1.5 size-4" strokeWidth={1.5} />
             )}
             {copyButtonLabel(copyStatus)}
           </Button>
@@ -759,7 +759,7 @@ export function TranscriptViewerOverlay({
             }}
             data-testid="transcript-share"
           >
-            <Share2 className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Share
+            <Share2 className="mr-1.5 size-4" strokeWidth={1.5} /> Share
           </Button>
           <Button
             variant="ghost"
@@ -767,7 +767,7 @@ export function TranscriptViewerOverlay({
             onClick={handleSaveToFiles}
             data-testid="transcript-save-to-files"
           >
-            <Download className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Download
+            <Download className="mr-1.5 size-4" strokeWidth={1.5} /> Download
           </Button>
           {resolvedId || audioUrl ? (
             <Button
@@ -776,7 +776,7 @@ export function TranscriptViewerOverlay({
               onClick={handleOpenInKnowledge}
               data-testid="transcript-open-in-knowledge"
             >
-              <Library className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Open in
+              <Library className="mr-1.5 size-4" strokeWidth={1.5} /> Open in
               Knowledge
             </Button>
           ) : null}
@@ -791,7 +791,7 @@ export function TranscriptViewerOverlay({
                 confirmDelete ? "text-danger" : "text-muted",
               )}
             >
-              <Trash2 className="mr-1.5 h-4 w-4" strokeWidth={1.5} />
+              <Trash2 className="mr-1.5 size-4" strokeWidth={1.5} />
               {confirmDelete
                 ? "Confirm delete for everyone"
                 : "Delete for everyone"}

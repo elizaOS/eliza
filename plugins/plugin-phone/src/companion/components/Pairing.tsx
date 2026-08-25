@@ -135,7 +135,7 @@ export function Pairing({
           disabled={status.kind === "scanning"}
           style={styles.primary}
         >
-          {status.kind === "scanning" ? "Scanning..." : "Scan QR code"}
+          {status.kind === "scanning" ? "Scanning…" : "Scan QR code"}
         </Button>
       </section>
 

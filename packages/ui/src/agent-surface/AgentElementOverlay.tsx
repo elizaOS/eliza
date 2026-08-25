@@ -6,11 +6,29 @@
  * it never intercepts clicks.
  */
 
+import type * as React from "react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { Z_SHELL_OVERLAY } from "../lib/floating-layers";
 import { useAgentSurface } from "./AgentSurfaceContext.hooks";
 
 const noopSubscribe = () => () => {};
+
+// Static style fragments hoisted so the per-element render only allocates the
+// dynamic geometry fields.
+const INDICATOR_LABEL_STYLE: React.CSSProperties = {
+  position: "absolute",
+  top: -16,
+  left: 0,
+  fontSize: 10,
+  lineHeight: "14px",
+  padding: "0 4px",
+  borderRadius: 4,
+  color: "var(--accent-foreground)",
+  background: "var(--accent)",
+  whiteSpace: "nowrap",
+  fontFamily: "var(--font-mono, monospace)",
+};
 
 export function AgentElementOverlay() {
   const surface = useAgentSurface();
@@ -61,7 +79,7 @@ export function AgentElementOverlay() {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9000,
+        zIndex: Z_SHELL_OVERLAY,
         pointerEvents: "none",
       }}
     >
@@ -88,23 +106,7 @@ export function AgentElementOverlay() {
               boxSizing: "border-box",
             }}
           >
-            <span
-              style={{
-                position: "absolute",
-                top: -16,
-                left: 0,
-                fontSize: 10,
-                lineHeight: "14px",
-                padding: "0 4px",
-                borderRadius: 4,
-                color: "var(--accent-foreground)",
-                background: "var(--accent)",
-                whiteSpace: "nowrap",
-                fontFamily: "var(--font-mono, monospace)",
-              }}
-            >
-              {element.id}
-            </span>
+            <span style={INDICATOR_LABEL_STYLE}>{element.id}</span>
           </div>
         );
       })}

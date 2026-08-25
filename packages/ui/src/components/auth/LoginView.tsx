@@ -274,7 +274,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
                         "From a browser on the host machine, open this URL then go to Settings → Security:",
                     })}
                   </p>
-                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
+                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-xs-tight text-foreground">
                     http://localhost:31337/
                   </code>
                 </div>
@@ -285,7 +285,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
                         "Or via SSH (replace YOURNAME and YOURPASS with your own):",
                     })}
                   </p>
-                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
+                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-xs-tight text-foreground">
                     {`curl -X POST http://127.0.0.1:31337/api/auth/setup -H "Content-Type: application/json" -d '{"displayName":"YOURNAME","password":"YOURPASS"}'`}
                   </code>
                 </div>

@@ -132,7 +132,7 @@ function ConnectorRow({
       }
       control={
         state.loading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <Loader2 className="size-4 animate-spin text-muted-foreground" />
         ) : state.connected ? (
           <DestructiveSecondaryButton
             size="sm"
@@ -297,7 +297,7 @@ function ConnectModal({
       footer={
         <div className="flex items-center justify-between">
           {error ? (
-            <p className="text-[13px] text-destructive">{error}</p>
+            <p className="text-sm-tight text-destructive">{error}</p>
           ) : (
             <span />
           )}
@@ -313,7 +313,7 @@ function ConnectModal({
             >
               {busy ? (
                 <>
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="mr-1.5  size-3.5 animate-spin" />
                   Connecting…
                 </>
               ) : connector.authMode === "oauth" ? (
@@ -378,7 +378,7 @@ function ConnectModal({
           )}
         </div>
       ) : (
-        <p className="text-[14px] leading-5 text-muted-foreground">
+        <p className="text-sm leading-5 text-muted-foreground">
           Click <strong>Authorize</strong> to open {connector.name}'s login
           page. After authorizing, you'll return here automatically.
         </p>
@@ -484,7 +484,7 @@ function DisconnectDialog({
       footer={
         <div className="flex items-center justify-between gap-3">
           {error ? (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm-tight text-destructive">
               {error}
             </p>
           ) : (
@@ -530,7 +530,7 @@ function DisconnectDialog({
       }
     >
       <div className="space-y-3">
-        <p className="text-[14px] leading-5 text-muted-foreground">
+        <p className="text-sm leading-5 text-muted-foreground">
           This will remove the {connector.name} connection from your agent. You
           can reconnect later.
         </p>
@@ -633,7 +633,7 @@ function McpAddModal({
       footer={
         <div className="flex items-center justify-between">
           {error ? (
-            <p className="text-[13px] text-destructive">{error}</p>
+            <p className="text-sm-tight text-destructive">{error}</p>
           ) : (
             <span />
           )}
@@ -649,7 +649,7 @@ function McpAddModal({
             >
               {busy ? (
                 <>
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                   Adding…
                 </>
               ) : (
@@ -737,7 +737,7 @@ function McpRemoveDialog({
       footer={
         <div className="flex items-center justify-between gap-3">
           {error ? (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm-tight text-destructive">
               {error}
             </p>
           ) : (
@@ -777,7 +777,7 @@ function McpRemoveDialog({
         </div>
       }
     >
-      <p className="text-[14px] leading-5 text-muted-foreground">
+      <p className="text-sm leading-5 text-muted-foreground">
         This will remove the MCP server from your agent. You can add it again
         later.
       </p>

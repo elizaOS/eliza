@@ -116,7 +116,11 @@ export interface DocumentsServiceLike {
     roomId?: UUID;
     count?: number;
     offset?: number;
+    cursor?: { createdAt: number; id: UUID };
     end?: number;
+    orderBy?: "createdAt";
+    orderDirection?: "asc" | "desc";
+    includeEmbedding?: boolean;
   }): Promise<Memory[]>;
   countMemories(params: {
     tableName: string;

@@ -1,9 +1,9 @@
 /**
  * Shared helper for the trust capability that decides whether a message sender
  * should be treated as trusted-admin context: true when they match the
- * configured OWNER_ENTITY_ID, when the room is a direct agent<->user DM, or when
- * they hold ADMIN/OWNER role in the resolved world. Consumed by the
- * securityStatus provider to bypass adversarial-input gating for admins.
+ * configured OWNER_ENTITY_ID or when they hold ADMIN/OWNER role in the resolved
+ * world. Consumed by the securityStatus provider to bypass adversarial-input
+ * gating for admins.
  */
 import { createUniqueUuid } from "../../../entities.ts";
 import {
@@ -28,11 +28,6 @@ export async function resolveAdminContext(
 	const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
 	if (!room) {
 		return false;
-	}
-
-	// In direct user<->agent chats, the requester is trusted-admin context.
-	if (room.type === ChannelType.DM) {
-		return true;
 	}
 
 	if (room.type !== ChannelType.GROUP) {

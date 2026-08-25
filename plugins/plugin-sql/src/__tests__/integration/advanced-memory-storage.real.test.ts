@@ -2,21 +2,17 @@
  * Real-PGlite integration test for the built-in advanced-memory plugin running
  * on top of plugin-sql storage: boots a full AgentRuntime with a migrated
  * PGlite adapter, then verifies long-term memories are stored/retrieved
- * (including across confirmed entity-identity links) and session summaries
- * are persisted and read back for real conversation rooms.
+ * completely, including across confirmed entity-identity links.
  */
 import { PGlite } from "@electric-sql/pglite";
 import {
   AgentRuntime,
-  ChannelType,
   type Character,
   type Entity,
   type IAgentRuntime,
   type Plugin,
-  type Room,
   Service,
   type UUID,
-  type World,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
@@ -48,25 +44,6 @@ type RuntimeMemoryService = {
     category?: "episodic" | "semantic" | "procedural",
     limit?: number
   ) => Promise<Array<{ id: UUID; entityId: UUID; content: string; confidence?: number }>>;
-  storeSessionSummary: (summary: {
-    agentId: UUID;
-    roomId: UUID;
-    entityId?: UUID;
-    summary: string;
-    messageCount: number;
-    lastMessageOffset: number;
-    startTime: Date;
-    endTime: Date;
-    topics?: string[];
-    metadata?: Record<string, unknown>;
-    embedding?: number[];
-  }) => Promise<{ id: UUID; summary: string; messageCount: number }>;
-  getCurrentSessionSummary: (roomId: UUID) => Promise<{
-    id: UUID;
-    summary: string;
-    messageCount: number;
-    topics?: string[];
-  } | null>;
 };
 
 class TestEntityResolutionService extends Service {
@@ -112,36 +89,6 @@ async function createMigratedAdapter(agentId: UUID): Promise<PgliteDatabaseAdapt
   await migrationService.runAllPluginMigrations();
 
   return adapter;
-}
-
-async function createConversationRoom(
-  runtime: AgentRuntime
-): Promise<{ roomId: UUID; worldId: UUID }> {
-  const worldId = uuidv4() as UUID;
-  const roomId = uuidv4() as UUID;
-
-  const world: World = {
-    id: worldId,
-    agentId: runtime.agentId,
-    name: "Test World",
-    metadata: {},
-    createdAt: new Date(),
-  } as World & { createdAt: Date };
-  await runtime.createWorld(world);
-
-  const room: Room = {
-    id: roomId,
-    agentId: runtime.agentId,
-    worldId,
-    source: "test",
-    type: ChannelType.DM,
-    name: "Test Room",
-    metadata: {},
-    createdAt: new Date(),
-  } as Room & { createdAt: Date };
-  await runtime.createRooms([room]);
-
-  return { roomId, worldId };
 }
 
 async function createEntities(runtime: AgentRuntime, entityIds: UUID[]): Promise<void> {
@@ -247,41 +194,5 @@ describe("plugin-sql advanced memory storage", () => {
     expect(viaLinkedIdentity).toHaveLength(1);
     expect(viaLinkedIdentity[0]?.content).toContain("short emails");
     expect(viaLinkedIdentity[0]?.entityId).toBe(entityA);
-  });
-
-  it("stores session summaries in SQL for real conversation rooms", async () => {
-    const runtime = createRuntime();
-    runtimes.push(runtime);
-
-    const adapter = await createMigratedAdapter(runtime.agentId);
-    runtime.registerDatabaseAdapter(adapter);
-    await runtime.initialize({ skipMigrations: true });
-
-    const entityId = uuidv4() as UUID;
-    await createEntities(runtime, [entityId]);
-    const { roomId } = await createConversationRoom(runtime);
-
-    const memoryService = (await runtime.getServiceLoadPromise(
-      "memory"
-    )) as unknown as RuntimeMemoryService;
-
-    await memoryService.storeSessionSummary({
-      agentId: runtime.agentId,
-      roomId,
-      entityId,
-      summary: "We agreed to ship the billing audit first, then revisit experiments.",
-      messageCount: 12,
-      lastMessageOffset: 12,
-      startTime: new Date("2026-04-08T19:00:00.000Z"),
-      endTime: new Date("2026-04-08T19:20:00.000Z"),
-      topics: ["billing", "experiments"],
-      metadata: { source: "test" },
-    });
-
-    const current = await memoryService.getCurrentSessionSummary(roomId);
-
-    expect(current?.summary).toContain("billing audit first");
-    expect(current?.messageCount).toBe(12);
-    expect(current?.topics).toEqual(["billing", "experiments"]);
   });
 });

@@ -138,7 +138,7 @@ function CursorOverlay({
   return (
     <span
       aria-label={`Virtual cursor at ${session.cursor.x}, ${session.cursor.y}`}
-      className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-500 shadow-[0_0_0_2px_white,0_0_0_4px_rgba(0,0,0,0.45)]"
+      className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-500 shadow-[0_0_0_2px_white,0_0_0_4px_rgba(16,10,5,0.45)]"
       role="img"
       style={{ left: `${left}%`, top: `${top}%` }}
     />
@@ -376,7 +376,7 @@ export function ComputerUseSessionsView({
           {!shortLandscape ? (
             <p className="text-xs text-muted-foreground">
               One physical host cursor; independent targets use virtual cursors.
-              Frames update live—select a session to focus it, then close
+              Frames update live. Select a session to focus it, then close
               isolated targets when finished.
             </p>
           ) : null}

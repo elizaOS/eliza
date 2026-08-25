@@ -58,7 +58,7 @@ export function McpsView() {
             setEditorOpen(true);
           }}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="size-4" />
           {t("cloud.mcps.registerCta", { defaultValue: "Register MCP" })}
         </BrandButton>
       ),
@@ -151,7 +151,7 @@ export function McpsView() {
       {/* Search + category filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2  size-4 text-muted" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -219,7 +219,7 @@ export function McpsView() {
                   setEditorOpen(true);
                 }}
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="size-4" />
                 {t("cloud.mcps.registerCta", { defaultValue: "Register MCP" })}
               </BrandButton>
             ) : undefined
@@ -273,13 +273,13 @@ const UserMcpCard = memo(function UserMcpCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="p-2 rounded-sm border border-border bg-bg-elevated shrink-0">
-            <Puzzle className="h-4 w-4 text-accent" />
+            <Puzzle className="size-4 text-accent" />
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-txt-strong truncate flex items-center gap-2">
               {mcp.name}
               {mcp.x402_enabled && (
-                <Zap className="h-3 w-3 text-accent shrink-0" />
+                <Zap className="size-3 text-accent shrink-0" />
               )}
             </h3>
             <p className="text-xs text-muted">
@@ -324,11 +324,11 @@ const BuiltinCard = memo(function BuiltinCard({
   };
 
   return (
-    <div className="rounded-sm border border-border bg-card p-4">
+    <div className="border-b border-border p-4 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="p-2 rounded-sm border border-border bg-bg-elevated shrink-0">
-            <Puzzle className="h-4 w-4 text-accent" />
+            <Puzzle className="size-4 text-accent" />
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-txt-strong truncate">
@@ -403,7 +403,7 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-4 rounded-sm border border-border bg-card py-16 text-center">
-      <Puzzle className="h-10 w-10 text-muted" />
+      <Puzzle className="size-10 text-muted" />
       <p className="text-sm text-muted">{message}</p>
       {action}
     </div>

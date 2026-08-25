@@ -83,10 +83,10 @@ export function DashboardSidebarNavigationItem({
         )}
         style={itemTextStyle}
       >
-        <Icon className="h-4 w-4 shrink-0" />
+        <Icon className="size-4 shrink-0" />
         <span className="flex-1 whitespace-nowrap">{item.label}</span>
         <span
-          className="bg-white/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/60"
+          className="bg-white/10 px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wider text-white/60"
           style={{
             fontFamily: "var(--font-roboto-mono)",
           }}
@@ -111,12 +111,12 @@ export function DashboardSidebarNavigationItem({
       style: itemTextStyle,
       children: (
         <>
-          <Icon className="h-4 w-4 shrink-0 opacity-50" />
+          <Icon className="size-4 shrink-0 opacity-50" />
           {isCollapsed ? <span className="sr-only">{item.label}</span> : null}
           {!isCollapsed && (
             <>
               <span className="flex-1 whitespace-nowrap">{item.label}</span>
-              <Lock className="h-3 w-3 shrink-0 text-white/54" />
+              <Lock className="size-3 shrink-0 text-white/54" />
             </>
           )}
         </>
@@ -151,18 +151,18 @@ export function DashboardSidebarNavigationItem({
 
   const linkContents = (
     <>
-      <Icon className="h-4 w-4 shrink-0 transition-colors" />
+      <Icon className="size-4 shrink-0 transition-colors" />
       {isCollapsed ? <span className="sr-only">{item.label}</span> : null}
       {!isCollapsed && (
         <>
           <span className="flex-1 whitespace-nowrap">{item.label}</span>
           {item.isNew && (
-            <span className="border border-white/30 bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+            <span className="border border-white/30 bg-white/10 px-2 py-0.5 text-2xs font-bold uppercase tracking-wide text-white">
               NEW
             </span>
           )}
           {item.badge && !item.isNew && (
-            <span className="rounded-sm bg-white/18 px-2 py-0.5 text-[10px] font-semibold text-white/70">
+            <span className="rounded-sm bg-white/18 px-2 py-0.5 text-2xs font-semibold text-white/70">
               {item.badge}
             </span>
           )}

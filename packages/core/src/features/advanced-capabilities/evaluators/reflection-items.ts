@@ -22,7 +22,6 @@
 import { v4 } from "uuid";
 import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";
-import { isProgressiveContentProjectionEnabled } from "../../../runtime/content-projection-policy.ts";
 import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
@@ -49,7 +48,6 @@ import type {
 } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
-import { formatActionResultsForPrompt } from "../../../utils/action-results.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import {
 	buildFactKeywordsForStorage,
@@ -1212,7 +1210,7 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 					: actionResultsFromState(state),
 		};
 	},
-	prompt({ runtime, prepared, options }) {
+	prompt({ prepared, options }) {
 		return `Evaluate if current user task is complete after agent response.
 
 Rules:
@@ -1226,15 +1224,7 @@ Recent messages:
 ${formatRecentMessages(prepared.recentMessages)}
 
 Action results:
-${
-	isProgressiveContentProjectionEnabled(runtime)
-		? renderActionResultsForModel(prepared.actionResults, {
-				omitRecoverableText: true,
-			}).text
-		: formatActionResultsForPrompt(prepared.actionResults, {
-				includeData: true,
-			})
-}`;
+${renderActionResultsForModel(prepared.actionResults).text}`;
 	},
 	parse(output) {
 		const result = SuccessOutputSchema.safeParse(output);

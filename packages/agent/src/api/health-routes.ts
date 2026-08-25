@@ -241,10 +241,20 @@ export function serializeForRuntimeDebug(
 
     if (kind === "string") {
       if ((current as string).length <= options.maxStringLength) return current;
+      const wellFormedString = toWellFormedUnicode(current as string);
+      const max = options.maxStringLength;
+      let preview: string;
+      if (max <= 0) {
+        preview = "";
+      } else if (max <= 3) {
+        preview = truncateWellFormed(wellFormedString, max);
+      } else {
+        preview = `${truncateWellFormed(wellFormedString, max - 3)}...`;
+      }
       return {
         __type: "string",
         length: (current as string).length,
-        preview: `${truncateWellFormed(toWellFormedUnicode(current as string), Math.max(0, options.maxStringLength - 3))}...`,
+        preview,
         truncated: true,
       };
     }
@@ -282,10 +292,19 @@ export function serializeForRuntimeDebug(
         message: err.message,
       };
       if (err.stack) {
-        out.stack =
-          err.stack.length > options.maxStringLength
-            ? `${err.stack.slice(0, options.maxStringLength - 3)}...`
-            : err.stack;
+        const wellFormedStack = toWellFormedUnicode(err.stack);
+        if (wellFormedStack.length > options.maxStringLength) {
+          const max = options.maxStringLength;
+          if (max <= 0) {
+            out.stack = "";
+          } else if (max <= 3) {
+            out.stack = truncateWellFormed(wellFormedStack, max);
+          } else {
+            out.stack = `${truncateWellFormed(wellFormedStack, max - 3)}...`;
+          }
+        } else {
+          out.stack = wellFormedStack;
+        }
       }
       if (err.cause !== undefined) {
         out.cause = visit(err.cause, `${path}.cause`, depth + 1);

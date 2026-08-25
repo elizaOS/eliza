@@ -284,7 +284,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted" />
+        <Loader2 className="size-8 animate-spin text-muted" />
       </div>
     );
   }
@@ -303,7 +303,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               >
                 <ShieldCheck
                   className={cn(
-                    "h-5 w-5",
+                    "size-5",
                     reviewApproved ? "text-green-400" : "text-muted",
                   )}
                 />
@@ -338,9 +338,9 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 className="shrink-0 bg-txt text-bg hover:bg-txt/90"
               >
                 {isSubmittingReview ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2  size-4 animate-spin" />
                 ) : (
-                  <Send className="mr-2 h-4 w-4" />
+                  <Send className="mr-2 size-4" />
                 )}
                 {t("cloud.monetization.submitReview", {
                   defaultValue: "Submit for review",
@@ -368,7 +368,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
             >
               <DollarSign
                 className={cn(
-                  "h-5 w-5",
+                  "size-5",
                   settings.monetizationEnabled
                     ? "text-green-400"
                     : "text-muted",
@@ -432,7 +432,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     amount: settings.totalCreatorEarnings.toFixed(2),
                     defaultValue: "$" + "{{amount}}" + " earned",
                   })}
-                  <ChevronRight className="h-3 w-3" />
+                  <ChevronRight className="size-3" />
                 </Button>
               )}
             </div>
@@ -460,7 +460,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   </span>
                   <Tooltip>
                     <TooltipTrigger>
-                      <Info className="h-3.5 w-3.5 text-neutral-500" />
+                      <Info className="size-3.5 text-neutral-500" />
                     </TooltipTrigger>
                     <TooltipContent
                       side="right"
@@ -522,7 +522,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   </span>
                   <Tooltip>
                     <TooltipTrigger>
-                      <Info className="h-3.5 w-3.5 text-neutral-500" />
+                      <Info className="size-3.5 text-neutral-500" />
                     </TooltipTrigger>
                     <TooltipContent
                       side="right"
@@ -579,9 +579,9 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 className="w-full bg-txt text-bg hover:bg-txt/90 disabled:bg-surface disabled:text-muted"
               >
                 {isSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <Loader2 className="size-4 animate-spin mr-2" />
                 ) : (
-                  <Save className="h-4 w-4 mr-2" />
+                  <Save className="size-4 mr-2" />
                 )}
                 {t("cloud.monetization.saveChanges", {
                   defaultValue: "Save Changes",
@@ -721,8 +721,8 @@ function SelfHostCTA() {
   return (
     <div className="border border-border bg-card p-5">
       <div className="flex items-start gap-4">
-        <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-sm border border-border bg-surface shrink-0">
-          <Server className="h-5 w-5 text-muted" />
+        <div className="hidden sm:flex items-center justify-center size-10 rounded-sm border border-border bg-surface shrink-0">
+          <Server className="size-5 text-muted" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-mono text-txt mb-1">
@@ -748,7 +748,7 @@ function SelfHostCTA() {
               }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-txt text-bg hover:bg-txt/90 text-sm font-mono transition-colors"
             >
-              <Server className="h-4 w-4" />
+              <Server className="size-4" />
               {t("cloud.monetization.deployAgent", {
                 defaultValue: "Deploy an Agent",
               })}
@@ -764,7 +764,7 @@ function SelfHostCTA() {
               }}
               className="inline-flex items-center gap-2 px-4 py-2 text-muted hover:bg-foreground hover:text-background text-sm font-mono transition-colors"
             >
-              <Coins className="h-4 w-4" />
+              <Coins className="size-4" />
               {t("cloud.monetization.viewEarnings", {
                 defaultValue: "View Earnings",
               })}

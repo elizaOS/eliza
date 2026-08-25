@@ -1,6 +1,6 @@
 /**
- * Barrel for the advanced-memory evaluators — `summaryEvaluator`,
- * `longTermMemoryEvaluator`, and the `memoryItems` bundle — consumed by
+ * Barrel for the advanced-memory `longTermMemoryEvaluator` and its
+ * `memoryItems` bundle — consumed by
  * `createAdvancedMemoryPlugin`.
  *
  * Uses direct import + re-export rather than `export { … } from` so Bun.build's
@@ -12,9 +12,7 @@
 import {
 	longTermMemoryEvaluator as _longTermMemoryEvaluator,
 	memoryItems as _memoryItems,
-	summaryEvaluator as _summaryEvaluator,
 } from "./memory-items.ts";
 
 export const memoryItems = _memoryItems;
 export const longTermMemoryEvaluator = _longTermMemoryEvaluator;
-export const summaryEvaluator = _summaryEvaluator;

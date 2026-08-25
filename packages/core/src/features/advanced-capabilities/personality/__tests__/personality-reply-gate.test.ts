@@ -54,6 +54,16 @@ describe("resolveEffectiveReplyGate", () => {
 		const result = resolveEffectiveReplyGate(userSlot(), globalSlot());
 		expect(result).toEqual({ mode: null, scope: null });
 	});
+
+	test("treats missing slots like unset gates", () => {
+		expect(resolveEffectiveReplyGate(undefined, undefined)).toEqual({
+			mode: null,
+			scope: null,
+		});
+		expect(
+			resolveEffectiveReplyGate(null, globalSlot({ reply_gate: "on_mention" })),
+		).toEqual({ mode: "on_mention", scope: "global" });
+	});
 });
 
 describe("decideReplyGate", () => {
@@ -168,6 +178,52 @@ describe("decideReplyGate", () => {
 			expect(decision.scope).toBe("global");
 		}
 	});
+
+	test("on_mention deny from global scope carries the full deny shape", () => {
+		const decision = decideReplyGate({
+			userSlot: userSlot(),
+			globalSlot: globalSlot({ reply_gate: "on_mention" }),
+			messageText: "room chatter",
+			explicitlyAddressesAgent: false,
+		});
+		expect(decision).toEqual({
+			allow: false,
+			reason: "on_mention_not_addressed",
+			gateMode: "on_mention",
+			scope: "global",
+		});
+	});
+
+	test("never_until_lift suppresses missing or empty message text", () => {
+		for (const messageText of [undefined, ""]) {
+			const decision = decideReplyGate({
+				userSlot: userSlot({ reply_gate: "never_until_lift" }),
+				globalSlot: globalSlot(),
+				messageText,
+				explicitlyAddressesAgent: false,
+			});
+			expect(decision.allow).toBe(false);
+			if (!decision.allow) {
+				expect(decision.reason).toBe("never_until_lift");
+			}
+		}
+	});
+
+	test("never_until_lift keeps suppressing a textless turn even when addressed", () => {
+		// Observed ordering: messageContainsLiftSignal checks for empty text
+		// before its explicit-address short-circuit, so a textless addressed
+		// turn does not lift the gate at ingress.
+		const decision = decideReplyGate({
+			userSlot: userSlot({ reply_gate: "never_until_lift" }),
+			globalSlot: globalSlot(),
+			messageText: undefined,
+			explicitlyAddressesAgent: true,
+		});
+		expect(decision.allow).toBe(false);
+		if (!decision.allow) {
+			expect(decision.reason).toBe("never_until_lift");
+		}
+	});
 });
 
 describe("messageContainsLiftSignal", () => {
@@ -192,5 +248,59 @@ describe("messageContainsLiftSignal", () => {
 
 	test("addressed-to-agent always counts as a lift", () => {
 		expect(messageContainsLiftSignal("anything", true)).toBe(true);
+	});
+
+	test("matches 'you can talk' family", () => {
+		expect(messageContainsLiftSignal("you can talk now", false)).toBe(true);
+		expect(messageContainsLiftSignal("you can talk again please", false)).toBe(
+			true,
+		);
+	});
+
+	test("matches lift/cancel/clear/remove mute phrases", () => {
+		expect(messageContainsLiftSignal("lift the mute", false)).toBe(true);
+		expect(messageContainsLiftSignal("cancel the shut up", false)).toBe(true);
+		expect(messageContainsLiftSignal("clear silence", false)).toBe(true);
+		expect(messageContainsLiftSignal("remove the gag", false)).toBe(true);
+	});
+
+	test("matches 'come back' / 'wake up' with the literal space", () => {
+		expect(messageContainsLiftSignal("wake up", false)).toBe(true);
+		expect(messageContainsLiftSignal("come back to us", false)).toBe(true);
+		expect(messageContainsLiftSignal("wakeup time", false)).toBe(false);
+	});
+
+	test("matches 'start/begin ...ing again'", () => {
+		expect(messageContainsLiftSignal("start responding again", false)).toBe(
+			true,
+		);
+		expect(messageContainsLiftSignal("begin talking again!", false)).toBe(true);
+		expect(messageContainsLiftSignal("stop responding again", false)).toBe(
+			false,
+		);
+	});
+
+	test("is case-insensitive and tolerates leading whitespace", () => {
+		expect(messageContainsLiftSignal("WAKE UP", false)).toBe(true);
+		expect(messageContainsLiftSignal("  okay you can talk", false)).toBe(true);
+	});
+
+	test("ignores lift phrases that do not start the message", () => {
+		expect(
+			messageContainsLiftSignal("he said wake up earlier today", false),
+		).toBe(false);
+		expect(
+			messageContainsLiftSignal(
+				"the agent should start responding again",
+				false,
+			),
+		).toBe(false);
+		expect(messageContainsLiftSignal("ok talkative folks", false)).toBe(false);
+	});
+
+	test("missing or empty text never lifts, even when addressed", () => {
+		expect(messageContainsLiftSignal(undefined, false)).toBe(false);
+		expect(messageContainsLiftSignal("", false)).toBe(false);
+		expect(messageContainsLiftSignal(undefined, true)).toBe(false);
 	});
 });

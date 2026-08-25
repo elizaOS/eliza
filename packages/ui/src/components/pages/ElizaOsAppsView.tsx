@@ -83,31 +83,31 @@ const PHONE_PANEL_ITEMS: Array<{
     id: "dialer",
     labelKey: "elizaosapps.phone.tab.dialer",
     defaultLabel: "Dialer",
-    icon: <PhoneCall className="h-4 w-4" />,
+    icon: <PhoneCall className="size-4" />,
   },
   {
     id: "recents",
     labelKey: "elizaosapps.phone.tab.recents",
     defaultLabel: "Recents",
-    icon: <Clock3 className="h-4 w-4" />,
+    icon: <Clock3 className="size-4" />,
   },
   {
     id: "contacts",
     labelKey: "elizaosapps.phone.tab.contacts",
     defaultLabel: "Contacts",
-    icon: <ContactRound className="h-4 w-4" />,
+    icon: <ContactRound className="size-4" />,
   },
   {
     id: "import",
     labelKey: "elizaosapps.phone.tab.import",
     defaultLabel: "Import",
-    icon: <FileUp className="h-4 w-4" />,
+    icon: <FileUp className="size-4" />,
   },
   {
     id: "transcripts",
     labelKey: "elizaosapps.phone.tab.transcripts",
     defaultLabel: "Transcripts",
-    icon: <NotebookText className="h-4 w-4" />,
+    icon: <NotebookText className="size-4" />,
   },
 ];
 
@@ -536,7 +536,7 @@ const PhoneContactRow = memo(function PhoneContactRow({
             agentLabel={`${dialLabel} ${contact.displayName || contactNumber}`}
             agentGroup="phone-contacts"
             disabled={!contactNumber}
-            icon={<PhoneCall className="h-4 w-4" />}
+            icon={<PhoneCall className="size-4" />}
             onClick={handleDial}
           >
             {dialLabel}
@@ -546,7 +546,7 @@ const PhoneContactRow = memo(function PhoneContactRow({
             agentLabel={`${smsLabel} ${contact.displayName || contactNumber}`}
             agentGroup="phone-contacts"
             disabled={!contactNumber}
-            icon={<MessageSquare className="h-4 w-4" />}
+            icon={<MessageSquare className="size-4" />}
             onClick={handleSms}
           >
             {smsLabel}
@@ -587,7 +587,7 @@ function PhoneRoleRow({
         agentLabel={`${requestLabel} ${role.role}`}
         agentGroup="phone-roles"
         disabled={disabled || !role.available || role.held}
-        icon={<ShieldCheck className="h-4 w-4" />}
+        icon={<ShieldCheck className="size-4" />}
         onClick={() => onRequest(role)}
       >
         {requestLabel}
@@ -1001,7 +1001,7 @@ export function PhonePageView() {
                 defaultValue: "Refresh",
               })}
               disabled={busy}
-              icon={<RefreshCw className="h-4 w-4" />}
+              icon={<RefreshCw className="size-4" />}
               onClick={refresh}
             >
               {t("elizaosapps.phone.refresh", { defaultValue: "Refresh" })}
@@ -1057,7 +1057,7 @@ export function PhonePageView() {
                   defaultValue: "Search",
                 })}
                 disabled={busy}
-                icon={<Search className="h-4 w-4" />}
+                icon={<Search className="size-4" />}
                 onClick={refresh}
               >
                 {t("elizaosapps.phone.contacts.search", {
@@ -1123,7 +1123,7 @@ export function PhonePageView() {
                   defaultValue: "Choose vCard",
                 })}
                 disabled={busy}
-                icon={<FileUp className="h-4 w-4" />}
+                icon={<FileUp className="size-4" />}
                 onClick={() => fileInputRef.current?.click()}
               >
                 {t("elizaosapps.phone.import.chooseVcard", {
@@ -1136,7 +1136,7 @@ export function PhonePageView() {
                   defaultValue: "Import Text",
                 })}
                 disabled={busy || !vcardText.trim()}
-                icon={<Plus className="h-4 w-4" />}
+                icon={<Plus className="size-4" />}
                 onClick={() => importVCardText(vcardText)}
               >
                 {t("elizaosapps.phone.import.importText", {
@@ -1216,7 +1216,7 @@ export function PhonePageView() {
                     defaultValue: "Save Transcript",
                   })}
                   disabled={busy || !transcriptDraft.trim()}
-                  icon={<NotebookText className="h-4 w-4" />}
+                  icon={<NotebookText className="size-4" />}
                   onClick={saveTranscript}
                 >
                   {t("elizaosapps.phone.transcript.save", {
@@ -1229,7 +1229,7 @@ export function PhonePageView() {
                     defaultValue: "Reply SMS",
                   })}
                   disabled={!selectedCall.number}
-                  icon={<MessageSquare className="h-4 w-4" />}
+                  icon={<MessageSquare className="size-4" />}
                   onClick={() => openMessagesForNumber(selectedCall.number)}
                 >
                   {t("elizaosapps.phone.transcript.replySms", {
@@ -1283,7 +1283,7 @@ export function PhonePageView() {
                   defaultValue: "Call",
                 })}
                 disabled={busy || !number.trim()}
-                icon={<PhoneCall className="h-4 w-4" />}
+                icon={<PhoneCall className="size-4" />}
                 onClick={placeCall}
               >
                 {t("elizaosapps.phone.dialer.call", { defaultValue: "Call" })}
@@ -1294,7 +1294,7 @@ export function PhonePageView() {
                   defaultValue: "Open Dialer",
                 })}
                 disabled={busy}
-                icon={<PhoneCall className="h-4 w-4" />}
+                icon={<PhoneCall className="size-4" />}
                 onClick={openDialer}
               >
                 {t("elizaosapps.phone.dialer.openDialer", {
@@ -1305,7 +1305,7 @@ export function PhonePageView() {
                 agentId="dialer-sms"
                 agentLabel={t("elizaosapps.phone.sms", { defaultValue: "SMS" })}
                 disabled={!number.trim()}
-                icon={<MessageSquare className="h-4 w-4" />}
+                icon={<MessageSquare className="size-4" />}
                 onClick={() => openMessagesForNumber(number.trim())}
               >
                 {t("elizaosapps.phone.sms", { defaultValue: "SMS" })}
@@ -1361,7 +1361,7 @@ export function PhonePageView() {
                   defaultValue: "Settings",
                 })}
                 disabled={busy}
-                icon={<Settings className="h-4 w-4" />}
+                icon={<Settings className="size-4" />}
                 onClick={openSystemSettings}
               >
                 {t("elizaosapps.phone.settings", { defaultValue: "Settings" })}
@@ -1408,7 +1408,7 @@ export function PhonePageView() {
                   })}
                   agentGroup="phone-new-contact"
                   disabled={busy || !displayName.trim()}
-                  icon={<UserPlus className="h-4 w-4" />}
+                  icon={<UserPlus className="size-4" />}
                   onClick={createContact}
                 >
                   {t("elizaosapps.phone.newContact.create", {
@@ -1443,7 +1443,7 @@ export function PhonePageView() {
               defaultValue: "Refresh",
             })}
             disabled={busy}
-            icon={<RefreshCw className="h-4 w-4" />}
+            icon={<RefreshCw className="size-4" />}
             onClick={refresh}
           >
             {t("elizaosapps.phone.refresh", { defaultValue: "Refresh" })}
@@ -1896,7 +1896,7 @@ export function MessagesPageView() {
               })}
               agentGroup="messages-compose"
               disabled={busy}
-              icon={<Send className="h-4 w-4" />}
+              icon={<Send className="size-4" />}
               onClick={send}
             >
               {t("elizaosapps.messages.send", { defaultValue: "Send SMS" })}
@@ -1919,7 +1919,7 @@ export function MessagesPageView() {
                 defaultValue: "Refresh",
               })}
               disabled={busy}
-              icon={<RefreshCw className="h-4 w-4" />}
+              icon={<RefreshCw className="size-4" />}
               onClick={refresh}
             >
               {t("elizaosapps.messages.refresh", { defaultValue: "Refresh" })}
@@ -2086,7 +2086,7 @@ export function ContactsPageView() {
               })}
               agentGroup="contacts-create"
               disabled={busy}
-              icon={<UserPlus className="h-4 w-4" />}
+              icon={<UserPlus className="size-4" />}
               onClick={create}
             >
               {t("elizaosapps.contacts.create.button", {
@@ -2125,7 +2125,7 @@ export function ContactsPageView() {
                   defaultValue: "Refresh",
                 })}
                 disabled={busy}
-                icon={<RefreshCw className="h-4 w-4" />}
+                icon={<RefreshCw className="size-4" />}
                 onClick={refresh}
               >
                 {t("elizaosapps.contacts.refresh", { defaultValue: "Refresh" })}

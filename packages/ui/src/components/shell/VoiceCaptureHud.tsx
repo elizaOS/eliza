@@ -286,7 +286,7 @@ export function VoiceCaptureHud() {
           onClick={dismiss}
           className="shrink-0 self-start text-white/50 hover:text-white"
         >
-          <X aria-hidden="true" className="h-2.5 w-2.5" />
+          <X aria-hidden="true" className="size-2.5" />
         </button>
       </div>
     </div>

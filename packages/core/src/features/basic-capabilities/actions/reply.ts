@@ -174,16 +174,9 @@ function readTextParam(
 const baseDescription = spec.description;
 const extendedDescription = baseDescription.includes("questions[]")
 	? baseDescription
-	: `${baseDescription} Reply text or ask structured questions[] (1-4 items, optional multi-choice options).`.trim();
+	: `${baseDescription} Reply text or ask every needed structured question in questions[] (optional multi-choice options).`.trim();
 
-const baseDescriptionCompressed =
-	(spec as { descriptionCompressed?: string }).descriptionCompressed ??
-	"reply to the user";
-const extendedDescriptionCompressed = baseDescriptionCompressed.includes(
-	"questions",
-)
-	? baseDescriptionCompressed
-	: `${baseDescriptionCompressed}; questions[] (1-4) asks structured question`;
+const extendedDescriptionCompressed = extendedDescription;
 
 export const replyAction = {
 	name: spec.name,
@@ -204,7 +197,7 @@ export const replyAction = {
 		{
 			name: "questions",
 			description:
-				"1-4 structured questions: { question, header, options?: [{label, description?, preview?}], multiSelect? }. Returns requiresUserInteraction: true.",
+				"Every needed structured question: { question, header, options?: [{label, description?, preview?}], multiSelect? }. Returns requiresUserInteraction: true.",
 			required: false,
 			schema: {
 				type: "array",

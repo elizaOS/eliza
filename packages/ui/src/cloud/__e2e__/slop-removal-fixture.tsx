@@ -55,7 +55,7 @@ function CatchAllProbe() {
   const section = readSettingsHashSection();
   return (
     <div
-      className="min-h-screen bg-black p-10 font-mono text-sm text-white"
+      className="min-h-dvh bg-black p-10 font-mono text-sm text-white"
       data-app-shell-root=""
     >
       <h1 className="mb-6 text-lg font-semibold">
@@ -91,7 +91,7 @@ function Fixture() {
       return <div data-testid="fixture-error">unknown surface: {surface}</div>;
     }
     return (
-      <div className="min-h-screen bg-black p-6 text-white">
+      <div className="min-h-dvh bg-black p-6 text-white">
         <main className="mx-auto max-w-5xl" data-testid={`surface-${surface}`}>
           <Section />
         </main>

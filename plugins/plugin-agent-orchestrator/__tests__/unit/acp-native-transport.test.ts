@@ -311,6 +311,63 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     await expect(cancelled).resolves.toEqual({ stopReason: "cancelled" });
   });
 
+  it("preserves an authoritative terminal failure from prompt metadata", async () => {
+    const { client, p } = await startClient();
+    const prompted = client.prompt("session-1", "change and verify it");
+    await waitForWrites(p, 2);
+
+    emitJson(p, {
+      jsonrpc: "2.0",
+      id: 2,
+      result: {
+        stopReason: "end_turn",
+        _meta: {
+          terminalFailure: {
+            kind: "coding_mutation_unverified",
+            code: "VERIFY_REQUIRED",
+            transient: false,
+            message: "The mutation was not verified.",
+          },
+        },
+      },
+    });
+
+    await expect(prompted).resolves.toEqual({
+      stopReason: "end_turn",
+      terminalFailure: {
+        kind: "coding_mutation_unverified",
+        code: "VERIFY_REQUIRED",
+        transient: false,
+        message: "The mutation was not verified.",
+      },
+    });
+  });
+
+  it("rejects malformed terminal failure metadata instead of dropping it", async () => {
+    const { client, p } = await startClient();
+    const prompted = client.prompt("session-1", "change and verify it");
+    await waitForWrites(p, 2);
+
+    emitJson(p, {
+      jsonrpc: "2.0",
+      id: 2,
+      result: {
+        stopReason: "end_turn",
+        _meta: {
+          terminalFailure: {
+            kind: "coding_mutation_unverified",
+            transient: "no",
+            message: "The mutation was not verified.",
+          },
+        },
+      },
+    });
+
+    await expect(prompted).rejects.toThrow(
+      "ACP terminalFailure requires kind, message, transient",
+    );
+  });
+
   it("triggers cancellation when a prompt request times out", async () => {
     vi.useFakeTimers();
     const { client, p } = await startClient({ timeoutMs: 10 });

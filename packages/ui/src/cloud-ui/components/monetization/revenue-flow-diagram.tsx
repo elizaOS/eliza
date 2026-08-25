@@ -45,7 +45,7 @@ export function RevenueFlowDiagram({
         <div className="hidden sm:flex items-center justify-between gap-2">
           {/* User */}
           <FlowNode
-            icon={<User className="h-5 w-5" />}
+            icon={<User className="size-5" />}
             label="User"
             value={`Pays $${userPays.toFixed(2)}`}
             color="text-status-info"
@@ -57,7 +57,7 @@ export function RevenueFlowDiagram({
 
           {/* Platform */}
           <FlowNode
-            icon={<Server className="h-5 w-5" />}
+            icon={<Server className="size-5" />}
             label="Platform"
             value={`Keeps $${baseCost.toFixed(2)}`}
             color="text-neutral-400"
@@ -69,7 +69,7 @@ export function RevenueFlowDiagram({
 
           {/* Creator */}
           <FlowNode
-            icon={<Wallet className="h-5 w-5" />}
+            icon={<Wallet className="size-5" />}
             label="You"
             value={`Earn $${markup.toFixed(2)}`}
             color="text-accent"
@@ -81,26 +81,26 @@ export function RevenueFlowDiagram({
         {/* Mobile Layout */}
         <div className="sm:hidden space-y-2">
           <FlowNodeMobile
-            icon={<User className="h-4 w-4" />}
+            icon={<User className="size-4" />}
             label="User pays"
             value={`$${userPays.toFixed(2)}`}
             color="text-status-info"
           />
           <div className="flex justify-center">
-            <ArrowRight className="h-4 w-4 text-neutral-600 rotate-90" />
+            <ArrowRight className="size-4 text-neutral-600 rotate-90" />
           </div>
           <FlowNodeMobile
-            icon={<Server className="h-4 w-4" />}
+            icon={<Server className="size-4" />}
             label="Platform keeps"
             value={`$${baseCost.toFixed(2)}`}
             color="text-neutral-400"
             sublabel="(base cost)"
           />
           <div className="flex justify-center">
-            <ArrowRight className="h-4 w-4 text-txt-strong rotate-90" />
+            <ArrowRight className="size-4 text-txt-strong rotate-90" />
           </div>
           <FlowNodeMobile
-            icon={<Wallet className="h-4 w-4" />}
+            icon={<Wallet className="size-4" />}
             label="You earn"
             value={`$${markup.toFixed(2)}`}
             color="text-txt-strong"
@@ -114,7 +114,7 @@ export function RevenueFlowDiagram({
       <div className="mt-auto pt-4 border-t border-white/10">
         <div className="space-y-3 text-xs">
           <div className="flex items-start gap-2">
-            <Zap className="h-3 w-3 text-muted mt-0.5" />
+            <Zap className="size-3 text-muted mt-0.5" />
             <div>
               <p className="font-medium text-txt-strong">Inference Markup</p>
               <p className="text-neutral-500 mt-0.5">
@@ -124,7 +124,7 @@ export function RevenueFlowDiagram({
             </div>
           </div>
           <div className="flex items-start gap-2">
-            <Coins className="h-3 w-3 text-muted mt-0.5" />
+            <Coins className="size-3 text-muted mt-0.5" />
             <div>
               <p className="font-medium text-txt-strong">Purchase Share</p>
               <p className="text-neutral-500 mt-0.5">
@@ -167,7 +167,7 @@ function FlowNode({
       <div className={cn(color)}>{icon}</div>
       <div className="text-center">
         <p className="text-xs font-medium text-white">{label}</p>
-        <p className={cn("text-[10px] font-mono", color)}>{value}</p>
+        <p className={cn("text-2xs font-mono", color)}>{value}</p>
       </div>
     </div>
   );
@@ -183,13 +183,13 @@ function FlowArrow({ label, highlight }: FlowArrowProps) {
     <div className="flex flex-col items-center gap-1 w-[50px]">
       <ArrowRight
         className={cn(
-          "h-4 w-4",
+          "size-4",
           highlight ? "text-txt-strong" : "text-neutral-600",
         )}
       />
       <span
         className={cn(
-          "text-[10px] font-mono",
+          "text-2xs font-mono",
           highlight ? "text-txt-strong" : "text-neutral-500",
         )}
       >
@@ -230,9 +230,7 @@ function FlowNodeMobile({
         <div>
           <span className="text-xs text-white">{label}</span>
           {sublabel && (
-            <span className="text-[10px] text-neutral-500 ml-1">
-              {sublabel}
-            </span>
+            <span className="text-2xs text-neutral-500 ml-1">{sublabel}</span>
           )}
         </div>
       </div>

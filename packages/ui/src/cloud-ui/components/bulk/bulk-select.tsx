@@ -62,7 +62,7 @@ export function BulkSelectionBar({
           onClick={onDelete}
           className="h-8 px-3 text-destructive hover:bg-destructive-subtle"
         >
-          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+          <Trash2 className="mr-1.5 size-3.5" />
           {labels.deleteSelected}
         </Button>
       </div>

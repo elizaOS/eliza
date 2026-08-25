@@ -23,7 +23,7 @@ export function PageLoadingState({
         )}
         {...props}
       >
-        <Spinner className="h-5 w-5 text-muted" />
+        <Spinner className="size-5 text-muted" />
         <div className="mt-4 max-w-md space-y-2">
           <div className="text-base font-medium text-txt-strong">{heading}</div>
           {description ? <div className="sr-only">{description}</div> : null}
@@ -42,7 +42,7 @@ export function PageLoadingState({
         )}
         {...props}
       >
-        <Spinner className="h-5 w-5 text-muted" />
+        <Spinner className="size-5 text-muted" />
         <div className="mt-4 max-w-md space-y-2">
           <div className="text-base font-medium text-txt-strong">{heading}</div>
           {description ? <div className="sr-only">{description}</div> : null}
@@ -59,7 +59,7 @@ export function PageLoadingState({
       )}
       {...props}
     >
-      <Spinner className="h-5 w-5 text-muted" />
+      <Spinner className="size-5 text-muted" />
       <div className="mt-4 max-w-md space-y-2">
         <div className="text-base font-medium text-txt-strong">{heading}</div>
         {description ? <div className="sr-only">{description}</div> : null}

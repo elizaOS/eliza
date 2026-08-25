@@ -603,7 +603,7 @@ export function MediaGalleryView({
                   data-testid="media-download"
                   onClick={() => void handleDownloadSelected()}
                 >
-                  <Download className="mr-1.5 h-4 w-4" aria-hidden />
+                  <Download className="mr-1.5 size-4" aria-hidden />
                   {t("mediagalleryview.Download", {
                     defaultValue: "Download",
                   })}
@@ -617,7 +617,7 @@ export function MediaGalleryView({
                     data-testid="media-share"
                     onClick={() => void handleShareSelected()}
                   >
-                    <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
+                    <Share2 className="mr-1.5  size-4" aria-hidden />
                     {t("mediagalleryview.Share", {
                       defaultValue: "Share",
                     })}
@@ -634,7 +634,9 @@ export function MediaGalleryView({
                 <img
                   src={normalizeMediaUrl(selectedItem.url)}
                   alt={selectedItem.filename}
-                  className="max-h-[32rem] max-w-full rounded-sm object-contain"
+                  width={512}
+                  height={512}
+                  className="max-h-[32rem] w-auto max-w-full rounded-sm object-contain"
                 />
               ) : selectedItem.type === "video" ? (
                 <video

@@ -40,7 +40,7 @@ export const Inline: Story = {
 
 export const Overlay: Story = {
   render: (args) => (
-    <div className="relative h-10 w-10 rounded-full bg-accent/20">
+    <div className="relative size-10 rounded-full bg-accent/20">
       <OwnerBadge {...args} />
     </div>
   ),

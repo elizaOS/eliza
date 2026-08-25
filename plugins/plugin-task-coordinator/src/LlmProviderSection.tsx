@@ -80,7 +80,7 @@ export function LlmProviderSection({
                 onClick={() => setPref("ELIZA_LLM_PROVIDER", option.value)}
                 aria-pressed={active}
               >
-                <Icon className="h-3.5 w-3.5" aria-hidden />
+                <Icon className="size-3.5" aria-hidden />
                 {option.label}
               </Button>
             );
@@ -131,7 +131,7 @@ export function LlmProviderSection({
                   "Using your Eliza Cloud account for coding agent LLM calls.",
               })}
             >
-              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+              <CheckCircle2 className="size-3.5" aria-hidden />
               <span className="sr-only">
                 {t("codingagentsettingssection.CloudPaired", {
                   defaultValue:
@@ -146,7 +146,7 @@ export function LlmProviderSection({
                 defaultValue: "Unavailable",
               })}
             >
-              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+              <AlertTriangle className="size-3.5" aria-hidden />
               <span className="sr-only">
                 {t("codingagentsettingssection.CloudUnpaired", {
                   defaultValue: "Unavailable",

@@ -193,7 +193,7 @@ export function LiveMeetingPage(): React.JSX.Element {
                 className="grid h-full place-items-center px-6 text-center"
               >
                 <div className="flex max-w-sm flex-col items-center gap-3 text-muted">
-                  <Radio className="h-6 w-6" aria-hidden />
+                  <Radio className="size-6" aria-hidden />
                   <p className="text-sm">
                     No live meeting. Paste a meeting link above to have the
                     agent join and transcribe. Past recordings live in

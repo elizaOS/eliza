@@ -69,7 +69,7 @@ describe("owner-name", () => {
 
   describe("persistConfiguredOwnerName", () => {
     it("updates ui.ownerName and saves config when name is valid", async () => {
-      const existingConfig = { agents: [] };
+      const existingConfig = { agents: { list: [] } };
       vi.spyOn(configModule, "loadElizaConfig").mockReturnValue(existingConfig);
       const saveSpy = vi
         .spyOn(configModule, "saveElizaConfig")
@@ -79,7 +79,7 @@ describe("owner-name", () => {
 
       expect(success).toBe(true);
       expect(saveSpy).toHaveBeenCalledWith({
-        agents: [],
+        agents: { list: [] },
         ui: {
           ownerName: "Dave",
         },

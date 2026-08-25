@@ -115,7 +115,9 @@ function Read-Exact([System.IO.Stream]$stream, [int]$count) {
     if ($read -eq 0) { throw "stream closed" }
     $offset += $read
   }
-  return $buffer
+  # PowerShell enumerates arrays returned from functions by default. Preserve
+  # the byte[] so Stream.Write and BitConverter receive their required type.
+  return ,$buffer
 }
 while ($true) {
   $pipe.WaitForConnection()

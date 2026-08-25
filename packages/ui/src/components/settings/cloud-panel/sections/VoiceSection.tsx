@@ -468,9 +468,9 @@ export function VoiceSection() {
           agentLabel={voiceTesting ? "Stop voice preview" : "Test voice"}
           buttonLabel={
             voiceTesting ? (
-              <VolumeX className="h-4 w-4" />
+              <VolumeX className="size-4" />
             ) : (
-              <Volume2 className="h-4 w-4" />
+              <Volume2 className="size-4" />
             )
           }
           onActivate={voiceTesting ? stopVoicePreview : handlePreviewVoice}

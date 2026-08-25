@@ -242,9 +242,9 @@ export const AppPageSidebar = React.forwardRef<
                 ? `${testId}-collapse-inline`
                 : "page-sidebar-collapse-inline"
             }
-            className="h-6 w-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt"
+            className="size-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt"
           >
-            <PanelLeftClose className="h-3.5 w-3.5" aria-hidden />
+            <PanelLeftClose className="size-3.5" aria-hidden />
           </Button>
         ) : null}
         {bottomAction}

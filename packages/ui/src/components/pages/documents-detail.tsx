@@ -406,10 +406,10 @@ export function DocumentViewer({
   return (
     /* Flat — no card/border. The shell owns the page's horizontal padding. */
     <PagePanel className="flex flex-col overflow-hidden">
-      <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
+      <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
         {loading && (
           <div className="py-10 text-center font-bold tracking-wide text-muted animate-pulse">
-            <span className="mr-3 inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent align-middle" />
+            <span className="mr-3 inline-block size-4 animate-spin rounded-full border-2 border-accent border-t-transparent align-middle" />
             {t("appsview.Loading")}
           </div>
         )}
@@ -435,7 +435,7 @@ export function DocumentViewer({
             <div className="px-1">
               <div className="flex min-w-0 items-start gap-3">
                 <FileText
-                  className="mt-1.5 h-5 w-5 shrink-0 text-muted-strong"
+                  className="mt-1.5  size-5 shrink-0 text-muted-strong"
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
@@ -444,7 +444,7 @@ export function DocumentViewer({
                   </h2>
                   <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
                     <span className="inline-flex items-center gap-1">
-                      <ScopeIcon className="h-3 w-3" aria-hidden />
+                      <ScopeIcon className="size-3" aria-hidden />
                       {scopeLabel}
                     </span>
                     <span aria-hidden>·</span>
@@ -463,7 +463,7 @@ export function DocumentViewer({
                       <>
                         <span aria-hidden>·</span>
                         <span className="inline-flex items-center gap-1 text-status-success">
-                          <BadgeCheck className="h-3 w-3" aria-hidden />
+                          <BadgeCheck className="size-3" aria-hidden />
                           {t("documentsview.Editable", {
                             defaultValue: "Editable",
                           })}
@@ -474,7 +474,7 @@ export function DocumentViewer({
                       <>
                         <span aria-hidden>·</span>
                         <span className="inline-flex items-center gap-1">
-                          <Lock className="h-3 w-3" aria-hidden />
+                          <Lock className="size-3" aria-hidden />
                           {t("documentsview.Locked", {
                             defaultValue: "Locked",
                           })}
@@ -485,7 +485,7 @@ export function DocumentViewer({
                       <>
                         <span aria-hidden>·</span>
                         <span className="inline-flex items-center gap-1">
-                          <CalendarDays className="h-3 w-3" aria-hidden />
+                          <CalendarDays className="size-3" aria-hidden />
                           {documentCreatedLabel}
                         </span>
                       </>
@@ -512,9 +512,9 @@ export function DocumentViewer({
                     onClick={() => setFullscreen((current) => !current)}
                   >
                     {fullscreen ? (
-                      <Minimize2 className="mr-1.5 h-4 w-4" aria-hidden />
+                      <Minimize2 className="mr-1.5 size-4" aria-hidden />
                     ) : (
-                      <Maximize2 className="mr-1.5 h-4 w-4" aria-hidden />
+                      <Maximize2 className="mr-1.5 size-4" aria-hidden />
                     )}
                     {fullscreen
                       ? t("documentsview.ExitFullScreen", {
@@ -533,7 +533,7 @@ export function DocumentViewer({
                     data-testid="document-download"
                     onClick={() => void handleDownloadFile()}
                   >
-                    <Download className="mr-1.5 h-4 w-4" aria-hidden />
+                    <Download className="mr-1.5 size-4" aria-hidden />
                     {t("documentsview.Download", {
                       defaultValue: "Download",
                     })}
@@ -547,7 +547,7 @@ export function DocumentViewer({
                     data-testid="document-share"
                     onClick={() => void handleShareFile()}
                   >
-                    <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
+                    <Share2 className="mr-1.5 size-4" aria-hidden />
                     {t("documentsview.Share", {
                       defaultValue: "Share",
                     })}
@@ -562,7 +562,7 @@ export function DocumentViewer({
                       onClick={() => setEditing((current) => !current)}
                       disabled={saving}
                     >
-                      <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                      <Pencil className="mr-1.5 size-3.5" aria-hidden />
                       {editing ? "Cancel" : "Edit text"}
                     </Button>
                     {editing ? (
@@ -572,8 +572,8 @@ export function DocumentViewer({
                         onClick={() => void handleSave()}
                         disabled={saving || draftText.trim().length === 0}
                       >
-                        <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                        {saving ? "Saving..." : "Save"}
+                        <Save className="mr-1.5 size-3.5" aria-hidden />
+                        {saving ? "Saving…" : "Save"}
                       </Button>
                     ) : null}
                   </>
@@ -637,7 +637,7 @@ export function DocumentViewer({
                       key={fragment.id}
                       className="grid gap-3 py-4 sm:grid-cols-[4rem_minmax(0,1fr)]"
                     >
-                      <div className="flex h-8 w-8 items-center justify-center text-xs font-bold text-muted-strong">
+                      <div className="flex size-8 items-center justify-center text-xs font-bold text-muted-strong">
                         {index + 1}
                       </div>
 
@@ -707,7 +707,7 @@ export function DocumentViewer({
                 setFullscreen(false);
               }}
             >
-              <Minimize2 className="mr-1.5 h-4 w-4" aria-hidden />
+              <Minimize2 className="mr-1.5 size-4" aria-hidden />
               {t("documentsview.ExitFullScreen", {
                 defaultValue: "Exit full screen",
               })}

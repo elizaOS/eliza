@@ -252,7 +252,7 @@ function EmailCallbackContent() {
     return (
       <Frame>
         <div className="bg-accent p-4 text-accent-foreground">
-          <AlertTriangle className="h-8 w-8" />
+          <AlertTriangle className="size-8" />
         </div>
         <h1 className="text-lg font-semibold text-txt">
           {t("cloud.emailCallback.signInFailed", {
@@ -316,7 +316,7 @@ function EmailCallbackContent() {
   if (status === "success") {
     return (
       <Frame>
-        <CheckCircle2 className="h-12 w-12 text-txt" />
+        <CheckCircle2 className="size-12 text-txt" />
         <h1 className="text-lg font-semibold text-txt">
           {t("cloud.emailCallback.signedIn", { defaultValue: "Signed in" })}
         </h1>
@@ -343,7 +343,7 @@ function EmailCallbackContent() {
 
   return (
     <Frame>
-      <Loader2 className="h-12 w-12 animate-spin text-accent" />
+      <Loader2 className="size-12 animate-spin text-accent" />
       <h1 className="text-lg font-semibold text-txt">
         {t("cloud.emailCallback.verifying", {
           defaultValue: "Verifying sign-in link...",

@@ -1634,6 +1634,12 @@ export interface ModelHandler<
  */
 export interface ModelRegistrationMetadata {
 	/**
+	 * Provider-declared hard input-context ceiling. When present, the runtime
+	 * uses it for the final prepared-request rejection gate instead of inferring
+	 * a limit from the display model id.
+	 */
+	contextWindowTokens?: number;
+	/**
 	 * Concrete model id to display for this registration when callers ask what
 	 * model is powering a slot.
 	 */

@@ -131,7 +131,7 @@ export function HomeWidgetCard({
       />
       <span
         className={cn(
-          "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border [&>svg]:h-[18px] [&>svg]:w-[18px]",
+          "relative inline-flex size-9 shrink-0 items-center justify-center rounded-xl border [&>svg]:h-[18px] [&>svg]:w-[18px]",
           TONE_CHIP_CLASS[tone],
         )}
       >

@@ -46,12 +46,6 @@ interface CapturedRequest {
 	providerOptions?: {
 		eliza?: {
 			thinking?: unknown;
-			contentProjection?: {
-				enabled: boolean;
-				resultCount: number;
-				pagesIncluded: number;
-				pagesOmitted: number;
-			};
 		};
 	};
 }
@@ -129,7 +123,7 @@ function _systemMessageContent(request: CapturedRequest): string {
 	return typeof system?.content === "string" ? system.content : "";
 }
 
-describe("runEvaluator — over-window input trims to fit (never context_length_exceeded)", () => {
+describe("runEvaluator — complete input or explicit rejection", () => {
 	it("preserves a large-context candidate's 30k tool result byte-for-byte", async () => {
 		const result = "large-context-result-".repeat(1_600);
 		const { runtime, captured } = makeRegisteredRuntime([
@@ -151,15 +145,9 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 		if (!request) throw new Error("no captured request");
 		expect(toolMessageValues(request)[0]).toContain(result);
 		expect(toolMessageValues(request)[0]).not.toContain("chars truncated]");
-		expect(request.providerOptions?.eliza?.contentProjection).toMatchObject({
-			enabled: false,
-			resultCount: 1,
-			pagesIncluded: 0,
-			pagesOmitted: 0,
-		});
 	});
 
-	it("preserves the selected primary input and lets AgentRuntime compact a smaller failover", async () => {
+	it("preserves the primary input and skips a failover that cannot fit it", async () => {
 		const result = "x".repeat(500_000);
 		const { runtime, captured } = makeRegisteredRuntime([
 			{
@@ -216,7 +204,7 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 			10,
 			{ displayModel: "llama3.1-8b" },
 		);
-		const result = "x".repeat(10_000);
+		const result = "x".repeat(1_000);
 		await runEvaluator({
 			runtime,
 			context: CONTEXT,
@@ -265,7 +253,7 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 			10,
 			{ displayModel: "llama3.1-8b" },
 		);
-		const result = "x".repeat(10_000);
+		const result = "x".repeat(1_000);
 
 		await runEvaluator({
 			runtime,
@@ -363,7 +351,7 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 				trajectory: makeTrajectory([makeStep(1, "small result")]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 		expect(backupHandler).not.toHaveBeenCalled();
 	});
 
@@ -478,7 +466,15 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 
 	it("rejects one over-window result instead of changing it", async () => {
 		const hugeResult = "😀".repeat(2_500_000); // 5,000,000 UTF-16 code units
-		const { runtime, captured } = makeRuntime();
+		const handler = vi.fn(async () => ENVELOPE);
+		const runtime = new AgentRuntime({
+			character: { name: "EvaluatorAgent", bio: "test" } as Character,
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "large", 10, {
+			displayModel: "claude-sonnet-5",
+		});
 
 		await expect(
 			runEvaluator({
@@ -487,9 +483,8 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 				trajectory: makeTrajectory([makeStep(1, hugeResult)]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
-		expect(runtime.useModel).not.toHaveBeenCalled();
-		expect(captured).toEqual([]);
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
+		expect(handler).not.toHaveBeenCalled();
 	});
 
 	it("preserves every result when the complete request fits", async () => {
@@ -543,12 +538,19 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 });
 
 describe("runEvaluator — bottom-out guard (stable segments alone over budget)", () => {
-	it("fails fast with EVALUATOR_INPUT_OVER_BUDGET instead of calling the provider", async () => {
-		// Overflow in the STABLE prefix, which the degrade loop deliberately
-		// never trims: even at the 2k tool-result floor the input cannot fit,
-		// so the evaluator must throw a typed error before useModel.
+	it("fails at the final runtime boundary instead of calling the provider", async () => {
+		// Overflow in the stable prefix makes the complete request impossible to
+		// dispatch, so the evaluator must throw a typed error before useModel.
 		const hugeStablePrompt = "characterization ".repeat(2_000_000);
-		const { runtime } = makeRuntime();
+		const handler = vi.fn(async () => ENVELOPE);
+		const runtime = new AgentRuntime({
+			character: { name: "EvaluatorAgent", bio: "test" } as Character,
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "small", 10, {
+			displayModel: "llama3.1-8b",
+		});
 
 		await expect(
 			runEvaluator({
@@ -562,24 +564,26 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 				trajectory: makeTrajectory([makeStep(1, "small result")]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 
-		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(handler).not.toHaveBeenCalled();
 	});
 
 	it("records structured-parameter budget failure before making a provider call", async () => {
 		const recorded: Array<{ stage: Record<string, unknown> }> = [];
-		const { runtime } = makeRuntime();
-		const runtimeWithRecorder = {
-			...runtime,
-			getModelRegistrations: () => [
-				{
-					modelType: "RESPONSE_HANDLER",
-					provider: "small",
-					metadata: { displayModel: "llama3.1-8b" },
-				},
-			],
-		};
+		const handler = vi.fn(async () => ENVELOPE);
+		const runtimeWithRecorder = new AgentRuntime({
+			character: { name: "EvaluatorAgent", bio: "test" } as Character,
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		runtimeWithRecorder.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			handler,
+			"small",
+			10,
+			{ displayModel: "llama3.1-8b" },
+		);
 		const oversizedParams = { payload: "p".repeat(200_000) };
 		await expect(
 			runEvaluator({
@@ -605,15 +609,15 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 				]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
-		expect(runtimeWithRecorder.useModel).not.toHaveBeenCalled();
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
+		expect(handler).not.toHaveBeenCalled();
 		expect(recorded).toHaveLength(1);
 		expect(recorded[0]?.stage).toMatchObject({
 			kind: "evaluation",
 			evaluation: { protocolFailure: true },
 		});
 		expect(String(recorded[0]?.stage.model?.response)).toContain(
-			"EVALUATOR_INPUT_OVER_BUDGET",
+			"MODEL_INPUT_OVER_BUDGET",
 		);
 	});
 });
@@ -723,7 +727,7 @@ describe("runEvaluator — failover continues past an over-budget mid-chain regi
 				trajectory: makeTrajectory([makeStep(1, "small result")]),
 				effects: {},
 			}),
-		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 
 		expect(smallHandler).not.toHaveBeenCalled();
 		expect(recordedStages).toHaveLength(1);
@@ -734,7 +738,7 @@ describe("runEvaluator — failover continues past an over-budget mid-chain regi
 		};
 		expect(stage.kind).toBe("evaluation");
 		expect(stage.evaluation.protocolFailure).toBe(true);
-		expect(stage.model.response).toContain("EVALUATOR_INPUT_OVER_BUDGET");
+		expect(stage.model.response).toContain("MODEL_INPUT_OVER_BUDGET");
 		// The stage must attribute the failure to the registration that
 		// rejected the input, not the preflight provider selection.
 		expect(stage.model.provider).toBe("small");
@@ -781,7 +785,7 @@ describe("runEvaluator — trajectory stage records the per-attempt prepared req
 			} as never,
 			trajectoryId: "attempt-snapshot",
 			context: CONTEXT,
-			trajectory: makeTrajectory([makeStep(1, "x".repeat(10_000))]),
+			trajectory: makeTrajectory([makeStep(1, "x".repeat(1_000))]),
 			effects: {},
 		});
 

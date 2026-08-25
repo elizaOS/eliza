@@ -187,7 +187,7 @@ function TreeNode(props: {
             size="icon"
             type="button"
             onClick={() => onToggle(path)}
-            className="h-5 w-5 shrink-0 rounded-sm p-0 text-left text-muted hover:bg-bg-hover hover:text-txt"
+            className="size-5 shrink-0 rounded-sm p-0 text-left text-muted hover:bg-bg-hover hover:text-txt"
             title={open ? t("common.collapse") : t("common.expand")}
           >
             {open ? "▾" : "▸"}
@@ -612,7 +612,7 @@ export function RuntimeView({
           </Button>
 
           <details className="text-xs-tight text-muted">
-            <summary className="cursor-pointer select-none rounded-sm px-1 py-1 text-muted-strong hover:text-txt">
+            <summary className="cursor-pointer select-none rounded-sm p-1 text-muted-strong hover:text-txt">
               {t("nav.advanced")}
             </summary>
             <div className="mt-2 space-y-2 px-1">

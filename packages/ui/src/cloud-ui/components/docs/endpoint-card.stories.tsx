@@ -17,17 +17,17 @@ const methodColors: Record<string, string> = {
 };
 
 const categoryIcons: Record<string, ReactNode> = {
-  inference: <Bot className="h-3.5 w-3.5" />,
-  storage: <Database className="h-3.5 w-3.5" />,
-  vision: <ImageIcon className="h-3.5 w-3.5" />,
-  audio: <Mic className="h-3.5 w-3.5" />,
+  inference: <Bot className="size-3.5" />,
+  storage: <Database className="size-3.5" />,
+  vision: <ImageIcon className="size-3.5" />,
+  audio: <Mic className="size-3.5" />,
 };
 
 const getMethodColor = (method: string) =>
   methodColors[method] ?? "bg-neutral-500/20 text-neutral-300";
 
 const getCategoryIcon = (category: string) =>
-  categoryIcons[category] ?? <Bot className="h-3.5 w-3.5" />;
+  categoryIcons[category] ?? <Bot className="size-3.5" />;
 
 const meta = {
   title: "CloudUI/Docs/EndpointCard",

@@ -138,6 +138,7 @@ import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts"
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
+import { calculateAction } from "./actions/calculate.ts";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
@@ -162,6 +163,9 @@ import {
 } from "./providers/platformContext.ts";
 import { providersProvider } from "./providers/providers.ts";
 import { recentMessagesProvider } from "./providers/recentMessages.ts";
+
+export { recentMessagesProvider } from "./providers/recentMessages.ts";
+
 import { replyContextProvider } from "./providers/replyContext.ts";
 import { runtimeModelContextProvider } from "./providers/runtimeModelContext.ts";
 import { uiContextProvider } from "./providers/uiContext.ts";
@@ -1451,6 +1455,7 @@ export const basicActions = [
 	withCanonicalActionDocs(ignoreAction),
 	withCanonicalActionDocs(noneAction),
 	withCanonicalActionDocs(channelTopicSearchAction),
+	withCanonicalActionDocs(calculateAction),
 ];
 
 /**

@@ -92,7 +92,7 @@ export function ProvidersList() {
   return (
     <section className="flex flex-col gap-3">
       <header>
-        <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted">
+        <h3 className="text-2xs font-medium uppercase tracking-wider text-muted">
           {t("providerslist.title", { defaultValue: "Providers" })}
         </h3>
       </header>
@@ -110,10 +110,10 @@ export function ProvidersList() {
             >
               <div className="flex items-center gap-2">
                 <span
-                  className={`inline-flex h-2 w-2 rounded-full ${dot}`}
+                  className={`inline-flex size-2 rounded-full ${dot}`}
                   aria-hidden
                 />
-                <Icon className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
+                <Icon className="size-3.5 shrink-0 text-muted" aria-hidden />
                 <span className="font-medium truncate">{p.label}</span>
                 <span className="sr-only">
                   {t(labelKey, { defaultValue: label })}
@@ -128,7 +128,7 @@ export function ProvidersList() {
                   return (
                     <span
                       key={slot}
-                      className={`rounded-full border px-1.5 py-0.5 text-[10px] ${
+                      className={`rounded-full border px-1.5 py-0.5 text-2xs ${
                         active
                           ? "border-primary/50 bg-primary/10 text-primary"
                           : "border-border text-muted-foreground"
@@ -156,7 +156,7 @@ export function ProvidersList() {
                 {p.configureHref && (
                   <a
                     href={p.configureHref}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border/60 text-muted transition-colors hover:bg-bg hover:text-txt"
+                    className="inline-flex  size-7 shrink-0 items-center justify-center rounded-sm border border-border/60 text-muted transition-colors hover:bg-bg hover:text-txt"
                     title={t("providerslist.configure", {
                       defaultValue: "Configure",
                     })}
@@ -165,7 +165,7 @@ export function ProvidersList() {
                       defaultValue: "Configure {{provider}}",
                     })}
                   >
-                    <Settings className="h-3.5 w-3.5" aria-hidden />
+                    <Settings className="size-3.5" aria-hidden />
                   </a>
                 )}
               </div>

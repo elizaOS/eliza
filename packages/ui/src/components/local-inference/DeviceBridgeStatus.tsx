@@ -45,7 +45,7 @@ export function DeviceBridgeStatusBar({
       title={label}
     >
       <span
-        className={`inline-flex h-2 w-2 rounded-full ${dotClass}`}
+        className={`inline-flex size-2 rounded-full ${dotClass}`}
         aria-hidden
       />
       <span className="flex-1 truncate">{label}</span>

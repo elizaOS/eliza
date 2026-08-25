@@ -58,7 +58,7 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
   return (
     <li className="relative">
       <span
-        className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-accent/80"
+        className="absolute -left-[21px] top-1.5 size-2.5 rounded-full bg-accent/80"
         aria-hidden
       />
       <div className="flex flex-col gap-1">
@@ -92,7 +92,7 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-auto px-0 py-0 text-2xs font-medium text-accent hover:bg-transparent hover:underline"
+              className="h-auto p-0 text-2xs font-medium text-accent hover:bg-transparent hover:underline"
               onClick={() => {
                 setOpen((o) => !o);
               }}

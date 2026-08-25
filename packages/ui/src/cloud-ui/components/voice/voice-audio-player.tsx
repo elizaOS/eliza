@@ -124,12 +124,12 @@ export function VoiceAudioPlayer({
         variant="outline"
         size="icon"
         onClick={togglePlay}
-        className="h-8 w-8"
+        className="size-8"
       >
         {playerState.isPlaying ? (
-          <Pause className="h-4 w-4" />
+          <Pause className="size-4" />
         ) : (
-          <Play className="h-4 w-4" />
+          <Play className="size-4" />
         )}
       </Button>
 
@@ -156,12 +156,12 @@ export function VoiceAudioPlayer({
           variant="ghost"
           size="icon"
           onClick={toggleMute}
-          className="h-8 w-8"
+          className="size-8"
         >
           {playerState.isMuted ? (
-            <VolumeX className="h-4 w-4" />
+            <VolumeX className="size-4" />
           ) : (
-            <Volume2 className="h-4 w-4" />
+            <Volume2 className="size-4" />
           )}
         </Button>
         <Slider

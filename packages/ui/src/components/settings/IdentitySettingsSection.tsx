@@ -354,14 +354,14 @@ export function IdentitySettingsSection() {
               type="button"
               variant={voiceTesting ? "destructive" : "ghost"}
               size="icon"
-              className="h-11 w-11 shrink-0 rounded-md"
+              className="size-11 shrink-0 rounded-md"
               onClick={voiceTesting ? stopVoicePreview : handlePreviewVoice}
               disabled={!activeVoicePreset?.previewUrl || voiceLoading}
             >
               {voiceTesting ? (
-                <VolumeX className="h-4 w-4" />
+                <VolumeX className="size-4" />
               ) : (
-                <Volume2 className="h-4 w-4" />
+                <Volume2 className="size-4" />
               )}
             </SettingsActionButton>
           }

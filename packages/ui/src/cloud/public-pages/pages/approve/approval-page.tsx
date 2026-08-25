@@ -219,7 +219,7 @@ export default function ApprovalPage() {
         aria-live="polite"
       >
         <div className="flex min-h-[10rem] items-center gap-3 text-muted">
-          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+          <Loader2 className="size-6 animate-spin" aria-hidden="true" />
           <p>
             {t("cloud.approval.loading", {
               defaultValue: "Loading approval request…",
@@ -233,7 +233,7 @@ export default function ApprovalPage() {
   if (loadError || !request) {
     return (
       <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col items-center justify-center gap-3 p-6 text-center text-txt">
-        <AlertCircle className="h-8 w-8 text-destructive" aria-hidden="true" />
+        <AlertCircle className="size-8 text-destructive" aria-hidden="true" />
         <h1 className="text-lg font-semibold">
           {t("cloud.approval.couldNotLoad", {
             defaultValue: "Could not load approval request",
@@ -264,7 +264,7 @@ export default function ApprovalPage() {
   return (
     <main className="mx-auto max-w-xl p-6 text-txt">
       <div className="flex items-center gap-2">
-        <ShieldCheck className="h-6 w-6 text-accent" />
+        <ShieldCheck className="size-6 text-accent" />
         <h1 className="text-xl font-semibold">
           {t("cloud.approval.heading", { defaultValue: "Approval request" })}
         </h1>
@@ -332,7 +332,7 @@ export default function ApprovalPage() {
 
       {submitResult === "approved" ? (
         <div className="mt-6 flex items-center gap-2 rounded-lg border border-status-success/30 bg-status-success-bg p-3 text-sm text-status-success">
-          <CheckCircle2 className="h-5 w-5" />
+          <CheckCircle2 className="size-5" />
           {t("cloud.approval.signatureAccepted", {
             defaultValue: "Signature accepted.",
           })}
@@ -341,7 +341,7 @@ export default function ApprovalPage() {
 
       {submitResult === "denied" ? (
         <div className="mt-6 flex items-center gap-2 rounded-lg border border-border bg-surface p-3 text-sm text-muted-strong">
-          <XCircle className="h-5 w-5" />
+          <XCircle className="size-5" />
           {t("cloud.approval.approvalDenied", {
             defaultValue: "Approval denied.",
           })}
@@ -385,7 +385,7 @@ export default function ApprovalPage() {
               disabled={submitting || signature.trim().length === 0}
               className="inline-flex items-center gap-2 rounded bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-50"
             >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
               {t("cloud.approval.approve", { defaultValue: "Approve" })}
             </Button>
             <Button

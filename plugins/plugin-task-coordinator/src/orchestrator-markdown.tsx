@@ -68,7 +68,7 @@ function renderToken(token: Token, key: string): ReactNode {
                 checked={Boolean(item.checked)}
                 readOnly
                 aria-hidden
-                className="mr-1.5 h-4 w-4 p-0 align-middle accent-accent"
+                className="mr-1.5 size-4 p-0 align-middle accent-accent"
               />
             ) : null}
             {renderChildren(item.tokens, itemKey)}
@@ -258,9 +258,9 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
         }`}
       >
         {copied ? (
-          <Check className="h-3.5 w-3.5" aria-hidden />
+          <Check className="size-3.5" aria-hidden />
         ) : (
-          <Copy className="h-3.5 w-3.5" aria-hidden />
+          <Copy className="size-3.5" aria-hidden />
         )}
       </Button>
       <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">

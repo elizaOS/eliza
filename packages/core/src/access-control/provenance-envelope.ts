@@ -595,7 +595,8 @@ interface CanonicalMemorySearchBaseInput {
 	query?: string;
 	/** @deprecated Production recall derives the agent from `runtime.agentId`. */
 	agentId?: UUID;
-	count: number;
+	/** Explicit result count. Omit when the complete eligible result set is required. */
+	count?: number;
 	matchThreshold?: number;
 	entityId?: UUID;
 	/** Optional connector-source filter, normalized through the registry. */
@@ -657,16 +658,19 @@ function trustedDeliveryTurnDenial(
 async function resolveRequesterAccessContext(
 	runtime: IAgentRuntime,
 	deliveryMessage: Memory,
+	crossWorld: boolean,
 ): Promise<
 	{ ok: true; context: AccessContext } | { ok: false; cause: unknown }
 > {
 	try {
-		// buildAccessContext is the same composition the disclosure gate trusts:
-		// it resolves role/isOwner/worldId against the single world the message
-		// belongs to. Delegating here keeps requester identity derived from the
-		// same process-bound evidence, not caller-supplied fields.
-		const { buildAccessContext } = await import("../access-context");
-		const context = await buildAccessContext(runtime, deliveryMessage);
+		// Both builders derive requester authority from the exact delivery turn.
+		// Cross-world recall additionally resolves a verified room intersection;
+		// same-room recall retains the single-world context.
+		const { buildAccessContext, buildCrossWorldConversationAccessContext } =
+			await import("../access-context");
+		const context = crossWorld
+			? await buildCrossWorldConversationAccessContext(runtime, deliveryMessage)
+			: await buildAccessContext(runtime, deliveryMessage);
 		return { ok: true, context };
 	} catch (cause) {
 		return { ok: false, cause };
@@ -717,9 +721,11 @@ export async function searchCanonicalConversationMemories(
 		};
 	}
 
+	const crossRoomGate: CrossRoomRecallGate = crossRoomRecallGate(revalidated);
 	const requesterResult = await resolveRequesterAccessContext(
 		input.runtime,
 		deliveryMessage,
+		crossRoomGate.allowed,
 	);
 	if (!requesterResult.ok) {
 		input.runtime.reportError(
@@ -742,8 +748,6 @@ export async function searchCanonicalConversationMemories(
 	}
 	const requester = requesterResult.context;
 
-	const crossRoomGate: CrossRoomRecallGate = crossRoomRecallGate(revalidated);
-
 	// Constrain the vector scan by the attested room BEFORE ranking so a global
 	// top-K cannot starve eligible same-room rows. When cross-room recall is
 	// authorized the scan is not room-constrained, but the bounded window is
@@ -751,22 +755,31 @@ export async function searchCanonicalConversationMemories(
 	// complete.
 	const roomConstrained = !crossRoomGate.allowed;
 
-	// Bounded advancing refill: instead of a single over-fetched query,
-	// request in windows and advance until enough valid items are collected
-	// or the adapter exhausts the eligible set. This prevents closer
-	// wrong-source/malformed/denied rows from starving valid rows.
-	const overfetchFactor = 3;
-	const maxRefillRounds = 3;
+	// Advancing refill: widen until an explicit count is satisfied or until the
+	// adapter proves exhaustion. Omitted count requests complete traversal.
+	const explicitCount = input.count;
+	if (
+		explicitCount !== undefined &&
+		(!Number.isSafeInteger(explicitCount) || explicitCount <= 0)
+	) {
+		throw new ElizaError(
+			"Canonical conversation recall count must be a positive safe integer.",
+			{
+				code: "CANONICAL_RECALL_COUNT_INVALID",
+				context: { count: explicitCount },
+			},
+		);
+	}
+	const initialCount = explicitCount ?? 200;
+	const normalizedSource = input.source
+		? normalizeConnectorSource(input.source)
+		: undefined;
 	const allCandidates: Memory[] = [];
 	let candidateWindowComplete = true;
-	let accumulatedValid = 0;
 	const seenIds = new Set<string>();
+	let roundCount = initialCount;
 
-	for (let round = 0; round < maxRefillRounds; round++) {
-		const roundCount = Math.max(
-			input.count,
-			input.count * overfetchFactor * (round + 1),
-		);
+	for (;;) {
 		let roundCandidates: Memory[];
 		try {
 			roundCandidates = await input.runtime.searchMemories({
@@ -820,10 +833,14 @@ export async function searchCanonicalConversationMemories(
 			destinationRoomId,
 			crossRoomGate,
 		});
-		accumulatedValid = evaluated.items.length;
+		const accumulatedEligible = normalizedSource
+			? evaluated.items.filter(
+					(item) => item.provenance.source === normalizedSource,
+				).length
+			: evaluated.items.length;
 
 		if (
-			accumulatedValid >= input.count ||
+			(explicitCount !== undefined && accumulatedEligible >= explicitCount) ||
 			roundCandidates.length < roundCount
 		) {
 			// Either we have enough valid items, or the adapter returned
@@ -833,6 +850,17 @@ export async function searchCanonicalConversationMemories(
 			}
 			break;
 		}
+		if (roundCount === Number.MAX_SAFE_INTEGER) {
+			throw new ElizaError(
+				"Canonical conversation recall exceeds the representable result count.",
+				{
+					code: "CANONICAL_RECALL_RESULT_TOO_LARGE",
+					context: { roomId: destinationRoomId, roundCount },
+					severity: "fatal",
+				},
+			);
+		}
+		roundCount = Math.min(Number.MAX_SAFE_INTEGER, roundCount * 2);
 	}
 
 	const candidates = allCandidates;
@@ -847,16 +875,15 @@ export async function searchCanonicalConversationMemories(
 
 	// A source filter narrows what the caller asked to see; it never narrows
 	// the honesty of the withheld list.
-	const normalizedSource = input.source
-		? normalizeConnectorSource(input.source)
-		: undefined;
-	const items = (
-		normalizedSource
-			? evaluated.items.filter(
-					(item) => item.provenance.source === normalizedSource,
-				)
-			: evaluated.items
-	).slice(0, input.count);
+	const eligibleItems = normalizedSource
+		? evaluated.items.filter(
+				(item) => item.provenance.source === normalizedSource,
+			)
+		: evaluated.items;
+	const items =
+		explicitCount === undefined
+			? eligibleItems
+			: eligibleItems.slice(0, explicitCount);
 
 	if (
 		deliveryMessage &&

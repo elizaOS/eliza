@@ -175,7 +175,7 @@ function IconPill({
         aria-label={ariaLabel ?? "icon"}
         className="inline-flex items-center gap-1"
       >
-        <Icon className="h-3 w-3" />
+        <Icon className="size-3" />
         {children}
       </span>
     </MetaPill>
@@ -202,7 +202,7 @@ function PanelMarker({
         })}
         title={label}
       >
-        <Icon className="mr-1 h-3 w-3" />
+        <Icon className="mr-1  size-3" />
         {count}
       </MetaPill>
     </div>
@@ -313,7 +313,7 @@ function OwnerNameEditor({
         ref={editTriggerButton.ref}
         onClick={() => setEditing(true)}
         variant="ghost"
-        className="group h-auto items-center gap-2 whitespace-normal rounded-sm px-0 py-0 text-left font-normal transition hover:bg-card/40"
+        className="group h-auto items-center gap-2 whitespace-normal rounded-sm p-0 text-left font-normal transition hover:bg-card/40"
         aria-label={t("relationships.owner.editAria", {
           defaultValue: "Edit owner name",
         })}
@@ -322,7 +322,7 @@ function OwnerNameEditor({
         <span className="break-words text-[1.75rem] font-semibold leading-tight text-txt">
           {initialName}
         </span>
-        <Pencil className="h-4 w-4 opacity-0 transition group-hover:opacity-60" />
+        <Pencil className="size-4 opacity-0 transition group-hover:opacity-60" />
       </Button>
     );
   }
@@ -406,10 +406,10 @@ function ProfileCard({
         <img
           src={profile.avatarUrl}
           alt=""
-          className="h-7 w-7 shrink-0 rounded-full object-cover"
+          className="size-7 shrink-0 rounded-full object-cover"
         />
       ) : (
-        <AtSign className="h-3 w-3 shrink-0 text-muted" />
+        <AtSign className="size-3 shrink-0 text-muted" />
       )}
       <span className="min-w-0 truncate font-semibold text-txt">
         {primaryValue}
@@ -418,7 +418,7 @@ function ProfileCard({
         <span className="ml-auto min-w-0 truncate text-muted">{secondary}</span>
       ) : null}
       {profile.canonical ? (
-        <BadgeCheck className="h-3 w-3 shrink-0 text-accent" />
+        <BadgeCheck className="size-3 shrink-0 text-accent" />
       ) : null}
     </li>
   );
@@ -447,7 +447,7 @@ function PanelEmpty({
 }) {
   return (
     <div className="flex items-center gap-2 px-1 py-2 text-sm text-muted">
-      <Icon className="h-4 w-4 text-muted" />
+      <Icon className="size-4 text-muted" />
       <span>{children}</span>
     </div>
   );
@@ -482,7 +482,7 @@ function DataPanel({
       as="section"
       variant="surface"
       aria-label={label}
-      className="px-3 py-3"
+      className="p-3"
     >
       <PanelMarker icon={icon} count={count} label={label} />
       {children}
@@ -533,14 +533,14 @@ export function RelationshipsPersonSummaryPanel({
             <img
               src={avatarUrl}
               alt=""
-              className={`${compact ? "h-10 w-10 rounded-sm" : "h-12 w-12 rounded-sm"} hidden border border-border/24 object-cover sm:block`}
+              className={`${compact ? "size-10 rounded-sm" : "size-12 rounded-sm"} hidden border border-border/24 object-cover sm:block`}
             />
           ) : null}
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               {person.isOwner ? (
                 <Crown
-                  className="h-4 w-4 shrink-0 text-accent"
+                  className="size-4 shrink-0 text-accent"
                   aria-label={t("relationships.owner.label", {
                     defaultValue: "Owner",
                   })}
@@ -572,7 +572,7 @@ export function RelationshipsPersonSummaryPanel({
                     fallback: "No date",
                   })}
                 >
-                  <CalendarClock className="h-3 w-3" />
+                  <CalendarClock className="size-3" />
                   {formatCompactDate(person.lastInteractionAt)}
                 </span>
               ) : null}
@@ -593,7 +593,7 @@ export function RelationshipsPersonSummaryPanel({
               })}
               {...viewMemoriesButton.agentProps}
             >
-              <Brain className="h-3.5 w-3.5" />
+              <Brain className="size-3.5" />
             </Button>
           ) : null}
         </div>
@@ -640,7 +640,7 @@ export function RelationshipsPersonSummaryPanel({
                 key={`${contact.label}:${contact.value}`}
                 className="flex items-center gap-2 rounded-sm bg-card/30 px-2.5 py-1.5 text-xs"
               >
-                <Icon className="h-3 w-3 shrink-0 text-accent" />
+                <Icon className="size-3 shrink-0 text-accent" />
                 <span className="min-w-0 truncate text-txt">
                   {contact.value}
                 </span>
@@ -658,9 +658,9 @@ export function RelationshipsPersonSummaryPanel({
               defaultValue: "Profiles and identities",
             })}
           >
-            <AtSign className="h-3 w-3" />
+            <AtSign className="size-3" />
             {person.profiles.length}
-            <Fingerprint className="h-3 w-3" />
+            <Fingerprint className="size-3" />
             {person.identities.length}
           </summary>
           <div className="mt-3 space-y-3">
@@ -701,7 +701,7 @@ function OwnerRelationshipSection({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-txt">
-          <Crown className="h-3.5 w-3.5 text-accent" />
+          <Crown className="size-3.5 text-accent" />
           {ownerLabel}
           <span className="text-muted" aria-hidden>
             ↔
@@ -715,16 +715,16 @@ function OwnerRelationshipSection({
             className="inline-flex items-center gap-1.5 text-2xs font-semibold text-muted"
           >
             <span
-              className={`h-1.5 w-1.5 rounded-full ${sentimentDotColor(sentiment)}`}
+              className={`size-1.5 rounded-full ${sentimentDotColor(sentiment)}`}
             />
             {strengthPercent !== null ? `${strengthPercent}%` : "—"}
           </span>
           <MetaPill compact>
-            <MessageCircle className="mr-1 h-3 w-3" />
+            <MessageCircle className="mr-1 size-3" />
             {interactionCount}
           </MetaPill>
           <MetaPill compact>
-            <Brain className="mr-1 h-3 w-3" />
+            <Brain className="mr-1 size-3" />
             {memoryCount}
           </MetaPill>
         </span>
@@ -825,12 +825,12 @@ export function RelationshipsConnectionsPanel({
             className="inline-flex items-center gap-1.5 text-2xs font-semibold text-muted"
           >
             <span
-              className={`h-1.5 w-1.5 rounded-full ${sentimentDotColor(relationship.sentiment)}`}
+              className={`size-1.5 rounded-full ${sentimentDotColor(relationship.sentiment)}`}
             />
             {Math.round(relationship.strength * 100)}%
           </span>
           <span className="inline-flex items-center gap-1 text-2xs font-semibold text-muted">
-            <MessageCircle className="h-3 w-3" />
+            <MessageCircle className="size-3" />
             {relationship.interactionCount}
           </span>
           <span className="ml-1 truncate text-sm font-semibold text-txt">
@@ -842,7 +842,7 @@ export function RelationshipsConnectionsPanel({
               fallback: "No date",
             })}
           >
-            <CalendarClock className="h-3 w-3" />
+            <CalendarClock className="size-3" />
             {formatCompactDate(relationship.lastInteractionAt)}
           </span>
         </div>
@@ -906,7 +906,7 @@ export function RelationshipsConversationsPanel({
             fallback: "No date",
           })}
         >
-          <CalendarClock className="h-3 w-3" />
+          <CalendarClock className="size-3" />
           {formatCompactDate(conversation.lastActivityAt)}
         </div>
       </div>
@@ -987,7 +987,7 @@ export function RelationshipsRelevantMemoriesPanel({
                 fallback: "No date",
               })}
             >
-              <CalendarClock className="h-3 w-3" />
+              <CalendarClock className="size-3" />
               {formatCompactDate(memory.createdAt)}
             </span>
           ) : null}
@@ -1054,7 +1054,7 @@ export function RelationshipsUserPreferencesPanel({
               fallback: "No date",
             })}
           >
-            <CalendarClock className="h-3 w-3" />
+            <CalendarClock className="size-3" />
             {formatCompactDate(preference.createdAt)}
           </span>
         ) : null}
@@ -1065,7 +1065,7 @@ export function RelationshipsUserPreferencesPanel({
       {preference.originalRequest ? (
         <details className="mt-2">
           <summary className="inline-flex cursor-pointer list-none items-center rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt">
-            <FileText className="mr-1 h-3 w-3" />
+            <FileText className="mr-1 size-3" />
             {t("relationships.preference.request", {
               defaultValue: "request",
             })}
@@ -1129,7 +1129,7 @@ function DocumentOpenButton({
       className="mt-2 h-auto gap-1 rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt"
       {...agentProps}
     >
-      <Link2 className="h-3 w-3" />
+      <Link2 className="size-3" />
       {t("relationships.document.open", { defaultValue: "Open" })}
     </Button>
   );
@@ -1253,7 +1253,7 @@ export function RelationshipsDocumentsPanel({
               className="ml-auto inline-flex items-center gap-1 text-2xs text-muted"
               title={formatDateTime(doc.createdAt, { fallback: "No date" })}
             >
-              <CalendarClock className="h-3 w-3" />
+              <CalendarClock className="size-3" />
               {formatCompactDate(doc.createdAt)}
             </span>
           ) : null}

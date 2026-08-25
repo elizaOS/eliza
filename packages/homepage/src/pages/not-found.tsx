@@ -13,7 +13,7 @@ export default function NotFoundPage() {
   const t = useT();
   return (
     <main
-      className="theme-app min-h-screen flex flex-col"
+      className="theme-app min-h-dvh flex flex-col"
       style={{
         background: BRAND_COLORS.orange,
         color: BRAND_COLORS.black,

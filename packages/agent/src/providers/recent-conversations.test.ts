@@ -10,6 +10,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getVerifiedRelatedEntityIds =
   vi.fn<(runtime: IAgentRuntime, entityId: UUID) => Promise<UUID[]>>();
+const buildCrossWorldConversationAccessContext = vi.fn(
+  async (runtime: IAgentRuntime, message: Memory) => {
+    const related = await getVerifiedRelatedEntityIds(
+      runtime,
+      message.entityId,
+    );
+    const [requesterRooms, agentRooms] = await Promise.all([
+      runtime.getRoomsForParticipants(related),
+      runtime.getRoomsForParticipant(runtime.agentId),
+    ]);
+    const agentRoomSet = new Set(agentRooms);
+    return {
+      requesterEntityId: message.entityId,
+      authorizedRoomIds: Array.from(new Set(requesterRooms)).filter((roomId) =>
+        agentRoomSet.has(roomId),
+      ),
+    };
+  },
+);
 const revalidateOwnerExclusiveDisclosure = vi.fn(
   async (): Promise<Record<string, unknown>> => ({
     allowed: true,
@@ -23,6 +42,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return {
     ...actual,
+    buildCrossWorldConversationAccessContext,
     getVerifiedRelatedEntityIds,
     revalidateOwnerExclusiveDisclosure,
     recordOwnerExclusiveSuppression,
@@ -160,6 +180,10 @@ describe("recentConversationsProvider", () => {
     expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
       tableName: "messages",
       roomIds: [ROOM_ID, ALIAS_ROOM_ID],
+      accessContext: {
+        requesterEntityId: ENTITY_ID,
+        authorizedRoomIds: [ROOM_ID, ALIAS_ROOM_ID],
+      },
     });
     expect(getRoomsByIds).toHaveBeenCalledOnce();
     expect(getRoomsByIds).toHaveBeenCalledWith([ROOM_ID, ALIAS_ROOM_ID]);
@@ -195,6 +219,10 @@ describe("recentConversationsProvider", () => {
     expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
       tableName: "messages",
       roomIds: [ALIAS_ROOM_ID],
+      accessContext: {
+        requesterEntityId: ENTITY_ID,
+        authorizedRoomIds: [ROOM_ID, ALIAS_ROOM_ID],
+      },
     });
     expect(result.text).toContain("remote-only context");
   });
@@ -265,6 +293,7 @@ describe("recentConversationsProvider", () => {
       "destination_not_private",
     );
     expect(getVerifiedRelatedEntityIds).not.toHaveBeenCalled();
+    expect(buildCrossWorldConversationAccessContext).not.toHaveBeenCalled();
     expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
     expect(runtime.getRoomsForParticipant).not.toHaveBeenCalled();
     expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();

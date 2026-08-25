@@ -220,7 +220,7 @@ export function WhatsAppConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Phone className="h-6 w-6 text-green-600" />}
+            icon={<Phone className="size-6 text-green-600" />}
             iconClassName="bg-green-100"
             title={
               status?.businessPhone ||
@@ -284,7 +284,7 @@ export function WhatsAppConnection() {
                   {t("cloud.whatsapp.metaDashboard", {
                     defaultValue: "Meta App Dashboard",
                   })}
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="size-3" />
                 </a>
               </li>
               <li>
@@ -364,7 +364,7 @@ export function WhatsAppConnection() {
                   className="text-green-600 hover:underline inline-flex items-center gap-1"
                 >
                   developers.facebook.com
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="size-3" />
                 </a>{" "}
                 {t("cloud.whatsapp.instructCreateApp", {
                   defaultValue: "and create a Meta Business App",
@@ -530,14 +530,14 @@ export function WhatsAppConnection() {
           >
             {isConnecting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="size-4 animate-spin mr-2" />
                 {t("cloud.whatsapp.connecting", {
                   defaultValue: "Connecting...",
                 })}
               </>
             ) : (
               <>
-                <MessageSquare className="h-4 w-4 mr-2" />
+                <MessageSquare className="size-4 mr-2" />
                 {t("cloud.whatsapp.connectButton", {
                   defaultValue: "Connect WhatsApp",
                 })}

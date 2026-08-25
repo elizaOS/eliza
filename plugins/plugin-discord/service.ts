@@ -16,6 +16,7 @@ import {
 	type Character,
 	type Content,
 	createUniqueUuid,
+	ElizaError,
 	type EventPayload,
 	getConnectorAdminWhitelist,
 	type IAgentRuntime,
@@ -25,6 +26,8 @@ import {
 	MemoryType,
 	type MessageConnectorChatContext,
 	type MessageConnectorCreateThreadParams,
+	type MessageConnectorManageServerAuthorization,
+	type MessageConnectorManageServerDestination,
 	type MessageConnectorPostToThreadParams,
 	type MessageConnectorQueryContext,
 	type MessageConnectorTarget,
@@ -144,6 +147,19 @@ import {
 import { DmChannelRegistry } from "./dm-channel-registry";
 import { getDiscordSettings } from "./environment";
 import {
+	executeGuildManagement,
+	type GuildManagementReceipt,
+	type GuildManagementRequest,
+	type ManageableGuild,
+	resolveGuildManagementGates,
+	type TemplateStateStore,
+} from "./guild-management";
+import {
+	resolveDiscordManageServerDestination,
+	revalidateDiscordManageServerAuthorization,
+} from "./guild-management-authorization";
+import type { GuildTemplate } from "./guild-templates";
+import {
 	extractDiscordOwnerUserIds,
 	extractDiscordTeamAdminUserIds,
 	isAliasedDiscordEntityId,
@@ -198,6 +214,48 @@ import {
 } from "./voice-target-registry";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
+
+// Loose coercion for planner-supplied manage_server params: unknown shapes
+// collapse to undefined so the management module's own validation reports
+// missing fields instead of type errors leaking through.
+function stringOrUndefined(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function booleanOrUndefined(value: unknown): boolean | undefined {
+	if (typeof value === "boolean") return value;
+	if (typeof value === "string") {
+		const normalized = value.trim().toLowerCase();
+		if (["true", "yes", "1", "on"].includes(normalized)) return true;
+		if (["false", "no", "0", "off"].includes(normalized)) return false;
+	}
+	return undefined;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim()) {
+		const parsed = Number(value.trim());
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	return undefined;
+}
+
+function stringArrayOrUndefined(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) {
+		if (typeof value === "string" && value.trim()) {
+			return value
+				.split(",")
+				.map((entry) => entry.trim())
+				.filter(Boolean);
+		}
+		return undefined;
+	}
+	return value.filter(
+		(entry): entry is string =>
+			typeof entry === "string" && Boolean(entry.trim()),
+	);
+}
 type MessageConnectorRegistration = Parameters<
 	IAgentRuntime["registerMessageConnector"]
 >[0];
@@ -457,6 +515,22 @@ type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
 		runtime: IAgentRuntime,
 		params: ConnectorUserLookupParams,
 	) => Promise<unknown>;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
+	manageServerHandler?: (
+		runtime: IAgentRuntime,
+		params: {
+			target?: TargetInfo;
+			operation: string;
+			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
+			params?: Record<string, unknown>;
+		},
+	) => Promise<{ summary: string; data?: Record<string, unknown> }>;
 };
 
 const DISCORD_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -482,6 +556,7 @@ const DISCORD_CONNECTOR_CAPABILITIES = [
 	"webhook_identity",
 	"rich_components",
 	"rich_embed",
+	"manage_server",
 ];
 
 function normalizeDiscordConnectorQuery(value: string): string {
@@ -2029,6 +2104,7 @@ export class DiscordService extends Service implements IDiscordService {
 								name: dmRecipient.name,
 								source: "discord",
 								channelId: targetChannel.id,
+								serverId,
 								messageServerId: stringToUuid(serverId),
 								type: channelType,
 								worldId,
@@ -2192,6 +2268,7 @@ export class DiscordService extends Service implements IDiscordService {
 							name: clientUser.displayName || clientUser.username || undefined,
 							source: "discord",
 							channelId: targetChannel.id,
+							serverId,
 							messageServerId: stringToUuid(serverId),
 							type: channelType,
 							worldId,
@@ -3517,6 +3594,7 @@ export class DiscordService extends Service implements IDiscordService {
 			channelId: channel.id,
 			worldId,
 			serverId: guild?.id,
+			messageServerId: guild?.id ? stringToUuid(guild.id) : undefined,
 			metadata: {
 				accountId,
 				discordChannelId: channel.id,
@@ -3551,6 +3629,179 @@ export class DiscordService extends Service implements IDiscordService {
 			params,
 		);
 		this.removeAllowedChannel(channel.id, accountId);
+	}
+
+	public resolveManageConnectorServerDestination(
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string; accountId?: string },
+	): MessageConnectorManageServerDestination {
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
+		return resolveDiscordManageServerDestination(runtime, params, accountId);
+	}
+
+	/**
+	 * Structural guild management entry point for the message tool
+	 * (`MESSAGE op=manage_server source=discord`). Fail-closed: every write
+	 * requires the corresponding `actions.channels|roles|permissions|moderation`
+	 * gate to be explicitly enabled for this account, and role/member writes
+	 * validate Discord role hierarchy inside `executeGuildManagement`.
+	 */
+	public async manageConnectorServer(
+		runtime: IAgentRuntime,
+		params: {
+			target?: TargetInfo;
+			operation: string;
+			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
+			params?: Record<string, unknown>;
+			accountId?: string;
+		},
+	): Promise<{ summary: string; data?: Record<string, unknown> }> {
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
+		const client = this.getClient(accountId);
+		if (!client?.isReady()) {
+			throw new Error(`Discord client is not ready for account ${accountId}.`);
+		}
+		if (
+			params.serverId !== params.authorization.serverId ||
+			params.target?.serverId !== params.authorization.serverId
+		) {
+			throw new ElizaError(
+				"Discord guild-management parameters do not match the trusted destination authorization.",
+				{
+					code: "DISCORD_MANAGE_SERVER_PROVENANCE_MISMATCH",
+					context: { accountId },
+				},
+			);
+		}
+		await revalidateDiscordManageServerAuthorization(
+			runtime,
+			params.authorization,
+			accountId,
+			params.authorization.serverId,
+		);
+		const guild = await client.guilds.fetch(params.authorization.serverId);
+		await revalidateDiscordManageServerAuthorization(
+			runtime,
+			params.authorization,
+			accountId,
+			guild.id,
+		);
+		const gates = this.getGuildManagementGates(accountId);
+		const raw = params.params ?? {};
+		const request: GuildManagementRequest = {
+			operation: params.operation as GuildManagementRequest["operation"],
+			guildId: guild.id,
+			channelId: stringOrUndefined(raw.channelId ?? params.target?.channelId),
+			parentId: stringOrUndefined(raw.parentId),
+			roleId: stringOrUndefined(raw.roleId),
+			userId: stringOrUndefined(raw.userId),
+			name: stringOrUndefined(raw.name),
+			topic: stringOrUndefined(raw.topic),
+			channelType: stringOrUndefined(raw.channelType),
+			color: stringOrUndefined(raw.color),
+			hoist: booleanOrUndefined(raw.hoist),
+			mentionable: booleanOrUndefined(raw.mentionable),
+			permissions: stringArrayOrUndefined(raw.permissions),
+			allow: stringArrayOrUndefined(raw.allow),
+			deny: stringArrayOrUndefined(raw.deny),
+			overwriteId: stringOrUndefined(raw.overwriteId),
+			reason: stringOrUndefined(raw.reason),
+			durationMinutes: numberOrUndefined(raw.durationMinutes),
+			deleteMessageSeconds: numberOrUndefined(raw.deleteMessageSeconds),
+			maxAgeSeconds: numberOrUndefined(raw.maxAgeSeconds),
+			maxUses: numberOrUndefined(raw.maxUses),
+			unique: booleanOrUndefined(raw.unique),
+			template: stringOrUndefined(raw.template),
+			templateSpec:
+				raw.templateSpec && typeof raw.templateSpec === "object"
+					? (raw.templateSpec as GuildTemplate)
+					: undefined,
+			variables:
+				raw.variables && typeof raw.variables === "object"
+					? (raw.variables as Record<string, string>)
+					: undefined,
+			dryRun: booleanOrUndefined(raw.dryRun),
+		};
+		const stateStore: TemplateStateStore = {
+			get: async (guildId, templateId) =>
+				(await runtime.getCache<Record<string, string>>(
+					`discord:guild-template:${accountId}:${guildId}:${templateId}`,
+				)) ?? undefined,
+			set: async (guildId, templateId, state) => {
+				await runtime.setCache(
+					`discord:guild-template:${accountId}:${guildId}:${templateId}`,
+					state,
+				);
+			},
+		};
+		const receipt: GuildManagementReceipt = await executeGuildManagement(
+			{
+				guild: guild as unknown as ManageableGuild,
+				gates,
+				stateStore,
+				templateRegistry: this.getGuildTemplateRegistry(accountId),
+				agentName: this.runtime.character?.name,
+				reasonPrefix: `eliza:${this.runtime.character?.name ?? "agent"} guild management`,
+			},
+			request,
+		);
+		return {
+			summary: receipt.summary,
+			data: receipt as unknown as Record<string, unknown>,
+		};
+	}
+
+	/**
+	 * Structural-management gates for one account. Reads
+	 * `settings.discord.actions` with per-account overrides and env fallbacks
+	 * (`DISCORD_ACTIONS_CHANNELS|ROLES|PERMISSIONS|MODERATION`). Absent means
+	 * OFF — structural writes are opt-in.
+	 */
+	private getGuildManagementGates(accountId: string) {
+		const settings = this.runtime.character?.settings?.discord as
+			| {
+					actions?: Record<string, unknown>;
+					accounts?: Record<string, { actions?: Record<string, unknown> }>;
+			  }
+			| undefined;
+		const merged: Record<string, unknown> = {
+			...(settings?.actions ?? {}),
+			...(settings?.accounts?.[accountId]?.actions ?? {}),
+		};
+		for (const [envKey, gateKey] of [
+			["DISCORD_ACTIONS_CHANNELS", "channels"],
+			["DISCORD_ACTIONS_ROLES", "roles"],
+			["DISCORD_ACTIONS_PERMISSIONS", "permissions"],
+			["DISCORD_ACTIONS_MODERATION", "moderation"],
+		] as const) {
+			if (merged[gateKey] === undefined) {
+				const rawSetting = this.runtime.getSetting(envKey);
+				if (rawSetting !== undefined && rawSetting !== null) {
+					merged[gateKey] = parseBooleanFromText(String(rawSetting));
+				}
+			}
+		}
+		return resolveGuildManagementGates(merged);
+	}
+
+	/** Deployment-supplied template registry (merged over the built-ins). */
+	private getGuildTemplateRegistry(
+		accountId: string,
+	): Record<string, GuildTemplate> | undefined {
+		const settings = this.runtime.character?.settings?.discord as
+			| {
+					guildTemplates?: Record<string, GuildTemplate>;
+					accounts?: Record<
+						string,
+						{ guildTemplates?: Record<string, GuildTemplate> }
+					>;
+			  }
+			| undefined;
+		const base = settings?.guildTemplates;
+		const account = settings?.accounts?.[accountId]?.guildTemplates;
+		if (!base && !account) return undefined;
+		return { ...(base ?? {}), ...(account ?? {}) };
 	}
 
 	public async getConnectorUser(
@@ -3808,7 +4059,7 @@ export class DiscordService extends Service implements IDiscordService {
 							: {}),
 						label,
 						description:
-							"Discord connector for sending, reading, searching, reacting to, editing, deleting, pinning, joining, and leaving messages/channels.",
+							"Discord connector for sending, reading, searching, reacting to, editing, deleting, pinning, joining, and leaving messages/channels, plus gated structural server management (channels, categories, roles, permissions, invites, moderation, guild templates).",
 						capabilities: [...DISCORD_CONNECTOR_CAPABILITIES],
 						supportedTargetKinds: ["channel", "thread", "user"],
 						contexts: [...DISCORD_CONNECTOR_CONTEXTS],
@@ -3908,6 +4159,21 @@ export class DiscordService extends Service implements IDiscordService {
 								runtime,
 								scopedFetchParams(params),
 							),
+						resolveManageServerDestination: (runtime, params) =>
+							serviceInstance.resolveManageConnectorServerDestination(runtime, {
+								...params,
+								accountId:
+									accountIdFromRecord(params.target) ??
+									accountId ??
+									defaultAccountId,
+								target: params.target ? scopedTarget(params.target) : undefined,
+							}),
+						manageServerHandler: (runtime, params) =>
+							serviceInstance.manageConnectorServer(runtime, {
+								...params,
+								accountId: accountIdFromRecord(params.target) ?? accountId,
+								target: params.target ? scopedTarget(params.target) : undefined,
+							}),
 					};
 					runtime.registerMessageConnector(registration);
 					runtime.logger.info(

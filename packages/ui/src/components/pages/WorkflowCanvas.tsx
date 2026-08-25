@@ -33,12 +33,12 @@ import {
 
 function StepIcon({ kind }: { kind: WorkflowStepManifest["kind"] }) {
   if (kind === "branch" || kind === "parallel")
-    return <GitBranch className="h-4 w-4" />;
-  if (kind === "approval") return <Check className="h-4 w-4" />;
-  if (kind === "timer") return <Clock3 className="h-4 w-4" />;
-  if (kind === "ui") return <LayoutDashboard className="h-4 w-4" />;
-  if (kind === "workflow") return <WorkflowIcon className="h-4 w-4" />;
-  return <Bot className="h-4 w-4" />;
+    return <GitBranch className="size-4" />;
+  if (kind === "approval") return <Check className="size-4" />;
+  if (kind === "timer") return <Clock3 className="size-4" />;
+  if (kind === "ui") return <LayoutDashboard className="size-4" />;
+  if (kind === "workflow") return <WorkflowIcon className="size-4" />;
+  return <Bot className="size-4" />;
 }
 
 function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
@@ -66,7 +66,7 @@ function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
         isConnectable={false}
         className="!border-0 !bg-transparent !opacity-0"
       />
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
         <StepIcon kind={step.kind} />
       </span>
       <span className="min-w-0 flex-1 truncate text-sm font-semibold">
@@ -74,7 +74,7 @@ function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
       </span>
       {state !== "idle" ? (
         <span
-          className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+          className={`size-2.5 shrink-0 rounded-full ${
             state === "failed"
               ? "bg-destructive"
               : state === "finished"
@@ -153,7 +153,7 @@ export function WorkflowCanvas({
           onClick={onAddStep}
           aria-label="Add first step with Eliza"
         >
-          <Plus className="h-8 w-8" />
+          <Plus className="size-8" />
         </button>
       )}
       <Button
@@ -164,7 +164,7 @@ export function WorkflowCanvas({
         aria-label="Add step with Eliza"
         title="Add step"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="size-4" />
       </Button>
       {selected ? (
         <Button
@@ -175,7 +175,7 @@ export function WorkflowCanvas({
             .filter(Boolean)
             .join(" · ")}
         >
-          <MessageSquareText className="h-3.5 w-3.5" />
+          <MessageSquareText className="size-3.5" />
           <span className="truncate text-xs">{selected.label}</span>
         </Button>
       ) : null}

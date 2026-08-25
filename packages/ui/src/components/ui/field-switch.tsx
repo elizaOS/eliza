@@ -51,7 +51,7 @@ export const FieldSwitch = React.forwardRef<
       >
         <span
           className={cn(
-            "pointer-events-none block h-5 w-5 rounded-sm bg-white transition-transform",
+            "pointer-events-none block size-5 rounded-sm bg-white transition-transform",
             checked ? "translate-x-5" : "translate-x-0",
           )}
         />

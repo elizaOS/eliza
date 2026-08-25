@@ -25,7 +25,7 @@ export function RedactedBadge({
         className,
       )}
     >
-      <EyeOff className="h-3 w-3" aria-hidden />
+      <EyeOff className="size-3" aria-hidden />
       Redacted
     </span>
   );

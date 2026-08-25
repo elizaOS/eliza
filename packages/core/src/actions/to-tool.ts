@@ -39,7 +39,7 @@ export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 
 /** Shared should-respond contract for static and registry-composed schemas. */
 export const SHOULD_RESPOND_SCHEMA_DESCRIPTION =
-	'RESPOND=reply/run actions — a question, a request, an active conversation, or ambient chatter with real substance you can usefully add to. IGNORE=silent — pure content-free acknowledgements/reactions ("lol", "ok", "nice", "same", "haha", "brb"), bot/webhook/status feeds, or people clearly talking to each other. STOP=explicit user stop.';
+	"RESPOND=reply/run actions when the current message addresses you, assigns you work, clearly continues a question you asked, or needs a concrete correction or action specifically from you. A question broadcast to a group is not by itself a reason to interrupt; apply any ambient-turn policy in the prompt. IGNORE=silent for acknowledgements/reactions, side chatter, feeds, or messages directed to other people. STOP=explicit user stop.";
 
 /**
  * Canonical Stage-1 HANDLE_RESPONSE parameters. This mirrors the builtin
@@ -288,10 +288,7 @@ export type PlannerToolActionShape = Pick<
 
 function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	assertNativeToolName(action.name);
-	const baseDescription =
-		action.description ??
-		action.descriptionCompressed ??
-		action.compressedDescription;
+	const baseDescription = action.description;
 	const routingHint = action.routingHint?.trim();
 	const description = routingHint
 		? `${routingHint}\n${baseDescription}`.trim()
@@ -589,10 +586,7 @@ export function actionToTool(action: Action): PlannerToolDefinition {
 		type: "function",
 		function: {
 			name: action.name,
-			description:
-				action.description ??
-				action.descriptionCompressed ??
-				action.compressedDescription,
+			description: action.description,
 			parameters: actionToJsonSchema(action),
 			strict: action.toolSchemaStrict ?? true,
 		},

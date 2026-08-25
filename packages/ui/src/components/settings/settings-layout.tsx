@@ -186,7 +186,7 @@ function SettingsRowBody({
       {control ? <span className="shrink-0">{control}</span> : null}
       {trailing ??
         (chevron ? (
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+          <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
         ) : null)}
     </div>
   );

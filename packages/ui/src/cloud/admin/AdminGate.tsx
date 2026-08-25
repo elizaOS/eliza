@@ -93,7 +93,7 @@ export function AdminGate({ children }: AdminGateProps): React.JSX.Element {
   if (isLoading) {
     return (
       <GateState>
-        <Loader2 className="h-8 w-8 animate-spin text-accent" />
+        <Loader2 className="size-8 animate-spin text-accent" />
       </GateState>
     );
   }
@@ -101,7 +101,7 @@ export function AdminGate({ children }: AdminGateProps): React.JSX.Element {
   if (!isAuthenticated) {
     return (
       <GateState>
-        <Shield className="h-16 w-16 text-muted-foreground" />
+        <Shield className="size-16 text-muted-foreground" />
         <h1 className="text-2xl font-bold">
           {t("cloud.admin.gate.signInTitle", {
             defaultValue: "Sign in required",
@@ -125,7 +125,7 @@ export function AdminGate({ children }: AdminGateProps): React.JSX.Element {
   if (isError) {
     return (
       <GateState>
-        <Shield className="h-16 w-16 text-muted-foreground" />
+        <Shield className="size-16 text-muted-foreground" />
         <h1 className="text-2xl font-bold">
           {t("cloud.admin.gate.unavailableTitle", {
             defaultValue: "Admin status unavailable",
@@ -143,7 +143,7 @@ export function AdminGate({ children }: AdminGateProps): React.JSX.Element {
   if (!isAdmin) {
     return (
       <GateState>
-        <Ban className="h-16 w-16 text-danger" />
+        <Ban className="size-16 text-danger" />
         <h1 className="text-2xl font-bold">
           {t("cloud.admin.gate.deniedTitle", { defaultValue: "Access denied" })}
         </h1>

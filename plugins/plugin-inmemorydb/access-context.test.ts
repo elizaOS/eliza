@@ -1,9 +1,6 @@
 /**
- * Pins the guarantee that the optional `accessContext` parameter on
- * `getMemories`/`getMemoriesByRoomIds`/`searchMemories` is accepted by the
- * types but does not (yet) filter results — permission-aware retrieval reads
- * it in a later stage. Runs against a real in-memory `InMemoryDatabaseAdapter`
- * + `MemoryStorage`, no mocks.
+ * Exercises access-context scope, world, and authorized-room enforcement
+ * against the real ephemeral adapter, including pagination and vector ranking.
  */
 import { randomUUID } from "node:crypto";
 import type { AccessContext, Memory, UUID } from "@elizaos/core";
@@ -11,24 +8,31 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
 
-describe("accessContext is a no-op on memory retrieval (PR 1)", () => {
+describe("access-context memory enforcement", () => {
   const agentId = randomUUID() as UUID;
-  const ownerEntity = randomUUID() as UUID;
-  const userEntity = randomUUID() as UUID;
-  const roomA = randomUUID() as UUID;
-  const roomB = randomUUID() as UUID;
-  const worldId = randomUUID() as UUID;
+  const requester = randomUUID() as UUID;
+  const stranger = randomUUID() as UUID;
+  const allowedRoom = randomUUID() as UUID;
+  const otherRoom = randomUUID() as UUID;
+  const otherWorldRoom = randomUUID() as UUID;
+  const allowedWorld = randomUUID() as UUID;
+  const otherWorld = randomUUID() as UUID;
 
   let adapter: InMemoryDatabaseAdapter;
 
-  const vector = (axis: number): number[] => {
-    const embedding = Array.from({ length: 384 }, () => 0);
-    embedding[axis] = 1;
-    return embedding;
-  };
+  const vector = (first: number, second: number): number[] => [
+    first,
+    second,
+    ...Array.from({ length: 382 }, () => 0),
+  ];
 
-  const sortById = (memories: Memory[]) =>
-    [...memories].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const context: AccessContext = {
+    requesterEntityId: requester,
+    worldId: allowedWorld,
+    authorizedRoomIds: [allowedRoom],
+    role: "USER",
+    isOwner: false,
+  };
 
   beforeEach(async () => {
     const storage = new MemoryStorage();
@@ -38,80 +42,112 @@ describe("accessContext is a no-op on memory retrieval (PR 1)", () => {
 
     const seed: Memory[] = [
       {
-        entityId: ownerEntity,
-        roomId: roomA,
-        worldId,
-        content: { text: "owner in A" },
-        embedding: vector(0),
+        id: randomUUID() as UUID,
+        entityId: requester,
+        roomId: allowedRoom,
+        worldId: allowedWorld,
+        createdAt: 100,
+        content: { text: "needle allowed global" },
+        embedding: vector(0.8, 0.2),
+        metadata: { type: "custom", scope: "global" },
       },
       {
-        entityId: userEntity,
-        roomId: roomA,
-        worldId,
-        content: { text: "user in A" },
-        embedding: vector(1),
+        id: randomUUID() as UUID,
+        entityId: requester,
+        roomId: allowedRoom,
+        worldId: allowedWorld,
+        createdAt: 200,
+        content: { text: "needle allowed private" },
+        embedding: vector(0.9, 0.1),
+        metadata: { type: "custom", scope: "private" },
       },
       {
-        entityId: userEntity,
-        roomId: roomB,
-        worldId,
-        content: { text: "user in B" },
-        embedding: vector(2),
+        id: randomUUID() as UUID,
+        entityId: stranger,
+        roomId: allowedRoom,
+        worldId: allowedWorld,
+        createdAt: 500,
+        content: { text: "needle denied private" },
+        embedding: vector(1, 0),
+        metadata: { type: "custom", scope: "private" },
+      },
+      {
+        id: randomUUID() as UUID,
+        entityId: requester,
+        roomId: otherRoom,
+        worldId: allowedWorld,
+        createdAt: 400,
+        content: { text: "needle denied room" },
+        embedding: vector(1, 0),
+        metadata: { type: "custom", scope: "global" },
+      },
+      {
+        id: randomUUID() as UUID,
+        entityId: requester,
+        roomId: otherWorldRoom,
+        worldId: otherWorld,
+        createdAt: 300,
+        content: { text: "needle denied world" },
+        embedding: vector(1, 0),
+        metadata: { type: "custom", scope: "global" },
       },
     ];
-    await adapter.createMemories(seed.map((memory) => ({ memory, tableName: "memories" })));
+    await adapter.createMemories(seed.map((memory) => ({ memory, tableName: "messages" })));
   });
 
-  const requesterCtx: AccessContext = {
-    requesterEntityId: userEntity,
-    worldId,
-    role: "USER",
-    isOwner: false,
-  };
-
-  it("getMemories returns identical rows with and without accessContext", async () => {
-    const baseline = await adapter.getMemories({ tableName: "memories" });
-    const scoped = await adapter.getMemories({
-      tableName: "memories",
-      accessContext: requesterCtx,
+  it("intersects scope, world, and authorized rooms before list pagination", async () => {
+    const result = await adapter.getMemories({
+      tableName: "messages",
+      accessContext: context,
+      limit: 1,
     });
 
-    expect(baseline).toHaveLength(3);
-    expect(sortById(scoped)).toEqual(sortById(baseline));
+    expect(result.map((memory) => memory.content.text)).toEqual(["needle allowed private"]);
   });
 
-  it("getMemoriesByRoomIds returns identical rows with and without accessContext", async () => {
-    const baseline = await adapter.getMemoriesByRoomIds({
-      tableName: "memories",
-      roomIds: [roomA],
-    });
-    const scoped = await adapter.getMemoriesByRoomIds({
-      tableName: "memories",
-      roomIds: [roomA],
-      accessContext: requesterCtx,
+  it("does not trust caller-supplied room ids as authorization", async () => {
+    const result = await adapter.getMemoriesByRoomIds({
+      tableName: "messages",
+      roomIds: [allowedRoom, otherRoom, otherWorldRoom],
+      accessContext: context,
     });
 
-    expect(baseline).toHaveLength(2);
-    expect(sortById(scoped)).toEqual(sortById(baseline));
+    expect(result.map((memory) => memory.content.text)).toEqual([
+      "needle allowed private",
+      "needle allowed global",
+    ]);
   });
 
-  it("searchMemories returns identical rows with and without accessContext", async () => {
-    const query = vector(0);
-    const baseline = await adapter.searchMemories({
-      tableName: "memories",
-      embedding: query,
+  it("filters before full-text ranking and pagination", async () => {
+    const result = await adapter.searchMessages({
+      tableName: "messages",
+      roomIds: [allowedRoom, otherRoom, otherWorldRoom],
+      query: "needle",
+      accessContext: context,
+      limit: 1,
+    });
+
+    expect(result[0]?.memory.content.text).toMatch(/^needle allowed /);
+  });
+
+  it("finds the top authorized vector when closer unauthorized rows exist", async () => {
+    const result = await adapter.searchMemories({
+      tableName: "messages",
+      embedding: vector(1, 0),
       match_threshold: 0,
-      limit: 3,
-    });
-    const scoped = await adapter.searchMemories({
-      tableName: "memories",
-      embedding: query,
-      match_threshold: 0,
-      limit: 3,
-      accessContext: requesterCtx,
+      accessContext: context,
+      limit: 1,
     });
 
-    expect(baseline).toHaveLength(3);
-    expect(sortById(scoped)).toEqual(sortById(baseline));
+    expect(result.map((memory) => memory.content.text)).toEqual(["needle allowed private"]);
+  });
+
+  it("treats an explicit empty room authorization as deny-all", async () => {
+    const result = await adapter.getMemories({
+      tableName: "messages",
+      accessContext: { ...context, authorizedRoomIds: [] },
+    });
+
+    expect(result).toEqual([]);
   });
 });

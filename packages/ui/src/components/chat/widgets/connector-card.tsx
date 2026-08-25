@@ -362,8 +362,8 @@ export const ConnectorCardWidget = memo(function ConnectorCardWidget({
       className="my-2 rounded-sm border border-border/50 bg-card/40 px-3 py-2.5 text-sm"
     >
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-bg/60">
-          <ConnectorBrandIcon plugin={plugin} className="h-5 w-5" />
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-bg/60">
+          <ConnectorBrandIcon plugin={plugin} className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium">{plugin.name}</div>
@@ -454,7 +454,7 @@ export const ConnectorCardWidget = memo(function ConnectorCardWidget({
                 })}
           </Button>
           <div className="flex items-center gap-1.5 text-xs text-muted">
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
             {t("connectorcard.StorageNote", {
               defaultValue:
                 "Sent directly to the agent — never posted to chat.",

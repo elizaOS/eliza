@@ -11,6 +11,7 @@ import {
   AgentEventService,
   type AgentNotification,
   AgentRuntime,
+  assertModelOutputComplete,
   basicProviders,
   basicServices,
   ChannelType,
@@ -289,6 +290,7 @@ function createRuntime(options: {
       settings: {
         ELIZA_CANONICAL_LLM_TEXT_ENABLED: true,
         ELIZA_CANONICAL_EMBEDDINGS_ENABLED: false,
+        ...(options.mediaPlugin ? { ELIZA_VIDEO_GENERATION_ENABLED: true } : {}),
       },
     },
     adapter: options.adapter,
@@ -310,6 +312,11 @@ function createRuntime(options: {
     enableRelationships: false,
     enableTrajectories: false,
   });
+}
+
+/** Loads only the streaming context without constructing an AgentRuntime. */
+export async function prewarmSharedElizaStreamingContext(): Promise<void> {
+  await ensureEdgeStreamingContext();
 }
 
 /** Pays one-time Workerd runtime initialization before the first live user turn. */
@@ -528,6 +535,7 @@ async function executeSharedElizaRuntimeTurn(
   let runtimeReporter: IAgentRuntime | undefined;
   const emitTiming = (outcome: SharedRuntimeTimingOutcome): SharedRuntimeTimingReceipt => {
     const receipt = timing.receipt(outcome);
+    logger.info("[shared-eliza-runtime] turn latency", receipt);
     try {
       input.onRuntimeTiming?.(receipt);
     } catch (error) {
@@ -647,9 +655,17 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         modelCall.finish();
         throw error;
       }
-      const text = Promise.resolve(result.text);
+      const rawText = Promise.resolve(result.text);
       const toolCalls = Promise.resolve(result.toolCalls);
-      const finishReason = Promise.resolve(result.finishReason);
+      const finishReason = Promise.resolve(result.finishReason).then((reason) => {
+        assertModelOutputComplete({
+          finishReason: reason,
+          provider: "cerebras",
+          model: input.model,
+        });
+        return reason;
+      });
+      const text = Promise.all([rawText, finishReason]).then(([completeText]) => completeText);
       const totalUsage = Promise.resolve(result.totalUsage);
       // error-policy:J5 aborting the provider stream rejects every pending AI
       // SDK result promise. AgentRuntime observes the textStream rejection as
@@ -675,12 +691,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
               yield chunk;
             }
           }
+          await finishReason;
           return;
         }
         for await (const chunk of result.textStream) {
           if (chunk) timing.markProviderFirstText();
           yield chunk;
         }
+        await finishReason;
       })();
       const streamUsage = totalUsage
         .then((value) => {
@@ -716,6 +734,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     } finally {
       modelCall.finish();
     }
+    assertModelOutputComplete({
+      finishReason: result.finishReason,
+      provider: "cerebras",
+      model: input.model,
+    });
     if (result.text.trim()) timing.markProviderFirstText();
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {
@@ -787,7 +810,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           ),
         }
       : {}),
-    transport: sharedCapabilityTransportForSource(input.execution.channel.source),
+    transport: sharedCapabilityTransportForSource(
+      input.execution.channel.source,
+      input.execution.channel.type,
+    ),
     mediaPlugin,
     reminderPlugin,
     todoPlugin,

@@ -75,7 +75,7 @@ function OneTimeKeyBanner({
       data-testid="one-time-key"
     >
       <div className="flex items-center gap-2 text-xs font-medium">
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
         <span>
           {t("consumerKeys.oneTimeWarning", {
             defaultValue:
@@ -99,20 +99,20 @@ function OneTimeKeyBanner({
           }}
         >
           {copied ? (
-            <Check className="h-3.5 w-3.5" aria-hidden />
+            <Check className="size-3.5" aria-hidden />
           ) : (
-            <Copy className="h-3.5 w-3.5" aria-hidden />
+            <Copy className="size-3.5" aria-hidden />
           )}
           {copied
             ? t("consumerKeys.copied", { defaultValue: "Copied" })
             : t("consumerKeys.copy", { defaultValue: "Copy" })}
         </Button>
         <Button size="sm" variant="ghost" onClick={onDismiss}>
-          <X className="h-3.5 w-3.5" aria-hidden />
+          <X className="size-3.5" aria-hidden />
           {t("consumerKeys.dismiss", { defaultValue: "Dismiss" })}
         </Button>
       </div>
-      <p className="text-[11px] text-muted">
+      <p className="text-xs text-muted">
         {oneTime.kind === "rotated"
           ? t("consumerKeys.rotatedFor", {
               defaultValue:
@@ -248,7 +248,7 @@ export function ConsumerKeyPanelBody({
         data-testid="consumer-keys-error"
       >
         <div className="flex items-center gap-2 text-xs">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
           <span>
             {t("consumerKeys.loadFailed", {
               defaultValue: "Failed to load consumer keys: {{error}}",
@@ -278,14 +278,14 @@ export function ConsumerKeyPanelBody({
           className="flex items-center gap-2 rounded-sm border border-destructive/50 bg-destructive/10 px-2 py-1.5 text-xs"
           data-testid="consumer-keys-action-error"
         >
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
           <span>{actionError}</span>
         </div>
       ) : null}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs font-medium">
-          <KeyRound className="h-3.5 w-3.5" aria-hidden />
+          <KeyRound className="size-3.5" aria-hidden />
           <span>
             {t("consumerKeys.title", { defaultValue: "Consumer keys" })}
           </span>
@@ -296,7 +296,7 @@ export function ConsumerKeyPanelBody({
           disabled={busy.has("create")}
           onClick={() => setCreateOpen((open) => !open)}
         >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
+          <Plus className="size-3.5" aria-hidden />
           {t("consumerKeys.create", { defaultValue: "Create key" })}
         </Button>
       </div>
@@ -306,21 +306,21 @@ export function ConsumerKeyPanelBody({
           className="flex flex-wrap items-end gap-2 rounded-lg border border-border/50 bg-card/40 p-3"
           data-testid="consumer-keys-create-form"
         >
-          <label className="flex flex-col gap-1 text-[11px] text-muted">
+          <label className="flex flex-col gap-1 text-xs-tight text-muted">
             {t("consumerKeys.labelField", { defaultValue: "Label" })}
             <input
-              className="h-8 rounded-sm border border-border/60 bg-card px-2 text-xs"
+              className="h-8 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
               value={createLabel}
               onChange={(event) => setCreateLabel(event.target.value)}
               placeholder="protocol-proxy"
             />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] text-muted">
+          <label className="flex flex-col gap-1 text-xs-tight text-muted">
             {t("consumerKeys.quotaField", {
               defaultValue: "Daily token quota (blank = unlimited)",
             })}
             <input
-              className="h-8 w-44 rounded-sm border border-border/60 bg-card px-2 text-xs"
+              className="h-8 w-44 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
               value={createQuota}
               onChange={(event) => setCreateQuota(event.target.value)}
               inputMode="numeric"
@@ -361,12 +361,12 @@ export function ConsumerKeyPanelBody({
               >
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="text-xs font-medium">{entry.label}</span>
-                  <code className="font-mono text-[11px] text-muted">
+                  <code className="font-mono text-xs-tight text-muted">
                     {entry.keyPrefix}…
                   </code>
                   <span
                     className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                      "rounded-full px-2 py-0.5 text-2xs font-medium",
                       entry.enabled
                         ? "bg-success/15 text-success"
                         : "bg-muted/20 text-muted",
@@ -378,7 +378,7 @@ export function ConsumerKeyPanelBody({
                           defaultValue: "Disabled",
                         })}
                   </span>
-                  <span className="text-[11px] text-muted">
+                  <span className="text-xs-tight text-muted">
                     {entry.dailyTokenQuota === null
                       ? t("consumerKeys.quotaUnlimited", {
                           defaultValue: "No quota",
@@ -390,7 +390,7 @@ export function ConsumerKeyPanelBody({
                         })}
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs-tight text-muted">
                   <span>
                     {t("consumerKeys.created", {
                       defaultValue: "Created {{when}}",
@@ -407,7 +407,7 @@ export function ConsumerKeyPanelBody({
                 <div className="flex flex-wrap items-center gap-2">
                   {rowConfirm ? (
                     <>
-                      <span className="text-[11px]">
+                      <span className="text-xs-tight">
                         {rowConfirm.action === "rotate"
                           ? t("consumerKeys.confirmRotate", {
                               defaultValue:
@@ -465,7 +465,7 @@ export function ConsumerKeyPanelBody({
                           setConfirm({ id: entry.id, action: "rotate" })
                         }
                       >
-                        <RotateCw className="h-3.5 w-3.5" aria-hidden />
+                        <RotateCw className="size-3.5" aria-hidden />
                         {t("consumerKeys.rotate", { defaultValue: "Rotate" })}
                       </Button>
                       {entry.enabled ? (
@@ -502,7 +502,7 @@ export function ConsumerKeyPanelBody({
                       {editing ? (
                         <span className="flex items-center gap-1">
                           <input
-                            className="h-7 w-32 rounded-sm border border-border/60 bg-card px-2 text-xs"
+                            className="h-7 w-32 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
                             value={editing.value}
                             inputMode="numeric"
                             aria-label={t("consumerKeys.quotaField", {

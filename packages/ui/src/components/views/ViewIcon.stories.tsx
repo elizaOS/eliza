@@ -15,7 +15,7 @@ const meta = {
     label: { control: "text" },
     className: { control: "text" },
   },
-  args: { icon: "MessageSquare", label: "Messages", className: "h-5 w-5" },
+  args: { icon: "MessageSquare", label: "Messages", className: "size-5" },
 } satisfies Meta<typeof ViewIcon>;
 
 export default meta;
@@ -39,5 +39,5 @@ export const LetterFallback: Story = {
 
 /** Larger size via className override. */
 export const LargeIcon: Story = {
-  args: { icon: "Bot", label: "Agent", className: "h-10 w-10" },
+  args: { icon: "Bot", label: "Agent", className: "size-10" },
 };

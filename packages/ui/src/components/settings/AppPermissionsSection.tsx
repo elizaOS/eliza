@@ -190,9 +190,9 @@ export function AppPermissionsSection() {
       disabled={listStatus.state === "loading"}
     >
       {listStatus.state === "loading" ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
       ) : (
-        <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+        <RefreshCw className="size-3.5" aria-hidden="true" />
       )}
       Refresh
     </SettingsActionButton>

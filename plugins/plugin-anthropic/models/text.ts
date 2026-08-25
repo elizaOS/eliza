@@ -26,6 +26,7 @@ import type {
   TextStreamResult,
 } from "@elizaos/core";
 import {
+  assertModelOutputComplete,
   buildCanonicalSystemPrompt,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
@@ -1630,6 +1631,16 @@ async function generateTextWithModel(
         );
         return normalizedUsage;
       });
+      const finishReasonPromise = Promise.resolve(streamResult.finishReason).then(
+        (finishReason) => {
+          assertModelOutputComplete({
+            finishReason,
+            provider: "anthropic",
+            model: modelName,
+          });
+          return finishReason;
+        }
+      );
       // error-policy:J5 unhandled-rejection suppression — usage emission is
       // telemetry; the underlying stream failure is observed in
       // `textStreamWithUsage` (finishReason await rethrows), never here.
@@ -1646,7 +1657,7 @@ async function generateTextWithModel(
           // `finishReason` here so an errored/empty stream re-throws the real
           // cause (matching the non-stream generateText branch) rather than
           // silently returning ''. The happy path resolves with a value.
-          await streamResult.finishReason;
+          await finishReasonPromise;
           completed = true;
         } catch (error) {
           // error-policy:J2 context-adding rethrow — formatModelError wraps the
@@ -1675,6 +1686,7 @@ async function generateTextWithModel(
         textStream: textStreamWithUsage(),
         text: handledPromise(
           Promise.resolve(streamResult.text).then(async (text) => {
+            await finishReasonPromise;
             await usagePromise.catch(ignoreUsageError);
             return text;
           })
@@ -1683,9 +1695,7 @@ async function generateTextWithModel(
           ? { toolCalls: handledPromise(Promise.resolve(streamResult.toolCalls)) }
           : {}),
         usage: handledPromise(usagePromise),
-        finishReason: handledPromise(
-          Promise.resolve(streamResult.finishReason) as Promise<string | undefined>
-        ),
+        finishReason: handledPromise(finishReasonPromise),
       };
     } catch (error) {
       // error-policy:J2 context-adding rethrow — formatModelError wraps the
@@ -1696,6 +1706,12 @@ async function generateTextWithModel(
 
   try {
     const response = await executeWithRetry(operationName, () => generateText(generateParams));
+
+    assertModelOutputComplete({
+      finishReason: response.finishReason,
+      provider: "anthropic",
+      model: modelName,
+    });
 
     if (response.usage) {
       // Normalize BEFORE emitting so MODEL_USED (and the structured cache

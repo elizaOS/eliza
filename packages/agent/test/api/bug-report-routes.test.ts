@@ -368,6 +368,134 @@ describe.sequential("bug report repository routing", () => {
     expect(payload.startup.status).toBe(500);
   });
 
+  it("redacts credentials from every user-controlled remote-intake text field", async () => {
+    vi.stubEnv(
+      "ELIZA_BUG_REPORT_API_URL",
+      "https://intake.example.test/reports",
+    );
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ accepted: true, id: "report-secrets" }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fields = [
+      "description",
+      "steps",
+      "expected",
+      "actual",
+      "environment",
+      "node",
+      "provider",
+      "app",
+      "release",
+      "logs",
+      "reason",
+      "phase",
+      "message",
+      "detail",
+      "path",
+    ] as const;
+    const secrets = Object.fromEntries(
+      fields.map((field) => [field, `${field}-credential-${"x".repeat(24)}`]),
+    ) as Record<(typeof fields)[number], string>;
+    const credential = (field: (typeof fields)[number]) =>
+      `${field}-marker PASSWORD=${secrets[field]}`;
+
+    const ctx = createContext({
+      description: credential("description"),
+      stepsToReproduce: credential("steps"),
+      expectedBehavior: credential("expected"),
+      actualBehavior: credential("actual"),
+      environment: credential("environment"),
+      nodeVersion: credential("node"),
+      modelProvider: credential("provider"),
+      appVersion: credential("app"),
+      releaseChannel: credential("release"),
+      logs: credential("logs"),
+      category: "startup-failure",
+      startup: {
+        reason: credential("reason"),
+        phase: credential("phase"),
+        message: credential("message"),
+        detail: credential("detail"),
+        status: 500,
+        path: credential("path"),
+      },
+    });
+
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    const [, init] = fetchMock.mock.calls[0];
+    const serializedPayload = String(init.body);
+
+    for (const field of fields) {
+      expect(serializedPayload).toContain(`${field}-marker`);
+      expect(serializedPayload).not.toContain(secrets[field]);
+    }
+  });
+
+  it("redacts credentials from every user-controlled GitHub issue text field", async () => {
+    vi.stubEnv("GITHUB_TOKEN", "test-token-not-a-credential");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            html_url: "https://github.com/elizaOS/eliza/issues/789",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fields = [
+      "description",
+      "steps",
+      "expected",
+      "actual",
+      "environment",
+      "node",
+      "provider",
+      "logs",
+      "reason",
+      "phase",
+      "path",
+    ] as const;
+    const secrets = Object.fromEntries(
+      fields.map((field) => [field, `${field}-credential-${"y".repeat(24)}`]),
+    ) as Record<(typeof fields)[number], string>;
+    const credential = (field: (typeof fields)[number]) =>
+      `${field}-marker PASSWORD=${secrets[field]}`;
+
+    const ctx = createContext({
+      description: credential("description"),
+      stepsToReproduce: credential("steps"),
+      expectedBehavior: credential("expected"),
+      actualBehavior: credential("actual"),
+      environment: credential("environment"),
+      nodeVersion: credential("node"),
+      modelProvider: credential("provider"),
+      logs: credential("logs"),
+      category: "startup-failure",
+      startup: {
+        reason: credential("reason"),
+        phase: credential("phase"),
+        path: credential("path"),
+      },
+    });
+
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    const [, init] = fetchMock.mock.calls[0];
+    const serializedPayload = String(init.body);
+
+    for (const field of fields) {
+      expect(serializedPayload).toContain(`${field}-marker`);
+      expect(serializedPayload).not.toContain(secrets[field]);
+    }
+  });
+
   it("preserves the per-client submission rate limit", async () => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const ctx = createContext(validBugReport, "192.0.2.1");
@@ -380,6 +508,349 @@ describe.sequential("bug report repository routing", () => {
     expect(limited.responseStatus).toBe(429);
     expect(limited.responseBody).toEqual({
       error: "Too many bug reports. Try again later.",
+    });
+  });
+});
+
+const { rateLimitBugReport, sanitize } = await import(
+  "../../src/api/bug-report-routes.ts"
+);
+
+describe.sequential("bug report sanitize and rate-limit units", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    resetBugReportRateLimit();
+  });
+
+  it("leaves ordinary text unchanged", () => {
+    expect(sanitize("Agent crashed on boot")).toBe("Agent crashed on boot");
+  });
+
+  it("removes nested tags iteratively and strips leftover angle brackets", () => {
+    expect(sanitize("<a<b>c</b>d>")).toBe("");
+    expect(sanitize("value < 10 and > 5")).toBe("value  5");
+    expect(sanitize("count <10")).toBe("count 10");
+  });
+
+  it("replaces lone surrogates with U+FFFD", () => {
+    expect(sanitize(`ok${loneHighSurrogate}x${loneLowSurrogate}done`)).toBe(
+      "ok\uFFFDx\uFFFDdone",
+    );
+  });
+
+  it("clips over-limit output to exactly maxLen characters", () => {
+    expect(sanitize("x".repeat(15), 10)).toBe("x".repeat(10));
+    expect(sanitize("y".repeat(10), 10)).toBe("y".repeat(10));
+  });
+
+  it("shares one bucket between null and unknown clients", () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect(rateLimitBugReport(null)).toBe(true);
+    }
+    expect(rateLimitBugReport("unknown")).toBe(false);
+    expect(rateLimitBugReport(null)).toBe(false);
+  });
+
+  it("tracks distinct client addresses independently", () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect(rateLimitBugReport("192.0.2.7")).toBe(true);
+    }
+    expect(rateLimitBugReport("192.0.2.7")).toBe(false);
+    expect(rateLimitBugReport("192.0.2.8")).toBe(true);
+  });
+
+  it("accepts a blocked client again after resetBugReportRateLimit", () => {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      rateLimitBugReport("192.0.2.9");
+    }
+    expect(rateLimitBugReport("192.0.2.9")).toBe(false);
+    resetBugReportRateLimit();
+    expect(rateLimitBugReport("192.0.2.9")).toBe(true);
+  });
+
+  it("keeps the window closed at resetAt and reopens strictly after it", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now());
+    const windowMs = 10 * 60 * 1000;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect(rateLimitBugReport("203.0.113.9")).toBe(true);
+    }
+    expect(rateLimitBugReport("203.0.113.9")).toBe(false);
+    vi.advanceTimersByTime(windowMs);
+    expect(rateLimitBugReport("203.0.113.9")).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(rateLimitBugReport("203.0.113.9")).toBe(true);
+  });
+});
+
+describe.sequential("bug report route edge behavior", () => {
+  beforeEach(() => {
+    resetBugReportRateLimit();
+    vi.stubEnv(BUG_REPORT_REPO_ENV_KEY, "");
+    vi.stubEnv("BUG_REPORT_REPO", "");
+    vi.stubEnv("GITHUB_TOKEN", "");
+    vi.stubEnv("ELIZA_BUG_REPORT_API_URL", "");
+    vi.stubEnv("ELIZA_BUG_REPORT_API_TOKEN", "");
+  });
+
+  afterEach(() => {
+    resetBugReportRateLimit();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  function infoContext(): ReturnType<typeof createContext> {
+    return Object.assign(createContext(validBugReport), {
+      method: "GET",
+      pathname: "/api/bug-report/info",
+    });
+  }
+
+  it("answers GET /api/bug-report/info with runtime info in fallback mode", async () => {
+    const ctx = infoContext();
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseStatus).toBe(200);
+    expect(ctx.responseBody).toEqual({
+      nodeVersion: process.version,
+      platform: process.platform,
+      submissionMode: "fallback",
+    });
+  });
+
+  it.each([
+    {
+      label: "github when only a token is configured",
+      env: { GITHUB_TOKEN: "test-token-not-a-credential" },
+      mode: "github",
+    },
+    {
+      label: "remote when an intake URL outranks the token",
+      env: {
+        GITHUB_TOKEN: "test-token-not-a-credential",
+        ELIZA_BUG_REPORT_API_URL: "https://intake.example.test/reports",
+      },
+      mode: "remote",
+    },
+  ])("advertises $label", async ({ env, mode }) => {
+    for (const [key, value] of Object.entries(env)) {
+      vi.stubEnv(key, value);
+    }
+    const ctx = infoContext();
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseStatus).toBe(200);
+    expect(ctx.responseBody).toMatchObject({ submissionMode: mode });
+  });
+
+  it("reports false and writes nothing for unrelated routes", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = Object.assign(createContext(validBugReport), {
+      method: "DELETE",
+      pathname: "/api/bug-report",
+    });
+
+    expect(await handleBugReportRoutes(ctx)).toBe(false);
+    expect(ctx.json).not.toHaveBeenCalled();
+    expect(ctx.error).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("handles an unreadable JSON body without responding or submitting", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = createContext(validBugReport);
+    ctx.readJsonBody = vi.fn(async () => null) as typeof ctx.readJsonBody;
+
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.json).not.toHaveBeenCalled();
+    expect(ctx.error).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects schema-invalid payloads with 400 and still spends rate-limit capacity", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const ip = "198.51.100.4";
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const ctx = createContext(
+        { description: "   ", stepsToReproduce: "Run the agent" },
+        ip,
+      );
+      expect(await handleBugReportRoutes(ctx)).toBe(true);
+      expect(ctx.responseStatus).toBe(400);
+      expect(ctx.responseBody).toEqual({ error: "description is required" });
+    }
+
+    const limited = createContext(validBugReport, ip);
+    expect(await handleBugReportRoutes(limited)).toBe(true);
+    expect(limited.responseStatus).toBe(429);
+    expect(limited.responseBody).toEqual({
+      error: "Too many bug reports. Try again later.",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("maps a rejected remote intake response to a stable 502", async () => {
+    vi.stubEnv(
+      "ELIZA_BUG_REPORT_API_URL",
+      "https://intake.example.test/reports",
+    );
+    const fetchMock = vi.fn(
+      async () => new Response("upstream exploded", { status: 503 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx = createContext(validBugReport);
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseStatus).toBe(502);
+    expect(ctx.responseBody).toEqual({ error: "Failed to submit bug report" });
+  });
+
+  it("treats a non-JSON remote success as accepted without parsing a body", async () => {
+    vi.stubEnv(
+      "ELIZA_BUG_REPORT_API_URL",
+      "https://intake.example.test/reports",
+    );
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("queued", {
+          status: 202,
+          headers: { "Content-Type": "text/plain" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx = createContext(validBugReport);
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseStatus).toBe(200);
+    expect(ctx.responseBody).toEqual({ accepted: true, destination: "remote" });
+  });
+
+  it("defaults accepted to true when the remote JSON omits response fields", async () => {
+    vi.stubEnv(
+      "ELIZA_BUG_REPORT_API_URL",
+      "https://intake.example.test/reports",
+    );
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx = createContext(validBugReport);
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseBody).toEqual({ accepted: true, destination: "remote" });
+  });
+
+  it("surfaces remote transport failures as a 502", async () => {
+    vi.stubEnv(
+      "ELIZA_BUG_REPORT_API_URL",
+      "https://intake.example.test/reports",
+    );
+    const fetchMock = vi.fn(async () => {
+      throw new Error("intake unreachable");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx = createContext(validBugReport);
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseStatus).toBe(502);
+    expect(ctx.responseBody).toEqual({ error: "Failed to submit bug report" });
+  });
+
+  it("maps GitHub API error statuses into a 502 carrying the status", async () => {
+    vi.stubEnv("GITHUB_TOKEN", "test-token-not-a-credential");
+    const fetchMock = vi.fn(
+      async () => new Response("secondary rate limit", { status: 403 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx = createContext(validBugReport);
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseStatus).toBe(502);
+    expect(ctx.responseBody).toEqual({ error: "GitHub API error (403)" });
+  });
+
+  it("rejects issue URLs that point outside the resolved repository", async () => {
+    vi.stubEnv("GITHUB_TOKEN", "test-token-not-a-credential");
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify({
+            html_url: "https://github.com/attacker/repo/issues/1",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx = createContext(validBugReport);
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseStatus).toBe(502);
+    expect(ctx.responseBody).toEqual({
+      error: "Unexpected response from GitHub API",
+    });
+  });
+
+  it("rejects a successful GitHub response without an issue URL", async () => {
+    vi.stubEnv("GITHUB_TOKEN", "test-token-not-a-credential");
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ number: 7 }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx = createContext(validBugReport);
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseStatus).toBe(502);
+    expect(ctx.responseBody).toEqual({
+      error: "Unexpected response from GitHub API",
+    });
+  });
+
+  it("translates GitHub transport failures into a stable 502", async () => {
+    vi.stubEnv("GITHUB_TOKEN", "test-token-not-a-credential");
+    const fetchMock = vi.fn(async () => {
+      throw new Error("github unreachable");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx = createContext(validBugReport);
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseStatus).toBe(502);
+    expect(ctx.responseBody).toEqual({
+      error: "Failed to create GitHub issue",
+    });
+  });
+
+  it("hands the submission an already-aborted signal when the client disconnected", async () => {
+    vi.stubEnv("GITHUB_TOKEN", "test-token-not-a-credential");
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify({
+            html_url: "https://github.com/elizaOS/eliza/issues/42",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ctx = createContext(validBugReport);
+    ctx.req.aborted = true;
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.signal?.aborted).toBe(true);
+    expect(ctx.responseBody).toEqual({
+      url: "https://github.com/elizaOS/eliza/issues/42",
     });
   });
 });

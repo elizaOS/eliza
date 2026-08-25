@@ -14,7 +14,7 @@ const meta = {
     decorative: { control: "boolean" },
     className: { control: "text" },
   },
-  args: { source: "discord", decorative: false, className: "h-4 w-4" },
+  args: { source: "discord", decorative: false, className: "size-4" },
 } satisfies Meta<typeof ChatSourceIcon>;
 
 export default meta;
@@ -39,5 +39,5 @@ export const Gallery: Story = {
       <ChatSourceIcon {...args} source="imessage" />
     </div>
   ),
-  args: { className: "h-6 w-6" },
+  args: { className: "size-6" },
 };

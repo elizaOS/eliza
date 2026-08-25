@@ -77,7 +77,7 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
         onClick={handleNativeShare}
         className="gap-2"
       >
-        <Share2 className="h-4 w-4" />
+        <Share2 className="size-4" />
         Share
       </Button>
 
@@ -89,12 +89,12 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
       >
         {copied ? (
           <>
-            <Check className="h-4 w-4" />
+            <Check className="size-4" />
             Copied!
           </>
         ) : (
           <>
-            <Copy className="h-4 w-4" />
+            <Copy className="size-4" />
             Copy Link
           </>
         )}
@@ -108,7 +108,7 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
       >
         <svg
           aria-hidden="true"
-          className="h-4 w-4"
+          className="size-4"
           viewBox="0 0 24 24"
           fill="currentColor"
         >
@@ -125,7 +125,7 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
       >
         <svg
           aria-hidden="true"
-          className="h-4 w-4"
+          className="size-4"
           viewBox="0 0 24 24"
           fill="currentColor"
         >
@@ -142,7 +142,7 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
       >
         <svg
           aria-hidden="true"
-          className="h-4 w-4"
+          className="size-4"
           viewBox="0 0 24 24"
           fill="currentColor"
         >

@@ -147,7 +147,7 @@ export function ChatMessageActions({
         <MessageActionButton
           label={replyLabel}
           testId={glassRow ? "thread-line-reply" : "chat-message-reply"}
-          icon={<Reply className="h-3.5 w-3.5" />}
+          icon={<Reply className="size-3.5" />}
           onClick={onReply}
           bare={glassRow}
         />
@@ -166,7 +166,7 @@ export function ChatMessageActions({
           }
           testId={glassRow ? "thread-line-copy" : undefined}
           icon={
-            <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+            <span className="relative flex  size-3.5 items-center justify-center">
               <AnimatePresence initial={false}>
                 <motion.span
                   key={copied ? "copied" : "copy"}
@@ -175,13 +175,19 @@ export function ChatMessageActions({
                   initial={
                     reduceMotion
                       ? false
-                      : { opacity: 0, rotate: copied ? -8 : 8, scale: 0.76 }
+                      : {
+                          opacity: 0,
+                          transform: `rotate(${copied ? -8 : 8}deg) scale(0.76)`,
+                        }
                   }
-                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                  animate={{ opacity: 1, transform: "rotate(0deg) scale(1)" }}
                   exit={
                     reduceMotion
                       ? { opacity: 0 }
-                      : { opacity: 0, rotate: copied ? 8 : -8, scale: 0.76 }
+                      : {
+                          opacity: 0,
+                          transform: `rotate(${copied ? 8 : -8}deg) scale(0.76)`,
+                        }
                   }
                   transition={{
                     duration: reduceMotion ? 0.08 : 0.16,
@@ -190,9 +196,9 @@ export function ChatMessageActions({
                   className="absolute inset-0 flex items-center justify-center"
                 >
                   {copied ? (
-                    <Check className="h-3.5 w-3.5" />
+                    <Check className="size-3.5" />
                   ) : (
-                    <Copy className="h-3.5 w-3.5" />
+                    <Copy className="size-3.5" />
                   )}
                 </motion.span>
               </AnimatePresence>
@@ -209,9 +215,9 @@ export function ChatMessageActions({
           testId={glassRow ? "thread-line-speak" : undefined}
           icon={
             playing ? (
-              <Square className="h-3.5 w-3.5" />
+              <Square className="size-3.5" />
             ) : (
-              <Volume2 className="h-3.5 w-3.5" />
+              <Volume2 className="size-3.5" />
             )
           }
           onClick={onPlay}
@@ -224,7 +230,7 @@ export function ChatMessageActions({
         <MessageActionButton
           label={glassRow ? (labels.edit ?? "Edit") : editLabel}
           testId={glassRow ? "thread-line-edit" : undefined}
-          icon={<Pencil className="h-3.5 w-3.5" />}
+          icon={<Pencil className="size-3.5" />}
           onClick={onEdit}
           bare={glassRow}
         />

@@ -35,7 +35,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import logging
 import os
@@ -46,7 +45,6 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-REPO_ROOT = ROOT.parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -75,24 +73,6 @@ BENCHMARK_PROMPT_SOURCES: dict[str, str] = {
 }
 
 
-def _load_results_store_class():
-    module_name = "_eliza_benchmark_vs_cerebras_results_store"
-    if module_name in sys.modules:
-        return sys.modules[module_name].ResultsStore
-    rs_path = REPO_ROOT / "packages" / "benchmarks" / "lib" / "results_store.py"
-    spec = importlib.util.spec_from_file_location(module_name, rs_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"could not load ResultsStore from {rs_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module.ResultsStore
-
-
-def _now_millis() -> int:
-    return int(time.time() * 1000)
-
-
 def _tier_slug(tier: str, eliza_short_name: str | None = None) -> str:
     source = eliza_short_name or tier
     if "27b" in source:
@@ -108,139 +88,6 @@ def _tier_slug(tier: str, eliza_short_name: str | None = None) -> str:
     if "0b" in source:
         return "0b"
     return tier
-
-
-def _record_run(
-    store: Any,
-    *,
-    model_id: str,
-    benchmark: str,
-    score: float,
-    dataset_version: str,
-    code_commit: str,
-    raw_json: dict[str, Any],
-    ts: int,
-) -> int:
-    return int(
-        store.record_run(
-            model_id=model_id,
-            benchmark=benchmark,
-            score=score,
-            dataset_version=dataset_version,
-            code_commit=code_commit,
-            raw_json=raw_json,
-            ts=ts,
-        )
-    )
-
-
-def record_results_to_store(
-    results: list[dict[str, Any]],
-    *,
-    db_path: Path | None,
-    dataset_version: str,
-    code_commit: str,
-    cerebras_model: str,
-    ts: int | None = None,
-) -> list[dict[str, Any]]:
-    """Append benchmark_vs_cerebras results to the shared ResultsStore.
-
-    Eliza tier benchmark accuracy rows are recorded as trained model rows using
-    the tier's checkpoint path as provenance. Cerebras rows are recorded under
-    ``cerebras/<model>`` when the script produced a quality proxy for the same
-    benchmark prompt set.
-    """
-    ResultsStore = _load_results_store_class()
-    store = ResultsStore(db_path=db_path)
-    recorded: list[dict[str, Any]] = []
-    recorded_ts = ts if ts is not None else _now_millis()
-    try:
-        for tier_result in results:
-            tier = str(tier_result.get("tier") or "")
-            for variant_result in _variant_results_for_tier(tier_result):
-                variant = str(variant_result.get("variant") or "trained")
-                model_id = str(variant_result.get("model_id") or "")
-                tier_slug = str(variant_result.get("tier") or _tier_slug(tier, model_id))
-                model_path = variant_result.get("model_path")
-                if variant not in {"base", "trained"} or not model_id:
-                    continue
-                for benchmark, bench_result in (
-                    variant_result.get("benchmarks") or {}
-                ).items():
-                    if not isinstance(bench_result, dict):
-                        continue
-                    score = bench_result.get("tool_call_accuracy")
-                    if not isinstance(score, (int, float)):
-                        continue
-                    row_id = _record_run(
-                        store,
-                        model_id=model_id,
-                        benchmark=str(benchmark),
-                        score=float(score),
-                        dataset_version=dataset_version,
-                        code_commit=code_commit,
-                        raw_json={
-                            "variant": variant,
-                            "tier": tier_slug,
-                            "tier_key": tier,
-                            "model_path": model_path,
-                            "score_source": "tool_call_accuracy",
-                            "benchmark_result": bench_result,
-                        },
-                        ts=recorded_ts,
-                    )
-                    recorded.append(
-                        {
-                            "rowId": row_id,
-                            "modelId": model_id,
-                            "variant": variant,
-                            "tier": tier_slug,
-                            "benchmark": str(benchmark),
-                            "score": float(score),
-                        }
-                    )
-            for benchmark, bench_result in (tier_result.get("benchmarks") or {}).items():
-                if not isinstance(bench_result, dict):
-                    continue
-                cerebras = tier_result.get("cerebras")
-                if isinstance(cerebras, dict):
-                    c_score = cerebras.get("response_quality_proxy")
-                    if isinstance(c_score, (int, float)):
-                        c_model_id = (
-                            str(cerebras.get("model"))
-                            if cerebras.get("model")
-                            else f"cerebras/{cerebras_model}"
-                        )
-                        if "/" not in c_model_id:
-                            c_model_id = f"cerebras/{c_model_id}"
-                        c_row_id = _record_run(
-                            store,
-                            model_id=c_model_id,
-                            benchmark=str(benchmark),
-                            score=float(c_score),
-                            dataset_version=dataset_version,
-                            code_commit=code_commit,
-                            raw_json={
-                                "variant": "reference",
-                                "provider": "cerebras",
-                                "score_source": "response_quality_proxy",
-                                "tier_context": _tier_slug(tier),
-                                "cerebras": cerebras,
-                            },
-                            ts=recorded_ts,
-                        )
-                        recorded.append(
-                            {
-                                "rowId": c_row_id,
-                                "modelId": c_model_id,
-                                "variant": "reference",
-                                "benchmark": str(benchmark),
-                                "score": float(c_score),
-                            }
-                        )
-    finally:
-        store.close()
-    return recorded
 
 
 def _variant_results_for_tier(tier_result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -276,7 +123,9 @@ def _benchmark_score_or_dry_run_zero(bench_result: dict[str, Any]) -> float | No
     return None
 
 
-def matrix_rows_from_results(results: list[dict[str, Any]], cerebras_model: str) -> list[dict[str, Any]]:
+def matrix_rows_from_results(
+    results: list[dict[str, Any]], cerebras_model: str
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for tier_result in results:
         tier_slug = _tier_slug(
@@ -294,7 +143,9 @@ def matrix_rows_from_results(results: list[dict[str, Any]], cerebras_model: str)
             tier_slug = str(variant_result.get("tier") or "")
             if variant not in {"base", "trained"} or not model_id:
                 continue
-            for benchmark, bench_result in (variant_result.get("benchmarks") or {}).items():
+            for benchmark, bench_result in (
+                variant_result.get("benchmarks") or {}
+            ).items():
                 if not isinstance(bench_result, dict):
                     continue
                 benchmark_names.add(str(benchmark))
@@ -336,7 +187,9 @@ def matrix_rows_from_results(results: list[dict[str, Any]], cerebras_model: str)
                             "provider": "cerebras",
                             "tier": tier_slug,
                             "benchmark": str(benchmark),
-                            "score": float(c_score) if isinstance(c_score, (int, float)) else 0.0,
+                            "score": float(c_score)
+                            if isinstance(c_score, (int, float))
+                            else 0.0,
                             **({"metrics": {"dryRun": True}} if c_dry_run else {}),
                             "raw": {
                                 **cerebras,
@@ -413,11 +266,16 @@ def _run_native_tool_bench(
         return None
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
-        sys.executable, str(bench_script),
-        "--model", model_path,
-        "--test-file", str(test_file),
-        "--out-dir", str(out_dir),
-        "--max-per-bucket", str(max_samples),
+        sys.executable,
+        str(bench_script),
+        "--model",
+        model_path,
+        "--test-file",
+        str(test_file),
+        "--out-dir",
+        str(out_dir),
+        "--max-per-bucket",
+        str(max_samples),
     ]
     log.info("$ %s", " ".join(cmd))
     if dry_run:
@@ -479,21 +337,25 @@ def _call_cerebras_on_prompts(
                 max_tokens=max_tokens,
             )
             latency_ms = (time.perf_counter() - t0) * 1000
-            results.append({
-                "prompt_idx": i,
-                "response": text,
-                "latency_ms": round(latency_ms, 1),
-                "error": None,
-            })
+            results.append(
+                {
+                    "prompt_idx": i,
+                    "response": text,
+                    "latency_ms": round(latency_ms, 1),
+                    "error": None,
+                }
+            )
         except CerebrasError as e:
             latency_ms = (time.perf_counter() - t0) * 1000
             log.warning("cerebras error on prompt %d: %s", i, e)
-            results.append({
-                "prompt_idx": i,
-                "response": None,
-                "latency_ms": round(latency_ms, 1),
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "prompt_idx": i,
+                    "response": None,
+                    "latency_ms": round(latency_ms, 1),
+                    "error": str(e),
+                }
+            )
     return results
 
 
@@ -512,7 +374,9 @@ def _load_prompts(test_file: Path, max_samples: int) -> list[str]:
             except json.JSONDecodeError:
                 continue
             # Extract the last user turn as the prompt
-            req = record.get("request") if isinstance(record.get("request"), dict) else {}
+            req = (
+                record.get("request") if isinstance(record.get("request"), dict) else {}
+            )
             messages = req.get("messages") or record.get("messages") or []
             if messages:
                 for m in reversed(messages):
@@ -576,7 +440,9 @@ def benchmark_tier(
         "benchmarks": {},
         "variant_results": [],
         "cerebras": {},
-        "error": None if ckpt is not None or variants == "base" else "no checkpoint found",
+        "error": None
+        if ckpt is not None or variants == "base"
+        else "no checkpoint found",
     }
 
     test_file = ROOT / "data" / "final" / "test.jsonl"
@@ -656,7 +522,9 @@ def benchmark_tier(
             }
             log.info(
                 "[%s] cerebras quality=%s avg_latency=%.1f ms",
-                tier, quality, avg_latency or 0,
+                tier,
+                quality,
+                avg_latency or 0,
             )
     else:
         result["cerebras"] = {"skipped": "CEREBRAS_API_KEY not set"}
@@ -791,23 +659,6 @@ def main() -> int:
         help="Print what would run without running inference.",
     )
     ap.add_argument(
-        "--results-db",
-        help=(
-            "Optional shared benchmark ResultsStore SQLite path. When set, "
-            "benchmark scores are appended for matrix/trending viewers."
-        ),
-    )
-    ap.add_argument(
-        "--dataset-version",
-        default="unknown",
-        help="Dataset version stored with ResultsStore rows.",
-    )
-    ap.add_argument(
-        "--code-commit",
-        default="unknown",
-        help="Code commit stored with ResultsStore rows.",
-    )
-    ap.add_argument(
         "--matrix-output-dir",
         help=(
             "Optional directory where benchmark-matrix.json is written from "
@@ -864,7 +715,11 @@ def main() -> int:
         log.info("=" * 60)
         log.info("benchmarking tier: %s (%s)", tier, entry.eliza_short_name)
         r = benchmark_tier(
-            tier, entry, checkpoints_dir, output_dir, benchmarks,
+            tier,
+            entry,
+            checkpoints_dir,
+            output_dir,
+            benchmarks,
             cerebras_model=args.cerebras_model,
             max_samples=args.max_samples,
             dry_run=args.dry_run,
@@ -879,23 +734,6 @@ def main() -> int:
     results_path.write_text(json.dumps(all_results, indent=2))
     log.info("JSON results written to %s", results_path)
 
-    recorded_rows: list[dict[str, Any]] = []
-    if args.results_db:
-        recorded_rows = record_results_to_store(
-            all_results,
-            db_path=Path(args.results_db).expanduser().resolve(),
-            dataset_version=args.dataset_version,
-            code_commit=args.code_commit,
-            cerebras_model=args.cerebras_model,
-        )
-        recorded_path = output_dir / f"results_store_rows_{timestamp}.json"
-        recorded_path.write_text(json.dumps(recorded_rows, indent=2))
-        log.info(
-            "recorded %d row(s) to ResultsStore and wrote %s",
-            len(recorded_rows),
-            recorded_path,
-        )
-
     matrix_path: Path | None = None
     if args.matrix_output_dir:
         matrix_path = write_matrix_artifact(
@@ -908,8 +746,10 @@ def main() -> int:
     # Write Markdown report
     report_path = output_dir / f"benchmark_report_{timestamp}.md"
     _write_markdown_report(
-        all_results, benchmarks,
-        args.cerebras_model, cerebras_available,
+        all_results,
+        benchmarks,
+        args.cerebras_model,
+        cerebras_available,
         report_path,
     )
 
@@ -932,8 +772,6 @@ def main() -> int:
     print("=" * 70)
     print(f"\nResults: {results_path}")
     print(f"Report:  {report_path}")
-    if recorded_rows:
-        print(f"ResultsStore rows: {len(recorded_rows)}")
     if matrix_path:
         print(f"Matrix:  {matrix_path}")
 

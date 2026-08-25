@@ -103,8 +103,8 @@ function DiffMetric({
 }) {
   return (
     <div className="rounded-sm border border-border/40 bg-bg/40 px-3 py-2">
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-muted">
-        <Icon className="h-3 w-3" />
+      <div className="flex items-center gap-1.5 text-xs-tight uppercase tracking-[0.12em] text-muted">
+        <Icon className="size-3" />
         {label}
       </div>
       <div className="mt-1 text-sm font-semibold text-txt">{value ?? "—"}</div>

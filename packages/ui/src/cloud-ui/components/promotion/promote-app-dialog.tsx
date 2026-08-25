@@ -298,7 +298,7 @@ export function PromoteAppDialog({
                 }`}
               >
                 <Share2
-                  className={`h-6 w-6 ${config.channels.includes("social") ? "text-accent" : "text-muted"}`}
+                  className={`size-6 ${config.channels.includes("social") ? "text-accent" : "text-muted"}`}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -314,18 +314,18 @@ export function PromoteAppDialog({
                     </span>
                   </div>
                   <p className="text-sm text-muted mt-0.5">
-                    Post to Twitter, LinkedIn, Discord...
+                    Post to Twitter, LinkedIn, Discord…
                   </p>
                 </div>
                 <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                  className={`size-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                     config.channels.includes("social")
                       ? "border-accent bg-accent"
                       : "border-border-strong"
                   }`}
                 >
                   {config.channels.includes("social") && (
-                    <Check className="h-3 w-3 text-accent-foreground" />
+                    <Check className="size-3 text-accent-foreground" />
                   )}
                 </div>
               </Button>
@@ -342,7 +342,7 @@ export function PromoteAppDialog({
                 }`}
               >
                 <Search
-                  className={`h-6 w-6 ${config.channels.includes("seo") ? "text-status-success" : "text-muted"}`}
+                  className={`size-6 ${config.channels.includes("seo") ? "text-status-success" : "text-muted"}`}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -362,14 +362,14 @@ export function PromoteAppDialog({
                   </p>
                 </div>
                 <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                  className={`size-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                     config.channels.includes("seo")
                       ? "border-status-success bg-status-success"
                       : "border-border-strong"
                   }`}
                 >
                   {config.channels.includes("seo") && (
-                    <Check className="h-3 w-3 text-[var(--brand-white)]" />
+                    <Check className="size-3 text-[var(--brand-white)]" />
                   )}
                 </div>
               </Button>
@@ -390,7 +390,7 @@ export function PromoteAppDialog({
                 }`}
               >
                 <Megaphone
-                  className={`h-6 w-6 ${
+                  className={`size-6 ${
                     config.channels.includes("advertising")
                       ? "text-accent"
                       : adAccounts.length === 0
@@ -428,14 +428,14 @@ export function PromoteAppDialog({
                   </p>
                 </div>
                 <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                  className={`size-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                     config.channels.includes("advertising")
                       ? "border-accent bg-accent"
                       : "border-border-strong"
                   }`}
                 >
                   {config.channels.includes("advertising") && (
-                    <Check className="h-3 w-3 text-accent-foreground" />
+                    <Check className="size-3 text-accent-foreground" />
                   )}
                 </div>
               </Button>
@@ -461,7 +461,7 @@ export function PromoteAppDialog({
                   }`}
                 >
                   Continue
-                  <ArrowRight className="h-4 w-4 ml-2" />
+                  <ArrowRight className="size-4 ml-2" />
                 </Button>
               </div>
             </div>
@@ -514,7 +514,7 @@ export function PromoteAppDialog({
                           }`}
                         >
                           <div
-                            className={`w-4 h-4 rounded-sm border flex items-center justify-center ${
+                            className={`size-4 rounded-sm border flex items-center justify-center ${
                               config.social?.platforms?.includes(platform.id)
                                 ? "bg-accent border-accent"
                                 : "border-border-strong"
@@ -523,11 +523,11 @@ export function PromoteAppDialog({
                             {config.social?.platforms?.includes(
                               platform.id,
                             ) && (
-                              <Check className="h-3 w-3 text-accent-foreground" />
+                              <Check className="size-3 text-accent-foreground" />
                             )}
                           </div>
                           <platform.Icon
-                            className="h-4 w-4 text-txt"
+                            className="size-4 text-txt"
                             strokeWidth={2}
                           />
                           <span className="text-sm text-txt">
@@ -542,7 +542,7 @@ export function PromoteAppDialog({
                       Custom Message (optional)
                     </Label>
                     <Textarea
-                      placeholder="Leave blank to auto-generate..."
+                      placeholder="Leave blank to auto-generate…"
                       value={config.social?.customMessage || ""}
                       onChange={(e) =>
                         setConfig((prev) => ({
@@ -584,7 +584,7 @@ export function PromoteAppDialog({
                     }`}
                   >
                     <FileText
-                      className={`h-5 w-5 ${(config.seo?.generateMeta ?? true) ? "text-status-success" : "text-muted"}`}
+                      className={`size-5 ${(config.seo?.generateMeta ?? true) ? "text-status-success" : "text-muted"}`}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-txt">
@@ -595,14 +595,14 @@ export function PromoteAppDialog({
                       </p>
                     </div>
                     <div
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      className={`size-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                         (config.seo?.generateMeta ?? true)
                           ? "border-status-success bg-status-success"
                           : "border-border-strong"
                       }`}
                     >
                       {(config.seo?.generateMeta ?? true) && (
-                        <Check className="h-3 w-3 text-[var(--brand-white)]" />
+                        <Check className="size-3 text-[var(--brand-white)]" />
                       )}
                     </div>
                   </Button>
@@ -627,7 +627,7 @@ export function PromoteAppDialog({
                     }`}
                   >
                     <Braces
-                      className={`h-5 w-5 ${(config.seo?.generateSchema ?? true) ? "text-status-success" : "text-muted"}`}
+                      className={`size-5 ${(config.seo?.generateSchema ?? true) ? "text-status-success" : "text-muted"}`}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-txt">
@@ -638,14 +638,14 @@ export function PromoteAppDialog({
                       </p>
                     </div>
                     <div
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      className={`size-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                         (config.seo?.generateSchema ?? true)
                           ? "border-status-success bg-status-success"
                           : "border-border-strong"
                       }`}
                     >
                       {(config.seo?.generateSchema ?? true) && (
-                        <Check className="h-3 w-3 text-[var(--brand-white)]" />
+                        <Check className="size-3 text-[var(--brand-white)]" />
                       )}
                     </div>
                   </Button>
@@ -672,7 +672,7 @@ export function PromoteAppDialog({
                     }`}
                   >
                     <Send
-                      className={`h-5 w-5 ${(config.seo?.submitToIndexNow ?? true) ? "text-status-success" : "text-muted"}`}
+                      className={`size-5 ${(config.seo?.submitToIndexNow ?? true) ? "text-status-success" : "text-muted"}`}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-txt">
@@ -683,14 +683,14 @@ export function PromoteAppDialog({
                       </p>
                     </div>
                     <div
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      className={`size-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                         (config.seo?.submitToIndexNow ?? true)
                           ? "border-status-success bg-status-success"
                           : "border-border-strong"
                       }`}
                     >
                       {(config.seo?.submitToIndexNow ?? true) && (
-                        <Check className="h-3 w-3 text-[var(--brand-white)]" />
+                        <Check className="size-3 text-[var(--brand-white)]" />
                       )}
                     </div>
                   </Button>
@@ -933,7 +933,7 @@ export function PromoteAppDialog({
                   onClick={() => setStep("channels")}
                   className="h-9 px-4 border-border-strong text-txt hover:bg-bg-hover"
                 >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  <ArrowLeft className="size-4 mr-2" />
                   Back
                 </Button>
                 <Button
@@ -941,7 +941,7 @@ export function PromoteAppDialog({
                   className="h-9 px-4 bg-accent hover:bg-accent-hover text-accent-foreground"
                 >
                   Review & Launch
-                  <ArrowRight className="h-4 w-4 ml-2" />
+                  <ArrowRight className="size-4 ml-2" />
                 </Button>
               </div>
             </div>
@@ -971,7 +971,7 @@ export function PromoteAppDialog({
                 <div className="border-t border-border pt-4 space-y-2">
                   {config.channels.includes("social") && (
                     <div className="flex items-center gap-2 text-sm">
-                      <CheckCircle className="h-4 w-4 text-status-success" />
+                      <CheckCircle className="size-4 text-status-success" />
                       <span className="text-txt">
                         Social:{" "}
                         {config.social?.platforms?.join(", ") ||
@@ -981,13 +981,13 @@ export function PromoteAppDialog({
                   )}
                   {config.channels.includes("seo") && (
                     <div className="flex items-center gap-2 text-sm">
-                      <CheckCircle className="h-4 w-4 text-status-success" />
+                      <CheckCircle className="size-4 text-status-success" />
                       <span className="text-txt">SEO Optimization</span>
                     </div>
                   )}
                   {config.channels.includes("advertising") && (
                     <div className="flex items-center gap-2 text-sm">
-                      <CheckCircle className="h-4 w-4 text-status-success" />
+                      <CheckCircle className="size-4 text-status-success" />
                       <span className="text-txt">
                         Ad Campaign: ${config.advertising?.budget}{" "}
                         {config.advertising?.budgetType},{" "}
@@ -1014,7 +1014,7 @@ export function PromoteAppDialog({
                   onClick={() => setStep("configure")}
                   className="h-9 px-4 border-border-strong text-txt hover:bg-bg-hover"
                 >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  <ArrowLeft className="size-4 mr-2" />
                   Back
                 </Button>
                 <Button
@@ -1028,8 +1028,8 @@ export function PromoteAppDialog({
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Launching...
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                      Launching…
                     </>
                   ) : (
                     "Launch Promotion"
@@ -1044,9 +1044,9 @@ export function PromoteAppDialog({
             <div className="space-y-4">
               <div className="text-center py-6">
                 {result.success ? (
-                  <CheckCircle className="h-14 w-14 text-status-success mx-auto mb-4" />
+                  <CheckCircle className="size-14 text-status-success mx-auto mb-4" />
                 ) : (
-                  <AlertCircle className="h-14 w-14 text-status-warning mx-auto mb-4" />
+                  <AlertCircle className="size-14 text-status-warning mx-auto mb-4" />
                 )}
                 <h3 className="text-xl font-medium text-txt">
                   {result.success ? "Promotion Launched!" : "Partial Success"}
@@ -1107,7 +1107,7 @@ export function PromoteAppDialog({
                   onClick={handleClose}
                   className="w-full h-9 bg-accent hover:bg-accent-hover text-accent-foreground"
                 >
-                  Done
+                  Close
                 </Button>
               </div>
             </div>

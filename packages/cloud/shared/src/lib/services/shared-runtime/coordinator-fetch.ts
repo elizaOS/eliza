@@ -15,12 +15,19 @@ export function coordinatorFetch(
   init?: RequestInit,
   timeoutMs: number = SHARED_RUNTIME_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const timeoutController = new AbortController();
+  const timeout = setTimeout(
+    () =>
+      timeoutController.abort(
+        new DOMException("Shared runtime coordinator response headers timed out", "TimeoutError"),
+      ),
+    timeoutMs,
+  );
   const callerSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
-  return stub.fetch(input, {
-    ...init,
-    signal: callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal,
-  });
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, timeoutController.signal])
+    : timeoutController.signal;
+  return stub.fetch(input, { ...init, signal }).finally(() => clearTimeout(timeout));
 }
 
 export function deadlineBoundCoordinatorStub(

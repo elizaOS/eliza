@@ -166,12 +166,12 @@ const SearchResultListItem = memo(function SearchResultListItem({
       variant="ghost"
       className="group flex h-auto w-full items-start justify-start whitespace-normal rounded-none px-0 py-3 text-left font-normal transition-colors hover:bg-bg-hover"
     >
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center text-2xs font-bold text-muted-strong">
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center text-2xs font-bold text-muted-strong">
         {(result.similarity * 100).toFixed(0)}%
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
-          <FileSearch className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
+          <FileSearch className="size-3.5 shrink-0 text-muted" aria-hidden />
           <div className="truncate text-sm font-semibold text-txt">{title}</div>
         </div>
         <div className="mt-1 line-clamp-2 text-xs text-muted">
@@ -237,7 +237,7 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
         variant="ghost"
         className="flex h-auto min-w-0 flex-1 items-center justify-start gap-3 whitespace-normal rounded-none px-3.5 py-3 text-left font-normal hover:bg-transparent"
       >
-        <FormatIcon className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+        <FormatIcon className="size-4 shrink-0 text-muted" aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold leading-snug text-txt">
             {doc.filename}
@@ -247,7 +247,7 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted">
             <span className="inline-flex items-center gap-1">
-              <ScopeIcon className="h-3 w-3" aria-hidden />
+              <ScopeIcon className="size-3" aria-hidden />
               {scopeLabel}
             </span>
             <span aria-hidden>·</span>
@@ -262,7 +262,7 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
               <>
                 <span aria-hidden>·</span>
                 <span className="inline-flex items-center gap-1 text-status-success">
-                  <BadgeCheck className="h-3 w-3" aria-hidden />
+                  <BadgeCheck className="size-3" aria-hidden />
                   {t("documentsview.Editable", { defaultValue: "editable" })}
                 </span>
               </>
@@ -271,7 +271,7 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
               <>
                 <span aria-hidden>·</span>
                 <span className="inline-flex items-center gap-1">
-                  <Lock className="h-3 w-3" aria-hidden />
+                  <Lock className="size-3" aria-hidden />
                   {t("documentsview.Locked", { defaultValue: "locked" })}
                 </span>
               </>
@@ -279,7 +279,7 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
           </div>
         </div>
       </Button>
-      <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 ">
+      <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
         <ConfirmDeleteControl
           triggerClassName="h-7 rounded-sm border border-transparent px-2 text-2xs font-bold !bg-transparent text-danger/70 transition-all hover:!bg-danger/12 hover:border-danger/25 hover:text-danger"
           confirmClassName="h-7 rounded-sm border border-danger/25 bg-danger/14 px-2 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
@@ -1046,7 +1046,7 @@ export function DocumentsView({
               className="inline-flex items-center gap-1.5"
               data-testid={`knowledge-facet-${value}`}
             >
-              <Icon className="h-3.5 w-3.5" aria-hidden />
+              <Icon className="size-3.5" aria-hidden />
               {knowledgeFacetLabel(value, t)}
               <span
                 className="text-muted"
@@ -1238,7 +1238,7 @@ export function DocumentsView({
           variant="inset"
           className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong"
         >
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+          <span className="size-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
           {t("documentsview.DocumentServiceIs", {
             defaultValue: "Knowledge service is initializing...",
           })}
@@ -1286,7 +1286,7 @@ export function DocumentsView({
                   uploading ? "pointer-events-none opacity-60" : ""
                 }`}
               >
-                <Plus className="h-3.5 w-3.5" aria-hidden />
+                <Plus className="size-3.5" aria-hidden />
                 {uploading
                   ? t("documentsview.Uploading", { defaultValue: "Uploading" })
                   : t("common.add", { defaultValue: "Add" })}

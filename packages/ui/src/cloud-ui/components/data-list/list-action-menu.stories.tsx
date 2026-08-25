@@ -109,7 +109,7 @@ export const WithLinkChild: Story = {
         asChild: true,
         child: (
           <a href="https://placehold.co/" target="_blank" rel="noreferrer">
-            <ExternalLink className="mr-2 h-4 w-4" />
+            <ExternalLink className="mr-2 size-4" />
             Open in new tab
           </a>
         ),

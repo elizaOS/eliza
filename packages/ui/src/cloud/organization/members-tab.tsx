@@ -156,7 +156,7 @@ export function MembersTab({ user }: MembersTabProps) {
               onClick={() => setIsInviteDialogOpen(true)}
               className="font-mono text-sm md:text-base w-full sm:w-auto"
             >
-              <UserPlus className="h-4 w-4" />
+              <UserPlus className="size-4" />
               {t("cloud.membersTab.inviteMember", {
                 defaultValue: "Invite Member",
               })}
@@ -167,7 +167,7 @@ export function MembersTab({ user }: MembersTabProps) {
         {/* Members List */}
         {membersQuery.isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted" />
+            <Loader2 className="size-8 animate-spin text-muted" />
           </div>
         ) : (
           <MembersList
@@ -190,7 +190,7 @@ export function MembersTab({ user }: MembersTabProps) {
             </h3>
             {invitesQuery.isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted" />
+                <Loader2 className="size-6 animate-spin text-muted" />
               </div>
             ) : (
               <PendingInvitesList

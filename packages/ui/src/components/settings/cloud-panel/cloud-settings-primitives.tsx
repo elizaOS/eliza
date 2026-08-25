@@ -40,7 +40,7 @@ export function SettingsGroup({
   return (
     <section className={className}>
       {title ? (
-        <h2 className="mb-3 px-1 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2 className="mb-3 px-1 text-sm-tight font-semibold uppercase tracking-wide text-muted-foreground">
           {title}
         </h2>
       ) : null}
@@ -50,7 +50,7 @@ export function SettingsGroup({
         </div>
       </div>
       {footer ? (
-        <p className="mt-2 px-1 text-pretty text-[12px] leading-5 text-muted-foreground">
+        <p className="mt-2 px-1 text-pretty text-xs leading-5 text-muted-foreground">
           {footer}
         </p>
       ) : null}
@@ -106,11 +106,9 @@ function SettingRowShell({
   return (
     <div className="flex items-center justify-between gap-6 py-3.5">
       <div className="min-w-0">
-        <p className="text-[15px] font-medium leading-6 text-foreground">
-          {title}
-        </p>
+        <p className="text-sm font-medium leading-6 text-foreground">{title}</p>
         {description ? (
-          <p className="mt-0.5 text-pretty text-[13px] leading-5 text-muted-foreground">
+          <p className="mt-0.5 text-pretty text-sm-tight leading-5 text-muted-foreground">
             {description}
           </p>
         ) : null}
@@ -388,7 +386,7 @@ export function CloudSliderRow({
             aria-label={resolvedLabel}
           />
           {showValue ? (
-            <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {value}
               {unit ?? ""}
             </span>
@@ -455,7 +453,7 @@ export function CloudInputRow({
           disabled={disabled}
           className={cn(
             "w-48 rounded-md border border-border bg-bg px-3 py-1.5",
-            "text-[14px] leading-5 text-foreground placeholder:text-muted-foreground/60",
+            "text-sm leading-5 text-foreground placeholder:text-muted-foreground/60",
             "disabled:cursor-not-allowed disabled:opacity-50",
             "transition-colors",
           )}
@@ -566,11 +564,11 @@ export function CloudRow({
     <div className={cn("py-4", className)} data-testid={rest["data-testid"]}>
       <div className="flex items-center justify-between gap-6">
         <div className="min-w-0">
-          <p className="text-[15px] font-medium leading-6 text-foreground">
+          <p className="text-sm font-medium leading-6 text-foreground">
             {label}
           </p>
           {description ? (
-            <div className="mt-0.5 text-pretty text-[13px] leading-5 text-muted-foreground">
+            <div className="mt-0.5 text-pretty text-sm-tight leading-5 text-muted-foreground">
               {description}
             </div>
           ) : null}
@@ -642,11 +640,11 @@ export function CloudModal({
         <div className="border-b border-border px-4 py-2.5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <DialogTitle className="text-[15px] font-semibold leading-6 text-foreground">
+              <DialogTitle className="text-sm font-semibold leading-6 text-foreground">
                 {title}
               </DialogTitle>
               {description ? (
-                <DialogDescription className="mt-1 text-[13px] leading-5 text-muted-foreground">
+                <DialogDescription className="mt-1 text-sm-tight leading-5 text-muted-foreground">
                   {description}
                 </DialogDescription>
               ) : null}
@@ -657,7 +655,7 @@ export function CloudModal({
               className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-bg-hover hover:text-foreground"
               aria-label="Close dialog"
             >
-              <X aria-hidden className="h-4 w-4" />
+              <X aria-hidden className="size-4" />
             </button>
           </div>
         </div>
@@ -718,9 +716,7 @@ export function CloudConfirmDialog({
         </div>
       }
     >
-      <p className="text-[14px] leading-5 text-muted-foreground">
-        {description}
-      </p>
+      <p className="text-sm leading-5 text-muted-foreground">{description}</p>
     </CloudModal>
   );
 }
@@ -741,14 +737,12 @@ export function CloudFormField({
     <div className="space-y-1.5">
       <label
         htmlFor={htmlFor}
-        className="text-[13px] font-medium leading-5 text-foreground"
+        className="text-sm-tight font-medium leading-5 text-foreground"
       >
         {label}
       </label>
       {description ? (
-        <p className="text-[12px] leading-4 text-muted-foreground">
-          {description}
-        </p>
+        <p className="text-xs leading-4 text-muted-foreground">{description}</p>
       ) : null}
       {children}
     </div>
@@ -784,7 +778,7 @@ export function CloudTextInput({
       onChange={(e) => onChange(e.target.value)}
       className={cn(
         "w-full rounded-md border border-border bg-bg px-3 py-2",
-        "text-[14px] leading-5 text-foreground placeholder:text-muted-foreground/60",
+        "text-sm leading-5 text-foreground placeholder:text-muted-foreground/60",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "transition-colors",
       )}

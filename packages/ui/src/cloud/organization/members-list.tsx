@@ -60,7 +60,7 @@ export function MembersList({
   if (members.length === 0) {
     return (
       <div className="bg-surface border border-brand-surface p-8 text-center">
-        <User className="h-12 w-12 mx-auto text-muted mb-4" />
+        <User className="size-12 mx-auto text-muted mb-4" />
         <p className="text-sm font-mono text-muted">
           {t("cloud.membersList.noMembers", {
             defaultValue: "No members found",
@@ -73,11 +73,11 @@ export function MembersList({
   const getRoleIcon = (role: string) => {
     switch (role) {
       case "owner":
-        return <Crown className="h-4 w-4" />;
+        return <Crown className="size-4" />;
       case "admin":
-        return <Shield className="h-4 w-4" />;
+        return <Shield className="size-4" />;
       default:
-        return <User className="h-4 w-4" />;
+        return <User className="size-4" />;
     }
   };
 
@@ -132,7 +132,7 @@ export function MembersList({
         >
           <div className="flex flex-col sm:flex-row items-start gap-4">
             {/* Avatar */}
-            <div className="flex items-center justify-center bg-muted size-10 md:size-12 flex-shrink-0">
+            <div className="flex items-center justify-center bg-muted size-10 md:size-12 shrink-0">
               <span className="text-txt-strong text-sm md:text-base font-mono font-medium">
                 {getInitials(member)}
               </span>
@@ -156,13 +156,13 @@ export function MembersList({
                   <div className="space-y-1">
                     {member.email && (
                       <p className="text-xs md:text-sm font-mono text-muted flex items-center gap-1.5">
-                        <Mail className="h-3.5 w-3.5 flex-shrink-0" />
+                        <Mail className="size-3.5 shrink-0" />
                         <span className="truncate">{member.email}</span>
                       </p>
                     )}
                     {member.wallet_address && (
                       <p className="text-xs md:text-sm font-mono text-muted flex items-center gap-1.5 flex-wrap">
-                        <Wallet className="h-3.5 w-3.5 flex-shrink-0" />
+                        <Wallet className="size-3.5 shrink-0" />
                         <span className="font-mono text-xs break-all">
                           {member.wallet_address.substring(0, 10)}...
                           {member.wallet_address.substring(
@@ -208,7 +208,7 @@ export function MembersList({
                       <SelectContent className="bg-bg border-border">
                         <SelectItem value="admin">
                           <div className="flex items-center gap-1.5">
-                            <Shield className="h-4 w-4" />
+                            <Shield className="size-4" />
                             <span className="font-mono">
                               {t("cloud.membersList.admin", {
                                 defaultValue: "Admin",
@@ -218,7 +218,7 @@ export function MembersList({
                         </SelectItem>
                         <SelectItem value="member">
                           <div className="flex items-center gap-1.5">
-                            <User className="h-4 w-4" />
+                            <User className="size-4" />
                             <span className="font-mono">
                               {t("cloud.membersList.member", {
                                 defaultValue: "Member",
@@ -248,7 +248,7 @@ export function MembersList({
                           })}
                           className="p-2 hover:bg-surface transition-colors border border-border"
                         >
-                          <UserMinus className="h-4 w-4 text-danger" />
+                          <UserMinus className="size-4 text-danger" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent className="bg-bg border border-brand-surface">

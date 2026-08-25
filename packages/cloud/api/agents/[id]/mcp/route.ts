@@ -9,6 +9,7 @@
  */
 
 import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
+import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -523,6 +524,11 @@ export async function handleToolCall(
       for await (const delta of result.textStream) {
         fullText += delta;
       }
+      assertModelOutputComplete({
+        finishReason: await result.finishReason,
+        provider,
+        model,
+      });
 
       const usage = ProviderUsageSchema.parse(await result.usage);
 

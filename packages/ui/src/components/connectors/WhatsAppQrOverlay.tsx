@@ -61,7 +61,7 @@ export function WhatsAppQrOverlay({
     () => (
       <div className="mt-3 flex items-center gap-2">
         <span
-          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
+          className="inline-block size-1.5 animate-pulse rounded-full"
           style={{ background: "var(--accent)" }}
         />
         <span className="text-2xs text-muted">

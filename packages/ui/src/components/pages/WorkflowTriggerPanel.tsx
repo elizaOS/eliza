@@ -198,7 +198,7 @@ export function WorkflowTriggerPanel({
     <section aria-label="Workflow triggers" className="bg-card/40 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
         <span
-          className="h-2 w-2 shrink-0 rounded-full bg-status-success"
+          className="size-2 shrink-0 rounded-full bg-status-success"
           title="Manual"
         >
           <span className="sr-only">Manual</span>
@@ -212,7 +212,7 @@ export function WorkflowTriggerPanel({
               className="group flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-2 py-1 text-xs"
               title={`${meta.label} · ${triggerSummary(trigger)}`}
             >
-              <Icon className="h-3.5 w-3.5 text-primary" />
+              <Icon className="size-3.5 text-primary" />
               <span>{triggerSummary(trigger)}</span>
               <button
                 type="button"
@@ -232,7 +232,7 @@ export function WorkflowTriggerPanel({
                     })
                 }
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="size-3" />
               </button>
             </span>
           );
@@ -245,7 +245,7 @@ export function WorkflowTriggerPanel({
           aria-label="Add workflow trigger"
           onClick={() => setType((current) => current ?? "once")}
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="size-3.5" />
         </Button>
       </div>
 
@@ -260,7 +260,7 @@ export function WorkflowTriggerPanel({
               <button
                 key={option}
                 type="button"
-                className={`grid h-8 w-8 place-items-center rounded-md ${type === option ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
+                className={`grid size-8 place-items-center rounded-md ${type === option ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
                 aria-label={TYPE_META[option].label}
                 aria-pressed={type === option}
                 title={TYPE_META[option].label}
@@ -280,7 +280,7 @@ export function WorkflowTriggerPanel({
                   }
                 }}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="size-4" />
               </button>
             );
           })}
@@ -292,7 +292,7 @@ export function WorkflowTriggerPanel({
                 onChange={(event) =>
                   setEventMode(event.target.value as EventMode)
                 }
-                className="h-8 min-w-28 rounded-md border border-input bg-background px-2 text-xs"
+                className="h-8 min-w-28 rounded-md border border-input bg-background px-2 text-base sm:text-xs"
               >
                 {EVENT_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -305,7 +305,7 @@ export function WorkflowTriggerPanel({
                   aria-label="Source workflow"
                   value={sourceWorkflowId}
                   onChange={(event) => setSourceWorkflowId(event.target.value)}
-                  className="h-8 min-w-32 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                  className="h-8 min-w-32 flex-1 rounded-md border border-input bg-background px-2 text-base sm:text-xs"
                 >
                   {sources.length === 0 ? (
                     <option value="">No source</option>
@@ -322,7 +322,7 @@ export function WorkflowTriggerPanel({
                   aria-label="Source step"
                   value={sourceStepId}
                   onChange={(event) => setSourceStepId(event.target.value)}
-                  className="h-8 min-w-28 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                  className="h-8 min-w-28 flex-1 rounded-md border border-input bg-background px-2 text-base sm:text-xs"
                 >
                   {(sourceWorkflow?.steps ?? []).length === 0 ? (
                     <option value="">No steps</option>
@@ -371,9 +371,9 @@ export function WorkflowTriggerPanel({
             onClick={() => void create()}
           >
             {busy ? (
-              <Spinner className="h-3.5 w-3.5" />
+              <Spinner className="size-3.5" />
             ) : (
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="size-3.5" />
             )}
           </Button>
           <Button
@@ -382,7 +382,7 @@ export function WorkflowTriggerPanel({
             aria-label="Cancel trigger"
             onClick={() => setType(null)}
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="size-3.5" />
           </Button>
         </div>
       ) : null}

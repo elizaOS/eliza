@@ -257,6 +257,14 @@ describe("recentMessagesProvider", () => {
 				7000,
 				{ failureKind: "planner_exhaustion" },
 			),
+			makeMemory(
+				"msg-8",
+				AGENT_ID,
+				"Typecheck still fails after repair.",
+				"client_chat",
+				7500,
+				{ failureKind: "coding_verification_failed" },
+			),
 		];
 
 		const result = await recentMessagesProvider.get(
@@ -273,6 +281,7 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).not.toContain("Retrying...");
 		expect(result.text).not.toContain("Capability unavailable.");
 		expect(result.text).not.toContain("Attempts exhausted.");
+		expect(result.text).not.toContain("Typecheck still fails after repair.");
 	});
 
 	it("dedupes repeated assistant messages within one assistant run", async () => {
@@ -647,6 +656,12 @@ describe("recentMessagesProvider", () => {
 		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
 			tableName: "messages",
 			roomIds: [OTHER_ROOM_ID],
+			accessContext: {
+				requesterEntityId: USER_ID,
+				source: "discord",
+				worldId: undefined,
+				authorizedRoomIds: [ROOM_ID, OTHER_ROOM_ID],
+			},
 		});
 		expect(result.data?.recentInteractions).toHaveLength(1);
 		expect(result.values?.recentMessageInteractions).toContain(

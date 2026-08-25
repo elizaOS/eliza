@@ -28,6 +28,13 @@ import {
 } from "../api/client-base";
 import { describeCreditGateError } from "../api/credit-gate-error";
 import {
+  consumePendingCapabilityIntent,
+  findCapabilityHandoff,
+  markPendingCapabilityReady,
+  readPendingCapabilityReadyAgentId,
+  rememberCapabilityHandoff,
+} from "../capability-handoff";
+import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
   normalizeSlashCommandName,
@@ -37,6 +44,7 @@ import { dispatchDoorDashHumanHandoff } from "../doordash-human-handoff";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
+  dispatchChatPrefill,
 } from "../events";
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
@@ -187,6 +195,44 @@ interface AssistantTurnOrigin {
   text: string;
   sentAt: number;
   persistedUserMessageId?: string;
+}
+
+interface CompletedTurnHistorySnapshot {
+  userReceiptId: string;
+  assistantReceiptId: string | undefined;
+  user: ConversationMessage | null;
+  assistant: ConversationMessage | null;
+}
+
+function captureCompletedTurnForHistoryRefresh(
+  messages: readonly ConversationMessage[],
+  ids: {
+    userReceiptId: string;
+    assistantReceiptId?: string;
+    optimisticUserMessageId: string;
+    optimisticAssistantMessageId: string;
+  },
+): CompletedTurnHistorySnapshot {
+  return {
+    userReceiptId: ids.userReceiptId,
+    assistantReceiptId: ids.assistantReceiptId,
+    user:
+      messages.find(
+        (message) =>
+          message.role === "user" &&
+          (message.id === ids.userReceiptId ||
+            message.id === ids.optimisticUserMessageId ||
+            message.clientRenderId === ids.optimisticUserMessageId),
+      ) ?? null,
+    assistant:
+      messages.find(
+        (message) =>
+          message.role === "assistant" &&
+          (message.id === ids.assistantReceiptId ||
+            message.id === ids.optimisticAssistantMessageId ||
+            message.clientRenderId === ids.optimisticAssistantMessageId),
+      ) ?? null,
+  };
 }
 
 /**
@@ -364,6 +410,10 @@ export interface UseChatSendDeps {
 
   // Chat state
   activeConversationId: string | null;
+  /** Current composer text, used to avoid overwriting a draft on setup resume. */
+  chatInput?: string;
+  /** Setup continuation waits until first-run no longer owns the composer. */
+  firstRunComplete?: boolean;
   /** Stable ref whose .current mirrors the latest ptySessions array. */
   ptySessionsRef: MutableRefObject<CodingAgentSession[]>;
 
@@ -479,6 +529,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     uiLanguage,
     tab,
     activeConversationId,
+    chatInput = "",
+    firstRunComplete = true,
     ptySessionsRef,
     setChatInput,
     setChatSending,
@@ -640,6 +692,17 @@ export function useChatSend(deps: UseChatSendDeps) {
         return null;
       }
 
+      const capabilityHandoff = findCapabilityHandoff(
+        data.actionResults,
+        directCloudSharedAgentIdFromBase(client.getBaseUrl()),
+      );
+      if (capabilityHandoff) {
+        rememberCapabilityHandoff(
+          data.messageId ?? assistantMessageId,
+          capabilityHandoff,
+        );
+      }
+
       // A non-durable failure belongs only to the turn that produced it. If a
       // later user turn already exists, this request settled out of order after
       // a remount/history reload; dropping its placeholder prevents an old
@@ -672,7 +735,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
       }
 
-      if (!data.text.trim()) {
+      if (!data.text.trim() && !capabilityHandoff) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           ...(data.failureKind
@@ -688,6 +751,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       } else if (
         shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
         (options.includeReasoning && data.reasoning) ||
+        capabilityHandoff ||
         data.messageId
       ) {
         applyStreamingModificationForConversation(conversationId, {
@@ -701,6 +765,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           ...(options.includeAccountConnect && data.accountConnect
             ? { accountConnect: data.accountConnect }
             : {}),
+          ...(capabilityHandoff ? { capabilityHandoff } : {}),
           ...(options.includeReasoning && data.reasoning
             ? { reasoning: data.reasoning }
             : {}),
@@ -716,12 +781,18 @@ export function useChatSend(deps: UseChatSendDeps) {
             ? { terminalFailure: data.terminalFailure }
             : {}),
         });
-      } else if (options.includeAccountConnect && data.accountConnect) {
+      } else if (
+        (options.includeAccountConnect && data.accountConnect) ||
+        capabilityHandoff
+      ) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           mode: "complete",
           fullText: data.text,
-          accountConnect: data.accountConnect,
+          ...(options.includeAccountConnect && data.accountConnect
+            ? { accountConnect: data.accountConnect }
+            : {}),
+          ...(capabilityHandoff ? { capabilityHandoff } : {}),
           ...(data.assistantEphemeral ? { assistantEphemeral: true } : {}),
           ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
         });
@@ -1405,6 +1476,84 @@ export function useChatSend(deps: UseChatSendDeps) {
     [setConversationMessagesForConversation],
   );
 
+  // A successful stream can carry durable user/assistant receipt ids before the
+  // follow-up history endpoint exposes those rows.
+  // When an action or compatibility response requires that immediate refresh,
+  // the full replacement must retain the exact completed local turn until the
+  // history view converges. Match only receipt/client-render ids for the user
+  // row; merge missing rows adjacent to each other without duplicating server
+  // truth.
+  const preserveCompletedTurnAfterHistoryRefresh = useCallback(
+    (
+      conversationId: string | null,
+      turn: {
+        user: ConversationMessage;
+        assistant: ConversationMessage | null;
+        userReceiptId: string;
+        assistantReceiptId?: string;
+      },
+    ) => {
+      setConversationMessagesForConversation(conversationId, (prev) => {
+        const userIds = new Set(
+          [turn.userReceiptId, turn.user.id, turn.user.clientRenderId].filter(
+            (value): value is string => Boolean(value),
+          ),
+        );
+        const userIndex = prev.findIndex(
+          (message) =>
+            message.role === "user" &&
+            (userIds.has(message.id) ||
+              (message.clientRenderId
+                ? userIds.has(message.clientRenderId)
+                : false)),
+        );
+        const assistant = turn.assistant;
+        const assistantIds = new Set(
+          [
+            turn.assistantReceiptId,
+            assistant?.id,
+            assistant?.clientRenderId,
+          ].filter((value): value is string => Boolean(value)),
+        );
+        let assistantIndex = assistant
+          ? prev.findIndex(
+              (message) =>
+                message.role === "assistant" &&
+                (assistantIds.has(message.id) ||
+                  (message.clientRenderId
+                    ? assistantIds.has(message.clientRenderId)
+                    : false)),
+            )
+          : -1;
+        if (assistant && assistantIndex < 0 && !turn.assistantReceiptId) {
+          assistantIndex = prev.findIndex(
+            (message) =>
+              message.role === "assistant" &&
+              message.text.trim() === assistant.text.trim() &&
+              Math.abs(message.timestamp - assistant.timestamp) <=
+                SENT_TURN_MATCH_SLACK_MS,
+          );
+        }
+
+        if (userIndex >= 0 && (!assistant || assistantIndex >= 0)) return prev;
+
+        const next = [...prev];
+        if (userIndex < 0 && assistantIndex >= 0) {
+          next.splice(assistantIndex, 0, turn.user);
+          return next;
+        }
+        if (userIndex >= 0 && assistant && assistantIndex < 0) {
+          next.splice(userIndex + 1, 0, assistant);
+          return next;
+        }
+        next.push(turn.user);
+        if (assistant) next.push(assistant);
+        return next;
+      });
+    },
+    [setConversationMessagesForConversation],
+  );
+
   const runQueuedChatSend = useCallback(
     async (turn: Omit<QueuedChatSend, "resolve" | "reject">) => {
       const hasAttachedImages = Boolean(turn.images?.length);
@@ -1698,6 +1847,21 @@ export function useChatSend(deps: UseChatSendDeps) {
           setActionNotice(message, "error", 8_000);
         });
 
+        const completedTurnSnapshot =
+          data.completed && data.userMessageId
+            ? captureCompletedTurnForHistoryRefresh(
+                conversationMessagesRef.current,
+                {
+                  userReceiptId: data.userMessageId,
+                  ...(data.messageId
+                    ? { assistantReceiptId: data.messageId }
+                    : {}),
+                  optimisticUserMessageId: userMsgId,
+                  optimisticAssistantMessageId: assistantMsgId,
+                },
+              )
+            : null;
+
         // Direct replies already carry both committed memory ids, so reloading
         // the whole transcript would add a DB round trip, replace every message
         // object, and race the terminal frame. Action callbacks are the only
@@ -1710,6 +1874,19 @@ export function useChatSend(deps: UseChatSendDeps) {
             !data.userMessageId)
         ) {
           await loadConversationMessages(convId);
+          if (completedTurnSnapshot?.user) {
+            preserveCompletedTurnAfterHistoryRefresh(convId, {
+              user: completedTurnSnapshot.user,
+              assistant: completedTurnSnapshot.assistant,
+              userReceiptId: completedTurnSnapshot.userReceiptId,
+              ...(completedTurnSnapshot.assistantReceiptId
+                ? {
+                    assistantReceiptId:
+                      completedTurnSnapshot.assistantReceiptId,
+                  }
+                : {}),
+            });
+          }
           // The reload above full-replaces the thread; a stopped reply is often
           // NOT persisted server-side, so re-attach the partial the user watched
           // stream in (no-op / no duplicate when the server kept it).
@@ -2090,7 +2267,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatAbortRef,
       chatInputRef,
       chatPendingImagesRef,
-      conversationMessagesRef.current.filter,
+      conversationMessagesRef,
       conversationsRef,
       isConversationCommitActive,
       setActiveConversationId,
@@ -2103,6 +2280,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       dropEmptyAssistantPlaceholder,
       reattachInterruptedPartial,
       restoreEvictedUserTurn,
+      preserveCompletedTurnAfterHistoryRefresh,
       setConversations,
       setActionNotice,
       setChatInput,
@@ -2187,6 +2365,22 @@ export function useChatSend(deps: UseChatSendDeps) {
         handoffFrozenRef.current = true;
         return;
       }
+      if (
+        (detail.phase === "switched" || detail.phase === "switched-empty") &&
+        markPendingCapabilityReady(detail.agentId) &&
+        firstRunComplete &&
+        !chatInputRef.current.trim()
+      ) {
+        const originalIntent = consumePendingCapabilityIntent(detail.agentId);
+        if (originalIntent) {
+          setChatInput(originalIntent);
+          dispatchChatPrefill({ text: originalIntent, select: true });
+          setActionNotice(
+            "Your workspace is ready. Review your request, then send it when you want.",
+            "success",
+          );
+        }
+      }
       // Any terminal phase ends the window. Drain whatever queued up — by now
       // the client base is the dedicated container (on a switch) or unchanged
       // (on timeout/failure), so the flush targets the right agent either way.
@@ -2197,7 +2391,13 @@ export function useChatSend(deps: UseChatSendDeps) {
     };
     window.addEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
     return () => window.removeEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
-  }, [flushQueuedChatSends]);
+  }, [
+    chatInputRef,
+    firstRunComplete,
+    flushQueuedChatSends,
+    setActionNotice,
+    setChatInput,
+  ]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationIdRef is a ref — its .current is read at ENQUEUE time (always latest) and must NOT be a dependency, or this callback's identity churns on every conversation switch.
   const sendChatTextInternal = useCallback(
@@ -2938,6 +3138,20 @@ export function useChatSend(deps: UseChatSendDeps) {
     setConversationMessages,
     setUnreadConversations,
   ]);
+
+  useEffect(() => {
+    if (!firstRunComplete || chatInput.trim()) return;
+    const readyAgentId = readPendingCapabilityReadyAgentId();
+    if (!readyAgentId) return;
+    const originalIntent = consumePendingCapabilityIntent(readyAgentId);
+    if (!originalIntent) return;
+    setChatInput(originalIntent);
+    dispatchChatPrefill({ text: originalIntent, select: true });
+    setActionNotice(
+      "Your workspace is ready. Review your request, then send it when you want.",
+      "success",
+    );
+  }, [chatInput, firstRunComplete, setActionNotice, setChatInput]);
 
   return {
     chatSendQueueRef,

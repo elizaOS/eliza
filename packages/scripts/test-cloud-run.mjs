@@ -61,6 +61,11 @@ export const DEFAULT_BATCH_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_BATCH_KILL_GRACE_MS = 2000;
 export const MAX_CLASSIFICATION_OUTPUT_CHARS = 1024 * 1024;
 const MAX_TIMER_MS = 2_147_483_647;
+// A cold Windows PowerShell process can take several seconds to initialize on
+// the hosted windows-2025 image. Keep the identity query bounded, but allow the
+// universal powershell.exe path enough time to return the immutable StartTime
+// ticks before any PID-targeted teardown is considered.
+const WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS = 10_000;
 const POSIX_PROCESS_GROUP_SUPERVISOR = `
 terminating=0
 trap 'terminating=1' TERM INT
@@ -289,9 +294,9 @@ function readPosixProcessGroup(pid, spawnSyncFn) {
 
 function readWindowsProcessIdentity(pid, spawnSyncFn) {
   const command = [
-    `$process = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"`,
+    `$process = Get-Process -Id ${pid} -ErrorAction SilentlyContinue`,
     "if ($null -eq $process) { exit 3 }",
-    "[Console]::Write($process.CreationDate.ToUniversalTime().Ticks)",
+    "[Console]::Write($process.StartTime.ToUniversalTime().Ticks)",
   ].join("; ");
   let result;
   try {
@@ -301,16 +306,19 @@ function readWindowsProcessIdentity(pid, spawnSyncFn) {
       {
         encoding: "utf8",
         windowsHide: true,
-        timeout: 1000,
+        timeout: WINDOWS_PROCESS_IDENTITY_QUERY_TIMEOUT_MS,
         maxBuffer: 4096,
       },
     );
   } catch {
+    // error-policy:J3 An unavailable identity is explicit and makes teardown fail closed.
     return undefined;
   }
   if (result?.error || result?.status !== 0) return undefined;
   const creationTicks = result.stdout?.trim();
-  return creationTicks ? `win-creation:${creationTicks}` : undefined;
+  return /^\d+$/.test(creationTicks ?? "")
+    ? `win-creation:${creationTicks}`
+    : undefined;
 }
 
 export function readProcessIdentity(

@@ -23,7 +23,7 @@ export function MiniStatCard({
         className,
       )}
     >
-      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <p className="text-2xs text-muted-foreground">{label}</p>
       <p className={cn("text-lg font-semibold mt-0.5", color)}>{value}</p>
     </div>
   );

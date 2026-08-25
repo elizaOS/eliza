@@ -120,7 +120,7 @@ export function ContributeCredentialDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
-                <ShieldCheck className="h-5 w-5 text-green-500" />
+                <ShieldCheck className="size-5 text-green-500" />
                 {t("cloud.contributeCredential.pooledTitle", {
                   defaultValue: "Key Added to the Pool",
                 })}
@@ -160,7 +160,7 @@ export function ContributeCredentialDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
-                <KeyRound className="h-5 w-5 text-muted" />
+                <KeyRound className="size-5 text-muted" />
                 {t("cloud.contributeCredential.title", {
                   defaultValue: "Contribute an API Key",
                 })}
@@ -179,7 +179,7 @@ export function ContributeCredentialDialog({
                   role="alert"
                   className="bg-danger/10 border border-danger/40 p-3 flex items-start gap-2"
                 >
-                  <AlertCircle className="h-4 w-4 text-danger flex-shrink-0 mt-0.5" />
+                  <AlertCircle className="size-4 text-danger shrink-0 mt-0.5" />
                   <p className="text-xs md:text-sm font-mono text-danger">
                     {error}
                   </p>
@@ -293,14 +293,14 @@ export function ContributeCredentialDialog({
                 >
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="size-4 animate-spin" />
                       {t("cloud.contributeCredential.validating", {
                         defaultValue: "Validating...",
                       })}
                     </>
                   ) : (
                     <>
-                      <KeyRound className="h-4 w-4" />
+                      <KeyRound className="size-4" />
                       {t("cloud.contributeCredential.submit", {
                         defaultValue: "Validate & Add",
                       })}

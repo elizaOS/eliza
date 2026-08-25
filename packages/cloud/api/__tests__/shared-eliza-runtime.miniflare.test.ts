@@ -776,7 +776,7 @@ describe("Shared Eliza runtime in Workerd", () => {
       storedTodos: Array<Record<string, unknown>>;
     };
     expect(payload.result).toMatchObject({
-      reply: "Created: [ ] Buy milk",
+      reply: 'Added "Buy milk" to your list.',
       degraded: false,
       usage: {
         promptTokens: 70,
@@ -787,7 +787,7 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(payload.result.actionResults).toHaveLength(1);
     expect(payload.result.actionResults?.[0]).toMatchObject({
       success: true,
-      text: "Created: [ ] Buy milk",
+      text: 'Added "Buy milk" to your list.',
       verifiedUserFacing: true,
       effectReceipts: [
         {

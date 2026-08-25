@@ -198,6 +198,8 @@ function buildRequest(
 		seed: readNumberParam(params, "seed"),
 		duration: readNumberParam(params, "duration"),
 		aspectRatio: readStringParam(params, "aspectRatio"),
+		resolution: readStringParam(params, "resolution"),
+		audio: readBooleanParam(params, "audio"),
 		imageUrl: readStringParam(params, "imageUrl"),
 		instrumental: readBooleanParam(params, "instrumental"),
 		genre: readStringParam(params, "genre"),
@@ -322,15 +324,16 @@ async function fallbackGenerateVideo(
 	runtime: IAgentRuntime,
 	request: MediaGenerationRequest,
 ): Promise<MediaGenerationResponse> {
-	// Duration and aspect ratio are deliberately NOT forwarded: providers
-	// hard-reject out-of-range or mistyped values (fal veo3 422s on
-	// durationSeconds outside its fixed clip length AND on "16:9" arriving in
-	// its resolution field — both observed live), and a default-shaped video
-	// beats a failed request for the whole ask. The bare prompt (+ optional
-	// reference image) is the proven-working request shape.
 	const videoResponse = (await runtime.useModel(ModelType.VIDEO, {
 		prompt: request.prompt,
 		...(request.imageUrl ? { imageUrl: request.imageUrl } : {}),
+		...(request.duration !== undefined
+			? { duration: request.duration, durationSeconds: request.duration }
+			: {}),
+		...(request.aspectRatio ? { aspectRatio: request.aspectRatio } : {}),
+		...(request.resolution ? { resolution: request.resolution } : {}),
+		...(request.audio !== undefined ? { audio: request.audio } : {}),
+		...(request.seed !== undefined ? { seed: request.seed } : {}),
 	})) as { url?: string; videoUrl?: string } | string | undefined;
 	const videoUrl =
 		typeof videoResponse === "string"
@@ -402,7 +405,7 @@ async function generateWithService(
 }
 
 const GENERATE_MEDIA_ROUTING_HINT =
-	"When the user asks to create/generate/make a video, animation, clip, image, music, sfx, or speech: call GENERATE_MEDIA with the matching mediaType (video/image/audio). If ATTACHMENT already described a source image, use that description as the video/image prompt — do not refuse, do not offer to 'craft a prompt for another tool', and do not tell the user you lack a video generator when this action validates.";
+	"When the user asks to create/generate/make a video, animation, clip, image, music, sfx, or speech: call GENERATE_MEDIA with the matching mediaType (video/image/audio). If the turn includes an exact trusted attached image URL, pass it unchanged as imageUrl for image-to-video or image editing and use the attachment description to inform the prompt. Do not refuse, offer to 'craft a prompt for another tool', or claim there is no video generator when this action validates.";
 
 export const generateMediaAction = {
 	name: spec.name,
@@ -529,17 +532,15 @@ export const generateMediaAction = {
 			);
 			result = await generateWithService(runtime, request);
 		} catch (firstError) {
-			// Provider param constraints (fal veo3 422s on durationSeconds and on
-			// aspect-ratio-as-resolution — observed live) fail the WHOLE ask over
-			// planner-supplied extras the user never insisted on. Retry once with
-			// the bare proven shape (prompt + optional reference image) before
-			// giving up: a default-shaped result beats a failed request. The
-			// rejected attempt is not billed.
+			// Legacy image and audio providers may reject optional shaping hints.
+			// Video controls are user-visible contract fields, so a video failure
+			// is returned rather than silently retrying with those controls removed.
 			const hadShapingExtras =
-				request.duration !== undefined ||
-				request.aspectRatio !== undefined ||
-				request.size !== undefined ||
-				request.seed !== undefined;
+				request.mediaType !== "video" &&
+				(request.duration !== undefined ||
+					request.aspectRatio !== undefined ||
+					request.size !== undefined ||
+					request.seed !== undefined);
 			if (hadShapingExtras) {
 				logger.warn(
 					{

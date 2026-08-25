@@ -29,7 +29,7 @@ import {
 import type { RecordedStage } from "../../runtime/trajectory-recorder";
 import {
 	composeToolDiagnosticRedactor,
-	projectModelCallDiagnosticValue,
+	projectProtectedModelCallValue,
 	projectToolDiagnosticValue,
 } from "../../security/tool-diagnostics";
 import {
@@ -2024,7 +2024,7 @@ export class TrajectoriesService extends Service {
 		rawParams: TrajectoryRuntimeLlmCallParams,
 	): Promise<void> {
 		const redactDiagnosticText = composeToolDiagnosticRedactor(this.runtime);
-		const projectedParams = projectModelCallDiagnosticValue(
+		const projectedParams = projectProtectedModelCallValue(
 			rawParams as TrajectoryRuntimeLlmCallParams & Record<string, unknown>,
 			redactDiagnosticText,
 		) as TrajectoryRuntimeLlmCallParams;

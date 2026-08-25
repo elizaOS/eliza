@@ -216,7 +216,7 @@ export default function ConnectedPage() {
   if (isLoading) {
     return (
       <main
-        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        className="theme-app brand-section brand-section--orange min-h-dvh flex flex-col items-center justify-center px-4"
         style={{ fontFamily: "Geist, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
@@ -229,7 +229,7 @@ export default function ConnectedPage() {
   if (!isAuthenticated || !user) {
     return (
       <main
-        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        className="theme-app brand-section brand-section--orange min-h-dvh flex flex-col items-center justify-center px-4"
         style={{ fontFamily: "Geist, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
@@ -260,7 +260,7 @@ export default function ConnectedPage() {
 
   return (
     <main
-      className="theme-app brand-section brand-section--orange relative flex min-h-screen flex-col items-center px-4 pb-6 pt-24"
+      className="theme-app brand-section brand-section--orange relative flex min-h-dvh flex-col items-center px-4 pb-6 pt-24"
       style={{ fontFamily: "Geist, system-ui, sans-serif" }}
     >
       {phoneCopyState !== "idle" && (
@@ -330,7 +330,7 @@ export default function ConnectedPage() {
                   className="rounded-xs cursor-pointer hover:ring-2 hover:ring-white/20 transition-all"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-xs bg-black flex items-center justify-center text-white text-sm font-semibold cursor-pointer hover:ring-2 hover:ring-white/20 transition-all">
+                <div className="size-9 rounded-xs bg-black flex items-center justify-center text-white text-sm font-semibold cursor-pointer hover:ring-2 hover:ring-white/20 transition-all">
                   {displayName.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -340,7 +340,7 @@ export default function ConnectedPage() {
             align="end"
             className="w-48 bg-black border-white/10 text-white rounded-xs"
           >
-            <div className="px-2 py-2 border-b border-white/10">
+            <div className="p-2 border-b border-white/10">
               <p className="text-sm font-medium">{displayName}</p>
               {user.telegram_username && (
                 <p className="text-xs text-white/50">
@@ -393,7 +393,7 @@ export default function ConnectedPage() {
             })}
           </h1>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-black text-white border border-black">
-            <span className="w-2 h-2 bg-[var(--brand-orange)] animate-pulse" />
+            <span className="size-2  bg-[var(--brand-orange)] animate-pulse" />
             <span className="text-xs font-semibold">
               {t("homepage_eliza.connected.awake", { defaultValue: "Awake" })}
             </span>
@@ -430,7 +430,7 @@ export default function ConnectedPage() {
                 onClick={handleOpenTelegram}
                 className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
-                <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                <div className="size-8 shrink-0 flex items-center justify-center">
                   <TelegramIcon className="size-8 text-[#229ED9]" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
@@ -473,7 +473,7 @@ export default function ConnectedPage() {
               onClick={() => navigate("/get-started?method=telegram&link=true")}
               className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black gap-4 justify-start px-5"
             >
-              <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+              <div className="size-8 shrink-0 flex items-center justify-center">
                 <TelegramIcon className="size-8 text-[#229ED9]" />
               </div>
               <div className="flex flex-col items-start">
@@ -493,7 +493,7 @@ export default function ConnectedPage() {
                 onClick={() => void handleOpenMessages()}
                 className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
-                <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                <div className="size-8 shrink-0 flex items-center justify-center">
                   <AppleMessagesIcon className="size-8" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
@@ -534,7 +534,7 @@ export default function ConnectedPage() {
                 className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
                 onClick={() => setShowPhoneInput((v) => !v)}
               >
-                <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                <div className="size-8 shrink-0 flex items-center justify-center">
                   <AppleMessagesIcon className="size-8" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
@@ -604,7 +604,7 @@ export default function ConnectedPage() {
                   onClick={handleOpenWhatsApp}
                   className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
                 >
-                  <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                  <div className="size-8 shrink-0 flex items-center justify-center">
                     <WhatsAppIcon className="size-8 text-[#25D366]" />
                   </div>
                   <div className="flex flex-col items-start flex-1">
@@ -647,7 +647,7 @@ export default function ConnectedPage() {
                 className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
                 onClick={handleOpenWhatsApp}
               >
-                <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                <div className="size-8 shrink-0 flex items-center justify-center">
                   <WhatsAppIcon className="size-8 text-[#25D366]" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
@@ -667,7 +667,7 @@ export default function ConnectedPage() {
                 onClick={handleOpenDiscord}
                 className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
-                <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                <div className="size-8 shrink-0 flex items-center justify-center">
                   <DiscordIcon className="size-8 text-[#5865F2]" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
@@ -703,7 +703,7 @@ export default function ConnectedPage() {
               onClick={() => navigate("/get-started?method=discord&link=true")}
               className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black gap-4 justify-start px-5"
             >
-              <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+              <div className="size-8 shrink-0 flex items-center justify-center">
                 <DiscordIcon className="size-8 text-[#5865F2]" />
               </div>
               <div className="flex flex-col items-start">
@@ -727,7 +727,7 @@ export default function ConnectedPage() {
       </div>
 
       <footer className="relative mt-8 text-center">
-        <p className="text-[10px] text-black/50">
+        <p className="text-xs text-black/50">
           {t("homepage_eliza.common.year", {
             defaultValue: "ElizaCloud Inc. {{year}}",
             year: new Date().getFullYear(),

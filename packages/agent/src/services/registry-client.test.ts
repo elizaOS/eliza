@@ -23,6 +23,7 @@ let fetchImpl: () => Promise<Map<string, RegistryPluginInfo>>;
 let fetchCalls = 0;
 let config: { plugins?: { registryEndpoints?: RegistryEndpoint[] } };
 let configLoadError: Error | null = null;
+let configSaveCalls = 0;
 let mergeCalls: Array<{
   pluginCount: number;
   endpoints: RegistryEndpoint[];
@@ -39,6 +40,7 @@ vi.mock("../config/config.ts", () => ({
     return config;
   },
   saveElizaConfig: (next: typeof config) => {
+    configSaveCalls += 1;
     config = next;
   },
 }));
@@ -165,6 +167,7 @@ beforeEach(async () => {
   fetchImpl = async () => new Map();
   config = {};
   configLoadError = null;
+  configSaveCalls = 0;
   mergeCalls = [];
   localPlugins = [];
 });
@@ -283,6 +286,25 @@ describe("addRegistryEndpoint", () => {
       addRegistryEndpoint("bad", "https://localhost/registry"),
     ).toThrow('Endpoint host "localhost" is blocked');
   });
+
+  it("rejects URL credentials before writing them to config", async () => {
+    const credentialUrl = "https://alice:s3cr3t@1.1.1.1/registry";
+    const { addRegistryEndpoint } = await loadModule();
+
+    let thrown: unknown;
+    try {
+      addRegistryEndpoint("private", credentialUrl);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(String(thrown)).not.toContain("alice");
+    expect(String(thrown)).not.toContain("s3cr3t");
+    expect(configSaveCalls).toBe(0);
+    expect(JSON.stringify(config)).not.toContain("alice");
+    expect(JSON.stringify(config)).not.toContain("s3cr3t");
+  });
 });
 
 describe("removeRegistryEndpoint", () => {
@@ -314,6 +336,23 @@ describe("removeRegistryEndpoint", () => {
     expect(() => removeRegistryEndpoint(CUSTOM_ENDPOINT_URL)).toThrow(
       `Endpoint not found: ${CUSTOM_ENDPOINT_URL}`,
     );
+  });
+
+  it("redacts credentials from a missing legacy endpoint error", async () => {
+    const credentialUrl = "https://alice:s3cr3t@1.1.1.1/registry";
+    const { removeRegistryEndpoint } = await loadModule();
+
+    let thrown: unknown;
+    try {
+      removeRegistryEndpoint(credentialUrl);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(String(thrown)).toContain("https://1.1.1.1/registry");
+    expect(String(thrown)).not.toContain("alice");
+    expect(String(thrown)).not.toContain("s3cr3t");
   });
 });
 

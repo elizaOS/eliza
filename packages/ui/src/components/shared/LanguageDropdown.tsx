@@ -82,7 +82,7 @@ export function LanguageDropdown({
               {current.id}
             </span>
             <ChevronDown
-              className={`w-3.5 h-3.5 opacity-60 transition-transform ${open ? "rotate-180" : ""}`}
+              className={`size-3.5 opacity-60 transition-transform ${open ? "rotate-180" : ""}`}
             />
           </Button>
         </DropdownMenuTrigger>
@@ -116,7 +116,7 @@ export function LanguageDropdown({
                 <span>{lang.flag}</span>
                 <span>{lang.label}</span>
               </div>
-              {lang.id === uiLanguage && <Check className="w-4 h-4" />}
+              {lang.id === uiLanguage && <Check className="size-4" />}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>

@@ -240,7 +240,7 @@ export function RoutingMatrix() {
   return (
     <section className="flex flex-col gap-3">
       <header>
-        <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted">
+        <h3 className="text-2xs font-medium uppercase tracking-wider text-muted">
           {t("routingmatrix.title", { defaultValue: "Model routing" })}
         </h3>
       </header>
@@ -345,7 +345,7 @@ function RoutingSlotRow({
           {label}
         </span>
         <span
-          className={`h-2 w-2 rounded-full ${
+          className={`size-2 rounded-full ${
             candidates.length > 0 ? "bg-ok" : "bg-muted"
           }`}
           title={t("routingmatrix.availableProviders", {
@@ -443,7 +443,7 @@ function RoutingSlotRow({
           {candidates.map((c) => (
             <span
               key={c.provider}
-              className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted"
+              className="rounded-full border border-border px-1.5 py-0.5 text-2xs text-muted"
             >
               {c.provider}
             </span>
@@ -453,12 +453,12 @@ function RoutingSlotRow({
       {resolution ? (
         <div
           data-testid={`routing-auto-resolution-${slot}`}
-          className={`flex items-center gap-1.5 text-[10px] ${
+          className={`flex items-center gap-1.5 text-2xs ${
             resolution.onDevice ? "text-accent" : "text-muted"
           }`}
         >
           <span
-            className={`h-1.5 w-1.5 rounded-full ${
+            className={`size-1.5 rounded-full ${
               resolution.onDevice ? "bg-accent" : "bg-muted"
             }`}
             aria-hidden

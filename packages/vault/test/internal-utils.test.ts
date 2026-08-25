@@ -50,7 +50,8 @@ describe("optsCaller", () => {
 
   it("returns empty object when caller is absent or empty", () => {
     expect(optsCaller({})).toEqual({});
-    expect(optsCaller({ caller: undefined })).toEqual({});
+    // Untyped JavaScript callers can still pass an explicit undefined value.
+    expect(optsCaller({ caller: undefined } as never)).toEqual({});
     expect(optsCaller({ caller: "" })).toEqual({});
   });
 });

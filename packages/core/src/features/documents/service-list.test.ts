@@ -364,12 +364,12 @@ describe("DocumentService list semantics", () => {
 			metadata: { roles: { [USER_ID]: "USER" } },
 		} as World);
 
-		const composed = await service.composeProviderDocuments(userMessage(), {
-			limit: 25,
-		});
+		const composed = await service.composeProviderDocuments(userMessage());
 
-		expect(composed.documents).toHaveLength(25);
-		expect(composed.documents).not.toContainEqual(documents[0]);
+		expect(composed.documents).toHaveLength(126);
+		expect(composed.documents.map((document) => document.id)).toContain(
+			documents[0]?.id,
+		);
 		expect(composed.pinnedDocuments.map((document) => document.id)).toEqual([
 			documents[0]?.id,
 		]);

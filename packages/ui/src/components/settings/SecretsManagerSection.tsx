@@ -536,7 +536,7 @@ export function VaultWorkspace({
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-muted" aria-hidden />
+              <KeyRound className="size-4 text-muted" aria-hidden />
               Vault
             </span>
             <span className="rounded-sm border border-border/50 bg-bg/40 px-2 py-0.5 font-mono text-2xs font-normal text-muted">
@@ -548,7 +548,7 @@ export function VaultWorkspace({
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border/45 pb-4">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 text-lg font-semibold text-txt">
-              <KeyRound className="h-5 w-5 text-accent" aria-hidden />
+              <KeyRound className="size-5 text-accent" aria-hidden />
               Vault
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted">
@@ -570,7 +570,7 @@ export function VaultWorkspace({
       >
         {!isReady || !backends || !preferences || !installMethods ? (
           <div className="flex items-center gap-2 px-1 py-6 text-sm text-muted">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading…
+            <Loader2 className="size-4 animate-spin" aria-hidden /> Loading…
           </div>
         ) : (
           <>

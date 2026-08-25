@@ -310,8 +310,10 @@ function renderPrimitiveComponent(
       return (
         <img
           alt={stringProp(component, "alt") ?? ""}
-          className="max-w-full rounded-sm"
+          className="h-auto max-w-full rounded-sm"
           src={stringProp(component, "src")}
+          width={numberProp(component, "width")}
+          height={numberProp(component, "height")}
         />
       );
     case "Icon":

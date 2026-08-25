@@ -41,7 +41,7 @@ function Bubble({ children }: { children: React.ReactNode }) {
 function Panel({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">
+      <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-white/60">
         {label}
       </div>
       {children}
@@ -76,8 +76,8 @@ function Fixture() {
       <Panel label="3 · Settled (tool result + reply)">
         <Bubble>
           <ToolCallEventLog event={settledTool} />
-          <div className="mt-3 text-[15px] leading-relaxed text-white/90">
-            I searched the web and found 3 results — the top hit is the
+          <div className="mt-3 text-sm leading-relaxed text-white/90">
+            I searched the web and found 3 results. The top hit is the
             elizaOS/eliza#13535 activity-feedback issue.
           </div>
         </Bubble>

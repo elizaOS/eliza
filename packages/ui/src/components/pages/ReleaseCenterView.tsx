@@ -380,9 +380,9 @@ export function ReleaseCenterView() {
       value: (
         <span className="inline-flex items-center gap-1.5">
           {updaterNeedsAttention ? (
-            <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden />
+            <AlertTriangle className="size-3.5 text-warn" aria-hidden />
           ) : (
-            <CheckCircle2 className="h-3.5 w-3.5 text-ok" aria-hidden />
+            <CheckCircle2 className="size-3.5 text-ok" aria-hidden />
           )}
           {updaterStatus}
         </span>
@@ -430,12 +430,9 @@ export function ReleaseCenterView() {
               <span className="inline-flex items-center gap-1.5">
                 {agentUpdate.status === "error" ||
                 agentUpdate.status === "update-available" ? (
-                  <AlertTriangle
-                    className="h-3.5 w-3.5 text-warn"
-                    aria-hidden
-                  />
+                  <AlertTriangle className="size-3.5 text-warn" aria-hidden />
                 ) : (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-ok" aria-hidden />
+                  <CheckCircle2 className="size-3.5 text-ok" aria-hidden />
                 )}
                 {agentUpdate.statusLabel}
               </span>
@@ -597,7 +594,7 @@ export function ReleaseCenterView() {
             ref={refreshAgent.ref}
             size="icon"
             variant="outline"
-            className="h-9 w-9 rounded-sm"
+            className="size-9 rounded-sm"
             disabled={busyAction === "refresh" || updateLoading}
             aria-label={t("common.refresh")}
             title={t("common.refresh")}
@@ -605,7 +602,7 @@ export function ReleaseCenterView() {
             {...refreshAgent.agentProps}
           >
             <RefreshCw
-              className={`h-4 w-4 ${busyAction === "refresh" || updateLoading ? "animate-spin" : ""}`}
+              className={`size-4 ${busyAction === "refresh" || updateLoading ? "animate-spin" : ""}`}
               aria-hidden
             />
           </Button>
@@ -662,20 +659,20 @@ export function ReleaseCenterView() {
               onClick={openReleaseNotesAction}
               {...openReleaseNotesAgent.agentProps}
             >
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              <ExternalLink className="size-3.5" aria-hidden />
               {t("common.open", { defaultValue: "Open" })}
             </Button>
             <Button
               ref={resetReleaseNotesUrlAgent.ref}
               size="icon"
               variant="ghost"
-              className="h-9 w-9 rounded-sm text-muted-strong"
+              className="size-9 rounded-sm text-muted-strong"
               aria-label={resetUrlLabel}
               title={resetUrlLabel}
               onClick={resetReleaseNotesUrlAction}
               {...resetReleaseNotesUrlAgent.agentProps}
             >
-              <RotateCcw className="h-4 w-4" aria-hidden />
+              <RotateCcw className="size-4" aria-hidden />
             </Button>
           </div>
         </SettingsRow>

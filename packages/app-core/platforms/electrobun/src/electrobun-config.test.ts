@@ -94,6 +94,9 @@ describe("Electrobun Store packaging", () => {
     ).toBe(true);
     expect(Object.values(copy)).toContain("eliza-dist/package.json");
     expect(Object.values(copy)).not.toContain("remotes");
+    expect(copy["scripts/browser-bridge-unregister.ps1"]).toBe(
+      "browser-bridge-unregister.ps1",
+    );
   });
 
   it("omits the embedded runtime tree for external API desktop builds", () => {

@@ -26,7 +26,7 @@ function Bubbles({ lines }: { lines: string[] }): React.JSX.Element {
       {lines.map((line, i) => (
         <div
           key={`${line}-${i}`}
-          className="mb-2 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80"
+          className="mb-2 whitespace-pre-wrap text-sm-tight leading-relaxed text-white/80"
         >
           {line}
         </div>
@@ -58,22 +58,21 @@ function InteractiveTopicGroup(): React.JSX.Element {
   );
 }
 
+const APP_SHELL_STYLE: React.CSSProperties = {
+  background: "radial-gradient(120% 120% at 50% 0%, #2a2233 0%, #16121c 100%)",
+  minHeight: "100dvh",
+  padding: 24,
+  color: "white",
+  display: "flex",
+  flexDirection: "column",
+  gap: 20,
+  maxWidth: 560,
+  margin: "0 auto",
+};
+
 function App(): React.JSX.Element {
   return (
-    <div
-      style={{
-        background:
-          "radial-gradient(120% 120% at 50% 0%, #2a2233 0%, #16121c 100%)",
-        minHeight: "100vh",
-        padding: 24,
-        color: "white",
-        display: "flex",
-        flexDirection: "column",
-        gap: 20,
-        maxWidth: 560,
-        margin: "0 auto",
-      }}
-    >
+    <div style={APP_SHELL_STYLE}>
       <InteractiveTopicGroup />
     </div>
   );

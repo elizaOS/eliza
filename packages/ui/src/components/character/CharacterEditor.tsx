@@ -1128,7 +1128,7 @@ export function CharacterEditor({
         type="button"
         variant="outline"
         size="icon"
-        className="h-9 w-9 rounded-sm"
+        className="size-9 rounded-sm"
         onActivate={() => document.getElementById(uploadInputId)?.click()}
         onClick={() => document.getElementById(uploadInputId)?.click()}
         title={t("aria.upload", {
@@ -1138,7 +1138,7 @@ export function CharacterEditor({
           defaultValue: "Upload VRM",
         })}
       >
-        <UploadIcon className="h-4 w-4" />
+        <UploadIcon className="size-4" />
       </CharacterAgentButton>
       <CharacterAgentButton
         agentId="action-export-json"
@@ -1150,7 +1150,7 @@ export function CharacterEditor({
         type="button"
         variant="outline"
         size="icon"
-        className="h-9 w-9 rounded-sm"
+        className="size-9 rounded-sm"
         onActivate={handleExportCharacter}
         onClick={handleExportCharacter}
         disabled={!currentCharacter}
@@ -1161,7 +1161,7 @@ export function CharacterEditor({
           defaultValue: "Export JSON",
         })}
       >
-        <DownloadIcon className="h-4 w-4" />
+        <DownloadIcon className="size-4" />
       </CharacterAgentButton>
       <CharacterAgentButton
         agentId="action-reset"

@@ -64,7 +64,7 @@
     "dev": "bun run build.ts --watch",
     "migrate:generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "clean": "node ../../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json *.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write --config-path ./biome.json .",
     "format:check": "bunx @biomejs/biome format --config-path ./biome.json .",

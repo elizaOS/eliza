@@ -206,7 +206,7 @@ export function TwilioConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Phone className="h-6 w-6 text-red-600" />}
+            icon={<Phone className="size-6 text-red-600" />}
             iconClassName="bg-red-100"
             title={status?.phoneNumber}
             subtitle={t("cloud.twilio.connectedSubtitle", {
@@ -284,7 +284,7 @@ export function TwilioConnection() {
                   {t("cloud.twilio.console", {
                     defaultValue: "Twilio Console",
                   })}
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="size-3" />
                 </a>
               </li>
               <li>
@@ -410,14 +410,14 @@ export function TwilioConnection() {
           >
             {isConnecting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="size-4 animate-spin mr-2" />
                 {t("cloud.twilio.connecting", {
                   defaultValue: "Connecting...",
                 })}
               </>
             ) : (
               <>
-                <MessageSquare className="h-4 w-4 mr-2" />
+                <MessageSquare className="size-4 mr-2" />
                 {t("cloud.twilio.connectButton", {
                   defaultValue: "Connect Twilio",
                 })}

@@ -3406,8 +3406,11 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         throw new Error("[aosp-local-inference] fused text generate aborted");
       }
       const promptTokens = tokenizeFused(active, args.prompt);
+      const maxTokens =
+        args.maxTokens ??
+        Math.max(1, (active.contextSize ?? 32_768) - promptTokens.length);
       const config: AospLlmStreamConfig = {
-        maxTokens: args.maxTokens ?? 512,
+        maxTokens,
         temperature: args.temperature ?? 0.7,
         topP: 0.9,
         topK: 40,
@@ -3429,6 +3432,15 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           ...(args.signal ? { signal: args.signal } : {}),
           ...(args.onTextChunk ? { onTextChunk: args.onTextChunk } : {}),
         });
+        if (result.accepted >= maxTokens) {
+          throw new ElizaError(
+            "AOSP local model output reached the decode boundary before a stop condition",
+            {
+              code: "MODEL_OUTPUT_INCOMPLETE",
+              context: { maxTokens, outputTokens: result.accepted },
+            },
+          );
+        }
         return result.text;
       };
       try {

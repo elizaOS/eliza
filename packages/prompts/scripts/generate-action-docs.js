@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Codegen: reads the action/provider specs under `specs/` (hand-maintained
- * core.json plus the generated plugins spec), compresses each description with
- * `compressPromptDescription`, and emits
- * `packages/core/src/generated/action-docs.ts` — the compact, model-facing
+ * core.json plus the generated plugins spec), preserves each authored
+ * description completely, and emits
+ * `packages/core/src/generated/action-docs.ts` — the model-facing
  * action/provider catalog the runtime ships. Run after editing a spec.
  *
  * The markdown catalog (`packages/docs/action-catalog.md`) additionally gets a
@@ -19,7 +19,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { encodeMarkdownTableCell } from "../../scripts/markdown-table-cell.mjs";
-import { compressPromptDescription } from "../src/prompt-compression.ts";
 import { ensureDirectory, readJson } from "./file-utils.js";
 import { collectRegisteredActionInventory } from "./registered-action-inventory.js";
 
@@ -387,29 +386,12 @@ function loadSpecs(dir, corePath, kind) {
 
 /**
  * @param {Record<string, unknown>} doc
- * @returns {string | undefined}
- */
-function getCompressedAlias(doc) {
-  const preferred = doc.descriptionCompressed;
-  if (typeof preferred === "string" && preferred.trim()) {
-    return preferred;
-  }
-  const alias = doc.compressedDescription;
-  if (typeof alias === "string" && alias.trim()) {
-    return alias;
-  }
-  return undefined;
-}
-
-/**
- * @param {Record<string, unknown>} doc
  */
 function normalizeCompressedDescription(doc) {
   if (typeof doc.description !== "string") {
     return;
   }
-  doc.descriptionCompressed =
-    getCompressedAlias(doc) ?? compressPromptDescription(doc.description);
+  doc.descriptionCompressed = doc.description;
 }
 
 /**

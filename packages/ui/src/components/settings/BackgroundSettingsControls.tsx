@@ -107,9 +107,9 @@ function TileFrame({
     >
       {/* A low legibility gradient so the label reads over any wallpaper, tinted
           toward the field rather than a flat black bar. */}
-      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-scrim/80 to-transparent" />
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-scrim/80 to-transparent" />
       {selected ? (
-        <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-accent-fg shadow-[0_2px_8px_-2px_var(--color-scrim)]">
+        <span className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full bg-accent text-accent-fg shadow-[0_2px_8px_-2px_var(--color-scrim)]">
           <span className="text-2xs font-semibold uppercase tracking-wide">
             on
           </span>
@@ -329,7 +329,7 @@ export function BackgroundSettingsControls({
         className="h-11 gap-2 rounded-full px-4 text-sm"
         {...uploadButton.agentProps}
       >
-        <ImagePlus className="h-4 w-4" aria-hidden />
+        <ImagePlus className="size-4" aria-hidden />
         Upload
       </Button>
       {/* aria-hidden: this sr-only input is pure upload machinery — the
@@ -363,7 +363,7 @@ export function BackgroundSettingsControls({
           className="h-11 gap-1.5 rounded-full px-3 text-sm text-muted hover:text-txt disabled:opacity-40"
           {...undoButton.agentProps}
         >
-          <RotateCcw className="h-4 w-4" aria-hidden />
+          <RotateCcw className="size-4" aria-hidden />
           Revert
         </Button>
         <Button
@@ -374,10 +374,10 @@ export function BackgroundSettingsControls({
           onClick={() => redoBackgroundConfig()}
           disabled={!canRedoBackground}
           aria-label="Redo background change"
-          className="h-11 w-11 rounded-full text-muted hover:text-txt disabled:opacity-40"
+          className="size-11 rounded-full text-muted hover:text-txt disabled:opacity-40"
           {...redoButton.agentProps}
         >
-          <RotateCw className="h-4 w-4" aria-hidden />
+          <RotateCw className="size-4" aria-hidden />
         </Button>
       </div>
     ) : null;

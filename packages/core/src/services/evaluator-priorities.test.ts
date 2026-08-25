@@ -48,9 +48,6 @@ describe("evaluator-priorities", () => {
 
 	it("enforces memory and skill ordering (memory < experience < skill refinement)", () => {
 		expect(EvaluatorPriority.REFLECTION_SUCCESS).toBeLessThan(
-			EvaluatorPriority.MEMORY_SUMMARY,
-		);
-		expect(EvaluatorPriority.MEMORY_SUMMARY).toBeLessThan(
 			EvaluatorPriority.MEMORY_LONG_TERM,
 		);
 		expect(EvaluatorPriority.MEMORY_LONG_TERM).toBeLessThan(

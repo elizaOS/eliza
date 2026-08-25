@@ -104,7 +104,7 @@ function LongRunningHostBanner({ triggers }: { triggers: TriggerSummary[] }) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-auto px-0 py-0 text-xs font-medium text-muted underline-offset-2 hover:bg-transparent hover:text-txt hover:underline"
+          className="h-auto p-0 text-xs font-medium text-muted underline-offset-2 hover:bg-transparent hover:text-txt hover:underline"
           onClick={() => {
             if (typeof sessionStorage !== "undefined") {
               sessionStorage.setItem(LONG_RUNNING_BANNER_DISMISS_KEY, "1");
@@ -654,7 +654,7 @@ function TriggersLayout() {
           aria-label={newTriggerLabel}
           onClick={openCreateTrigger}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="size-4" />
         </SidebarCollapsedActionButton>
       }
       collapsedRailItems={visibleTriggers.map((trigger) => {
@@ -692,7 +692,7 @@ function TriggersLayout() {
           {triggersLoading && (
             <SidebarContent.Notice
               icon={
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
+                <div className="size-4 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
               }
             >
               {t("common.loading")}
@@ -812,7 +812,7 @@ function TriggersLayout() {
                         deleteUserTemplate(template.id);
                       }}
                     >
-                      <X className="h-3.5 w-3.5" aria-hidden />
+                      <X className="size-3.5" aria-hidden />
                     </SidebarContent.ItemAction>
                   )}
                 </div>
@@ -974,7 +974,7 @@ function TriggersLayout() {
               </div>
 
               <dl className="mb-8 grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
-                <PagePanel.SummaryCard className="px-4 py-4">
+                <PagePanel.SummaryCard className="p-4">
                   <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
                     {t("common.schedule")}
                   </dt>
@@ -982,7 +982,7 @@ function TriggersLayout() {
                     {scheduleLabel(selectedTrigger, t, uiLanguage)}
                   </dd>
                 </PagePanel.SummaryCard>
-                <PagePanel.SummaryCard className="px-4 py-4">
+                <PagePanel.SummaryCard className="p-4">
                   <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
                     {t("triggersview.LastRun")}
                   </dt>
@@ -993,7 +993,7 @@ function TriggersLayout() {
                     })}
                   </dd>
                 </PagePanel.SummaryCard>
-                <PagePanel.SummaryCard className="px-4 py-4">
+                <PagePanel.SummaryCard className="p-4">
                   <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
                     {t("triggersview.nextRun")}
                   </dt>
@@ -1005,7 +1005,7 @@ function TriggersLayout() {
                   </dd>
                 </PagePanel.SummaryCard>
                 {hasLoadedSelectedRuns && selectedRunCount > 0 ? (
-                  <PagePanel.SummaryCard className="px-4 py-4">
+                  <PagePanel.SummaryCard className="p-4">
                     <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
                       {t("triggersview.runStats")}
                     </dt>
@@ -1017,13 +1017,13 @@ function TriggersLayout() {
                       </span>
                       {successCount > 0 ? (
                         <span className="inline-flex items-center gap-1 text-ok">
-                          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                          <CheckCircle2 className="size-3.5" aria-hidden />
                           {successCount}
                         </span>
                       ) : null}
                       {failureCount > 0 ? (
                         <span className="inline-flex items-center gap-1 text-danger">
-                          <XCircle className="h-3.5 w-3.5" aria-hidden />
+                          <XCircle className="size-3.5" aria-hidden />
                           {failureCount}
                         </span>
                       ) : null}
@@ -1051,7 +1051,7 @@ function TriggersLayout() {
 
                 {!hasLoadedSelectedRuns ? (
                   <div className="flex items-center gap-2 py-6 text-sm text-muted">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
+                    <div className="size-4 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
                     {t("appsview.Loading")}
                   </div>
                 ) : selectedRuns.length === 0 ? (

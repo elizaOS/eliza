@@ -664,7 +664,7 @@ export function BillingTab({
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-muted" />
+            <div className="size-2 rounded-full bg-muted" />
             <h3 className="text-base font-mono text-txt uppercase">
               {t("cloud.billingTab.creditBalance", {
                 defaultValue: "Credit Balance",
@@ -678,7 +678,7 @@ export function BillingTab({
                 <div className="flex flex-col items-center justify-center gap-1 px-4">
                   <div
                     aria-live="polite"
-                    className="break-words text-center font-mono text-2xl tracking-tight text-txt-strong tabular-nums [overflow-wrap:anywhere] sm:text-[40px]"
+                    className="break-words text-center font-mono text-2xl tracking-tight text-txt-strong tabular-nums [overflow-wrap:anywhere] sm:text-[2.5rem]"
                   >
                     <BalanceValue state={billingSnapshotState} />
                   </div>
@@ -747,7 +747,7 @@ export function BillingTab({
                           : "bg-transparent border-border text-muted hover:border-border-strong"
                       }`}
                     >
-                      <CreditCard className="h-4 w-4" />
+                      <CreditCard className="size-4" />
                       {t("cloud.billingTab.card", { defaultValue: "Card" })}
                     </Button>
                     <Button
@@ -765,7 +765,7 @@ export function BillingTab({
                           : "bg-transparent border-border text-muted hover:border-border-strong"
                       }`}
                     >
-                      <Wallet className="h-4 w-4" />
+                      <Wallet className="size-4" />
                       {t("cloud.billingTab.crypto", { defaultValue: "Crypto" })}
                     </Button>
                   </div>
@@ -817,7 +817,7 @@ export function BillingTab({
                         className="mt-1.5 flex items-center gap-2 text-sm text-red-400"
                       >
                         <AlertCircle
-                          className="h-4 w-4 shrink-0"
+                          className="size-4 shrink-0"
                           aria-hidden="true"
                         />
                         <span className="font-mono">
@@ -848,12 +848,12 @@ export function BillingTab({
                       type="submit"
                       variant="primary"
                       disabled={isProcessingCheckout}
-                      className="h-11 px-6 w-full sm:w-auto flex-shrink-0 font-mono text-base whitespace-nowrap sm:mt-[26px] disabled:border disabled:border-border disabled:bg-surface disabled:text-muted disabled:opacity-100"
+                      className="h-11 px-6 w-full sm:w-auto shrink-0 font-mono text-base whitespace-nowrap sm:mt-[26px] disabled:border disabled:border-border disabled:bg-surface disabled:text-muted disabled:opacity-100"
                     >
                       {isProcessingCheckout ? (
                         <>
                           <Loader2
-                            className="h-4 w-4 animate-spin"
+                            className="size-4 animate-spin"
                             aria-hidden="true"
                           />
                           {t("cloud.billingTab.processing", {
@@ -881,7 +881,7 @@ export function BillingTab({
                     className="flex max-w-2xl items-start gap-2 border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300"
                   >
                     <AlertCircle
-                      className="mt-0.5 h-4 w-4 shrink-0"
+                      className="mt-0.5 size-4 shrink-0"
                       aria-hidden="true"
                     />
                     <span className="font-mono">{cardCheckoutError}</span>
@@ -890,7 +890,7 @@ export function BillingTab({
 
                 {isValidAmount && purchaseAmount && amountValue !== null && (
                   <div className="flex items-center gap-2 text-sm text-green-400">
-                    <CheckCircle className="h-4 w-4" />
+                    <CheckCircle className="size-4" />
                     <span className="font-mono">
                       {t("cloud.billingTab.willBeAdded", {
                         amount: amountValue.toFixed(2),
@@ -940,7 +940,7 @@ export function BillingTab({
         <div className="relative z-10 space-y-6">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-muted" />
+              <div className="size-2 rounded-full bg-muted" />
               <h3 className="text-base font-mono text-txt uppercase">
                 {t("cloud.billingTab.invoices", { defaultValue: "Invoices" })}
               </h3>
@@ -987,11 +987,11 @@ export function BillingTab({
 
             {loadingInvoices ? (
               <div className="flex items-center justify-center p-8 border border-brand-surface sm:border-t-0">
-                <Loader2 className="h-6 w-6 animate-spin text-muted" />
+                <Loader2 className="size-6 animate-spin text-muted" />
               </div>
             ) : invoicesError ? (
               <div className="flex items-start gap-3 p-8 border border-brand-surface sm:border-t-0 bg-red-500/5">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-400" />
                 <div className="space-y-1">
                   <p className="text-xs md:text-sm text-red-300 font-mono">
                     {t("cloud.billingTab.invoiceLoadFailed", {
@@ -1051,7 +1051,7 @@ export function BillingTab({
                         className={`inline-flex items-center gap-1.5 text-xs md:text-sm font-mono uppercase ${statusClassName}`}
                       >
                         <StatusIcon
-                          className="h-4 w-4 shrink-0"
+                          className="size-4 shrink-0"
                           aria-hidden={true}
                         />
                         <span>{invoice.status}</span>

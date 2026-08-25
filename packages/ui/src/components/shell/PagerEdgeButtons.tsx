@@ -55,7 +55,7 @@ export function PagerEdgeButtons({
 
   const prefix = idPrefix ? `${idPrefix}-` : "";
   const edgeClass =
-    "absolute top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center text-white/55 transition-colors hover:text-white";
+    "absolute top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center text-white/55 transition-colors hover:text-white";
 
   return (
     <>
@@ -69,7 +69,7 @@ export function PagerEdgeButtons({
           onClick={goPrev}
           className={cn(edgeClass, "left-1 hover:bg-transparent")}
         >
-          <ChevronLeft className="h-6 w-6" aria-hidden />
+          <ChevronLeft className="size-6" aria-hidden />
         </Button>
       ) : null}
       {canNext ? (
@@ -82,7 +82,7 @@ export function PagerEdgeButtons({
           onClick={goNext}
           className={cn(edgeClass, "right-1 hover:bg-transparent")}
         >
-          <ChevronRight className="h-6 w-6" aria-hidden />
+          <ChevronRight className="size-6" aria-hidden />
         </Button>
       ) : null}
     </>

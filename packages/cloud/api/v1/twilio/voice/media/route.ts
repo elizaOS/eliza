@@ -336,6 +336,7 @@ app.get("/", async (c) => {
   ): Promise<void> => {
     if (session || starting || closed) return;
     starting = true;
+    const bootstrapStartedAt = Date.now();
     if (event.streamSid !== event.start.streamSid) {
       closeBootstrapBoundary(1008, "stream identity mismatch");
       return;
@@ -366,6 +367,7 @@ app.get("/", async (c) => {
       closeBootstrapBoundary(1008, "invalid stream bootstrap");
       return;
     }
+    const tokenVerifiedAt = Date.now();
     const claim = await awaitTwilioBootstrapPhase(
       claimVoiceSessionToken(claims.jti, claims.exp, rawRedis ?? undefined),
       () => closed,
@@ -376,6 +378,7 @@ app.get("/", async (c) => {
       closeBootstrapBoundary(1008, "stream bootstrap already used");
       return;
     }
+    const tokenClaimedAt = Date.now();
     if (
       event.start.callSid !== claims.callSid ||
       event.start.accountSid !== claims.accountSid
@@ -456,11 +459,16 @@ app.get("/", async (c) => {
       downlink,
     });
     session.start();
+    const sessionStartedAt = Date.now();
     for (const frame of pendingMedia.splice(0)) session.pushUplinkAudio(frame);
     logger.info("[twilio-media] realtime call connected", {
       callSid: event.start.callSid,
       streamSid,
       agentId: claims.agentId,
+      tokenVerificationMs: tokenVerifiedAt - bootstrapStartedAt,
+      tokenClaimMs: tokenClaimedAt - tokenVerifiedAt,
+      sessionConstructionMs: sessionStartedAt - tokenClaimedAt,
+      bootstrapTotalMs: sessionStartedAt - bootstrapStartedAt,
     });
   };
 

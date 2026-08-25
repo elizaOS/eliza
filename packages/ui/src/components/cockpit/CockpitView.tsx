@@ -79,7 +79,7 @@ export function CockpitView({
       )}
     >
       <header className="flex items-center gap-2">
-        <TerminalSquare className="h-5 w-5 text-accent" />
+        <TerminalSquare className="size-5 text-accent" />
         <h1 className="text-base font-semibold text-txt">Coding Cockpit</h1>
       </header>
 

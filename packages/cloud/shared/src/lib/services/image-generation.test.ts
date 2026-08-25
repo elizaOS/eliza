@@ -143,6 +143,23 @@ function dependencies(
 }
 
 describe("executeImageGeneration", () => {
+  test("platform funding records cost without settling organization credits", async () => {
+    const events: string[] = [];
+    const bucket = new MemoryR2Bucket();
+    const execute = createImageGenerationExecutor(dependencies(events));
+    const outcome = await execute(
+      requestInput(bucket, async () => ({ kind: "platform" as const })),
+    );
+
+    expect(outcome.images).toHaveLength(1);
+    expect(events).toContain("provider");
+    expect(events).toContain("history");
+    expect(events).not.toContain("bill");
+    expect(events.some((event) => event.startsWith("settle:"))).toBe(false);
+    expect(events.some((event) => event.startsWith("direct-settle:"))).toBe(false);
+    expect(events).not.toContain("settle-unknown");
+  });
+
   test("persists one public artifact and durable history before exact settlement", async () => {
     const events: string[] = [];
     const bucket = new MemoryR2Bucket();

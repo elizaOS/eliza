@@ -10,8 +10,8 @@ import {
   BrowserBridgeNativeProtocolError,
   type BrowserBridgeNativeResponse,
   createAuthenticatedBrokerEnvelope,
-  parseNativeEnrollmentRequest,
-  parseNativeEnrollmentResponse,
+  parseNativeRequest,
+  parseNativeResponse,
 } from "./browser-bridge-native-protocol";
 
 export class BrowserBridgeNativeHost {
@@ -29,7 +29,7 @@ export class BrowserBridgeNativeHost {
     input: unknown,
     signal?: AbortSignal,
   ): Promise<BrowserBridgeNativeResponse> {
-    const request = parseNativeEnrollmentRequest(input);
+    const request = parseNativeRequest(input);
     const envelope = createAuthenticatedBrokerEnvelope({
       request,
       launchedCaller: this.options.launchedCaller,
@@ -53,10 +53,11 @@ export class BrowserBridgeNativeHost {
           : "broker response JSON is invalid",
       );
     }
-    const response = parseNativeEnrollmentResponse(decoded);
+    const response = parseNativeResponse(decoded);
     if (
       response.requestId !== request.requestId ||
-      (response.type === "browser_bridge.enroll_result" &&
+      ((response.type === "browser_bridge.enroll_result" ||
+        response.type === "browser_bridge.revoke_result") &&
         response.nonce !== request.nonce)
     ) {
       throw new BrowserBridgeNativeProtocolError(

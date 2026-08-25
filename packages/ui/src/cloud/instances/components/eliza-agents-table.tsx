@@ -313,7 +313,7 @@ function StatusCell({
       </div>
       {isProvisioning && trackedJob && (
         <span className="text-2xs text-muted flex items-center gap-1 pl-0.5">
-          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+          <Loader2 className="size-2.5 animate-spin" />
           {t("cloud.elizaAgentsTable.jobLabel", {
             jobId: trackedJob.jobId.slice(0, 8),
             defaultValue: "Job {{jobId}}",
@@ -916,7 +916,7 @@ export function ElizaAgentsTable({
               target="_blank"
               rel="noreferrer"
             >
-              <ExternalLink className="h-4 w-4" />
+              <ExternalLink className="size-4" />
               {t("cloud.elizaAgentsTable.openElizaApp", {
                 defaultValue: "Open Eliza app",
               })}
@@ -975,7 +975,7 @@ export function ElizaAgentsTable({
         {/* Search the authoritative agent set. Each runnable row owns its one
             launch affordance: Open Web UI. */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <Input
             placeholder={t("cloud.elizaAgentsTable.searchAgents", {
               defaultValue: "Search agents…",
@@ -1024,7 +1024,7 @@ export function ElizaAgentsTable({
                     {t("cloud.elizaAgentsTable.colAgent", {
                       defaultValue: "Agent",
                     })}
-                    <ArrowUpDown className="h-3 w-3" />
+                    <ArrowUpDown className="size-3" />
                   </Button>
                 </TableHead>
                 <TableHead>
@@ -1037,7 +1037,7 @@ export function ElizaAgentsTable({
                     {t("cloud.elizaAgentsTable.colStatus", {
                       defaultValue: "Status",
                     })}
-                    <ArrowUpDown className="h-3 w-3" />
+                    <ArrowUpDown className="size-3" />
                   </Button>
                 </TableHead>
                 <TableHead className="text-xs-tight font-medium uppercase tracking-widest text-muted">
@@ -1057,7 +1057,7 @@ export function ElizaAgentsTable({
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
                     <div className="flex flex-col items-center justify-center gap-1 text-muted">
-                      <Search className="h-5 w-5 mb-1" />
+                      <Search className="size-5 mb-1" />
                       <p className="text-sm">
                         {t("cloud.elizaAgentsTable.noMatch", {
                           defaultValue: "No agents match your filters",
@@ -1138,7 +1138,7 @@ export function ElizaAgentsTable({
                             onClick={() => openWebUIWithPairing(sb.id)}
                             className="inline-flex items-center gap-1 text-xs text-muted-strong hover:text-txt-strong transition-colors bg-transparent border-0 p-0"
                           >
-                            <ExternalLink className="h-3 w-3" />
+                            <ExternalLink className="size-3" />
                             {t("cloud.elizaAgentsTable.openWebUi", {
                               defaultValue: "Open Web UI",
                             })}
@@ -1164,7 +1164,7 @@ export function ElizaAgentsTable({
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                                 >
-                                  <Play className="h-4 w-4" />
+                                  <Play className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1189,7 +1189,7 @@ export function ElizaAgentsTable({
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
                                 >
-                                  <Pause className="h-4 w-4" />
+                                  <Pause className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1214,7 +1214,7 @@ export function ElizaAgentsTable({
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                                 >
-                                  <Sun className="h-4 w-4" />
+                                  <Sun className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1241,7 +1241,7 @@ export function ElizaAgentsTable({
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
                                 >
-                                  <Moon className="h-4 w-4" />
+                                  <Moon className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1266,7 +1266,7 @@ export function ElizaAgentsTable({
                                   disabled={isDeleting || busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  <Trash2 className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-card border-border">
@@ -1290,7 +1290,7 @@ export function ElizaAgentsTable({
         <DashboardDataListMobile>
           {filtered.length === 0 ? (
             <div className="border border-border bg-card p-6 text-center">
-              <Search className="h-5 w-5 mx-auto mb-2 text-muted" />
+              <Search className="size-5 mx-auto mb-2 text-muted" />
               <p className="text-sm text-muted">
                 {t("cloud.elizaAgentsTable.noMatch", {
                   defaultValue: "No agents match your filters",
@@ -1355,7 +1355,7 @@ export function ElizaAgentsTable({
                           onClick={() => openWebUIWithPairing(sb.id)}
                           className="flex min-h-touch items-center justify-center gap-1.5 px-3 py-2 text-xs text-accent rounded-md hover:bg-bg-hover transition-colors"
                         >
-                          <ExternalLink className="h-3.5 w-3.5" />
+                          <ExternalLink className="size-3.5" />
                           {t("cloud.elizaAgentsTable.openWebUi", {
                             defaultValue: "Open Web UI",
                           })}
@@ -1373,7 +1373,7 @@ export function ElizaAgentsTable({
                           disabled={busy}
                           className="min-h-touch rounded-md px-3 text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                         >
-                          <Play className="h-3.5 w-3.5" />
+                          <Play className="size-3.5" />
                         </Button>
                       )}
 
@@ -1388,7 +1388,7 @@ export function ElizaAgentsTable({
                           disabled={busy}
                           className="min-h-touch rounded-md px-3 text-accent hover:bg-bg-hover transition-colors disabled:opacity-30"
                         >
-                          <Pause className="h-3.5 w-3.5" />
+                          <Pause className="size-3.5" />
                         </Button>
                       )}
 
@@ -1406,7 +1406,7 @@ export function ElizaAgentsTable({
                           disabled={busy}
                           className="min-h-touch rounded-md px-3 text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                         >
-                          <Sun className="h-3.5 w-3.5" />
+                          <Sun className="size-3.5" />
                         </Button>
                       )}
 
@@ -1424,7 +1424,7 @@ export function ElizaAgentsTable({
                           disabled={busy}
                           className="min-h-touch rounded-md px-3 text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
                         >
-                          <Moon className="h-3.5 w-3.5" />
+                          <Moon className="size-3.5" />
                         </Button>
                       )}
 
@@ -1439,7 +1439,7 @@ export function ElizaAgentsTable({
                           disabled={isDeleting || busy}
                           className="min-h-touch rounded-md px-3 text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="size-3.5" />
                         </Button>
                       )}
                     </div>
@@ -1557,7 +1557,7 @@ export function ElizaAgentsTable({
                 void handleSleep(id);
               }}
             >
-              <Moon className="h-4 w-4" />
+              <Moon className="size-4" />
               {t("cloud.containers.agentActions.deactivateConfirm", {
                 defaultValue: "Yes, deactivate",
               })}

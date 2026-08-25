@@ -107,13 +107,13 @@ function ParticipantRow({
     >
       <span className="relative inline-flex shrink-0">
         <Icon
-          className={`h-3.5 w-3.5 ${
+          className={`size-3.5 ${
             isSubAgent ? (live ? "text-txt" : "text-muted") : "text-muted"
           }`}
         />
         {isSubAgent ? (
           <span
-            className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full border border-bg ${
+            className={`absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full border border-bg ${
               live ? "bg-ok" : "bg-muted/40"
             }`}
             role="img"
@@ -143,7 +143,7 @@ function ParticipantRow({
             participant.activeTool ? "text-accent" : "text-muted"
           }`}
         >
-          {participant.activeTool ? <Wrench className="h-3 w-3" /> : null}
+          {participant.activeTool ? <Wrench className="size-3" /> : null}
           <span className="max-w-[7rem] truncate">
             {statusLabel(participant, t)}
           </span>
@@ -181,7 +181,7 @@ function RoomOpenButton({
       aria-label={room.taskTitle}
       data-testid="orchestrator-room-open"
       variant="ghost"
-      className="flex h-auto w-full items-center justify-start gap-1.5 whitespace-normal rounded-sm px-0 py-0 text-left font-normal transition-colors hover:bg-bg-hover"
+      className="flex h-auto w-full items-center justify-start gap-1.5 whitespace-normal rounded-sm p-0 text-left font-normal transition-colors hover:bg-bg-hover"
       {...agentProps}
     >
       {children}
@@ -213,7 +213,7 @@ function RoomCard({
   const header = (
     <>
       <span
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${roomStatusTone(room.status)}`}
+        className={`size-1.5 shrink-0 rounded-full ${roomStatusTone(room.status)}`}
         role="img"
         aria-label={room.status}
         title={room.status}
@@ -224,7 +224,7 @@ function RoomCard({
       <span className="ml-auto flex shrink-0 items-center gap-1 text-3xs text-muted">
         {room.multiParty ? (
           <Users
-            className="h-3 w-3"
+            className="size-3"
             aria-label={t("agentorchestrator.multiPartyRoom", {
               defaultValue: "Multi-party room",
             })}
@@ -306,11 +306,11 @@ export function OrchestratorRoomView({
     return (
       <WidgetSection
         title={t("agentorchestrator.rooms", { defaultValue: "Task rooms" })}
-        icon={<Users className="h-4 w-4" />}
+        icon={<Users className="size-4" />}
         testId="chat-widget-rooms"
       >
         <EmptyWidgetState
-          icon={<Users className="h-5 w-5" />}
+          icon={<Users className="size-5" />}
           title={t("agentorchestrator.noRooms", {
             defaultValue: "No active task rooms.",
           })}
@@ -326,7 +326,7 @@ export function OrchestratorRoomView({
   return (
     <WidgetSection
       title={t("agentorchestrator.rooms", { defaultValue: "Task rooms" })}
-      icon={<Users className="h-4 w-4" />}
+      icon={<Users className="size-4" />}
       action={
         <span
           className="shrink-0 rounded-full bg-muted/15 px-1.5 py-0.5 text-3xs font-medium text-muted"

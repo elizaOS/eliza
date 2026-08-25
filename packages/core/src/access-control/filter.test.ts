@@ -1,7 +1,8 @@
 /**
  * Exercises the read-side access-control filter — `actorFromAccessContext`,
- * `canReadScope`, and `filterByAccessContext` — as pure deterministic
- * functions, plus a verbatim cross-check against the documents read ladder.
+ * `canReadScope`, `filterByAccessContext`, and the adapter-bound location
+ * intersection as pure deterministic functions, plus a verbatim cross-check
+ * against the documents read ladder.
  */
 import { describe, expect, it } from "vitest";
 import type { AccessContext, Memory, MemoryScope, UUID } from "../types";
@@ -10,6 +11,7 @@ import {
 	actorFromAccessContext,
 	canReadScope,
 	filterByAccessContext,
+	filterMemoryReadByAccessContext,
 	type ScopeActor,
 } from "./filter";
 
@@ -265,6 +267,56 @@ describe("filterByAccessContext", () => {
 		const once = filterByAccessContext(corpus, ctx, AGENT);
 		const twice = filterByAccessContext(once, ctx, AGENT);
 		expect(twice).toEqual(once);
+	});
+
+	it("intersects world and authorized rooms with the scope ladder", () => {
+		const allowedWorld = "30000000-0000-0000-0000-000000000001" as UUID;
+		const otherWorld = "30000000-0000-0000-0000-000000000002" as UUID;
+		const allowedRoom = "40000000-0000-0000-0000-000000000001" as UUID;
+		const otherRoom = "40000000-0000-0000-0000-000000000002" as UUID;
+		const located = [
+			{
+				...mem("global", OTHER),
+				agentId: AGENT,
+				worldId: allowedWorld,
+				roomId: allowedRoom,
+			},
+			{ ...mem("global", OTHER), worldId: allowedWorld, roomId: otherRoom },
+			{ ...mem("global", OTHER), worldId: otherWorld, roomId: allowedRoom },
+			{
+				...mem("global", OTHER),
+				agentId: OTHER,
+				worldId: allowedWorld,
+				roomId: allowedRoom,
+			},
+		];
+
+		expect(
+			filterMemoryReadByAccessContext(
+				located,
+				{
+					requesterEntityId: SELF,
+					role: "USER",
+					worldId: allowedWorld,
+					authorizedRoomIds: [allowedRoom],
+				},
+				AGENT,
+			),
+		).toEqual([located[0]]);
+	});
+
+	it("an explicit empty authorized-room set denies all room memories", () => {
+		expect(
+			filterMemoryReadByAccessContext(
+				[{ ...mem("global", OTHER), roomId: SELF }],
+				{
+					requesterEntityId: SELF,
+					role: "USER",
+					authorizedRoomIds: [],
+				},
+				AGENT,
+			),
+		).toEqual([]);
 	});
 
 	describe("absent scope fails closed to private (author-scoped)", () => {

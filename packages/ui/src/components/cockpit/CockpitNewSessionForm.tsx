@@ -187,7 +187,7 @@ export function CockpitNewSessionForm({
             ))}
           </datalist>
         ) : null}
-        <span className="text-[11px] text-muted">
+        <span className="text-xs-tight text-muted">
           {repoSuggestionsUnavailable
             ? "Repo suggestions are unavailable. Enter a repo manually or leave blank for a scratch workspace."
             : "Leave blank to run in a scratch workspace."}
@@ -222,7 +222,7 @@ export function CockpitNewSessionForm({
             id="cockpit-workdir-error"
             data-testid="cockpit-workdir-error"
             role="alert"
-            className="text-[11px] text-destructive"
+            className="text-xs-tight text-destructive"
           >
             Set a repo to target a working directory.
           </span>

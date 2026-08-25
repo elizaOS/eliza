@@ -224,7 +224,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.queryByTestId("view-header")).toBeNull();
   });
 
-  it("omits Browser Bridge administration while preserving session approvals", async () => {
+  it("keeps bridge recovery reachable without adding idle administration UI", async () => {
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     render(<BrowserWorkspaceView />);
 
@@ -234,6 +234,18 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(
       await screen.findByTestId("browser-session-policy-error"),
     ).not.toBeNull();
+  });
+
+  it("keeps bridge recovery reachable while a browser tab is open", async () => {
+    walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
+    render(<BrowserWorkspaceView />);
+
+    expect(await screen.findByTitle("Google")).not.toBeNull();
+    expect(
+      await screen.findByTestId("browser-session-policy-error"),
+    ).not.toBeNull();
+    expect(screen.getByTestId("browser-session-policy-dock")).not.toBeNull();
   });
 
   it("floats the navigation toolbar as its own glass panel above the web surface", async () => {
@@ -251,7 +263,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     ).toBe(true);
     const back = screen.getByRole("button", { name: "Back to launcher" });
     expect(toolbar.contains(back)).toBe(true);
-    expect(back.className).toMatch(/(?:^|\s)h-11(?:\s|$)/);
+    expect(back.className).toMatch(/(?:^|\s)(?:h-11|size-11)(?:\s|$)/);
   });
 
   it("invokes launcher navigation once from the toolbar back button", async () => {
@@ -309,7 +321,8 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       screen.getByTestId("browser-workspace-address-input").className,
     ).not.toContain("sm:col-span-1");
     for (const control of toolbar.querySelectorAll("button, input")) {
-      expect(control.className).toMatch(/(?:h-11|min-h-11)/);
+      // size-11 is the merged h-11 w-11 form; all three satisfy the 44px floor.
+      expect(control.className).toMatch(/(?:h-11|min-h-11|size-11)/);
     }
   });
 
