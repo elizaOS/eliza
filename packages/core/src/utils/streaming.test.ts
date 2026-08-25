@@ -81,6 +81,8 @@ describe("createStreamingRetryState", () => {
 
 		retryState.appendText("token1 ");
 		retryState.appendText("token2");
+		retryState.appendText(null as unknown as string);
+		retryState.appendText(undefined as unknown as string);
 		expect(retryState.getStreamedText()).toBe("token1 token2");
 
 		retryState.reset();
