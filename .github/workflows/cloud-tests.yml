@@ -136,9 +136,10 @@ jobs:
   # control plane, cloud-api Worker, app frontend) and drives real flows.
   # The complete suite takes ~12 minutes plus the linked-workspace build, so
   # this per-push gate runs the explicit shared-to-dedicated funnel subset
-  # (onboarding -> handoff -> provisioning -> upgrade); the remaining specs run
-  # nightly in .github/workflows/monetized-loop-nightly.yml, which executes the
-  # full suite on a schedule. Failures propagate — no continue-on-error.
+  # (onboarding -> handoff -> provisioning -> upgrade) plus the once-only
+  # billing settlement replay contract. The remaining specs are available from
+  # .github/workflows/monetized-loop-nightly.yml. Failures propagate — no
+  # continue-on-error.
   stack-e2e-tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -160,7 +161,7 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Install Playwright browsers
         run: .github/scripts/install-playwright-browsers.sh chromium
-      - name: Run shared-to-dedicated funnel specs
+      - name: Run blocking cloud stack specs
         run: >-
           bun run cloud:e2e --
           'app-client-onboarding\.spec\.ts$'
@@ -168,6 +169,7 @@ jobs:
           '(^|/)provision\.spec\.ts$'
           'onboarding-reprovision\.spec\.ts$'
           'shared-to-dedicated-upgrade\.spec\.ts$'
+          'billing-payment-replay\.spec\.ts$'
       - name: Upload Playwright evidence
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
