@@ -107,6 +107,12 @@ describe("getOptimizationRootDir", () => {
 			"/tmp/optimization",
 		);
 	});
+
+	it("expands a leading ~ in an explicit optimization directory", () => {
+		const result = getOptimizationRootDir("~/optimization");
+		expect(result.endsWith(`${sep}optimization`)).toBe(true);
+		expect(isAbsolute(result)).toBe(true);
+	});
 });
 
 describe("resolveOAuthDir", () => {
@@ -139,6 +145,11 @@ describe("resolveUserPath", () => {
 
 	it("resolves a relative path to absolute", () => {
 		expect(resolveUserPath("relative")).toBe(join(process.cwd(), "relative"));
+	});
+
+	it("returns an empty string for nullish input without throwing", () => {
+		expect(resolveUserPath(null)).toBe("");
+		expect(resolveUserPath(undefined)).toBe("");
 	});
 });
 

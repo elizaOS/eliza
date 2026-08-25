@@ -23,7 +23,8 @@ import { isAbsolute, join, resolve } from "node:path";
 import { readEnv } from "./read-env.ts";
 
 /** Expand a leading `~` segment and resolve to an absolute path. */
-export function resolveUserPath(input: string): string {
+export function resolveUserPath(input: string | null | undefined): string {
+	if (typeof input !== "string") return "";
 	const trimmed = input.trim();
 	if (!trimmed) return trimmed;
 	if (trimmed.startsWith("~")) {
@@ -65,7 +66,9 @@ export function resolveStateDir(
 
 /** Resolve the shared root for optimization traces and artifacts. */
 export function getOptimizationRootDir(settingValue?: string | null): string {
-	return settingValue || join(resolveStateDir(), "optimization");
+	return settingValue
+		? resolveUserPath(settingValue)
+		: join(resolveStateDir(), "optimization");
 }
 
 /**
