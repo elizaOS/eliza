@@ -4,6 +4,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  assertBrowserWorkspaceUrl,
+  inferBrowserWorkspaceTitle,
   normalizeBrowserWorkspaceText,
   parseBrowserWorkspaceNumberLike,
 } from "./browser-workspace-helpers";
@@ -49,5 +51,62 @@ describe("normalizeBrowserWorkspaceText", () => {
     expect(normalizeBrowserWorkspaceText(null)).toBe("");
     expect(normalizeBrowserWorkspaceText(undefined)).toBe("");
     expect(normalizeBrowserWorkspaceText(42)).toBe("42");
+  });
+});
+
+describe("assertBrowserWorkspaceUrl", () => {
+  it("passes about:blank through unchanged", () => {
+    expect(assertBrowserWorkspaceUrl("about:blank")).toBe("about:blank");
+    expect(assertBrowserWorkspaceUrl("  about:blank  ")).toBe("about:blank");
+  });
+
+  it("accepts http and https and normalizes via URL toString", () => {
+    expect(assertBrowserWorkspaceUrl("https://example.com")).toBe(
+      "https://example.com/",
+    );
+    expect(assertBrowserWorkspaceUrl("http://example.com/path?q=1")).toBe(
+      "http://example.com/path?q=1",
+    );
+    expect(assertBrowserWorkspaceUrl("  https://example.com  ")).toBe(
+      "https://example.com/",
+    );
+  });
+
+  it("rejects non-http protocols", () => {
+    expect(() => assertBrowserWorkspaceUrl("ftp://example.com")).toThrow();
+    expect(() => assertBrowserWorkspaceUrl("ws://example.com")).toThrow();
+    expect(() => assertBrowserWorkspaceUrl("file:///tmp/x")).toThrow();
+    expect(() => assertBrowserWorkspaceUrl("javascript:alert(1)")).toThrow();
+  });
+
+  it("rejects malformed URLs", () => {
+    expect(() => assertBrowserWorkspaceUrl("not a url")).toThrow();
+    expect(() => assertBrowserWorkspaceUrl("http://")).toThrow();
+    expect(() => assertBrowserWorkspaceUrl("")).toThrow();
+    expect(() => assertBrowserWorkspaceUrl("   ")).toThrow();
+  });
+});
+
+describe("inferBrowserWorkspaceTitle", () => {
+  it("returns New Tab for about:blank", () => {
+    expect(inferBrowserWorkspaceTitle("about:blank")).toBe("New Tab");
+  });
+
+  it("strips www and returns hostname", () => {
+    expect(inferBrowserWorkspaceTitle("https://www.example.com/path")).toBe(
+      "example.com",
+    );
+    expect(inferBrowserWorkspaceTitle("https://example.com/")).toBe(
+      "example.com",
+    );
+    expect(inferBrowserWorkspaceTitle("https://sub.example.com/")).toBe(
+      "sub.example.com",
+    );
+  });
+
+  it("falls back to Eliza Browser for invalid or empty host", () => {
+    expect(inferBrowserWorkspaceTitle("not a url")).toBe("Eliza Browser");
+    expect(inferBrowserWorkspaceTitle("")).toBe("Eliza Browser");
+    expect(inferBrowserWorkspaceTitle("https://")).toBe("Eliza Browser");
   });
 });
