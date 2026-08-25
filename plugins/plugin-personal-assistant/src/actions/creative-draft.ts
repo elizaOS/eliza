@@ -224,6 +224,18 @@ function ownerVoiceSourceKind(memory: Memory): OwnerVoiceSource["source"] {
   return "note";
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 async function resolveOwnerVoiceSources(args: {
   documents: CreativeDraftDocumentService;
   message: Memory;
@@ -241,7 +253,7 @@ async function resolveOwnerVoiceSources(args: {
     if (!document.id || !text) continue;
     byId.set(document.id, {
       id: document.id,
-      text: text.slice(0, MAX_OWNER_SOURCE_CHARS),
+      text: truncateText(text, MAX_OWNER_SOURCE_CHARS),
       source: ownerVoiceSourceKind(document),
     });
     if (byId.size >= MAX_OWNER_VOICE_SOURCES) break;
