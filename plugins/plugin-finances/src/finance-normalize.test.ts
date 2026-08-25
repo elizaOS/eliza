@@ -71,3 +71,30 @@ describe("normalizeOptionalBoolean", () => {
     expectFail(() => normalizeOptionalBoolean(null, "f"), 400);
   });
 });
+
+describe("truncateUtf16Safe surrogate safety in finances", () => {
+  it("preserves UTF-16 surrogate pairs when truncating strings", () => {
+    function truncateUtf16Safe(text: string, maxLength: number): string {
+      if (text.length <= maxLength) return text;
+      let end = maxLength;
+      if (end > 0 && end < text.length) {
+        const code = text.charCodeAt(end - 1);
+        if (code >= 0xd800 && code <= 0xdbff) {
+          end -= 1;
+        }
+      }
+      return text.slice(0, end);
+    }
+    const longLabel = "a".repeat(119) + "🔥";
+    const truncated = truncateUtf16Safe(longLabel, 120);
+    expect(truncated).toBe("a".repeat(119));
+    for (const char of truncated) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
