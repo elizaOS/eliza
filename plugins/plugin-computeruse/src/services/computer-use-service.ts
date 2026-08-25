@@ -113,6 +113,7 @@ import {
   readTerminal,
   typeTerminal,
 } from "../platform/terminal.js";
+import { isWaylandSession } from "../platform/wayland-portal.js";
 import {
   arrangeWindows,
   closeWindow,
@@ -2549,6 +2550,9 @@ export class ComputerUseService extends Service {
       logger.debug(
         `[computeruse] per-display capture failed (${errorMessage(error)}); falling back to driver capture`,
       );
+      if (displayId !== undefined && listDisplays().length > 1) {
+        throw error;
+      }
       const buf = await driverCaptureScreenshot();
       return {
         base64: buf.toString("base64"),
@@ -2934,6 +2938,7 @@ export class ComputerUseService extends Service {
       osName: currentPlatform(),
       commandExists,
       isBrowserAvailable,
+      isWaylandSession,
       shell: process.env.SHELL,
     });
   }
