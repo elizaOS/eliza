@@ -19,6 +19,7 @@ import {
   Trash2,
   Unplug,
 } from "lucide-react";
+import { Button, Checkbox, NativeSelect } from "@elizaos/ui";
 import {
   type CSSProperties,
   type ReactNode,
@@ -625,15 +626,14 @@ export function LifeOpsConnectionsView({
               change.
             </p>
           </div>
-          <button
+          <Button
             type="button"
-            style={BUTTON_STYLE}
             onClick={() => void refresh(true)}
             disabled={loading || busy !== null}
             aria-label="Retry all connection checks and synchronization"
           >
             <RefreshCw size={16} aria-hidden /> Refresh health
-          </button>
+          </Button>
         </header>
 
         <div aria-live="polite" aria-atomic="true">
@@ -641,9 +641,9 @@ export function LifeOpsConnectionsView({
             <div className="lifeops-banner lifeops-banner-error" role="alert">
               <AlertTriangle size={18} aria-hidden />
               <span>{error}</span>
-              <button type="button" onClick={() => void refresh(false)}>
+              <Button type="button" onClick={() => void refresh(false)}>
                 Retry
-              </button>
+              </Button>
             </div>
           ) : null}
           {snapshot?.calendarFeed.state === "partial" ? (
@@ -663,7 +663,7 @@ export function LifeOpsConnectionsView({
             {connectedAccounts.length > 0 ? (
               <label className="lifeops-field">
                 <span>Active Google account</span>
-                <select
+                <NativeSelect
                   value={selectedGrantId}
                   onChange={(event) => setSelectedGrantId(event.target.value)}
                 >
@@ -675,7 +675,7 @@ export function LifeOpsConnectionsView({
                       {accountEmail(account)}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
             ) : (
               <p className="lifeops-empty">No Google account is connected.</p>
@@ -685,7 +685,7 @@ export function LifeOpsConnectionsView({
               <legend>OAuth access requested</legend>
               {GOOGLE_CAPABILITY_OPTIONS.map((option) => (
                 <label key={option.capability} className="lifeops-check-row">
-                  <input
+                  <Checkbox
                     type="checkbox"
                     checked={capabilities.has(option.capability)}
                     onChange={() =>
@@ -708,7 +708,7 @@ export function LifeOpsConnectionsView({
                 </label>
               ))}
             </fieldset>
-            <button
+            <Button
               type="button"
               className="lifeops-primary"
               onClick={() => void connect()}
@@ -718,7 +718,7 @@ export function LifeOpsConnectionsView({
                 ? "Connect another Google account"
                 : "Continue to Google"}
               <ChevronRight size={17} aria-hidden />
-            </button>
+            </Button>
           </Section>
 
           <Section
@@ -737,24 +737,22 @@ export function LifeOpsConnectionsView({
             ) : null}
             <div className="lifeops-actions">
               {snapshot?.applePermission.canRequest ? (
-                <button
+                <Button
                   type="button"
-                  style={BUTTON_STYLE}
                   onClick={() => void requestApple()}
                   disabled={busy !== null}
                 >
                   Request permission
-                </button>
+                </Button>
               ) : null}
               {snapshot?.applePermission.status === "denied" ? (
-                <button
+                <Button
                   type="button"
-                  style={BUTTON_STYLE}
                   onClick={() => void openAppleSettings()}
                   disabled={busy !== null}
                 >
                   Open System Settings
-                </button>
+                </Button>
               ) : null}
             </div>
           </Section>
@@ -767,7 +765,7 @@ export function LifeOpsConnectionsView({
               <legend>Gmail and calendar history</legend>
               {([7, 30, 90] as const).map((days) => (
                 <label key={days}>
-                  <input
+                  <Checkbox
                     type="radio"
                     name="seed-range"
                     checked={rangeDays === days}
@@ -782,7 +780,7 @@ export function LifeOpsConnectionsView({
                 const key = calendarKey(calendar);
                 return (
                   <label key={key} className="lifeops-check-row compact">
-                    <input
+                    <Checkbox
                       type="checkbox"
                       checked={selectedCalendarKeys.has(key)}
                       disabled={busy === `calendar:${key}`}
@@ -800,7 +798,7 @@ export function LifeOpsConnectionsView({
                 );
               })}
             </div>
-            <button
+            <Button
               type="button"
               className="lifeops-primary"
               onClick={() => void seed()}
@@ -810,7 +808,7 @@ export function LifeOpsConnectionsView({
               }
             >
               Seed selected context
-            </button>
+            </Button>
             {seedPhase ? (
               <p className="lifeops-progress" role="status">
                 {seedPhase === "complete"
@@ -926,20 +924,18 @@ export function LifeOpsConnectionsView({
               </p>
             </div>
             <div className="lifeops-actions">
-              <button
+              <Button
                 type="button"
-                style={BUTTON_STYLE}
                 onClick={() => adapter.navigate("/inbox")}
               >
                 Review inbox drafts
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                style={BUTTON_STYLE}
                 onClick={() => adapter.navigate("/calendar")}
               >
                 Review calendar changes
-              </button>
+              </Button>
             </div>
           </Section>
 
@@ -948,27 +944,27 @@ export function LifeOpsConnectionsView({
             description="Disconnecting stops future access. Purging removes only Eliza's imported projection; it does not delete provider mail or events. Reconnecting the same account reuses stable identities, so it does not duplicate rows."
           >
             <div className="lifeops-danger-actions">
-              <button
+              <Button
                 type="button"
                 onClick={() => setConfirmation("purge-google")}
                 disabled={!selectedGrantId || busy !== null}
               >
                 <Trash2 size={17} aria-hidden /> Purge imported Google data
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => setConfirmation("purge-apple")}
                 disabled={appleCalendars.length === 0 || busy !== null}
               >
                 <Trash2 size={17} aria-hidden /> Purge imported Apple data
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => setConfirmation("disconnect")}
                 disabled={!selectedGrantId || busy !== null}
               >
                 <Unplug size={17} aria-hidden /> Disconnect Google account
-              </button>
+              </Button>
             </div>
             {purgeReceipt ? (
               <p className="lifeops-receipt" data-testid="purge-receipt">
@@ -1014,21 +1010,20 @@ export function LifeOpsConnectionsView({
                 : "This deletes only Eliza's local imported projection and sync cursor. Gmail and calendar providers are not changed."}
             </p>
             <div className="lifeops-actions">
-              <button
+              <Button
                 type="button"
-                style={BUTTON_STYLE}
                 ref={cancelConfirmationRef}
                 onClick={() => setConfirmation(null)}
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="lifeops-danger-confirm"
                 onClick={() => void confirmAction()}
               >
                 Confirm {confirmation === "disconnect" ? "disconnect" : "purge"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
