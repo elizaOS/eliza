@@ -706,6 +706,7 @@ export const agentSandboxes = pgTable(
             ${table.replacement_cleanup_secret_cleanup_version} IS NULL
             AND (
               (${table.replacement_cleanup_node_record_id} IS NULL
+                AND ${table.replacement_cleanup_attempt_id} IS NULL
                 AND ${table.replacement_cleanup_container_id} IS NULL)
               OR (${table.replacement_cleanup_node_record_id} IS NOT NULL
                 AND ${table.replacement_cleanup_attempt_id} IS NOT NULL

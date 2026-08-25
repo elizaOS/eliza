@@ -257,6 +257,11 @@ describe("0324 replacement-cleanup locator compatibility", () => {
         vpnNodeName: "candidate-vpn",
         vpnRegistrationStartedAt: null,
       }),
+      locator({
+        ...logicalLocator,
+        attemptId: ATTEMPT_ID,
+        vpnNodeId: "orphan-candidate-vpn-id",
+      }),
       exactPreviousPrimary({ attemptId: null }),
       exactPreviousPrimary({ containerId: "b".repeat(63) }),
       exactPreviousPrimary({ containerId: "B".repeat(64) }),

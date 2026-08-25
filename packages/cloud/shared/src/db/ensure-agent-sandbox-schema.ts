@@ -161,6 +161,7 @@ export async function convergeAgentSandboxSchema(
                   AND "replacement_cleanup_vpn_registration_started_at" IS NOT NULL)))
             OR ("replacement_cleanup_secret_cleanup_version" IS NULL
               AND (("replacement_cleanup_node_record_id" IS NULL
+                  AND "replacement_cleanup_attempt_id" IS NULL
                   AND "replacement_cleanup_container_id" IS NULL)
                 OR ("replacement_cleanup_node_record_id" IS NOT NULL
                   AND "replacement_cleanup_attempt_id" IS NOT NULL
