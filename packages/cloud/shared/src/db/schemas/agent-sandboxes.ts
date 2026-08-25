@@ -142,6 +142,7 @@ export interface AgentActivationEndpointEnvelopeV1 {
   generation: string;
   kind: "dedicated-sandbox";
   serverName: string;
+  runtimeAgentId: string;
   registryUrl: string;
   bridgeUrl: string;
   healthUrl: string;
@@ -611,9 +612,9 @@ export const agentSandboxes = pgTable(
           AND ${table.activation_endpoint_sha256} ~ '^[0-9a-f]{64}$'
           AND jsonb_typeof(${table.activation_endpoint_envelope}) = 'object'
           AND ${table.activation_endpoint_envelope} ?& ARRAY['version','generation','kind',
-            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]
+            'serverName','runtimeAgentId','registryUrl','bridgeUrl','healthUrl']::text[]
           AND (${table.activation_endpoint_envelope} - ARRAY['version','generation','kind',
-            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]) = '{}'::jsonb
+            'serverName','runtimeAgentId','registryUrl','bridgeUrl','healthUrl']::text[]) = '{}'::jsonb
           AND jsonb_typeof(${table.activation_endpoint_envelope}->'version') = 'number'
           AND ${table.activation_endpoint_envelope}->>'version' = '1'
           AND ${table.activation_endpoint_envelope}->>'generation' ~
@@ -625,15 +626,40 @@ export const agentSandboxes = pgTable(
           AND ${table.activation_endpoint_envelope}->>'serverName' =
             'sandbox-' || ${table.activation_generation}::text
           AND jsonb_typeof(${table.activation_endpoint_envelope}->'serverName') = 'string'
+          AND jsonb_typeof(${table.activation_endpoint_envelope}->'runtimeAgentId') = 'string'
+          AND ${table.activation_endpoint_envelope}->>'runtimeAgentId' ~
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          AND ${table.character_id} IS NOT NULL
+          AND ${table.activation_endpoint_envelope}->>'runtimeAgentId' = ${table.character_id}::text
           AND (${table.activation_endpoint_envelope}->>'registryUrl') ~
-            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+            '^https?://((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}|(([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9])\.)*[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}))?(/[^\\?#[:space:][:cntrl:]]*)?$'
           AND (${table.activation_endpoint_envelope}->>'bridgeUrl') ~
-            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+            '^https?://((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}|(([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9])\.)*[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}))?(/[^\\?#[:space:][:cntrl:]]*)?$'
           AND (${table.activation_endpoint_envelope}->>'healthUrl') ~
-            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+            '^https?://((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}|(([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9])\.)*[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}))?(/[^\\?#[:space:][:cntrl:]]*)?$'
           AND octet_length(${table.activation_endpoint_envelope}->>'registryUrl') BETWEEN 1 AND 4096
           AND octet_length(${table.activation_endpoint_envelope}->>'bridgeUrl') BETWEEN 1 AND 4096
-          AND octet_length(${table.activation_endpoint_envelope}->>'healthUrl') BETWEEN 1 AND 4096))
+          AND octet_length(${table.activation_endpoint_envelope}->>'healthUrl') BETWEEN 1 AND 4096
+          AND octet_length(${table.activation_endpoint_envelope}->>'registryUrl') =
+            length(${table.activation_endpoint_envelope}->>'registryUrl')
+          AND octet_length(${table.activation_endpoint_envelope}->>'bridgeUrl') =
+            length(${table.activation_endpoint_envelope}->>'bridgeUrl')
+          AND octet_length(${table.activation_endpoint_envelope}->>'healthUrl') =
+            length(${table.activation_endpoint_envelope}->>'healthUrl')
+          AND ${table.activation_endpoint_sha256} = pg_catalog.encode(pg_catalog.sha256(
+            pg_catalog.convert_to('{"version":1,"generation":' ||
+              pg_catalog.to_json(${table.activation_endpoint_envelope}->>'generation')::text ||
+              ',"kind":"dedicated-sandbox","serverName":' ||
+              pg_catalog.to_json(${table.activation_endpoint_envelope}->>'serverName')::text ||
+              ',"runtimeAgentId":' ||
+              pg_catalog.to_json(${table.activation_endpoint_envelope}->>'runtimeAgentId')::text ||
+              ',"registryUrl":' ||
+              pg_catalog.to_json(${table.activation_endpoint_envelope}->>'registryUrl')::text ||
+              ',"bridgeUrl":' ||
+              pg_catalog.to_json(${table.activation_endpoint_envelope}->>'bridgeUrl')::text ||
+              ',"healthUrl":' ||
+              pg_catalog.to_json(${table.activation_endpoint_envelope}->>'healthUrl')::text || '}',
+              'UTF8')), 'hex')))
         AND (${table.activation_purpose} IS DISTINCT FROM 'restore'
           OR ${table.activation_phase} NOT IN ('restart_attested', 'active')
           OR ${table.activation_endpoint_envelope} IS NOT NULL)) IS TRUE`,

@@ -65,6 +65,7 @@ import { dockerNodesRepository } from "../docker-nodes";
 const TIMEOUT = 60_000;
 const ORG_ID = "00000000-0000-4000-8000-00000000f001";
 const AGENT_ID = "00000000-0000-4000-8000-00000000f002";
+const USER_ID = "00000000-0000-4000-8000-00000000f098";
 const BACKUP_ID = "00000000-0000-4000-8000-00000000f003";
 const OPERATION_ID = "00000000-0000-4000-8000-00000000f004";
 const ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000f005";
@@ -84,15 +85,19 @@ const TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f010";
 const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f011";
 const OTHER_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f012";
 const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f013";
+const DELETION_ATTEMPT_ID = "00000000-0000-4000-8000-00000000f018";
 const RECOVERY_REOPEN_ATTEMPT_ID = "00000000-0000-4000-8000-00000000f015";
 const RECOVERY_REOPEN_LEASE_ID = "00000000-0000-4000-8000-00000000f016";
 const RECOVERY_REOPEN_FENCE = "00000000-0000-4000-8000-00000000f017";
+const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-00000000f099";
+const OTHER_RUNTIME_AGENT_ID = "00000000-0000-4000-8000-00000000f09a";
 
 const EXPECTED_ENDPOINT_ENVELOPE = {
   version: 1,
   generation: ATTEMPT_ID,
   kind: "dedicated-sandbox",
   serverName: `sandbox-${ATTEMPT_ID}`,
+  runtimeAgentId: RUNTIME_AGENT_ID,
   registryUrl: "https://registry.restore-target.invalid/v1",
   bridgeUrl: "http://restore-target.invalid:3000",
   healthUrl: "http://restore-target.invalid:3000/health",
@@ -408,6 +413,27 @@ async function recordQuarantinedContainerFixture(
   operationId: string,
   claimGeneration: string,
 ): Promise<void> {
+  const [sandbox] = await dbWrite
+    .update(agentSandboxes)
+    .set({
+      activation_generation: ATTEMPT_ID,
+      activation_lifecycle_revision: 0n,
+      activation_purpose: "restore",
+      activation_phase: "restore_pending",
+      activation_backup_id: BACKUP_ID,
+      activation_backup_hash: manifestFixture.digest,
+      activation_container_id: CONTAINER,
+      activation_node_id: "restore-target-a",
+      activation_image_digest: `sha256:${SHA}`,
+      activation_endpoint_envelope: EXPECTED_ENDPOINT_ENVELOPE,
+      activation_endpoint_sha256: EXPECTED_ENDPOINT_SHA256,
+      activation_token_hash: SHA,
+      activation_token_ciphertext: "test-only-encrypted-token",
+      activation_boot_id: TARGET_NODE_INCARNATION,
+    })
+    .where(eq(agentSandboxes.id, AGENT_ID))
+    .returning();
+  if (!sandbox) throw new Error("quarantined container fixture lost its sandbox CAS");
   const [recorded] = await dbWrite
     .update(agentBackupRestoreOperations)
     .set({
@@ -429,6 +455,35 @@ async function recordQuarantinedContainerFixture(
     )
     .returning();
   if (!recorded) throw new Error("quarantined container fixture lost its operation CAS");
+}
+
+async function fenceRestoreWithReversibleDeletion(): Promise<typeof agentSandboxes.$inferSelect> {
+  const deletionStartedAt = new Date("2026-08-20T12:00:00.000Z");
+  const [sandbox] = await dbWrite
+    .update(agentSandboxes)
+    .set({
+      status: "deletion_pending",
+      bridge_url: EXPECTED_ENDPOINT_ENVELOPE.bridgeUrl,
+      deletion_attempt_id: DELETION_ATTEMPT_ID,
+      deletion_started_at: deletionStartedAt,
+      deletion_previous_status: "running",
+      deletion_previous_billing_status: "active",
+    })
+    .where(eq(agentSandboxes.id, AGENT_ID))
+    .returning();
+  if (!sandbox) throw new Error("reversible deletion fence fixture was not updated");
+  return sandbox;
+}
+
+async function cancelReversibleDeletion(): Promise<{ success: boolean; error?: string }> {
+  const serviceUrl = new URL(
+    "../../../lib/services/eliza-sandbox.ts?restore-cancel-pglite",
+    import.meta.url,
+  );
+  const { ElizaSandboxService } = (await import(
+    serviceUrl.href
+  )) as typeof import("../../../lib/services/eliza-sandbox");
+  return new ElizaSandboxService().cancelAgentDeletion(AGENT_ID, ORG_ID);
 }
 
 /** Walks the machine one adjacent step at a time, re-claiming per phase. */
@@ -512,6 +567,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentBackupRestoreLeases);
   await dbWrite.delete(dockerNodes);
   await dbWrite.delete(agentNodeIncarnationHistories);
+  await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(agentVaultKeyGenerations);
   await dbWrite.delete(agentBackupCatalogAuthorities);
@@ -521,6 +577,27 @@ beforeEach(async () => {
   await dbWrite
     .insert(organizations)
     .values({ id: ORG_ID, name: "Restore ops", slug: "restore-ops" });
+  await dbWrite.insert(users).values({
+    id: USER_ID,
+    steward_user_id: "restore-operations-user",
+    organization_id: ORG_ID,
+  });
+  await dbWrite.insert(userCharacters).values({
+    id: RUNTIME_AGENT_ID,
+    organization_id: ORG_ID,
+    user_id: USER_ID,
+    name: "Restore operations runtime",
+    bio: [],
+    character_data: {},
+  });
+  await dbWrite.insert(agentSandboxes).values({
+    id: AGENT_ID,
+    organization_id: ORG_ID,
+    user_id: USER_ID,
+    character_id: RUNTIME_AGENT_ID,
+    status: "running",
+    execution_tier: "dedicated-always",
+  });
   await dbWrite
     .insert(agentBackupCatalogAuthorities)
     .values({ organization_id: ORG_ID, agent_id: AGENT_ID, catalog_revision: 3n });
@@ -833,6 +910,189 @@ describe("restore operation spine", () => {
     TIMEOUT,
   );
 
+  for (const { condition, mutation } of [
+    {
+      condition: "soft-deleted",
+      mutation: { deleted_at: new Date("2026-08-20T12:00:00.000Z") },
+    },
+    {
+      condition: "owned by a deletion attempt",
+      mutation: {
+        deletion_attempt_id: DELETION_ATTEMPT_ID,
+        deletion_started_at: new Date("2026-08-20T12:00:00.000Z"),
+      },
+    },
+    {
+      condition: "deletion_pending",
+      mutation: { status: "deletion_pending" as const },
+    },
+    {
+      condition: "deletion_failed",
+      mutation: { status: "deletion_failed" as const },
+    },
+  ]) {
+    test(
+      `preserves an exact quarantine sandbox that is ${condition} during crash recovery`,
+      async () => {
+        await seedLease();
+        const { operation } = await openAgentBackupRestoreOperation({
+          authority: authorityReceipt(),
+          leaseId: LEASE_ID,
+        });
+        await walkTo(operation.id, "container_created");
+        const [fencedSandbox] = await dbWrite
+          .update(agentSandboxes)
+          .set(mutation)
+          .where(eq(agentSandboxes.id, AGENT_ID))
+          .returning();
+        if (!fencedSandbox) throw new Error("deletion-fenced sandbox fixture was not updated");
+        await makeCrashRecoveryEligible(operation.id);
+
+        const [operationBefore] = await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+        const [sandboxBefore] = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, AGENT_ID));
+        const [nodeBefore] = await dbWrite
+          .select()
+          .from(dockerNodes)
+          .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+        expect(operationBefore).toMatchObject({
+          phase: "container_created",
+          capacity_state: "reserved",
+          expected_container_id: CONTAINER,
+        });
+        expect(sandboxBefore).toMatchObject({
+          ...mutation,
+          activation_generation: ATTEMPT_ID,
+          activation_purpose: "restore",
+          activation_phase: "restore_pending",
+          activation_container_id: CONTAINER,
+        });
+        expect(nodeBefore?.allocated_count).toBe(1);
+
+        const recovered = await recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId: operation.id,
+          cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+        });
+        expect(recovered.replayed).toBe(false);
+        expect(recovered.operation).toMatchObject({
+          phase: "failed_terminal",
+          resume_phase: null,
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+          capacity_state: "released",
+          capacity_settlement_receipt_digest: CAPACITY_RELEASE_RECEIPT_SHA,
+          last_error_code: "RESTORE_CAPACITY_RECOVERED_AFTER_CRASH",
+          last_failure_generation: FENCE,
+          last_failure_digest: CAPACITY_RELEASE_RECEIPT_SHA,
+        });
+        expect(recovered.operation.capacity_settled_at).toBeInstanceOf(Date);
+
+        const [sandboxAfterRecovery] = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, AGENT_ID));
+        const [nodeAfterRecovery] = await dbWrite
+          .select()
+          .from(dockerNodes)
+          .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+        expect(sandboxAfterRecovery).toEqual(sandboxBefore);
+        expect(nodeAfterRecovery?.allocated_count).toBe(0);
+
+        const replay = await recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId: operation.id,
+          cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+        });
+        expect(replay.replayed).toBe(true);
+        expect(replay.operation).toEqual(recovered.operation);
+        const [sandboxAfterReplay] = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, AGENT_ID));
+        expect(sandboxAfterReplay).toEqual(sandboxBefore);
+        expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+      },
+      TIMEOUT,
+    );
+  }
+
+  test(
+    "refuses deletion cancellation after release preserves an unfinished restore quarantine",
+    async () => {
+      await seedLease();
+      const { operation } = await openAgentBackupRestoreOperation({
+        authority: authorityReceipt(),
+        leaseId: LEASE_ID,
+      });
+      await walkTo(operation.id, "container_created");
+      const claim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const sandboxAtDeletionFence = await fenceRestoreWithReversibleDeletion();
+
+      const released = await releaseAgentBackupRestoreCapacity({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        settlementReceiptDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(released.operation).toMatchObject({
+        phase: "container_created",
+        capacity_state: "released",
+      });
+      expect((await dbWrite.select().from(agentSandboxes))[0]).toEqual(sandboxAtDeletionFence);
+
+      const cancelled = await cancelReversibleDeletion();
+      expect(cancelled).toEqual({
+        success: false,
+        error: "Agent has an unfinished restore activation; deletion cannot be cancelled",
+      });
+      expect((await dbWrite.select().from(agentSandboxes))[0]).toEqual(sandboxAtDeletionFence);
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses deletion cancellation after crash recovery terminalizes an unfinished restore",
+    async () => {
+      await seedLease();
+      const { operation } = await openAgentBackupRestoreOperation({
+        authority: authorityReceipt(),
+        leaseId: LEASE_ID,
+      });
+      await walkTo(operation.id, "container_created");
+      const sandboxAtDeletionFence = await fenceRestoreWithReversibleDeletion();
+      await makeCrashRecoveryEligible(operation.id);
+
+      const recovered = await recoverAgentBackupRestoreCapacityAfterCrash({
+        operationId: operation.id,
+        cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(recovered.operation).toMatchObject({
+        phase: "failed_terminal",
+        capacity_state: "released",
+      });
+      expect((await dbWrite.select().from(agentSandboxes))[0]).toEqual(sandboxAtDeletionFence);
+
+      const cancelled = await cancelReversibleDeletion();
+      expect(cancelled).toEqual({
+        success: false,
+        error: "Agent has an unfinished restore activation; deletion cannot be cancelled",
+      });
+      expect((await dbWrite.select().from(agentSandboxes))[0]).toEqual(sandboxAtDeletionFence);
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+    },
+    TIMEOUT,
+  );
+
   test(
     "terminalizes a crash after exact release without decrementing capacity twice",
     async () => {
@@ -851,6 +1111,8 @@ describe("restore operation spine", () => {
       });
       expect(released.operation.phase).toBe("reserved");
       expect(released.operation.capacity_state).toBe("released");
+      const capacitySettledAt = released.operation.capacity_settled_at;
+      if (!capacitySettledAt) throw new Error("capacity settlement timestamp is missing");
       expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
       await makeCrashRecoveryEligible(authority.operationId);
 
@@ -876,13 +1138,13 @@ describe("restore operation spine", () => {
         claim_generation: null,
         claim_expires_at: null,
         capacity_state: "released",
-        capacity_settled_at: released.operation.capacity_settled_at,
+        capacity_settled_at: capacitySettledAt,
         capacity_settlement_receipt_digest: CAPACITY_RELEASE_RECEIPT_SHA,
         last_error_code: "RESTORE_CAPACITY_RECOVERED_AFTER_CRASH",
         last_failure_generation: FENCE,
         last_failure_digest: CAPACITY_RELEASE_RECEIPT_SHA,
       });
-      expect(recovered.operation.next_attempt_at).toEqual(released.operation.capacity_settled_at);
+      expect(recovered.operation.next_attempt_at).toEqual(capacitySettledAt);
       expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
 
       const replay = await recoverAgentBackupRestoreCapacityAfterCrash({
@@ -890,7 +1152,7 @@ describe("restore operation spine", () => {
         cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
       });
       expect(replay.replayed).toBe(true);
-      expect(replay.operation.capacity_settled_at).toEqual(released.operation.capacity_settled_at);
+      expect(replay.operation.capacity_settled_at).toEqual(capacitySettledAt);
       expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
     },
     TIMEOUT,
@@ -1897,29 +2159,22 @@ describe("restore operation spine", () => {
         .update(agentBackupRestoreOperations)
         .set({ expected_container_id: null })
         .where(eq(agentBackupRestoreOperations.id, operation.id));
-      const retry = await claimAgentBackupRestoreOperation({
-        operationId: operation.id,
-        ownerId: "restore-worker",
-        claimMs: 60_000,
-      });
-      const [beforeResume] = await dbWrite
+      const [beforeRetry] = await dbWrite
         .select()
         .from(agentBackupRestoreOperations)
         .where(eq(agentBackupRestoreOperations.id, operation.id));
       await expect(
-        advanceAgentBackupRestoreOperation({
+        claimAgentBackupRestoreOperation({
           operationId: operation.id,
           ownerId: "restore-worker",
-          claimGeneration: retry.claimGeneration,
-          fromPhase: "failed_retryable",
-          toPhase: "container_created",
+          claimMs: 60_000,
         }),
-      ).rejects.toThrow("cannot resume container_created without a recorded container identity");
-      const [afterResume] = await dbWrite
+      ).rejects.toThrow("differs from its exact restore sandbox authority");
+      const [afterRetry] = await dbWrite
         .select()
         .from(agentBackupRestoreOperations)
         .where(eq(agentBackupRestoreOperations.id, operation.id));
-      expect(afterResume).toEqual(beforeResume);
+      expect(afterRetry).toEqual(beforeRetry);
     },
     TIMEOUT,
   );
@@ -1939,9 +2194,31 @@ describe("restore operation spine", () => {
         claimMs: 60_000,
       });
 
+      let digestMutationError: unknown;
+      try {
+        await dbWrite
+          .update(agentBackupRestoreOperations)
+          .set({ expected_endpoint_sha256: OTHER_CAPACITY_RELEASE_RECEIPT_SHA })
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+      } catch (error) {
+        digestMutationError = error;
+      }
+      expect((digestMutationError as { cause?: { constraint?: string } }).cause?.constraint).toBe(
+        "agent_backup_restore_operations_endpoint_v1_check",
+      );
+
+      const divergentEndpoint = {
+        ...EXPECTED_ENDPOINT_ENVELOPE,
+        runtimeAgentId: OTHER_RUNTIME_AGENT_ID,
+      };
+      // pushSchema does not install migration triggers, so model an already
+      // corrupted durable row and prove the repository still fails closed.
       await dbWrite
         .update(agentBackupRestoreOperations)
-        .set({ expected_endpoint_sha256: OTHER_CAPACITY_RELEASE_RECEIPT_SHA })
+        .set({
+          expected_endpoint_envelope: divergentEndpoint,
+          expected_endpoint_sha256: hashAgentActivationEndpointEnvelope(divergentEndpoint),
+        })
         .where(eq(agentBackupRestoreOperations.id, operation.id));
       await expect(
         advanceAgentBackupRestoreOperation({
@@ -1951,12 +2228,19 @@ describe("restore operation spine", () => {
           fromPhase: "container_created",
           toPhase: "restoring",
         }),
-      ).rejects.toThrow("without complete endpoint authority");
+      ).rejects.toThrow("differs from its exact restore sandbox authority");
 
       await dbWrite
         .update(agentBackupRestoreOperations)
-        .set({ expected_endpoint_envelope: null, expected_endpoint_sha256: null })
+        .set({
+          expected_endpoint_envelope: EXPECTED_ENDPOINT_ENVELOPE,
+          expected_endpoint_sha256: EXPECTED_ENDPOINT_SHA256,
+        })
         .where(eq(agentBackupRestoreOperations.id, operation.id));
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ activation_purpose: "wake" })
+        .where(eq(agentSandboxes.id, AGENT_ID));
       await expect(
         advanceAgentBackupRestoreOperation({
           operationId: operation.id,
@@ -1965,7 +2249,20 @@ describe("restore operation spine", () => {
           fromPhase: "container_created",
           toPhase: "restoring",
         }),
-      ).rejects.toThrow("without complete endpoint authority");
+      ).rejects.toThrow("differs from its exact restore sandbox authority");
+
+      let endpointRemovalError: unknown;
+      try {
+        await dbWrite
+          .update(agentBackupRestoreOperations)
+          .set({ expected_endpoint_envelope: null, expected_endpoint_sha256: null })
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+      } catch (error) {
+        endpointRemovalError = error;
+      }
+      expect((endpointRemovalError as { cause?: { constraint?: string } }).cause?.constraint).toBe(
+        "agent_backup_restore_operations_endpoint_v1_check",
+      );
 
       const [after] = await dbWrite
         .select()
@@ -1974,6 +2271,339 @@ describe("restore operation spine", () => {
       expect(after?.phase).toBe("container_created");
       expect(after?.claim_generation).toBe(claim.claimGeneration);
       expect(after?.expected_container_id).toBe(CONTAINER);
+    },
+    TIMEOUT,
+  );
+
+  for (const { condition, mutation } of [
+    {
+      condition: "soft-deleted",
+      mutation: { deleted_at: new Date("2026-08-20T12:00:00.000Z") },
+    },
+    {
+      condition: "owned by a deletion attempt",
+      mutation: {
+        deletion_attempt_id: DELETION_ATTEMPT_ID,
+        deletion_started_at: new Date("2026-08-20T12:00:00.000Z"),
+      },
+    },
+    {
+      condition: "deletion_pending",
+      mutation: { status: "deletion_pending" as const },
+    },
+    {
+      condition: "deletion_failed",
+      mutation: { status: "deletion_failed" as const },
+    },
+  ]) {
+    test(
+      `refuses endpoint authority when its exact sandbox is ${condition}`,
+      async () => {
+        await seedLease();
+        const { operation } = await openAgentBackupRestoreOperation({
+          authority: authorityReceipt(),
+          leaseId: LEASE_ID,
+        });
+        await walkTo(operation.id, "container_created");
+        const claim = await claimAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimMs: 60_000,
+        });
+
+        await dbWrite.update(agentSandboxes).set(mutation).where(eq(agentSandboxes.id, AGENT_ID));
+        const [before] = await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+
+        await expect(
+          advanceAgentBackupRestoreOperation({
+            operationId: operation.id,
+            ownerId: "restore-worker",
+            claimGeneration: claim.claimGeneration,
+            fromPhase: "container_created",
+            toPhase: "restoring",
+          }),
+        ).rejects.toThrow("differs from its exact restore sandbox authority");
+
+        const [after] = await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+        expect(after).toEqual(before);
+      },
+      TIMEOUT,
+    );
+  }
+
+  test(
+    "rechecks lease and claim time after waiting for the sandbox runtime lock",
+    async () => {
+      await seedLease();
+      const { operation } = await openAgentBackupRestoreOperation({
+        authority: authorityReceipt(),
+        leaseId: LEASE_ID,
+      });
+      await walkTo(operation.id, "container_created");
+      const claim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 1_000,
+      });
+
+      let signalSandboxLocked: (() => void) | undefined;
+      const sandboxLocked = new Promise<void>((resolve) => {
+        signalSandboxLocked = resolve;
+      });
+      let releaseSandbox: (() => void) | undefined;
+      const holdSandbox = new Promise<void>((resolve) => {
+        releaseSandbox = resolve;
+      });
+      const blocker = dbWrite.transaction(async (tx) => {
+        await tx
+          .select({ id: agentSandboxes.id })
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, AGENT_ID))
+          .for("update");
+        signalSandboxLocked?.();
+        await holdSandbox;
+      });
+      await sandboxLocked;
+
+      const advance = advanceAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        fromPhase: "container_created",
+        toPhase: "restoring",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1_250));
+      releaseSandbox?.();
+      await blocker;
+
+      await expect(advance).rejects.toThrow("claim is not live");
+      const [unchanged] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      expect(unchanged?.phase).toBe("container_created");
+      expect(unchanged?.claim_generation).toBe(claim.claimGeneration);
+    },
+    TIMEOUT,
+  );
+
+  for (const { condition, mutateSandbox } of [
+    {
+      condition: "has its endpoint authority cleared",
+      mutateSandbox: async () => {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ activation_endpoint_envelope: null, activation_endpoint_sha256: null })
+          .where(eq(agentSandboxes.id, AGENT_ID));
+      },
+    },
+    {
+      condition: "is rebound to another runtime identity",
+      mutateSandbox: async () => {
+        await dbWrite.insert(userCharacters).values({
+          id: OTHER_RUNTIME_AGENT_ID,
+          organization_id: ORG_ID,
+          user_id: USER_ID,
+          name: "Rebound restore runtime",
+          bio: [],
+          character_data: {},
+        });
+        const reboundEndpoint = {
+          ...EXPECTED_ENDPOINT_ENVELOPE,
+          runtimeAgentId: OTHER_RUNTIME_AGENT_ID,
+        };
+        await dbWrite
+          .update(agentSandboxes)
+          .set({
+            character_id: OTHER_RUNTIME_AGENT_ID,
+            activation_endpoint_envelope: reboundEndpoint,
+            activation_endpoint_sha256: hashAgentActivationEndpointEnvelope(reboundEndpoint),
+          })
+          .where(eq(agentSandboxes.id, AGENT_ID));
+      },
+    },
+    {
+      condition: "is fenced by a deletion attempt",
+      mutateSandbox: async () => {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({
+            deletion_attempt_id: DELETION_ATTEMPT_ID,
+            deletion_started_at: new Date("2026-08-20T12:00:00.000Z"),
+          })
+          .where(eq(agentSandboxes.id, AGENT_ID));
+      },
+    },
+    {
+      condition: "names another container",
+      mutateSandbox: async () => {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ activation_container_id: "9".repeat(64) })
+          .where(eq(agentSandboxes.id, AGENT_ID));
+      },
+    },
+    {
+      condition: "names another node",
+      mutateSandbox: async () => {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ activation_node_id: "restore-target-b" })
+          .where(eq(agentSandboxes.id, AGENT_ID));
+      },
+    },
+    {
+      condition: "names another image",
+      mutateSandbox: async () => {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ activation_image_digest: `sha256:${"9".repeat(64)}` })
+          .where(eq(agentSandboxes.id, AGENT_ID));
+      },
+    },
+    {
+      condition: "names another boot occurrence",
+      mutateSandbox: async () => {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ activation_boot_id: OTHER_NODE_INCARNATION })
+          .where(eq(agentSandboxes.id, AGENT_ID));
+      },
+    },
+  ]) {
+    test(
+      `refuses post-container claims and heartbeats when the exact sandbox ${condition}`,
+      async () => {
+        await seedLease();
+        const { operation } = await openAgentBackupRestoreOperation({
+          authority: authorityReceipt(),
+          leaseId: LEASE_ID,
+        });
+        await walkTo(operation.id, "container_created");
+        const claim = await claimAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimMs: 60_000,
+        });
+        await mutateSandbox();
+
+        const [beforeHeartbeat] = await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+        await expect(
+          heartbeatAgentBackupRestoreOperation({
+            operationId: operation.id,
+            ownerId: "restore-worker",
+            claimGeneration: claim.claimGeneration,
+            claimMs: 600_000,
+          }),
+        ).rejects.toThrow("differs from its exact restore sandbox authority");
+        const [afterHeartbeat] = await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+        expect(afterHeartbeat).toEqual(beforeHeartbeat);
+
+        await expect(
+          advanceAgentBackupRestoreOperation({
+            operationId: operation.id,
+            ownerId: "restore-worker",
+            claimGeneration: claim.claimGeneration,
+            fromPhase: "container_created",
+            toPhase: "restoring",
+          }),
+        ).rejects.toThrow("differs from its exact restore sandbox authority");
+        const [afterAdvance] = await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+        expect(afterAdvance).toEqual(beforeHeartbeat);
+
+        await dbWrite
+          .update(agentBackupRestoreOperations)
+          .set({ claim_owner: null, claim_generation: null, claim_expires_at: null })
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+        const [beforeClaim] = await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+        await expect(
+          claimAgentBackupRestoreOperation({
+            operationId: operation.id,
+            ownerId: "restore-worker",
+            claimMs: 60_000,
+          }),
+        ).rejects.toThrow("differs from its exact restore sandbox authority");
+        const [afterClaim] = await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, operation.id));
+        expect(afterClaim).toEqual(beforeClaim);
+      },
+      TIMEOUT,
+    );
+  }
+
+  test(
+    "uses the retry resume phase when proving endpoint authority before a claim",
+    async () => {
+      await seedLease();
+      const { operation } = await openAgentBackupRestoreOperation({
+        authority: authorityReceipt(),
+        leaseId: LEASE_ID,
+      });
+      await walkTo(operation.id, "container_created");
+      const claim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const failed = await failAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        retryable: true,
+        resumePhase: "container_created",
+        errorCode: "CONTAINER_RETRY",
+        error: "retry the recorded container",
+        failureDigest: SHA,
+        retryDelayMs: 0,
+      });
+      expect(failed).toMatchObject({
+        phase: "failed_retryable",
+        resume_phase: "container_created",
+        claim_owner: null,
+        claim_generation: null,
+        claim_expires_at: null,
+      });
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ activation_endpoint_envelope: null, activation_endpoint_sha256: null })
+        .where(eq(agentSandboxes.id, AGENT_ID));
+
+      const [before] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      await expect(
+        claimAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimMs: 60_000,
+        }),
+      ).rejects.toThrow("differs from its exact restore sandbox authority");
+      const [after] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      expect(after).toEqual(before);
     },
     TIMEOUT,
   );
@@ -2122,7 +2752,7 @@ describe("restore operation spine", () => {
   );
 
   test(
-    "a heartbeat extends a live claim and an expired claim can no longer write a failure",
+    "allows a pre-container heartbeat and rejects failure writes after claim expiry",
     async () => {
       await seedLease();
       const { operation } = await openAgentBackupRestoreOperation({

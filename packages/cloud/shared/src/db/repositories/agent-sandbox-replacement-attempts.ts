@@ -1781,6 +1781,7 @@ async function lockRestoreStartAuthority(
   ) {
     throw conflict("Restore capacity operation authority does not match", validated);
   }
+  assertRestoreOperationIsPreContainer(restoreOperation, validated);
 
   const [lease] = await tx
     .select()
@@ -1808,6 +1809,23 @@ async function lockRestoreStartAuthority(
     throw conflict("Restore lease replay authority does not match", validated);
   }
   return lease;
+}
+
+/**
+ * Replacement start and its first capacity handoff both precede the provider
+ * container effect. A retry row is eligible only when it resumes one of those
+ * same pre-container phases; accepting a later resume point could launch a
+ * second container after the canonical sandbox authority was cleared/rebound.
+ */
+function assertRestoreOperationIsPreContainer(
+  operation: Readonly<AgentBackupRestoreOperation>,
+  reference: ValidatedReference,
+): void {
+  const effectivePhase =
+    operation.phase === "failed_retryable" ? operation.resume_phase : operation.phase;
+  if (effectivePhase !== "reserved" && effectivePhase !== "vault_seeded") {
+    throw conflict("Restore operation is no longer pre-container", reference);
+  }
 }
 
 /**
@@ -2422,6 +2440,7 @@ async function recordCapacityOwnedReplacementIntentInTransaction(
     ) {
       throw conflict("Restore capacity source does not match replacement intent", reference);
     }
+    assertRestoreOperationIsPreContainer(restoreOperation, reference);
 
     const lease = await lockRestoreHandoffLease(tx, restoreOperation, reference);
     const node = await lockReplacementCapacityNode(tx, locator, reference);

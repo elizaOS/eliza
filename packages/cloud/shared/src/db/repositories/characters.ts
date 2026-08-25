@@ -3,7 +3,8 @@ import { and, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
 import type { SearchFilters, SortOptions } from "../../lib/types/my-agents";
 import { normalizeTokenAddress } from "../../lib/utils/token-address";
 import type { DbTransaction } from "../client";
-import { dbRead, dbWrite } from "../helpers";
+import { dbRead, dbWrite, writeTransaction } from "../helpers";
+import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { agentTable } from "../schemas/eliza";
 import { elizaRoomCharactersTable } from "../schemas/eliza-room-characters";
 import {
@@ -15,6 +16,18 @@ import { escapeLikePattern } from "../utils/like-pattern";
 
 export type { NewUserCharacter, UserCharacter };
 
+/** Raised when a character is still the stable runtime identity of a sandbox. */
+export class CharacterLinkedSandboxConflictError extends Error {
+  override readonly name = "CharacterLinkedSandboxConflictError";
+
+  constructor(
+    readonly characterId: string,
+    readonly sandboxId: string,
+  ) {
+    super(`Character ${characterId} is still linked to agent sandbox ${sandboxId}`);
+  }
+}
+
 function ilikeEscaped(column: unknown, query: string): SQL {
   return sql`${column as SQL} ILIKE ${`%${escapeLikePattern(query)}%`} ESCAPE '\\'`;
 }
@@ -23,6 +36,8 @@ function ilikeEscaped(column: unknown, query: string): SQL {
  * Repository for user character database operations.
  */
 export class UserCharactersRepository {
+  constructor(private readonly runWriteTransaction: typeof writeTransaction = writeTransaction) {}
+
   /**
    * Builds search conditions for user character queries.
    * Used by both search and count methods to avoid duplication.
@@ -514,7 +529,31 @@ export class UserCharactersRepository {
    * Deletes a character by ID.
    */
   async delete(id: string): Promise<void> {
-    await dbWrite.delete(userCharacters).where(eq(userCharacters.id, id));
+    await this.runWriteTransaction(async (tx) => {
+      // Lock the FK parent before checking for children. PostgreSQL's FK
+      // validation takes a conflicting KEY SHARE lock, so a concurrent
+      // sandbox link cannot appear between this proof and the DELETE.
+      const [character] = await tx
+        .select({ id: userCharacters.id })
+        .from(userCharacters)
+        .where(eq(userCharacters.id, id))
+        .limit(1)
+        .for("update");
+      if (!character) return;
+
+      // Every sandbox row retains identity authority, including soft-deleted
+      // and deletion-pending/failed tombstones. Do not filter lifecycle state.
+      const [linkedSandbox] = await tx
+        .select({ id: agentSandboxes.id })
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.character_id, id))
+        .limit(1);
+      if (linkedSandbox) {
+        throw new CharacterLinkedSandboxConflictError(id, linkedSandbox.id);
+      }
+
+      await tx.delete(userCharacters).where(eq(userCharacters.id, id));
+    });
   }
 
   /**

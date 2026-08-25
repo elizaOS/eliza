@@ -1,6 +1,7 @@
 /** Exercises malformed request input with deterministic route collaborators. */
 import { describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 
 const CHAR_ID = "00000000-0000-4000-8000-0000000000ff";
 const updated = {
@@ -11,6 +12,10 @@ const updated = {
 
 const updateForUser = mock(async () => updated);
 const toElizaCharacter = mock((row: unknown) => row);
+let deleteFailure: Error | null = null;
+const deleteCharacter = mock(async () => {
+  if (deleteFailure) throw deleteFailure;
+});
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: async () => ({
@@ -38,7 +43,7 @@ mock.module("@/lib/services/characters/characters", () => ({
     getByIdForUser: async () => updated,
     updateForUser,
     toElizaCharacter,
-    delete: async () => undefined,
+    delete: deleteCharacter,
   },
 }));
 
@@ -81,5 +86,29 @@ describe("PUT /api/my-agents/characters/:id request validation", () => {
     });
     expect(response.status).toBe(200);
     expect(updateForUser).toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/my-agents/characters/:id identity conflicts", () => {
+  test("returns the canonical 409 envelope when a sandbox still owns the identity", async () => {
+    deleteFailure = new ApiError(
+      409,
+      "identity_conflict",
+      "This character is linked to an agent sandbox. Delete the associated agent/sandbox before deleting this character.",
+    );
+    try {
+      const response = await app.request(`/${CHAR_ID}`, { method: "DELETE" });
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error:
+          "This character is linked to an agent sandbox. Delete the associated agent/sandbox before deleting this character.",
+        code: "identity_conflict",
+      });
+      expect(deleteCharacter).toHaveBeenCalledWith(CHAR_ID);
+    } finally {
+      deleteFailure = null;
+    }
   });
 });

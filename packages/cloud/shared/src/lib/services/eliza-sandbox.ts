@@ -26,6 +26,7 @@ import {
   type AgentSandbox,
   type AgentSandboxBackup,
   type AgentSandboxBackupMetadata,
+  type AgentSandboxRepositoryUpdate,
   type AgentSandboxStatus,
   agentSandboxesRepository,
   hydrateAgentSandboxBackup,
@@ -3094,6 +3095,22 @@ export class ElizaSandboxService {
       return {
         success: false,
         error: "Agent deletion does not have a reversible running-state receipt",
+      };
+    }
+    // The sandbox row is already locked, so it is also the deadlock-safe
+    // authority for this check. Do not lock a restore operation from here:
+    // restore writers use operation -> lease -> sandbox, while lifecycle
+    // cancellation necessarily owns the sandbox first. A deletion fence can
+    // make capacity cleanup leave a restore quarantine intact; returning that
+    // row to `running` would then expose an orphaned, unfinished activation.
+    if (
+      rec.activation_purpose === "restore" &&
+      rec.activation_phase !== "active" &&
+      rec.activation_phase !== "blocked"
+    ) {
+      return {
+        success: false,
+        error: "Agent has an unfinished restore activation; deletion cannot be cancelled",
       };
     }
     // A running receipt plus a live bridge proves the workload still matches
@@ -8046,7 +8063,7 @@ export class ElizaSandboxService {
    */
   private async updateObservedRunningGeneration(
     rec: AgentSandbox,
-    data: Partial<NewAgentSandbox>,
+    data: AgentSandboxRepositoryUpdate,
   ): Promise<AgentSandbox | undefined> {
     return agentSandboxesRepository.update(rec.id, data, {
       organizationId: rec.organization_id,

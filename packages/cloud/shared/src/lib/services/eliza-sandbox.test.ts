@@ -11454,6 +11454,42 @@ describe("ElizaSandboxService.cancelAgentDeletion (#18517 reversibility)", () =>
     expect(executed).toHaveLength(1);
   });
 
+  test("refuses every unfinished restore activation before touching deletion jobs", async () => {
+    for (const activationPhase of [
+      "container_pending",
+      "restore_pending",
+      "restart_pending",
+      "restart_attested",
+    ] as const) {
+      const rec = pendingDeletionSandbox({
+        activation_purpose: "restore",
+        activation_phase: activationPhase,
+      });
+      const { outcome, executed } = await runCancel(rec, []);
+
+      expect(outcome.success).toBe(false);
+      expect(outcome.error).toContain("unfinished restore activation");
+      expect(executed).toHaveLength(0);
+    }
+  });
+
+  test("allows completed or durably blocked restore activations to follow the normal cancel CAS", async () => {
+    for (const activationPhase of ["active", "blocked"] as const) {
+      const rec = pendingDeletionSandbox({
+        activation_purpose: "restore",
+        activation_phase: activationPhase,
+      });
+      const { outcome, executed } = await runCancel(rec, [
+        { rows: [] },
+        { rows: [] },
+        { rows: [{ id: rec.id }] },
+      ]);
+
+      expect(outcome).toEqual({ success: true });
+      expect(executed).toHaveLength(3);
+    }
+  });
+
   test("refuses when the bridge is gone — no live workload for `running` to describe", async () => {
     const rec = pendingDeletionSandbox({ bridge_url: null });
     const { outcome, executed } = await runCancel(rec, []);

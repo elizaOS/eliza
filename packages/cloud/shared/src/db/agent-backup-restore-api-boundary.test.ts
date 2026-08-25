@@ -4,6 +4,10 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+process.env.DATABASE_URL ||= "pglite://memory";
+process.env.NODE_ENV ||= "test";
+process.env.MOCK_REDIS = "1";
+
 const MIGRATIONS_DIR = join(import.meta.dir, "migrations");
 const REPOSITORY_ROOT = join(import.meta.dir, "../../../../..");
 const IGNORED_DIRECTORIES = new Set([
@@ -31,6 +35,58 @@ function productionSources(directory = REPOSITORY_ROOT): string[] {
 }
 
 describe("dormant restore API boundary", () => {
+  test("generic sandbox patches reject identity and activation authority before database access", async () => {
+    const { agentSandboxesRepository } = await import("./repositories/agent-sandboxes");
+    const characterPatch = { character_id: "00000000-0000-4000-8000-000000000001" };
+    await expect(
+      agentSandboxesRepository.update(
+        "00000000-0000-4000-8000-000000000002",
+        characterPatch as never,
+      ),
+    ).rejects.toThrow("cannot mutate activation authority field character_id");
+
+    const safeGetterSentinel = new Error("single-pass sandbox update snapshot");
+    let safeAccessorReads = 0;
+    let forbiddenAccessorReads = 0;
+    let ownKeysCalls = 0;
+    const activationPatchTarget = {};
+    Object.defineProperty(activationPatchTarget, "agent_name", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        safeAccessorReads += 1;
+        throw safeGetterSentinel;
+      },
+    });
+    Object.defineProperty(activationPatchTarget, "activation_endpoint_envelope", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        forbiddenAccessorReads += 1;
+        throw new Error("stateful proxy exposed forbidden activation getter");
+      },
+    });
+    const activationPatch = new Proxy(activationPatchTarget, {
+      ownKeys() {
+        ownKeysCalls += 1;
+        return ownKeysCalls === 1 ? ["agent_name"] : ["activation_endpoint_envelope"];
+      },
+    });
+    let snapshotError: unknown;
+    try {
+      await agentSandboxesRepository.update(
+        "00000000-0000-4000-8000-000000000002",
+        activationPatch as never,
+      );
+    } catch (error) {
+      snapshotError = error;
+    }
+    expect(snapshotError).toBe(safeGetterSentinel);
+    expect(ownKeysCalls).toBe(1);
+    expect(safeAccessorReads).toBe(1);
+    expect(forbiddenAccessorReads).toBe(0);
+  });
+
   test("keeps restore histories and receipt writers definition-only", () => {
     const sources = productionSources().map((path) => ({
       path,
@@ -57,6 +113,7 @@ describe("dormant restore API boundary", () => {
       "withAgentBackupRestoreVaultPassphrase",
       "openAgentBackupRestoreOperation",
       "claimAgentBackupRestoreOperation",
+      "heartbeatAgentBackupRestoreOperation",
       "reserveAgentBackupRestoreTarget",
       "releaseAgentBackupRestoreCapacity",
       "recoverAgentBackupRestoreCapacityAfterCrash",

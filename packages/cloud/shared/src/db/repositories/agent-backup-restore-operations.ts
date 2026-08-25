@@ -11,7 +11,7 @@
  */
 
 import { Buffer } from "node:buffer";
-import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import {
   agentActivationEndpointEnvelopesEqual,
   hashAgentActivationEndpointEnvelope,
@@ -27,7 +27,12 @@ import {
   agentBackupRestoreLeases,
   agentBackupRestoreOperations,
 } from "../schemas/agent-backup-catalog";
-import { type AgentSandbox, agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
+import {
+  type AgentActivationEndpointEnvelopeV1,
+  type AgentSandbox,
+  agentSandboxBackups,
+  agentSandboxes,
+} from "../schemas/agent-sandboxes";
 import { dockerNodes, PLACEABLE_NODE_STATE } from "../schemas/docker-nodes";
 import {
   AgentBackupCatalogConflictError,
@@ -125,6 +130,10 @@ function hasExactRecoverableRestoreQuarantine(
   sandbox: Readonly<AgentSandbox>,
 ): boolean {
   const hasCommonAuthority =
+    sandbox.deleted_at === null &&
+    sandbox.deletion_attempt_id === null &&
+    sandbox.status !== "deletion_pending" &&
+    sandbox.status !== "deletion_failed" &&
     sandbox.activation_generation === operation.restore_attempt_id &&
     sandbox.activation_lifecycle_revision !== null &&
     sandbox.activation_lifecycle_revision >= 0n &&
@@ -176,6 +185,9 @@ function hasExactRecoverableRestoreQuarantine(
     operation.expected_container_id !== null &&
     operationEndpoint !== null &&
     sandboxEndpoint !== null &&
+    sandbox.character_id !== null &&
+    operationEndpoint.runtimeAgentId === sandbox.character_id &&
+    sandboxEndpoint.runtimeAgentId === sandbox.character_id &&
     operation.expected_endpoint_sha256 === sandbox.activation_endpoint_sha256 &&
     agentActivationEndpointEnvelopesEqual(operationEndpoint, sandboxEndpoint) &&
     sandbox.activation_container_id === operation.expected_container_id &&
@@ -196,6 +208,9 @@ async function lockRecoverableRestoreQuarantine(
       and(
         eq(agentSandboxes.id, operation.agent_id),
         eq(agentSandboxes.organization_id, operation.organization_id),
+        isNull(agentSandboxes.deleted_at),
+        isNull(agentSandboxes.deletion_attempt_id),
+        notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
       ),
     )
     .for("update")
@@ -209,6 +224,85 @@ async function lockRecoverableRestoreQuarantine(
     );
   }
   return sandbox;
+}
+
+async function lockExactRestoreEndpointRuntime(
+  tx: DbTransaction,
+  operation: Readonly<AgentBackupRestoreOperation>,
+  operationEndpoint: Readonly<AgentActivationEndpointEnvelopeV1>,
+): Promise<Readonly<AgentSandbox>> {
+  const [sandbox] = await tx
+    .select()
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.id, operation.agent_id),
+        eq(agentSandboxes.organization_id, operation.organization_id),
+        eq(agentSandboxes.activation_generation, operation.restore_attempt_id),
+        isNull(agentSandboxes.deleted_at),
+        isNull(agentSandboxes.deletion_attempt_id),
+        notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  const sandboxEndpoint = sandbox
+    ? parseAgentActivationEndpointAuthority(
+        sandbox.activation_endpoint_envelope,
+        sandbox.activation_endpoint_sha256,
+        operation.restore_attempt_id,
+      )
+    : null;
+  if (
+    !sandbox ||
+    sandbox.activation_purpose !== "restore" ||
+    !["restore_pending", "restart_pending", "restart_attested", "active"].includes(
+      sandbox.activation_phase ?? "",
+    ) ||
+    sandbox.character_id === null ||
+    sandboxEndpoint === null ||
+    operationEndpoint.runtimeAgentId !== sandbox.character_id ||
+    sandboxEndpoint.runtimeAgentId !== sandbox.character_id ||
+    operation.expected_endpoint_sha256 !== sandbox.activation_endpoint_sha256 ||
+    !agentActivationEndpointEnvelopesEqual(operationEndpoint, sandboxEndpoint) ||
+    sandbox.activation_container_id !== operation.expected_container_id ||
+    sandbox.activation_node_id !== operation.expected_node_id ||
+    sandbox.activation_image_digest !== operation.expected_image_digest ||
+    sandbox.activation_boot_id !== operation.expected_node_incarnation
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "Restore operation endpoint authority differs from its exact restore sandbox authority",
+    );
+  }
+  return sandbox;
+}
+
+/**
+ * A worker may perform remote restore work only while the operation still names
+ * the exact live sandbox runtime it originally created. Retryable failures use
+ * their durable resume phase because `failed_retryable` itself has no place in
+ * the normal phase order.
+ */
+async function lockRequiredRestoreEndpointRuntime(
+  tx: DbTransaction,
+  operation: Readonly<AgentBackupRestoreOperation>,
+): Promise<void> {
+  const effectivePhase =
+    operation.phase === "failed_retryable" ? operation.resume_phase : operation.phase;
+  const effectiveRank = effectivePhase === null ? -1 : PHASE_ORDER.indexOf(effectivePhase);
+  if (effectiveRank < PHASE_ORDER.indexOf("container_created")) return;
+
+  const endpointAuthority = parseAgentActivationEndpointAuthority(
+    operation.expected_endpoint_envelope,
+    operation.expected_endpoint_sha256,
+    operation.restore_attempt_id,
+  );
+  if (!endpointAuthority) {
+    throw new AgentBackupCatalogConflictError(
+      "Restore operation cannot run a container phase without complete endpoint authority",
+    );
+  }
+  await lockExactRestoreEndpointRuntime(tx, operation, endpointAuthority);
 }
 
 async function clearRecoverableRestoreQuarantine(
@@ -254,6 +348,9 @@ async function clearRecoverableRestoreQuarantine(
         eq(agentSandboxes.lifecycle_revision, sandbox.lifecycle_revision),
         eq(agentSandboxes.activation_generation, operation.restore_attempt_id),
         eq(agentSandboxes.activation_purpose, "restore"),
+        isNull(agentSandboxes.deleted_at),
+        isNull(agentSandboxes.deletion_attempt_id),
+        notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
       ),
     )
     .returning({
@@ -512,6 +609,7 @@ export async function claimAgentBackupRestoreOperation(params: {
       throw new AgentBackupCatalogConflictError("Restore lease belongs to another owner");
     }
 
+    await lockRequiredRestoreEndpointRuntime(tx, operation);
     const databaseNow = await readPostLockDatabaseNow(tx);
     if (lease.released_at !== null || lease.expires_at <= databaseNow) {
       throw new AgentBackupCatalogConflictError("Restore lease is expired or released");
@@ -1363,6 +1461,34 @@ export async function advanceAgentBackupRestoreOperation(params: {
       throw new AgentBackupCatalogConflictError("Restore lease fence was lost");
     }
 
+    const endpointAuthorityRequired = toRank >= PHASE_ORDER.indexOf("container_created");
+    const endpointAuthority = endpointAuthorityRequired
+      ? parseAgentActivationEndpointAuthority(
+          operation.expected_endpoint_envelope,
+          operation.expected_endpoint_sha256,
+          operation.restore_attempt_id,
+        )
+      : null;
+    if (endpointAuthorityRequired && !endpointAuthority) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore operation cannot reach a container phase without complete endpoint authority",
+      );
+    }
+    if (endpointAuthority) {
+      await lockExactRestoreEndpointRuntime(tx, operation, endpointAuthority);
+    }
+    const endpointAuthorityCas = endpointAuthority
+      ? and(
+          isNotNull(agentBackupRestoreOperations.expected_endpoint_envelope),
+          isNotNull(agentBackupRestoreOperations.expected_endpoint_sha256),
+          eq(agentBackupRestoreOperations.expected_endpoint_envelope, endpointAuthority),
+          eq(
+            agentBackupRestoreOperations.expected_endpoint_sha256,
+            hashAgentActivationEndpointEnvelope(endpointAuthority),
+          ),
+        )
+      : undefined;
+
     const databaseNow = await readPostLockDatabaseNow(tx);
     if (lease.released_at !== null || lease.expires_at <= databaseNow) {
       throw new AgentBackupCatalogConflictError("Restore lease is expired or released");
@@ -1400,31 +1526,6 @@ export async function advanceAgentBackupRestoreOperation(params: {
         "Restore finalization requires capacity handed to the adopted sandbox",
       );
     }
-
-    const endpointAuthorityRequired = toRank >= PHASE_ORDER.indexOf("container_created");
-    const endpointAuthority = endpointAuthorityRequired
-      ? parseAgentActivationEndpointAuthority(
-          operation.expected_endpoint_envelope,
-          operation.expected_endpoint_sha256,
-          operation.restore_attempt_id,
-        )
-      : null;
-    if (endpointAuthorityRequired && !endpointAuthority) {
-      throw new AgentBackupCatalogConflictError(
-        "Restore operation cannot reach a container phase without complete endpoint authority",
-      );
-    }
-    const endpointAuthorityCas = endpointAuthority
-      ? and(
-          isNotNull(agentBackupRestoreOperations.expected_endpoint_envelope),
-          isNotNull(agentBackupRestoreOperations.expected_endpoint_sha256),
-          eq(agentBackupRestoreOperations.expected_endpoint_envelope, endpointAuthority),
-          eq(
-            agentBackupRestoreOperations.expected_endpoint_sha256,
-            hashAgentActivationEndpointEnvelope(endpointAuthority),
-          ),
-        )
-      : undefined;
 
     if (resuming && operation.resume_phase !== params.toPhase) {
       throw new AgentBackupCatalogConflictError(
@@ -1533,6 +1634,7 @@ export async function heartbeatAgentBackupRestoreOperation(params: {
       throw new AgentBackupCatalogConflictError("Restore lease fence was lost");
     }
 
+    await lockRequiredRestoreEndpointRuntime(tx, operation);
     const databaseNow = await readPostLockDatabaseNow(tx);
     if (lease.released_at !== null || lease.expires_at <= databaseNow) {
       throw new AgentBackupCatalogConflictError("Restore lease is expired or released");

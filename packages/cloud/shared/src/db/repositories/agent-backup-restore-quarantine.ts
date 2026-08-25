@@ -8,7 +8,7 @@
  */
 
 import { Buffer } from "node:buffer";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, notInArray, sql } from "drizzle-orm";
 import {
   agentActivationEndpointEnvelopesEqual,
   parseAgentActivationEndpointAuthority,
@@ -195,6 +195,10 @@ function hasCommonRestoreQuarantineAuthority(params: {
 }): boolean {
   const { sandbox, operation } = params;
   return (
+    sandbox.deleted_at === null &&
+    sandbox.deletion_attempt_id === null &&
+    sandbox.status !== "deletion_pending" &&
+    sandbox.status !== "deletion_failed" &&
     sandbox.activation_generation === operation.restore_attempt_id &&
     hasCurrentActivationLifecycle(sandbox) &&
     sandbox.activation_purpose === "restore" &&
@@ -261,6 +265,10 @@ function isExactContainerReplay(params: {
     hasCompleteTargetAuthority(operation) &&
     operationEndpoint !== null &&
     sandboxEndpoint !== null &&
+    sandbox.character_id !== null &&
+    params.endpointEnvelope.runtimeAgentId === sandbox.character_id &&
+    operationEndpoint.runtimeAgentId === sandbox.character_id &&
+    sandboxEndpoint.runtimeAgentId === sandbox.character_id &&
     operation.expected_endpoint_sha256 === params.endpointSha256 &&
     sandbox.activation_endpoint_sha256 === params.endpointSha256 &&
     agentActivationEndpointEnvelopesEqual(operationEndpoint, params.endpointEnvelope) &&
@@ -394,6 +402,8 @@ export async function openAgentBackupRestoreQuarantine(
           eq(agentSandboxes.id, operation.agent_id),
           eq(agentSandboxes.organization_id, operation.organization_id),
           isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
         ),
       )
       .for("update")
@@ -518,6 +528,8 @@ export async function openAgentBackupRestoreQuarantine(
             ? isNull(agentSandboxes.activation_generation)
             : eq(agentSandboxes.activation_generation, previousGeneration),
           isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
           sql`${agentSandboxes.lifecycle_revision} < 9223372036854775807`,
         ),
       )
@@ -671,11 +683,16 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
           eq(agentSandboxes.id, operation.agent_id),
           eq(agentSandboxes.organization_id, operation.organization_id),
           isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
         ),
       )
       .for("update")
       .limit(1);
     if (!sandbox) conflict("Quarantined container sandbox is missing or deleted");
+    if (sandbox.character_id === null || endpointEnvelope.runtimeAgentId !== sandbox.character_id) {
+      conflict("Quarantined container endpoint differs from its exact runtime identity");
+    }
 
     const [node] = await tx
       .select()
@@ -798,6 +815,8 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
           isNull(agentSandboxes.activation_endpoint_envelope),
           isNull(agentSandboxes.activation_endpoint_sha256),
           isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
           sql`${agentSandboxes.lifecycle_revision} < 9223372036854775807`,
         ),
       )

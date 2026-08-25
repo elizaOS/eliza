@@ -1,7 +1,7 @@
 /** Appends and replays immutable restore authorities without wiring a production coordinator. */
 
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import {
   agentActivationEndpointEnvelopesEqual,
   parseAgentActivationEndpointAuthority,
@@ -442,6 +442,17 @@ function requiredEndpointAuthoritiesMatch(
   );
 }
 
+function endpointAuthorityNamesSandboxRuntime(
+  generation: string,
+  envelope: unknown,
+  sha256: unknown,
+  sandbox: Readonly<AgentSandbox>,
+): boolean {
+  if (sandbox.character_id === null) return false;
+  const endpoint = parseAgentActivationEndpointAuthority(envelope, sha256, generation);
+  return endpoint?.runtimeAgentId === sandbox.character_id;
+}
+
 function publicationMatchesInput(
   publication: AgentActivationPublication,
   input: RecordAgentActivationPublicationInput,
@@ -486,6 +497,12 @@ function publicationMatchesMutableSandbox(
           publication.endpoint_sha256,
           sandbox.activation_endpoint_envelope,
           sandbox.activation_endpoint_sha256,
+        ) &&
+        endpointAuthorityNamesSandboxRuntime(
+          publication.activation_generation,
+          publication.endpoint_envelope,
+          publication.endpoint_sha256,
+          sandbox,
         )
       : publication.endpoint_envelope === null &&
         publication.endpoint_sha256 === null &&
@@ -687,6 +704,9 @@ async function recordRestoreActivationPublication(
         eq(agentSandboxes.organization_id, input.organizationId),
         eq(agentSandboxes.activation_generation, input.activationGeneration),
         inArray(agentSandboxes.activation_phase, ["restart_attested", "active"]),
+        isNull(agentSandboxes.deleted_at),
+        isNull(agentSandboxes.deletion_attempt_id),
+        notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
       ),
     )
     .for("update")
@@ -714,6 +734,12 @@ async function recordRestoreActivationPublication(
       operation.expected_endpoint_sha256,
       sandbox.activation_endpoint_envelope,
       sandbox.activation_endpoint_sha256,
+    ) ||
+    !endpointAuthorityNamesSandboxRuntime(
+      operation.restore_attempt_id,
+      operation.expected_endpoint_envelope,
+      operation.expected_endpoint_sha256,
+      sandbox,
     ) ||
     !operationMatchesRuntimeTarget(
       operation,
@@ -845,6 +871,9 @@ export async function recordAgentActivationPublication(
           eq(agentSandboxes.id, input.agentId),
           eq(agentSandboxes.organization_id, input.organizationId),
           eq(agentSandboxes.activation_generation, input.activationGeneration),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
         ),
       )
       .limit(1);
@@ -878,6 +907,9 @@ export async function recordAgentActivationPublication(
           eq(agentSandboxes.organization_id, input.organizationId),
           eq(agentSandboxes.activation_generation, input.activationGeneration),
           inArray(agentSandboxes.activation_phase, ["restart_attested", "active"]),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
         ),
       )
       .for("update")
@@ -997,6 +1029,9 @@ export async function authorizeAgentActivationDispatch(
         and(
           eq(agentSandboxes.id, input.agentId),
           eq(agentSandboxes.organization_id, input.organizationId),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
         ),
       )
       .for("update")
@@ -1212,6 +1247,9 @@ export async function recordAgentVaultKeySeedReceipt(
           eq(agentSandboxes.activation_purpose, "restore"),
           eq(agentSandboxes.activation_backup_id, input.backupId),
           eq(agentSandboxes.activation_backup_hash, backup.manifest_digest),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
         ),
       )
       .for("update")
@@ -1520,6 +1558,9 @@ export async function commitAgentBackupRestore(
           eq(agentSandboxes.activation_backup_hash, backup.manifest_digest),
           eq(agentSandboxes.activation_receipt_hash, input.expectedActivationReceiptSha256),
           eq(agentSandboxes.activation_boot_id, publication.node_incarnation),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+          notInArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
         ),
       )
       .for("update")
@@ -1537,6 +1578,12 @@ export async function commitAgentBackupRestore(
         publication.endpoint_sha256,
         sandbox.activation_endpoint_envelope,
         sandbox.activation_endpoint_sha256,
+      ) ||
+      !endpointAuthorityNamesSandboxRuntime(
+        publication.activation_generation,
+        publication.endpoint_envelope,
+        publication.endpoint_sha256,
+        sandbox,
       )
     ) {
       conflict("Final restore lost exact current sandbox activation authority");

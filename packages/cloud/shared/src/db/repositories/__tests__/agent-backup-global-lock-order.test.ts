@@ -43,6 +43,71 @@ function expectRestoreWriterOrder(body: string, label: string): void {
 }
 
 describe("agent backup global lock order", () => {
+  test("claims and heartbeats lock operation, lease, then required sandbox runtime", () => {
+    const operations = source("agent-backup-restore-operations.ts");
+    const claim = exportedFunction(
+      operations,
+      "claimAgentBackupRestoreOperation",
+      "reserveAgentBackupRestoreTarget",
+    );
+    const heartbeat = exportedFunction(
+      operations,
+      "heartbeatAgentBackupRestoreOperation",
+      "failAgentBackupRestoreOperation",
+    );
+
+    for (const [label, body] of [
+      ["restore claim", claim],
+      ["restore heartbeat", heartbeat],
+    ] as const) {
+      expectOrder(
+        body,
+        ".from(agentBackupRestoreOperations)",
+        ".from(agentBackupRestoreLeases)",
+        `${label} operation-to-lease`,
+      );
+      expectOrder(
+        body,
+        ".from(agentBackupRestoreLeases)",
+        "lockRequiredRestoreEndpointRuntime(tx",
+        `${label} lease-to-sandbox`,
+      );
+      expectOrder(
+        body,
+        "lockRequiredRestoreEndpointRuntime(tx",
+        "readPostLockDatabaseNow(tx)",
+        `${label} sandbox-to-clock`,
+      );
+    }
+  });
+
+  test("post-container restore advance locks operation, lease, then sandbox runtime", () => {
+    const operations = source("agent-backup-restore-operations.ts");
+    const advance = exportedFunction(
+      operations,
+      "advanceAgentBackupRestoreOperation",
+      "heartbeatAgentBackupRestoreOperation",
+    );
+    expectOrder(
+      advance,
+      ".from(agentBackupRestoreOperations)",
+      ".from(agentBackupRestoreLeases)",
+      "restore advance operation-to-lease",
+    );
+    expectOrder(
+      advance,
+      ".from(agentBackupRestoreLeases)",
+      "lockExactRestoreEndpointRuntime(tx",
+      "restore advance lease-to-sandbox",
+    );
+    expectOrder(
+      advance,
+      "lockExactRestoreEndpointRuntime(tx",
+      "readPostLockDatabaseNow(tx)",
+      "restore advance sandbox-to-clock",
+    );
+  });
+
   test("restore publication follows backup-to-catalogue lock order", () => {
     const history = source("agent-backup-restore-history.ts");
     const start = history.indexOf("async function recordRestoreActivationPublication");

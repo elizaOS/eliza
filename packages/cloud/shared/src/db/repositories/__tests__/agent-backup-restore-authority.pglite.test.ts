@@ -101,6 +101,8 @@ const VAULT_GENERATION = "00000000-0000-4000-8000-00000000d006";
 const ROTATED_VAULT_GENERATION = "00000000-0000-4000-8000-00000000d030";
 const STALE_VAULT_GENERATION = "00000000-0000-4000-8000-00000000d031";
 const USER_ID = "00000000-0000-4000-8000-00000000d032";
+const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-00000000d099";
+const DELETION_ATTEMPT_ID = "00000000-0000-4000-8000-00000000d090";
 const SOURCE_NODE_INCARNATION = "00000000-0000-4000-8000-00000000d034";
 const SOURCE_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000d035";
 const NON_RESTORE_PUBLICATION_ID = "00000000-0000-4000-8000-00000000d036";
@@ -119,6 +121,7 @@ const RESTORE_ENDPOINT_ENVELOPE = Object.freeze({
   generation: TARGET_ACTIVATION_GENERATION,
   kind: "dedicated-sandbox",
   serverName: `sandbox-${TARGET_ACTIVATION_GENERATION}`,
+  runtimeAgentId: RUNTIME_AGENT_ID,
   registryUrl: `https://sandbox-${TARGET_ACTIVATION_GENERATION}.example.test/api`,
   bridgeUrl: "http://100.64.0.48:3000",
   healthUrl: "http://100.64.0.48:3000/health",
@@ -130,7 +133,61 @@ const CONTENT_SHA = "c".repeat(64);
 const CIPHERTEXT_SHA = "d".repeat(64);
 const RUNTIME_HEAD_RECEIPT_SHA = "8".repeat(64);
 const KEY_BUNDLE = Buffer.alloc(92, 0x42).toString("base64");
+const SANDBOX_DELETION_FENCES = [
+  {
+    condition: "soft-deleted",
+    mutation: { deleted_at: new Date("2026-08-20T12:00:00.000Z") },
+  },
+  {
+    condition: "owned by a deletion attempt",
+    mutation: {
+      deletion_attempt_id: DELETION_ATTEMPT_ID,
+      deletion_started_at: new Date("2026-08-20T12:00:00.000Z"),
+    },
+  },
+  {
+    condition: "deletion_pending",
+    mutation: { status: "deletion_pending" as const },
+  },
+  {
+    condition: "deletion_failed",
+    mutation: { status: "deletion_failed" as const },
+  },
+] as const;
 let schemaFailure = "";
+
+async function assertEverySandboxDeletionFenceRefuses(params: {
+  action: () => Promise<unknown>;
+  error: string;
+  durableSnapshot: () => Promise<unknown>;
+}): Promise<void> {
+  for (const { condition, mutation } of SANDBOX_DELETION_FENCES) {
+    await dbWrite.update(agentSandboxes).set(mutation).where(eq(agentSandboxes.id, AGENT_ID));
+    const [sandboxBefore] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    const durableBefore = await params.durableSnapshot();
+
+    await expect(params.action(), condition).rejects.toThrow(params.error);
+
+    const [sandboxAfter] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    expect(sandboxAfter, condition).toEqual(sandboxBefore);
+    expect(await params.durableSnapshot(), condition).toEqual(durableBefore);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        deleted_at: null,
+        deletion_attempt_id: null,
+        deletion_started_at: null,
+        status: "running",
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+  }
+}
 
 function isZeroized(value: Uint8Array | null): boolean {
   return value !== null && value.every((byte) => byte === 0);
@@ -176,10 +233,19 @@ async function insertActiveSandbox(): Promise<void> {
     steward_user_id: "restore-authority-user",
     organization_id: ORG_ID,
   });
+  await dbWrite.insert(userCharacters).values({
+    id: RUNTIME_AGENT_ID,
+    organization_id: ORG_ID,
+    user_id: USER_ID,
+    name: "Restore authority runtime",
+    bio: [],
+    character_data: {},
+  });
   await dbWrite.insert(agentSandboxes).values({
     id: AGENT_ID,
     organization_id: ORG_ID,
     user_id: USER_ID,
+    character_id: RUNTIME_AGENT_ID,
     agent_name: "Restore authority agent",
     status: "running",
     sandbox_id: "provider-handle",
@@ -1821,6 +1887,12 @@ describe("strict restore catalogue authority", () => {
       .set({ activation_lifecycle_revision: 9n })
       .where(eq(agentSandboxes.id, AGENT_ID));
 
+    await assertEverySandboxDeletionFenceRefuses({
+      action: () => recordAgentActivationPublication(publicationInput),
+      error: "Non-restore activation publication cannot carry endpoint authority",
+      durableSnapshot: () => dbWrite.select().from(agentActivationPublications),
+    });
+
     const [publicationFirst, publicationReplay] = await Promise.all([
       recordAgentActivationPublication(publicationInput),
       recordAgentActivationPublication(publicationInput),
@@ -1845,6 +1917,11 @@ describe("strict restore catalogue authority", () => {
     await expect(recordAgentActivationPublication(publicationInput)).resolves.toMatchObject({
       replayed: true,
       publication: { id: ACTIVATION_PUBLICATION_ID },
+    });
+    await assertEverySandboxDeletionFenceRefuses({
+      action: () => recordAgentActivationPublication(publicationInput),
+      error: "Restore publication differs from mutable or durable operation authority",
+      durableSnapshot: () => dbWrite.select().from(agentActivationPublications),
     });
 
     const liveLeaseExpiry = acquired.authority.expiresAt;
@@ -1939,6 +2016,11 @@ describe("strict restore catalogue authority", () => {
       .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
 
     await authorizeAgentActivationDispatch(publicationInput);
+    await assertEverySandboxDeletionFenceRefuses({
+      action: () => authorizeAgentActivationDispatch(publicationInput),
+      error: "Activation dispatch lost current mutable authority",
+      durableSnapshot: () => dbWrite.select().from(agentActivationPublications),
+    });
 
     await dbWrite
       .update(agentSandboxes)
@@ -2017,6 +2099,13 @@ describe("strict restore catalogue authority", () => {
       .update(agentBackupCatalogAuthorities)
       .set({ catalog_revision: epochBefore.revision })
       .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+
+    await assertEverySandboxDeletionFenceRefuses({
+      action: () => recordAgentVaultKeySeedReceipt(seedInput),
+      error:
+        "Vault seed target activation is absent, unattested, changed, or blocked by its durable operation target",
+      durableSnapshot: () => dbWrite.select().from(agentVaultKeySeedReceipts),
+    });
 
     const [seedFirst, seedReplay] = await Promise.all([
       recordAgentVaultKeySeedReceipt(seedInput),
@@ -2117,6 +2206,15 @@ describe("strict restore catalogue authority", () => {
       .update(agentBackupRestoreLeases)
       .set({ released_at: null })
       .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+    await assertEverySandboxDeletionFenceRefuses({
+      action: () => commitAgentBackupRestore(finalInput),
+      error: "Final restore lost exact current sandbox activation authority",
+      durableSnapshot: async () => ({
+        receipts: await dbWrite.select().from(agentBackupRestoreReceipts),
+        authorities: await dbWrite.select().from(agentBackupCatalogAuthorities),
+        backups: await dbWrite.select().from(agentSandboxBackups),
+      }),
+    });
     const [finalFirst, finalReplay] = await Promise.all([
       commitAgentBackupRestore(finalInput),
       commitAgentBackupRestore(finalInput),

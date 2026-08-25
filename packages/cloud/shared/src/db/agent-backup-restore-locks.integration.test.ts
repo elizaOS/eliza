@@ -20,6 +20,7 @@ import {
 import { pushSchema } from "drizzle-kit/api";
 import { eq, inArray, sql } from "drizzle-orm";
 import { Client } from "pg";
+import { hashAgentActivationEndpointEnvelope } from "../lib/services/agent-activation-endpoint-authority";
 import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
@@ -110,6 +111,18 @@ const WRITER_TARGET_GENERATION = "00000000-0000-4000-8000-00000000b309";
 const WRITER_ATTEMPT_ID = WRITER_TARGET_GENERATION;
 const WRITER_VAULT_GENERATION = "00000000-0000-4000-8000-00000000b30a";
 const WRITER_RESERVE_ONE = "00000000-0000-4000-8000-00000000b30b";
+const WRITER_RUNTIME_AGENT_ID = "00000000-0000-4000-8000-00000000b40c";
+const WRITER_ENDPOINT_ENVELOPE = {
+  version: 1,
+  generation: WRITER_TARGET_GENERATION,
+  kind: "dedicated-sandbox",
+  serverName: `sandbox-${WRITER_TARGET_GENERATION}`,
+  runtimeAgentId: WRITER_RUNTIME_AGENT_ID,
+  registryUrl: "https://registry.writer-lock.invalid/v1",
+  bridgeUrl: "http://writer-lock.invalid:3000",
+  healthUrl: "http://writer-lock.invalid:3000/health",
+} as const;
+const WRITER_ENDPOINT_SHA256 = hashAgentActivationEndpointEnvelope(WRITER_ENDPOINT_ENVELOPE);
 
 const LOCK_BACKUP_ONE = "00000000-0000-4000-8000-00000000b401";
 const LOCK_BACKUP_TWO = "00000000-0000-4000-8000-00000000b402";
@@ -122,9 +135,21 @@ const LOCK_VAULT_GENERATION = "00000000-0000-4000-8000-00000000b408";
 const LOCK_KEY_BUNDLE_GENERATION = "00000000-0000-4000-8000-00000000b409";
 const LOCK_TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000b40a";
 const LOCK_TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000b40b";
+const LOCK_RUNTIME_AGENT_ID = "00000000-0000-4000-8000-00000000b40c";
 const LOCK_OWNER_ID = "restore-lock-order-owner";
 const LOCK_KEY_BUNDLE = Buffer.alloc(AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedBytes, 0x55);
 const LOCK_KEY_BUNDLE_SHA = createHash("sha256").update(LOCK_KEY_BUNDLE).digest("hex");
+const LOCK_ENDPOINT_ENVELOPE = {
+  version: 1,
+  generation: LOCK_ATTEMPT_ID,
+  kind: "dedicated-sandbox",
+  serverName: `sandbox-${LOCK_ATTEMPT_ID}`,
+  runtimeAgentId: LOCK_RUNTIME_AGENT_ID,
+  registryUrl: "https://registry.restore-lock.invalid/v1",
+  bridgeUrl: "http://restore-lock.invalid:3000",
+  healthUrl: "http://restore-lock.invalid:3000/health",
+} as const;
+const LOCK_ENDPOINT_SHA256 = hashAgentActivationEndpointEnvelope(LOCK_ENDPOINT_ENVELOPE);
 
 let postgres: EphemeralPostgres | null = await acquireEphemeralPostgres();
 let isolatedDatabaseName: string | null = null;
@@ -169,6 +194,9 @@ let claimAgentBackupRestoreOperation:
   | undefined;
 let reserveAgentBackupRestoreTarget:
   | typeof import("./repositories/agent-backup-restore-operations").reserveAgentBackupRestoreTarget
+  | undefined;
+let advanceAgentBackupRestoreOperation:
+  | typeof import("./repositories/agent-backup-restore-operations").advanceAgentBackupRestoreOperation
   | undefined;
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
@@ -609,6 +637,7 @@ if (!postgres) {
   openAgentBackupRestoreOperation = operationsModule.openAgentBackupRestoreOperation;
   claimAgentBackupRestoreOperation = operationsModule.claimAgentBackupRestoreOperation;
   reserveAgentBackupRestoreTarget = operationsModule.reserveAgentBackupRestoreTarget;
+  advanceAgentBackupRestoreOperation = operationsModule.advanceAgentBackupRestoreOperation;
 }
 
 afterAll(async () => {
@@ -665,6 +694,14 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       steward_user_id: "restore-lock-user",
       organization_id: ORG_ID,
     });
+    await dbWrite.insert(userCharacters).values({
+      id: LOCK_RUNTIME_AGENT_ID,
+      organization_id: ORG_ID,
+      user_id: USER_ID,
+      name: "Restore Lock Runtime",
+      bio: [],
+      character_data: {},
+    });
     const [sourceNode] = await dbWrite
       .insert(dockerNodes)
       .values({
@@ -685,6 +722,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       id: AGENT_ID,
       organization_id: ORG_ID,
       user_id: USER_ID,
+      character_id: LOCK_RUNTIME_AGENT_ID,
       agent_name: "Restore Lock Agent",
       status: "running",
       sandbox_id: "container-generation-lock",
@@ -749,12 +787,40 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         activation_phase: "active",
         activation_backup_id: null,
         activation_backup_hash: null,
+        activation_receipt: {
+          schemaVersion: 1,
+          generation: ACTIVATION_GENERATION,
+          purpose: "provision",
+          agentId: AGENT_ID,
+          organizationId: ORG_ID,
+          lifecycleRevision: "0",
+          backupId: null,
+          backupHash: null,
+          manifestHash: null,
+          componentHashes: null,
+          freshAuthorization: null,
+          containerId: SOURCE_CONTAINER_ID,
+          imageDigest: `sha256:${SHA}`,
+          receiptId: CLOCK_ATTEMPT_ID,
+          receiptHash: SHA,
+          receiptMac: SHA,
+          appliedAt: "2026-08-17T00:00:02.000Z",
+          restored: true,
+          requiresRestart: false,
+        },
         activation_receipt_hash: SHA,
         activation_container_id: SOURCE_CONTAINER_ID,
         activation_node_id: "robot-node-lock",
         activation_boot_id: NODE_INCARNATION,
         activation_image_digest: `sha256:${SHA}`,
+        activation_endpoint_envelope: null,
+        activation_endpoint_sha256: null,
         activation_token_hash: SHA,
+        activation_token_ciphertext: "sealed-token",
+        activation_authority_published_at: new Date("2026-08-17T00:00:00.000Z"),
+        activation_funding_revision: 0n,
+        activation_dispatched_at: new Date("2026-08-17T00:00:01.000Z"),
+        activation_completed_at: new Date("2026-08-17T00:00:02.000Z"),
       })
       .where(eq(agentSandboxes.id, AGENT_ID));
     await dbWrite
@@ -1027,6 +1093,137 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       await blocker.query("ROLLBACK");
       if (replay) await replay;
       if (claiming) await claiming;
+      await Promise.allSettled([blocker.end(), observer.end()]);
+    }
+  }, 30_000);
+
+  test("advance rechecks its claim after waiting on the exact restore sandbox", async () => {
+    const claim = claimAgentBackupRestoreOperation;
+    const advance = advanceAgentBackupRestoreOperation;
+    const targetNodeHistoryId = sourceNodeHistoryId;
+    if (!isolatedDsn || !dbWrite || !claim || !advance || !targetNodeHistoryId) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const fixture = await seedRestoreOperationLockFixture();
+    const [quarantinedSandbox] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_generation: LOCK_ATTEMPT_ID,
+        activation_lifecycle_revision: 0n,
+        activation_purpose: "restore",
+        activation_phase: "restore_pending",
+        activation_backup_id: LOCK_BACKUP_ONE,
+        activation_backup_hash: fixture.authority.expectedManifestSha256,
+        activation_receipt: null,
+        activation_receipt_hash: null,
+        activation_container_id: SOURCE_CONTAINER_ID,
+        activation_node_id: "robot-node-lock",
+        activation_image_digest: `sha256:${SHA}`,
+        activation_endpoint_envelope: LOCK_ENDPOINT_ENVELOPE,
+        activation_endpoint_sha256: LOCK_ENDPOINT_SHA256,
+        activation_token_hash: SHA,
+        activation_token_ciphertext: "sealed-token",
+        activation_boot_id: NODE_INCARNATION,
+        activation_authority_published_at: null,
+        activation_funding_revision: null,
+        activation_dispatched_at: null,
+        activation_completed_at: null,
+        activation_consent_lifecycle_revision: null,
+        activation_consent_head_backup_id: null,
+        activation_consent_head_backup_hash: null,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID))
+      .returning({ id: agentSandboxes.id });
+    if (!quarantinedSandbox) throw new Error("restore sandbox fixture update was lost");
+    const [containerCreated] = await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({
+        phase: "container_created",
+        expected_node_history_id: targetNodeHistoryId,
+        expected_node_record_id: NODE_RECORD_ID,
+        expected_node_incarnation: NODE_INCARNATION,
+        expected_node_id: "robot-node-lock",
+        expected_container_id: SOURCE_CONTAINER_ID,
+        expected_image_digest: `sha256:${SHA}`,
+        expected_endpoint_envelope: LOCK_ENDPOINT_ENVELOPE,
+        expected_endpoint_sha256: LOCK_ENDPOINT_SHA256,
+        capacity_state: "reserved",
+        capacity_reserved_at: sql`clock_timestamp()`,
+      })
+      .where(eq(agentBackupRestoreOperations.id, fixture.operationId))
+      .returning({ id: agentBackupRestoreOperations.id });
+    if (!containerCreated) throw new Error("restore operation fixture update was lost");
+    const claimed = await claim({
+      operationId: fixture.operationId,
+      ownerId: LOCK_OWNER_ID,
+      claimMs: 1_000,
+    });
+
+    const blocker = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([blocker.connect(), observer.connect()]);
+    let advancementError: unknown;
+    let advancement: Promise<void> | undefined;
+    try {
+      await blocker.query("BEGIN");
+      const blockerPid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await blocker.query("SELECT id FROM agent_sandboxes WHERE id = $1 FOR UPDATE", [AGENT_ID]);
+      advancement = advance({
+        operationId: fixture.operationId,
+        ownerId: LOCK_OWNER_ID,
+        claimGeneration: claimed.claimGeneration,
+        fromPhase: "container_created",
+        toPhase: "restoring",
+      }).then(
+        () => undefined,
+        (error: unknown) => {
+          advancementError = error;
+        },
+      );
+      const blockedPid = await waitUntilBlockedBy(observer, blockerPid.rows[0]!.pid);
+      const blockedActivity = await observer.query<{
+        query: string;
+        wait_event_type: string;
+      }>("SELECT query, wait_event_type FROM pg_stat_activity WHERE pid = $1", [blockedPid]);
+      expect(blockedActivity.rows[0]?.wait_event_type).toBe("Lock");
+      // pg_stat_activity truncates long statements before this SELECT's FROM
+      // clause, so identify the sandbox query by a sandbox-only authority field.
+      expect(blockedActivity.rows[0]?.query).toContain("activation_endpoint_envelope");
+
+      const expiryDeadline = Date.now() + 5_000;
+      while (Date.now() < expiryDeadline) {
+        const expiry = await observer.query<{ expired: boolean }>(
+          "SELECT claim_expires_at <= clock_timestamp() AS expired " +
+            "FROM agent_backup_restore_operations WHERE id = $1",
+          [fixture.operationId],
+        );
+        if (expiry.rows[0]?.expired) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      const expired = await observer.query<{ expired: boolean }>(
+        "SELECT claim_expires_at <= clock_timestamp() AS expired " +
+          "FROM agent_backup_restore_operations WHERE id = $1",
+        [fixture.operationId],
+      );
+      expect(expired.rows).toEqual([{ expired: true }]);
+
+      await blocker.query("COMMIT");
+      await advancement;
+      expect(String(advancementError)).toContain("claim is not live");
+      const [unchanged] = await dbWrite
+        .select({
+          phase: agentBackupRestoreOperations.phase,
+          claimGeneration: agentBackupRestoreOperations.claim_generation,
+        })
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, fixture.operationId));
+      expect(unchanged).toEqual({
+        phase: "container_created",
+        claimGeneration: claimed.claimGeneration,
+      });
+    } finally {
+      await blocker.query("ROLLBACK");
+      if (advancement) await advancement;
       await Promise.allSettled([blocker.end(), observer.end()]);
     }
   }, 30_000);
@@ -1374,7 +1571,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       lease_owner_id: "writer-lock-owner",
       catalog_epoch: initialAuthority.revision,
       copy_role: "primary",
-      phase: "restart_attested",
+      phase: "probed",
       expected_manifest_sha256: SHA,
       expected_operation_id: WRITER_OPERATION_ID,
       expected_activation_generation: ACTIVATION_GENERATION,
@@ -1382,8 +1579,13 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       expected_node_history_id: targetNodeHistoryId,
       expected_node_record_id: NODE_RECORD_ID,
       expected_node_incarnation: NODE_INCARNATION,
+      expected_node_id: "robot-node-lock",
       expected_container_id: SOURCE_CONTAINER_ID,
       expected_image_digest: `sha256:${SHA}`,
+      expected_endpoint_envelope: WRITER_ENDPOINT_ENVELOPE,
+      expected_endpoint_sha256: WRITER_ENDPOINT_SHA256,
+      capacity_state: "reserved",
+      capacity_reserved_at: new Date(),
     });
     await dbWrite
       .update(agentSandboxes)
@@ -1399,6 +1601,8 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         activation_node_id: "robot-node-lock",
         activation_boot_id: NODE_INCARNATION,
         activation_image_digest: `sha256:${SHA}`,
+        activation_endpoint_envelope: WRITER_ENDPOINT_ENVELOPE,
+        activation_endpoint_sha256: WRITER_ENDPOINT_SHA256,
         activation_token_hash: SHA,
       })
       .where(eq(agentSandboxes.id, AGENT_ID));
@@ -1414,6 +1618,8 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       expectedNodeIncarnation: NODE_INCARNATION,
       expectedNodeHistoryId: targetNodeHistoryId,
       expectedTokenSha256: SHA,
+      expectedEndpointEnvelope: WRITER_ENDPOINT_ENVELOPE,
+      expectedEndpointSha256: WRITER_ENDPOINT_SHA256,
     });
 
     const reservationInput = (operationId: string) => ({

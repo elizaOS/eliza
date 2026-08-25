@@ -86,6 +86,48 @@ import {
   pinnedImageDigestSql,
 } from "../utils/docker-image-ref";
 
+type AgentSandboxActivationAuthorityField = Extract<keyof NewAgentSandbox, `activation_${string}`>;
+
+/**
+ * The broad lifecycle patch surface deliberately excludes runtime identity and
+ * the activation ledger. Those fields are generation-bound authority and must
+ * only be changed by their dedicated transactional writers.
+ */
+export type AgentSandboxRepositoryUpdate = Partial<
+  Omit<NewAgentSandbox, "character_id" | AgentSandboxActivationAuthorityField>
+>;
+
+function snapshotGenericSandboxUpdate(
+  data: AgentSandboxRepositoryUpdate,
+): AgentSandboxRepositoryUpdate {
+  // Enumerate the caller-owned object exactly once. In particular, never
+  // validate a Proxy and then spread it in a second ownKeys() pass.
+  const descriptors = Object.getOwnPropertyDescriptors(data);
+  const fields = Reflect.ownKeys(descriptors);
+  const forbiddenField = fields.find(
+    (field) =>
+      typeof field === "string" && (field === "character_id" || field.startsWith("activation_")),
+  );
+  if (forbiddenField) {
+    throw new TypeError(
+      `Generic sandbox update cannot mutate activation authority field ${String(forbiddenField)}`,
+    );
+  }
+  const snapshot: Record<PropertyKey, unknown> = {};
+  for (const field of fields) {
+    const descriptor = Reflect.get(descriptors, field) as PropertyDescriptor | undefined;
+    if (!descriptor?.enumerable) continue;
+    const value = "value" in descriptor ? descriptor.value : descriptor.get?.call(data);
+    Reflect.defineProperty(snapshot, field, {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    });
+  }
+  return snapshot as AgentSandboxRepositoryUpdate;
+}
+
 export type {
   AgentBackupSnapshotType,
   AgentSandbox,
@@ -1262,7 +1304,7 @@ export class AgentSandboxesRepository {
 
   async update(
     id: string,
-    data: Partial<NewAgentSandbox>,
+    data: AgentSandboxRepositoryUpdate,
     expectedRunningGeneration?: {
       organizationId: string;
       environmentRevision: number;
@@ -1272,12 +1314,13 @@ export class AgentSandboxesRepository {
       lifecycleRevision: number;
     },
   ): Promise<AgentSandbox | undefined> {
+    const safeData = snapshotGenericSandboxUpdate(data);
     await ensureAgentSandboxSchema();
     const updateData =
-      data.environment_vars === undefined
-        ? { ...data, updated_at: new Date() }
+      safeData.environment_vars === undefined
+        ? { ...safeData, updated_at: new Date() }
         : {
-            ...data,
+            ...safeData,
             environment_revision: sql`${agentSandboxes.environment_revision} + 1`,
             warm_claim_credential_state: sql`
               CASE
@@ -1317,7 +1360,7 @@ export class AgentSandboxesRepository {
       eq(agentSandboxes.id, id),
       sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
     ];
-    if (data.environment_vars !== undefined) {
+    if (safeData.environment_vars !== undefined) {
       predicates.push(
         sql`COALESCE(${agentSandboxes.warm_claim_credential_state}, '') NOT IN ('pending', 'attested')`,
       );

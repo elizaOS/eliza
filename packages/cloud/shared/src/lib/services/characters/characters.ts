@@ -8,6 +8,7 @@ import { type Agent, ElizaError } from "@elizaos/core";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { type DbTransaction, dbRead, dbWrite } from "../../../db/client";
 import {
+  CharacterLinkedSandboxConflictError,
   type NewUserCharacter,
   type UserCharacter,
   userCharactersRepository,
@@ -23,7 +24,7 @@ import {
   users,
 } from "../../../db/schemas";
 import { memoryTable, participantTable, roomTable } from "../../../db/schemas/eliza";
-import { ValidationError } from "../../api/cloud-worker-errors";
+import { ApiError, ValidationError } from "../../api/cloud-worker-errors";
 import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
@@ -691,7 +692,7 @@ export class CharactersService {
 
   async delete(id: string): Promise<void> {
     const character = await this.getById(id);
-    await userCharactersRepository.delete(id);
+    await this.deleteCharacterRecord(id);
     if (character) {
       await Promise.all([
         cache.del(CacheKeys.org.dashboard(character.organization_id)),
@@ -707,7 +708,7 @@ export class CharactersService {
       return false;
     }
 
-    await userCharactersRepository.delete(characterId);
+    await this.deleteCharacterRecord(characterId);
 
     // CRITICAL: Invalidate cache after delete (including runtime cache)
     await Promise.all([
@@ -716,6 +717,21 @@ export class CharactersService {
     ]);
 
     return true;
+  }
+
+  private async deleteCharacterRecord(characterId: string): Promise<void> {
+    try {
+      await userCharactersRepository.delete(characterId);
+    } catch (error) {
+      if (error instanceof CharacterLinkedSandboxConflictError) {
+        throw new ApiError(
+          409,
+          "identity_conflict",
+          "This character is linked to an agent sandbox. Delete the associated agent/sandbox before deleting this character.",
+        );
+      }
+      throw error;
+    }
   }
 
   /**

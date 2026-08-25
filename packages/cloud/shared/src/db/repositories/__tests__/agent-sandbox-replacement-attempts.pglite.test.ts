@@ -83,6 +83,7 @@ const TIMEOUT = 120_000;
 const ORGANIZATION_ID = "00000000-0000-4000-8000-00000000a001";
 const AGENT_ID = "00000000-0000-4000-8000-00000000a002";
 const USER_ID = "00000000-0000-4000-8000-00000000a022";
+const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-00000000a099";
 const OTHER_ORGANIZATION_ID = "00000000-0000-4000-8000-00000000a023";
 const ATTEMPT_ID = "00000000-0000-4000-8000-00000000a003";
 const OTHER_ATTEMPT_ID = "00000000-0000-4000-8000-00000000a004";
@@ -131,11 +132,21 @@ const ACTIVE_RESTORE_ENDPOINT = Object.freeze({
   generation: ACTIVATION_GENERATION,
   kind: "dedicated-sandbox",
   serverName: `sandbox-${ACTIVATION_GENERATION}`,
+  runtimeAgentId: RUNTIME_AGENT_ID,
   registryUrl: `https://sandbox-${ACTIVATION_GENERATION}.example.test/api`,
   bridgeUrl: "http://100.64.0.5:3000",
   healthUrl: "http://100.64.0.5:3000/health",
 } as const);
 const ACTIVE_RESTORE_ENDPOINT_SHA256 = hashAgentActivationEndpointEnvelope(ACTIVE_RESTORE_ENDPOINT);
+const RESTORE_OPERATION_ENDPOINT = Object.freeze({
+  ...ACTIVE_RESTORE_ENDPOINT,
+  generation: RESTORE_ATTEMPT_ID,
+  serverName: `sandbox-${RESTORE_ATTEMPT_ID}`,
+  registryUrl: `https://sandbox-${RESTORE_ATTEMPT_ID}.example.test/api`,
+} as const);
+const RESTORE_OPERATION_ENDPOINT_SHA256 = hashAgentActivationEndpointEnvelope(
+  RESTORE_OPERATION_ENDPOINT,
+);
 let restoreManifestFixture: Readonly<{ canonicalDraft: string; digest: string }>;
 
 function activationPublicationFixture(input: {
@@ -1191,6 +1202,28 @@ async function seedRestoreCapacityAuthority(leaseDurationMs = 600_000): Promise<
   };
 }
 
+async function stampRestoreOperationPhaseForReplacement(
+  restoreOperationId: string,
+  phase: "vault_seeded" | "container_created" | "restoring" | "failed_retryable",
+  resumePhase: "vault_seeded" | "container_created" | "restoring" | null = null,
+): Promise<void> {
+  const effectivePhase = phase === "failed_retryable" ? resumePhase : phase;
+  const postContainer = effectivePhase === "container_created" || effectivePhase === "restoring";
+  const [updated] = await dbWrite
+    .update(agentBackupRestoreOperations)
+    .set({
+      phase,
+      resume_phase: resumePhase,
+      expected_container_id: postContainer ? CONTAINER_ID : null,
+      expected_endpoint_envelope: postContainer ? RESTORE_OPERATION_ENDPOINT : null,
+      expected_endpoint_sha256: postContainer ? RESTORE_OPERATION_ENDPOINT_SHA256 : null,
+      updated_at: new Date(),
+    })
+    .where(eq(agentBackupRestoreOperations.id, restoreOperationId))
+    .returning({ phase: agentBackupRestoreOperations.phase });
+  expect(updated?.phase).toBe(phase);
+}
+
 /** Install the database-level guards that Drizzle's table DSL cannot express. */
 async function installReplacementAttemptGuards(): Promise<void> {
   await dbWrite.execute(
@@ -1490,10 +1523,19 @@ beforeEach(async () => {
     organization_id: ORGANIZATION_ID,
     steward_user_id: "replacement-attempt-test-user",
   });
+  await dbWrite.insert(userCharacters).values({
+    id: RUNTIME_AGENT_ID,
+    organization_id: ORGANIZATION_ID,
+    user_id: USER_ID,
+    name: "Replacement runtime",
+    bio: [],
+    character_data: {},
+  });
   await dbWrite.insert(agentSandboxes).values({
     id: AGENT_ID,
     organization_id: ORGANIZATION_ID,
     user_id: USER_ID,
+    character_id: RUNTIME_AGENT_ID,
     status: "provisioning",
     lifecycle_job_id: LIFECYCLE_JOB_ID,
     lifecycle_execution_generation: LIFECYCLE_EXECUTION_GENERATION,
@@ -1923,6 +1965,165 @@ describe("agent sandbox replacement attempts", () => {
       activation_backup_id: BACKUP_ID,
       activation_backup_hash: restoreManifestFixture.digest,
     });
+  });
+
+  test("rejects restore-linked start after the operation crossed the container boundary", async () => {
+    const { restoreAuthority, restoreOperationId } = await seedRestoreCapacityAuthority();
+    const lifecycleRevision = await openRestoreActivationAuthority();
+    const restoreStart = startInput({
+      activationGeneration: RESTORE_ATTEMPT_ID,
+      lifecycleRevision,
+      restoreAuthority,
+    });
+
+    await stampRestoreOperationPhaseForReplacement(restoreOperationId, "restoring");
+    await expect(startAgentSandboxReplacementAttempt(restoreStart)).rejects.toThrow(
+      "Restore operation is no longer pre-container",
+    );
+    expect(await dbWrite.select().from(agentSandboxReplacementAttempts)).toHaveLength(0);
+
+    // A stale worker must get the same phase fence even after the canonical
+    // sandbox generation was rebound away from the restore attempt.
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_generation: NEXT_ACTIVATION_GENERATION,
+        activation_endpoint_envelope: null,
+        activation_endpoint_sha256: null,
+        updated_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await stampRestoreOperationPhaseForReplacement(
+      restoreOperationId,
+      "failed_retryable",
+      "container_created",
+    );
+    await expect(startAgentSandboxReplacementAttempt(restoreStart)).rejects.toThrow(
+      "Restore operation is no longer pre-container",
+    );
+    expect(await dbWrite.select().from(agentSandboxReplacementAttempts)).toHaveLength(0);
+    expect(
+      (
+        await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, restoreOperationId))
+      )[0],
+    ).toMatchObject({
+      phase: "failed_retryable",
+      resume_phase: "container_created",
+      capacity_state: "reserved",
+      capacity_settled_at: null,
+      capacity_settlement_receipt_digest: null,
+    });
+  });
+
+  test("allows retryable pre-container restore start and first capacity handoff", async () => {
+    const { restoreAuthority, restoreOperationId, restoreClaimGeneration } =
+      await seedRestoreCapacityAuthority();
+    const lifecycleRevision = await openRestoreActivationAuthority();
+    await stampRestoreOperationPhaseForReplacement(
+      restoreOperationId,
+      "failed_retryable",
+      "vault_seeded",
+    );
+
+    await expect(
+      startAgentSandboxReplacementAttempt(
+        startInput({
+          activationGeneration: RESTORE_ATTEMPT_ID,
+          lifecycleRevision,
+          restoreAuthority,
+        }),
+      ),
+    ).resolves.toMatchObject({ replayed: false });
+    await expect(
+      recordAgentSandboxReplacementIntent(reference(), locator("intent"), {
+        kind: "restore_handoff",
+        restoreOperationId,
+        restoreClaimGeneration,
+        receiptDigest: RESTORE_HANDOFF_DIGEST,
+      }),
+    ).resolves.toMatchObject({ replayed: false });
+  });
+
+  test("rejects the first capacity handoff after the restore crossed container creation", async () => {
+    const { restoreAuthority, restoreOperationId, restoreClaimGeneration } =
+      await seedRestoreCapacityAuthority();
+    const lifecycleRevision = await openRestoreActivationAuthority();
+    await startAgentSandboxReplacementAttempt(
+      startInput({
+        activationGeneration: RESTORE_ATTEMPT_ID,
+        lifecycleRevision,
+        restoreAuthority,
+      }),
+    );
+    await stampRestoreOperationPhaseForReplacement(restoreOperationId, "container_created");
+
+    await expect(
+      recordAgentSandboxReplacementIntent(reference(), locator("intent"), {
+        kind: "restore_handoff",
+        restoreOperationId,
+        restoreClaimGeneration,
+        receiptDigest: RESTORE_HANDOFF_DIGEST,
+      }),
+    ).rejects.toThrow("Restore operation is no longer pre-container");
+    expect(await getAgentSandboxReplacementAttempt(reference())).toMatchObject({
+      locator_recorded_at: null,
+      capacity_state: null,
+      capacity_reserved_at: null,
+      capacity_settled_at: null,
+      capacity_settlement_receipt_digest: null,
+    });
+    expect(
+      (
+        await dbWrite
+          .select()
+          .from(agentBackupRestoreOperations)
+          .where(eq(agentBackupRestoreOperations.id, restoreOperationId))
+      )[0],
+    ).toMatchObject({
+      phase: "container_created",
+      capacity_state: "reserved",
+      capacity_settled_at: null,
+      capacity_settlement_receipt_digest: null,
+    });
+  });
+
+  test("preserves a completed handoff replay after the restore advances", async () => {
+    const { restoreAuthority, restoreOperationId, restoreClaimGeneration } =
+      await seedRestoreCapacityAuthority();
+    const lifecycleRevision = await openRestoreActivationAuthority();
+    await startAgentSandboxReplacementAttempt(
+      startInput({
+        activationGeneration: RESTORE_ATTEMPT_ID,
+        lifecycleRevision,
+        restoreAuthority,
+      }),
+    );
+    const capacityIntent: AgentSandboxReplacementCapacityIntent = {
+      kind: "restore_handoff",
+      restoreOperationId,
+      restoreClaimGeneration,
+      receiptDigest: RESTORE_HANDOFF_DIGEST,
+    };
+    const initial = await recordAgentSandboxReplacementIntent(
+      reference(),
+      locator("intent"),
+      capacityIntent,
+    );
+    expect(initial.replayed).toBe(false);
+    await stampRestoreOperationPhaseForReplacement(restoreOperationId, "container_created");
+
+    const replay = await recordAgentSandboxReplacementIntent(
+      reference(),
+      locator("intent"),
+      capacityIntent,
+    );
+    expect(replay.replayed).toBe(true);
+    expect(replay.attempt.capacity_reserved_at?.getTime()).toBe(
+      initial.attempt.capacity_reserved_at?.getTime(),
+    );
   });
 
   test("admits a fresh no-placement provision without inventing prior authority", async () => {

@@ -27,10 +27,23 @@ const usernameScanTransactions: unknown[] = [];
 const usernameExistsTransactions: unknown[] = [];
 const authorityTrace: string[] = [];
 const executedSql: string[] = [];
+const deleteCalls: string[] = [];
 
 let usernameExistsResult = false;
 let existingUsernames = new Set<string>();
 let healthyMirrorResult = false;
+let deleteFailure: Error | null = null;
+
+class CharacterLinkedSandboxConflictError extends Error {
+  override readonly name = "CharacterLinkedSandboxConflictError";
+
+  constructor(
+    readonly characterId: string,
+    readonly sandboxId: string,
+  ) {
+    super(`Character ${characterId} is still linked to agent sandbox ${sandboxId}`);
+  }
+}
 
 const transaction = mock(
   async (
@@ -89,6 +102,7 @@ mock.module("../../../db/client", () => ({
 // also re-exports unrelated repositories (apiKeysRepository, etc.) that other
 // modules in the same import graph (usersService) need untouched.
 mock.module("../../../db/repositories/characters", () => ({
+  CharacterLinkedSandboxConflictError,
   userCharactersRepository: {
     usernameExists: async (username: string, tx: unknown) => {
       authorityTrace.push("username-exists");
@@ -111,6 +125,15 @@ mock.module("../../../db/repositories/characters", () => ({
       healthyMirrorProbeCalls.push(organizationId);
       return healthyMirrorResult;
     },
+    findById: async (id: string) => ({
+      id,
+      organization_id: ORG_ID,
+      user_id: USER_ID,
+    }),
+    delete: async (id: string) => {
+      deleteCalls.push(id);
+      if (deleteFailure) throw deleteFailure;
+    },
   },
 }));
 
@@ -127,6 +150,8 @@ mock.module("../../../db/repositories/agents/agents", () => ({
 
 mock.module("../../cache/client", () => ({
   cache: {
+    get: async () => null,
+    set: async () => undefined,
     del: async (key: string) => {
       cacheDelCalls.push(key);
     },
@@ -163,10 +188,12 @@ describe("CharactersService.create — username handling (#13637 class)", () => 
     usernameExistsTransactions.length = 0;
     authorityTrace.length = 0;
     executedSql.length = 0;
+    deleteCalls.length = 0;
     transaction.mockClear();
     usernameExistsResult = false;
     existingUsernames = new Set<string>();
     healthyMirrorResult = false;
+    deleteFailure = null;
   });
 
   test("a healthy character+mirror probe stays read-only and opens no writer transaction", async () => {
@@ -327,5 +354,60 @@ describe("CharactersService.create — username handling (#13637 class)", () => 
 
     expect(transaction).not.toHaveBeenCalled();
     expect(createCalls).toHaveLength(0);
+  });
+});
+
+describe("CharactersService.delete — stable sandbox identity", () => {
+  beforeEach(() => {
+    cacheDelCalls.length = 0;
+    deleteCalls.length = 0;
+    deleteFailure = new CharacterLinkedSandboxConflictError(
+      "char-linked",
+      "00000000-0000-4000-8000-00000000c201",
+    );
+  });
+
+  test("delete translates the repository conflict into an actionable 409", async () => {
+    const { CharactersService } = await import("./characters");
+    const { ApiError } = await import("../../api/cloud-worker-errors");
+    const service = new CharactersService();
+
+    let caught: unknown;
+    try {
+      await service.delete("char-linked");
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({
+      status: 409,
+      code: "identity_conflict",
+      message:
+        "This character is linked to an agent sandbox. Delete the associated agent/sandbox before deleting this character.",
+    });
+    expect(deleteCalls).toEqual(["char-linked"]);
+    expect(cacheDelCalls).toEqual([]);
+  });
+
+  test("deleteForUser shares the same conflict policy", async () => {
+    const { CharactersService } = await import("./characters");
+    const { ApiError } = await import("../../api/cloud-worker-errors");
+    const service = new CharactersService();
+
+    let caught: unknown;
+    try {
+      await service.deleteForUser("char-linked", USER_ID);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught).toMatchObject({
+      status: 409,
+      code: "identity_conflict",
+    });
+    expect(deleteCalls).toEqual(["char-linked"]);
+    expect(cacheDelCalls).toEqual([]);
   });
 });

@@ -597,15 +597,15 @@ export const agentBackupRestoreOperations = pgTable(
     ),
     expected_endpoint_check: check(
       "agent_backup_restore_operations_endpoint_v1_check",
-      sql`((${table.expected_endpoint_envelope} IS NULL
+      sql`(((${table.expected_endpoint_envelope} IS NULL
           AND ${table.expected_endpoint_sha256} IS NULL)
         OR (${table.expected_endpoint_envelope} IS NOT NULL
           AND ${table.expected_endpoint_sha256} ~ '^[0-9a-f]{64}$'
           AND jsonb_typeof(${table.expected_endpoint_envelope}) = 'object'
           AND ${table.expected_endpoint_envelope} ?& ARRAY['version','generation','kind',
-            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]
+            'serverName','runtimeAgentId','registryUrl','bridgeUrl','healthUrl']::text[]
           AND (${table.expected_endpoint_envelope} - ARRAY['version','generation','kind',
-            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]) = '{}'::jsonb
+            'serverName','runtimeAgentId','registryUrl','bridgeUrl','healthUrl']::text[]) = '{}'::jsonb
           AND jsonb_typeof(${table.expected_endpoint_envelope}->'version') = 'number'
           AND ${table.expected_endpoint_envelope}->>'version' = '1'
           AND ${table.expected_endpoint_envelope}->>'generation' ~
@@ -617,15 +617,43 @@ export const agentBackupRestoreOperations = pgTable(
           AND ${table.expected_endpoint_envelope}->>'serverName' =
             'sandbox-' || ${table.restore_attempt_id}::text
           AND jsonb_typeof(${table.expected_endpoint_envelope}->'serverName') = 'string'
+          AND jsonb_typeof(${table.expected_endpoint_envelope}->'runtimeAgentId') = 'string'
+          AND ${table.expected_endpoint_envelope}->>'runtimeAgentId' ~
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
           AND (${table.expected_endpoint_envelope}->>'registryUrl') ~
-            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+            '^https?://((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}|(([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9])\.)*[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}))?(/[^\\?#[:space:][:cntrl:]]*)?$'
           AND (${table.expected_endpoint_envelope}->>'bridgeUrl') ~
-            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+            '^https?://((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}|(([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9])\.)*[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}))?(/[^\\?#[:space:][:cntrl:]]*)?$'
           AND (${table.expected_endpoint_envelope}->>'healthUrl') ~
-            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+            '^https?://((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}|(([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]{0,61}[A-Za-z0-9])\.)*[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(:(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}))?(/[^\\?#[:space:][:cntrl:]]*)?$'
           AND octet_length(${table.expected_endpoint_envelope}->>'registryUrl') BETWEEN 1 AND 4096
           AND octet_length(${table.expected_endpoint_envelope}->>'bridgeUrl') BETWEEN 1 AND 4096
-          AND octet_length(${table.expected_endpoint_envelope}->>'healthUrl') BETWEEN 1 AND 4096)
+          AND octet_length(${table.expected_endpoint_envelope}->>'healthUrl') BETWEEN 1 AND 4096
+          AND octet_length(${table.expected_endpoint_envelope}->>'registryUrl') =
+            length(${table.expected_endpoint_envelope}->>'registryUrl')
+          AND octet_length(${table.expected_endpoint_envelope}->>'bridgeUrl') =
+            length(${table.expected_endpoint_envelope}->>'bridgeUrl')
+          AND octet_length(${table.expected_endpoint_envelope}->>'healthUrl') =
+            length(${table.expected_endpoint_envelope}->>'healthUrl')
+          AND ${table.expected_endpoint_sha256} = pg_catalog.encode(pg_catalog.sha256(
+            pg_catalog.convert_to('{"version":1,"generation":' ||
+              pg_catalog.to_json(${table.expected_endpoint_envelope}->>'generation')::text ||
+              ',"kind":"dedicated-sandbox","serverName":' ||
+              pg_catalog.to_json(${table.expected_endpoint_envelope}->>'serverName')::text ||
+              ',"runtimeAgentId":' ||
+              pg_catalog.to_json(${table.expected_endpoint_envelope}->>'runtimeAgentId')::text ||
+              ',"registryUrl":' ||
+              pg_catalog.to_json(${table.expected_endpoint_envelope}->>'registryUrl')::text ||
+              ',"bridgeUrl":' ||
+              pg_catalog.to_json(${table.expected_endpoint_envelope}->>'bridgeUrl')::text ||
+              ',"healthUrl":' ||
+              pg_catalog.to_json(${table.expected_endpoint_envelope}->>'healthUrl')::text || '}',
+              'UTF8')), 'hex')))
+        AND ((${table.phase} NOT IN ('container_created','restoring','committed','restart_attested',
+            'probed','published','finalized')
+            AND (${table.phase} <> 'failed_retryable' OR ${table.resume_phase} NOT IN
+              ('container_created','restoring','committed','restart_attested','probed','published')))
+          OR ${table.expected_endpoint_envelope} IS NOT NULL)
       ) IS TRUE`,
     ),
     capacity_shape_check: check(

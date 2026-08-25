@@ -76,6 +76,9 @@ const KEY_BUNDLE_GENERATION_ID = "00000000-0000-4000-8000-00000000e113";
 const NEXT_RESTORE_ATTEMPT_ID = "00000000-0000-4000-8000-00000000e114";
 const NEXT_LEASE_ID = "00000000-0000-4000-8000-00000000e115";
 const NEXT_LEASE_GENERATION = "00000000-0000-4000-8000-00000000e116";
+const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-00000000e199";
+const OTHER_RUNTIME_AGENT_ID = "00000000-0000-4000-8000-00000000e198";
+const DELETION_ATTEMPT_ID = "00000000-0000-4000-8000-00000000e190";
 const HASH = "a".repeat(64);
 const OTHER_SHA = "b".repeat(64);
 const IMAGE_DIGEST = `sha256:${"c".repeat(64)}`;
@@ -88,16 +91,46 @@ const CONTAINER_B = "2".repeat(64);
 const OLD_CONTAINER = "3".repeat(64);
 const KEY_BUNDLE = Buffer.alloc(92, 0x44).toString("base64");
 const CLEANUP_PROOF_SHA = "9".repeat(64);
+const SANDBOX_DELETION_FENCES = [
+  {
+    condition: "soft-deleted",
+    mutation: { deleted_at: new Date("2026-08-20T12:00:00.000Z") },
+  },
+  {
+    condition: "owned by a deletion attempt",
+    mutation: {
+      deletion_attempt_id: DELETION_ATTEMPT_ID,
+      deletion_started_at: new Date("2026-08-20T12:00:00.000Z"),
+    },
+  },
+  {
+    condition: "deletion_pending",
+    mutation: { status: "deletion_pending" as const },
+  },
+  {
+    condition: "deletion_failed",
+    mutation: { status: "deletion_failed" as const },
+  },
+] as const;
+
+type SandboxDeletionFenceMutation = Partial<
+  Pick<
+    typeof agentSandboxes.$inferInsert,
+    "deleted_at" | "deletion_attempt_id" | "deletion_started_at" | "status"
+  >
+>;
 
 const endpointAuthority = (
   generation = RESTORE_ATTEMPT_ID,
   registryUrl = "https://registry.restore-target.invalid/v1",
+  runtimeAgentId = RUNTIME_AGENT_ID,
 ) => {
   const expectedEndpointEnvelope = {
     version: 1,
     generation,
     kind: "dedicated-sandbox",
     serverName: `sandbox-${generation}`,
+    runtimeAgentId,
     registryUrl,
     bridgeUrl: "http://restore-target.invalid:3000",
     healthUrl: "http://restore-target.invalid:3000/health",
@@ -283,6 +316,14 @@ async function seedFixture(): Promise<void> {
     steward_user_id: "restore-quarantine-user",
     organization_id: ORG_ID,
   });
+  await dbWrite.insert(userCharacters).values({
+    id: RUNTIME_AGENT_ID,
+    organization_id: ORG_ID,
+    user_id: USER_ID,
+    name: "Restore quarantine runtime",
+    bio: [],
+    character_data: {},
+  });
   const [targetNode] = await dbWrite
     .insert(dockerNodes)
     .values({
@@ -312,6 +353,7 @@ async function seedFixture(): Promise<void> {
     id: AGENT_ID,
     organization_id: ORG_ID,
     user_id: USER_ID,
+    character_id: RUNTIME_AGENT_ID,
     status: "running",
     execution_tier: "dedicated-always",
     sandbox_id: "canonical-provider-handle",
@@ -584,6 +626,29 @@ async function readRows() {
   return { sandbox, operation, node };
 }
 
+async function setSandboxDeletionFence(mutation: SandboxDeletionFenceMutation): Promise<void> {
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      ...mutation,
+      activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+    })
+    .where(eq(agentSandboxes.id, AGENT_ID));
+}
+
+async function clearSandboxDeletionFence(): Promise<void> {
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      deleted_at: null,
+      deletion_attempt_id: null,
+      deletion_started_at: null,
+      status: "running",
+      activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+    })
+    .where(eq(agentSandboxes.id, AGENT_ID));
+}
+
 beforeAll(async () => {
   try {
     manifestFixture = await buildManifestFixture();
@@ -662,6 +727,66 @@ describe("restore activation quarantine", () => {
       quarantineTransactionBody("recordAgentBackupRestoreQuarantinedContainer"),
     );
   });
+
+  for (const { condition, mutation } of SANDBOX_DELETION_FENCES) {
+    test(
+      `refuses open, record, and exact replay when the sandbox is ${condition}`,
+      async () => {
+        const expectRefusedWithoutMutation = async (
+          action: () => Promise<unknown>,
+          error: string,
+        ): Promise<void> => {
+          await setSandboxDeletionFence(mutation);
+          const before = await readRows();
+          await expect(action(), condition).rejects.toThrow(error);
+          expect(await readRows(), condition).toEqual(before);
+          await clearSandboxDeletionFence();
+        };
+
+        await expectRefusedWithoutMutation(
+          () => openAgentBackupRestoreQuarantine(openInput()),
+          "Restore quarantine sandbox is missing or deleted",
+        );
+        expect((await openAgentBackupRestoreQuarantine(openInput())).replayed).toBe(false);
+        await expectRefusedWithoutMutation(
+          () => openAgentBackupRestoreQuarantine(openInput()),
+          "Restore quarantine sandbox is missing or deleted",
+        );
+
+        await advanceAgentBackupRestoreOperation({
+          operationId,
+          ownerId: "restore-worker",
+          claimGeneration: initialClaimGeneration,
+          fromPhase: "reserved",
+          toPhase: "vault_seeded",
+        });
+        const claim = await claimAgentBackupRestoreOperation({
+          operationId,
+          ownerId: "restore-worker",
+          claimMs: 60_000,
+        });
+        const request = {
+          operationId,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          containerId: CONTAINER_A,
+          expectedActivationTokenSha256: TOKEN_SHA,
+          ...endpointAuthority(),
+        } as const;
+
+        await expectRefusedWithoutMutation(
+          () => recordAgentBackupRestoreQuarantinedContainer(request),
+          "Quarantined container sandbox is missing or deleted",
+        );
+        expect((await recordAgentBackupRestoreQuarantinedContainer(request)).replayed).toBe(false);
+        await expectRefusedWithoutMutation(
+          () => recordAgentBackupRestoreQuarantinedContainer(request),
+          "Quarantined container sandbox is missing or deleted",
+        );
+      },
+      TIMEOUT,
+    );
+  }
 
   test(
     "opens once, replays exactly, derives the target generation, and preserves the canonical route",
@@ -1070,6 +1195,30 @@ describe("restore activation quarantine", () => {
       await expect(
         recordAgentBackupRestoreQuarantinedContainer({
           ...base,
+          ...endpointAuthority(
+            RESTORE_ATTEMPT_ID,
+            "https://registry.restore-target.invalid/v1",
+            OTHER_RUNTIME_AGENT_ID,
+          ),
+        }),
+      ).rejects.toThrow("endpoint differs from its exact runtime identity");
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ character_id: null })
+        .where(eq(agentSandboxes.id, AGENT_ID));
+      await expect(
+        recordAgentBackupRestoreQuarantinedContainer({
+          ...base,
+          ...endpointAuthority(),
+        }),
+      ).rejects.toThrow("endpoint differs from its exact runtime identity");
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ character_id: RUNTIME_AGENT_ID })
+        .where(eq(agentSandboxes.id, AGENT_ID));
+      await expect(
+        recordAgentBackupRestoreQuarantinedContainer({
+          ...base,
           ...endpointAuthority(NEXT_RESTORE_ATTEMPT_ID),
         }),
       ).rejects.toThrow("endpoint authority is invalid or non-canonical");
@@ -1146,6 +1295,19 @@ describe("restore activation quarantine", () => {
       expect(operation.claim_generation).toBeNull();
       expect(operation.claim_expires_at).toBeNull();
       expect(node.allocated_count).toBe(1);
+      let clearRuntimeError: unknown;
+      try {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ character_id: null })
+          .where(eq(agentSandboxes.id, AGENT_ID))
+          .execute();
+      } catch (error) {
+        clearRuntimeError = error;
+      }
+      expect((clearRuntimeError as { cause?: { constraint?: string } }).cause?.constraint).toBe(
+        "agent_sandboxes_activation_endpoint_v1_check",
+      );
 
       await expect(
         recordAgentBackupRestoreQuarantinedContainer({
