@@ -147,7 +147,17 @@ export function AndroidCloudApp({
 
   useEffect(() => {
     const completeHostedSignIn = async (event: Event) => {
-      const url = (event as CustomEvent<{ url?: unknown }>).detail?.url;
+      const detail = (
+        event as CustomEvent<{
+          url?: unknown;
+          acknowledge?: unknown;
+        }>
+      ).detail;
+      const url = detail?.url;
+      const acknowledge =
+        typeof detail?.acknowledge === "function"
+          ? (detail.acknowledge as () => Promise<void> | void)
+          : undefined;
       if (typeof url !== "string") return;
       let callback: URL;
       try {
@@ -184,6 +194,7 @@ export function AndroidCloudApp({
         }
         setError(errorMessage(completionError));
       } finally {
+        await acknowledge?.();
         setBusy(false);
       }
     };

@@ -69,9 +69,17 @@ interface SecureCredentialsPlugin {
   remove(options?: { slot?: "credential" | "pending_login" }): Promise<void>;
 }
 
+interface DeepLinkBufferPlugin {
+  peekPendingUrl(): Promise<{ url: string | null }>;
+  acknowledgePendingUrl(options: { url: string }): Promise<{
+    cleared: boolean;
+  }>;
+}
+
 const SecureCredentials = registerPlugin<SecureCredentialsPlugin>(
   "ElizaSecureCredentials",
 );
+const DeepLinkBuffer = registerPlugin<DeepLinkBufferPlugin>("DeepLinkBuffer");
 
 const androidSecureCredentialStore: AndroidCloudCredentialStore = {
   async read() {
@@ -184,7 +192,10 @@ function routePath(url: URL): string {
 }
 
 /** Accepts only the app-owned scheme; arbitrary web URLs stay in the browser. */
-export function dispatchAndroidCloudDeepLink(rawUrl: string): boolean {
+export function dispatchAndroidCloudDeepLink(
+  rawUrl: string,
+  acknowledge?: () => Promise<void> | void,
+): boolean {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -212,8 +223,48 @@ export function dispatchAndroidCloudDeepLink(rawUrl: string): boolean {
       );
     }
   }
-  dispatchDocumentEvent(ANDROID_CLOUD_DEEP_LINK_EVENT, { url: rawUrl });
+  dispatchDocumentEvent(ANDROID_CLOUD_DEEP_LINK_EVENT, {
+    url: rawUrl,
+    acknowledge,
+  });
   return true;
+}
+
+function isAndroidCloudAuthCallback(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return (
+      parsed.protocol === "elizaos:" && routePath(parsed) === "auth/callback"
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function deliverBufferedAndroidCloudDeepLink(
+  fallbackUrl?: string,
+): Promise<void> {
+  let bufferedUrl: string | null = null;
+  try {
+    bufferedUrl = (await DeepLinkBuffer.peekPendingUrl()).url?.trim() || null;
+  } catch (error) {
+    logOptionalPluginFailure("DeepLinkBuffer", error);
+  }
+  const url = bufferedUrl ?? fallbackUrl?.trim() ?? null;
+  if (!url) return;
+  const acknowledge = bufferedUrl
+    ? async () => {
+        try {
+          await DeepLinkBuffer.acknowledgePendingUrl({ url });
+        } catch (error) {
+          logOptionalPluginFailure("DeepLinkBuffer", error);
+        }
+      }
+    : undefined;
+  const delivered = dispatchAndroidCloudDeepLink(url, acknowledge);
+  if (delivered && acknowledge && !isAndroidCloudAuthCallback(url)) {
+    await acknowledge();
+  }
 }
 
 async function initializeAndroidCloudPlatform(): Promise<void> {
@@ -251,12 +302,12 @@ async function initializeAndroidCloudPlatform(): Promise<void> {
 
   void Promise.resolve(
     CapacitorApp.addListener("appUrlOpen", ({ url }) => {
-      dispatchAndroidCloudDeepLink(url);
+      void deliverBufferedAndroidCloudDeepLink(url);
     }),
   ).catch((error) => logOptionalPluginFailure("App", error));
   void CapacitorApp.getLaunchUrl()
     .then((launch) => {
-      if (launch?.url) dispatchAndroidCloudDeepLink(launch.url);
+      if (launch?.url) void deliverBufferedAndroidCloudDeepLink(launch.url);
     })
     .catch((error) => logOptionalPluginFailure("App", error));
 
@@ -266,6 +317,8 @@ async function initializeAndroidCloudPlatform(): Promise<void> {
         void persistAndroidCloudStorage().catch((error) =>
           logOptionalPluginFailure("Preferences", error),
         );
+      } else {
+        void deliverBufferedAndroidCloudDeepLink();
       }
       dispatchDocumentEvent(isActive ? APP_RESUME_EVENT : APP_PAUSE_EVENT);
     }),
@@ -375,7 +428,6 @@ function renderBootFailure(error: unknown): void {
 
 export async function bootAndroidCloudApp(): Promise<void> {
   await hydrateAndroidCloudStorage();
-  await initializeAndroidCloudPlatform();
   const root = document.getElementById("root");
   if (!root) throw new Error("Android Cloud renderer root is missing");
   createRoot(root).render(
@@ -390,6 +442,8 @@ export async function bootAndroidCloudApp(): Promise<void> {
       </ErrorBoundary>
     </React.StrictMode>,
   );
+  await initializeAndroidCloudPlatform();
+  await deliverBufferedAndroidCloudDeepLink();
 }
 
 function boot(): void {

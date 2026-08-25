@@ -12,6 +12,10 @@ const playEntry = vi.hoisted(() => ({
   appListeners: new Map<string, (value: unknown) => void>(),
   browserClose: vi.fn(async () => undefined),
   browserOpen: vi.fn(async (_options: { url: string }) => undefined),
+  deepLinkAcknowledge: vi.fn(async (_options: { url: string }) => ({
+    cleared: true,
+  })),
+  deepLinkPeek: vi.fn(async () => ({ value: null as string | null })),
   createRoot: vi.fn(() => ({ render: vi.fn() })),
   preferenceGet: vi.fn(async (_options: { key: string }) => ({
     value: null as string | null,
@@ -56,13 +60,20 @@ vi.mock("@capacitor/core", () => ({
           set: playEntry.secureSet,
           remove: playEntry.secureClear,
         }
-      : {
-          addListener: vi.fn(async () => ({ remove: vi.fn() })),
-          requestPermission: vi.fn(async () => ({ granted: true })),
-          speak: vi.fn(async () => undefined),
-          startDictation: vi.fn(async () => ({ started: true })),
-          stopDictation: vi.fn(async () => undefined),
-        },
+      : name === "DeepLinkBuffer"
+        ? {
+            acknowledgePendingUrl: playEntry.deepLinkAcknowledge,
+            peekPendingUrl: async () => ({
+              url: (await playEntry.deepLinkPeek()).value,
+            }),
+          }
+        : {
+            addListener: vi.fn(async () => ({ remove: vi.fn() })),
+            requestPermission: vi.fn(async () => ({ granted: true })),
+            speak: vi.fn(async () => undefined),
+            startDictation: vi.fn(async () => ({ started: true })),
+            stopDictation: vi.fn(async () => undefined),
+          },
 }));
 vi.mock("@capacitor/preferences", () => ({
   Preferences: {
@@ -114,11 +125,12 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  playEntry.appListeners.clear();
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
   playEntry.secureSet.mockResolvedValue(undefined);
+  playEntry.deepLinkPeek.mockResolvedValue({ value: null });
+  playEntry.deepLinkAcknowledge.mockResolvedValue({ cleared: true });
 });
 
 describe("Android Cloud renderer behavior", () => {
@@ -228,5 +240,31 @@ describe("Android Cloud renderer behavior", () => {
 
     window.removeEventListener("eliza:android-cloud-compose", compose);
     document.removeEventListener("eliza:share-target", share);
+  });
+
+  it("replays and acknowledges the native auth callback after the shell mounts", async () => {
+    const callback = "elizaos://auth/callback?code=code-1&state=state-1";
+    playEntry.deepLinkPeek.mockResolvedValue({ value: callback });
+    const delivery = vi.fn((event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          acknowledge?: () => Promise<void>;
+          url?: string;
+        }>
+      ).detail;
+      expect(detail.url).toBe(callback);
+      void detail.acknowledge?.();
+    });
+    document.addEventListener("eliza:android-cloud-deep-link", delivery);
+
+    playEntry.appListeners.get("appStateChange")?.({ isActive: true });
+
+    await vi.waitFor(() => expect(delivery).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(playEntry.deepLinkAcknowledge).toHaveBeenCalledWith({
+        url: callback,
+      }),
+    );
+    document.removeEventListener("eliza:android-cloud-deep-link", delivery);
   });
 });
