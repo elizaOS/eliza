@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-doordash",
   "version": "2.0.3-beta.7",
   "source": "bundled",
-  "tags": [
-    "doordash",
-    "food",
-    "delivery",
-    "ordering",
-    "mcp"
-  ],
+  "tags": ["doordash", "food", "delivery", "ordering", "mcp"],
   "config": {
     "features.doordash": {
       "type": "boolean",
@@ -20,7 +14,8 @@
       "default": false,
       "label": "Enable DoorDash",
       "help": "Enable the DoorDash food-ordering integration (alternatively set MCP_SERVER_DOORDASH_URL).",
-      "advanced": false    }
+      "advanced": false
+    }
   },
   "render": {
     "visible": true,
@@ -29,18 +24,13 @@
     "icon": "ShoppingBag",
     "group": "feature-other",
     "groupOrder": 30,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",
     "repository": "https://github.com/elizaos/eliza"
   },
-  "dependsOn": [
-    "mcp"
-  ],
+  "dependsOn": ["mcp"],
   "kind": "plugin",
   "subtype": "feature"
 }
