@@ -13,7 +13,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { globHandler, globToRegExp, walkContainedGlob } from "./glob.js";
+import {
+  globHandler,
+  globToRegExp,
+  matchesGlobPattern,
+  walkContainedGlob,
+} from "./glob.js";
 
 let testContainer: string;
 let tmpRoot: string;
@@ -67,6 +72,13 @@ beforeEach(async () => {
   await fs.writeFile(path.join(fooDir, "b.ts"), "export const B = 2;\n");
   await fs.writeFile(path.join(subDir, "c.ts"), "export const C = 3;\n");
   await fs.writeFile(path.join(fooDir, "notes.md"), "# notes\n");
+  await fs.writeFile(path.join(tmpRoot, ".hidden"), "root hidden\n");
+  await fs.writeFile(path.join(fooDir, ".nested.ts"), "nested hidden\n");
+  await fs.mkdir(path.join(tmpRoot, ".hidden-dir"));
+  await fs.writeFile(
+    path.join(tmpRoot, ".hidden-dir", "inside.ts"),
+    "hidden directory\n",
+  );
 });
 
 afterEach(async () => {
@@ -269,6 +281,42 @@ describe("GLOB", () => {
     expect(files.every((filePath) => filePath.endsWith(".ts"))).toBe(true);
   });
 
+  it.each([
+    { pattern: "*", excluded: [".hidden"] },
+    {
+      pattern: "**/*",
+      excluded: [".hidden", ".nested.ts", "inside.ts"],
+    },
+  ])(
+    "excludes implicit dot segments for $pattern",
+    async ({ pattern, excluded }) => {
+      const { runtime, message } = await buildRuntime();
+      const result = await globHandler(runtime, message, state, {
+        parameters: { pattern },
+      });
+
+      expect(result.success).toBe(true);
+      for (const name of excluded) expect(result.text).not.toContain(name);
+    },
+  );
+
+  it.each([
+    { pattern: ".*", included: ".hidden" },
+    { pattern: "**/.*", included: ".nested.ts" },
+    { pattern: ".hidden-dir/**/*.ts", included: "inside.ts" },
+  ])(
+    "includes explicitly requested dot segments for $pattern",
+    async ({ pattern, included }) => {
+      const { runtime, message } = await buildRuntime();
+      const result = await globHandler(runtime, message, state, {
+        parameters: { pattern },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(included);
+    },
+  );
+
   it("fails when roomId is missing", async () => {
     const { runtime } = await buildRuntime();
     const result = await globHandler(runtime, {} as Memory, state, {
@@ -305,6 +353,20 @@ describe("globToRegExp (fallback matcher)", () => {
     expect(globToRegExp("a.ts").test("aXts")).toBe(false);
     expect(globToRegExp("a+(b).ts").test("a+(b).ts")).toBe(true);
     expect(globToRegExp("a+(b).ts").test("ab.ts")).toBe(false);
+  });
+});
+
+describe("matchesGlobPattern runtime contract", () => {
+  it.each([
+    [".hidden", "*", false],
+    [".hidden", ".*", true],
+    ["nested/.hidden", "**/*", false],
+    ["nested/.hidden", "**/.*", true],
+    [".hidden-dir/inside.ts", "**/*.ts", false],
+    [".hidden-dir/inside.ts", ".hidden-dir/**/*.ts", true],
+    ["foo/a.ts", "{foo,bar}/**/*.ts", true],
+  ] as const)("matches %s against %s as %s", (candidate, pattern, expected) => {
+    expect(matchesGlobPattern(candidate, pattern)).toBe(expected);
   });
 });
 

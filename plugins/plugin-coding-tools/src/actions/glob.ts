@@ -14,6 +14,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
+import { minimatch } from "minimatch";
 
 import {
   failureToActionResult,
@@ -89,6 +90,14 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${regex}$`);
 }
 
+/** Runtime-independent glob matching with Node/fs.glob dot-segment semantics. */
+export function matchesGlobPattern(
+  candidate: string,
+  pattern: string,
+): boolean {
+  return minimatch(candidate, pattern, { dot: false });
+}
+
 type ReadDirectory = (
   directory: string,
 ) => Promise<Array<import("node:fs").Dirent>>;
@@ -127,7 +136,7 @@ export async function walkContainedGlob(
       }
       if (!entry.isFile() && !entry.isSymbolicLink()) continue;
       const rel = path.relative(root, abs).split(path.sep).join("/");
-      if (path.matchesGlob(rel, pattern)) {
+      if (matchesGlobPattern(rel, pattern)) {
         results.push(abs);
       }
     }
