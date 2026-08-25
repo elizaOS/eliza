@@ -28,6 +28,7 @@ const ENV: MobileGoogleAuthEnv = {
   DIRECT_REDIS_BACKEND: "redis-rest",
   ENVIRONMENT: "staging",
   GOOGLE_CLIENT_ID: "google-web-client.apps.googleusercontent.com",
+  MOBILE_GOOGLE_SERVER_CLIENT_ID: "google-mobile-server-client.apps.googleusercontent.com",
   KV_REST_API_TOKEN: "redis-token",
   KV_REST_API_URL: "https://redis.example.test",
   NEXT_PUBLIC_API_URL: "https://api-staging.eliza.app",
@@ -41,6 +42,18 @@ function dependencies(redis: MockSocketRedis) {
 }
 
 describe("mobile Google auth readiness", () => {
+  test("uses a dedicated native server client without changing browser OAuth", () => {
+    expect(resolveMobileGoogleAuthReadiness(ENV)?.serverClientId).toBe(
+      "google-mobile-server-client.apps.googleusercontent.com",
+    );
+    expect(
+      resolveMobileGoogleAuthReadiness({
+        ...ENV,
+        MOBILE_GOOGLE_SERVER_CLIENT_ID: "  ",
+      })?.serverClientId,
+    ).toBe("google-web-client.apps.googleusercontent.com");
+  });
+
   test("preserves the canonical /steward base path", () => {
     expect(resolveMobileGoogleAuthReadiness(ENV)?.stewardEndpoint.href).toBe(
       "https://api-staging.eliza.app/steward/auth/oauth/google/id-token",
@@ -75,7 +88,6 @@ describe("mobile Google auth readiness", () => {
   test("fails closed when every required prerequisite is missing", () => {
     const fields = [
       "ENVIRONMENT",
-      "GOOGLE_CLIENT_ID",
       "KV_REST_API_TOKEN",
       "KV_REST_API_URL",
       "NEXT_PUBLIC_API_URL",
@@ -87,6 +99,13 @@ describe("mobile Google auth readiness", () => {
       const candidate = { ...ENV, [field]: undefined };
       expect(resolveMobileGoogleAuthReadiness(candidate)).toBeNull();
     }
+    expect(
+      resolveMobileGoogleAuthReadiness({
+        ...ENV,
+        GOOGLE_CLIENT_ID: undefined,
+        MOBILE_GOOGLE_SERVER_CLIENT_ID: undefined,
+      }),
+    ).toBeNull();
     expect(
       resolveMobileGoogleAuthReadiness({
         ...ENV,
