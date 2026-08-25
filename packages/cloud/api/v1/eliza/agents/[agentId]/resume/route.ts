@@ -26,8 +26,9 @@ const CORS_METHODS = "POST, OPTIONS";
  * 2. Restores from the latest snapshot/backup
  * 3. Updates status to "running" in DB
  *
- * By default uses the async job queue (returns 202 with jobId).
- * Pass ?sync=true for blocking behaviour.
+ * Every provider-mutating request uses the durable admitted job queue and
+ * returns 202 with a jobId. `sync=true` remains a strict compatibility token,
+ * but cannot bypass deletion fencing by restoring inline provider execution.
  *
  * Environment vars (JWT_SECRET, ELIZA_API_TOKEN, DATABASE_URL) are
  * preserved from the original container via the environment_vars column.
@@ -65,12 +66,13 @@ async function __hono_POST(
         CORS_METHODS,
       );
     }
-    const sync = requestedSync === "true";
+    const syncRequested = requestedSync === "true";
 
     logger.info("[agent-api] Resume requested", {
       agentId,
       orgId: user.organization_id,
-      async: !sync,
+      async: true,
+      syncRequested,
     });
 
     const agent = await elizaSandboxService.getAgentForWrite(
@@ -87,10 +89,10 @@ async function __hono_POST(
       );
     }
 
-    // This primary snapshot is not a lock/CAS. Fence only the legacy blocking
-    // path here; async behavior remains unchanged and is covered by separate
-    // enqueue/worker authority work.
-    if (sync) {
+    // Preserve the stricter compatibility-token eligibility checks before the
+    // request enters the queue. The durable worker admission remains the
+    // authoritative deletion/provider serialization boundary.
+    if (syncRequested) {
       if (
         !CONTAINER_BACKED_EXECUTION_TIERS.some(
           (tier) => tier === agent.execution_tier,
@@ -192,44 +194,6 @@ async function __hono_POST(
       );
     }
 
-    if (sync) {
-      const result = await elizaSandboxService.provision(
-        agentId,
-        user.organization_id,
-      );
-
-      if (!result.success) {
-        const status =
-          result.error === "Agent not found"
-            ? 404
-            : result.error === "Agent is already being provisioned"
-              ? 409
-              : 500;
-        return applyCorsHeaders(
-          Response.json(
-            { success: false, error: result.error ?? "Resume failed" },
-            { status },
-          ),
-          CORS_METHODS,
-        );
-      }
-
-      return applyCorsHeaders(
-        Response.json({
-          success: true,
-          data: {
-            agentId,
-            action: "resume",
-            message: "Agent resumed from latest snapshot",
-            status: "running",
-            bridgeUrl: result.bridgeUrl,
-            healthUrl: result.healthUrl,
-          },
-        }),
-        CORS_METHODS,
-      );
-    }
-
     const workerHealth = await checkProvisioningWorkerHealth();
     if (!workerHealth.ok) {
       logger.warn(
@@ -281,8 +245,13 @@ async function __hono_POST(
 
       // Best-effort wake of the orchestrator so the user does not wait for
       // the next cron tick. Same pattern as provision/delete/suspend.
-      void provisioningJobService.triggerImmediate(env).catch(() => {
-        // Logged inside the service; nothing actionable here.
+      void provisioningJobService.triggerImmediate(env).catch((error) => {
+        // error-policy:J7 the durable job remains visible to the polling worker.
+        logger.warn("[agent-api] Resume worker nudge failed", {
+          agentId,
+          jobId: job.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
 
       return applyCorsHeaders(

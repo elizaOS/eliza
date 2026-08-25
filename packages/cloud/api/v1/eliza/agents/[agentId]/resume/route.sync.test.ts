@@ -3,8 +3,8 @@
  * not leftover tax on agent-create autoProvision or container-delete
  * purgeVolume. Stock develop treated any non-exact `true` token as
  * async, so `sync=TRUE` still enqueued a 202 job instead of blocking. The
- * blocking compatibility path is also fenced to canonical, user-owned, live
- * container capacity.
+ * compatibility token is fenced to canonical, user-owned, live container
+ * capacity and then routed through the admitted queue.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -278,7 +278,7 @@ describe("POST /api/v1/eliza/agents/:id/resume sync identity", () => {
   });
 
   test.each([...CONTAINER_BACKED_EXECUTION_TIERS])(
-    "accepts canonical %s capacity on the blocking resume path",
+    "queues canonical %s capacity on the admitted resume path",
     async (executionTier) => {
       getAgentForWrite.mockImplementationOnce(async () =>
         resumeAgent({
@@ -294,17 +294,39 @@ describe("POST /api/v1/eliza/agents/:id/resume sync identity", () => {
 
       const response = await post("?sync=true");
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(202);
       expect(getAgentForWrite).toHaveBeenCalledTimes(1);
       expect(getAgentForWrite).toHaveBeenCalledWith(AGENT_ID, ORG_A);
       expect(checkAgentCreditGate).toHaveBeenCalledTimes(1);
-      expect(provision).toHaveBeenCalledTimes(1);
-      expect(provision).toHaveBeenCalledWith(AGENT_ID, ORG_A);
-      expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
-      expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
-      expect(triggerImmediate).not.toHaveBeenCalled();
+      expect(provision).not.toHaveBeenCalled();
+      expect(checkProvisioningWorkerHealth).toHaveBeenCalledTimes(1);
+      expect(enqueueAgentResumeOnce).toHaveBeenCalledWith({
+        agentId: AGENT_ID,
+        organizationId: ORG_A,
+        userId: "user-1",
+        webhookUrl: undefined,
+      });
+      expect(triggerImmediate).toHaveBeenCalledTimes(1);
     },
   );
+
+  test("does not call the sync resume provider after deletion fences during enqueue", async () => {
+    let deletionFenceCommitted = false;
+    enqueueAgentResumeOnce.mockImplementationOnce(async () => {
+      deletionFenceCommitted = true;
+      return {
+        job: { id: "resume-job-race", status: "pending" },
+        created: true,
+      };
+    });
+
+    const response = await post("?sync=true");
+
+    expect(response.status).toBe(202);
+    expect(deletionFenceCommitted).toBe(true);
+    expect(enqueueAgentResumeOnce).toHaveBeenCalledTimes(1);
+    expect(provision).not.toHaveBeenCalled();
+  });
 
   test.each(["FALSE", "TRUE", "0", "1", "no", "yes", "foo"])(
     "rejects sync=%s before credit gate, provision, and enqueue",
