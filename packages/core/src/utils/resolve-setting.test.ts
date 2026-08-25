@@ -61,6 +61,21 @@ describe("resolveSetting", () => {
 		).toBe("d");
 	});
 
+	it("treats empty or whitespace-only runtime settings as unset", () => {
+		expect(
+			resolveSetting(reader({ KEY: "   " }), "KEY", {
+				env: { KEY: "from-env" },
+				defaultValue: "d",
+			}),
+		).toBe("from-env");
+		expect(
+			resolveSetting(reader({ KEY: "" }), "KEY", {
+				env: {},
+				defaultValue: "d",
+			}),
+		).toBe("d");
+	});
+
 	it("does NOT read process.env when the runtime has the key (no leak past runtime)", () => {
 		// Runtime value present → env is never consulted, even the real one.
 		expect(resolveSetting(reader({ KEY: "runtime" }), "KEY")).toBe("runtime");
