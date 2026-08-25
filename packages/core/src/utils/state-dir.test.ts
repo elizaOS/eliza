@@ -107,6 +107,12 @@ describe("getOptimizationRootDir", () => {
 			"/tmp/optimization",
 		);
 	});
+
+	it("expands a leading tilde in optimization directory", () => {
+		const result = getOptimizationRootDir("~/optimization");
+		expect(result.endsWith(`${sep}optimization`)).toBe(true);
+		expect(isAbsolute(result)).toBe(true);
+	});
 });
 
 describe("resolveOAuthDir", () => {
@@ -127,8 +133,10 @@ describe("resolveOAuthDir", () => {
 });
 
 describe("resolveUserPath", () => {
-	it("returns an empty string for empty input", () => {
+	it("returns an empty string for empty or non-string input", () => {
 		expect(resolveUserPath("")).toBe("");
+		expect(resolveUserPath(null as unknown as string)).toBe("");
+		expect(resolveUserPath(undefined as unknown as string)).toBe("");
 	});
 
 	it("expands a leading ~", () => {

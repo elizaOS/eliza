@@ -24,6 +24,7 @@ import { readEnv } from "./read-env.ts";
 
 /** Expand a leading `~` segment and resolve to an absolute path. */
 export function resolveUserPath(input: string): string {
+	if (!input || typeof input !== "string") return "";
 	const trimmed = input.trim();
 	if (!trimmed) return trimmed;
 	if (trimmed.startsWith("~")) {
@@ -65,7 +66,9 @@ export function resolveStateDir(
 
 /** Resolve the shared root for optimization traces and artifacts. */
 export function getOptimizationRootDir(settingValue?: string | null): string {
-	return settingValue || join(resolveStateDir(), "optimization");
+	return typeof settingValue === "string" && settingValue.trim() !== ""
+		? resolveUserPath(settingValue)
+		: join(resolveStateDir(), "optimization");
 }
 
 /**
