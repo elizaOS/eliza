@@ -65,4 +65,49 @@ describe("logger env reader", () => {
     expect(getBrowserEnv("FEATURE_ENABLED")).toBe("true");
     expect(getBrowserEnv("MISSING", "fallback")).toBe("fallback");
   });
+
+  it("coerces falsey boolean and zero numbers to strings in browser mode", async () => {
+    Object.defineProperty(process.versions, "node", {
+      configurable: true,
+      value: undefined,
+    });
+    vi.stubGlobal("window", {
+      ENV: { DISABLED: false, ZERO_VAL: 0, EMPTY_STR: "" },
+    });
+    vi.resetModules();
+
+    const { getEnv: getBrowserEnv } = await import("./env.js");
+    expect(getBrowserEnv("DISABLED")).toBe("false");
+    expect(getBrowserEnv("ZERO_VAL")).toBe("0");
+    expect(getBrowserEnv("EMPTY_STR")).toBe("");
+  });
+
+  it("gracefully falls back when window exists without ENV bag", async () => {
+    Object.defineProperty(process.versions, "node", {
+      configurable: true,
+      value: undefined,
+    });
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("__ENV__", { STANDALONE_KEY: "active" });
+    vi.resetModules();
+
+    const { getEnv: getBrowserEnv } = await import("./env.js");
+    expect(getBrowserEnv("STANDALONE_KEY")).toBe("active");
+    expect(getBrowserEnv("UNSET_KEY")).toBeUndefined();
+    expect(getBrowserEnv("UNSET_KEY", "default")).toBe("default");
+  });
+
+  it("gracefully falls back when neither window nor __ENV__ exists", async () => {
+    Object.defineProperty(process.versions, "node", {
+      configurable: true,
+      value: undefined,
+    });
+    vi.stubGlobal("window", undefined);
+    vi.stubGlobal("__ENV__", undefined);
+    vi.resetModules();
+
+    const { getEnv: getBrowserEnv } = await import("./env.js");
+    expect(getBrowserEnv("ANY_KEY")).toBeUndefined();
+    expect(getBrowserEnv("ANY_KEY", "fallback-val")).toBe("fallback-val");
+  });
 });
