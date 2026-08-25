@@ -2043,12 +2043,17 @@ export function validateContentContextResult(
     );
   }
   const typed = value as ContentContextResult;
+  if (typed.status !== "passed") {
+    throw new TypeError(
+      "content-context result is not publishable unless it passed",
+    );
+  }
   const failures = semanticFailures(
     typed,
     artifactBytes,
     referencedArtifactBytes,
   );
-  if (typed.status === "passed" && failures.length > 0) {
+  if (failures.length > 0) {
     throw new TypeError(
       `content-context success is semantically invalid: ${failures.join("; ")}`,
     );
