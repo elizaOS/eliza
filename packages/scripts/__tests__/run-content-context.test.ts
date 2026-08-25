@@ -7,6 +7,22 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  PROGRESSIVE_CONTENT_FAULT_CASES,
+  PROGRESSIVE_CONTENT_FAULT_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
+} from "../../core/src/testing/progressive-content-faults.ts";
+import {
+  PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
+} from "../../core/src/testing/progressive-content-mutants.ts";
+import {
+  PROGRESSIVE_CONTENT_ANCHOR_TIME,
+  PROGRESSIVE_CONTENT_SCHEMA_VERSION,
+  progressiveContentManifestDigest,
+} from "../../corpus-tools/src/progressive-content.ts";
+import { CONTENT_CONTEXT_PERFORMANCE_POLICY } from "../../corpus-tools/src/progressive-content-evidence.ts";
+import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../../corpus-tools/src/progressive-content-realization.ts";
 import { createBundle } from "../../evidence/src/bundle.ts";
 import {
   captureSiloSnapshot,
@@ -339,7 +355,7 @@ afterEach(async () => {
 });
 
 function evidenceValues() {
-  const manifestSha256 = "b".repeat(64);
+  const commit = "a".repeat(40);
   const objects = [
     "file",
     "document",
@@ -355,6 +371,9 @@ function evidenceValues() {
       sourceSha256: "c".repeat(64),
       revision: `revision-${family}-${byteLength}`,
       authorizationScope: `scope-${family}`,
+      relativePath: `objects/${family}-${byteLength}.bin`,
+      coordinateSystem: "utf8-byte-start-inclusive-end-exclusive",
+      canaries: [],
       format:
         family === "memory" && byteLength === 10 * 1024 * 1024
           ? "binary"
@@ -363,14 +382,31 @@ function evidenceValues() {
             : "lf-lines",
     })),
   );
+  const unsignedManifest = {
+    schemaVersion: PROGRESSIVE_CONTENT_SCHEMA_VERSION,
+    generatorRevision: commit,
+    rootSeed: "producer-test-root-seed",
+    anchorTime: PROGRESSIVE_CONTENT_ANCHOR_TIME,
+    profile: "scale",
+    publication: "private-atomic-manifest-last-v1",
+    objects,
+    formatFixtures: [],
+    logicalBytes: objects.reduce(
+      (total, object) => total + object.byteLength,
+      0,
+    ),
+  };
+  const manifestSha256 = progressiveContentManifestDigest(unsignedManifest);
   return {
     "corpus-manifest.json": {
+      ...unsignedManifest,
       manifestSha256,
-      generatorRevision: "producer-test-v1",
-      objects,
     },
     "native-realization-ledger.json": {
+      schemaVersion: PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION,
+      corpusSchemaVersion: PROGRESSIVE_CONTENT_SCHEMA_VERSION,
       corpusManifestSha256: manifestSha256,
+      generatorRevision: commit,
       entries: objects.map((object) => ({
         status: "verified",
         objectId: object.id,
@@ -384,6 +420,12 @@ function evidenceValues() {
           maxReadBytes: 64 * 1024,
         },
       })),
+      counts: {
+        verified: objects.length,
+        unsupported: 0,
+        pending: 0,
+        failed: 0,
+      },
     },
     "conformance.json": {
       reports: objects.map((object) => ({
@@ -403,25 +445,29 @@ function evidenceValues() {
           readCallsPerPageMax: 1,
           rowsPerPageMax: 1,
           ceilings: {
-            maxPageLatencyMs: 100,
-            maxRssGrowthBytes: 1024,
-            maxReadAmplification: 2,
-            maxReadCallsPerPage: 2,
-            maxRowsPerPage: 8,
+            ...CONTENT_CONTEXT_PERFORMANCE_POLICY.conformance,
           },
         },
       })),
     },
     "mutant-kills.json": {
+      schemaVersion: PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
       status: "passed",
-      required: 9,
-      executed: 9,
-      killed: 9,
+      required: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
+      executed: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
+      killed: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
       killRate: 1,
-      results: Array.from({ length: 9 }, () => ({
-        status: "killed",
-        failureVectors: ["source-work"],
-      })),
+      results: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.map(
+        ({ id, seam, killingVector, executor, killingTestId }) => ({
+          id,
+          seam,
+          killingVector,
+          executor,
+          killingTestId,
+          status: "killed",
+          failureVectors: [killingVector],
+        }),
+      ),
     },
     "source-work.json": {
       samples: objects.map((object) => ({
@@ -442,10 +488,13 @@ function evidenceValues() {
           readAmplification: 1,
         },
         ceilings: {
-          maxPageLatencyMs: 100,
-          rssGrowthBytes: 1024,
+          maxPageLatencyMs:
+            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs,
+          rssGrowthBytes:
+            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes,
           databaseGrowthBytes: sourceBytes * 2,
-          readAmplification: 2,
+          readAmplification:
+            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxReadAmplification,
         },
       })),
     },
@@ -491,25 +540,22 @@ function evidenceValues() {
       ],
     },
     "faults.json": {
+      schemaVersion: PROGRESSIVE_CONTENT_FAULT_SCHEMA_VERSION,
       status: "passed",
-      required: 6,
-      executed: 6,
-      catalog: [
-        "unauthorized",
-        "revoked-authorization",
-        "stale-revision",
-        "missing-source",
-        "tampered-reference",
-        "concurrent-cleanup",
-      ],
-      results: [
-        "unauthorized",
-        "revoked-authorization",
-        "stale-revision",
-        "missing-source",
-        "tampered-reference",
-        "concurrent-cleanup",
-      ].map((id) => ({ id, status: "passed" })),
+      required: PROGRESSIVE_CONTENT_FAULT_CASES.length,
+      executed: PROGRESSIVE_CONTENT_FAULT_CASES.length,
+      catalog: PROGRESSIVE_CONTENT_FAULT_CASES.map(([id]) => id),
+      results: PROGRESSIVE_CONTENT_FAULT_CASES.map(
+        ([id, stage, expectedCode]) => ({
+          id,
+          stage,
+          expectedCode,
+          forbiddenEffects: PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
+          status: "passed",
+          observedCode: expectedCode,
+          observedEffects: [],
+        }),
+      ),
     },
     "stress.json": {
       status: "passed",
@@ -530,7 +576,7 @@ function evidenceValues() {
         })),
       })),
     },
-    "soak.json": validSoakEvidence("a".repeat(40), manifestSha256),
+    "soak.json": validSoakEvidence(commit, manifestSha256),
     "postgres.json": validPostgresEvidence(objects, manifestSha256),
     "scenario.json": {
       status: "passed",
@@ -565,10 +611,10 @@ function evidenceValues() {
         }),
       },
     })}\n`,
-    "trajectories.jsonl": validLiveTrajectories("a".repeat(40), manifestSha256),
+    "trajectories.jsonl": validLiveTrajectories(commit, manifestSha256),
     "e2e.json": {
       status: "passed",
-      commit: "a".repeat(40),
+      commit,
       corpusManifestSha256: manifestSha256,
       runId: "e2e-real-run",
       artifactPaths: [

@@ -144,6 +144,7 @@ export {
 	testPgliteStorageMode,
 } from "./pglite-storage";
 export * from "./progressive-content-conformance";
+export * from "./progressive-content-faults";
 export * from "./progressive-content-mixed-soak";
 export * from "./progressive-content-mutants";
 export * from "./progressive-content-stress";

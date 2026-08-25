@@ -2,6 +2,11 @@
 
 import { createHash } from "node:crypto";
 import {
+  PROGRESSIVE_CONTENT_FAULT_CASES,
+  PROGRESSIVE_CONTENT_FAULT_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
+} from "../../core/src/testing/progressive-content-faults.ts";
+import {
   PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
   PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
 } from "../../core/src/testing/progressive-content-mutants.ts";
@@ -44,14 +49,8 @@ export const CONTENT_CONTEXT_FAMILIES = [
   "tool-output",
 ] as const;
 
-export const CONTENT_CONTEXT_REQUIRED_FAULTS = [
-  "unauthorized",
-  "revoked-authorization",
-  "stale-revision",
-  "missing-source",
-  "tampered-reference",
-  "concurrent-cleanup",
-] as const;
+export const CONTENT_CONTEXT_REQUIRED_FAULTS =
+  PROGRESSIVE_CONTENT_FAULT_CASES.map(([id]) => id);
 
 export const CONTENT_CONTEXT_PERFORMANCE_POLICY = {
   conformance: {
@@ -925,11 +924,20 @@ function semanticFailures(
   const faultResults = array(faults.results, "fault results").map((value) =>
     record(value, "fault result"),
   );
+  const requiredFaults = new Map<
+    string,
+    { readonly stage: string; readonly expectedCode: string }
+  >(
+    PROGRESSIVE_CONTENT_FAULT_CASES.map(([id, stage, expectedCode]) => [
+      id,
+      { stage, expectedCode },
+    ]),
+  );
   if (
+    faults.schemaVersion !== PROGRESSIVE_CONTENT_FAULT_SCHEMA_VERSION ||
     faults.status !== "passed" ||
-    typeof faults.required !== "number" ||
-    faults.required === 0 ||
-    faults.required !== faults.executed ||
+    faults.required !== requiredFaults.size ||
+    faults.executed !== requiredFaults.size ||
     faultCatalog.length !== CONTENT_CONTEXT_REQUIRED_FAULTS.length ||
     new Set(faultCatalog).size !== faultCatalog.length ||
     CONTENT_CONTEXT_REQUIRED_FAULTS.some((id) => !faultCatalog.includes(id)) ||
@@ -938,7 +946,35 @@ function semanticFailures(
     CONTENT_CONTEXT_REQUIRED_FAULTS.some(
       (id) => !faultResults.some((result) => result.id === id),
     ) ||
-    faultResults.some(({ status }) => status !== "passed")
+    faultResults.some(
+      ({
+        id,
+        stage,
+        expectedCode,
+        forbiddenEffects,
+        status,
+        observedCode,
+        observedEffects,
+      }) => {
+        const expected =
+          typeof id === "string" ? requiredFaults.get(id) : undefined;
+        return (
+          !expected ||
+          stage !== expected.stage ||
+          expectedCode !== expected.expectedCode ||
+          status !== "passed" ||
+          observedCode !== expected.expectedCode ||
+          !Array.isArray(forbiddenEffects) ||
+          forbiddenEffects.length !==
+            PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS.length ||
+          PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS.some(
+            (effect) => !forbiddenEffects.includes(effect),
+          ) ||
+          !Array.isArray(observedEffects) ||
+          observedEffects.some((effect) => forbiddenEffects.includes(effect))
+        );
+      },
+    )
   )
     failures.push("fault matrix is incomplete or failed");
 
