@@ -82,6 +82,11 @@ import {
   inspectAndroidAppBundle,
   resolveAndroidArtifactKind,
 } from "./lib/android-cloud-artifact-audit.mjs";
+import {
+  androidSystemAbiEntriesToRemove,
+  assertAndroidSystemAbiContents,
+  parseAndroidSystemAbiAllowlist,
+} from "./lib/android-system-apk-abis.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { artifactStaleness } from "./lib/artifact-staleness.mjs";
 import {
@@ -9612,6 +9617,44 @@ function writeAndroidSystemProvenance(apkPath) {
   }
 }
 
+function filterAndroidSystemApkAbis(apkPath) {
+  const allowedAbis = parseAndroidSystemAbiAllowlist(
+    process.env.ELIZA_ANDROID_SYSTEM_ABIS,
+  );
+  if (!allowedAbis) return;
+
+  const entries = listAndroidArtifactEntries(apkPath);
+  const removals = androidSystemAbiEntriesToRemove(entries, allowedAbis);
+  if (removals.length > 0) {
+    const zip = resolveExecutable("zip");
+    if (!zip) {
+      throw new Error(
+        "[mobile-build] zip not found on PATH; cannot filter AOSP APK ABIs.",
+      );
+    }
+    const beforeBytes = fs.statSync(apkPath).size;
+    const result = spawnSync(zip, ["-q", "-d", apkPath, ...removals], {
+      encoding: "utf8",
+    });
+    if (result.status !== 0) {
+      throw new Error(
+        `[mobile-build] Failed to filter AOSP APK ABIs: ${
+          result.stderr || result.stdout || `zip exited with ${result.status}`
+        }`,
+      );
+    }
+    const afterBytes = fs.statSync(apkPath).size;
+    console.log(
+      `[mobile-build] Filtered staged AOSP APK to ${allowedAbis.join(", ")} ` +
+        `(${removals.length} entries removed; ${beforeBytes - afterBytes} bytes saved).`,
+    );
+  }
+  assertAndroidSystemAbiContents(
+    listAndroidArtifactEntries(apkPath),
+    allowedAbis,
+  );
+}
+
 function stageAndroidSystemApk() {
   const apk = findAndroidSystemApk();
   if (!apk) {
@@ -9622,6 +9665,7 @@ function stageAndroidSystemApk() {
   fs.mkdirSync(elizaOsApkDir, { recursive: true });
   const target = path.join(elizaOsApkDir, elizaOsApkName);
   fs.copyFileSync(apk, target);
+  filterAndroidSystemApkAbis(target);
   writeAndroidSystemProvenance(target);
   console.log(`[mobile-build] Staged ${elizaOsApkName} at ${target}.`);
 }
