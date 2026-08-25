@@ -94,7 +94,7 @@ export interface DocumentsSpatialViewProps {
    *   `search:<text>` — set the search text and run a document search,
    *   `clear-search`  — drop the active search and show the full list,
    *   `open:<id>`     — open/inspect the document `<id>`,
-   *   `pin:<id>`      — toggle the always-inject pin on document `<id>`.
+   *   `pin:<id>`      — toggle the context-priority pin on document `<id>`.
    */
   onAction?: (action: string) => void;
 }

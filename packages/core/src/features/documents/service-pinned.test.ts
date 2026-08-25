@@ -273,6 +273,7 @@ describe("DocumentService pin management", () => {
 			requesterRole: "OWNER",
 			documentId: PINNED_DOC_ID,
 			expected: staleSnapshot as never,
+			expectedPinned: false,
 			pinned: true,
 		});
 		expect(raced.status).toBe("conflict");
@@ -295,6 +296,85 @@ describe("DocumentService pin management", () => {
 			requesterRole: "USER",
 		});
 		expect(visible).toBeNull();
+	});
+
+	it("loses a pin race at the adapter CAS layer: conflicting expectedPinned yields conflict, matching observed state succeeds", async () => {
+		// Reviewer-requested two-writer semantics (#23103) at the core
+		// adapter: a writer whose observed pin bit no longer matches the
+		// stored bit gets a typed conflict even with a CURRENT
+		// authorization snapshot — the pin bit is its own CAS dimension.
+		const { adapter, runtime, service } = await makeHarness();
+		await seedDocuments(runtime, adapter);
+
+		// First writer pins successfully.
+		await service.setDocumentPinnedWithAccessContext(
+			PINNED_DOC_ID,
+			true,
+			ownerContext,
+		);
+
+		// Second writer observed the PRE-pin state (authorization snapshot
+		// still current — revision did not move) but its observed pin bit
+		// (false) is now stale: the fence must reject the write.
+		const stored = await getStoredDocument(adapter, PINNED_DOC_ID);
+		const currentSnapshot = readDocumentMutationSnapshot(stored as Memory);
+		expect(currentSnapshot).not.toBeNull();
+		const raced = await adapter.updateDocumentPinned({
+			agentId: AGENT_ID,
+			requesterEntityId: OWNER_ID,
+			requesterRoomIds: [ROOM_A],
+			requesterRole: "OWNER",
+			documentId: PINNED_DOC_ID,
+			expected: currentSnapshot as never,
+			expectedPinned: false,
+			pinned: true,
+		});
+		expect(raced.status).toBe("conflict");
+	});
+
+	it("service retry converges when a concurrent writer moves the pin bit between read and write", async () => {
+		// The losing writer of a pin race re-reads fresh state inside the
+		// bounded CAS budget and converges instead of surfacing a spurious
+		// typed conflict (#23103).
+		const { adapter, runtime, service } = await makeHarness();
+		await seedDocuments(runtime, adapter);
+
+		let pinCalls = 0;
+		const originalUpdate = adapter.updateDocumentPinned.bind(adapter);
+		adapter.updateDocumentPinned = (async (params: {
+			agentId: UUID;
+			documentId: UUID;
+			requesterEntityId: UUID;
+			requesterRoomIds: UUID[];
+			requesterRole: string;
+			expected: unknown;
+			expectedPinned: boolean;
+			pinned: boolean;
+		}) => {
+			pinCalls++;
+			if (pinCalls === 1) {
+				// A concurrent writer wins the race between our service's
+				// read and write: move the pin bit out from under attempt 1.
+				await originalUpdate({
+					...params,
+					expectedPinned: false,
+					pinned: true,
+				});
+			}
+			// Attempt 1 now conflicts on the moved pin bit; attempt 2 runs
+			// against the fresh state the concurrent writer produced.
+			return originalUpdate(params);
+		}) as typeof adapter.updateDocumentPinned;
+
+		await service.setDocumentPinnedWithAccessContext(
+			PINNED_DOC_ID,
+			true,
+			ownerContext,
+		);
+
+		expect(pinCalls).toBe(2);
+		const stored = await getStoredDocument(adapter, PINNED_DOC_ID);
+		expect(stored?.metadata).toMatchObject({ pinned: true });
 	});
 
 	it("hides document existence from an invisible requester at the adapter CAS layer", async () => {
@@ -324,6 +404,7 @@ describe("DocumentService pin management", () => {
 					requesterRoomIds: [],
 					requesterRole: "USER",
 					expected: expected as never,
+					expectedPinned: false,
 					pinned: true,
 				}),
 			).resolves.toMatchObject({ status: "not_found" });

@@ -40,9 +40,12 @@ import {
 	type DocumentListCursor,
 	type DocumentListQueryParams,
 	type DocumentListRequesterRole,
+	type DocumentMutationResult,
 	type DocumentMutationSnapshot,
+	type DocumentPinUpdateParams,
 	type DocumentRangeReadParams,
 	type DocumentRangeReadResult,
+	type DocumentRequesterContext,
 	type IAgentRuntime,
 	type Memory,
 	MemoryType,
@@ -148,6 +151,14 @@ const DOCUMENT_INGESTION_PENDING_TIMEOUT_MS = 5 * 60 * 1_000;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_TIMEOUT_MS = 120_000;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_INTERVAL_MS = 1_000;
 const DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE = 1_000;
+/**
+ * Bounded CAS retry budget for pin toggles: each attempt re-reads fresh
+ * state, so only a writer that loses every race across the whole budget
+ * surfaces the typed conflict. Two competing toggles converge well below
+ * this bound; the cap exists so a hotly contested document fails explicitly
+ * instead of looping forever.
+ */
+const DOCUMENT_PIN_CAS_ATTEMPTS = 5;
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"global",
 	"owner-private",
@@ -607,19 +618,63 @@ export class DocumentService extends Service {
 		pinned: boolean,
 		accessContext: AccessContext,
 	): Promise<Memory> {
-		const { snapshot, requestContext } = await this.getDocumentPinTarget(
-			documentId,
-			accessContext,
-		);
+		const updateDocumentPinned = this.resolveDocumentPinAdapter(documentId);
+		// The adapter CAS now fences the pin bit itself (expectedPinned), so a
+		// concurrent pin writer between our read and write resolves as a typed
+		// conflict; retry against freshly read state so the losing writer of a
+		// pin race converges instead of surfacing a spurious conflict (#23103).
+		let lastResult: DocumentMutationResult | undefined;
+		for (let attempt = 0; attempt < DOCUMENT_PIN_CAS_ATTEMPTS; attempt++) {
+			const { snapshot, requestContext, document } =
+				await this.getDocumentPinTarget(documentId, accessContext);
+			const result = await updateDocumentPinned.call(this.runtime.adapter, {
+				...requestContext,
+				documentId,
+				expected: snapshot,
+				expectedPinned: this.readObservedPin(document),
+				pinned,
+			});
+			if (result.status === "updated") {
+				return result.document;
+			}
+			if (result.status !== "conflict") {
+				throw new ElizaError(
+					"Document authorization changed before pin update",
+					{
+						code:
+							result.status === "not_found"
+								? "DOCUMENT_NOT_FOUND"
+								: "DOCUMENT_MUTATION_FORBIDDEN",
+						context: { documentId, status: result.status },
+					},
+				);
+			}
+			lastResult = result;
+		}
+		throw new ElizaError("Document pin state changed before update", {
+			code: "DOCUMENT_MUTATION_CONFLICT",
+			context: {
+				documentId,
+				attempts: DOCUMENT_PIN_CAS_ATTEMPTS,
+				lastStatus: lastResult?.status,
+			},
+		});
+	}
+
+	/**
+	 * Resolves the adapter's pin method, surfacing adapters without pin
+	 * support (legacy subclasses inherit the base's typed throw; structural
+	 * adapters may omit the method) as an explicit unsupported capability
+	 * rather than a fabricated not_found.
+	 */
+	private resolveDocumentPinAdapter(
+		documentId: UUID,
+	): (params: DocumentPinUpdateParams) => Promise<DocumentMutationResult> {
 		const updateDocumentPinned = this.runtime.adapter.updateDocumentPinned;
 		if (
 			!updateDocumentPinned ||
 			updateDocumentPinned === DatabaseAdapter.prototype.updateDocumentPinned
 		) {
-			// Adapters without pin support (legacy subclasses inherit the
-			// base's typed throw; structural adapters may omit the method)
-			// surface an explicit unsupported capability rather than a
-			// fabricated not_found.
 			throw new ElizaError(
 				"The configured database adapter does not support document pins",
 				{
@@ -628,30 +683,17 @@ export class DocumentService extends Service {
 				},
 			);
 		}
-		const result = await updateDocumentPinned.call(this.runtime.adapter, {
-			...requestContext,
-			documentId,
-			expected: snapshot,
-			pinned,
-		});
-		if (result.status !== "updated") {
-			throw new ElizaError("Document authorization changed before pin update", {
-				code:
-					result.status === "not_found"
-						? "DOCUMENT_NOT_FOUND"
-						: result.status === "forbidden"
-							? "DOCUMENT_MUTATION_FORBIDDEN"
-							: "DOCUMENT_MUTATION_CONFLICT",
-				context: { documentId, status: result.status },
-			});
-		}
-		return result.document;
+		return updateDocumentPinned;
 	}
 
 	private async getDocumentPinTarget(
 		documentId: UUID,
 		accessContext: AccessContext,
-	) {
+	): Promise<{
+		snapshot: DocumentMutationSnapshot;
+		requestContext: DocumentRequesterContext;
+		document: Memory;
+	}> {
 		const requester = await resolveDocumentRequesterFromAccessContext(
 			this.runtime,
 			accessContext,
@@ -693,7 +735,19 @@ export class DocumentService extends Service {
 				},
 			});
 		}
-		return { snapshot, requestContext };
+		return { snapshot, requestContext, document };
+	}
+
+	/**
+	 * Reads the observed pin bit from a document's metadata. The bit lives in
+	 * free-form metadata rather than a typed field (it predates the typed
+	 * snapshot), so read it defensively: only `true` means pinned.
+	 */
+	private readObservedPin(document: Memory): boolean {
+		return (
+			(document.metadata as Record<string, unknown> | undefined)?.pinned ===
+			true
+		);
 	}
 
 	async setDocumentDirectGrantsWithAccessContext(
@@ -2710,71 +2764,75 @@ export class DocumentService extends Service {
 			requesterRoomIds: requester.roomIds,
 			requesterRole: requester.role,
 		};
-		const existingDocument = await this.runtime.adapter.getDocument({
-			...requestContext,
-			documentId,
-		});
-		if (!existingDocument) {
-			throw new ElizaError(`Document ${documentId} not found`, {
-				code: "DOCUMENT_NOT_FOUND",
-				context: { documentId },
+		const updateDocumentPinned = this.resolveDocumentPinAdapter(documentId);
+		// Same bounded CAS-retry contract as the access-context variant: the
+		// losing writer of a pin race re-reads fresh state and converges
+		// instead of surfacing a spurious typed conflict (#23103).
+		let lastResult: DocumentMutationResult | undefined;
+		for (let attempt = 0; attempt < DOCUMENT_PIN_CAS_ATTEMPTS; attempt++) {
+			const existingDocument = await this.runtime.adapter.getDocument({
+				...requestContext,
+				documentId,
 			});
-		}
-		const snapshot = readDocumentMutationSnapshot(existingDocument);
-		if (!snapshot) {
-			throw new ElizaError(
-				"Stored document authorization metadata is invalid",
-				{
-					code: "DOCUMENT_AUTHORIZATION_INVALID",
+			if (!existingDocument) {
+				throw new ElizaError(`Document ${documentId} not found`, {
+					code: "DOCUMENT_NOT_FOUND",
 					context: { documentId },
-					severity: "fatal",
-				},
-			);
-		}
-		if (!canRequesterMutateDocument(existingDocument, requestContext)) {
-			throw new ElizaError("Requester cannot mutate this document", {
-				code: "DOCUMENT_MUTATION_FORBIDDEN",
-				context: {
-					documentId,
-					requesterEntityId: requester.entityId,
-					requesterRole: requester.role,
-				},
+				});
+			}
+			const snapshot = readDocumentMutationSnapshot(existingDocument);
+			if (!snapshot) {
+				throw new ElizaError(
+					"Stored document authorization metadata is invalid",
+					{
+						code: "DOCUMENT_AUTHORIZATION_INVALID",
+						context: { documentId },
+						severity: "fatal",
+					},
+				);
+			}
+			if (!canRequesterMutateDocument(existingDocument, requestContext)) {
+				throw new ElizaError("Requester cannot mutate this document", {
+					code: "DOCUMENT_MUTATION_FORBIDDEN",
+					context: {
+						documentId,
+						requesterEntityId: requester.entityId,
+						requesterRole: requester.role,
+					},
+				});
+			}
+			const result = await updateDocumentPinned.call(this.runtime.adapter, {
+				...requestContext,
+				documentId,
+				expected: snapshot,
+				expectedPinned: this.readObservedPin(existingDocument),
+				pinned,
 			});
+			if (result.status === "updated") {
+				return;
+			}
+			if (result.status !== "conflict") {
+				throw new ElizaError(
+					"Document authorization changed before pin update",
+					{
+						code:
+							result.status === "not_found"
+								? "DOCUMENT_NOT_FOUND"
+								: "DOCUMENT_MUTATION_FORBIDDEN",
+						context: { documentId, status: result.status },
+					},
+				);
+			}
+			lastResult = result;
 		}
-		const updateDocumentPinned = this.runtime.adapter.updateDocumentPinned;
-		if (
-			!updateDocumentPinned ||
-			updateDocumentPinned === DatabaseAdapter.prototype.updateDocumentPinned
-		) {
-			// Adapters without pin support (legacy subclasses inherit the
-			// base's typed throw; structural adapters may omit the method)
-			// surface an explicit unsupported capability rather than a
-			// fabricated not_found.
-			throw new ElizaError(
-				"The configured database adapter does not support document pins",
-				{
-					code: "DOCUMENT_PIN_UNSUPPORTED",
-					context: { documentId },
-				},
-			);
-		}
-		const result = await updateDocumentPinned.call(this.runtime.adapter, {
-			...requestContext,
-			documentId,
-			expected: snapshot,
-			pinned,
+		throw new ElizaError("Document pin state changed before update", {
+			code: "DOCUMENT_MUTATION_CONFLICT",
+			context: {
+				documentId,
+				attempts: DOCUMENT_PIN_CAS_ATTEMPTS,
+				lastStatus: lastResult?.status,
+			},
 		});
-		if (result.status !== "updated") {
-			throw new ElizaError("Document authorization changed before pin update", {
-				code:
-					result.status === "not_found"
-						? "DOCUMENT_NOT_FOUND"
-						: result.status === "forbidden"
-							? "DOCUMENT_MUTATION_FORBIDDEN"
-							: "DOCUMENT_MUTATION_CONFLICT",
-				context: { documentId, status: result.status },
-			});
-		}
 	}
 
 	async updateDocument(options: {

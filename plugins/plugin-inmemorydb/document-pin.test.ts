@@ -57,6 +57,7 @@ describe("InMemoryDatabaseAdapter.updateDocumentPinned", () => {
         requesterRoomIds: [ROOM_A],
         requesterRole: "USER",
         expected,
+        expectedPinned: false,
         pinned: true,
       })
     ).resolves.toMatchObject({
@@ -82,6 +83,7 @@ describe("InMemoryDatabaseAdapter.updateDocumentPinned", () => {
         requesterRoomIds: [ROOM_A],
         requesterRole: "USER",
         expected: snapshotAfterPin as never,
+        expectedPinned: true,
         pinned: false,
       })
     ).resolves.toMatchObject({ status: "updated" });
@@ -129,6 +131,7 @@ describe("InMemoryDatabaseAdapter.updateDocumentPinned", () => {
         requesterRoomIds: [ROOM_A],
         requesterRole: "USER",
         expected: stale,
+        expectedPinned: false,
         pinned: true,
       })
     ).resolves.toMatchObject({ status: "conflict" });
@@ -149,6 +152,7 @@ describe("InMemoryDatabaseAdapter.updateDocumentPinned", () => {
         requesterRoomIds: [],
         requesterRole: "GUEST",
         expected,
+        expectedPinned: false,
         pinned: true,
       })
     ).resolves.toMatchObject({ status: "not_found" });
@@ -169,6 +173,7 @@ describe("InMemoryDatabaseAdapter.updateDocumentPinned", () => {
           entityId: OWNER_ID,
           revision: 0,
         } as never,
+        expectedPinned: false,
         pinned: true,
       })
     ).resolves.toMatchObject({ status: "not_found" });
@@ -194,6 +199,7 @@ describe("InMemoryDatabaseAdapter.updateDocumentPinned", () => {
           requesterRoomIds: [],
           requesterRole: "GUEST",
           expected,
+          expectedPinned: false,
           pinned: true,
         })
       ).resolves.toMatchObject({ status: "not_found" });
@@ -237,6 +243,7 @@ describe("InMemoryDatabaseAdapter.updateDocumentPinned", () => {
         requesterRoomIds: [ROOM_A],
         requesterRole: "GUEST",
         expected: stale,
+        expectedPinned: false,
         pinned: true,
       })
     ).resolves.toMatchObject({ status: "conflict" });
@@ -250,6 +257,7 @@ describe("InMemoryDatabaseAdapter.updateDocumentPinned", () => {
         requesterRoomIds: [ROOM_A],
         requesterRole: "GUEST",
         expected: current,
+        expectedPinned: false,
         pinned: true,
       })
     ).resolves.toMatchObject({ status: "forbidden" });

@@ -189,10 +189,22 @@ export interface DocumentRevisionReplaceParams
 	fragments: Memory[];
 }
 
-/** Atomic metadata-only pin toggle under canonical mutation policy. */
+/**
+ * Atomic metadata-only pin toggle under canonical mutation policy.
+ *
+ * `expectedPinned` fences the pin bit itself: two writers that observed the
+ * same authorization snapshot cannot both report `updated` — the second
+ * writer's CAS fails on the moved pin state and surfaces `conflict` (#23103).
+ * The pin bit is deliberately NOT part of `DocumentMutationSnapshot`: that
+ * snapshot fences authorization fields shared by every document mutation, and
+ * a pin toggle must not invalidate concurrent authorization CAS writers (or
+ * vice versa).
+ */
 export interface DocumentPinUpdateParams extends DocumentRequesterContext {
 	documentId: UUID;
 	expected: DocumentMutationSnapshot;
+	/** Pin state the writer observed when taking `expected`; must still match at write time. */
+	expectedPinned: boolean;
 	pinned: boolean;
 }
 

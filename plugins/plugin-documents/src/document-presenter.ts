@@ -42,7 +42,7 @@ export interface PresentedDocument {
   editabilityReason?: string;
   canDelete: boolean;
   deleteabilityReason?: string;
-  /** True when the document is pinned for always-inject provider context. */
+  /** True when the document is pinned for prioritized provider context (documents/knowledge). */
   pinned?: boolean;
   content?: { text?: string };
   /** When this document is the searchable mirror of a voice Transcript, the

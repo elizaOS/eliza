@@ -124,6 +124,7 @@ describe("document pin mutation (real SQL)", () => {
       requesterRoomIds: ownerRoomIds,
       requesterRole: "OWNER",
       expected,
+      expectedPinned: false,
       pinned: true,
     });
     expect(pinned.status).toBe("updated");
@@ -147,6 +148,7 @@ describe("document pin mutation (real SQL)", () => {
       requesterRoomIds: ownerRoomIds,
       requesterRole: "OWNER",
       expected: afterPin as never,
+      expectedPinned: true,
       pinned: false,
     });
     expect(unpinned.status).toBe("updated");
@@ -173,6 +175,7 @@ describe("document pin mutation (real SQL)", () => {
           requesterRoomIds: [],
           requesterRole: "USER",
           expected: expected as never,
+          expectedPinned: false,
           pinned: true,
         })
       ).resolves.toMatchObject({ status: "not_found" });
@@ -204,6 +207,7 @@ describe("document pin mutation (real SQL)", () => {
         requesterRoomIds: ownerRoomIds,
         requesterRole: "USER",
         expected: current,
+        expectedPinned: false,
         pinned: true,
       })
     ).resolves.toMatchObject({ status: "forbidden" });
@@ -224,9 +228,71 @@ describe("document pin mutation (real SQL)", () => {
         requesterRoomIds: ownerRoomIds,
         requesterRole: "OWNER",
         expected: stale as never,
+        expectedPinned: false,
         pinned: true,
       })
     ).resolves.toMatchObject({ status: "conflict" });
+  });
+
+  it("two racing pin writers from the same observed state: exactly one wins, loser conflicts and retry converges", async () => {
+    // Reviewer-requested REAL two-writer proof (#23103): both writers read
+    // the document BEFORE either writes (same authorization snapshot AND
+    // same observed pin bit), then race their CAS writes on one real SQL
+    // engine. The expectedPinned fence must serialize them: exactly one
+    // `updated`, the other `conflict` — never two `updated` (lost update).
+    // The loser then re-reads fresh state and its retry converges.
+    const doc = document(6);
+    await seed([doc]);
+    const observed = await adapter.getDocument({
+      agentId,
+      documentId: doc.id,
+      requesterEntityId: OWNER_ID,
+      requesterRoomIds: ownerRoomIds,
+      requesterRole: "OWNER",
+    });
+    expect(observed).not.toBeNull();
+    const snapshot = readDocumentMutationSnapshot(observed as Memory);
+    if (!snapshot) throw new Error("snapshot must be valid");
+
+    const pinParams = () => ({
+      agentId,
+      documentId: doc.id,
+      requesterEntityId: OWNER_ID,
+      requesterRoomIds: ownerRoomIds,
+      requesterRole: "OWNER",
+      expected: snapshot,
+      expectedPinned: false,
+      pinned: true,
+    });
+    const [first, second] = await Promise.all([
+      adapter.updateDocumentPinned(pinParams()),
+      adapter.updateDocumentPinned(pinParams()),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual(["conflict", "updated"]);
+
+    // The losing writer retries against freshly read state and converges.
+    const fresh = await adapter.getDocument({
+      agentId,
+      documentId: doc.id,
+      requesterEntityId: OWNER_ID,
+      requesterRoomIds: ownerRoomIds,
+      requesterRole: "OWNER",
+    });
+    const freshSnapshot = readDocumentMutationSnapshot(fresh as Memory);
+    if (!freshSnapshot) throw new Error("fresh snapshot must be valid");
+    const retried = await adapter.updateDocumentPinned({
+      agentId,
+      documentId: doc.id,
+      requesterEntityId: OWNER_ID,
+      requesterRoomIds: ownerRoomIds,
+      requesterRole: "OWNER",
+      expected: freshSnapshot,
+      expectedPinned: true,
+      pinned: false,
+    });
+    expect(retried.status).toBe("updated");
+    expect(retried.document.metadata).not.toMatchObject({ pinned: true });
   });
 
   it("returns not_found for an unknown document id", async () => {
@@ -243,6 +309,7 @@ describe("document pin mutation (real SQL)", () => {
           entityId: OWNER_ID,
           revision: 0,
         } as never,
+        expectedPinned: false,
         pinned: true,
       })
     ).resolves.toMatchObject({ status: "not_found" });

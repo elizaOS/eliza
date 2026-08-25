@@ -2617,6 +2617,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
       }
+      // Pin-state CAS fence (#23103): the observed pin bit must still match
+      // when the row lock is held, so a racing writer that moved the pin bit
+      // between this writer's read and its lock acquisition loses the CAS
+      // with a typed conflict instead of silently overwriting it.
+      const existingPinned =
+        (existing.metadata as Record<string, unknown> | undefined)?.pinned === true;
+      if (existingPinned !== params.expectedPinned) {
+        return { status: "conflict" };
+      }
       if (!canRequesterMutateDocument(existing, params)) {
         return { status: "forbidden" };
       }

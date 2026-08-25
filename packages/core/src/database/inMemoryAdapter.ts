@@ -1070,6 +1070,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (!documentMutationSnapshotMatches(existing, params.expected)) {
 			return { status: "conflict" };
 		}
+		// Pin-state CAS fence (#23103): the observed pin bit must still match,
+		// so two writers racing from the same observed state cannot both
+		// report updated — the loser gets a typed conflict to retry against.
+		const existingPinned =
+			(existing.metadata as Record<string, unknown> | undefined)?.pinned ===
+			true;
+		if (existingPinned !== params.expectedPinned) {
+			return { status: "conflict" };
+		}
 		if (!canRequesterMutateDocument(existing, params)) {
 			return { status: "forbidden" };
 		}

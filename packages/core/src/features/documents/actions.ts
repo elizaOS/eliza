@@ -177,13 +177,13 @@ const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
 	},
 	pin: {
 		description:
-			"Pin a stored document so it is always injected into your context.",
+			"Pin a stored document so the documents provider prioritizes it in documents and knowledge context.",
 		descriptionCompressed: "pin document by id",
 		required: [],
 		optional: ["id", "documentId"],
 	},
 	unpin: {
-		description: "Remove the always-inject pin from a stored document.",
+		description: "Remove the context-priority pin from a stored document.",
 		descriptionCompressed: "unpin document by id",
 		required: [],
 		optional: ["id", "documentId"],
@@ -1206,8 +1206,11 @@ async function handleSetPinned(
 		throw error;
 	}
 	// Humanized single delivery: the pin state change is the complete answer.
+	// Scoped wording (#23103 review): pinned documents are prioritized by the
+	// documents provider, which runs for the `documents` and `knowledge`
+	// contexts — not unconditionally in every context.
 	const text = pinned
-		? "Pinned the document; it will now always be in context."
+		? "Pinned the document; it is prioritized in documents and knowledge context."
 		: "Unpinned the document.";
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, subaction, {
@@ -1239,7 +1242,11 @@ function formatDocumentList(documents: Memory[]): string {
 					: typeof metadata?.filename === "string"
 						? metadata.filename
 						: `Document ${index + 1}`;
-			return `${index + 1}. ${title} (${document.id})`;
+			// The pinned marker keeps the action's list surface honest about
+			// pin state (#23103): the planner can see which documents the
+			// provider will prioritize without a separate read.
+			const pinnedMarker = metadata?.pinned === true ? " [pinned]" : "";
+			return `${index + 1}. ${title}${pinnedMarker} (${document.id})`;
 		})
 		.join("\n")}`;
 }

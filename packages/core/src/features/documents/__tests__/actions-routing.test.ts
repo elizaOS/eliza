@@ -33,6 +33,7 @@ const USER_ID = "00000000-0000-0000-0000-00000000c0de" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-00000000d00d" as UUID;
 const WORLD_ID = "00000000-0000-4000-8000-00000000face" as UUID;
 const DOC_ID = "11111111-2222-3333-4444-555555555555" as UUID;
+const OTHER_DOC_ID = "12121212-3434-5656-7878-9a9a9a9a9a9a" as UUID;
 
 function listResult(
 	overrides: Partial<DocumentListResult> = {},
@@ -312,6 +313,45 @@ describe("documentAction.handler structured routing", () => {
 		expect(service.listDocumentsDetailed).not.toHaveBeenCalled();
 		expect(res?.success).toBe(false);
 		expect(res?.values).toMatchObject({ error: "DOCUMENT_INVALID_LIMIT" });
+	});
+
+
+	it("marks pinned documents in the action list surface", async () => {
+		// Reviewer finding 3 (#23103): the list formatter emitted only title
+		// and id, so the action surface could not tell which documents the
+		// provider will prioritize. Pinned rows must carry a marker.
+		const service = makeService();
+		const pinned = {
+			id: DOC_ID,
+			content: { text: "Pinned body." },
+			metadata: { title: "Pinned Doc", pinned: true },
+		} as Memory;
+		const unpinned = {
+			id: OTHER_DOC_ID,
+			content: { text: "Unpinned body." },
+			metadata: { title: "Plain Doc" },
+		} as Memory;
+		service.listDocumentsDetailed.mockResolvedValueOnce(
+			listResult({
+				status: "ok",
+				documents: [pinned, unpinned],
+				totalMatched: 2,
+				totalVisible: 2,
+				totalAvailable: 2,
+			}),
+		);
+		const { runtime } = makeRuntime(service);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("list documents"),
+			undefined,
+			options({ action: "list" }),
+		);
+
+		expect(res?.text).toBe(
+			`Available documents:\n1. Pinned Doc [pinned] (${DOC_ID})\n2. Plain Doc (${OTHER_DOC_ID})`,
+		);
 	});
 
 	it("keeps query-miss fallback documents separate from matched documents", async () => {

@@ -85,7 +85,7 @@ export interface DocumentsFetchers {
     query: string,
     signal?: AbortSignal,
   ) => Promise<DocumentsSearchWire>;
-  /** Toggle one document's always-inject pin (#23103). */
+  /** Toggle one document's context-priority pin (#23103). */
   setPinned: (documentId: string, pinned: boolean) => Promise<void>;
 }
 
