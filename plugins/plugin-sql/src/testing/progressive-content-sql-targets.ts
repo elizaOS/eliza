@@ -418,6 +418,9 @@ function targetFactory(input: {
       if (object.family !== input.family || source.byteLength !== object.byteLength) {
         throw new TypeError(`${input.family} target received a mismatched corpus object`);
       }
+      if (object.format === "binary") {
+        throw new ProgressiveSqlTargetError("CONTENT_BINARY_UNSUPPORTED");
+      }
       const ids = idsFor(object.id);
       const dataDir = await fs.mkdtemp(path.join(input.dataRoot, `${input.family}-`));
       let adapter = await openAdapter(dataDir, ids.agentId, true);

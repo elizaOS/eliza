@@ -168,4 +168,38 @@ describe("PGlite progressive-content target factories", () => {
     expect(sourceBytesRead).toBe(bytes.byteLength);
     expect(await fs.readdir(root)).toEqual([]);
   }, 120_000);
+
+  it("rejects declared binary content before reading or creating storage", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sql-target-binary-"));
+    roots.push(root);
+    const bytes = Buffer.from([0, 0xff, 1, 2]);
+    let reads = 0;
+    const factory = await createProgressiveSqlTargetFactory({
+      dataRoot: root,
+      family: "memory",
+    });
+    await expect(
+      factory.create({
+        object: {
+          id: "memory-sql-binary-object",
+          family: "memory",
+          byteLength: bytes.byteLength,
+          sourceSha256: createHash("sha256").update(bytes).digest("hex"),
+          sourceRevision: "binary-source-revision",
+          format: "binary",
+          authorizationScope: "memory-binary-room",
+          canaries: [],
+        },
+        source: {
+          byteLength: bytes.byteLength,
+          async read() {
+            reads += 1;
+            return bytes;
+          },
+        },
+      })
+    ).rejects.toMatchObject({ code: "CONTENT_BINARY_UNSUPPORTED" });
+    expect(reads).toBe(0);
+    expect(await fs.readdir(root)).toEqual([]);
+  }, 120_000);
 });
