@@ -1,9 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Orchestrates one deterministic progressive-content corpus through named
- * production subproducers, then delegates publication to the canonical
- * content-context publisher. Live, soak, Postgres, and browser evidence are
- * imported only as fresh run-bound artifacts and are never synthesized here.
+ * Assembles the checked-in progressive-content evidence inventory against one
+ * deterministic scale corpus, then delegates atomic publication to the
+ * canonical content-context publisher. Caller-selected commands are forbidden.
  */
 
 import { execFile, spawn } from "node:child_process";
@@ -15,6 +14,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { generateProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
+import { contentContextE2EArtifactDeclarations } from "../corpus-tools/src/progressive-content-evidence.ts";
 import { publishContentContextEvidence } from "./run-content-context.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -40,19 +40,25 @@ export const EXTERNAL_CONTENT_CONTEXT_ARTIFACTS = [
   "trajectories.jsonl",
   "e2e.json",
 ];
+export const RUN_BOUND_CONTENT_CONTEXT_ARTIFACTS = [
+  ...DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS,
+  ...EXTERNAL_CONTENT_CONTEXT_ARTIFACTS,
+];
+export const CANONICAL_DETERMINISTIC_PRODUCER = {
+  command: "bun",
+  args: ["packages/scripts/produce-content-context-deterministic.mjs"],
+};
 
 export function parseProductionArgs(argv) {
   const options = { profile: "scale" };
   for (const arg of argv) {
-    if (arg.startsWith("--plan=")) options.plan = arg.slice(7);
-    else if (arg.startsWith("--external-dir="))
-      options.externalDir = arg.slice(15);
+    if (arg.startsWith("--external-dir=")) options.externalDir = arg.slice(15);
     else if (arg.startsWith("--run-root=")) options.runRoot = arg.slice(11);
     else if (arg.startsWith("--commit=")) options.commit = arg.slice(9);
     else if (arg.startsWith("--profile=")) options.profile = arg.slice(10);
     else throw new Error(`unknown argument: ${arg}`);
   }
-  for (const key of ["plan", "externalDir", "runRoot"]) {
+  for (const key of ["externalDir", "runRoot"]) {
     if (!options[key])
       throw new Error(
         `--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} is required`,
@@ -63,38 +69,6 @@ export function parseProductionArgs(argv) {
       "content-context evidence requires the scale corpus profile",
     );
   return options;
-}
-
-export function validateProductionPlan(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("content-context producer plan must be an object");
-  if (value.schemaVersion !== "elizaos.content-context.producers.v1")
-    throw new Error("content-context producer plan schema is unsupported");
-  if (!Array.isArray(value.producers))
-    throw new Error("content-context producer plan requires producers");
-  const byArtifact = new Map();
-  for (const producer of value.producers) {
-    if (!producer || typeof producer !== "object" || Array.isArray(producer))
-      throw new Error("content-context producer declaration is invalid");
-    if (
-      !DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS.includes(producer.artifact) ||
-      byArtifact.has(producer.artifact) ||
-      typeof producer.command !== "string" ||
-      !producer.command ||
-      !Array.isArray(producer.args) ||
-      producer.args.some((arg) => typeof arg !== "string")
-    )
-      throw new Error(
-        "content-context producer declaration is invalid or duplicated",
-      );
-    byArtifact.set(producer.artifact, producer);
-  }
-  const missing = DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS.filter(
-    (artifact) => !byArtifact.has(artifact),
-  );
-  if (missing.length)
-    throw new Error(`missing deterministic subproducers: ${missing.join(",")}`);
-  return [...byArtifact.values()];
 }
 
 async function readPrivateRegular(file, earliestMtime = 0) {
@@ -119,20 +93,62 @@ async function readPrivateRegular(file, earliestMtime = 0) {
   }
 }
 
-async function runChild(producer, env) {
+async function assertPrivateArtifactDirectory(directory) {
+  const stat = await fs.lstat(directory);
+  if (
+    !stat.isDirectory() ||
+    stat.isSymbolicLink() ||
+    (stat.mode & 0o077) !== 0
+  ) {
+    throw new Error(
+      "content-context artifact directory must be a private real directory",
+    );
+  }
+}
+
+async function assertRealArtifactParents(root, relativeFile) {
+  let current = root;
+  for (const segment of relativeFile.split("/").slice(0, -1)) {
+    current = path.join(current, segment);
+    const stat = await fs.lstat(current);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(
+        `content-context artifact parent is unsafe: ${relativeFile}`,
+      );
+    }
+  }
+}
+
+async function runCanonicalDeterministicProducer(env) {
+  const entrypoint = path.join(
+    REPO_ROOT,
+    CANONICAL_DETERMINISTIC_PRODUCER.args[0],
+  );
+  try {
+    await fs.access(entrypoint, fsConstants.R_OK);
+  } catch (error) {
+    throw new Error(
+      "checked-in deterministic content-context producer is unavailable; caller-supplied evidence cannot replace it",
+      { cause: error },
+    );
+  }
   await new Promise((resolve, reject) => {
-    const child = spawn(producer.command, producer.args, {
-      cwd: REPO_ROOT,
-      env: { ...process.env, ...env },
-      stdio: "inherit",
-    });
+    const child = spawn(
+      CANONICAL_DETERMINISTIC_PRODUCER.command,
+      CANONICAL_DETERMINISTIC_PRODUCER.args,
+      {
+        cwd: REPO_ROOT,
+        env: { ...process.env, ...env },
+        stdio: "inherit",
+      },
+    );
     child.once("error", reject);
     child.once("exit", (code, signal) =>
       code === 0
         ? resolve()
         : reject(
             new Error(
-              `subproducer ${producer.artifact} failed (${signal ?? code})`,
+              `canonical deterministic producer failed (${signal ?? code})`,
             ),
           ),
     );
@@ -149,17 +165,26 @@ export async function resolveProductionCommit(explicit, cwd = REPO_ROOT) {
 }
 
 export async function produceContentContextEvidence(options) {
-  const planPath = path.resolve(REPO_ROOT, options.plan);
   const externalDir = path.resolve(REPO_ROOT, options.externalDir);
-  const plan = validateProductionPlan(
-    JSON.parse(await fs.readFile(planPath, "utf8")),
-  );
+  await assertPrivateArtifactDirectory(externalDir);
   const commit = await resolveProductionCommit(options.commit);
   const externalBytes = new Map();
   for (const artifact of EXTERNAL_CONTENT_CONTEXT_ARTIFACTS) {
     externalBytes.set(
       artifact,
       await readPrivateRegular(path.join(externalDir, artifact)),
+    );
+  }
+  const e2eBytes = externalBytes.get("e2e.json");
+  if (!e2eBytes) throw new Error("content-context E2E report is absent");
+  const referencedE2EBytes = new Map();
+  for (const artifact of contentContextE2EArtifactDeclarations(e2eBytes)) {
+    await assertRealArtifactParents(externalDir, artifact.path);
+    referencedE2EBytes.set(
+      artifact.path,
+      await readPrivateRegular(
+        path.join(externalDir, ...artifact.path.split("/")),
+      ),
     );
   }
   const pending = await fs.mkdtemp(
@@ -180,27 +205,37 @@ export async function produceContentContextEvidence(options) {
       path.join(corpusRoot, "manifest.json"),
       path.join(artifacts, "corpus-manifest.json"),
     );
-    for (const producer of plan) {
-      const output = path.join(artifacts, producer.artifact);
-      const startedAt = Date.now() - 1_000;
-      await runChild(producer, {
-        ELIZA_CONTENT_CONTEXT_CORPUS_ROOT: corpusRoot,
-        ELIZA_CONTENT_CONTEXT_OUTPUT: output,
-        ELIZA_CONTENT_CONTEXT_COMMIT: commit,
-        ELIZA_CONTENT_CONTEXT_MANIFEST_SHA256: manifest.manifestSha256,
-      });
-      await readPrivateRegular(output, startedAt);
+    const deterministicStartedAt = Date.now() - 1_000;
+    await runCanonicalDeterministicProducer({
+      ELIZA_CONTENT_CONTEXT_CORPUS_ROOT: corpusRoot,
+      ELIZA_CONTENT_CONTEXT_OUTPUT_DIR: artifacts,
+      ELIZA_CONTENT_CONTEXT_COMMIT: commit,
+      ELIZA_CONTENT_CONTEXT_MANIFEST_SHA256: manifest.manifestSha256,
+    });
+    for (const artifact of DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS) {
+      await readPrivateRegular(
+        path.join(artifacts, artifact),
+        deterministicStartedAt,
+      );
     }
     for (const artifact of EXTERNAL_CONTENT_CONTEXT_ARTIFACTS) {
       const bytes = externalBytes.get(artifact);
       if (!bytes)
         throw new Error(
-          `external content-context artifact is absent: ${artifact}`,
+          `run-bound content-context artifact is absent: ${artifact}`,
         );
       await fs.writeFile(path.join(artifacts, artifact), bytes, {
         flag: "wx",
         mode: 0o600,
       });
+    }
+    for (const [artifactPath, bytes] of referencedE2EBytes) {
+      const destination = path.join(artifacts, ...artifactPath.split("/"));
+      await fs.mkdir(path.dirname(destination), {
+        recursive: true,
+        mode: 0o700,
+      });
+      await fs.writeFile(destination, bytes, { flag: "wx", mode: 0o600 });
     }
     return await publishContentContextEvidence({
       source: artifacts,

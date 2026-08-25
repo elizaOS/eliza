@@ -1,20 +1,23 @@
-/** Verifies the production evidence orchestrator fails before corpus work on incomplete or fixture-shaped plans. */
+/** Verifies production evidence assembly uses the fixed repository inventory rather than caller commands. */
 
 import { describe, expect, it } from "vitest";
 import {
+  CANONICAL_DETERMINISTIC_PRODUCER,
   DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS,
+  EXTERNAL_CONTENT_CONTEXT_ARTIFACTS,
   parseProductionArgs,
+  RUN_BOUND_CONTENT_CONTEXT_ARTIFACTS,
   resolveProductionCommit,
-  validateProductionPlan,
 } from "../produce-content-context.mjs";
 import { parsePostgresEvidenceArgs } from "../produce-content-context-postgres.mjs";
 
 describe("produce-content-context", () => {
-  it("requires explicit production plan, external artifacts, and canonical run root", () => {
-    expect(() => parseProductionArgs([])).toThrow(/--plan is required/u);
+  it("requires the exact run-bound artifact set and canonical run root", () => {
+    expect(() => parseProductionArgs([])).toThrow(
+      /--external-dir is required/u,
+    );
     expect(() =>
       parseProductionArgs([
-        "--plan=p",
         "--external-dir=e",
         "--run-root=r",
         "--profile=micro",
@@ -22,36 +25,25 @@ describe("produce-content-context", () => {
     ).toThrow(/scale corpus/u);
   });
 
-  it("rejects missing, duplicate, and fixture-shaped subproducer declarations", () => {
-    expect(() =>
-      validateProductionPlan({
-        schemaVersion: "elizaos.content-context.producers.v1",
-        producers: [],
-      }),
-    ).toThrow(/missing deterministic/u);
-    const producers = DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS.map(
-      (artifact) => ({ artifact, command: "bun", args: ["run", artifact] }),
+  it("uses one checked-in exact inventory instead of caller-selected commands", () => {
+    expect(RUN_BOUND_CONTENT_CONTEXT_ARTIFACTS).toEqual([
+      ...DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS,
+      ...EXTERNAL_CONTENT_CONTEXT_ARTIFACTS,
+    ]);
+    expect(new Set(RUN_BOUND_CONTENT_CONTEXT_ARTIFACTS).size).toBe(
+      RUN_BOUND_CONTENT_CONTEXT_ARTIFACTS.length,
     );
-    expect(
-      validateProductionPlan({
-        schemaVersion: "elizaos.content-context.producers.v1",
-        producers,
-      }),
-    ).toHaveLength(DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS.length);
+    expect(CANONICAL_DETERMINISTIC_PRODUCER).toEqual({
+      command: "bun",
+      args: ["packages/scripts/produce-content-context-deterministic.mjs"],
+    });
     expect(() =>
-      validateProductionPlan({
-        schemaVersion: "elizaos.content-context.producers.v1",
-        producers: [...producers, producers[0]],
-      }),
-    ).toThrow(/duplicated/u);
-    expect(() =>
-      validateProductionPlan({
-        schemaVersion: "elizaos.content-context.producers.v1",
-        producers: producers.map((entry, index) =>
-          index === 0 ? { ...entry, command: "" } : entry,
-        ),
-      }),
-    ).toThrow(/invalid/u);
+      parseProductionArgs([
+        "--external-dir=e",
+        "--run-root=r",
+        "--plan=arbitrary.json",
+      ]),
+    ).toThrow(/unknown argument/u);
   });
 
   it("resolves an omitted commit to the exact repository head", async () => {

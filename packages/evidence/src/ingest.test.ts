@@ -131,6 +131,26 @@ function buildFixtureRepo(): string {
   ]) {
     write(repo, `${contentContextRoot}/${name}`, "{}\n");
   }
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/backend/server.log`,
+    "backend evidence",
+  );
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/browser/trace.zip`,
+    "browser trace",
+  );
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/network/requests.har`,
+    "network evidence",
+  );
+  write(
+    repo,
+    `${contentContextRoot}/e2e-artifacts/database/rows.json`,
+    "database evidence",
+  );
   // Noise that must never be ingested.
   write(repo, "e2e-recordings/node_modules/pkg/index.js", "js");
   return repo;
@@ -440,7 +460,7 @@ describe("ingestAllSilos", () => {
       "content-context": {
         silo: "content-context",
         status: "ingested",
-        artifactCount: 19,
+        artifactCount: 23,
       },
     });
   });
@@ -504,6 +524,12 @@ describe("ingestAllSilos", () => {
       byPath["trajectories/content-context/run-1/page-ledger.jsonl"],
     ).toMatchObject({
       kind: "trajectory",
+      source: "content-context",
+      lane: "content-context",
+    });
+    expect(
+      byPath["misc/content-context/run-1/e2e-artifacts/browser/trace.zip"],
+    ).toMatchObject({
       source: "content-context",
       lane: "content-context",
     });

@@ -11,7 +11,7 @@ import type {
 } from "./progressive-content.ts";
 
 export const PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION =
-  "elizaos.progressive-content.realization.v1" as const;
+  "elizaos.progressive-content.realization.v2" as const;
 export const PROGRESSIVE_CONTENT_SOURCE_PAGE_BYTES = 64 * 1024;
 
 export interface ProgressiveSourceWork {
@@ -60,7 +60,12 @@ export interface ProgressiveNativeRealizationEntry {
   readonly objectId: string;
   readonly family: ProgressiveContentFamily;
   readonly adapterId: string;
-  readonly status: "verified" | "unsupported" | "pending" | "failed";
+  readonly status:
+    | "verified"
+    | "typed-rejected"
+    | "unsupported"
+    | "pending"
+    | "failed";
   readonly sourceSha256: string;
   readonly sourceBytes: number;
   readonly sourceWork: ProgressiveSourceWork;
@@ -70,6 +75,9 @@ export interface ProgressiveNativeRealizationEntry {
   readonly cleanupIdentity?: string;
   readonly resolverBindingSha256?: string;
   readonly code?: string;
+  readonly rejectionCode?:
+    | "CONTENT_BINARY_UNSUPPORTED"
+    | "CONTENT_INVALID_UTF8";
   readonly blocker?: string;
 }
 
@@ -79,9 +87,13 @@ export interface ProgressiveNativeRealizationLedger {
   readonly corpusManifestSha256: string;
   readonly generatorRevision: string;
   readonly entries: readonly ProgressiveNativeRealizationEntry[];
-  readonly counts: Readonly<
-    Record<ProgressiveNativeRealizationEntry["status"], number>
-  >;
+  readonly counts: Readonly<{
+    verified: number;
+    typedRejected: number;
+    unsupported: number;
+    pending: number;
+    failed: number;
+  }>;
 }
 
 export class ProgressiveNativeRealizationError extends Error {
@@ -282,11 +294,16 @@ export async function realizeProgressiveContentCorpus(input: {
   }
   const counts = {
     verified: 0,
+    typedRejected: 0,
     unsupported: 0,
     pending: 0,
     failed: 0,
   };
-  for (const entry of entries) counts[entry.status] += 1;
+  for (const entry of entries) {
+    const key =
+      entry.status === "typed-rejected" ? "typedRejected" : entry.status;
+    counts[key] += 1;
+  }
   return {
     schemaVersion: PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION,
     corpusSchemaVersion: input.manifest.schemaVersion,
