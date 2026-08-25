@@ -276,6 +276,7 @@ export const personalSharedGroupParticipants = pgTable(
     linked_user_id: uuid("linked_user_id").references(() => users.id),
     consented_at: timestamp("consented_at", { withTimezone: true }),
     consent_provenance: text("consent_provenance").$type<PersonalSharedGroupConsentProvenance>(),
+    /** Roster/authority tombstone; it does not imply this participant previously consented. */
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
     first_seen_at: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     last_seen_at: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
@@ -296,7 +297,7 @@ export const personalSharedGroupParticipants = pgTable(
     consent_shape_check: check(
       "personal_shared_group_participants_consent_shape_check",
       sql`(${table.linked_user_id} IS NULL AND ${table.consented_at} IS NULL AND ${table.consent_provenance} IS NULL)
-        OR (${table.linked_user_id} IS NOT NULL AND ${table.consented_at} IS NOT NULL AND ${table.consent_provenance} IS NOT NULL)`,
+        OR (${table.linked_user_id} IS NOT NULL AND ${table.consented_at} IS NOT NULL AND ${table.consent_provenance} IS NOT NULL AND ${table.revoked_at} IS NULL)`,
     ),
     actor_unique: uniqueIndex("personal_shared_group_participants_actor_uidx").on(
       table.binding_id,

@@ -29,7 +29,12 @@ ALTER TABLE personal_shared_group_participants
   ),
   ADD CONSTRAINT personal_shared_group_participants_consent_shape_check CHECK (
     (linked_user_id IS NULL AND consented_at IS NULL AND consent_provenance IS NULL)
-    OR (linked_user_id IS NOT NULL AND consented_at IS NOT NULL AND consent_provenance IS NOT NULL)
+    OR (
+      linked_user_id IS NOT NULL
+      AND consented_at IS NOT NULL
+      AND consent_provenance IS NOT NULL
+      AND revoked_at IS NULL
+    )
   );
 
 CREATE UNIQUE INDEX personal_shared_group_participants_linked_user_uidx

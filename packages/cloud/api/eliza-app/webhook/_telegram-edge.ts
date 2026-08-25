@@ -44,6 +44,7 @@ const RETRY_DELAY_CAP_MS = 5_000;
 const TYPING_REFRESH_MS = 4_000;
 const DELIVERY_PROJECT_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const DELIVERY_SENDER_RE = /^\d{1,32}$/;
+const DELIVERY_THREAD_RE = /^[1-9]\d{0,15}$/;
 
 export interface TelegramEdgeDeps {
   runTurn(
@@ -71,6 +72,7 @@ interface LedgerResponse {
 export interface PersonalTelegramReminderDispatchInput {
   project: string;
   chatId: string;
+  providerThreadId?: string;
   text: string;
   idempotencyKey: string;
 }
@@ -384,6 +386,17 @@ export async function dispatchPersonalTelegramReminder(
   env: AppEnv["Bindings"],
   input: PersonalTelegramReminderDispatchInput,
 ): Promise<PersonalTelegramReminderDispatchResult> {
+  if (
+    input.providerThreadId !== undefined &&
+    (!DELIVERY_THREAD_RE.test(input.providerThreadId) ||
+      !Number.isSafeInteger(Number(input.providerThreadId)))
+  ) {
+    return {
+      ok: false,
+      acceptance: "not_accepted",
+      message: "Telegram reminder topic is invalid",
+    };
+  }
   const botToken = readEnvString(env, "ELIZA_APP_TELEGRAM_BOT_TOKEN");
   if (!botToken) {
     return {
@@ -397,10 +410,13 @@ export async function dispatchPersonalTelegramReminder(
     messageId: input.idempotencyKey,
     platformRecordId: input.idempotencyKey,
     chatId: input.chatId,
-    chatType: "private",
+    chatType: input.chatId.startsWith("-") ? "supergroup" : "private",
     senderId: input.chatId,
     text: "",
     isCommand: false,
+    ...(input.providerThreadId
+      ? { providerThreadId: input.providerThreadId }
+      : {}),
     rawPayload: { source: "shared-reminder" },
   };
   try {

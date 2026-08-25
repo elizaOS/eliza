@@ -193,8 +193,12 @@ describe("Personal Shared Telegram edge", () => {
   test("delivers reminders with the edge bot and returns a durable duplicate receipt", async () => {
     const ledger = namespace();
     let sends = 0;
-    globalThis.fetch = mock(async (input) => {
-      if (String(input).endsWith("/sendMessage")) sends += 1;
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = mock(async (input, init) => {
+      if (String(input).endsWith("/sendMessage")) {
+        sends += 1;
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      }
       return Response.json({ ok: true, result: { message_id: 9010 } });
     }) as unknown as typeof fetch;
     const env = {
@@ -214,6 +218,78 @@ describe("Personal Shared Telegram edge", () => {
     expect(delivered).toMatchObject({ ok: true, providerMessageIds: ["9010"] });
     expect(duplicate).toEqual(delivered);
     expect(sends).toBe(1);
+    expect(bodies).toEqual([
+      {
+        chat_id: "123456",
+        text: "time to stretch",
+        parse_mode: "Markdown",
+      },
+    ]);
+  });
+
+  test("delivers a Telegram group reminder inside its forum topic once", async () => {
+    const ledger = namespace();
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = mock(async (input, init) => {
+      if (String(input).endsWith("/sendMessage")) {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      }
+      return Response.json({ ok: true, result: { message_id: 9011 } });
+    }) as unknown as typeof fetch;
+    const env = {
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+    } as AppEnv["Bindings"];
+    const input = {
+      project: "eliza-app",
+      chatId: "-100123456789",
+      providerThreadId: "909",
+      text: "time to stretch",
+      idempotencyKey: "reminder-topic-1:2026-08-20T19:30:00.000Z",
+    };
+
+    const delivered = await dispatchPersonalTelegramReminder(env, input);
+    const duplicate = await dispatchPersonalTelegramReminder(env, input);
+
+    expect(delivered).toMatchObject({ ok: true, providerMessageIds: ["9011"] });
+    expect(duplicate).toEqual(delivered);
+    expect(bodies).toEqual([
+      {
+        chat_id: "-100123456789",
+        message_thread_id: 909,
+        text: "time to stretch",
+        parse_mode: "Markdown",
+      },
+    ]);
+  });
+
+  test("rejects invalid reminder topic ids before state or egress", async () => {
+    const ledger = namespace();
+    globalThis.fetch = mock(async () => {
+      throw new Error("egress must not run");
+    }) as unknown as typeof fetch;
+    const env = {
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+    } as AppEnv["Bindings"];
+
+    for (const providerThreadId of ["0", "0909", "topic", "9999999999999999"]) {
+      await expect(
+        dispatchPersonalTelegramReminder(env, {
+          project: "eliza-app",
+          chatId: "-100123456789",
+          providerThreadId,
+          text: "time to stretch",
+          idempotencyKey: `invalid-topic:${providerThreadId}`,
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        acceptance: "not_accepted",
+        message: "Telegram reminder topic is invalid",
+      });
+    }
+    expect(ledger.names).toHaveLength(0);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   test("runs the canonical turn and Telegram egress once without a Railway hop", async () => {

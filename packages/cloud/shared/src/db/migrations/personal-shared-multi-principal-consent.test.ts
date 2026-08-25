@@ -125,6 +125,14 @@ describe("0320 Personal Shared multi-principal consent", () => {
     );
     await expect(
       db.query(
+        `UPDATE personal_shared_group_participants
+            SET revoked_at = now()
+          WHERE binding_id = $1`,
+        [BINDING],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      db.query(
         `INSERT INTO personal_shared_group_participants
            (binding_id, platform_user_id, ordinal, linked_user_id, consented_at,
             consent_provenance)
@@ -138,6 +146,33 @@ describe("0320 Personal Shared multi-principal consent", () => {
       [BINDING],
     );
     expect(retained.rows).toEqual([{ linked_user_id: OWNER }]);
+
+    await db.query(
+      `UPDATE personal_shared_group_participants
+          SET linked_user_id = NULL,
+              consented_at = NULL,
+              consent_provenance = NULL,
+              revoked_at = now()
+        WHERE binding_id = $1`,
+      [BINDING],
+    );
+    const tombstone = await db.query<{
+      linked_user_id: string | null;
+      consented_at: Date | null;
+      consent_provenance: string | null;
+      revoked_at: Date | null;
+    }>(
+      "SELECT linked_user_id, consented_at, consent_provenance, revoked_at FROM personal_shared_group_participants WHERE binding_id = $1",
+      [BINDING],
+    );
+    expect(tombstone.rows).toEqual([
+      {
+        linked_user_id: null,
+        consented_at: null,
+        consent_provenance: null,
+        revoked_at: expect.any(Date),
+      },
+    ]);
   });
 
   test("binds challenge stage to its linked-account shape and cascades authority rows", async () => {

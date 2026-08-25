@@ -249,7 +249,8 @@ const sharedMessageSchema = z.union([
     providerThreadId: z
       .string()
       .trim()
-      .regex(/^[1-9]\d{0,19}$/)
+      .regex(/^[1-9]\d{0,15}$/)
+      .refine((value) => Number.isSafeInteger(Number(value)))
       .optional(),
   }),
   z.object({
@@ -307,14 +308,21 @@ interface GroupDeliveryAuthority {
 }
 
 const GROUP_CONTROL_DELIVERY = { kind: "control" as const };
+type GroupBindingDeliveryPurpose = "control" | "capability";
 
-function groupBindingDelivery(binding: {
-  id: string;
-  owner_user_id: string;
-  personal_agent_id: string;
-  authority_version: number;
-  consent_mode?: "single_owner" | "all_adults";
-}): { kind: "binding"; authority: GroupDeliveryAuthority } {
+function groupBindingDelivery(
+  binding: {
+    id: string;
+    owner_user_id: string;
+    personal_agent_id: string;
+    authority_version: number;
+    consent_mode?: "single_owner" | "all_adults";
+  },
+  purpose: GroupBindingDeliveryPurpose,
+): {
+  kind: "binding";
+  authority: GroupDeliveryAuthority;
+} {
   return {
     kind: "binding",
     authority: {
@@ -323,7 +331,7 @@ function groupBindingDelivery(binding: {
       personalAgentId: binding.personal_agent_id,
       version: binding.authority_version,
       ...(binding.consent_mode === "all_adults"
-        ? { requiresAllAdultsConsent: false }
+        ? { requiresAllAdultsConsent: purpose === "capability" }
         : {}),
     },
   };
@@ -793,7 +801,7 @@ app.post("/", async (c) => {
                 code: `group_join_${joined.status}`,
                 reply: `${groupJoinFailureReply(joined.status)} ${GROUP_RELAY_DISCLOSURE}`,
                 ...(consentStatus ? { consentStatus } : {}),
-                groupDelivery: groupBindingDelivery(binding),
+                groupDelivery: groupBindingDelivery(binding, "control"),
               },
             });
           }
@@ -812,7 +820,7 @@ app.post("/", async (c) => {
               consentStatus: joined.consent,
               groupDelivery:
                 currentBinding?.state === "active"
-                  ? groupBindingDelivery(currentBinding)
+                  ? groupBindingDelivery(currentBinding, "control")
                   : GROUP_CONTROL_DELIVERY,
             },
           });
@@ -897,7 +905,7 @@ app.post("/", async (c) => {
               },
               reply: `Eliza is linked to this group in all-adults consent mode. The configured ${claimed.binding.required_principal_count} adult principals must each say \`Eliza join\` here, authenticate from their own direct chat, then confirm here before Eliza capabilities are enabled. ${consentStatus ? groupConsentSummary(consentStatus) : "Consent remains restricted until the required participants join."} ${GROUP_RELAY_DISCLOSURE}`,
               ...(consentStatus ? { consentStatus } : {}),
-              groupDelivery: groupBindingDelivery(claimed.binding),
+              groupDelivery: groupBindingDelivery(claimed.binding, "control"),
             },
           });
         }
@@ -915,7 +923,7 @@ app.post("/", async (c) => {
             },
             reply:
               "Eliza is linked to this group. I respond to explicit mentions, commands, and replies by default. The owner can say `Eliza ambient on`, `Eliza ambient off`, or `Eliza leave`.",
-            groupDelivery: groupBindingDelivery(claimed.binding),
+            groupDelivery: groupBindingDelivery(claimed.binding, "control"),
           },
         });
       }
@@ -972,7 +980,7 @@ app.post("/", async (c) => {
               code: "group_join_unavailable",
               reply:
                 "Multi-principal group joining is temporarily unavailable. No join challenge was created.",
-              groupDelivery: groupBindingDelivery(binding),
+              groupDelivery: groupBindingDelivery(binding, "control"),
             },
           });
         }
@@ -1019,7 +1027,7 @@ app.post("/", async (c) => {
               code: `group_join_${issued.status}`,
               reply: `${groupJoinFailureReply(issued.status)} ${GROUP_RELAY_DISCLOSURE}`,
               ...(consentStatus ? { consentStatus } : {}),
-              groupDelivery: groupBindingDelivery(binding),
+              groupDelivery: groupBindingDelivery(binding, "control"),
             },
           });
         }
@@ -1029,7 +1037,7 @@ app.post("/", async (c) => {
             code: "group_join_authenticate_issued",
             reply: `For the exact participant who requested this join: open that participant's direct chat with Eliza and send \`Eliza join ${authenticateCode}\` within 10 minutes. Do not share the code. ${GROUP_RELAY_DISCLOSURE}`,
             ...(consentStatus ? { consentStatus } : {}),
-            groupDelivery: groupBindingDelivery(binding),
+            groupDelivery: groupBindingDelivery(binding, "control"),
           },
         });
       }
@@ -1052,7 +1060,7 @@ app.post("/", async (c) => {
               ? groupConsentSummary(consentStatus)
               : "Consent status is temporarily unavailable, so this group remains restricted.",
             ...(consentStatus ? { consentStatus } : {}),
-            groupDelivery: groupBindingDelivery(binding),
+            groupDelivery: groupBindingDelivery(binding, "control"),
           },
         });
       }
@@ -1072,7 +1080,7 @@ app.post("/", async (c) => {
             code: "group_owner_required",
             reply:
               "Only the owner who linked Eliza can change this group's response policy.",
-            groupDelivery: groupBindingDelivery(binding),
+            groupDelivery: groupBindingDelivery(binding, "control"),
           },
         });
       }
@@ -1102,7 +1110,7 @@ app.post("/", async (c) => {
               requestedPolicy === "ambient"
                 ? "Ambient replies are on. I may respond without a mention when I have something useful to add. Say `Eliza ambient off` to return to mention-only."
                 : "Mention-only is on. I will answer explicit mentions, commands, and replies to me.",
-            groupDelivery: groupBindingDelivery(updated),
+            groupDelivery: groupBindingDelivery(updated, "control"),
           },
         });
       }
@@ -1150,7 +1158,7 @@ app.post("/", async (c) => {
                   : selfRevoked.status === "owner_forbidden"
                     ? "The owner cannot self-revoke only their row. The owner may say `Eliza leave` to disconnect the whole group."
                     : "Eliza could not verify this participant's exact linked group identity, so no consent was revoked.",
-              groupDelivery: groupBindingDelivery(binding),
+              groupDelivery: groupBindingDelivery(binding, "control"),
             },
           });
         }
@@ -1169,7 +1177,7 @@ app.post("/", async (c) => {
             consentStatus: selfRevoked.consent,
             groupDelivery:
               currentBinding?.state === "active"
-                ? groupBindingDelivery(currentBinding)
+                ? groupBindingDelivery(currentBinding, "control")
                 : GROUP_CONTROL_DELIVERY,
           },
         });
@@ -1215,7 +1223,7 @@ app.post("/", async (c) => {
                 ? `${groupConsentSummary(consentStatus)} Each participant who still needs to link should say \`Eliza join\` here. ${GROUP_RELAY_DISCLOSURE}`
                 : `Consent status is unavailable, so Eliza capabilities remain restricted. Try \`Eliza consent status\` before continuing. ${GROUP_RELAY_DISCLOSURE}`,
               ...(consentStatus ? { consentStatus } : {}),
-              groupDelivery: groupBindingDelivery(binding),
+              groupDelivery: groupBindingDelivery(binding, "control"),
             },
           });
         }
@@ -1238,10 +1246,10 @@ app.post("/", async (c) => {
       accountResolution = "group-binding";
       groupConversationId = binding.conversation_id;
       groupPersonalAgentId = binding.personal_agent_id;
-      groupDeliveryAuthority = {
-        ...groupBindingDelivery(binding).authority,
-        ...(isAllAdultsBinding ? { requiresAllAdultsConsent: true } : {}),
-      };
+      groupDeliveryAuthority = groupBindingDelivery(
+        binding,
+        "capability",
+      ).authority;
       // Only the owner who linked Eliza may schedule proactive sends into the
       // group; other participants have no account or billing authority here.
       // The stored destination pins the binding generation of this turn so a
@@ -1255,6 +1263,10 @@ app.post("/", async (c) => {
           project: parsed.data.project,
           connectorAccountId: parsed.data.connectorAccountId,
           chatId: parsed.data.chatId,
+          ...(parsed.data.platform === "telegram" &&
+          parsed.data.providerThreadId
+            ? { providerThreadId: parsed.data.providerThreadId }
+            : {}),
           ownerLabel:
             parsed.data.actor.displayName ?? GROUP_OWNER_FALLBACK_LABEL,
           authority: groupDeliveryAuthority,
