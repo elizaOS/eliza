@@ -7,6 +7,7 @@
 
 import * as clack from "@clack/prompts";
 import { Command } from "commander";
+import pc from "picocolors";
 import {
   capabilityRouterConnect,
   create,
@@ -49,9 +50,19 @@ async function defaultAction(): Promise<void> {
     return;
   }
   if (choice === "plugins") {
-    await submitPluginToRegistry(".", {
-      base: "main",
-    });
+    // error-policy:J1 the interactive menu is a command boundary: every
+    // submitPluginToRegistry failure (missing registry, invalid project,
+    // reserved name) must render as the same clean guidance + exit code the
+    // `plugins submit` subcommand produces instead of an unhandled rejection.
+    try {
+      await submitPluginToRegistry(".", {
+        base: "main",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(pc.red(message));
+      process.exit(1);
+    }
     return;
   }
   info({});
