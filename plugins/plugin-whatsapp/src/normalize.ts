@@ -316,6 +316,18 @@ export function chunkWhatsAppText(text: string, opts: ChunkWhatsAppTextOpts = {}
 /**
  * Truncates text to a maximum length with ellipsis
  */
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) {
     return text;
@@ -323,7 +335,7 @@ export function truncateText(text: string, maxLength: number): string {
   if (maxLength <= 3) {
     return "...".slice(0, maxLength);
   }
-  return `${text.slice(0, maxLength - 3)}...`;
+  return `${truncateUtf16Safe(text, maxLength - 3)}...`;
 }
 
 /**

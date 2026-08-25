@@ -115,4 +115,20 @@ describe("text chunking", () => {
     expect(truncateText("short", 20)).toBe("short");
     expect(truncateText("abcdefghij", 5).length).toBeLessThanOrEqual(5);
   });
+
+  it("preserves UTF-16 surrogate pairs in truncateText", () => {
+    // "🔥" is 2 code units. 20 repeats = 40 units
+    const longEmoji = "🔥".repeat(20);
+    // maxLength 10 -> maxLength - 3 = 7 (odd). Should truncate to 6 units (3 emojis) + "..." = 9 chars
+    const result = truncateText(longEmoji, 10);
+    expect(result.endsWith("...")).toBe(true);
+    expect(result.length).toBe(9);
+    for (const char of result) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });
