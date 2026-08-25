@@ -69,7 +69,6 @@ export async function runCapabilityRouterConnect(
   if (payload instanceof Error) {
     return fail(options, payload.message);
   }
-
   const apiToken = options.apiToken ?? process.env.ELIZA_API_TOKEN;
   const headers: Record<string, string> = {
     accept: "application/json",
@@ -80,20 +79,23 @@ export async function runCapabilityRouterConnect(
   }
 
   let response: Response;
+  let text: string;
   try {
     response = await fetch(`${apiBase}/api/capability-router/connect`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
     });
+    // error-policy:J1 the body read is part of the same transport boundary:
+    // a reset mid-response must render as the command's clean failure line
+    // instead of an unhandled rejection.
+    text = await response.text();
   } catch (err) {
     return fail(
       options,
       `Failed to call agent API: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-
-  const text = await response.text();
   const data = parseJson(text);
   if (data instanceof Error && response.ok) {
     return fail(options, data.message);
@@ -131,7 +133,15 @@ export async function runCapabilityRouterConnect(
 export function capabilityRouterConnect(
   options: CapabilityRouterConnectOptions,
 ): void {
-  runCapabilityRouterConnect(options).then((code) => process.exit(code));
+  // error-policy:J1 the process boundary translates any residual rejection
+  // into the same red-message + exit-1 contract as an in-band failure.
+  runCapabilityRouterConnect(options).then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error(pc.red(err instanceof Error ? err.message : String(err)));
+      process.exit(1);
+    },
+  );
 }
 
 function buildConnectPayload(

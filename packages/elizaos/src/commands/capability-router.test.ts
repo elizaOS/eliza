@@ -135,6 +135,25 @@ describe("runCapabilityRouterConnect", () => {
     );
   });
 
+  it("treats a body-read failure as a clean command failure instead of an unhandled rejection", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockRejectedValue(new Error("terminated")),
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const code = await runCapabilityRouterConnect({
+      endpointUrl: "https://capability.example.test",
+    });
+
+    expect(code).toBe(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to call agent API: terminated"),
+    );
+  });
+
   it("can request an ephemeral direct connection", async () => {
     const fetchMock = mockFetch({
       success: true,
