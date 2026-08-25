@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+/** Verifies the computer-state provider's unavailable and crash-safe contracts. */
+
+import { describe, expect, it, vi } from "vitest";
+import { currentPlatform } from "../platform/helpers";
 import { computerStateProvider } from "./computer-state";
 
 function makeService(overrides: Record<string, unknown> = {}) {
@@ -20,17 +23,15 @@ function makeService(overrides: Record<string, unknown> = {}) {
       pendingCount: 1,
       pendingApprovals: [{ id: "a1", command: "rm -rf /tmp/x" }],
     }),
-    getDisplays: vi
-      .fn()
-      .mockReturnValue([
-        {
-          id: 1,
-          name: "DP-1",
-          bounds: { x: 0, y: 0, w: 1920, h: 1080 },
-          scaleFactor: 1,
-          primary: true,
-        },
-      ]),
+    getDisplays: vi.fn().mockReturnValue([
+      {
+        id: 1,
+        name: "DP-1",
+        bounds: { x: 0, y: 0, w: 1920, h: 1080 },
+        scaleFactor: 1,
+        primary: true,
+      },
+    ]),
     ...overrides,
   };
 }
@@ -57,7 +58,7 @@ describe("computerStateProvider", () => {
       {} as never,
       {} as never,
     );
-    expect(result.text).toContain('"platform": "linux"');
+    expect(result.text).toContain(`"platform": "${currentPlatform()}"`);
     expect(result.text).toContain('"screen": {');
     expect(result.text).toContain('"width": 1920');
     expect(result.text).toContain('"height": 1080');
@@ -66,7 +67,7 @@ describe("computerStateProvider", () => {
     expect(result.text).toContain('"pendingCount": 1');
     expect(result.text).toContain('"command": "rm -rf /tmp/x"');
     expect(result.values).toEqual({
-      platform: "linux",
+      platform: currentPlatform(),
       screenWidth: 1920,
       screenHeight: 1080,
       displayCount: 1,
