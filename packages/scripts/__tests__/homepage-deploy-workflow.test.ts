@@ -64,8 +64,11 @@ describe("homepage deployment workflow", () => {
   });
 
   it("builds homepage changes into the single eliza-app artifact", () => {
-    expect(appPackage.scripts?.["prebuild:web"]).toBe("bun run prebuild");
-    expect(workflow).toContain('      - "packages/homepage/**"');
+    expect(appPackage.scripts?.["prebuild:web"]).toBe(
+      "bun run --cwd ../cloud/sdk build && bun run prebuild",
+    );
+    expect(qualityWorkflow).toContain("packages/homepage/");
+    expect(qualityWorkflow).toContain("Build the only deployable frontend");
     expect(workflow).toContain("Build consolidated frontend artifact");
     expect(workflow).toContain("Upload consolidated frontend artifact");
     expect(releaseWorkflow).toContain("Build consolidated frontend artifact");
