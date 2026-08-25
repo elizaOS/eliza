@@ -168,6 +168,10 @@ export class RemoteHostsRepository {
         .for("update");
       if (!current) return { kind: "not_found" };
       if (current.status !== "active") return { kind: "revoked" };
+      // connection_mode is only guaranteed to be a RemoteConnectionMode for
+      // active rows (migration 0313 + schema check); revoked legacy rows may
+      // retain other values for audit, so never narrow the read type without
+      // filtering on status.
       if (
         current.device_id !== input.deviceId ||
         current.display_name !== input.displayName ||

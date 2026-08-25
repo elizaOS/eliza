@@ -5,7 +5,17 @@
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
@@ -49,6 +59,15 @@ export const remoteHosts = pgTable(
       table.runtime_key_id,
     ),
     statusIdx: index("remote_hosts_status_idx").on(table.status),
+    // Mirrors migration 0313: an active remote host must declare a
+    // REMOTE_CONNECTION_MODES member; revoked rows may retain legacy values
+    // for audit. The closed TS allowlist and the database constraint stay
+    // honest about each other. Widening requires a lane that owns
+    // schema+migration.
+    connectionModeCheck: check(
+      "remote_hosts_connection_mode_check",
+      sql`${table.connection_mode} = 'relay' OR ${table.status} = 'revoked'`,
+    ),
   }),
 );
 
