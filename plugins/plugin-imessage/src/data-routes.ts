@@ -259,13 +259,41 @@ async function handleSendMessage(
   const to = body.to?.trim() || "";
   const chatId = body.chatId?.trim() || "";
   const text = body.text?.trim() || "";
+
+  // Validate the untrusted body once at the boundary (#23104 review blocker
+  // 2): a requested part that is non-string or blank makes the whole request
+  // invalid BEFORE any external send — mixed input must never be silently
+  // normalized down to its valid subset.
+  if (body.mediaUrl !== undefined && typeof body.mediaUrl !== "string") {
+    res
+      .status(400)
+      .json(buildSetupError("bad_request", "mediaUrl must be a non-empty string when provided"));
+    return;
+  }
+  if (body.mediaUrls !== undefined && !Array.isArray(body.mediaUrls)) {
+    res
+      .status(400)
+      .json(buildSetupError("bad_request", "mediaUrls must be an array of non-empty strings"));
+    return;
+  }
+  const hasBlankMediaUrl = body.mediaUrl !== undefined && body.mediaUrl.trim() === "";
+  const invalidMediaUrlEntry = Array.isArray(body.mediaUrls)
+    ? body.mediaUrls.find((url) => typeof url !== "string" || url.trim() === "")
+    : undefined;
+  if (hasBlankMediaUrl || invalidMediaUrlEntry !== undefined) {
+    res
+      .status(400)
+      .json(
+        buildSetupError(
+          "bad_request",
+          "mediaUrl/mediaUrls entries must be non-empty strings; blank or non-string requested parts are rejected instead of dropped"
+        )
+      );
+    return;
+  }
   const mediaUrls = [
-    ...(body.mediaUrl?.trim() ? [body.mediaUrl.trim()] : []),
-    ...(Array.isArray(body.mediaUrls)
-      ? body.mediaUrls
-          .map((url) => (typeof url === "string" ? url.trim() : ""))
-          .filter((url) => url.length > 0)
-      : []),
+    ...(body.mediaUrl ? [body.mediaUrl.trim()] : []),
+    ...(body.mediaUrls ?? []).map((url) => url.trim()),
   ];
 
   if (!to && !chatId) {

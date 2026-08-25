@@ -72,7 +72,7 @@ function createService(overrides?: {
 describe("iMessage multi-attachment delivery", () => {
   it("sends every requested attachment, not only the first", async () => {
     const h = createService();
-    const result = await h.service.sendMessage("+15550001111", "two files", {
+    const result = await h.service.sendMessage("+155****1111", "two files", {
       mediaUrls: ["https://x/first.png", "https://x/second.png"],
     });
 
@@ -98,7 +98,7 @@ describe("iMessage multi-attachment delivery", () => {
       },
     });
 
-    const result = await h.service.sendMessage("+15550001111", "caption", {
+    const result = await h.service.sendMessage("+155****1111", "caption", {
       // good resolves FIRST, then bad rejects: the already-staged good file
       // must be cleaned up by the fail-fast path rather than leaked.
       mediaUrls: ["https://x/good.png", "https://x/bad.png"],
@@ -125,7 +125,7 @@ describe("iMessage multi-attachment delivery", () => {
       },
     });
 
-    const result = await h.service.sendMessage("+15550001111", "caption", {
+    const result = await h.service.sendMessage("+155****1111", "caption", {
       mediaUrls: ["https://x/a.png", "https://x/b.png"],
     });
 
@@ -146,7 +146,7 @@ describe("iMessage multi-attachment delivery", () => {
       }),
     });
 
-    const result = await h.service.sendMessage("+15550001111", "caption", {
+    const result = await h.service.sendMessage("+155****1111", "caption", {
       mediaUrls: ["https://x/a.png"],
     });
 
@@ -166,7 +166,7 @@ describe("iMessage multi-attachment delivery", () => {
       },
     });
 
-    const result = await h.service.sendMessage("+15550001111", "caption", {
+    const result = await h.service.sendMessage("+155****1111", "caption", {
       mediaUrls: ["https://x/a.png", "https://x/b.png", "https://x/c.png"],
     });
 
@@ -178,12 +178,41 @@ describe("iMessage multi-attachment delivery", () => {
 
   it("keeps single-attachment sends working (regression of the common path)", async () => {
     const h = createService();
-    const result = await h.service.sendMessage("+15550001111", "one file", {
+    const result = await h.service.sendMessage("+155****1111", "one file", {
       mediaUrls: ["https://x/only.png"],
     });
 
     expect(result.success).toBe(true);
     expect(h.sendAttachmentCalls).toHaveLength(1);
     expect(h.cleanedPaths).toHaveLength(1);
+  });
+
+  it("stamps every delivered part with a per-send unique local-effect marker (#23104 review blocker 3)", async () => {
+    // Two sends, each failing partway so delivered.effectStamps is returned.
+    // Stamps must be unique within a send AND across sends: AppleScript
+    // returns no provider ids, so a repeatable counter like "text-1" would
+    // masquerade as reconcilable provider evidence.
+    const failAfterText = {
+      sendResolvedAttachment: async () => ({ success: false, error: "boom" }),
+    };
+    const first = createService(failAfterText);
+    const second = createService(failAfterText);
+    const one = await first.service.sendMessage("+155****1111", "first send", {
+      mediaUrls: ["https://x/a.png"],
+    });
+    const two = await second.service.sendMessage("+155****1111", "second send", {
+      mediaUrls: ["https://x/b.png"],
+    });
+
+    for (const result of [one, two]) {
+      expect(result.success).toBe(false);
+      expect(result.delivered?.effectStamps).toHaveLength(1);
+      for (const stamp of result.delivered?.effectStamps ?? []) {
+        expect(stamp).toMatch(/^imessage-effect:[0-9a-f-]{36}:(text|attachment):\d+$/);
+      }
+    }
+    const oneStamps = one.delivered?.effectStamps ?? [];
+    const twoStamps = two.delivered?.effectStamps ?? [];
+    expect(new Set([...oneStamps, ...twoStamps]).size).toBe(oneStamps.length + twoStamps.length);
   });
 });

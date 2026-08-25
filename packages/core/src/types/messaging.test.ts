@@ -19,6 +19,66 @@ const receipt = (
 	persistence: { status: "persisted", memoryIds: [] },
 });
 
+describe("send-handler receipt evidence kind", () => {
+	it("accepts local-effect receipts so transports without provider ids stay valid evidence", () => {
+		const localEffect: SendHandlerReceipt = {
+			providerMessageIds: ["imessage-effect:abcd1234:text:1"],
+			acceptedAt: 1_780_000_000_000,
+			persistence: {
+				status: "not_attempted",
+				reason: "AppleScript sends return no provider message ids.",
+			},
+			evidenceKind: "local-effect",
+		};
+		const outcome = {
+			kind: "delivered",
+			receipt: localEffect,
+			memories: [] as Memory[],
+		} as const;
+		const disposition = inspectSendHandlerResult(outcome);
+		expect(disposition.kind).toBe("delivered");
+		// The additive label survives the structural inspection and never
+		// invalidates the receipt (#23104 review blocker 3).
+		if (disposition.kind === "delivered" && disposition.receipt) {
+			expect(disposition.receipt.evidenceKind).toBe("local-effect");
+		}
+		expect(isSendHandlerOutcome(outcome)).toBe(true);
+	});
+
+	it("keeps provider the implicit default for unlabeled receipts", () => {
+		const outcome = {
+			kind: "delivered",
+			receipt: receipt(),
+			memories: [] as Memory[],
+		} as const;
+		const disposition = inspectSendHandlerResult(outcome);
+		expect(disposition.kind).toBe("delivered");
+		expect(
+			disposition.kind === "delivered"
+				? disposition.receipt?.evidenceKind
+				: undefined,
+		).toBeUndefined();
+	});
+
+	it("rejects receipts carrying an unrecognized evidenceKind at the structural boundary", () => {
+		const outcome = {
+			kind: "delivered",
+			receipt: {
+				...receipt(),
+				evidenceKind: "anything",
+			},
+			memories: [] as Memory[],
+			// Intentionally outside the outcome union: an unknown evidence kind
+			// must be rejected, which requires bypassing the union's own check.
+		} as unknown as Parameters<typeof inspectSendHandlerResult>[0];
+		// The discriminator decides whether ids are provider-reconcilable; an
+		// unknown value must invalidate the receipt instead of silently
+		// defaulting to "provider".
+		expect(isSendHandlerOutcome(outcome)).toBe(false);
+		expect(inspectSendHandlerResult(outcome).kind).not.toBe("delivered");
+	});
+});
+
 describe("send-handler delivery evidence", () => {
 	it("treats legacy void and malformed structural outcomes as unknown", () => {
 		expect(inspectSendHandlerResult(undefined)).toMatchObject({
