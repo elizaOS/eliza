@@ -121,8 +121,10 @@ function truncateLabel(value: string, maxLength = 80): string {
   // surrogate pair — otherwise the label ends in a lone high surrogate that
   // renders as U+FFFD in the documents view.
   let end = maxLength - 1;
-  const lastKept = value.charCodeAt(end - 1);
-  if (lastKept >= 0xd800 && lastKept <= 0xdbff) end -= 1;
+  if (end > 0) {
+    const lastKept = value.charCodeAt(end - 1);
+    if (lastKept >= 0xd800 && lastKept <= 0xdbff) end -= 1;
+  }
   return `${value.slice(0, end).trimEnd()}...`;
 }
 

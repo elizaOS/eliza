@@ -83,4 +83,10 @@ describe("getDocumentTitleFromMetadata — derived-title truncation", () => {
     expect(title.startsWith("😀")).toBe(true);
     expect(title.endsWith("...")).toBe(true);
   });
+
+  it("handles short input strings safely", () => {
+    const line = "Short title";
+    const title = getDocumentTitleFromMetadata(undefined, line);
+    expect(title).toBe("Short title");
+  });
 });
