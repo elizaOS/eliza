@@ -83,4 +83,47 @@ describe("BrowserBridgeAdapter", () => {
       }),
     ).resolves.toEqual([]);
   });
+
+  it("preserves UTF-16 surrogate pairs when summarizing long page text", async () => {
+    // "🔥" (2 code units * 260 = 520 units) -> > 500
+    const longEmoji = "🔥".repeat(260);
+    const page = {
+      id: "page-emoji",
+      agentId: "agent-1",
+      browser: "chrome",
+      profileId: "default",
+      windowId: "window-1",
+      tabId: "tab-1",
+      url: "https://example.com/emoji",
+      title: "Emoji Page",
+      selectionText: null,
+      mainText: longEmoji,
+      headings: [],
+      links: [],
+      forms: [],
+      capturedAt: "2026-06-02T12:00:00.000Z",
+      metadata: {},
+    };
+    const routeService = {
+      getCurrentBrowserPage: vi.fn(async () => page),
+    };
+    const runtime = {
+      agentId: "agent-1",
+      getService: vi.fn(() => routeService),
+    } as unknown as IAgentRuntime;
+    const adapter = new BrowserBridgeAdapter();
+
+    const messages = await adapter.listMessages(runtime, { limit: 1 });
+    expect(messages).toHaveLength(1);
+    const snippet = messages[0]?.snippet;
+    expect(snippet?.endsWith("...")).toBe(true);
+    expect(snippet?.length).toBe(499);
+    for (const char of snippet!) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

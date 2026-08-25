@@ -43,13 +43,25 @@ function browserPageMessageId(page: BrowserBridgePageContext): string {
   ].join(":");
 }
 
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function summarizePage(page: BrowserBridgePageContext): string {
   const text =
     page.selectionText?.trim() ||
     page.mainText?.trim() ||
     page.title.trim() ||
     page.url;
-  return text.length > 500 ? `${text.slice(0, 497)}...` : text;
+  return text.length > 500 ? `${truncateUtf16Safe(text, 497)}...` : text;
 }
 
 function pageToMessageRef(page: BrowserBridgePageContext): MessageRef {
