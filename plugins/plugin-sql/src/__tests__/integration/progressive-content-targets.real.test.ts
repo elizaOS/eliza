@@ -14,6 +14,11 @@ import { createProgressiveSqlTargetFactory } from "../../testing/progressive-con
 
 const roots: string[] = [];
 
+function collectGarbage(): void {
+  if (typeof Bun !== "undefined") Bun.gc(true);
+  else globalThis.gc?.();
+}
+
 afterEach(async () => {
   for (const root of roots.splice(0).reverse()) await fs.rm(root, { recursive: true });
 });
@@ -120,7 +125,7 @@ describe("PGlite progressive-content target factories", () => {
         },
       },
     });
-    Bun.gc(true);
+    collectGarbage();
     const rssBefore = process.memoryUsage().rss;
     let generation = (await target.inspect()).resolverGeneration;
     for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -136,7 +141,7 @@ describe("PGlite progressive-content target factories", () => {
       });
       expect(Buffer.from(page.bytes).toString("utf8")).toBe("x");
     }
-    Bun.gc(true);
+    collectGarbage();
     expect(process.memoryUsage().rss - rssBefore).toBeLessThan(32 * 1024 * 1024);
     await target.cleanup();
     expect(await fs.readdir(root)).toEqual([]);
