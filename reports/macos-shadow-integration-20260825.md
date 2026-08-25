@@ -158,6 +158,40 @@ present at this receipt.
 No native bundle was built or launched, no final port was bound, and the
 shadow branch was not pushed.
 
+## iOS e5b4 current-base refresh
+
+PR #27216 advanced from
+`b204194b8a1d720232d854582843d652aefb3d6d` to exact pushed head
+`e5b4d076f4f064163ac45a1c14c17f0f5f894fb6`. The new head is a merge whose
+parents are that prior iOS head and exact `origin/develop`
+`6941532900d691b674ed0c0462985f1faab360d7`. Its only first-parent delta is
+the two malformed-Unicode reference-echo files already present in this
+shadow. Both the rehearsed merge tree and the executed merge were therefore
+byte-neutral.
+
+The refreshed pre-receipt source composite is
+`b26c0d3110faa6c8ed669fdf821ec7074ffae3b2`, tree
+`0e7abf7f9f3bddb792e385f95197758d9c2640ef`. Exact iOS head `e5b4d076...`,
+current develop `69415329...`, and Devices head
+`0425fc53469cbc2cd68f331f19a4aa54c4aea006` are ancestors. Because the merge
+changed no tree content, the existing Devices-authoritative runtime-management
+security, confirmation, and effect-binding resolutions remain byte-for-byte
+unchanged.
+
+Focused proof after the exact iOS-head merge:
+
+- App Control runtime-management contracts: 53/53.
+- App Core iOS transport/runtime-bridge contracts: 48/48.
+- Agent runtime-management proposal/route contracts: 23/23.
+- App Core source-package build: passed.
+- App Core package dry run: 1,480 files, 12,864,633 bytes unpacked,
+  5,144,541-byte archive estimate.
+- `git diff --check`: passed.
+- The merge diff against its first parent is empty.
+
+No native bundle was built or launched, no final port was bound, and the
+shadow branch was not pushed.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
