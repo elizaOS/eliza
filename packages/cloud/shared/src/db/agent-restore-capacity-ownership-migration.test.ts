@@ -79,6 +79,7 @@ const ABA_NODE_HISTORY_ID = "50000000-0000-4000-8000-000000000005";
 const ABA_NODE_RECORD_ID = "60000000-0000-4000-8000-000000000005";
 const ABA_NODE_INCARNATION = "70000000-0000-4000-8000-000000000005";
 const AGENT_ID = "80000000-0000-4000-8000-000000000001";
+const PREVIOUS_ACTIVATION_GENERATION = "90000000-0000-4000-8000-000000000000";
 const ACTIVATION_GENERATION = "90000000-0000-4000-8000-000000000001";
 const NEXT_ACTIVATION_GENERATION = "90000000-0000-4000-8000-000000000002";
 const LIFECYCLE_JOB_ID = "a0000000-0000-4000-8000-000000000001";
@@ -178,6 +179,7 @@ async function prerequisiteDatabase(
       deletion_attempt_id uuid,
       deletion_allocation_counted boolean,
       activation_generation uuid,
+      activation_previous_generation uuid,
       lifecycle_revision bigint NOT NULL,
       lifecycle_job_id uuid,
       lifecycle_execution_generation uuid,
@@ -250,11 +252,12 @@ async function prerequisiteDatabase(
         '${PREVIOUS_NODE_HISTORY_ID}', 1);
     INSERT INTO agent_sandboxes (
       id, organization_id, sandbox_id, node_id, container_name, status,
-      activation_generation, lifecycle_revision, lifecycle_job_id,
+      activation_generation, activation_previous_generation, lifecycle_revision, lifecycle_job_id,
       lifecycle_execution_generation
     ) VALUES (
       '${AGENT_ID}', '${ORGANIZATION_ID}', 'old-sandbox', 'old-node', 'old-container', 'running',
-      '${ACTIVATION_GENERATION}', ${ATTEMPT_LIFECYCLE_REVISION}, '${LIFECYCLE_JOB_ID}',
+      '${ACTIVATION_GENERATION}', '${PREVIOUS_ACTIVATION_GENERATION}',
+      ${ATTEMPT_LIFECYCLE_REVISION}, '${LIFECYCLE_JOB_ID}',
       '${LIFECYCLE_EXECUTION_GENERATION}'
     );
     INSERT INTO agent_activation_publications (
@@ -262,7 +265,8 @@ async function prerequisiteDatabase(
       node_history_id, docker_node_record_id, node_id, node_incarnation
     ) VALUES (
       'e0000000-0000-4000-8000-000000000001', '${ORGANIZATION_ID}', '${AGENT_ID}',
-      '${ACTIVATION_GENERATION}', '${PREVIOUS_CONTAINER_ID}', '${PREVIOUS_NODE_HISTORY_ID}',
+      '${PREVIOUS_ACTIVATION_GENERATION}', '${PREVIOUS_CONTAINER_ID}',
+      '${PREVIOUS_NODE_HISTORY_ID}',
       '${PREVIOUS_NODE_RECORD_ID}', '${PREVIOUS_NODE_ID}', '${PREVIOUS_NODE_INCARNATION}'
     );
   `);
@@ -637,11 +641,17 @@ async function commitExactHandoff(db: PGlite): Promise<void> {
   await db.exec("COMMIT");
 }
 
-async function prepareProviderSucceededReceiver(db: PGlite): Promise<void> {
-  await insertReceiver(db, { restoreAttemptId: null });
+async function prepareProviderSucceededReceiver(
+  db: PGlite,
+  input: { candidateFence?: boolean; previousContainerId?: string } = {},
+): Promise<void> {
+  await insertReceiver(db, {
+    previousContainerId: input.previousContainerId,
+    restoreAttemptId: null,
+  });
   await reserveReceiver(db);
   await db.exec("UPDATE agent_sandbox_replacement_attempts SET state = 'provider_succeeded'");
-  await recordCandidateCleanup(db);
+  if (input.candidateFence !== false) await recordCandidateCleanup(db);
 }
 
 afterEach(async () => {
@@ -1316,6 +1326,86 @@ describe("0314 restore capacity ownership", () => {
     ]);
   });
 
+  test("adopts directly from the exact ledger without a mirrored candidate fence", async () => {
+    const exactDb = await database();
+    await prepareProviderSucceededReceiver(exactDb, { candidateFence: false });
+    const emptyFence = await exactDb.query<{
+      replacement_cleanup_attempt_id: string | null;
+      replacement_cleanup_sandbox_id: string | null;
+    }>(`SELECT replacement_cleanup_attempt_id, replacement_cleanup_sandbox_id
+      FROM agent_sandboxes`);
+    expect(emptyFence.rows).toEqual([
+      {
+        replacement_cleanup_attempt_id: null,
+        replacement_cleanup_sandbox_id: null,
+      },
+    ]);
+
+    await exactDb.exec("BEGIN");
+    await commitCanonicalSandbox(exactDb);
+    await handoffReceiverLifecycle(exactDb);
+    await exactDb.exec("COMMIT");
+    const committed = await exactDb.query<{
+      capacity_state: string;
+      replacement_cleanup_attempt_id: string;
+      replacement_cleanup_container_id: string;
+      replacement_cleanup_sandbox_id: string;
+      sandbox_id: string;
+      state: string;
+    }>(`SELECT attempt.state, attempt.capacity_state, sandbox.sandbox_id,
+        sandbox.replacement_cleanup_sandbox_id,
+        sandbox.replacement_cleanup_attempt_id,
+        sandbox.replacement_cleanup_container_id
+      FROM agent_sandbox_replacement_attempts AS attempt
+      JOIN agent_sandboxes AS sandbox ON sandbox.id = attempt.agent_id`);
+    expect(committed.rows).toEqual([
+      {
+        capacity_state: "handed_off",
+        replacement_cleanup_attempt_id: RECEIVER_ID,
+        replacement_cleanup_container_id: PREVIOUS_CONTAINER_ID,
+        replacement_cleanup_sandbox_id: "old-sandbox",
+        sandbox_id: LOCATOR_SANDBOX_ID,
+        state: "lifecycle_committed",
+      },
+    ]);
+
+    const ledgerOnlyMismatches: Array<{
+      canonical: Parameters<typeof commitCanonicalSandbox>[1];
+      previousContainerId?: string;
+    }> = [
+      { canonical: { cleanupAttemptId: null } },
+      { canonical: { cleanupContainerId: "a".repeat(64) } },
+      { canonical: { cleanupSandboxId: "forged-old-sandbox" } },
+      { canonical: { lifecycleRevision: ATTEMPT_LIFECYCLE_REVISION + 2 } },
+      { canonical: { sandboxId: "forged-candidate" } },
+      { canonical: {}, previousContainerId: "a".repeat(64) },
+    ];
+    for (const mismatch of ledgerOnlyMismatches) {
+      const db = await database();
+      await prepareProviderSucceededReceiver(db, {
+        candidateFence: false,
+        previousContainerId: mismatch.previousContainerId,
+      });
+      await expect(
+        (async () => {
+          await db.exec("BEGIN");
+          await commitCanonicalSandbox(db, mismatch.canonical);
+          await handoffReceiverLifecycle(db);
+          await db.exec("COMMIT");
+        })(),
+      ).rejects.toThrow(
+        /protocol does not match|exact canonical.*placement|fresh .*previous|durable attempt authority|replacement_cleanup_(?:occurrence|locator)_check/,
+      );
+    }
+
+    const unresolvedDb = await database();
+    await insertReceiver(unresolvedDb, { restoreAttemptId: null });
+    await reserveReceiver(unresolvedDb);
+    await unresolvedDb.exec("BEGIN");
+    await expect(commitCanonicalSandbox(unresolvedDb)).rejects.toThrow(/protocol does not match/);
+    await unresolvedDb.exec("ROLLBACK");
+  });
+
   test("rejects tenant-identity toggles used to hide placement drift", async () => {
     for (const [identityColumn, temporaryIdentity, originalIdentity] of [
       ["id", SECOND_RECEIVER_ID, AGENT_ID],
@@ -1532,13 +1622,14 @@ describe("0314 restore capacity ownership", () => {
         '${OTHER_NODE_HISTORY_ID}', 1
       )
     `);
-    await replacementDb.exec(`UPDATE agent_sandboxes
-      SET activation_generation = '${NEXT_ACTIVATION_GENERATION}'::uuid`);
+    await replacementDb.exec(`UPDATE agent_sandboxes SET
+      activation_previous_generation = '${ACTIVATION_GENERATION}'::uuid,
+      activation_generation = '${NEXT_ACTIVATION_GENERATION}'::uuid`);
     await replacementDb.exec(`INSERT INTO agent_activation_publications (
       id, organization_id, agent_id, activation_generation, container_id,
       node_history_id, docker_node_record_id, node_id, node_incarnation
     ) VALUES ('e0000000-0000-4000-8000-000000000002', '${ORGANIZATION_ID}',
-      '${AGENT_ID}', '${NEXT_ACTIVATION_GENERATION}', '${LOCATOR_CONTAINER_ID}',
+      '${AGENT_ID}', '${ACTIVATION_GENERATION}', '${LOCATOR_CONTAINER_ID}',
       '${NODE_HISTORY_ID}', '${NODE_RECORD_ID}', '${NODE_ID}', '${NODE_INCARNATION}')`);
     await insertReceiver(replacementDb, {
       activationGeneration: NEXT_ACTIVATION_GENERATION,

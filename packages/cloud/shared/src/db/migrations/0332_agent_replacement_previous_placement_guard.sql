@@ -40,7 +40,7 @@ BEGIN
   JOIN "agent_activation_publications" AS publication
     ON publication."organization_id" = attempt."organization_id"
     AND publication."agent_id" = attempt."agent_id"
-    AND publication."activation_generation" = attempt."activation_generation"
+    AND publication."activation_generation" = OLD."activation_previous_generation"
     AND ROW(publication."container_id", publication."node_id",
       publication."docker_node_record_id", publication."node_incarnation",
       publication."node_history_id") IS NOT DISTINCT FROM ROW(attempt."previous_container_id",
@@ -59,6 +59,9 @@ BEGIN
     AND attempt."lifecycle_revision" = OLD."lifecycle_revision"
     AND attempt."activation_generation" = OLD."activation_generation"
     AND attempt."activation_generation" = current_sandbox."activation_generation"
+    AND OLD."activation_previous_generation" IS NOT NULL
+    AND current_sandbox."activation_previous_generation"
+      IS NOT DISTINCT FROM OLD."activation_previous_generation"
     AND attempt."lifecycle_job_id" IS NOT DISTINCT FROM OLD."lifecycle_job_id"
     AND attempt."lifecycle_execution_generation"
       IS NOT DISTINCT FROM OLD."lifecycle_execution_generation"

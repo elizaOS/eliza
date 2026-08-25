@@ -61,6 +61,84 @@ BEGIN
               AND attempt."agent_id" = NEW."id"
               AND attempt."state" = 'provider_succeeded'
               AND attempt."capacity_state" = 'reserved'))
+        OR (NEW."replacement_cleanup_attempt_id" IS NOT NULL
+          AND num_nonnulls(
+            OLD."replacement_cleanup_sandbox_id",
+            OLD."replacement_cleanup_node_id",
+            OLD."replacement_cleanup_node_record_id",
+            OLD."replacement_cleanup_node_incarnation",
+            OLD."replacement_cleanup_node_history_id",
+            OLD."replacement_cleanup_node_hostname",
+            OLD."replacement_cleanup_node_ssh_port",
+            OLD."replacement_cleanup_node_ssh_user",
+            OLD."replacement_cleanup_node_host_key_fingerprint",
+            OLD."replacement_cleanup_secret_cleanup_version",
+            OLD."replacement_cleanup_container_name",
+            OLD."replacement_cleanup_attempt_id",
+            OLD."replacement_cleanup_container_id",
+            OLD."replacement_cleanup_vpn_node_id",
+            OLD."replacement_cleanup_vpn_node_name",
+            OLD."replacement_cleanup_preserved_vpn_node_id",
+            OLD."replacement_cleanup_vpn_registration_started_at",
+            OLD."replacement_cleanup_allocation_counted",
+            OLD."replacement_cleanup_created_at") = 0
+          AND OLD."activation_previous_generation" IS NOT NULL
+          AND NEW."activation_previous_generation"
+            IS NOT DISTINCT FROM OLD."activation_previous_generation"
+          AND EXISTS (
+            SELECT 1
+            FROM "agent_sandbox_replacement_attempts" AS attempt
+            JOIN "agent_activation_publications" AS publication
+              ON publication."organization_id" = attempt."organization_id"
+              AND publication."agent_id" = attempt."agent_id"
+              AND publication."activation_generation"
+                = OLD."activation_previous_generation"
+              AND ROW(publication."container_id", publication."node_id",
+                publication."docker_node_record_id", publication."node_incarnation",
+                publication."node_history_id") IS NOT DISTINCT FROM ROW(
+                attempt."previous_container_id", attempt."previous_node_id",
+                attempt."previous_node_record_id", attempt."previous_node_incarnation",
+                attempt."previous_node_history_id")
+            WHERE attempt."id" = NEW."replacement_cleanup_attempt_id"
+              AND attempt."organization_id" = NEW."organization_id"
+              AND attempt."agent_id" = NEW."id"
+              AND attempt."state" = 'provider_succeeded'
+              AND attempt."capacity_state" = 'reserved'
+              AND attempt."previous_placement_absent" IS FALSE
+              AND attempt."lifecycle_revision" = OLD."lifecycle_revision"
+              AND NEW."lifecycle_revision" = attempt."lifecycle_revision" + 1
+              AND attempt."activation_generation" = OLD."activation_generation"
+              AND NEW."activation_generation" = attempt."activation_generation"
+              AND attempt."lifecycle_job_id"
+                IS NOT DISTINCT FROM OLD."lifecycle_job_id"
+              AND attempt."lifecycle_job_id"
+                IS NOT DISTINCT FROM NEW."lifecycle_job_id"
+              AND attempt."lifecycle_execution_generation"
+                IS NOT DISTINCT FROM OLD."lifecycle_execution_generation"
+              AND attempt."lifecycle_execution_generation"
+                IS NOT DISTINCT FROM NEW."lifecycle_execution_generation"
+              AND ROW(attempt."locator_sandbox_id", attempt."locator_node_id",
+                attempt."locator_container_name") IS NOT DISTINCT FROM ROW(
+                NEW."sandbox_id", NEW."node_id", NEW."container_name")
+              AND ROW(attempt."previous_sandbox_id", attempt."previous_node_id",
+                attempt."previous_container_name", attempt."previous_container_id",
+                attempt."previous_allocation_counted", attempt."previous_node_record_id",
+                attempt."previous_node_incarnation", attempt."previous_node_history_id",
+                attempt."previous_node_hostname", attempt."previous_node_ssh_port",
+                attempt."previous_node_ssh_user",
+                attempt."previous_node_host_key_fingerprint",
+                attempt."locator_previous_vpn_node_id") IS NOT DISTINCT FROM ROW(
+                OLD."sandbox_id", OLD."node_id", OLD."container_name",
+                NEW."replacement_cleanup_container_id",
+                NEW."replacement_cleanup_allocation_counted",
+                NEW."replacement_cleanup_node_record_id",
+                NEW."replacement_cleanup_node_incarnation",
+                NEW."replacement_cleanup_node_history_id",
+                NEW."replacement_cleanup_node_hostname",
+                NEW."replacement_cleanup_node_ssh_port",
+                NEW."replacement_cleanup_node_ssh_user",
+                NEW."replacement_cleanup_node_host_key_fingerprint",
+                NEW."replacement_cleanup_vpn_node_id")))
       );
     IF (NEW."replacement_cleanup_secret_cleanup_version" IS NULL) <> primary_cutover THEN
       RAISE EXCEPTION 'replacement cleanup protocol does not match cutover state'
