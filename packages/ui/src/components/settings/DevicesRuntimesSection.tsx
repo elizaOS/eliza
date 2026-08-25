@@ -166,7 +166,7 @@ function DesktopTargetPanel({
           {!target.enrolled ? (
             <Button
               type="button"
-              className="min-h-11"
+              size="touch"
               disabled={busy || !onEnroll}
               onClick={() => void onEnroll?.(managedNetwork)}
             >
@@ -177,7 +177,7 @@ function DesktopTargetPanel({
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-11"
+                size="touch"
                 disabled={busy || !onSetRunning}
                 onClick={() => void onSetRunning?.(!target.running)}
               >
@@ -196,8 +196,8 @@ function DesktopTargetPanel({
               {!confirmingRevoke ? (
                 <Button
                   type="button"
-                  variant="ghost"
-                  className="min-h-11 text-destructive"
+                  variant="destructive"
+                  size="touch"
                   disabled={busy || !onRevoke}
                   onClick={() => setConfirmingRevoke(true)}
                 >
@@ -241,7 +241,7 @@ function DesktopTargetPanel({
             <Button
               type="button"
               variant="ghost"
-              className="min-h-11"
+              size="touch"
               onClick={() => setConfirmingRevoke(false)}
             >
               Cancel
@@ -249,7 +249,7 @@ function DesktopTargetPanel({
             <Button
               type="button"
               variant="destructive"
-              className="min-h-11"
+              size="touch"
               disabled={busy || !onRevoke}
               onClick={() => {
                 setConfirmingRevoke(false);
@@ -413,9 +413,8 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
           </code>
           <Button
             type="button"
-            size="sm"
+            size="touch"
             variant="outline"
-            className="min-h-11"
             onClick={() =>
               void navigator.clipboard.writeText(pairing.sessionId)
             }
@@ -545,9 +544,8 @@ function RuntimeCard({
         {!target.selected && target.status === "connected" ? (
           <Button
             type="button"
-            size="sm"
+            size="touch"
             variant="outline"
-            className="min-h-11"
             disabled={busy}
             onClick={onSelect}
           >
@@ -592,9 +590,8 @@ function RuntimeCard({
         {target.status === "offline" || target.status === "error" ? (
           <Button
             type="button"
-            size="sm"
+            size="touch"
             variant="outline"
-            className="min-h-11"
             disabled={busy}
             onClick={onRetry}
           >
@@ -604,9 +601,8 @@ function RuntimeCard({
         {target.canRevoke && !confirming ? (
           <Button
             type="button"
-            size="sm"
+            size="touch"
             variant="ghost"
-            className="min-h-11"
             disabled={busy}
             onClick={() => setConfirming("revoke")}
           >
@@ -616,9 +612,8 @@ function RuntimeCard({
         {target.canRemove && !confirming ? (
           <Button
             type="button"
-            size="sm"
-            variant="ghost"
-            className="min-h-11 text-destructive"
+            size="touch"
+            variant="destructive"
             disabled={busy}
             onClick={() => setConfirming("remove")}
           >
@@ -637,18 +632,16 @@ function RuntimeCard({
             </span>
             <Button
               type="button"
-              size="sm"
+              size="touch"
               variant="ghost"
-              className="min-h-11"
               onClick={() => setConfirming(null)}
             >
               Cancel
             </Button>
             <Button
               type="button"
-              size="sm"
+              size="touch"
               variant="destructive"
-              className="min-h-11"
               disabled={busy}
               onClick={() => {
                 const action = confirming === "revoke" ? onRevoke : onRemove;
@@ -852,7 +845,7 @@ function AdvancedSsh({
         <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
           <Button
             type="submit"
-            className="min-h-11"
+            size="touch"
             disabled={busy || !valid || Boolean(inspection?.changed)}
           >
             {busy ? (
@@ -944,8 +937,7 @@ export function DevicesRuntimesSection({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="min-h-11"
+            size="touch"
             disabled={busy}
             onClick={() => void onRefresh()}
           >

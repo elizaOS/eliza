@@ -221,6 +221,8 @@ export function TelegramAccountConnectorPanel() {
           <div className="space-y-2">
             <Input
               type="tel"
+              variant="config"
+              density="compact"
               value={phone}
               onChange={(event) => {
                 setPhone(event.target.value);
@@ -229,12 +231,10 @@ export function TelegramAccountConnectorPanel() {
                 }
               }}
               placeholder="+15551234567"
-              className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50  "
             />
             <Button
               variant="default"
               size="sm"
-              className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
               onClick={() => {
                 void startAuth();
               }}
@@ -253,6 +253,8 @@ export function TelegramAccountConnectorPanel() {
             <div className="flex items-center gap-2">
               <Input
                 type={prompt.field === "password" ? "password" : "text"}
+                variant="config"
+                density="compact"
                 value={inputValue}
                 onChange={(event) => {
                   setInputValue(event.target.value);
@@ -261,7 +263,7 @@ export function TelegramAccountConnectorPanel() {
                   }
                 }}
                 placeholder={prompt.placeholder}
-                className="h-8 flex-1 rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50  "
+                className="flex-1"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     void submitAuthInput();
@@ -271,7 +273,6 @@ export function TelegramAccountConnectorPanel() {
               <Button
                 variant="default"
                 size="sm"
-                className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
                 onClick={() => {
                   void submitAuthInput();
                 }}
@@ -296,7 +297,6 @@ export function TelegramAccountConnectorPanel() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
               onClick={() => {
                 void restartAgent();
               }}
@@ -313,7 +313,6 @@ export function TelegramAccountConnectorPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
             onClick={() => {
               void disconnect();
             }}

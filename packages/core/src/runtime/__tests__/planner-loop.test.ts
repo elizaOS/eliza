@@ -13,6 +13,7 @@ import { ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
 	__codingMutationRequiresVerificationForTests,
+	__isSuccessfulCodingVerificationStepForTests,
 	__renderRoutingHintsBlockForTests,
 	actionResultToPlannerToolResult,
 	FAILED_TOOL_FALLBACK_MESSAGE,
@@ -27,6 +28,18 @@ import {
 	withTurnScopeToolArg,
 } from "../planner-loop";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
+
+function renderedMessagePrompt(
+	messages: Array<{ role?: string; content?: unknown }> | undefined,
+): string {
+	return (messages ?? [])
+		.map((message) =>
+			typeof message.content === "string"
+				? message.content
+				: JSON.stringify(message.content ?? null),
+		)
+		.join("\n\n");
+}
 
 describe("v5 planner loop skeleton", () => {
 	it("parses planner tool calls", () => {
@@ -1464,6 +1477,41 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("does not accept a successful test command that ran no tests as verification", () => {
+		const noTestsStep = {
+			toolCall: {
+				name: "SHELL",
+				params: {
+					command: "go test ./internal/config -run TestEnvSubstitution",
+				},
+			},
+			result: {
+				success: true,
+				text: "ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]",
+				data: {
+					output:
+						"ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]",
+				},
+			},
+		} as Parameters<typeof __isSuccessfulCodingVerificationStepForTests>[0];
+		expect(__isSuccessfulCodingVerificationStepForTests(noTestsStep)).toBe(
+			false,
+		);
+
+		const mixedStep = {
+			...noTestsStep,
+			result: {
+				...noTestsStep.result,
+				text: "ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]\nok  go.flipt.io/flipt/internal/config 0.4s",
+				data: {
+					output:
+						"ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]\nok  go.flipt.io/flipt/internal/config 0.4s",
+				},
+			},
+		} as Parameters<typeof __isSuccessfulCodingVerificationStepForTests>[0];
+		expect(__isSuccessfulCodingVerificationStepForTests(mixedStep)).toBe(true);
+	});
+
 	it("does not treat a successful inspection command as coding verification", async () => {
 		await withCodingRequiredToolDefaults(async () => {
 			const runtime = {
@@ -2523,9 +2571,22 @@ describe("v5 planner loop skeleton", () => {
 
 	it("lets final verification supersede failed intermediate coding commands", async () => {
 		await withCodingRequiredToolDefaults(async () => {
-			const toolResult = (success: boolean, text: string) => ({
+			const toolResult = (
+				success: boolean,
+				text: string,
+				command?: string,
+			) => ({
 				success,
 				text,
+				...(command
+					? {
+							data: {
+								command,
+								exit_code: success ? 0 : 1,
+								output: text,
+							},
+						}
+					: {}),
 			});
 			const runtime = {
 				useModel: vi
@@ -2570,7 +2631,9 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "shell-passed",
 								name: "SHELL",
-								arguments: { command: "npm test -- dice.html" },
+								arguments: {
+									command: "npm test -- dice.html --runInBand",
+								},
 							},
 						],
 					})
@@ -2581,9 +2644,13 @@ describe("v5 planner loop skeleton", () => {
 			const executeToolCall = vi
 				.fn()
 				.mockResolvedValueOnce(toolResult(true, "wrote draft"))
-				.mockResolvedValueOnce(toolResult(false, "test failed"))
+				.mockResolvedValueOnce(
+					toolResult(false, "test failed", "npm test -- dice.html"),
+				)
 				.mockResolvedValueOnce(toolResult(true, "fixed file"))
-				.mockResolvedValueOnce(toolResult(true, "test passed"));
+				.mockResolvedValueOnce(
+					toolResult(true, "test passed", "npm test -- dice.html --runInBand"),
+				);
 
 			const result = await runPlannerLoop({
 				runtime,
@@ -2939,12 +3006,11 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
+			messages?: Array<{ role?: string; content?: unknown }>;
 		};
-		expect(retryParams.messages?.[1]?.content).toContain(
-			"previous planner response was not valid",
-		);
-		expect(retryParams.messages?.[1]?.content).toContain(
+		const retryPrompt = renderedMessagePrompt(retryParams.messages);
+		expect(retryPrompt).toContain("previous planner response was not valid");
+		expect(retryPrompt).toContain(
 			'do not answer with "saved", "done", or similar prose unless a tool call result proves the side effect happened',
 		);
 		expect(executeToolCall).toHaveBeenCalledWith(
@@ -4480,13 +4546,12 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
+			messages?: Array<{ role?: string; content?: unknown }>;
 		};
-		expect(retryParams.messages?.[1]?.content).toContain(
-			"unavailable_tool_calls",
-		);
-		expect(retryParams.messages?.[1]?.content).toContain("GET_PRICE");
-		expect(retryParams.messages?.[1]?.content).toContain("SHELL");
+		const retryPrompt = renderedMessagePrompt(retryParams.messages);
+		expect(retryPrompt).toContain("unavailable_tool_calls");
+		expect(retryPrompt).toContain("GET_PRICE");
+		expect(retryPrompt).toContain("SHELL");
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{
@@ -4623,9 +4688,9 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
+			messages?: Array<{ role?: string; content?: unknown }>;
 		};
-		expect(retryParams.messages?.[1]?.content).toContain(
+		expect(renderedMessagePrompt(retryParams.messages)).toContain(
 			"silent_failed_finish",
 		);
 		expect(executeToolCall).toHaveBeenCalledTimes(2);

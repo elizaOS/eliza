@@ -2864,9 +2864,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             ) : null}
             {selectedTabLiveViewUrl ? (
               <Button
-                variant="ghost"
-                size="sm"
-                className="h-auto rounded-sm px-2 py-1 text-txt transition-colors hover:bg-card/60"
+                variant="surface"
+                size="tiny"
                 onClick={() =>
                   void runBrowserWorkspaceAction(
                     "open:live-session",

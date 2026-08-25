@@ -476,9 +476,8 @@ export function CustomActionEditor({
             {action ? "Edit Custom Action" : "New Custom Action"}
           </DialogTitle>
           <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 rounded-sm text-xl leading-none text-muted hover:bg-transparent hover:text-txt"
+            variant="ghostMuted"
+            size="closeGlyph"
             onClick={onClose}
             aria-label={t("common.close")}
           >
@@ -588,18 +587,14 @@ export function CustomActionEditor({
             <div className="flex gap-2">
               {(["http", "shell", "code"] as const).map((type) => (
                 <Button
-                  variant={handlerType === type ? "default" : "outline"}
-                  size="sm"
+                  variant="choice"
+                  size="compact"
+                  data-state={handlerType === type ? "on" : "off"}
                   key={type}
                   onClick={() => {
                     setHandlerType(type);
                     setFormError("");
                   }}
-                  className={`px-3 py-1.5 text-xs ${
-                    handlerType === type
-                      ? ""
-                      : "border-border text-muted hover:text-txt"
-                  }`}
                 >
                   {type === "http"
                     ? "HTTP Request"
@@ -622,6 +617,7 @@ export function CustomActionEditor({
                   }
                 >
                   <SelectTrigger
+                    aria-label="HTTP method"
                     className={`w-auto min-w-[6.5rem] ${editorInputClassName}`}
                   >
                     <SelectValue />
@@ -652,9 +648,8 @@ export function CustomActionEditor({
                     {t("customactioneditor.HeadersOptional")}
                   </span>
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-auto p-0 text-xs"
+                    variant="mutedLink"
+                    size="content"
                     onClick={addHeader}
                   >
                     {t("customactioneditor.Add")}
@@ -680,9 +675,8 @@ export function CustomActionEditor({
                       className={`flex-1 ${editorInputClassName}`}
                     />
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      className="px-2 text-muted hover:text-txt h-auto"
+                      variant="ghostMuted"
+                      size="inlineIcon"
                       onClick={() => removeHeader(i)}
                       aria-label={`Remove header ${i + 1}`}
                     >
@@ -756,12 +750,7 @@ export function CustomActionEditor({
               <span className={editorFieldLabelClassName}>
                 {t("common.parameters")}
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs h-auto p-0"
-                onClick={addParameter}
-              >
+              <Button variant="mutedLink" size="content" onClick={addParameter}>
                 {t("customactioneditor.AddParameter")}
               </Button>
             </div>
@@ -791,6 +780,7 @@ export function CustomActionEditor({
                 <span className="flex items-center gap-1 text-xs text-muted cursor-pointer">
                   <Checkbox
                     checked={param.required}
+                    aria-label={t("secretsview.Required")}
                     onCheckedChange={(checked: boolean | "indeterminate") =>
                       updateParameter(paramIdx, "required", !!checked)
                     }
@@ -799,9 +789,8 @@ export function CustomActionEditor({
                   {t("secretsview.Required")}
                 </span>
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="px-2 text-muted hover:text-txt h-auto"
+                  variant="ghostMuted"
+                  size="inlineIcon"
                   onClick={() => removeParameter(paramIdx)}
                   aria-label={`Remove parameter ${param.name || paramIdx + 1}`}
                 >
@@ -814,8 +803,8 @@ export function CustomActionEditor({
           {/* Test Section */}
           <div className="flex flex-col gap-2 pt-3">
             <Button
-              variant="ghost"
-              className="flex items-center justify-between text-xs text-muted hover:text-txt h-auto p-0 w-full"
+              variant="disclosureMuted"
+              size="content"
               onClick={() => setTestExpanded((expanded) => !expanded)}
             >
               <span>{t("customactioneditor.TestAction")}</span>

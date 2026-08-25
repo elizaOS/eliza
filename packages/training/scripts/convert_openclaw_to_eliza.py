@@ -233,7 +233,7 @@ def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
 
         tool_calls = _normalize_openclaw_tool_calls(raw_tool_calls)
 
-        record_id = stable_id("openclaw", raw.get("id", ""), final_response[:64])
+        record_id = stable_id("openclaw", raw.get("id", ""), final_response)
 
         if tool_calls:
             return native_tool_call_record(
@@ -291,7 +291,7 @@ def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
     if not tool_calls:
         tool_calls = _extract_tool_calls_from_json(response_body)
 
-    record_id = stable_id("openclaw", raw.get("id", ""), final_assistant_content[:64])
+    record_id = stable_id("openclaw", raw.get("id", ""), final_assistant_content)
 
     if tool_calls:
         clean_response = _TOOL_CALL_RE.sub("", response_body).strip()

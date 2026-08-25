@@ -553,16 +553,11 @@
     "@elizaos/registry": "workspace:*",
     "chalk": "^6.0.0",
     "drizzle-orm": "0.45.2",
-    "phonemizer": "^1.2.1",
     "react": "^19.0.0",
     "yaml": "^2.8.2",
     "zod": "^4.4.3"
   },
-  "optionalDependencies": {
-    "figlet": "^1.11.0"
-  },
   "devDependencies": {
-    "@types/figlet": "^1.7.0",
     "bun-types": "^1.3.12",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
@@ -573,6 +568,10 @@
   "elizaos": {
     "scripts": {
       "coreBuild": true,
+      "buildOnInstall": {
+        "sentinel": "dist/brand/index.js",
+        "order": 2
+      },
       "testLanes": [
         "server"
       ]

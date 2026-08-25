@@ -95,8 +95,8 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 
-		// The silent-failed-finish retry instruction names the failed tool AND
-		// its human-readable cause, with internal detail scrubbed.
+		// The complete model input retains the append-only raw trajectory while
+		// adding a scrubbed retry instruction that names the failed tool and cause.
 		const retryInstruction = loopComposedInstructionText(
 			useModel,
 			1,
@@ -106,10 +106,10 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(retryInstruction).toContain("failed_tool_cause:");
 		expect(retryInstruction).toContain("does not have any commits yet");
 		expect(retryInstruction).toContain("<path>");
-		expect(retryInstruction).not.toContain("/home/milady");
+		expect(retryInstruction).toContain("/home/milady");
 
-		// The failure synthesis prompt receives the failed step and cause the
-		// same way — scrubbed, human-shaped, no absolute paths.
+		// The failure synthesis prompt preserves the append-only trajectory while
+		// adding a scrubbed, human-shaped instruction for the model's next turn.
 		const synthesisInstruction = loopComposedInstructionText(
 			useModel,
 			2,
@@ -118,7 +118,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(synthesisInstruction).toContain("The SHELL step failed");
 		expect(synthesisInstruction).toContain("does not have any commits yet");
 		expect(synthesisInstruction).toContain("<path>");
-		expect(synthesisInstruction).not.toContain("/home/milady");
+		expect(synthesisInstruction).toContain("/home/milady");
 	});
 
 	it("thrown timeout: the evaluator's success:false diagnosis ships directly with no extra model call", async () => {
@@ -433,11 +433,9 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 		expect(retryInstruction).toContain("<id>");
 		expect(retryInstruction).toContain("<path>");
-		expect(retryInstruction).not.toContain(
-			"3f2504e0-4f89-11d3-9a0c-0305e82c3301",
-		);
-		expect(retryInstruction).not.toContain("/var/lib");
-		expect(retryInstruction).not.toContain("deadbeef");
+		expect(retryInstruction).toContain("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
+		expect(retryInstruction).toContain("/var/lib");
+		expect(retryInstruction).toContain("deadbeef");
 		expect(result.finalMessage).toBe(
 			"I couldn't fetch that — the workspace reference it needs is missing.",
 		);

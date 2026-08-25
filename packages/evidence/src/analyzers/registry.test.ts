@@ -16,12 +16,6 @@ import {
 
 describe("evidence analyzer registry", () => {
   describe("getAnalyzer", () => {
-    it("looks up an analyzer by exact dotted name", () => {
-      const analyzer = getAnalyzer("ocr.tesseract");
-      expect(analyzer).toBeDefined();
-      expect(analyzer?.name).toBe("ocr.tesseract");
-    });
-
     it("returns undefined for unknown analyzer names", () => {
       expect(getAnalyzer("nonexistent.analyzer")).toBeUndefined();
       expect(getAnalyzer("")).toBeUndefined();

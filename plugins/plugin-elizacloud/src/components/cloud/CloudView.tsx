@@ -17,8 +17,9 @@
  * "unavailable" note on fetch failure rather than a healthy-empty render.
  */
 
-// Narrow host-external subpath: the `@elizaos/ui` barrel would drag every chat
-// widget into the jsdom test graph for one singleton.
+// Host-provided UI atoms and the narrow API singleton are both externalized by
+// the dynamic-view loader, so this bundle does not ship a second UI runtime.
+import { Button } from "@elizaos/ui";
 import { client } from "@elizaos/ui/api";
 import type {
   CloudApiKeys,
@@ -383,13 +384,12 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
           Connect your Eliza Cloud account to see credits, hosted agents, API
           keys, and billing here.
         </p>
-        <button
+        <Button
           type="button"
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white"
           onClick={() => navigateTo("/settings")}
         >
           Connect in Settings
-        </button>
+        </Button>
       </div>
     );
   }
@@ -401,13 +401,13 @@ export function CloudView(props: CloudViewProps = {}): ReactNode {
         data-testid="cloud-error"
       >
         <p className="text-sm text-danger">{state.message}</p>
-        <button
+        <Button
           type="button"
-          className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-txt"
+          variant="outline"
           onClick={() => load()}
         >
           Retry
-        </button>
+        </Button>
       </div>
     );
   }

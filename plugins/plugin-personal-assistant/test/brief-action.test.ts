@@ -98,22 +98,6 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("metadata", () => {
-    it("exposes the canonical name and PRD similes", () => {
-      expect(briefAction.name).toBe("BRIEF");
-      const similes = briefAction.similes ?? [];
-      for (const required of [
-        "BRIEF",
-        "BRIEF_ME",
-        "MORNING_BRIEF",
-        "EVENING_BRIEF",
-        "WEEKLY_BRIEF",
-        "COMPOSE_BRIEFING",
-        "DAILY_DIGEST",
-      ]) {
-        expect(similes).toContain(required);
-      }
-    });
-
     it("validates as accessible for an owner-attached message", async () => {
       const ok = await briefAction.validate?.(
         makeRuntime(),

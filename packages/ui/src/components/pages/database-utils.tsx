@@ -10,6 +10,14 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 
 export type DbView = "tables" | "query";
 export type SortDir = "asc" | "desc" | null;
@@ -52,8 +60,10 @@ function typeLabel(type: string): string {
   return type.slice(0, 6);
 }
 
-/** Color for column type badge. */
-function typeBadgeColor(type: string): string {
+/** Semantic tone for column type badges. */
+function typeBadgeTone(
+  type: string,
+): "accent" | "success" | "warning" | "danger" | "muted" {
   const t = type.toLowerCase();
   if (
     t.includes("int") ||
@@ -63,16 +73,14 @@ function typeBadgeColor(type: string): string {
     t.includes("real") ||
     t.includes("double")
   )
-    return "text-accent-fg bg-accent/12";
-  if (t.includes("bool")) return "text-ok bg-ok/10";
-  if (t.includes("json")) return "text-warn bg-warn/10";
-  if (t.includes("uuid")) return "text-accent bg-accent/10";
-  if (t.includes("timestamp") || t.includes("date"))
-    return "text-danger bg-danger/10";
-  if (t.includes("text") || t.includes("char"))
-    return "text-muted-strong bg-bg-hover";
-  if (t.includes("vector")) return "text-accent bg-accent/12";
-  return "text-muted-strong bg-bg-hover";
+    return "accent";
+  if (t.includes("bool")) return "success";
+  if (t.includes("json")) return "warning";
+  if (t.includes("uuid")) return "accent";
+  if (t.includes("timestamp") || t.includes("date")) return "danger";
+  if (t.includes("text") || t.includes("char")) return "muted";
+  if (t.includes("vector")) return "accent";
+  return "muted";
 }
 
 // ── Shared display components ─────────────────────────────────────────
@@ -146,18 +154,18 @@ export function ResultsGrid({
       className="overflow-auto border border-border/40 bg-card/95 rounded-sm "
       style={{ maxHeight: "calc(100vh - 340px)" }}
     >
-      <table className="w-full border-collapse text-xs font-mono">
-        <thead className="sticky top-0 z-10 bg-bg/95 border-b border-border/40 ">
-          <tr>
+      <Table density="compact" className="font-mono">
+        <TableHeader className="sticky top-0 z-10 bg-bg/95 border-b border-border/40 ">
+          <TableRow>
             {/* Row number column */}
-            <th className="w-[50px] min-w-[50px] px-3 py-2.5 text-2xs text-muted font-medium text-right border-r border-border/40">
+            <TableHead className="w-[50px] min-w-[50px] px-3 py-2.5 text-2xs text-muted font-medium text-right border-r border-border/40">
               #
-            </th>
+            </TableHead>
             {columns.map((col) => {
               const meta = columnMeta?.get(col);
               const isSorted = sortCol === col;
               return (
-                <th
+                <TableHead
                   key={col}
                   className="px-4 py-2.5 text-left border-r border-border/40 whitespace-nowrap cursor-pointer select-none hover:bg-bg-hover transition-colors group"
                   onClick={() => onSort?.(col)}
@@ -169,16 +177,14 @@ export function ResultsGrid({
                     {meta && (
                       <Badge
                         variant="outline"
-                        className={`text-3xs px-1.5 py-0 border-none font-medium ${typeBadgeColor(meta.type)}`}
+                        size="micro"
+                        tone={typeBadgeTone(meta.type)}
                       >
                         {typeLabel(meta.type)}
                       </Badge>
                     )}
                     {meta?.isPrimaryKey && (
-                      <Badge
-                        variant="outline"
-                        className="border-none bg-accent/16 px-1.5 py-0 text-3xs font-bold text-accent-fg "
-                      >
+                      <Badge variant="outline" size="microBold" tone="accent">
                         PK
                       </Badge>
                     )}
@@ -188,29 +194,29 @@ export function ResultsGrid({
                       </span>
                     )}
                   </div>
-                </th>
+                </TableHead>
               );
             })}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row, i) => {
             const rowKey = buildResultsGridRowKey(columns, row, i, columnMeta);
             return (
-              <tr
+              <TableRow
                 key={rowKey}
                 className="border-b border-border/20 hover:bg-bg-hover transition-colors group"
               >
-                <td className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
+                <TableCell className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
                   {i + 1}
-                </td>
+                </TableCell>
                 {columns.map((col) => {
                   const raw = row[col];
                   const display = formatCell(raw);
                   const isNull = raw === null || raw === undefined;
                   const isExpandable = display.length > 40 && !!onCellClick;
                   return (
-                    <td
+                    <TableCell
                       key={col}
                       className="px-4 py-2 border-r border-border/20 max-w-[280px] truncate cursor-default transition-colors"
                       title={display}
@@ -234,14 +240,14 @@ export function ResultsGrid({
                       ) : (
                         <span className="text-txt">{display}</span>
                       )}
-                    </td>
+                    </TableCell>
                   );
                 })}
-              </tr>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -287,18 +293,20 @@ export function PaginationBar({
       </span>
       <div className="flex items-center gap-2">
         <Button
-          variant="outline"
-          size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
+          variant="outlineMuted"
+          size="tinyWide"
+          align="start"
+          className="whitespace-normal break-words"
           disabled={!hasPrev}
           onClick={onPrev}
         >
           {t("common.prev")}
         </Button>
         <Button
-          variant="outline"
-          size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
+          variant="outlineMuted"
+          size="tinyWide"
+          align="start"
+          className="whitespace-normal break-words"
           disabled={!hasNext}
           onClick={onNext}
         >

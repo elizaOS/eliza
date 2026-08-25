@@ -435,7 +435,6 @@ import {
   loadLocalInferenceRouteApi,
   loadLocalInferenceVoiceRouteApi,
 } from "./local-inference-server-api.ts";
-import { pushWithBatchEvict } from "./memory-bounds.ts";
 import { resolveOptionalPluginImportFailure } from "./optional-plugin-fallback.ts";
 import {
   buildPluginDiagnosticEntry,
@@ -3881,18 +3880,13 @@ export async function startApiServer(opts?: {
             : resolvedSource === "cloud"
               ? ["server", "cloud"]
               : ["system"];
-    pushWithBatchEvict(
-      state.logBuffer,
-      {
-        timestamp: Date.now(),
-        level,
-        message,
-        source: resolvedSource,
-        tags: resolvedTags,
-      },
-      1200,
-      200,
-    );
+    state.logBuffer.push({
+      timestamp: Date.now(),
+      level,
+      message,
+      source: resolvedSource,
+      tags: resolvedTags,
+    });
   };
 
   addLog(
@@ -5091,9 +5085,6 @@ export async function startApiServer(opts?: {
   if (earlyEntries.length > 0) {
     for (const entry of earlyEntries) {
       state.logBuffer.push(entry);
-    }
-    if (state.logBuffer.length > 1000) {
-      state.logBuffer.splice(0, state.logBuffer.length - 1000);
     }
     addLog(
       "info",

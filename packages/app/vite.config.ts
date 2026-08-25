@@ -2938,6 +2938,16 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(uiPkgRoot, "src/styles.ts"),
       },
+      ...[
+        ["button", "button.tsx"],
+        ["input", "input.tsx"],
+        ["textarea", "textarea.tsx"],
+        ["native-select", "native-select.tsx"],
+        ["native-dialog", "native-dialog.tsx"],
+      ].map(([subpath, source]) => ({
+        find: new RegExp(`^${escapeRegExp(`@elizaos/ui/${subpath}`)}$`),
+        replacement: path.join(uiPkgRoot, "src/components/ui", source),
+      })),
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),

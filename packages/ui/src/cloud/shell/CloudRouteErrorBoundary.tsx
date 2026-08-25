@@ -63,9 +63,8 @@ function CloudRouteErrorFallback({
       {staleChunk ? (
         <Button
           type="button"
-          size="sm"
-          variant="outline"
-          className="rounded-sm text-xs"
+          size="compact"
+          variant="outlineMuted"
           onClick={() => window.location.reload()}
           data-testid="cloud-route-error-reload"
         >
@@ -74,9 +73,8 @@ function CloudRouteErrorFallback({
       ) : (
         <Button
           type="button"
-          size="sm"
-          variant="outline"
-          className="rounded-sm text-xs"
+          size="compact"
+          variant="outlineMuted"
           onClick={onRetry}
           data-testid="cloud-route-error-retry"
         >

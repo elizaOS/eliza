@@ -424,7 +424,6 @@ export class ScreenTimeDomain {
         this.ctx.agentId(),
         {
           sinceAt: opts.since,
-          limit: 200,
         },
       );
       rows.push(
@@ -542,9 +541,7 @@ export class ScreenTimeDomain {
       );
     }
 
-    const xDms = await this.ctx.repository.listXDms(this.ctx.agentId(), {
-      limit: 500,
-    });
+    const xDms = await this.ctx.repository.listXDms(this.ctx.agentId());
     const xReceivedWindowDms = xDms.filter((dm) =>
       inWindow(dm.receivedAt, sinceMs, untilMs),
     );
@@ -563,7 +560,6 @@ export class ScreenTimeDomain {
         this.deps.listBrowserCompanions(),
         this.ctx.repository.listActivitySignals(this.ctx.agentId(), {
           sinceAt: new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString(),
-          limit: 100,
         }),
       ]);
     const messageChannels = [
@@ -593,11 +589,15 @@ export class ScreenTimeDomain {
       since: opts.since,
       until: opts.until,
       totalSeconds: socialRows.reduce((sum, row) => sum + row.totalSeconds, 0),
-      services: fullBreakdown.byService.slice(0, opts.topN ?? 8),
+      services:
+        opts.topN === undefined
+          ? fullBreakdown.byService
+          : fullBreakdown.byService.slice(0, opts.topN),
       devices: screenTimeBucketList(deviceBuckets),
       surfaces: screenTimeBucketList(surfaceBuckets),
       browsers: screenTimeBucketList(browserBuckets),
-      sessions: socialRows.slice(0, opts.topN ?? 8),
+      sessions:
+        opts.topN === undefined ? socialRows : socialRows.slice(0, opts.topN),
       messages: {
         channels: messageChannels,
         inbound: xInbound,

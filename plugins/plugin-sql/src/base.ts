@@ -2329,8 +2329,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (
       !Number.isSafeInteger(params.offset) ||
       params.offset < 0 ||
-      !Number.isSafeInteger(params.limit) ||
-      params.limit < 1
+      (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit < 1))
     ) {
       throw new ElizaError(
         "Document range read requires a non-negative offset and positive limit",
@@ -2372,6 +2371,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               FROM grouped_lines
               GROUP BY unit_index
             )`;
+      const rangeFilter =
+        params.limit === undefined
+          ? sql`unit_index >= ${params.offset}`
+          : sql`unit_index >= ${params.offset}
+              AND unit_index < ${params.offset + params.limit}`;
       const result = await tx.execute(sql`
         WITH authorized AS (
           SELECT content->>'text' AS source_text, metadata
@@ -2383,8 +2387,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           COALESCE(
             string_agg(unit_text, '' ORDER BY unit_index)
               FILTER (
-                WHERE unit_index >= ${params.offset}
-                  AND unit_index < ${params.offset + params.limit}
+                WHERE ${rangeFilter}
               ),
             ''
           ) AS text,
@@ -2410,7 +2413,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       return {
         text: typeof row.text === "string" ? row.text : "",
         start,
-        end: Math.min(start + params.limit, total),
+        end: params.limit === undefined ? total : Math.min(start + params.limit, total),
         total,
         documentRevision: Number(row.document_revision ?? 0),
         ...(typeof row.revision_attempt_id === "string"
@@ -3903,8 +3906,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
       const activeColumn = embeddingTable[this.embeddingDimension];
-      const count = params.count ?? 10;
-
       // SCOPE eligibility lives INSIDE the ordered scan: every scope predicate
       // (type, agent, room, world, entity, uniqueness) is part of the WHERE of
       // the same query that orders by the raw distance operator. The contract
@@ -3950,7 +3951,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
 
-      const candidates = await this.db
+      const orderedQuery = this.db
         .select({
           memory: memoryTable,
           similarity,
@@ -3959,9 +3960,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
         .where(and(...conditions))
-        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id))
-        .limit(count)
-        .offset(params.offset ?? 0);
+        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id));
+      const candidates = await (params.count === undefined
+        ? orderedQuery.offset(params.offset ?? 0)
+        : orderedQuery.limit(params.count).offset(params.offset ?? 0));
 
       // Same truthiness contract as the removed WHERE predicate: an absent or
       // zero threshold applies no similarity floor.
@@ -5259,7 +5261,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (params.agentIds.length === 0) return [];
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
-        const result = await this.db
+        const query = this.db
           .select()
           .from(taskTable)
           .where(
@@ -5279,8 +5281,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             )
           )
           .orderBy(asc(taskTable.createdAt), asc(taskTable.id))
-          .limit(params.limit ?? Number.MAX_SAFE_INTEGER)
           .offset(params.offset ?? 0);
+        const result = params.limit === undefined ? await query : await query.limit(params.limit);
 
         return result.map((row) => {
           const metadata = (row.metadata || {}) as TaskMetadata;

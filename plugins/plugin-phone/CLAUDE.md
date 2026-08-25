@@ -9,7 +9,7 @@ Adds two distinct surfaces to elizaOS. The Android surface provides a full-scree
 ## Plugin surface
 
 **Provider**
-- `phoneCallLog` — Dynamic, read-only. Fetches the last 50 Android calls via `@elizaos/capacitor-phone`. Available in `contacts` and `messaging` contexts; requires `ADMIN` role. Returns `{ count, items }` where each item has `id`, `number`, `cachedName`, `date`, `durationSeconds`, `type`, `isNew`.
+- `phoneCallLog` — Dynamic, read-only. Fetches the complete Android call log via `@elizaos/capacitor-phone`. Available in `contacts` and `messaging` contexts; requires `ADMIN` role. Returns `{ count, items }` where each item has `id`, `number`, `cachedName`, `date`, `durationSeconds`, `type`, `isNew`.
 
 **Actions**
 - None registered here. The canonical `VOICE_CALL` action is currently

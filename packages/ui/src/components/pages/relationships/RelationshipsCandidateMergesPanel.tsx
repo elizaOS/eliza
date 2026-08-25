@@ -188,9 +188,9 @@ export function RelationshipsCandidateMergesPanel({
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Button
                   type="button"
-                  size="sm"
+                  size="tiny"
+                  shape="circle"
                   variant="default"
-                  className="h-7 gap-1.5 rounded-full px-2.5 text-2xs"
                   disabled={isPending}
                   onClick={() => {
                     void resolveCandidate(candidate, "accept");
@@ -207,9 +207,9 @@ export function RelationshipsCandidateMergesPanel({
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
+                  size="tiny"
+                  shape="circle"
                   variant="outline"
-                  className="h-7 gap-1.5 rounded-full px-2.5 text-2xs"
                   disabled={isPending}
                   onClick={() => {
                     void resolveCandidate(candidate, "reject");

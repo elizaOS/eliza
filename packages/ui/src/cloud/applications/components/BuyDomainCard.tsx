@@ -199,7 +199,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
           aria-label={t("cloud.appDomains.buyInputLabel", {
             defaultValue: "Domain to buy",
           })}
-          className="bg-surface border-neutral-800 text-txt"
+          variant="form"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -208,7 +208,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
           type="submit"
           size="sm"
           disabled={!isValid || checking}
-          className="bg-txt hover:bg-txt/90 text-bg rounded-sm shrink-0"
+          className="shrink-0"
         >
           {checking ? (
             <Loader2 className="size-4 animate-spin" />
@@ -261,11 +261,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button
-                size="sm"
-                disabled={buying}
-                className="bg-txt hover:bg-txt/90 text-bg rounded-sm shrink-0"
-              >
+              <Button size="sm" disabled={buying} className="shrink-0">
                 {buying ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
@@ -317,8 +313,8 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
       )}
 
       {error && (
-        <div className="flex flex-col gap-2 p-3 rounded-sm bg-red-500/10 border border-red-500/20">
-          <div className="flex items-center gap-2 text-sm text-red-300">
+        <div className="flex flex-col gap-2 p-3 rounded-sm bg-destructive-subtle border border-destructive/20">
+          <div className="flex items-center gap-2 text-sm text-destructive">
             <AlertTriangle className="size-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -327,7 +323,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
               size="sm"
               variant="outline"
               onClick={openBilling}
-              className="self-start border-neutral-700 hover:bg-bg-hover"
+              className="self-start"
             >
               <CreditCard className="size-4 mr-1.5" />
               {t("cloud.appDomains.buyAddCredits", {

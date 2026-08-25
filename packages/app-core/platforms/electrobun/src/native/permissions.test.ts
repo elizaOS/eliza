@@ -78,6 +78,13 @@ describe("permission Settings commands", () => {
     ).rejects.toThrow("Settings command exited 127");
   });
 
+  it("preserves complete Settings stderr in the failure", async () => {
+    const stderr = `settings failed: ${"diagnostic".repeat(80)}`;
+    await expect(
+      runSettingsCommand(["settings"], () => settingsProcess(1, stderr)),
+    ).rejects.toThrow(stderr);
+  });
+
   it("uses the native Windows Settings URI handoff", () => {
     expect(buildPermissionSettingsCommand("microphone", "win32")).toEqual([
       "cmd",

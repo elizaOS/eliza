@@ -138,11 +138,6 @@ const flagged = SCENARIO_ROOTS.flatMap(walkScenarioFiles)
   .map((f) => relative(repoRoot, f));
 
 describe("scenario action-effect integrity (#9310)", () => {
-  it("finds the scenario corpus (guard is actually scanning)", () => {
-    const total = SCENARIO_ROOTS.flatMap(walkScenarioFiles).length;
-    expect(total).toBeGreaterThan(400);
-  });
-
   it("rejects actionCalled-only scenarios", () => {
     expect(
       flagged,

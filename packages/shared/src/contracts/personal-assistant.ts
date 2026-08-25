@@ -2756,7 +2756,7 @@ export const LIFEOPS_INBOX_CACHE_MODES = [
 export type LifeOpsInboxCacheMode = (typeof LIFEOPS_INBOX_CACHE_MODES)[number];
 
 export interface GetLifeOpsInboxRequest {
-  /** Cap on the total number of messages returned. Defaults to 100. */
+  /** Explicit pagination cap. When omitted, every matching message is returned. */
   limit?: number;
   /** If omitted, all connected channels are included. */
   channels?: LifeOpsInboxChannel[];
@@ -2789,7 +2789,7 @@ export interface GetLifeOpsInboxRequest {
    * response's `sources` health is real.
    */
   cacheMode?: LifeOpsInboxCacheMode;
-  /** Cap on messages pulled/read for cache operations. Defaults to a bounded full-cache window. */
+  /** Explicit cache-operation pagination cap. Omission keeps cache reads complete. */
   cacheLimit?: number;
 }
 

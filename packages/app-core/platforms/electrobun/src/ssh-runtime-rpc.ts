@@ -23,7 +23,6 @@ import {
 } from "./ssh-runtime-intent-store";
 
 const SSH_TARGET_PATTERN = /^([A-Za-z0-9._-]{1,64})@([A-Za-z0-9.-]{1,253})$/;
-const MAX_DIAGNOSTIC_STDERR_CHARS = 8_192;
 const MAX_KEYSCAN_OUTPUT_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_AGENT_PATHS = [
@@ -292,9 +291,7 @@ function scanSshHost(host: string, port: number): Promise<string> {
       stdout += chunk;
     });
     child.stderr.on("data", (chunk: string) => {
-      diagnosticStderrTail = `${diagnosticStderrTail}${chunk}`.slice(
-        -MAX_DIAGNOSTIC_STDERR_CHARS,
-      );
+      diagnosticStderrTail += chunk;
     });
     child.once("error", (cause) => {
       fail(new Error("OpenSSH host-key scanning is unavailable.", { cause }));
@@ -678,9 +675,7 @@ async function startParsedSshRuntime(
   });
   child.stderr?.setEncoding("utf8");
   child.stderr?.on("data", (chunk: string) => {
-    diagnosticStderrTail = `${diagnosticStderrTail}${chunk}`.slice(
-      -MAX_DIAGNOSTIC_STDERR_CHARS,
-    );
+    diagnosticStderrTail += chunk;
   });
   try {
     await waitForTunnel(child, localPort, () => spawnError);

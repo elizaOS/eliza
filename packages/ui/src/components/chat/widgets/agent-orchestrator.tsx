@@ -253,8 +253,9 @@ function ActivityItemsContent({
             key={event.id}
             onClick={() => onSelectEvent(event)}
             aria-label={`${openLabel}: ${event.summary}`}
-            variant="ghost"
-            className="flex h-auto w-full items-start justify-start gap-1.5 whitespace-normal rounded-sm px-1.5 py-1 text-left font-normal transition-colors hover:bg-bg-hover/40"
+            variant="sectionToggle"
+            size="content"
+            align="start"
           >
             <span className="shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted">
               {relativeDuration(event.timestamp)}
@@ -539,9 +540,8 @@ function AppRunsWidget({
           {currentRun ? (
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0"
+              variant="ghostMuted"
+              size="icon-sm"
               aria-label={t("agentorchestrator.resumeViewer", {
                 defaultValue: "Resume viewer",
               })}
@@ -557,9 +557,8 @@ function AppRunsWidget({
           ) : null}
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0"
+            variant="ghostMuted"
+            size="icon-sm"
             aria-label={t("agentorchestrator.openApps", {
               defaultValue: "Open apps",
             })}
@@ -739,13 +738,12 @@ function OrchestratorActivityWidget({
       icon={<Activity className="size-4" />}
       action={
         <Button
-          variant="ghost"
-          size="sm"
+          variant="ghostMuted"
+          size="icon-sm"
           onClick={clearEvents}
           aria-label={t("agentorchestrator.clearActivity", {
             defaultValue: "Clear activity",
           })}
-          className="size-6 p-0 text-muted"
         >
           <Trash2 className="size-3.5" />
         </Button>

@@ -768,6 +768,18 @@ export function resolveScenarioProviderConfig(
   return selectLiveProvider(options.preferredProvider);
 }
 
+/** Force explicit CLI scenario runs onto the CLI plugin's supported text planner. */
+export function configureExplicitCliScenarioPlanner(
+  preferredProvider: LiveProviderName | undefined,
+  providerConfig: RuntimeFactoryResult["providerConfig"],
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (preferredProvider !== "cli" || providerConfig.name !== "cli") return;
+
+  env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+  providerConfig.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+}
+
 /**
  * Live lane: `prepareMockedTestEnvironment` boots the wire-level LLM mocks and
  * exports their base-URL overrides (`ELIZA_MOCK_OPENAI_BASE` /
@@ -829,6 +841,10 @@ export async function createScenarioRuntime(
       "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk on a subscription-only host, or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.",
     );
   }
+  configureExplicitCliScenarioPlanner(
+    options?.preferredProvider,
+    providerConfig,
+  );
   if (providerConfig.name !== DETERMINISTIC_MODEL_PROVIDER_NAME) {
     assertScenarioLiveProviderPreflight(
       options?.preferredProvider,

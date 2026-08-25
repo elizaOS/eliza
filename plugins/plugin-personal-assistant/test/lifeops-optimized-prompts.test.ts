@@ -125,4 +125,33 @@ describe("LifeOps optimized prompt routing", () => {
     expect(capturedPrompts[0]).toContain("- title: Take medication");
     expect(capturedPrompts[0]).toContain("Other reminders around this time:");
   });
+
+  it("preserves every nearby reminder in model-facing context", async () => {
+    const capturedPrompts: string[] = [];
+    const runtime = optimizedPromptRuntime({
+      task: "reminder_dispatch",
+      optimizedPrompt: "Write the reminder.",
+      modelResponses: ["Complete reminder."],
+      capturedPrompts,
+    });
+    const service = new ReminderService(runtime);
+    const nearbyReminderTitles = Array.from(
+      { length: 501 },
+      (_, index) => `Nearby reminder ${index}`,
+    );
+
+    await service.renderReminderBody({
+      title: "Current reminder",
+      scheduledFor: "2026-06-23T15:00:00.000Z",
+      dueAt: "2026-06-23T15:00:00.000Z",
+      channel: "push",
+      lifecycle: "initial",
+      urgency: "normal",
+      subjectType: "owner",
+      nearbyReminderTitles,
+    });
+
+    expect(capturedPrompts[0]).toContain("- Nearby reminder 0");
+    expect(capturedPrompts[0]).toContain("- Nearby reminder 500");
+  });
 });

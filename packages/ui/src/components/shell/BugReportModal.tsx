@@ -71,12 +71,6 @@ const EMPTY_FORM: BugReportForm = {
 const modalContentClassName =
   "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0";
 
-const modalInputClassName =
-  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted";
-
-const modalTextareaClassName =
-  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted";
-
 function environmentOptionLabel(
   t: ReturnType<typeof useApp>["t"],
   option: (typeof ENV_OPTIONS)[number],
@@ -520,7 +514,8 @@ export function BugReportModal() {
               <Textarea
                 ref={descRef}
                 id="bug-report-description"
-                className={modalTextareaClassName}
+                variant="modal"
+                density="modalDefault"
                 placeholder={t("bugreportmodal.DescribeTheIssueY")}
                 value={form.description}
                 onChange={(e) => updateField("description", e.target.value)}
@@ -537,7 +532,8 @@ export function BugReportModal() {
               </FieldLabel>
               <Textarea
                 id="bug-report-steps"
-                className={modalTextareaClassName}
+                variant="modal"
+                density="modalDefault"
                 placeholder={t("bugreportmodal.stepsPlaceholder")}
                 value={form.stepsToReproduce}
                 onChange={(e) =>
@@ -553,7 +549,8 @@ export function BugReportModal() {
               </FieldLabel>
               <Textarea
                 id="bug-report-expected"
-                className={`${modalTextareaClassName} min-h-[72px]`}
+                variant="modal"
+                density="modalShort"
                 placeholder={t("bugreportmodal.DescribeTheExpecte")}
                 value={form.expectedBehavior}
                 onChange={(e) =>
@@ -569,7 +566,8 @@ export function BugReportModal() {
               </FieldLabel>
               <Textarea
                 id="bug-report-actual"
-                className={`${modalTextareaClassName} min-h-[72px]`}
+                variant="modal"
+                density="modalShort"
                 placeholder={t("bugreportmodal.DescribeTheActual")}
                 value={form.actualBehavior}
                 onChange={(e) => updateField("actualBehavior", e.target.value)}
@@ -588,10 +586,7 @@ export function BugReportModal() {
                     updateField("environment", value)
                   }
                 >
-                  <SelectTrigger
-                    id="bug-report-environment"
-                    className={modalInputClassName}
-                  >
+                  <SelectTrigger id="bug-report-environment" variant="modal">
                     <SelectValue placeholder={t("bugreportmodal.Select")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -613,7 +608,7 @@ export function BugReportModal() {
                 </FieldLabel>
                 <Input
                   id="bug-report-node-version"
-                  className={modalInputClassName}
+                  variant="modal"
                   placeholder={t("bugreportmodal.22X")}
                   value={form.nodeVersion}
                   onChange={(e) => updateField("nodeVersion", e.target.value)}
@@ -627,7 +622,7 @@ export function BugReportModal() {
               </FieldLabel>
               <Input
                 id="bug-report-model-provider"
-                className={modalInputClassName}
+                variant="modal"
                 placeholder={t("bugreportmodal.AnthropicOpenAI")}
                 value={form.modelProvider}
                 onChange={(e) => updateField("modelProvider", e.target.value)}
@@ -639,8 +634,8 @@ export function BugReportModal() {
                 <FieldLabel className="mb-0">{t("common.logs")}</FieldLabel>
                 <Button
                   type="button"
-                  variant="ghost"
-                  className="h-10 rounded-sm px-3 text-xs text-muted hover:text-txt"
+                  variant="ghostMuted"
+                  size="compact"
                   onClick={() => setShowLogs(!showLogs)}
                   aria-expanded={showLogs}
                   aria-controls="bug-report-logs-panel"
@@ -670,7 +665,7 @@ export function BugReportModal() {
                           type="checkbox"
                           checked={attachLogs}
                           onChange={(e) => setAttachLogs(e.target.checked)}
-                          className="size-4 shrink-0 border-border p-0 accent-accent"
+                          className="size-4 shrink-0"
                         />
                         {t("bugreportmodal.attachLogs")}
                       </label>
@@ -685,7 +680,7 @@ export function BugReportModal() {
                           onChange={(e) =>
                             setAttachSystemInfo(e.target.checked)
                           }
-                          className="size-4 shrink-0 border-border p-0 accent-accent"
+                          className="size-4 shrink-0"
                         />
                         {t("bugreportmodal.attachSystemInfo")}
                       </label>
@@ -693,7 +688,8 @@ export function BugReportModal() {
                   ) : null}
                   <Textarea
                     id="bug-report-logs-panel"
-                    className={`${modalTextareaClassName} min-h-[120px] font-mono text-xs`}
+                    variant="modal"
+                    density="modalLogs"
                     placeholder={t("bugreportmodal.PasteRelevantError")}
                     value={form.logs}
                     onChange={(e) => updateField("logs", e.target.value)}

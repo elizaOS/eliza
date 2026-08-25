@@ -91,7 +91,7 @@ export function DownloadQueue({
             {job.state === "failed" && (
               <div className="flex items-start justify-between gap-3">
                 {job.error && (
-                  <div className="text-xs text-rose-500 min-w-0 break-words">
+                  <div className="min-w-0 break-words text-xs text-danger">
                     {job.error}
                   </div>
                 )}

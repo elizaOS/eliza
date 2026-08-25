@@ -5,10 +5,7 @@
 
 import { MemoryType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import {
-  listCharacterHistory,
-  MAX_CHARACTER_HISTORY_LIMIT,
-} from "./character-history.ts";
+import { listCharacterHistory } from "./character-history.ts";
 
 function makeMemory(timestamp: number) {
   return {
@@ -47,64 +44,40 @@ async function probe(limit: unknown) {
 }
 
 describe("listCharacterHistory limit guard", () => {
-  it("defaults to 20 when limit is undefined (no arg)", async () => {
+  it("returns complete history when limit is undefined", async () => {
     const { result, getMemories } = await probe(undefined);
-    expect(result).toHaveLength(20);
-    expect(getMemories).toHaveBeenCalledWith(
-      expect.objectContaining({ count: 80 }),
-    );
+    expect(result).toHaveLength(150);
+    expect(getMemories).toHaveBeenCalledWith({
+      entityId: "agent-123",
+      tableName: "character_modifications",
+    });
   });
 
-  it("falls back to 20 for NaN and non-finite (Infinity/-Infinity)", async () => {
+  it("rejects invalid and non-finite limits", async () => {
     for (const bad of [
+      0,
+      -5,
+      1.5,
       Number.NaN,
       Number.POSITIVE_INFINITY,
       Number.NEGATIVE_INFINITY,
     ]) {
-      const { result, getMemories } = await probe(bad);
-      expect(result, `limit=${String(bad)}`).toHaveLength(20);
-      expect(getMemories).toHaveBeenCalledWith(
-        expect.objectContaining({ count: 80 }),
+      await expect(
+        listCharacterHistory(
+          { agentId: "agent-123", getMemories: vi.fn() } as never,
+          bad,
+        ),
+      ).rejects.toThrow(
+        "Character history limit must be a positive safe integer",
       );
     }
   });
 
-  it("maps zero and negative values to the minimum of 1", async () => {
-    for (const v of [0, -5, -1]) {
-      const { result, getMemories } = await probe(v);
-      expect(result, `limit=${v}`).toHaveLength(1);
-      expect(getMemories).toHaveBeenCalledWith(
-        expect.objectContaining({ count: 4 }),
-      );
-    }
-  });
-
-  it("respects valid mid-range limits and truncates decimals", async () => {
+  it("respects an explicitly requested limit", async () => {
     const { result: r5 } = await probe(5);
     expect(r5).toHaveLength(5);
-    const { result: rTrunc } = await probe(5.9);
-    expect(rTrunc).toHaveLength(5);
-    const { result: r7 } = await probe(7.1);
-    expect(r7).toHaveLength(7);
-  });
-
-  it("caps at MAX 100 for large limits", async () => {
-    for (const big of [200, 999, Number.MAX_SAFE_INTEGER]) {
-      const { result, getMemories } = await probe(big);
-      expect(result, `limit=${big}`).toHaveLength(MAX_CHARACTER_HISTORY_LIMIT);
-      expect(getMemories).toHaveBeenCalledWith(
-        expect.objectContaining({ count: MAX_CHARACTER_HISTORY_LIMIT * 4 }),
-      );
-    }
-  });
-
-  it("keeps non-finite fallback distinct from maximum and minimum limits", async () => {
-    const { result: inf } = await probe(Number.POSITIVE_INFINITY);
-    expect(inf).toHaveLength(20);
-    expect(inf).not.toHaveLength(100);
-    const { result: zero } = await probe(0);
-    expect(zero).toHaveLength(1);
-    expect(zero).not.toHaveLength(20);
+    const { result: r150 } = await probe(150);
+    expect(r150).toHaveLength(150);
   });
 
   it("omits poisoned rows and fills the requested limit with adjacent valid history", async () => {

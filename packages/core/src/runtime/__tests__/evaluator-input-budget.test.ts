@@ -5,6 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 import { computePrefixHashes } from "../context-hash";
@@ -312,8 +313,12 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 		expect(backupHandler).not.toHaveBeenCalled();
 	});
 
-	it("rejects a known-over-budget fallback before its provider handler", async () => {
-		const backupHandler = vi.fn(async () => ENVELOPE);
+	it("propagates a known-over-budget rejection from the fallback provider boundary", async () => {
+		const backupHandler = vi.fn(async () => {
+			throw new ElizaError("provider input exceeds context", {
+				code: "MODEL_INPUT_OVER_BUDGET",
+			});
+		});
 		const runtime = new AgentRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
 			adapter: new InMemoryDatabaseAdapter(),
@@ -352,7 +357,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 				effects: {},
 			}),
 		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
-		expect(backupHandler).not.toHaveBeenCalled();
+		expect(backupHandler).toHaveBeenCalledTimes(1);
 	});
 
 	it("budgets the actual owner-selected provider before its first attempt", async () => {
@@ -466,7 +471,11 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 
 	it("rejects one over-window result instead of changing it", async () => {
 		const hugeResult = "😀".repeat(2_500_000); // 5,000,000 UTF-16 code units
-		const handler = vi.fn(async () => ENVELOPE);
+		const handler = vi.fn(async () => {
+			throw new ElizaError("provider input exceeds context", {
+				code: "MODEL_INPUT_OVER_BUDGET",
+			});
+		});
 		const runtime = new AgentRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
 			adapter: new InMemoryDatabaseAdapter(),
@@ -484,7 +493,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 				effects: {},
 			}),
 		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
-		expect(handler).not.toHaveBeenCalled();
+		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
 	it("preserves every result when the complete request fits", async () => {
@@ -542,7 +551,11 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 		// Overflow in the stable prefix makes the complete request impossible to
 		// dispatch, so the evaluator must throw a typed error before useModel.
 		const hugeStablePrompt = "characterization ".repeat(2_000_000);
-		const handler = vi.fn(async () => ENVELOPE);
+		const handler = vi.fn(async () => {
+			throw new ElizaError("provider input exceeds context", {
+				code: "MODEL_INPUT_OVER_BUDGET",
+			});
+		});
 		const runtime = new AgentRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
 			adapter: new InMemoryDatabaseAdapter(),
@@ -566,12 +579,16 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 			}),
 		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 
-		expect(handler).not.toHaveBeenCalled();
+		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
 	it("records structured-parameter budget failure before making a provider call", async () => {
 		const recorded: Array<{ stage: Record<string, unknown> }> = [];
-		const handler = vi.fn(async () => ENVELOPE);
+		const handler = vi.fn(async () => {
+			throw new ElizaError("provider input exceeds context", {
+				code: "MODEL_INPUT_OVER_BUDGET",
+			});
+		});
 		const runtimeWithRecorder = new AgentRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
 			adapter: new InMemoryDatabaseAdapter(),
@@ -610,7 +627,7 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 				effects: {},
 			}),
 		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
-		expect(handler).not.toHaveBeenCalled();
+		expect(handler).toHaveBeenCalledTimes(1);
 		expect(recorded).toHaveLength(1);
 		expect(recorded[0]?.stage).toMatchObject({
 			kind: "evaluation",
@@ -622,7 +639,7 @@ describe("runEvaluator — bottom-out guard (stable segments alone over budget)"
 	});
 });
 
-describe("runEvaluator — failover continues past an over-budget mid-chain registration", () => {
+describe("runEvaluator — provider-owned input rejection", () => {
 	const OVERSIZED_STABLE_CONTEXT = {
 		...CONTEXT,
 		staticPrefix: {
@@ -645,8 +662,12 @@ describe("runEvaluator — failover continues past an over-budget mid-chain regi
 		);
 	}
 
-	it("skips a rejected smaller registration and succeeds on a later larger one", async () => {
-		const smallHandler = vi.fn(async () => ENVELOPE);
+	it("propagates a typed provider rejection without retrying the complete input elsewhere", async () => {
+		const smallHandler = vi.fn(async () => {
+			throw new ElizaError("provider input exceeds context", {
+				code: "MODEL_INPUT_OVER_BUDGET",
+			});
+		});
 		const finalRequests: CapturedRequest[] = [];
 		const runtime = new AgentRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
@@ -674,28 +695,29 @@ describe("runEvaluator — failover continues past an over-budget mid-chain regi
 			{ displayModel: "claude-sonnet-5" },
 		);
 
-		const output = await runEvaluator({
-			runtime,
-			context: OVERSIZED_STABLE_CONTEXT,
-			trajectory: makeTrajectory([makeStep(1, "small result")]),
-			effects: {},
-		});
+		await expect(
+			runEvaluator({
+				runtime,
+				context: OVERSIZED_STABLE_CONTEXT,
+				trajectory: makeTrajectory([makeStep(1, "small result")]),
+				effects: {},
+			}),
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 
-		// The chain must be: large primary rate-limits -> small candidate is
-		// rejected pre-handler (its handler never runs) -> the LATER large
-		// registration still serves the turn instead of the typed budget error
-		// stranding it.
-		expect(output.success).toBe(true);
-		expect(smallHandler).not.toHaveBeenCalled();
-		expect(finalRequests).toHaveLength(1);
-		expect(toolMessageValues(finalRequests[0] as CapturedRequest)[0]).toContain(
-			"small result",
-		);
+		// A provider's authoritative hard-limit rejection is terminal. Retrying
+		// the same complete input against a differently configured registration
+		// would hide which provider boundary rejected it.
+		expect(smallHandler).toHaveBeenCalledTimes(1);
+		expect(finalRequests).toHaveLength(0);
 	});
 
 	it("records the terminal budget failure with the last rejected attempt's request", async () => {
 		const recordedStages: Array<Record<string, unknown>> = [];
-		const smallHandler = vi.fn(async () => ENVELOPE);
+		const smallHandler = vi.fn(async () => {
+			throw new ElizaError("provider input exceeds context", {
+				code: "MODEL_INPUT_OVER_BUDGET",
+			});
+		});
 		const runtime = new AgentRuntime({
 			character: { name: "EvaluatorAgent", bio: "test" } as Character,
 			adapter: new InMemoryDatabaseAdapter(),
@@ -729,7 +751,7 @@ describe("runEvaluator — failover continues past an over-budget mid-chain regi
 			}),
 		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 
-		expect(smallHandler).not.toHaveBeenCalled();
+		expect(smallHandler).toHaveBeenCalledTimes(1);
 		expect(recordedStages).toHaveLength(1);
 		const stage = recordedStages[0] as {
 			kind: string;

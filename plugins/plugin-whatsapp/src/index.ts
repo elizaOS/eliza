@@ -119,7 +119,6 @@ export {
   normalizeE164,
   normalizeWhatsAppTarget,
   resolveWhatsAppSystemLocation,
-  truncateText,
   WHATSAPP_TEXT_CHUNK_LIMIT,
 } from "./normalize";
 export {
@@ -178,7 +177,6 @@ import {
   normalizeE164 as _bs_28_normalizeE164,
   normalizeWhatsAppTarget as _bs_29_normalizeWhatsAppTarget,
   resolveWhatsAppSystemLocation as _bs_30_resolveWhatsAppSystemLocation,
-  truncateText as _bs_31_truncateText,
   WHATSAPP_TEXT_CHUNK_LIMIT as _bs_32_WHATSAPP_TEXT_CHUNK_LIMIT,
 } from "./normalize";
 import {
@@ -226,7 +224,6 @@ const __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__ = [
   _bs_28_normalizeE164,
   _bs_29_normalizeWhatsAppTarget,
   _bs_30_resolveWhatsAppSystemLocation,
-  _bs_31_truncateText,
   _bs_32_WHATSAPP_TEXT_CHUNK_LIMIT,
   _bs_33_sanitizeAccountId,
   _bs_34_WhatsAppPairingSession,
