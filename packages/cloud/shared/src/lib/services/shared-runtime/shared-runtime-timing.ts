@@ -174,9 +174,7 @@ export function parseSharedProviderTimingReceipt(
     Number.isFinite(durationMs) &&
     durationMs >= 0 &&
     durationMs <= MAX_SHARED_PROVIDER_TIMING_MS &&
-    (clamped
-      ? durationMs === MAX_SHARED_PROVIDER_TIMING_MS
-      : durationMs === recordedDurationMs);
+    (clamped ? durationMs === MAX_SHARED_PROVIDER_TIMING_MS : durationMs === recordedDurationMs);
   const replayed = receipt.replayed;
   const emptyReceiptIsConsistent =
     callCount !== 0 ||

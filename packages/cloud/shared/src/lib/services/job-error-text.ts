@@ -24,7 +24,6 @@
 
 import { redactSensitiveText } from "@elizaos/core";
 
-
 /** Classify an untrusted throw without allowing Proxy reflection to escape. */
 function safeError(value: unknown): Error | undefined {
   try {

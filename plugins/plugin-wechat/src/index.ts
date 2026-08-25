@@ -105,7 +105,9 @@ function normalizeConnectorLimit(
 ): number | undefined {
   if (limit === undefined) return undefined;
   if (!Number.isFinite(limit) || limit <= 0) {
-    throw new RangeError("WeChat connector limit must be a positive finite number");
+    throw new RangeError(
+      "WeChat connector limit must be a positive finite number",
+    );
   }
   return Math.floor(limit);
 }
@@ -305,24 +307,22 @@ export function registerWechatMessageConnector(
               }),
             ),
         );
-        const sorted = chunks
-          .flat()
-          .sort((left, right) => {
-            const rightCreated =
-              typeof right.createdAt === "number" &&
-              Number.isFinite(right.createdAt)
-                ? right.createdAt
-                : 0;
-            const leftCreated =
-              typeof left.createdAt === "number" &&
-              Number.isFinite(left.createdAt)
-                ? left.createdAt
-                : 0;
-            return (
-              rightCreated - leftCreated ||
-              (left.id ?? "").localeCompare(right.id ?? "")
-            );
-          });
+        const sorted = chunks.flat().sort((left, right) => {
+          const rightCreated =
+            typeof right.createdAt === "number" &&
+            Number.isFinite(right.createdAt)
+              ? right.createdAt
+              : 0;
+          const leftCreated =
+            typeof left.createdAt === "number" &&
+            Number.isFinite(left.createdAt)
+              ? left.createdAt
+              : 0;
+          return (
+            rightCreated - leftCreated ||
+            (left.id ?? "").localeCompare(right.id ?? "")
+          );
+        });
         return limit === undefined ? sorted : sorted.slice(0, limit);
       },
       searchMessages: async (

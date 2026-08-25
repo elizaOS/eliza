@@ -212,7 +212,6 @@ export const blueskyProvider: SocialMediaProvider = {
         error: extractErrorMessage(error),
       };
     }
-
   },
 
   async createPost(
@@ -237,9 +236,7 @@ export const blueskyProvider: SocialMediaProvider = {
         };
       }
       const invalidMedia = content.media.find(
-        (media) =>
-          media.type !== "image" ||
-          (!media.data && !media.base64 && !media.url),
+        (media) => media.type !== "image" || (!media.data && !media.base64 && !media.url),
       );
       if (invalidMedia) {
         return {

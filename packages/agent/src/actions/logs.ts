@@ -127,10 +127,7 @@ function failure(text: string, code: string, extra?: object): ActionResult {
 
 async function searchLogs(params: LogsParams): Promise<ActionResult> {
   const limit = params.limit;
-  if (
-    limit !== undefined &&
-    (!Number.isSafeInteger(limit) || limit <= 0)
-  ) {
+  if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
     return failure(
       "limit must be a positive integer when explicitly requesting a tail page.",
       "LOGS_INVALID_LIMIT",

@@ -488,7 +488,6 @@ describe("Slack message connector adapter", () => {
   });
 
   it("paginates every Slack history page when no limit was requested", async () => {
-    const runtime = createRuntime();
     const all = Array.from({ length: 501 }, (_, index) => ({
       type: "message",
       ts: `${1_700_000_000 + index}.000001`,

@@ -78,10 +78,10 @@ describe("fetchDexPaprikaPrices", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         requestedUrls.push(url);
-        return new Response(
-          JSON.stringify({ summary: { price_usd: 1 } }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ summary: { price_usd: 1 } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       }),
     );
     const addresses = Array.from({ length: 25 }, (_, index) => `0x${index}`);

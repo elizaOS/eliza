@@ -759,7 +759,9 @@ export async function listCharacterHistory(
   limit?: number,
 ): Promise<CharacterHistoryEntry[]> {
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)) {
-    throw new RangeError("Character history limit must be a positive safe integer");
+    throw new RangeError(
+      "Character history limit must be a positive safe integer",
+    );
   }
 
   const memories = await runtime.getMemories({

@@ -226,7 +226,8 @@ describe("error-description helpers", () => {
     const { describeSyncError } = await import("./steward-sync");
 
     const error = new Error("something unexpected");
-    error.stack = "Error: something unexpected\n    at first\n    at second\n    at third\n    at fourth";
+    error.stack =
+      "Error: something unexpected\n    at first\n    at second\n    at third\n    at fourth";
     const described = describeSyncError(error);
     expect(described).toContain("something unexpected");
     expect(described).toContain("stack=Error: something unexpected |     at first");

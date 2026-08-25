@@ -5,10 +5,7 @@
  * coerce loosely-typed handler options into validated values. Keeps every action's
  * success/failure shape identical.
  */
-import {
-  type ActionResult,
-  type IAgentRuntime,
-} from "@elizaos/core";
+import type { ActionResult, IAgentRuntime } from "@elizaos/core";
 import {
   type ActionResultData,
   FAILURE_TEXT_PREFIX,

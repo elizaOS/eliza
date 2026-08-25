@@ -13,9 +13,7 @@ describe("buildApiContext completeness", () => {
   });
 
   it("rejects an invalid explicit limit instead of silently clamping it", async () => {
-    await expect(buildApiContext({ limit: 0 })).rejects.toThrow(
-      "positive safe integer",
-    );
+    await expect(buildApiContext({ limit: 0 })).rejects.toThrow("positive safe integer");
   });
 
   it("includes every body parameter in generated request examples", async () => {

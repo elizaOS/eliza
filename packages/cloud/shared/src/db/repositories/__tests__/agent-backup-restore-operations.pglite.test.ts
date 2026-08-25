@@ -1215,7 +1215,6 @@ describe("restore operation spine", () => {
         ownerId: "restore-worker",
         claimMs: 60_000,
       });
-      const completeError = `seeding timed out: ${"diagnostic".repeat(300)}`;
       const failed = await failAgentBackupRestoreOperation({
         operationId: operation.id,
         ownerId: "restore-worker",

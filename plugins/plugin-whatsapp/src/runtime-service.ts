@@ -2032,10 +2032,10 @@ export class WhatsAppConnectorService extends Service {
       limit: undefined,
     });
     const matches = memories.filter((memory) => {
-        const text = String(memory.content.text ?? "").toLowerCase();
-        const from = String(memory.content.from ?? "").toLowerCase();
-        return text.includes(query) || from.includes(query);
-      });
+      const text = String(memory.content.text ?? "").toLowerCase();
+      const from = String(memory.content.from ?? "").toLowerCase();
+      return text.includes(query) || from.includes(query);
+    });
     return params.limit === undefined ? matches : matches.slice(0, params.limit);
   }
 

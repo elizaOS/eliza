@@ -1,9 +1,6 @@
 /** Proves grounded search results are complete unless the caller explicitly requests a page size. */
 import { describe, expect, it } from "vitest";
-import {
-  buildSearchResults,
-  type GroundedSearchResponse,
-} from "./google-search-results";
+import { buildSearchResults, type GroundedSearchResponse } from "./google-search-results";
 
 function responseWithChunks(count: number): GroundedSearchResponse {
   return {

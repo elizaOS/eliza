@@ -694,9 +694,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       });
       containerId = stdout.trim().slice(0, 12);
       if (!/^[0-9a-f]{12}$/i.test(containerId)) {
-        throw new Error(
-          `docker run returned unexpected output: ${JSON.stringify(stdout)}`,
-        );
+        throw new Error(`docker run returned unexpected output: ${JSON.stringify(stdout)}`);
       }
     } catch (err) {
       this.ports.release(bridgePort);

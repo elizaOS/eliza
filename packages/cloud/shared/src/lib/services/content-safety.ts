@@ -117,9 +117,7 @@ async function readModerationErrorDetail(response: Response): Promise<string> {
 
 function normalizeTextInputs(input: ContentSafetyInput["text"]): string[] {
   const values = Array.isArray(input) ? input : [input];
-  return values.filter(
-    (value): value is string => typeof value === "string" && value.length > 0,
-  );
+  return values.filter((value): value is string => typeof value === "string" && value.length > 0);
 }
 
 function categoryRecord<T>(

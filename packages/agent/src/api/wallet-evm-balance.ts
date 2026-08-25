@@ -763,8 +763,7 @@ async function fetchEvmChainBalancesViaRpc(
   }
 
   throw new Error(
-    toWellFormedUnicode(errors.join(" | ")) ||
-      `${chain.name} RPC unavailable`,
+    toWellFormedUnicode(errors.join(" | ")) || `${chain.name} RPC unavailable`,
   );
 }
 

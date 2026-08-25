@@ -692,13 +692,8 @@ async function sendDiscordResponse(
       let response = await makeRequest();
       if (response.status === 429) {
         const retryAfterHeader = response.headers.get("Retry-After");
-        const retryAfterSeconds = retryAfterHeader
-          ? parseFloat(retryAfterHeader)
-          : undefined;
-        const retryMs = discordRateLimiter.handleRateLimit(
-          botToken,
-          retryAfterSeconds,
-        );
+        const retryAfterSeconds = retryAfterHeader ? parseFloat(retryAfterHeader) : undefined;
+        const retryMs = discordRateLimiter.handleRateLimit(botToken, retryAfterSeconds);
         await new Promise((resolve) => setTimeout(resolve, retryMs));
         await discordRateLimiter.acquire(botToken);
         response = await makeRequest();

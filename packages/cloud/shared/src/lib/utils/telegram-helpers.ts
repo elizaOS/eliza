@@ -1,4 +1,3 @@
-import { truncateWellFormed } from "@elizaos/core";
 import { splitMessageLosslessly } from "./message-chunking";
 
 // Provides cloud utility telegram helpers helpers shared by backend services.

@@ -664,7 +664,8 @@ describe("buildTestHandler — http", () => {
     ).resolves.toMatchObject({ ok: true, output: accepted });
 
     __setPinnedFetchImplForTests(
-      async () => new Response("z".repeat(4 * 1024 * 1024 + 1), { status: 200 }),
+      async () =>
+        new Response("z".repeat(4 * 1024 * 1024 + 1), { status: 200 }),
     );
     await expect(
       buildTestHandler(makeDef({ parameters: [] }))({}),

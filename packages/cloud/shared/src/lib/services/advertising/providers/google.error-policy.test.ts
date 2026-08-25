@@ -132,25 +132,20 @@ describe("googleAdsProvider.createCreative provider text boundaries", () => {
       return jsonResponse({});
     });
 
-    const result = await googleAdsProvider.createCreative(
-      credentials,
-      "123",
-      "123/456",
-      {
-        name: "business",
-        type: "image",
-        headline: "x".repeat(31),
-        primaryText: "complete description",
-        destinationUrl: "https://example.com",
-        media: [
-          {
-            type: "image",
-            url: "https://example.com/image.png",
-            providerAssetId: "customers/123/assets/789",
-          },
-        ],
-      } as never,
-    );
+    const result = await googleAdsProvider.createCreative(credentials, "123", "123/456", {
+      name: "business",
+      type: "image",
+      headline: "x".repeat(31),
+      primaryText: "complete description",
+      destinationUrl: "https://example.com",
+      media: [
+        {
+          type: "image",
+          url: "https://example.com/image.png",
+          providerAssetId: "customers/123/assets/789",
+        },
+      ],
+    } as never);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("nothing was created");

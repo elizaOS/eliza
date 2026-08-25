@@ -297,8 +297,7 @@ export class MemoryService {
             and(eq(memoryTable.roomId, input.roomId), eq(memoryTable.agentId, runtime.agentId)),
           )
           .orderBy(desc(memoryTable.createdAt));
-        const results =
-          input.limit === undefined ? await query : await query.limit(input.limit);
+        const results = input.limit === undefined ? await query : await query.limit(input.limit);
 
         memories = results.map(
           (row) =>
@@ -341,8 +340,7 @@ export class MemoryService {
           and(inArray(memoryTable.roomId, roomIdArray), eq(memoryTable.agentId, runtime.agentId)),
         )
         .orderBy(desc(memoryTable.createdAt));
-      const results =
-        input.limit === undefined ? await query : await query.limit(input.limit);
+      const results = input.limit === undefined ? await query : await query.limit(input.limit);
 
       memories = results.map(
         (row) =>
@@ -762,9 +760,7 @@ Summary:`;
           wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
         }
 
-        const topEntities = Array.from(wordCounts.entries()).sort(
-          (a, b) => b[1] - a[1],
-        );
+        const topEntities = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
 
         chartData = topEntities.map(([label, value]) => ({ label, value }));
         insights = [

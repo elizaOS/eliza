@@ -529,9 +529,7 @@ Maximum 300 characters.`;
       for (const [index, chunk] of chunks.entries()) {
         const result = await Promise.race([
           bot.telegram.sendMessage(message.chatId, chunk, {
-            ...(index === 0
-              ? { reply_parameters: { message_id: message.messageId } }
-              : {}),
+            ...(index === 0 ? { reply_parameters: { message_id: message.messageId } } : {}),
           }),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),

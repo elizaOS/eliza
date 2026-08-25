@@ -28,10 +28,7 @@ export function buildSearchResults(
   const grounding = response.candidates?.[0]?.groundingMetadata;
   const chunks = grounding?.groundingChunks ?? [];
   const supports = grounding?.groundingSupports ?? [];
-  const byUrl = new Map<
-    string,
-    { title: string; content: string[]; scores: number[] }
-  >();
+  const byUrl = new Map<string, { title: string; content: string[]; scores: number[] }>();
 
   for (const support of supports) {
     const snippet = support.segment?.text?.trim();
@@ -73,8 +70,7 @@ export function buildSearchResults(
     content: value.content.join(" ").trim(),
     score:
       value.scores.length > 0
-        ? value.scores.reduce((total, score) => total + score, 0) /
-          value.scores.length
+        ? value.scores.reduce((total, score) => total + score, 0) / value.scores.length
         : 1,
   }));
   return maxResults === undefined ? results : results.slice(0, maxResults);

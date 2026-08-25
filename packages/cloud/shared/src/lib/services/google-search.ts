@@ -3,9 +3,9 @@ import { assertModelOutputComplete } from "@elizaos/core";
 import { calculateCost, estimateRequestCost, normalizeModelName } from "../pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
 import { logger } from "../utils/logger";
-import { buildSearchResults } from "./google-search-results";
 import { apiKeysService } from "./api-keys";
 import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
+import { buildSearchResults } from "./google-search-results";
 import { usageService } from "./usage";
 
 export interface HostedSearchOptions {

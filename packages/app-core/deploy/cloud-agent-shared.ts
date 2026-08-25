@@ -9,7 +9,9 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import { sql } from "drizzle-orm";
-import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with { type: "json" };
+import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
+  type: "json",
+};
 
 const CLOUD_AGENT_RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
 
@@ -969,7 +971,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           .filter((value): value is string => typeof value === "string"),
       );
       let inserted = 0;
-      let skipped = 0;
       for (const value of messages) {
         if (!value || typeof value !== "object") continue;
         const message = value as Record<string, unknown>;
@@ -985,7 +986,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           typeof message.sourceId === "string" ? message.sourceId.trim() : "";
         if (!role || !text || !sourceId) continue;
         if (existingSourceIds.has(sourceId)) {
-          skipped += 1;
           continue;
         }
         state.memories.push({

@@ -1,6 +1,7 @@
 // Exercises discord helpers behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "vitest";
 import {
+  createEmbed,
   escapeMarkdown,
   getChannelTypeName,
   isTextChannel,
@@ -8,7 +9,6 @@ import {
   maskId,
   mention,
   splitMessage,
-  createEmbed,
 } from "./discord-helpers";
 
 /**
