@@ -7,18 +7,21 @@
  */
 
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
-import { performance } from "node:perf_hooks";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { createProgressiveFileTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
 import { createPreparedModelRequestGuard } from "../core/src/runtime/prepared-model-request.ts";
 import {
+  applyProgressiveContentMutant,
   cleanupProgressiveContentProductionFaults,
   createProgressiveContentProductionFaultExecutors,
+  PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_MUTANTS,
+  PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
+  runProgressiveContentConformance,
   runProgressiveContentFaultRegistry,
-  runProgressiveContentMutantRegistry,
   runProgressiveContentStress,
 } from "../core/src/testing/index.ts";
 import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
@@ -26,11 +29,14 @@ import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../corpus-tools/
 import { runProgressiveContentTargetHarness } from "../corpus-tools/src/progressive-content-target-harness.ts";
 import { createProgressiveContentExternalMutantExecutors } from "../scenario-runner/src/progressive-content-external-mutants.ts";
 import {
+  createDeterministicTargetAdapter,
+  traverseTarget,
+} from "./lib/progressive-content-deterministic-helpers.mjs";
+import {
   createProgressiveContentProductionFactories,
   createProgressiveContentProductionTarget,
 } from "./lib/progressive-content-production-targets.mjs";
 
-const PAGE_BYTES = 64 * 1024;
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
@@ -40,10 +46,6 @@ function requiredEnvironment(name) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);
   return value;
-}
-
-function sha256(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
 }
 
 async function privateAtomicWrite(file, bytes) {
@@ -120,119 +122,113 @@ async function createTarget(corpusRoot, object, factories) {
   });
 }
 
-async function traverseTarget(target, object) {
-  const digest = createHash("sha256");
-  const rows = [];
-  let offset = 0;
-  let bytesRead = 0;
-  let rowsReadMax = 0;
-  let parentScans = 0;
-  let maxPageLatencyMs = 0;
-  while (offset < target.object.byteLength) {
-    const startedAt = performance.now();
-    const page = await target.read({
-      access: "authorized",
-      offset,
-      limit: PAGE_BYTES,
-      expectedRevision: target.object.revision,
-    });
-    maxPageLatencyMs = Math.max(
-      maxPageLatencyMs,
-      performance.now() - startedAt,
-    );
-    if (page.bytes.byteLength === 0) {
-      throw new Error(`target made no progress for ${object.id}`);
-    }
-    const start = page.view.slice.range.start;
-    const end = page.view.slice.range.end;
-    digest.update(page.bytes);
-    bytesRead += page.sourceWork.bytesRead;
-    rowsReadMax = Math.max(rowsReadMax, page.sourceWork.rowsRead);
-    parentScans += page.sourceWork.parentScans;
-    rows.push({
-      objectId: object.id,
-      revision: object.revision,
-      sliceSha256: sha256(page.bytes),
-      range: { unit: "byte", start, end },
-      bytesRead: page.bytes.byteLength,
-    });
-    offset = end;
-  }
-  const reassembledSha256 = digest.digest("hex");
-  if (reassembledSha256 !== object.sourceSha256) {
-    throw new Error(`target traversal hash differs for ${object.id}`);
-  }
-  rows[rows.length - 1].reassembledSha256 = reassembledSha256;
-  return {
-    rows,
-    maxPageLatencyMs,
-    sourceWork: {
-      objectId: object.id,
-      rowsRead: rowsReadMax,
-      parentScans,
-      bytesRead,
-      bytesReturned: object.byteLength,
-    },
-  };
+function selectFileTestObject(manifest, purpose) {
+  const object = manifest.objects
+    .filter(
+      ({ family, format, byteLength }) =>
+        family === "file" &&
+        byteLength > 0 &&
+        format !== "binary" &&
+        format !== "invalid-utf8",
+    )
+    .sort((left, right) => right.byteLength - left.byteLength)[0];
+  if (!object) throw new Error(`file ${purpose} object is absent`);
+  return object;
 }
 
-function targetAdapter(target, adapterId) {
-  return {
-    adapterId,
-    deliveryContract: "explicit-native-paging-no-automatic-prompt-omission",
-    async read(request) {
-      return target.read({
-        access:
-          request.authorizationScope === target.object.authorizationScope
-            ? "authorized"
-            : "unauthorized",
-        offset: request.offset,
-        limit: request.limit,
-        expectedRevision: request.expectedRevision,
+async function productionMutants(corpusRoot, manifest, workRoot) {
+  const object = selectFileTestObject(manifest, "mutant");
+  const externalExecutors = createProgressiveContentExternalMutantExecutors();
+  const adapterIds = new Set(PROGRESSIVE_CONTENT_MUTANTS.map(([id]) => id));
+  const results = [];
+  let executed = 0;
+  let adapterIndex = 0;
+  for (const mutant of PROGRESSIVE_CONTENT_REQUIRED_MUTANTS) {
+    let failureVectors;
+    if (!adapterIds.has(mutant.id)) {
+      const executor = externalExecutors[mutant.id];
+      if (!executor) {
+        failureVectors = ["executor-missing"];
+      } else {
+        executed += 1;
+        try {
+          await executor.execute();
+          failureVectors = ["MUTANT_NOT_OBSERVED"];
+        } catch (error) {
+          const vector =
+            error && typeof error === "object" ? error.vector : undefined;
+          failureVectors = [
+            typeof vector === "string" && vector.length > 0
+              ? vector
+              : `executor-error:${error instanceof Error ? error.name : "unknown"}`,
+          ];
+        }
+      }
+      results.push({
+        ...mutant,
+        status: failureVectors.includes(mutant.killingVector)
+          ? "killed"
+          : "survived",
+        failureVectors,
       });
-    },
-    restart: () => target.restart(),
-    cleanup: () => target.cleanup(),
-  };
-}
-
-async function productionMutants(corpusRoot, manifest, factories) {
-  const object = manifest.objects.find(
-    ({ family, byteLength, format }) =>
-      family === "file" &&
-      byteLength >= 1024 * 1024 &&
-      format !== "binary" &&
-      format !== "invalid-utf8",
-  );
-  if (!object) throw new Error("file mutant object is absent");
-  const targets = [];
-  const adapters = [];
-  for (let index = 0; index < 9; index += 1) {
-    const target = await createTarget(corpusRoot, object, factories);
-    targets.push(target);
-    adapters.push(targetAdapter(target, `production-file-mutant-${index}`));
-  }
-  let cursor = 0;
-  try {
-    return await runProgressiveContentMutantRegistry({
-      object: targets[0].object,
-      createAdapter: () => {
-        const adapter = adapters[cursor];
-        cursor += 1;
-        if (!adapter) throw new Error("mutant target inventory exhausted");
-        return adapter;
-      },
-      externalExecutors: createProgressiveContentExternalMutantExecutors(),
+      continue;
+    }
+    const factory = await createProgressiveFileTargetFactory({
+      targetRoot: path.join(workRoot, "mutants", String(adapterIndex)),
+      agentId: "content-context-mutant-agent",
     });
-  } finally {
-    for (const target of targets) {
+    const target = await createTarget(
+      corpusRoot,
+      object,
+      new Map([["file", factory]]),
+    );
+    adapterIndex += 1;
+    executed += 1;
+    try {
+      const report = await runProgressiveContentConformance({
+        adapter: applyProgressiveContentMutant(
+          createDeterministicTargetAdapter(
+            target,
+            `production-file-mutant-${adapterIndex}`,
+            1024,
+          ),
+          mutant.id,
+          target.object,
+        ),
+        object: target.object,
+      });
+      failureVectors = [
+        ...new Set(report.failures.map(({ vector }) => vector)),
+      ];
+    } finally {
       try {
         await target.cleanup();
       } catch {
         // error-policy:J6 mutant conformance already records cleanup failures.
       }
     }
+    results.push({
+      ...mutant,
+      status: failureVectors.includes(mutant.killingVector)
+        ? "killed"
+        : "survived",
+      failureVectors,
+    });
   }
+  const killed = results.filter(({ status }) => status === "killed").length;
+  return {
+    schemaVersion: PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
+    required: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
+    executed,
+    killed,
+    killRate: killed / PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
+    status:
+      executed === PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length &&
+      killed === PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length
+        ? "passed"
+        : "failed",
+    results,
+  };
 }
 
 function faultExecutor(corpusRoot, object, factories, operation) {
@@ -240,7 +236,23 @@ function faultExecutor(corpusRoot, object, factories, operation) {
     async execute() {
       const target = await createTarget(corpusRoot, object, factories);
       try {
-        await operation(target);
+        try {
+          await operation(target);
+        } catch (error) {
+          // error-policy:J2 the FILE action's package code is translated to
+          // the cross-family fault registry's public absence code.
+          if (
+            error &&
+            typeof error === "object" &&
+            error.code === "FILE_NOT_FOUND"
+          ) {
+            throw Object.assign(new Error("content target is absent"), {
+              code: "CONTENT_NOT_FOUND",
+              cause: error,
+            });
+          }
+          throw error;
+        }
       } finally {
         try {
           await target.cleanup();
@@ -254,11 +266,7 @@ function faultExecutor(corpusRoot, object, factories, operation) {
 }
 
 async function productionFaults(corpusRoot, manifest, factories) {
-  const object = manifest.objects.find(
-    ({ family, format }) =>
-      family === "file" && format !== "binary" && format !== "invalid-utf8",
-  );
-  if (!object) throw new Error("file fault object is absent");
+  const object = selectFileTestObject(manifest, "fault");
   const faultWorkRoot = path.join(
     path.dirname(requiredEnvironment("ELIZA_CONTENT_CONTEXT_OUTPUT_DIR")),
     "production-faults",
@@ -267,6 +275,7 @@ async function productionFaults(corpusRoot, manifest, factories) {
     await createProgressiveContentProductionFaultExecutors({
       workRoot: faultWorkRoot,
     });
+  const keepAlive = setInterval(() => {}, 1_000);
   try {
     return await runProgressiveContentFaultRegistry({
       executors: {
@@ -307,6 +316,7 @@ async function productionFaults(corpusRoot, manifest, factories) {
       },
     });
   } finally {
+    clearInterval(keepAlive);
     await cleanupProgressiveContentProductionFaults(faultWorkRoot);
   }
 }
@@ -548,7 +558,7 @@ export async function produceDeterministicContentContextEvidence() {
     ],
   });
 
-  const mutants = await productionMutants(corpusRoot, manifest, byFamily);
+  const mutants = await productionMutants(corpusRoot, manifest, workRoot);
   await writeJson(outputDir, "mutant-kills.json", mutants);
   const faults = await productionFaults(corpusRoot, manifest, byFamily);
   await writeJson(outputDir, "faults.json", faults);
