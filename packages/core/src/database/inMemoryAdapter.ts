@@ -107,6 +107,13 @@ import {
 	validateDocumentDirectGrantEntityIds,
 	validateDocumentRevisionReplacement,
 } from "./document-list-query";
+import {
+	advanceWorldMetadataRevision,
+	getWorldMetadataRevision,
+	initializeWorldMetadataRevision,
+	requireFreshWorldMetadataRevision,
+	worldMetadataValueEquals,
+} from "./world-metadata-cas";
 
 function asUuid(id: string): UUID {
 	return id as UUID;
@@ -124,38 +131,6 @@ function randomUuid(): UUID {
 
 function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
-}
-
-/**
- * Deep JSON-value equality for world-metadata compare-and-swap: the stored
- * `World.metadata` is a live object in this adapter, so snapshots must compare
- * by value. Key order is irrelevant (matching SQL jsonb equality); `undefined`
- * is treated as absent, matching how a JSON round-trip drops it.
- */
-function jsonValueEquals(left: unknown, right: unknown): boolean {
-	if (left === right) return true;
-	if (isPlainObject(left) && isPlainObject(right)) {
-		const leftKeys = Object.keys(left).filter(
-			(key) => (left as Record<string, unknown>)[key] !== undefined,
-		);
-		const rightKeys = Object.keys(right).filter(
-			(key) => (right as Record<string, unknown>)[key] !== undefined,
-		);
-		if (leftKeys.length !== rightKeys.length) return false;
-		return leftKeys.every((key) =>
-			jsonValueEquals(
-				(left as Record<string, unknown>)[key],
-				(right as Record<string, unknown>)[key],
-			),
-		);
-	}
-	if (Array.isArray(left) && Array.isArray(right)) {
-		return (
-			left.length === right.length &&
-			left.every((item, index) => jsonValueEquals(item, right[index]))
-		);
-	}
-	return false;
 }
 
 function memoryMatchesMetadata(
@@ -1745,7 +1720,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const id of worldIds) {
 			const world = this.worlds.get(String(id));
 			if (world) {
-				worlds.push(world);
+				worlds.push(structuredClone(world));
 			}
 		}
 		return worlds;
@@ -1754,16 +1729,31 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createWorlds(worlds: World[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const world of worlds) {
-			this.worlds.set(String(world.id), world);
+			if (this.worlds.has(String(world.id))) {
+				throw new ElizaError("World already exists", {
+					code: "WORLD_ALREADY_EXISTS",
+					context: { worldId: world.id },
+				});
+			}
+			this.worlds.set(String(world.id), {
+				...structuredClone(world),
+				metadata: initializeWorldMetadataRevision(
+					world.metadata as Metadata | undefined,
+				) as World["metadata"],
+			});
 			ids.push(world.id);
 		}
 		return ids;
 	}
 
 	async upsertWorlds(worlds: World[]): Promise<void> {
-		// WHY simple set: Map.set() handles both insert and update atomically.
 		for (const world of worlds) {
-			this.worlds.set(String(world.id), world);
+			const existing = this.worlds.get(String(world.id));
+			if (!existing) {
+				await this.createWorlds([world]);
+				continue;
+			}
+			await this.updateWorlds([world]);
 		}
 	}
 
@@ -1775,7 +1765,22 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async updateWorlds(worlds: World[]): Promise<void> {
 		for (const world of worlds) {
-			this.worlds.set(String(world.id), world);
+			const existing = this.worlds.get(String(world.id));
+			if (!existing) continue;
+			const storedRevision = requireFreshWorldMetadataRevision(
+				existing.metadata as Metadata | undefined,
+				world.metadata as Metadata | undefined,
+				String(world.id),
+			);
+			const nextMetadata = advanceWorldMetadataRevision(
+				world.metadata as Metadata | undefined,
+				storedRevision,
+			);
+			this.worlds.set(String(world.id), {
+				...structuredClone(world),
+				metadata: nextMetadata as World["metadata"],
+			});
+			world.metadata = structuredClone(nextMetadata) as World["metadata"];
 		}
 	}
 
@@ -1794,9 +1799,18 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (!existing) {
 			return { status: "not_found" };
 		}
-		if (!jsonValueEquals(existing.metadata ?? {}, params.expectedMetadata)) {
+		if (
+			!worldMetadataValueEquals(
+				existing.metadata ?? {},
+				params.expectedMetadata,
+			)
+		) {
 			return { status: "conflict" };
 		}
+		const storedRevision = getWorldMetadataRevision(
+			existing.metadata as Metadata | undefined,
+		);
+		if (storedRevision === null) return { status: "conflict" };
 		const audit = params.audit;
 		// Validate cloneability BEFORE appending the audit row: if the
 		// replacement metadata is not cloneable the method must throw with
@@ -1804,8 +1818,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// without its metadata change would be a false authority record).
 		const replacementWorld: World = {
 			...existing,
-			metadata: structuredClone(
+			metadata: advanceWorldMetadataRevision(
 				params.replacementMetadata,
+				storedRevision,
 			) as World["metadata"],
 		};
 		if (audit) {
@@ -1837,7 +1852,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async getAllWorlds(): Promise<World[]> {
-		return Array.from(this.worlds.values());
+		return Array.from(this.worlds.values(), (world) => structuredClone(world));
 	}
 
 	// Batch room methods

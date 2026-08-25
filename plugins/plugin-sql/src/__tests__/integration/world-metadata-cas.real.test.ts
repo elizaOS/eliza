@@ -5,7 +5,13 @@
  * atomicity (the log row rides the CAS transaction), and world-not-found.
  * Real adapter, real migration system, no mocked storage.
  */
-import { ChannelType, ROLE_WRITE_AUDIT_LOG_TYPE, type UUID, type World } from "@elizaos/core";
+import {
+  ChannelType,
+  ROLE_WRITE_AUDIT_LOG_TYPE,
+  type UUID,
+  WORLD_METADATA_REVISION_KEY,
+  type World,
+} from "@elizaos/core";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -148,7 +154,7 @@ describe("compareAndSwapWorldMetadata (real SQL parity)", () => {
     // the value-equality contract) must treat this as the same snapshot.
     // Adding or removing a key is a value change and must conflict — the
     // drift test above covers that direction.
-    const reordered = { roles: before.roles, ownership: before.ownership };
+    const reordered = Object.fromEntries(Object.entries(before).reverse());
     const result = await adapter.compareAndSwapWorldMetadata({
       worldId: WORLD_ID,
       expectedMetadata: reordered as never,
@@ -156,6 +162,60 @@ describe("compareAndSwapWorldMetadata (real SQL parity)", () => {
     });
     expect(result).toEqual({ status: "updated" });
   });
+
+  it.each(["updateWorlds", "upsertWorlds"] as const)(
+    "rejects a legacy %s writer that resumes from a pre-CAS SQL snapshot",
+    async (legacyMethod) => {
+      let signalRead!: () => void;
+      let releaseWriter!: () => void;
+      const readComplete = new Promise<void>((resolve) => {
+        signalRead = resolve;
+      });
+      const writerGate = new Promise<void>((resolve) => {
+        releaseWriter = resolve;
+      });
+      const legacyWriter = (async () => {
+        const staleWorld = (await adapter.getWorldsByIds([WORLD_ID]))[0];
+        signalRead();
+        await writerGate;
+        if (!staleWorld) throw new Error("test world missing");
+        (staleWorld.metadata as { roles: Record<string, string> }).roles[String(TARGET_ID)] =
+          "GUEST";
+        await adapter[legacyMethod]([staleWorld]);
+      })();
+      await readComplete;
+
+      const before = await storedMetadata();
+      const replacement = structuredClone(before);
+      (replacement as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "ADMIN";
+      const casResult = await adapter.compareAndSwapWorldMetadata({
+        worldId: WORLD_ID,
+        expectedMetadata: before as never,
+        replacementMetadata: replacement as never,
+      });
+      releaseWriter();
+      await expect(legacyWriter).rejects.toMatchObject({ code: "WORLD_METADATA_STALE_WRITE" });
+
+      expect(casResult).toEqual({ status: "updated" });
+      const after = await storedMetadata();
+      expect((after as { roles: Record<string, string> }).roles[String(TARGET_ID)]).toBe("ADMIN");
+    }
+  );
+
+  it.each(["updateWorlds", "upsertWorlds"] as const)(
+    "rejects a malformed revision from legacy %s on real SQL",
+    async (legacyMethod) => {
+      const world = (await adapter.getWorldsByIds([WORLD_ID]))[0];
+      if (!world?.metadata) throw new Error("test world metadata missing");
+      (world.metadata as Record<string, unknown>)[WORLD_METADATA_REVISION_KEY] = "invalid";
+      const before = await storedMetadata();
+
+      await expect(adapter[legacyMethod]([world])).rejects.toMatchObject({
+        code: "WORLD_METADATA_STALE_WRITE",
+      });
+      expect(await storedMetadata()).toEqual(before);
+    }
+  );
 
   it("reports not_found for an unknown world", async () => {
     const result = await adapter.compareAndSwapWorldMetadata({

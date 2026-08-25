@@ -40,6 +40,10 @@ import {
 	validateTaskQueryPagination,
 } from "./database";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import {
+	mergeWorldMetadataForLegacyWrite,
+	worldMetadataValueEquals,
+} from "./database/world-metadata-cas";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import {
 	type CapabilityConfig,
@@ -4892,26 +4896,50 @@ export class AgentRuntime implements IAgentRuntime {
 		return ids;
 	}
 
-	/**
-	 * Ensure the existence of a world.
-	 *
-	 * WHY upsert: Eliminates race condition where concurrent agent basic-capabilitiess
-	 * could both try to create the same world. Upsert is atomic.
-	 */
+	/** Ensures a world exists while preserving persisted metadata and revision. */
 	async ensureWorldExists({ id, name, messageServerId, metadata }: World) {
-		// Check if world exists (for logging only)
-		const world = (await this.adapter.getWorldsByIds([id]))[0] ?? null;
-
-		// Atomic upsert - handles both insert and update
-		await this.adapter.upsertWorlds([
-			{
-				id,
-				name,
-				agentId: this.agentId,
-				messageServerId,
-				metadata,
-			},
-		]);
+		let world: World | null = null;
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			world = (await this.adapter.getWorldsByIds([id]))[0] ?? null;
+			const mergedMetadata = world
+				? mergeWorldMetadataForLegacyWrite(
+						world.metadata as Metadata | undefined,
+						metadata as Metadata | undefined,
+						String(id),
+					)
+				: metadata;
+			if (
+				world &&
+				worldMetadataValueEquals(world.metadata ?? {}, mergedMetadata ?? {}) &&
+				world.name === (name ?? world.name) &&
+				world.messageServerId === (messageServerId ?? world.messageServerId)
+			) {
+				break;
+			}
+			try {
+				await this.adapter.upsertWorlds([
+					{
+						...world,
+						id,
+						name: name ?? world?.name,
+						agentId: this.agentId,
+						messageServerId: messageServerId ?? world?.messageServerId,
+						metadata: mergedMetadata as World["metadata"],
+					},
+				]);
+				break;
+			} catch (error) {
+				if (
+					!(error instanceof ElizaError) ||
+					error.code !== "WORLD_METADATA_STALE_WRITE" ||
+					attempt === 2
+				) {
+					throw error;
+				}
+				// error-policy:J2 — retry against a fresh snapshot after a
+				// concurrent legacy writer advances the metadata revision.
+			}
+		}
 
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, worldId: id, messageServerId },

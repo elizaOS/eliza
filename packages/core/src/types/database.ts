@@ -1242,10 +1242,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * Atomic compare-and-swap replacement of a world's whole metadata under the
 	 * exact prior snapshot, committing the audit row in the same transaction
 	 * (#23100 role-write atomicity). Authorization role writes MUST go through
-	 * this operation — a blind `updateWorlds` overwrite can resurrect revoked
-	 * authority when racing a concurrent writer.
+	 * this operation and fail closed when an adapter omits the optional
+	 * capability; they never fall back to a blind `updateWorlds` overwrite.
 	 */
-	compareAndSwapWorldMetadata(
+	compareAndSwapWorldMetadata?(
 		params: WorldMetadataCompareAndSwapParams,
 	): Promise<WorldMetadataMutationResult>;
 

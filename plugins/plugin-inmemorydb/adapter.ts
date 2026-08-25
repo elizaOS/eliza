@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import {
   type AccessContext,
   type Agent,
+  advanceWorldMetadataRevision,
   type Component,
   type Content,
   canRequesterManageDocumentDirectGrants,
@@ -39,7 +40,9 @@ import {
   type EntitiesForRoomsResult,
   type Entity,
   filterMemoryReadByAccessContext,
+  getWorldMetadataRevision,
   type IDatabaseAdapter,
+  initializeWorldMetadataRevision,
   isDocumentVisibleToRequester,
   type JsonValue,
   type Log,
@@ -68,6 +71,7 @@ import {
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   rankMessageSearch,
+  requireFreshWorldMetadataRevision,
   type Task,
   type UUID,
   validateDocumentDirectGrantEntityIds,
@@ -78,6 +82,7 @@ import {
   type WorldMetadataCompareAndSwapParams,
   type WorldMetadataMutationResult,
   withinCreatedAtWindow,
+  worldMetadataValueEquals,
 } from "@elizaos/core";
 import { dataContainsFilter } from "./data-contains-filter";
 import { EphemeralHNSW } from "./hnsw";
@@ -409,42 +414,6 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
   const aId = typeof a.id === "string" ? a.id : "";
   const bId = typeof b.id === "string" ? b.id : "";
   return compareMemoryIds(bId, aId);
-}
-
-/**
- * Deep JSON-value equality for world-metadata compare-and-swap. The stored
- * `World.metadata` is a live object in this adapter, so snapshots must compare
- * by value; key order is irrelevant (matching SQL jsonb equality) and
- * `undefined` is treated as absent, matching how a JSON round-trip drops it.
- */
-function worldMetadataValueEquals(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (Array.isArray(left) && Array.isArray(right)) {
-    return (
-      left.length === right.length &&
-      left.every((item, index) => worldMetadataValueEquals(item, right[index]))
-    );
-  }
-  if (
-    typeof left === "object" &&
-    left !== null &&
-    typeof right === "object" &&
-    right !== null &&
-    !Array.isArray(left) &&
-    !Array.isArray(right)
-  ) {
-    const leftRecord = left as Record<string, unknown>;
-    const rightRecord = right as Record<string, unknown>;
-    const leftKeys = Object.keys(leftRecord).filter((key) => leftRecord[key] !== undefined);
-    const rightKeys = Object.keys(rightRecord).filter((key) => rightRecord[key] !== undefined);
-    if (leftKeys.length !== rightKeys.length) return false;
-    return leftKeys.every(
-      (key) =>
-        Object.hasOwn(rightRecord, key) &&
-        worldMetadataValueEquals(leftRecord[key], rightRecord[key])
-    );
-  }
-  return false;
 }
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
@@ -1605,14 +1574,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   // ── World CRUD ────────────────────────────────────────────────────────
 
   async getAllWorlds(): Promise<World[]> {
-    return this.storage.getAll<World>(COLLECTIONS.WORLDS);
+    const worlds = await this.storage.getAll<World>(COLLECTIONS.WORLDS);
+    return worlds.map((world) => structuredClone(world));
   }
 
   async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {
     const worlds: World[] = [];
     for (const id of worldIds) {
       const w = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
-      if (w) worlds.push(w);
+      if (w) worlds.push(structuredClone(w));
     }
     return worlds;
   }
@@ -1625,7 +1595,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const ids: UUID[] = [];
       for (const world of worlds) {
         const id = world.id as UUID;
-        await this.storage.set(COLLECTIONS.WORLDS, id, { ...world, id });
+        if (await this.storage.get<World>(COLLECTIONS.WORLDS, id)) {
+          throw new ElizaError("World already exists", {
+            code: "WORLD_ALREADY_EXISTS",
+            context: { worldId: id },
+          });
+        }
+        await this.storage.set(COLLECTIONS.WORLDS, id, {
+          ...structuredClone(world),
+          id,
+          metadata: initializeWorldMetadataRevision(world.metadata as Metadata | undefined),
+        });
         ids.push(id);
       }
       return ids;
@@ -1641,19 +1621,30 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async updateWorlds(worlds: World[]): Promise<void> {
-    // World writes share the CAS serialization tail so a legacy whole-world
-    // writer cannot interleave between a CAS read/compare and its write
-    // (#23100): the blind write still happens, but never INSIDE another
-    // world-metadata mutation's critical section.
+    // World writes share the CAS serialization tail and compare the revision
+    // carried by their read snapshot. A writer that resumes after a CAS has
+    // advanced storage therefore fails with a typed stale-write error instead
+    // of overwriting authority.
     return withWorldMetadataTail(this.storage, async () => {
       for (const world of worlds) {
         if (!world.id) continue;
         const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, world.id);
         if (!existing) continue;
+        const storedRevision = requireFreshWorldMetadataRevision(
+          existing.metadata as Metadata | undefined,
+          world.metadata as Metadata | undefined,
+          String(world.id)
+        );
+        const nextMetadata = advanceWorldMetadataRevision(
+          world.metadata as Metadata | undefined,
+          storedRevision
+        );
         await this.storage.set(COLLECTIONS.WORLDS, world.id, {
           ...existing,
-          ...world,
+          ...structuredClone(world),
+          metadata: nextMetadata,
         });
+        world.metadata = structuredClone(nextMetadata) as World["metadata"];
       }
     });
   }
@@ -1663,11 +1654,30 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       for (const world of worlds) {
         const id = world.id as UUID;
         const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
+        if (!existing) {
+          await this.storage.set(COLLECTIONS.WORLDS, id, {
+            ...structuredClone(world),
+            id,
+            metadata: initializeWorldMetadataRevision(world.metadata as Metadata | undefined),
+          });
+          continue;
+        }
+        const storedRevision = requireFreshWorldMetadataRevision(
+          existing.metadata as Metadata | undefined,
+          world.metadata as Metadata | undefined,
+          String(id)
+        );
+        const nextMetadata = advanceWorldMetadataRevision(
+          world.metadata as Metadata | undefined,
+          storedRevision
+        );
         await this.storage.set(COLLECTIONS.WORLDS, id, {
-          ...(existing ?? {}),
-          ...world,
+          ...existing,
+          ...structuredClone(world),
           id,
+          metadata: nextMetadata,
         });
+        world.metadata = structuredClone(nextMetadata) as World["metadata"];
       }
     });
   }
@@ -1705,6 +1715,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     ) {
       return { status: "conflict" };
     }
+    const storedRevision = getWorldMetadataRevision(stored.metadata as Metadata | undefined);
+    if (storedRevision === null) return { status: "conflict" };
     const audit = params.audit;
     // Validate cloneability BEFORE inserting the audit row: a non-cloneable
     // replacement must throw with the world untouched and NO audit row left
@@ -1712,7 +1724,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     // authority record).
     const replacementWorld: World = {
       ...stored,
-      metadata: structuredClone(params.replacementMetadata) as World["metadata"],
+      metadata: advanceWorldMetadataRevision(
+        params.replacementMetadata,
+        storedRevision
+      ) as World["metadata"],
     };
     if (audit) {
       const id = randomUUID() as UUID;

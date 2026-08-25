@@ -15,6 +15,7 @@ import {
   type AgentRunSummaryResult,
   type AppendConnectorAccountAuditEventParams,
   actorFromAccessContext,
+  advanceWorldMetadataRevision,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -50,7 +51,9 @@ import {
   encryptedCharacter,
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
+  getWorldMetadataRevision,
   type IDatabaseAdapter,
+  initializeWorldMetadataRevision,
   type JsonValue,
   type ListConnectorAccountCredentialRefsParams,
   type ListConnectorAccountsParams,
@@ -79,6 +82,7 @@ import {
   ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   type RunStatus,
+  requireFreshWorldMetadataRevision,
   type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
@@ -94,6 +98,7 @@ import {
   type World,
   type WorldMetadataCompareAndSwapParams,
   type WorldMetadataMutationResult,
+  worldMetadataValueEquals,
 } from "@elizaos/core";
 import { sanitizeJsonObject } from "./sanitize-json";
 import {
@@ -197,35 +202,6 @@ function asRawMessage(value: unknown): Record<string, unknown> | undefined {
 
 function asMetadata(value: unknown): Metadata | undefined {
   return (value ?? undefined) as Metadata | undefined;
-}
-
-/**
- * Deep JSON-value equality for the world-metadata compare-and-swap: a jsonb
- * column read back from Postgres compares by VALUE with key order
- * insignificant, so the snapshot comparison must do the same rather than
- * reference-comparing the objects the caller read. `undefined` is treated as
- * absent, matching a JSON round-trip.
- */
-function jsonbValueEquals(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (Array.isArray(left) && Array.isArray(right)) {
-    return (
-      left.length === right.length &&
-      left.every((item, index) => jsonbValueEquals(item, right[index]))
-    );
-  }
-  if (asRawMessage(left) && asRawMessage(right)) {
-    const leftRecord = left as Record<string, unknown>;
-    const rightRecord = right as Record<string, unknown>;
-    const leftKeys = Object.keys(leftRecord).filter((key) => leftRecord[key] !== undefined);
-    const rightKeys = Object.keys(rightRecord).filter((key) => rightRecord[key] !== undefined);
-    if (leftKeys.length !== rightKeys.length) return false;
-    return leftKeys.every(
-      (key) =>
-        Object.hasOwn(rightRecord, key) && jsonbValueEquals(leftRecord[key], rightRecord[key])
-    );
-  }
-  return false;
 }
 
 function normalizeAgentBio(value: unknown): string[] | undefined {
@@ -898,6 +874,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return await operation();
       } catch (error) {
         if (error instanceof TaskTimingValidationError) throw error;
+        if (error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE") {
+          throw error;
+        }
         lastError = error as Error;
 
         if (attempt < this.maxRetries) {
@@ -5177,6 +5156,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async createWorld(world: World): Promise<UUID> {
     return this.withDatabase(async () => {
       const normalizedWorld = this.normalizeWorldData(world);
+      normalizedWorld.metadata = initializeWorldMetadataRevision(
+        normalizedWorld.metadata as Metadata | undefined
+      );
       const newWorldId = normalizedWorld.id as UUID;
 
       await this.db.insert(worldTable).values(normalizedWorld);
@@ -5219,10 +5201,34 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const normalizedWorld = this.normalizeWorldData(world);
       delete normalizedWorld.id;
-      await this.db
-        .update(worldTable)
-        .set(normalizedWorld)
-        .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)));
+      const committedMetadata = await this.db.transaction(async (tx) => {
+        const rows = await tx
+          .select()
+          .from(worldTable)
+          .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)))
+          .for("update")
+          .limit(1);
+        const row = rows[0];
+        if (!row) return null;
+        const storedRevision = requireFreshWorldMetadataRevision(
+          row.metadata as Metadata | undefined,
+          world.metadata as Metadata | undefined,
+          String(world.id)
+        );
+        const nextMetadata = advanceWorldMetadataRevision(
+          normalizedWorld.metadata as Metadata | undefined,
+          storedRevision
+        );
+        normalizedWorld.metadata = nextMetadata;
+        await tx
+          .update(worldTable)
+          .set(normalizedWorld)
+          .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)));
+        return nextMetadata;
+      });
+      if (committedMetadata) {
+        world.metadata = structuredClone(committedMetadata) as World["metadata"];
+      }
     });
   }
 
@@ -5251,9 +5257,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         if (!row) return { status: "not_found" as const };
 
         const storedMetadata = (row.metadata ?? {}) as Record<string, unknown>;
-        if (!jsonbValueEquals(storedMetadata, params.expectedMetadata as Record<string, unknown>)) {
+        if (
+          !worldMetadataValueEquals(
+            storedMetadata,
+            params.expectedMetadata as Record<string, unknown>
+          )
+        ) {
           return { status: "conflict" as const };
         }
+        const storedRevision = getWorldMetadataRevision(row.metadata as Metadata | undefined);
+        if (storedRevision === null) return { status: "conflict" as const };
 
         if (params.audit) {
           const audit = params.audit;
@@ -5279,7 +5292,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         await tx
           .update(worldTable)
-          .set({ metadata: params.replacementMetadata })
+          .set({
+            metadata: advanceWorldMetadataRevision(params.replacementMetadata, storedRevision),
+          })
           .where(eq(worldTable.id, params.worldId));
         return { status: "updated" as const };
       });

@@ -5,7 +5,12 @@
  * throw leaves the world untouched), and world-not-found. Real adapter over
  * real storage, no mocks.
  */
-import { ROLE_WRITE_AUDIT_LOG_TYPE, type UUID, type World } from "@elizaos/core";
+import {
+  ROLE_WRITE_AUDIT_LOG_TYPE,
+  type UUID,
+  WORLD_METADATA_REVISION_KEY,
+  type World,
+} from "@elizaos/core";
 import { v4 } from "uuid";
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
@@ -51,6 +56,21 @@ async function storedMetadata(adapter: InMemoryDatabaseAdapter) {
 }
 
 describe("InMemoryDatabaseAdapter.compareAndSwapWorldMetadata", () => {
+  it("rejects duplicate create without resetting a CAS-managed world", async () => {
+    const adapter = await buildAdapter();
+    const before = await storedMetadata(adapter);
+    await expect(
+      adapter.createWorlds([
+        {
+          id: WORLD_ID,
+          agentId: AGENT_ID,
+          name: "replacement",
+          metadata: { roles: { [String(TARGET_ID)]: "GUEST" } },
+        },
+      ])
+    ).rejects.toMatchObject({ code: "WORLD_ALREADY_EXISTS" });
+    expect(await storedMetadata(adapter)).toEqual(before);
+  });
   it("commits when the snapshot matches, updating metadata and audit together", async () => {
     const adapter = await buildAdapter();
     const before = await storedMetadata(adapter);
@@ -124,7 +144,7 @@ describe("InMemoryDatabaseAdapter.compareAndSwapWorldMetadata", () => {
     // with the top-level keys in the opposite order. Adding or removing a
     // key must NOT count as reordering — that is a genuine value change and
     // must conflict (covered by the drift test above).
-    const reordered = { roles: before.roles, ownership: before.ownership };
+    const reordered = Object.fromEntries(Object.entries(before).reverse());
     const result = await adapter.compareAndSwapWorldMetadata({
       worldId: WORLD_ID,
       expectedMetadata: reordered as never,
@@ -188,45 +208,61 @@ describe("InMemoryDatabaseAdapter.compareAndSwapWorldMetadata", () => {
     expect(await adapter.getLogs({ type: ROLE_WRITE_AUDIT_LOG_TYPE })).toHaveLength(0);
   });
 
-  it("serializes a CAS against a legacy updateWorlds writer sharing the storage", async () => {
-    const adapter = await buildAdapter();
-    const before = await storedMetadata(adapter);
-    const replacement = structuredClone(before);
-    (replacement as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "ADMIN";
-    // A legacy whole-world writer races the CAS on the SAME storage: both
-    // go through the world-metadata tail, so the blind write cannot land
-    // between the CAS read/compare and its write. Whichever wins, the
-    // other either conflicts (CAS lost) or the write precedes/follows the
-    // CAS as a whole — the final state is exactly one of the two writes.
-    const legacyMetadata = structuredClone(before);
-    (legacyMetadata as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "GUEST";
-    const [casResult] = await Promise.all([
-      adapter.compareAndSwapWorldMetadata({
+  it.each(["updateWorlds", "upsertWorlds"] as const)(
+    "rejects a legacy %s writer that resumes from a pre-CAS snapshot",
+    async (legacyMethod) => {
+      const adapter = await buildAdapter();
+      let signalRead!: () => void;
+      let releaseWriter!: () => void;
+      const readComplete = new Promise<void>((resolve) => {
+        signalRead = resolve;
+      });
+      const writerGate = new Promise<void>((resolve) => {
+        releaseWriter = resolve;
+      });
+      const legacyWriter = (async () => {
+        const staleWorld = (await adapter.getWorldsByIds([WORLD_ID]))[0];
+        signalRead();
+        await writerGate;
+        if (!staleWorld) throw new Error("test world missing");
+        (staleWorld.metadata as { roles: Record<string, string> }).roles[String(TARGET_ID)] =
+          "GUEST";
+        await adapter[legacyMethod]([staleWorld]);
+      })();
+      await readComplete;
+
+      const before = await storedMetadata(adapter);
+      const replacement = structuredClone(before);
+      (replacement as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "ADMIN";
+      const casResult = await adapter.compareAndSwapWorldMetadata({
         worldId: WORLD_ID,
         expectedMetadata: structuredClone(before) as never,
         replacementMetadata: replacement as never,
-      }),
-      adapter.updateWorlds([
-        {
-          id: WORLD_ID,
-          agentId: AGENT_ID,
-          name: "cas-world",
-          metadata: legacyMetadata as World["metadata"],
-        },
-      ]),
-    ]);
-    const after = await storedMetadata(adapter);
-    const finalRole = (after as { roles: Record<string, string> }).roles[String(TARGET_ID)];
-    // The serialization invariant: the legacy write lands WHOLE — either
-    // entirely before the CAS (casResult=conflict) or entirely after it
-    // (casResult=updated, then the blind writer overwrites; that residual
-    // overwrite is the documented hazard of unmigrated legacy writers).
-    // finalRole=ADMIN would be the INTERLEAVING signature — the legacy
-    // write landing between the CAS read and its write, silently clobbered
-    // — and is exactly what the shared tail prevents.
-    expect(["updated", "conflict"]).toContain(casResult.status);
-    expect(finalRole).toBe("GUEST");
-  });
+      });
+      releaseWriter();
+      await expect(legacyWriter).rejects.toMatchObject({ code: "WORLD_METADATA_STALE_WRITE" });
+      const after = await storedMetadata(adapter);
+      const finalRole = (after as { roles: Record<string, string> }).roles[String(TARGET_ID)];
+      expect(casResult).toEqual({ status: "updated" });
+      expect(finalRole).toBe("ADMIN");
+    }
+  );
+
+  it.each(["updateWorlds", "upsertWorlds"] as const)(
+    "rejects a malformed revision from legacy %s",
+    async (legacyMethod) => {
+      const adapter = await buildAdapter();
+      const world = (await adapter.getWorldsByIds([WORLD_ID]))[0];
+      if (!world?.metadata) throw new Error("test world metadata missing");
+      (world.metadata as Record<string, unknown>)[WORLD_METADATA_REVISION_KEY] = "invalid";
+
+      await expect(adapter[legacyMethod]([world])).rejects.toMatchObject({
+        code: "WORLD_METADATA_STALE_WRITE",
+      });
+      const after = await storedMetadata(adapter);
+      expect((after as { roles: Record<string, string> }).roles[String(TARGET_ID)]).toBe("USER");
+    }
+  );
 
   it("serializes concurrent CAS calls ACROSS adapter instances sharing one storage", async () => {
     // Two adapters over the SAME MemoryStorage: an adapter-local tail would
@@ -427,20 +463,14 @@ describe("InMemoryDatabaseAdapter.compareAndSwapWorldMetadata", () => {
     expect((after as { marker?: string }).marker).toBeDefined();
   });
 
-  it("detects an in-place mutation of the live stored metadata (live-reference hazard)", async () => {
+  it("returns detached world reads so in-place caller mutation cannot alter storage", async () => {
     const adapter = await buildAdapter();
-    // The memory store returns the LIVE stored object; a legacy whole-world
-    // writer mutating it in place after the caller's read must surface as a
-    // conflict, not compare equal-because-aliased. The core CAS helper
-    // guards this by freezing a cloned snapshot; prove the adapter itself
-    // catches a drifted live object when passed as expectedMetadata.
     const world = (await adapter.getWorldsByIds([WORLD_ID]))[0];
     const liveMetadata = world?.metadata as Record<string, unknown>;
-    // An independent frozen copy taken NOW:
     const frozen = structuredClone(liveMetadata);
-    // A legacy writer mutates the live object in place (e.g. a direct
-    // updateWorlds path holding the same reference):
     (liveMetadata as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "GUEST";
+    const unchanged = await storedMetadata(adapter);
+    expect((unchanged as { roles: Record<string, string> }).roles[String(TARGET_ID)]).toBe("USER");
     const replacement = structuredClone(frozen);
     (replacement as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "ADMIN";
     const result = await adapter.compareAndSwapWorldMetadata({
@@ -448,9 +478,7 @@ describe("InMemoryDatabaseAdapter.compareAndSwapWorldMetadata", () => {
       expectedMetadata: frozen as never,
       replacementMetadata: replacement as never,
     });
-    // The stored (mutated-live) state differs from the frozen snapshot the
-    // caller authorized against — conflict, not a silent merge.
-    expect(result).toEqual({ status: "conflict" });
+    expect(result).toEqual({ status: "updated" });
   });
 
   it("rolls the audit row back when the world write fails after insertion", async () => {
@@ -462,7 +490,7 @@ describe("InMemoryDatabaseAdapter.compareAndSwapWorldMetadata", () => {
     // Storage that accepts the LOGS write but rejects the WORLDS write:
     // the audit insert succeeds, the world replacement throws — the audit
     // row must be compensated away so no false committed record survives.
-    const storage = adapter["storage"] as unknown as {
+    const storage = adapter.storage as unknown as {
       set: (collection: string, id: string, value: unknown) => Promise<void>;
     };
     const originalSet = storage.set.bind(storage);
