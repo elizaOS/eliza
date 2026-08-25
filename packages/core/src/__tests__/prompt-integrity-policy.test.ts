@@ -241,6 +241,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/normalizedLimit\(params\.maxMessages,\s*200/,
 		/MAX_GMAIL_RESULTS/,
 	],
+	"plugins/plugin-google-workspace/src/lifeops-message-adapter.ts": [
+		/maxResults:\s*opts\.limit\s*\?\?\s*50/,
+		/maxResults:\s*filters\.limit\s*\?\?\s*25/,
+		/listMessages\(runtime,\s*\{\s*limit:\s*100\s*\}\)/,
+	],
 	"plugins/plugin-personal-assistant/src/lifeops/domains/gmail-service.ts": [
 		/DEFAULT_GMAIL_(?:TRIAGE_MAX_RESULTS|SEARCH_LIMIT)/,
 		/Math\.min\(\s*100/,
@@ -320,6 +325,26 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
 		/Math\.max\(limit,\s*100\)/,
 		/count:\s*10/,
+	],
+	"plugins/plugin-google-workspace/src/chat/service.ts": [
+		/normalizeConnectorLimit\([^)]*fallback/,
+		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
+		/Math\.max\(limit,\s*100\)/,
+	],
+	"plugins/plugin-instagram/src/service.ts": [
+		/normalizeConnectorLimit\([^)]*fallback/,
+		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
+		/Math\.max\(limit,\s*100\)/,
+	],
+	"plugins/plugin-matrix/src/service.ts": [
+		/normalizeConnectorLimit\([^)]*fallback/,
+		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
+		/Math\.max\(limit,\s*100\)/,
+	],
+	"plugins/plugin-wechat/src/index.ts": [
+		/normalizeConnectorLimit\([^)]*fallback/,
+		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
+		/Math\.max\(limit,\s*100\)/,
 	],
 	"plugins/plugin-x/src/services/x.service.ts": [
 		/clampLimit\(params\.limit,\s*20,\s*100\)/,

@@ -36,6 +36,7 @@ function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRunti
   const googleService = {
     listGmailTriageMessages: vi.fn(async () => []),
     searchGmailMessages: vi.fn(async () => []),
+    getGmailMessage: vi.fn(async () => null),
     getGmailMessageDetail: vi.fn(async () => null),
     sendGmailReply: vi.fn(async () => ({})),
     sendGmailMessage: vi.fn(async () => ({})),
@@ -115,6 +116,53 @@ describe("GoogleGmailAdapter", () => {
         triageReason: "direct question",
       },
     });
+  });
+
+  it("does not impose a hidden Gmail list or search result window", async () => {
+    const allMessages = Array.from({ length: 501 }, (_, index) =>
+      gmailMessage({ externalId: `msg_${index}` })
+    );
+    const listGmailTriageMessages = vi.fn(async () => allMessages);
+    const searchGmailMessages = vi.fn(async () => allMessages);
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages,
+      searchGmailMessages,
+    });
+    const adapter = new GoogleGmailAdapter();
+
+    const listed = await adapter.listMessages(runtime, {
+      worldIds: ["acct_google_1"],
+    });
+    const searched = await adapter.searchMessages(runtime, {
+      content: "planning",
+      worldIds: ["acct_google_1"],
+    });
+
+    expect(listed).toHaveLength(501);
+    expect(searched).toHaveLength(501);
+    expect(listGmailTriageMessages).toHaveBeenCalledWith({
+      accountId: "acct_google_1",
+    });
+    expect(searchGmailMessages).toHaveBeenCalledWith({
+      accountId: "acct_google_1",
+      query: "in:anywhere planning",
+      includeSpamTrash: true,
+    });
+  });
+
+  it("fetches an uncached Gmail message directly by id", async () => {
+    const getGmailMessage = vi.fn(async () => gmailMessage({ externalId: "msg_501" }));
+    const listGmailTriageMessages = vi.fn(async () => []);
+    const runtime = runtimeWithGoogleService({ getGmailMessage, listGmailTriageMessages });
+
+    const result = await new GoogleGmailAdapter().getMessage(runtime, "gmail:msg_501");
+
+    expect(result?.externalId).toBe("msg_501");
+    expect(getGmailMessage).toHaveBeenCalledWith({
+      accountId: "default",
+      messageId: "msg_501",
+    });
+    expect(listGmailTriageMessages).not.toHaveBeenCalled();
   });
 
   it("searches Gmail with query filters and account scope", async () => {

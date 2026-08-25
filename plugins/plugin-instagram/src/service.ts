@@ -85,24 +85,28 @@ function normalizeInstagramQuery(value: string): string {
   return value.trim().replace(/^@/, "").toLowerCase();
 }
 
-function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return fallback;
+function normalizeConnectorLimit(limit: number | undefined): number | undefined {
+  if (limit === undefined) return undefined;
+  if (!Number.isFinite(limit) || limit <= 0) {
+    throw new RangeError("Instagram connector limit must be a positive finite number");
   }
-  return Math.min(Math.floor(limit), 200);
+  return Math.floor(limit);
 }
 
-function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+function filterMemoriesByQuery(
+  memories: Memory[],
+  query: string,
+  limit: number | undefined
+): Memory[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
-    return memories.slice(0, limit);
+    return limit === undefined ? memories : memories.slice(0, limit);
   }
-  return memories
-    .filter((memory) => {
-      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
-      return text.toLowerCase().includes(normalized);
-    })
-    .slice(0, limit);
+  const matches = memories.filter((memory) => {
+    const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+    return text.toLowerCase().includes(normalized);
+  });
+  return limit === undefined ? matches : matches.slice(0, limit);
 }
 
 function scoreInstagramMatch(
@@ -769,13 +773,13 @@ export class InstagramService extends Service {
           context.runtime.getMemories({
             tableName: "messages",
             roomId,
-            limit,
+            ...(limit === undefined ? {} : { limit }),
             orderBy: "createdAt",
             orderDirection: "desc",
           })
         )
       );
-      return chunks
+      const sorted = chunks
         .flat()
         .sort((left, right) => {
           const rightCreated =
@@ -787,8 +791,8 @@ export class InstagramService extends Service {
               ? left.createdAt
               : 0;
           return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
-        })
-        .slice(0, limit);
+        });
+      return limit === undefined ? sorted : sorted.slice(0, limit);
     }
 
     // error-policy:J4 this package ships the connector surface without a concrete
@@ -799,7 +803,7 @@ export class InstagramService extends Service {
       const roomId =
         target?.roomId ??
         (createUniqueUuid(context.runtime, `instagram:thread:${threadId}`) as UUID);
-      return platformMessages
+      const sorted = platformMessages
         .map((message) => this.instagramMessageToMemory(context.runtime, message, roomId))
         .sort((left, right) => {
           const rightCreated =
@@ -811,15 +815,15 @@ export class InstagramService extends Service {
               ? left.createdAt
               : 0;
           return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
-        })
-        .slice(0, limit);
+        });
+      return limit === undefined ? sorted : sorted.slice(0, limit);
     }
 
     if (target?.roomId) {
       return context.runtime.getMemories({
         tableName: "messages",
         roomId: target.roomId,
-        limit,
+        ...(limit === undefined ? {} : { limit }),
         orderBy: "createdAt",
         orderDirection: "desc",
       });
@@ -835,7 +839,6 @@ export class InstagramService extends Service {
     const limit = normalizeConnectorLimit(params.limit);
     const messages = await this.fetchConnectorMessages(context, {
       target: params.target ?? context.target,
-      limit: Math.max(limit, 100),
     });
     return filterMemoriesByQuery(messages, params.query, limit);
   }

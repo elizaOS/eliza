@@ -43,6 +43,7 @@ const DEFAULT_GOOGLE_ACCOUNT_ID = "default";
 const GMAIL_ADAPTER_METHODS = [
   "listGmailTriageMessages",
   "searchGmailMessages",
+  "getGmailMessage",
   "getGmailMessageDetail",
   "sendGmailReply",
   "sendGmailMessage",
@@ -361,7 +362,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     const accountId = opts.worldIds?.[0] ?? DEFAULT_GOOGLE_ACCOUNT_ID;
     const messages = await service.listGmailTriageMessages({
       accountId,
-      maxResults: opts.limit ?? 50,
+      ...(opts.limit === undefined ? {} : { maxResults: opts.limit }),
     });
     return this.cacheAndFilter(
       messages.map((message) => mapGmailMessage(accountId, message)),
@@ -372,8 +373,15 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
   protected async getMessageImpl(runtime: IAgentRuntime, id: string): Promise<MessageRef | null> {
     const cached = this.messageCache.get(id) ?? this.messageCache.get(refId(id));
     if (cached) return cached;
-    const messages = await this.listMessages(runtime, { limit: 100 });
-    return messages.find((message) => message.id === id || message.id === refId(id)) ?? null;
+    const message = await this.requireService(runtime).getGmailMessage({
+      accountId: DEFAULT_GOOGLE_ACCOUNT_ID,
+      messageId: externalMessageId(id),
+    });
+    if (!message) return null;
+    const mapped = mapGmailMessage(DEFAULT_GOOGLE_ACCOUNT_ID, message);
+    this.messageCache.set(mapped.id, mapped);
+    this.messageCache.set(gmailId(mapped.id), mapped);
+    return mapped;
   }
 
   protected async readMessageImpl(
@@ -506,7 +514,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       accountId,
       query: searchQuery(filters),
       includeSpamTrash: true,
-      maxResults: filters.limit ?? 25,
+      ...(filters.limit === undefined ? {} : { maxResults: filters.limit }),
     });
     const refs = messages.map((message) => mapGmailMessage(accountId, message));
     return this.cacheAndFilter(refs, {

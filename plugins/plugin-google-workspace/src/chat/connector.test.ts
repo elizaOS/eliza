@@ -3,7 +3,7 @@
  * routes outbound sends correctly, against a mocked runtime — no Google API
  * calls.
  */
-import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory, TargetInfo, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { GoogleChatService } from "./service.js";
 import {
@@ -192,6 +192,31 @@ describe("Google Chat message connector", () => {
 
     expect(matches?.filter((target) => target.kind === "room")).toHaveLength(12);
     expect(recent).toHaveLength(12);
+  });
+
+  it("returns complete stored history when no limit was requested", async () => {
+    const roomId = "00000000-0000-4000-8000-000000000001" as UUID;
+    const memories = Array.from({ length: 501 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      roomId,
+      content: { text: `message ${index}` },
+      createdAt: index,
+    })) as Memory[];
+    const getMemories = vi.fn(async () => memories);
+    const runtimeInstance = runtime({ getMemories });
+    const service = serviceWithState();
+
+    GoogleChatService.registerSendHandlers(runtimeInstance, service, "workspace");
+    const registration = vi.mocked(runtimeInstance.registerMessageConnector).mock.calls[0][0];
+    const result = await registration.fetchMessages?.(
+      { runtime: runtimeInstance, target: { source: "google-chat", roomId } as TargetInfo },
+      {}
+    );
+
+    expect(result).toHaveLength(501);
+    expect(getMemories).toHaveBeenCalledWith(
+      expect.not.objectContaining({ limit: expect.anything() })
+    );
   });
 
   it("registers account-scoped connectors and routes sends through the requested account", async () => {
