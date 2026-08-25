@@ -1952,9 +1952,9 @@ export function withinCreatedAtWindow(
 	until?: number,
 ): boolean {
 	if (since === undefined && until === undefined) return true;
-	if (typeof createdAt !== "number") return false;
-	if (since !== undefined && createdAt < since) return false;
-	if (until !== undefined && createdAt > until) return false;
+	if (typeof createdAt !== "number" || !Number.isFinite(createdAt)) return false;
+	if (since !== undefined && (!Number.isFinite(since) || createdAt < since)) return false;
+	if (until !== undefined && (!Number.isFinite(until) || createdAt > until)) return false;
 	return true;
 }
 

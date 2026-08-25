@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { BM25, rankMessageSearch } from "./search.ts";
+import { BM25, rankMessageSearch, withinCreatedAtWindow } from "./search.ts";
 
 describe("rankMessageSearch", () => {
 	it("matches a typo by trigram similarity, not only exact substrings", () => {
@@ -192,3 +192,36 @@ describe("BM25 empty text at the remaining tokenize call sites", () => {
 		expect(hits.map((hit) => hit.item.id)).toEqual(["filled"]);
 	});
 });
+
+describe("withinCreatedAtWindow", () => {
+	it("accepts valid timestamps within inclusive bounds", () => {
+		expect(withinCreatedAtWindow(1500, 1000, 2000)).toBe(true);
+		expect(withinCreatedAtWindow(1000, 1000, 2000)).toBe(true);
+		expect(withinCreatedAtWindow(2000, 1000, 2000)).toBe(true);
+	});
+
+	it("rejects timestamps outside bounds", () => {
+		expect(withinCreatedAtWindow(999, 1000, 2000)).toBe(false);
+		expect(withinCreatedAtWindow(2001, 1000, 2000)).toBe(false);
+	});
+
+	it("allows any finite timestamp when bounds are unconstrained", () => {
+		expect(withinCreatedAtWindow(1500)).toBe(true);
+		expect(withinCreatedAtWindow(undefined)).toBe(true);
+		expect(withinCreatedAtWindow(Number.NaN)).toBe(true);
+	});
+
+	it("rejects undefined, NaN, and non-finite timestamps when any bound is active", () => {
+		expect(withinCreatedAtWindow(undefined, 1000)).toBe(false);
+		expect(withinCreatedAtWindow(Number.NaN, 1000, 2000)).toBe(false);
+		expect(withinCreatedAtWindow(Number.POSITIVE_INFINITY, 1000, 2000)).toBe(false);
+		expect(withinCreatedAtWindow(Number.NEGATIVE_INFINITY, 1000, 2000)).toBe(false);
+	});
+
+	it("rejects non-finite bounds", () => {
+		expect(withinCreatedAtWindow(1500, Number.NaN, 2000)).toBe(false);
+		expect(withinCreatedAtWindow(1500, 1000, Number.NaN)).toBe(false);
+		expect(withinCreatedAtWindow(1500, Number.POSITIVE_INFINITY, 2000)).toBe(false);
+	});
+});
+
