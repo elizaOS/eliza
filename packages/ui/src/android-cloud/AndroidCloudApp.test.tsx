@@ -45,14 +45,6 @@ function createVoice(): AndroidCloudVoiceAdapter {
   };
 }
 
-function createGoogleIdentity() {
-  return {
-    signIn: vi.fn(async () => ({ idToken: "google-id-token" })),
-    cancel: vi.fn(async () => undefined),
-    clearCredentialState: vi.fn(async () => undefined),
-  };
-}
-
 describe("AndroidCloudApp", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -61,186 +53,41 @@ describe("AndroidCloudApp", () => {
 
   afterEach(() => cleanup());
 
-  it("renders a retryable signed-out state when no stored session exists", async () => {
-    const client = createClient();
-    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
-    render(<AndroidCloudApp client={client} voice={createVoice()} />);
-
-    expect(await screen.findByRole("button", { name: "Sign in" })).toBeTruthy();
-    expect(
-      screen.getByText("Sign in securely to chat with your Eliza."),
-    ).toBeTruthy();
-  });
-
-  it("keeps native sign-in failures in the app without offering a session retry", async () => {
-    const client = createClient();
-    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
-    vi.spyOn(client, "signInWithGoogle").mockRejectedValue(
-      new Error("Eliza Cloud sign-in is not configured for this app yet."),
-    );
-    const googleIdentity = createGoogleIdentity();
-    render(
-      <AndroidCloudApp
-        client={client}
-        googleIdentity={googleIdentity}
-        voice={createVoice()}
-      />,
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Sign in with Google" }),
-    );
-
-    expect(
-      await screen.findByText(
-        "Eliza Cloud sign-in is not configured for this app yet.",
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Retry session check" })).toBe(
-      null,
-    );
-  });
-
-  it("renders Google's pre-approved neutral control at its authored geometry", async () => {
-    const client = createClient();
-    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
-    render(
-      <AndroidCloudApp
-        client={client}
-        googleIdentity={createGoogleIdentity()}
-        voice={createVoice()}
-      />,
-    );
-
-    const button = await screen.findByRole("button", {
-      name: "Sign in with Google",
-    });
-    expect(button.className).toContain("min-h-12");
-    const asset = screen.getByTestId("google-sign-in-neutral-asset");
-    expect(asset.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
-    expect(asset.getAttribute("width")).toBe("180");
-    expect(asset.getAttribute("height")).toBe("40");
-  });
-
-  it("treats native account-chooser dismissal as quiet cancellation", async () => {
-    const client = createClient();
-    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
-    vi.spyOn(client, "signInWithGoogle").mockRejectedValue(
-      Object.assign(new Error("Google sign-in was cancelled."), {
-        code: "GOOGLE_SIGN_IN_CANCELLED",
-      }),
-    );
-    render(
-      <AndroidCloudApp
-        client={client}
-        googleIdentity={createGoogleIdentity()}
-        voice={createVoice()}
-      />,
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Sign in with Google" }),
-    );
-
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Sign in with Google" }),
-      ).toBeTruthy(),
-    );
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it("cancels native Credential Manager without closing a browser", async () => {
-    const client = createClient();
-    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
-    let rejectSignIn: ((error: Error) => void) | undefined;
-    vi.spyOn(client, "signInWithGoogle").mockImplementation(
-      () =>
-        new Promise((_resolve, reject) => {
-          rejectSignIn = reject;
-        }),
-    );
-    const googleIdentity = createGoogleIdentity();
-    googleIdentity.cancel.mockImplementation(async () => {
-      rejectSignIn?.(new Error("Google sign-in was cancelled."));
-    });
-    const closeExternal = vi.fn(async () => undefined);
-    render(
-      <AndroidCloudApp
-        client={client}
-        closeExternal={closeExternal}
-        googleIdentity={googleIdentity}
-        voice={createVoice()}
-      />,
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Sign in with Google" }),
-    );
-    expect((await screen.findByRole("status")).textContent).toBe(
-      "Opening Google account chooser…",
-    );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Cancel sign-in" }),
-    );
-
-    await waitFor(() => expect(googleIdentity.cancel).toHaveBeenCalledOnce());
-    const nativeSignal = vi.mocked(client.signInWithGoogle).mock.calls[0]?.[1];
-    expect(nativeSignal?.aborted).toBe(true);
-    expect(closeExternal).not.toHaveBeenCalled();
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it("cancels browser sign-in without invoking native cancellation", async () => {
+  it("opens the canonical Steward sign-in without rendering a second provider picker", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(null);
     vi.spyOn(client, "beginLogin").mockResolvedValue({
       sessionId: "10000000-0000-4000-8000-000000000001",
-      browserUrl: "https://cloud.eliza.app/auth/cli-login",
+      browserUrl:
+        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
     });
+    vi.spyOn(client, "pollLogin").mockResolvedValue({ status: "pending" });
     const openExternal = vi.fn(async () => undefined);
     const closeExternal = vi.fn(async () => undefined);
-    const googleIdentity = createGoogleIdentity();
     render(
       <AndroidCloudApp
         client={client}
         closeExternal={closeExternal}
-        googleIdentity={googleIdentity}
         openExternal={openExternal}
         voice={createVoice()}
       />,
     );
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Continue in browser" }),
-    );
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
-    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
-
-    await waitFor(() => expect(closeExternal).toHaveBeenCalledOnce());
-    expect(googleIdentity.cancel).not.toHaveBeenCalled();
-  });
-
-  it("clears Google credential state after the Cloud session signs out", async () => {
-    const client = createClient();
-    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
-    vi.spyOn(client, "signOut").mockResolvedValue(undefined);
-    const googleIdentity = createGoogleIdentity();
-    render(
-      <AndroidCloudApp
-        client={client}
-        googleIdentity={googleIdentity}
-        voice={createVoice()}
-      />,
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
-
-    await waitFor(() =>
-      expect(googleIdentity.clearCredentialState).toHaveBeenCalledOnce(),
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
     );
     expect(
-      screen.getByRole("button", { name: "Sign in with Google" }),
+      screen.queryByText(/Google|Discord|Telegram|magic link/i),
+    ).toBeNull();
+    expect(
+      screen.getByText("Finish signing in with Steward to continue."),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    await waitFor(() => expect(closeExternal).toHaveBeenCalledOnce());
+    expect(
+      screen.getByRole("button", { name: "Open Eliza Cloud sign-in" }),
     ).toBeTruthy();
   });
 

@@ -5828,24 +5828,16 @@ export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
   "android.permission.INTERNET",
   "android.permission.MODIFY_AUDIO_SETTINGS",
   "android.permission.RECORD_AUDIO",
-  "android.permission.USE_BIOMETRIC",
-  "android.permission.USE_FINGERPRINT",
   `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 ]);
 
 export const ANDROID_PLAY_ALLOWED_COMPONENTS = Object.freeze([
   `activity:${APP.appId}.ElizaShareActivity`,
   `activity:${APP.appId}.MainActivity`,
-  "activity:androidx.credentials.playservices.controllers.identityauth.HiddenActivity",
-  "activity:androidx.credentials.playservices.controllers.identitycredentials.IdentityCredentialApiHiddenActivity",
   "activity:com.capacitorjs.plugins.browser.BrowserControllerActivity",
-  "activity:com.google.android.gms.auth.api.signin.internal.SignInHubActivity",
-  "activity:com.google.android.gms.common.api.GoogleApiActivity",
   "provider:androidx.core.content.FileProvider",
   "provider:androidx.startup.InitializationProvider",
   "receiver:androidx.profileinstaller.ProfileInstallReceiver",
-  "service:androidx.credentials.playservices.CredentialProviderMetadataHolder",
-  "service:com.google.android.gms.auth.api.signin.RevocationBoundService",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_ACTIONS = Object.freeze([
@@ -5864,11 +5856,9 @@ export const ANDROID_PLAY_ALLOWED_ACTIONS = Object.freeze([
 export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
   "android.app.shortcuts",
   "android.support.FILE_PROVIDER_PATHS",
-  "androidx.credentials.CREDENTIAL_PROVIDER_KEY",
   "androidx.emoji2.text.EmojiCompatInitializer",
   "androidx.lifecycle.ProcessLifecycleInitializer",
   "androidx.profileinstaller.ProfileInstallerInitializer",
-  "com.google.android.gms.version",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
@@ -6145,7 +6135,6 @@ ${cloudBrandUserAgentMarkerLines()}
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(ElizaSecureCredentialsPlugin.class);
         registerPlugin(ElizaPlayVoicePlugin.class);
-        registerPlugin(GoogleIdentityPlugin.class);
 
         super.onCreate(savedInstanceState);
 
