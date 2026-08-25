@@ -6,6 +6,7 @@ import {
   requireString,
   requireStringArray,
   splitRepo,
+  truncateUtf16Safe,
 } from "./action-helpers.ts";
 
 /**
@@ -139,3 +140,21 @@ describe("isConfirmed", () => {
     expect(isConfirmed(undefined)).toBe(false);
   });
 });
+
+describe("truncateUtf16Safe", () => {
+  it("preserves UTF-16 surrogate pairs during truncation", () => {
+    // "🔥" is 2 code units. 70 repeats = 140 units > 120
+    // Slicing at odd offset e.g. 119 will back off to 118
+    const longEmoji = "🔥".repeat(70);
+    const result = truncateUtf16Safe(longEmoji, 119);
+    expect(result.length).toBe(118);
+    for (const char of result) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
