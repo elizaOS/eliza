@@ -351,6 +351,7 @@ export class SharedRuntimeConversation {
   private readonly env: AppEnv["Bindings"];
   private conversation: StoredConversation | null | undefined;
   private readonly pendingHistory = new Map<string, SharedTurnMessage[]>();
+  private pendingHistoryCheckpoint: Promise<void> = Promise.resolve();
   private hydration: Promise<void> | undefined;
   private prewarmReady = false;
   private prewarm: Promise<void> | undefined;
@@ -940,6 +941,35 @@ export class SharedRuntimeConversation {
     } satisfies ChunkedArchivedMessage);
   }
 
+  private async checkpointPendingHistory(
+    messages: SharedTurnMessage[],
+  ): Promise<void> {
+    await this.state.storage.transaction(async (txn) => {
+      for (const message of messages) {
+        const key = archiveMessageKey(message);
+        const encoded = new TextEncoder().encode(JSON.stringify(message));
+        if (encoded.byteLength <= HISTORY_ARCHIVE_CHUNK_BYTES) {
+          await txn.put(key, message);
+          continue;
+        }
+        const chunkCount = Math.ceil(
+          encoded.byteLength / HISTORY_ARCHIVE_CHUNK_BYTES,
+        );
+        for (let index = 0; index < chunkCount; index += 1) {
+          const start = index * HISTORY_ARCHIVE_CHUNK_BYTES;
+          await txn.put(
+            `${HISTORY_ARCHIVE_BODY_PREFIX}${key.slice(HISTORY_ARCHIVE_PREFIX.length)}:${index}`,
+            encoded.slice(start, start + HISTORY_ARCHIVE_CHUNK_BYTES),
+          );
+        }
+        await txn.put(key, {
+          kind: "chunked-history-message",
+          chunkCount,
+        } satisfies ChunkedArchivedMessage);
+      }
+    });
+  }
+
   private async loadArchivedHistory(): Promise<SharedTurnMessage[]> {
     const archived = await this.state.storage.list<
       SharedTurnMessage | ChunkedArchivedMessage
@@ -1019,6 +1049,11 @@ export class SharedRuntimeConversation {
             messages,
             Number.MAX_SAFE_INTEGER,
           ),
+        );
+        this.pendingHistoryCheckpoint = this.pendingHistoryCheckpoint.then(
+          async () => {
+            await this.checkpointPendingHistory(messages);
+          },
         );
       },
       merge: async (agentId, channelId, messages) => {
@@ -1905,20 +1940,39 @@ export class SharedRuntimeConversation {
       // billing finalization, which can cross storage/provider boundaries and
       // must not hold later realtime turns behind the coordinator deadline.
       const cancellation = reader.cancel(reason);
-      settle();
+      const cancellationOutcome = cancellation.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      const checkpoint = this.pendingHistoryCheckpoint;
       this.state.waitUntil(
-        cancellation.catch(async (error: unknown) => {
-          // error-policy:J7 cancellation durability remains observable and is
-          // retryable, but cannot poison the live room admission queue.
-          const { logger } = await import("@/lib/utils/logger");
-          logger.warn(
-            "[SharedRuntimeConversation] off-queue stream cancellation failed",
-            {
-              reason,
-              error: error instanceof Error ? error.message : String(error),
-            },
-          );
-        }),
+        (async () => {
+          let checkpointLanded = false;
+          try {
+            // Only the lossless interrupted-turn checkpoint holds admission.
+            // Full history merge, billing, and provider teardown remain off
+            // queue after a restart-safe recovery record exists.
+            await checkpoint;
+            checkpointLanded = true;
+            settle();
+            const cancellationError = await cancellationOutcome;
+            if (cancellationError !== null) throw cancellationError;
+          } catch (error) {
+            // error-policy:J7 a failed checkpoint keeps this object fail-closed;
+            // Workers resets it after the failed storage output gate, and the
+            // next instance admits only from the prior durable snapshot.
+            const { logger } = await import("@/lib/utils/logger");
+            logger.warn(
+              "[SharedRuntimeConversation] off-queue stream cancellation failed",
+              {
+                reason,
+                phase: checkpointLanded ? "finalization" : "checkpoint",
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+            if (!checkpointLanded) throw error;
+          }
+        })(),
       );
     };
     const armStallTimer = () => {

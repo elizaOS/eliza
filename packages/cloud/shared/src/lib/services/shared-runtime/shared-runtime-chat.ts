@@ -2091,13 +2091,18 @@ export class SharedRuntimeChatService {
         // cancel promise can release room admission. Durable history, billing,
         // and provider teardown may then finish off the room queue without
         // hiding context from the next turn.
-        await finalizeMessages(
+        const finalization = finalizeMessages(
           interruptedReply,
           true,
           () => settleInterruptedTurn("consumer canceled stream"),
           undefined,
           true,
         );
+        if (options.executionCtx) {
+          options.executionCtx.waitUntil(finalization);
+          return;
+        }
+        await finalization;
       },
     });
     return withTurnTimingHeaders(

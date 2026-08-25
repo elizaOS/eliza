@@ -1994,7 +1994,7 @@ test("forwards the server-authenticated history cutoff across the Durable Object
   });
 });
 
-test("stream cancellation releases immediately with interrupted context staged", async () => {
+test("stream cancellation releases after a durable interrupted-context checkpoint", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
   repositoryRow = [];
@@ -2073,7 +2073,7 @@ test("stream cancellation releases immediately with interrupted context staged",
   expect(stored[1]?.interrupted).toBe(true);
 });
 
-test("failed durable cancellation write is retryable on a later finalize", async () => {
+test("a restarted object recovers interrupted context after finalization fails", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
   const data = new Map<string, unknown>([
@@ -2089,20 +2089,20 @@ test("failed durable cancellation write is retryable on a later finalize", async
     ],
   ]);
   const background: Promise<unknown>[] = [];
-  let failNextPut = true;
+  let failNextConversationPut = true;
   const state = makeState(data, background);
   const originalPut = state.storage.put;
   state.storage.put = async (key: string, value: unknown) => {
-    if (failNextPut) {
-      failNextPut = false;
-      throw new Error("storage unavailable");
+    if (key === "conversation" && failNextConversationPut) {
+      failNextConversationPut = false;
+      throw new Error("final conversation write unavailable");
     }
     await originalPut(key, value);
   };
   const object = new SharedRuntimeConversation(state as never, {} as never);
 
-  const fetchStream = async () => {
-    const response = await object.fetch(
+  const fetchStream = async (target: SharedRuntimeConversationInstance) => {
+    const response = await target.fetch(
       new Request("https://shared-runtime.internal/stream", {
         method: "POST",
         body: JSON.stringify({
@@ -2122,13 +2122,21 @@ test("failed durable cancellation write is retryable on a later finalize", async
     return reader.cancel("client disconnected");
   };
 
-  await expect(fetchStream()).resolves.toBeUndefined();
+  await expect(fetchStream(object)).resolves.toBeUndefined();
   await Promise.all(background.splice(0));
   expect(
     (data.get("conversation") as { history: unknown[] }).history,
   ).toHaveLength(0);
 
-  const pendingResponse = await object.fetch(
+  // Workerd resets an object after a failed storage output gate. Construct a
+  // new instance over the surviving durable state to model that eviction
+  // boundary; no same-instance Map is available to satisfy this read.
+  const restartedBackground: Promise<unknown>[] = [];
+  const restarted = new SharedRuntimeConversation(
+    makeState(data, restartedBackground) as never,
+    {} as never,
+  );
+  const pendingResponse = await restarted.fetch(
     new Request("https://shared-runtime.internal/history", {
       method: "POST",
       body: JSON.stringify({
@@ -2146,8 +2154,9 @@ test("failed durable cancellation write is retryable on a later finalize", async
     { id: "assistant-retryable", interrupted: true },
   ]);
 
-  await expect(fetchStream()).resolves.toBeUndefined();
-  await Promise.all(background.splice(0));
+  const recoveredTurn = await makeInvoke(restarted)("after-restart");
+  expect(recoveredTurn).toMatchObject({ result: { historyLength: 3 } });
+  await Promise.all(restartedBackground.splice(0));
   const stored = (
     data.get("conversation") as {
       history: Array<{ content: string; interrupted?: boolean }>;
@@ -2156,6 +2165,7 @@ test("failed durable cancellation write is retryable on a later finalize", async
   expect(stored.map((message) => message.content)).toEqual([
     "stream-user-retryable",
     "partial",
+    "turn-after-restart",
   ]);
   expect(stored[1]?.interrupted).toBe(true);
 });
