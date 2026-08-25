@@ -67,6 +67,17 @@ describe("shuffle / sample / pick", () => {
 		expect(deterministicSample(items, 2, "s")).toEqual(two);
 	});
 
+	it("guards deterministicSample against non-finite and non-integer counts", () => {
+		expect(deterministicSample(items, Number.NaN, "s")).toEqual([]);
+		expect(deterministicSample(items, Number.POSITIVE_INFINITY, "s")).toEqual(
+			[],
+		);
+		expect(deterministicSample(items, 1.5, "s")).toEqual([]);
+		expect(deterministicSample(items, -1, "s")).toEqual([]);
+		expect(getDeterministicNames(Number.NaN, "s")).toEqual([]);
+		expect(getDeterministicNames(2.7, "s")).toEqual([]);
+	});
+
 	it("deterministicPick returns one reproducible element", () => {
 		const p = deterministicPick(items, "s");
 		expect(items).toContain(p);

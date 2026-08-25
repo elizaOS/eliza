@@ -69,7 +69,12 @@ export function deterministicSample<T>(
 	count: number,
 	seed: string | number,
 ): T[] {
-	if (count <= 0 || items.length === 0) {
+	if (
+		!Number.isFinite(count) ||
+		!Number.isInteger(count) ||
+		count <= 0 ||
+		items.length === 0
+	) {
 		return [];
 	}
 
@@ -90,7 +95,7 @@ export function getDeterministicNames(
 	count: number,
 	seed: string | number,
 ): string[] {
-	if (count <= 0) {
+	if (!Number.isFinite(count) || !Number.isInteger(count) || count <= 0) {
 		return [];
 	}
 
