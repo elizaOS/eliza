@@ -293,6 +293,49 @@ describe("handleAppsRoutes", () => {
     },
   );
 
+  it.each([undefined, null, "USER", "GUEST"] as const)(
+    "denies %s actor for relaunch before stop or launch",
+    async (actorRole) => {
+      const appManager = createAppManager();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/relaunch",
+        appManager,
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error: "App launch requires OWNER or ADMIN role",
+      });
+      expect(appManager.stop).not.toHaveBeenCalled();
+      expect(appManager.launch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["OWNER", "ADMIN"] as const)(
+    "allows %s actor to relaunch apps",
+    async (actorRole) => {
+      const appManager = createAppManager();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/relaunch",
+        appManager,
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      expect(appManager.stop).toHaveBeenCalledTimes(1);
+      expect(appManager.launch).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("rejects illegal percent-encoding in app path segments before service calls", async () => {
     const appManager = createAppManager();
     const refreshRegistry = vi.fn(async () => new Map());
