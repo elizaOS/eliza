@@ -1,5 +1,6 @@
 /** Appends and replays immutable restore authorities without wiring a production coordinator. */
 
+import { isDeepStrictEqual } from "node:util";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   assertAgentBackupCatalogTransition,
@@ -25,7 +26,7 @@ import {
   agentNodeIncarnationHistories,
   agentVaultKeySeedReceipts,
 } from "../schemas/agent-backup-restore-history";
-import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
+import { type AgentSandbox, agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
 import { agentVaultKeyBackupBindings } from "../schemas/agent-vault-key-authority";
 import { type DockerNode, dockerNodes } from "../schemas/docker-nodes";
 import {
@@ -104,6 +105,156 @@ function operationMatchesRuntimeTarget(
   return (
     operation.expected_container_id === containerId &&
     operation.expected_image_digest === imageDigest
+  );
+}
+
+const RESTORE_PUBLICATION_REPLAY_PHASES = new Set<AgentBackupRestoreOperation["phase"]>([
+  "probed",
+  "published",
+  "finalized",
+]);
+const LIVE_RESTORE_PUBLICATION_BACKUP_STATES = new Set([
+  "protected",
+  "retained",
+  "restore_verified",
+]);
+
+function requireRestorePublicationPhase(
+  operation: Readonly<AgentBackupRestoreOperation>,
+  replay: boolean,
+): void {
+  if (
+    replay ? RESTORE_PUBLICATION_REPLAY_PHASES.has(operation.phase) : operation.phase === "probed"
+  ) {
+    return;
+  }
+  conflict(
+    replay
+      ? "Restore activation publication replay is not in a legitimate published phase"
+      : "Restore activation publication requires a probed restore operation",
+  );
+}
+
+interface ActivationPublicationChainRow {
+  generation: string;
+  previousGeneration: string | null;
+  lifecycleRevision: bigint;
+}
+
+async function readActivationPublicationChain(
+  tx: DbTransaction,
+  input: Readonly<RecordAgentActivationPublicationInput>,
+): Promise<ActivationPublicationChainRow[]> {
+  return tx
+    .select({
+      generation: agentActivationPublications.activation_generation,
+      previousGeneration: agentActivationPublications.previous_activation_generation,
+      lifecycleRevision: agentActivationPublications.lifecycle_revision,
+    })
+    .from(agentActivationPublications)
+    .where(
+      and(
+        eq(agentActivationPublications.organization_id, input.organizationId),
+        eq(agentActivationPublications.agent_id, input.agentId),
+      ),
+    );
+}
+
+function proveLinearActivationPublicationHistory(
+  history: readonly ActivationPublicationChainRow[],
+  expectedHeadGeneration: string,
+  expectedHeadLifecycleRevision: bigint,
+): void {
+  const byGeneration = new Map(history.map((publication) => [publication.generation, publication]));
+  const expectedHead = byGeneration.get(expectedHeadGeneration);
+  if (!expectedHead || expectedHead.lifecycleRevision !== expectedHeadLifecycleRevision) {
+    conflict("Activation publication database head is missing or divergent");
+  }
+
+  let head = expectedHead;
+  for (const publication of history) {
+    if (publication.lifecycleRevision > head.lifecycleRevision) {
+      head = publication;
+    } else if (
+      publication.lifecycleRevision === head.lifecycleRevision &&
+      publication.generation !== head.generation
+    ) {
+      conflict("Activation publication database history has divergent lifecycle heads");
+    }
+  }
+  if (head.generation !== expectedHeadGeneration) {
+    conflict("Activation publication does not name the current database history head");
+  }
+
+  const seen = new Set<string>();
+  let cursor: ActivationPublicationChainRow | undefined = head;
+  let childRevision: bigint | null = null;
+  while (cursor) {
+    if (
+      seen.has(cursor.generation) ||
+      (childRevision !== null && cursor.lifecycleRevision >= childRevision)
+    ) {
+      conflict("Activation publication database history contains an ABA or revision cycle");
+    }
+    seen.add(cursor.generation);
+    childRevision = cursor.lifecycleRevision;
+    if (cursor.previousGeneration === null) {
+      cursor = undefined;
+      break;
+    }
+    cursor = byGeneration.get(cursor.previousGeneration);
+    if (!cursor) {
+      conflict("Activation publication ancestry is incomplete");
+    }
+  }
+  if (seen.size !== history.length) {
+    conflict("Activation publication database history is forked or disconnected");
+  }
+}
+
+/** Prove that a new immutable publication extends the one unambiguous DB head. */
+async function proveNewActivationPublicationChain(
+  tx: DbTransaction,
+  input: Readonly<RecordAgentActivationPublicationInput>,
+  previousGeneration: string | null,
+  lifecycleRevision: bigint,
+): Promise<void> {
+  const history = await readActivationPublicationChain(tx, input);
+
+  if (previousGeneration === null) {
+    if (history.length !== 0) {
+      conflict("Activation publication cannot bootstrap over existing database history");
+    }
+    return;
+  }
+  if (previousGeneration === input.activationGeneration) {
+    conflict("Activation publication cannot reuse its generation as its predecessor");
+  }
+
+  const byGeneration = new Map(history.map((publication) => [publication.generation, publication]));
+  if (byGeneration.has(input.activationGeneration)) {
+    conflict("Activation publication cannot reintroduce an ancestor generation");
+  }
+  const previous = byGeneration.get(previousGeneration);
+  if (!previous) {
+    conflict("Activation publication predecessor is missing from immutable database history");
+  }
+  proveLinearActivationPublicationHistory(history, previous.generation, previous.lifecycleRevision);
+  if (lifecycleRevision <= previous.lifecycleRevision) {
+    conflict("Activation publication must monotonically extend the exact database history head");
+  }
+}
+
+async function proveActivationPublicationReplayIsCurrentHead(
+  tx: DbTransaction,
+  input: Readonly<RecordAgentActivationPublicationInput>,
+  publication: Readonly<AgentActivationPublication>,
+): Promise<void> {
+  const history = await readActivationPublicationChain(tx, input);
+  proveLinearActivationPublicationHistory(
+    history,
+    publication.activation_generation,
+    publication.lifecycle_revision,
   );
 }
 
@@ -245,6 +396,91 @@ function publicationMatchesInput(
   );
 }
 
+function publicationMatchesMutableSandbox(
+  publication: Readonly<AgentActivationPublication>,
+  sandbox: Readonly<AgentSandbox>,
+): boolean {
+  return (
+    publication.previous_activation_generation === sandbox.activation_previous_generation &&
+    publication.lifecycle_revision === sandbox.activation_lifecycle_revision &&
+    publication.purpose === sandbox.activation_purpose &&
+    publication.backup_id === sandbox.activation_backup_id &&
+    publication.backup_manifest_sha256 === sandbox.activation_backup_hash &&
+    isDeepStrictEqual(publication.activation_receipt, sandbox.activation_receipt) &&
+    publication.activation_receipt_sha256 === sandbox.activation_receipt_hash &&
+    publication.container_id === sandbox.activation_container_id &&
+    publication.node_id === sandbox.activation_node_id &&
+    publication.node_incarnation === sandbox.activation_boot_id &&
+    publication.image_digest === sandbox.activation_image_digest &&
+    publication.token_sha256 === sandbox.activation_token_hash &&
+    publication.funding_revision === sandbox.activation_funding_revision
+  );
+}
+
+/**
+ * A finalized operation no longer needs a live lease to replay its already
+ * published activation. Its immutable final receipt replaces lease/catalogue
+ * liveness, but only when it closes the exact operation and publication chain.
+ */
+async function proveFinalizedRestorePublicationReceipt(
+  tx: DbTransaction,
+  operation: Readonly<AgentBackupRestoreOperation>,
+  publication: Readonly<AgentActivationPublication>,
+  backup: Readonly<{
+    receiptDigest: string | null;
+    restoreGeneration: bigint | null;
+    verifiedAt: Date | null;
+  }>,
+): Promise<void> {
+  const receiptDigest = operation.receipt_digest;
+  if (
+    !receiptDigest ||
+    backup.receiptDigest !== receiptDigest ||
+    backup.restoreGeneration === null ||
+    backup.verifiedAt === null
+  ) {
+    conflict("Finalized restore publication replay lacks its operation receipt digest");
+  }
+  const [receipt] = await tx
+    .select({ id: agentBackupRestoreReceipts.id })
+    .from(agentBackupRestoreReceipts)
+    .where(
+      and(
+        eq(agentBackupRestoreReceipts.organization_id, operation.organization_id),
+        eq(agentBackupRestoreReceipts.agent_id, operation.agent_id),
+        eq(agentBackupRestoreReceipts.restore_attempt_id, operation.restore_attempt_id),
+        eq(agentBackupRestoreReceipts.backup_id, operation.backup_id),
+        eq(agentBackupRestoreReceipts.operation_id, operation.expected_operation_id),
+        eq(
+          agentBackupRestoreReceipts.source_activation_generation,
+          operation.expected_activation_generation,
+        ),
+        eq(
+          agentBackupRestoreReceipts.source_lifecycle_revision,
+          operation.expected_lifecycle_revision,
+        ),
+        eq(agentBackupRestoreReceipts.manifest_sha256, operation.expected_manifest_sha256),
+        eq(
+          agentBackupRestoreReceipts.target_activation_generation,
+          publication.activation_generation,
+        ),
+        eq(agentBackupRestoreReceipts.activation_purpose, "restore"),
+        eq(agentBackupRestoreReceipts.activation_publication_id, publication.id),
+        eq(
+          agentBackupRestoreReceipts.activation_receipt_sha256,
+          publication.activation_receipt_sha256,
+        ),
+        eq(agentBackupRestoreReceipts.restore_generation, backup.restoreGeneration),
+        eq(agentBackupRestoreReceipts.receipt_digest, receiptDigest),
+        eq(agentBackupRestoreReceipts.verified_at, backup.verifiedAt),
+      ),
+    )
+    .limit(1);
+  if (!receipt) {
+    conflict("Finalized restore publication replay lacks its exact immutable final receipt");
+  }
+}
+
 async function recordRestoreActivationPublication(
   tx: DbTransaction,
   input: Readonly<RecordAgentActivationPublicationInput>,
@@ -267,8 +503,7 @@ async function recordRestoreActivationPublication(
     !backup?.backup_operation_id ||
     !backup.lifecycle_generation ||
     backup.lifecycle_revision === null ||
-    !backup.manifest_digest ||
-    !["protected", "retained", "restore_verified"].includes(backup.catalog_state ?? "")
+    !backup.manifest_digest
   ) {
     conflict("Restore publication source lacks exact restorable backup authority");
   }
@@ -289,6 +524,30 @@ async function recordRestoreActivationPublication(
   });
   if (!operationMatchesRuntimeTarget(operation, input.expectedContainerId, authority.imageDigest)) {
     conflict("Restore publication differs from its durable operation target");
+  }
+
+  const [concurrentPublication] = await tx
+    .select()
+    .from(agentActivationPublications)
+    .where(
+      and(
+        eq(agentActivationPublications.organization_id, input.organizationId),
+        eq(agentActivationPublications.agent_id, input.agentId),
+        eq(agentActivationPublications.activation_generation, input.activationGeneration),
+      ),
+    )
+    .limit(1);
+  if (concurrentPublication && !publicationMatchesInput(concurrentPublication, input)) {
+    conflict("Activation publication replay mismatch");
+  }
+  requireRestorePublicationPhase(operation, concurrentPublication !== undefined);
+  const finalizedReplayPublication =
+    operation.phase === "finalized" ? concurrentPublication : undefined;
+  if (
+    !finalizedReplayPublication &&
+    !LIVE_RESTORE_PUBLICATION_BACKUP_STATES.has(backup.catalog_state ?? "")
+  ) {
+    conflict("Restore publication source lacks exact restorable backup authority");
   }
 
   const [lease] = await tx
@@ -331,20 +590,6 @@ async function recordRestoreActivationPublication(
     )
     .for("update")
     .limit(1);
-  const [concurrentPublication] = await tx
-    .select()
-    .from(agentActivationPublications)
-    .where(
-      and(
-        eq(agentActivationPublications.organization_id, input.organizationId),
-        eq(agentActivationPublications.agent_id, input.agentId),
-        eq(agentActivationPublications.activation_generation, input.activationGeneration),
-      ),
-    )
-    .limit(1);
-  if (concurrentPublication && !publicationMatchesInput(concurrentPublication, input)) {
-    conflict("Activation publication replay mismatch");
-  }
   if (
     !sandbox?.activation_receipt ||
     !sandbox.activation_receipt_hash ||
@@ -370,6 +615,19 @@ async function recordRestoreActivationPublication(
   ) {
     conflict("Restore publication differs from mutable or durable operation authority");
   }
+  if (concurrentPublication && !publicationMatchesMutableSandbox(concurrentPublication, sandbox)) {
+    conflict("Activation publication replay lost exact current mutable authority");
+  }
+  if (!concurrentPublication) {
+    await proveNewActivationPublicationChain(
+      tx,
+      input,
+      sandbox.activation_previous_generation,
+      sandbox.activation_lifecycle_revision,
+    );
+  } else {
+    await proveActivationPublicationReplayIsCurrentHead(tx, input, concurrentPublication);
+  }
 
   const history = await lockCurrentNodeHistory(tx, {
     nodeRecordId: input.expectedNodeRecordId,
@@ -377,18 +635,26 @@ async function recordRestoreActivationPublication(
     nodeIncarnation: input.expectedNodeIncarnation,
     nodeHistoryId: input.expectedNodeHistoryId,
   });
-  const catalogAuthority = await lockAgentBackupCatalogAuthority(
-    tx,
-    input.organizationId,
-    input.agentId,
-  );
-  const databaseNow = await readPostLockDatabaseNow(tx);
-  if (
-    lease.released_at !== null ||
-    lease.expires_at <= databaseNow ||
-    lease.catalog_epoch !== catalogAuthority.catalog_revision
-  ) {
-    conflict("Restore publication lost its exact live restore lease");
+  if (finalizedReplayPublication) {
+    await proveFinalizedRestorePublicationReceipt(tx, operation, finalizedReplayPublication, {
+      receiptDigest: backup.restore_receipt_digest,
+      restoreGeneration: backup.restore_generation,
+      verifiedAt: backup.restore_verified_at,
+    });
+  } else {
+    const catalogAuthority = await lockAgentBackupCatalogAuthority(
+      tx,
+      input.organizationId,
+      input.agentId,
+    );
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (
+      lease.released_at !== null ||
+      lease.expires_at <= databaseNow ||
+      lease.catalog_epoch !== catalogAuthority.catalog_revision
+    ) {
+      conflict("Restore publication lost its exact live restore lease");
+    }
   }
   if (concurrentPublication) {
     return { publication: concurrentPublication, replayed: true };
@@ -456,18 +722,6 @@ export async function recordAgentActivationPublication(
         imageDigest: existing.image_digest,
       });
     }
-    if (existing) {
-      if (!publicationMatchesInput(existing, input))
-        conflict("Activation publication replay mismatch");
-      await lockCurrentNodeHistory(tx, {
-        nodeRecordId: existing.docker_node_record_id,
-        nodeId: existing.node_id,
-        nodeIncarnation: existing.node_incarnation,
-        nodeHistoryId: existing.node_history_id,
-      });
-      return { publication: existing, replayed: true };
-    }
-
     const [activationAuthority] = await tx
       .select({
         purpose: agentSandboxes.activation_purpose,
@@ -485,6 +739,9 @@ export async function recordAgentActivationPublication(
       )
       .limit(1);
     if (activationAuthority?.purpose === "restore") {
+      if (existing) {
+        conflict("Activation generation changed purpose after immutable publication");
+      }
       if (
         !activationAuthority.backupId ||
         !activationAuthority.manifestSha256 ||
@@ -530,13 +787,6 @@ export async function recordAgentActivationPublication(
       if (!publicationMatchesInput(concurrentPublication, input)) {
         conflict("Activation publication replay mismatch");
       }
-      await lockCurrentNodeHistory(tx, {
-        nodeRecordId: concurrentPublication.docker_node_record_id,
-        nodeId: concurrentPublication.node_id,
-        nodeIncarnation: concurrentPublication.node_incarnation,
-        nodeHistoryId: concurrentPublication.node_history_id,
-      });
-      return { publication: concurrentPublication, replayed: true };
     }
     if (
       !sandbox?.activation_purpose ||
@@ -556,6 +806,25 @@ export async function recordAgentActivationPublication(
     ) {
       conflict("Mutable activation authority is incomplete or differs from publication input");
     }
+    if (concurrentPublication) {
+      if (!publicationMatchesMutableSandbox(concurrentPublication, sandbox)) {
+        conflict("Activation publication replay lost exact current mutable authority");
+      }
+      await proveActivationPublicationReplayIsCurrentHead(tx, input, concurrentPublication);
+      await lockCurrentNodeHistory(tx, {
+        nodeRecordId: concurrentPublication.docker_node_record_id,
+        nodeId: concurrentPublication.node_id,
+        nodeIncarnation: concurrentPublication.node_incarnation,
+        nodeHistoryId: concurrentPublication.node_history_id,
+      });
+      return { publication: concurrentPublication, replayed: true };
+    }
+    await proveNewActivationPublicationChain(
+      tx,
+      input,
+      sandbox.activation_previous_generation,
+      sandbox.activation_lifecycle_revision,
+    );
     const history = await lockCurrentNodeHistory(tx, {
       nodeRecordId: input.expectedNodeRecordId,
       nodeId: sandbox.activation_node_id,
@@ -607,15 +876,7 @@ export async function authorizeAgentActivationDispatch(
       conflict("Activation dispatch lacks exact publication authority");
     }
     const [sandbox] = await tx
-      .select({
-        generation: agentSandboxes.activation_generation,
-        phase: agentSandboxes.activation_phase,
-        receiptSha256: agentSandboxes.activation_receipt_hash,
-        containerId: agentSandboxes.activation_container_id,
-        nodeId: agentSandboxes.activation_node_id,
-        nodeIncarnation: agentSandboxes.activation_boot_id,
-        tokenSha256: agentSandboxes.activation_token_hash,
-      })
+      .select()
       .from(agentSandboxes)
       .where(
         and(
@@ -627,16 +888,13 @@ export async function authorizeAgentActivationDispatch(
       .limit(1);
     if (
       !sandbox ||
-      sandbox.generation !== publication.activation_generation ||
-      (sandbox.phase !== "restart_attested" && sandbox.phase !== "active") ||
-      sandbox.receiptSha256 !== publication.activation_receipt_sha256 ||
-      sandbox.containerId !== publication.container_id ||
-      sandbox.nodeId !== publication.node_id ||
-      sandbox.nodeIncarnation !== publication.node_incarnation ||
-      sandbox.tokenSha256 !== publication.token_sha256
+      sandbox.activation_generation !== publication.activation_generation ||
+      (sandbox.activation_phase !== "restart_attested" && sandbox.activation_phase !== "active") ||
+      !publicationMatchesMutableSandbox(publication, sandbox)
     ) {
       conflict("Activation dispatch lost current mutable authority");
     }
+    await proveActivationPublicationReplayIsCurrentHead(tx, input, publication);
     await lockCurrentNodeHistory(tx, {
       nodeRecordId: publication.docker_node_record_id,
       nodeId: publication.node_id,

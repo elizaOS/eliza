@@ -55,7 +55,10 @@ import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
-import { agentBackupObjectInventoryDigest } from "../agent-backup-catalog";
+import {
+  agentBackupObjectInventoryDigest,
+  transitionAgentBackupOperation,
+} from "../agent-backup-catalog";
 import {
   type AgentBackupRestoreSourceV3Input,
   loadAgentBackupRestoreSourceV3,
@@ -91,6 +94,8 @@ const AGENT_ID = "00000000-0000-4000-8000-00000000d002";
 const BACKUP_ID = "00000000-0000-4000-8000-00000000d003";
 const OPERATION_ID = "00000000-0000-4000-8000-00000000d004";
 const ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000d005";
+const RUNTIME_HEAD_GENERATION = "00000000-0000-4000-8000-00000000d067";
+const RUNTIME_HEAD_PUBLICATION_ID = "00000000-0000-4000-8000-00000000d068";
 const VAULT_GENERATION = "00000000-0000-4000-8000-00000000d006";
 const ROTATED_VAULT_GENERATION = "00000000-0000-4000-8000-00000000d030";
 const STALE_VAULT_GENERATION = "00000000-0000-4000-8000-00000000d031";
@@ -112,6 +117,7 @@ const SHA = "a".repeat(64);
 const RECEIPT_SHA = "b".repeat(64);
 const CONTENT_SHA = "c".repeat(64);
 const CIPHERTEXT_SHA = "d".repeat(64);
+const RUNTIME_HEAD_RECEIPT_SHA = "8".repeat(64);
 const KEY_BUNDLE = Buffer.alloc(92, 0x42).toString("base64");
 let schemaFailure = "";
 
@@ -206,6 +212,193 @@ async function insertActiveSandbox(): Promise<void> {
     activation_dispatched_at: new Date("2026-08-17T00:00:01.000Z"),
     activation_completed_at: new Date("2026-08-17T00:00:02.000Z"),
   });
+}
+
+async function publishInitialSourceActivation() {
+  const sourceNode = await dockerNodesRepository.create({
+    id: SOURCE_NODE_RECORD_ID,
+    node_id: "restore-source-node",
+    hostname: "restore-source-node.internal",
+    capacity: 2,
+    enabled: true,
+    placement_state: "open",
+    status: "healthy",
+    host_key_fingerprint: `SHA256:${SHA}`,
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    provider_server_id: null,
+    node_incarnation: SOURCE_NODE_INCARNATION,
+    metadata: {},
+  });
+  if (!sourceNode.current_node_history_id) {
+    throw new Error("non-restore source occurrence token is missing");
+  }
+  const input = {
+    publicationId: NON_RESTORE_PUBLICATION_ID,
+    organizationId: ORG_ID,
+    agentId: AGENT_ID,
+    activationGeneration: ACTIVATION_GENERATION,
+    expectedActivationReceiptSha256: RECEIPT_SHA,
+    expectedContainerId: "c".repeat(64),
+    expectedNodeRecordId: SOURCE_NODE_RECORD_ID,
+    expectedNodeIncarnation: SOURCE_NODE_INCARNATION,
+    expectedNodeHistoryId: sourceNode.current_node_history_id,
+    expectedTokenSha256: SHA,
+  } as const;
+  const recorded = await recordAgentActivationPublication(input);
+  const [mutableSandbox] = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, AGENT_ID))
+    .limit(1);
+  if (!mutableSandbox) throw new Error("source mutable activation is missing");
+  return { input, mutableSandbox, sourceNode, recorded };
+}
+
+async function publishIntermediateRuntimeHead(sourceNodeHistoryId: string) {
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      lifecycle_revision: 8,
+      activation_generation: RUNTIME_HEAD_GENERATION,
+      activation_previous_generation: ACTIVATION_GENERATION,
+      activation_lifecycle_revision: 8n,
+      activation_purpose: "wake",
+      activation_phase: "active",
+      activation_backup_id: null,
+      activation_backup_hash: null,
+      activation_receipt: {
+        schemaVersion: 1,
+        generation: RUNTIME_HEAD_GENERATION,
+        purpose: "wake",
+        agentId: AGENT_ID,
+        organizationId: ORG_ID,
+        lifecycleRevision: "8",
+        backupId: null,
+        backupHash: null,
+        manifestHash: null,
+        componentHashes: null,
+        freshAuthorization: null,
+        containerId: "c".repeat(64),
+        imageDigest: `sha256:${SHA}`,
+        receiptId: "00000000-0000-4000-8000-00000000d069",
+        receiptHash: RUNTIME_HEAD_RECEIPT_SHA,
+        receiptMac: CONTENT_SHA,
+        appliedAt: "2026-08-17T00:01:00.000Z",
+        restored: true,
+        requiresRestart: false,
+      },
+      activation_receipt_hash: RUNTIME_HEAD_RECEIPT_SHA,
+      activation_token_hash: SHA,
+      activation_token_ciphertext: "sealed-restore-authority-token",
+      activation_funding_revision: 2n,
+    })
+    .where(eq(agentSandboxes.id, AGENT_ID));
+  const input = {
+    publicationId: RUNTIME_HEAD_PUBLICATION_ID,
+    organizationId: ORG_ID,
+    agentId: AGENT_ID,
+    activationGeneration: RUNTIME_HEAD_GENERATION,
+    expectedActivationReceiptSha256: RUNTIME_HEAD_RECEIPT_SHA,
+    expectedContainerId: "c".repeat(64),
+    expectedNodeRecordId: SOURCE_NODE_RECORD_ID,
+    expectedNodeIncarnation: SOURCE_NODE_INCARNATION,
+    expectedNodeHistoryId: sourceNodeHistoryId,
+    expectedTokenSha256: SHA,
+  } as const;
+  return { input, recorded: await recordAgentActivationPublication(input) };
+}
+
+type ActivationPublicationRow = typeof agentActivationPublications.$inferSelect;
+
+async function insertActivationGraphRow(
+  source: ActivationPublicationRow,
+  input: Readonly<{
+    id: string;
+    generation: string;
+    previousGeneration: string | null;
+    lifecycleRevision: bigint;
+  }>,
+): Promise<void> {
+  await dbWrite.insert(agentActivationPublications).values({
+    ...source,
+    id: input.id,
+    activation_generation: input.generation,
+    previous_activation_generation: input.previousGeneration,
+    lifecycle_revision: input.lifecycleRevision,
+    activation_receipt: {
+      ...source.activation_receipt,
+      generation: input.generation,
+      lifecycleRevision: input.lifecycleRevision.toString(),
+      receiptId: input.id,
+      restored: true,
+    },
+  });
+}
+
+async function stageNonRestoreActivation(
+  sourceNodeHistoryId: string,
+  input: Readonly<{
+    publicationId: string;
+    generation: string;
+    previousGeneration: string | null;
+    lifecycleRevision: bigint;
+  }>,
+) {
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      lifecycle_revision: Number(input.lifecycleRevision),
+      activation_generation: input.generation,
+      activation_previous_generation: input.previousGeneration,
+      activation_lifecycle_revision: input.lifecycleRevision,
+      activation_purpose: "wake",
+      activation_phase: "active",
+      activation_backup_id: null,
+      activation_backup_hash: null,
+      activation_receipt: {
+        schemaVersion: 1,
+        generation: input.generation,
+        purpose: "wake",
+        agentId: AGENT_ID,
+        organizationId: ORG_ID,
+        lifecycleRevision: input.lifecycleRevision.toString(),
+        backupId: null,
+        backupHash: null,
+        manifestHash: null,
+        componentHashes: null,
+        freshAuthorization: null,
+        containerId: "c".repeat(64),
+        imageDigest: `sha256:${SHA}`,
+        receiptId: input.publicationId,
+        receiptHash: RUNTIME_HEAD_RECEIPT_SHA,
+        receiptMac: CONTENT_SHA,
+        appliedAt: "2026-08-17T00:02:00.000Z",
+        restored: true,
+        requiresRestart: false,
+      },
+      activation_receipt_hash: RUNTIME_HEAD_RECEIPT_SHA,
+      activation_container_id: "c".repeat(64),
+      activation_node_id: "restore-source-node",
+      activation_image_digest: `sha256:${SHA}`,
+      activation_token_hash: SHA,
+      activation_token_ciphertext: "sealed-restore-authority-token",
+      activation_boot_id: SOURCE_NODE_INCARNATION,
+      activation_funding_revision: input.lifecycleRevision,
+    })
+    .where(eq(agentSandboxes.id, AGENT_ID));
+  return {
+    publicationId: input.publicationId,
+    organizationId: ORG_ID,
+    agentId: AGENT_ID,
+    activationGeneration: input.generation,
+    expectedActivationReceiptSha256: RUNTIME_HEAD_RECEIPT_SHA,
+    expectedContainerId: "c".repeat(64),
+    expectedNodeRecordId: SOURCE_NODE_RECORD_ID,
+    expectedNodeIncarnation: SOURCE_NODE_INCARNATION,
+    expectedNodeHistoryId: sourceNodeHistoryId,
+    expectedTokenSha256: SHA,
+  } as const;
 }
 
 function operationKeyBundleContext(): string {
@@ -801,38 +994,7 @@ afterAll(async () => {
 
 describe("strict restore catalogue authority", () => {
   test("publishes, replays, and dispatch-authorizes a non-restore node occurrence", async () => {
-    const sourceNode = await dockerNodesRepository.create({
-      id: SOURCE_NODE_RECORD_ID,
-      node_id: "restore-source-node",
-      hostname: "restore-source-node.internal",
-      capacity: 2,
-      enabled: true,
-      placement_state: "open",
-      status: "healthy",
-      host_key_fingerprint: `SHA256:${SHA}`,
-      fleet_kind: "robot",
-      infrastructure_provider: "hetzner",
-      provider_server_id: null,
-      node_incarnation: SOURCE_NODE_INCARNATION,
-      metadata: {},
-    });
-    if (!sourceNode.current_node_history_id) {
-      throw new Error("non-restore source occurrence token is missing");
-    }
-    const input = {
-      publicationId: NON_RESTORE_PUBLICATION_ID,
-      organizationId: ORG_ID,
-      agentId: AGENT_ID,
-      activationGeneration: ACTIVATION_GENERATION,
-      expectedActivationReceiptSha256: RECEIPT_SHA,
-      expectedContainerId: "c".repeat(64),
-      expectedNodeRecordId: SOURCE_NODE_RECORD_ID,
-      expectedNodeIncarnation: SOURCE_NODE_INCARNATION,
-      expectedNodeHistoryId: sourceNode.current_node_history_id,
-      expectedTokenSha256: SHA,
-    };
-
-    const first = await recordAgentActivationPublication(input);
+    const { input, recorded: first, sourceNode } = await publishInitialSourceActivation();
     const replay = await recordAgentActivationPublication(input);
     expect(first.replayed).toBe(false);
     expect(replay.replayed).toBe(true);
@@ -846,6 +1008,127 @@ describe("strict restore catalogue authority", () => {
       id: NON_RESTORE_PUBLICATION_ID,
       node_history_id: sourceNode.current_node_history_id,
     });
+  });
+
+  test("rejects a persisted activation-publication fork or disconnected root", async () => {
+    const source = await publishInitialSourceActivation();
+    await insertActivationGraphRow(source.recorded.publication, {
+      id: "00000000-0000-4000-8000-00000000d071",
+      generation: "00000000-0000-4000-8000-00000000d072",
+      previousGeneration: null,
+      lifecycleRevision: 6n,
+    });
+    const candidate = await stageNonRestoreActivation(source.input.expectedNodeHistoryId, {
+      publicationId: "00000000-0000-4000-8000-00000000d073",
+      generation: "00000000-0000-4000-8000-00000000d074",
+      previousGeneration: ACTIVATION_GENERATION,
+      lifecycleRevision: 8n,
+    });
+
+    await expect(recordAgentActivationPublication(candidate)).rejects.toThrow(
+      "history is forked or disconnected",
+    );
+  });
+
+  test("rejects incomplete persisted activation-publication ancestry", async () => {
+    const source = await publishInitialSourceActivation();
+    const disconnectedHeadGeneration = "00000000-0000-4000-8000-00000000d071";
+    await insertActivationGraphRow(source.recorded.publication, {
+      id: "00000000-0000-4000-8000-00000000d072",
+      generation: disconnectedHeadGeneration,
+      previousGeneration: "00000000-0000-4000-8000-00000000d073",
+      lifecycleRevision: 8n,
+    });
+    const candidate = await stageNonRestoreActivation(source.input.expectedNodeHistoryId, {
+      publicationId: "00000000-0000-4000-8000-00000000d074",
+      generation: "00000000-0000-4000-8000-00000000d075",
+      previousGeneration: disconnectedHeadGeneration,
+      lifecycleRevision: 9n,
+    });
+
+    await expect(recordAgentActivationPublication(candidate)).rejects.toThrow(
+      "ancestry is incomplete",
+    );
+  });
+
+  test("rejects a persisted activation-publication cycle", async () => {
+    const source = await publishInitialSourceActivation();
+    const cycleHeadGeneration = "00000000-0000-4000-8000-00000000d071";
+    const cycleParentGeneration = "00000000-0000-4000-8000-00000000d072";
+    await insertActivationGraphRow(source.recorded.publication, {
+      id: "00000000-0000-4000-8000-00000000d073",
+      generation: cycleHeadGeneration,
+      previousGeneration: cycleParentGeneration,
+      lifecycleRevision: 9n,
+    });
+    await insertActivationGraphRow(source.recorded.publication, {
+      id: "00000000-0000-4000-8000-00000000d074",
+      generation: cycleParentGeneration,
+      previousGeneration: cycleHeadGeneration,
+      lifecycleRevision: 8n,
+    });
+    const candidate = await stageNonRestoreActivation(source.input.expectedNodeHistoryId, {
+      publicationId: "00000000-0000-4000-8000-00000000d075",
+      generation: "00000000-0000-4000-8000-00000000d076",
+      previousGeneration: cycleHeadGeneration,
+      lifecycleRevision: 10n,
+    });
+
+    await expect(recordAgentActivationPublication(candidate)).rejects.toThrow(
+      "contains an ABA or revision cycle",
+    );
+  });
+
+  test("rejects a generation naming itself as its predecessor", async () => {
+    const source = await publishInitialSourceActivation();
+    const generation = "00000000-0000-4000-8000-00000000d071";
+    const candidate = await stageNonRestoreActivation(source.input.expectedNodeHistoryId, {
+      publicationId: "00000000-0000-4000-8000-00000000d072",
+      generation,
+      previousGeneration: generation,
+      lifecycleRevision: 8n,
+    });
+
+    await expect(recordAgentActivationPublication(candidate)).rejects.toThrow(
+      "cannot reuse its generation as its predecessor",
+    );
+  });
+
+  test("rejects ancestor reintroduction and exact A-to-B-to-A replay", async () => {
+    const source = await publishInitialSourceActivation();
+    await publishIntermediateRuntimeHead(source.input.expectedNodeHistoryId);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        lifecycle_revision: source.mutableSandbox.lifecycle_revision,
+        activation_generation: source.mutableSandbox.activation_generation,
+        activation_previous_generation: source.mutableSandbox.activation_previous_generation,
+        activation_lifecycle_revision: source.mutableSandbox.activation_lifecycle_revision,
+        activation_purpose: source.mutableSandbox.activation_purpose,
+        activation_phase: source.mutableSandbox.activation_phase,
+        activation_backup_id: source.mutableSandbox.activation_backup_id,
+        activation_backup_hash: source.mutableSandbox.activation_backup_hash,
+        activation_receipt: source.mutableSandbox.activation_receipt,
+        activation_receipt_hash: source.mutableSandbox.activation_receipt_hash,
+        activation_container_id: source.mutableSandbox.activation_container_id,
+        activation_node_id: source.mutableSandbox.activation_node_id,
+        activation_image_digest: source.mutableSandbox.activation_image_digest,
+        activation_token_hash: source.mutableSandbox.activation_token_hash,
+        activation_token_ciphertext: source.mutableSandbox.activation_token_ciphertext,
+        activation_boot_id: source.mutableSandbox.activation_boot_id,
+        activation_funding_revision: source.mutableSandbox.activation_funding_revision,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+
+    await expect(recordAgentActivationPublication(source.input)).rejects.toThrow(
+      "does not name the current database history head",
+    );
+    await expect(
+      recordAgentActivationPublication({
+        ...source.input,
+        publicationId: "00000000-0000-4000-8000-00000000d071",
+      }),
+    ).rejects.toThrow("replay mismatch");
   });
 
   test("creates, replays, rotates, zeroizes, and retains vault-key authority", async () => {
@@ -1284,6 +1567,41 @@ describe("strict restore catalogue authority", () => {
     );
     generation.secret.release();
     const { exact } = await insertExactProtectedSource(generation.authority);
+    const sourceActivation = await publishInitialSourceActivation();
+    const runtimeHead = await publishIntermediateRuntimeHead(
+      sourceActivation.input.expectedNodeHistoryId,
+    );
+    expect(runtimeHead.recorded.replayed).toBe(false);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        lifecycle_revision: sourceActivation.mutableSandbox.lifecycle_revision,
+        activation_generation: sourceActivation.mutableSandbox.activation_generation,
+        activation_previous_generation:
+          sourceActivation.mutableSandbox.activation_previous_generation,
+        activation_lifecycle_revision:
+          sourceActivation.mutableSandbox.activation_lifecycle_revision,
+        activation_purpose: sourceActivation.mutableSandbox.activation_purpose,
+        activation_phase: sourceActivation.mutableSandbox.activation_phase,
+        activation_backup_id: sourceActivation.mutableSandbox.activation_backup_id,
+        activation_backup_hash: sourceActivation.mutableSandbox.activation_backup_hash,
+        activation_receipt: sourceActivation.mutableSandbox.activation_receipt,
+        activation_receipt_hash: sourceActivation.mutableSandbox.activation_receipt_hash,
+        activation_container_id: sourceActivation.mutableSandbox.activation_container_id,
+        activation_node_id: sourceActivation.mutableSandbox.activation_node_id,
+        activation_image_digest: sourceActivation.mutableSandbox.activation_image_digest,
+        activation_token_hash: sourceActivation.mutableSandbox.activation_token_hash,
+        activation_boot_id: sourceActivation.mutableSandbox.activation_boot_id,
+        activation_funding_revision: sourceActivation.mutableSandbox.activation_funding_revision,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await expect(recordAgentActivationPublication(sourceActivation.input)).rejects.toThrow(
+      "does not name the current database history head",
+    );
+    const runtimeHeadReplay = await publishIntermediateRuntimeHead(
+      sourceActivation.input.expectedNodeHistoryId,
+    );
+    expect(runtimeHeadReplay.recorded.replayed).toBe(true);
     const restoreTargetNode = await dockerNodesRepository.create({
       id: TARGET_NODE_RECORD_ID,
       node_id: "restore-target-node",
@@ -1337,10 +1655,10 @@ describe("strict restore catalogue authority", () => {
     await dbWrite
       .update(agentSandboxes)
       .set({
-        lifecycle_revision: 8,
+        lifecycle_revision: 9,
         activation_generation: TARGET_ACTIVATION_GENERATION,
-        activation_previous_generation: ACTIVATION_GENERATION,
-        activation_lifecycle_revision: 8n,
+        activation_previous_generation: RUNTIME_HEAD_GENERATION,
+        activation_lifecycle_revision: 9n,
         activation_purpose: "restore",
         activation_phase: "restart_attested",
         activation_backup_id: BACKUP_ID,
@@ -1351,7 +1669,7 @@ describe("strict restore catalogue authority", () => {
           purpose: "restore",
           agentId: AGENT_ID,
           organizationId: ORG_ID,
-          lifecycleRevision: "8",
+          lifecycleRevision: "9",
           backupId: BACKUP_ID,
           backupHash: exact.manifest.integrity.manifestSha256,
           manifestHash: exact.manifest.integrity.manifestSha256,
@@ -1373,7 +1691,7 @@ describe("strict restore catalogue authority", () => {
         activation_token_hash: SHA,
         activation_token_ciphertext: "sealed-target-restore-token",
         activation_boot_id: TARGET_NODE_INCARNATION,
-        activation_funding_revision: 2n,
+        activation_funding_revision: 3n,
         activation_authority_published_at: null,
         activation_dispatched_at: null,
         activation_completed_at: null,
@@ -1392,12 +1710,154 @@ describe("strict restore catalogue authority", () => {
       expectedNodeHistoryId: restoreTargetHistoryId,
       expectedTokenSha256: SHA,
     } as const;
+
+    // A restore-shaped sandbox can have a restart receipt, appear ready, and
+    // have funding without the restore operation ever completing its probe.
+    // None of those mutable facts may substitute for the durable probed phase.
+    for (const phase of ["restoring", "restart_attested"] as const) {
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ phase })
+        .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+      await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+        "requires a probed restore operation",
+      );
+    }
+    expect(await dbWrite.select().from(agentActivationPublications)).toHaveLength(2);
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ phase: "probed" })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ activation_previous_generation: "00000000-0000-4000-8000-00000000d070" })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "predecessor is missing from immutable database history",
+    );
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ activation_previous_generation: null })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "cannot bootstrap over existing database history",
+    );
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_previous_generation: RUNTIME_HEAD_GENERATION,
+        activation_lifecycle_revision: 8n,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "monotonically extend the exact database history head",
+    );
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ activation_lifecycle_revision: 9n })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+
     const [publicationFirst, publicationReplay] = await Promise.all([
       recordAgentActivationPublication(publicationInput),
       recordAgentActivationPublication(publicationInput),
     ]);
     expect([publicationFirst.replayed, publicationReplay.replayed].sort()).toEqual([false, true]);
     expect(publicationFirst.publication.id).toBe(publicationReplay.publication.id);
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ phase: "restart_attested" })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "not in a legitimate published phase",
+    );
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ phase: "published" })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    await expect(recordAgentActivationPublication(publicationInput)).resolves.toMatchObject({
+      replayed: true,
+      publication: { id: ACTIVATION_PUBLICATION_ID },
+    });
+
+    const liveLeaseExpiry = acquired.authority.expiresAt;
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ expires_at: new Date(acquired.lease.created_at.getTime() + 1) })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "lost its exact live restore lease",
+    );
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ expires_at: liveLeaseExpiry, released_at: new Date() })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "lost its exact live restore lease",
+    );
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ released_at: null })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+    const [publicationEpoch] = await dbWrite
+      .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
+      .from(agentBackupCatalogAuthorities)
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    if (!publicationEpoch) throw new Error("Expected publication catalogue authority");
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: publicationEpoch.revision + 1n })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "lost its exact live restore lease",
+    );
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: publicationEpoch.revision })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+
+    await expect(
+      recordAgentActivationPublication({
+        ...publicationInput,
+        expectedTokenSha256: CONTENT_SHA,
+      }),
+    ).rejects.toThrow("replay mismatch");
+    await expect(
+      recordAgentActivationPublication({
+        ...publicationInput,
+        publicationId: "00000000-0000-4000-8000-00000000d066",
+        activationGeneration: ACTIVATION_GENERATION,
+      }),
+    ).rejects.toThrow("replay mismatch");
+    expect(await dbWrite.select().from(agentActivationPublications)).toHaveLength(3);
+
+    const prematureFinalizedAt = new Date();
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({
+        phase: "finalized",
+        completed_at: prematureFinalizedAt,
+        receipt_digest: CIPHERTEXT_SHA,
+        capacity_state: "handed_off",
+        capacity_settled_at: prematureFinalizedAt,
+        capacity_settlement_receipt_digest: CIPHERTEXT_SHA,
+      })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "lacks its operation receipt digest",
+    );
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({
+        phase: "published",
+        completed_at: null,
+        receipt_digest: null,
+        capacity_state: "reserved",
+        capacity_settled_at: null,
+        capacity_settlement_receipt_digest: null,
+      })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+
     await authorizeAgentActivationDispatch(publicationInput);
 
     await dbWrite
@@ -1579,6 +2039,167 @@ describe("strict restore catalogue authority", () => {
       receiptDigest: CIPHERTEXT_SHA,
     });
 
+    const finalizedAt = finalFirst.receipt.verified_at;
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({
+        phase: "finalized",
+        completed_at: finalizedAt,
+        receipt_digest: CIPHERTEXT_SHA,
+        capacity_state: "handed_off",
+        capacity_settled_at: finalizedAt,
+        capacity_settlement_receipt_digest: CIPHERTEXT_SHA,
+      })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    const [capacityBeforeFinalizedReplays] = await dbWrite
+      .select({
+        state: agentBackupRestoreOperations.capacity_state,
+        reservedAt: agentBackupRestoreOperations.capacity_reserved_at,
+        settledAt: agentBackupRestoreOperations.capacity_settled_at,
+        receiptDigest: agentBackupRestoreOperations.capacity_settlement_receipt_digest,
+      })
+      .from(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ receipt_digest: SHA })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "lacks its operation receipt digest",
+    );
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ restore_receipt_digest: SHA })
+      .where(eq(agentSandboxBackups.id, BACKUP_ID));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "lacks its exact immutable final receipt",
+    );
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ receipt_digest: CIPHERTEXT_SHA })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ restore_receipt_digest: CIPHERTEXT_SHA })
+      .where(eq(agentSandboxBackups.id, BACKUP_ID));
+
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ expires_at: new Date(acquired.lease.created_at.getTime() + 1) })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+    await expect(recordAgentActivationPublication(publicationInput)).resolves.toMatchObject({
+      replayed: true,
+      publication: { id: ACTIVATION_PUBLICATION_ID },
+    });
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ expires_at: originalLeaseExpiry })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+    await releaseAgentBackupRestoreLease(acquired.authority);
+    await expect(recordAgentActivationPublication(publicationInput)).resolves.toMatchObject({
+      replayed: true,
+      publication: { id: ACTIVATION_PUBLICATION_ID },
+    });
+    const [finalizedEpoch] = await dbWrite
+      .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
+      .from(agentBackupCatalogAuthorities)
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    if (!finalizedEpoch) throw new Error("Expected finalized catalogue authority");
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: finalizedEpoch.revision + 1n })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    await expect(recordAgentActivationPublication(publicationInput)).resolves.toMatchObject({
+      replayed: true,
+      publication: { id: ACTIVATION_PUBLICATION_ID },
+    });
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: finalizedEpoch.revision })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+
+    const retainedAfterRestore = await transitionAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      lifecycleGeneration: ACTIVATION_GENERATION,
+      expectedState: "restore_verified",
+      to: "retained",
+    });
+    expect(retainedAfterRestore.catalog_state).toBe("retained");
+    await expect(recordAgentActivationPublication(publicationInput)).resolves.toMatchObject({
+      replayed: true,
+      publication: { id: ACTIVATION_PUBLICATION_ID },
+    });
+
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ retention_until: new Date("2026-01-01T00:00:00.000Z") })
+      .where(eq(agentSandboxBackups.id, BACKUP_ID));
+    const expirationAfterRestore = await transitionAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      lifecycleGeneration: ACTIVATION_GENERATION,
+      expectedState: "retained",
+      to: "expiration_pending",
+    });
+    expect(expirationAfterRestore.catalog_state).toBe("expiration_pending");
+    await expect(recordAgentActivationPublication(publicationInput)).resolves.toMatchObject({
+      replayed: true,
+      publication: { id: ACTIVATION_PUBLICATION_ID },
+    });
+
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ phase: "published", completed_at: null, receipt_digest: null })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "source lacks exact restorable backup authority",
+    );
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ phase: "finalized", completed_at: finalizedAt, receipt_digest: CIPHERTEXT_SHA })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ activation_generation: "00000000-0000-4000-8000-00000000d077" })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "differs from mutable or durable operation authority",
+    );
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ activation_generation: TARGET_ACTIVATION_GENERATION })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+
+    const newerPublicationId = "00000000-0000-4000-8000-00000000d078";
+    await insertActivationGraphRow(publicationFirst.publication, {
+      id: newerPublicationId,
+      generation: "00000000-0000-4000-8000-00000000d079",
+      previousGeneration: TARGET_ACTIVATION_GENERATION,
+      lifecycleRevision: 10n,
+    });
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "does not name the current database history head",
+    );
+    await dbWrite
+      .delete(agentActivationPublications)
+      .where(eq(agentActivationPublications.id, newerPublicationId));
+
+    const [capacityAfterFinalizedReplays] = await dbWrite
+      .select({
+        state: agentBackupRestoreOperations.capacity_state,
+        reservedAt: agentBackupRestoreOperations.capacity_reserved_at,
+        settledAt: agentBackupRestoreOperations.capacity_settled_at,
+        receiptDigest: agentBackupRestoreOperations.capacity_settlement_receipt_digest,
+      })
+      .from(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+    expect(capacityAfterFinalizedReplays).toEqual(capacityBeforeFinalizedReplays);
+
     await dockerNodesRepository.attestNodeIncarnation({
       id: TARGET_NODE_RECORD_ID,
       nodeId: "restore-target-node",
@@ -1586,6 +2207,9 @@ describe("strict restore catalogue authority", () => {
       expectedHostKeyFingerprint: `SHA256:${SHA}`,
       observedIncarnation: "00000000-0000-4000-8000-00000000d055",
     });
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "exact current node-occurrence authority",
+    );
     await expect(authorizeAgentActivationDispatch(publicationInput)).rejects.toThrow(
       "exact current node-occurrence authority",
     );
