@@ -20,10 +20,7 @@ import {
   AndroidCloudApp,
   type AndroidCloudVoiceAdapter,
 } from "./AndroidCloudApp";
-import {
-  AndroidCloudClient,
-  type AndroidCloudGoogleIdentityAdapter,
-} from "./android-cloud-client";
+import { AndroidCloudClient } from "./android-cloud-client";
 
 const session = {
   identity: {
@@ -48,14 +45,6 @@ function createVoice(): AndroidCloudVoiceAdapter {
   };
 }
 
-function createGoogleIdentity(): AndroidCloudGoogleIdentityAdapter {
-  return {
-    signIn: vi.fn(async () => ({ idToken: "google-id-token" })),
-    cancel: vi.fn(async () => undefined),
-    clearCredentialState: vi.fn(async () => undefined),
-  };
-}
-
 describe("AndroidCloudApp", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -64,25 +53,31 @@ describe("AndroidCloudApp", () => {
 
   afterEach(() => cleanup());
 
-  it("offers one native Google path and restores the Cloud session", async () => {
+  it("offers one hosted Eliza Cloud path and restores the paired session", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession")
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(session);
-    const nativeSignIn = vi
-      .spyOn(client, "signInWithGoogle")
-      .mockResolvedValue(undefined);
-    const googleIdentity = createGoogleIdentity();
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl:
+        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    });
+    const pollLogin = vi.spyOn(client, "pollLogin").mockResolvedValue({
+      status: "authenticated",
+      token: "steward-token",
+    });
+    const openExternal = vi.fn(async () => "closed" as const);
     render(
       <AndroidCloudApp
         client={client}
-        googleIdentity={googleIdentity}
+        openExternal={openExternal}
         voice={createVoice()}
       />,
     );
 
     const signInButton = await screen.findByRole("button", {
-      name: "Continue with Google",
+      name: "Sign in with Eliza Cloud",
     });
     expect(screen.getByTestId("android-cloud-first-run-greeting")).toBeTruthy();
     expect(screen.getByTestId("android-cloud-first-run-sign-in")).toBeTruthy();
@@ -91,27 +86,73 @@ describe("AndroidCloudApp", () => {
     ).toHaveProperty("disabled", true);
     expect(screen.queryByText("Other sign-in options")).toBeNull();
     expect(screen.queryByText("Check for an existing session")).toBeNull();
+    expect(screen.queryByText("Continue with Google")).toBeNull();
     fireEvent.click(signInButton);
-    await waitFor(() => expect(nativeSignIn).toHaveBeenCalledOnce());
-    expect(nativeSignIn).toHaveBeenCalledWith(
-      googleIdentity,
-      expect.any(AbortSignal),
+    await waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    );
+    expect(pollLogin).toHaveBeenCalledWith(
+      "10000000-0000-4000-8000-000000000001",
     );
     expect(await screen.findByText("Ada")).toBeTruthy();
   });
 
-  it("fails visibly when the native Google bridge is unavailable", async () => {
+  it("surfaces a hosted sign-in launch failure without adding fallback choices", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(null);
-    render(<AndroidCloudApp client={client} voice={createVoice()} />);
+    vi.spyOn(client, "beginLogin").mockRejectedValue(
+      new Error("Eliza Cloud sign-in is temporarily unavailable."),
+    );
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={vi.fn(async () => "closed" as const)}
+        voice={createVoice()}
+      />,
+    );
 
     const button = await screen.findByRole("button", {
-      name: "Continue with Google",
+      name: "Sign in with Eliza Cloud",
     });
-    expect(button).toHaveProperty("disabled", true);
-    expect(screen.getByRole("alert").textContent).toBe(
-      "Google sign-in is unavailable on this device.",
+    fireEvent.click(button);
+    expect(
+      await screen.findByText(
+        "Eliza Cloud sign-in is temporarily unavailable.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Other sign-in options")).toBeNull();
+    expect(screen.queryByText("Check for an existing session")).toBeNull();
+  });
+
+  it("lets the user cancel a hosted sign-in session", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl:
+        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    });
+    const openExternal = vi.fn(async () => "opened" as const);
+    const closeExternal = vi.fn(async () => undefined);
+    render(
+      <AndroidCloudApp
+        client={client}
+        closeExternal={closeExternal}
+        openExternal={openExternal}
+        voice={createVoice()}
+      />,
     );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Sign in with Eliza Cloud" }),
+    );
+    await screen.findByRole("button", { name: "Cancel sign-in" });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    await waitFor(() => expect(closeExternal).toHaveBeenCalledOnce());
+    expect(
+      screen.getByRole("button", { name: "Sign in with Eliza Cloud" }),
+    ).toBeTruthy();
   });
 
   it("accepts a native share/deep-link compose event without auto-sending", async () => {

@@ -10,6 +10,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const playEntry = vi.hoisted(() => ({
   appListeners: new Map<string, (value: unknown) => void>(),
+  browserClose: vi.fn(async () => undefined),
+  browserFinished: null as null | (() => void),
+  browserOpen: vi.fn(async (_options: { url: string }) => undefined),
   createRoot: vi.fn(() => ({ render: vi.fn() })),
   preferenceGet: vi.fn(async (_options: { key: string }) => ({
     value: null as string | null,
@@ -21,6 +24,17 @@ const playEntry = vi.hoisted(() => ({
   secureClear: vi.fn(async () => undefined),
   secureGet: vi.fn(async () => ({ value: null as string | null })),
   secureSet: vi.fn(async (_options: { value: string }) => undefined),
+}));
+
+vi.mock("@capacitor/browser", () => ({
+  Browser: {
+    addListener: vi.fn(async (name: string, listener: () => void) => {
+      if (name === "browserFinished") playEntry.browserFinished = listener;
+      return { remove: vi.fn() };
+    }),
+    close: playEntry.browserClose,
+    open: playEntry.browserOpen,
+  },
 }));
 
 vi.mock("react-dom/client", () => ({ createRoot: playEntry.createRoot }));
@@ -100,6 +114,7 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   playEntry.appListeners.clear();
+  playEntry.browserFinished = null;
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
@@ -107,6 +122,24 @@ beforeEach(() => {
 });
 
 describe("Android Cloud renderer behavior", () => {
+  it("opens hosted sign-in only in an HTTPS Custom Tab and waits for closure", async () => {
+    await expect(
+      entry.openAndroidCloudSignIn("http://example.com/auth"),
+    ).rejects.toThrow("must use HTTPS");
+
+    const opening = entry.openAndroidCloudSignIn(
+      "https://cloud-staging.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    );
+    await vi.waitFor(() =>
+      expect(playEntry.browserOpen).toHaveBeenCalledOnce(),
+    );
+    expect(playEntry.browserOpen).toHaveBeenCalledWith({
+      url: "https://cloud-staging.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    });
+    playEntry.browserFinished?.();
+    await expect(opening).resolves.toBe("closed");
+  });
+
   it("migrates a legacy bearer into the secure plugin before deleting plaintext", async () => {
     const order: string[] = [];
     playEntry.preferenceGet.mockImplementation(async ({ key }) => ({
