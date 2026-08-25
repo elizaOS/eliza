@@ -631,6 +631,18 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 async function installFfmpegStaticOnce(): Promise<
   { installed: true } | { installed: false; reason: string }
 > {
@@ -663,7 +675,7 @@ async function installFfmpegStaticOnce(): Promise<
       // error-policy:J3 optional packaged binary — caller reports unavailable tool.
       return {
         installed: false,
-        reason: `ffmpeg-static install failed: ${describeError(err).slice(0, 160)}`,
+        reason: `ffmpeg-static install failed: ${truncateText(describeError(err), 160)}`,
       };
     }
   })();
