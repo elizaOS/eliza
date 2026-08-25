@@ -71,4 +71,85 @@ describe("refresh-mutex", () => {
     expect(result).toBe("success");
     expect(order).toEqual(["failed", "recovered"]);
   });
+
+  it("handles a three-stage queue on the same key preserving distinct return values", async () => {
+    const mutex = new KeyedMutex();
+    const sequence: number[] = [];
+
+    const t1 = mutex.acquire("same-key", async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      sequence.push(1);
+      return "val-1";
+    });
+
+    const t2 = mutex.acquire("same-key", async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      sequence.push(2);
+      return "val-2";
+    });
+
+    const t3 = mutex.acquire("same-key", async () => {
+      sequence.push(3);
+      return "val-3";
+    });
+
+    const results = await Promise.all([t1, t2, t3]);
+    expect(results).toEqual(["val-1", "val-2", "val-3"]);
+    expect(sequence).toEqual([1, 2, 3]);
+  });
+
+  it("preserves ordering when an intermediate queued task throws in a multi-task chain", async () => {
+    const mutex = new KeyedMutex();
+    const execution: string[] = [];
+
+    const first = mutex.acquire("chain-key", async () => {
+      execution.push("first");
+      return 100;
+    });
+
+    const second = mutex.acquire("chain-key", async () => {
+      execution.push("second-fails");
+      throw new Error("intermediate failure");
+    });
+
+    const third = mutex.acquire("chain-key", async () => {
+      execution.push("third-succeeds");
+      return 300;
+    });
+
+    expect(await first).toBe(100);
+    await expect(second).rejects.toThrow("intermediate failure");
+    expect(await third).toBe(300);
+    expect(execution).toEqual(["first", "second-fails", "third-succeeds"]);
+  });
+
+  it("cleans up key from inflight map when last task in queue completes", async () => {
+    const mutex = new KeyedMutex();
+    const internals = mutex as unknown as {
+      inflight: Map<string, Promise<unknown>>;
+    };
+
+    expect(internals.inflight.has("cleanup-key")).toBe(false);
+
+    const task = mutex.acquire("cleanup-key", async () => {
+      expect(internals.inflight.has("cleanup-key")).toBe(true);
+      return "done";
+    });
+
+    await task;
+    expect(internals.inflight.has("cleanup-key")).toBe(false);
+  });
+
+  it("exports a singleton accountRefreshMutex instance of KeyedMutex", async () => {
+    const { accountRefreshMutex } = await import("./refresh-mutex.js");
+    expect(accountRefreshMutex).toBeInstanceOf(KeyedMutex);
+
+    const res = await accountRefreshMutex.acquire(
+      "test-provider:account-1",
+      async () => {
+        return "refreshed-token";
+      },
+    );
+    expect(res).toBe("refreshed-token");
+  });
 });
