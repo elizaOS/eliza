@@ -97,6 +97,44 @@ describe("evictOldestConversation", () => {
   });
 });
 
+describe("sweepExpiredEntries edge boundaries", () => {
+  it("evicts expired entries when size exceeds threshold by one", () => {
+    const map = new Map([
+      ["a", { count: 1, resetAt: 100 }],
+      ["b", { count: 1, resetAt: 2000 }],
+    ]);
+    sweepExpiredEntries(map, 500, 1);
+    expect([...map.keys()]).toEqual(["b"]);
+  });
+
+  it("does not evict when map is empty", () => {
+    const map = new Map<string, { count: number; resetAt: number }>();
+    sweepExpiredEntries(map, 1_000, 0);
+    expect(map.size).toBe(0);
+  });
+});
+
+describe("evictOldestConversation empty and zero-cap boundaries", () => {
+  it("evicts the oldest when cap is 0 (any entry exceeds cap)", () => {
+    const conv = (updatedAt: string) => ({ updatedAt });
+    const map = new Map([["only", conv("2026-01-01T00:00:00.000Z")]]);
+    expect(evictOldestConversation(map, 0)).toBe("only");
+    expect(map.size).toBe(0);
+  });
+
+  it("still evicts correctly when called repeatedly to enforce cap", () => {
+    const conv = (updatedAt: string) => ({ updatedAt });
+    const map = new Map([
+      ["a", conv("2026-01-01T00:00:00.000Z")],
+      ["b", conv("2026-02-01T00:00:00.000Z")],
+      ["c", conv("2026-03-01T00:00:00.000Z")],
+    ]);
+    expect(evictOldestConversation(map, 1)).toBe("a");
+    expect(evictOldestConversation(map, 1)).toBe("b");
+    expect([...map.keys()]).toEqual(["c"]);
+  });
+});
+
 describe("getOrReadCachedFile", () => {
   it("reads on miss and serves the cached body on the next call", () => {
     const cache = new Map();
@@ -141,5 +179,48 @@ describe("getOrReadCachedFile", () => {
     getOrReadCachedFile(cache, "/3", 1, read, 2, 1_000);
     expect(cache.size).toBe(2);
     expect(cache.has("/1")).toBe(false);
+  });
+
+  it("caches a file whose size is exactly the limit", () => {
+    const cache = new Map();
+    const read = () => Buffer.alloc(10);
+    getOrReadCachedFile(cache, "/exact", 1, read, 10, 10);
+    expect(cache.size).toBe(1);
+    expect(cache.has("/exact")).toBe(true);
+  });
+
+  it("evicts correctly when maxEntries is 1", () => {
+    const cache = new Map();
+    const read = () => Buffer.from("y");
+    getOrReadCachedFile(cache, "/a", 1, read, 1, 1_000);
+    getOrReadCachedFile(cache, "/b", 1, read, 1, 1_000);
+    expect(cache.size).toBe(1);
+    expect(cache.has("/a")).toBe(false);
+    expect(cache.has("/b")).toBe(true);
+  });
+
+  it("does not return stale body when mtime differs", () => {
+    const cache = new Map();
+    let v = 1;
+    const read = () => Buffer.from(String(v++));
+    const first = getOrReadCachedFile(
+      cache,
+      "/file",
+      1,
+      read,
+      10,
+      1_000,
+    ).toString();
+    const second = getOrReadCachedFile(
+      cache,
+      "/file",
+      2,
+      read,
+      10,
+      1_000,
+    ).toString();
+    expect(first).toBe("1");
+    expect(second).toBe("2");
+    expect(cache.get("/file")?.mtimeMs).toBe(2);
   });
 });
