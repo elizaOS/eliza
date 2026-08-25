@@ -110,14 +110,32 @@ function normalizePlannerNumber(value: unknown): number | undefined {
   return whole > 0 ? whole : undefined;
 }
 
-function normalizePlannerBoolean(value: unknown): boolean | null {
+export function normalizePlannerBoolean(value: unknown): boolean | null {
   if (typeof value === "boolean") {
     return value;
   }
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
-    if (normalized === "true") return true;
-    if (normalized === "false") return false;
+    if (
+      normalized === "true" ||
+      normalized === "yes" ||
+      normalized === "1" ||
+      normalized === "on" ||
+      normalized === "enable" ||
+      normalized === "enabled"
+    ) {
+      return true;
+    }
+    if (
+      normalized === "false" ||
+      normalized === "no" ||
+      normalized === "0" ||
+      normalized === "off" ||
+      normalized === "disable" ||
+      normalized === "disabled"
+    ) {
+      return false;
+    }
   }
   return null;
 }
