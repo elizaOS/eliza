@@ -109,8 +109,10 @@ describe("progressive content target conformance", () => {
 			"isolation",
 			"restart",
 			"cleanup",
-			"cleanup",
 		]);
+		const cleanup = result.receipts.find(({ phase }) => phase === "cleanup");
+		expect(cleanup?.before.present).toBe(true);
+		expect(cleanup?.after.present).toBe(false);
 		expect(result.receipts.every(({ status }) => status === "passed")).toBe(
 			true,
 		);
