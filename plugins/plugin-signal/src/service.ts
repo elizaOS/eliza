@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 /**
  * `SignalService` — the core Signal connector (`serviceType: "signal"`). Owns the
  * signal-cli transport in both modes: it either connects to an existing REST
@@ -246,7 +258,7 @@ function signalRecentToConnectorTarget(
     },
     label: recent.roomName,
     kind: recent.isGroup ? "group" : "contact",
-    description: `${recent.speakerName}: ${recent.text.slice(0, 120)}`,
+    description: `${recent.speakerName}: ${truncateUtf16Safe(recent.text, 120)}`,
     score,
     contexts: ["social", "connectors"],
     metadata: {

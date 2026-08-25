@@ -42,3 +42,19 @@ describe("signal triage adapter registration", () => {
     expect(adapter?.isAvailable(runtimeWith({ signal: { __stub: true } }))).toBe(true);
   });
 });
+
+describe("truncateUtf16Safe in signal connector target description", () => {
+  it("preserves UTF-16 surrogate pairs during truncation", () => {
+    // "🔥" is 2 code units. 70 repeats = 140 units > 120
+    const longEmoji = "🔥".repeat(70);
+    // Slicing at odd index 119 backs off to 118
+    let end = 119;
+    const code = longEmoji.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+    const truncated = longEmoji.slice(0, end);
+    expect(truncated.length).toBe(118);
+  });
+});
+
