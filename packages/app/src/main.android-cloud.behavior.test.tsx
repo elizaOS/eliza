@@ -10,7 +10,6 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const playEntry = vi.hoisted(() => ({
   appListeners: new Map<string, (value: unknown) => void>(),
-  browserListeners: new Map<string, () => void>(),
   createRoot: vi.fn(() => ({ render: vi.fn() })),
   preferenceGet: vi.fn(async (_options: { key: string }) => ({
     value: null as string | null,
@@ -69,20 +68,6 @@ vi.mock("@capacitor/app", () => ({
     minimizeApp: vi.fn(async () => undefined),
   },
 }));
-vi.mock("@capacitor/browser", () => ({
-  Browser: {
-    addListener: vi.fn(async (name: string, listener: () => void) => {
-      playEntry.browserListeners.set(name, listener);
-      return {
-        remove: vi.fn(async () => {
-          playEntry.browserListeners.delete(name);
-        }),
-      };
-    }),
-    close: vi.fn(async () => undefined),
-    open: vi.fn(async () => undefined),
-  },
-}));
 vi.mock("@capacitor/keyboard", () => ({
   Keyboard: { addListener: vi.fn(async () => ({ remove: vi.fn() })) },
 }));
@@ -115,7 +100,6 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   playEntry.appListeners.clear();
-  playEntry.browserListeners.clear();
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
@@ -212,25 +196,5 @@ describe("Android Cloud renderer behavior", () => {
 
     window.removeEventListener("eliza:android-cloud-compose", compose);
     document.removeEventListener("eliza:share-target", share);
-  });
-
-  it("waits for the secure Custom Tab to finish before returning to session polling", async () => {
-    const signIn = entry.openAndroidCloudSignIn(
-      "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
-    );
-    await vi.waitFor(() =>
-      expect(playEntry.browserListeners.has("browserFinished")).toBe(true),
-    );
-
-    let settled = false;
-    void signIn.then(() => {
-      settled = true;
-    });
-    await Promise.resolve();
-    expect(settled).toBe(false);
-
-    playEntry.browserListeners.get("browserFinished")?.();
-    await expect(signIn).resolves.toBe("closed");
-    expect(playEntry.browserListeners.has("browserFinished")).toBe(false);
   });
 });

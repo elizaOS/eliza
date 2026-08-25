@@ -7,7 +7,6 @@
  * ordinary Capacitor lifecycle/deep-link/network/keyboard/status-bar APIs.
  */
 import { App as CapacitorApp } from "@capacitor/app";
-import { Browser } from "@capacitor/browser";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
@@ -341,30 +340,6 @@ const androidCloudVoice: AndroidCloudVoiceAdapter = {
   },
 };
 
-export async function openAndroidCloudSignIn(url: string): Promise<"closed"> {
-  const parsed = new URL(url);
-  if (parsed.protocol !== "https:") {
-    throw new Error("Eliza sign-in must use HTTPS.");
-  }
-  let finishBrowser: (() => void) | null = null;
-  const browserFinished = new Promise<void>((resolve) => {
-    finishBrowser = resolve;
-  });
-  // Custom Tabs background the app WebView, so transport polling from that
-  // suspended renderer is unreliable. Resume only after Android reports the
-  // tab closed; the Cloud session is authoritative at that point.
-  const listener = await Browser.addListener("browserFinished", () => {
-    finishBrowser?.();
-  });
-  try {
-    await Browser.open({ url: parsed.toString() });
-    await browserFinished;
-    return "closed";
-  } finally {
-    await listener.remove();
-  }
-}
-
 function renderBootFailure(error: unknown): void {
   const root = document.getElementById("root");
   if (!root) return;
@@ -384,9 +359,7 @@ export async function bootAndroidCloudApp(): Promise<void> {
       <ErrorBoundary>
         <AndroidCloudApp
           client={androidCloudClient}
-          closeExternal={() => Browser.close()}
           googleIdentity={GoogleIdentity}
-          openExternal={openAndroidCloudSignIn}
           voice={androidCloudVoice}
         />
       </ErrorBoundary>

@@ -64,7 +64,7 @@ describe("AndroidCloudApp", () => {
 
   afterEach(() => cleanup());
 
-  it("uses native Google while keeping canonical Steward options available", async () => {
+  it("offers one native Google path and restores the Cloud session", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession")
       .mockResolvedValueOnce(null)
@@ -72,21 +72,11 @@ describe("AndroidCloudApp", () => {
     const nativeSignIn = vi
       .spyOn(client, "signInWithGoogle")
       .mockResolvedValue(undefined);
-    vi.spyOn(client, "beginLogin").mockResolvedValue({
-      sessionId: "10000000-0000-4000-8000-000000000001",
-      browserUrl:
-        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
-    });
-    vi.spyOn(client, "pollLogin").mockResolvedValue({ status: "pending" });
-    const openExternal = vi.fn(async () => "opened" as const);
-    const closeExternal = vi.fn(async () => undefined);
     const googleIdentity = createGoogleIdentity();
     render(
       <AndroidCloudApp
         client={client}
-        closeExternal={closeExternal}
         googleIdentity={googleIdentity}
-        openExternal={openExternal}
         voice={createVoice()}
       />,
     );
@@ -99,7 +89,8 @@ describe("AndroidCloudApp", () => {
     expect(
       screen.getByPlaceholderText("Sign in to start chatting"),
     ).toHaveProperty("disabled", true);
-    expect(openExternal).not.toHaveBeenCalled();
+    expect(screen.queryByText("Other sign-in options")).toBeNull();
+    expect(screen.queryByText("Check for an existing session")).toBeNull();
     fireEvent.click(signInButton);
     await waitFor(() => expect(nativeSignIn).toHaveBeenCalledOnce());
     expect(nativeSignIn).toHaveBeenCalledWith(
@@ -107,79 +98,20 @@ describe("AndroidCloudApp", () => {
       expect.any(AbortSignal),
     );
     expect(await screen.findByText("Ada")).toBeTruthy();
-    expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it("opens canonical Steward when another sign-in method is requested", async () => {
+  it("fails visibly when the native Google bridge is unavailable", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(null);
-    vi.spyOn(client, "beginLogin").mockResolvedValue({
-      sessionId: "10000000-0000-4000-8000-000000000001",
-      browserUrl:
-        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    render(<AndroidCloudApp client={client} voice={createVoice()} />);
+
+    const button = await screen.findByRole("button", {
+      name: "Continue with Google",
     });
-    vi.spyOn(client, "pollLogin").mockResolvedValue({ status: "pending" });
-    const openExternal = vi.fn(async () => "opened" as const);
-    const closeExternal = vi.fn(async () => undefined);
-    render(
-      <AndroidCloudApp
-        client={client}
-        closeExternal={closeExternal}
-        googleIdentity={createGoogleIdentity()}
-        openExternal={openExternal}
-        voice={createVoice()}
-      />,
+    expect(button).toHaveProperty("disabled", true);
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Google sign-in is unavailable on this device.",
     );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Other sign-in options" }),
-    );
-    await waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
-    expect(openExternal).toHaveBeenCalledWith(
-      "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
-    );
-    expect(
-      screen.queryByText(/Google|Discord|Telegram|magic link/i),
-    ).toBeNull();
-    expect(screen.getByText("Hi, I'm Eliza.")).toBeTruthy();
-    expect(
-      screen.getByText("Finish signing in with Steward, then return to Eliza."),
-    ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
-    await waitFor(() => expect(closeExternal).toHaveBeenCalledOnce());
-    expect(
-      screen.getByRole("button", { name: "Continue with Google" }),
-    ).toBeTruthy();
-  });
-
-  it("checks the pairing session after a native Custom Tab closes without background polling", async () => {
-    const client = createClient();
-    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
-    vi.spyOn(client, "beginLogin").mockResolvedValue({
-      sessionId: "10000000-0000-4000-8000-000000000001",
-      browserUrl:
-        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
-    });
-    const pollLogin = vi
-      .spyOn(client, "pollLogin")
-      .mockResolvedValue({ status: "pending" });
-    render(
-      <AndroidCloudApp
-        client={client}
-        openExternal={async () => "closed" as const}
-        voice={createVoice()}
-      />,
-    );
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Sign in to Eliza Cloud" }),
-    );
-    await waitFor(() => expect(pollLogin).toHaveBeenCalledOnce());
-    expect(
-      screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("accepts a native share/deep-link compose event without auto-sending", async () => {
