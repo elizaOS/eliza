@@ -362,6 +362,8 @@ export function McpEditorDialog({
               })}
             </Label>
             <Textarea
+              variant="config"
+              density="compact"
               id="mcp-description"
               rows={2}
               value={form.description}
@@ -519,7 +521,6 @@ export function McpEditorDialog({
               placeholder={
                 "get_weather: Get current weather\nget_forecast: Get a forecast"
               }
-              className="font-mono text-xs"
             />
             <p className="text-xs text-muted">
               {t("cloud.mcps.toolsHint", {

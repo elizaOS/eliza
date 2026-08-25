@@ -199,10 +199,14 @@ public class ElizaVoicePlugin extends Plugin {
         String bundleDir = resolveBundleDir(call.getString("bundleDir"));
         String prompt = call.getString("prompt",
             "<start_of_turn>user\nWrite one sentence about the ocean.<end_of_turn>\n<start_of_turn>model\n");
-        Integer maxTokens = call.getInt("maxTokens", 48);
+        Integer maxTokens = call.getInt("maxTokens");
+        if (maxTokens == null || maxTokens <= 0) {
+            call.reject("llmSelfTest requires an explicit positive maxTokens generation boundary");
+            return;
+        }
         try {
             String json = ElizaVoiceNative.nativeLlmSelfTest(
-                bundleDir, prompt, maxTokens != null ? maxTokens : 48);
+                bundleDir, prompt, maxTokens);
             Log.i(TAG, "llmSelfTest(" + bundleDir + ") -> " + json);
             JSObject r = new JSObject();
             r.put("result", json);

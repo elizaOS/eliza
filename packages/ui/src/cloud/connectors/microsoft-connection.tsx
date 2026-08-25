@@ -19,6 +19,7 @@ import {
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { ConnectionCapabilityTile } from "./connection-capability-tile";
 import { useOAuthConnections } from "./oauth-connection";
 
 export function MicrosoftConnection() {
@@ -132,7 +133,7 @@ export function MicrosoftConnection() {
                 {activeConnection.scopes
                   .filter((s) => !["openid", "profile", "email"].includes(s))
                   .map((scope) => (
-                    <Badge key={scope} variant="outline" className="text-xs">
+                    <Badge key={scope} variant="outline">
                       {getScopeIcon(scope)}
                       <span className="ml-1">{getScopeName(scope)}</span>
                     </Badge>
@@ -184,28 +185,24 @@ export function MicrosoftConnection() {
       setupContent={
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Mail className="size-6 mx-auto mb-2 text-muted" />
-              <p className="text-sm font-medium">
-                {t("cloud.microsoft.outlook", { defaultValue: "Outlook" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.microsoft.outlookDesc", {
-                  defaultValue: "Send & read emails",
-                })}
-              </p>
-            </div>
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Calendar className="size-6 mx-auto mb-2 text-muted" />
-              <p className="text-sm font-medium">
-                {t("cloud.microsoft.calendar", { defaultValue: "Calendar" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.microsoft.calendarDesc", {
-                  defaultValue: "Manage events",
-                })}
-              </p>
-            </div>
+            <ConnectionCapabilityTile
+              icon={<Mail className="size-6 text-muted" aria-hidden />}
+              title={t("cloud.microsoft.outlook", {
+                defaultValue: "Outlook",
+              })}
+              description={t("cloud.microsoft.outlookDesc", {
+                defaultValue: "Send & read emails",
+              })}
+            />
+            <ConnectionCapabilityTile
+              icon={<Calendar className="size-6 text-muted" aria-hidden />}
+              title={t("cloud.microsoft.calendar", {
+                defaultValue: "Calendar",
+              })}
+              description={t("cloud.microsoft.calendarDesc", {
+                defaultValue: "Manage events",
+              })}
+            />
           </div>
 
           <ConnectionCallout

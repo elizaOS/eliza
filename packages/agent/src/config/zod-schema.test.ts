@@ -481,9 +481,6 @@ describe("ElizaSchema memory", () => {
             embedInterval: "1d",
           },
           limits: {
-            maxResults: 1,
-            maxSnippetChars: 1,
-            maxInjectedChars: 1,
             timeoutMs: 0,
           },
         },

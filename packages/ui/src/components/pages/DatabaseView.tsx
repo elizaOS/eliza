@@ -524,9 +524,8 @@ export function DatabaseView({
               </div>
               {queryHistory.slice(0, 8).map((q) => (
                 <Button
-                  variant="ghost"
+                  variant="queryHistory"
                   key={q}
-                  className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono text-muted-strong hover:text-txt"
                   onClick={() => setQueryText(q)}
                 >
                   <span className="truncate">{q}</span>
@@ -668,9 +667,8 @@ export function DatabaseView({
         <div className="p-3 border border-danger/50 bg-danger/20 text-danger text-sm rounded-sm mb-2 flex items-center justify-between">
           <span className="font-medium tracking-wide">{errorMessage}</span>
           <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 rounded-full text-danger hover:bg-danger/20 hover:text-danger-foreground transition-colors"
+            variant="dangerGhost"
+            size="disclosure"
             onClick={() => setErrorMessage("")}
           >
             ×
@@ -754,9 +752,9 @@ export function DatabaseView({
           {/* Toggle sidebar */}
           {!showExternalSidebar && (
             <Button
-              variant="ghost"
-              size="icon"
-              className="my-auto flex size-11 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-card/50 text-muted transition-all hover:border-accent/40 hover:bg-bg-hover hover:text-txt"
+              variant="outlineMuted"
+              size="icon-lg"
+              className="my-auto shrink-0"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               title={
                 sidebarCollapsed
@@ -866,9 +864,8 @@ export function DatabaseView({
                     </div>
                     {queryHistory.slice(0, 8).map((q) => (
                       <Button
-                        variant="ghost"
+                        variant="queryHistory"
                         key={q}
-                        className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono text-muted-strong hover:text-txt"
                         onClick={() => setQueryText(q)}
                       >
                         <span className="truncate">{q}</span>

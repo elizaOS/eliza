@@ -6,7 +6,7 @@ Android address-book overlay app for elizaOS: provides a full-screen UI surface 
 
 This plugin adds Android address-book capability to an Eliza agent. It ships two surfaces:
 
-1. A **dynamic provider** (`androidContacts`) that reads up to 50 contacts from the device and injects them as planning context — scoped to `contacts` and `messaging` conversation contexts, gated to `ADMIN` role sessions, cached per-turn.
+1. A **dynamic provider** (`androidContacts`) that reads the complete contact list from the device and injects it as planning context — scoped to `contacts` and `messaging` conversation contexts, gated to `ADMIN` role sessions, cached per-turn.
 2. A **full-screen overlay app** (`ContactsAppView`) and one shipped GUI view declaration (`ContactsView`) registered via `@elizaos/ui`.
 
 The plugin is Android-only (`elizaos.app.androidOnly: true`). The `src/register.ts` side-effect module skips registration on non-elizaOS runtimes. The `/plugin` export is the entry point for the elizaOS runtime adapter.
@@ -17,7 +17,7 @@ Registered in `appContactsPlugin` (`src/plugin.ts`):
 
 | Kind | Name | Description |
 |------|------|-------------|
-| Provider | `androidContacts` | Read-only: fetches up to 50 contacts (id, displayName, phones, emails, starred) from `@elizaos/capacitor-contacts` and emits JSON context. Dynamic; contexts: `contacts`, `messaging`; roleGate: ADMIN; cacheScope: turn. |
+| Provider | `androidContacts` | Read-only: fetches all contacts (id, displayName, phones, emails, starred) from `@elizaos/capacitor-contacts` and emits JSON context. Dynamic; contexts: `contacts`, `messaging`; roleGate: ADMIN; cacheScope: turn. |
 | View | `contacts` | GUI address-book view — `ContactsView` component, path `/contacts`. |
 
 No actions, services, evaluators, events, or routes are registered.
@@ -66,7 +66,7 @@ bun run --cwd plugins/plugin-contacts clean        # rm -rf dist
 
 This plugin reads no environment variables and has no settings keys. All address-book access goes through `@elizaos/capacitor-contacts` Contacts native API, which requires the Android `READ_CONTACTS` / `WRITE_CONTACTS` permissions to be granted at the OS level.
 
-The provider limit is a hardcoded constant `CONTACTS_PROVIDER_LIMIT = 50` in `src/providers/contacts.ts`.
+The provider intentionally omits the native bridge's optional pagination limit so planner context receives the complete address book.
 
 ## How to extend
 

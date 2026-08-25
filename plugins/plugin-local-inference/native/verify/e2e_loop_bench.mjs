@@ -536,7 +536,7 @@ function readErrAndFree(ffi, s, ptrBuf) {
 function asrTranscribeFloat32(ffiCtx, ffi, s, samples, sampleRate) {
   const pcm16k = resampleLinear(samples, sampleRate, 16000);
   const pcmBuf = Buffer.from(pcm16k.buffer, pcm16k.byteOffset, pcm16k.byteLength);
-  const outBytes = 4096;
+  const outBytes = 1_048_576;
   const outBuf = Buffer.alloc(outBytes);
   const errBuf = Buffer.alloc(8);
   errBuf.fill(0);
@@ -553,6 +553,11 @@ function asrTranscribeFloat32(ffiCtx, ffi, s, samples, sampleRate) {
   const latencyMs = performance.now() - t0;
   if (rc < 0) {
     throw new Error(`asr_transcribe rc=${rc}: ${readErrAndFree(ffi, s, errBuf)}`);
+  }
+  if (rc >= outBytes - 1 || outBuf.indexOf(0) < 0) {
+    throw new Error(
+      `asr_transcribe reached its ${outBytes}-byte capture boundary; refusing partial benchmark evidence`,
+    );
   }
   return {
     latencyMs,

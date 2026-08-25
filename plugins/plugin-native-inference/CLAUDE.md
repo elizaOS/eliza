@@ -82,7 +82,6 @@ The main settings are:
 | --- | --- |
 | `ELIZA_LOCAL_LLAMA`, `ELIZA_DISABLE_FFI_LLAMA` | activate or hard-disable AOSP FFI |
 | `ELIZA_LLAMA_N_CTX`, `ELIZA_LLAMA_EMBEDDING_N_CTX` | text and embedding context sizes |
-| `ELIZA_LLAMA_DEFAULT_MAX_TOKENS`, `ELIZA_LLAMA_MAX_OUTPUT_TOKENS` | output budget defaults and cap |
 | `ELIZA_LLAMA_N_GPU_LAYERS`, `ELIZA_AOSP_LLAMA_USE_GPU` | GPU placement |
 | `ELIZA_LLAMA_KV_TYPE_K`, `ELIZA_LLAMA_KV_TYPE_V`, `ELIZA_1_KV_QUANT` | KV-cache policy |
 | `ELIZA_MTP`, `ELIZA_MTP_REQUIRED`, `ELIZA_MTP_DRAFTER_PATH` | speculative decoding |

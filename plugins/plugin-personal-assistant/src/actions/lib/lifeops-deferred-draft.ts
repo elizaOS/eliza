@@ -787,7 +787,6 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
     runtime: args.runtime,
     message: args.message,
     state: args.state,
-    limit: 12,
   });
   const prompt = [
     "Decide how the assistant should interpret the user's follow-up to a previewed LifeOps draft that has not been saved yet.",

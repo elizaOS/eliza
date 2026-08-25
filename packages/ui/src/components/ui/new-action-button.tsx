@@ -24,6 +24,7 @@ const NewActionButton = React.forwardRef<
     <Button
       ref={ref}
       variant="surfaceAccent"
+      size="content"
       className={cn(
         "min-h-touch w-full justify-start rounded-sm px-4 py-2.5 text-sm font-medium",
         className,

@@ -9,7 +9,7 @@ The plugin registers three focused file actions, three umbrella actions, and a s
 | Action | Operations | Description |
 |---|---|---|
 | **READ / WRITE / EDIT** | one operation each | Pi-shaped strict schemas for direct coding loops. They reuse FILE's sandbox, stale-file, secret, and size guards. |
-| **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Relative read/write/edit paths resolve against the conversation's session cwd before sandbox validation. Optional `target=device` routes through a device filesystem bridge for mobile. |
+| **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Relative read/write/edit file paths and grep/glob/ls search paths resolve against the conversation's session cwd before sandbox validation. Optional `target=device` routes through a device filesystem bridge for mobile. |
 | **SHELL** | `run`, `read_output_artifact`, `start_background`, `poll_background`, `write_background`, `kill_background`, `list_background`, `clear_history`, `view_history` | `run` executes a command via `/bin/bash -c` with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). Accepted foreground results return complete redacted stdout/stderr; results above the explicit one-million-character capture ceiling fail without partial output. `read_output_artifact` remains for scoped artifacts retained by earlier runtimes. Background actions return stable per-conversation handles, poll incremental stdout/stderr offsets with truncation markers, write stdin, terminate process groups, and list sessions. `view_history`/`clear_history` read or clear per-conversation command history. |
 | **WORKTREE** | `enter`, `exit` | Creates and tears down git worktrees, updating the agent's session cwd and sandbox roots automatically. |
 
@@ -17,7 +17,7 @@ Supporting services (automatically started):
 
 - **SandboxService** — path policy engine for FILE, WORKTREE, and the SHELL working directory. Blocks user-private and OS-system paths by default; optionally constrains those validated paths to configured workspace roots. It does not confine paths referenced by a shell command.
 - **FileStateService** — tracks file mtimes per conversation so write/edit operations are rejected if the file was externally modified since the agent last read it.
-- **SessionCwdService** — per-conversation working directory used by relative file operations and default-path tools. Defaults to `process.cwd()`; updated by WORKTREE operations.
+- **SessionCwdService** — per-conversation working directory used by relative file and search operations and default-path tools. Defaults to `process.cwd()`; updated by WORKTREE operations.
 - **BackgroundShellService** — owns per-conversation background shell sessions and reaps all child process groups on plugin teardown.
 - **ShellService / ExecApprovalService** (`src/shell/`) — core shell executor with session tracking, plus command-approval gating via a file-backed allowlist; formerly the standalone `@elizaos/plugin-shell`, folded in here along with the `SHELL_HISTORY` provider.
 - **RipgrepService** — wraps the `@vscode/ripgrep` binary for fast regex search.

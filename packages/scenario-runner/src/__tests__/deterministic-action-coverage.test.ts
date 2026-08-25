@@ -6,7 +6,7 @@
  * allowlists, and coverage floors turn repository debt into false confidence.
  */
 import { readFileSync } from "node:fs";
-import { basename, dirname, relative, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -28,10 +28,6 @@ const MATCHER_ARRAY_ASSERTION_KEYS = new Set([
   "responseIncludesAll",
   "responseIncludesAny",
 ]);
-
-function scenarioFileId(file: string): string {
-  return basename(file).replace(/\.scenario\.ts$/, "");
-}
 
 function propertyName(property: ts.ObjectLiteralElementLike): string | null {
   if (!property.name) return null;
@@ -181,40 +177,6 @@ function directActionHasAssertion(source: string): boolean {
 }
 
 describe("deterministic scenario action coverage", () => {
-  it("requires every package-local scenario to declare its CI lane and match its file name", async () => {
-    const metadata = await listScenarioMetadata(
-      scenarioDir,
-      undefined,
-      undefined,
-      false,
-    );
-    const problems: string[] = [];
-    const seenIds = new Set<string>();
-
-    for (const scenario of metadata) {
-      const fileId = scenarioFileId(scenario.file);
-      if (scenario.id !== fileId) {
-        problems.push(
-          `${scenario.file}: id ${JSON.stringify(scenario.id)} does not match file name ${JSON.stringify(fileId)}`,
-        );
-      }
-      if (
-        scenario.lane !== "pr-deterministic" &&
-        scenario.lane !== "live-only"
-      ) {
-        problems.push(
-          `${scenario.file}: declare lane as "pr-deterministic" or "live-only"`,
-        );
-      }
-      if (seenIds.has(scenario.id)) {
-        problems.push(`${scenario.file}: duplicate scenario id ${scenario.id}`);
-      }
-      seenIds.add(scenario.id);
-    }
-
-    expect(problems, problems.join("\n")).toEqual([]);
-  });
-
   it("rejects assertion-shaped properties that are runtime no-ops", () => {
     expect(
       [

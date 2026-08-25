@@ -125,7 +125,6 @@ export function AppPromote({ app }: AppPromoteProps) {
             size="sm"
             onClick={handleGenerateAssets}
             disabled={isGeneratingAssets}
-            className="border-border hover:bg-bg-hover rounded-sm"
           >
             {isGeneratingAssets ? (
               <>
@@ -143,18 +142,14 @@ export function AppPromote({ app }: AppPromoteProps) {
               </>
             )}
           </Button>
-          <Button
-            onClick={() => setShowPromoteDialog(true)}
-            size="sm"
-            className="bg-txt hover:bg-txt/90 text-bg rounded-sm"
-          >
+          <Button onClick={() => setShowPromoteDialog(true)} size="sm">
             <Megaphone className="size-4 mr-1.5" />
             {t("cloud.appPromote.launch", { defaultValue: "Launch Promotion" })}
           </Button>
         </div>
       </div>
       {assetError && (
-        <p className="text-sm text-red-400" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {assetError}
         </p>
       )}
@@ -204,12 +199,7 @@ export function AppPromote({ app }: AppPromoteProps) {
               defaultValue: "Connected Ad Accounts",
             })}
           </h3>
-          <Button
-            variant="outline"
-            size="sm"
-            asChild
-            className="border-border hover:bg-bg-hover rounded-sm"
-          >
+          <Button variant="outline" size="sm" asChild>
             <Link
               to="/cloud/connectors"
               onClick={(e) => {
@@ -249,21 +239,12 @@ export function AppPromote({ app }: AppPromoteProps) {
                 className="flex items-center justify-between p-3 rounded-sm bg-surface border border-border"
               >
                 <div className="flex items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className="capitalize text-xs border-border"
-                  >
-                    {account.platform}
-                  </Badge>
+                  <Badge variant="outline">{account.platform}</Badge>
                   <span className="text-sm text-txt">
                     {account.accountName}
                   </span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-8 p-0 rounded-sm"
-                >
+                <Button variant="ghost" size="icon-sm">
                   <ExternalLink className="size-4" />
                 </Button>
               </div>

@@ -755,7 +755,6 @@ export const SNAPSHOT_CAPTURE_TRANSIENT = "Snapshot capture temporarily unavaila
 const AGENT_SNAPSHOT_CAPTURE_TRANSIENT_CODE = "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT";
 
 const MAX_BACKUPS = 10;
-const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
 // Heartbeat probes the agent over the headscale tailnet. When idle the path
 // goes cold, so the first probe after a quiet period can fail while it
 // re-establishes — retry before evicting a healthy agent.
@@ -4425,12 +4424,7 @@ export class ElizaSandboxService {
     channelId: string,
     history: SharedTurnMessage[],
   ): Promise<void> {
-    await sharedRuntimeHistoryRepository.merge(
-      agentId,
-      channelId,
-      history,
-      SHARED_RUNTIME_HISTORY_MAX_MESSAGES,
-    );
+    await sharedRuntimeHistoryRepository.merge(agentId, channelId, history);
   }
 
   private sharedRuntimeBillingPrompt(

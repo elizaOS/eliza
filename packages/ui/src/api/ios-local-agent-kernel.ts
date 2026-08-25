@@ -244,6 +244,7 @@ type CapacitorLlamaAdapter = {
     promptTokens: number;
     outputTokens: number;
     durationMs: number;
+    finishReason?: "stop" | "length" | "tool" | "cancel" | "error";
   }>;
 };
 
@@ -2233,7 +2234,6 @@ async function localModelStatusReply(text: string): Promise<LocalReply | null> {
 
 function buildPrompt(messages: LocalMessage[], latestText: string): string {
   const history = messages
-    .slice(-12)
     .map((message) => {
       const role = message.role === "assistant" ? "Assistant" : "User";
       return `${role}: ${message.text}`;
@@ -2507,7 +2507,7 @@ async function forwardToAgentCloudChat(
         "content-type": "application/json",
         accept: "application/json",
       },
-      body: JSON.stringify({ prompt, maxTokens: 256, temperature: 0.7 }),
+      body: JSON.stringify({ prompt, temperature: 0.7 }),
     },
   );
   if (!response.ok) {
@@ -2578,11 +2578,15 @@ async function generateLocalReply(
   try {
     const result = await llama.generate({
       prompt,
-      maxTokens: 256,
       temperature: 0.7,
       topP: 0.9,
       stopSequences: ["\nUser:", "\nAssistant:"],
     });
+    if (result.finishReason === "length") {
+      throw new Error(
+        "[ios-local-agent] local generation ended at its decode boundary before completion",
+      );
+    }
     const cleaned =
       result.text.trim() || "I could not generate a local response.";
     return {

@@ -125,10 +125,9 @@ export function BrowserLaunchWidget({
           </span>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant="ghostMuted"
+            size="tinyWide"
             data-testid="browser-launch-cancel"
-            className="h-7 px-3 text-xs"
             onClick={() => onCancel?.()}
           >
             Cancel

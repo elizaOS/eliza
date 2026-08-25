@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { delimiter } from "node:path";
+import { HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS } from "@elizaos/shared/host-execution-env";
 import { AcpWarmSessionClaim } from "./acp-session-claim";
 
 describe("AcpWarmSessionClaim", () => {
@@ -68,6 +69,11 @@ describe("AcpWarmSessionClaim", () => {
         env: { OPENAI_API_KEY: "lease-b" },
         executionPath: "relative/bin",
       },
+      ...HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS.map((key) => ({
+        token: "claim-secret",
+        env: { [key]: "/caller-controlled" },
+        executionPath: "/usr/bin",
+      })),
     ]) {
       const target = { EXISTING: "preserved" };
       const claim = new AcpWarmSessionClaim("claim-secret");

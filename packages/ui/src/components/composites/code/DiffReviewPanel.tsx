@@ -125,9 +125,9 @@ function FileSection({ file }: { file: FileDiff }) {
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card/40">
       <Button
-        variant="ghost"
+        variant="sectionToggle"
+        size="content"
         onClick={() => setOpen((value) => !value)}
-        className="h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-sm-tight font-medium text-foreground hover:bg-muted/30"
         aria-expanded={open}
       >
         <span className="text-muted-foreground">{open ? "▾" : "▸"}</span>

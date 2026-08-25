@@ -332,7 +332,9 @@ export function ChatWidgetHarness() {
               aria-label="Gallery message"
               placeholder="Type a local message…"
               rows={1}
-              className="min-h-11 flex-1 resize-none border-0 bg-transparent shadow-none"
+              variant="form"
+              density="compact"
+              className="flex-1 resize-none"
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -343,8 +345,9 @@ export function ChatWidgetHarness() {
             />
             <Button
               type="button"
-              size="icon"
-              className="size-11 shrink-0 rounded-full"
+              size="icon-lg"
+              shape="circle"
+              className="shrink-0"
               aria-label="Send local message"
               disabled={!draft.trim()}
               onClick={submitDraft}

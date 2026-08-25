@@ -42,9 +42,9 @@ const bannerTones: Record<DashboardRoutePageBannerTone, string> = {
   // Brand rule: no blue. Slate reads as neutral "info" alongside the
   // emerald/amber/red tones below.
   info: "border-slate-400/30 bg-slate-400/10 text-slate-100",
-  success: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100",
-  warning: "border-amber-400/30 bg-amber-400/10 text-amber-100",
-  error: "border-red-500/40 bg-red-500/10 text-red-400",
+  success: "border-status-success/30 bg-status-success-bg text-status-success",
+  warning: "border-status-warning/30 bg-status-warning-bg text-status-warning",
+  error: "border-destructive/40 bg-destructive-subtle text-destructive",
 };
 
 function normalizeLayoutProps<T extends object>(

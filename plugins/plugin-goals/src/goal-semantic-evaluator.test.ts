@@ -1,6 +1,6 @@
 /**
  * Deterministic unit tests for the bounded goal/evidence prompt walk.
- * Covers honest rendering plus fail-closed depth, node, and cycle budgets.
+ * Covers complete rendering plus fail-closed depth, cycle, and reflection safety.
  * Imports the walk module directly so the harness does not load the core barrel.
  */
 import { describe, expect, it } from "vitest";
@@ -8,9 +8,7 @@ import { GoalsServiceError } from "./goal-normalize.js";
 import {
   formatPromptValue,
   GOAL_PROMPT_VALUE_UNBOUNDED,
-  MAX_GOAL_PROMPT_VALUE_CODE_UNITS,
   MAX_GOAL_PROMPT_VALUE_DEPTH,
-  MAX_GOAL_PROMPT_VALUE_NODES,
 } from "./goal-prompt-value.js";
 
 function nestArray(depth: number): unknown {
@@ -67,12 +65,11 @@ describe("formatPromptValue", () => {
     expect(error.message).toContain(String(MAX_GOAL_PROMPT_VALUE_DEPTH));
   });
 
-  it(`throws ${GOAL_PROMPT_VALUE_UNBOUNDED} past ${MAX_GOAL_PROMPT_VALUE_NODES} nodes`, () => {
-    const siblings = Array.from(
-      { length: MAX_GOAL_PROMPT_VALUE_NODES },
-      (_, index) => `v${index}`,
-    );
-    expectUnbounded(() => formatPromptValue(siblings));
+  it("preserves large sibling collections and scalar content", () => {
+    const siblings = Array.from({ length: 10_000 }, (_, index) => `v${index}`);
+    const rendered = formatPromptValue(siblings);
+    expect(rendered).toContain("v0");
+    expect(rendered).toContain("v9999");
   });
 
   it("throws on cyclic objects instead of RangeError", () => {
@@ -88,7 +85,7 @@ describe("formatPromptValue", () => {
 
   it("rejects sparse arrays by logical slots", () => {
     const sparse: unknown[] = [];
-    sparse.length = MAX_GOAL_PROMPT_VALUE_NODES + 1;
+    sparse.length = 1_000_000;
     expectUnbounded(() => formatPromptValue(sparse));
   });
 
@@ -105,10 +102,9 @@ describe("formatPromptValue", () => {
     expect(calls).toBe(0);
   });
 
-  it("bounds rendered prompt contribution", () => {
-    expectUnbounded(() =>
-      formatPromptValue("x".repeat(MAX_GOAL_PROMPT_VALUE_CODE_UNITS + 1)),
-    );
+  it("preserves million-character scalar content", () => {
+    const complete = "x".repeat(1_000_000);
+    expect(formatPromptValue(complete)).toBe(complete);
   });
 
   it("contains hostile descriptor traps", () => {

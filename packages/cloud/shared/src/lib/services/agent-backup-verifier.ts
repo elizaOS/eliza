@@ -840,7 +840,7 @@ export async function verifyBackupRestorability(
     if (mismatches.length > 0) {
       return fail({
         kind: "hash-mismatch",
-        message: `manifest integrity: ${mismatches.slice(0, 5).join("; ")}`,
+        message: `manifest integrity: ${mismatches.join("; ")}`,
       });
     }
     checks.manifestChecked = true;
@@ -1110,7 +1110,7 @@ export async function runBackupVerificationCycle(
         "and validates content hashes; these backups would fail a real restore. " +
         "Failed rows are stamped in agent_sandbox_backups (verification_error).",
       details: {
-        failures: summary.failures.slice(0, 10),
+        failures: summary.failures,
         sampled: summary.sampled,
         failed: summary.failed,
       },
@@ -1140,7 +1140,7 @@ export async function runBackupVerificationCycle(
           failed: summary.failed,
           keyUnavailable,
           escalationThresholdPct: config.escalationThresholdPct,
-          failures: summary.failures.slice(0, 10),
+          failures: summary.failures,
         },
         dedupKey: SYSTEMIC_ALERT_DEDUP_KEY,
       });

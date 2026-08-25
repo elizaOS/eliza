@@ -709,9 +709,10 @@ export class DocumentService extends Service {
 	}
 
 	/**
-	 * Read an exact authorized source page without fetching the parent content
-	 * into the runtime. Adapters must advertise the native capability; there is
-	 * deliberately no whole-document compatibility fallback.
+	 * Read an exact authorized source range without fetching the parent content
+	 * into the runtime. An omitted limit returns the complete remainder. Adapters
+	 * must advertise the native capability; there is deliberately no compatibility
+	 * fallback that could return a partial source.
 	 */
 	async readDocumentRange(
 		documentId: UUID,
@@ -724,7 +725,7 @@ export class DocumentService extends Service {
 			typeof adapter.readDocumentRange !== "function"
 		) {
 			throw new ElizaError(
-				"The database adapter does not support bounded document reads",
+				"The database adapter does not support document range reads",
 				{
 					code: "DOCUMENT_RANGE_READ_UNSUPPORTED",
 					context: { documentId },
@@ -821,13 +822,117 @@ export class DocumentService extends Service {
 		options: DocumentListOptions,
 		resolveRequester: DocumentRequesterResolver,
 	): Promise<DocumentListResult> {
-		const limit =
-			typeof options.limit === "number" && Number.isFinite(options.limit)
-				? Math.max(
-						1,
-						Math.min(Math.floor(options.limit), DOCUMENT_LIST_MAX_LIMIT),
-					)
-				: 25;
+		if (options.limit === undefined) {
+			return this.listCompleteDocumentsWithRequester(options, resolveRequester);
+		}
+		return this.listDocumentPageWithRequester(
+			{ ...options, limit: options.limit },
+			resolveRequester,
+		);
+	}
+
+	private async listCompleteDocumentsWithRequester(
+		options: DocumentListOptions,
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<DocumentListResult> {
+		const documents: Memory[] = [];
+		const availableDocuments: Memory[] = [];
+		const seenCursors = new Set<string>();
+		const requester = resolveRequester();
+		let cursor: DocumentListCursor | undefined;
+		let firstPage: DocumentListResult | undefined;
+
+		for (;;) {
+			const page = await this.listDocumentPageWithRequester(
+				{
+					...options,
+					limit: DOCUMENT_LIST_MAX_LIMIT,
+					offset: cursor ? 0 : options.offset,
+					...(cursor ? { cursor } : {}),
+				},
+				() => requester,
+			);
+			firstPage ??= page;
+			documents.push(...page.documents);
+			availableDocuments.push(...page.availableDocuments);
+
+			const hasMore =
+				page.status === "query_miss" ? page.availableHasMore : page.hasMore;
+			const nextCursor =
+				page.status === "query_miss"
+					? page.availableNextCursor
+					: page.nextCursor;
+			if (!hasMore) break;
+			if (!nextCursor) {
+				throw new ElizaError(
+					"Document list reported another page without a continuation cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_MISSING",
+						context: {
+							returnedDocuments:
+								page.status === "query_miss"
+									? page.availableDocuments.length
+									: page.documents.length,
+						},
+						severity: "fatal",
+					},
+				);
+			}
+			const serializedCursor = documentListCursorKey(nextCursor);
+			if (seenCursors.has(serializedCursor)) {
+				throw new ElizaError(
+					"Document list reported a repeating pagination cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_LOOP",
+						context: { cursor: nextCursor },
+						severity: "fatal",
+					},
+				);
+			}
+			seenCursors.add(serializedCursor);
+			cursor = nextCursor;
+		}
+
+		if (!firstPage) {
+			throw new ElizaError("Document list did not produce a result", {
+				code: "DOCUMENT_LIST_INVALID_RESULT",
+				severity: "fatal",
+			});
+		}
+		return {
+			status: firstPage.status,
+			documents,
+			availableDocuments,
+			...(firstPage.query ? { query: firstPage.query } : {}),
+			limit: Math.max(documents.length, availableDocuments.length),
+			offset: firstPage.offset,
+			totalVisible: firstPage.totalVisible,
+			totalAvailable: firstPage.totalAvailable,
+			totalMatched: firstPage.totalMatched,
+			hasMore: false,
+			availableOffset: firstPage.availableOffset,
+			availableHasMore: false,
+		};
+	}
+
+	private async listDocumentPageWithRequester(
+		options: DocumentListOptions & { limit: number },
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<DocumentListResult> {
+		if (
+			!Number.isSafeInteger(options.limit) ||
+			options.limit < 1 ||
+			options.limit > DOCUMENT_LIST_MAX_LIMIT
+		) {
+			throw new ElizaError(
+				`Document list limit must be an integer between 1 and ${DOCUMENT_LIST_MAX_LIMIT}`,
+				{
+					code: "DOCUMENT_LIST_INVALID_PAGINATION",
+					context: { limit: options.limit },
+				},
+			);
+		}
+		const limit = options.limit;
 		const offset = options.offset ?? 0;
 		if (
 			!Number.isSafeInteger(offset) ||

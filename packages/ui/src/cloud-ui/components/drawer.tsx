@@ -85,10 +85,11 @@ function DrawerContent({
       >
         <DrawerClose asChild>
           <Button
-            variant="ghost"
+            variant="transparent"
+            size="pillDense"
             type="button"
             aria-label="Close drawer"
-            className="group mx-auto mb-2 mt-2 hidden h-8 w-32 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-bg-hover group-data-[vaul-drawer-direction=bottom]/drawer-content:flex"
+            className="group mx-auto mb-2 mt-2 hidden w-32 shrink-0 group-data-[vaul-drawer-direction=bottom]/drawer-content:flex"
           >
             <span
               className="h-1.5 w-[100px] rounded-full bg-border transition-all group-hover:w-[112px] group-hover:bg-border-strong"

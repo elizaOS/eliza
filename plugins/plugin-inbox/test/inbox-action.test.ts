@@ -313,7 +313,7 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
 
       setInboxFetchers({
         gmail: async ({ limit }) =>
-          Array.from({ length: limit }, (_, index) =>
+          Array.from({ length: limit ?? 0 }, (_, index) =>
             makeItem({ id: `overflow-${index}`, platform: "gmail" }),
           ),
       });
@@ -324,6 +324,25 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       });
       expect(overflow.text).toContain("sample, not a total");
       expect(overflow.data).toMatchObject({ capped: ["gmail"] });
+    });
+
+    it("does not impose a hidden limit when pagination was not requested", async () => {
+      const gmailFetcher = vi.fn(async () =>
+        Array.from({ length: 501 }, (_, index) =>
+          makeItem({ id: `all-${index}`, platform: "gmail" }),
+        ),
+      );
+      setInboxFetchers({ gmail: gmailFetcher });
+
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["gmail"],
+      });
+
+      expect(gmailFetcher.mock.calls[0]?.[0]).not.toHaveProperty("limit");
+      expect((result.data as { items: InboxItem[] }).items).toHaveLength(501);
+      expect(result.text).not.toContain("up to 50");
+      expect(result.data).toMatchObject({ capped: [] });
     });
 
     it("canonicalizes a valid since window and rejects an invalid one", async () => {

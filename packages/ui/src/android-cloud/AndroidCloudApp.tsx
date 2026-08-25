@@ -1,6 +1,8 @@
 /** Minimal Google Play consumer shell: Cloud auth, text/voice chat and history. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
 import {
   type AndroidCloudAccountLifecycleAdapter,
   AndroidCloudSettings,
@@ -423,30 +425,34 @@ export function AndroidCloudApp({
             </p>
           ) : null}
           {busy ? (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="touch"
               onClick={cancelSignIn}
-              className="w-full rounded-xl border border-border px-4 py-3 font-semibold"
+              className="w-full"
             >
               Cancel sign-in
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="default"
+              size="touch"
               onClick={() => void signIn()}
-              className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-foreground"
+              className="w-full"
             >
               Sign in
-            </button>
+            </Button>
           )}
           {error ? (
-            <button
+            <Button
               type="button"
+              variant="mutedLink"
               onClick={() => void restore()}
-              className="text-sm text-muted underline"
             >
               Retry session check
-            </button>
+            </Button>
           ) : null}
         </section>
       </main>
@@ -494,14 +500,15 @@ export function AndroidCloudApp({
       }}
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
-        <button
+        <Button
           type="button"
-          className="rounded-xl border border-border px-3 py-2"
+          variant="outline"
+          size="touch"
           aria-label="Open launcher"
           onClick={() => setLauncherOpen(true)}
         >
           Menu
-        </button>
+        </Button>
         <div className="text-center">
           <h1 className="font-semibold">Eliza</h1>
           <p className="text-xs text-muted">{session?.identity.displayName}</p>
@@ -524,13 +531,14 @@ export function AndroidCloudApp({
           >
             <p className="whitespace-pre-wrap">{message.text || "Thinking…"}</p>
             {message.role === "assistant" && message.text ? (
-              <button
+              <Button
                 type="button"
+                variant="mutedLink"
                 onClick={() => speak(message.text)}
-                className="mt-2 text-xs text-muted underline"
+                className="mt-2"
               >
                 Play
-              </button>
+              </Button>
             ) : null}
           </li>
         ))}
@@ -547,49 +555,55 @@ export function AndroidCloudApp({
           void send();
         }}
       >
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="touch"
           aria-pressed={listening}
           aria-label={listening ? "Stop dictation" : "Start dictation"}
           onClick={() => void toggleDictation()}
-          className="rounded-xl border border-border px-3"
         >
           {listening ? "Stop" : "Mic"}
-        </button>
+        </Button>
         <label className="sr-only" htmlFor="android-cloud-message">
           Message Eliza
         </label>
-        <textarea
+        <Textarea
+          variant="mobileComposer"
+          density="singleLine"
           id="android-cloud-message"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={1}
           disabled={busy}
-          className="min-h-11 flex-1 resize-none rounded-xl border border-border bg-card px-3 py-2"
+          className="flex-1"
           placeholder="Message Eliza"
         />
         {busy ? (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="touch"
             onClick={() => abortRef.current?.abort()}
-            className="rounded-xl border border-border px-4"
           >
             Stop
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="submit"
+            variant="default"
+            size="touch"
             disabled={!draft.trim()}
-            className="rounded-xl bg-accent px-4 text-accent-foreground disabled:opacity-50"
           >
             Send
-          </button>
+          </Button>
         )}
       </form>
       {launcherOpen ? (
         <div className="absolute inset-0 z-40 flex bg-black/70">
-          <button
+          <Button
             type="button"
+            unstyled
             className="flex-1"
             aria-label="Close launcher"
             onClick={() => setLauncherOpen(false)}
@@ -600,31 +614,38 @@ export function AndroidCloudApp({
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Eliza</h2>
-              <button
+              <Button
                 type="button"
-                className="rounded-xl border border-border px-3 py-2"
+                variant="outline"
+                size="touch"
                 onClick={() => setLauncherOpen(false)}
               >
                 Close
-              </button>
+              </Button>
             </div>
-            <button
+            <Button
               type="button"
-              className="rounded-xl bg-accent px-4 py-3 text-left font-semibold text-accent-foreground"
+              variant="default"
+              size="touch"
+              align="start"
+              className="w-full"
               onClick={newChat}
             >
               New chat
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="rounded-xl border border-border px-4 py-3 text-left font-semibold"
+              variant="outline"
+              size="touch"
+              align="start"
+              className="w-full"
               onClick={() => {
                 setScreen("settings");
                 setLauncherOpen(false);
               }}
             >
               Settings
-            </button>
+            </Button>
             <p className="mt-auto text-xs leading-relaxed text-muted">
               Play-safe Android includes chat, voice, account controls, and
               standard platform permissions. Additional views appear only when

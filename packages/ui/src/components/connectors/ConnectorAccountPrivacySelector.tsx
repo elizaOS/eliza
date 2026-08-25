@@ -220,9 +220,9 @@ export function ConnectorAccountPrivacySelector({
               <Input
                 id={confirmInputId}
                 value={typedValue}
+                density="compact"
                 onChange={(event) => setTypedValue(event.target.value)}
                 disabled={confirmBusy}
-                className="h-9 text-sm"
               />
             </div>
             {pendingRequirement === "public" ? (

@@ -2326,7 +2326,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.whatsappDomain.syncWhatsAppInbound();
   }
 
-  pullWhatsAppRecent(limit = 25): Promise<{
+  pullWhatsAppRecent(limit?: number): Promise<{
     count: number;
     messages: WhatsAppMessage[];
   }> {

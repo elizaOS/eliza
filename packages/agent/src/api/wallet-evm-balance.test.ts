@@ -1,7 +1,7 @@
 /**
  * Behavioral coverage for wallet EVM balance/NFT fetching: provider-key
  * resolution, wei formatting, Alchemy/Ankr/RPC fallbacks, zero-balance
- * filtering, metadata/capacity caps, and NFT field defaults.
+ * filtering, complete metadata retrieval, and NFT field defaults.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -272,11 +272,11 @@ describe("fetchEvmNativeBalanceViaRpc", () => {
     ).rejects.toThrow("execution reverted");
   });
 
-  it("throws truncated HTTP error text, or HTTP status when the body is empty", async () => {
+  it("preserves complete HTTP error text, or HTTP status when the body is empty", async () => {
     installFetch(() => new Response("e".repeat(300), { status: 502 }));
     await expect(
       fetchEvmNativeBalanceViaRpc("https://eth.example/rpc", WALLET),
-    ).rejects.toThrow("e".repeat(200));
+    ).rejects.toThrow("e".repeat(300));
 
     vi.unstubAllGlobals();
     installFetch(() => new Response("", { status: 503 }));
@@ -285,7 +285,7 @@ describe("fetchEvmNativeBalanceViaRpc", () => {
     ).rejects.toThrow("HTTP 503");
   });
 
-  it("throws truncated body text when HTTP 200 is not JSON", async () => {
+  it("throws complete body text when HTTP 200 is not JSON", async () => {
     installFetch(() => new Response("not-json", { status: 200 }));
     await expect(
       fetchEvmNativeBalanceViaRpc("https://eth.example/rpc", WALLET),
@@ -417,7 +417,7 @@ describe("fetchEvmBalances", () => {
     expect(eth?.nativeValueUsd).toBe("0");
   });
 
-  it("caps Alchemy token metadata fetches at 50", async () => {
+  it("fetches Alchemy metadata for every non-zero token", async () => {
     const metadataCalls: string[] = [];
     const tokenBalances = Array.from({ length: 51 }, (_, i) => ({
       contractAddress: `0x${(i + 1).toString(16).padStart(40, "0")}`,
@@ -454,8 +454,8 @@ describe("fetchEvmBalances", () => {
 
     const chains = await fetchEvmBalances(WALLET, "alk");
     const eth = chains.find((c) => c.chainId === 1);
-    expect(eth?.tokens).toHaveLength(50);
-    expect(metadataCalls).toHaveLength(50 * 7);
+    expect(eth?.tokens).toHaveLength(51);
+    expect(metadataCalls).toHaveLength(51 * 7);
   });
 
   it("records a chain error when the Alchemy native call throws", async () => {
@@ -537,10 +537,10 @@ describe("fetchEvmBalances", () => {
     expect(chains[0]?.chainId).toBe(1);
     expect(chains[0]?.error).toMatch(/rpc: /);
     expect(chains[0]?.error).toMatch(/eth-down\.example/);
-    expect(chains[0]?.error?.length).toBeLessThanOrEqual(400);
+    expect(chains[0]?.error).toContain("eth-down.example");
   });
 
-  it("queries known ERC-20s via RPC, skips zero balances, and caps at 30", async () => {
+  it("queries every known ERC-20 via RPC and skips zero balances", async () => {
     const balanceOfCalls: string[] = [];
     const known = Array.from(
       { length: 31 },
@@ -586,7 +586,7 @@ describe("fetchEvmBalances", () => {
       known,
     );
     const eth = chains.find((c) => c.chainId === 1);
-    expect(balanceOfCalls).toHaveLength(30);
+    expect(balanceOfCalls).toHaveLength(31);
     expect(eth?.tokens).toHaveLength(1);
     expect(eth?.tokens[0]?.symbol).toBe("USDC");
     expect(eth?.tokens[0]?.name).toBe("USDC");
@@ -691,8 +691,7 @@ describe("fetchEvmNfts", () => {
     expect(eth?.nfts[0]?.collectionName).toBe("Cool Cats");
     expect(eth?.nfts[0]?.tokenType).toBe("ERC1155");
     expect(eth?.nfts[0]?.imageUrl).toBe("https://img.example/thumb.png");
-    expect(eth?.nfts[0]?.description.length).toBeLessThanOrEqual(200);
-    expect(eth?.nfts[0]?.description.endsWith("🦊")).toBe(false);
+    expect(eth?.nfts[0]?.description).toBe(`${"a".repeat(199)}🦊 extra`);
     expect(eth?.nfts[1]?.name).toBe("Untitled");
     expect(eth?.nfts[1]?.tokenId).toBe("");
     expect(eth?.nfts[1]?.collectionName).toBe("");

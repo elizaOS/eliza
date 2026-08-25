@@ -44,6 +44,7 @@ describe("parent-agent broker — spawn-sub-agent (nesting)", () => {
   it("spawns a child for the parent task at parent depth + 1", async () => {
     const spawnAgentForTask = vi.fn<SpawnFn>(async () => ({
       task: { id: "task-1" },
+      sessions: [{ sessionId: "child-1", parentSessionId: "sess-1" }],
     }));
     const res = await runParentAgentBroker(
       makeRequest({
@@ -64,7 +65,11 @@ describe("parent-agent broker — spawn-sub-agent (nesting)", () => {
       task: "write tests",
       label: "tester",
       nestingDepth: 1,
+      completionRole: "contributor",
+      parentSessionId: "sess-1",
+      requiredForTaskCompletion: true,
     });
+    expect(res.data).toMatchObject({ childSessionId: "child-1" });
   });
 
   it("computes child depth from the parent session's nestingDepth", async () => {

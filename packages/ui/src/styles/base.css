@@ -29,6 +29,9 @@
   --card: var(--brand-white);
   --card-foreground: var(--brand-black);
   --surface: rgba(0, 0, 0, 0.04);
+  /* Stable inverse pair for light controls on dark or accent contexts. */
+  --inverse: var(--brand-white);
+  --inverse-foreground: var(--brand-black);
 
   /* Text */
   --text: var(--brand-black);

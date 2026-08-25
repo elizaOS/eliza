@@ -87,11 +87,3 @@ export const WhatsApp: Story = {
     elizaCloudConnected: false,
   },
 };
-
-export const IMessageWithCloud: Story = {
-  args: {
-    connectorId: "imessage",
-    initialMode: "direct",
-    elizaCloudConnected: true,
-  },
-};

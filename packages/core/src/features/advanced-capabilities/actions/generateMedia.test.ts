@@ -1,11 +1,12 @@
 /**
  * Covers the GENERATE_MEDIA action's validate/handler: provider gating (media
- * service vs IMAGE-model fallback), missing-URL failure, attachment delivery,
- * and i18n-safe media-kind routing (#10471). Runs against a deterministic mock
- * runtime (vi.fn media service, no live model).
+ * service vs IMAGE-model fallback), model-facing Seedance controls, missing-URL
+ * failure, attachment delivery, and i18n-safe media-kind routing (#10471). Runs
+ * against a deterministic mock runtime (vi.fn media service, no live model).
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { actionToTool } from "../../../actions/to-tool.ts";
 import { ModelType, ServiceType } from "../../../types/index.ts";
 import { generateMediaAction } from "./generateMedia.ts";
 
@@ -34,6 +35,24 @@ function runtimeWithMediaService(
 }
 
 describe("generateMediaAction availability", () => {
+	it("publishes every Seedance and attachment input in the planner tool schema", () => {
+		const tool = actionToTool(generateMediaAction);
+		expect(tool.function.parameters).toMatchObject({
+			type: "object",
+			properties: {
+				duration: { type: "number" },
+				aspectRatio: {
+					type: "string",
+					enum: ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+				},
+				resolution: { type: "string", enum: ["480p", "720p"] },
+				audio: { type: "boolean" },
+				seed: { type: "number" },
+				imageUrl: { type: "string" },
+			},
+		});
+	});
+
 	it("is hidden when the media service reports no configured provider", async () => {
 		await expect(
 			generateMediaAction.validate?.(

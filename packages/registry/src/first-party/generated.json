@@ -1395,6 +1395,42 @@
       }
     },
     {
+      "id": "doordash",
+      "name": "DoorDash",
+      "description": "Search DoorDash restaurants, browse menus, manage carts, preview checkout, and track orders through a configured MCP adapter. Final checkout requires explicit preview-bound confirmation.",
+      "npmName": "@elizaos/plugin-doordash",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["doordash", "food", "delivery", "ordering", "mcp"],
+      "config": {
+        "features.doordash": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "label": "Enable DoorDash",
+          "help": "Enable DoorDash through a configured MCP adapter."
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "ShoppingBag",
+        "group": "connectors",
+        "groupOrder": 30,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaos/eliza#readme",
+        "repository": "https://github.com/elizaos/eliza"
+      },
+      "dependsOn": ["mcp"],
+      "channels": [],
+      "shortIds": [],
+      "kind": "plugin",
+      "subtype": "feature"
+    },
+    {
       "id": "dropbox",
       "name": "Dropbox",
       "description": "Dropbox connector for file listing, search, text reads, uploads, temporary links, and citation deep links. Uses PKCE offline OAuth; local mode accepts a generated access token.",
@@ -4027,15 +4063,6 @@
           "label": "Image Description Model",
           "help": "Identifier of the model used for describing images.",
           "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
-          "advanced": false
-        },
-        "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "default": "8192",
-          "label": "Image Description Max Tokens",
-          "help": "Maximum number of tokens allowed in the image-description model response.",
           "advanced": false
         },
         "OPENAI_TTS_MODEL": {

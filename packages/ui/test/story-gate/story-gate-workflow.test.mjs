@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 const ALWAYS_EXPRESSION = "$" + "{{ always() }}";
+const PUSH_EVENT_EXPRESSION = "$" + "{{ github.event_name == 'push' }}";
 const MATRIX_SHARD_EXPRESSION = "$" + "{{ matrix.shard }}";
 const workflow = readFileSync(
   new URL("../../../../.github/workflows/ui-story-gate.yml", import.meta.url),
@@ -22,8 +23,10 @@ const aggregateMerge = aggregateJob.steps.find((step) =>
 );
 
 describe("UI Story Gate workflow", () => {
-  it("keeps develop runs queued instead of cancelling an active catalog", () => {
-    expect(config.concurrency).toMatchObject({ "cancel-in-progress": false });
+  it("cancels superseded push runs but preserves manual and called runs", () => {
+    expect(config.concurrency).toMatchObject({
+      "cancel-in-progress": PUSH_EVENT_EXPRESSION,
+    });
   });
 
   it("runs eight shards and uploads shard evidence", () => {

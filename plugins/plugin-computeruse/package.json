@@ -33,6 +33,7 @@
   "files": [
     "registry-entry.json",
     "dist",
+    "auto-enable.ts",
     "README.md",
     "package.json"
   ],
@@ -41,6 +42,8 @@
     "build": "bun run build.ts && bun run build:views",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "test": "vitest run --config vitest.config.ts",
+    "test:e2e:browser-fixture": "vitest run --config vitest.browser-fixture.config.ts",
+    "test:live:cerebras-browser-fixture": "vitest run --config vitest.cerebras-browser-fixture.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -89,6 +92,19 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "license": "Apache-2.0",
+  "elizaos": {
+    "appRegister": "register",
+    "app": {
+      "displayName": "Computer Use",
+      "category": "system"
+    },
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "computer-use"
+      ]
+    }
+  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
