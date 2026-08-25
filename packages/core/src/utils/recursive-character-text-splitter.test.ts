@@ -267,21 +267,20 @@ describe("splitText", () => {
 	});
 
 	it("preserves UTF-16 surrogate pairs when falling back to character-level split", async () => {
-		const text = "😀🎉🚀🌟🔥";
+		const text = "😀🎉🚀";
 		const splitter = new RecursiveCharacterTextSplitter({
-			chunkSize: 4,
+			chunkSize: 3,
 			chunkOverlap: 0,
 			separators: [""],
 		});
 		const chunks = await splitter.splitText(text);
-		expect(chunks).toEqual([
-			"😀🎉",
-			"🚀🌟",
-			"🔥",
-		]);
-		for (const chunk of chunks) {
-			expect(chunk.endsWith("\uD83D")).toBe(false);
-			expect(chunk.startsWith("\uDE00")).toBe(false);
+		expect(chunks).toEqual(["😀", "🎉", "🚀"]);
+		for (const c of chunks) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					c,
+				),
+			).toBe(false);
 		}
 	});
 });
