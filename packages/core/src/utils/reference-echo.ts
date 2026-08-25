@@ -33,5 +33,15 @@ export function describeUserReference(
 export function userReferenceLogView(reference: string): string {
 	const safeRef = typeof reference === "string" ? reference : "";
 	const collapsed = safeRef.replace(/\s+/g, " ").trim();
-	return collapsed.length > 120 ? `${collapsed.slice(0, 119)}…` : collapsed;
+	if (collapsed.length <= 120) {
+		return collapsed;
+	}
+	let end = 119;
+	if (end > 0 && end < collapsed.length) {
+		const code = collapsed.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return `${collapsed.slice(0, end)}…`;
 }

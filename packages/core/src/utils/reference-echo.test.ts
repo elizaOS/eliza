@@ -133,4 +133,21 @@ describe("userReferenceLogView", () => {
 		expect(clamped.endsWith("…")).toBe(true);
 		expect(clamped.slice(0, 119)).toBe("b".repeat(119));
 	});
+
+	it("preserves surrogate pairs when clamping at 120 chars", () => {
+		// "🔥" (2 chars * 70 = 140 chars) -> 140 chars > 120 chars
+		// At boundary 119, index 118 is the high surrogate of the 60th emoji, which bisects without backoff
+		const longEmojiRef = "🔥".repeat(70);
+		const clamped = userReferenceLogView(longEmojiRef);
+
+		expect(clamped.endsWith("…")).toBe(true);
+		expect(clamped.length).toBe(119); // 118 chars (59 full emojis) + 1 ellipsis char
+		for (const char of clamped) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+	});
 });
