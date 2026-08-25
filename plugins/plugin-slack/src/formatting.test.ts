@@ -174,6 +174,19 @@ describe("truncateText", () => {
     expect(truncateText("short", 10)).toBe("short");
     expect(truncateText("abcdefghij", 5)).toBe("abcd…");
   });
+
+  it("preserves UTF-16 surrogate pairs when truncating", () => {
+    const emojis = "🎉".repeat(10); // 20 code units
+    const result = truncateText(emojis, 5); // 5 chars limit - 1 ellipsis = 4 chars (2 emojis)
+    expect(result.endsWith("…")).toBe(true);
+    for (const char of result) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });
 
 describe("permalink build/parse round-trip", () => {

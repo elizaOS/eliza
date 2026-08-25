@@ -487,7 +487,14 @@ export function truncateText(
   if (text.length <= maxLength) {
     return text;
   }
-  return text.slice(0, maxLength - ellipsis.length) + ellipsis;
+  let end = maxLength - ellipsis.length;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end) + ellipsis;
 }
 
 /**
