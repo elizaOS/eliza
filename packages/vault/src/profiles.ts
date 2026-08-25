@@ -188,7 +188,7 @@ function parseRoutingConfig(raw: string): RoutingConfig {
   const rules: RoutingRule[] = [];
   if (Array.isArray(obj.rules)) {
     for (const r of obj.rules) {
-      const normalized = normalizeRule(r);
+      const normalized = normalizeRoutingRule(r);
       if (normalized) rules.push(normalized);
     }
   }
@@ -204,7 +204,7 @@ function parseRoutingConfig(raw: string): RoutingConfig {
 function normalizeRoutingConfig(config: RoutingConfig): RoutingConfig {
   const rules: RoutingRule[] = [];
   for (const r of config.rules ?? []) {
-    const normalized = normalizeRule(r);
+    const normalized = normalizeRoutingRule(r);
     if (normalized) rules.push(normalized);
   }
   return {
@@ -216,46 +216,60 @@ function normalizeRoutingConfig(config: RoutingConfig): RoutingConfig {
   };
 }
 
-function normalizeRule(r: unknown): RoutingRule | null {
+export function normalizeRoutingRule(r: unknown): RoutingRule | null {
   if (!r || typeof r !== "object") return null;
   const rec = r as Record<string, unknown>;
-  if (typeof rec.keyPattern !== "string" || rec.keyPattern.length === 0) {
+  if (
+    typeof rec.keyPattern !== "string" ||
+    rec.keyPattern.trim().length === 0
+  ) {
     return null;
   }
-  if (
-    rec.keyPattern.startsWith(META_PREFIX) ||
-    rec.keyPattern === ROUTING_KEY
-  ) {
+  const keyPattern = rec.keyPattern.trim();
+  if (keyPattern.startsWith(META_PREFIX) || keyPattern === ROUTING_KEY) {
     return null; // never route an internal key
   }
-  if (typeof rec.profileId !== "string" || rec.profileId.length === 0) {
+  if (typeof rec.profileId !== "string" || rec.profileId.trim().length === 0) {
     return null;
   }
+  const profileId = rec.profileId.trim();
   const scope = rec.scope;
   if (!scope || typeof scope !== "object") return null;
   const scopeRec = scope as Record<string, unknown>;
-  const kind = scopeRec.kind;
+  const kind = typeof scopeRec.kind === "string" ? scopeRec.kind.trim() : "";
   if (kind !== "agent" && kind !== "app" && kind !== "skill") return null;
 
-  if (kind === "agent" && typeof scopeRec.agentId === "string") {
+  if (
+    kind === "agent" &&
+    typeof scopeRec.agentId === "string" &&
+    scopeRec.agentId.trim().length > 0
+  ) {
     return {
-      keyPattern: rec.keyPattern,
-      scope: { kind: "agent", agentId: scopeRec.agentId },
-      profileId: rec.profileId,
+      keyPattern,
+      scope: { kind: "agent", agentId: scopeRec.agentId.trim() },
+      profileId,
     };
   }
-  if (kind === "app" && typeof scopeRec.appName === "string") {
+  if (
+    kind === "app" &&
+    typeof scopeRec.appName === "string" &&
+    scopeRec.appName.trim().length > 0
+  ) {
     return {
-      keyPattern: rec.keyPattern,
-      scope: { kind: "app", appName: scopeRec.appName },
-      profileId: rec.profileId,
+      keyPattern,
+      scope: { kind: "app", appName: scopeRec.appName.trim() },
+      profileId,
     };
   }
-  if (kind === "skill" && typeof scopeRec.skillId === "string") {
+  if (
+    kind === "skill" &&
+    typeof scopeRec.skillId === "string" &&
+    scopeRec.skillId.trim().length > 0
+  ) {
     return {
-      keyPattern: rec.keyPattern,
-      scope: { kind: "skill", skillId: scopeRec.skillId },
-      profileId: rec.profileId,
+      keyPattern,
+      scope: { kind: "skill", skillId: scopeRec.skillId.trim() },
+      profileId,
     };
   }
   return null;
