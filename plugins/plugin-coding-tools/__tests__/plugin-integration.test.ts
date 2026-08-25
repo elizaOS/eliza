@@ -430,6 +430,26 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     );
   });
 
+  it.each([
+    { pattern: "../outside/*.txt", path: ".", glob: "" },
+    { pattern: "", path: "../outside/*.txt", glob: "" },
+  ])(
+    "FILE rejects dense glob traversal from canonical and path-fallback shapes",
+    async (override) => {
+      const action = findAction("FILE");
+      const result = await action.handler?.(runtime, makeMessage(), undefined, {
+        parameters: guidedFileParameters({
+          action: "glob",
+          ...override,
+        }),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_param");
+      expect(result.text).toContain("must not traverse");
+    },
+  );
+
   it("FILE resolves an explicit relative glob root against the session cwd", async () => {
     const action = findAction("FILE");
     const result = await action.handler?.(runtime, makeMessage(), undefined, {
@@ -457,6 +477,20 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("NEEDLE");
+  });
+
+  it("FILE preserves an explicit zero limit in a sparse read call", async () => {
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: {
+        action: "read",
+        file_path: path.join(tmpDir, "needle.txt"),
+        limit: 0,
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("limit must be positive safe integers");
   });
 
   it("FILE preserves an empty write payload while dropping unrelated decoder defaults", async () => {
@@ -531,6 +565,61 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("config.go");
+  });
+
+  it("FILE restores content-mode line-number defaults for a dense decoder false placeholder", async (ctx) => {
+    const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
+    expect(rg, "RipgrepService must be started by the harness").toBeDefined();
+    if (!rg) return;
+    const { execFileSync } = await import("node:child_process");
+    try {
+      execFileSync(rg.binary(), ["--version"], { stdio: "ignore" });
+    } catch {
+      ctx.skip(`ripgrep unavailable: '${rg.binary()}' is not runnable`);
+      return;
+    }
+
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: guidedFileParameters({
+        action: "grep",
+        pattern: "package config",
+        path: "internal/config",
+        output_mode: "content",
+        show_line_numbers: false,
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("1:package config");
+  });
+
+  it("FILE preserves explicit show_line_numbers=false in a sparse grep call", async (ctx) => {
+    const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
+    expect(rg, "RipgrepService must be started by the harness").toBeDefined();
+    if (!rg) return;
+    const { execFileSync } = await import("node:child_process");
+    try {
+      execFileSync(rg.binary(), ["--version"], { stdio: "ignore" });
+    } catch {
+      ctx.skip(`ripgrep unavailable: '${rg.binary()}' is not runnable`);
+      return;
+    }
+
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: {
+        action: "grep",
+        pattern: "package config",
+        path: "internal/config",
+        output_mode: "content",
+        show_line_numbers: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("package config");
+    expect(result.text).not.toContain("1:package config");
   });
 
   it("FILE routes a dense decoder's filtered ls request through glob", async () => {

@@ -128,6 +128,24 @@ const OPTIONAL_ZERO_PARAMETERS = new Set([
   "head_limit",
 ]);
 
+const ALL_WORKSPACE_OPERATION_PARAMETERS = new Set(
+  Object.values(WORKSPACE_OPERATION_PARAMETERS).flat(),
+);
+
+function hasDenseUmbrellaShape(
+  operation: FileOperation,
+  options: unknown,
+): boolean {
+  const relevant = new Set(WORKSPACE_OPERATION_PARAMETERS[operation]);
+  let unrelatedFields = 0;
+  for (const name of ALL_WORKSPACE_OPERATION_PARAMETERS) {
+    if (relevant.has(name) || readParam(options, name) === undefined) continue;
+    unrelatedFields += 1;
+    if (unrelatedFields >= 2) return true;
+  }
+  return false;
+}
+
 function nonEmptyStringParam(
   options: unknown,
   name: string,
@@ -143,20 +161,23 @@ function looksLikeRelativeGlob(value: string): boolean {
 /**
  * Narrows the umbrella schema to the selected operation before dispatch. Some
  * strict decoders materialize every optional property in FILE's union-shaped
- * schema as an empty string, false, zero, or empty array. Those placeholders
- * are not requests for another operation and must not override an operation's
- * own defaults. Empty write/edit payload strings remain exact user data.
+ * schema. In that recognizable dense shape, empty strings/arrays, optional
+ * numeric zeroes, and GREP's false line-number sentinel must not override the
+ * selected operation's defaults. Sparse calls retain explicit zero and false
+ * values, and empty write/edit payload strings remain exact user data.
  */
 function normalizeWorkspaceFileOptions(
   operation: FileOperation,
   options: unknown,
 ): HandlerOptions {
   const parameters: Record<string, unknown> = {};
+  const denseUmbrellaShape = hasDenseUmbrellaShape(operation, options);
 
   for (const name of WORKSPACE_OPERATION_PARAMETERS[operation]) {
     const value = readParam(options, name);
     if (value === undefined) continue;
     if (
+      denseUmbrellaShape &&
       typeof value === "string" &&
       value.length === 0 &&
       !EMPTY_STRING_PAYLOAD_PARAMETERS.has(name)
@@ -164,13 +185,23 @@ function normalizeWorkspaceFileOptions(
       continue;
     }
     if (
+      denseUmbrellaShape &&
       typeof value === "number" &&
       value === 0 &&
       OPTIONAL_ZERO_PARAMETERS.has(name)
     ) {
       continue;
     }
-    if (Array.isArray(value) && value.length === 0) continue;
+    if (denseUmbrellaShape && Array.isArray(value) && value.length === 0)
+      continue;
+    if (
+      denseUmbrellaShape &&
+      operation === "grep" &&
+      name === "show_line_numbers" &&
+      value === false
+    ) {
+      continue;
+    }
     parameters[name] = value;
   }
 
@@ -397,7 +428,7 @@ export const fileAction: Action = {
     "LIST_FILES",
   ],
   description:
-    "Read, write, edit, grep, glob, or list files. Workspace paths are absolute unless the operation defaults to session cwd; target=device uses the device bridge.",
+    "Read, write, edit, grep, glob, or list files. Relative workspace paths resolve against the session cwd before sandbox validation; target=device uses the device bridge.",
   descriptionCompressed:
     "File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
   parameters: [

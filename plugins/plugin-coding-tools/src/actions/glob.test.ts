@@ -17,6 +17,7 @@ import { globHandler, globToRegExp } from "./glob.js";
 
 let tmpRoot: string;
 let blockedPath: string;
+let outsideRoot: string;
 
 interface RuntimeBundle {
   runtime: IAgentRuntime;
@@ -26,6 +27,7 @@ interface RuntimeBundle {
 async function buildRuntime(): Promise<RuntimeBundle> {
   const settings: Record<string, unknown> = {
     CODING_TOOLS_BLOCKED_PATHS: blockedPath,
+    CODING_TOOLS_WORKSPACE_ROOTS: tmpRoot,
   };
   const runtimeSeed = {
     getSetting: (key: string) => settings[key],
@@ -51,6 +53,7 @@ async function buildRuntime(): Promise<RuntimeBundle> {
 
 beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-glob-"));
+  outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-glob-outside-"));
   blockedPath = path.join(tmpRoot, "_blocked");
   await fs.mkdir(blockedPath, { recursive: true });
   const fooDir = path.join(tmpRoot, "foo");
@@ -64,6 +67,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await fs.rm(tmpRoot, { recursive: true, force: true });
+  await fs.rm(outsideRoot, { recursive: true, force: true });
 });
 
 const state: State | undefined = undefined;
@@ -127,6 +131,49 @@ describe("GLOB", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("path_blocked");
+  });
+
+  it.each(["../outside/*.txt", "{../outside,foo}/*.txt"])(
+    "rejects a traversing pattern %s",
+    async (pattern) => {
+      const { runtime, message } = await buildRuntime();
+      const result = await globHandler(runtime, message, state, {
+        parameters: { pattern },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_param");
+      expect(result.text).toContain("must not traverse");
+    },
+  );
+
+  it.each(["/tmp/*.txt", "C:\\outside\\*.txt"])(
+    "rejects an absolute pattern %s",
+    async (pattern) => {
+      const { runtime, message } = await buildRuntime();
+      const result = await globHandler(runtime, message, state, {
+        parameters: { pattern },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_param");
+      expect(result.text).toContain("must be relative");
+    },
+  );
+
+  it("rejects a glob candidate that resolves through a symlink outside the workspace", async () => {
+    const { runtime, message } = await buildRuntime();
+    await fs.writeFile(path.join(outsideRoot, "secret.txt"), "outside\n");
+    await fs.symlink(outsideRoot, path.join(tmpRoot, "escape"), "dir");
+
+    const result = await globHandler(runtime, message, state, {
+      parameters: { pattern: "escape/*.txt" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("invalid_param");
+    expect(result.text).toContain("glob candidate rejected");
+    expect(result.text).toContain("outside the configured coding workspace");
   });
 
   it("fails when roomId is missing", async () => {

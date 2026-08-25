@@ -1,7 +1,7 @@
 /**
  * FILE `glob` handler: expands a glob pattern to matching file paths, rooted at an
  * explicit path or the conversation's SessionCwdService cwd, with SandboxService
- * validation on the search root.
+ * validation on the search root and every returned candidate.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -47,6 +47,21 @@ interface NodeFsGlobModule {
 function getNodeFsGlob(): NodeFsGlobModule["glob"] | undefined {
   const candidate = (fs as Partial<NodeFsGlobModule>).glob;
   return typeof candidate === "function" ? candidate : undefined;
+}
+
+function unsafeGlobPattern(pattern: string): string | undefined {
+  if (pattern.includes("\0")) return "glob pattern must not contain NUL";
+  if (
+    path.isAbsolute(pattern) ||
+    pattern.startsWith("\\") ||
+    /^[A-Za-z]:[\\/]/.test(pattern)
+  ) {
+    return "glob pattern must be relative to the validated search root";
+  }
+  if (/(?:^|[\\/,{])\.\.(?=$|[\\/,}])/.test(pattern)) {
+    return "glob pattern must not traverse above the validated search root";
+  }
+  return undefined;
 }
 
 /** Exported for tests: the fallback matcher used when `fs.glob` is absent
@@ -173,6 +188,13 @@ export async function globHandler(
       message: "pattern is required",
     });
   }
+  const patternFailure = unsafeGlobPattern(pattern);
+  if (patternFailure) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message: patternFailure,
+    });
+  }
 
   const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
     typeof SandboxService
@@ -224,8 +246,27 @@ export async function globHandler(
     candidates = await walkFallback(root, pattern);
   }
 
+  const validatedCandidates: string[] = [];
+  for (const filePath of candidates) {
+    const candidateValidation = await sandbox.validatePath(
+      conversationId,
+      filePath,
+    );
+    if (candidateValidation.ok === false) {
+      const reason =
+        candidateValidation.reason === "blocked"
+          ? "path_blocked"
+          : "invalid_param";
+      return failureToActionResult({
+        reason,
+        message: `glob candidate rejected: ${candidateValidation.message}`,
+      });
+    }
+    validatedCandidates.push(filePath);
+  }
+
   const stats = await Promise.all(
-    candidates.map(async (filePath) => {
+    validatedCandidates.map(async (filePath) => {
       try {
         const stat = await fs.stat(filePath);
         if (!stat.isFile()) return undefined;

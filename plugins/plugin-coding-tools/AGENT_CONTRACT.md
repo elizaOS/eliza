@@ -100,8 +100,10 @@ export const myAction: Action = {
   fallback.
 - **NOTEBOOK_EDIT** — `file_path` is required and must be absolute.
 - **GLOB / GREP / LS** — `path` parameter optional. When omitted, default to
-  `SessionCwdService.getCwd(conversationId)`. When provided, must be absolute,
-  validated through SandboxService.
+  `SessionCwdService.getCwd(conversationId)`. When provided, resolve a relative
+  value against that session cwd, then validate the resulting absolute path
+  through SandboxService. GLOB patterns are relative to the validated root and
+  cannot be absolute or traverse above it; every match is validated as well.
 - **SHELL** — runs with `cwd` defaulting to `SessionCwdService.getCwd(...)`.
   Optional `cwd` parameter overrides; must be absolute and within roots.
   Workspace roots validate only this working directory. SHELL is trusted host
