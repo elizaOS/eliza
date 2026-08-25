@@ -26,10 +26,8 @@ import pg from "pg";
 const { Client } = pg;
 
 const BASE_URL =
-  // biome-ignore lint/suspicious/noUndeclaredEnvVars: standalone gated test run manually with bun; not part of Turbo task caching.
   process.env.DRILL_TEST_DATABASE_URL ?? process.env.TEST_DATABASE_URL ?? "";
 const ENABLED =
-  // biome-ignore lint/suspicious/noUndeclaredEnvVars: standalone gated test run manually with bun; not part of Turbo task caching.
   process.env.RUN_REAL_POSTGRES_DRILL_TESTS === "1" &&
   BASE_URL.startsWith("postgres");
 function baseUrlRoot(): string {
@@ -208,7 +206,6 @@ let pgbouncerDir: string | undefined;
  * can still run where port 6432 cannot be bound.
  */
 const POOLER_ENABLED =
-  // biome-ignore lint/suspicious/noUndeclaredEnvVars: standalone gated test run manually with bun; not part of Turbo task caching.
   process.env.RUN_REAL_PGBOUNCER_DRILL_TESTS === "1" && ENABLED;
 
 function startPgbouncer(databases: string[]): void {
