@@ -29,6 +29,11 @@ struct ExperimentalDispatchReceipt {
     let pointerAfter: CGPoint
 }
 
+private enum ExperimentalElementValidation {
+    case fullFingerprint
+    case immutableIdentity
+}
+
 final class ExperimentalExactWindowSPI {
     static let shared = ExperimentalExactWindowSPI()
 
@@ -81,21 +86,30 @@ final class ExperimentalExactWindowSPI {
         guard let source = CGEventSource(stateID: .privateState) else {
             throw ExperimentalExactWindowError.refused("Could not create a private event source")
         }
+        guard let postToPidFunction else { throw unavailable() }
+        let preparedEvents = try recipe.map { step in
+            let point = step.pointKind == .target
+                ? (target.screenPoint, target.windowPoint)
+                : (CGPoint(x: -1, y: -1), CGPoint(x: -1, y: -1))
+            let event = try makeEvent(step: step, source: source, screenPoint: point.0)
+            try stamp(event: event, target: target, windowPoint: point.1, step: step)
+            return event
+        }
         guard let pointerObservationBefore = CGEvent(source: nil) else {
             throw ExperimentalExactWindowError.refused("Physical pointer provenance is unavailable")
         }
         let pointerBefore = pointerObservationBefore.location
+        var preparedEventIndex = 0
         try experimentalDispatchSequence(
             recipe: recipe,
             beginFocus: { try self.beginSyntheticTargetFocus(target: target) },
-            revalidate: { try self.validate(target) },
+            revalidate: {
+                try self.validate(target, elementValidation: .immutableIdentity)
+            },
             post: { step in
-                let point = step.pointKind == .target
-                    ? (target.screenPoint, target.windowPoint)
-                    : (CGPoint(x: -1, y: -1), CGPoint(x: -1, y: -1))
-                let event = try makeEvent(step: step, source: source, screenPoint: point.0)
-                try stamp(event: event, target: target, windowPoint: point.1, step: step)
-                try postToPid(event, pid: target.pid)
+                let event = preparedEvents[preparedEventIndex]
+                preparedEventIndex += 1
+                postToPidFunction(target.pid, Unmanaged.passUnretained(event).toOpaque())
                 if step.delayMicroseconds > 0 { usleep(step.delayMicroseconds) }
             },
             endFocus: { try self.endSyntheticTargetFocus($0) }
@@ -115,7 +129,10 @@ final class ExperimentalExactWindowSPI {
         )
     }
 
-    private func validate(_ target: ExperimentalTarget) throws {
+    private func validate(
+        _ target: ExperimentalTarget,
+        elementValidation: ExperimentalElementValidation = .fullFingerprint
+    ) throws {
         guard target.pid > 0,
               target.screenPoint.x.isFinite,
               target.screenPoint.y.isFinite,
@@ -152,10 +169,13 @@ final class ExperimentalExactWindowSPI {
                 "Exact PID/CGWindowID target is stale, off-screen, ambiguous, or moved"
             )
         }
-        try validateElement(target)
+        try validateElement(target, validation: elementValidation)
     }
 
-    private func validateElement(_ target: ExperimentalTarget) throws {
+    private func validateElement(
+        _ target: ExperimentalTarget,
+        validation: ExperimentalElementValidation
+    ) throws {
         guard AXIsProcessTrusted() else {
             throw ExperimentalExactWindowError.refused(
                 "Accessibility trust is required for exact element revalidation"
@@ -182,7 +202,13 @@ final class ExperimentalExactWindowSPI {
             root: focusedWindow,
             locator: target.expectedElement.locator
         )
-        guard matches(element: element, expected: target.expectedElement) else {
+        let matchesExpected = switch validation {
+        case .fullFingerprint:
+            matchesFullFingerprint(element: element, expected: target.expectedElement)
+        case .immutableIdentity:
+            matchesImmutableIdentity(element: element, expected: target.expectedElement)
+        }
+        guard matchesExpected else {
             throw ExperimentalExactWindowError.refused(
                 "The approved accessibility element changed after focus; capture and approve again"
             )
@@ -279,15 +305,11 @@ final class ExperimentalExactWindowSPI {
         return redacted
     }
 
-    private func matches(
+    private func matchesImmutableIdentity(
         element: AXUIElement,
         expected: ExperimentalElementFingerprint
     ) -> Bool {
-        guard let role = stringAttribute(element, kAXRoleAttribute as CFString),
-              let actions = actionNames(element),
-              let enabled = boolAttribute(element, kAXEnabledAttribute as CFString),
-              let focused = boolAttribute(element, kAXFocusedAttribute as CFString)
-        else { return false }
+        guard let role = stringAttribute(element, kAXRoleAttribute as CFString) else { return false }
         let subrole = stringAttribute(element, kAXSubroleAttribute as CFString)
         let title = stringAttribute(element, kAXTitleAttribute as CFString)
         let rawLabel = title ?? stringAttribute(element, kAXLabelValueAttribute as CFString)
@@ -295,22 +317,33 @@ final class ExperimentalExactWindowSPI {
         let secure = isSecure(role: role, subrole: subrole, description: rawDescription)
         let label = rawLabel.map(redactSensitive)
         let description = rawDescription.map(redactSensitive)
-        let value = secure
-            ? nil
-            : stringAttribute(element, kAXValueAttribute as CFString).map(redactSensitive)
-        let selected = (copyAttribute(element, kAXSelectedAttribute as CFString) as? NSNumber)?.boolValue
         guard let actualBounds = bounds(element) else { return false }
         return role == expected.role &&
             subrole == expected.subrole &&
             label == expected.label &&
-            value == expected.value &&
             description == expected.elementDescription &&
             experimentalBoundsMatch(actualBounds, expected.bounds.cgRect, tolerance: 2) &&
+            secure == expected.secure
+    }
+
+    private func matchesFullFingerprint(
+        element: AXUIElement,
+        expected: ExperimentalElementFingerprint
+    ) -> Bool {
+        guard matchesImmutableIdentity(element: element, expected: expected),
+              let actions = actionNames(element),
+              let enabled = boolAttribute(element, kAXEnabledAttribute as CFString),
+              let focused = boolAttribute(element, kAXFocusedAttribute as CFString)
+        else { return false }
+        let value = expected.secure
+            ? nil
+            : stringAttribute(element, kAXValueAttribute as CFString).map(redactSensitive)
+        let selected = (copyAttribute(element, kAXSelectedAttribute as CFString) as? NSNumber)?.boolValue
+        return value == expected.value &&
             actions.sorted() == expected.actions.sorted() &&
             enabled == expected.enabled &&
             focused == expected.focused &&
-            selected == expected.selected &&
-            secure == expected.secure
+            selected == expected.selected
     }
 
     private func makeEvent(
@@ -415,11 +448,6 @@ final class ExperimentalExactWindowSPI {
         guard status == 0 else {
             throw ExperimentalExactWindowError.refused("Synthetic target-only focus failed")
         }
-    }
-
-    private func postToPid(_ event: CGEvent, pid: pid_t) throws {
-        guard let postToPidFunction else { throw unavailable() }
-        postToPidFunction(pid, Unmanaged.passUnretained(event).toOpaque())
     }
 
     private func setInteger(_ event: CGEvent, field: UInt32, value: Int64) throws {

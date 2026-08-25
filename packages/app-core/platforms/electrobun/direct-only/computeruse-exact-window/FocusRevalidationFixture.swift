@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-/** Proves a same-bounds control replacement on focus cannot post an event. */
+/** Proves focus-time identity swaps refuse and mutable post-down changes cannot strand a button. */
 
 import Darwin
 import Foundation
@@ -13,14 +13,12 @@ private struct FixtureElement: Equatable {
 @main
 struct FocusRevalidationFixture {
     static func main() {
-        let approved = FixtureElement(
-            role: "AXButton",
-            label: "Harmless A",
-            bounds: ExperimentalRect(x: 40, y: 50, width: 120, height: 30)
-        )
-        var current = approved
-        var postedEvents = 0
-        let recipe = [
+        verifyFocusReplacementRefusesBeforePost()
+        verifyMutableChangeAfterDownStillPostsRelease()
+    }
+
+    private static func matchedClickPair() -> [ExperimentalEventStep] {
+        [
             ExperimentalEventStep(
                 kind: .down,
                 pointKind: .target,
@@ -30,10 +28,29 @@ struct FocusRevalidationFixture {
                 deltaY: 0,
                 delayMicroseconds: 0
             ),
+            ExperimentalEventStep(
+                kind: .up,
+                pointKind: .target,
+                clickState: 1,
+                phase: 3,
+                deltaX: 0,
+                deltaY: 0,
+                delayMicroseconds: 0
+            ),
         ]
+    }
+
+    private static func verifyFocusReplacementRefusesBeforePost() {
+        let approved = FixtureElement(
+            role: "AXButton",
+            label: "Harmless A",
+            bounds: ExperimentalRect(x: 40, y: 50, width: 120, height: 30)
+        )
+        var current = approved
+        var postedEvents = 0
         do {
             try experimentalDispatchSequence(
-                recipe: recipe,
+                recipe: matchedClickPair(),
                 beginFocus: {
                     current = FixtureElement(
                         role: "AXButton",
@@ -57,5 +74,32 @@ struct FocusRevalidationFixture {
             guard postedEvents == 0 else { exit(3) }
             print("focus-revalidation-refused-before-post")
         }
+    }
+
+    private static func verifyMutableChangeAfterDownStillPostsRelease() {
+        var focused = false
+        var postedKinds: [ExperimentalEventStep.Kind] = []
+        do {
+            try experimentalDispatchSequence(
+                recipe: matchedClickPair(),
+                beginFocus: { () },
+                revalidate: {
+                    guard !focused else {
+                        throw ExperimentalExactWindowError.refused(
+                            "mutable fingerprint changed after pointer down"
+                        )
+                    }
+                },
+                post: { step in
+                    postedKinds.append(step.kind)
+                    if step.kind == .down { focused = true }
+                },
+                endFocus: { _ in }
+            )
+        } catch {
+            exit(4)
+        }
+        guard postedKinds == [.down, .up] else { exit(5) }
+        print("mutable-change-after-down-posted-matched-up")
     }
 }

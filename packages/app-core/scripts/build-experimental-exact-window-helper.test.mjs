@@ -41,7 +41,7 @@ test("build plan refuses direct builds on other platforms", () => {
   );
 });
 
-test("native sequence refuses a same-bounds control replacement after focus before posting", {
+test("native sequence refuses focus swaps and balances down/up across mutable AX changes", {
   skip: process.platform !== "darwin",
 }, () => {
   const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -64,7 +64,13 @@ test("native sequence refuses a same-bounds control replacement after focus befo
       { stdio: "pipe" },
     );
     const output = execFileSync(executable, [], { encoding: "utf8" });
-    assert.equal(output.trim(), "focus-revalidation-refused-before-post");
+    assert.equal(
+      output.trim(),
+      [
+        "focus-revalidation-refused-before-post",
+        "mutable-change-after-down-posted-matched-up",
+      ].join("\n"),
+    );
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }

@@ -154,22 +154,63 @@ func experimentalBoundsMatch(_ left: CGRect, _ right: CGRect, tolerance: CGFloat
         abs(left.size.height - right.size.height) <= tolerance
 }
 
+private func experimentalDispatchUnits(
+    recipe: [ExperimentalEventStep]
+) throws -> [[ExperimentalEventStep]] {
+    var units: [[ExperimentalEventStep]] = []
+    var index = 0
+    while index < recipe.count {
+        let step = recipe[index]
+        switch step.kind {
+        case .down:
+            guard index + 1 < recipe.count else {
+                throw ExperimentalExactWindowError.refused(
+                    "A pointer-down recipe must include an immediate pointer-up"
+                )
+            }
+            let release = recipe[index + 1]
+            guard release.kind == .up,
+                  release.pointKind == step.pointKind,
+                  release.clickState == step.clickState
+            else {
+                throw ExperimentalExactWindowError.refused(
+                    "Pointer-down and pointer-up must form one matched dispatch unit"
+                )
+            }
+            units.append([step, release])
+            index += 2
+        case .up:
+            throw ExperimentalExactWindowError.refused(
+                "A standalone pointer-up recipe is invalid"
+            )
+        case .moved, .scroll:
+            units.append([step])
+            index += 1
+        }
+    }
+    return units
+}
+
 func experimentalDispatchSequence<FocusContext>(
     recipe: [ExperimentalEventStep],
     beginFocus: () throws -> FocusContext,
     revalidate: () throws -> Void,
-    post: (ExperimentalEventStep) throws -> Void,
+    post: (ExperimentalEventStep) -> Void,
     endFocus: (FocusContext) throws -> Void
 ) throws {
+    let units = try experimentalDispatchUnits(recipe: recipe)
     let focusContext = try beginFocus()
     do {
         // Synthetic focus is an observable UI transition. The captured AX
-        // element must still be authoritative after it, before any event is
-        // posted, and again immediately before every subsequent event.
+        // identity must still be authoritative after it and at each safe
+        // dispatch boundary. A matched down/up unit has no throwing or
+        // revalidation boundary that could strand the primary button down.
         try revalidate()
-        for step in recipe {
+        for unit in units {
             try revalidate()
-            try post(step)
+            for step in unit {
+                post(step)
+            }
         }
         try endFocus(focusContext)
     } catch {
