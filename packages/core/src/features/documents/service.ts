@@ -16,6 +16,7 @@
  */
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
+import { DatabaseAdapter } from "../../database";
 import {
 	canRequesterManageDocumentDirectGrants,
 	canRequesterMutateDocument,
@@ -611,9 +612,14 @@ export class DocumentService extends Service {
 			accessContext,
 		);
 		const updateDocumentPinned = this.runtime.adapter.updateDocumentPinned;
-		if (!updateDocumentPinned) {
-			// Legacy adapters without pin support surface an explicit
-			// unsupported capability rather than a fabricated result.
+		if (
+			!updateDocumentPinned ||
+			updateDocumentPinned === DatabaseAdapter.prototype.updateDocumentPinned
+		) {
+			// Adapters without pin support (legacy subclasses inherit the
+			// base's typed throw; structural adapters may omit the method)
+			// surface an explicit unsupported capability rather than a
+			// fabricated not_found.
 			throw new ElizaError(
 				"The configured database adapter does not support document pins",
 				{
@@ -2736,9 +2742,14 @@ export class DocumentService extends Service {
 			});
 		}
 		const updateDocumentPinned = this.runtime.adapter.updateDocumentPinned;
-		if (!updateDocumentPinned) {
-			// Legacy adapters without pin support surface an explicit
-			// unsupported capability rather than a fabricated result.
+		if (
+			!updateDocumentPinned ||
+			updateDocumentPinned === DatabaseAdapter.prototype.updateDocumentPinned
+		) {
+			// Adapters without pin support (legacy subclasses inherit the
+			// base's typed throw; structural adapters may omit the method)
+			// surface an explicit unsupported capability rather than a
+			// fabricated not_found.
 			throw new ElizaError(
 				"The configured database adapter does not support document pins",
 				{

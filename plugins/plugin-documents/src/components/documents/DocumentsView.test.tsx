@@ -471,17 +471,19 @@ describe("DocumentsView — pin affordance", () => {
     await waitFor(() => {
       expect(setPinned).toHaveBeenCalledWith("doc-1", false);
     });
-    // Toggle 2: pin flips optimistically (★) and stays pending.
+    // Toggle 2: pin is issued and stays pending — under the visible-pending
+    // contract the control shows the inflight glyph, not the optimistic star.
     fireEvent.click(agent("pin:doc-1"));
     await waitFor(() => {
       expect(setPinned).toHaveBeenLastCalledWith("doc-1", true);
     });
-    expect(agent("pin:doc-1").textContent).toContain("★");
+    expect(agent("pin:doc-1").textContent).toContain("⋯");
     // Now toggle 1's deferred reload lands the authoritative unpinned truth
-    // while toggle 2 is still pending — replacing the optimistic flip.
+    // while toggle 2 is still pending. The pending glyph still masks the
+    // control; the authoritative truth itself is asserted after the rejection.
     resolveDeferredReload?.();
     await waitFor(() => {
-      expect(agent("pin:doc-1").textContent).toContain("☆");
+      expect(agent("pin:doc-1").textContent).toContain("⋯");
     });
     // Toggle 2's late rejection must not reverse that authoritative state.
     rejectPinToggle2?.(new Error("late failure"));
@@ -521,12 +523,13 @@ describe("DocumentsView — pin affordance", () => {
     );
     await screen.findByText("Quarterly Plan.md");
 
-    // Toggle 1: pin — stays pending (deferred rejection).
+    // Toggle 1: pin — stays pending (deferred rejection); visible pending
+    // contract shows the inflight glyph while the mutation runs.
     fireEvent.click(agent("pin:doc-1"));
     await waitFor(() => {
       expect(setPinned).toHaveBeenCalledWith("doc-1", true);
     });
-    expect(agent("pin:doc-1").textContent).toContain("★");
+    expect(agent("pin:doc-1").textContent).toContain("⋯");
     // Toggle 2 while inflight: MUST be ignored (serialized).
     fireEvent.click(agent("pin:doc-1"));
     await new Promise((resolve) => setTimeout(resolve, 10));

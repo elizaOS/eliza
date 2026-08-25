@@ -38,6 +38,8 @@ export interface DocumentCard {
   meta: string;
   /** True when the row's pin control should show the pinned state. */
   pinned?: boolean;
+  /** True while this document's pin mutation is inflight — control is disabled. */
+  pinPending?: boolean;
 }
 
 /** A single search result row, already projected by the wrapper. */
@@ -231,9 +233,10 @@ function DocumentRow({
           variant="outline"
           tone={doc.pinned ? "primary" : "default"}
           agent={`pin:${doc.id}`}
+          disabled={doc.pinPending}
           onPress={() => onAction?.(`pin:${doc.id}`)}
         >
-          {doc.pinned ? "★" : "☆"}
+          {doc.pinPending ? "⋯" : doc.pinned ? "★" : "☆"}
         </Button>
         <Button
           variant="outline"

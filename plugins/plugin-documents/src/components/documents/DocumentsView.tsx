@@ -274,8 +274,15 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   const pinMutationTokens = useRef(new Map<string, number>());
   // Documents with a pin mutation currently inflight; toggles are serialized
   // per document so a rollback baseline is never another toggle's optimistic
-  // state.
+  // state. Mirrored into state so the snapshot can disable the row's pin
+  // control visibly instead of silently discarding clicks.
+  const [pinInflightSnapshot, setPinInflightSnapshot] = useState<
+    ReadonlySet<string>
+  >(new Set());
   const pinInflight = useRef(new Set<string>());
+  const syncPinInflight = useCallback(() => {
+    setPinInflightSnapshot(new Set(pinInflight.current));
+  }, []);
   const activeLoadRef = useRef<AbortController | null>(null);
   const activeSearchRef = useRef<AbortController | null>(null);
 
@@ -418,14 +425,17 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
     }
     return {
       state: "ready",
-      documents: documents.map(toCard),
+      documents: documents.map((document) => ({
+        ...toCard(document),
+        ...(pinInflightSnapshot.has(document.id) ? { pinPending: true } : {}),
+      })),
       documentCount,
       fragmentCount,
       query,
       search: searchSnapshot,
       pinError,
     };
-  }, [state, query, searchSnapshot, pinError]);
+  }, [state, query, searchSnapshot, pinError, pinInflightSnapshot]);
 
   const onAction = useCallback(
     (action: string) => {
@@ -474,6 +484,7 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
         const priorPinned = target?.pinned === true;
         const nextPinned = !priorPinned;
         pinInflight.current.add(documentId);
+        syncPinInflight();
         const token = (pinMutationTokens.current.get(documentId) ?? 0) + 1;
         pinMutationTokens.current.set(documentId, token);
         setPinError(undefined);
@@ -539,12 +550,13 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
           })
           .finally(() => {
             pinInflight.current.delete(documentId);
+            syncPinInflight();
             load({ silent: true });
           });
         return;
       }
     },
-    [load, updateSearch],
+    [load, updateSearch, syncPinInflight],
   );
 
   return <DocumentsSpatialView snapshot={snapshot} onAction={onAction} />;
