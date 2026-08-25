@@ -176,7 +176,7 @@ describe("/api/public/account-deletion", () => {
         { NODE_ENV: "test" },
       );
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({
+      expect((await response.json()) as unknown).toEqual({
         error: "Deletion admission credential is invalid or expired",
         code: "ADMISSION_CREDENTIAL_INVALID",
       });
@@ -213,7 +213,7 @@ describe("/api/public/account-deletion", () => {
     );
     expect(activated.status).toBe(200);
     expect(activateAccountDeletion).toHaveBeenCalledWith("r".repeat(43));
-    expect(await activated.json()).toEqual({
+    expect((await activated.json()) as unknown).toEqual({
       request: {
         requestId: "33333333-3333-4333-8333-333333333333",
         status: "reserved",
