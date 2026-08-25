@@ -1,6 +1,7 @@
 /** Proves the managed cutover fence and strict raw Redis routing reads. */
 
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   type ActivationRoutingSnapshotKeys,
   type AgentServerRoutingReader,
@@ -9,10 +10,11 @@ import {
 
 const MANAGED_AGENT_ID = "00000000-0000-4000-8000-0000000000a1";
 const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-0000000000b2";
+const OTHER_RUNTIME_AGENT_ID = "00000000-0000-4000-8000-0000000000b3";
 const GENERATION = "00000000-0000-4000-8000-0000000000c3";
 const PUBLICATION_ID = "00000000-0000-4000-8000-0000000000d4";
 const ENDPOINT_SHA256 =
-  "dc4ff1862679247432e0473d125e3425661f9c207708cf238ab127464aa1f994";
+  "a095f308eff0a6ed676682a9e493057a02686c3eb36e6eb6046efc5460e15362";
 const MANAGED_SERVER_NAME = `sandbox-${GENERATION}`;
 const MANAGED_REGISTRY_URL = "https://sandbox.internal:3000/";
 const LEGACY_SERVER_NAME = "shared-eliza";
@@ -55,6 +57,7 @@ const MANAGED_ENDPOINT = Object.freeze({
   generation: GENERATION,
   kind: "dedicated-sandbox",
   serverName: MANAGED_SERVER_NAME,
+  runtimeAgentId: RUNTIME_AGENT_ID,
   registryUrl: MANAGED_REGISTRY_URL,
   bridgeUrl: "http://100.64.0.3:3000",
   healthUrl: "http://100.64.0.3:3000/health",
@@ -312,6 +315,45 @@ describe("agent-server routing authority", () => {
     });
     expect(probe.valueCalls).toEqual([MANAGED_HEARTBEAT_KEY]);
     expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
+  });
+
+  test("rejects a content-addressed managed route for another runtime before heartbeat", async () => {
+    const endpoint = {
+      ...MANAGED_ENDPOINT,
+      runtimeAgentId: OTHER_RUNTIME_AGENT_ID,
+    };
+    const endpointSha256 = createHash("sha256")
+      .update(JSON.stringify(endpoint), "utf8")
+      .digest("hex");
+    const authority = JSON.stringify({
+      version: 1,
+      state: "active",
+      generation: GENERATION,
+      publicationId: PUBLICATION_ID,
+      endpointSha256,
+    });
+    const route = JSON.stringify({
+      version: 1,
+      kind: "dedicated-sandbox",
+      generation: GENERATION,
+      publicationId: PUBLICATION_ID,
+      endpointSha256,
+      endpoint,
+    });
+    const probe = reader([MARKER, authority, route]);
+    probe.values.set(MANAGED_HEARTBEAT_KEY, MANAGED_REGISTRY_URL);
+    probe.values.set(LEGACY_POINTER_KEY, LEGACY_SERVER_NAME);
+
+    await expect(resolve(probe)).resolves.toEqual({
+      kind: "routing_unavailable",
+      mode: "managed",
+      reason: "managed_endpoint_mismatch",
+      managedAgentId: MANAGED_AGENT_ID,
+      runtimeAgentId: RUNTIME_AGENT_ID,
+      serverName: MANAGED_SERVER_NAME,
+    });
+    expect(probe.valueCalls).toHaveLength(0);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS]);
   });
 
   test("managed ready without a heartbeat is unreachable and never falls back", async () => {

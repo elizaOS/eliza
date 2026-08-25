@@ -252,6 +252,8 @@ function managedReadyStatesEqual(
     left.route.endpointSha256 === right.route.endpointSha256 &&
     left.route.endpoint.generation === right.route.endpoint.generation &&
     left.route.endpoint.serverName === right.route.endpoint.serverName &&
+    left.route.endpoint.runtimeAgentId ===
+      right.route.endpoint.runtimeAgentId &&
     left.route.endpoint.registryUrl === right.route.endpoint.registryUrl &&
     left.route.endpoint.bridgeUrl === right.route.endpoint.bridgeUrl &&
     left.route.endpoint.healthUrl === right.route.endpoint.healthUrl
@@ -378,6 +380,15 @@ export async function resolveAgentServerRouting(
 
   switch (managed.status) {
     case "ready": {
+      if (managed.route.endpoint.runtimeAgentId !== runtimeAgentId) {
+        return Object.freeze({
+          ...identity,
+          kind: "routing_unavailable",
+          reason: "managed_endpoint_mismatch",
+          mode: "managed",
+          serverName: managed.route.endpoint.serverName,
+        });
+      }
       const candidate = await resolveHeartbeat(
         reader,
         identity,
