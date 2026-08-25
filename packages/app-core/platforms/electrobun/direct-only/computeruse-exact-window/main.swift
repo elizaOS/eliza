@@ -62,9 +62,13 @@ do {
               let screenPoint = request.screenPoint,
               let windowPoint = request.windowPoint,
               let expectedBounds = request.expectedWindowBounds,
+              let expectedElement = request.expectedElement,
               screenPoint.isFinite,
               windowPoint.isFinite,
-              expectedBounds.isFiniteAndPositive
+              expectedBounds.isFiniteAndPositive,
+              expectedElement.bounds.isFiniteAndPositive,
+              !expectedElement.locator.contains(where: { $0 < 0 }),
+              !expectedElement.role.isEmpty
         else {
             throw ExperimentalExactWindowError.refused("Dispatch target is incomplete")
         }
@@ -79,7 +83,8 @@ do {
                 windowId: windowId,
                 screenPoint: screenPoint.cgPoint,
                 windowPoint: windowPoint.cgPoint,
-                expectedBounds: expectedBounds.cgRect
+                expectedBounds: expectedBounds.cgRect,
+                expectedElement: expectedElement
             ),
             recipe: recipe
         )

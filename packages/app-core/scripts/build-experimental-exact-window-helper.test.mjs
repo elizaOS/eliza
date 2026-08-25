@@ -1,7 +1,12 @@
 /** Verifies the optional exact-window helper build plan refuses every non-direct target. */
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { resolveExperimentalHelperBuildPlan } from "./build-experimental-exact-window-helper.mjs";
 
 test("build plan is direct-macOS-only and names three isolated Swift sources", () => {
@@ -34,4 +39,33 @@ test("build plan refuses direct builds on other platforms", () => {
       }),
     /only be built on macOS/,
   );
+});
+
+test("native sequence refuses a same-bounds control replacement after focus before posting", {
+  skip: process.platform !== "darwin",
+}, () => {
+  const scriptDir = dirname(fileURLToPath(import.meta.url));
+  const sourceDir = resolve(
+    scriptDir,
+    "../platforms/electrobun/direct-only/computeruse-exact-window",
+  );
+  const temporary = mkdtempSync(join(tmpdir(), "eliza-exact-window-focus-"));
+  const executable = join(temporary, "focus-revalidation-fixture");
+  try {
+    execFileSync(
+      "xcrun",
+      [
+        "swiftc",
+        join(sourceDir, "ExperimentalExactWindowProtocol.swift"),
+        join(sourceDir, "FocusRevalidationFixture.swift"),
+        "-o",
+        executable,
+      ],
+      { stdio: "pipe" },
+    );
+    const output = execFileSync(executable, [], { encoding: "utf8" });
+    assert.equal(output.trim(), "focus-revalidation-refused-before-post");
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
 });

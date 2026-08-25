@@ -112,6 +112,16 @@ describe("macOS AX helper packaging", () => {
     expect(spi).toContain("target.windowPoint");
     expect(spi).toContain("target.expectedBounds");
     expect(spi).toContain("beginSyntheticTargetFocus(target: target)");
+    expect(spi).toContain("try self.validate(target)");
+    expect(spi).toContain(
+      "The approved accessibility element changed after focus",
+    );
+    expect(spi).toContain("AXUIElementCreateApplication(target.pid)");
+    expect(spi).toContain("let actions = actionNames(element)");
+    expect(spi).toContain("let enabled = boolAttribute(element");
+    expect(spi).toContain("let focused = boolAttribute(element");
+    expect(spi).not.toContain("default defaultValue");
+    expect(protocol).toContain("try revalidate()");
     expect(spi).not.toContain("CGEventPost");
     expect(spi).not.toContain(".post(tap:");
     expect(spi).not.toContain("NSRunningApplication.activate");

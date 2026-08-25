@@ -25,6 +25,36 @@ struct ExperimentalRect: Codable, Equatable {
     }
 }
 
+struct ExperimentalElementFingerprint: Decodable {
+    let locator: [Int]
+    let role: String
+    let subrole: String?
+    let label: String?
+    let value: String?
+    let elementDescription: String?
+    let bounds: ExperimentalRect
+    let actions: [String]
+    let enabled: Bool
+    let focused: Bool
+    let selected: Bool?
+    let secure: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case locator
+        case role
+        case subrole
+        case label
+        case value
+        case elementDescription = "description"
+        case bounds
+        case actions
+        case enabled
+        case focused
+        case selected
+        case secure
+    }
+}
+
 struct ExperimentalRequest: Decodable {
     let command: String
     let experimental: Bool?
@@ -36,6 +66,7 @@ struct ExperimentalRequest: Decodable {
     let windowPoint: ExperimentalPoint?
     let screenPoint: ExperimentalPoint?
     let expectedWindowBounds: ExperimentalRect?
+    let expectedElement: ExperimentalElementFingerprint?
     let direction: String?
     let amount: Int?
 }
@@ -121,4 +152,29 @@ func experimentalBoundsMatch(_ left: CGRect, _ right: CGRect, tolerance: CGFloat
         abs(left.origin.y - right.origin.y) <= tolerance &&
         abs(left.size.width - right.size.width) <= tolerance &&
         abs(left.size.height - right.size.height) <= tolerance
+}
+
+func experimentalDispatchSequence<FocusContext>(
+    recipe: [ExperimentalEventStep],
+    beginFocus: () throws -> FocusContext,
+    revalidate: () throws -> Void,
+    post: (ExperimentalEventStep) throws -> Void,
+    endFocus: (FocusContext) throws -> Void
+) throws {
+    let focusContext = try beginFocus()
+    do {
+        // Synthetic focus is an observable UI transition. The captured AX
+        // element must still be authoritative after it, before any event is
+        // posted, and again immediately before every subsequent event.
+        try revalidate()
+        for step in recipe {
+            try revalidate()
+            try post(step)
+        }
+        try endFocus(focusContext)
+    } catch {
+        // error-policy:J6 best-effort synthetic-focus teardown before rethrow.
+        try? endFocus(focusContext)
+        throw error
+    }
 }

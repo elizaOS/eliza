@@ -19,6 +19,7 @@ struct ExperimentalTarget {
     let screenPoint: CGPoint
     let windowPoint: CGPoint
     let expectedBounds: CGRect
+    let expectedElement: ExperimentalElementFingerprint
 }
 
 struct ExperimentalDispatchReceipt {
@@ -84,9 +85,11 @@ final class ExperimentalExactWindowSPI {
             throw ExperimentalExactWindowError.refused("Physical pointer provenance is unavailable")
         }
         let pointerBefore = pointerObservationBefore.location
-        let focusContext = try beginSyntheticTargetFocus(target: target)
-        do {
-            for step in recipe {
+        try experimentalDispatchSequence(
+            recipe: recipe,
+            beginFocus: { try self.beginSyntheticTargetFocus(target: target) },
+            revalidate: { try self.validate(target) },
+            post: { step in
                 let point = step.pointKind == .target
                     ? (target.screenPoint, target.windowPoint)
                     : (CGPoint(x: -1, y: -1), CGPoint(x: -1, y: -1))
@@ -94,13 +97,9 @@ final class ExperimentalExactWindowSPI {
                 try stamp(event: event, target: target, windowPoint: point.1, step: step)
                 try postToPid(event, pid: target.pid)
                 if step.delayMicroseconds > 0 { usleep(step.delayMicroseconds) }
-            }
-            try endSyntheticTargetFocus(focusContext)
-        } catch {
-            // error-policy:J6 best-effort synthetic-focus teardown before rethrow.
-            try? endSyntheticTargetFocus(focusContext)
-            throw error
-        }
+            },
+            endFocus: { try self.endSyntheticTargetFocus($0) }
+        )
         guard let pointerObservationAfter = CGEvent(source: nil) else {
             throw ExperimentalExactWindowError.refused("Physical pointer provenance is unavailable")
         }
@@ -153,6 +152,165 @@ final class ExperimentalExactWindowSPI {
                 "Exact PID/CGWindowID target is stale, off-screen, ambiguous, or moved"
             )
         }
+        try validateElement(target)
+    }
+
+    private func validateElement(_ target: ExperimentalTarget) throws {
+        guard AXIsProcessTrusted() else {
+            throw ExperimentalExactWindowError.refused(
+                "Accessibility trust is required for exact element revalidation"
+            )
+        }
+        let app = AXUIElementCreateApplication(target.pid)
+        guard let focusedWindowValue = copyAttribute(
+            app,
+            kAXFocusedWindowAttribute as CFString
+        ), CFGetTypeID(focusedWindowValue) == AXUIElementGetTypeID() else {
+            throw ExperimentalExactWindowError.refused(
+                "The target accessibility window is unavailable after focus"
+            )
+        }
+        let focusedWindow = focusedWindowValue as! AXUIElement
+        guard let focusedBounds = bounds(focusedWindow),
+              experimentalBoundsMatch(focusedBounds, target.expectedBounds, tolerance: 2)
+        else {
+            throw ExperimentalExactWindowError.refused(
+                "The target accessibility window changed after focus"
+            )
+        }
+        let element = try resolveElement(
+            root: focusedWindow,
+            locator: target.expectedElement.locator
+        )
+        guard matches(element: element, expected: target.expectedElement) else {
+            throw ExperimentalExactWindowError.refused(
+                "The approved accessibility element changed after focus; capture and approve again"
+            )
+        }
+    }
+
+    private func copyAttribute(_ element: AXUIElement, _ attribute: CFString) -> CFTypeRef? {
+        var value: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, attribute, &value) == .success ? value : nil
+    }
+
+    private func stringAttribute(_ element: AXUIElement, _ attribute: CFString) -> String? {
+        copyAttribute(element, attribute) as? String
+    }
+
+    private func boolAttribute(
+        _ element: AXUIElement,
+        _ attribute: CFString
+    ) -> Bool? {
+        (copyAttribute(element, attribute) as? NSNumber)?.boolValue
+    }
+
+    private func pointAttribute(_ element: AXUIElement, _ attribute: CFString) -> CGPoint? {
+        guard let raw = copyAttribute(element, attribute),
+              CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+        let value = raw as! AXValue
+        guard AXValueGetType(value) == .cgPoint else { return nil }
+        var point = CGPoint.zero
+        return AXValueGetValue(value, .cgPoint, &point) ? point : nil
+    }
+
+    private func sizeAttribute(_ element: AXUIElement, _ attribute: CFString) -> CGSize? {
+        guard let raw = copyAttribute(element, attribute),
+              CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+        let value = raw as! AXValue
+        guard AXValueGetType(value) == .cgSize else { return nil }
+        var size = CGSize.zero
+        return AXValueGetValue(value, .cgSize, &size) ? size : nil
+    }
+
+    private func bounds(_ element: AXUIElement) -> CGRect? {
+        guard let point = pointAttribute(element, kAXPositionAttribute as CFString),
+              let size = sizeAttribute(element, kAXSizeAttribute as CFString) else { return nil }
+        return CGRect(origin: point, size: size)
+    }
+
+    private func children(_ element: AXUIElement) -> [AXUIElement] {
+        (copyAttribute(element, kAXChildrenAttribute as CFString) as? [AXUIElement]) ?? []
+    }
+
+    private func resolveElement(root: AXUIElement, locator: [Int]) throws -> AXUIElement {
+        var element = root
+        for index in locator {
+            let available = children(element)
+            guard index >= 0, index < available.count else {
+                throw ExperimentalExactWindowError.refused(
+                    "The approved accessibility element locator is stale"
+                )
+            }
+            element = available[index]
+        }
+        return element
+    }
+
+    private func actionNames(_ element: AXUIElement) -> [String]? {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(element, &names) == .success else { return nil }
+        return names as? [String]
+    }
+
+    private func isSecure(role: String, subrole: String?, description: String?) -> Bool {
+        let haystack = [role, subrole ?? "", description ?? ""]
+            .joined(separator: " ")
+            .lowercased()
+        return haystack.contains("secure") || haystack.contains("password")
+    }
+
+    private func redactSensitive(_ value: String) -> String {
+        let patterns = [
+            #"(?i)\b(api[_-]?key|token|secret|password|authorization)\b\s*[:=]\s*\S+"#,
+            #"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"#,
+            #"://[^/@\s]+:[^/@\s]+@"#,
+        ]
+        var redacted = value
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(redacted.startIndex..<redacted.endIndex, in: redacted)
+            redacted = regex.stringByReplacingMatches(
+                in: redacted,
+                range: range,
+                withTemplate: "[redacted]"
+            )
+        }
+        return redacted
+    }
+
+    private func matches(
+        element: AXUIElement,
+        expected: ExperimentalElementFingerprint
+    ) -> Bool {
+        guard let role = stringAttribute(element, kAXRoleAttribute as CFString),
+              let actions = actionNames(element),
+              let enabled = boolAttribute(element, kAXEnabledAttribute as CFString),
+              let focused = boolAttribute(element, kAXFocusedAttribute as CFString)
+        else { return false }
+        let subrole = stringAttribute(element, kAXSubroleAttribute as CFString)
+        let title = stringAttribute(element, kAXTitleAttribute as CFString)
+        let rawLabel = title ?? stringAttribute(element, kAXLabelValueAttribute as CFString)
+        let rawDescription = stringAttribute(element, kAXDescriptionAttribute as CFString)
+        let secure = isSecure(role: role, subrole: subrole, description: rawDescription)
+        let label = rawLabel.map(redactSensitive)
+        let description = rawDescription.map(redactSensitive)
+        let value = secure
+            ? nil
+            : stringAttribute(element, kAXValueAttribute as CFString).map(redactSensitive)
+        let selected = (copyAttribute(element, kAXSelectedAttribute as CFString) as? NSNumber)?.boolValue
+        guard let actualBounds = bounds(element) else { return false }
+        return role == expected.role &&
+            subrole == expected.subrole &&
+            label == expected.label &&
+            value == expected.value &&
+            description == expected.elementDescription &&
+            experimentalBoundsMatch(actualBounds, expected.bounds.cgRect, tolerance: 2) &&
+            actions.sorted() == expected.actions.sorted() &&
+            enabled == expected.enabled &&
+            focused == expected.focused &&
+            selected == expected.selected &&
+            secure == expected.secure
     }
 
     private func makeEvent(

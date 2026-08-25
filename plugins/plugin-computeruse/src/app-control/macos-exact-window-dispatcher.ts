@@ -66,7 +66,9 @@ function isFiniteBounds(value: unknown): boolean {
   );
 }
 
-function isDispatchResult(value: unknown): value is AppExactWindowDispatchResult {
+function isDispatchResult(
+  value: unknown,
+): value is AppExactWindowDispatchResult {
   return (
     isRecord(value) &&
     typeof value.success === "boolean" &&
@@ -151,7 +153,9 @@ async function invokeHelper<T>(
       outputBytes += chunk.length;
       if (outputBytes > MAX_OUTPUT_BYTES) {
         child.kill("SIGKILL");
-        finish(new Error("Experimental exact-window helper output exceeded 1 MiB"));
+        finish(
+          new Error("Experimental exact-window helper output exceeded 1 MiB"),
+        );
         return;
       }
       stdout.push(chunk);
@@ -160,7 +164,9 @@ async function invokeHelper<T>(
       outputBytes += chunk.length;
       if (outputBytes > MAX_OUTPUT_BYTES) {
         child.kill("SIGKILL");
-        finish(new Error("Experimental exact-window helper output exceeded 1 MiB"));
+        finish(
+          new Error("Experimental exact-window helper output exceeded 1 MiB"),
+        );
         return;
       }
       stderr.push(chunk);
@@ -268,6 +274,20 @@ export class MacosExperimentalExactWindowDispatcher
           y: screenPoint.y - windowBounds.y,
         },
         expectedWindowBounds: windowBounds,
+        expectedElement: {
+          locator: [...input.element.locator],
+          role: input.element.role,
+          subrole: input.element.subrole ?? null,
+          label: input.element.label ?? null,
+          value: input.element.value ?? null,
+          description: input.element.description ?? null,
+          bounds: targetBounds,
+          actions: [...input.element.actions],
+          enabled: input.element.enabled,
+          focused: input.element.focused,
+          selected: input.element.selected ?? null,
+          secure: input.element.secure,
+        },
         direction: input.request.direction,
         amount: input.request.amount,
       },
