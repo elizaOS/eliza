@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 /**
  * LLM classification of inbound cross-channel messages for the triage queue.
  *
@@ -43,7 +55,8 @@ function formatPromptScalar(value: unknown, maxLength = 600): string {
   if (value === null || value === undefined) {
     return "";
   }
-  return String(value).replace(/\s+/g, " ").trim().slice(0, maxLength);
+  const clean = String(value).replace(/\s+/g, " ").trim();
+  return truncateUtf16Safe(clean, maxLength);
 }
 
 /**

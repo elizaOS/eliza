@@ -87,3 +87,34 @@ describe("inbox triage — OptimizedPromptService routing", () => {
     expect(prompt).toContain("Sam Rivera");
   });
 });
+
+describe("buildTriagePrompt UTF-16 surrogate safety", () => {
+  it("preserves UTF-16 surrogate pairs in message scalars", () => {
+    // 499 ASCII chars + "🔥" (2 code units) = 501 chars.
+    // Truncating limit for text is 500. Index 500 lands on high surrogate of "🔥".
+    // Surrogate safe back-off ensures we take index 499, keeping emoji intact.
+    const longText = "a".repeat(499) + "🔥";
+    const prompt = buildTriagePrompt(
+      [
+        {
+          id: "msg-emoji",
+          source: "gmail",
+          senderName: "Alice",
+          channelName: "Inbox",
+          channelType: "dm",
+          text: longText,
+        },
+      ],
+      {},
+    );
+    expect(prompt).toContain("a".repeat(499));
+    for (const char of prompt) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
