@@ -357,4 +357,26 @@ describe("PriorityQueue", () => {
 		expect(first.stats().normal).toBe(1);
 		expect(second.stats().normal).toBe(1);
 	});
+
+	it("warns when onPressure returns true without freeing space", () => {
+		const onOverflow = vi.fn();
+		const queue = makeQueue({
+			maxSize: 2,
+			onPressure: () => true,
+			onOverflowWarning: onOverflow,
+		});
+		queue.enqueue(item("a", "normal"));
+		queue.enqueue(item("b", "normal"));
+		expect(queue.size).toBe(2);
+		queue.enqueue(item("c", "normal"));
+		expect(queue.size).toBe(3);
+		expect(onOverflow).toHaveBeenCalledWith(3, 2);
+	});
+
+	it("rejects when onPressure returns false", () => {
+		const queue = makeQueue({ maxSize: 1, onPressure: () => false });
+		queue.enqueue(item("a", "normal"));
+		expect(queue.enqueue(item("b", "normal"))).toBe(false);
+		expect(queue.size).toBe(1);
+	});
 });

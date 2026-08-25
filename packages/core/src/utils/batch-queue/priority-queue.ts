@@ -64,6 +64,9 @@ export class PriorityQueue<T> {
 				if (!this.onPressure(this, item)) {
 					return false;
 				}
+				if (this.size >= max) {
+					this.onOverflowWarning?.(this.size + 1, max);
+				}
 			} else {
 				this.onOverflowWarning?.(this.size + 1, max);
 			}
