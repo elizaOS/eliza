@@ -90,6 +90,13 @@ describe("Notes boundary validation", () => {
       expect(parseStickyColor("slate")).toBe("slate");
     });
 
+    it("accepts case-insensitive and padded colors", () => {
+      expect(parseStickyColor("Yellow")).toBe("yellow");
+      expect(parseStickyColor(" GREEN ")).toBe("green");
+      expect(parseStickyColor("  rose ")).toBe("rose");
+      expect(parseStickyColor("SLATE")).toBe("slate");
+    });
+
     it("rejects unknown colors", () => {
       expect(() => parseStickyColor("blue")).toThrow();
       expect(() => parseStickyColor(123)).toThrow();

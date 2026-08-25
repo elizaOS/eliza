@@ -137,13 +137,16 @@ export function parseEntityId(value: unknown, field = "id"): string {
 }
 
 export function parseStickyColor(value: unknown, field = "color"): StickyColor {
-  if (
-    value === "yellow" ||
-    value === "green" ||
-    value === "rose" ||
-    value === "slate"
-  ) {
-    return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (
+      normalized === "yellow" ||
+      normalized === "green" ||
+      normalized === "rose" ||
+      normalized === "slate"
+    ) {
+      return normalized as StickyColor;
+    }
   }
   throw validationError(
     `${field} must be yellow, green, rose, or slate.`,
