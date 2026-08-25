@@ -123,7 +123,7 @@ function validSoakEvidence(commit: string, corpusManifestSha256: string) {
     families: families.map((family, index) => {
       const operations = index < 4 ? 16_667 : 16_666;
       const realization = {
-        file: ["filesystem", "native-bytes"],
+        file: ["filesystem", "typed-rejection"],
         document: ["document-store", "typed-rejection"],
         memory: ["memory-store", "typed-rejection"],
         email: ["message-store", "typed-rejection"],
@@ -198,7 +198,7 @@ function validPostgresEvidence(
   corpusManifestSha256: string,
 ) {
   const mappings = [
-    ["file", "filesystem", "READ.byteWindow", "native-bytes", false],
+    ["file", "filesystem", "READ.byteWindow", "typed-rejection", false],
     [
       "document",
       "document-store",

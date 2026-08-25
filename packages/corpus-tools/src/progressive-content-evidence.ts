@@ -506,7 +506,7 @@ function soakFamilyFailures(soak: Record<string, unknown>): string[] {
   let operations = 0;
   const operationCounts: number[] = [];
   const realizations: Record<string, readonly [string, string]> = {
-    file: ["filesystem", "native-bytes"],
+    file: ["filesystem", "typed-rejection"],
     document: ["document-store", "typed-rejection"],
     memory: ["memory-store", "typed-rejection"],
     email: ["message-store", "typed-rejection"],

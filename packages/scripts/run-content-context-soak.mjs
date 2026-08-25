@@ -67,7 +67,7 @@ export function validateSoakFactoryModule(value) {
   const families = new Set();
   const adapterIds = new Set();
   const realizations = {
-    file: ["filesystem", "native-bytes"],
+    file: ["filesystem", "typed-rejection"],
     document: ["document-store", "typed-rejection"],
     memory: ["memory-store", "typed-rejection"],
     email: ["message-store", "typed-rejection"],
