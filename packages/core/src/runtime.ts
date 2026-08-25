@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = maxLength;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 /**
  * The `AgentRuntime` — the central orchestrator every Eliza agent runs on, and
  * the concrete `implements IAgentRuntime`. One instance owns a single agent's
@@ -9227,7 +9239,7 @@ ${section_end}`;
 						const validatedParts: string[] = [];
 						for (const [field, content] of validatedContent) {
 							const truncated =
-								content.length > 500 ? `${content.slice(0, 497)}...` : content;
+								content.length > 500 ? `${truncateUtf16Safe(content, 497)}...` : content;
 							validatedParts.push(
 								stringifyStructuredForPrompt({ [field]: truncated }),
 							);
@@ -9257,8 +9269,8 @@ ${section_end}`;
 								? [parseErrorMessage]
 								: [];
 					if (repairIssues.length > 0) {
-						const priorOutput = this.redactSecrets(cleanResponse).slice(
-							0,
+						const priorOutput = truncateUtf16Safe(
+							this.redactSecrets(cleanResponse),
 							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
 						);
 						const issueList = repairIssues

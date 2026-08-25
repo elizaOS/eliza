@@ -383,4 +383,23 @@ describe("callModelWithValidation — VALIDATION_LEVEL ceiling", () => {
 
 		expect(useModel).toHaveBeenCalledTimes(1);
 	});
+
+	it("preserves UTF-16 surrogate pairs in retry and repair output previews", async () => {
+		// "🔥" is 2 code units. 300 repeats = 600 units > STRUCTURED_FAILURE_PREVIEW_LIMIT (500)
+		// Odd prefix "a" + 300 emojis ensures index 500 lands inside a surrogate pair
+		const longEmoji = "a" + "🔥".repeat(300);
+		const invalidResponse = JSON.stringify({ action: "INVALID", text: longEmoji });
+		const { runtime, useModel } = makeRuntime({
+			responses: [invalidResponse, VALID_RESPONSE],
+		});
+
+		const result = await callModelWithValidation(runtime, {
+			modelType: ModelType.ACTION_PLANNER,
+			params: { prompt: "test" },
+			schema: PLAN_ACTION_SCHEMA,
+		});
+
+		expect(result.attempts).toBe(2);
+		expect(useModel).toHaveBeenCalledTimes(2);
+	});
 });
