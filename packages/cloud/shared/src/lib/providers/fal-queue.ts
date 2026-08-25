@@ -153,7 +153,9 @@ export async function runFalQueueJob(
 export function falQueueOptionsFromApiKeys(
   apiKeys: Record<string, string | undefined>,
 ): FalQueueOptions {
-  const apiKey = apiKeys.FAL_KEY ?? apiKeys.FAL_API_KEY;
+  // FAL_API_KEY is the canonical deployment secret; retain FAL_KEY only as a
+  // backwards-compatible fallback for older local environments.
+  const apiKey = apiKeys.FAL_API_KEY ?? apiKeys.FAL_KEY;
   if (!apiKey) {
     throw new Error("fal is not configured: missing FAL_KEY / FAL_API_KEY");
   }
