@@ -194,4 +194,25 @@ describe("XDmAdapter", () => {
 
     expect(sendDirectMessageForAccount).not.toHaveBeenCalled();
   });
+
+  it("preserves UTF-16 surrogate pairs during createDraft preview truncation", async () => {
+    const adapter = new XDmAdapter();
+    const runtime = runtimeWithXService({ sendDirectMessageForAccount: vi.fn() });
+    // 196 ASCII chars + "🔥" (2 code units) = 198 chars.
+    // Truncating limit is 197. Index 197 lands inside "🔥".
+    // Surrogate safe back-off ensures we take index 196, avoiding splitting the emoji.
+    const longBody = "a".repeat(196) + "🔥".repeat(10);
+    const draft = await adapter.createDraft(runtime, {
+      to: [{ identifier: "alice" }],
+      body: longBody,
+    });
+    expect(draft.preview).toBe(`${"a".repeat(196)}...`);
+    for (const char of draft.preview) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });
