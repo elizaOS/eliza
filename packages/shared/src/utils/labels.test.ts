@@ -32,6 +32,10 @@ describe("autoLabel", () => {
   it("handles lowercase and mixed-case keys and plugin ids", () => {
     expect(autoLabel("plugin_api_key", "plugin")).toBe("API Key");
     expect(autoLabel("plugin_rpc_url", "plugin")).toBe("RPC URL");
+    expect(autoLabel("plugin_db_uri", "plugin")).toBe("DB URI");
+    expect(autoLabel("plugin_sql_host", "plugin")).toBe("SQL Host");
+    expect(autoLabel("plugin_ai_model", "plugin")).toBe("AI Model");
+    expect(autoLabel("plugin_cli_path", "plugin")).toBe("CLI Path");
     expect(autoLabel("custom_client_secret", "custom")).toBe("Client Secret");
   });
 });
