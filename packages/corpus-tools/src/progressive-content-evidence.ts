@@ -47,6 +47,23 @@ export const CONTENT_CONTEXT_REQUIRED_FAULTS = [
   "concurrent-cleanup",
 ] as const;
 
+export const CONTENT_CONTEXT_PERFORMANCE_POLICY = {
+  conformance: {
+    maxPageLatencyMs: 5_000,
+    maxRssGrowthBytes: 128 * 1024 * 1024,
+    maxReadAmplification: 2,
+    maxReadCallsPerPage: 2,
+    maxRowsPerPage: 8,
+  },
+  benchmark: {
+    maxPageLatencyMs: 5_000,
+    maxRssGrowthBytes: 128 * 1024 * 1024,
+    maxReadAmplification: 2,
+    maxDatabaseGrowthRatio: 2,
+  },
+  soak: { sampleEveryOperations: 1_000 },
+} as const;
+
 export type ContentContextRequiredArtifact =
   (typeof CONTENT_CONTEXT_REQUIRED_ARTIFACTS)[number];
 
@@ -176,6 +193,10 @@ function p95(values: readonly number[]): number {
   );
 }
 
+function finiteNonNegative(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 function seriesDetectsLeak(
   samples: readonly Record<string, number>[],
   minimumMemoryAllowanceBytes = 16 * 1024 * 1024,
@@ -206,7 +227,8 @@ function seriesDetectsLeak(
 function soakResourceFailures(soak: Record<string, unknown>): string[] {
   const failures: string[] = [];
   if (
-    soak.sampleEveryOperations !== 1_000 ||
+    soak.sampleEveryOperations !==
+      CONTENT_CONTEXT_PERFORMANCE_POLICY.soak.sampleEveryOperations ||
     typeof soak.warmupOperations !== "number" ||
     !Number.isSafeInteger(soak.warmupOperations) ||
     soak.warmupOperations < 0 ||
@@ -232,6 +254,12 @@ function soakResourceFailures(soak: Record<string, unknown>): string[] {
       };
     },
   );
+  const expectedWarmup = Math.min(
+    10_000,
+    Math.floor((soak.operations as number) / 10),
+  );
+  if (soak.warmupOperations !== expectedWarmup)
+    failures.push("soak warmup differs from validator policy");
   if (
     points.length !==
       Math.ceil(
@@ -250,7 +278,7 @@ function soakResourceFailures(soak: Record<string, unknown>): string[] {
   )
     failures.push("soak resource samples are sparse, incomplete, or unordered");
   const postWarmup = points
-    .filter(({ operation }) => operation >= (soak.warmupOperations as number))
+    .filter(({ operation }) => operation >= expectedWarmup)
     .map(({ sample }) => sample);
   if (seriesDetectsLeak(postWarmup))
     failures.push(
@@ -520,17 +548,38 @@ function semanticFailures(
       failures.push("conformance report lacks a required proof");
     const performance = record(report.performance, "conformance performance");
     const ceilings = record(performance.ceilings, "conformance ceilings");
-    for (const [actual, maximum] of [
-      [performance.maxPageLatencyMs, ceilings.maxPageLatencyMs],
-      [performance.rssGrowthBytes, ceilings.maxRssGrowthBytes],
-      [performance.readAmplification, ceilings.maxReadAmplification],
-      [performance.readCallsPerPageMax, ceilings.maxReadCallsPerPage],
-      [performance.rowsPerPageMax, ceilings.maxRowsPerPage],
-    ]) {
+    for (const [actualField, ceilingField, maximum] of [
+      [
+        "maxPageLatencyMs",
+        "maxPageLatencyMs",
+        CONTENT_CONTEXT_PERFORMANCE_POLICY.conformance.maxPageLatencyMs,
+      ],
+      [
+        "rssGrowthBytes",
+        "maxRssGrowthBytes",
+        CONTENT_CONTEXT_PERFORMANCE_POLICY.conformance.maxRssGrowthBytes,
+      ],
+      [
+        "readAmplification",
+        "maxReadAmplification",
+        CONTENT_CONTEXT_PERFORMANCE_POLICY.conformance.maxReadAmplification,
+      ],
+      [
+        "readCallsPerPageMax",
+        "maxReadCallsPerPage",
+        CONTENT_CONTEXT_PERFORMANCE_POLICY.conformance.maxReadCallsPerPage,
+      ],
+      [
+        "rowsPerPageMax",
+        "maxRowsPerPage",
+        CONTENT_CONTEXT_PERFORMANCE_POLICY.conformance.maxRowsPerPage,
+      ],
+    ] as const) {
+      const actual = performance[actualField];
       if (
-        typeof actual !== "number" ||
-        typeof maximum !== "number" ||
-        actual > maximum
+        !finiteNonNegative(actual) ||
+        actual > maximum ||
+        ceilings[ceilingField] !== maximum
       )
         failures.push("conformance performance exceeded a ceiling");
     }
@@ -631,16 +680,31 @@ function semanticFailures(
   for (const entry of benchmarkCases) {
     const observed = record(entry.observed, "benchmark observed");
     const ceilings = record(entry.ceilings, "benchmark ceilings");
-    for (const metric of [
-      "maxPageLatencyMs",
-      "rssGrowthBytes",
-      "databaseGrowthBytes",
-      "readAmplification",
-    ]) {
+    const sourceBytes = entry.sourceBytes;
+    if (
+      typeof sourceBytes !== "number" ||
+      !Number.isSafeInteger(sourceBytes) ||
+      sourceBytes <= 0
+    ) {
+      failures.push("benchmark source size is invalid");
+      continue;
+    }
+    const policy = {
+      maxPageLatencyMs:
+        CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs,
+      rssGrowthBytes:
+        CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes,
+      databaseGrowthBytes:
+        sourceBytes *
+        CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxDatabaseGrowthRatio,
+      readAmplification:
+        CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxReadAmplification,
+    };
+    for (const [metric, maximum] of Object.entries(policy)) {
       if (
-        typeof observed[metric] !== "number" ||
-        typeof ceilings[metric] !== "number" ||
-        observed[metric] > ceilings[metric]
+        !finiteNonNegative(observed[metric]) ||
+        observed[metric] > maximum ||
+        ceilings[metric] !== maximum
       )
         failures.push(`benchmark ${metric} exceeded ceiling`);
     }
@@ -806,6 +870,7 @@ function semanticFailures(
     failures.push("stress evidence lacks required concurrency levels");
 
   const soak = json(bytes["soak.json"], "soak report");
+  const soakFailures = soakResourceFailures(soak);
   if (
     soak.schemaVersion !== "elizaos.progressive-content.mixed-soak.v1" ||
     soak.status !== "passed" ||
@@ -823,12 +888,13 @@ function semanticFailures(
     soak.requiredOperations !== 100_000 ||
     soak.positiveLeakControlDetected !== true ||
     soak.positiveLeakControlKind !== "retained-array-buffer" ||
-    soakResourceFailures(soak).length > 0 ||
+    soakFailures.length > 0 ||
     soakFamilyFailures(soak).length > 0
   )
     failures.push(
       "soak evidence lacks production duration, exact family operations, or leak control",
     );
+  failures.push(...soakFailures);
 
   try {
     validateProgressiveContentPostgresEvidence(

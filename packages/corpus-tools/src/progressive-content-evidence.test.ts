@@ -8,6 +8,7 @@ import {
 } from "../../core/src/testing/progressive-content-mutants.ts";
 import {
   buildContentContextResult,
+  CONTENT_CONTEXT_PERFORMANCE_POLICY,
   CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
   CONTENT_CONTEXT_RESULT_SCHEMA_VERSION,
   type ContentContextRequiredArtifact,
@@ -387,11 +388,7 @@ function evidence() {
           readCallsPerPageMax: 1,
           rowsPerPageMax: 1,
           ceilings: {
-            maxPageLatencyMs: 100,
-            maxRssGrowthBytes: 1024 * 1024,
-            maxReadAmplification: 2,
-            maxReadCallsPerPage: 2,
-            maxRowsPerPage: 8,
+            ...CONTENT_CONTEXT_PERFORMANCE_POLICY.conformance,
           },
         },
       })),
@@ -434,10 +431,13 @@ function evidence() {
           readAmplification: 1,
         },
         ceilings: {
-          maxPageLatencyMs: 100,
-          rssGrowthBytes: 1024 * 1024,
+          maxPageLatencyMs:
+            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs,
+          rssGrowthBytes:
+            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes,
           databaseGrowthBytes: sourceBytes * 2,
-          readAmplification: 2,
+          readAmplification:
+            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxReadAmplification,
         },
       })),
     },
@@ -699,6 +699,57 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(/mutant report does not prove executable kills/u);
+  });
+
+  it("rejects conformance that raises its own performance ceiling", () => {
+    const original = evidence();
+    const report = JSON.parse(
+      new TextDecoder().decode(original.bytes["conformance.json"]),
+    ) as {
+      reports: Array<{
+        performance: {
+          maxPageLatencyMs: number;
+          ceilings: { maxPageLatencyMs: number };
+        };
+      }>;
+    };
+    const first = report.reports[0];
+    if (!first) throw new Error("conformance fixture is empty");
+    first.performance.maxPageLatencyMs = 5_001;
+    first.performance.ceilings.maxPageLatencyMs = 10_000;
+    const changed = replaceArtifact(original, "conformance.json", report);
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/conformance performance exceeded a ceiling/u);
+  });
+
+  it("rejects benchmark and soak policy selected by the producer", () => {
+    const original = evidence();
+    const benchmark = JSON.parse(
+      new TextDecoder().decode(original.bytes["benchmark.json"]),
+    ) as {
+      cases: Array<{
+        observed: { maxPageLatencyMs: number };
+        ceilings: { maxPageLatencyMs: number };
+      }>;
+    };
+    const first = benchmark.cases[0];
+    if (!first) throw new Error("benchmark fixture is empty");
+    first.observed.maxPageLatencyMs = 5_001;
+    first.ceilings.maxPageLatencyMs = 10_000;
+    const raised = replaceArtifact(original, "benchmark.json", benchmark);
+    expect(() =>
+      validateContentContextResult(raised.result, raised.bytes),
+    ).toThrow(/benchmark maxPageLatencyMs exceeded ceiling/u);
+
+    const soak = JSON.parse(
+      new TextDecoder().decode(original.bytes["soak.json"]),
+    ) as { warmupOperations: number };
+    soak.warmupOperations = 99_000;
+    const hidden = replaceArtifact(original, "soak.json", soak);
+    expect(() =>
+      validateContentContextResult(hidden.result, hidden.bytes),
+    ).toThrow(/soak warmup differs from validator policy/u);
   });
 
   it.each([
