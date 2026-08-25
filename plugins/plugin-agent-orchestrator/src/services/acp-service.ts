@@ -50,7 +50,11 @@ import {
   isAndroidMobile,
   isCodingAgentBackend,
 } from "@elizaos/shared";
-import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  applyHostToolchainExecutionBaseline,
+  getHostExecutionBaseline,
+  HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
+} from "@elizaos/shared/host-execution-env";
 import { NativeAcpClient, splitCommandLine } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
@@ -3529,7 +3533,9 @@ export class AcpService extends Service {
           opts.session,
         );
         builtEnv.PATH = trustedExecutionPath;
-        delete builtEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
+        for (const key of HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS) {
+          delete builtEnv[key];
+        }
         this.configureNativeClientForSession(warm.client, opts.session, {
           env: builtEnv,
           timeoutMs: opts.timeoutMs,
@@ -3542,7 +3548,9 @@ export class AcpService extends Service {
         // PATH is separate claim authority: the child never accepts an
         // arbitrary environment entry as executable-search authority.
         delete claimEnv.PATH;
-        delete claimEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
+        for (const key of HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS) {
+          delete claimEnv[key];
+        }
         const nativeSession = await warm.client.createSession(
           opts.session.workdir,
           {
@@ -5069,7 +5077,7 @@ export class AcpService extends Service {
     // forwardableSubAgentEnv / canonicalForwardedEnvKey — Bun on Windows reports
     // OS vars like `Path` with native casing, which a child must not inherit
     // alongside an uppercase duplicate).
-    const env: NodeJS.ProcessEnv = forwardableSubAgentEnv(process.env);
+    let env: NodeJS.ProcessEnv = forwardableSubAgentEnv(process.env);
     // #14118: the raw owner cloud key is broker-gated by default. When an
     // operator opts INTO forwarding it and a key actually landed in the child
     // env, surface it — an autonomous child now holds the owner's Cloud bearer,
@@ -5113,6 +5121,10 @@ export class AcpService extends Service {
       }
       env[canonicalForwardedEnvKey(key)] = value;
     }
+    // Runtime/caller inputs may name Go's cache variables or the internal
+    // cross-module mirrors. Rebuild those values only from the boot-captured
+    // authority, while preserving the separately validated session PATH.
+    env = applyHostToolchainExecutionBaseline(env);
     if (model) {
       const normalizedModel =
         agentType === "claude" ? normalizeClaudeAcpModelId(model) : model;
