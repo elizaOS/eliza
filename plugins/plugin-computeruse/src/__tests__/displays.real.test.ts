@@ -142,6 +142,7 @@ describe("displays — Hyprland parser", () => {
         scaleFactor: 1.5,
         primary: true,
         name: "eDP-1",
+        waylandOutput: true,
       },
     ]);
   });

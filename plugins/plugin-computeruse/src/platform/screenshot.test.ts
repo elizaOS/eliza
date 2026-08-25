@@ -4,6 +4,8 @@
  * at the native CLI boundary; real compositor acceptance remains device-backed.
  */
 import { describe, expect, it } from "vitest";
+import { authoritativeWaylandOutputName } from "./capture.js";
+import type { DisplayInfo } from "./displays.js";
 import { waylandGrimArgs } from "./wayland-grim.js";
 
 describe("Wayland grim capture arguments", () => {
@@ -34,5 +36,28 @@ describe("Wayland grim capture arguments", () => {
       "DP-1",
       "/tmp/output.png",
     ]);
+  });
+
+  it("does not infer native output provenance from an XWayland name", () => {
+    const xwaylandDisplay: DisplayInfo = {
+      id: 0,
+      bounds: [0, 0, 1920, 1080],
+      scaleFactor: 1,
+      primary: true,
+      name: "XWAYLAND0",
+    };
+    expect(authoritativeWaylandOutputName(xwaylandDisplay)).toBeUndefined();
+  });
+
+  it("accepts only compositor-proven output names for scoped capture", () => {
+    const compositorDisplay: DisplayInfo = {
+      id: 0,
+      bounds: [0, 0, 1920, 1080],
+      scaleFactor: 1,
+      primary: true,
+      name: "DP-1",
+      waylandOutput: true,
+    };
+    expect(authoritativeWaylandOutputName(compositorDisplay)).toBe("DP-1");
   });
 });
