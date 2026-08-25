@@ -72,6 +72,51 @@ describe("loadChatSidebarVisibility + saveChatSidebarVisibility", () => {
     );
     expect(loadChatSidebarVisibility()).toEqual({ overrides: { x: true } });
   });
+
+  it("drops __proto__ / constructor / prototype keys and does not pollute Object.prototype", () => {
+    localStorage.setItem(
+      "eliza:chat-sidebar:visibility",
+      JSON.stringify({
+        __proto__: true,
+        constructor: true,
+        prototype: true,
+        "p/w": false,
+        x: true,
+      }),
+    );
+    expect(loadChatSidebarVisibility()).toEqual({
+      overrides: { "p/w": false, x: true },
+    });
+    // prototype must not be polluted
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    // @ts-expect-error - check prototype pollution via object literal
+    const polluted = JSON.parse('{"__proto__": {"polluted": true}}');
+    localStorage.setItem(
+      "eliza:chat-sidebar:visibility",
+      JSON.stringify({ ...polluted, y: true }),
+    );
+    loadChatSidebarVisibility();
+    expect(
+      (Object.prototype as Record<string, unknown>)["polluted"],
+    ).toBeUndefined();
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+  });
+
+  it("sanitizes overrides on save and does not persist prototype keys", () => {
+    saveChatSidebarVisibility({
+      overrides: {
+        "p/w": true,
+        __proto__: true as unknown as boolean,
+        constructor: true as unknown as boolean,
+        prototype: true as unknown as boolean,
+      },
+    });
+    expect(loadChatSidebarVisibility()).toEqual({ overrides: { "p/w": true } });
+    const raw = localStorage.getItem("eliza:chat-sidebar:visibility");
+    expect(raw).not.toContain("__proto__");
+    expect(raw).not.toContain("constructor");
+    expect(raw).not.toContain("prototype");
+  });
 });
 
 describe("loadWidgetVisibility + saveWidgetVisibility", () => {

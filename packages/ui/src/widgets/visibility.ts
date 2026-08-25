@@ -65,6 +65,8 @@ function sanitizeOverrides(value: unknown): Record<string, boolean> {
   const next: Record<string, boolean> = {};
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
     if (typeof key !== "string" || key.length === 0) continue;
+    if (key === "__proto__" || key === "constructor" || key === "prototype")
+      continue;
     if (typeof raw === "boolean") next[key] = raw;
   }
   return next;
