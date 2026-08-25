@@ -13,6 +13,7 @@ import channelPluginMap from "./channel-plugin-map.json" with { type: "json" };
 import truthInventory from "./connector-truth-inventory.json" with {
   type: "json",
 };
+import { generateFirstPartyRegistry } from "./generate";
 import generatedRegistry from "./generated.json" with { type: "json" };
 import { connectorEntrySchema, pluginEntrySchema } from "./schema";
 
@@ -199,6 +200,20 @@ describe("bundled channel-claim truth (#24373)", () => {
 
 describe("connector truth inventory (#24373)", () => {
   type InventoryRow = (typeof truthInventory.connectors)[number];
+
+  it("commits exactly the artifacts the generator emits (drift gate)", () => {
+    // In-process equivalent of `generate:first-party:check` — the committed
+    // generated.json, channel map, and truth inventory must equal a fresh
+    // regeneration, so the ratchets above can never silently diverge from
+    // the registration sources the generator scans.
+    const next = generateFirstPartyRegistry();
+    const expectedGenerated = JSON.parse(next.full);
+    expect(generatedRegistry).toEqual(expectedGenerated);
+    const expectedChannels = JSON.parse(next.channels);
+    expect(channelPluginMap).toEqual(expectedChannels);
+    const expectedInventory = JSON.parse(next.inventory);
+    expect(truthInventory).toEqual(expectedInventory);
+  });
 
   it("covers exactly the bundled channel-claiming entries", () => {
     const claiming = generatedRegistry.entries.filter(
