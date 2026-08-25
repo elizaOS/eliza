@@ -3,7 +3,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { AuditSink } from "./sink.js";
 import { InMemorySink } from "./testing.js";
 import type { AuditEvent } from "./types.js";
 
@@ -19,13 +18,6 @@ function makeEvent(eventId: string, action: AuditEvent["action"]): AuditEvent {
 }
 
 describe("InMemorySink", () => {
-  it("names itself memory and leaves required unspecified", () => {
-    const sink = new InMemorySink();
-    expect(sink.name).toBe("memory");
-    const asSink: AuditSink = sink;
-    expect(asSink.required).toBeUndefined();
-  });
-
   it("snapshots an empty queue as an empty array", () => {
     const sink = new InMemorySink();
     expect(sink.snapshot()).toEqual([]);

@@ -157,7 +157,7 @@ function DesktopTargetPanel({
           {!target.enrolled ? (
             <Button
               type="button"
-              className="min-h-11"
+              size="touch"
               disabled={busy || !onEnroll}
               onClick={() => void onEnroll?.(managedNetwork)}
             >
@@ -168,7 +168,7 @@ function DesktopTargetPanel({
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-11"
+                size="touch"
                 disabled={busy || !onSetRunning}
                 onClick={() => void onSetRunning?.(!target.running)}
               >
@@ -177,8 +177,8 @@ function DesktopTargetPanel({
               {!confirmingRevoke ? (
                 <Button
                   type="button"
-                  variant="ghost"
-                  className="min-h-11 text-txt-strong"
+                  variant="destructive"
+                  size="touch"
                   disabled={busy || !onRevoke}
                   onClick={() => setConfirmingRevoke(true)}
                 >
@@ -222,15 +222,15 @@ function DesktopTargetPanel({
             <Button
               type="button"
               variant="ghost"
-              className="min-h-11"
+              size="touch"
               onClick={() => setConfirmingRevoke(false)}
             >
               Cancel
             </Button>
             <Button
               type="button"
-              variant="default"
-              className="min-h-11"
+              variant="destructive"
+              size="touch"
               disabled={busy || !onRevoke}
               onClick={() => {
                 setConfirmingRevoke(false);
@@ -265,7 +265,7 @@ function DesktopTargetPanel({
                 </div>
                 <Button
                   type="button"
-                  className="min-h-11"
+                  size="touch"
                   disabled={busy}
                   onClick={() =>
                     void onActivate({
@@ -327,7 +327,7 @@ function DesktopTargetPanel({
               </label>
               <Button
                 type="submit"
-                className="min-h-11"
+                size="touch"
                 disabled={busy || !sessionId.trim() || code.length !== 6}
               >
                 Approve pairing
@@ -425,9 +425,8 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
           </code>
           <Button
             type="button"
-            size="sm"
+            size="touch"
             variant="outline"
-            className="min-h-11"
             onClick={() =>
               void navigator.clipboard.writeText(pairing.sessionId)
             }
@@ -526,9 +525,8 @@ function RuntimeCard({
         target.canSelect !== false ? (
           <Button
             type="button"
-            size="sm"
+            size="touch"
             variant="outline"
-            className="min-h-11"
             disabled={busy}
             onClick={onSelect}
           >
@@ -536,22 +534,15 @@ function RuntimeCard({
           </Button>
         ) : null}
         {target.canPair ? (
-          <Button
-            type="button"
-            size="sm"
-            className="min-h-11"
-            disabled={busy}
-            onClick={onPair}
-          >
+          <Button type="button" size="touch" disabled={busy} onClick={onPair}>
             <Link2 className="mr-1.5 size-4" aria-hidden /> Pair device
           </Button>
         ) : null}
         {target.status === "offline" || target.status === "error" ? (
           <Button
             type="button"
-            size="sm"
+            size="touch"
             variant="outline"
-            className="min-h-11"
             disabled={busy}
             onClick={onRetry}
           >
@@ -561,9 +552,8 @@ function RuntimeCard({
         {target.canRevoke && !confirming ? (
           <Button
             type="button"
-            size="sm"
+            size="touch"
             variant="ghost"
-            className="min-h-11"
             disabled={busy}
             onClick={() => setConfirming("revoke")}
           >
@@ -573,9 +563,8 @@ function RuntimeCard({
         {target.canRemove && !confirming ? (
           <Button
             type="button"
-            size="sm"
-            variant="ghost"
-            className="min-h-11 text-txt-strong"
+            size="touch"
+            variant="destructive"
             disabled={busy}
             onClick={() => setConfirming("remove")}
           >
@@ -594,18 +583,16 @@ function RuntimeCard({
             </span>
             <Button
               type="button"
-              size="sm"
+              size="touch"
               variant="ghost"
-              className="min-h-11"
               onClick={() => setConfirming(null)}
             >
               Cancel
             </Button>
             <Button
               type="button"
-              size="sm"
-              variant="default"
-              className="min-h-11"
+              size="touch"
+              variant="destructive"
               disabled={busy}
               onClick={() => {
                 const action = confirming === "revoke" ? onRevoke : onRemove;
@@ -705,7 +692,7 @@ function AdvancedDirectRuntime({
           />
         </label>
         <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
-          <Button type="submit" className="min-h-11" disabled={busy || !valid}>
+          <Button type="submit" size="touch" disabled={busy || !valid}>
             <Link2 className="mr-1.5 h-4 w-4" aria-hidden /> Add private runtime
           </Button>
           <span className="text-xs text-muted">
@@ -904,7 +891,7 @@ function AdvancedSsh({
         <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
           <Button
             type="submit"
-            className="min-h-11"
+            size="touch"
             disabled={busy || !valid || Boolean(inspection?.changed)}
           >
             {busy ? (
@@ -988,8 +975,7 @@ export function DevicesRuntimesSection({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="min-h-11"
+            size="touch"
             disabled={busy}
             onClick={() => void onRefresh()}
           >

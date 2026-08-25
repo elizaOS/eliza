@@ -124,7 +124,7 @@ export function WithdrawDialog({
                 <span className="text-sm text-neutral-400">
                   Available Balance
                 </span>
-                <span className="text-lg font-mono font-semibold text-green-400">
+                <span className="text-lg font-mono font-semibold text-status-success">
                   ${withdrawableBalance.toFixed(2)}
                 </span>
               </div>
@@ -146,7 +146,9 @@ export function WithdrawDialog({
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="pl-7 bg-surface border-border text-txt font-mono "
+                    variant="form"
+                    adornment="leading"
+                    className="font-mono"
                     min={payoutThreshold}
                     max={withdrawableBalance}
                     step="0.01"
@@ -160,7 +162,6 @@ export function WithdrawDialog({
                     variant="ghost"
                     type="button"
                     onClick={() => setAmount(withdrawableBalance.toFixed(2))}
-                    className="text-muted hover:text-txt transition-colors"
                   >
                     Withdraw All
                   </Button>
@@ -169,7 +170,7 @@ export function WithdrawDialog({
 
               {/* Validation message */}
               {!isValidAmount && parsedAmount > 0 && (
-                <div className="flex items-center gap-2 text-xs text-red-400">
+                <div className="flex items-center gap-2 text-xs text-destructive">
                   <AlertCircle className="size-3" />
                   {parsedAmount < payoutThreshold
                     ? `Minimum withdrawal is $${payoutThreshold.toFixed(2)}`
@@ -179,18 +180,10 @@ export function WithdrawDialog({
             </div>
 
             <DialogFooter className="flex gap-2">
-              <Button
-                variant="ghost"
-                onClick={handleClose}
-                className="text-neutral-400 hover:text-txt"
-              >
+              <Button variant="ghost" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button
-                onClick={handleWithdraw}
-                disabled={!isValidAmount}
-                className="bg-txt hover:bg-txt/90 text-bg disabled:opacity-50"
-              >
+              <Button onClick={handleWithdraw} disabled={!isValidAmount}>
                 <ArrowRight className="size-4 mr-2" />
                 Withdraw ${parsedAmount.toFixed(2)}
               </Button>
@@ -214,8 +207,8 @@ export function WithdrawDialog({
 
         {state === "success" && (
           <div className="py-8 text-center">
-            <div className="mx-auto size-16 mb-4 flex items-center justify-center bg-green-500/10 rounded-full border border-green-500/30">
-              <CheckCircle2 className="size-8 text-green-400" />
+            <div className="mx-auto size-16 mb-4 flex items-center justify-center bg-status-success-bg rounded-full border border-status-success/30">
+              <CheckCircle2 className="size-8 text-status-success" />
             </div>
             <h3 className="text-xl font-semibold text-txt-strong mb-2">
               Withdrawal Complete!
@@ -241,10 +234,7 @@ export function WithdrawDialog({
               )}
             </div>
             <DialogFooter className="mt-6">
-              <Button
-                onClick={handleClose}
-                className="w-full bg-txt hover:bg-txt/90 text-bg"
-              >
+              <Button onClick={handleClose} className="w-full">
                 Close
               </Button>
             </DialogFooter>
@@ -253,25 +243,18 @@ export function WithdrawDialog({
 
         {state === "error" && (
           <div className="py-8 text-center">
-            <div className="mx-auto size-16 mb-4 flex items-center justify-center bg-red-500/10 rounded-full border border-red-500/30">
-              <AlertCircle className="size-8 text-red-400" />
+            <div className="mx-auto size-16 mb-4 flex items-center justify-center bg-destructive-subtle rounded-full border border-destructive/30">
+              <AlertCircle className="size-8 text-destructive" />
             </div>
             <h3 className="text-lg font-medium text-txt-strong mb-2">
               Withdrawal Failed
             </h3>
-            <p className="text-sm text-red-400 mb-4">{error}</p>
+            <p className="text-sm text-destructive mb-4">{error}</p>
             <DialogFooter className="flex gap-2 justify-center">
-              <Button
-                variant="ghost"
-                onClick={handleClose}
-                className="text-neutral-400 hover:text-txt"
-              >
+              <Button variant="ghost" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button
-                onClick={() => setState("confirm")}
-                className="bg-surface hover:bg-bg-hover text-txt"
-              >
+              <Button variant="surface" onClick={() => setState("confirm")}>
                 Try Again
               </Button>
             </DialogFooter>

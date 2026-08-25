@@ -6,6 +6,7 @@ import {
   __resetPendingWebSocketsForTests,
   applyCors,
   CORS_ALLOWED_HEADERS,
+  extractAuthToken,
   isAuthorized,
   isServerTokenAuthorized,
   MAX_PENDING_WEBSOCKETS_PER_PEER,
@@ -13,6 +14,15 @@ import {
   releasePendingWebSocket,
   tryAcquirePendingWebSocket,
 } from "../../src/api/server-helpers-auth";
+
+describe("extractAuthToken", () => {
+  it("rejects an oversized authorization header without accepting a prefix", () => {
+    const req = new http.IncomingMessage(new Socket());
+    req.headers.authorization = `Bearer ${"a".repeat(8_185)}trailing-data`;
+
+    expect(extractAuthToken(req)).toBeNull();
+  });
+});
 
 class HeaderCapture extends http.ServerResponse {
   readonly headers = new Map<string, string | number | readonly string[]>();

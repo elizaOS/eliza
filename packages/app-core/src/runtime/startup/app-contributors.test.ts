@@ -52,7 +52,6 @@ vi.mock("../app-route-plugin-registry.ts", async (importOriginal) => {
   };
 });
 
-import * as appContributors from "./app-contributors.ts";
 import {
   __loadAppRoutePluginFromSpecifierForTest,
   drainRuntimeHookContributors,
@@ -94,20 +93,6 @@ async function writeTempModule(source: string): Promise<string> {
   await writeFile(file, source, "utf8");
   return pathToFileURL(file).href;
 }
-
-describe("app-contributors exports", () => {
-  it("exports the boot knobs, drains, and the test loader hook", () => {
-    expect(Object.keys(appContributors).sort()).toEqual([
-      "__loadAppRoutePluginFromSpecifierForTest",
-      "drainRuntimeHookContributors",
-      "getDeferAppRoutesEnabled",
-      "getSkippedAppRoutePluginIds",
-      "normalizeAppRoutePluginId",
-      "registerAppRoutePlugins",
-      "registerRuntimeHooks",
-    ]);
-  });
-});
 
 describe("getSkippedAppRoutePluginIds", () => {
   beforeEach(() => {

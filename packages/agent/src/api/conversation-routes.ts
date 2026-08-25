@@ -1802,7 +1802,6 @@ async function recoverDurableConversationChatOutcome(
     roomId,
     tableName: "messages",
     start: userMemory.createdAt,
-    limit: 1_000,
     orderBy: "createdAt",
     orderDirection: "asc",
   });
@@ -2200,7 +2199,6 @@ export async function persistRecentAssistantActionCallbackHistory(
       : await runtime.getMemories({
           roomId,
           tableName: "messages",
-          limit: 12,
         });
     assertCurrent?.();
 
@@ -2568,7 +2566,6 @@ async function ensureConversationGreetingStoredUnlocked(
     memories = await runtime.getMemories({
       roomId: conv.roomId,
       tableName: "messages",
-      limit: 12,
     });
   } catch (error) {
     // error-policy:J2 greeting setup retains the storage cause for the route
@@ -5804,7 +5801,6 @@ export async function handleConversationRoutes(
       const memories = await state.runtime.getMemories({
         roomId: conv.roomId,
         tableName: "messages",
-        limit: 5,
       });
       const lastUserMemory = memories.find(
         (m) => m.entityId !== state.runtime?.agentId,
@@ -5928,7 +5924,6 @@ export async function handleConversationRoutes(
         const memories = await runtime.getMemories({
           roomId: conv.roomId,
           tableName: "messages",
-          limit: 10,
         });
         const hasUserMessage = memories.some((m) => m.entityId !== agentId);
         if (hasUserMessage) continue;
@@ -6011,7 +6006,6 @@ export async function handleConversationRoutes(
           const memories = await runtime.getMemories({
             roomId: conv.roomId,
             tableName: "messages",
-            limit: 1000,
           });
           const memoryIds = memories
             .map((memory) => memory.id)

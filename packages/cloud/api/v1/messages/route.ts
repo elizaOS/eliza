@@ -43,7 +43,6 @@ import {
   estimateTokens,
   getProviderFromModel,
   getSafeModelParams,
-  modelUsesReasoningTokens,
   normalizeModelName,
 } from "@/lib/pricing";
 import {
@@ -181,33 +180,12 @@ function normalizeModelId(model: string): string {
   return model;
 }
 
-const MESSAGES_MIN_RESPONSE_TOKENS = 4096;
-
-/**
- * Response-token budget for a /v1/messages generation. Mirrors the
- * chat/completions floor: Anthropic CoT needs headroom for thinking PLUS the
- * answer, and non-Anthropic reasoning models (cerebras zai-glm-4.7 /
- * gpt-oss-120b / gemma-4-31b) spend hidden reasoning tokens — without a floor a
- * small `max_tokens` is consumed by reasoning alone and the caller is billed
- * for empty output. Non-reasoning models pass their requested budget through.
- */
+/** Preserves the caller's explicit Anthropic-compatible output ceiling. */
 export function messagesEffectiveMaxTokens(
   requestMaxTokens: number | undefined,
-  cotBudget: number | null,
-  model: string,
+  _cotBudget: number | null,
+  _model: string,
 ): number | undefined {
-  if (cotBudget != null) {
-    return Math.max(
-      requestMaxTokens ?? MESSAGES_MIN_RESPONSE_TOKENS,
-      cotBudget + MESSAGES_MIN_RESPONSE_TOKENS,
-    );
-  }
-  if (modelUsesReasoningTokens(model)) {
-    return Math.max(
-      requestMaxTokens ?? MESSAGES_MIN_RESPONSE_TOKENS,
-      MESSAGES_MIN_RESPONSE_TOKENS,
-    );
-  }
   return requestMaxTokens;
 }
 
@@ -818,13 +796,9 @@ app.post("/", async (c) => {
   }
 
   const estimatedInputTokens = estimateInputTokens(estimateMessages);
-  // Reserve against the SAME ceiling the provider is capped at below, not the
-  // raw request.max_tokens. `messagesEffectiveMaxTokens` raises a reasoning
-  // model's provider budget to fit hidden reasoning PLUS the answer (e.g. a
-  // requested 256 becomes the 4096 floor), so reserving the raw value lets the
-  // provider bill well above the reservation — the #16081 invariant, fixed for
-  // /v1/chat/completions but not here. The provider paths recompute the same
-  // deterministic value, so admission and enforcement stay identical.
+  // Reserve against the same caller-authored ceiling enforced at the provider
+  // boundary. Reasoning configuration never silently increases generation or
+  // spend authority.
   const reservationCotBudget = resolveAnthropicThinkingBudgetTokens(
     model,
     process.env,

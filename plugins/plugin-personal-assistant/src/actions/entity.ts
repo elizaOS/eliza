@@ -120,7 +120,7 @@ async function resolveRelationshipIdByName(
     return null;
   }
 
-  const relationships = await service.listRelationships({ limit: 200 });
+  const relationships = await service.listRelationships();
   const exactMatch =
     relationships.find(
       (relationship) => normalizeLookup(relationship.name) === needle,
@@ -150,7 +150,7 @@ async function resolveRelationshipIdFromText(
     return null;
   }
 
-  const relationships = await service.listRelationships({ limit: 200 });
+  const relationships = await service.listRelationships();
   const fullNameMatch = relationships.find((relationship) =>
     haystack.includes(normalizeLookup(relationship.name)),
   );
@@ -346,7 +346,6 @@ async function resolveEntityPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 6,
     })
   ).join("\n");
   const currentMessage =
@@ -629,7 +628,7 @@ export const entityAction: Action & {
     const service = new LifeOpsService(runtime);
 
     if (subaction === "read") {
-      const contacts = await service.listRelationships({ limit: 50 });
+      const contacts = await service.listRelationships();
       const observedAt = new Date().toISOString();
       const fallback =
         contacts.length === 0

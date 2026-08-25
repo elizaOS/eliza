@@ -128,9 +128,6 @@ import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
 
 const ROUTE_MAX_DURATION = 800;
 
-// Minimum tokens to reserve for actual response generation when CoT is active
-const MIN_RESPONSE_TOKENS = 4096;
-
 interface PooledInferenceCredential extends PooledLanguageModelCredential {
   organizationId: string;
   credentialId: string;
@@ -326,60 +323,15 @@ function combineProviderOptions(
   return hasProviderOptions ? { ...merged, providerOptions } : merged;
 }
 
-/**
- * Computes effective max_tokens, reserving response capacity for reasoning models.
- *
- * Reasoning models (Anthropic extended-thinking, OpenAI o-series, DeepSeek R,
- * MiniMax M, and similar families) spend output tokens on hidden chain-of-thought
- * BEFORE emitting any visible answer. If max_tokens only covers the reasoning,
- * the model truncates mid-thought and returns empty content while still billing
- * the consumed tokens. To prevent that:
- *   - Anthropic CoT: max_tokens must be >= thinking budget + response capacity
- *     (the API also hard-rejects max_tokens < thinking budget).
- *   - Any other model with reasoning active: floor max_tokens at
- *     MIN_RESPONSE_TOKENS so there is always room for an answer after reasoning.
- *   - When reasoning is disabled (including Gemma's default), preserve the
- *     caller's cap exactly.
- *
- * A low explicit ceiling can still be exhausted by hidden reasoning. The response
- * paths report an empty-but-billed completion as `finish_reason: "length"` rather
- * than silently authorizing more generation and spend than the caller requested.
- *
- * `model` is the requested model id (provider-prefixed is fine).
- */
+/** Preserves the caller's explicit output ceiling without inventing one. */
 function computeEffectiveMaxTokens(
   requestMaxTokens: number | undefined,
-  cotBudget: number | null,
-  model: string,
-  supportedParameters?: readonly string[],
-  reasoningEffort?: ReasoningEffort,
+  _cotBudget: number | null,
+  _model: string,
+  _supportedParameters?: readonly string[],
+  _reasoningEffort?: ReasoningEffort,
 ): number | undefined {
-  // max_tokens is a caller-controlled output and spend ceiling. Never raise an
-  // explicit value, including when Anthropic extended thinking is configured.
-  // Providers may reject an incompatible thinking budget with a truthful 400.
-  if (requestMaxTokens !== undefined) {
-    return requestMaxTokens;
-  }
-
-  if (cotBudget !== null) {
-    // With no caller ceiling, leave room for both configured thinking and output.
-    return cotBudget + MIN_RESPONSE_TOKENS;
-  }
-  const cerebrasModel = canonicalizeCerebrasModelId(model);
-  if (
-    reasoningEffort === "none" ||
-    (reasoningEffort === undefined && cerebrasModel === "gemma-4-31b")
-  ) {
-    // No hidden reasoning tokens consume the caller's output budget. Preserve
-    // the advertised max_tokens contract exactly instead of silently raising a
-    // short formatting call (often 260-512 tokens) to 4096.
-    return requestMaxTokens;
-  }
-  if (modelUsesReasoningTokens(model, supportedParameters)) {
-    // With no caller ceiling, avoid the common empty-but-billed reasoning result.
-    return MIN_RESPONSE_TOKENS;
-  }
-  return undefined;
+  return requestMaxTokens;
 }
 
 // ============================================================================
@@ -3689,11 +3641,9 @@ async function handleNonStreamingRequest(
       }
     });
 
-    // Reasoning-model empty-output guard.
-    // A reasoning model can spend its whole output budget on hidden
-    // chain-of-thought and return empty visible text while still billing the
-    // consumed tokens. The budget floor in computeEffectiveMaxTokens prevents
-    // the common case, but if it still happens, surface it honestly: report
+    // Reasoning-model empty-output guard. A reasoning model can spend an
+    // explicit caller budget on hidden chain-of-thought and return empty visible
+    // text while still billing the consumed tokens. Surface it honestly: report
     // finish_reason "length" (so OpenAI-compatible clients retry with a higher
     // max_tokens) instead of a misleading "stop" with null content.
     const hasToolCalls = Boolean(result.toolCalls?.length);

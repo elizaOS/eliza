@@ -26,6 +26,7 @@ import {
   WALLPAPER_GLASS,
   WALLPAPER_TEXT,
 } from "../shell/wallpaper-idiom";
+import { Button } from "../ui/button";
 import { ViewTileImage } from "../views/ViewTileImage";
 
 const LAUNCHER_RESPONSIVE_CSS = `
@@ -105,8 +106,10 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
       className="flex w-full justify-center"
       data-testid={`launcher-tile-${entry.id}`}
     >
-      <button
+      <Button
         type="button"
+        variant="launcherTile"
+        size="content"
         aria-label={entry.label}
         onPointerDown={hold.onPointerDown}
         onPointerMove={hold.onPointerMove}
@@ -114,7 +117,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
         onPointerCancel={hold.onPointerCancel}
         onClickCapture={suppression.onClickCapture}
         onClick={() => onLaunch(entry)}
-        className="group relative flex w-full max-w-[5.5rem] flex-col items-center gap-2.5 rounded-2xl select-none"
+        className="group relative w-full max-w-[5.5rem] select-none"
       >
         <div className="relative">
           <div
@@ -165,7 +168,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
         >
           {entry.label}
         </span>
-      </button>
+      </Button>
     </div>
   );
 });

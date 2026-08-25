@@ -80,7 +80,7 @@ export const WithAction: Story = {
 export const Flat: Story = {
   args: { variant: "flat" },
   render: (args) => (
-    <Card {...args} className="w-80 p-4">
+    <Card {...args} variant="flatPadded" className="w-80">
       <p className="text-sm">A borderless container for inline content.</p>
     </Card>
   ),

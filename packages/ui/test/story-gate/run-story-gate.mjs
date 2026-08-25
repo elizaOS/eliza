@@ -282,8 +282,8 @@ function rmRecursive(targetPath) {
 }
 
 function normalizeConsole(text) {
-  // Collapse volatile substrings (urls, numbers, hex ids) so baseline keys are
-  // stable across runs.
+  // Collapse volatile substrings so the failure artifact stays stable across
+  // runs and remains useful in deterministic comparisons.
   const normalized = text
     .replace(/https?:\/\/[^\s)]+/g, "<url>")
     .replace(/0x[0-9a-f]+/gi, "<hex>")
@@ -323,27 +323,6 @@ function normalizeConsole(text) {
   return normalized;
 }
 
-/**
- * Classify per-story render results against the console / a11y / broken
- * allowlist baselines and produce the failure list + regenerated baselines.
- *
- * Doctrine (matches the `broken-baseline` guard): each baseline is a pure
- * ALLOWLIST of pre-existing violations, never an on/off switch. A violation
- * whose key is NOT in the allowlist reds the run. An empty or absent baseline
- * therefore means fail-on-ANY violation (zero tolerance). This is the corrected
- * behaviour after the inverted `Object.keys(baseline).length > 0` gate (which
- * silently disabled the check whenever a baseline was emptied/reset).
- *
- * Pure + deterministic so it is unit-testable without a browser (see
- * story-gate-classify.test.mjs). `main()` calls it with the live run results.
- *
- * @param {object} params
- * @param {Array<object>} params.results per-story render results
- * @param {Record<string, string[]>} params.consoleBaseline allowlisted console keys per story id
- * @param {Record<string, string[]>} params.a11yBaseline allowlisted a11y rule ids per story id
- * @param {Record<string, unknown>} params.brokenBaseline allowlisted known-broken story ids
- * @param {boolean} [params.updateBaseline] when true, skip console/a11y failures (regeneration mode)
- */
 /**
  * Pure derivation of the network-failure signal from a log-capture snapshot.
  * Failed / erroring network RESPONSES + request failures during a story render
@@ -467,11 +446,8 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
   // that rendered but fired a failing network request (a real fault) went
   // completely unsignalled and the doc-claimed helper was dead code. #13624
   const cap = attachLogCapture(page, { label: story.id });
-  // Preserve the exact prior console-error signal (every console message of
-  // type "error") for the console-baseline guard — the helper's own
-  // consoleErrors() additionally allow-lists dev noise, which we apply only to
-  // the durable snapshot, not to the baseline-gating list, to avoid silently
-  // shifting the committed console baseline.
+  // Preserve every console message of type "error" for the hard gate. The log
+  // helper filters known development noise only in the richer durable snapshot.
   const rawConsoleError = (m) => m.type === "error";
 
   await page.addInitScript(determinismShim, FROZEN_EPOCH_MS);
@@ -803,7 +779,7 @@ async function main() {
   server.close();
 
   // -------------------------------------------------------------------------
-  // classify against baselines
+  // Classify hard failures.
   // -------------------------------------------------------------------------
   const { failures } = classifyStoryGateFailures({ results });
 

@@ -281,22 +281,22 @@ export class SharedAgentMemoriesReader {
   async listRecentByType(
     scope: SharedAgentMemoryScope,
     type: string,
-    limit: number,
+    limit?: number,
   ): Promise<SharedAgentMemoryRow[]> {
     requiredScope(scope);
-    assertLimit(limit);
+    if (limit !== undefined) assertLimit(limit);
     if (typeof type !== "string" || type.trim().length === 0) {
       throw new ElizaError("Shared agent memory type is required", {
         code: SHARED_AGENT_MEMORY_INVALID_INPUT,
         context: { field: "type" },
       });
     }
-    return await dbRead
+    const query = dbRead
       .select()
       .from(sharedAgentMemories)
       .where(and(...tenantPins(scope), eq(sharedAgentMemories.type, type)))
-      .orderBy(desc(sharedAgentMemories.created_at), desc(sharedAgentMemories.id))
-      .limit(limit);
+      .orderBy(desc(sharedAgentMemories.created_at), desc(sharedAgentMemories.id));
+    return await (limit === undefined ? query : query.limit(limit));
   }
 
   /**

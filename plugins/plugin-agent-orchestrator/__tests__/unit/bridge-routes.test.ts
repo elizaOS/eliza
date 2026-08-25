@@ -19,6 +19,7 @@ import {
 } from "../../src/api/bridge-routes.ts";
 import type { RouteContext } from "../../src/api/route-utils.ts";
 import { handleCodingAgentRoutes } from "../../src/api/routes.ts";
+import { hashCredentialBridgeToken } from "../../src/services/credential-bridge-auth.ts";
 
 function fakeRequest(opts: {
   method: string;
@@ -42,6 +43,7 @@ function fakeRequest(opts: {
   };
   (req as { headers: Record<string, string> }).headers = {
     host: "localhost:2138",
+    "x-eliza-session-token": "test-session-token",
     ...(opts.headers ?? {}),
   };
   return req;
@@ -115,6 +117,10 @@ function makeCtx(
   sessionStatus: string | null = "running",
   metadata?: Record<string, unknown>,
 ): RouteContext {
+  const sessionMetadata = {
+    credentialBridgeTokenHash: hashCredentialBridgeToken("test-session-token"),
+    ...(metadata ?? {}),
+  };
   const acpService =
     sessionStatus === null
       ? { getSession: () => null }
@@ -122,7 +128,7 @@ function makeCtx(
           getSession: (id: string) => ({
             id,
             status: sessionStatus,
-            metadata,
+            metadata: sessionMetadata,
           }),
         };
   return {
@@ -185,6 +191,26 @@ describe("bridge-routes — credential bridge", () => {
       credentialKeys: ["OPENAI_API_KEY"],
       origin: undefined,
     });
+  });
+
+  it("rejects a loopback caller without the per-session bearer", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/pty-1-abc/credentials/request",
+      body: { credentialKeys: ["OPENAI_API_KEY"] },
+      headers: { "x-eliza-session-token": "attacker-token" },
+    });
+    const { res, status, body } = fakeResponse();
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/request",
+      makeCtx(adapter),
+    );
+    expect(status()).toBe(401);
+    expect((body() as { code: string }).code).toBe("unauthorized");
+    expect(adapter.requestCredentials).not.toHaveBeenCalled();
   });
 
   it("POST passes session metadata as origin for owner-app credential delivery", async () => {
@@ -420,8 +446,22 @@ describe("bridge-routes — credential bridge", () => {
     });
     const getSession = vi
       .fn()
-      .mockResolvedValueOnce({ id: "pty-1-abc", status: "running" })
-      .mockResolvedValueOnce({ id: "pty-1-abc", status: "running" })
+      .mockResolvedValueOnce({
+        id: "pty-1-abc",
+        status: "running",
+        metadata: {
+          credentialBridgeTokenHash:
+            hashCredentialBridgeToken("test-session-token"),
+        },
+      })
+      .mockResolvedValueOnce({
+        id: "pty-1-abc",
+        status: "running",
+        metadata: {
+          credentialBridgeTokenHash:
+            hashCredentialBridgeToken("test-session-token"),
+        },
+      })
       .mockResolvedValueOnce({ id: "pty-1-abc", status: "stopped" });
     const ctx = makeCtx(adapter);
     ctx.acpService = { getSession } as unknown as RouteContext["acpService"];
@@ -676,6 +716,8 @@ function makeCtxWithOrigin(adapter: BridgeCredentialAdapter): {
         status: "running",
         name: "build-feature",
         metadata: {
+          credentialBridgeTokenHash:
+            hashCredentialBridgeToken("test-session-token"),
           roomId: "11111111-1111-1111-1111-111111111111",
           source: "app",
         },

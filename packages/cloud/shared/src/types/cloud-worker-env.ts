@@ -251,6 +251,8 @@ export interface Bindings {
   VOICE_REALTIME_USER_DAILY_MINUTES?: string;
   /** Max concurrent live voice sessions per worker. */
   VOICE_REALTIME_MAX_SESSIONS?: string;
+  /** Public HTTPS API origin used to construct signed Twilio callback and media URLs. */
+  TWILIO_PUBLIC_URL?: string;
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;

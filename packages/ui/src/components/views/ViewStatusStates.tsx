@@ -103,8 +103,7 @@ export function ViewRecoveryActions({
       <Button
         type="button"
         variant="outline"
-        size="sm"
-        className="h-7 gap-1 rounded-sm text-xs"
+        size="labeledTiny"
         onClick={onRetry}
       >
         <RotateCw className="size-3.5" aria-hidden="true" />
@@ -112,9 +111,8 @@ export function ViewRecoveryActions({
       </Button>
       <Button
         type="button"
-        variant="ghost"
-        size="sm"
-        className="h-7 gap-1 rounded-sm text-xs"
+        variant="ghostMuted"
+        size="labeledTiny"
         onClick={onBack}
       >
         <ArrowLeft className="size-3.5" aria-hidden="true" />

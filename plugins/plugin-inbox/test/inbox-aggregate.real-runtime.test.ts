@@ -46,6 +46,7 @@ import {
   resolveInboxRequest,
   toInboxMessages,
 } from "../src/inbox/aggregate.ts";
+import { fetchGmailMessages } from "../src/inbox/message-fetcher.ts";
 import type { InboundMessage } from "../src/inbox/types.ts";
 
 // ---------------------------------------------------------------------------
@@ -288,6 +289,22 @@ function inboundChat(
 // ---------------------------------------------------------------------------
 
 describe("aggregate builders", () => {
+  it("keeps every Gmail message when the caller omits pagination", async () => {
+    const source = new FakeConnectorSources(
+      Array.from({ length: 501 }, (_, index) =>
+        gmailSummary({
+          id: `gmail-${index}`,
+          subject: `Subject ${index}`,
+          snippet: `Complete body ${index}`,
+        }),
+      ),
+    );
+
+    const result = await fetchGmailMessages(source, {});
+
+    expect(result.messages).toHaveLength(501);
+  });
+
   it("normalizeInboxChannel accepts known channels case-insensitively and rejects the rest", () => {
     expect(normalizeInboxChannel("gmail")).toBe("gmail");
     expect(normalizeInboxChannel("  Discord  ")).toBe("discord");
@@ -300,9 +317,10 @@ describe("aggregate builders", () => {
     expect(normalizeInboxChannel(undefined)).toBeNull();
   });
 
-  it("resolveInboxRequest clamps limits, filters bogus channels, and defaults cache mode", () => {
+  it("resolveInboxRequest leaves omission complete and preserves explicit pagination", () => {
     const defaults = resolveInboxRequest({});
-    expect(defaults.limit).toBeGreaterThan(0);
+    expect(defaults.limit).toBeUndefined();
+    expect(defaults.cacheLimit).toBeUndefined();
     expect(defaults.cacheMode).toBe("read-through");
     expect(defaults.allowed.size).toBeGreaterThan(1);
 
@@ -311,7 +329,7 @@ describe("aggregate builders", () => {
       channels: ["gmail", "not-a-channel" as LifeOpsInboxChannel],
       cacheMode: "refresh",
     });
-    expect(resolved.limit).toBe(500);
+    expect(resolved.limit).toBe(100000);
     expect([...resolved.allowed]).toEqual(["gmail"]);
     expect(resolved.cacheMode).toBe("refresh");
 

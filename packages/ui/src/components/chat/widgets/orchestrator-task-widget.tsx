@@ -47,8 +47,10 @@ function TaskRow({
     .join(" · ");
   return (
     <Button
-      variant="ghost"
-      className="h-auto w-full min-w-0 justify-start rounded-sm p-2 text-left hover:bg-bg-hover"
+      variant="sectionToggle"
+      size="content"
+      align="start"
+      className="min-w-0"
       onClick={() => onOpen(task.taskId)}
       aria-label={`${task.label}. ${status.label}. ${task.progressSummary}. Open in workbench.`}
     >
@@ -138,9 +140,9 @@ export function OrchestratorTaskWidgetView({
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <span className="min-w-0 flex-1 break-words">{error}</span>
           <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 shrink-0 p-0 text-danger hover:bg-danger/15"
+            variant="dangerGhost"
+            size="icon-sm"
+            className="shrink-0"
             onClick={onRetry}
             aria-label="Retry task progress"
           >

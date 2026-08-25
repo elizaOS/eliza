@@ -250,17 +250,16 @@ describe("Agent MCP billing", () => {
     );
   });
 
-  // #16148: the reserved output ceiling and the provider-facing cap must be one
-  // immutable value for every resolved thinking budget. The table covers both
-  // the finite no-thinking floor and admitted thinking budgets.
+  // Billing uses a conservative estimate without turning that estimate into a
+  // provider cap. The table covers both no-thinking and thinking estimates.
   test.each([
     [null, 4096, 0],
     [1024, 5120, 1024],
     [4096, 8192, 4096],
     [8000, 12096, 8000],
   ] as const)(
-    "reserves and caps the provider at one ceiling (budget=%p → cap=%p)",
-    async (budget, expectedCap, expectedProviderBudget) => {
+    "reserves an estimate without capping provider output (budget=%p → estimate=%p)",
+    async (budget, expectedEstimate, expectedProviderBudget) => {
       makeReservation({ adjustmentType: "none" });
       resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
 
@@ -270,15 +269,10 @@ describe("Agent MCP billing", () => {
         result?: { _meta?: { admittedOutputTokens?: number } };
       };
 
-      // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
-      expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
-      // ...and the provider is capped at the identical value — always sent.
+      expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedEstimate);
       expect(streamText).toHaveBeenCalledTimes(1);
-      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
-      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
-        estimateRequestCost.mock.calls[0]?.[2],
-      );
-      expect(body.result?._meta?.admittedOutputTokens).toBe(expectedCap);
+      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBeUndefined();
+      expect(body.result?._meta?.admittedOutputTokens).toBe(expectedEstimate);
       // Provider thinking policy uses the already-resolved effective budget
       // (`effectiveThinkingBudget ?? 0`), not a recomputed value.
       expect(mergeAnthropicCotProviderOptions.mock.calls[0]?.[2]).toBe(

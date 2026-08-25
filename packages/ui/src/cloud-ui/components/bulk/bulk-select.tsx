@@ -48,19 +48,19 @@ export function BulkSelectionBar({
       <span className="text-sm text-txt">{labels.selected}</span>
       <div className="flex items-center gap-2">
         <Button
-          variant="ghost"
+          variant="ghostMuted"
+          size="dense"
           type="button"
           onClick={onClear}
-          className="h-8 px-3 text-muted hover:text-txt"
         >
           {labels.clear}
         </Button>
         <Button
-          variant="ghost"
+          variant="dangerGhost"
+          size="dense"
           type="button"
           disabled={deleteDisabled}
           onClick={onDelete}
-          className="h-8 px-3 text-destructive hover:bg-destructive-subtle"
         >
           <Trash2 className="mr-1.5 size-3.5" />
           {labels.deleteSelected}

@@ -426,8 +426,10 @@ function ModelProgressCard({
       data-testid="chat-widget-model-download"
       aria-label={ariaLabel}
       onClick={onActivate}
-      variant="ghost"
-      className="group flex h-full w-full flex-col items-stretch justify-center gap-2.5 whitespace-normal px-3 py-2.5 text-left font-normal transition-opacity hover:opacity-80"
+      variant="surface"
+      size="card"
+      align="start"
+      className="group transition-opacity hover:opacity-80"
     >
       <span className="flex w-full items-center gap-3">
         <span

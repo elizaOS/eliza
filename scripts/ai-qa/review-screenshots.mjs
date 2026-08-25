@@ -97,7 +97,6 @@ async function reviewOne(capture, labelByRoute) {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 1024,
         messages: [
           {
             role: "user",

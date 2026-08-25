@@ -228,6 +228,7 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
                 {t("cloud.apiKeys.nameLabel", { defaultValue: "Name" })}
               </label>
               <Input
+                variant="form"
                 id="api-key-name"
                 placeholder={t("cloud.apiKeys.namePlaceholder", {
                   defaultValue: "Production integration",
@@ -235,7 +236,6 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoFocus
-                className="rounded-sm border-border bg-surface text-txt-strong placeholder:text-muted"
               />
             </div>
             <DialogFooter className="mt-6 gap-2">
@@ -281,11 +281,7 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
               </DialogDescription>
             </DialogHeader>
             <div className="flex items-center gap-2">
-              <Input
-                value={createdKey.plainKey}
-                readOnly
-                className="rounded-sm border-border bg-surface font-mono text-sm text-txt-strong"
-              />
+              <Input variant="config" value={createdKey.plainKey} readOnly />
               <CopyButton
                 value={createdKey.plainKey}
                 feedbackDuration={1500}

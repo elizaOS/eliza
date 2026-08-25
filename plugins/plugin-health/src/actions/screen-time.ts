@@ -170,7 +170,7 @@ export interface CreateScreenTimeActionRunnerOptions {
   getActivityReport: (
     runtime: IAgentRuntime,
     agentId: string,
-    opts: { windowMs: number; limit: number },
+    opts: { windowMs: number; limit?: number },
   ) => Promise<ActivityReport>;
   getTimeOnApp: (
     runtime: IAgentRuntime,
@@ -184,7 +184,7 @@ export interface CreateScreenTimeActionRunnerOptions {
   ) => Promise<BrowserDomainActivity>;
   getBrowserActivitySnapshot: (
     runtime: IAgentRuntime,
-    opts: { deviceId?: string; limit: number },
+    opts: { deviceId?: string; limit?: number },
   ) => Promise<BrowserActivitySnapshot>;
 }
 
@@ -312,7 +312,6 @@ function buildReportSummary(
 ): string {
   if (apps.length === 0) return "No app focus events recorded in that window.";
   return apps
-    .slice(0, 10)
     .map(
       (app) =>
         `- ${app.appName || app.bundleId}: ${formatMinutes(app.totalMs)}m`,
@@ -409,7 +408,7 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
   {
     name: "limit",
     description:
-      "Top-N for by_app / by_website / browser_activity (default 10).",
+      "Optional caller-requested Top-N pagination for by_app / by_website / browser_activity. Omit for complete results.",
     required: false,
     schema: { type: "number" as const },
   },
@@ -581,7 +580,6 @@ export function createScreenTimeActionRunner(
           date,
           source: params.source,
           identifier: params.identifier,
-          limit: 10,
         });
         const total = daily.reduce((acc, row) => acc + row.totalSeconds, 0);
         const fallback =
@@ -612,7 +610,6 @@ export function createScreenTimeActionRunner(
           until,
           source: params.source,
           identifier: params.identifier,
-          topN: 10,
         });
         const fallback =
           summary.items.length === 0
@@ -679,13 +676,13 @@ export function createScreenTimeActionRunner(
         const topN =
           typeof params.limit === "number" && params.limit > 0
             ? Math.floor(params.limit)
-            : 10;
+            : undefined;
         const summary = await service.getScreenTimeSummary({
           since,
           until,
           source,
           identifier: params.identifier,
-          topN,
+          ...(topN === undefined ? {} : { topN }),
         });
         const label = source === "app" ? "apps" : "websites";
         const fallback =
@@ -731,7 +728,6 @@ export function createScreenTimeActionRunner(
         const agentId = String(runtime.agentId);
         const report = await adapters.getActivityReport(runtime, agentId, {
           windowMs,
-          limit: 20,
         });
         const fallback = `Activity report (${formatMinutes(report.totalMs)}m total):\n${buildReportSummary(report.apps)}`;
         return respond({
@@ -741,7 +737,7 @@ export function createScreenTimeActionRunner(
           context: {
             totalMs: report.totalMs,
             appCount: report.apps.length,
-            topApps: report.apps.slice(0, 5),
+            apps: report.apps,
           },
           data: {
             sinceMs: report.sinceMs,
@@ -867,10 +863,10 @@ export function createScreenTimeActionRunner(
         const limit =
           typeof params.limit === "number" && params.limit > 0
             ? Math.floor(params.limit)
-            : 10;
+            : undefined;
         const snapshot = await adapters.getBrowserActivitySnapshot(runtime, {
           deviceId: params.deviceId?.trim(),
-          limit,
+          ...(limit === undefined ? {} : { limit }),
         });
         if (snapshot.domains.length === 0) {
           return respond({
@@ -906,7 +902,6 @@ export function createScreenTimeActionRunner(
           until,
           source: params.source,
           identifier: params.identifier,
-          topN: 10,
         });
         const fallback =
           summary.items.length === 0

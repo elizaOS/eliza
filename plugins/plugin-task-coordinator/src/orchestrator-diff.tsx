@@ -22,7 +22,7 @@ export function DiffStat({
   return (
     <span className="inline-flex items-center gap-1 font-mono text-2xs tabular-nums">
       <span className="text-ok">+{added}</span>
-      <span className="text-red-500">&minus;{removed}</span>
+      <span className="text-destructive">&minus;{removed}</span>
     </span>
   );
 }
@@ -32,7 +32,7 @@ export function DiffStat({
 const ROW_TONE: Record<DiffRow["type"], string> = {
   context: "text-muted",
   add: "bg-ok/10 text-ok",
-  remove: "bg-red-500/10 text-red-500",
+  remove: "bg-destructive-subtle text-destructive",
 };
 
 const ROW_SIGN: Record<DiffRow["type"], string> = {

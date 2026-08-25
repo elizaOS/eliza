@@ -398,14 +398,15 @@ function PrimingCard({
         </div>
       </div>
 
-      <button
+      <Button
         type="button"
-        className="self-center text-xs text-muted underline-offset-2 hover:text-txt hover:underline"
+        variant="mutedLink"
+        className="self-center"
         onClick={onSkipAll}
         data-testid="priming-skip-all"
       >
         {t("permissionpriming.skipAll", { defaultValue: "Skip for now" })}
-      </button>
+      </Button>
     </div>
   );
 }

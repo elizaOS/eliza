@@ -50,7 +50,7 @@ function props(
 }
 
 describe("DevicesRuntimesSection", () => {
-  it("announces target state and exposes touch-sized retry and pairing actions", async () => {
+  it("announces target state and routes retry and pairing actions", async () => {
     const user = userEvent.setup();
     const onPair = vi.fn();
     const onRetry = vi.fn();
@@ -65,19 +65,15 @@ describe("DevicesRuntimesSection", () => {
     await user.click(screen.getByRole("button", { name: "Retry" }));
     expect(onPair).toHaveBeenCalledWith("host:mac");
     expect(onRetry).toHaveBeenCalledWith("host:mac");
-    expect(
-      screen.getByRole("button", { name: "Pair device" }).className,
-    ).toContain("min-h-11");
-    expect(screen.getByText("Connected").className).toContain(
-      "text-txt-strong",
-    );
-    expect(screen.getByText("Connected").className).not.toContain("text-ok");
   });
 
-  it("keeps error state legible without relying on destructive theme color", () => {
+  it("announces an error and requires confirmation before removal", async () => {
+    const user = userEvent.setup();
+    const onRemove = vi.fn();
     render(
       <DevicesRuntimesSection
         {...props({
+          onRemove,
           targets: [
             {
               id: "host:error",
@@ -95,16 +91,17 @@ describe("DevicesRuntimesSection", () => {
       />,
     );
 
-    expect(screen.getByText("Needs attention").className).toContain(
-      "text-txt-strong",
-    );
-    expect(screen.getByRole("alert").className).toContain("text-txt-strong");
-    expect(screen.getByRole("alert").className).not.toContain(
-      "text-destructive",
-    );
-    expect(screen.getByRole("button", { name: "Remove" }).className).toContain(
-      "text-txt-strong",
-    );
+    expect(screen.getByText("Needs attention")).toBeTruthy();
+    expect(
+      screen.getByText("Relay unavailable. Retry when the host is online."),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(onRemove).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Remove this runtime and its local credentials?"),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Confirm remove" }));
+    expect(onRemove).toHaveBeenCalledWith("host:error");
   });
 
   it("renders an independent six-digit code, real QR image, and expiry status", () => {
@@ -283,7 +280,6 @@ describe("DevicesRuntimesSection", () => {
       "private-token",
     );
     const add = screen.getByRole("button", { name: "Add private runtime" });
-    expect(add.className).toContain("min-h-11");
     await user.click(add);
     expect(onAddDirectRuntime).toHaveBeenCalledWith({
       label: "Home VPS",

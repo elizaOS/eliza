@@ -245,8 +245,7 @@ function ModelListRow({
         <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
           {!installedEntry && !downloading ? (
             <Button
-              size="sm"
-              className="h-7 rounded-sm px-2 text-xs"
+              size="tiny"
               onClick={() => onDownload(model.id)}
               disabled={busy || fit === "wontfit" || notRunnable}
               title={unavailableReason ?? undefined}
@@ -256,9 +255,8 @@ function ModelListRow({
           ) : null}
           {downloading ? (
             <Button
-              size="sm"
+              size="tiny"
               variant="outline"
-              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => onCancel(model.id)}
               disabled={busy}
             >
@@ -267,8 +265,7 @@ function ModelListRow({
           ) : null}
           {installedEntry && !isActive ? (
             <Button
-              size="sm"
-              className="h-7 rounded-sm px-2 text-xs"
+              size="tiny"
               onClick={() => onActivate(model.id)}
               disabled={busy || activating || notRunnable}
               title={unavailableReason ?? undefined}
@@ -280,9 +277,8 @@ function ModelListRow({
           ) : null}
           {installedEntry && onVerify ? (
             <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 rounded-sm px-2 text-xs"
+              size="tiny"
+              variant="ghostMuted"
               onClick={() => onVerify(installedEntry.id)}
               disabled={busy}
             >
@@ -291,9 +287,8 @@ function ModelListRow({
           ) : null}
           {installedEntry?.source === "eliza-download" && onRedownload ? (
             <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 rounded-sm px-2 text-xs"
+              size="tiny"
+              variant="ghostMuted"
               onClick={() => onRedownload(model.id)}
               disabled={busy}
             >
@@ -302,9 +297,8 @@ function ModelListRow({
           ) : null}
           {installedEntry?.source === "eliza-download" ? (
             <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 rounded-sm px-2 text-xs"
+              size="tiny"
+              variant="dangerGhost"
               onClick={() => onUninstall(model.id)}
               disabled={busy}
             >

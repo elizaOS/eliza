@@ -97,6 +97,39 @@ describe("agent_skills_catalog provider", () => {
 });
 
 describe("skillInstructionsProvider", () => {
+	it("preserves every additional relevant skill match", async () => {
+		const loadedSkills = Array.from({ length: 5 }, (_, index) => ({
+			slug: `weather-${index}`,
+			name: `Weather ${index}`,
+			description: "Weather forecasts and weather alerts",
+		}));
+		const service = {
+			getLoadedSkills: vi.fn(() => loadedSkills),
+			getSkillInstructions: vi.fn(() => ({
+				body: "Use the complete weather skill.",
+				estimatedTokens: 8,
+			})),
+		};
+		const runtime = {
+			getService: vi.fn((name: string) =>
+				name === "AGENT_SKILLS_SERVICE" ? service : undefined,
+			),
+		} as unknown as IAgentRuntime;
+
+		const result = await skillInstructionsProvider.get(
+			runtime,
+			message("weather forecasts and weather alerts"),
+			{} as State,
+		);
+
+		expect(result.data?.otherMatches).toHaveLength(4);
+		expect(result.data?.otherMatches).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ slug: "weather-4" }),
+			]),
+		);
+	});
+
 	it("preserves complete active skill instructions", async () => {
 		const longInstructions = `${"a".repeat(3999)}🦊${"b".repeat(50)}`;
 		const service = {

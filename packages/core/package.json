@@ -252,6 +252,10 @@
 	"elizaos": {
 		"scripts": {
 			"coreBuild": true,
+			"buildOnInstall": {
+				"sentinel": "dist/edge/index.edge.js",
+				"order": 3
+			},
 			"testLanes": [
 				"server"
 			],

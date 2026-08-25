@@ -36,7 +36,7 @@ export const Success: Story = {
   args: {
     label: "Uptime",
     value: "99.98%",
-    color: "text-emerald-500",
+    color: "text-status-success",
   },
 };
 
@@ -44,7 +44,7 @@ export const Warning: Story = {
   args: {
     label: "Errors (24h)",
     value: "37",
-    color: "text-amber-500",
+    color: "text-status-warning",
   },
 };
 
@@ -55,10 +55,10 @@ export const Grid: Story = {
       <MiniStatCard
         label="Requests / min"
         value="842"
-        color="text-emerald-500"
+        color="text-status-success"
       />
       <MiniStatCard label="Avg latency" value="184ms" color="text-accent" />
-      <MiniStatCard label="Errors" value="3" color="text-rose-500" />
+      <MiniStatCard label="Errors" value="3" color="text-destructive" />
     </div>
   ),
 };
