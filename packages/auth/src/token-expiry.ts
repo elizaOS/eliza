@@ -18,6 +18,9 @@ const REFRESH_TOKEN_EXPIRED_PATTERN =
 const TOKEN_EXPIRED_PATTERN =
   /\b(?:token[_ ](?:(?:has|is)[_ ])?expired|expired[_ ]?token|(?:oauth|access)[_ ]token[_ ](?:(?:has|is)[_ ])?expired|jwt[_ ]expired|session[_ ]expired)\b/i;
 
+const RATE_LIMITED_PATTERN =
+  /\b(?:rate[_ -]?limits?(?:[_ -]?(?:exceeded|reached|violation))?|rate[_ -]?limited|rate[_ -]?limiting|too[_ -]?many[_ -]?requests|429\b|quota[_ -]?(?:exceeded|reached)|resource[_ -]?exhausted|usage[_ -]?(?:limit|exceeded|reached)|credit[_ -]?(?:limit|exceeded|exhausted))\b/i;
+
 /** Returns true for explicit REFRESH-token expiry language — a genuinely
  * dead credential (the holder can no longer self-refresh), distinct from a
  * recoverable access-token expiry. */
@@ -36,11 +39,17 @@ export function isTokenExpiryText(text: string | null | undefined): boolean {
   );
 }
 
+/** Returns true for explicit rate-limiting language. */
+export function isRateLimitText(text: string | null | undefined): boolean {
+  return !!text && RATE_LIMITED_PATTERN.test(text);
+}
+
 /** Refines an auth-shaped provider error without widening the auth classifier. */
 export function classifyAuthFailureReason(
   text: string | null | undefined,
 ): CodingAuthFailureReason {
   if (!text || text.trim().length === 0) return "unknown";
   if (isTokenExpiryText(text)) return "token_expired";
+  if (isRateLimitText(text)) return "rate_limited";
   return "needs_reauth";
 }
