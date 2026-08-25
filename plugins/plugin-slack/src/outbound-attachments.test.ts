@@ -3,11 +3,17 @@ import type { Media } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SlackService } from "./service";
 
-// Outbound media coverage for the Slack connector (#8876). Slack's API takes
-// file BYTES (not a URL), so agent `Media` attachments are fetched through the
-// SSRF-guarded fetcher and uploaded via uploadFile. We stub the (instance)
-// fetch wrapper + uploadFile so the test runs offline and exercises only the
-// new send-outbound-attachments logic.
+// Outbound media coverage for the Slack connector (#8876, truthful delivery
+// per #23104). Slack's API takes file BYTES (not a URL), so agent `Media`
+// attachments are fetched through the SSRF-guarded fetcher and uploaded via
+// uploadFile. We stub the (instance) fetch wrapper + uploadFile so the test
+// runs offline and exercises only the send-outbound-attachments logic and the
+// composed handleSendMessage outcome derivation.
+
+type AttachmentDelivery = {
+  delivered: Array<{ url: string; fileId: string; permalink: string }>;
+  failures: Array<{ url: string; code: string; message: string }>;
+};
 
 type TestService = SlackService & {
   sendOutboundAttachments: (
@@ -15,7 +21,7 @@ type TestService = SlackService & {
     attachments: Media[],
     threadTs: string | undefined,
     accountId: string | null,
-  ) => Promise<void>;
+  ) => Promise<AttachmentDelivery>;
   fetchAttachmentBytes: ReturnType<typeof vi.fn>;
   uploadFile: ReturnType<typeof vi.fn>;
 };
@@ -43,7 +49,7 @@ function media(over: Partial<Media>): Media {
 describe("Slack outbound attachments", () => {
   it("fetches each attachment's bytes and uploads it to the channel", async () => {
     const service = createService();
-    await service.sendOutboundAttachments(
+    const delivery = await service.sendOutboundAttachments(
       "C123",
       [media({ id: "img", contentType: "image", title: "cat.png" })],
       "111.222",
@@ -61,11 +67,15 @@ describe("Slack outbound attachments", () => {
       { title: "cat.png", threadTs: "111.222" },
       "default",
     );
+    expect(delivery.delivered).toEqual([
+      { url: "https://cdn.example.com/cat.png", fileId: "F1", permalink: "p" },
+    ]);
+    expect(delivery.failures).toEqual([]);
   });
 
   it("uploads multiple attachments", async () => {
     const service = createService();
-    await service.sendOutboundAttachments(
+    const delivery = await service.sendOutboundAttachments(
       "C1",
       [
         media({ id: "a", url: "https://x/a.png" }),
@@ -75,6 +85,8 @@ describe("Slack outbound attachments", () => {
       null,
     );
     expect(service.uploadFile).toHaveBeenCalledTimes(2);
+    expect(delivery.delivered).toHaveLength(2);
+    expect(delivery.failures).toEqual([]);
   });
 
   it("derives the filename: filename > title > fetched name", async () => {
@@ -110,26 +122,34 @@ describe("Slack outbound attachments", () => {
     );
   });
 
-  it("swallows a fetch failure (warns) and still uploads the rest", async () => {
+  it("records a fetch failure as typed evidence and still uploads the rest", async () => {
     const service = createService();
     service.fetchAttachmentBytes = vi
       .fn()
       .mockRejectedValueOnce(new Error("ssrf blocked"))
       .mockResolvedValueOnce({ buffer: Buffer.from("ok"), fileName: "ok.png" });
 
-    await expect(
-      service.sendOutboundAttachments(
-        "C1",
-        [
-          media({ id: "bad", url: "http://169.254.169.254/x" }),
-          media({ id: "good", url: "https://x/ok.png" }),
-        ],
-        undefined,
-        null,
-      ),
-    ).resolves.toBeUndefined();
+    const delivery = await service.sendOutboundAttachments(
+      "C1",
+      [
+        media({ id: "bad", url: "http://169.254.169.254/x" }),
+        media({ id: "good", url: "https://x/ok.png" }),
+      ],
+      undefined,
+      null,
+    );
 
     expect(service.uploadFile).toHaveBeenCalledTimes(1);
+    expect(delivery.failures).toEqual([
+      {
+        url: "http://169.254.169.254/x",
+        code: "SLACK_ATTACHMENT_UPLOAD_FAILED",
+        message: "ssrf blocked",
+      },
+    ]);
+    expect(delivery.delivered).toEqual([
+      { url: "https://x/ok.png", fileId: "F1", permalink: "p" },
+    ]);
     expect(
       (
         service as unknown as {
@@ -137,5 +157,23 @@ describe("Slack outbound attachments", () => {
         }
       ).runtime.logger.warn,
     ).toHaveBeenCalled();
+  });
+
+  it("treats an upload resolving without a file id as a failed part, not success", async () => {
+    const service = createService();
+    service.uploadFile = vi.fn(async () => ({ fileId: "", permalink: "" }));
+
+    const delivery = await service.sendOutboundAttachments(
+      "C1",
+      [media({ id: "ghost", url: "https://x/ghost.png" })],
+      undefined,
+      null,
+    );
+
+    expect(delivery.delivered).toEqual([]);
+    expect(delivery.failures).toHaveLength(1);
+    expect(delivery.failures[0]?.code).toBe("SLACK_FILE_ID_MISSING");
+    // No fabricated id may ever enter the evidence.
+    expect(JSON.stringify(delivery)).not.toContain('"fileId":""');
   });
 });

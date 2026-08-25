@@ -66,7 +66,7 @@ interface IMessageServiceLike {
     to: string,
     text: string,
     options?: {
-      mediaUrl?: string;
+      mediaUrls?: string[];
       maxBytes?: number;
     }
   ): Promise<{
@@ -250,28 +250,37 @@ async function handleSendMessage(
       to?: string;
       chatId?: string;
       text?: string;
+      /** Legacy singular form; still accepted, equivalent to one-entry mediaUrls. */
       mediaUrl?: string;
+      mediaUrls?: string[];
       maxBytes?: number;
     }) ?? {};
 
   const to = body.to?.trim() || "";
   const chatId = body.chatId?.trim() || "";
   const text = body.text?.trim() || "";
-  const mediaUrl = body.mediaUrl?.trim() || undefined;
+  const mediaUrls = [
+    ...(body.mediaUrl?.trim() ? [body.mediaUrl.trim()] : []),
+    ...(Array.isArray(body.mediaUrls)
+      ? body.mediaUrls
+          .map((url) => (typeof url === "string" ? url.trim() : ""))
+          .filter((url) => url.length > 0)
+      : []),
+  ];
 
   if (!to && !chatId) {
     res.status(400).json(buildSetupError("bad_request", "either to or chatId is required"));
     return;
   }
 
-  if (!text && !mediaUrl) {
+  if (!text && mediaUrls.length === 0) {
     res.status(400).json(buildSetupError("bad_request", "either text or mediaUrl is required"));
     return;
   }
 
   try {
     const result = await service.sendMessage(chatId ? `chat_id:${chatId}` : to, text, {
-      ...(mediaUrl ? { mediaUrl } : {}),
+      ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
       ...(typeof body.maxBytes === "number" ? { maxBytes: body.maxBytes } : {}),
     });
     if (!result.success) {
