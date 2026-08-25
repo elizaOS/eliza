@@ -1081,8 +1081,26 @@ export function parseBooleanFromText(
 	if (value === undefined || value === null) return false;
 	if (typeof value === "boolean") return value;
 
-	const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
-	const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
+	const affirmative = [
+		"YES",
+		"Y",
+		"TRUE",
+		"T",
+		"1",
+		"ON",
+		"ENABLE",
+		"ENABLED",
+	];
+	const negative = [
+		"NO",
+		"N",
+		"FALSE",
+		"F",
+		"0",
+		"OFF",
+		"DISABLE",
+		"DISABLED",
+	];
 
 	const normalizedText = value.trim().toUpperCase();
 	if (affirmative.includes(normalizedText)) return true;

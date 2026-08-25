@@ -64,14 +64,18 @@ describe("parseBooleanValue", () => {
 });
 
 describe("parseBooleanText", () => {
-	it("parses extended text booleans (y/n, enable/disable) with false fallback", () => {
+	it("parses extended text booleans (y/n, enable/disable, enabled/disabled) with false fallback", () => {
 		expect(parseBooleanText("yes")).toBe(true);
 		expect(parseBooleanText("y")).toBe(true);
 		expect(parseBooleanText("enable")).toBe(true);
 		expect(parseBooleanText("ENABLE")).toBe(true);
+		expect(parseBooleanText("enabled")).toBe(true);
+		expect(parseBooleanText("ENABLED")).toBe(true);
 		expect(parseBooleanText("no")).toBe(false);
 		expect(parseBooleanText("n")).toBe(false);
 		expect(parseBooleanText("disable")).toBe(false);
+		expect(parseBooleanText("disabled")).toBe(false);
+		expect(parseBooleanText("DISABLED")).toBe(false);
 		expect(parseBooleanText("random_unknown_text")).toBe(false);
 		expect(parseBooleanText(null)).toBe(false);
 		expect(parseBooleanText(undefined)).toBe(false);

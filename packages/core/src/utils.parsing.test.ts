@@ -82,10 +82,29 @@ describe("parseToonKeyValue", () => {
 
 describe("parseBooleanFromText", () => {
 	it("maps affirmative/negative tokens, defaults false", () => {
-		for (const v of ["yes", "Y", "true", "1", "on", "ENABLE"]) {
+		for (const v of [
+			"yes",
+			"Y",
+			"true",
+			"1",
+			"on",
+			"ENABLE",
+			"enabled",
+			"ENABLED",
+		]) {
 			expect(parseBooleanFromText(v)).toBe(true);
 		}
-		for (const v of ["no", "false", "0", "off", "maybe", ""]) {
+		for (const v of [
+			"no",
+			"false",
+			"0",
+			"off",
+			"disable",
+			"disabled",
+			"DISABLED",
+			"maybe",
+			"",
+		]) {
 			expect(parseBooleanFromText(v)).toBe(false);
 		}
 		expect(parseBooleanFromText(true)).toBe(true);
