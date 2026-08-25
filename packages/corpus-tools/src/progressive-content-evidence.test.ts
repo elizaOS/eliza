@@ -19,10 +19,13 @@ import {
 import {
   buildContentContextResult,
   CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
+  CONTENT_CONTEXT_LIVE_OBSERVER_SCHEMA_VERSION,
+  CONTENT_CONTEXT_LIVE_TRAJECTORY_SCHEMA_VERSION,
   CONTENT_CONTEXT_PERFORMANCE_POLICY,
   CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
   CONTENT_CONTEXT_RESULT_SCHEMA_VERSION,
   type ContentContextRequiredArtifact,
+  contentContextCanonicalEvidenceSha256,
   validateContentContextResult as validateContentContextResultBase,
 } from "./progressive-content-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "./progressive-content-realization.ts";
@@ -142,8 +145,37 @@ function validSoakEvidence(commit: string, corpusManifestSha256: string) {
 function validLiveTrajectories(commit: string, corpusManifestSha256: string) {
   return Array.from({ length: 5 }, (_, repetition) =>
     ["file", "document", "memory", "email", "attachment", "tool-output"].map(
-      (family) =>
-        JSON.stringify({
+      (family) => {
+        const trajectory = {
+          schemaVersion: "elizaos.content-context.normalized-trajectory.v1",
+          messages: [{ role: "user", content: `find ${family} late evidence` }],
+          toolCalls: [
+            { name: "READ", offset: 0 },
+            { name: "READ", offset: 65_536 },
+          ],
+          modelCalls: [{ purpose: "planner", response: "continue" }],
+          finalAnswer: `recovered ${family} answer`,
+        };
+        const answerSha256 = createHash("sha256")
+          .update(trajectory.finalAnswer)
+          .digest("hex");
+        const observerEvidence = {
+          schemaVersion: CONTENT_CONTEXT_LIVE_OBSERVER_SCHEMA_VERSION,
+          judgeProvider: "openai",
+          judgeModel: "gpt-5.4",
+          judgeResponse: { decision: "qualified", citationsVerified: true },
+          expectedAnswerSha256: answerSha256,
+          observedAnswerSha256: answerSha256,
+          continuationDiscovered: true,
+          lateEvidenceRecovered: true,
+          exactAnswer: true,
+          answerLeakageDetected: false,
+          canaryLeakageDetected: false,
+          toolCalls: 2,
+          noProgressReads: 0,
+        };
+        return JSON.stringify({
+          schemaVersion: CONTENT_CONTEXT_LIVE_TRAJECTORY_SCHEMA_VERSION,
           repetition,
           family,
           status: "passed",
@@ -164,9 +196,13 @@ function validLiveTrajectories(commit: string, corpusManifestSha256: string) {
           outputTokens: 100,
           costUsd: 0.01,
           controllerDecision: "qualified",
-          observerEvidenceSha256: "d".repeat(64),
-          trajectorySha256: "e".repeat(64),
-        }),
+          observerEvidence,
+          observerEvidenceSha256:
+            contentContextCanonicalEvidenceSha256(observerEvidence),
+          trajectory,
+          trajectorySha256: contentContextCanonicalEvidenceSha256(trajectory),
+        });
+      },
     ),
   )
     .flat()
@@ -946,6 +982,51 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(stale.result, stale.bytes),
     ).toThrow(/inspector E2E/u);
+  });
+
+  it("recomputes live trajectory and observer evidence digests", () => {
+    const original = evidence();
+    const rows = new TextDecoder()
+      .decode(original.bytes["trajectories.jsonl"])
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const first = rows[0];
+    if (!first) throw new Error("live trajectory fixture is empty");
+    const trajectory = first.trajectory as Record<string, unknown>;
+    trajectory.finalAnswer = "mutated after hashing";
+    const changedTrajectory = replaceArtifact(
+      original,
+      "trajectories.jsonl",
+      rows.map((row) => JSON.stringify(row)).join("\n"),
+    );
+    expect(() =>
+      validateContentContextResult(
+        changedTrajectory.result,
+        changedTrajectory.bytes,
+      ),
+    ).toThrow(/five qualified/u);
+
+    const observerRows = new TextDecoder()
+      .decode(original.bytes["trajectories.jsonl"])
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const firstObserver = observerRows[0];
+    if (!firstObserver) throw new Error("live trajectory fixture is empty");
+    const observer = firstObserver.observerEvidence as Record<string, unknown>;
+    observer.judgeResponse = { decision: "unqualified" };
+    const changedObserver = replaceArtifact(
+      original,
+      "trajectories.jsonl",
+      observerRows.map((row) => JSON.stringify(row)).join("\n"),
+    );
+    expect(() =>
+      validateContentContextResult(
+        changedObserver.result,
+        changedObserver.bytes,
+      ),
+    ).toThrow(/five qualified/u);
   });
 
   it.each([
