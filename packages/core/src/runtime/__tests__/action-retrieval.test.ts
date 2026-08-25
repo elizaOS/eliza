@@ -1341,6 +1341,13 @@ describe("guild/server management natural-language routing (regression 2026-08-2
 			contexts: ["admin"],
 		},
 		{
+			name: "SETTINGS",
+			description:
+				"View and edit application settings, permissions, network access, and installed app configuration.",
+			similes: ["EDIT_APP_SETTINGS", "MANAGE_APP_PERMISSIONS"],
+			contexts: ["settings"],
+		},
+		{
 			name: "WORKFLOW",
 			description: "Create and manage multi-step automation workflows.",
 			contexts: ["automation"],
@@ -1408,7 +1415,6 @@ describe("guild/server management natural-language routing (regression 2026-08-2
 
 	it.each([
 		["APPLY_SERVER_TEMPLATE", EXACT_LIVE_PHRASE],
-		["APPLY_TEMPLATE", "tf, i mean discord template"],
 		["CREATE_CHANNEL", "create a channel called builds under code ops"],
 		["LIST_SERVER_TEMPLATES", "list the discord server templates"],
 		["MANAGE_SERVER", "set up the server structure"],
@@ -1428,6 +1434,9 @@ describe("guild/server management natural-language routing (regression 2026-08-2
 	);
 
 	it.each([
+		"APPLY_TEMPLATE",
+		"LIST_TEMPLATES",
+		"EDIT_PERMISSIONS",
 		"APPLY_FILE_TEMPLATE",
 		"CREATE_FILE",
 		"CODE_TEMPLATE",
@@ -1450,6 +1459,16 @@ describe("guild/server management natural-language routing (regression 2026-08-2
 			candidateActions: ["APPLY_FILE_TEMPLATE"],
 		});
 		expect(response.results[0]?.name).not.toBe("MESSAGE");
+	});
+
+	it("keeps generic app permissions on SETTINGS", () => {
+		const response = retrieveActions({
+			catalog: liveCatalog(),
+			messageText: "edit network permissions for the weather app",
+			candidateActions: ["EDIT_PERMISSIONS"],
+		});
+		expect(response.query.parentActionHints).not.toContain("MESSAGE");
+		expect(response.results[0]?.name).toBe("SETTINGS");
 	});
 
 	it("keeps a code-task ask on TASKS, not MESSAGE", () => {
