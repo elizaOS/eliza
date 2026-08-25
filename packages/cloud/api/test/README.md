@@ -63,8 +63,11 @@ Worker doesn't poison subsequent runs.
 
 Earlier documentation referred to a non-secret contract at
 `docs/launchdocs/integration-test-fixtures.md`, but that file was never
-committed to this repository. The live launch-QA fixtures are under
-`./fixtures/`.
+committed to this repository. The files under `./fixtures/` are deterministic
+local test inputs; they are not live provider accounts, bots, groups, wallets,
+or certification evidence. Live staging-resource status is represented only by
+the redacted ledger in `.github/certification/staging-resources.yaml` plus its
+separately approved private resolver and receipts.
 The e2e harness can exercise cloud routes, connector contracts, and
 direct-crypto boundaries, but live Codex/Gmail accounts, Eliza Cloud orgs, and
 funded wallets must be provided through the approved secret store and evidenced

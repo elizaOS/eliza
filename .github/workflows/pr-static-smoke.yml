@@ -1,7 +1,8 @@
 # This workflow is the sole pull-request and merge-candidate validation authority.
 # It checks mergeability, changed secrets and workflow syntax, then builds and
-# statically validates the affected workspace closure without running test,
-# provider, device, deployment, or destructive-effect lanes.
+# statically validates the affected workspace closure. The ledger's own
+# fail-closed adversarial suite runs beside its checker; broader test, provider,
+# device, deployment, and destructive-effect lanes remain out of scope.
 name: PR Static Smoke
 
 on:
@@ -125,6 +126,9 @@ jobs:
 
       - name: Validate staging resource certification ledger
         run: node packages/scripts/launch-qa/check-staging-resource-ledger.mjs --json
+
+      - name: Test staging resource certification ledger fail-closed contract
+        run: bun test packages/scripts/launch-qa/check-staging-resource-ledger.test.ts
 
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

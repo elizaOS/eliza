@@ -34,11 +34,25 @@ optional public Ed25519 readiness authorization. A separately approved private
 resolver maps those references to real provider objects and custodians. The
 resolver is required for operations but is never committed or named here.
 
+Receipt and attestation references use only `rct-` or `att-` followed by 32 to
+64 lowercase hexadecimal characters. They are random or digest-derived opaque
+handles: OTPs, provider identifiers, resource names, and semantic aliases are
+not valid references.
+
 An opaque receipt string is not proof by itself. Any `READY` claim must be
 covered by a valid, short-lived signature from the trust anchor below; with no
 READY rows, `ready_authorization` must remain `null`. The signature certifies
 the complete public redacted claim after an operator reviews the private
 evidence—it never publishes or replaces that evidence.
+The signature is an integrity control, not a substitute for a trusted external
+repository rule and an independent review boundary. Until those controls are
+configured, the ledger must retain zero `READY` rows.
+The production checker currently fails closed on every non-empty `READY` set:
+the public SHA fields are self-reported inventory until an independently
+protected live-deployment attestation is wired. Alternate test trust anchors
+are not accepted through the production checker or artifact-writer APIs.
+The READY-payload printer is subject to those same external prerequisites and
+may bypass only the circular requirement for the signature it is preparing.
 
 Never add an email address, phone number, provider/user/chat identifier,
 account alias, wallet address, token fragment, OTP, recovery material, private
@@ -67,6 +81,7 @@ bun run --cwd packages/evidence certify:verify -- \
   --json
 ```
 
-The private key must never be committed. To rotate trust, generate a new key,
-replace the PEM and fingerprint in the same reviewed change, then update the
-operator-held private key.
+The private key must never be committed. Trust-anchor rotation must be a
+separate protected administrator change, reviewed independently from any
+checker, workflow, evidence, or `READY`-row change. Update the operator-held
+private key only after that protected rotation is accepted.

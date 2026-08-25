@@ -4,6 +4,7 @@
  * resolve private locators or contact providers.
  */
 import { afterAll, describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import {
   createHash,
   generateKeyPairSync,
@@ -18,6 +19,8 @@ import {
   buildReadyAuthorizationPayload,
   checkStagingResourceLedger,
   prepareReadyAuthorizationPayload,
+  renderStagingResourceLedgerView,
+  serializeStagingResourceLedgerSchema,
   verifyReadyAuthorizationSignature,
   writeStagingResourceLedgerArtifacts,
 } from "./check-staging-resource-ledger.mjs";
@@ -34,17 +37,39 @@ const publicKeyRelativePath =
   ".github/certification/certification-public-key.pem";
 const publicYamlHeader = `# Public, redacted staging-resource authority. Private locators and evidence
 # remain in the separately approved resolver; never add them to this file.\n`;
-const fixedNow = new Date("2026-08-25T12:00:00Z");
+const fixedNow = new Date("2026-08-25T17:15:00Z");
 const sourceLedgerRaw = fs.readFileSync(
   path.join(repoRoot, ledgerRelativePath),
   "utf8",
 );
 const tempRoots = new Set<string>();
+const gitDirectoryResult = spawnSync(
+  "git",
+  ["-C", repoRoot, "rev-parse", "--absolute-git-dir"],
+  { encoding: "utf8", shell: false },
+);
+if (gitDirectoryResult.status !== 0 || !gitDirectoryResult.stdout.trim()) {
+  throw new Error("Tests require the repository Git object database.");
+}
+const sharedGitDirectory = gitDirectoryResult.stdout.trim();
+
+function resolveGitCommit(revision: string) {
+  const result = spawnSync(
+    "git",
+    ["-C", repoRoot, "rev-parse", "--verify", `${revision}^{commit}`],
+    { encoding: "utf8", shell: false },
+  );
+  if (result.status !== 0 || !/^[0-9a-f]{40}$/.test(result.stdout.trim())) {
+    throw new Error(`Could not resolve test Git revision ${revision}.`);
+  }
+  return result.stdout.trim();
+}
 
 function makeTempRoot() {
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "staging-resource-ledger-gate-"),
   );
+  fs.writeFileSync(path.join(root, ".git"), `gitdir: ${sharedGitDirectory}\n`);
   tempRoots.add(root);
   return root;
 }
@@ -88,7 +113,10 @@ function makeValidRepo() {
 }
 
 function check(root: string) {
-  return checkStagingResourceLedger({ repoRoot: root, now: fixedNow });
+  return checkStagingResourceLedger({
+    repoRoot: root,
+    now: fixedNow,
+  });
 }
 
 function errorTypes(root: string) {
@@ -103,6 +131,18 @@ function resource(ledger: ReturnType<typeof parse>, ref: string) {
   const found = ledger.resources.find((entry) => entry.ref === ref);
   if (!found) throw new Error(`Missing test resource ${ref}`);
   return found;
+}
+
+function opaqueEvidenceRef(prefix: "rct" | "att", seed: string) {
+  return `${prefix}-${createHash("sha256").update(seed).digest("hex").slice(0, 32)}`;
+}
+
+function receiptRef(seed: string) {
+  return opaqueEvidenceRef("rct", seed);
+}
+
+function attestationRef(seed: string) {
+  return opaqueEvidenceRef("att", seed);
 }
 
 function authorizationMetadata(
@@ -129,19 +169,21 @@ function certifyResource(
   const suffix = ref.slice(-4);
   entry.private_resolver = {
     state: "ATTESTED",
-    attestation_ref: `att-${suffix}-resolver`,
+    attestation_ref: attestationRef(`${suffix}-resolver`),
     binding_generation: entry.binding_generation,
     checked_at: observedAt,
   };
   entry.mapping = {
     state: "PASS",
     checked_at: observedAt,
-    receipt_ref: `rct-${suffix}-mapping-ready`,
+    receipt_ref: receiptRef(`${suffix}-mapping-ready`),
+    binding_generation: entry.binding_generation,
   };
   entry.existence = {
     state: "PASS",
     checked_at: observedAt,
-    receipt_ref: `rct-${suffix}-existence-ready`,
+    receipt_ref: receiptRef(`${suffix}-existence-ready`),
+    binding_generation: entry.binding_generation,
   };
   entry.custody = {
     ...entry.custody,
@@ -150,25 +192,30 @@ function certifyResource(
     recovery_role_state: "ASSIGNED",
     mfa_state: "PASS",
     recovery_state: "PASS",
-    receipt_ref: `rct-${suffix}-custody-ready`,
+    receipt_ref: receiptRef(`${suffix}-custody-ready`),
     binding_generation: entry.binding_generation,
     checked_at: observedAt,
   };
-  entry.configuration = [
-    {
-      authority: "GITHUB_ACTIONS",
-      canonical_names: [`QA_RESOURCE_${suffix}`],
-      state: "PASS",
-      checked_at: observedAt,
-      receipt_ref: `rct-${suffix}-configuration-ready`,
-    },
-  ];
+  entry.configuration = entry.configuration.map((configuration, index) =>
+    configuration.authority === "UNRESOLVED"
+      ? configuration
+      : {
+          ...configuration,
+          state: "PASS",
+          checked_at: observedAt,
+          receipt_ref: receiptRef(
+            `${suffix}-configuration-${index + 1}-ready`,
+          ),
+          binding_generation: entry.binding_generation,
+        },
+  );
   entry.permissions = {
     ...entry.permissions,
     observed_state: "PASS",
     least_privilege_state: "PASS",
     checked_at: observedAt,
-    receipt_ref: `rct-${suffix}-permissions-ready`,
+    receipt_ref: receiptRef(`${suffix}-permissions-ready`),
+    binding_generation: entry.binding_generation,
   };
   entry.isolation = {
     provider_object: "PASS",
@@ -177,7 +224,8 @@ function certifyResource(
     runtime: "PASS",
     production_separation: "PASS",
     checked_at: observedAt,
-    receipt_ref: `rct-${suffix}-isolation-ready`,
+    receipt_ref: receiptRef(`${suffix}-isolation-ready`),
+    binding_generation: entry.binding_generation,
   };
   entry.lifecycle = {
     reuse_policy: "RESET_BETWEEN_RUNS",
@@ -188,16 +236,25 @@ function certifyResource(
     revocation_state: "TESTED",
     cleanup_state: "TESTED",
     checked_at: observedAt,
-    receipt_ref: `rct-${suffix}-lifecycle-ready`,
+    receipt_ref: receiptRef(`${suffix}-lifecycle-ready`),
+    binding_generation: entry.binding_generation,
   };
+  let hasCanonicalNotRequiredEvidence = false;
   for (const kind of ["provider", "runtime", "smoke"]) {
+    if (entry.evidence[kind].state === "NOT_REQUIRED") {
+      hasCanonicalNotRequiredEvidence = true;
+      continue;
+    }
     entry.evidence[kind] = {
       state: "PASS",
-      receipt_ref: `rct-${suffix}-${kind}-ready`,
+      receipt_ref: receiptRef(`${suffix}-${kind}-ready`),
       observed_at: observedAt,
       valid_until:
-        kind === "smoke" ? "2026-08-25T17:00:00Z" : "2026-08-26T17:00:00Z",
-      source_commit: ledger.snapshot.repository_commit,
+        kind === "smoke" ? "2026-08-25T17:28:55Z" : "2026-08-26T17:00:00Z",
+      source_commit:
+        kind === "provider"
+          ? ledger.snapshot.repository_commit
+          : ledger.snapshot.staging_deployment_commit,
       binding_generation: entry.binding_generation,
       reason_code: "CERTIFIED",
     };
@@ -205,7 +262,10 @@ function certifyResource(
   entry.verdict = {
     state: "READY",
     evaluated_at: observedAt,
-    reason_codes: ["CERTIFIED"],
+    reason_codes: [
+      "CERTIFIED",
+      ...(hasCanonicalNotRequiredEvidence ? ["NOT_REQUIRED"] : []),
+    ],
     blocker_issues: [],
   };
   return entry;
@@ -241,6 +301,17 @@ describe("staging-resource ledger gate", () => {
     expect(result.ok).toBe(true);
     expect(result.resourceCount).toBe(56);
     expect(result.readyCount).toBe(0);
+  });
+
+  test("projects coverage_key as an exact four-item JSON Schema tuple", () => {
+    const schema = JSON.parse(serializeStagingResourceLedgerSchema());
+    const coverageKey =
+      schema.properties.resources.items.properties.coverage_key;
+
+    expect(coverageKey.minItems).toBe(4);
+    expect(coverageKey.maxItems).toBe(4);
+    expect(coverageKey.items).toBe(false);
+    expect(coverageKey.prefixItems).toHaveLength(4);
   });
 
   test("fails closed when any authoritative artifact is missing", () => {
@@ -383,6 +454,30 @@ describe("staging-resource ledger gate", () => {
         "missing-canonical-relation",
         "unresolved-relation",
       ]),
+    );
+  });
+
+  test("requires the canonical auth steward and Telegram widget bot dependencies", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    resource(ledger, "qar-0006").relations = [];
+    resource(ledger, "qar-0022").relations = resource(
+      ledger,
+      "qar-0022",
+    ).relations.filter(
+      (relation) =>
+        !(relation.type === "DEPENDS_ON" && relation.ref === "qar-0033"),
+    );
+    writeLedger(root, ledger);
+
+    const errors = check(root).errors.filter(
+      (error) => error.type === "missing-canonical-relation",
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("qar-0015") }),
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("qar-0033") }),
     );
   });
 
@@ -535,8 +630,8 @@ describe("staging-resource ledger gate", () => {
     const ledger = parsedLedger();
     const oldRepositoryCommit = ledger.snapshot.repository_commit;
     const oldStagingCommit = ledger.snapshot.staging_deployment_commit;
-    const repositoryCommit = "1".repeat(40);
-    const stagingCommit = "2".repeat(40);
+    const repositoryCommit = resolveGitCommit("HEAD");
+    const stagingCommit = resolveGitCommit("HEAD~1");
     for (const entry of ledger.resources) {
       for (const kind of ["provider", "runtime", "smoke"]) {
         const evidence = entry.evidence[kind];
@@ -549,19 +644,22 @@ describe("staging-resource ledger gate", () => {
     }
     ledger.snapshot.repository_commit = repositoryCommit;
     ledger.snapshot.staging_deployment_commit = stagingCommit;
-    resource(ledger, "qar-0001").configuration = [
-      {
-        authority: "GITHUB_ACTIONS",
-        canonical_names: ["DISCORD_CLIENT_SECRET", "TELEGRAM_BOT_TOKEN"],
-        state: "PRESENT",
-        checked_at: ledger.snapshot.observed_at,
-        receipt_ref: "rct-0001-configuration-safe",
-      },
-    ];
     writeLedger(root, ledger);
     deriveArtifacts(root);
 
     expect(check(root).ok).toBe(true);
+  });
+
+  test("rejects arbitrary substitutions in the canonical configuration matrix", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    resource(ledger, "qar-0018").configuration[0].canonical_names = [
+      "DISCORD_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+    ];
+    writeLedger(root, ledger);
+
+    expect(errorTypes(root)).toContain("canonical-configuration-mismatch");
   });
 
   test("rejects README, fixture, and mock tokens as evidence", () => {
@@ -572,6 +670,51 @@ describe("staging-resource ledger gate", () => {
     writeLedger(root, ledger);
 
     expect(errorTypes(root)).toContain("mock-evidence");
+  });
+
+  test("rejects OTP-shaped and semantic receipt or attestation aliases", () => {
+    for (const { kind, value } of [
+      { kind: "receipt", value: "rct-123456" },
+      { kind: "attestation", value: "att-123456" },
+      { kind: "receipt", value: "rct-provider-proof" },
+      { kind: "attestation", value: "att-current-resolver" },
+    ]) {
+      const root = makeValidRepo();
+      const ledger = parsedLedger();
+      const entry = resource(ledger, "qar-0004");
+      if (kind === "receipt") {
+        entry.mapping.receipt_ref = value;
+      } else {
+        entry.private_resolver = {
+          state: "ATTESTED",
+          attestation_ref: value,
+          binding_generation: entry.binding_generation,
+          checked_at: ledger.snapshot.observed_at,
+        };
+      }
+      writeLedger(root, ledger);
+
+      expect(errorTypes(root)).toContain("schema-validation");
+    }
+  });
+
+  test("rejects provider-identifier-shaped numeric content in evidence refs", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    resource(ledger, "qar-0004").mapping.receipt_ref = `rct-${"1".repeat(32)}`;
+    resource(ledger, "qar-0005").private_resolver = {
+      state: "ATTESTED",
+      attestation_ref: `att-${"2".repeat(32)}`,
+      binding_generation: 1,
+      checked_at: ledger.snapshot.observed_at,
+    };
+    writeLedger(root, ledger);
+
+    expect(
+      errorTypes(root).filter(
+        (type) => type === "identifier-shaped-evidence-ref",
+      ),
+    ).toHaveLength(2);
   });
 
   test("rejects a cosmetic READY verdict with incomplete certification", () => {
@@ -676,10 +819,65 @@ describe("staging-resource ledger gate", () => {
     ).toBe(false);
   });
 
-  test("prepares an operator signing payload without semantic READY admission", () => {
+  test("fails READY admission closed until certification and live-deployment authority are external", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    ledger.deployment_observation.staging_deployment_commit =
+      ledger.snapshot.staging_deployment_commit;
+    ledger.deployment_observation.evidence_alignment = "ALIGNED";
+    certifyResource(ledger, "qar-0015");
+    addInvalidReadyAuthorization(ledger);
+    writeLedger(root, ledger);
+
+    const result = check(root);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        type: "external-certification-authority-required",
+      }),
+    );
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ type: "external-live-attestation-required" }),
+    );
+    expect(
+      result.errors.filter((error) => error.type === "ready-invariant"),
+    ).toEqual([]);
+  });
+
+  test("lets a freshly revalidated generation 2 reach internal READY coherence while external authorities remain fail-closed", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    const candidate = resource(ledger, "qar-0015");
+    candidate.binding_generation = 2;
+    ledger.deployment_observation.staging_deployment_commit =
+      ledger.snapshot.staging_deployment_commit;
+    ledger.deployment_observation.evidence_alignment = "ALIGNED";
+    certifyResource(ledger, candidate.ref);
+    addInvalidReadyAuthorization(ledger);
+    writeLedger(root, ledger);
+
+    const result = check(root);
+    expect(candidate.verdict.reason_codes).toEqual(["CERTIFIED"]);
+    expect(
+      result.errors.filter(
+        (error) =>
+          error.type === "ready-invariant" ||
+          error.type === "verdict-reason-state-mismatch",
+      ),
+    ).toEqual([]);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        type: "external-certification-authority-required",
+      }),
+    );
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ type: "external-live-attestation-required" }),
+    );
+  });
+
+  test("refuses to prepare a signing payload without external authority and live attestation", () => {
     const root = makeTempRoot();
     const ledger = parsedLedger();
-    certifyResource(ledger, "qar-0003");
+    certifyResource(ledger, "qar-0015");
     ledger.deployment_observation.staging_deployment_commit =
       ledger.snapshot.staging_deployment_commit;
     ledger.deployment_observation.evidence_alignment = "ALIGNED";
@@ -693,25 +891,51 @@ describe("staging-resource ledger gate", () => {
     ).toISOString();
     writeLedger(root, ledger);
 
-    const prepared = prepareReadyAuthorizationPayload({
-      repoRoot: root,
-      signedAt,
-      validUntil,
-      now: new Date(latestObservation + 60 * 60 * 1000),
-    });
-    expect(prepared.authorization_metadata).toMatchObject({
-      payload_version: 1,
-      algorithm: "Ed25519",
-      key_fingerprint: "3ac9e3e625a9ed2f",
-    });
-    expect(prepared.authorization_metadata.payload_sha256).toBe(
-      createHash("sha256").update(prepared.payload_utf8).digest("hex"),
+    let thrown: unknown;
+    try {
+      prepareReadyAuthorizationPayload({
+        repoRoot: root,
+        signedAt,
+        validUntil,
+        now: new Date(latestObservation + 5 * 60 * 1000),
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      "external-certification-authority-required",
     );
-    expect(prepared.payload_utf8).toContain('"ref":"qar-0003"');
-    expect(prepared.payload_utf8.endsWith("\n")).toBe(false);
-    expect(
-      Buffer.from(prepared.payload_base64, "base64").toString("utf8"),
-    ).toBe(prepared.payload_utf8);
+    expect((thrown as Error).message).toContain(
+      "external-live-attestation-required",
+    );
+    expect((thrown as Error).message).not.toContain("ready-invariant");
+  });
+
+  test("refuses to prepare a signing payload for structurally READY but semantically UNKNOWN rows", () => {
+    const root = makeTempRoot();
+    const ledger = parsedLedger();
+    const candidate = resource(ledger, "qar-0015");
+    candidate.verdict = {
+      state: "READY",
+      evaluated_at: ledger.snapshot.observed_at,
+      reason_codes: ["CERTIFIED"],
+      blocker_issues: [],
+    };
+    ledger.deployment_observation.staging_deployment_commit =
+      ledger.snapshot.staging_deployment_commit;
+    ledger.deployment_observation.evidence_alignment = "ALIGNED";
+    writeLedger(root, ledger);
+
+    expect(() =>
+      prepareReadyAuthorizationPayload({
+        repoRoot: root,
+        signedAt: "2026-08-25T11:30:00Z",
+        validUntil: "2026-08-25T23:30:00Z",
+        now: fixedNow,
+      }),
+    ).toThrow("ready-invariant");
   });
 
   test("rejects future evidence observations", () => {
@@ -742,6 +966,37 @@ describe("staging-resource ledger gate", () => {
         "stale-deployment-observation",
       ]),
     );
+  });
+
+  test("requires every declared snapshot and deployment SHA to resolve to a Git commit object", () => {
+    for (const [field, expectedPath] of [
+      ["repository", "$.snapshot.repository_commit"],
+      ["snapshot-deployment", "$.snapshot.staging_deployment_commit"],
+      [
+        "observed-deployment",
+        "$.deployment_observation.staging_deployment_commit",
+      ],
+    ]) {
+      const root = makeValidRepo();
+      const ledger = parsedLedger();
+      const nonexistentCommit = "f".repeat(40);
+      if (field === "repository") {
+        ledger.snapshot.repository_commit = nonexistentCommit;
+      } else if (field === "snapshot-deployment") {
+        ledger.snapshot.staging_deployment_commit = nonexistentCommit;
+      } else {
+        ledger.deployment_observation.staging_deployment_commit =
+          nonexistentCommit;
+      }
+      writeLedger(root, ledger);
+
+      expect(check(root).errors).toContainEqual(
+        expect.objectContaining({
+          type: "unknown-git-commit",
+          path: expectedPath,
+        }),
+      );
+    }
   });
 
   test("rejects expired and overlong PASS evidence only when READY", () => {
@@ -784,6 +1039,53 @@ describe("staging-resource ledger gate", () => {
     expect(view).toContain("NOT READY · FAIL_CURRENT · HISTORICAL");
   });
 
+  test("anchors EVIDENCE_EXPIRED reasons to verdict evaluation time", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    const entry = resource(ledger, "qar-0004");
+    entry.evidence.provider.valid_until = "2026-08-25T02:00:00Z";
+    entry.verdict.reason_codes.push("EVIDENCE_EXPIRED");
+    writeLedger(root, ledger);
+
+    expect(check(root).errors).toContainEqual(
+      expect.objectContaining({
+        type: "verdict-reason-state-mismatch",
+        message: expect.stringContaining("Reason code EVIDENCE_EXPIRED"),
+      }),
+    );
+  });
+
+  test("renders evidence and READY authorization validity at the supplied generation time", () => {
+    const ledger = parsedLedger();
+    resource(ledger, "qar-0004").evidence.provider.valid_until =
+      "2026-08-25T10:00:00Z";
+    ledger.ready_authorization = {
+      ...authorizationMetadata({
+        signed_at: "2026-08-25T08:00:00Z",
+        valid_until: "2026-08-25T10:00:00Z",
+      }),
+      payload_sha256: "0".repeat(64),
+      signature_base64: Buffer.alloc(64).toString("base64"),
+    };
+
+    const beforeExpiry = renderStagingResourceLedgerView(
+      ledger,
+      new Date("2026-08-25T09:00:00Z"),
+    );
+    const afterExpiry = renderStagingResourceLedgerView(
+      ledger,
+      new Date("2026-08-25T12:00:00Z"),
+    );
+    expect(beforeExpiry).toContain("VALID_UNTIL:2026-08-25T10:00:00Z");
+    expect(beforeExpiry).toContain(
+      "READY authorization validity: `SIGNED · VALID_UNTIL:2026-08-25T10:00:00Z`",
+    );
+    expect(afterExpiry).toContain("EXPIRED:2026-08-25T10:00:00Z");
+    expect(afterExpiry).toContain(
+      "READY authorization validity: `SIGNED · EXPIRED:2026-08-25T10:00:00Z`",
+    );
+  });
+
   test("rejects stale binding generations and source commits", () => {
     const root = makeValidRepo();
     const ledger = parsedLedger();
@@ -795,7 +1097,28 @@ describe("staging-resource ledger gate", () => {
     expect(errorTypes(root)).toEqual(
       expect.arrayContaining([
         "binding-generation-mismatch",
-        "evidence-source-mismatch",
+        "evidence-source-kind-mismatch",
+      ]),
+    );
+  });
+
+  test("binds provider evidence to source code and runtime/smoke to the deployment", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    resource(ledger, "qar-0004").evidence.provider.source_commit =
+      ledger.snapshot.staging_deployment_commit;
+    resource(ledger, "qar-0005").evidence.runtime.source_commit =
+      ledger.snapshot.repository_commit;
+    writeLedger(root, ledger);
+
+    const sourceErrors = check(root).errors.filter(
+      (error) => error.type === "evidence-source-kind-mismatch",
+    );
+    expect(sourceErrors).toHaveLength(2);
+    expect(sourceErrors.map((error) => error.path)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("evidence.provider.source_commit"),
+        expect.stringContaining("evidence.runtime.source_commit"),
       ]),
     );
   });
@@ -808,6 +1131,7 @@ describe("staging-resource ledger gate", () => {
       state: "PRESENT",
       checked_at: null,
       receipt_ref: null,
+      binding_generation: first.binding_generation,
     };
     const fourth = resource(ledger, "qar-0004");
     fourth.mapping.receipt_ref = fourth.existence.receipt_ref;
@@ -818,19 +1142,126 @@ describe("staging-resource ledger gate", () => {
     );
   });
 
+  test("rejects noncanonical NOT_REQUIRED self-waivers", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    resource(ledger, "qar-0001").mapping = {
+      state: "NOT_REQUIRED",
+      checked_at: null,
+      receipt_ref: null,
+      binding_generation: null,
+    };
+    writeLedger(root, ledger);
+
+    expect(errorTypes(root)).toContain("noncanonical-not-required");
+  });
+
+  test("preserves and honors canonical NOT_REQUIRED evidence during READY evaluation", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    const ready = certifyResource(ledger, "qar-0004");
+    ledger.deployment_observation.staging_deployment_commit =
+      ledger.snapshot.staging_deployment_commit;
+    ledger.deployment_observation.evidence_alignment = "ALIGNED";
+    addInvalidReadyAuthorization(ledger);
+    writeLedger(root, ledger);
+
+    expect(ready.evidence.runtime.state).toBe("NOT_REQUIRED");
+    expect(ready.verdict.reason_codes).toEqual(["CERTIFIED", "NOT_REQUIRED"]);
+    const result = check(root);
+    expect(
+      result.errors.filter(
+        (error) =>
+          error.type === "ready-invariant" &&
+          error.path.includes("evidence.runtime"),
+      ),
+    ).toEqual([]);
+  });
+
+  test("requires READY-critical receipts to match the current binding generation", () => {
+    for (const section of [
+      "mapping",
+      "existence",
+      "configuration",
+      "permissions",
+      "isolation",
+      "lifecycle",
+    ]) {
+      const root = makeValidRepo();
+      const ledger = parsedLedger();
+      const ready = certifyResource(ledger, "qar-0015");
+      const receiptSection =
+        section === "configuration" ? ready.configuration[0] : ready[section];
+      receiptSection.binding_generation = ready.binding_generation + 1;
+      addInvalidReadyAuthorization(ledger);
+      writeLedger(root, ledger);
+
+      const result = check(root);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          type: "binding-generation-mismatch",
+          path: expect.stringContaining(`${section}.`),
+        }),
+      );
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          type: "ready-invariant",
+          path: expect.stringContaining(section),
+        }),
+      );
+    }
+  });
+
+  test("requires every neutral or material receipt section to declare its binding generation", () => {
+    const missingRoot = makeValidRepo();
+    const missingLedger = parsedLedger();
+    delete resource(missingLedger, "qar-0003").mapping.binding_generation;
+    writeLedger(missingRoot, missingLedger);
+    expect(errorTypes(missingRoot)).toContain("schema-validation");
+
+    const materialRoot = makeValidRepo();
+    const materialLedger = parsedLedger();
+    const material = resource(materialLedger, "qar-0003");
+    material.mapping = {
+      state: "PRESENT",
+      checked_at: materialLedger.snapshot.observed_at,
+      receipt_ref: receiptRef("0003-material-null-generation"),
+      binding_generation: null,
+    };
+    writeLedger(materialRoot, materialLedger);
+    expect(check(materialRoot).errors).toContainEqual(
+      expect.objectContaining({
+        type: "incomplete-receipt",
+        path: expect.stringContaining("mapping.binding_generation"),
+      }),
+    );
+
+    const neutralRoot = makeValidRepo();
+    const neutralLedger = parsedLedger();
+    const neutral = resource(neutralLedger, "qar-0003");
+    neutral.mapping.binding_generation = neutral.binding_generation;
+    writeLedger(neutralRoot, neutralLedger);
+    expect(check(neutralRoot).errors).toContainEqual(
+      expect.objectContaining({
+        type: "neutral-receipt",
+        path: expect.stringContaining("mapping.binding_generation"),
+      }),
+    );
+  });
+
   test("binds resolver and custody attestations to the current generation", () => {
     const root = makeValidRepo();
     const ledger = parsedLedger();
     const first = resource(ledger, "qar-0001");
     first.private_resolver = {
       state: "ATTESTED",
-      attestation_ref: "att-0001-resolver",
+      attestation_ref: attestationRef("0001-resolver-binding"),
       binding_generation: 2,
       checked_at: null,
     };
     const second = resource(ledger, "qar-0002");
     second.custody.primary_state = "ASSIGNED";
-    second.custody.receipt_ref = "rct-0002-custody-binding";
+    second.custody.receipt_ref = receiptRef("0002-custody-binding");
     second.custody.binding_generation = 2;
     second.custody.checked_at = null;
     writeLedger(root, ledger);
@@ -851,6 +1282,311 @@ describe("staging-resource ledger gate", () => {
     writeLedger(root, ledger);
 
     expect(errorTypes(root)).toContain("missing-blocker");
+  });
+
+  test("enforces verdict state and reason-code coherence", () => {
+    for (const [ref, reasons] of [
+      ["qar-0011", ["PARTIAL_EVIDENCE"]],
+      ["qar-0007", ["LIFECYCLE_INCOMPLETE"]],
+      ["qar-0050", ["MAPPING_MISSING"]],
+      ["qar-0001", ["CURRENT_RUNTIME_FAILURE"]],
+    ]) {
+      const root = makeValidRepo();
+      const ledger = parsedLedger();
+      resource(ledger, ref).verdict.reason_codes = reasons;
+      writeLedger(root, ledger);
+
+      expect(errorTypes(root)).toContain("verdict-reason-state-mismatch");
+    }
+
+    const duplicateRoot = makeValidRepo();
+    const duplicateLedger = parsedLedger();
+    resource(duplicateLedger, "qar-0001").verdict.reason_codes = [
+      "LIFECYCLE_INCOMPLETE",
+      "LIFECYCLE_INCOMPLETE",
+    ];
+    writeLedger(duplicateRoot, duplicateLedger);
+    expect(errorTypes(duplicateRoot)).toContain("duplicate-verdict-reason");
+  });
+
+  test("rejects verdict reasons that are not supported by current facts", () => {
+    const cases = [
+      {
+        reason: "MAPPING_MISSING",
+        mutate(ledger) {
+          resource(ledger, "qar-0002").verdict.reason_codes.push(
+            "MAPPING_MISSING",
+          );
+        },
+      },
+      {
+        reason: "MAPPING_MISSING",
+        mutate(ledger) {
+          resource(ledger, "qar-0003").verdict.reason_codes.push(
+            "MAPPING_MISSING",
+          );
+        },
+      },
+      {
+        reason: "CONFIGURATION_MISSING",
+        mutate(ledger) {
+          const entry = resource(ledger, "qar-0018");
+          entry.configuration[0].state = "PRESENT";
+          entry.verdict.reason_codes.push("CONFIGURATION_MISSING");
+        },
+      },
+      {
+        reason: "CONFIGURATION_MISSING",
+        mutate(ledger) {
+          resource(ledger, "qar-0018").verdict.reason_codes.push(
+            "CONFIGURATION_MISSING",
+          );
+        },
+      },
+      {
+        reason: "CUSTODY_INCOMPLETE",
+        mutate(ledger) {
+          const entry = resource(ledger, "qar-0003");
+          entry.custody = {
+            ...entry.custody,
+            primary_state: "ASSIGNED",
+            backup_state: "ASSIGNED",
+            recovery_role_state: "ASSIGNED",
+            mfa_state: "PASS",
+            recovery_state: "PASS",
+            receipt_ref: receiptRef("0003-custody-complete"),
+            binding_generation: entry.binding_generation,
+            checked_at: ledger.snapshot.observed_at,
+          };
+        },
+      },
+      {
+        reason: "LIFECYCLE_INCOMPLETE",
+        mutate(ledger) {
+          const entry = resource(ledger, "qar-0003");
+          entry.lifecycle = {
+            ...entry.lifecycle,
+            expiry_state: "TESTED",
+            reset_state: "TESTED",
+            renewal_state: "TESTED",
+            rotation_state: "TESTED",
+            revocation_state: "TESTED",
+            cleanup_state: "TESTED",
+            receipt_ref: receiptRef("0003-lifecycle-complete"),
+            binding_generation: entry.binding_generation,
+            checked_at: ledger.snapshot.observed_at,
+          };
+        },
+      },
+      {
+        reason: "EVIDENCE_NOT_COLLECTED",
+        mutate(ledger) {
+          const entry = certifyResource(ledger, "qar-0015");
+          entry.verdict = {
+            state: "NOT_READY",
+            evaluated_at: ledger.snapshot.observed_at,
+            reason_codes: ["EVIDENCE_NOT_COLLECTED"],
+            blocker_issues: [25020],
+          };
+        },
+      },
+      {
+        reason: "RESOURCE_ABSENT",
+        mutate(ledger) {
+          resource(ledger, "qar-0003").verdict = {
+            state: "ABSENT",
+            evaluated_at: ledger.snapshot.observed_at,
+            reason_codes: ["RESOURCE_ABSENT"],
+            blocker_issues: [25020],
+          };
+        },
+      },
+      {
+        reason: "DEPENDENCY_BLOCKED",
+        mutate(ledger) {
+          resource(ledger, "qar-0003").verdict = {
+            state: "BLOCKED",
+            evaluated_at: ledger.snapshot.observed_at,
+            reason_codes: ["DEPENDENCY_BLOCKED"],
+            blocker_issues: [25020],
+          };
+        },
+      },
+      ...[
+        "CERTIFICATION_FAILED",
+        "ISOLATION_FAILED",
+        "BINDING_REPLACED",
+        "EVIDENCE_EXPIRED",
+      ].map((reason) => ({
+        reason,
+        mutate(ledger) {
+          resource(ledger, "qar-0003").verdict.reason_codes.push(reason);
+        },
+      })),
+    ];
+
+    for (const { reason, mutate } of cases) {
+      const root = makeValidRepo();
+      const ledger = parsedLedger();
+      mutate(ledger);
+      writeLedger(root, ledger);
+
+      expect(check(root).errors).toContainEqual(
+        expect.objectContaining({
+          type: "verdict-reason-state-mismatch",
+          message: expect.stringContaining(`Reason code ${reason}`),
+        }),
+      );
+    }
+  });
+
+  test("does not treat a generic PRESENT mapping as PARTIAL_EVIDENCE", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    const entry = resource(ledger, "qar-0003");
+    entry.mapping = {
+      state: "PRESENT",
+      checked_at: ledger.snapshot.observed_at,
+      receipt_ref: receiptRef("0003-mapping-present"),
+      binding_generation: entry.binding_generation,
+    };
+    entry.verdict.reason_codes.push("PARTIAL_EVIDENCE");
+    writeLedger(root, ledger);
+
+    expect(check(root).errors).toContainEqual(
+      expect.objectContaining({
+        type: "verdict-reason-state-mismatch",
+        message: expect.stringContaining("Reason code PARTIAL_EVIDENCE"),
+      }),
+    );
+  });
+
+  test("keeps structural, dependency, and global authorization failures out of resource reason codes", () => {
+    for (const unavailableReason of [
+      "EVIDENCE_FAILED",
+      "DEPENDENCY_NOT_READY",
+      "OWNER_MISSING",
+      "ROUTE_INVALID",
+      "AUTHORIZATION_MISSING",
+      "AUTHORIZATION_INVALID",
+    ]) {
+      const root = makeValidRepo();
+      const ledger = parsedLedger();
+      resource(ledger, "qar-0003").verdict.reason_codes.push(unavailableReason);
+      writeLedger(root, ledger);
+
+      expect(errorTypes(root)).toContain("schema-validation");
+    }
+  });
+
+  test("requires verdict reasons to cover explicit blocking states", () => {
+    for (const [ref, removedReason] of [
+      ["qar-0001", "ISOLATION_FAILED"],
+      ["qar-0014", "MAPPING_MISSING"],
+      ["qar-0022", "BINDING_REPLACED"],
+      ["qar-0034", "CERTIFICATION_FAILED"],
+      ["qar-0050", "DEPENDENCY_BLOCKED"],
+    ]) {
+      const root = makeValidRepo();
+      const ledger = parsedLedger();
+      const entry = resource(ledger, ref);
+      entry.verdict.reason_codes = entry.verdict.reason_codes.filter(
+        (reason) => reason !== removedReason,
+      );
+      writeLedger(root, ledger);
+
+      expect(errorTypes(root)).toContain("verdict-reason-state-mismatch");
+    }
+  });
+
+  test("requires terminal evidence states to drive the verdict state", () => {
+    for (const { ref, reasons, expectedMessage } of [
+      {
+        ref: "qar-0050",
+        reasons: ["MAPPING_MISSING"],
+        expectedMessage: "Blocked evidence requires a BLOCKED verdict",
+      },
+      {
+        ref: "qar-0014",
+        reasons: ["CONFIGURATION_MISSING", "MAPPING_MISSING"],
+        expectedMessage: "Absent evidence requires an ABSENT verdict",
+      },
+      {
+        ref: "qar-0034",
+        reasons: ["CERTIFICATION_FAILED", "ISOLATION_FAILED"],
+        expectedMessage:
+          "Failed provider or runtime evidence requires a FAIL verdict",
+      },
+    ]) {
+      const root = makeValidRepo();
+      const ledger = parsedLedger();
+      const entry = resource(ledger, ref);
+      entry.verdict.state = "NOT_READY";
+      entry.verdict.reason_codes = reasons;
+      writeLedger(root, ledger);
+
+      expect(check(root).errors).toContainEqual(
+        expect.objectContaining({
+          type: "verdict-reason-state-mismatch",
+          message: expect.stringContaining(expectedMessage),
+        }),
+      );
+    }
+  });
+
+  test("requires factual NON_CERTIFIABLE evidence to drive checker and writer admission", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    const entry = resource(ledger, "qar-0003");
+    entry.evidence.provider = {
+      state: "NON_CERTIFIABLE",
+      receipt_ref: receiptRef("0003-provider-non-certifiable"),
+      observed_at: ledger.snapshot.observed_at,
+      valid_until: null,
+      source_commit: ledger.snapshot.repository_commit,
+      binding_generation: entry.binding_generation,
+      reason_code: "NON_CERTIFIABLE_STATE",
+    };
+    writeLedger(root, ledger);
+
+    const expectedError = expect.objectContaining({
+      type: "verdict-reason-state-mismatch",
+      message: expect.stringContaining(
+        "A factual NON_CERTIFIABLE state requires a NON_CERTIFIABLE verdict",
+      ),
+    });
+    expect(check(root).errors).toContainEqual(expectedError);
+
+    const writeResult = writeStagingResourceLedgerArtifacts({
+      repoRoot: root,
+      writeSchema: true,
+      writeView: true,
+      now: fixedNow,
+    });
+    expect(writeResult.ok).toBe(false);
+    expect(writeResult.written).toEqual([]);
+    expect(writeResult.errors).toContainEqual(expectedError);
+  });
+
+  test("rejects NON_CERTIFIABLE verdicts without a factual basis", () => {
+    const root = makeValidRepo();
+    const ledger = parsedLedger();
+    resource(ledger, "qar-0003").verdict = {
+      state: "NON_CERTIFIABLE",
+      evaluated_at: ledger.snapshot.observed_at,
+      reason_codes: ["NON_CERTIFIABLE_STATE"],
+      blocker_issues: [25020],
+    };
+    writeLedger(root, ledger);
+
+    expect(check(root).errors).toContainEqual(
+      expect.objectContaining({
+        type: "verdict-reason-state-mismatch",
+        message: expect.stringContaining(
+          "Reason code NON_CERTIFIABLE_STATE is not supported",
+        ),
+      }),
+    );
   });
 
   test("detects JSON Schema and Markdown view drift", () => {

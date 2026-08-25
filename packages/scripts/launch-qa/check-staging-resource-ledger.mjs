@@ -6,6 +6,7 @@
  * semantic rules that prevent incomplete or stale evidence from becoming a
  * READY verdict.
  */
+import { spawnSync } from "node:child_process";
 import {
   createHash,
   createPublicKey,
@@ -59,6 +60,13 @@ const TOP_LEVEL_GROUP_REFS = new Set([
   "qar-0049",
   "qar-0051",
 ]);
+const CANONICAL_NOT_REQUIRED_PATHS = new Set([
+  "qar-0004:evidence.runtime",
+  "qar-0023:evidence.runtime",
+  "qar-0053:evidence.provider",
+  "qar-0056:evidence.provider",
+]);
+const NUMERIC_ONLY_EVIDENCE_REF_PATTERN = /^(?:rct|att)-\d{32,64}$/;
 
 export const CANONICAL_COVERAGE_KEYS = [
   "login-account/account-slot/cloud/fresh-user",
@@ -82,7 +90,7 @@ export const CANONICAL_COVERAGE_KEYS = [
   "provider-owner/developer-team/apple/oauth-owner",
   "login-application/services-id/apple/user-oauth",
   "provider-owner/provider-account/telegram/oauth-owner",
-  "login-application/bot-identity/telegram/login-widget",
+  "login-application/widget-config/telegram/login-widget",
   "provider-owner/provider-account/discord/oauth-owner",
   "login-application/oauth-client/discord/user-oauth",
   "provider-owner/provider-account/github/oauth-owner",
@@ -126,22 +134,284 @@ const CANONICAL_REF_TO_KEY = new Map(
   ]),
 );
 const CANONICAL_REFS = new Set(CANONICAL_REF_TO_KEY.keys());
+const CANONICAL_CONFIGURATION_OVERRIDES = new Map([
+  [
+    "qar-0015",
+    [
+      [
+        "CLOUDFLARE_WORKER",
+        [
+          "STEWARD_API_URL",
+          "STEWARD_JWT_SECRET",
+          "STEWARD_PLATFORM_KEYS",
+          "STEWARD_REQUEST_SIGNING_SECRET",
+          "STEWARD_SESSION_SECRET",
+          "STEWARD_TENANT_API_KEY",
+        ],
+      ],
+    ],
+  ],
+  [
+    "qar-0018",
+    [["CLOUDFLARE_WORKER", ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]]],
+  ],
+  [
+    "qar-0022",
+    [
+      [
+        "GITHUB_ACTIONS",
+        ["VITE_TELEGRAM_BOT_ID", "VITE_TELEGRAM_BOT_USERNAME"],
+      ],
+    ],
+  ],
+  [
+    "qar-0024",
+    [["CLOUDFLARE_WORKER", ["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET"]]],
+  ],
+  [
+    "qar-0026",
+    [["CLOUDFLARE_WORKER", ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]]],
+  ],
+  [
+    "qar-0028",
+    [["CLOUDFLARE_WORKER", ["TWITTER_CLIENT_ID", "TWITTER_CLIENT_SECRET"]]],
+  ],
+  [
+    "qar-0031",
+    [
+      [
+        "GITHUB_ACTIONS",
+        ["ELIZA_APP_DISCORD_APPLICATION_ID", "ELIZA_APP_DISCORD_CLIENT_SECRET"],
+      ],
+      [
+        "CLOUDFLARE_WORKER",
+        ["ELIZA_APP_DISCORD_APPLICATION_ID", "ELIZA_APP_DISCORD_CLIENT_SECRET"],
+      ],
+    ],
+  ],
+  [
+    "qar-0032",
+    [
+      ["CLOUDFLARE_WORKER", ["ELIZA_APP_DISCORD_BOT_TOKEN"]],
+      ["RAILWAY_SERVICE", ["ELIZA_APP_DISCORD_BOT_TOKEN"]],
+    ],
+  ],
+  [
+    "qar-0033",
+    [
+      [
+        "GITHUB_ACTIONS",
+        ["ELIZA_APP_TELEGRAM_BOT_TOKEN", "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"],
+      ],
+      [
+        "CLOUDFLARE_WORKER",
+        ["ELIZA_APP_TELEGRAM_BOT_TOKEN", "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"],
+      ],
+      [
+        "RAILWAY_SERVICE",
+        ["ELIZA_APP_TELEGRAM_BOT_TOKEN", "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"],
+      ],
+    ],
+  ],
+  [
+    "qar-0035",
+    [
+      [
+        "GITHUB_ACTIONS",
+        [
+          "ELIZA_APP_BLOOIO_API_KEY",
+          "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+          "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
+        ],
+      ],
+      [
+        "CLOUDFLARE_WORKER",
+        [
+          "ELIZA_APP_BLOOIO_API_KEY",
+          "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+          "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
+        ],
+      ],
+      [
+        "RAILWAY_SERVICE",
+        [
+          "ELIZA_APP_BLOOIO_API_KEY",
+          "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+          "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
+        ],
+      ],
+    ],
+  ],
+  [
+    "qar-0036",
+    [
+      [
+        "CLOUDFLARE_WORKER",
+        [
+          "ELIZA_APP_BLOOIO_API_KEY",
+          "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+          "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
+        ],
+      ],
+      ["PROVIDER_CONSOLE", ["ELIZA_APP_BLOOIO_WEBHOOK_SECRET"]],
+    ],
+  ],
+  [
+    "qar-0038",
+    [
+      [
+        "GITHUB_ACTIONS",
+        [
+          "ELIZA_APP_WHATSAPP_ACCESS_TOKEN",
+          "ELIZA_APP_WHATSAPP_APP_SECRET",
+          "ELIZA_APP_WHATSAPP_VERIFY_TOKEN",
+        ],
+      ],
+      [
+        "CLOUDFLARE_WORKER",
+        [
+          "ELIZA_APP_WHATSAPP_ACCESS_TOKEN",
+          "ELIZA_APP_WHATSAPP_APP_SECRET",
+          "ELIZA_APP_WHATSAPP_VERIFY_TOKEN",
+        ],
+      ],
+      [
+        "RAILWAY_SERVICE",
+        [
+          "WHATSAPP_ACCESS_TOKEN",
+          "WHATSAPP_APP_SECRET",
+          "WHATSAPP_VERIFY_TOKEN",
+        ],
+      ],
+    ],
+  ],
+  [
+    "qar-0039",
+    [
+      [
+        "GITHUB_ACTIONS",
+        [
+          "ELIZA_APP_WHATSAPP_PHONE_NUMBER",
+          "ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID",
+        ],
+      ],
+      [
+        "CLOUDFLARE_WORKER",
+        [
+          "ELIZA_APP_WHATSAPP_PHONE_NUMBER",
+          "ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID",
+        ],
+      ],
+      [
+        "RAILWAY_SERVICE",
+        ["WHATSAPP_PHONE_NUMBER", "WHATSAPP_PHONE_NUMBER_ID"],
+      ],
+    ],
+  ],
+  [
+    "qar-0044",
+    [["GITHUB_ACTIONS", ["DISCORD_TEST_CHANNEL_ID", "DISCORD_TEST_GUILD_ID"]]],
+  ],
+  [
+    "qar-0045",
+    [["GITHUB_ACTIONS", ["DISCORD_TEST_CHANNEL_ID", "DISCORD_TEST_GUILD_ID"]]],
+  ],
+]);
+const CANONICAL_CONFIGURATION_TUPLES = new Map(
+  [...CANONICAL_REFS].map((ref) => [
+    ref,
+    CANONICAL_CONFIGURATION_OVERRIDES.get(ref) ?? [["UNRESOLVED", []]],
+  ]),
+);
 
 const CANONICAL_REQUIRED_RELATIONS = new Map([
-  ["qar-0001", [["USES", "qar-0003"]]],
-  ["qar-0002", [["USES", "qar-0004"]]],
-  ["qar-0005", [["DEPENDS_ON", "qar-0016"]]],
-  ["qar-0007", [["USES", "qar-0018"]]],
-  ["qar-0008", [["USES", "qar-0024"]]],
-  ["qar-0009", [["USES", "qar-0026"]]],
-  ["qar-0010", [["USES", "qar-0028"]]],
-  ["qar-0011", [["USES", "qar-0022"]]],
-  ["qar-0012", [["USES", "qar-0029"]]],
-  ["qar-0013", [["USES", "qar-0030"]]],
-  ["qar-0014", [["USES", "qar-0020"]]],
+  [
+    "qar-0001",
+    [
+      ["USES", "qar-0003"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  [
+    "qar-0002",
+    [
+      ["USES", "qar-0004"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  [
+    "qar-0005",
+    [
+      ["DEPENDS_ON", "qar-0016"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  ["qar-0006", [["DEPENDS_ON", "qar-0015"]]],
+  [
+    "qar-0007",
+    [
+      ["USES", "qar-0018"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  [
+    "qar-0008",
+    [
+      ["USES", "qar-0024"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  [
+    "qar-0009",
+    [
+      ["USES", "qar-0026"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  [
+    "qar-0010",
+    [
+      ["USES", "qar-0028"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  [
+    "qar-0011",
+    [
+      ["USES", "qar-0022"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  [
+    "qar-0012",
+    [
+      ["USES", "qar-0029"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  [
+    "qar-0013",
+    [
+      ["USES", "qar-0030"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
+  [
+    "qar-0014",
+    [
+      ["USES", "qar-0020"],
+      ["DEPENDS_ON", "qar-0015"],
+    ],
+  ],
   ["qar-0018", [["OWNED_BY", "qar-0017"]]],
   ["qar-0020", [["OWNED_BY", "qar-0019"]]],
-  ["qar-0022", [["OWNED_BY", "qar-0021"]]],
+  [
+    "qar-0022",
+    [
+      ["OWNED_BY", "qar-0021"],
+      ["DEPENDS_ON", "qar-0033"],
+    ],
+  ],
   ["qar-0024", [["OWNED_BY", "qar-0023"]]],
   ["qar-0026", [["OWNED_BY", "qar-0025"]]],
   ["qar-0028", [["OWNED_BY", "qar-0027"]]],
@@ -321,6 +591,101 @@ export const REASON_CODES = [
   "EVIDENCE_EXPIRED",
 ];
 
+const VERDICT_REASON_POLICIES = new Map([
+  ["READY", new Set(["CERTIFIED", "NOT_REQUIRED"])],
+  [
+    "PARTIAL",
+    new Set([
+      "PARTIAL_EVIDENCE",
+      "CUSTODY_INCOMPLETE",
+      "CONFIGURATION_MISSING",
+      "LIFECYCLE_INCOMPLETE",
+      "EVIDENCE_NOT_COLLECTED",
+      "MAPPING_MISSING",
+      "BINDING_REPLACED",
+      "EVIDENCE_EXPIRED",
+    ]),
+  ],
+  [
+    "BLOCKED",
+    new Set([
+      "DEPENDENCY_BLOCKED",
+      "MAPPING_MISSING",
+      "CONFIGURATION_MISSING",
+      "CUSTODY_INCOMPLETE",
+      "EVIDENCE_NOT_COLLECTED",
+      "LIFECYCLE_INCOMPLETE",
+      "PARTIAL_EVIDENCE",
+    ]),
+  ],
+  [
+    "NOT_READY",
+    new Set([
+      "CERTIFICATION_FAILED",
+      "EVIDENCE_NOT_COLLECTED",
+      "MAPPING_MISSING",
+      "CONFIGURATION_MISSING",
+      "CUSTODY_INCOMPLETE",
+      "ISOLATION_FAILED",
+      "LIFECYCLE_INCOMPLETE",
+      "PARTIAL_EVIDENCE",
+      "BINDING_REPLACED",
+      "EVIDENCE_EXPIRED",
+    ]),
+  ],
+  [
+    "FAIL_CURRENT",
+    new Set([
+      "CURRENT_PROVIDER_FAILURE",
+      "CURRENT_RUNTIME_FAILURE",
+      "SMOKE_FAILED",
+      "CUSTODY_INCOMPLETE",
+      "CONFIGURATION_MISSING",
+      "MAPPING_MISSING",
+      "ISOLATION_FAILED",
+      "LIFECYCLE_INCOMPLETE",
+      "PARTIAL_EVIDENCE",
+      "BINDING_REPLACED",
+      "EVIDENCE_EXPIRED",
+    ]),
+  ],
+  [
+    "FAIL",
+    new Set([
+      "CERTIFICATION_FAILED",
+      "CONFIGURATION_MISSING",
+      "CUSTODY_INCOMPLETE",
+      "ISOLATION_FAILED",
+      "LIFECYCLE_INCOMPLETE",
+      "MAPPING_MISSING",
+      "PARTIAL_EVIDENCE",
+      "SMOKE_FAILED",
+      "EVIDENCE_EXPIRED",
+    ]),
+  ],
+  [
+    "ABSENT",
+    new Set([
+      "RESOURCE_ABSENT",
+      "MAPPING_MISSING",
+      "CONFIGURATION_MISSING",
+      "EVIDENCE_NOT_COLLECTED",
+    ]),
+  ],
+  [
+    "NON_CERTIFIABLE",
+    new Set([
+      "NON_CERTIFIABLE_STATE",
+      "ISOLATION_FAILED",
+      "LIFECYCLE_INCOMPLETE",
+      "CONFIGURATION_MISSING",
+      "CUSTODY_INCOMPLETE",
+      "MAPPING_MISSING",
+      "EVIDENCE_EXPIRED",
+    ]),
+  ],
+]);
+
 export const CONFIGURATION_AUTHORITIES = [
   "UNRESOLVED",
   "GITHUB_ACTIONS",
@@ -378,11 +743,11 @@ const ISO_DATETIME_SCHEMA = z.string().datetime({ offset: true });
 const NULLABLE_DATETIME_SCHEMA = ISO_DATETIME_SCHEMA.nullable();
 const COMMIT_SCHEMA = z.string().regex(/^[0-9a-f]{40}$/);
 const NULLABLE_COMMIT_SCHEMA = COMMIT_SCHEMA.nullable();
-const RECEIPT_REF_SCHEMA = z.string().regex(/^rct-[a-z0-9][a-z0-9-]{2,79}$/);
+const RECEIPT_REF_SCHEMA = z.string().regex(/^rct-[0-9a-f]{32,64}$/);
 const NULLABLE_RECEIPT_REF_SCHEMA = RECEIPT_REF_SCHEMA.nullable();
 const ATTESTATION_REF_SCHEMA = z
   .string()
-  .regex(/^att-[a-z0-9][a-z0-9-]{2,79}$/);
+  .regex(/^att-[0-9a-f]{32,64}$/);
 const ENVIRONMENT_REF_SCHEMA = z.string().regex(/^[A-Z][A-Z0-9_]{2,79}$/);
 const PERMISSION_CAPABILITY_SCHEMA = z.string().regex(/^[A-Z][A-Z0-9_]{2,63}$/);
 const RESOURCE_REF_SCHEMA = z.string().regex(/^qar-\d{4}$/);
@@ -395,6 +760,7 @@ const VerificationRecordSchema = z
     state: z.enum(COMMON_STATES),
     checked_at: NULLABLE_DATETIME_SCHEMA,
     receipt_ref: NULLABLE_RECEIPT_REF_SCHEMA,
+    binding_generation: z.number().int().positive().nullable(),
   })
   .strict();
 
@@ -478,6 +844,7 @@ const ResourceSchema = z
             state: z.enum(COMMON_STATES),
             checked_at: NULLABLE_DATETIME_SCHEMA,
             receipt_ref: NULLABLE_RECEIPT_REF_SCHEMA,
+            binding_generation: z.number().int().positive().nullable(),
           })
           .strict(),
       )
@@ -490,6 +857,7 @@ const ResourceSchema = z
         least_privilege_state: z.enum(COMMON_STATES),
         checked_at: NULLABLE_DATETIME_SCHEMA,
         receipt_ref: NULLABLE_RECEIPT_REF_SCHEMA,
+        binding_generation: z.number().int().positive().nullable(),
       })
       .strict(),
     isolation: z
@@ -501,6 +869,7 @@ const ResourceSchema = z
         production_separation: z.enum(COMMON_STATES),
         checked_at: NULLABLE_DATETIME_SCHEMA,
         receipt_ref: NULLABLE_RECEIPT_REF_SCHEMA,
+        binding_generation: z.number().int().positive().nullable(),
       })
       .strict(),
     lifecycle: z
@@ -514,6 +883,7 @@ const ResourceSchema = z
         cleanup_state: z.enum(LIFECYCLE_STATES),
         checked_at: NULLABLE_DATETIME_SCHEMA,
         receipt_ref: NULLABLE_RECEIPT_REF_SCHEMA,
+        binding_generation: z.number().int().positive().nullable(),
       })
       .strict(),
     evidence: z
@@ -1152,6 +1522,18 @@ function scanStructuredPrivacy(value, errors, pathParts = []) {
         "The public ledger contains a forbidden wallet-address-like value; the value was not reported.",
       );
     }
+    if (
+      typeof child === "string" &&
+      (key === "receipt_ref" || key === "attestation_ref") &&
+      NUMERIC_ONLY_EVIDENCE_REF_PATTERN.test(child)
+    ) {
+      addError(
+        errors,
+        "identifier-shaped-evidence-ref",
+        `$.${childPath.join(".")}`,
+        "Receipt and attestation refs must remain opaque and cannot be an all-numeric provider-identifier-shaped value.",
+      );
+    }
     scanStructuredPrivacy(child, errors, childPath);
   }
 }
@@ -1428,6 +1810,27 @@ function validateConfiguration(ledger, errors) {
         );
       }
     });
+    const actualConfiguration = resource.configuration.map(
+      ({ authority, canonical_names: canonicalNames }) => [
+        authority,
+        canonicalNames,
+      ],
+    );
+    const expectedConfiguration = CANONICAL_CONFIGURATION_TUPLES.get(
+      resource.ref,
+    );
+    if (
+      !expectedConfiguration ||
+      JSON.stringify(actualConfiguration) !==
+        JSON.stringify(expectedConfiguration)
+    ) {
+      addError(
+        errors,
+        "canonical-configuration-mismatch",
+        `$.resources.${resourceIndex}.configuration`,
+        "Configuration authorities and names-only bindings must match the canonical per-resource matrix exactly and in order.",
+      );
+    }
   });
 }
 
@@ -1454,6 +1857,34 @@ function validatePermissions(ledger, errors) {
         `$.resources.${resourceIndex}.permissions.required_capabilities`,
         "Required capabilities must match the canonical launch and group-ownership contract exactly.",
       );
+    }
+  });
+}
+
+function validateNotRequiredUsage(ledger, errors) {
+  ledger.resources.forEach((resource, resourceIndex) => {
+    const rejectWaiver = (pathSuffix) => {
+      addError(
+        errors,
+        "noncanonical-not-required",
+        `$.resources.${resourceIndex}.${pathSuffix}`,
+        "NOT_REQUIRED is permitted only for a canonically non-applicable certification dimension.",
+      );
+    };
+    for (const { path: statePath, state } of collectStateValues(resource)) {
+      if (state !== "NOT_REQUIRED") continue;
+      const waiverPath = statePath.endsWith(".state")
+        ? statePath.slice(0, -".state".length)
+        : statePath;
+      if (!CANONICAL_NOT_REQUIRED_PATHS.has(`${resource.ref}:${waiverPath}`)) {
+        rejectWaiver(statePath);
+      }
+    }
+    if (resource.lifecycle.reuse_policy === "NOT_REQUIRED") {
+      rejectWaiver("lifecycle.reuse_policy");
+    }
+    if (resource.expected_baseline === "NOT_REQUIRED") {
+      rejectWaiver("expected_baseline");
     }
   });
 }
@@ -1502,6 +1933,40 @@ function validateSectionReceipt(
   }
 }
 
+function validateReceiptBindingGeneration(
+  errors,
+  states,
+  bindingGeneration,
+  resourceBindingGeneration,
+  sectionPath,
+) {
+  const isNeutral = states.every((state) => NEUTRAL_EVIDENCE_STATES.has(state));
+  if (isNeutral && bindingGeneration !== null) {
+    addError(
+      errors,
+      "neutral-receipt",
+      `${sectionPath}.binding_generation`,
+      "A neutral section must declare a null receipt binding generation.",
+    );
+    return;
+  }
+  if (!isNeutral && bindingGeneration === null) {
+    addError(
+      errors,
+      "incomplete-receipt",
+      `${sectionPath}.binding_generation`,
+      "A material section must declare the current resource binding generation.",
+    );
+  } else if (!isNeutral && bindingGeneration !== resourceBindingGeneration) {
+    addError(
+      errors,
+      "binding-generation-mismatch",
+      `${sectionPath}.binding_generation`,
+      "Receipt evidence may certify only the current resource binding generation.",
+    );
+  }
+}
+
 function validateReceiptCoherence(ledger, errors) {
   ledger.resources.forEach((resource, resourceIndex) => {
     const resourcePath = `$.resources.${resourceIndex}`;
@@ -1514,6 +1979,13 @@ function validateReceiptCoherence(ledger, errors) {
         record.receipt_ref,
         `${resourcePath}.${field}`,
       );
+      validateReceiptBindingGeneration(
+        errors,
+        [record.state],
+        record.binding_generation,
+        resource.binding_generation,
+        `${resourcePath}.${field}`,
+      );
     }
 
     resource.configuration.forEach((configuration, configIndex) => {
@@ -1522,6 +1994,13 @@ function validateReceiptCoherence(ledger, errors) {
         configuration.state,
         configuration.checked_at,
         configuration.receipt_ref,
+        `${resourcePath}.configuration.${configIndex}`,
+      );
+      validateReceiptBindingGeneration(
+        errors,
+        [configuration.state],
+        configuration.binding_generation,
+        resource.binding_generation,
         `${resourcePath}.configuration.${configIndex}`,
       );
     });
@@ -1534,6 +2013,16 @@ function validateReceiptCoherence(ledger, errors) {
       ],
       resource.permissions.checked_at,
       resource.permissions.receipt_ref,
+      `${resourcePath}.permissions`,
+    );
+    validateReceiptBindingGeneration(
+      errors,
+      [
+        resource.permissions.observed_state,
+        resource.permissions.least_privilege_state,
+      ],
+      resource.permissions.binding_generation,
+      resource.binding_generation,
       `${resourcePath}.permissions`,
     );
     validateSectionReceipt(
@@ -1549,6 +2038,19 @@ function validateReceiptCoherence(ledger, errors) {
       resource.isolation.receipt_ref,
       `${resourcePath}.isolation`,
     );
+    validateReceiptBindingGeneration(
+      errors,
+      [
+        resource.isolation.provider_object,
+        resource.isolation.credentials,
+        resource.isolation.data,
+        resource.isolation.runtime,
+        resource.isolation.production_separation,
+      ],
+      resource.isolation.binding_generation,
+      resource.binding_generation,
+      `${resourcePath}.isolation`,
+    );
     validateSectionReceipt(
       errors,
       [
@@ -1561,6 +2063,20 @@ function validateReceiptCoherence(ledger, errors) {
       ],
       resource.lifecycle.checked_at,
       resource.lifecycle.receipt_ref,
+      `${resourcePath}.lifecycle`,
+    );
+    validateReceiptBindingGeneration(
+      errors,
+      [
+        resource.lifecycle.expiry_state,
+        resource.lifecycle.reset_state,
+        resource.lifecycle.renewal_state,
+        resource.lifecycle.rotation_state,
+        resource.lifecycle.revocation_state,
+        resource.lifecycle.cleanup_state,
+      ],
+      resource.lifecycle.binding_generation,
+      resource.binding_generation,
       `${resourcePath}.lifecycle`,
     );
 
@@ -1700,9 +2216,352 @@ function validateReceiptUniqueness(ledger, errors) {
   });
 }
 
+function hasCanonicalNotRequiredEvidence(resource) {
+  return ["provider", "runtime", "smoke"].some(
+    (evidenceKind) =>
+      resource.evidence[evidenceKind].state === "NOT_REQUIRED" &&
+      CANONICAL_NOT_REQUIRED_PATHS.has(
+        `${resource.ref}:evidence.${evidenceKind}`,
+      ),
+  );
+}
+
+function hasTerminalNonCertifiableState(resource) {
+  return [
+    resource.mapping.state,
+    resource.existence.state,
+    resource.custody.mfa_state,
+    resource.custody.recovery_state,
+    ...resource.configuration.map((record) => record.state),
+    resource.permissions.observed_state,
+    resource.permissions.least_privilege_state,
+    resource.isolation.provider_object,
+    resource.isolation.credentials,
+    resource.isolation.data,
+    resource.isolation.runtime,
+    resource.isolation.production_separation,
+    ...Object.values(resource.evidence).map((record) => record.state),
+  ].includes("NON_CERTIFIABLE");
+}
+
+function hasDependencyNotReady(resource, resourcesByRef) {
+  return resource.relations.some(
+    (relation) =>
+      ["DEPENDS_ON", "USES", "OWNED_BY", "CONTAINS", "ROUTES_TO"].includes(
+        relation.type,
+      ) && resourcesByRef.get(relation.ref)?.verdict.state !== "READY",
+  );
+}
+
+function isCurrentBindingFullyRevalidated(resource, ledger, nowTime) {
+  const hasCurrentReceipt = (record) =>
+    record.checked_at !== null &&
+    record.receipt_ref !== null &&
+    record.binding_generation === resource.binding_generation &&
+    Date.parse(record.checked_at) <= nowTime &&
+    nowTime - Date.parse(record.checked_at) <=
+      DEFAULT_READY_DIMENSION_MAX_AGE_MS;
+  if (
+    resource.private_resolver.state !== "ATTESTED" ||
+    resource.private_resolver.attestation_ref === null ||
+    resource.private_resolver.binding_generation !==
+      resource.binding_generation ||
+    resource.private_resolver.checked_at === null ||
+    Date.parse(resource.private_resolver.checked_at) > nowTime ||
+    nowTime - Date.parse(resource.private_resolver.checked_at) >
+      DEFAULT_READY_DIMENSION_MAX_AGE_MS
+  ) {
+    return false;
+  }
+  if (
+    ![resource.mapping, resource.existence].every(
+      (record) =>
+        ["PASS", "PRESENT"].includes(record.state) && hasCurrentReceipt(record),
+    )
+  ) {
+    return false;
+  }
+  if (
+    ![
+      resource.custody.primary_state,
+      resource.custody.backup_state,
+      resource.custody.recovery_role_state,
+    ].every((state) => state === "ASSIGNED") ||
+    ![resource.custody.mfa_state, resource.custody.recovery_state].every(
+      (state) => state === "PASS",
+    ) ||
+    !hasCurrentReceipt(resource.custody)
+  ) {
+    return false;
+  }
+  if (
+    resource.configuration.some(
+      (record) =>
+        record.state !== "PASS" ||
+        record.canonical_names.length === 0 ||
+        !hasCurrentReceipt(record),
+    ) ||
+    resource.permissions.required_capabilities.length === 0 ||
+    ![
+      resource.permissions.observed_state,
+      resource.permissions.least_privilege_state,
+    ].every((state) => state === "PASS") ||
+    !hasCurrentReceipt(resource.permissions)
+  ) {
+    return false;
+  }
+  if (
+    ![
+      resource.isolation.provider_object,
+      resource.isolation.credentials,
+      resource.isolation.data,
+      resource.isolation.runtime,
+      resource.isolation.production_separation,
+    ].every((state) => state === "PASS") ||
+    !hasCurrentReceipt(resource.isolation)
+  ) {
+    return false;
+  }
+  if (
+    ["UNKNOWN", "NOT_REQUIRED"].includes(resource.lifecycle.reuse_policy) ||
+    ![
+      resource.lifecycle.expiry_state,
+      resource.lifecycle.reset_state,
+      resource.lifecycle.renewal_state,
+      resource.lifecycle.rotation_state,
+      resource.lifecycle.revocation_state,
+      resource.lifecycle.cleanup_state,
+    ].every((state) => state === "TESTED") ||
+    !hasCurrentReceipt(resource.lifecycle)
+  ) {
+    return false;
+  }
+  if (
+    Object.entries(resource.evidence).some(([evidenceKind, evidence]) => {
+      if (evidence.state === "NOT_REQUIRED") {
+        return (
+          !CANONICAL_NOT_REQUIRED_PATHS.has(
+            `${resource.ref}:evidence.${evidenceKind}`,
+          ) ||
+          evidence.receipt_ref !== null ||
+          evidence.observed_at !== null ||
+          evidence.valid_until !== null ||
+          evidence.source_commit !== null ||
+          evidence.binding_generation !== resource.binding_generation ||
+          evidence.reason_code !== "NOT_REQUIRED"
+        );
+      }
+      const expectedSourceCommit =
+        evidenceKind === "provider"
+          ? ledger.snapshot.repository_commit
+          : ledger.snapshot.staging_deployment_commit;
+      return (
+        evidence.state !== "PASS" ||
+        evidence.receipt_ref === null ||
+        evidence.observed_at === null ||
+        evidence.valid_until === null ||
+        Date.parse(evidence.observed_at) > nowTime ||
+        Date.parse(evidence.valid_until) <= nowTime ||
+        nowTime - Date.parse(evidence.observed_at) >
+          EVIDENCE_MAX_AGE_MS[evidenceKind] ||
+        Date.parse(evidence.valid_until) - Date.parse(evidence.observed_at) >
+          EVIDENCE_MAX_AGE_MS[evidenceKind] ||
+        evidence.source_commit !== expectedSourceCommit ||
+        evidence.binding_generation !== resource.binding_generation ||
+        evidence.reason_code !== "CERTIFIED"
+      );
+    })
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isInternallyReadyCandidate(resource, resourcesByRef, ledger, nowTime) {
+  return (
+    resource.expected_baseline !== "NOT_REQUIRED" &&
+    isCurrentBindingFullyRevalidated(resource, ledger, nowTime) &&
+    !hasDependencyNotReady(resource, resourcesByRef)
+  );
+}
+
+function bindingReplacementRequiresRevalidation(resource, ledger, nowTime) {
+  return (
+    resource.binding_generation > 1 &&
+    !isCurrentBindingFullyRevalidated(resource, ledger, nowTime)
+  );
+}
+
+function verdictReasonFacts(ledger, resource, resourcesByRef) {
+  const evidence = Object.values(resource.evidence);
+  const evidenceStates = evidence.map((record) => record.state);
+  const configurationMissing = resource.configuration.some(
+    (record) =>
+      ["MISSING", "ABSENT"].includes(record.state) ||
+      record.authority === "UNRESOLVED" ||
+      (resource.binding_generation > 1 &&
+        record.state === "UNKNOWN" &&
+        record.receipt_ref === null),
+  );
+  const custodyIncomplete =
+    [
+      resource.custody.primary_state,
+      resource.custody.backup_state,
+      resource.custody.recovery_role_state,
+    ].some((state) => state !== "ASSIGNED") ||
+    [resource.custody.mfa_state, resource.custody.recovery_state].some(
+      (state) => !["PASS", "NOT_REQUIRED"].includes(state),
+    ) ||
+    resource.custody.receipt_ref === null ||
+    resource.custody.checked_at === null ||
+    resource.custody.binding_generation !== resource.binding_generation;
+  const isolationStates = [
+    resource.isolation.provider_object,
+    resource.isolation.credentials,
+    resource.isolation.data,
+    resource.isolation.runtime,
+    resource.isolation.production_separation,
+  ];
+  const lifecycleStates = [
+    resource.lifecycle.expiry_state,
+    resource.lifecycle.reset_state,
+    resource.lifecycle.renewal_state,
+    resource.lifecycle.rotation_state,
+    resource.lifecycle.revocation_state,
+    resource.lifecycle.cleanup_state,
+  ];
+  const certificationFailed = [
+    resource.mapping.state,
+    resource.existence.state,
+    resource.custody.mfa_state,
+    resource.custody.recovery_state,
+    ...resource.configuration.map((record) => record.state),
+    resource.permissions.observed_state,
+    resource.permissions.least_privilege_state,
+    ...isolationStates,
+    ...lifecycleStates,
+    ...evidenceStates,
+  ].includes("FAIL");
+  const factualStateValues = collectStateValues(resource).filter(
+    ({ path: statePath }) => statePath !== "verdict.state",
+  );
+  const hasExplicitPartialEvidence =
+    evidenceStates.some((state) =>
+      ["REFERENCE_PRESENT", "PRESENT", "PARTIAL"].includes(state),
+    ) ||
+    factualStateValues.some(({ path: statePath, state }) =>
+      !statePath.startsWith("evidence.")
+        ? ["REFERENCE_PRESENT", "PARTIAL"].includes(state)
+        : false,
+    ) ||
+    (evidenceStates.some((state) => ["PASS", "NOT_REQUIRED"].includes(state)) &&
+      evidenceStates.some((state) => ["UNKNOWN", "NOT_RUN"].includes(state)));
+  const evaluationTime = Date.parse(resource.verdict.evaluated_at);
+  const internallyReady = isInternallyReadyCandidate(
+    resource,
+    resourcesByRef,
+    ledger,
+    evaluationTime,
+  );
+  return new Map([
+    [
+      "EVIDENCE_NOT_COLLECTED",
+      evidenceStates.some((state) => ["UNKNOWN", "NOT_RUN"].includes(state)),
+    ],
+    ["NOT_REQUIRED", hasCanonicalNotRequiredEvidence(resource)],
+    ["CERTIFIED", internallyReady],
+    [
+      "RESOURCE_ABSENT",
+      [resource.existence.state, ...evidenceStates].some((state) =>
+        ["MISSING", "ABSENT"].includes(state),
+      ),
+    ],
+    ["MAPPING_MISSING", ["MISSING", "ABSENT"].includes(resource.mapping.state)],
+    ["CONFIGURATION_MISSING", configurationMissing],
+    ["CUSTODY_INCOMPLETE", custodyIncomplete],
+    [
+      "ISOLATION_FAILED",
+      isolationStates.some((state) =>
+        ["FAIL", "FAIL_CURRENT", "NON_CERTIFIABLE"].includes(state),
+      ),
+    ],
+    [
+      "LIFECYCLE_INCOMPLETE",
+      resource.lifecycle.reuse_policy === "UNKNOWN" ||
+        lifecycleStates.some(
+          (state) => !["TESTED", "NOT_REQUIRED"].includes(state),
+        ) ||
+        resource.lifecycle.receipt_ref === null ||
+        resource.lifecycle.checked_at === null ||
+        resource.lifecycle.binding_generation !== resource.binding_generation,
+    ],
+    [
+      "CURRENT_PROVIDER_FAILURE",
+      resource.evidence.provider.state === "FAIL_CURRENT",
+    ],
+    [
+      "CURRENT_RUNTIME_FAILURE",
+      resource.evidence.runtime.state === "FAIL_CURRENT",
+    ],
+    [
+      "SMOKE_FAILED",
+      ["FAIL", "FAIL_CURRENT"].includes(resource.evidence.smoke.state),
+    ],
+    [
+      "DEPENDENCY_BLOCKED",
+      evidenceStates.includes("BLOCKED") ||
+        resource.relations.some(
+          (relation) =>
+            ["DEPENDS_ON", "USES"].includes(relation.type) &&
+            [
+              "ABSENT",
+              "FAIL",
+              "FAIL_CURRENT",
+              "BLOCKED",
+              "NON_CERTIFIABLE",
+            ].includes(resourcesByRef.get(relation.ref)?.verdict.state),
+        ),
+    ],
+    ["PARTIAL_EVIDENCE", hasExplicitPartialEvidence],
+    [
+      "NON_CERTIFIABLE_STATE",
+      hasTerminalNonCertifiableState(resource) ||
+        (isolationStates.some((state) =>
+          ["FAIL", "FAIL_CURRENT"].includes(state),
+        ) &&
+          lifecycleStates.some((state) => ["FAIL", "MISSING"].includes(state))),
+    ],
+    ["CERTIFICATION_FAILED", certificationFailed],
+    [
+      "BINDING_REPLACED",
+      bindingReplacementRequiresRevalidation(
+        resource,
+        ledger,
+        evaluationTime,
+      ),
+    ],
+    [
+      "EVIDENCE_EXPIRED",
+      evidence.some(
+        (record) =>
+          record.valid_until !== null &&
+          Date.parse(record.valid_until) <= evaluationTime,
+      ),
+    ],
+  ]);
+}
+
 function validateVerdicts(ledger, errors) {
+  const resourcesByRef = new Map(
+    ledger.resources.map((resource) => [resource.ref, resource]),
+  );
   ledger.resources.forEach((resource, resourceIndex) => {
     const blockers = resource.verdict.blocker_issues;
+    const reasons = resource.verdict.reason_codes;
+    const reasonPath = `$.resources.${resourceIndex}.verdict.reason_codes`;
+    const addReasonMismatch = (message) => {
+      addError(errors, "verdict-reason-state-mismatch", reasonPath, message);
+    };
     if (resource.verdict.state === "READY" && blockers.length > 0) {
       addError(
         errors,
@@ -1725,6 +2584,282 @@ function validateVerdicts(ledger, errors) {
         `$.resources.${resourceIndex}.verdict.blocker_issues`,
         "Blocker issue numbers must be unique within a resource verdict.",
       );
+    }
+    if (new Set(reasons).size !== reasons.length) {
+      addError(
+        errors,
+        "duplicate-verdict-reason",
+        reasonPath,
+        "Verdict reason codes must be unique within a resource verdict.",
+      );
+    }
+
+    const allowedReasons = VERDICT_REASON_POLICIES.get(resource.verdict.state);
+    if (
+      !allowedReasons ||
+      reasons.some((reason) => !allowedReasons.has(reason))
+    ) {
+      addReasonMismatch(
+        `Verdict state ${resource.verdict.state} contains an incompatible reason code.`,
+      );
+    }
+
+    const reasonFacts = verdictReasonFacts(ledger, resource, resourcesByRef);
+    for (const reason of reasons) {
+      if (reasonFacts.get(reason) !== true) {
+        addReasonMismatch(
+          `Reason code ${reason} is not supported by the resource's current states and artifacts.`,
+        );
+      }
+    }
+
+    const requireReason = (condition, acceptableReasons, message) => {
+      if (
+        condition &&
+        !acceptableReasons.some((reason) => reasons.includes(reason))
+      ) {
+        addReasonMismatch(message);
+      }
+    };
+    const currentFailureReasons = [
+      "CURRENT_PROVIDER_FAILURE",
+      "CURRENT_RUNTIME_FAILURE",
+      "SMOKE_FAILED",
+    ];
+    const evidenceRecords = Object.values(resource.evidence);
+    const evidenceStates = evidenceRecords.map((record) => record.state);
+
+    requireReason(
+      ["MISSING", "ABSENT"].includes(resource.mapping.state),
+      ["MAPPING_MISSING"],
+      "An explicitly missing or absent mapping must be explained by MAPPING_MISSING.",
+    );
+    requireReason(
+      resource.configuration.some((record) =>
+        ["MISSING", "ABSENT"].includes(record.state),
+      ),
+      ["CONFIGURATION_MISSING", "RESOURCE_ABSENT", ...currentFailureReasons],
+      "An explicitly missing configuration must be explained by CONFIGURATION_MISSING or a dominant current/absence failure.",
+    );
+    requireReason(
+      [
+        resource.custody.primary_state,
+        resource.custody.backup_state,
+        resource.custody.recovery_role_state,
+        resource.custody.mfa_state,
+        resource.custody.recovery_state,
+      ].includes("MISSING"),
+      ["CUSTODY_INCOMPLETE", "RESOURCE_ABSENT", ...currentFailureReasons],
+      "An explicitly missing custody role or control must be explained by CUSTODY_INCOMPLETE or a dominant current/absence failure.",
+    );
+    requireReason(
+      [
+        resource.isolation.provider_object,
+        resource.isolation.credentials,
+        resource.isolation.data,
+        resource.isolation.runtime,
+        resource.isolation.production_separation,
+      ].some((state) => ["FAIL", "FAIL_CURRENT"].includes(state)),
+      ["ISOLATION_FAILED"],
+      "An explicit isolation failure must be explained by ISOLATION_FAILED.",
+    );
+    requireReason(
+      [
+        resource.lifecycle.expiry_state,
+        resource.lifecycle.reset_state,
+        resource.lifecycle.renewal_state,
+        resource.lifecycle.rotation_state,
+        resource.lifecycle.revocation_state,
+        resource.lifecycle.cleanup_state,
+      ].some((state) => ["FAIL", "MISSING"].includes(state)),
+      ["LIFECYCLE_INCOMPLETE", ...currentFailureReasons],
+      "An explicit lifecycle failure must be explained by LIFECYCLE_INCOMPLETE or a dominant current failure.",
+    );
+    requireReason(
+      evidenceStates.every((state) => ["UNKNOWN", "NOT_RUN"].includes(state)),
+      ["EVIDENCE_NOT_COLLECTED", "CERTIFICATION_FAILED"],
+      "A resource with no collected evidence must be explained by EVIDENCE_NOT_COLLECTED or an explicit certification failure.",
+    );
+    requireReason(
+      evidenceStates.some((state) =>
+        ["REFERENCE_PRESENT", "PRESENT", "PARTIAL"].includes(state),
+      ),
+      ["PARTIAL_EVIDENCE", "EVIDENCE_NOT_COLLECTED", "NON_CERTIFIABLE_STATE"],
+      "Partial evidence must be explained by PARTIAL_EVIDENCE unless uncollected or non-certifiable state remains the declared blocker.",
+    );
+    requireReason(
+      evidenceStates.includes("FAIL"),
+      ["CERTIFICATION_FAILED", "SMOKE_FAILED"],
+      "Failed evidence must be explained by CERTIFICATION_FAILED or SMOKE_FAILED.",
+    );
+    requireReason(
+      evidenceStates.includes("BLOCKED"),
+      ["DEPENDENCY_BLOCKED"],
+      "Blocked evidence must be explained by DEPENDENCY_BLOCKED.",
+    );
+    if (
+      evidenceStates.includes("BLOCKED") &&
+      resource.verdict.state !== "BLOCKED"
+    ) {
+      addReasonMismatch("Blocked evidence requires a BLOCKED verdict.");
+    }
+    requireReason(
+      evidenceStates.some((state) => ["MISSING", "ABSENT"].includes(state)),
+      ["RESOURCE_ABSENT", "MAPPING_MISSING"],
+      "Absent evidence must be explained by RESOURCE_ABSENT or MAPPING_MISSING.",
+    );
+    if (
+      evidenceStates.some((state) => ["MISSING", "ABSENT"].includes(state)) &&
+      resource.verdict.state !== "ABSENT"
+    ) {
+      addReasonMismatch("Absent evidence requires an ABSENT verdict.");
+    }
+    if (
+      [
+        resource.evidence.provider.state,
+        resource.evidence.runtime.state,
+      ].includes("FAIL") &&
+      resource.verdict.state !== "FAIL"
+    ) {
+      addReasonMismatch(
+        "Failed provider or runtime evidence requires a FAIL verdict.",
+      );
+    }
+    if (
+      resource.evidence.smoke.state === "FAIL" &&
+      resource.verdict.state !== "FAIL"
+    ) {
+      addReasonMismatch("Failed smoke evidence requires a FAIL verdict.");
+    }
+    requireReason(
+      ledger.deployment_observation.evidence_alignment === "ALIGNED" &&
+        evidenceRecords.some(
+          (record) =>
+            record.valid_until !== null &&
+            Date.parse(record.valid_until) <=
+              Date.parse(resource.verdict.evaluated_at),
+        ),
+      ["EVIDENCE_EXPIRED"],
+      "Expired evidence must be explained by EVIDENCE_EXPIRED.",
+    );
+    requireReason(
+      bindingReplacementRequiresRevalidation(
+        resource,
+        ledger,
+        Date.parse(resource.verdict.evaluated_at),
+      ),
+      ["BINDING_REPLACED"],
+      "A replaced resource binding must be explained by BINDING_REPLACED until its current generation is fully revalidated.",
+    );
+
+    const expectedCurrentFailureReasons = [];
+    for (const [evidenceKind, expectedReason] of [
+      ["provider", "CURRENT_PROVIDER_FAILURE"],
+      ["runtime", "CURRENT_RUNTIME_FAILURE"],
+      ["smoke", "SMOKE_FAILED"],
+    ]) {
+      if (resource.evidence[evidenceKind].state === "FAIL_CURRENT") {
+        expectedCurrentFailureReasons.push(expectedReason);
+      }
+    }
+    const declaredCurrentFailureReasons = reasons.filter((reason) =>
+      currentFailureReasons.includes(reason),
+    );
+    if (
+      resource.verdict.state === "FAIL_CURRENT" &&
+      (expectedCurrentFailureReasons.length === 0 ||
+        expectedCurrentFailureReasons.some(
+          (reason) => !declaredCurrentFailureReasons.includes(reason),
+        ) ||
+        declaredCurrentFailureReasons.some(
+          (reason) => !expectedCurrentFailureReasons.includes(reason),
+        ))
+    ) {
+      addReasonMismatch(
+        "FAIL_CURRENT reasons must exactly match the provider, runtime, and smoke evidence currently in FAIL_CURRENT.",
+      );
+    } else if (
+      resource.verdict.state !== "FAIL_CURRENT" &&
+      (expectedCurrentFailureReasons.length > 0 ||
+        declaredCurrentFailureReasons.length > 0)
+    ) {
+      addReasonMismatch(
+        "Current provider, runtime, or smoke failures require a matching FAIL_CURRENT verdict.",
+      );
+    }
+
+    if (
+      resource.verdict.state === "PARTIAL" &&
+      (!reasons.includes("PARTIAL_EVIDENCE") ||
+        !Object.values(resource.evidence).some((evidence) =>
+          ["REFERENCE_PRESENT", "PRESENT", "PARTIAL"].includes(evidence.state),
+        ))
+    ) {
+      addReasonMismatch(
+        "PARTIAL requires PARTIAL_EVIDENCE and a matching partial evidence state.",
+      );
+    }
+    if (
+      resource.verdict.state === "BLOCKED" &&
+      !reasons.includes("DEPENDENCY_BLOCKED")
+    ) {
+      addReasonMismatch("BLOCKED requires DEPENDENCY_BLOCKED.");
+    }
+    if (
+      resource.verdict.state === "ABSENT" &&
+      !reasons.some((reason) =>
+        [
+          "RESOURCE_ABSENT",
+          "MAPPING_MISSING",
+          "CONFIGURATION_MISSING",
+        ].includes(reason),
+      )
+    ) {
+      addReasonMismatch(
+        "ABSENT requires an absent resource, mapping, or configuration reason.",
+      );
+    }
+    if (
+      resource.verdict.state === "FAIL" &&
+      !reasons.some((reason) =>
+        ["CERTIFICATION_FAILED", "ISOLATION_FAILED", "SMOKE_FAILED"].includes(
+          reason,
+        ),
+      )
+    ) {
+      addReasonMismatch(
+        "FAIL requires a certification, isolation, or smoke failure reason.",
+      );
+    }
+    if (
+      resource.verdict.state === "NON_CERTIFIABLE" &&
+      !reasons.includes("NON_CERTIFIABLE_STATE")
+    ) {
+      addReasonMismatch("NON_CERTIFIABLE requires NON_CERTIFIABLE_STATE.");
+    }
+    if (
+      hasTerminalNonCertifiableState(resource) &&
+      (resource.verdict.state !== "NON_CERTIFIABLE" ||
+        !reasons.includes("NON_CERTIFIABLE_STATE"))
+    ) {
+      addReasonMismatch(
+        "A factual NON_CERTIFIABLE state requires a NON_CERTIFIABLE verdict and NON_CERTIFIABLE_STATE reason.",
+      );
+    }
+    if (resource.verdict.state === "READY") {
+      const hasNotRequiredEvidence = hasCanonicalNotRequiredEvidence(resource);
+      const expectedReadyReasons = new Set([
+        "CERTIFIED",
+        ...(hasNotRequiredEvidence ? ["NOT_REQUIRED"] : []),
+      ]);
+      if (
+        reasons.length !== expectedReadyReasons.size ||
+        reasons.some((reason) => !expectedReadyReasons.has(reason))
+      ) {
+        addReasonMismatch(
+          "READY reasons must be exactly CERTIFIED plus NOT_REQUIRED when a canonical evidence dimension is non-applicable.",
+        );
+      }
     }
   });
 }
@@ -1865,6 +3000,59 @@ function validateDeploymentObservation(ledger, errors) {
       "No resource may be READY while the observed staging deployment requires evidence revalidation.",
     );
   }
+}
+
+function validateSnapshotGitObjects(repoRoot, ledger, errors) {
+  for (const [commitPath, commit] of [
+    ["$.snapshot.repository_commit", ledger.snapshot.repository_commit],
+    [
+      "$.snapshot.staging_deployment_commit",
+      ledger.snapshot.staging_deployment_commit,
+    ],
+    [
+      "$.deployment_observation.staging_deployment_commit",
+      ledger.deployment_observation.staging_deployment_commit,
+    ],
+  ]) {
+    const result = spawnSync(
+      "git",
+      ["-C", repoRoot, "cat-file", "-e", `${commit}^{commit}`],
+      {
+        shell: false,
+        stdio: "ignore",
+        timeout: 5_000,
+        windowsHide: true,
+      },
+    );
+    if (result.error || result.signal !== null || result.status !== 0) {
+      addError(
+        errors,
+        "unknown-git-commit",
+        commitPath,
+        "Every declared snapshot or deployment commit must resolve to a commit object in the repository checkout.",
+      );
+    }
+  }
+}
+
+function validateExternalReadyAuthority(ledger, errors) {
+  if (
+    !ledger.resources.some((resource) => resource.verdict.state === "READY")
+  ) {
+    return;
+  }
+  addError(
+    errors,
+    "external-certification-authority-required",
+    "$.ready_authorization",
+    "READY admission is fail-closed until the certification trust anchor is enforced outside the candidate-controlled repository.",
+  );
+  addError(
+    errors,
+    "external-live-attestation-required",
+    "$.deployment_observation",
+    "READY admission is fail-closed until an external authority attests that the declared staging deployment commit is live.",
+  );
 }
 
 function loadTrustedCertificationKey(repoRoot, errors) {
@@ -2098,18 +3286,21 @@ function validateEvidence(ledger, errors) {
             );
           }
         }
+        const expectedSourceCommit =
+          evidenceKind === "provider"
+            ? ledger.snapshot.repository_commit
+            : ledger.snapshot.staging_deployment_commit;
         if (
           evidence.source_commit !== null &&
-          ![
-            ledger.snapshot.repository_commit,
-            ledger.snapshot.staging_deployment_commit,
-          ].includes(evidence.source_commit)
+          evidence.source_commit !== expectedSourceCommit
         ) {
           addError(
             errors,
-            "evidence-source-mismatch",
+            "evidence-source-kind-mismatch",
             `${evidencePath}.source_commit`,
-            "Current evidence must identify one of the snapshot commits.",
+            evidenceKind === "provider"
+              ? "Provider evidence must identify the repository snapshot commit."
+              : "Runtime and smoke evidence must identify the staging deployment snapshot commit.",
           );
         }
       }
@@ -2203,14 +3394,16 @@ function validateReadyResources(ledger, errors, now) {
 
     if (
       resource.verdict.blocker_issues.length > 0 ||
-      resource.verdict.reason_codes.length !== 1 ||
-      resource.verdict.reason_codes[0] !== "CERTIFIED"
+      !resource.verdict.reason_codes.includes("CERTIFIED") ||
+      resource.verdict.reason_codes.some(
+        (reason) => !["CERTIFIED", "NOT_REQUIRED"].includes(reason),
+      )
     ) {
       addReadyInvariant(
         errors,
         resourceIndex,
         "verdict",
-        "READY requires reason code CERTIFIED and no blocker issues.",
+        "READY requires CERTIFIED, only a canonical NOT_REQUIRED companion when applicable, and no blocker issues.",
       );
     }
 
@@ -2251,13 +3444,14 @@ function validateReadyResources(ledger, errors, now) {
       if (
         !["PASS", "PRESENT"].includes(record.state) ||
         record.checked_at === null ||
-        record.receipt_ref === null
+        record.receipt_ref === null ||
+        record.binding_generation !== resource.binding_generation
       ) {
         addReadyInvariant(
           errors,
           resourceIndex,
           field,
-          `READY requires complete, dated ${field} evidence.`,
+          `READY requires complete, dated ${field} evidence for the current binding generation.`,
         );
       }
       validateReadyTimestamp(
@@ -2323,16 +3517,17 @@ function validateReadyResources(ledger, errors, now) {
         );
       }
       if (
-        configuration.state === "PASS" &&
-        (configuration.checked_at === null ||
-          configuration.receipt_ref === null ||
+        configuration.checked_at === null ||
+        configuration.receipt_ref === null ||
+        configuration.binding_generation !== resource.binding_generation ||
+        (configuration.state === "PASS" &&
           configuration.canonical_names.length === 0)
       ) {
         addReadyInvariant(
           errors,
           resourceIndex,
           `configuration.${configIndex}`,
-          "READY PASS configuration requires names-only bindings, a date, and a receipt.",
+          "READY configuration requires names-only PASS bindings, a date, a receipt, and the current binding generation.",
         );
       }
       validateReadyTimestamp(
@@ -2364,13 +3559,14 @@ function validateReadyResources(ledger, errors, now) {
     }
     if (
       resource.permissions.checked_at === null ||
-      resource.permissions.receipt_ref === null
+      resource.permissions.receipt_ref === null ||
+      resource.permissions.binding_generation !== resource.binding_generation
     ) {
       addReadyInvariant(
         errors,
         resourceIndex,
         "permissions",
-        "READY requires dated permissions and least-privilege evidence.",
+        "READY requires dated permissions and least-privilege evidence for the current binding generation.",
       );
     }
     validateReadyTimestamp(
@@ -2407,13 +3603,14 @@ function validateReadyResources(ledger, errors, now) {
     }
     if (
       resource.isolation.checked_at === null ||
-      resource.isolation.receipt_ref === null
+      resource.isolation.receipt_ref === null ||
+      resource.isolation.binding_generation !== resource.binding_generation
     ) {
       addReadyInvariant(
         errors,
         resourceIndex,
         "isolation",
-        "READY requires dated isolation evidence.",
+        "READY requires dated isolation evidence for the current binding generation.",
       );
     }
     validateReadyTimestamp(
@@ -2451,13 +3648,14 @@ function validateReadyResources(ledger, errors, now) {
     }
     if (
       resource.lifecycle.checked_at === null ||
-      resource.lifecycle.receipt_ref === null
+      resource.lifecycle.receipt_ref === null ||
+      resource.lifecycle.binding_generation !== resource.binding_generation
     ) {
       addReadyInvariant(
         errors,
         resourceIndex,
         "lifecycle",
-        "READY requires dated lifecycle evidence.",
+        "READY requires dated lifecycle evidence for the current binding generation.",
       );
     }
     validateReadyTimestamp(
@@ -2470,6 +3668,29 @@ function validateReadyResources(ledger, errors, now) {
 
     for (const evidenceKind of ["provider", "runtime", "smoke"]) {
       const evidence = resource.evidence[evidenceKind];
+      const canonicalNotRequired =
+        evidence.state === "NOT_REQUIRED" &&
+        CANONICAL_NOT_REQUIRED_PATHS.has(
+          `${resource.ref}:evidence.${evidenceKind}`,
+        );
+      if (canonicalNotRequired) {
+        if (
+          evidence.receipt_ref !== null ||
+          evidence.observed_at !== null ||
+          evidence.valid_until !== null ||
+          evidence.source_commit !== null ||
+          evidence.binding_generation !== resource.binding_generation ||
+          evidence.reason_code !== "NOT_REQUIRED"
+        ) {
+          addReadyInvariant(
+            errors,
+            resourceIndex,
+            `evidence.${evidenceKind}`,
+            `READY canonical NOT_REQUIRED ${evidenceKind} evidence must remain receipt-free and bound to the current generation.`,
+          );
+        }
+        continue;
+      }
       if (
         evidence.state !== "PASS" ||
         evidence.receipt_ref === null ||
@@ -2512,17 +3733,18 @@ function validateReadyResources(ledger, errors, now) {
           `READY ${evidenceKind} validity exceeds its maximum allowed lifetime.`,
         );
       }
-      if (
-        ![
-          ledger.snapshot.repository_commit,
-          ledger.snapshot.staging_deployment_commit,
-        ].includes(evidence.source_commit)
-      ) {
+      const expectedSourceCommit =
+        evidenceKind === "provider"
+          ? ledger.snapshot.repository_commit
+          : ledger.snapshot.staging_deployment_commit;
+      if (evidence.source_commit !== expectedSourceCommit) {
         addReadyInvariant(
           errors,
           resourceIndex,
           `evidence.${evidenceKind}.source_commit`,
-          `READY ${evidenceKind} evidence must identify a current snapshot commit.`,
+          evidenceKind === "provider"
+            ? "READY provider evidence must identify the repository snapshot commit."
+            : `READY ${evidenceKind} evidence must identify the staging deployment snapshot commit.`,
         );
       }
     }
@@ -2592,21 +3814,31 @@ function collectStateValues(value, pathParts = [], results = []) {
   return results;
 }
 
-function validateLedgerSemantics(repoRoot, ledger, now) {
+function validateLedgerSemantics(
+  repoRoot,
+  ledger,
+  now,
+  { includeReadyAuthorization = true } = {},
+) {
   const errors = [];
   const trustedKey = loadTrustedCertificationKey(repoRoot, errors);
   validateCoverage(ledger, errors);
   validateRelations(ledger, errors);
   validateConfiguration(ledger, errors);
   validatePermissions(ledger, errors);
+  validateNotRequiredUsage(ledger, errors);
   validateReceiptCoherence(ledger, errors);
   validateReceiptUniqueness(ledger, errors);
   validateVerdicts(ledger, errors);
   validateTimestamps(ledger, errors, now);
+  validateSnapshotGitObjects(repoRoot, ledger, errors);
   validateDeploymentObservation(ledger, errors);
+  validateExternalReadyAuthority(ledger, errors);
   validateEvidence(ledger, errors);
   validateReadyResources(ledger, errors, now);
-  validateReadyAuthorization(ledger, errors, now, trustedKey);
+  if (includeReadyAuthorization) {
+    validateReadyAuthorization(ledger, errors, now, trustedKey);
+  }
   return errors;
 }
 
@@ -2615,6 +3847,16 @@ export function serializeStagingResourceLedgerSchema() {
     target: "draft-2020-12",
     io: "input",
   });
+  const coverageKeySchema =
+    jsonSchema.properties?.resources?.items?.properties?.coverage_key;
+  if (!coverageKeySchema || typeof coverageKeySchema !== "object") {
+    throw new TypeError(
+      "The JSON Schema projection is missing the canonical coverage tuple.",
+    );
+  }
+  coverageKeySchema.minItems = 4;
+  coverageKeySchema.maxItems = 4;
+  coverageKeySchema.items = false;
   jsonSchema.$id =
     "https://github.com/elizaOS/eliza/blob/develop/.github/certification/staging-resources.schema.json";
   return `${JSON.stringify(jsonSchema, null, 2)}\n`;
@@ -2624,11 +3866,14 @@ function markdownCell(value) {
   return String(value).replaceAll("|", "\\|").replaceAll("\n", " ");
 }
 
-export function renderStagingResourceLedgerView(ledger) {
-  const displayObservationTime = Math.max(
-    Date.parse(ledger.snapshot.observed_at),
-    Date.parse(ledger.deployment_observation.observed_at),
-  );
+export function renderStagingResourceLedgerView(ledger, now = new Date()) {
+  const generationTime = normalizeNow(now).getTime();
+  const readyAuthorizationValidity =
+    ledger.ready_authorization === null
+      ? "NONE"
+      : Date.parse(ledger.ready_authorization.valid_until) <= generationTime
+        ? `SIGNED · EXPIRED:${ledger.ready_authorization.valid_until}`
+        : `SIGNED · VALID_UNTIL:${ledger.ready_authorization.valid_until}`;
   const historicalBanner =
     ledger.deployment_observation.evidence_alignment === "REVALIDATION_REQUIRED"
       ? "> **HISTORICAL — NOT CURRENT:** all observed states, evidence, and verdicts below belong to the evidence snapshot and cannot certify the observed deployment.\n\n"
@@ -2649,9 +3894,11 @@ export function renderStagingResourceLedgerView(ledger) {
           }
           if (
             record.valid_until !== null &&
-            Date.parse(record.valid_until) <= displayObservationTime
+            Date.parse(record.valid_until) <= generationTime
           ) {
-            qualifiers.push("EXPIRED");
+            qualifiers.push(`EXPIRED:${record.valid_until}`);
+          } else if (record.valid_until !== null) {
+            qualifiers.push(`VALID_UNTIL:${record.valid_until}`);
           }
           const suffix =
             qualifiers.length > 0 ? `·${qualifiers.join("·")}` : "";
@@ -2720,14 +3967,15 @@ This public view contains opaque resource references and redacted certification 
 ${historicalBanner}- Environment: \`${ledger.environment}\`
 - Snapshot observed: \`${ledger.snapshot.observed_at}\`
 - Repository commit: \`${ledger.snapshot.repository_commit}\`
-- Staging deployment commit: \`${ledger.snapshot.staging_deployment_commit}\`
+- Declared staging deployment commit: \`${ledger.snapshot.staging_deployment_commit}\`
 - Deployment observed: \`${ledger.deployment_observation.observed_at}\`
-- Current staging deployment commit: \`${ledger.deployment_observation.staging_deployment_commit}\`
+- Declared observed deployment commit: \`${ledger.deployment_observation.staging_deployment_commit}\`
 - Evidence alignment: \`${ledger.deployment_observation.evidence_alignment}\`
-- READY authorization: \`${ledger.ready_authorization === null ? "NONE" : "SIGNED"}\`
+- External live attestation: \`NOT_AVAILABLE · READY_FAIL_CLOSED\`
+- READY authorization validity: \`${readyAuthorizationValidity}\`
 - Policy version: \`${ledger.policy_version}\`
 
-Compact labels are controlled states, not readiness scores. **Any verdict prefixed \`NOT READY\` is not certified**, including \`PARTIAL\`. Relations remain opaque public refs. Permissions show required capabilities, observed state, and least privilege. Mapping uses M/E; custody uses primary/backup/recovery; isolation uses provider/credentials/data/runtime/production; lifecycle uses reset/renew/rotate/revoke/cleanup; evidence uses provider/runtime/smoke. \`HISTORICAL\` evidence does not align with the observed deployment, and \`EXPIRED\` evidence is outside its public validity window.
+Compact labels are controlled states, not readiness scores. **Any verdict prefixed \`NOT READY\` is not certified**, including \`PARTIAL\`. Relations remain opaque public refs. Permissions show required capabilities, observed state, and least privilege. Mapping uses M/E; custody uses primary/backup/recovery; isolation uses provider/credentials/data/runtime/production; lifecycle uses reset/renew/rotate/revoke/cleanup; evidence uses provider/runtime/smoke and prints each public \`VALID_UNTIL\` or \`EXPIRED\` deadline. \`HISTORICAL\` evidence does not align with the observed deployment.
 
 | Ref | Coverage key | Relations | Resolver | Map / exist | Custody P/B/R | Config | Capabilities / permissions | Isolation P/C/D/R/Prod | Lifecycle Rs/Rn/Ro/Rv/Cl | Evidence P/R/S | Verdict | Blockers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -2735,7 +3983,7 @@ ${rows.join("\n")}
 `;
 }
 
-function validateArtifactDrift(repoRoot, ledger, errors) {
+function validateArtifactDrift(repoRoot, ledger, errors, now) {
   const loadedSchema = readArtifact(
     repoRoot,
     SCHEMA_PATH,
@@ -2775,7 +4023,7 @@ function validateArtifactDrift(repoRoot, ledger, errors) {
     errors.push(loadedView.error);
   } else if (
     ledger &&
-    loadedView.raw !== renderStagingResourceLedgerView(ledger)
+    loadedView.raw !== renderStagingResourceLedgerView(ledger, now)
   ) {
     addError(
       errors,
@@ -3012,7 +4260,7 @@ export function checkStagingResourceLedger({
       ...validateLedgerSemantics(resolvedRoot, loaded.ledger, normalizedNow),
     );
   }
-  validateArtifactDrift(resolvedRoot, loaded.ledger, errors);
+  validateArtifactDrift(resolvedRoot, loaded.ledger, errors, normalizedNow);
 
   return {
     ok: errors.length === 0,
@@ -3066,7 +4314,7 @@ export function writeStagingResourceLedgerArtifacts({
   if (writeView) {
     outputs.push({
       relativePath: VIEW_PATH,
-      contents: renderStagingResourceLedgerView(loaded.ledger),
+      contents: renderStagingResourceLedgerView(loaded.ledger, normalizedNow),
     });
   }
   const writeResult = writeArtifactsAtomically(
@@ -3113,6 +4361,19 @@ export function prepareReadyAuthorizationPayload({
   ) {
     throw new Error(
       "A READY authorization payload requires at least one structurally valid READY row.",
+    );
+  }
+  const semanticErrors = validateLedgerSemantics(
+    resolvedRoot,
+    loaded.ledger,
+    normalizedNow,
+    {
+      includeReadyAuthorization: false,
+    },
+  );
+  if (semanticErrors.length > 0) {
+    throw new Error(
+      `READY rows must pass semantic admission before a signing payload can be produced (${[...new Set(semanticErrors.map((error) => error.type))].join(", ")}).`,
     );
   }
   if (

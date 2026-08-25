@@ -8,9 +8,10 @@ The adjacent JSON Schema is the structural contract and the adjacent Markdown
 file is generated for reviewers. Canonical coverage, graph, ownership,
 freshness, privacy, and readiness invariants are enforced by the checker.
 
-This contract replaces the fixture document originally merged by #14459. It
-preserves the useful custody and lifecycle requirements while removing the
-stable locators and personal identifiers that the historical format allowed.
+This contract formalizes the requirements discussed by the historical #14459
+work. It does not assume that an earlier public fixture authority was committed
+to this repository. It preserves the useful custody and lifecycle requirements
+while keeping stable locators and personal identifiers outside GitHub.
 
 ## Product model encoded by the ledger
 
@@ -25,6 +26,11 @@ Every effective DM or group-channel fixture carries the exact
 cover first contact while unlinked, the central login handoff, and successful
 post-link chat in the same provider conversation. `ROUTES_TO` alone proves
 neither onboarding nor usefulness.
+
+Every Cloud account and advertised login subject also depends on the Steward
+authentication-service row. Provider-specific applications are additional
+dependencies, never substitutes for the service that exchanges the resulting
+identity into an Eliza session.
 
 A group has exactly one onboarded owner. Other participants are guests and do
 not inherit owner authority. Top-level controlled groups therefore carry one
@@ -51,6 +57,10 @@ aggregate, which in turn contains its agent and sandbox. This prevents a
 configured application from being mistaken for proof that its owner, bot,
 group, route, or runtime exists.
 
+The Telegram login-widget row represents only the frontend widget
+configuration. It depends on the single Telegram shared-bot identity row; it is
+not a second independently renewable bot.
+
 The required 56 `coverage_key` values are compiled into the checker. They cover:
 
 - fresh and returning Cloud users, their mailbox slots, all advertised login
@@ -63,7 +73,17 @@ The required 56 `coverage_key` values are compiled into the checker. They cover:
 `ref` and `coverage_key` are stable public identifiers. Real provider locators
 belong only in the private resolver. `binding_generation` changes whenever an
 opaque reference is rebound to a replacement resource; evidence from an older
-generation cannot certify the replacement.
+generation cannot certify the replacement. Every receipt used by a `READY`
+row must explicitly repeat and match that generation, including mapping,
+existence, configuration, permissions, isolation, and lifecycle receipts.
+Every one of those receipt sections must declare `binding_generation`: a fully
+neutral section declares `null`, while a material finding declares the current
+resource generation. Rebinding resets every prior state and receipt to an
+unobserved state; changing only the generation number is not sufficient.
+`BINDING_REPLACED` records that temporary revalidation gap and is removed once
+the replacement generation has complete current evidence. The Telegram widget
+reclassification is therefore generation 2 and deliberately carries no
+generation-1 bot evidence.
 
 ## State and evidence rules
 
@@ -79,6 +99,10 @@ evidence layers, and a verdict. Provider, runtime, and smoke receipts contain
 only an opaque receipt reference, time bounds, source commit, binding
 generation, state, and reason code.
 
+The names-only configuration matrix is canonical per public resource ref. Its
+authority and variable-name tuples must match the checker exactly; a generic
+or syntactically valid replacement name is not configuration parity.
+
 The immutable `snapshot` identifies the code and staging deployment against
 which those receipts were observed. `deployment_observation` records the most
 recent read-only staging health observation. When its commit differs from the
@@ -87,6 +111,10 @@ snapshot, `evidence_alignment` must be `REVALIDATION_REQUIRED`: all prior
 them as such, and no resource may be `READY`. Never replace a receipt's source
 SHA merely to make it look current; preserve the old snapshot and perform a
 fresh provider/runtime/smoke audit against the new deployment.
+Equality between the two public SHA fields is only internal consistency, not
+proof of a live deployment. A non-empty `READY` set additionally requires an
+independently protected, provider-backed deployment attestation outside the
+candidate repository.
 
 `READY` is intentionally strict. It is invalid when a required dimension is
 unknown, missing, failed, not run, stale, bound to another generation, or lacks
@@ -95,6 +123,9 @@ name, or the existence of source code never satisfies provider-backed proof.
 Provider observations may be at most 30 days old, runtime observations seven
 days, smoke observations 24 hours, and the other readiness dimensions seven
 days. Excessively long validity windows are rejected.
+
+`NOT_REQUIRED` is not a free-form waiver. Only the canonical per-resource paths
+compiled into the checker may use it; every other occurrence is rejected.
 
 Opaque receipt and attestation references are not self-authenticating. Any
 non-empty `READY` set therefore requires a public, short-lived Ed25519
@@ -105,6 +136,22 @@ binding generations, receipt references, signing time, and expiry. With zero
 READY rows the authorization must be `null`. Signing is the explicit human
 operations trust boundary: it asserts that the private resolver and receipts
 were reviewed; the private resolver itself remains outside GitHub.
+
+Public receipt and attestation handles are strictly `rct-` or `att-` plus 32
+to 64 lowercase hexadecimal characters. Short numeric challenges and readable
+aliases are rejected so the public handle cannot become an OTP, locator, or
+description of the private evidence.
+
+The signature is an integrity control, not by itself a repository-governance
+boundary. A trusted external repository rule and independent review of the
+checker and trust anchor are prerequisites for admitting any `READY` row. Until
+that boundary is configured, the committed ledger must retain zero `READY`
+rows and `ready_authorization: null`.
+The production checker enforces that current condition by rejecting every
+non-empty `READY` set; caller-selected or test-only trust anchors are not an
+accepted production input. Enabling READY admission must be a separate
+protected change that wires the external repository and live-deployment
+attestation authorities before any resource verdict changes.
 
 ## Private resolver contract
 
@@ -138,8 +185,11 @@ No private resolver export or locator is an acceptable pull-request artifact.
    snapshot and use `REVALIDATION_REQUIRED` until every claimed current state
    has been re-observed.
 5. Add the owning blocker issue when any required dimension is not ready.
-6. Regenerate the schema and review view, then run the checker and focused
-   script tests. An authorized operator signs the deterministic READY payload
+6. Regenerate the schema and review view. Generation uses the current time, so
+   expired evidence or authorization is rendered explicitly and causes view
+   drift until the historical view is refreshed.
+7. Run the checker and focused script tests. An authorized operator signs the
+   deterministic READY payload
    only after the private evidence review and only when at least one row is
    genuinely READY.
 
@@ -162,9 +212,15 @@ node packages/scripts/launch-qa/check-staging-resource-ledger.mjs \
 ```
 
 The command returns the canonical UTF-8 payload, its SHA-256 digest, and the
-metadata to copy into `ready_authorization`. An authorized operator signs the
-payload bytes outside the repository and adds only the canonical Base64
-signature. The private key and private receipts never enter the worktree.
+metadata to copy into `ready_authorization` only after the same protected
+external certification authority and provider-backed live-deployment
+attestation required by final `READY` admission have passed. It may omit only
+the not-yet-created signature from that admission check. Until both external
+authorities are wired, payload preparation intentionally fails closed; it is
+not an alternate path to manufacture a `READY` claim. An authorized operator
+then signs the payload bytes outside the repository and adds only the canonical
+Base64 signature. The private key and private receipts never enter the
+worktree.
 
 The PR gate runs the same checker fail-closed: a missing row, broken relation,
 schema/view drift, non-approved YAML comment, probable private locator, stale

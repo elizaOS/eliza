@@ -159,7 +159,10 @@
                 "type": "string",
                 "pattern": "^[a-z][a-z0-9-]{0,63}$"
               }
-            ]
+            ],
+            "minItems": 4,
+            "maxItems": 4,
+            "items": false
           },
           "record_state": {
             "type": "string",
@@ -241,7 +244,7 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "pattern": "^att-[a-z0-9][a-z0-9-]{2,79}$"
+                    "pattern": "^att-[0-9a-f]{32,64}$"
                   },
                   {
                     "type": "null"
@@ -318,7 +321,19 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                    "pattern": "^rct-[0-9a-f]{32,64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "binding_generation": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   },
                   {
                     "type": "null"
@@ -329,7 +344,8 @@
             "required": [
               "state",
               "checked_at",
-              "receipt_ref"
+              "receipt_ref",
+              "binding_generation"
             ],
             "additionalProperties": false
           },
@@ -370,7 +386,19 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                    "pattern": "^rct-[0-9a-f]{32,64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "binding_generation": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   },
                   {
                     "type": "null"
@@ -381,7 +409,8 @@
             "required": [
               "state",
               "checked_at",
-              "receipt_ref"
+              "receipt_ref",
+              "binding_generation"
             ],
             "additionalProperties": false
           },
@@ -467,7 +496,7 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                    "pattern": "^rct-[0-9a-f]{32,64}$"
                   },
                   {
                     "type": "null"
@@ -577,7 +606,19 @@
                   "anyOf": [
                     {
                       "type": "string",
-                      "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                      "pattern": "^rct-[0-9a-f]{32,64}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "binding_generation": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
                     },
                     {
                       "type": "null"
@@ -590,7 +631,8 @@
                 "canonical_names",
                 "state",
                 "checked_at",
-                "receipt_ref"
+                "receipt_ref",
+                "binding_generation"
               ],
               "additionalProperties": false
             }
@@ -658,7 +700,19 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                    "pattern": "^rct-[0-9a-f]{32,64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "binding_generation": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   },
                   {
                     "type": "null"
@@ -671,7 +725,8 @@
               "observed_state",
               "least_privilege_state",
               "checked_at",
-              "receipt_ref"
+              "receipt_ref",
+              "binding_generation"
             ],
             "additionalProperties": false
           },
@@ -784,7 +839,19 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                    "pattern": "^rct-[0-9a-f]{32,64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "binding_generation": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   },
                   {
                     "type": "null"
@@ -799,7 +866,8 @@
               "runtime",
               "production_separation",
               "checked_at",
-              "receipt_ref"
+              "receipt_ref",
+              "binding_generation"
             ],
             "additionalProperties": false
           },
@@ -899,7 +967,19 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                    "pattern": "^rct-[0-9a-f]{32,64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "binding_generation": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   },
                   {
                     "type": "null"
@@ -916,7 +996,8 @@
               "revocation_state",
               "cleanup_state",
               "checked_at",
-              "receipt_ref"
+              "receipt_ref",
+              "binding_generation"
             ],
             "additionalProperties": false
           },
@@ -948,7 +1029,7 @@
                     "anyOf": [
                       {
                         "type": "string",
-                        "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                        "pattern": "^rct-[0-9a-f]{32,64}$"
                       },
                       {
                         "type": "null"
@@ -1055,7 +1136,7 @@
                     "anyOf": [
                       {
                         "type": "string",
-                        "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                        "pattern": "^rct-[0-9a-f]{32,64}$"
                       },
                       {
                         "type": "null"
@@ -1162,7 +1243,7 @@
                     "anyOf": [
                       {
                         "type": "string",
-                        "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                        "pattern": "^rct-[0-9a-f]{32,64}$"
                       },
                       {
                         "type": "null"
