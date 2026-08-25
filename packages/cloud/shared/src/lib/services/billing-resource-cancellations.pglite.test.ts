@@ -414,7 +414,7 @@ async function authorityCounts() {
 }
 
 describe("billing cancellation durable receipt authority", () => {
-  test("new admission locks the target before authorization while logical replay skips it", async () => {
+  test("fresh authorization precedes the transaction while logical replay skips the target lock", async () => {
     const service = createService();
     let firstAuthorizationObservedLocks = -1;
     const first = await request(service, {
@@ -435,7 +435,7 @@ describe("billing cancellation durable receipt authority", () => {
 
     expect(first.disposition).toBe("accepted");
     expect(replay.disposition).toBe("same_command");
-    expect(firstAuthorizationObservedLocks).toBe(1);
+    expect(firstAuthorizationObservedLocks).toBe(0);
     expect(replayAuthorizationObservedLocks).toBe(1);
     expect(lockTargetCount).toBe(1);
     expect(enqueueCount).toBe(1);

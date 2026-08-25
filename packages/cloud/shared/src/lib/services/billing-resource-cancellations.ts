@@ -280,6 +280,21 @@ export class BillingResourceCancellationsService {
       action: "stop",
     };
 
+    // Production callers revalidate the request credential with a primary
+    // database read. Keep that read outside the transaction because Worker
+    // requests use a single-connection pool; re-entering dbWrite while the
+    // transaction owns its only connection would wait until checkout timeout.
+    // The transaction still fences the returned identity against the current
+    // organization/user rows before it creates any durable effect.
+    const expectedStewardUserId = await normalizedOptions.authorizeInfrastructureMutation();
+    if (!expectedStewardUserId) {
+      throw new ApiError(
+        403,
+        "access_denied",
+        "Billing cancellation credential identity changed; refresh and retry",
+      );
+    }
+
     const result = await this.dependencies.transact(async (tx) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`billing-cancel-key:${normalizedOptions.organizationId}:${keyHash}`}, 0))`,
@@ -314,19 +329,10 @@ export class BillingResourceCancellationsService {
         await this.dependencies.lockTarget(tx, normalizedOptions);
       }
 
-      // Preserve the fresh session/credential revalidation immediately before
-      // the first durable effect, then acquire primary database authority in
-      // the same transaction. The organization and user FOR SHARE locks close
-      // the gap where a concurrent role or eligibility revocation could commit
-      // between session validation and replay binding/job admission.
-      const expectedStewardUserId = await normalizedOptions.authorizeInfrastructureMutation();
-      if (!expectedStewardUserId) {
-        throw new ApiError(
-          403,
-          "access_denied",
-          "Billing cancellation credential identity changed; refresh and retry",
-        );
-      }
+      // Acquire primary database authority in the durable transaction. The
+      // organization and user FOR SHARE locks close the gap where a concurrent
+      // role or eligibility revocation could commit between the fresh
+      // credential check above and replay binding/job admission.
       const hasCurrentAuthority = await billingCancelCommandsRepository.lockBillingManagerAuthority(
         tx,
         normalizedOptions.organizationId,

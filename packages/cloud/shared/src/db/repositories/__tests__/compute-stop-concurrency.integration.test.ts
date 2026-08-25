@@ -6,7 +6,8 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { Client } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Client, Pool } from "pg";
 import type {
   BillingResourceCancellationsService,
   RequestBillingCancellationOptions,
@@ -16,12 +17,16 @@ import {
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
 import type { DbTransaction } from "../../client";
+import * as schema from "../../schemas";
 import { agentComputeStopIntents } from "../../schemas/agent-compute-stop-intents";
 import { jobs as jobsTable } from "../../schemas/jobs";
+import { organizations } from "../../schemas/organizations";
+import { users } from "../../schemas/users";
 
 const SKIP_REASON =
   "[compute stop concurrency] SKIPPED - no real PostgreSQL available. " +
   "Set APPS_TENANT_DB_EPHEMERAL=1 with Docker, or provide APPS_TENANT_DB_TEST_DSN.";
+const POSTGRES_REQUIRED = process.env.COMPUTE_STOP_CONCURRENCY_REQUIRED === "1";
 const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
   TEST_DATABASE_URL: process.env.TEST_DATABASE_URL,
@@ -141,6 +146,12 @@ async function seedContainer(params: {
 }
 
 if (!postgres) {
+  if (POSTGRES_REQUIRED) {
+    throw new Error(
+      "[compute stop concurrency] real PostgreSQL is required but APPS_TENANT_DB_TEST_DSN " +
+        "did not resolve and no opted-in Docker harness was available",
+    );
+  }
   console.warn(SKIP_REASON);
 } else {
   isolatedDsn = await createIsolatedDatabase(postgres.dsn);
@@ -307,6 +318,96 @@ afterAll(async () => {
 const realPostgres = postgres ? describe : describe.skip;
 
 realPostgres("compute stop concurrency", () => {
+  test("route-shaped authorization does not re-enter a single-connection pool transaction", async () => {
+    if (!isolatedDsn || !BillingCancellationsService) {
+      throw new Error("harness unavailable");
+    }
+    const organizationId = randomUUID();
+    const userId = randomUUID();
+    const resourceId = randomUUID();
+    const stewardUserId = `steward:${userId}`;
+    const pool = new Pool({
+      connectionString: isolatedDsn,
+      max: 1,
+      connectionTimeoutMillis: 1_000,
+    });
+    const singleConnectionDb = drizzle(pool, { schema });
+    let authorizationReads = 0;
+    let enqueueCount = 0;
+    const service: BillingResourceCancellationsService = new BillingCancellationsService({
+      transact: (callback) => singleConnectionDb.transaction(callback),
+      lockTarget: async () => {},
+      enqueueStop: async (
+        tx: DbTransaction,
+        options: RequestBillingCancellationOptions,
+      ): Promise<{ jobId: string }> => {
+        enqueueCount += 1;
+        const [job] = await tx
+          .insert(jobsTable)
+          .values({
+            type: "container_stop",
+            status: "pending",
+            data: { resourceId: options.resourceId },
+            organization_id: options.organizationId,
+            user_id: options.requestedByUserId,
+          })
+          .returning({ id: jobsTable.id });
+        if (!job) throw new Error("test job insert returned no row");
+        return { jobId: job.id };
+      },
+      triggerImmediate: async () => {},
+    });
+
+    try {
+      await singleConnectionDb.execute(
+        sql`INSERT INTO organizations(id, credit_balance) VALUES (${organizationId}, 0)`,
+      );
+      await singleConnectionDb.execute(
+        sql`INSERT INTO users(id, organization_id, steward_user_id, role)
+            VALUES (${userId}, ${organizationId}, ${stewardUserId}, 'owner')`,
+      );
+
+      const result = await service.request({
+        organizationId,
+        requestedByUserId: userId,
+        resourceType: "container",
+        resourceId,
+        expectedLifecycleRevision: 1,
+        idempotencyKey: "cancel-single-pool-route-auth-0001",
+        authorizeInfrastructureMutation: async () => {
+          authorizationReads += 1;
+          // Mirrors requireCurrentBillingManagerSession's primary membership
+          // reload: the callback uses the same Database/pool as request().
+          const [current] = await singleConnectionDb
+            .select({ stewardUserId: users.steward_user_id })
+            .from(users)
+            .innerJoin(
+              organizations,
+              and(eq(organizations.id, users.organization_id), eq(organizations.is_active, true)),
+            )
+            .where(
+              and(
+                eq(users.id, userId),
+                eq(users.organization_id, organizationId),
+                eq(users.is_active, true),
+              ),
+            )
+            .limit(1);
+          return current?.stewardUserId;
+        },
+      });
+
+      expect(result).toMatchObject({
+        disposition: "accepted",
+        receipt: { resourceId, status: "accepted" },
+      });
+      expect(authorizationReads).toBe(1);
+      expect(enqueueCount).toBe(1);
+    } finally {
+      await pool.end();
+    }
+  }, 5_000);
+
   test("manual and billing stop admission converge without a lock-order deadlock", async () => {
     if (
       !isolatedDsn ||
