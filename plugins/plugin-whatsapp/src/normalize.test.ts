@@ -115,4 +115,17 @@ describe("text chunking", () => {
     expect(truncateText("short", 20)).toBe("short");
     expect(truncateText("abcdefghij", 5).length).toBeLessThanOrEqual(5);
   });
+
+  it("truncateText preserves UTF-16 surrogate pairs when truncating", () => {
+    const emojis = "🎉".repeat(10); // 20 code units
+    const result = truncateText(emojis, 6); // 6 limit - 3 = 3 code units -> backed off to 2 (1 emoji)
+    expect(result.endsWith("...")).toBe(true);
+    for (const char of result) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

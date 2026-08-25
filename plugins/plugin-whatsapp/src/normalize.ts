@@ -323,7 +323,14 @@ export function truncateText(text: string, maxLength: number): string {
   if (maxLength <= 3) {
     return "...".slice(0, maxLength);
   }
-  return `${text.slice(0, maxLength - 3)}...`;
+  let end = maxLength - 3;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${text.slice(0, end)}...`;
 }
 
 /**
