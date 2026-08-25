@@ -242,10 +242,17 @@ function decodeHtmlEntities(text: string): string {
         gt: ">",
         lt: "<",
         quot: '"',
+        nbsp: " ",
+        ndash: "–",
+        mdash: "—",
+        hellip: "…",
+        copy: "©",
+        reg: "®",
+        trade: "™",
         "#39": "'",
     };
     return text.replace(
-        /&(amp|lt|gt|quot|apos|#39|#\d+|#x[0-9a-fA-F]+);/g,
+        /&(amp|lt|gt|quot|apos|nbsp|ndash|mdash|hellip|copy|reg|trade|#39|#\d+|#x[0-9a-fA-F]+);/g,
         (entity, name: string) => {
             if (name.startsWith("#x")) {
                 return decodeNumericEntity(entity, name.slice(2), 16);

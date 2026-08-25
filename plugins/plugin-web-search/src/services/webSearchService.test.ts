@@ -379,6 +379,18 @@ describe("WebSearchService", () => {
         expect(pageInfo.title).toBe("&lt;literal&gt; &#65;");
     });
 
+    it("decodes typography and symbol named entities", async () => {
+        const html = `<title>elizaOS&nbsp;&mdash;&nbsp;Framework&hellip; &copy; 2026 &reg; &trade; &ndash; Docs</title>`;
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(async () => new Response(html)),
+        });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const pageInfo = await service.getPageInfo("https://example.test/named-entities");
+
+        expect(pageInfo.title).toBe("elizaOS — Framework… © 2026 ® ™ – Docs");
+    });
+
     it("accepts page HTML exactly at the byte limit", async () => {
         const exactLimitHtml = "a".repeat(1024 * 1024);
         setPageInfoHttpTransportForTests({
