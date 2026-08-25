@@ -239,6 +239,10 @@ SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "0.1"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
+# PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED is deliberately absent from
+# every vars block. It is a temporary exact-true bridge for a legacy Gateway's
+# headerless edge handoff and epoch-1 reconciliation; bind it only through a
+# protected environment for a bounded Worker-first rollout. Default is closed.
 # PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED and
 # PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED are deliberately
 # absent from every [vars] block. The protected activation workflows own them
