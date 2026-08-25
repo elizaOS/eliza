@@ -8,6 +8,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { createTestRuntime } from "../../src/testing/pglite-runtime.ts";
 
 const {
+	default: agentOrchestratorPlugin,
 	AcpService,
 	cleanForChat,
 	listAgentsAction,
@@ -26,6 +27,7 @@ async function createRuntime(settings: Record<string, unknown> = {}): Promise<{
 }> {
 	const { runtime, cleanup } = await createTestRuntime({
 		characterName: "TaskAgentLiveSmoke",
+		plugins: [agentOrchestratorPlugin],
 	});
 	const originalGetSetting = runtime.getSetting.bind(runtime);
 	runtime.getSetting = ((key: string) =>
@@ -39,6 +41,7 @@ function createMessage(content: Record<string, unknown> = {}) {
 	return {
 		id: `msg-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
 		userId: "live-user",
+		entityId: "live-user",
 		roomId: "live-room",
 		createdAt: Date.now(),
 		content,
@@ -76,7 +79,7 @@ async function waitFor(
 }
 
 function ensureLiveBaseDir(): string {
-	const baseDir = path.join(process.cwd(), ".tmp-live");
+	const baseDir = path.join("/tmp", "eliza-task-agent-live-smoke");
 	fs.mkdirSync(baseDir, { recursive: true });
 	return baseDir;
 }
@@ -177,6 +180,8 @@ async function waitForTrackedSession(
 async function runSequentialSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "reuse");
 	const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
+	// The production plugin supplies the durable task owner; the explicit ACP
+	// instance below remains the one whose session events this smoke reads.
 	// Start the ACP service and register it under its real serviceType so the
 	// TASKS actions (which resolve it via getAcpService -> runtime.getService
 	// ("ACP_SUBPROCESS_SERVICE")) spawn into the SAME instance this script reads
