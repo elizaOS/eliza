@@ -36,6 +36,11 @@ async function createRuntime(
 		adapter,
 		logLevel: "fatal",
 		enableAutonomy: false,
+		// Distinct settings map per runtime: AgentRuntime falls back to a
+		// module-level shared environmentSettings map when `settings` is
+		// omitted, which would leak a canonical-owner setting between the
+		// sibling runtimes this suite creates (#23106 recipient tests).
+		settings: {},
 	});
 	await runtime.initialize();
 	await runtime.registerPlugin({
@@ -919,6 +924,84 @@ describe("NotificationService", () => {
 			await expect(
 				stopService.markRead("00000000-0000-4000-8000-000000000000"),
 			).rejects.toThrow(/service is stopped/);
+		});
+	});
+
+	describe("canonical recipient stamping (#23106)", () => {
+		const OWNER_ENTITY_ID = "22222222-2222-4222-8222-222222222222";
+		// The canonical-owner setting key resolveCanonicalOwnerId reads
+		// (roles.ts CANONICAL_OWNER_SETTING_KEY; not exported, so pinned here).
+		const CANONICAL_OWNER_SETTING_KEY = "ELIZA_ADMIN_ENTITY_ID";
+
+		let recipientRuntime: AgentRuntime;
+		let recipientCleanup: () => Promise<void>;
+		let recipientService: NotificationService;
+
+		beforeAll(async () => {
+			const created = await createRuntime([
+				AgentEventService,
+				NotificationService,
+			]);
+			recipientRuntime = created.runtime;
+			recipientCleanup = created.cleanup;
+			recipientRuntime.setSetting(CANONICAL_OWNER_SETTING_KEY, OWNER_ENTITY_ID);
+			recipientService = (await recipientRuntime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+		}, 180_000);
+
+		afterAll(async () => {
+			await recipientCleanup?.();
+		});
+
+		beforeEach(async () => {
+			await recipientService.clear();
+		});
+
+		it("stamps an explicit producer recipient verbatim", async () => {
+			const n = await recipientService.notify({
+				title: "direct",
+				recipientId: "33333333-3333-4333-8333-333333333333",
+			});
+			expect(n.recipientId).toBe("33333333-3333-4333-8333-333333333333");
+		});
+
+		it("defaults an absent recipient to the canonical owner when configured", async () => {
+			const n = await recipientService.notify({ title: "defaulted" });
+			expect(n.recipientId).toBe(OWNER_ENTITY_ID);
+		});
+
+		it("trims a whitespace recipient and drops an empty one to the canonical default", async () => {
+			const padded = await recipientService.notify({
+				title: "padded",
+				recipientId: `  ${"44444444-4444-4444-8444-444444444444"}  `,
+			});
+			expect(padded.recipientId).toBe("44444444-4444-4444-8444-444444444444");
+			const blank = await recipientService.notify({
+				title: "blank",
+				recipientId: "   ",
+			});
+			expect(blank.recipientId).toBe(OWNER_ENTITY_ID);
+		});
+
+		it("leaves the recipient undefined when no owner is resolvable (inbox-only, never fabricated)", async () => {
+			// A runtime with NO configured owner: the record must stay honestly
+			// unaddressed so the push seam fails closed to inbox-only.
+			const created = await createRuntime([
+				AgentEventService,
+				NotificationService,
+			]);
+			try {
+				const bareService = (await created.runtime.getServiceLoadPromise(
+					ServiceType.NOTIFICATION,
+				)) as NotificationService;
+				const n = await bareService.notify({ title: "unowned" });
+				expect(n.recipientId).toBeUndefined();
+				// Inbox regression guard: the record still lands in the inbox.
+				expect(bareService.list().map((x) => x.title)).toEqual(["unowned"]);
+			} finally {
+				await created.cleanup();
+			}
 		});
 	});
 });

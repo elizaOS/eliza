@@ -3,26 +3,39 @@
  *
  * The server-side bridge between the unified notification rail and remote push
  * transports (APNs / FCM). It subscribes to the AgentEventService bus and, for
- * every `stream:"notification"` event, fans the notification out to all
- * registered device push tokens via the matching provider.
+ * every `stream:"notification"` event, delivers the notification to the device
+ * push tokens owned by the notification's canonical RECIPIENT (#23106).
  *
- * DELIVERY POLICY (intentionally simple, documented):
- *   - Every notification is pushed to every registered token of the matching
- *     platform. The app dedupes by the notification `id` carried in the push
- *     custom data against its in-app notification center, and the OS only
- *     surfaces it when the app is backgrounded/killed.
+ * DELIVERY POLICY (inbox-before-push, fail-closed — #23106 first tranche):
+ *   - A notification ALWAYS lands in the inbox first; NotificationService owns
+ *     that path and this service never gates it. Whether it may ALSO leave the
+ *     process as a remote push is decided per-principal by the PushPolicyStore
+ *     seam (push-policy.ts): no recipient → inbox-only; no policy → inbox-only
+ *     (the principal never opted in); policy denied → inbox-only. Only an
+ *     explicit per-principal policy allowing push permits delivery, and only to
+ *     tokens registered BY that same principal.
+ *   - Legacy tokens registered without an ownerEntityId never match a
+ *     recipient-bound push: they can be listed and unregistered, but delivery
+ *     to them is over until the device re-registers with a principal. This is
+ *     the deliberate fail-closed default — privacy errs inbox-only.
  *   - A "only push when the device isn't actively connected over WebSocket"
  *     optimization is a future refinement; it is deliberately not implemented
  *     here to keep the seam single-pathed.
+ *   - Digests (batched/deferred delivery) are NOT owned here: there is one
+ *     clock (core TaskService) and `plugin-scheduling` owns the scheduled-item
+ *     state machine. The recipient/policy seam is the typed surface a future
+ *     digest queue consults; this service creates no scheduler.
  *
  * CREDENTIAL GATING: a provider is only used when `isConfigured()` is true.
  * With NO provider configured the service still starts (so the registry/routes
  * stay live) but logs once at debug and does nothing on each notification.
  *
- * VERIFIABILITY: subscription, no-op-when-unconfigured, token lookup, dispatch
- * routing (ios→apns, android→fcm), and dead-token removal are unit-tested with
- * an injected fake provider. Real network delivery is NOT tested — it needs
- * live APNs/FCM credentials and a physical device.
+ * VERIFIABILITY: subscription, no-op-when-unconfigured, recipient/owner token
+ * matching, the fail-closed policy matrix (no recipient / no policy / denied /
+ * allowed), dispatch routing (ios→apns, android→fcm), and dead-token removal
+ * are unit-tested with an injected fake provider and store. Real network
+ * delivery is NOT tested — it needs live APNs/FCM credentials and a physical
+ * device.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -37,6 +50,11 @@ import {
 } from "@elizaos/core";
 import { ApnsProvider } from "./apns-provider.ts";
 import { FcmProvider } from "./fcm-provider.ts";
+import {
+  decidePushDelivery,
+  type PushDeliveryDecision,
+  PushPolicyStore,
+} from "./push-policy.ts";
 import { type PushPlatform, PushTokenRegistry } from "./push-token-registry.ts";
 import {
   type PushMessage,
@@ -78,18 +96,24 @@ export interface PushProviderSet {
 export class NotificationPushService extends Service {
   static serviceType: string = NOTIFICATION_PUSH_SERVICE_TYPE;
   capabilityDescription =
-    "Delivers notifications to backgrounded/killed devices via APNs and FCM";
+    "Delivers recipient-bound notifications to backgrounded/killed devices via APNs and FCM, behind a per-principal fail-closed push policy";
 
   private readonly registry: PushTokenRegistry;
+  private readonly policies: PushPolicyStore;
   private readonly providers: PushProviderSet;
   private unsubscribe: (() => void) | null = null;
 
   constructor(
     runtime: IAgentRuntime,
-    options?: { registry?: PushTokenRegistry; providers?: PushProviderSet },
+    options?: {
+      registry?: PushTokenRegistry;
+      policies?: PushPolicyStore;
+      providers?: PushProviderSet;
+    },
   ) {
     super(runtime);
     this.registry = options?.registry ?? new PushTokenRegistry(runtime);
+    this.policies = options?.policies ?? new PushPolicyStore(runtime);
     this.providers = options?.providers ?? {
       ios: new ApnsProvider(),
       android: new FcmProvider(),
@@ -154,6 +178,11 @@ export class NotificationPushService extends Service {
     return this.registry;
   }
 
+  /** The per-principal policy store (used by the routes layer). */
+  getPolicies(): PushPolicyStore {
+    return this.policies;
+  }
+
   private async onNotification(event: AgentEventPayload): Promise<void> {
     const notification = event.data?.notification;
     if (!isAgentNotification(notification)) return;
@@ -166,7 +195,37 @@ export class NotificationPushService extends Service {
       return;
     }
 
-    const tokens = await this.registry.list();
+    // #23106 inbox-before-push seam: the inbox delivery already happened (the
+    // event we are reacting to IS the inbox rail). Push is the add-on, gated
+    // per-principal and FAIL-CLOSED: no recipient, no policy, or a denied
+    // policy all mean inbox-only — never a push.
+    const recipientId = notification.recipientId;
+    if (!recipientId || recipientId.length === 0) {
+      logger.debug(
+        { src: "service:notification_push" },
+        "[NotificationPushService] no recipient; inbox-only (fail-closed)",
+      );
+      return;
+    }
+    const policy = await this.policies.load(recipientId);
+    const decision: PushDeliveryDecision = decidePushDelivery(
+      notification,
+      policy,
+    );
+    if (decision.outcome !== "allow") {
+      logger.debug(
+        {
+          src: "service:notification_push",
+          reason: decision.reason,
+          policyVersion: decision.policyVersion,
+        },
+        "[NotificationPushService] push policy denied; inbox-only (fail-closed)",
+      );
+      return;
+    }
+
+    // Recipient-bound delivery: only tokens registered by this principal.
+    const tokens = await this.registry.listByOwner(recipientId);
     if (tokens.length === 0) return;
 
     const message = toPushMessage(notification);

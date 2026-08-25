@@ -773,4 +773,83 @@ describe("PushTokenRegistry", () => {
       },
     );
   });
+
+  describe("owner binding (#23106)", () => {
+    it("stores and lists tokens per owner, isolated across principals", async () => {
+      await registry.register("ios", "tok-a1", "owner-a");
+      await registry.register("android", "tok-a2", "owner-a");
+      await registry.register("ios", "tok-b1", "owner-b");
+      await registry.register("ios", "tok-free");
+
+      expect(
+        (await registry.listByOwner("owner-a")).map((r) => r.token),
+      ).toEqual(["tok-a1", "tok-a2"]);
+      expect(
+        (await registry.listByOwner("owner-b")).map((r) => r.token),
+      ).toEqual(["tok-b1"]);
+      // An unowned (legacy) token never matches any owner.
+      expect(await registry.listByOwner("owner-a")).not.toContainEqual(
+        expect.objectContaining({ token: "tok-free" }),
+      );
+      expect(await registry.listByOwner("owner-b")).toHaveLength(1);
+    });
+
+    it("re-registration moves a token between owners (upsert)", async () => {
+      await registry.register("ios", "tok-a1", "owner-a");
+      await registry.register("ios", "tok-a1", "owner-b");
+      expect(await registry.listByOwner("owner-a")).toHaveLength(0);
+      expect(
+        (await registry.listByOwner("owner-b")).map((r) => r.token),
+      ).toEqual(["tok-a1"]);
+    });
+
+    it("persists the owner across restart (hydration round-trip)", async () => {
+      await registry.register("ios", "tok-a1", "owner-a");
+      const restarted = new PushTokenRegistry(ctx.runtime);
+      expect(
+        (await restarted.listByOwner("owner-a")).map((r) => r.token),
+      ).toEqual(["tok-a1"]);
+    });
+
+    it("an oversized persisted owner string degrades to unowned (no throw on hydration)", async () => {
+      ctx.cache.set("push-tokens:00000000-0000-0000-0000-0000000000aa", [
+        {
+          token: "tok-huge-owner",
+          platform: "ios",
+          createdAt: 1,
+          ownerEntityId: "o".repeat(5000),
+        },
+      ]);
+      const fresh = new PushTokenRegistry(ctx.runtime);
+      await expect(fresh.hydrate()).resolves.toBeUndefined();
+      const all = await fresh.list();
+      expect(all.map((r) => r.token)).toEqual(["tok-huge-owner"]);
+      expect(all[0].ownerEntityId).toBeUndefined();
+      expect(await fresh.listByOwner("o".repeat(5000))).toHaveLength(0);
+    });
+
+    it("a corrupt owner field on a persisted row degrades to unowned, record still valid", async () => {
+      ctx.cache.set("push-tokens:00000000-0000-0000-0000-0000000000aa", [
+        { token: "tok-x", platform: "ios", createdAt: 1, ownerEntityId: 42 },
+      ]);
+      const fresh = new PushTokenRegistry(ctx.runtime);
+      const all = await fresh.list();
+      expect(all.map((r) => r.token)).toEqual(["tok-x"]);
+      expect(all[0].ownerEntityId).toBeUndefined();
+      expect(await fresh.listByOwner("owner-a")).toHaveLength(0);
+    });
+
+    it("rejects an oversized owner id with the typed validation error", async () => {
+      const hugeOwner = "o".repeat(5000);
+      await expect(
+        registry.register("ios", "tok-big", hugeOwner),
+      ).rejects.toThrow(/ownerEntityId exceeds the byte cap/);
+    });
+
+    it("a blank owner string registers unowned (never fabricated)", async () => {
+      await registry.register("ios", "tok-blank", "   ");
+      const all = await registry.list();
+      expect(all[0].ownerEntityId).toBeUndefined();
+    });
+  });
 });

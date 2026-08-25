@@ -106,6 +106,15 @@ export interface AgentNotification {
 	expiresAt?: number | null;
 	/** Agent that produced it (multi-agent hosts). */
 	agentId?: UUID;
+	/**
+	 * Canonical recipient principal (entity id) this notification is addressed
+	 * to (#23106). Absent on legacy records; new records carry it whenever a
+	 * recipient is resolvable — explicit on `NotificationInput`, else the
+	 * runtime's canonical owner. Remote push delivery is recipient-bound: a
+	 * notification without a resolvable recipient stays inbox-only (fail-closed
+	 * at the push seam), never fanning to every registered device token.
+	 */
+	recipientId?: UUID | string;
 }
 
 /**
@@ -125,6 +134,14 @@ export interface NotificationInput {
 	/** Optional unix ms self-destroy time; absent/null means it never expires. */
 	expiresAt?: number | null;
 	agentId?: UUID;
+	/**
+	 * Canonical recipient principal (entity id) this notification is addressed
+	 * to (#23106). Explicit on input when a producer knows its audience;
+	 * otherwise the service stamps the runtime's canonical owner when one is
+	 * resolvable. Never fabricated — an unresolvable recipient stays `undefined`
+	 * so the push seam can treat it as inbox-only (fail-closed).
+	 */
+	recipientId?: UUID | string;
 }
 
 /** Query for listing notifications from the inbox. */

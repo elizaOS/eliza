@@ -23,6 +23,31 @@ that calls it lives in the UI: `push-registration.ts` acquires the token via
 registers, `PushTokenRegistry.list()` is empty and `NotificationPushService`
 does nothing — that is the correct "no device to reach" state, not a failure.
 
+## Recipient binding + inbox-before-push policy (#23106)
+
+Delivery is recipient-bound and policy-gated, both fail-closed:
+
+- `NotificationService.notify` stamps a canonical `recipientId` on every record
+  (explicit producer address, else the runtime's canonical owner via
+  `resolveCanonicalOwnerId`; unresolvable → absent, never fabricated).
+- A device token registered through `POST /api/notifications/push-tokens` binds
+  to an owner principal. An explicit `ownerEntityId` in the body is accepted
+  ONLY when it equals the server-established canonical owner (a body-supplied
+  id is not principal selection/authorization; any other value — including
+  another principal's id, `null`, or a non-string — is a 400). With the field
+  omitted the token binds to the canonical owner; with no canonical owner
+  configured it registers unowned. Legacy tokens persisted without an owner
+  are still listed / unregistrable but NEVER pushed to until re-registered
+  with a principal.
+- Before any push leaves the process, `push-policy.ts` decides per principal:
+  no recipient → inbox-only; no policy → inbox-only (push is opt-in);
+  `pushEnabled: false` → inbox-only. Only an explicit `pushEnabled: true`
+  policy (`PUT /api/notifications/push-policy`) permits delivery, and only to
+  that same principal's tokens.
+- Digests are owned by the ONE clock (core `TaskService`) and the
+  `plugin-scheduling` scheduled-item state machine; this seam expresses no
+  scheduling and creates no competing scheduler.
+
 `NotificationPushService` only activates a transport when its credentials are
 present (`isConfigured()`); with neither configured it starts, keeps the
 registry + routes live, logs once at debug, and no-ops per notification.

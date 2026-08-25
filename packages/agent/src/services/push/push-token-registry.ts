@@ -58,6 +58,13 @@ export interface PushTokenRecord {
   platform: PushPlatform;
   /** Unix ms when first registered (refreshed on re-registration). */
   createdAt: number;
+  /**
+   * Canonical owner entity id this device belongs to (#23106). Absent on
+   * legacy records — a token without an owner NEVER matches a recipient-bound
+   * push (fail-closed): it can be listed/unregistered, but no notification is
+   * ever pushed to it until the device re-registers with a principal.
+   */
+  ownerEntityId?: string;
 }
 
 /** Stable cache key the registry persists under (scoped per agent). */
@@ -157,6 +164,44 @@ function assertValidPlatform(platform: unknown): PushPlatform {
     });
   }
   return platform;
+}
+
+/**
+ * Canonicalize an optional owner entity id (#23106): a trimmed non-empty
+ * string, or undefined when absent/blank. Byte-capped like the token so a
+ * hostile caller cannot plant an oversized identifier in a cache row.
+ */
+function normalizeOwnerEntityId(ownerEntityId: unknown): string | undefined {
+  if (typeof ownerEntityId !== "string") return undefined;
+  const trimmed = ownerEntityId.trim();
+  if (!trimmed) return undefined;
+  if (utf8ByteLength(trimmed) > MAX_PUSH_TOKEN_BYTES) {
+    throw new ElizaError(
+      "[PushTokenRegistry] ownerEntityId exceeds the byte cap",
+      {
+        code: PUSH_TOKEN_INVALID_CODE,
+        context: { reason: "owner_too_large" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return trimmed;
+}
+
+/**
+ * Non-throwing form for HYDRATION only: a persisted row's owner field that
+ * fails validation (wrong type, oversized) degrades to unowned — the record
+ * stays valid and listable, and delivery to it fails closed. Contrast with
+ * {@link normalizeOwnerEntityId}, which gates live mutations and must reject.
+ */
+function parsePersistedOwnerEntityId(
+  ownerEntityId: unknown,
+): string | undefined {
+  if (typeof ownerEntityId !== "string") return undefined;
+  const trimmed = ownerEntityId.trim();
+  if (!trimmed) return undefined;
+  if (utf8ByteLength(trimmed) > MAX_PUSH_TOKEN_BYTES) return undefined;
+  return trimmed;
 }
 
 export class PushTokenRegistry {
@@ -296,7 +341,10 @@ export class PushTokenRegistry {
 
   /**
    * Register (upsert) a device token. Re-registering an existing token under a
-   * new platform moves it to that platform and refreshes `createdAt`.
+   * new platform moves it to that platform and refreshes `createdAt`. An
+   * optional `ownerEntityId` binds the device to a canonical principal (#23106)
+   * so pushes are recipient-bound; omitting it leaves the record unowned, and
+   * unowned records never receive pushes (fail-closed at the delivery seam).
    *
    * Observably atomic w.r.t. persistence: the mutation is staged on a candidate
    * Map and published only after the durable write succeeds, so a rejected write
@@ -304,9 +352,14 @@ export class PushTokenRegistry {
    * `platform` is validated at this boundary so a direct/untyped caller cannot
    * persist an unsupported transport.
    */
-  async register(platform: PushPlatform, token: string): Promise<void> {
+  async register(
+    platform: PushPlatform,
+    token: string,
+    ownerEntityId?: string,
+  ): Promise<void> {
     const validPlatform = assertValidPlatform(platform);
     const trimmed = assertValidToken(token);
+    const owner = normalizeOwnerEntityId(ownerEntityId);
     await this.enqueueMutation(async () => {
       await this.hydrate();
       const candidate = new Map(this.tokens);
@@ -314,6 +367,7 @@ export class PushTokenRegistry {
         token: trimmed,
         platform: validPlatform,
         createdAt: Date.now(),
+        ...(owner ? { ownerEntityId: owner } : {}),
       });
       evictOldestPushTokens(candidate);
       await this.commit(candidate);
@@ -348,6 +402,21 @@ export class PushTokenRegistry {
   async listByPlatform(platform: PushPlatform): Promise<PushTokenRecord[]> {
     await this.hydrate();
     return [...this.tokens.values()].filter((r) => r.platform === platform);
+  }
+
+  /**
+   * List token records owned by one canonical principal (#23106). Unowned
+   * legacy records never match — delivery to them fails closed.
+   */
+  async listByOwner(ownerEntityId: string): Promise<PushTokenRecord[]> {
+    // Read path: a malformed/oversized query owner matches nothing (no throw —
+    // delivery just fails closed to zero tokens).
+    const owner = parsePersistedOwnerEntityId(ownerEntityId);
+    if (owner === undefined) return [];
+    await this.hydrate();
+    return [...this.tokens.values()].filter(
+      (r) => r.ownerEntityId !== undefined && r.ownerEntityId === owner,
+    );
   }
 
   /** Total number of registered tokens. */
@@ -428,15 +497,21 @@ function isCanonicalPersistedArray(
     const raw = stored[i];
     if (typeof raw !== "object" || raw === null) return false;
     const record = raw as Record<string, unknown>;
-    if (Object.keys(record).length !== 3) return false;
+    // Canonical fields: the 3 legacy keys, plus an optional ownerEntityId
+    // (#23106) that is present only when the canonical record carries one.
     const expected = canonical[i];
+    const expectedKeyCount = expected.ownerEntityId ? 4 : 3;
     if (
       record.token !== expected.token ||
-      record.platform !== expected.platform ||
-      record.createdAt !== expected.createdAt
+      record.platform !== expected.platform
     ) {
       return false;
     }
+    if (record.createdAt !== expected.createdAt) return false;
+    if ((record.ownerEntityId ?? undefined) !== expected.ownerEntityId) {
+      return false;
+    }
+    if (Object.keys(record).length !== expectedKeyCount) return false;
   }
   return true;
 }
@@ -485,5 +560,15 @@ function parsePushTokenRecord(value: unknown): PushTokenRecord | null {
     return null;
   }
 
-  return { token, platform: record.platform, createdAt };
+  // #23106 optional owner: accepted only when it is a trimmed non-empty string
+  // within the byte cap; anything else is dropped (the record stays valid but
+  // unowned — delivery fails closed, listing keeps working).
+  const ownerEntityId = parsePersistedOwnerEntityId(record.ownerEntityId);
+
+  return {
+    token,
+    platform: record.platform,
+    createdAt,
+    ...(ownerEntityId ? { ownerEntityId } : {}),
+  };
 }

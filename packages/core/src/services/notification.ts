@@ -18,6 +18,7 @@
  */
 
 import { logger } from "../logger.ts";
+import { resolveCanonicalOwnerId } from "../roles.ts";
 import {
 	type AgentNotification,
 	DEFAULT_NOTIFICATION_CATEGORY,
@@ -464,6 +465,20 @@ export class NotificationService extends Service {
 			expiresAt = createdAt + SILENT_TIER_DEFAULT_EXPIRY_MS;
 		}
 
+		// #23106 canonical recipient: explicit producer address wins; otherwise
+		// the runtime's canonical owner is stamped when resolvable. Never
+		// fabricated — an unresolvable recipient stays undefined so the push
+		// seam treats the record as inbox-only (fail-closed), and a trimmed
+		// empty string from an untyped producer is dropped rather than stored.
+		const explicitRecipient =
+			typeof input.recipientId === "string"
+				? input.recipientId.trim()
+				: input.recipientId;
+		const recipientId =
+			explicitRecipient && explicitRecipient.length > 0
+				? explicitRecipient
+				: (resolveCanonicalOwnerId(this.runtime) ?? undefined);
+
 		const notification: AgentNotification = {
 			id: newNotificationId(),
 			title,
@@ -479,6 +494,7 @@ export class NotificationService extends Service {
 			readAt: null,
 			expiresAt,
 			agentId: input.agentId ?? (this.runtime.agentId as UUID),
+			recipientId,
 		};
 
 		this.notifications.push(notification);

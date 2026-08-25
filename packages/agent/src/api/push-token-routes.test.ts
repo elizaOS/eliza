@@ -415,4 +415,277 @@ describe("handlePushTokenRoute", () => {
     expect(helpers.json).toHaveBeenCalledWith(res, { ok: true });
     expect(await registry.count()).toBe(0);
   });
+
+  // ── #23106 recipient binding + policy seam ─────────────────────────
+
+  describe("#23106 recipient-bound registration", () => {
+    const OWNER = "22222222-2222-4222-8222-222222222222";
+
+    function makeStateWithOwner(): {
+      runtime: {
+        getService: (t: string) => unknown;
+        getSetting: (k: string) => string;
+      };
+    } {
+      return {
+        runtime: {
+          ...runtime,
+          getSetting: (key: string) =>
+            key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER : ("" as string),
+        },
+      };
+    }
+
+    it("POST binds the token to the canonical owner when the body omits one", async () => {
+      const state = makeStateWithOwner();
+      const helpers = makeHelpers();
+      helpers.readJsonBody.mockResolvedValue({
+        platform: "ios",
+        token: "tok-owned",
+      });
+      await handlePushTokenRoute(
+        req(PREFIX),
+        res,
+        PREFIX,
+        "POST",
+        state,
+        helpers,
+      );
+      expect(helpers.json).toHaveBeenCalledWith(res, { ok: true }, 201);
+      expect((await registry.listByOwner(OWNER)).map((r) => r.token)).toEqual([
+        "tok-owned",
+      ]);
+    });
+
+    it("POST accepts an explicit ownerEntityId only when it IS the canonical owner", async () => {
+      const state = makeStateWithOwner();
+      const helpers = makeHelpers();
+      helpers.readJsonBody.mockResolvedValue({
+        platform: "ios",
+        token: "tok-explicit",
+        ownerEntityId: OWNER,
+      });
+      await handlePushTokenRoute(
+        req(PREFIX),
+        res,
+        PREFIX,
+        "POST",
+        state,
+        helpers,
+      );
+      expect((await registry.listByOwner(OWNER)).map((r) => r.token)).toEqual([
+        "tok-explicit",
+      ]);
+    });
+
+    it("POST rejects (400) an explicit ownerEntityId naming ANOTHER principal — body ids are not authorization", async () => {
+      const state = makeStateWithOwner();
+      const helpers = makeHelpers();
+      helpers.readJsonBody.mockResolvedValue({
+        platform: "ios",
+        token: "tok-hijack",
+        ownerEntityId: "99999999-9999-4999-8999-999999999999",
+      });
+      await handlePushTokenRoute(
+        req(PREFIX),
+        res,
+        PREFIX,
+        "POST",
+        state,
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        expect.stringContaining("canonical owner"),
+        400,
+      );
+      expect(await registry.count()).toBe(0);
+    });
+
+    it("POST rejects (400) a null ownerEntityId — only omission means canonical default", async () => {
+      const state = makeStateWithOwner();
+      const helpers = makeHelpers();
+      helpers.readJsonBody.mockResolvedValue({
+        platform: "ios",
+        token: "tok-null-owner",
+        ownerEntityId: null,
+      });
+      await handlePushTokenRoute(
+        req(PREFIX),
+        res,
+        PREFIX,
+        "POST",
+        state,
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        expect.stringContaining("canonical owner"),
+        400,
+      );
+      expect(await registry.count()).toBe(0);
+    });
+
+    it("POST rejects (400) a malformed ownerEntityId instead of silently defaulting", async () => {
+      const state = makeStateWithOwner();
+      const helpers = makeHelpers();
+      helpers.readJsonBody.mockResolvedValue({
+        platform: "ios",
+        token: "tok-bad-owner",
+        ownerEntityId: 42,
+      });
+      await handlePushTokenRoute(
+        req(PREFIX),
+        res,
+        PREFIX,
+        "POST",
+        state,
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        expect.stringContaining("canonical owner"),
+        400,
+      );
+      expect(await registry.count()).toBe(0);
+    });
+
+    it("POST registers unowned (fail-closed) when no owner is resolvable anywhere", async () => {
+      const noOwnerState = { runtime: { ...runtime, getSetting: undefined } };
+      const helpers = makeHelpers();
+      helpers.readJsonBody.mockResolvedValue({
+        platform: "ios",
+        token: "tok-free",
+      });
+      await handlePushTokenRoute(
+        req(PREFIX),
+        res,
+        PREFIX,
+        "POST",
+        noOwnerState,
+        helpers,
+      );
+      expect(helpers.json).toHaveBeenCalledWith(res, { ok: true }, 201);
+      const all = await registry.list();
+      expect(all[0].ownerEntityId).toBeUndefined();
+    });
+  });
+
+  describe("#23106 push-policy routes", () => {
+    const POLICY_PATH = "/api/notifications/push-policy";
+    const OWNER = "22222222-2222-4222-8222-222222222222";
+
+    function ownerState(): {
+      runtime: {
+        getService: (t: string) => unknown;
+        getSetting: (k: string) => string;
+      };
+    } {
+      return {
+        runtime: {
+          ...runtime,
+          getSetting: (key: string) =>
+            key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER : ("" as string),
+        },
+      };
+    }
+
+    it("GET returns null policy before any write (the fail-closed default)", async () => {
+      const helpers = makeHelpers();
+      await handlePushTokenRoute(
+        req(POLICY_PATH),
+        res,
+        POLICY_PATH,
+        "GET",
+        ownerState(),
+        helpers,
+      );
+      expect(helpers.json).toHaveBeenCalledWith(res, { policy: null });
+    });
+
+    it("PUT persists an allow policy, versions it, and GET round-trips", async () => {
+      const put = makeHelpers();
+      put.readJsonBody.mockResolvedValue({ pushEnabled: true });
+      await handlePushTokenRoute(
+        req(POLICY_PATH),
+        res,
+        POLICY_PATH,
+        "PUT",
+        ownerState(),
+        put,
+      );
+      expect(put.json).toHaveBeenCalled();
+      const saved = put.json.mock.calls[0][1] as {
+        policy: { pushEnabled: boolean; version: number };
+      };
+      expect(saved.policy.pushEnabled).toBe(true);
+      expect(saved.policy.version).toBe(1);
+
+      const second = makeHelpers();
+      second.readJsonBody.mockResolvedValue({ pushEnabled: false });
+      await handlePushTokenRoute(
+        req(POLICY_PATH),
+        res,
+        POLICY_PATH,
+        "PUT",
+        ownerState(),
+        second,
+      );
+      const bumped = second.json.mock.calls[0][1] as {
+        policy: { version: number };
+      };
+      expect(bumped.policy.version).toBe(2);
+
+      const get = makeHelpers();
+      await handlePushTokenRoute(
+        req(POLICY_PATH),
+        res,
+        POLICY_PATH,
+        "GET",
+        ownerState(),
+        get,
+      );
+      const read = get.json.mock.calls[0][1] as {
+        policy: { pushEnabled: boolean; version: number };
+      };
+      expect(read.policy.pushEnabled).toBe(false);
+      expect(read.policy.version).toBe(2);
+    });
+
+    it("PUT rejects a non-boolean pushEnabled with 400", async () => {
+      const helpers = makeHelpers();
+      helpers.readJsonBody.mockResolvedValue({ pushEnabled: "yes" });
+      await handlePushTokenRoute(
+        req(POLICY_PATH),
+        res,
+        POLICY_PATH,
+        "PUT",
+        ownerState(),
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        expect.stringContaining("pushEnabled"),
+        400,
+      );
+    });
+
+    it("fails closed with 409 when no canonical recipient is configured", async () => {
+      const helpers = makeHelpers();
+      const bare = { runtime: { ...runtime, getSetting: undefined } };
+      await handlePushTokenRoute(
+        req(POLICY_PATH),
+        res,
+        POLICY_PATH,
+        "GET",
+        bare,
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(
+        res,
+        expect.stringContaining("no canonical recipient"),
+        409,
+      );
+    });
+  });
 });
