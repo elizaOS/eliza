@@ -37,10 +37,9 @@ mock.module("@/lib/services/mobile-app-auth", () => ({
 }));
 mock.module("@/lib/services/mobile-google-auth", () => ({
   resolveMobileGoogleAuthReadiness: mock(() => ({
-    providerId: "google-native",
     serverClientId: "google-web-client.apps.googleusercontent.com",
     stewardEndpoint: new URL(
-      "https://api-staging.eliza.app/steward/auth/jwt/login",
+      "https://api-staging.eliza.app/steward/auth/oauth/google/id-token",
     ),
     stewardRequestSigningSecret: "request-signing-secret",
     tenantId: "elizacloud-staging",
@@ -140,7 +139,7 @@ beforeEach(() => {
   globalThis.fetch = mock(async (input: RequestInfo | URL) => {
     events.push("steward");
     expect(String(input)).toBe(
-      "https://api-staging.eliza.app/steward/auth/jwt/login",
+      "https://api-staging.eliza.app/steward/auth/oauth/google/id-token",
     );
     return Response.json({ ok: true, token: "steward-session" });
   }) as unknown as typeof fetch;

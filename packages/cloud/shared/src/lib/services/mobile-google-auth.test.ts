@@ -26,7 +26,6 @@ const BINDING: MobileAppAuthPkceBinding = {
 
 const ENV: MobileGoogleAuthEnv = {
   DIRECT_REDIS_BACKEND: "redis-rest",
-  ELIZA_MOBILE_GOOGLE_OIDC_PROVIDER_ID: "google-native",
   ENVIRONMENT: "staging",
   GOOGLE_CLIENT_ID: "google-web-client.apps.googleusercontent.com",
   KV_REST_API_TOKEN: "redis-token",
@@ -44,7 +43,7 @@ function dependencies(redis: MockSocketRedis) {
 describe("mobile Google auth readiness", () => {
   test("preserves the canonical /steward base path", () => {
     expect(resolveMobileGoogleAuthReadiness(ENV)?.stewardEndpoint.href).toBe(
-      "https://api-staging.eliza.app/steward/auth/jwt/login",
+      "https://api-staging.eliza.app/steward/auth/oauth/google/id-token",
     );
   });
 
@@ -55,7 +54,7 @@ describe("mobile Google auth readiness", () => {
         NEXT_PUBLIC_API_URL: undefined,
         STEWARD_API_URL: "http://127.0.0.1:8787/steward",
       })?.stewardEndpoint.href,
-    ).toBe("http://127.0.0.1:8787/steward/auth/jwt/login");
+    ).toBe("http://127.0.0.1:8787/steward/auth/oauth/google/id-token");
     for (const value of [
       "http://api.example.test/steward",
       "http://127.0.0.1.example.test/steward",
@@ -75,7 +74,6 @@ describe("mobile Google auth readiness", () => {
 
   test("fails closed when every required prerequisite is missing", () => {
     const fields = [
-      "ELIZA_MOBILE_GOOGLE_OIDC_PROVIDER_ID",
       "ENVIRONMENT",
       "GOOGLE_CLIENT_ID",
       "KV_REST_API_TOKEN",

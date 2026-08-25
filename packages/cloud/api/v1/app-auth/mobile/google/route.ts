@@ -66,11 +66,9 @@ async function exchangeGoogleToken(
   readiness: MobileGoogleAuthReadiness,
   googleIdToken: string,
 ): Promise<string> {
-  const { providerId, stewardEndpoint, stewardRequestSigningSecret, tenantId } =
-    readiness;
+  const { stewardEndpoint, stewardRequestSigningSecret, tenantId } = readiness;
   const body = JSON.stringify({
     tenantId,
-    providerId,
     token: googleIdToken,
   });
   const headers = new Headers({
