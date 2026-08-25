@@ -76,13 +76,14 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 
 	return {
 		push(chunk: string, endOfInput = false): number | undefined {
+			const safeChunk = typeof chunk === "string" ? chunk : "";
 			if (completeAt !== undefined) return completeAt;
-			if (pendingBoundary && (chunk.length > 0 || endOfInput)) {
+			if (pendingBoundary && (safeChunk.length > 0 || endOfInput)) {
 				if (!ABBREVIATIONS.has(pendingBoundary.normalizedWord)) {
 					let closerOffset = 0;
 					while (
-						closerOffset < chunk.length &&
-						TRAILING_CLOSERS.includes(chunk[closerOffset])
+						closerOffset < safeChunk.length &&
+						TRAILING_CLOSERS.includes(safeChunk[closerOffset])
 					) {
 						closerOffset += 1;
 					}
@@ -91,14 +92,14 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 						pendingBoundary.sawCloser = true;
 						scanned += closerOffset;
 					}
-					if (closerOffset === chunk.length) {
+					if (closerOffset === safeChunk.length) {
 						if (!endOfInput) return undefined;
 						completeAt = pendingBoundary.boundary;
 						return completeAt;
 					}
 					if (
 						pendingBoundary.sawCloser ||
-						isBoundaryFollower(chunk[closerOffset])
+						isBoundaryFollower(safeChunk[closerOffset])
 					) {
 						completeAt = pendingBoundary.boundary;
 						return completeAt;
@@ -107,11 +108,11 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 				pendingBoundary = undefined;
 			}
 
-			for (let offset = 0; offset < chunk.length; offset += 1) {
-				const char = chunk[offset];
+			for (let offset = 0; offset < safeChunk.length; offset += 1) {
+				const char = safeChunk[offset];
 				if (
 					SENTENCE_END.has(char) &&
-					chunk[offset + 1] === undefined &&
+					safeChunk[offset + 1] === undefined &&
 					!endOfInput
 				) {
 					const word = lastWord.endsWith(".")
@@ -124,7 +125,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 					};
 				} else if (
 					SENTENCE_END.has(char) &&
-					isBoundaryFollower(chunk[offset + 1])
+					isBoundaryFollower(safeChunk[offset + 1])
 				) {
 					const word = lastWord.endsWith(".")
 						? lastWord.slice(0, -1)
@@ -132,12 +133,12 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 					if (!ABBREVIATIONS.has(word.toLowerCase())) {
 						let boundary = offset + 1;
 						while (
-							boundary < chunk.length &&
-							TRAILING_CLOSERS.includes(chunk[boundary])
+							boundary < safeChunk.length &&
+							TRAILING_CLOSERS.includes(safeChunk[boundary])
 						) {
 							boundary += 1;
 						}
-						if (boundary === chunk.length && !endOfInput) {
+						if (boundary === safeChunk.length && !endOfInput) {
 							pendingBoundary = {
 								boundary: scanned + boundary,
 								normalizedWord: word.toLowerCase(),
@@ -156,7 +157,7 @@ export function createFirstSentenceScanner(): FirstSentenceScanner {
 				}
 			}
 
-			scanned += chunk.length;
+			scanned += safeChunk.length;
 			return undefined;
 		},
 	};
@@ -212,6 +213,9 @@ export function extractFirstSentence(text: string): {
 	/** Whether a sentence boundary was actually found in `text`. */
 	complete: boolean;
 } {
+	if (typeof text !== "string" || text.length === 0) {
+		return { first: "", rest: "", complete: false };
+	}
 	const boundaryIndex = createFirstSentenceScanner().push(text, true);
 
 	if (boundaryIndex !== undefined) {
@@ -228,6 +232,9 @@ export function extractFirstSentence(text: string): {
  * Useful for streaming to know when to call extractFirstSentence.
  */
 export function hasFirstSentence(text: string): boolean {
+	if (typeof text !== "string" || text.length === 0) {
+		return false;
+	}
 	// A boundary at the end of the text still completes a sentence, so this
 	// cannot key off `rest`: a reply that is exactly one sentence leaves it
 	// empty and would report false.

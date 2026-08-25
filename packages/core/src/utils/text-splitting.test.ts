@@ -104,6 +104,24 @@ describe("extractFirstSentence", () => {
 		});
 		expect(extractFirstSentence("你好。下一句。").complete).toBe(false);
 	});
+
+	it("safely handles nullish and non-string inputs", () => {
+		expect(extractFirstSentence(null as unknown as string)).toEqual({
+			first: "",
+			rest: "",
+			complete: false,
+		});
+		expect(extractFirstSentence(undefined as unknown as string)).toEqual({
+			first: "",
+			rest: "",
+			complete: false,
+		});
+		expect(extractFirstSentence("")).toEqual({
+			first: "",
+			rest: "",
+			complete: false,
+		});
+	});
 });
 
 describe("hasFirstSentence", () => {
@@ -124,6 +142,8 @@ describe("hasFirstSentence", () => {
 	it("reports false for an incomplete fragment", () => {
 		expect(hasFirstSentence("Sure, I added")).toBe(false);
 		expect(hasFirstSentence("")).toBe(false);
+		expect(hasFirstSentence(null as unknown as string)).toBe(false);
+		expect(hasFirstSentence(undefined as unknown as string)).toBe(false);
 	});
 
 	it("is not fooled by an abbreviation mid-fragment", () => {
