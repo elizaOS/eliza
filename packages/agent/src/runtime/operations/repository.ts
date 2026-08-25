@@ -226,7 +226,12 @@ export class FilesystemRuntimeOperationRepository
     );
     for (const op of toDrop) {
       this.byId.delete(op.id);
-      if (op.idempotencyKey) this.byIdempotencyKey.delete(op.idempotencyKey);
+      if (
+        op.idempotencyKey &&
+        this.byIdempotencyKey.get(op.idempotencyKey) === op.id
+      ) {
+        this.byIdempotencyKey.delete(op.idempotencyKey);
+      }
     }
     logger.debug(`[runtime-ops] Pruned ${toDrop.length} terminal op(s)`);
     return toDrop.length;
