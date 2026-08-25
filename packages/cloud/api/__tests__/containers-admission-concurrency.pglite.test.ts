@@ -56,6 +56,10 @@ delete process.env.ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE;
 delete process.env.CONTAINERS_DOCKER_NETWORK;
 delete process.env.AGENT_DOCKER_NETWORK;
 
+const { buildDockerEnvFileStdinTransport } = await import(
+  "../../shared/src/lib/services/docker-sandbox-utils"
+);
+
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const USER_ID = "10000000-0000-4000-8000-000000000002";
 const ORGANIZATION_CONFIG_ID = "10000000-0000-4000-8000-000000000003";
@@ -241,7 +245,27 @@ function expectDockerCreateCall(
   const hostPort = Number(match?.groups?.hostPort);
   expect(Number.isInteger(hostPort)).toBe(true);
   expect(hostPort).toBeGreaterThanOrEqual(20_000);
-  expect(hostPort).toBeLessThanOrEqual(25_000);
+  expect(hostPort).toBeLessThan(25_000);
+  expect(call.command.match(/(?:^|; )docker /g) ?? []).toHaveLength(1);
+  const expectedTransport = buildDockerEnvFileStdinTransport(
+    {},
+    (envFilePath) =>
+      [
+        "docker create",
+        `--name 'cloud-container-${containerId.replaceAll("-", "")}'`,
+        "--restart unless-stopped",
+        "--network 'containers-isolated'",
+        "--cpus 1.75",
+        "--memory 1792m",
+        "--cap-drop=ALL",
+        "--security-opt no-new-privileges",
+        "--pids-limit=512",
+        `-p ${hostPort}:3000`,
+        `--env-file ${envFilePath}`,
+        "'ghcr.io/elizaos/eliza:stable'",
+      ].join(" "),
+  );
+  expect(call.command).toBe(expectedTransport.command);
   expect(
     typeof call.input === "string" ? call.input : call.input.toString("utf8"),
   ).toBe(EMPTY_DOCKER_ENV_STDIN);
