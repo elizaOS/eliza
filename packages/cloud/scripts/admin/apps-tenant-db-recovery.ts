@@ -54,9 +54,11 @@
  *   SELECT pg_reload_conf();
  */
 
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  copyFileSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -365,18 +367,57 @@ export function parseGlobalRoleNames(globalsSql: string): string[] {
   return roles;
 }
 
-/** Refuse a nonempty target whose existing roles collide with the archive. */
+/**
+ * Refuse a nonempty target whose existing roles collide with the archive —
+ * EXCEPT roles the archive itself defines when the target is provisioned for
+ * this same capability: those are remnants of a failed prior run of this
+ * exact drill (the twin settings match the capability), and the retry is
+ * idempotent via makeGlobalsIdempotent. Foreign roles always refuse.
+ */
 export function assertNoGlobalRoleCollisions(
   globalsSql: string,
   existingRoles: string[],
+  archiveRoles: readonly string[] = [],
 ): void {
   const existing = new Set(existingRoles);
-  if (parseGlobalRoleNames(globalsSql).some((role) => existing.has(role))) {
+  const ownedByArchive = new Set(archiveRoles);
+  const colliding = parseGlobalRoleNames(globalsSql).filter(
+    (role) => existing.has(role) && !ownedByArchive.has(role),
+  );
+  if (colliding.length > 0) {
     throw new RecoveryDrillError(
       "REFUSED_NONEMPTY_TARGET",
-      "restore target already contains a role defined by globals.sql",
+      "restore target already contains a role not owned by this archive's globals.sql",
     );
   }
+}
+
+const CREATE_ROLE_RE = /(^|\n)CREATE ROLE ([a-z_][a-z0-9_$]*);\n?/g;
+
+/**
+ * Make globals.sql re-runnable against the same disposable target (#23453
+ * review): a failed first run may already have created some roles, and a bare
+ * CREATE ROLE would abort the idempotent retry. Each CREATE ROLE becomes a
+ * conditional DO block (no-op when the role exists); ALTER ROLE statements
+ * are already idempotent. Only simple `CREATE ROLE name;` forms produced by
+ * pg_dump's globals output are rewritten — anything else fails the strict
+ * parse in parseGlobalRoleNames first.
+ */
+export function makeGlobalsIdempotent(globalsSql: string): string {
+  return globalsSql.replace(
+    CREATE_ROLE_RE,
+    (match, lead: string, role: string) => {
+      return `${lead}${[
+        "DO $$",
+        "BEGIN",
+        `  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ${quoteSqlLiteral(role)}) THEN`,
+        `    CREATE ROLE ${role};`,
+        "  END IF;",
+        "END",
+        "$$;\n",
+      ].join("\n")}`;
+    },
+  );
 }
 
 /**
@@ -1056,10 +1097,36 @@ function assertTenantAcl(
   targetDsn: string,
   database: string,
   ownerRole: string,
+  allTenantRoles: readonly string[],
 ): void {
   // OID 0 is the canonical way to probe PUBLIC's privilege (role "PUBLIC"
-  // does not exist as a pg_roles row). Variables are supplied on stdin:
+  // does not exist as a pg_roles row). The assertion is stronger than
+  // PUBLIC-denied/owner-granted (#23453 review): the owner must also BE the
+  // recorded datdba, the ACL must carry no grant to any other tenant role
+  // (which membership-based privilege cannot bypass, because
+  // has_database_privilege for a non-grantee still returns false when the
+  // ACL has no entry for that role), and every OTHER tenant role is probed
+  // for CONNECT and must be refused. Variables are supplied on stdin:
   // psql -c does not interpolate :'var', but stdin scripts do.
+  const rolesList = allTenantRoles
+    .filter((role) => role !== ownerRole)
+    .map((role) => quoteSqlLiteral(role))
+    .join(", ");
+  const rolesArray = `ARRAY[${rolesList}]::name[]`;
+  const sql = [
+    "SELECT json_build_object(",
+    "  'datdba_is_owner', (SELECT datdba = (SELECT oid FROM pg_roles WHERE rolname = :'owner') FROM pg_database WHERE datname = :'db'),",
+    "  'public_connect', has_database_privilege(0, :'db', 'CONNECT'),",
+    "  'owner_connect', has_database_privilege(:'owner', :'db', 'CONNECT'),",
+    "  'foreign_grantees', (SELECT count(*) FROM aclexplode((SELECT datacl FROM pg_database WHERE datname = :'db')) acl WHERE acl.grantee <> 0 AND acl.grantee <> (SELECT oid FROM pg_roles WHERE rolname = :'owner'))::int",
+    ")::text",
+    rolesList
+      ? `UNION ALL SELECT json_build_object('other_role', r.rn, 'connect_refused', NOT has_database_privilege(r.rn, :'db', 'CONNECT'))::text FROM (SELECT unnest(${rolesArray}) AS rn) r`
+      : "",
+    "ORDER BY 1",
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
   const out = run(
     "psql",
     [
@@ -1075,26 +1142,116 @@ function assertTenantAcl(
       "--dbname",
       targetDsn,
     ],
-    {
-      input:
-        "SELECT json_build_object('public_connect', has_database_privilege(0, :'db', 'CONNECT'), 'owner_connect', has_database_privilege(:'owner', :'db', 'CONNECT'))::text",
-    },
+    { input: sql },
   ).trim();
-  let parsed: { public_connect?: unknown; owner_connect?: unknown };
-  try {
-    parsed = JSON.parse(out) as typeof parsed;
-  } catch {
+  if (out.length === 0) {
     throw new RecoveryDrillError(
       "ISOLATION_VIOLATION",
-      "target ACL assertion response was not valid JSON",
+      "target ACL assertion returned no rows",
     );
   }
-  if (parsed.public_connect !== false || parsed.owner_connect !== true) {
+  for (const line of out.split("\n")) {
+    let parsed: Record<string, unknown>;
+    try {
+      // error-policy:J3 untrusted DB output becomes an explicit violation, never a defaulted pass.
+      parsed = JSON.parse(line.trim()) as Record<string, unknown>;
+    } catch {
+      // error-policy:J3 untrusted DB output becomes an explicit violation, never a defaulted pass.
+      throw new RecoveryDrillError(
+        "ISOLATION_VIOLATION",
+        "target ACL assertion response was not valid JSON",
+      );
+    }
+    if ("datdba_is_owner" in parsed) {
+      if (
+        parsed.datdba_is_owner !== true ||
+        parsed.public_connect !== false ||
+        parsed.owner_connect !== true ||
+        parsed.foreign_grantees !== 0
+      ) {
+        throw new RecoveryDrillError(
+          "ISOLATION_VIOLATION",
+          `restored database ACL is not owner-exclusive (${database}: datdba mismatch, PUBLIC grant, owner denial, or a foreign ACL grantee)`,
+        );
+      }
+    } else if ("connect_refused" in parsed) {
+      if (parsed.connect_refused !== true) {
+        throw new RecoveryDrillError(
+          "ISOLATION_VIOLATION",
+          `another tenant role can CONNECT to a restored database (${database})`,
+        );
+      }
+    } else {
+      throw new RecoveryDrillError(
+        "ISOLATION_VIOLATION",
+        "target ACL assertion returned an unrecognized row shape",
+      );
+    }
+  }
+}
+
+/** Quote a value as a SQL string literal for generated drill SQL. */
+export function quoteSqlLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+/**
+ * Session-held drill exclusivity (#23453 review): opens a dedicated psql
+ * session that takes the session-level advisory lock with pg_try_advisory_lock
+ * and then holds it via a bounded pg_sleep, staying alive for the whole drill.
+ * A second drill against the same target fails its try-lock, its psql exits
+ * nonzero, and this function surfaces LOCK_FAILED — so destructive statements
+ * and authority consumption can never interleave. Implemented over a
+ * long-lived psql process (not a node pg Client) to keep the script sync and
+ * dependency-free; killing the process releases the lock (session-scoped).
+ */
+export const DRILL_LOCK_SETTLE_MS = 1500;
+/** How long the lock-holder may sleep: bounded so a crashed drill (killed
+ * holder) cannot pin the lock longer than the capability TTL ceiling. */
+export const DRILL_LOCK_MAX_SECONDS = 24 * 60 * 60;
+
+export function acquireDrillLock(targetDsn: string): ChildProcess {
+  let stderrTail = "";
+  const child = spawn(
+    "psql",
+    [
+      "--no-psqlrc",
+      "--quiet",
+      "--set",
+      "ON_ERROR_STOP=1",
+      "--dbname",
+      targetDsn,
+      "--command",
+      `SELECT CASE WHEN pg_try_advisory_lock(${DRILL_ADVISORY_LOCK_KEY}) THEN true ELSE 1/0 END;\nSELECT pg_sleep(${DRILL_LOCK_MAX_SECONDS});`,
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+  child.stderr?.on("data", (chunk: unknown) => {
+    stderrTail = `${stderrTail}${String(chunk)}`.slice(-500);
+  });
+  // Synchronous settle wait (Atomics.wait): a refused lock, bad DSN, or
+  // missing psql all surface as a fast process exit, which must be observed
+  // before the caller proceeds — a lock we are not holding must never let
+  // the drill start.
+  Atomics.wait(
+    new Int32Array(new SharedArrayBuffer(4)),
+    0,
+    0,
+    DRILL_LOCK_SETTLE_MS,
+  );
+  if (child.pid === undefined || child.exitCode !== null) {
+    child.kill("SIGKILL");
     throw new RecoveryDrillError(
-      "ISOLATION_VIOLATION",
-      "restored database ACL does not deny PUBLIC and grant the owner",
+      "LOCK_FAILED",
+      `could not hold the drill advisory lock (psql exited early: ${stderrTail.trim().slice(0, 200)})`,
     );
   }
+  return child;
+}
+
+export function releaseDrillLock(child: ChildProcess): void {
+  // SIGKILL drops the server session, which releases the session-level lock.
+  child.kill("SIGKILL");
 }
 
 function guardedPsqlFile(
@@ -1123,6 +1280,7 @@ export function executeDrill(options: CliOptions): DrillReport {
   try {
     capabilityText = readFileSync(options.capabilityFile, "utf-8").trim();
   } catch (cause) {
+    // error-policy:J3 an unreadable capability file becomes an explicit invalid argument.
     throw new RecoveryDrillError(
       "INVALID_ARGS",
       `--capability-file could not be read: ${(cause as Error).message}`,
@@ -1176,301 +1334,342 @@ export function executeDrill(options: CliOptions): DrillReport {
         "archive on disk is not the archive pinned by the restore capability",
       );
     }
-
-    // Transactional exclusivity: refuse a different capability on this target
-    // before any destructive statement runs.
-    const claimScript = join(work, "claim-exclusivity.sql");
-    writeFileSync(claimScript, buildClaimExclusivitySql(capability));
-    guardedPsqlFile(
-      options.targetDsn,
-      options.targetId,
-      capabilityEnvelope,
-      claimScript,
-    );
-
-    run("openssl", [
-      "enc",
-      "-d",
-      "-aes-256-cbc",
-      "-pbkdf2",
-      "-iter",
-      "210000",
-      "-in",
-      archivePath,
-      "-out",
-      join(work, "backup.tar.gz"),
-      "-pass",
-      `file:${options.passphraseFile}`,
-    ]);
-    run("tar", ["-xzf", join(work, "backup.tar.gz"), "-C", work]);
-
-    const manifest = parseBackupManifest(
-      readFileSync(join(work, "manifest.json"), "utf-8"),
-    );
-    if (manifest.databaseCount !== sidecar.databaseCount) {
+    // Hash and decrypt must consume the SAME bytes: hash a private copy first
+    // and decrypt that copy, so a local actor swapping the set-dir archive
+    // between the hash and the openssl open cannot deliver different bytes
+    // to the two operations (#23453 review).
+    const pinnedArchive = join(work, "pinned-archive.bin");
+    copyFileSync(archivePath, pinnedArchive);
+    const pinnedSha = createHash("sha256")
+      .update(readFileSync(pinnedArchive))
+      .digest("hex");
+    if (pinnedSha !== actualSha) {
       throw new RecoveryDrillError(
-        "INVALID_METADATA",
-        "manifest/sidecar database_count mismatch",
+        "REFUSED_ARCHIVE_MISMATCH",
+        "archive bytes changed while being pinned for decryption",
       );
     }
-    // Authenticated recovery point: the manifest inside the encrypted,
-    // checksummed archive is authoritative; a drifted or future-dated
-    // sidecar/manifest pair fails closed instead of understating loss.
-    assertRecoveryPointConsistency({
-      sidecarCreatedAt: sidecar.createdAt,
-      manifestCreatedAt: manifest.createdAt,
-      nowEpochMs: Date.now(),
-    });
-    const checksums = parseChecksumFile(
-      readFileSync(join(work, "checksums.sha256"), "utf-8"),
-    );
-    const globalsSql = readFileSync(join(work, "globals.sql"), "utf-8");
-    const archiveRoles = parseGlobalRoleNames(globalsSql);
-    assertNoGlobalRoleCollisions(globalsSql, authority.existingRoles);
-    const dbMap = parseDbMap(readFileSync(join(work, "dbmap.tsv"), "utf-8"));
-    if (dbMap.length !== manifest.databaseCount) {
-      throw new RecoveryDrillError(
-        "INVALID_METADATA",
-        "dbmap entry count differs from manifest database_count",
+
+    // Session-held exclusivity: a session-level advisory lock held on a
+    // dedicated connection for the whole drill, plus the transactional claim,
+    // so two drills against the same target cannot interleave destructive
+    // statements and consumption (#23453 review).
+    const lockConn = acquireDrillLock(options.targetDsn);
+    try {
+      // Transactional exclusivity: refuse a different capability on this target
+      // before any destructive statement runs.
+      const claimScript = join(work, "claim-exclusivity.sql");
+      writeFileSync(claimScript, buildClaimExclusivitySql(capability));
+      guardedPsqlFile(
+        options.targetDsn,
+        options.targetId,
+        capabilityEnvelope,
+        claimScript,
       );
-    }
-    // Checksum coverage is a load-bearing assumption: the manifest is the
-    // authenticated RPO source and globals.sql/dbmap/dumps are executed, so
-    // every consumed artifact must be listed — an archive whose checksums
-    // omit them would run unverified bytes (#23453).
-    assertChecksumCoverage(
-      checksums,
-      dbMap.map((entry) => entry.dumpId),
-    );
-    const checksummedFiles = verifyChecksums(work, checksums);
 
-    const probes = parseTenantProbes(
-      readFileSync(options.tenantProbesFile, "utf-8"),
-      dbMap,
-    );
-    // The probes file is operator-local and unauthenticated; the archive's
-    // globals.sql is the authenticated role inventory. A probe naming a role
-    // absent from globals.sql would let a tampered probes file decide who
-    // owns (and can CONNECT to) every restored database (#23453).
-    assertProbesCoverArchiveRoles(probes, archiveRoles);
-    const probeById = new Map(probes.map((probe) => [probe.dumpId, probe]));
-    const passwords = new Map<string, string>();
-    for (const probe of probes) {
-      const password = process.env[probe.passwordEnv];
-      if (password === undefined || password === "") {
+      run("openssl", [
+        "enc",
+        "-d",
+        "-aes-256-cbc",
+        "-pbkdf2",
+        "-iter",
+        "210000",
+        "-in",
+        pinnedArchive,
+        "-out",
+        join(work, "backup.tar.gz"),
+        "-pass",
+        `file:${options.passphraseFile}`,
+      ]);
+      run("tar", ["-xzf", join(work, "backup.tar.gz"), "-C", work]);
+
+      const manifest = parseBackupManifest(
+        readFileSync(join(work, "manifest.json"), "utf-8"),
+      );
+      if (manifest.databaseCount !== sidecar.databaseCount) {
         throw new RecoveryDrillError(
-          "MISSING_PROBE_SECRET",
-          `required tenant probe environment variable is absent (dump=${probe.dumpId})`,
+          "INVALID_METADATA",
+          "manifest/sidecar database_count mismatch",
         );
       }
-      passwords.set(probe.dumpId, password);
-    }
-
-    const restoreStart = Date.now();
-    const guardedGlobals = join(work, "guarded-globals.sql");
-    writeFileSync(guardedGlobals, guardPsqlScript(globalsSql));
-    guardedPsqlFile(
-      options.targetDsn,
-      options.targetId,
-      capabilityEnvelope,
-      guardedGlobals,
-    );
-    for (const entry of dbMap) {
-      const dumpFile = join(work, "dumps", `${entry.dumpId}.dump`);
-      const probe = probeById.get(entry.dumpId);
-      if (probe === undefined) {
+      // Authenticated recovery point: the manifest inside the encrypted,
+      // checksummed archive is authoritative; a drifted or future-dated
+      // sidecar/manifest pair fails closed instead of understating loss.
+      assertRecoveryPointConsistency({
+        sidecarCreatedAt: sidecar.createdAt,
+        manifestCreatedAt: manifest.createdAt,
+        nowEpochMs: Date.now(),
+      });
+      const checksums = parseChecksumFile(
+        readFileSync(join(work, "checksums.sha256"), "utf-8"),
+      );
+      const globalsSql = readFileSync(join(work, "globals.sql"), "utf-8");
+      const archiveRoles = parseGlobalRoleNames(globalsSql);
+      assertNoGlobalRoleCollisions(
+        globalsSql,
+        authority.existingRoles,
+        archiveRoles,
+      );
+      const dbMap = parseDbMap(readFileSync(join(work, "dbmap.tsv"), "utf-8"));
+      if (dbMap.length !== manifest.databaseCount) {
         throw new RecoveryDrillError(
-          "INVALID_PROBE_METADATA",
-          "database has no tenant role probe",
+          "INVALID_METADATA",
+          "dbmap entry count differs from manifest database_count",
         );
       }
-      const databaseIdentifier = quoteSqlIdentifier(entry.databaseName);
-      const ownerIdentifier = quoteSqlIdentifier(probe.role);
-      const guardedDrop = join(work, `${entry.dumpId}.drop.sql`);
+      // Checksum coverage is a load-bearing assumption: the manifest is the
+      // authenticated RPO source and globals.sql/dbmap/dumps are executed, so
+      // every consumed artifact must be listed — an archive whose checksums
+      // omit them would run unverified bytes (#23453).
+      assertChecksumCoverage(
+        checksums,
+        dbMap.map((entry) => entry.dumpId),
+      );
+      const checksummedFiles = verifyChecksums(work, checksums);
+
+      const probes = parseTenantProbes(
+        readFileSync(options.tenantProbesFile, "utf-8"),
+        dbMap,
+      );
+      // The probes file is operator-local and unauthenticated; the archive's
+      // globals.sql is the authenticated role inventory. A probe naming a role
+      // absent from globals.sql would let a tampered probes file decide who
+      // owns (and can CONNECT to) every restored database (#23453).
+      assertProbesCoverArchiveRoles(probes, archiveRoles);
+      const probeById = new Map(probes.map((probe) => [probe.dumpId, probe]));
+      const passwords = new Map<string, string>();
+      for (const probe of probes) {
+        const password = process.env[probe.passwordEnv];
+        if (password === undefined || password === "") {
+          throw new RecoveryDrillError(
+            "MISSING_PROBE_SECRET",
+            `required tenant probe environment variable is absent (dump=${probe.dumpId})`,
+          );
+        }
+        passwords.set(probe.dumpId, password);
+      }
+
+      const restoreStart = Date.now();
+      const guardedGlobals = join(work, "guarded-globals.sql");
       writeFileSync(
-        guardedDrop,
-        guardPsqlScript(
-          [
-            `DROP DATABASE IF EXISTS ${databaseIdentifier};`,
-            `CREATE DATABASE ${databaseIdentifier} OWNER ${ownerIdentifier};`,
-            `REVOKE CONNECT ON DATABASE ${databaseIdentifier} FROM PUBLIC;`,
-            `GRANT CONNECT ON DATABASE ${databaseIdentifier} TO ${ownerIdentifier};`,
-            "",
-          ].join("\n"),
-        ),
+        guardedGlobals,
+        guardPsqlScript(makeGlobalsIdempotent(globalsSql)),
       );
       guardedPsqlFile(
         options.targetDsn,
         options.targetId,
         capabilityEnvelope,
-        guardedDrop,
+        guardedGlobals,
       );
-      const rawRestore = join(work, `${entry.dumpId}.restore.sql`);
-      run("pg_restore", ["--file", rawRestore, dumpFile]);
-      const guardedRestore = join(work, `${entry.dumpId}.guarded-restore.sql`);
-      writeFileSync(
-        guardedRestore,
-        guardPsqlScript(readFileSync(rawRestore, "utf-8")),
-      );
-      run("psql", [
-        "--no-psqlrc",
-        "--set",
-        `expected_target_id=${options.targetId}`,
-        "--set",
-        `expected_capability=${capabilityEnvelope}`,
-        "--dbname",
-        targetDatabaseDsn(options.targetDsn, entry.databaseName),
-        "--file",
-        guardedRestore,
-      ]);
-    }
-    const restoreSeconds = Math.round((Date.now() - restoreStart) / 1000);
-
-    const checks = buildIsolationChecks(dbMap);
-    const byId = new Map(
-      dbMap.map((entry) => [entry.dumpId, entry.databaseName]),
-    );
-    const directEndpoint = {
-      host: targetUrl.hostname,
-      port: targetUrl.port === "" ? "5432" : targetUrl.port,
-    };
-    const surfaces = [
-      { name: "direct", endpoint: directEndpoint },
-      { name: "pooler", endpoint: options.poolerEndpoint },
-    ] as const;
-    let passed = 0;
-    for (const check of checks) {
-      const objectDb = byId.get(check.objectDumpId);
-      const probe = probeById.get(check.subjectDumpId);
-      const password = passwords.get(check.subjectDumpId);
-      if (
-        objectDb === undefined ||
-        probe === undefined ||
-        password === undefined
-      ) {
-        throw new RecoveryDrillError(
-          "INVALID_PROBE_METADATA",
-          "isolation check references unknown dump id",
-        );
-      }
-      for (const surface of surfaces) {
-        // Own-connect is proven on the direct surface only: the drill target
-        // is disposable, so its databases are deliberately absent from the
-        // pooler's routing config and an own-connect through the pooler can
-        // never succeed by design. The pooler surface still carries the
-        // cross-reject sample, which is the property it exists to prove.
-        if (check.kind === "own-connect" && surface.name !== "direct") {
-          continue;
-        }
-        const env = tenantConnectionEnv(
-          surface.endpoint,
-          objectDb,
-          probe.role,
-          password,
-        );
-        if (check.kind === "own-connect") {
-          const out = run(
-            "psql",
-            [
-              "--no-psqlrc",
-              "--tuples-only",
-              "--no-align",
-              "--set",
-              "ON_ERROR_STOP=1",
-              "--command",
-              `SELECT current_user || '|' || current_database() || '|' || current_setting('${SETTING_TARGET_ID}', true)`,
-            ],
-            { env },
-          ).trim();
-          const expected = `${probe.role}|${objectDb}|${options.targetId}`;
-          if (out !== expected) {
-            throw new RecoveryDrillError(
-              "ISOLATION_VIOLATION",
-              `tenant authentication did not reach the expected target (surface=${surface.name}, subject=${check.subjectDumpId})`,
-            );
-          }
-        } else {
-          expectCommandFailure(
-            "psql",
-            [
-              "--no-psqlrc",
-              "--tuples-only",
-              "--no-align",
-              "--set",
-              "ON_ERROR_STOP=1",
-              "--command",
-              "SELECT 1",
-            ],
-            env,
+      for (const entry of dbMap) {
+        const dumpFile = join(work, "dumps", `${entry.dumpId}.dump`);
+        const probe = probeById.get(entry.dumpId);
+        if (probe === undefined) {
+          throw new RecoveryDrillError(
+            "INVALID_PROBE_METADATA",
+            "database has no tenant role probe",
           );
         }
+        const databaseIdentifier = quoteSqlIdentifier(entry.databaseName);
+        const ownerIdentifier = quoteSqlIdentifier(probe.role);
+        const guardedDrop = join(work, `${entry.dumpId}.drop.sql`);
+        writeFileSync(
+          guardedDrop,
+          guardPsqlScript(
+            [
+              `DROP DATABASE IF EXISTS ${databaseIdentifier};`,
+              `CREATE DATABASE ${databaseIdentifier} OWNER ${ownerIdentifier};`,
+              `REVOKE CONNECT ON DATABASE ${databaseIdentifier} FROM PUBLIC;`,
+              `GRANT CONNECT ON DATABASE ${databaseIdentifier} TO ${ownerIdentifier};`,
+              "",
+            ].join("\n"),
+          ),
+        );
+        guardedPsqlFile(
+          options.targetDsn,
+          options.targetId,
+          capabilityEnvelope,
+          guardedDrop,
+        );
+        const rawRestore = join(work, `${entry.dumpId}.restore.sql`);
+        run("pg_restore", ["--file", rawRestore, dumpFile]);
+        const guardedRestore = join(
+          work,
+          `${entry.dumpId}.guarded-restore.sql`,
+        );
+        writeFileSync(
+          guardedRestore,
+          guardPsqlScript(readFileSync(rawRestore, "utf-8")),
+        );
+        run("psql", [
+          "--no-psqlrc",
+          "--set",
+          `expected_target_id=${options.targetId}`,
+          "--set",
+          `expected_capability=${capabilityEnvelope}`,
+          "--dbname",
+          targetDatabaseDsn(options.targetDsn, entry.databaseName),
+          "--file",
+          guardedRestore,
+        ]);
+      }
+      const restoreSeconds = Math.round((Date.now() - restoreStart) / 1000);
+
+      const checks = buildIsolationChecks(dbMap);
+      const byId = new Map(
+        dbMap.map((entry) => [entry.dumpId, entry.databaseName]),
+      );
+      const directEndpoint = {
+        host: targetUrl.hostname,
+        port: targetUrl.port === "" ? "5432" : targetUrl.port,
+      };
+      const surfaces = [
+        { name: "direct", endpoint: directEndpoint },
+        { name: "pooler", endpoint: options.poolerEndpoint },
+      ] as const;
+      let passed = 0;
+      for (const check of checks) {
+        const objectDb = byId.get(check.objectDumpId);
+        const probe = probeById.get(check.subjectDumpId);
+        const password = passwords.get(check.subjectDumpId);
+        if (
+          objectDb === undefined ||
+          probe === undefined ||
+          password === undefined
+        ) {
+          throw new RecoveryDrillError(
+            "INVALID_PROBE_METADATA",
+            "isolation check references unknown dump id",
+          );
+        }
+        for (const surface of surfaces) {
+          // Own-connect is proven on the direct surface only: the drill target
+          // is disposable, so its databases are deliberately absent from the
+          // pooler's routing config and an own-connect through the pooler can
+          // never succeed by design. The pooler surface still carries the
+          // cross-reject sample, which is the property it exists to prove.
+          if (check.kind === "own-connect" && surface.name !== "direct") {
+            continue;
+          }
+          const env = tenantConnectionEnv(
+            surface.endpoint,
+            objectDb,
+            probe.role,
+            password,
+          );
+          if (check.kind === "own-connect") {
+            const out = run(
+              "psql",
+              [
+                "--no-psqlrc",
+                "--tuples-only",
+                "--no-align",
+                "--set",
+                "ON_ERROR_STOP=1",
+                "--command",
+                `SELECT current_user || '|' || current_database() || '|' || current_setting('${SETTING_TARGET_ID}', true)`,
+              ],
+              { env },
+            ).trim();
+            const expected = `${probe.role}|${objectDb}|${options.targetId}`;
+            if (out !== expected) {
+              throw new RecoveryDrillError(
+                "ISOLATION_VIOLATION",
+                `tenant authentication did not reach the expected target (surface=${surface.name}, subject=${check.subjectDumpId})`,
+              );
+            }
+          } else {
+            expectCommandFailure(
+              "psql",
+              [
+                "--no-psqlrc",
+                "--tuples-only",
+                "--no-align",
+                "--set",
+                "ON_ERROR_STOP=1",
+                "--command",
+                "SELECT 1",
+              ],
+              env,
+            );
+          }
+          passed += 1;
+        }
+      }
+      // Linear admin-side isolation proof: PUBLIC denied, owner granted, for
+      // every restored database — replaces the remaining O(n^2) probe pairs.
+      for (const entry of dbMap) {
+        const probe = probeById.get(entry.dumpId);
+        if (probe === undefined) {
+          throw new RecoveryDrillError(
+            "INVALID_PROBE_METADATA",
+            "ACL assertion references unknown dump id",
+          );
+        }
+        assertTenantAcl(
+          options.targetDsn,
+          entry.databaseName,
+          probe.role,
+          archiveRoles,
+        );
         passed += 1;
       }
+
+      const objectives = evaluateObjectives(
+        manifest.createdAt,
+        startedAt,
+        restoreSeconds,
+        {
+          rpoHours: options.rpoHours,
+          rtoMinutes: options.rtoMinutes,
+        },
+      );
+
+      // Executed probe count: own-connect runs once (direct surface only);
+      // each cross-reject sample runs once per surface (direct + pooler);
+      // plus one admin-side ACL assertion per restored database.
+      const ownConnectCount = checks.filter(
+        (c) => c.kind === "own-connect",
+      ).length;
+      const total =
+        ownConnectCount +
+        (checks.length - ownConnectCount) * surfaces.length +
+        dbMap.length;
+      const report: DrillReport = {
+        schemaVersion: REPORT_SCHEMA_VERSION,
+        startedAt: startedAt.toISOString(),
+        target: redactDsn(options.targetDsn),
+        archiveSha256: sidecar.archiveSha256,
+        archiveBytes: sidecar.archiveBytes,
+        databaseCount: sidecar.databaseCount,
+        checksummedFiles,
+        isolation: {
+          total,
+          passed,
+          plan: "linear",
+        },
+        rpoSource: "manifest",
+        objectives: {
+          ...objectives,
+          rpoHours: options.rpoHours,
+          rtoMinutes: options.rtoMinutes,
+        },
+      };
+
+      // Success path only: spend the authority so the completed drill cannot
+      // be replayed. A failed drill above leaves the target recoverable.
+      consumeRestoreAuthority(
+        options.targetDsn,
+        options.targetId,
+        capability,
+        work,
+      );
+      consumed = true;
+      return report;
+    } finally {
+      // Release the session-held drill lock before the workspace is cleaned.
+      releaseDrillLock(lockConn);
     }
-    // Linear admin-side isolation proof: PUBLIC denied, owner granted, for
-    // every restored database — replaces the remaining O(n^2) probe pairs.
-    for (const entry of dbMap) {
-      const probe = probeById.get(entry.dumpId);
-      if (probe === undefined) {
-        throw new RecoveryDrillError(
-          "INVALID_PROBE_METADATA",
-          "ACL assertion references unknown dump id",
-        );
-      }
-      assertTenantAcl(options.targetDsn, entry.databaseName, probe.role);
-      passed += 1;
-    }
-
-    const objectives = evaluateObjectives(
-      manifest.createdAt,
-      startedAt,
-      restoreSeconds,
-      {
-        rpoHours: options.rpoHours,
-        rtoMinutes: options.rtoMinutes,
-      },
-    );
-
-    // Executed probe count: own-connect runs once (direct surface only);
-    // each cross-reject sample runs once per surface (direct + pooler);
-    // plus one admin-side ACL assertion per restored database.
-    const ownConnectCount = checks.filter((c) => c.kind === "own-connect")
-      .length;
-    const total =
-      ownConnectCount +
-      (checks.length - ownConnectCount) * surfaces.length +
-      dbMap.length;
-    const report: DrillReport = {
-      schemaVersion: REPORT_SCHEMA_VERSION,
-      startedAt: startedAt.toISOString(),
-      target: redactDsn(options.targetDsn),
-      archiveSha256: sidecar.archiveSha256,
-      archiveBytes: sidecar.archiveBytes,
-      databaseCount: sidecar.databaseCount,
-      checksummedFiles,
-      isolation: {
-        total,
-        passed,
-        plan: "linear",
-      },
-      rpoSource: "manifest",
-      objectives: {
-        ...objectives,
-        rpoHours: options.rpoHours,
-        rtoMinutes: options.rtoMinutes,
-      },
-    };
-
-    // Success path only: spend the authority so the completed drill cannot
-    // be replayed. A failed drill above leaves the target recoverable.
-    consumeRestoreAuthority(
-      options.targetDsn,
-      options.targetId,
-      capability,
-      work,
-    );
-    consumed = true;
-    return report;
   } finally {
     // Decrypted tenant data must not outlive the drill. If consumption did
     // not run (failure path), the target settings remain provisioned for an

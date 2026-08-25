@@ -34,18 +34,26 @@ export interface RestoreCapability {
   targetId: string;
   archiveSha256: string;
   expiresAtEpochMs: number;
+  /** Issuance time; the signature covers it, so a re-signed grant cannot claim an older minting. */
+  issuedAtEpochMs: number;
   /** Canonical payload bytes this capability's signature covers. */
   payload: string;
   signature: string;
 }
 
-/** Canonical envelope bytes: the exact string the HMAC is computed over. */
+/**
+ * Canonical envelope bytes: the exact string the HMAC is computed over.
+ * Includes issuedAt so verify-time can prove (not just trust) the claimed
+ * lifetime: expiresAt − issuedAt ≤ MAX_CAPABILITY_TTL_MS is enforced against
+ * the SIGNED bytes, closing the re-signed-with-later-expiry hole.
+ */
 export function capabilityPayload(
   targetId: string,
   archiveSha256: string,
+  issuedAtEpochMs: number,
   expiresAtEpochMs: number,
 ): string {
-  return `${ENVELOPE_PREFIX}|${targetId}|${archiveSha256}|${expiresAtEpochMs}`;
+  return `${ENVELOPE_PREFIX}|${targetId}|${archiveSha256}|${issuedAtEpochMs}|${expiresAtEpochMs}`;
 }
 
 function hmacHex(key: string, payload: string): string {
@@ -86,15 +94,18 @@ export function mintRestoreCapability(input: {
       `expiresAt must be in the future and at most ${MAX_CAPABILITY_TTL_MS}ms away`,
     );
   }
+  const issuedAtEpochMs = now;
   const payload = capabilityPayload(
     input.targetId,
     input.archiveSha256,
+    issuedAtEpochMs,
     input.expiresAtEpochMs,
   );
   return {
     targetId: input.targetId,
     archiveSha256: input.archiveSha256,
     expiresAtEpochMs: input.expiresAtEpochMs,
+    issuedAtEpochMs,
     payload,
     signature: hmacHex(input.signingKey, payload),
   };
@@ -108,12 +119,13 @@ export function serializeRestoreCapability(cap: RestoreCapability): string {
 export function parseRestoreCapability(text: string): RestoreCapability {
   const parts = text.split("|");
   if (
-    parts.length !== 5 ||
+    parts.length !== 6 ||
     parts[0] !== ENVELOPE_PREFIX ||
     !TARGET_ID_RE.test(parts[1]) ||
     !SHA256_RE.test(parts[2]) ||
     !/^\d+$/.test(parts[3]) ||
-    !HEX64_RE.test(parts[4])
+    !/^\d+$/.test(parts[4]) ||
+    !HEX64_RE.test(parts[5])
   ) {
     throw new RestoreCapabilityError(
       "INVALID_CAPABILITY",
@@ -123,9 +135,10 @@ export function parseRestoreCapability(text: string): RestoreCapability {
   return {
     targetId: parts[1],
     archiveSha256: parts[2],
-    expiresAtEpochMs: Number(parts[3]),
-    signature: parts[4],
-    payload: `${ENVELOPE_PREFIX}|${parts[1]}|${parts[2]}|${parts[3]}`,
+    issuedAtEpochMs: Number(parts[3]),
+    expiresAtEpochMs: Number(parts[4]),
+    signature: parts[5],
+    payload: `${ENVELOPE_PREFIX}|${parts[1]}|${parts[2]}|${parts[3]}|${parts[4]}`,
   };
 }
 
@@ -146,6 +159,22 @@ export function verifyRestoreCapability(
     throw new RestoreCapabilityError(
       "REFUSED_CAPABILITY_SIGNATURE",
       "restore capability signature does not verify",
+    );
+  }
+  // The lifetime ceiling is proven from the SIGNED bytes, not trusted from
+  // the envelope: a holder of the signing key cannot re-sign a grant whose
+  // expiresAt−issuedAt span exceeds the ceiling, and a re-mint resets
+  // issuedAt so the effective window always starts at minting time.
+  if (cap.expiresAtEpochMs - cap.issuedAtEpochMs > MAX_CAPABILITY_TTL_MS) {
+    throw new RestoreCapabilityError(
+      "INVALID_CAPABILITY",
+      `signed capability lifetime exceeds the ${MAX_CAPABILITY_TTL_MS}ms ceiling`,
+    );
+  }
+  if (cap.issuedAtEpochMs > nowEpochMs + METADATA_FRESHNESS_WINDOW_MS) {
+    throw new RestoreCapabilityError(
+      "INVALID_CAPABILITY",
+      "capability issuedAt is in the future beyond the freshness window",
     );
   }
   if (cap.expiresAtEpochMs <= nowEpochMs) {
@@ -181,13 +210,14 @@ export function assertRecoveryPointConsistency(input: {
       `sidecar/manifest created_at drift ${driftMs}ms exceeds the ${METADATA_FRESHNESS_WINDOW_MS}ms freshness window`,
     );
   }
-  if (
-    input.manifestCreatedAt.getTime() >
-    input.nowEpochMs + METADATA_FRESHNESS_WINDOW_MS
-  ) {
+  // Future-dated manifests are refused outright (no tolerance window): a
+  // manifest timestamp is server-generated at backup time and can never
+  // legitimately exceed the verifier's clock by more than the drift bound
+  // already checked above against the sidecar.
+  if (input.manifestCreatedAt.getTime() > input.nowEpochMs) {
     throw new RestoreCapabilityError(
       "REFUSED_RECOVERY_POINT",
-      "manifest created_at is in the future beyond the freshness window",
+      "manifest created_at is in the future",
     );
   }
 }

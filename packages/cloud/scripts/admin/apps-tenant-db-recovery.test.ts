@@ -7,7 +7,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -30,6 +30,7 @@ import {
   guardedConsumeAuthoritySql,
   guardPsqlScript,
   isCrossTenantDenial,
+  makeGlobalsIdempotent,
   parseBackupManifest,
   parseBackupSidecar,
   parseChecksumFile,
@@ -206,6 +207,50 @@ describe("restore target authority", () => {
     expect(() =>
       assertNoGlobalRoleCollisions(globals, ["restore_admin"]),
     ).not.toThrow();
+  });
+
+  test("archive-owned roles do not collide on an idempotent retry", () => {
+    // Remnants of a failed run of the SAME drill (twin settings match the
+    // capability) must not block the retry. Roles the archive does NOT
+    // define are irrelevant — the drill never creates them, so their
+    // presence on the target cannot collide with the restore.
+    const globals = ["CREATE ROLE tenant_a;", ""].join("\n");
+    expect(() =>
+      assertNoGlobalRoleCollisions(globals, ["tenant_a"], ["tenant_a"]),
+    ).not.toThrow();
+    expect(() =>
+      assertNoGlobalRoleCollisions(
+        globals,
+        ["tenant_a", "tenant_b"],
+        ["tenant_a"],
+      ),
+    ).not.toThrow();
+    // A pre-existing role that the archive itself defines and that is NOT
+    // exempted as archive-owned still refuses (direct-call contract).
+    expect(() =>
+      assertNoGlobalRoleCollisions(
+        ["CREATE ROLE postgres;", ""].join("\n"),
+        ["postgres"],
+        ["tenant_a"],
+      ),
+    ).toThrow(expect.objectContaining({ code: "REFUSED_NONEMPTY_TARGET" }));
+  });
+
+  test("makeGlobalsIdempotent rewrites CREATE ROLE into conditional DO blocks", () => {
+    const globals = [
+      "CREATE ROLE tenant_a;",
+      "ALTER ROLE tenant_a WITH LOGIN;",
+      "CREATE ROLE tenant_b;",
+      "",
+    ].join("\n");
+    const idempotent = makeGlobalsIdempotent(globals);
+    expect(idempotent).toContain("IF NOT EXISTS");
+    expect(idempotent).not.toMatch(/(^|\n)CREATE ROLE tenant_a;/);
+    expect(idempotent).not.toMatch(/(^|\n)CREATE ROLE tenant_b;/);
+    // ALTER ROLE is already idempotent and must pass through untouched.
+    expect(idempotent).toContain("ALTER ROLE tenant_a WITH LOGIN;");
+    // Role names arrive as quoted literals inside the DO block.
+    expect(idempotent).toContain("rolname = 'tenant_a'");
   });
 
   test("parses the server role inventory and refuses malformed output", () => {
@@ -589,10 +634,11 @@ const CAP_ARCHIVE_SHA = "b".repeat(64);
 const CAP_KEY = "test-signing-key";
 
 function wellFormedCapabilityEnvelope(
+  issuedAtEpochMs: number,
   expiresAtEpochMs: number,
   signatureHex: string,
 ): string {
-  return `v1.eliza.restore|${CAP_TARGET_ID}|${CAP_ARCHIVE_SHA}|${expiresAtEpochMs}|${signatureHex}`;
+  return `v1.eliza.restore|${CAP_TARGET_ID}|${CAP_ARCHIVE_SHA}|${issuedAtEpochMs}|${expiresAtEpochMs}|${signatureHex}`;
 }
 
 describe("restore capability (#23453)", () => {
@@ -622,7 +668,11 @@ describe("restore capability (#23453)", () => {
       ("0" === minted.signature.slice(0, 1) ? "1" : "0") +
       minted.signature.slice(1);
     const tampered = parseRestoreCapability(
-      wellFormedCapabilityEnvelope(minted.expiresAtEpochMs, flipped),
+      wellFormedCapabilityEnvelope(
+        minted.issuedAtEpochMs,
+        minted.expiresAtEpochMs,
+        flipped,
+      ),
     );
     expect(() =>
       verifyRestoreCapability(tampered, CAP_KEY, Date.now()),
@@ -672,7 +722,46 @@ describe("restore capability (#23453)", () => {
     );
     expect(() =>
       parseRestoreCapability(
-        `v1.eliza.restore|not-a-target|aa|1|${"0".repeat(128)}`,
+        `v1.eliza.restore|not-a-target|aa|1|1|${"0".repeat(128)}`,
+      ),
+    ).toThrow(expect.objectContaining({ code: "INVALID_CAPABILITY" }));
+  });
+
+  test("refuses a signed capability whose lifetime exceeds the ceiling", () => {
+    // Even a correctly-signed grant cannot claim a span beyond the TTL
+    // ceiling: the ceiling is proven from the signed bytes.
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: Date.now() + 60_000,
+    });
+    const stretched = {
+      ...minted,
+      expiresAtEpochMs: minted.issuedAtEpochMs + MAX_CAPABILITY_TTL_MS + 1,
+      payload: `v1.eliza.restore|${CAP_TARGET_ID}|${CAP_ARCHIVE_SHA}|${minted.issuedAtEpochMs}|${minted.issuedAtEpochMs + MAX_CAPABILITY_TTL_MS + 1}`,
+    };
+    // Re-sign so only the lifetime check can refuse it.
+    stretched.signature = createHmac("sha256", CAP_KEY)
+      .update(stretched.payload, "utf-8")
+      .digest("hex");
+    expect(() =>
+      verifyRestoreCapability(stretched, CAP_KEY, Date.now()),
+    ).toThrow(expect.objectContaining({ code: "INVALID_CAPABILITY" }));
+  });
+
+  test("refuses a capability whose issuedAt is in the future", () => {
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: Date.now() + 60_000,
+    });
+    expect(() =>
+      verifyRestoreCapability(
+        minted,
+        CAP_KEY,
+        minted.issuedAtEpochMs - 120_000,
       ),
     ).toThrow(expect.objectContaining({ code: "INVALID_CAPABILITY" }));
   });
@@ -740,9 +829,7 @@ describe("authenticated archive coverage (#23453)", () => {
       { sha256: "c".repeat(64), file: "dbmap.tsv" },
       { sha256: "d".repeat(64), file: "dumps/aaaaaaaaaaaa.dump" },
     ];
-    expect(() =>
-      assertChecksumCoverage(good, ["aaaaaaaaaaaa"]),
-    ).not.toThrow();
+    expect(() => assertChecksumCoverage(good, ["aaaaaaaaaaaa"])).not.toThrow();
     for (const drop of [0, 1, 2, 3]) {
       const missing = good.filter((_, i) => i !== drop);
       expect(() => assertChecksumCoverage(missing, ["aaaaaaaaaaaa"])).toThrow(
@@ -759,9 +846,7 @@ describe("authenticated archive coverage (#23453)", () => {
       assertProbesCoverArchiveRoles(probes, ["tenant_a"]),
     ).not.toThrow();
     // A tampered probes file naming an attacker-chosen role is refused.
-    expect(() =>
-      assertProbesCoverArchiveRoles(probes, ["tenant_b"]),
-    ).toThrow(
+    expect(() => assertProbesCoverArchiveRoles(probes, ["tenant_b"])).toThrow(
       expect.objectContaining({ code: "INVALID_PROBE_METADATA" }),
     );
   });
