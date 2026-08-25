@@ -92,16 +92,22 @@ export function telegramMembershipScope(input: {
 }
 
 /** Telegram ChatMember status -> authority (state, reason). */
-export function telegramStatusToMembership(status: string): {
-  state: "active" | "revoked";
-  reason: TelegramMembershipReason;
-} {
-  switch (status) {
+export function telegramStatusToMembership(member: {
+  status: string;
+  is_member?: boolean;
+}): { state: "active" | "revoked"; reason: TelegramMembershipReason } {
+  switch (member.status) {
     case "creator":
     case "administrator":
     case "member":
-    case "restricted":
       return { state: "active", reason: "reconciled_present" };
+    case "restricted":
+      // A restricted user is only a member while is_member is true; Telegram
+      // reports restricted non-members (e.g. unbanned-but-not-rejoined) with
+      // is_member: false, which must NOT admit as active membership.
+      return member.is_member === false
+        ? { state: "revoked", reason: "left" }
+        : { state: "active", reason: "reconciled_present" };
     case "left":
       return { state: "revoked", reason: "left" };
     case "kicked":
@@ -235,22 +241,73 @@ export class TelegramMembershipAuthority {
     })();
   }
 
-  /** Re-reads persisted scope state after a pre-commit fencing failure. */
+  /**
+   * Re-reads persisted scope state after a pre-commit fencing failure. When
+   * the persisted publisher binding belongs to a different publisher
+   * instance, register OUR generation now so the evidence retry actually
+   * matches the registered publisher instead of mismatching again.
+   */
   private async readoptFromHealth(
     scope: MembershipScope,
   ): Promise<ScopeTracker> {
     const health = await this.service.getScopeHealth(scope);
+    if (health && health.publisherInstanceId !== this.publisherInstanceId) {
+      const publisherGeneration = (health.publisherGeneration ?? -1) + 1;
+      const receipt = await this.service.registerPublisher({
+        ...scope,
+        publisherInstanceId: this.publisherInstanceId,
+        publisherGeneration,
+        evidenceMode: "point_query",
+        expectedGeneration: health.generation,
+        idempotencyKey: `tg:${this.connectorAccountId}:publisher:${scope.externalWorldId}:${scope.externalRoomId}:${publisherGeneration}`,
+        observedAt: new Date().toISOString(),
+      });
+      if (receipt.operation !== "publisher") {
+        throw new Error(
+          `Telegram membership publisher takeover returned ${receipt.operation}`,
+        );
+      }
+      const tracker: ScopeTracker = {
+        generation: receipt.committedGeneration,
+        sourceVersion: -1,
+        sourceCursor: null,
+        publisherGeneration,
+      };
+      this.scopes.set(scopeKey(scope), tracker);
+      return tracker;
+    }
     const tracker: ScopeTracker = {
       generation: health?.generation ?? 0,
       sourceVersion: health?.sourceVersion ?? -1,
       sourceCursor: health?.sourceCursor ?? null,
-      publisherGeneration:
-        health?.publisherInstanceId === this.publisherInstanceId
-          ? (health.publisherGeneration ?? 0)
-          : (health?.publisherGeneration ?? -1) + 1,
+      publisherGeneration: health?.publisherGeneration ?? 0,
     };
     this.scopes.set(scopeKey(scope), tracker);
     return tracker;
+  }
+
+  /**
+   * Degrades the scope to stale so admission fails closed. Public degrade
+   * path for callers that observed a REVOCATION but could not commit the
+   * evidence itself (e.g. entity bootstrap failed): the safe representation
+   * of "we saw a leave but the authority did not record it" is a scope whose
+   * evidence can no longer authorize anyone until fresh evidence lands.
+   */
+  async markScopeStale(input: {
+    scope: MembershipScope;
+    reason: string;
+  }): Promise<void> {
+    const health = await this.service.getScopeHealth(input.scope);
+    const expectedGeneration = health?.generation ?? 0;
+    await this.service.setScopeHealth({
+      ...input.scope,
+      expectedGeneration,
+      idempotencyKey: `tg:${this.connectorAccountId}:${input.scope.externalWorldId}:stale:${input.reason}:${expectedGeneration}`,
+      health: "stale",
+      reason: input.reason,
+      observedAt: new Date().toISOString(),
+    });
+    this.scopes.delete(scopeKey(input.scope));
   }
 
   /**
@@ -278,6 +335,32 @@ export class TelegramMembershipAuthority {
       let tracker =
         (await this.ensureRegistered(input.scope)) ??
         (await this.readoptFromHealth(input.scope));
+
+      // Out-of-order guard: a fact older than the principal's committed
+      // evidence must never overwrite it (an old join with a distinct message
+      // id redelivered after a newer leave must not resurrect membership).
+      const committed = await this.service.getMembership(
+        input.scope,
+        input.canonicalPrincipalId,
+      );
+      if (
+        committed &&
+        Date.parse(input.observedAt) < Date.parse(committed.observedAt)
+      ) {
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            chatId: input.scope.externalWorldId,
+            telegramUserId: input.canonicalPrincipalId,
+            incomingObservedAt: input.observedAt,
+            committedObservedAt: committed.observedAt,
+          },
+          "Telegram membership fact is older than committed evidence; skipping",
+        );
+        return false;
+      }
+
       for (let attempt = 0; attempt < 2; attempt++) {
         const sourceVersion = tracker.sourceVersion + 1;
         const sourceCursor = `tg:${sourceVersion}`;
@@ -323,12 +406,11 @@ export class TelegramMembershipAuthority {
             tracker = await this.readoptFromHealth(input.scope);
             continue;
           }
-          if (
-            code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT" ||
-            code === "MEMBERSHIP_COMMAND_INVALID"
-          ) {
-            // Replayed update rebuilt with different bytes, or a redelivery
-            // whose evidence window has passed: benign duplicates.
+          if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
+            // A redelivery of the same command bytes: benign duplicate.
+            // MEMBERSHIP_COMMAND_INVALID is NOT benign — it signals a
+            // malformed or rejected command that must surface (and for
+            // revocations, degrade the scope) rather than mask.
             logger.debug(
               {
                 src: "plugin:telegram",
@@ -390,8 +472,29 @@ export class TelegramMembershipAuthority {
         idempotencyKey: `tg:${this.connectorAccountId}:${input.chatId}:msg:${input.messageId}:${input.reason}:${input.telegramUserId}`,
       });
     } catch (error) {
-      // error-policy:J7 Authority diagnostics must not kill the poll loop;
-      // the principal stays denied-by-default until fresh evidence lands.
+      // error-policy:J7 Authority diagnostics must not kill the poll loop.
+      // For a REVOCATION we must not leave prior active evidence authorizing
+      // the departed principal: degrade the scope to stale (fail-closed
+      // admission) until fresh evidence lands.
+      if (input.state === "revoked") {
+        try {
+          await this.markScopeStale({
+            scope,
+            reason: `revocation_write_failed:${input.reason}`,
+          });
+        } catch (degradeError) {
+          this.runtime.reportError(
+            "telegram:membership-evidence",
+            degradeError,
+            {
+              chatId: input.chatId,
+              messageId: input.messageId,
+              telegramUserId: input.telegramUserId,
+              originalError: String(error),
+            },
+          );
+        }
+      }
       this.runtime.reportError("telegram:membership-evidence", error, {
         chatId: input.chatId,
         messageId: input.messageId,
@@ -442,7 +545,7 @@ export class TelegramMembershipAuthority {
       });
       return null;
     }
-    const mapped = telegramStatusToMembership(member.status);
+    const mapped = telegramStatusToMembership(member);
     const scope = telegramMembershipScope({
       agentId: this.runtime.agentId,
       connectorAccountId: this.connectorAccountId,
@@ -473,7 +576,13 @@ export class TelegramMembershipAuthority {
     return mapped;
   }
 
-  /** Fail-closed admission decision for a group/supergroup chat scope. */
+  /**
+   * Fail-closed admission decision for a group/supergroup chat scope. The
+   * read runs inside the per-scope serialization chain so it is ordered
+   * behind any evidence write already queued for the scope (e.g. a leave
+   * observed by the update handler cannot be jumped by a later message's
+   * authorization once its evidence command is enqueued).
+   */
   async authorize(input: {
     chatId: string;
     chatRoomKey: string;
@@ -485,7 +594,9 @@ export class TelegramMembershipAuthority {
       chatId: input.chatId,
       chatRoomKey: input.chatRoomKey,
     });
-    return this.service.authorize(scope, input.canonicalPrincipalId);
+    return this.serialized(scopeKey(scope), () =>
+      this.service.authorize(scope, input.canonicalPrincipalId),
+    );
   }
 
   /**

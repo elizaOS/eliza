@@ -366,6 +366,54 @@ describe("telegram membership authority vertical (real PGlite)", () => {
     expect(getChatMember).not.toHaveBeenCalled();
   }, 120_000);
 
+  it("does not let an older join (distinct message id) resurrect a newer revocation", async () => {
+    const { authority, harness } = await bootMembershipHarness();
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    // Newer revocation lands first.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "revoked",
+      reason: "left",
+      messageId: 50,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    // An OLDER join with a distinct message id redelivered out of order must
+    // not overwrite the newer revocation.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 40,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    const decision = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(decision.decision).toBe("denied");
+    expect((decision as { reason: string }).reason).toBe("membership_revoked");
+  }, 120_000);
+
   it("continues the persisted publisher binding after a restart instead of re-registering", async () => {
     const dir = await import("node:fs/promises").then((fs) =>
       fs.mkdtemp("/tmp/tg-membership-restart-"),

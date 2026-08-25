@@ -132,6 +132,7 @@ export class TelegramMembershipMessageGate {
   private readonly runtime: import("@elizaos/core").IAgentRuntime;
   private authority: TelegramMembershipAuthority | null;
   private botTelegramUserId: string | null;
+  private broken = false;
   private readonly warned = new Set<string>();
   private reconcileNonce = 0;
 
@@ -152,6 +153,18 @@ export class TelegramMembershipMessageGate {
   ): void {
     this.authority = authority;
     this.botTelegramUserId = botTelegramUserId;
+    this.broken = false;
+    this.warned.clear();
+  }
+
+  /**
+   * Marks the gate broken: the membership authority was configured but its
+   * bootstrap failed. Group admission fails closed until a later boot
+   * succeeds — this is distinct from the absent-authority legacy mode.
+   */
+  markBroken(): void {
+    this.broken = true;
+    this.authority = null;
     this.warned.clear();
   }
 
@@ -167,6 +180,19 @@ export class TelegramMembershipMessageGate {
     ) {
       return true;
     }
+    if (
+      this.broken ||
+      (!this.authority && process.env.TELEGRAM_MEMBERSHIP_ENFORCE === "1")
+    ) {
+      // Broken bootstrap (authority configured but failed) or explicit strict
+      // mode without an authority: admission fails closed.
+      this.warnOnce(
+        `authority-broken:${input.chatId}`,
+        "Telegram group admission denied: membership authority is unavailable",
+        { chatId: input.chatId },
+      );
+      return false;
+    }
     if (!this.authority) {
       // The membership authority service was never registered (deployment
       // without plugin-sql): admission degrades to allow with a once-per-chat
@@ -175,14 +201,6 @@ export class TelegramMembershipMessageGate {
       // regression. TELEGRAM_MEMBERSHIP_ENFORCE opts into strict fail-closed.
       // When the service IS present but scope evidence is stale or
       // unavailable, the deny path below still fails closed.
-      if (process.env.TELEGRAM_MEMBERSHIP_ENFORCE === "1") {
-        this.warnOnce(
-          `authority-absent:${input.chatId}`,
-          "Telegram group admission denied: membership authority service is unavailable (TELEGRAM_MEMBERSHIP_ENFORCE=1)",
-          { chatId: input.chatId },
-        );
-        return false;
-      }
       this.warnOnce(
         `authority-absent:${input.chatId}`,
         "Telegram group admission running without a membership authority service; membership checks disabled",
