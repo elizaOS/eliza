@@ -6,14 +6,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import {
-  type ActionResult,
-  logger as coreLogger,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
+import { logger as coreLogger } from "@elizaos/core";
 
 import {
   failureToActionResult,
@@ -37,18 +37,6 @@ const EXCLUDED_DIR_NAMES = new Set([
   ".cache",
 ]);
 
-interface NodeFsGlobModule {
-  glob: (
-    pattern: string | string[],
-    options?: { cwd?: string; exclude?: (path: string) => boolean },
-  ) => AsyncIterable<string>;
-}
-
-function getNodeFsGlob(): NodeFsGlobModule["glob"] | undefined {
-  const candidate = (fs as Partial<NodeFsGlobModule>).glob;
-  return typeof candidate === "function" ? candidate : undefined;
-}
-
 function unsafeGlobPattern(pattern: string): string | undefined {
   if (pattern.includes("\0")) return "glob pattern must not contain NUL";
   if (
@@ -64,9 +52,7 @@ function unsafeGlobPattern(pattern: string): string | undefined {
   return undefined;
 }
 
-/** Exported for tests: the fallback matcher used when `fs.glob` is absent
- *  (Node < 22) — its branch behavior must match the native glob it stands in
- *  for. */
+/** Exported for focused compatibility tests of the minimal legacy matcher. */
 export function globToRegExp(pattern: string): RegExp {
   let regex = "";
   let i = 0;
@@ -103,60 +89,50 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${regex}$`);
 }
 
-async function walkFallback(root: string, pattern: string): Promise<string[]> {
-  const matcher = globToRegExp(pattern);
+type ReadDirectory = (
+  directory: string,
+) => Promise<Array<import("node:fs").Dirent>>;
+
+const readDirectoryWithTypes: ReadDirectory = (directory) =>
+  fs.readdir(directory, { withFileTypes: true });
+
+/**
+ * Discover only entries physically reachable beneath `root`, without following
+ * directory symlinks, then apply glob syntax to root-relative candidate names.
+ * Pattern text never reaches a filesystem traversal API.
+ */
+export async function walkContainedGlob(
+  root: string,
+  pattern: string,
+  readDirectory: ReadDirectory = readDirectoryWithTypes,
+): Promise<string[]> {
   const results: string[] = [];
 
   async function walk(dir: string): Promise<void> {
-    let names: string[];
+    let entries: Array<import("node:fs").Dirent>;
     try {
-      names = await fs.readdir(dir);
+      entries = await readDirectory(dir);
     } catch {
       // error-policy:J6 best-effort walk; a directory that became unreadable
       // (permissions, race) is skipped so the remaining tree is still globbed.
       return;
     }
-    for (const name of names) {
-      if (EXCLUDED_DIR_NAMES.has(name)) continue;
-      const abs = path.join(dir, name);
-      try {
-        const st = await fs.lstat(abs);
-        if (st.isDirectory()) {
-          await walk(abs);
-        } else if (st.isFile()) {
-          const rel = path.relative(root, abs).split(path.sep).join("/");
-          if (matcher.test(rel)) {
-            results.push(abs);
-          }
+    for (const entry of entries) {
+      if (EXCLUDED_DIR_NAMES.has(entry.name)) continue;
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(abs);
+      } else if (entry.isFile()) {
+        const rel = path.relative(root, abs).split(path.sep).join("/");
+        if (path.matchesGlob(rel, pattern)) {
+          results.push(abs);
         }
-      } catch {
-        // error-policy:J6 best-effort per-entry lstat; an entry that vanished
-        // or is unreadable is skipped rather than aborting the whole walk.
       }
     }
   }
 
   await walk(root);
   return results;
-}
-
-async function nodeGlob(
-  glob: NodeFsGlobModule["glob"],
-  root: string,
-  pattern: string,
-): Promise<string[]> {
-  const out: string[] = [];
-  const iter = glob(pattern, {
-    cwd: root,
-    exclude: (p: string) => {
-      const segments = p.split(/[\\/]/);
-      return segments.some((seg) => EXCLUDED_DIR_NAMES.has(seg));
-    },
-  });
-  for await (const entry of iter) {
-    out.push(path.isAbsolute(entry) ? entry : path.join(root, entry));
-  }
-  return out;
 }
 
 export async function globHandler(
@@ -228,22 +204,13 @@ export async function globHandler(
   const root = validation.resolved;
 
   let candidates: string[];
-  const builtinGlob = getNodeFsGlob();
-  if (builtinGlob) {
-    try {
-      candidates = await nodeGlob(builtinGlob, root, pattern);
-    } catch (err) {
-      // error-policy:J4 designed degrade; the native `node:fs.glob` and the
-      // manual walker compute the same match set, so a native-glob failure
-      // falls back to the walker with a warning rather than failing the action.
-      const msg = err instanceof Error ? err.message : String(err);
-      coreLogger.warn(
-        `${CODING_TOOLS_LOG_PREFIX} GLOB node:fs.glob failed (${msg}); falling back to walker`,
-      );
-      candidates = await walkFallback(root, pattern);
-    }
-  } else {
-    candidates = await walkFallback(root, pattern);
+  try {
+    candidates = await walkContainedGlob(root, pattern);
+  } catch (error) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message: `invalid glob pattern: ${error instanceof Error ? error.message : String(error)}`,
+    });
   }
 
   const validatedCandidates: string[] = [];

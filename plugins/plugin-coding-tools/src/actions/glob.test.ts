@@ -13,8 +13,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { globHandler, globToRegExp } from "./glob.js";
+import { globHandler, globToRegExp, walkContainedGlob } from "./glob.js";
 
+let testContainer: string;
 let tmpRoot: string;
 let blockedPath: string;
 let outsideRoot: string;
@@ -52,8 +53,11 @@ async function buildRuntime(): Promise<RuntimeBundle> {
 }
 
 beforeEach(async () => {
-  tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-glob-"));
-  outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-glob-outside-"));
+  testContainer = await fs.mkdtemp(path.join(os.tmpdir(), "ct-glob-"));
+  tmpRoot = path.join(testContainer, "root");
+  outsideRoot = path.join(testContainer, "outside");
+  await fs.mkdir(tmpRoot);
+  await fs.mkdir(outsideRoot);
   blockedPath = path.join(tmpRoot, "_blocked");
   await fs.mkdir(blockedPath, { recursive: true });
   const fooDir = path.join(tmpRoot, "foo");
@@ -66,8 +70,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await fs.rm(tmpRoot, { recursive: true, force: true });
-  await fs.rm(outsideRoot, { recursive: true, force: true });
+  await fs.rm(testContainer, { recursive: true, force: true });
 });
 
 const state: State | undefined = undefined;
@@ -161,7 +164,7 @@ describe("GLOB", () => {
     },
   );
 
-  it("rejects a glob candidate that resolves through a symlink outside the workspace", async () => {
+  it("does not follow a directory symlink outside the workspace", async () => {
     const { runtime, message } = await buildRuntime();
     await fs.writeFile(path.join(outsideRoot, "secret.txt"), "outside\n");
     await fs.symlink(outsideRoot, path.join(tmpRoot, "escape"), "dir");
@@ -170,10 +173,50 @@ describe("GLOB", () => {
       parameters: { pattern: "escape/*.txt" },
     });
 
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("invalid_param");
-    expect(result.text).toContain("glob candidate rejected");
-    expect(result.text).toContain("outside the configured coding workspace");
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("0 files");
+  });
+
+  it.each([".[.]/outside/*.txt", "{.[.],safe}/outside/*.txt"])(
+    "never traverses outside the root for encoded pattern %s",
+    async (pattern) => {
+      await fs.writeFile(path.join(outsideRoot, "secret.txt"), "outside\n");
+      const visited: string[] = [];
+
+      const files = await walkContainedGlob(
+        tmpRoot,
+        pattern,
+        async (directory) => {
+          visited.push(path.resolve(directory));
+          return fs.readdir(directory, { withFileTypes: true });
+        },
+      );
+
+      expect(files).toEqual([]);
+      expect(visited).not.toContain(path.resolve(outsideRoot));
+      expect(
+        visited.every((directory) => {
+          const relative = path.relative(tmpRoot, directory);
+          return (
+            relative === "" ||
+            (!relative.startsWith("..") && !path.isAbsolute(relative))
+          );
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it("preserves brace and recursive glob semantics inside the root", async () => {
+    const { runtime, message } = await buildRuntime();
+    const result = await globHandler(runtime, message, state, {
+      parameters: { pattern: "{foo,missing}/**/{a,b,c}.ts" },
+    });
+
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown> | undefined;
+    const files = (data?.files as string[] | undefined) ?? [];
+    expect(files).toHaveLength(3);
+    expect(files.every((filePath) => filePath.endsWith(".ts"))).toBe(true);
   });
 
   it("fails when roomId is missing", async () => {
