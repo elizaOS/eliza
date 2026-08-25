@@ -155,6 +155,9 @@ export function parseClampedFloat(
 
   const min = options.min ?? -Infinity;
   const max = options.max ?? Infinity;
+  if (min > max) {
+    throw new RangeError("min cannot be greater than max");
+  }
   return Math.max(min, Math.min(max, parsed));
 }
 
@@ -182,5 +185,8 @@ export function parseClampedInteger(
 
   const min = options.min ?? -Infinity;
   const max = options.max ?? Infinity;
+  if (min > max) {
+    throw new RangeError("min cannot be greater than max");
+  }
   return Math.max(min, Math.min(max, parsed));
 }

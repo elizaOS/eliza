@@ -96,4 +96,13 @@ describe("number parsing utilities", () => {
       }),
     ).toBe(15);
   });
+
+  it("throws RangeError when min is greater than max", () => {
+    expect(() =>
+      parseClampedFloat("5", { min: 10, max: 2 }),
+    ).toThrow(RangeError);
+    expect(() =>
+      parseClampedInteger("5", { min: 10, max: 2 }),
+    ).toThrow(RangeError);
+  });
 });
