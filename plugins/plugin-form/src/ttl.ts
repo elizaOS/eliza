@@ -85,7 +85,9 @@ export function calculateTTL(
     config.effortMultiplier ?? FORM_DEFINITION_DEFAULTS.ttl.effortMultiplier;
 
   // Calculate effort in minutes
-  const minutesSpent = session.effort.timeSpentMs / 60000;
+  const minutesSpent = Number.isFinite(session.effort.timeSpentMs)
+    ? session.effort.timeSpentMs / 60000
+    : 0;
 
   // Calculate TTL in days based on effort
   // WHY this formula: Simple linear scaling, easy to understand

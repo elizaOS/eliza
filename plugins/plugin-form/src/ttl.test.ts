@@ -80,6 +80,45 @@ describe("calculateTTL", () => {
       NOW + FORM_DEFINITION_DEFAULTS.ttl.minDays * 24 * 60 * 60 * 1000,
     );
   });
+
+  it("fails closed to the minimum retention when effort data is missing", () => {
+    // Sessions restored from storage may lack effort tracking (schema drift /
+    // partial writes). Previously this produced NaN → expiresAt = NaN → the
+    // session NEVER expired (abandoned form data retained forever).
+    const expiry = calculateTTL(
+      makeSession({
+        effort: { lastInteractionAt: NOW } as Parameters<
+          typeof calculateTTL
+        >[0]["effort"],
+      }),
+    );
+    expect(expiry).toBe(NOW + 14 * 24 * 60 * 60 * 1000);
+    expect(Number.isNaN(expiry)).toBe(false);
+  });
+
+  it("fails closed to the minimum retention on NaN effort", () => {
+    const expiry = calculateTTL(
+      makeSession({
+        effort: {
+          timeSpentMs: Number.NaN,
+          lastInteractionAt: NOW,
+        } as Parameters<typeof calculateTTL>[0]["effort"],
+      }),
+    );
+    expect(expiry).toBe(NOW + 14 * 24 * 60 * 60 * 1000);
+  });
+
+  it("fails closed to the minimum retention on non-finite effort", () => {
+    const expiry = calculateTTL(
+      makeSession({
+        effort: {
+          timeSpentMs: Number.POSITIVE_INFINITY,
+          lastInteractionAt: NOW,
+        } as Parameters<typeof calculateTTL>[0]["effort"],
+      }),
+    );
+    expect(expiry).toBe(NOW + 14 * 24 * 60 * 60 * 1000);
+  });
 });
 
 describe("shouldNudge", () => {
